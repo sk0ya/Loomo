@@ -66,11 +66,13 @@
                     <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
 
-                <!-- システムプロンプト -->
+                <!-- システムプロンプト（中央のエディタ領域で編集） -->
                 <TextBlock Style="{StaticResource FieldLabel}" Text="システムプロンプト" />
-                <TextBox Text="{Binding SystemPrompt, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90"
-                         VerticalScrollBarVisibility="Auto" />
+                <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
+                        HorizontalAlignment="Left" Command="{Binding EditSystemPromptCommand}" />
+                <TextBlock Text="中央のエディタペインで開きます。保存（:w）すると即時反映されます。"
+                           Foreground="{StaticResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
 
                 <!-- 安全設計（§10） -->
                 <Separator Margin="0,14,0,8" />
@@ -81,12 +83,12 @@
                 <CheckBox Content="ツールのファイルアクセスをワークスペースルート配下に限定（パストラバーサル防止）"
                           IsChecked="{Binding RestrictToWorkspaceRoot}" Margin="0,2,0,4"
                           Foreground="{StaticResource Fg}" />
-                <TextBlock Style="{StaticResource FieldLabel}"
-                           Text="ブロックする危険コマンド（1行に1つ・正規表現・大文字小文字無視）" />
-                <TextBox Text="{Binding BlockedCommandPatterns, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="90"
-                         FontFamily="Cascadia Mono, Consolas"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="ブロックする危険コマンド" />
+                <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
+                        HorizontalAlignment="Left" Command="{Binding EditBlockedCommandsCommand}" />
+                <TextBlock Text="1行に1つ・正規表現（大文字小文字無視）。中央のエディタペインで開き、保存（:w）で即時反映されます。"
+                           Foreground="{StaticResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
 
                 <!-- 保存 -->
                 <Button Content="保存" Style="{StaticResource FlatButton}"

@@ -39,7 +39,7 @@ public class ShellViewModelTests
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
-        var settingsVm = new SettingsViewModel(settings, store, copilotAuth);
+        var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService());
 
         return new ShellViewModel(folderTree, aiBar, sessionsVm, settingsVm);
     }

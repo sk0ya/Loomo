@@ -8,17 +8,21 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>設定パネル（プロバイダ切替・モデル・APIキー等）の ViewModel。
-/// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。</summary>
+/// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
+/// システムプロンプト・危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
+/// 編集する（<see cref="IEditorService.OpenDocumentAsync"/>。保存=:w 時にコールバックで即時反映）。</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly AiSettings _settings;
     private readonly AiSettingsStore _store;
     private readonly CopilotAuthService _copilotAuth;
+    private readonly IEditorService _editor;
     private CancellationTokenSource? _signInCts;
 
     /// <summary>現在フィールドに読み込まれているプロバイダ。切替時に旧プロバイダへコミットするため保持。</summary>
@@ -35,13 +39,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _apiKey = "";
     [ObservableProperty] private string _baseUrl = "";
     [ObservableProperty] private int _maxTokens;
-    [ObservableProperty] private string _systemPrompt = "";
     [ObservableProperty] private string _status = "";
 
     // --- 安全設計（設計書 §10） ---
     [ObservableProperty] private bool _autoApprove;
     [ObservableProperty] private bool _restrictToWorkspaceRoot;
-    [ObservableProperty] private string _blockedCommandPatterns = "";
 
     /// <summary>Copilot サインインの進捗・状態表示。</summary>
     [ObservableProperty] private string _copilotStatus = "";
@@ -62,17 +64,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Copilot に既にサインイン済みか（GitHub トークン保持）。</summary>
     public bool IsCopilotSignedIn => !string.IsNullOrWhiteSpace(_settings.Copilot.ApiKey);
 
-    public SettingsViewModel(AiSettings settings, AiSettingsStore store, CopilotAuthService copilotAuth)
+    public SettingsViewModel(AiSettings settings, AiSettingsStore store, CopilotAuthService copilotAuth, IEditorService editor)
     {
         _settings = settings;
         _store = store;
         _copilotAuth = copilotAuth;
-        _systemPrompt = settings.SystemPrompt;
+        _editor = editor;
         _selectedProvider = settings.Provider;
         _loadedProvider = settings.Provider;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
-        _blockedCommandPatterns = string.Join(Environment.NewLine, settings.Safety.BlockedCommandPatterns);
         LoadProviderFields(settings.Provider);
     }
 
@@ -112,17 +113,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         CommitFieldsTo(SelectedProvider);
         _settings.Provider = SelectedProvider;
-        if (!string.IsNullOrWhiteSpace(SystemPrompt))
-            _settings.SystemPrompt = SystemPrompt.Trim();
 
         // 安全設計を書き戻す（同一インスタンスなので即時反映される）
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
-        _settings.Safety.BlockedCommandPatterns = BlockedCommandPatterns
-            .Split('\n')
-            .Select(p => p.Trim())
-            .Where(p => p.Length > 0)
-            .ToList();
+        // システムプロンプト・危険コマンド一覧はエディタでの保存（:w）時に即時反映するため、ここでは扱わない。
 
         try
         {
@@ -135,6 +130,68 @@ public sealed partial class SettingsViewModel : ObservableObject
             Status = $"保存に失敗しました: {ex.Message}";
         }
     }
+
+    /// <summary>システムプロンプトを中央のエディタペインで開く。保存（:w）で settings.json へ即時反映。</summary>
+    [RelayCommand]
+    private async Task EditSystemPromptAsync()
+    {
+        await _editor.OpenDocumentAsync(new EditorDocument
+        {
+            FileName = "loomo-system-prompt.md",
+            Content = _settings.SystemPrompt,
+            OnSaved = text =>
+            {
+                _settings.SystemPrompt = text.Trim();
+                PersistAndNotify("システムプロンプトを保存しました");
+            }
+        });
+        Status = "システムプロンプトをエディタで開きました。編集して保存（:w）すると反映されます。";
+    }
+
+    /// <summary>危険コマンドのブロックリストを中央のエディタペインで開く。保存（:w）で settings.json へ即時反映。</summary>
+    [RelayCommand]
+    private async Task EditBlockedCommandsAsync()
+    {
+        const string header =
+            "# ブロックする危険コマンド（run_command の照合に使用）\n" +
+            "# ・1行に1つ、正規表現で記述します（大文字小文字は無視）。\n" +
+            "# ・'#' で始まる行と空行は無視されます。\n" +
+            "\n";
+        var body = string.Join("\n", _settings.Safety.BlockedCommandPatterns);
+        await _editor.OpenDocumentAsync(new EditorDocument
+        {
+            FileName = "loomo-blocked-commands.txt",
+            Content = header + body,
+            OnSaved = text =>
+            {
+                _settings.Safety.BlockedCommandPatterns = ParsePatterns(text);
+                PersistAndNotify("危険コマンドのブロックリストを保存しました");
+            }
+        });
+        Status = "危険コマンド一覧をエディタで開きました。編集して保存（:w）すると反映されます。";
+    }
+
+    /// <summary>エディタ保存コールバックから呼ぶ共通処理：永続化して結果を表示。</summary>
+    private void PersistAndNotify(string message)
+    {
+        try
+        {
+            _store.Save(_settings);
+            Status = $"{message} — {_store.FilePath}";
+            Saved?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Status = $"保存に失敗しました: {ex.Message}";
+        }
+    }
+
+    /// <summary>エディタの行テキストを正規表現パターンのリストへ変換（空行・コメント行を除外）。</summary>
+    private static List<string> ParsePatterns(string text) =>
+        text.Replace("\r\n", "\n").Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0 && !l.StartsWith("#"))
+            .ToList();
 
     /// <summary>GitHub デバイス認証で Copilot 用トークンを取得して保存する。</summary>
     [RelayCommand]
