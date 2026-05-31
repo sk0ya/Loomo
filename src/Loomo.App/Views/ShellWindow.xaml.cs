@@ -64,6 +64,7 @@ public partial class ShellWindow : Window
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
+        vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
@@ -564,6 +565,22 @@ public partial class ShellWindow : Window
                 break;
             case TabEntryKind.Browser:
                 ActivateBrowserTab(tab.Id);
+                break;
+        }
+    }
+
+    private async void OnSidebarTabCloseRequested(object? sender, TabEntryViewModel tab)
+    {
+        switch (tab.Kind)
+        {
+            case TabEntryKind.Terminal:
+                await CloseTerminalTabAsync(tab.Id);
+                break;
+            case TabEntryKind.Editor:
+                CloseEditorTab(tab.Id);
+                break;
+            case TabEntryKind.Browser:
+                await CloseBrowserTabAsync(tab.Id);
                 break;
         }
     }

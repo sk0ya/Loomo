@@ -29,6 +29,13 @@ public sealed partial class TabEntryViewModel : ObservableObject
 
     public Guid Id { get; }
     public TabEntryKind Kind { get; }
+    public string IconGlyph => Kind switch
+    {
+        TabEntryKind.Terminal => "\uE756",
+        TabEntryKind.Editor => "\uE70F",
+        TabEntryKind.Browser => "\uE774",
+        _ => "\uE8A5"
+    };
 
     [ObservableProperty] private string _title;
     [ObservableProperty] private bool _isActive;
@@ -42,6 +49,7 @@ public sealed partial class TabsViewModel : ObservableObject
     public ObservableCollection<TabEntryViewModel> BrowserTabs { get; } = new();
 
     public event EventHandler<TabEntryViewModel>? TabActivated;
+    public event EventHandler<TabEntryViewModel>? TabCloseRequested;
 
     public TabsViewModel()
     {
@@ -160,5 +168,12 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is not null)
             TabActivated?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void CloseTab(TabEntryViewModel? tab)
+    {
+        if (tab is not null)
+            TabCloseRequested?.Invoke(this, tab);
     }
 }
