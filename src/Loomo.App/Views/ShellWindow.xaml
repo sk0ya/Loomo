@@ -12,7 +12,7 @@
                       UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
-    <!-- 最大化時に WindowChrome のリサイズ枠でクリップされないよう余白を調整する -->
+    <!-- 最大化サイズは code-behind の WM_GETMINMAXINFO でワーク領域に制限する（タスクバーを覆わない） -->
     <Border x:Name="RootBorder">
         <Grid>
             <Grid.RowDefinitions>
