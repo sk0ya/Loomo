@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -167,6 +168,20 @@ public partial class ShellWindow : Window
     private void QueueEditorTabUpdate(EditorTab tab)
     {
         _ = tab.Control.Dispatcher.BeginInvoke(new Action(() => UpdateEditorTab(tab)));
+    }
+
+    private void OnTabStripMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer scrollViewer || scrollViewer.ScrollableWidth <= 0)
+            return;
+
+        var nextOffset = Math.Clamp(
+            scrollViewer.HorizontalOffset - e.Delta,
+            0,
+            scrollViewer.ScrollableWidth);
+
+        scrollViewer.ScrollToHorizontalOffset(nextOffset);
+        e.Handled = true;
     }
 
     // ===== カスタムタイトルバー（WindowChrome） =====

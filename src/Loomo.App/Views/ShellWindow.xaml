@@ -14,6 +14,25 @@
                       UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <Style x:Key="TabStripButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <!-- 最大化サイズは code-behind の WM_GETMINMAXINFO でワーク領域に制限する（タスクバーを覆わない） -->
     <Border x:Name="RootBorder">
         <Grid>
@@ -120,7 +139,10 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnTerminalNewTab" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      PanningMode="HorizontalOnly"
+                                      PreviewMouseWheel="OnTabStripMouseWheel">
                             <ItemsControl ItemsSource="{Binding Tabs.TerminalTabs}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -138,14 +160,14 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0"
+                                                <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{StaticResource Fg}" Tag="{Binding Id}"
                                                         Click="OnTerminalTabSelected">
                                                     <TextBlock Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
-                                                <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                                <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
                                                         Width="24" Padding="0" Foreground="{StaticResource FgDim}"
                                                         Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
                                                         Click="OnTerminalTabClosed" />
@@ -174,7 +196,10 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      PanningMode="HorizontalOnly"
+                                      PreviewMouseWheel="OnTabStripMouseWheel">
                             <ItemsControl ItemsSource="{Binding Tabs.EditorTabs}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -192,14 +217,14 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0"
+                                                <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{StaticResource Fg}" Tag="{Binding Id}"
                                                         Click="OnEditorTabSelected">
                                                     <TextBlock Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
-                                                <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                                <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
                                                         Width="24" Padding="0" Foreground="{StaticResource FgDim}"
                                                         Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
                                                         Click="OnEditorTabClosed" />
@@ -228,7 +253,10 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnBrowserNewTab" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      PanningMode="HorizontalOnly"
+                                      PreviewMouseWheel="OnTabStripMouseWheel">
                             <ItemsControl ItemsSource="{Binding Tabs.BrowserTabs}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -246,14 +274,14 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0"
+                                                <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{StaticResource Fg}" Tag="{Binding Id}"
                                                         Click="OnBrowserTabSelected">
                                                     <TextBlock Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
-                                                <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                                <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
                                                         Width="24" Padding="0" Foreground="{StaticResource FgDim}"
                                                         Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
                                                         Click="OnBrowserTabClosed" />
