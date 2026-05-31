@@ -116,8 +116,53 @@
 
                 <!-- Terminal -->
                 <DockPanel Grid.Column="3" Background="{StaticResource Panel}">
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
-                    <Border x:Name="TerminalHost" />
+                    <DockPanel DockPanel.Dock="Top" Background="{StaticResource Panel}" LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                                Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnTerminalNewTab" />
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Tabs.TerminalTabs}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
+                                                Margin="0,6,4,6" Background="{StaticResource BgAlt}"
+                                                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                                CornerRadius="4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0"
+                                                        Padding="8,0,4,0" HorizontalContentAlignment="Left"
+                                                        Foreground="{StaticResource Fg}" Tag="{Binding Id}"
+                                                        Click="OnTerminalTabSelected">
+                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </Button>
+                                                <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                                        Width="24" Padding="0" Foreground="{StaticResource FgDim}"
+                                                        Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
+                                                        Click="OnTerminalTabClosed" />
+                                            </Grid>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource Bg}" />
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                    <Grid x:Name="TerminalContentHost" />
                 </DockPanel>
 
                 <GridSplitter Grid.Column="4" Width="4" HorizontalAlignment="Stretch"
@@ -125,8 +170,53 @@
 
                 <!-- Editor -->
                 <DockPanel Grid.Column="5" Background="{StaticResource Panel}">
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="EDITOR" />
-                    <Border x:Name="EditorHost" />
+                    <DockPanel DockPanel.Dock="Top" Background="{StaticResource Panel}" LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                                Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Tabs.EditorTabs}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
+                                                Margin="0,6,4,6" Background="{StaticResource BgAlt}"
+                                                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                                CornerRadius="4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0"
+                                                        Padding="8,0,4,0" HorizontalContentAlignment="Left"
+                                                        Foreground="{StaticResource Fg}" Tag="{Binding Id}"
+                                                        Click="OnEditorTabSelected">
+                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </Button>
+                                                <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                                        Width="24" Padding="0" Foreground="{StaticResource FgDim}"
+                                                        Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
+                                                        Click="OnEditorTabClosed" />
+                                            </Grid>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource Bg}" />
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                    <Grid x:Name="EditorContentHost" />
                 </DockPanel>
 
                 <GridSplitter Grid.Column="6" Width="4" HorizontalAlignment="Stretch"

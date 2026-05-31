@@ -60,6 +60,8 @@ public sealed class WorkspaceSnapshot
     public DateTime LastUsedUtc { get; set; } = DateTime.UtcNow;
     public TerminalSnapshot Terminal { get; set; } = new();
     public EditorSnapshot Editor { get; set; } = new();
+    public List<TerminalTabSnapshot> TerminalTabs { get; set; } = new();
+    public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
     public List<BrowserTabSnapshot> BrowserTabs { get; set; } = new();
 }
 
@@ -74,6 +76,24 @@ public sealed class EditorSnapshot
     public string? FilePath { get; set; }
     public string? Text { get; set; }
     public bool IsModified { get; set; }
+}
+
+public sealed class TerminalTabSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string? WorkingDirectory { get; set; }
+    public string? Title { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public sealed class EditorTabSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string? FilePath { get; set; }
+    public string? Text { get; set; }
+    public string? Title { get; set; }
+    public bool IsModified { get; set; }
+    public bool IsActive { get; set; }
 }
 
 public sealed class BrowserTabSnapshot

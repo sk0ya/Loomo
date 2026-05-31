@@ -22,15 +22,23 @@ public partial class ShellWindow : Window
     private readonly EditorService _editor;
     private readonly IWorkspaceService _workspace;
     private readonly ShellViewModel _vm;
-    private readonly Dictionary<Guid, TerminalTabView> _terminalViews = new();
+    private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
+    private readonly Dictionary<Guid, EditorWorkspaceTabs> _editorWorkspaces = new();
     private readonly Dictionary<Guid, BrowserWorkspaceTabs> _browserWorkspaces = new();
+    private readonly TerminalWorkspaceTabs _scratchTerminalWorkspace = new();
+    private readonly EditorWorkspaceTabs _scratchEditorWorkspace = new();
     private readonly BrowserWorkspaceTabs _scratchBrowserWorkspace = new();
+    private List<TerminalTab> _terminalTabs = new();
+    private List<EditorTab> _editorTabs = new();
     private List<BrowserTab> _browserTabs = new();
+    private TerminalWorkspaceTabs? _activeTerminalWorkspace;
+    private EditorWorkspaceTabs? _activeEditorWorkspace;
     private BrowserWorkspaceTabs? _activeBrowserWorkspace;
+    private TerminalTab? _activeTerminalTab;
+    private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
     private WorkspaceSnapshot? _activeWorkspace;
     private bool _isSwitchingWorkspace;
-    private bool _clearEditorSnapshotOnNextCapture;
     private const string DefaultBrowserUrl = "https://www.google.com/";
 
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
@@ -48,6 +56,8 @@ public partial class ShellWindow : Window
         _terminal = terminal;
         _editor = editor;
         _workspace = workspace;
+        _terminalTabs = _scratchTerminalWorkspace.Tabs;
+        _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
@@ -61,25 +71,28 @@ public partial class ShellWindow : Window
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         // sk0ya コントロールを生成してホストへ配置し、サービスへ結びつける
-        var termView = CreateTerminalView(startDir);
-        ShowTerminalView(termView);
+        var termTab = CreateTerminalTab(startDir);
+        _terminalTabs.Add(termTab);
+        TerminalContentHost.Children.Add(termTab.View);
+        _vm.Tabs.AddTerminalTab(termTab.Id, termTab.View.HeaderTitle, false);
+        ActivateTerminalTab(termTab.Id);
         _terminal.SetWorkingDirectory(startDir);
-        UpdateTerminalTab(termView, termView.HeaderTitle);
+        UpdateTerminalTab(termTab, termTab.View.HeaderTitle);
 
-        var editorCtrl = new VimEditorControl();
-        EditorHost.Child = editorCtrl;
-        _editor.Attach(editorCtrl);
-        editorCtrl.BufferChanged += (_, _) => UpdateEditorTab(editorCtrl);
-        editorCtrl.SaveRequested += (_, _) => UpdateEditorTab(editorCtrl);
-        UpdateEditorTab(editorCtrl);
+        var editorTab = CreateEditorTab();
+        _editorTabs.Add(editorTab);
+        EditorContentHost.Children.Add(editorTab.Control);
+        _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.Control.FilePath, editorTab.Control.IsModified, false);
+        ActivateEditorTab(editorTab.Id);
+        UpdateEditorTab(editorTab);
 
         // フォルダを開いたらエージェントの作業ディレクトリを同期
         _workspace.RootChanged += (_, root) =>
         {
             if (!_isSwitchingWorkspace && !string.IsNullOrEmpty(root))
                 _terminal.SetWorkingDirectory(root);
-            if (TerminalHost.Child is TerminalTabView activeTerminal)
-                UpdateTerminalTab(activeTerminal, activeTerminal.HeaderTitle);
+            if (_activeTerminalTab is { } activeTerminal)
+                UpdateTerminalTab(activeTerminal, activeTerminal.View.HeaderTitle);
         };
 
         // ファイル選択でエディタに開く
@@ -88,7 +101,8 @@ public partial class ShellWindow : Window
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
             {
                 await _editor.OpenFileAsync(path);
-                UpdateEditorTab(editorCtrl);
+                if (_activeEditorTab is { } activeEditor)
+                    UpdateEditorTab(activeEditor);
             }
         };
     }
@@ -138,17 +152,29 @@ public partial class ShellWindow : Window
         }
     }
 
-    private TerminalTabView CreateTerminalView(string startDirectory)
+    private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null)
     {
         var view = new TerminalTabView("powershell.exe", startDirectory);
-        view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(view, title);
-        return view;
+        var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
+        view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
+        return tab;
     }
 
-    private void ShowTerminalView(TerminalTabView view)
+    private EditorTab CreateEditorTab(Guid? requestedId = null)
     {
-        TerminalHost.Child = view;
-        _terminal.Attach(view);
+        var control = new VimEditorControl
+        {
+            Visibility = Visibility.Collapsed
+        };
+        var tab = new EditorTab(requestedId ?? Guid.NewGuid(), control);
+        control.BufferChanged += (_, _) => UpdateEditorTab(tab);
+        control.SaveRequested += (_, _) => QueueEditorTabUpdate(tab);
+        return tab;
+    }
+
+    private void QueueEditorTabUpdate(EditorTab tab)
+    {
+        _ = tab.Control.Dispatcher.BeginInvoke(new Action(() => UpdateEditorTab(tab)));
     }
 
     // ===== カスタムタイトルバー（WindowChrome） =====
@@ -164,6 +190,60 @@ public partial class ShellWindow : Window
         => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
+
+    private void OnTerminalNewTab(object sender, RoutedEventArgs e)
+    {
+        var startDir = _activeTerminalTab?.View.WorkingDirectory;
+        if (string.IsNullOrWhiteSpace(startDir) || !Directory.Exists(startDir))
+            startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+
+        var tab = CreateTerminalTab(startDir);
+        _terminalTabs.Add(tab);
+        TerminalContentHost.Children.Add(tab.View);
+        _vm.Tabs.AddTerminalTab(tab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
+        ActivateTerminalTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private void OnTerminalTabSelected(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+            ActivateTerminalTab(id);
+    }
+
+    private async void OnTerminalTabClosed(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+        {
+            await CloseTerminalTabAsync(id);
+            SaveActiveWorkspaceSnapshot();
+        }
+    }
+
+    private void OnEditorNewTab(object sender, RoutedEventArgs e)
+    {
+        var tab = CreateEditorTab();
+        _editorTabs.Add(tab);
+        EditorContentHost.Children.Add(tab.Control);
+        _vm.Tabs.AddEditorTab(tab.Id, null, false, false);
+        ActivateEditorTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private void OnEditorTabSelected(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+            ActivateEditorTab(id);
+    }
+
+    private void OnEditorTabClosed(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+        {
+            CloseEditorTab(id);
+            SaveActiveWorkspaceSnapshot();
+        }
+    }
 
     private void OnBrowserBack(object sender, RoutedEventArgs e)
     {
@@ -241,6 +321,106 @@ public partial class ShellWindow : Window
             UpdateBrowserTab(_activeBrowserTab);
             SaveActiveWorkspaceSnapshot();
         }
+    }
+
+    private TerminalWorkspaceTabs CurrentTerminalWorkspace
+        => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
+
+    private EditorWorkspaceTabs CurrentEditorWorkspace
+        => _activeEditorWorkspace ?? _scratchEditorWorkspace;
+
+    private void ActivateTerminalTab(Guid id)
+    {
+        var tab = _terminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+
+        foreach (var terminalTab in _terminalTabs)
+            terminalTab.View.Visibility = terminalTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
+
+        _activeTerminalTab = tab;
+        CurrentTerminalWorkspace.ActiveTabId = id;
+        _terminal.Attach(tab.View);
+        if (Directory.Exists(tab.View.WorkingDirectory))
+            _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
+        _vm.Tabs.ActivateTerminalTab(id);
+        tab.View.FocusTerminal();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private async Task CloseTerminalTabAsync(Guid id)
+    {
+        var index = _terminalTabs.FindIndex(t => t.Id == id);
+        if (index < 0)
+            return;
+
+        var wasActive = _activeTerminalTab?.Id == id;
+        var tab = _terminalTabs[index];
+        TerminalContentHost.Children.Remove(tab.View);
+        await tab.View.CloseAsync();
+        _terminalTabs.RemoveAt(index);
+        _vm.Tabs.RemoveTerminalTab(id);
+
+        if (!wasActive)
+            return;
+
+        if (_terminalTabs.Count == 0)
+        {
+            var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+            var newTab = CreateTerminalTab(startDir);
+            _terminalTabs.Add(newTab);
+            TerminalContentHost.Children.Add(newTab.View);
+            _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
+            ActivateTerminalTab(newTab.Id);
+            return;
+        }
+
+        ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
+    }
+
+    private void ActivateEditorTab(Guid id)
+    {
+        var tab = _editorTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+
+        foreach (var editorTab in _editorTabs)
+            editorTab.Control.Visibility = editorTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
+
+        _activeEditorTab = tab;
+        CurrentEditorWorkspace.ActiveTabId = id;
+        _editor.Attach(tab.Control);
+        _vm.Tabs.ActivateEditorTab(id);
+        tab.Control.Focus();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private void CloseEditorTab(Guid id)
+    {
+        var index = _editorTabs.FindIndex(t => t.Id == id);
+        if (index < 0)
+            return;
+
+        var wasActive = _activeEditorTab?.Id == id;
+        var tab = _editorTabs[index];
+        EditorContentHost.Children.Remove(tab.Control);
+        _editorTabs.RemoveAt(index);
+        _vm.Tabs.RemoveEditorTab(id);
+
+        if (!wasActive)
+            return;
+
+        if (_editorTabs.Count == 0)
+        {
+            var newTab = CreateEditorTab();
+            _editorTabs.Add(newTab);
+            EditorContentHost.Children.Add(newTab.Control);
+            _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
+            ActivateEditorTab(newTab.Id);
+            return;
+        }
+
+        ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
     }
 
     private WebView2? ActiveBrowserView => _activeBrowserTab?.View;
@@ -323,7 +503,24 @@ public partial class ShellWindow : Window
         SaveActiveWorkspaceSnapshot();
     }
 
+    private sealed record TerminalTab(Guid Id, TerminalTabView View);
+    private sealed record EditorTab(Guid Id, VimEditorControl Control);
     private sealed record BrowserTab(Guid Id, WebView2 View);
+
+    private sealed class TerminalWorkspaceTabs
+    {
+        public List<TerminalTab> Tabs { get; } = new();
+        public Guid? ActiveTabId { get; set; }
+        public int NextTabNumber { get; set; } = 1;
+        public bool IsInitialized { get; set; }
+    }
+
+    private sealed class EditorWorkspaceTabs
+    {
+        public List<EditorTab> Tabs { get; } = new();
+        public Guid? ActiveTabId { get; set; }
+        public bool IsInitialized { get; set; }
+    }
 
     private sealed class BrowserWorkspaceTabs
     {
@@ -338,12 +535,10 @@ public partial class ShellWindow : Window
         switch (tab.Kind)
         {
             case TabEntryKind.Terminal:
-                if (TerminalHost.Child is TerminalTabView terminal)
-                    terminal.FocusTerminal();
+                ActivateTerminalTab(tab.Id);
                 break;
             case TabEntryKind.Editor:
-                if (EditorHost.Child is VimEditorControl editor)
-                    editor.Focus();
+                ActivateEditorTab(tab.Id);
                 break;
             case TabEntryKind.Browser:
                 ActivateBrowserTab(tab.Id);
@@ -351,18 +546,15 @@ public partial class ShellWindow : Window
         }
     }
 
-    private void UpdateTerminalTab(TerminalTabView view, string? title)
+    private void UpdateTerminalTab(TerminalTab tab, string? title)
     {
-        if (!ReferenceEquals(TerminalHost.Child, view))
-            return;
-
-        _vm.Tabs.SetTerminalSnapshot(title, view.WorkingDirectory);
+        _vm.Tabs.UpdateTerminalTab(tab.Id, title);
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void UpdateEditorTab(VimEditorControl ctrl)
+    private void UpdateEditorTab(EditorTab tab)
     {
-        _vm.Tabs.SetEditorSnapshot(ctrl.FilePath, ctrl.IsModified);
+        _vm.Tabs.UpdateEditorTab(tab.Id, tab.Control.FilePath, tab.Control.IsModified);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -377,19 +569,14 @@ public partial class ShellWindow : Window
         _isSwitchingWorkspace = true;
         try
         {
+            DetachTerminalTabs();
+            DetachEditorTabs();
             DetachBrowserTabs();
             _activeWorkspace = workspace;
-            var terminal = GetOrCreateTerminalView(workspace);
-            ShowTerminalView(terminal);
             _vm.FolderTree.LoadRoot(workspace.RootPath);
 
-            var cwd = workspace.Terminal.WorkingDirectory;
-            _terminal.SetWorkingDirectory(Directory.Exists(cwd) ? cwd! : workspace.RootPath);
-            UpdateTerminalTab(terminal, workspace.Terminal.Title ?? terminal.HeaderTitle);
-
-            if (EditorHost.Child is VimEditorControl editor)
-                _clearEditorSnapshotOnNextCapture = !RestoreEditor(editor, workspace.Editor);
-
+            RestoreTerminalTabs(workspace);
+            RestoreEditorTabs(workspace);
             await RestoreBrowserTabsAsync(workspace);
         }
         finally
@@ -400,35 +587,165 @@ public partial class ShellWindow : Window
         SaveActiveWorkspaceSnapshot();
     }
 
-    private static bool RestoreEditor(VimEditorControl editor, EditorSnapshot snapshot)
+    private static void RestoreEditor(VimEditorControl editor, EditorTabSnapshot snapshot)
     {
         if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
         {
             editor.LoadFile(snapshot.FilePath);
             if (!snapshot.IsModified)
-                return true;
+                return;
         }
 
         if (snapshot.IsModified || string.IsNullOrWhiteSpace(snapshot.FilePath))
         {
             editor.SetText(snapshot.Text ?? string.Empty);
-            return true;
+            return;
         }
 
         editor.SetText(string.Empty);
-        return false;
     }
 
-    private TerminalTabView GetOrCreateTerminalView(WorkspaceSnapshot workspace)
+    private void RestoreTerminalTabs(WorkspaceSnapshot workspace)
     {
-        if (_terminalViews.TryGetValue(workspace.Id, out var existing))
-            return existing;
+        var terminalWorkspace = GetOrCreateTerminalWorkspace(workspace.Id);
+        _activeTerminalWorkspace = terminalWorkspace;
+        _terminalTabs = terminalWorkspace.Tabs;
 
-        var cwd = workspace.Terminal.WorkingDirectory;
-        var startDirectory = Directory.Exists(cwd) ? cwd! : workspace.RootPath;
-        var view = CreateTerminalView(startDirectory);
-        _terminalViews[workspace.Id] = view;
-        return view;
+        if (terminalWorkspace.IsInitialized && _terminalTabs.Count > 0)
+        {
+            AttachTerminalTabs();
+            ActivateTerminalTab(terminalWorkspace.ActiveTabId ?? _terminalTabs[0].Id);
+            return;
+        }
+
+        terminalWorkspace.IsInitialized = true;
+        var snapshots = workspace.TerminalTabs.Count == 0
+            ? new[]
+            {
+                new TerminalTabSnapshot
+                {
+                    WorkingDirectory = workspace.Terminal.WorkingDirectory,
+                    Title = workspace.Terminal.Title ?? "Terminal",
+                    IsActive = true
+                }
+            }
+            : workspace.TerminalTabs.ToArray();
+
+        foreach (var snapshot in snapshots)
+        {
+            var cwd = Directory.Exists(snapshot.WorkingDirectory) ? snapshot.WorkingDirectory! : workspace.RootPath;
+            var tab = CreateTerminalTab(cwd, snapshot.Id == Guid.Empty ? null : snapshot.Id);
+            _terminalTabs.Add(tab);
+            TerminalContentHost.Children.Add(tab.View);
+            _vm.Tabs.AddTerminalTab(tab.Id, snapshot.Title ?? tab.View.HeaderTitle, false);
+        }
+
+        var active = snapshots.FirstOrDefault(t => t.IsActive) ?? snapshots.First();
+        ActivateTerminalTab(active.Id == Guid.Empty ? _terminalTabs[0].Id : active.Id);
+    }
+
+    private void RestoreEditorTabs(WorkspaceSnapshot workspace)
+    {
+        var editorWorkspace = GetOrCreateEditorWorkspace(workspace.Id);
+        _activeEditorWorkspace = editorWorkspace;
+        _editorTabs = editorWorkspace.Tabs;
+
+        if (editorWorkspace.IsInitialized && _editorTabs.Count > 0)
+        {
+            AttachEditorTabs();
+            ActivateEditorTab(editorWorkspace.ActiveTabId ?? _editorTabs[0].Id);
+            return;
+        }
+
+        editorWorkspace.IsInitialized = true;
+        var snapshots = workspace.EditorTabs.Count == 0
+            ? new[]
+            {
+                new EditorTabSnapshot
+                {
+                    FilePath = workspace.Editor.FilePath,
+                    Text = workspace.Editor.Text,
+                    IsModified = workspace.Editor.IsModified,
+                    IsActive = true
+                }
+            }
+            : workspace.EditorTabs.ToArray();
+
+        foreach (var snapshot in snapshots)
+        {
+            var tab = CreateEditorTab(snapshot.Id == Guid.Empty ? null : snapshot.Id);
+            RestoreEditor(tab.Control, snapshot);
+            _editorTabs.Add(tab);
+            EditorContentHost.Children.Add(tab.Control);
+            _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
+        }
+
+        var active = snapshots.FirstOrDefault(t => t.IsActive) ?? snapshots.First();
+        ActivateEditorTab(active.Id == Guid.Empty ? _editorTabs[0].Id : active.Id);
+    }
+
+    private TerminalWorkspaceTabs GetOrCreateTerminalWorkspace(Guid workspaceId)
+    {
+        if (_terminalWorkspaces.TryGetValue(workspaceId, out var terminalWorkspace))
+            return terminalWorkspace;
+
+        terminalWorkspace = new TerminalWorkspaceTabs();
+        _terminalWorkspaces[workspaceId] = terminalWorkspace;
+        return terminalWorkspace;
+    }
+
+    private EditorWorkspaceTabs GetOrCreateEditorWorkspace(Guid workspaceId)
+    {
+        if (_editorWorkspaces.TryGetValue(workspaceId, out var editorWorkspace))
+            return editorWorkspace;
+
+        editorWorkspace = new EditorWorkspaceTabs();
+        _editorWorkspaces[workspaceId] = editorWorkspace;
+        return editorWorkspace;
+    }
+
+    private void DetachTerminalTabs()
+    {
+        CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;
+        TerminalContentHost.Children.Clear();
+        _vm.Tabs.TerminalTabs.Clear();
+        _activeTerminalTab = null;
+    }
+
+    private void AttachTerminalTabs()
+    {
+        TerminalContentHost.Children.Clear();
+        _vm.Tabs.TerminalTabs.Clear();
+
+        foreach (var tab in _terminalTabs)
+        {
+            if (!TerminalContentHost.Children.Contains(tab.View))
+                TerminalContentHost.Children.Add(tab.View);
+
+            _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
+        }
+    }
+
+    private void DetachEditorTabs()
+    {
+        CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;
+        EditorContentHost.Children.Clear();
+        _vm.Tabs.EditorTabs.Clear();
+        _activeEditorTab = null;
+    }
+
+    private void AttachEditorTabs()
+    {
+        EditorContentHost.Children.Clear();
+        _vm.Tabs.EditorTabs.Clear();
+
+        foreach (var tab in _editorTabs)
+        {
+            if (!EditorContentHost.Children.Contains(tab.Control))
+                EditorContentHost.Children.Add(tab.Control);
+
+            _vm.Tabs.AddEditorTab(tab.Id, tab.Control.FilePath, tab.Control.IsModified, false);
+        }
     }
 
     private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace)
@@ -506,27 +823,41 @@ public partial class ShellWindow : Window
         snapshot.LastUsedUtc = DateTime.UtcNow;
         snapshot.Name = WorkspaceListViewModel.DisplayName(snapshot.RootPath);
 
-        if (TerminalHost.Child is TerminalTabView terminal)
+        snapshot.TerminalTabs = _terminalTabs.Select(tab => new TerminalTabSnapshot
         {
-            snapshot.Terminal.WorkingDirectory = Directory.Exists(terminal.WorkingDirectory)
-                ? terminal.WorkingDirectory
+            Id = tab.Id,
+            WorkingDirectory = Directory.Exists(tab.View.WorkingDirectory)
+                ? tab.View.WorkingDirectory
+                : _terminal.CurrentDirectory,
+            Title = tab.View.HeaderTitle,
+            IsActive = tab.Id == _activeTerminalTab?.Id
+        }).ToList();
+
+        var activeTerminal = _activeTerminalTab?.View ?? _terminalTabs.FirstOrDefault()?.View;
+        if (activeTerminal is not null)
+        {
+            snapshot.Terminal.WorkingDirectory = Directory.Exists(activeTerminal.WorkingDirectory)
+                ? activeTerminal.WorkingDirectory
                 : _terminal.CurrentDirectory;
-            snapshot.Terminal.Title = terminal.HeaderTitle;
+            snapshot.Terminal.Title = activeTerminal.HeaderTitle;
         }
 
-        if (EditorHost.Child is VimEditorControl editor)
+        snapshot.EditorTabs = _editorTabs.Select(tab => new EditorTabSnapshot
         {
-            if (_clearEditorSnapshotOnNextCapture)
-            {
-                snapshot.Editor = new EditorSnapshot();
-                _clearEditorSnapshotOnNextCapture = false;
-            }
-            else
-            {
-                snapshot.Editor.FilePath = editor.FilePath;
-                snapshot.Editor.Text = editor.Text;
-                snapshot.Editor.IsModified = editor.IsModified;
-            }
+            Id = tab.Id,
+            FilePath = tab.Control.FilePath,
+            Text = tab.Control.Text,
+            Title = EditorTitle(tab.Control),
+            IsModified = tab.Control.IsModified,
+            IsActive = tab.Id == _activeEditorTab?.Id
+        }).ToList();
+
+        var activeEditor = _activeEditorTab?.Control ?? _editorTabs.FirstOrDefault()?.Control;
+        if (activeEditor is not null)
+        {
+            snapshot.Editor.FilePath = activeEditor.FilePath;
+            snapshot.Editor.Text = activeEditor.Text;
+            snapshot.Editor.IsModified = activeEditor.IsModified;
         }
 
         snapshot.BrowserTabs = _browserTabs.Select(tab => new BrowserTabSnapshot
@@ -539,6 +870,9 @@ public partial class ShellWindow : Window
     }
 
     private void OnClosing(object? sender, CancelEventArgs e) => SaveActiveWorkspaceSnapshot();
+
+    private static string EditorTitle(VimEditorControl editor)
+        => string.IsNullOrWhiteSpace(editor.FilePath) ? "Untitled" : Path.GetFileName(editor.FilePath);
 
     private static string NormalizeBrowserAddress(string text)
     {

@@ -45,23 +45,40 @@ public sealed partial class TabsViewModel : ObservableObject
 
     public TabsViewModel()
     {
-        SetTerminalSnapshot("Terminal", string.Empty);
-        SetEditorSnapshot(null, false);
     }
 
-    public void SetTerminalSnapshot(string? title, string? _)
+    public void AddTerminalTab(Guid id, string? title, bool isActive)
     {
-        TerminalTabs.Clear();
         TerminalTabs.Add(new TabEntryViewModel(
+            id,
             TabEntryKind.Terminal,
-            string.IsNullOrWhiteSpace(title) ? "Terminal" : title.Trim(),
-            true));
+            TerminalTitle(title),
+            isActive));
     }
 
-    public void SetEditorSnapshot(string? path, bool isModified)
+    public void UpdateTerminalTab(Guid id, string? title)
     {
-        EditorTabs.Clear();
+        var tab = TerminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null) return;
 
+        tab.Title = TerminalTitle(title);
+    }
+
+    public void ActivateTerminalTab(Guid id)
+    {
+        foreach (var tab in TerminalTabs)
+            tab.IsActive = tab.Id == id;
+    }
+
+    public void RemoveTerminalTab(Guid id)
+    {
+        var tab = TerminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is not null)
+            TerminalTabs.Remove(tab);
+    }
+
+    public void AddEditorTab(Guid id, string? path, bool isModified, bool isActive)
+    {
         var title = string.IsNullOrWhiteSpace(path)
             ? "Untitled"
             : Path.GetFileName(path);
@@ -69,9 +86,37 @@ public sealed partial class TabsViewModel : ObservableObject
             title += " *";
 
         EditorTabs.Add(new TabEntryViewModel(
+            id,
             TabEntryKind.Editor,
             title,
-            true));
+            isActive));
+    }
+
+    public void UpdateEditorTab(Guid id, string? path, bool isModified)
+    {
+        var tab = EditorTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null) return;
+
+        var title = string.IsNullOrWhiteSpace(path)
+            ? "Untitled"
+            : Path.GetFileName(path);
+        if (isModified)
+            title += " *";
+
+        tab.Title = title;
+    }
+
+    public void ActivateEditorTab(Guid id)
+    {
+        foreach (var tab in EditorTabs)
+            tab.IsActive = tab.Id == id;
+    }
+
+    public void RemoveEditorTab(Guid id)
+    {
+        var tab = EditorTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is not null)
+            EditorTabs.Remove(tab);
     }
 
     public void AddBrowserTab(Guid id, string? title, bool isActive)
@@ -106,6 +151,9 @@ public sealed partial class TabsViewModel : ObservableObject
 
     private static string BrowserTitle(string? title)
         => string.IsNullOrWhiteSpace(title) ? "Browser" : title.Trim();
+
+    private static string TerminalTitle(string? title)
+        => string.IsNullOrWhiteSpace(title) ? "Terminal" : title.Trim();
 
     [RelayCommand]
     private void ActivateTab(TabEntryViewModel? tab)

@@ -26,6 +26,8 @@ public sealed class EditorService : IEditorService
 
     public void Attach(VimEditorControl ctrl)
     {
+        if (_ctrl is not null)
+            _ctrl.SaveRequested -= OnSaveRequested;
         _ctrl = ctrl;
         ctrl.SaveRequested += OnSaveRequested;
     }
