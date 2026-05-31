@@ -1,0 +1,60 @@
+<Window x:Class="AgentStudio.App.Views.ShellWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="clr-namespace:AgentStudio.App.Views"
+    Title="sk0ya AgentStudio" Height="800" Width="1280"
+    Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />   <!-- 下部AIバー -->
+        </Grid.RowDefinitions>
+
+        <!-- ===== メイン領域 ===== -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48" />                       <!-- ActivityBar -->
+                <ColumnDefinition Width="220" MinWidth="120" />        <!-- Sidebar -->
+                <ColumnDefinition Width="4" />                        <!-- splitter -->
+                <ColumnDefinition Width="*" MinWidth="200" />          <!-- Terminal -->
+                <ColumnDefinition Width="4" />                        <!-- splitter -->
+                <ColumnDefinition Width="2*" MinWidth="300" />        <!-- Editor -->
+            </Grid.ColumnDefinitions>
+
+            <!-- ActivityBar -->
+            <StackPanel Grid.Column="0" Background="{StaticResource ActivityBarBg}">
+                <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ" />
+                <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索" />
+                <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
+                        Command="{Binding AiBar.ToggleExpandCommand}" />
+                <Button Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
+                        VerticalAlignment="Bottom" />
+            </StackPanel>
+
+            <!-- Sidebar : FolderTree -->
+            <views:FolderTreeView Grid.Column="1" DataContext="{Binding FolderTree}" />
+
+            <GridSplitter Grid.Column="2" Width="4" HorizontalAlignment="Stretch"
+                          Background="{StaticResource Border}" />
+
+            <!-- Terminal -->
+            <DockPanel Grid.Column="3" Background="{StaticResource Panel}">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
+                <Border x:Name="TerminalHost" />
+            </DockPanel>
+
+            <GridSplitter Grid.Column="4" Width="4" HorizontalAlignment="Stretch"
+                          Background="{StaticResource Border}" />
+
+            <!-- Editor -->
+            <DockPanel Grid.Column="5" Background="{StaticResource Panel}">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="EDITOR" />
+                <Border x:Name="EditorHost" />
+            </DockPanel>
+        </Grid>
+
+        <!-- ===== 下部AIバー（全幅・展開式） ===== -->
+        <views:AiBarView Grid.Row="1" DataContext="{Binding AiBar}" MaxHeight="420" />
+    </Grid>
+</Window>
