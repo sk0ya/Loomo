@@ -80,11 +80,11 @@
                 <!-- Sidebar : Explorer / Sessions / Settings を ActivePanel で切替 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="1">
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
-                                          Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
+                                          Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
                     <views:SessionsView DataContext="{Binding Sessions}"
-                                        Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
+                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
                     <views:SettingsView DataContext="{Binding Settings}"
-                                        Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
+                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
                 </Grid>
 
                 <GridSplitter x:Name="SidebarSplitter" Grid.Column="2" Width="4"
