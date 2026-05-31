@@ -27,13 +27,18 @@ public class ShellViewModelTests
             new ToolRegistry(Enumerable.Empty<IAgentTool>()),
             approval,
             NullLogger<AgentOrchestrator>.Instance);
-        var aiBar = new AiBarViewModel(orchestrator, approval, settings);
+
+        var conversations = new ConversationStore(
+            Path.Combine(Path.GetTempPath(), "loomo-test-sessions"));
+        var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations);
+        var sessionsVm = new SessionsViewModel(conversations, aiBar);
 
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
-        var settingsVm = new SettingsViewModel(settings, store);
+        var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
+        var settingsVm = new SettingsViewModel(settings, store, copilotAuth);
 
-        return new ShellViewModel(folderTree, aiBar, settingsVm);
+        return new ShellViewModel(folderTree, aiBar, sessionsVm, settingsVm);
     }
 
     [Fact]

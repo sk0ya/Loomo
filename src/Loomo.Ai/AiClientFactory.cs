@@ -24,7 +24,7 @@ public sealed class AiClientFactory : IAiClientFactory
         AiProvider.Claude => new ClaudeAiClient(_httpFactory.CreateClient("ai"), _settings),
         AiProvider.OpenAI => new OpenAiCompatibleClient(_httpFactory.CreateClient("ai"), _settings, AiProvider.OpenAI),
         AiProvider.Local => new OpenAiCompatibleClient(_httpFactory.CreateClient("ai"), _settings, AiProvider.Local),
-        AiProvider.Copilot => new CopilotAiClient(),
+        AiProvider.Copilot => new CopilotAiClient(_httpFactory.CreateClient("ai"), _settings),
         _ => new StubAiClient()
     };
 }

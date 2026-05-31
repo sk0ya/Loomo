@@ -24,6 +24,22 @@
                                                Foreground="{StaticResource FgDim}" Margin="0,0,0,4" />
                                     <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                FontFamily="Cascadia Mono, Consolas" />
+                                    <!-- 差分ビュー（propose_edit の承認カード） -->
+                                    <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
+                                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                            CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
+                                        <ItemsControl ItemsSource="{Binding DiffLines}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{Binding Background}">
+                                                        <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                                                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                   TextWrapping="NoWrap" Padding="6,0" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
                                     <!-- 承認カード -->
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
                                                 Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">

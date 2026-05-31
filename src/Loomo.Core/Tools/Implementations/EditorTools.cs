@@ -1,7 +1,9 @@
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Diff;
 
 namespace sk0ya.Loomo.Core.Tools.Implementations;
 
@@ -50,8 +52,13 @@ public sealed class ProposeEditTool : IAgentTool
     public string DescribeInvocation(JsonElement args)
     {
         var path = args.GetString("path");
-        var len = args.GetString("content").Length;
-        return $"編集適用: {path}（{len} 文字）";
+        var content = args.GetString("content");
+        var current = File.Exists(path) ? File.ReadAllText(path) : "";
+        var (added, removed) = DiffUtil.Stat(current, content);
+        var verb = File.Exists(path) ? "編集" : "新規作成";
+        var diff = DiffUtil.ToUnifiedText(DiffUtil.Compute(current, content));
+        // 1行目はヘッダ（コンテキスト扱い）、2行目以降が +/-/… 接頭辞付きの差分
+        return $" {verb}: {path}  (+{added} / -{removed})\n{diff}";
     }
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)

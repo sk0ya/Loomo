@@ -56,6 +56,8 @@ public partial class App : Application
 
         // --- AI ---
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
+        services.AddSingleton(sp => new CopilotAuthService(
+            sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
 
         // --- ツール ---
         services.AddSingleton<IAgentTool, ListDirectoryTool>();
@@ -68,10 +70,12 @@ public partial class App : Application
 
         // --- エージェント ---
         services.AddSingleton<AgentOrchestrator>();
+        services.AddSingleton<ConversationStore>();
 
         // --- ViewModels / Window ---
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<AiBarViewModel>();
+        services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();

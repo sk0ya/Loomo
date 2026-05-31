@@ -73,14 +73,16 @@
                                 Command="{Binding ShowExplorerCommand}" />
                         <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索" />
                         <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
-                                Command="{Binding AiBar.ToggleExpandCommand}" />
+                                Command="{Binding ShowSessionsCommand}" />
                     </StackPanel>
                 </DockPanel>
 
-                <!-- Sidebar : Explorer / Settings を ActivePanel で切替 -->
+                <!-- Sidebar : Explorer / Sessions / Settings を ActivePanel で切替 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="1">
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
                                           Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
+                    <views:SessionsView DataContext="{Binding Sessions}"
+                                        Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
                     <views:SettingsView DataContext="{Binding Settings}"
                                         Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
                 </Grid>

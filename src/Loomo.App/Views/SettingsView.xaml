@@ -35,6 +35,24 @@
                              FontFamily="Cascadia Mono, Consolas" />
                 </StackPanel>
 
+                <!-- Copilot サインイン -->
+                <StackPanel Visibility="{Binding ShowCopilotAuth, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="GitHub 認証" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="GitHub でサインイン" Style="{StaticResource FlatButton}"
+                                Command="{Binding SignInCopilotCommand}"
+                                Visibility="{Binding IsSigningIn, Converter={StaticResource InverseBoolToVis}}" />
+                        <Button Content="キャンセル" Style="{StaticResource FlatButton}" Background="#FF6E1E1E"
+                                Command="{Binding CancelSignInCommand}"
+                                Visibility="{Binding IsSigningIn, Converter={StaticResource BoolToVis}}" />
+                        <Button Content="サインアウト" Style="{StaticResource FlatButton}" Background="{StaticResource BgAlt}"
+                                Margin="8,0,0,0" Command="{Binding SignOutCopilotCommand}"
+                                Visibility="{Binding IsCopilotSignedIn, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding CopilotStatus}" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Foreground="{StaticResource FgDim}" FontSize="11" />
+                </StackPanel>
+
                 <!-- Base URL -->
                 <StackPanel Visibility="{Binding ShowBaseUrl, Converter={StaticResource BoolToVis}}">
                     <TextBlock Style="{StaticResource FieldLabel}" Text="ベースURL（OpenAI互換エンドポイント）" />
