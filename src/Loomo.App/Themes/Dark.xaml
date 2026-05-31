@@ -28,6 +28,28 @@
         <Setter Property="FontSize" Value="13" />
     </Style>
 
+    <Style TargetType="ToolTip">
+        <Setter Property="Foreground" Value="{StaticResource Fg}" />
+        <Setter Property="Background" Value="{StaticResource BgAlt}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Flat button ===== -->
     <Style x:Key="FlatButton" TargetType="Button">
         <Setter Property="Foreground" Value="{StaticResource Fg}" />
