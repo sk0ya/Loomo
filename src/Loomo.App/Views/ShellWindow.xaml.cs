@@ -23,9 +23,11 @@ public partial class ShellWindow : Window
     private readonly IWorkspaceService _workspace;
     private readonly ShellViewModel _vm;
     private readonly Dictionary<Guid, TerminalTabView> _terminalViews = new();
-    private readonly List<BrowserTab> _browserTabs = new();
+    private readonly Dictionary<Guid, BrowserWorkspaceTabs> _browserWorkspaces = new();
+    private readonly BrowserWorkspaceTabs _scratchBrowserWorkspace = new();
+    private List<BrowserTab> _browserTabs = new();
+    private BrowserWorkspaceTabs? _activeBrowserWorkspace;
     private BrowserTab? _activeBrowserTab;
-    private int _browserTabNumber = 1;
     private WorkspaceSnapshot? _activeWorkspace;
     private bool _isSwitchingWorkspace;
     private bool _clearEditorSnapshotOnNextCapture;
@@ -46,6 +48,7 @@ public partial class ShellWindow : Window
         _terminal = terminal;
         _editor = editor;
         _workspace = workspace;
+        _browserTabs = _scratchBrowserWorkspace.Tabs;
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
@@ -242,9 +245,13 @@ public partial class ShellWindow : Window
 
     private WebView2? ActiveBrowserView => _activeBrowserTab?.View;
 
+    private BrowserWorkspaceTabs CurrentBrowserWorkspace
+        => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
+
     private async Task CreateBrowserTabAsync(string url, Guid? requestedId = null, string? requestedTitle = null)
     {
         var id = requestedId ?? Guid.NewGuid();
+        var browserWorkspace = CurrentBrowserWorkspace;
         var normalizedUrl = NormalizeBrowserAddress(url);
         var view = new WebView2
         {
@@ -256,7 +263,7 @@ public partial class ShellWindow : Window
         var tab = new BrowserTab(id, view);
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
-        _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {_browserTabNumber++}", false);
+        _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {browserWorkspace.NextTabNumber++}", false);
         ActivateBrowserTab(id);
 
         await view.EnsureCoreWebView2Async();
@@ -300,6 +307,7 @@ public partial class ShellWindow : Window
             browserTab.View.Visibility = browserTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
 
         _activeBrowserTab = tab;
+        CurrentBrowserWorkspace.ActiveTabId = id;
         _vm.Tabs.ActivateBrowserTab(id);
         BrowserAddressBox.Text = tab.View.Source?.ToString() ?? string.Empty;
         tab.View.Focus();
@@ -316,6 +324,14 @@ public partial class ShellWindow : Window
     }
 
     private sealed record BrowserTab(Guid Id, WebView2 View);
+
+    private sealed class BrowserWorkspaceTabs
+    {
+        public List<BrowserTab> Tabs { get; } = new();
+        public Guid? ActiveTabId { get; set; }
+        public int NextTabNumber { get; set; } = 1;
+        public bool IsInitialized { get; set; }
+    }
 
     private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab)
     {
@@ -337,6 +353,9 @@ public partial class ShellWindow : Window
 
     private void UpdateTerminalTab(TerminalTabView view, string? title)
     {
+        if (!ReferenceEquals(TerminalHost.Child, view))
+            return;
+
         _vm.Tabs.SetTerminalSnapshot(title, view.WorkingDirectory);
         SaveActiveWorkspaceSnapshot();
     }
@@ -358,6 +377,7 @@ public partial class ShellWindow : Window
         _isSwitchingWorkspace = true;
         try
         {
+            DetachBrowserTabs();
             _activeWorkspace = workspace;
             var terminal = GetOrCreateTerminalView(workspace);
             ShowTerminalView(terminal);
@@ -370,7 +390,7 @@ public partial class ShellWindow : Window
             if (EditorHost.Child is VimEditorControl editor)
                 _clearEditorSnapshotOnNextCapture = !RestoreEditor(editor, workspace.Editor);
 
-            await RestoreBrowserTabsAsync(workspace.BrowserTabs);
+            await RestoreBrowserTabsAsync(workspace);
         }
         finally
         {
@@ -411,13 +431,24 @@ public partial class ShellWindow : Window
         return view;
     }
 
-    private async Task RestoreBrowserTabsAsync(IReadOnlyList<BrowserTabSnapshot> snapshots)
+    private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace)
     {
-        ClearBrowserTabs();
+        var browserWorkspace = GetOrCreateBrowserWorkspace(workspace.Id);
+        _activeBrowserWorkspace = browserWorkspace;
+        _browserTabs = browserWorkspace.Tabs;
 
+        if (browserWorkspace.IsInitialized && _browserTabs.Count > 0)
+        {
+            AttachBrowserTabs();
+            ActivateBrowserTab(browserWorkspace.ActiveTabId ?? _browserTabs[0].Id);
+            return;
+        }
+
+        browserWorkspace.IsInitialized = true;
+        var snapshots = workspace.BrowserTabs;
         var tabs = snapshots.Count == 0
             ? new[] { new BrowserTabSnapshot { Url = DefaultBrowserUrl, Title = "Browser", IsActive = true } }
-            : snapshots;
+            : snapshots.ToArray();
 
         foreach (var snapshot in tabs)
             await CreateBrowserTabAsync(
@@ -429,18 +460,36 @@ public partial class ShellWindow : Window
         ActivateBrowserTab(active.Id);
     }
 
-    private void ClearBrowserTabs()
+    private BrowserWorkspaceTabs GetOrCreateBrowserWorkspace(Guid workspaceId)
     {
-        foreach (var tab in _browserTabs)
-        {
-            tab.View.NavigationCompleted -= OnBrowserNavigationCompleted;
-            tab.View.Dispose();
-        }
+        if (_browserWorkspaces.TryGetValue(workspaceId, out var browserWorkspace))
+            return browserWorkspace;
 
-        _browserTabs.Clear();
+        browserWorkspace = new BrowserWorkspaceTabs();
+        _browserWorkspaces[workspaceId] = browserWorkspace;
+        return browserWorkspace;
+    }
+
+    private void DetachBrowserTabs()
+    {
+        CurrentBrowserWorkspace.ActiveTabId = _activeBrowserTab?.Id;
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
         _activeBrowserTab = null;
+    }
+
+    private void AttachBrowserTabs()
+    {
+        BrowserContentHost.Children.Clear();
+        _vm.Tabs.BrowserTabs.Clear();
+
+        foreach (var tab in _browserTabs)
+        {
+            if (!BrowserContentHost.Children.Contains(tab.View))
+                BrowserContentHost.Children.Add(tab.View);
+
+            _vm.Tabs.AddBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle, false);
+        }
     }
 
     private void SaveActiveWorkspaceSnapshot()
