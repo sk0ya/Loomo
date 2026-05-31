@@ -81,6 +81,7 @@ public partial class App : Application
 
         // --- ViewModels / Window ---
         services.AddSingleton<WorkspaceStateStore>();
+        services.AddSingleton<TabIconService>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<AiBarViewModel>();

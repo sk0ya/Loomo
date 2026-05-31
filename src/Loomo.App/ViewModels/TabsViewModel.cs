@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -14,36 +16,33 @@ public enum TabEntryKind
 
 public sealed partial class TabEntryViewModel : ObservableObject
 {
-    public TabEntryViewModel(TabEntryKind kind, string title, bool isActive = true)
-        : this(Guid.NewGuid(), kind, title, isActive)
+    public TabEntryViewModel(TabEntryKind kind, string title, bool isActive = true, ImageSource? icon = null)
+        : this(Guid.NewGuid(), kind, title, isActive, icon)
     {
     }
 
-    public TabEntryViewModel(Guid id, TabEntryKind kind, string title, bool isActive = true)
+    public TabEntryViewModel(Guid id, TabEntryKind kind, string title, bool isActive = true, ImageSource? icon = null)
     {
         Id = id;
         Kind = kind;
         _title = title;
         _isActive = isActive;
+        _icon = icon;
     }
 
     public Guid Id { get; }
     public TabEntryKind Kind { get; }
-    public string IconGlyph => Kind switch
-    {
-        TabEntryKind.Terminal => "\uE756",
-        TabEntryKind.Editor => "\uE70F",
-        TabEntryKind.Browser => "\uE774",
-        _ => "\uE8A5"
-    };
 
     [ObservableProperty] private string _title;
     [ObservableProperty] private bool _isActive;
+    [ObservableProperty] private ImageSource? _icon;
 }
 
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
 public sealed partial class TabsViewModel : ObservableObject
 {
+    private readonly TabIconService _icons;
+
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> EditorTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> BrowserTabs { get; } = new();
@@ -52,7 +51,13 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabCloseRequested;
 
     public TabsViewModel()
+        : this(new TabIconService())
     {
+    }
+
+    public TabsViewModel(TabIconService icons)
+    {
+        _icons = icons;
     }
 
     public void AddTerminalTab(Guid id, string? title, bool isActive)
@@ -61,7 +66,8 @@ public sealed partial class TabsViewModel : ObservableObject
             id,
             TabEntryKind.Terminal,
             TerminalTitle(title),
-            isActive));
+            isActive,
+            _icons.GetTerminalIcon()));
     }
 
     public void UpdateTerminalTab(Guid id, string? title)
@@ -70,6 +76,7 @@ public sealed partial class TabsViewModel : ObservableObject
         if (tab is null) return;
 
         tab.Title = TerminalTitle(title);
+        tab.Icon = _icons.GetTerminalIcon();
     }
 
     public void ActivateTerminalTab(Guid id)
@@ -97,7 +104,8 @@ public sealed partial class TabsViewModel : ObservableObject
             id,
             TabEntryKind.Editor,
             title,
-            isActive));
+            isActive,
+            _icons.GetFileIcon(path)));
     }
 
     public void UpdateEditorTab(Guid id, string? path, bool isModified)
@@ -112,6 +120,7 @@ public sealed partial class TabsViewModel : ObservableObject
             title += " *";
 
         tab.Title = title;
+        tab.Icon = _icons.GetFileIcon(path);
     }
 
     public void ActivateEditorTab(Guid id)
@@ -133,7 +142,8 @@ public sealed partial class TabsViewModel : ObservableObject
             id,
             TabEntryKind.Browser,
             BrowserTitle(title),
-            isActive));
+            isActive,
+            _icons.GetBrowserDefaultIcon()));
     }
 
     public void UpdateBrowserTab(Guid id, string? title)
@@ -155,6 +165,16 @@ public sealed partial class TabsViewModel : ObservableObject
         var tab = BrowserTabs.FirstOrDefault(t => t.Id == id);
         if (tab is not null)
             BrowserTabs.Remove(tab);
+    }
+
+    public void UpdateTabIcon(Guid id, ImageSource? icon)
+    {
+        var tab = TerminalTabs.FirstOrDefault(t => t.Id == id)
+               ?? EditorTabs.FirstOrDefault(t => t.Id == id)
+               ?? BrowserTabs.FirstOrDefault(t => t.Id == id);
+
+        if (tab is not null)
+            tab.Icon = icon;
     }
 
     private static string BrowserTitle(string? title)
