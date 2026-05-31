@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="clr-namespace:sk0ya.Loomo.App.Views"
+    xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
     Title="Loomo" Height="800" Width="1280"
     Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen"
     WindowStyle="None" ResizeMode="CanResize">
@@ -62,6 +63,8 @@
                     <ColumnDefinition Width="*" MinWidth="200" />                    <!-- Terminal -->
                     <ColumnDefinition Width="4" />                                   <!-- splitter -->
                     <ColumnDefinition Width="2*" MinWidth="300" />                   <!-- Editor -->
+                    <ColumnDefinition Width="4" />                                   <!-- splitter -->
+                    <ColumnDefinition Width="2*" MinWidth="320" />                   <!-- Browser -->
                 </Grid.ColumnDefinitions>
 
                 <!-- ActivityBar -->
@@ -103,6 +106,51 @@
                 <DockPanel Grid.Column="5" Background="{StaticResource Panel}">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="EDITOR" />
                     <Border x:Name="EditorHost" />
+                </DockPanel>
+
+                <GridSplitter Grid.Column="6" Width="4" HorizontalAlignment="Stretch"
+                              Background="{StaticResource Border}" />
+
+                <!-- Browser -->
+                <DockPanel Grid.Column="7" Background="{StaticResource Panel}">
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="BROWSER" />
+                    <Grid DockPanel.Dock="Top" Margin="8,0,8,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource CaptionButton}" Width="30" Height="28"
+                                ToolTip="戻る" Click="OnBrowserBack">
+                            <Path Stretch="Uniform" Width="12" Height="12"
+                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Data="M7,0 L0,6 L7,12 V8 H12 V4 H7 Z" />
+                        </Button>
+                        <Button Grid.Column="1" Style="{StaticResource CaptionButton}" Width="30" Height="28"
+                                ToolTip="進む" Click="OnBrowserForward">
+                            <Path Stretch="Uniform" Width="12" Height="12"
+                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Data="M5,0 L12,6 L5,12 V8 H0 V4 H5 Z" />
+                        </Button>
+                        <Button Grid.Column="2" Style="{StaticResource CaptionButton}" Width="30" Height="28"
+                                ToolTip="更新" Click="OnBrowserReload">
+                            <Path Stretch="Uniform" Width="13" Height="13"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Data="M10.8,4.8 A4.5,4.5 0 1 0 9.6,9.7 M10.8,4.8 V1.2 H7.2" />
+                        </Button>
+                        <TextBox x:Name="BrowserAddressBox" Grid.Column="3" Height="28" Margin="6,0"
+                                 VerticalContentAlignment="Center"
+                                 KeyDown="OnBrowserAddressKeyDown" />
+                        <Button Grid.Column="4" Content="Go" Style="{StaticResource FlatButton}"
+                                Padding="10,4" Height="28" Click="OnBrowserGo" />
+                    </Grid>
+                    <wv2:WebView2 x:Name="BrowserView"
+                                  DefaultBackgroundColor="#FF1E1E1E"
+                                  NavigationCompleted="OnBrowserNavigationCompleted" />
                 </DockPanel>
             </Grid>
 

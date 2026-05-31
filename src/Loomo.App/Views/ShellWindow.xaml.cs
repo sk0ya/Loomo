@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
@@ -18,6 +19,7 @@ public partial class ShellWindow : Window
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
     private readonly IWorkspaceService _workspace;
+    private const string DefaultBrowserUrl = "https://www.google.com/";
 
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
     private GridLength _savedSidebarWidth = new(220);
@@ -37,6 +39,7 @@ public partial class ShellWindow : Window
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
         StateChanged += OnWindowStateChanged;
+        Loaded += OnLoaded;
 
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -62,6 +65,21 @@ public partial class ShellWindow : Window
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
                 await _editor.OpenFileAsync(path);
         };
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        BrowserAddressBox.Text = DefaultBrowserUrl;
+
+        try
+        {
+            await BrowserView.EnsureCoreWebView2Async();
+            BrowserView.Source = new Uri(DefaultBrowserUrl);
+        }
+        catch (Exception ex)
+        {
+            BrowserAddressBox.Text = $"WebView2 initialization failed: {ex.Message}";
+        }
     }
 
     private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -104,6 +122,68 @@ public partial class ShellWindow : Window
         => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
+
+    private void OnBrowserBack(object sender, RoutedEventArgs e)
+    {
+        if (BrowserView.CanGoBack)
+            BrowserView.GoBack();
+    }
+
+    private void OnBrowserForward(object sender, RoutedEventArgs e)
+    {
+        if (BrowserView.CanGoForward)
+            BrowserView.GoForward();
+    }
+
+    private void OnBrowserReload(object sender, RoutedEventArgs e)
+        => BrowserView.CoreWebView2?.Reload();
+
+    private void OnBrowserGo(object sender, RoutedEventArgs e)
+        => NavigateBrowser(BrowserAddressBox.Text);
+
+    private void OnBrowserAddressKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            NavigateBrowser(BrowserAddressBox.Text);
+            e.Handled = true;
+        }
+    }
+
+    private void OnBrowserNavigationCompleted(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (BrowserView.Source is not null)
+            BrowserAddressBox.Text = BrowserView.Source.ToString();
+    }
+
+    private void NavigateBrowser(string text)
+    {
+        var address = NormalizeBrowserAddress(text);
+        BrowserAddressBox.Text = address;
+
+        if (BrowserView.CoreWebView2 is not null)
+            BrowserView.CoreWebView2.Navigate(address);
+    }
+
+    private static string NormalizeBrowserAddress(string text)
+    {
+        var address = text.Trim();
+        if (string.IsNullOrWhiteSpace(address))
+            return DefaultBrowserUrl;
+
+        if (Uri.TryCreate(address, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme))
+            return uri.ToString();
+
+        if (address.Contains(' '))
+            return $"https://www.google.com/search?q={Uri.EscapeDataString(address)}";
+
+        var scheme = address.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
+                     || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            ? "http://"
+            : "https://";
+
+        return scheme + address;
+    }
 
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
