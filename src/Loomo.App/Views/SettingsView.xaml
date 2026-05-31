@@ -72,6 +72,22 @@
                          AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90"
                          VerticalScrollBarVisibility="Auto" />
 
+                <!-- 安全設計（§10） -->
+                <Separator Margin="0,14,0,8" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="安全設計" />
+                <CheckBox Content="自動承認モード（信頼ワークスペース向け・コマンド/編集の承認カードを省略）"
+                          IsChecked="{Binding AutoApprove}" Margin="0,2,0,4"
+                          Foreground="{StaticResource Fg}" />
+                <CheckBox Content="ツールのファイルアクセスをワークスペースルート配下に限定（パストラバーサル防止）"
+                          IsChecked="{Binding RestrictToWorkspaceRoot}" Margin="0,2,0,4"
+                          Foreground="{StaticResource Fg}" />
+                <TextBlock Style="{StaticResource FieldLabel}"
+                           Text="ブロックする危険コマンド（1行に1つ・正規表現・大文字小文字無視）" />
+                <TextBox Text="{Binding BlockedCommandPatterns, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="90"
+                         FontFamily="Cascadia Mono, Consolas"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+
                 <!-- 保存 -->
                 <Button Content="保存" Style="{StaticResource FlatButton}"
                         Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />

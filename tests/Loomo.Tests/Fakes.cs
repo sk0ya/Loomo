@@ -25,6 +25,8 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
 
     public Task<string> ReadFileAsync(string path) => Task.FromResult(string.Empty);
 
+    public string ResolvePath(string path) => path;
+
 #pragma warning disable CS0067 // テストでは発火させないイベント
     public event EventHandler<string?>? SelectionChanged;
     public event EventHandler<string?>? RootChanged;

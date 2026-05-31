@@ -11,7 +11,12 @@ namespace sk0ya.Loomo.Core.Tools.Implementations;
 public sealed class OpenInEditorTool : IAgentTool
 {
     private readonly IEditorService _editor;
-    public OpenInEditorTool(IEditorService editor) => _editor = editor;
+    private readonly IWorkspaceService _workspace;
+    public OpenInEditorTool(IEditorService editor, IWorkspaceService workspace)
+    {
+        _editor = editor;
+        _workspace = workspace;
+    }
 
     public string Name => "open_in_editor";
     public bool RequiresApproval => false;
@@ -28,8 +33,9 @@ public sealed class OpenInEditorTool : IAgentTool
     {
         var path = args.GetString("path");
         if (string.IsNullOrWhiteSpace(path)) return ToolResult.Error("path は必須です。");
-        await _editor.OpenFileAsync(path);
-        return ToolResult.Ok($"開きました: {path}");
+        var resolved = _workspace.ResolvePath(path);
+        await _editor.OpenFileAsync(resolved);
+        return ToolResult.Ok($"開きました: {resolved}");
     }
 }
 
@@ -37,7 +43,12 @@ public sealed class OpenInEditorTool : IAgentTool
 public sealed class ProposeEditTool : IAgentTool
 {
     private readonly IEditorService _editor;
-    public ProposeEditTool(IEditorService editor) => _editor = editor;
+    private readonly IWorkspaceService _workspace;
+    public ProposeEditTool(IEditorService editor, IWorkspaceService workspace)
+    {
+        _editor = editor;
+        _workspace = workspace;
+    }
 
     public string Name => "propose_edit";
     public bool RequiresApproval => true;   // 書込なので承認必須
@@ -51,8 +62,8 @@ public sealed class ProposeEditTool : IAgentTool
 
     public string DescribeInvocation(JsonElement args)
     {
-        var path = args.GetString("path");
         var content = args.GetString("content");
+        var path = _workspace.ResolvePath(args.GetString("path"));
         var current = File.Exists(path) ? File.ReadAllText(path) : "";
         var (added, removed) = DiffUtil.Stat(current, content);
         var verb = File.Exists(path) ? "編集" : "新規作成";
@@ -63,10 +74,11 @@ public sealed class ProposeEditTool : IAgentTool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
-        var path = args.GetString("path");
+        var rawPath = args.GetString("path");
         var content = args.GetString("content");
-        if (string.IsNullOrWhiteSpace(path)) return ToolResult.Error("path は必須です。");
+        if (string.IsNullOrWhiteSpace(rawPath)) return ToolResult.Error("path は必須です。");
 
+        var path = _workspace.ResolvePath(rawPath);
         await _editor.ShowDiffAsync(path, content);
         var ok = await _editor.ApplyEditAsync(path, content);
         return ok ? ToolResult.Ok($"適用しました: {path}") : ToolResult.Error("適用に失敗しました。");

@@ -5,13 +5,17 @@ using System.Linq;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Services;
 
 /// <summary>ファイルシステムと FolderTree 選択状態を管理する IWorkspaceService 実装。</summary>
 public sealed class WorkspaceService : IWorkspaceService
 {
+    private readonly SafetySettings _safety;
     private string? _selectedPath;
+
+    public WorkspaceService(SafetySettings safety) => _safety = safety;
 
     public string? RootPath { get; private set; }
 
@@ -55,10 +59,30 @@ public sealed class WorkspaceService : IWorkspaceService
         return await File.ReadAllTextAsync(target);
     }
 
-    private string ResolvePath(string path)
+    public string ResolvePath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path)) return RootPath ?? Environment.CurrentDirectory;
-        if (Path.IsPathRooted(path)) return path;
-        return Path.GetFullPath(Path.Combine(RootPath ?? Environment.CurrentDirectory, path));
+        var root = RootPath ?? Environment.CurrentDirectory;
+        var full = string.IsNullOrWhiteSpace(path)
+            ? Path.GetFullPath(root)
+            : Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(root, path));
+
+        // 設計書 §10: ツールのアクセスはワークスペースルート配下に限定（パストラバーサル防止）
+        if (_safety.RestrictToWorkspaceRoot && RootPath is not null && !IsWithin(RootPath, full))
+            throw new UnauthorizedAccessException(
+                $"ワークスペースルート外へのアクセスは許可されていません: {full}");
+
+        return full;
+    }
+
+    /// <summary><paramref name="candidate"/> が <paramref name="root"/> と同一またはその配下か。</summary>
+    private static bool IsWithin(string root, string candidate)
+    {
+        var rootFull = Path.GetFullPath(root)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var c = Path.GetFullPath(candidate);
+        return c.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
+            || c.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 }

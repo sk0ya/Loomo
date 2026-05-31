@@ -3,9 +3,12 @@ using System.IO;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Ai;
 
@@ -96,6 +99,7 @@ public sealed class AiSettingsStore
         public PersistedProvider OpenAI { get; set; } = new();
         public PersistedProvider Copilot { get; set; } = new();
         public PersistedProvider Local { get; set; } = new();
+        public PersistedSafety Safety { get; set; } = new();
 
         public static PersistedSettings From(AiSettings s) => new()
         {
@@ -105,6 +109,7 @@ public sealed class AiSettingsStore
             OpenAI = PersistedProvider.From(s.OpenAI),
             Copilot = PersistedProvider.From(s.Copilot),
             Local = PersistedProvider.From(s.Local),
+            Safety = PersistedSafety.From(s.Safety),
         };
 
         public void ApplyTo(AiSettings s)
@@ -115,6 +120,35 @@ public sealed class AiSettingsStore
             OpenAI.ApplyTo(s.OpenAI);
             Copilot.ApplyTo(s.Copilot);
             Local.ApplyTo(s.Local);
+            Safety.ApplyTo(s.Safety);
+        }
+    }
+
+    // ===== 安全設計（§10）。平文で保持（秘匿情報ではない）。 =====
+
+    private sealed class PersistedSafety
+    {
+        public bool AutoApprove { get; set; }
+        public bool RestrictToWorkspaceRoot { get; set; } = true;
+        public List<string>? BlockedCommandPatterns { get; set; }
+
+        public static PersistedSafety From(SafetySettings s) => new()
+        {
+            AutoApprove = s.AutoApprove,
+            RestrictToWorkspaceRoot = s.RestrictToWorkspaceRoot,
+            BlockedCommandPatterns = s.BlockedCommandPatterns.ToList(),
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）
+        public void ApplyTo(SafetySettings s)
+        {
+            s.AutoApprove = AutoApprove;
+            s.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
+            if (BlockedCommandPatterns is not null)
+            {
+                s.BlockedCommandPatterns.Clear();
+                s.BlockedCommandPatterns.AddRange(BlockedCommandPatterns);
+            }
         }
     }
 

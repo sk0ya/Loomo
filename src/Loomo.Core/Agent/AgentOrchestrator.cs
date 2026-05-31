@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using Microsoft.Extensions.Logging;
 
@@ -20,6 +21,7 @@ public sealed class AgentOrchestrator
     private readonly IAiClientFactory _aiFactory;
     private readonly ToolRegistry _tools;
     private readonly IApprovalService _approval;
+    private readonly ISafetyPolicy _safety;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     private const int MaxIterations = 25;
@@ -28,11 +30,13 @@ public sealed class AgentOrchestrator
         IAiClientFactory aiFactory,
         ToolRegistry tools,
         IApprovalService approval,
+        ISafetyPolicy safety,
         ILogger<AgentOrchestrator> logger)
     {
         _aiFactory = aiFactory;
         _tools = tools;
         _approval = approval;
+        _safety = safety;
         _logger = logger;
     }
 
@@ -125,8 +129,19 @@ public sealed class AgentOrchestrator
             return new ToolResultMessage(use.Id, $"引数JSONの解析失敗: {ex.Message}", IsError: true);
         }
 
-        // 承認
-        if (tool.RequiresApproval)
+        // 安全ポリシー：危険コマンドのブロックリストに一致したら実行せず差し戻す
+        var decision = _safety.Evaluate(tool.Name, args);
+        if (decision.Blocked)
+        {
+            _logger.LogWarning("安全ポリシーによりブロック: {Tool} — {Reason}", tool.Name, decision.Reason);
+            var blocked = new ToolResultMessage(use.Id, decision.Reason!, IsError: true);
+            sink.Add(new ToolExecutionStarted(use));
+            sink.Add(new ToolExecutionCompleted(use, blocked));
+            return blocked;
+        }
+
+        // 承認（自動承認モードが有効ならスキップ）
+        if (tool.RequiresApproval && !_safety.AutoApprove)
         {
             var summary = SafeDescribe(tool, args);
             sink.Add(new ApprovalRequested(tool.Name, summary));

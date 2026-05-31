@@ -6,6 +6,7 @@ using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using sk0ya.Loomo.Core.Tools.Implementations;
 using sk0ya.Loomo.Services;
@@ -40,6 +41,10 @@ public partial class App : Application
         services.AddSingleton<AiSettings>();
         services.AddSingleton<AiSettingsStore>();
         services.AddHttpClient("ai", c => c.Timeout = TimeSpan.FromMinutes(5));
+
+        // --- 安全設計（§10）：AiSettings が保持する SafetySettings を共有 ---
+        services.AddSingleton(sp => sp.GetRequiredService<AiSettings>().Safety);
+        services.AddSingleton<ISafetyPolicy, SafetyPolicy>();
 
         // --- サービス（concrete + interface 同一インスタンス） ---
         services.AddSingleton<WorkspaceService>();

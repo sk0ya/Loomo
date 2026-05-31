@@ -4,6 +4,7 @@ using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -26,6 +27,7 @@ public class ShellViewModelTests
             new FakeAiClientFactory(),
             new ToolRegistry(Enumerable.Empty<IAgentTool>()),
             approval,
+            new SafetyPolicy(new SafetySettings()),
             NullLogger<AgentOrchestrator>.Instance);
 
         var conversations = new ConversationStore(

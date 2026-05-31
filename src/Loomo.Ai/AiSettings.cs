@@ -1,4 +1,5 @@
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Ai;
 
@@ -7,6 +8,9 @@ public sealed class AiSettings
 {
     /// <summary>現在選択中のプロバイダ。</summary>
     public AiProvider Provider { get; set; } = AiProvider.Stub;
+
+    /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
+    public SafetySettings Safety { get; set; } = new();
 
     public ProviderConfig Claude { get; set; } = new() { Model = "claude-opus-4-8" };
     public ProviderConfig OpenAI { get; set; } = new() { Model = "gpt-4o" };
@@ -23,7 +27,8 @@ public sealed class AiSettings
         "あなたは開発ワークスペースを操作するAIエージェントです。" +
         "list_directory / read_file / open_in_editor / run_command / propose_edit / get_selection の各ツールを使い、" +
         "ターミナルとエディタを駆使してユーザーのタスクを遂行してください。" +
-        "コマンド実行とファイル編集はユーザー承認が必要です。";
+        "コマンド実行とファイル編集はユーザー承認が必要です（自動承認モード時は省略されます）。" +
+        "破壊的な危険コマンドは安全ポリシーによりブロックされ、ファイルアクセスはワークスペースルート配下に限定されます。";
 
     public ProviderConfig ConfigFor(AiProvider provider) => provider switch
     {

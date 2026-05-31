@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -37,6 +38,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _systemPrompt = "";
     [ObservableProperty] private string _status = "";
 
+    // --- 安全設計（設計書 §10） ---
+    [ObservableProperty] private bool _autoApprove;
+    [ObservableProperty] private bool _restrictToWorkspaceRoot;
+    [ObservableProperty] private string _blockedCommandPatterns = "";
+
     /// <summary>Copilot サインインの進捗・状態表示。</summary>
     [ObservableProperty] private string _copilotStatus = "";
     [ObservableProperty] private bool _isSigningIn;
@@ -64,6 +70,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         _systemPrompt = settings.SystemPrompt;
         _selectedProvider = settings.Provider;
         _loadedProvider = settings.Provider;
+        _autoApprove = settings.Safety.AutoApprove;
+        _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
+        _blockedCommandPatterns = string.Join(Environment.NewLine, settings.Safety.BlockedCommandPatterns);
         LoadProviderFields(settings.Provider);
     }
 
@@ -105,6 +114,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.Provider = SelectedProvider;
         if (!string.IsNullOrWhiteSpace(SystemPrompt))
             _settings.SystemPrompt = SystemPrompt.Trim();
+
+        // 安全設計を書き戻す（同一インスタンスなので即時反映される）
+        _settings.Safety.AutoApprove = AutoApprove;
+        _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
+        _settings.Safety.BlockedCommandPatterns = BlockedCommandPatterns
+            .Split('\n')
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0)
+            .ToList();
 
         try
         {

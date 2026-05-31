@@ -48,6 +48,10 @@ public interface IWorkspaceService
     Task<IReadOnlyList<FileNode>> ListAsync(string path);
     Task<string> ReadFileAsync(string path);
 
+    /// <summary>パスをワークスペースルート基準の絶対パスへ解決する。
+    /// ルート外限定が有効でルート外を指す場合は <see cref="System.UnauthorizedAccessException"/>。</summary>
+    string ResolvePath(string path);
+
     event EventHandler<string?>? SelectionChanged;
     event EventHandler<string?>? RootChanged;
 }
