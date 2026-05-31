@@ -61,6 +61,8 @@ public partial class App : Application
 
         // --- AI ---
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
+        // コンテキスト長管理：現在プロバイダの上限に合わせ送信前に履歴をトリム
+        services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
         services.AddSingleton(sp => new CopilotAuthService(
             sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
 

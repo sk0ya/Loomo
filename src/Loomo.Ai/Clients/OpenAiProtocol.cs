@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Ai.Http;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
@@ -112,13 +113,15 @@ internal static class OpenAiProtocol
         AgentError? error = null;
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Post, endpoint)
+            using var resp = await HttpRetry.SendAsync(http, () =>
             {
-                Content = JsonContent.Create(body)
-            };
-            configure?.Invoke(req);
-
-            using var resp = await http.SendAsync(req, ct);
+                var req = new HttpRequestMessage(HttpMethod.Post, endpoint)
+                {
+                    Content = JsonContent.Create(body)
+                };
+                configure?.Invoke(req);
+                return req;
+            }, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
             root = resp.IsSuccessStatusCode ? JsonNode.Parse(json) : null;
             if (root is null) error = new AgentError($"{providerName} APIエラー {(int)resp.StatusCode}: {json}");

@@ -28,6 +28,7 @@ public class ShellViewModelTests
             new ToolRegistry(Enumerable.Empty<IAgentTool>()),
             approval,
             new SafetyPolicy(new SafetySettings()),
+            NoopContextWindowPolicy.Instance,
             NullLogger<AgentOrchestrator>.Instance);
 
         var conversations = new ConversationStore(

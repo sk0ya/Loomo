@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Ai.Http;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
@@ -50,14 +51,16 @@ public sealed class ClaudeAiClient : IAiClient
         AgentError? error = null;
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+            using var resp = await HttpRetry.SendAsync(_http, () =>
             {
-                Content = JsonContent.Create(body)
-            };
-            req.Headers.Add("x-api-key", cfg.ApiKey);
-            req.Headers.Add("anthropic-version", AnthropicVersion);
-
-            using var resp = await _http.SendAsync(req, ct);
+                var req = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+                {
+                    Content = JsonContent.Create(body)
+                };
+                req.Headers.Add("x-api-key", cfg.ApiKey);
+                req.Headers.Add("anthropic-version", AnthropicVersion);
+                return req;
+            }, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {

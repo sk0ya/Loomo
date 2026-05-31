@@ -22,6 +22,7 @@ public sealed class AgentOrchestrator
     private readonly ToolRegistry _tools;
     private readonly IApprovalService _approval;
     private readonly ISafetyPolicy _safety;
+    private readonly IContextWindowPolicy _context;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     private const int MaxIterations = 25;
@@ -31,12 +32,14 @@ public sealed class AgentOrchestrator
         ToolRegistry tools,
         IApprovalService approval,
         ISafetyPolicy safety,
+        IContextWindowPolicy context,
         ILogger<AgentOrchestrator> logger)
     {
         _aiFactory = aiFactory;
         _tools = tools;
         _approval = approval;
         _safety = safety;
+        _context = context;
         _logger = logger;
     }
 
@@ -57,8 +60,11 @@ public sealed class AgentOrchestrator
             var assistant = new ChatMessage { Role = ChatRole.Assistant };
             var pendingToolUses = new List<ToolUse>();
 
+            // コンテキスト超過を防ぐため、送信用に履歴をトリム（元会話は保持）。
+            var outgoing = _context.Fit(conversation);
+
             // --- AIストリームを消費 ---
-            await foreach (var ev in ai.StreamAsync(conversation, definitions, ct))
+            await foreach (var ev in ai.StreamAsync(outgoing, definitions, ct))
             {
                 switch (ev)
                 {
@@ -77,7 +83,9 @@ public sealed class AgentOrchestrator
                 }
             }
 
-            conversation.Messages.Add(assistant);
+            // 本文もツール呼び出しも無い空応答は履歴に積まない（APIエラー要因になり得る）。
+            if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
+                conversation.Messages.Add(assistant);
 
             // ツール呼び出しが無ければターン終了
             if (pendingToolUses.Count == 0)

@@ -12,7 +12,7 @@ public sealed class AiSettings
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
 
-    public ProviderConfig Claude { get; set; } = new() { Model = "claude-opus-4-8" };
+    public ProviderConfig Claude { get; set; } = new() { Model = "claude-opus-4-8", MaxContextTokens = 180_000 };
     public ProviderConfig OpenAI { get; set; } = new() { Model = "gpt-4o" };
     public ProviderConfig Copilot { get; set; } = new() { Model = "gpt-4o" };
 
@@ -50,5 +50,12 @@ public sealed class ProviderConfig
     /// <summary>OpenAI互換エンドポイントのベースURL（ローカルLLM等）。</summary>
     public string? BaseUrl { get; set; }
 
+    /// <summary>1応答で生成させる最大トークン数（出力上限）。</summary>
     public int MaxTokens { get; set; } = 4096;
+
+    /// <summary>
+    /// モデルのコンテキストウィンドウ上限（入力+出力）。これを超えないよう送信前に古い履歴を切り詰める。
+    /// 0以下でトリム無効。既定は 128k 級モデル想定。
+    /// </summary>
+    public int MaxContextTokens { get; set; } = 128_000;
 }
