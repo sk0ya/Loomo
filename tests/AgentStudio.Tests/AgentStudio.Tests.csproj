@@ -1,7 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -21,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AgentStudio.Core\AgentStudio.Core.csproj" />
     <ProjectReference Include="..\..\src\AgentStudio.Ai\AgentStudio.Ai.csproj" />
+    <ProjectReference Include="..\..\src\AgentStudio.App\AgentStudio.App.csproj" />
   </ItemGroup>
 
 </Project>
