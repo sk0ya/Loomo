@@ -1,7 +1,5 @@
 using System;
-using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
@@ -13,11 +11,11 @@ namespace sk0ya.Loomo.Services;
 /// <summary>
 /// ITerminalService 実装。
 ///
-/// sk0ya の <see cref="TerminalTabView"/> は「対話型ターミナル」であり、コマンドを
-/// プログラムから実行して出力を取得する公開APIを持たない（人間が打ち込む用）。
-/// そこでエージェントの実行バックエンドは独立した <see cref="Process"/>（PowerShell）とし、
-/// 可視ターミナルは人間の操作用として併存させる。
-/// （将来 TerminalTabView 側に「コマンド実行＋出力取得」APIを追加すれば一本化可能。）
+/// sk0ya.Terminal.Controls 1.0.3 で <see cref="TerminalTabView"/> に
+/// <see cref="TerminalTabView.RunCommandAsync"/>（コマンド実行＋stdout/exit取得）が
+/// 追加されたため、エージェントの実行を**可視ターミナルへ一本化**する。
+/// 以前のように独立した PowerShell <c>Process</c> を裏で起動する必要はなく、
+/// AI が打ったコマンドも人間が打ったコマンドと同じターミナルに表示・記録される。
 /// </summary>
 public sealed class TerminalService : ITerminalService
 {
@@ -29,56 +27,43 @@ public sealed class TerminalService : ITerminalService
     public string CurrentDirectory => _cwd;
     public bool IsExecuting { get; private set; }
 
-    /// <summary>可視ターミナルを結びつける（フォーカス等の操作用）。</summary>
+    /// <summary>可視ターミナルを結びつける（コマンド実行・フォーカス等の操作用）。</summary>
     public void Attach(TerminalTabView view) => _view = view;
 
     public void SetWorkingDirectory(string path)
     {
-        if (Directory.Exists(path)) _cwd = path;
+        if (!Directory.Exists(path)) return;
+        var changed = !string.Equals(_cwd, path, StringComparison.OrdinalIgnoreCase);
+        _cwd = path;
+
+        // 可視ターミナルにも追従させる（人間が cd するのと同じ操作）。
+        // 起動直後の同一ディレクトリ設定では余計な cd を打たない。
+        if (changed && _view is { } view)
+            _ = view.Dispatcher.InvokeAsync(
+                () => view.RunCommandAsync($"cd \"{path}\"", CancellationToken.None));
     }
 
     public async Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
     {
+        var view = _view
+            ?? throw new InvalidOperationException(
+                "可視ターミナルが未アタッチです。ShellWindow で Attach を呼んでください。");
+
         IsExecuting = true;
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                WorkingDirectory = _cwd,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
-            };
-            psi.ArgumentList.Add("-NoProfile");
-            psi.ArgumentList.Add("-NonInteractive");
-            psi.ArgumentList.Add("-Command");
-            psi.ArgumentList.Add(command);
-
-            using var proc = new Process { StartInfo = psi };
-            var sb = new StringBuilder();
-            proc.OutputDataReceived += (_, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
-            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
-
-            proc.Start();
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
-
-            try
-            {
-                await proc.WaitForExitAsync(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
-                throw;
-            }
+            // TerminalTabView は WPF コントロールなので UI スレッドで実行する。
+            var tcr = await view.Dispatcher
+                .InvokeAsync(() => view.RunCommandAsync(command, ct))
+                .Task.Unwrap();
 
             TrackChdir(command);
-            var result = new CommandResult(command, sb.ToString(), proc.ExitCode, _cwd, proc.ExitCode == 0);
+            // shell integration が有効なら、実際の cwd をターミナルから取得して同期する。
+            if (view.IsShellIntegrationActive && Directory.Exists(view.WorkingDirectory))
+                _cwd = view.WorkingDirectory;
+
+            var success = tcr.Completed && tcr.ExitCode == 0;
+            var result = new CommandResult(command, tcr.Output, tcr.ExitCode, _cwd, success);
             CommandExecuted?.Invoke(this, result);
             return result;
         }
@@ -88,7 +73,7 @@ public sealed class TerminalService : ITerminalService
         }
     }
 
-    /// <summary>`cd &lt;dir&gt;` を検知して作業ディレクトリを追従（プロセスは都度生成のため）。</summary>
+    /// <summary>shell integration が無い場合のフォールバックとして `cd &lt;dir&gt;` を検知して cwd を追従。</summary>
     private void TrackChdir(string command)
     {
         var trimmed = command.Trim();
