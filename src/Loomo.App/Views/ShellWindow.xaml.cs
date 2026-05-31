@@ -51,7 +51,6 @@ public partial class ShellWindow : Window
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
-        vm.FolderTree.FolderOpenRequested += (_, path) => vm.Workspaces.ActivateFolder(path);
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
         Loaded += OnLoaded;

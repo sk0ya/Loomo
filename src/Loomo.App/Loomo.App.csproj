@@ -20,6 +20,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\Loomo.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\Loomo.ico" />
+    <Resource Include="Assets\Loomo.ico" />
+  </ItemGroup>
 
 </Project>

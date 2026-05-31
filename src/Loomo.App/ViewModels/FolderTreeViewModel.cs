@@ -8,7 +8,6 @@ using System.Windows;
 using sk0ya.Loomo.Core.Abstractions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -24,7 +23,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private string _rootLabel = "(フォルダ未選択)";
 
     [ObservableProperty]
-    private bool _hideIgnoredFiles;
+    private bool _hideIgnoredFiles = true;
 
     [ObservableProperty]
     private bool _showChangedOnly;
@@ -39,24 +38,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private string _emptyMessage = "";
 
     public ObservableCollection<FileNodeViewModel> Nodes { get; } = new();
-    public event EventHandler<string>? FolderOpenRequested;
 
     public FolderTreeViewModel(IWorkspaceService workspace)
     {
         _workspace = workspace;
-    }
-
-    [RelayCommand]
-    private void OpenFolder()
-    {
-        var dlg = new OpenFolderDialog { Title = "ワークスペースフォルダを選択" };
-        if (dlg.ShowDialog() != true)
-            return;
-
-        if (FolderOpenRequested is not null)
-            FolderOpenRequested.Invoke(this, dlg.FolderName);
-        else
-            LoadRoot(dlg.FolderName);
     }
 
     public void LoadRoot(string path)
