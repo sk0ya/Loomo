@@ -7,6 +7,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 public enum SidebarPanel
 {
     Explorer,
+    Tabs,
     Sessions,
     Settings
 }
@@ -16,6 +17,7 @@ public sealed partial class ShellViewModel : ObservableObject
 {
     public FolderTreeViewModel FolderTree { get; }
     public AiBarViewModel AiBar { get; }
+    public TabsViewModel Tabs { get; }
     public SessionsViewModel Sessions { get; }
     public SettingsViewModel Settings { get; }
 
@@ -28,11 +30,13 @@ public sealed partial class ShellViewModel : ObservableObject
     public ShellViewModel(
         FolderTreeViewModel folderTree,
         AiBarViewModel aiBar,
+        TabsViewModel tabs,
         SessionsViewModel sessions,
         SettingsViewModel settings)
     {
         FolderTree = folderTree;
         AiBar = aiBar;
+        Tabs = tabs;
         Sessions = sessions;
         Settings = settings;
 
@@ -43,6 +47,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar のエクスプローラアイコン。</summary>
     [RelayCommand]
     private void ShowExplorer() => Activate(SidebarPanel.Explorer);
+
+    /// <summary>ActivityBar のタブ一覧アイコン。</summary>
+    [RelayCommand]
+    private void ShowTabs() => Activate(SidebarPanel.Tabs);
 
     /// <summary>ActivityBar の AIセッションアイコン。</summary>
     [RelayCommand]

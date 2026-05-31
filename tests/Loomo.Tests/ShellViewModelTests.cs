@@ -41,7 +41,7 @@ public class ShellViewModelTests
         var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
         var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService());
 
-        return new ShellViewModel(folderTree, aiBar, sessionsVm, settingsVm);
+        return new ShellViewModel(folderTree, aiBar, new TabsViewModel(), sessionsVm, settingsVm);
     }
 
     [Fact]
@@ -72,6 +72,16 @@ public class ShellViewModelTests
         sut.ShowSettingsCommand.Execute(null);
         Assert.True(sut.IsSidebarVisible);
         Assert.Equal(SidebarPanel.Settings, sut.ActivePanel);
+    }
+
+    [Fact]
+    public void ShowTabs_switches_panel_and_keeps_open()
+    {
+        var sut = CreateSut();
+
+        sut.ShowTabsCommand.Execute(null);
+        Assert.True(sut.IsSidebarVisible);
+        Assert.Equal(SidebarPanel.Tabs, sut.ActivePanel);
     }
 
     [Fact]

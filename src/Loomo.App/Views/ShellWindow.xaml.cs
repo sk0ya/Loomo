@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
@@ -19,6 +20,10 @@ public partial class ShellWindow : Window
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
     private readonly IWorkspaceService _workspace;
+    private readonly ShellViewModel _vm;
+    private readonly List<BrowserTab> _browserTabs = new();
+    private BrowserTab? _activeBrowserTab;
+    private int _browserTabNumber = 1;
     private const string DefaultBrowserUrl = "https://www.google.com/";
 
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
@@ -32,12 +37,14 @@ public partial class ShellWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
+        _vm = vm;
         _terminal = terminal;
         _editor = editor;
         _workspace = workspace;
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
+        vm.Tabs.TabActivated += OnSidebarTabActivated;
         StateChanged += OnWindowStateChanged;
         Loaded += OnLoaded;
 
@@ -48,22 +55,31 @@ public partial class ShellWindow : Window
         TerminalHost.Child = termView;
         _terminal.Attach(termView);
         _terminal.SetWorkingDirectory(startDir);
+        termView.HeaderTitleChanged += (_, title) => UpdateTerminalTab(termView, title);
+        UpdateTerminalTab(termView, termView.HeaderTitle);
 
         var editorCtrl = new VimEditorControl();
         EditorHost.Child = editorCtrl;
         _editor.Attach(editorCtrl);
+        editorCtrl.BufferChanged += (_, _) => UpdateEditorTab(editorCtrl);
+        editorCtrl.SaveRequested += (_, _) => UpdateEditorTab(editorCtrl);
+        UpdateEditorTab(editorCtrl);
 
         // フォルダを開いたらエージェントの作業ディレクトリを同期
         _workspace.RootChanged += (_, root) =>
         {
             if (!string.IsNullOrEmpty(root)) _terminal.SetWorkingDirectory(root);
+            UpdateTerminalTab(termView, termView.HeaderTitle);
         };
 
         // ファイル選択でエディタに開く
         _workspace.SelectionChanged += async (_, path) =>
         {
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
+            {
                 await _editor.OpenFileAsync(path);
+                UpdateEditorTab(editorCtrl);
+            }
         };
     }
 
@@ -73,8 +89,7 @@ public partial class ShellWindow : Window
 
         try
         {
-            await BrowserView.EnsureCoreWebView2Async();
-            BrowserView.Source = new Uri(DefaultBrowserUrl);
+            await CreateBrowserTabAsync(DefaultBrowserUrl);
         }
         catch (Exception ex)
         {
@@ -125,18 +140,35 @@ public partial class ShellWindow : Window
 
     private void OnBrowserBack(object sender, RoutedEventArgs e)
     {
-        if (BrowserView.CanGoBack)
-            BrowserView.GoBack();
+        var view = ActiveBrowserView;
+        if (view?.CanGoBack == true)
+            view.GoBack();
     }
 
     private void OnBrowserForward(object sender, RoutedEventArgs e)
     {
-        if (BrowserView.CanGoForward)
-            BrowserView.GoForward();
+        var view = ActiveBrowserView;
+        if (view?.CanGoForward == true)
+            view.GoForward();
     }
 
     private void OnBrowserReload(object sender, RoutedEventArgs e)
-        => BrowserView.CoreWebView2?.Reload();
+        => ActiveBrowserView?.CoreWebView2?.Reload();
+
+    private async void OnBrowserNewTab(object sender, RoutedEventArgs e)
+        => await CreateBrowserTabAsync(DefaultBrowserUrl);
+
+    private void OnBrowserTabSelected(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+            ActivateBrowserTab(id);
+    }
+
+    private async void OnBrowserTabClosed(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+            await CloseBrowserTabAsync(id);
+    }
 
     private void OnBrowserGo(object sender, RoutedEventArgs e)
         => NavigateBrowser(BrowserAddressBox.Text);
@@ -152,8 +184,16 @@ public partial class ShellWindow : Window
 
     private void OnBrowserNavigationCompleted(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (BrowserView.Source is not null)
-            BrowserAddressBox.Text = BrowserView.Source.ToString();
+        if (sender is not WebView2 view)
+            return;
+
+        var tab = _browserTabs.FirstOrDefault(t => ReferenceEquals(t.View, view));
+        if (tab is null)
+            return;
+
+        UpdateBrowserTab(tab);
+        if (ReferenceEquals(_activeBrowserTab, tab) && view.Source is not null)
+            BrowserAddressBox.Text = view.Source.ToString();
     }
 
     private void NavigateBrowser(string text)
@@ -161,9 +201,112 @@ public partial class ShellWindow : Window
         var address = NormalizeBrowserAddress(text);
         BrowserAddressBox.Text = address;
 
-        if (BrowserView.CoreWebView2 is not null)
-            BrowserView.CoreWebView2.Navigate(address);
+        var view = ActiveBrowserView;
+        if (view?.CoreWebView2 is not null)
+        {
+            view.CoreWebView2.Navigate(address);
+            UpdateBrowserTab(_activeBrowserTab);
+        }
     }
+
+    private WebView2? ActiveBrowserView => _activeBrowserTab?.View;
+
+    private async Task CreateBrowserTabAsync(string url)
+    {
+        var id = Guid.NewGuid();
+        var normalizedUrl = NormalizeBrowserAddress(url);
+        var view = new WebView2
+        {
+            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
+            Visibility = Visibility.Collapsed
+        };
+        view.NavigationCompleted += OnBrowserNavigationCompleted;
+
+        var tab = new BrowserTab(id, view);
+        _browserTabs.Add(tab);
+        BrowserContentHost.Children.Add(view);
+        _vm.Tabs.AddBrowserTab(id, $"Tab {_browserTabNumber++}", false);
+        ActivateBrowserTab(id);
+
+        await view.EnsureCoreWebView2Async();
+        view.Source = new Uri(normalizedUrl);
+        UpdateBrowserTab(tab);
+    }
+
+    private async Task CloseBrowserTabAsync(Guid id)
+    {
+        var index = _browserTabs.FindIndex(t => t.Id == id);
+        if (index < 0)
+            return;
+
+        var wasActive = _activeBrowserTab?.Id == id;
+        var tab = _browserTabs[index];
+        BrowserContentHost.Children.Remove(tab.View);
+        tab.View.NavigationCompleted -= OnBrowserNavigationCompleted;
+        tab.View.Dispose();
+        _browserTabs.RemoveAt(index);
+        _vm.Tabs.RemoveBrowserTab(id);
+
+        if (!wasActive)
+            return;
+
+        if (_browserTabs.Count == 0)
+        {
+            await CreateBrowserTabAsync(DefaultBrowserUrl);
+            return;
+        }
+
+        ActivateBrowserTab(_browserTabs[Math.Min(index, _browserTabs.Count - 1)].Id);
+    }
+
+    private void ActivateBrowserTab(Guid id)
+    {
+        var tab = _browserTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+
+        foreach (var browserTab in _browserTabs)
+            browserTab.View.Visibility = browserTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
+
+        _activeBrowserTab = tab;
+        _vm.Tabs.ActivateBrowserTab(id);
+        BrowserAddressBox.Text = tab.View.Source?.ToString() ?? string.Empty;
+        tab.View.Focus();
+    }
+
+    private void UpdateBrowserTab(BrowserTab? tab)
+    {
+        if (tab is null)
+            return;
+
+        _vm.Tabs.UpdateBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle);
+    }
+
+    private sealed record BrowserTab(Guid Id, WebView2 View);
+
+    private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab)
+    {
+        switch (tab.Kind)
+        {
+            case TabEntryKind.Terminal:
+                if (TerminalHost.Child is TerminalTabView terminal)
+                    terminal.FocusTerminal();
+                break;
+            case TabEntryKind.Editor:
+                if (EditorHost.Child is VimEditorControl editor)
+                    editor.Focus();
+                break;
+            case TabEntryKind.Browser:
+                ActivateBrowserTab(tab.Id);
+                break;
+        }
+    }
+
+    private void UpdateTerminalTab(TerminalTabView view, string? title)
+        => _vm.Tabs.SetTerminalSnapshot(title, view.WorkingDirectory);
+
+    private void UpdateEditorTab(VimEditorControl ctrl)
+        => _vm.Tabs.SetEditorSnapshot(ctrl.FilePath, ctrl.IsModified);
 
     private static string NormalizeBrowserAddress(string text)
     {

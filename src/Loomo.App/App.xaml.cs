@@ -82,6 +82,7 @@ public partial class App : Application
         // --- ViewModels / Window ---
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<AiBarViewModel>();
+        services.AddSingleton<TabsViewModel>();
         services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<ShellViewModel>();
