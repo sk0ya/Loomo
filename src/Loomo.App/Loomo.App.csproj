@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+    <ProjectReference Include="..\Loomo.Ai\Loomo.Ai.csproj" />
+    <ProjectReference Include="..\Loomo.Services\Loomo.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <RootNamespace>sk0ya.Loomo.App</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.App</AssemblyName>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

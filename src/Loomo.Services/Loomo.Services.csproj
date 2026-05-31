@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>sk0ya.Loomo.Services</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.Services</AssemblyName>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.0" />
+    <PackageReference Include="sk0ya.Editor.Controls.Defaults" Version="1.0.0" />
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.2" />
+  </ItemGroup>
+
+</Project>
