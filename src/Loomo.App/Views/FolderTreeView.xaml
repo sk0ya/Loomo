@@ -83,6 +83,7 @@
         <Grid>
             <TreeView ItemsSource="{Binding Nodes}" Background="Transparent" BorderThickness="0"
                       Foreground="{StaticResource Fg}"
+                      MouseDoubleClick="OnTreeMouseDoubleClick"
                       Visibility="{Binding HasVisibleNodes, Converter={StaticResource BoolToVis}}">
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="TreeViewItem">

@@ -39,6 +39,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     public ObservableCollection<FileNodeViewModel> Nodes { get; } = new();
 
+    public event EventHandler<string>? FileActivated;
+
     public FolderTreeViewModel(IWorkspaceService workspace)
     {
         _workspace = workspace;
@@ -118,6 +120,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     public IEnumerable<FileNodeViewModel> Children(string dirPath) => EnumerateChildren(dirPath);
 
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
+
+    public void NotifyActivated(string fullPath)
+    {
+        _workspace.SelectedPath = fullPath;
+        if (File.Exists(fullPath))
+            FileActivated?.Invoke(this, fullPath);
+    }
 
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)
     {

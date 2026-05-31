@@ -95,16 +95,8 @@ public partial class ShellWindow : Window
                 UpdateTerminalTab(activeTerminal, activeTerminal.View.HeaderTitle);
         };
 
-        // ファイル選択でエディタに開く
-        _workspace.SelectionChanged += async (_, path) =>
-        {
-            if (!string.IsNullOrEmpty(path) && File.Exists(path))
-            {
-                await _editor.OpenFileAsync(path);
-                if (_activeEditorTab is { } activeEditor)
-                    UpdateEditorTab(activeEditor);
-            }
-        };
+        // FolderTree の単クリックは選択だけ、ダブルクリックで新しいエディタタブを開く。
+        vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -227,6 +219,21 @@ public partial class ShellWindow : Window
         EditorContentHost.Children.Add(tab.Control);
         _vm.Tabs.AddEditorTab(tab.Id, null, false, false);
         ActivateEditorTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private async Task OpenFileInNewEditorTabAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        var tab = CreateEditorTab();
+        _editorTabs.Add(tab);
+        EditorContentHost.Children.Add(tab.Control);
+        _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
+        ActivateEditorTab(tab.Id);
+        await _editor.OpenFileAsync(path);
+        UpdateEditorTab(tab);
         SaveActiveWorkspaceSnapshot();
     }
 
