@@ -72,6 +72,8 @@
                     <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
                             Command="{Binding ShowSettingsCommand}" />
                     <StackPanel>
+                        <Button Style="{StaticResource IconButton}" Content="▦" ToolTip="ワークスペース"
+                                Command="{Binding ShowWorkspacesCommand}" />
                         <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
                                 Command="{Binding ShowExplorerCommand}" />
                         <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
@@ -84,6 +86,8 @@
 
                 <!-- Sidebar : Explorer / Sessions / Settings を ActivePanel で切替 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="1">
+                    <views:WorkspacesView DataContext="{Binding Workspaces}"
+                                          Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Workspaces}" />
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
                     <views:TabsView DataContext="{Binding Tabs}"

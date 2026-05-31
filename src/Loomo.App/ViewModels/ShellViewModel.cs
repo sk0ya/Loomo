@@ -6,6 +6,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>サイドバーに表示するパネル種別。</summary>
 public enum SidebarPanel
 {
+    Workspaces,
     Explorer,
     Tabs,
     Sessions,
@@ -16,6 +17,7 @@ public enum SidebarPanel
 public sealed partial class ShellViewModel : ObservableObject
 {
     public FolderTreeViewModel FolderTree { get; }
+    public WorkspaceListViewModel Workspaces { get; }
     public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
     public SessionsViewModel Sessions { get; }
@@ -29,12 +31,14 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ShellViewModel(
         FolderTreeViewModel folderTree,
+        WorkspaceListViewModel workspaces,
         AiBarViewModel aiBar,
         TabsViewModel tabs,
         SessionsViewModel sessions,
         SettingsViewModel settings)
     {
         FolderTree = folderTree;
+        Workspaces = workspaces;
         AiBar = aiBar;
         Tabs = tabs;
         Sessions = sessions;
@@ -43,6 +47,10 @@ public sealed partial class ShellViewModel : ObservableObject
         // 設定保存時に AIバーのプロバイダ表示を更新する
         Settings.Saved += AiBar.RefreshProviderLabel;
     }
+
+    /// <summary>ActivityBar のワークスペース一覧アイコン。</summary>
+    [RelayCommand]
+    private void ShowWorkspaces() => Activate(SidebarPanel.Workspaces);
 
     /// <summary>ActivityBar のエクスプローラアイコン。</summary>
     [RelayCommand]

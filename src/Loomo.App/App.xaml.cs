@@ -80,6 +80,8 @@ public partial class App : Application
         services.AddSingleton<ConversationStore>();
 
         // --- ViewModels / Window ---
+        services.AddSingleton<WorkspaceStateStore>();
+        services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<AiBarViewModel>();
         services.AddSingleton<TabsViewModel>();

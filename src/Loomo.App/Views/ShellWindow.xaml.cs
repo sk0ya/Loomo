@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
@@ -21,9 +22,13 @@ public partial class ShellWindow : Window
     private readonly EditorService _editor;
     private readonly IWorkspaceService _workspace;
     private readonly ShellViewModel _vm;
+    private readonly Dictionary<Guid, TerminalTabView> _terminalViews = new();
     private readonly List<BrowserTab> _browserTabs = new();
     private BrowserTab? _activeBrowserTab;
     private int _browserTabNumber = 1;
+    private WorkspaceSnapshot? _activeWorkspace;
+    private bool _isSwitchingWorkspace;
+    private bool _clearEditorSnapshotOnNextCapture;
     private const string DefaultBrowserUrl = "https://www.google.com/";
 
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
@@ -45,17 +50,18 @@ public partial class ShellWindow : Window
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
+        vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
+        vm.FolderTree.FolderOpenRequested += (_, path) => vm.Workspaces.ActivateFolder(path);
         StateChanged += OnWindowStateChanged;
+        Closing += OnClosing;
         Loaded += OnLoaded;
 
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         // sk0ya コントロールを生成してホストへ配置し、サービスへ結びつける
-        var termView = new TerminalTabView("powershell.exe", startDir);
-        TerminalHost.Child = termView;
-        _terminal.Attach(termView);
+        var termView = CreateTerminalView(startDir);
+        ShowTerminalView(termView);
         _terminal.SetWorkingDirectory(startDir);
-        termView.HeaderTitleChanged += (_, title) => UpdateTerminalTab(termView, title);
         UpdateTerminalTab(termView, termView.HeaderTitle);
 
         var editorCtrl = new VimEditorControl();
@@ -68,8 +74,10 @@ public partial class ShellWindow : Window
         // フォルダを開いたらエージェントの作業ディレクトリを同期
         _workspace.RootChanged += (_, root) =>
         {
-            if (!string.IsNullOrEmpty(root)) _terminal.SetWorkingDirectory(root);
-            UpdateTerminalTab(termView, termView.HeaderTitle);
+            if (!_isSwitchingWorkspace && !string.IsNullOrEmpty(root))
+                _terminal.SetWorkingDirectory(root);
+            if (TerminalHost.Child is TerminalTabView activeTerminal)
+                UpdateTerminalTab(activeTerminal, activeTerminal.HeaderTitle);
         };
 
         // ファイル選択でエディタに開く
@@ -85,11 +93,15 @@ public partial class ShellWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        BrowserAddressBox.Text = DefaultBrowserUrl;
-
         try
         {
-            await CreateBrowserTabAsync(DefaultBrowserUrl);
+            if (_vm.Workspaces.ActiveWorkspace is { } workspace)
+                await SwitchWorkspaceAsync(workspace, captureCurrent: false);
+            else
+            {
+                BrowserAddressBox.Text = DefaultBrowserUrl;
+                await CreateBrowserTabAsync(DefaultBrowserUrl);
+            }
         }
         catch (Exception ex)
         {
@@ -124,6 +136,19 @@ public partial class ShellWindow : Window
         }
     }
 
+    private TerminalTabView CreateTerminalView(string startDirectory)
+    {
+        var view = new TerminalTabView("powershell.exe", startDirectory);
+        view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(view, title);
+        return view;
+    }
+
+    private void ShowTerminalView(TerminalTabView view)
+    {
+        TerminalHost.Child = view;
+        _terminal.Attach(view);
+    }
+
     // ===== カスタムタイトルバー（WindowChrome） =====
 
     // 単一の四角（最大化）/ 二重の四角（元に戻す）をベクターで描く。
@@ -156,7 +181,10 @@ public partial class ShellWindow : Window
         => ActiveBrowserView?.CoreWebView2?.Reload();
 
     private async void OnBrowserNewTab(object sender, RoutedEventArgs e)
-        => await CreateBrowserTabAsync(DefaultBrowserUrl);
+    {
+        await CreateBrowserTabAsync(DefaultBrowserUrl);
+        SaveActiveWorkspaceSnapshot();
+    }
 
     private void OnBrowserTabSelected(object sender, RoutedEventArgs e)
     {
@@ -167,7 +195,10 @@ public partial class ShellWindow : Window
     private async void OnBrowserTabClosed(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid id })
+        {
             await CloseBrowserTabAsync(id);
+            SaveActiveWorkspaceSnapshot();
+        }
     }
 
     private void OnBrowserGo(object sender, RoutedEventArgs e)
@@ -206,14 +237,15 @@ public partial class ShellWindow : Window
         {
             view.CoreWebView2.Navigate(address);
             UpdateBrowserTab(_activeBrowserTab);
+            SaveActiveWorkspaceSnapshot();
         }
     }
 
     private WebView2? ActiveBrowserView => _activeBrowserTab?.View;
 
-    private async Task CreateBrowserTabAsync(string url)
+    private async Task CreateBrowserTabAsync(string url, Guid? requestedId = null, string? requestedTitle = null)
     {
-        var id = Guid.NewGuid();
+        var id = requestedId ?? Guid.NewGuid();
         var normalizedUrl = NormalizeBrowserAddress(url);
         var view = new WebView2
         {
@@ -225,7 +257,7 @@ public partial class ShellWindow : Window
         var tab = new BrowserTab(id, view);
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
-        _vm.Tabs.AddBrowserTab(id, $"Tab {_browserTabNumber++}", false);
+        _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {_browserTabNumber++}", false);
         ActivateBrowserTab(id);
 
         await view.EnsureCoreWebView2Async();
@@ -272,6 +304,7 @@ public partial class ShellWindow : Window
         _vm.Tabs.ActivateBrowserTab(id);
         BrowserAddressBox.Text = tab.View.Source?.ToString() ?? string.Empty;
         tab.View.Focus();
+        SaveActiveWorkspaceSnapshot();
     }
 
     private void UpdateBrowserTab(BrowserTab? tab)
@@ -280,6 +313,7 @@ public partial class ShellWindow : Window
             return;
 
         _vm.Tabs.UpdateBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle);
+        SaveActiveWorkspaceSnapshot();
     }
 
     private sealed record BrowserTab(Guid Id, WebView2 View);
@@ -303,10 +337,160 @@ public partial class ShellWindow : Window
     }
 
     private void UpdateTerminalTab(TerminalTabView view, string? title)
-        => _vm.Tabs.SetTerminalSnapshot(title, view.WorkingDirectory);
+    {
+        _vm.Tabs.SetTerminalSnapshot(title, view.WorkingDirectory);
+        SaveActiveWorkspaceSnapshot();
+    }
 
     private void UpdateEditorTab(VimEditorControl ctrl)
-        => _vm.Tabs.SetEditorSnapshot(ctrl.FilePath, ctrl.IsModified);
+    {
+        _vm.Tabs.SetEditorSnapshot(ctrl.FilePath, ctrl.IsModified);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private async void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
+        => await SwitchWorkspaceAsync(workspace, captureCurrent: true);
+
+    private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent)
+    {
+        if (captureCurrent)
+            SaveActiveWorkspaceSnapshot();
+
+        _isSwitchingWorkspace = true;
+        try
+        {
+            _activeWorkspace = workspace;
+            var terminal = GetOrCreateTerminalView(workspace);
+            ShowTerminalView(terminal);
+            _vm.FolderTree.LoadRoot(workspace.RootPath);
+
+            var cwd = workspace.Terminal.WorkingDirectory;
+            _terminal.SetWorkingDirectory(Directory.Exists(cwd) ? cwd! : workspace.RootPath);
+            UpdateTerminalTab(terminal, workspace.Terminal.Title ?? terminal.HeaderTitle);
+
+            if (EditorHost.Child is VimEditorControl editor)
+                _clearEditorSnapshotOnNextCapture = !RestoreEditor(editor, workspace.Editor);
+
+            await RestoreBrowserTabsAsync(workspace.BrowserTabs);
+        }
+        finally
+        {
+            _isSwitchingWorkspace = false;
+        }
+
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private static bool RestoreEditor(VimEditorControl editor, EditorSnapshot snapshot)
+    {
+        if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
+        {
+            editor.LoadFile(snapshot.FilePath);
+            if (!snapshot.IsModified)
+                return true;
+        }
+
+        if (snapshot.IsModified || string.IsNullOrWhiteSpace(snapshot.FilePath))
+        {
+            editor.SetText(snapshot.Text ?? string.Empty);
+            return true;
+        }
+
+        editor.SetText(string.Empty);
+        return false;
+    }
+
+    private TerminalTabView GetOrCreateTerminalView(WorkspaceSnapshot workspace)
+    {
+        if (_terminalViews.TryGetValue(workspace.Id, out var existing))
+            return existing;
+
+        var cwd = workspace.Terminal.WorkingDirectory;
+        var startDirectory = Directory.Exists(cwd) ? cwd! : workspace.RootPath;
+        var view = CreateTerminalView(startDirectory);
+        _terminalViews[workspace.Id] = view;
+        return view;
+    }
+
+    private async Task RestoreBrowserTabsAsync(IReadOnlyList<BrowserTabSnapshot> snapshots)
+    {
+        ClearBrowserTabs();
+
+        var tabs = snapshots.Count == 0
+            ? new[] { new BrowserTabSnapshot { Url = DefaultBrowserUrl, Title = "Browser", IsActive = true } }
+            : snapshots;
+
+        foreach (var snapshot in tabs)
+            await CreateBrowserTabAsync(
+                snapshot.Url ?? DefaultBrowserUrl,
+                snapshot.Id == Guid.Empty ? null : snapshot.Id,
+                snapshot.Title);
+
+        var active = tabs.FirstOrDefault(t => t.IsActive) ?? tabs.First();
+        ActivateBrowserTab(active.Id);
+    }
+
+    private void ClearBrowserTabs()
+    {
+        foreach (var tab in _browserTabs)
+        {
+            tab.View.NavigationCompleted -= OnBrowserNavigationCompleted;
+            tab.View.Dispose();
+        }
+
+        _browserTabs.Clear();
+        BrowserContentHost.Children.Clear();
+        _vm.Tabs.BrowserTabs.Clear();
+        _activeBrowserTab = null;
+    }
+
+    private void SaveActiveWorkspaceSnapshot()
+    {
+        if (_isSwitchingWorkspace || _activeWorkspace is null)
+            return;
+
+        CaptureInto(_activeWorkspace);
+        _vm.Workspaces.SaveSnapshot(_activeWorkspace);
+    }
+
+    private void CaptureInto(WorkspaceSnapshot snapshot)
+    {
+        snapshot.LastUsedUtc = DateTime.UtcNow;
+        snapshot.Name = WorkspaceListViewModel.DisplayName(snapshot.RootPath);
+
+        if (TerminalHost.Child is TerminalTabView terminal)
+        {
+            snapshot.Terminal.WorkingDirectory = Directory.Exists(terminal.WorkingDirectory)
+                ? terminal.WorkingDirectory
+                : _terminal.CurrentDirectory;
+            snapshot.Terminal.Title = terminal.HeaderTitle;
+        }
+
+        if (EditorHost.Child is VimEditorControl editor)
+        {
+            if (_clearEditorSnapshotOnNextCapture)
+            {
+                snapshot.Editor = new EditorSnapshot();
+                _clearEditorSnapshotOnNextCapture = false;
+            }
+            else
+            {
+                snapshot.Editor.FilePath = editor.FilePath;
+                snapshot.Editor.Text = editor.Text;
+                snapshot.Editor.IsModified = editor.IsModified;
+            }
+        }
+
+        snapshot.BrowserTabs = _browserTabs.Select(tab => new BrowserTabSnapshot
+        {
+            Id = tab.Id,
+            Url = tab.View.Source?.ToString(),
+            Title = tab.View.CoreWebView2?.DocumentTitle,
+            IsActive = tab.Id == _activeBrowserTab?.Id
+        }).ToList();
+    }
+
+    private void OnClosing(object? sender, CancelEventArgs e) => SaveActiveWorkspaceSnapshot();
 
     private static string NormalizeBrowserAddress(string text)
     {

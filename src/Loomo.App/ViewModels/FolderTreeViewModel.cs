@@ -39,6 +39,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private string _emptyMessage = "";
 
     public ObservableCollection<FileNodeViewModel> Nodes { get; } = new();
+    public event EventHandler<string>? FolderOpenRequested;
 
     public FolderTreeViewModel(IWorkspaceService workspace)
     {
@@ -49,7 +50,12 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void OpenFolder()
     {
         var dlg = new OpenFolderDialog { Title = "ワークスペースフォルダを選択" };
-        if (dlg.ShowDialog() == true)
+        if (dlg.ShowDialog() != true)
+            return;
+
+        if (FolderOpenRequested is not null)
+            FolderOpenRequested.Invoke(this, dlg.FolderName);
+        else
             LoadRoot(dlg.FolderName);
     }
 

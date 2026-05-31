@@ -28,7 +28,12 @@ public sealed class TerminalService : ITerminalService
     public bool IsExecuting { get; private set; }
 
     /// <summary>可視ターミナルを結びつける（コマンド実行・フォーカス等の操作用）。</summary>
-    public void Attach(TerminalTabView view) => _view = view;
+    public void Attach(TerminalTabView view)
+    {
+        _view = view;
+        if (Directory.Exists(view.WorkingDirectory))
+            _cwd = view.WorkingDirectory;
+    }
 
     public void SetWorkingDirectory(string path)
     {

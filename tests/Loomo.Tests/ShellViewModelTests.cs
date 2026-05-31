@@ -41,7 +41,11 @@ public class ShellViewModelTests
         var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
         var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService());
 
-        return new ShellViewModel(folderTree, aiBar, new TabsViewModel(), sessionsVm, settingsVm);
+        var workspaceStore = new WorkspaceStateStore(
+            Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workspaces.json"));
+        var workspacesVm = new WorkspaceListViewModel(workspaceStore);
+
+        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm);
     }
 
     [Fact]
