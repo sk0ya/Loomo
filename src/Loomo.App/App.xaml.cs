@@ -26,6 +26,10 @@ public partial class App : Application
             .ConfigureServices(ConfigureServices)
             .Build();
 
+        // 保存済み設定（プロバイダ・APIキー等）を起動時に反映する
+        var settings = _host.Services.GetRequiredService<AiSettings>();
+        _host.Services.GetRequiredService<AiSettingsStore>().Load(settings);
+
         var shell = _host.Services.GetRequiredService<ShellWindow>();
         shell.Show();
     }
@@ -34,6 +38,7 @@ public partial class App : Application
     {
         // --- 設定 ---
         services.AddSingleton<AiSettings>();
+        services.AddSingleton<AiSettingsStore>();
         services.AddHttpClient("ai", c => c.Timeout = TimeSpan.FromMinutes(5));
 
         // --- サービス（concrete + interface 同一インスタンス） ---
@@ -67,6 +72,7 @@ public partial class App : Application
         // --- ViewModels / Window ---
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<AiBarViewModel>();
+        services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }

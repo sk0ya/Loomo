@@ -75,7 +75,7 @@ public partial class ShellWindow : Window
             SidebarColumn.MinWidth = 120;
             SidebarColumn.Width = _savedSidebarWidth.Value > 0 ? _savedSidebarWidth : new GridLength(220);
             SidebarSplitterColumn.Width = new GridLength(4);
-            SidebarView.Visibility = Visibility.Visible;
+            SidebarContainer.Visibility = Visibility.Visible;
             SidebarSplitter.Visibility = Visibility.Visible;
         }
         else
@@ -84,7 +84,7 @@ public partial class ShellWindow : Window
             SidebarColumn.MinWidth = 0;
             SidebarColumn.Width = new GridLength(0);
             SidebarSplitterColumn.Width = new GridLength(0);
-            SidebarView.Visibility = Visibility.Collapsed;
+            SidebarContainer.Visibility = Visibility.Collapsed;
             SidebarSplitter.Visibility = Visibility.Collapsed;
         }
     }

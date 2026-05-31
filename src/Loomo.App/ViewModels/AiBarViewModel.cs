@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
@@ -14,6 +15,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class AiBarViewModel : ObservableObject
 {
     private readonly AgentOrchestrator _orchestrator;
+    private readonly AiSettings _settings;
     private readonly Conversation _conversation = new();
     private CancellationTokenSource? _cts;
 
@@ -22,13 +24,18 @@ public sealed partial class AiBarViewModel : ObservableObject
     [ObservableProperty] private string _input = "";
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private string _providerLabel = "Stub";
+    [ObservableProperty] private string _providerLabel;
 
-    public AiBarViewModel(AgentOrchestrator orchestrator, UiApprovalService approval)
+    public AiBarViewModel(AgentOrchestrator orchestrator, UiApprovalService approval, AiSettings settings)
     {
         _orchestrator = orchestrator;
+        _settings = settings;
+        _providerLabel = settings.Provider.ToString();
         approval.ApprovalRequested += OnApprovalRequested;
     }
+
+    /// <summary>設定変更後に現在のプロバイダ表示を更新する。</summary>
+    public void RefreshProviderLabel() => ProviderLabel = _settings.Provider.ToString();
 
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;

@@ -6,6 +6,9 @@
     <!-- ===== Converters ===== -->
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
     <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVis" />
+    <conv:EnumToVisibilityConverter x:Key="EnumToVis" />
+    <conv:EnumToBoolConverter x:Key="EnumToBool" />
+    <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
 
     <!-- ===== Color palette (VS Code dark 系) ===== -->
     <SolidColorBrush x:Key="Bg" Color="#FF1E1E1E" />
@@ -140,6 +143,43 @@
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Padding" Value="10,6" />
+    </Style>
+
+    <!-- ===== Field label（設定フォーム用） ===== -->
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource FgDim}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,10,0,3" />
+    </Style>
+
+    <!-- ===== RadioButton（プロバイダ選択用・ピル型） ===== -->
+    <Style x:Key="ProviderRadio" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{StaticResource Fg}" />
+        <Setter Property="Margin" Value="0,3,0,0" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="b" Background="{StaticResource BgAlt}"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentHover}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Accent}" />
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

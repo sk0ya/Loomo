@@ -65,19 +65,25 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- ActivityBar -->
-                <StackPanel Grid.Column="0" Background="{StaticResource ActivityBarBg}">
-                    <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
-                            Command="{Binding ToggleSidebarCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索" />
-                    <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
-                            Command="{Binding AiBar.ToggleExpandCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
-                            VerticalAlignment="Bottom" />
-                </StackPanel>
+                <DockPanel Grid.Column="0" Background="{StaticResource ActivityBarBg}">
+                    <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
+                            Command="{Binding ShowSettingsCommand}" />
+                    <StackPanel>
+                        <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
+                                Command="{Binding ShowExplorerCommand}" />
+                        <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索" />
+                        <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
+                                Command="{Binding AiBar.ToggleExpandCommand}" />
+                    </StackPanel>
+                </DockPanel>
 
-                <!-- Sidebar : FolderTree -->
-                <views:FolderTreeView x:Name="SidebarView" Grid.Column="1"
-                                      DataContext="{Binding FolderTree}" />
+                <!-- Sidebar : Explorer / Settings を ActivePanel で切替 -->
+                <Grid x:Name="SidebarContainer" Grid.Column="1">
+                    <views:FolderTreeView DataContext="{Binding FolderTree}"
+                                          Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
+                    <views:SettingsView DataContext="{Binding Settings}"
+                                        Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
+                </Grid>
 
                 <GridSplitter x:Name="SidebarSplitter" Grid.Column="2" Width="4"
                               HorizontalAlignment="Stretch" Background="{StaticResource Border}" />

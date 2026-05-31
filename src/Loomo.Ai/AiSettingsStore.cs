@@ -1,0 +1,144 @@
+using System;
+using System.IO;
+using System.Runtime.Versioning;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using sk0ya.Loomo.Core.Models;
+
+namespace sk0ya.Loomo.Ai;
+
+/// <summary>
+/// <see cref="AiSettings"/> を <c>%APPDATA%/Loomo/settings.json</c> に永続化する。
+/// APIキーは平文保存せず、DPAPI(<see cref="DataProtectionScope.CurrentUser"/>)で暗号化して書き出す。
+/// DPAPI は Windows 専用（本アプリは WPF / Windows 専用なので問題なし）。
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class AiSettingsStore
+{
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    private readonly string _filePath;
+
+    public AiSettingsStore() : this(DefaultPath()) { }
+
+    public AiSettingsStore(string filePath) => _filePath = filePath;
+
+    public string FilePath => _filePath;
+
+    public static string DefaultPath() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Loomo", "settings.json");
+
+    /// <summary>保存済み設定を読み込み <paramref name="settings"/> に反映する。
+    /// ファイルが無い・壊れている場合は既定値のままにして何もしない。</summary>
+    public void Load(AiSettings settings)
+    {
+        if (!File.Exists(_filePath)) return;
+        PersistedSettings? dto;
+        try
+        {
+            dto = JsonSerializer.Deserialize<PersistedSettings>(File.ReadAllText(_filePath), JsonOpts);
+        }
+        catch
+        {
+            return; // 破損時は既定のまま起動する
+        }
+        dto?.ApplyTo(settings);
+    }
+
+    /// <summary>現在の設定をファイルへ保存する（APIキーは暗号化）。</summary>
+    public void Save(AiSettings settings)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
+        var dto = PersistedSettings.From(settings);
+        File.WriteAllText(_filePath, JsonSerializer.Serialize(dto, JsonOpts));
+    }
+
+    // ===== DPAPI helpers =====
+
+    internal static string? Protect(string? plain)
+    {
+        if (string.IsNullOrEmpty(plain)) return null;
+        var bytes = ProtectedData.Protect(
+            Encoding.UTF8.GetBytes(plain), optionalEntropy: null, DataProtectionScope.CurrentUser);
+        return Convert.ToBase64String(bytes);
+    }
+
+    internal static string? Unprotect(string? cipher)
+    {
+        if (string.IsNullOrEmpty(cipher)) return null;
+        try
+        {
+            var bytes = ProtectedData.Unprotect(
+                Convert.FromBase64String(cipher), optionalEntropy: null, DataProtectionScope.CurrentUser);
+            return Encoding.UTF8.GetString(bytes);
+        }
+        catch
+        {
+            return null; // 別ユーザー/別マシン/破損では復号できない
+        }
+    }
+
+    // ===== 永続化用DTO（APIキーは暗号化文字列で保持） =====
+
+    private sealed class PersistedSettings
+    {
+        public AiProvider Provider { get; set; }
+        public string? SystemPrompt { get; set; }
+        public PersistedProvider Claude { get; set; } = new();
+        public PersistedProvider OpenAI { get; set; } = new();
+        public PersistedProvider Copilot { get; set; } = new();
+        public PersistedProvider Local { get; set; } = new();
+
+        public static PersistedSettings From(AiSettings s) => new()
+        {
+            Provider = s.Provider,
+            SystemPrompt = s.SystemPrompt,
+            Claude = PersistedProvider.From(s.Claude),
+            OpenAI = PersistedProvider.From(s.OpenAI),
+            Copilot = PersistedProvider.From(s.Copilot),
+            Local = PersistedProvider.From(s.Local),
+        };
+
+        public void ApplyTo(AiSettings s)
+        {
+            s.Provider = Provider;
+            if (!string.IsNullOrWhiteSpace(SystemPrompt)) s.SystemPrompt = SystemPrompt;
+            Claude.ApplyTo(s.Claude);
+            OpenAI.ApplyTo(s.OpenAI);
+            Copilot.ApplyTo(s.Copilot);
+            Local.ApplyTo(s.Local);
+        }
+    }
+
+    private sealed class PersistedProvider
+    {
+        public string? Model { get; set; }
+        public string? ApiKeyEnc { get; set; }
+        public string? BaseUrl { get; set; }
+        public int MaxTokens { get; set; } = 4096;
+
+        public static PersistedProvider From(ProviderConfig c) => new()
+        {
+            Model = c.Model,
+            ApiKeyEnc = Protect(c.ApiKey),
+            BaseUrl = c.BaseUrl,
+            MaxTokens = c.MaxTokens,
+        };
+
+        public void ApplyTo(ProviderConfig c)
+        {
+            if (!string.IsNullOrEmpty(Model)) c.Model = Model;
+            c.ApiKey = Unprotect(ApiKeyEnc);
+            if (BaseUrl is not null) c.BaseUrl = BaseUrl;
+            if (MaxTokens > 0) c.MaxTokens = MaxTokens;
+        }
+    }
+}

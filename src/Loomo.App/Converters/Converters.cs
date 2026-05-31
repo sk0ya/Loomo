@@ -14,3 +14,36 @@ public sealed class EmptyStringToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>列挙値が ConverterParameter（名前）と一致するとき Visible。</summary>
+public sealed class EnumToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => string.Equals(value?.ToString(), parameter as string, StringComparison.Ordinal)
+            ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>列挙値が ConverterParameter（名前）と一致するとき true。RadioButton 双方向バインド用。</summary>
+public sealed class EnumToBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => string.Equals(value?.ToString(), parameter as string, StringComparison.Ordinal);
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true && parameter is string name
+            ? Enum.Parse(targetType, name)
+            : Binding.DoNothing;
+}
+
+/// <summary>true のとき Collapsed（false で Visible）。</summary>
+public sealed class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
