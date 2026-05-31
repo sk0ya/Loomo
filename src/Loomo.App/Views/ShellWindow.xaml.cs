@@ -22,6 +22,7 @@ public partial class ShellWindow : Window
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
     private readonly IWorkspaceService _workspace;
+    private readonly TabIconService _tabIcons;
     private readonly ShellViewModel _vm;
     private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
     private readonly Dictionary<Guid, EditorWorkspaceTabs> _editorWorkspaces = new();
@@ -49,7 +50,8 @@ public partial class ShellWindow : Window
         ShellViewModel vm,
         TerminalService terminal,
         EditorService editor,
-        IWorkspaceService workspace)
+        IWorkspaceService workspace,
+        TabIconService tabIcons)
     {
         InitializeComponent();
         DataContext = vm;
@@ -57,6 +59,7 @@ public partial class ShellWindow : Window
         _terminal = terminal;
         _editor = editor;
         _workspace = workspace;
+        _tabIcons = tabIcons;
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;
@@ -328,6 +331,7 @@ public partial class ShellWindow : Window
             return;
 
         UpdateBrowserTab(tab);
+        _ = RefreshBrowserTabIconAsync(tab);
         if (ReferenceEquals(_activeBrowserTab, tab) && view.Source is not null)
             BrowserAddressBox.Text = view.Source.ToString();
     }
@@ -470,8 +474,10 @@ public partial class ShellWindow : Window
         ActivateBrowserTab(id);
 
         await view.EnsureCoreWebView2Async();
+        view.CoreWebView2!.FaviconChanged += OnBrowserFaviconChanged;
         view.Source = new Uri(normalizedUrl);
         UpdateBrowserTab(tab);
+        await RefreshBrowserTabIconAsync(tab);
     }
 
     private async Task CloseBrowserTabAsync(Guid id)
@@ -482,6 +488,8 @@ public partial class ShellWindow : Window
 
         var wasActive = _activeBrowserTab?.Id == id;
         var tab = _browserTabs[index];
+        if (tab.View.CoreWebView2 is not null)
+            tab.View.CoreWebView2.FaviconChanged -= OnBrowserFaviconChanged;
         BrowserContentHost.Children.Remove(tab.View);
         tab.View.NavigationCompleted -= OnBrowserNavigationCompleted;
         tab.View.Dispose();
@@ -524,6 +532,27 @@ public partial class ShellWindow : Window
 
         _vm.Tabs.UpdateBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle);
         SaveActiveWorkspaceSnapshot();
+    }
+
+    private async void OnBrowserFaviconChanged(object? sender, object? e)
+    {
+        if (sender is not Microsoft.Web.WebView2.Core.CoreWebView2 coreWebView2)
+            return;
+
+        var tab = _browserTabs.FirstOrDefault(t => ReferenceEquals(t.View.CoreWebView2, coreWebView2));
+        if (tab is null)
+            return;
+
+        await RefreshBrowserTabIconAsync(tab);
+    }
+
+    private async Task RefreshBrowserTabIconAsync(BrowserTab tab)
+    {
+        if (tab.View.CoreWebView2 is null)
+            return;
+
+        var icon = await _tabIcons.GetBrowserIconAsync(tab.View.CoreWebView2, tab.View.Source?.ToString());
+        _vm.Tabs.UpdateTabIcon(tab.Id, icon);
     }
 
     private sealed record TerminalTab(Guid Id, TerminalTabView View);
@@ -795,7 +824,7 @@ public partial class ShellWindow : Window
 
         if (browserWorkspace.IsInitialized && _browserTabs.Count > 0)
         {
-            AttachBrowserTabs();
+            await AttachBrowserTabsAsync();
             ActivateBrowserTab(browserWorkspace.ActiveTabId ?? _browserTabs[0].Id);
             return;
         }
@@ -834,7 +863,7 @@ public partial class ShellWindow : Window
         _activeBrowserTab = null;
     }
 
-    private void AttachBrowserTabs()
+    private async Task AttachBrowserTabsAsync()
     {
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
@@ -845,6 +874,7 @@ public partial class ShellWindow : Window
                 BrowserContentHost.Children.Add(tab.View);
 
             _vm.Tabs.AddBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle, false);
+            await RefreshBrowserTabIconAsync(tab);
         }
     }
 
