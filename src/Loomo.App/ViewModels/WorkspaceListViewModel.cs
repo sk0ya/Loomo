@@ -31,10 +31,13 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 {
     private readonly WorkspaceStateStore _store;
     private readonly WorkspaceState _state;
+    private bool _isRefreshingSelection;
 
     public ObservableCollection<WorkspaceEntryViewModel> Workspaces { get; } = new();
 
     public event EventHandler<WorkspaceSnapshot>? WorkspaceActivated;
+
+    [ObservableProperty] private WorkspaceEntryViewModel? _selectedWorkspace;
 
     public WorkspaceListViewModel(WorkspaceStateStore store)
     {
@@ -49,6 +52,16 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             {
                 IsActive = snapshot.Id == _state.ActiveWorkspaceId
             });
+        }
+
+        _isRefreshingSelection = true;
+        try
+        {
+            SelectedWorkspace = Workspaces.FirstOrDefault(w => w.IsActive);
+        }
+        finally
+        {
+            _isRefreshingSelection = false;
         }
     }
 
@@ -72,6 +85,14 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         var snapshot = FindSnapshot(entry.Id);
         if (snapshot is not null)
             Activate(snapshot);
+    }
+
+    partial void OnSelectedWorkspaceChanged(WorkspaceEntryViewModel? value)
+    {
+        if (_isRefreshingSelection || value is null)
+            return;
+
+        ActivateWorkspace(value);
     }
 
     public void ActivateFolder(string path)
@@ -136,17 +157,31 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
     private void RefreshEntries()
     {
-        foreach (var entry in Workspaces)
+        _isRefreshingSelection = true;
+        try
         {
-            var snapshot = FindSnapshot(entry.Id);
-            if (snapshot is null)
-                continue;
+            WorkspaceEntryViewModel? active = null;
 
-            entry.Name = string.IsNullOrWhiteSpace(snapshot.Name)
-                ? DisplayName(snapshot.RootPath)
-                : snapshot.Name;
-            entry.LastUsedUtc = snapshot.LastUsedUtc;
-            entry.IsActive = entry.Id == _state.ActiveWorkspaceId;
+            foreach (var entry in Workspaces)
+            {
+                var snapshot = FindSnapshot(entry.Id);
+                if (snapshot is null)
+                    continue;
+
+                entry.Name = string.IsNullOrWhiteSpace(snapshot.Name)
+                    ? DisplayName(snapshot.RootPath)
+                    : snapshot.Name;
+                entry.LastUsedUtc = snapshot.LastUsedUtc;
+                entry.IsActive = entry.Id == _state.ActiveWorkspaceId;
+                if (entry.IsActive)
+                    active = entry;
+            }
+
+            SelectedWorkspace = active;
+        }
+        finally
+        {
+            _isRefreshingSelection = false;
         }
     }
 

@@ -23,4 +23,27 @@ public class WorkspaceListViewModelTests
 
         Assert.Equal(1, activationCount);
     }
+
+    [Fact]
+    public void Selecting_workspace_entry_activates_workspace()
+    {
+        var dir1 = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var dir2 = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var store = new WorkspaceStateStore(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json"));
+        var sut = new WorkspaceListViewModel(store);
+        WorkspaceSnapshot? activated = null;
+        sut.WorkspaceActivated += (_, snapshot) => activated = snapshot;
+
+        sut.ActivateFolder(dir1.FullName);
+        sut.ActivateFolder(dir2.FullName);
+        var first = sut.Workspaces.Single(w => w.RootPath == dir1.FullName);
+
+        sut.SelectedWorkspace = first;
+
+        Assert.Equal(dir1.FullName, activated?.RootPath);
+        Assert.Equal(first, sut.SelectedWorkspace);
+    }
 }

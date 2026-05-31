@@ -25,11 +25,34 @@
 
             <!-- ===== カスタムタイトルバー ===== -->
             <Grid Grid.Row="0" Height="36" Background="{StaticResource ActivityBarBg}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
+                <Grid Margin="14,0,150,0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock Text="🤖" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock Text="Loomo" VerticalAlignment="Center"
-                               FontSize="12" Foreground="{StaticResource FgDim}" />
-                </StackPanel>
+                    <TextBlock Grid.Column="1" Text="Loomo" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{StaticResource FgDim}" Margin="0,0,12,0" />
+                    <ComboBox Grid.Column="2" Height="24"
+                              MinWidth="160" MaxWidth="460"
+                              ItemsSource="{Binding Workspaces.Workspaces}"
+                              SelectedItem="{Binding Workspaces.SelectedWorkspace, Mode=TwoWay}"
+                              DisplayMemberPath="Name"
+                              ToolTip="ワークスペース"
+                              WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Grid.Column="3" Width="30" Height="24" Margin="6,0,0,0"
+                            Style="{StaticResource CaptionButton}"
+                            ToolTip="ワークスペースを追加"
+                            Command="{Binding Workspaces.OpenFolderCommand}"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Path Width="15" Height="13" Stretch="Uniform"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6"
+                              Data="M1,3.5 H5 L6.2,5 H14 V12 H1 Z M1,3.5 V2 H5.5 L6.7,3.5 M10,6.5 V10 M8.25,8.25 H11.75" />
+                    </Button>
+                </Grid>
 
                 <!-- ウィンドウ操作ボタン（キャプション領域だがクリック可能にする） -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
@@ -73,8 +96,6 @@
                     <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
                             Command="{Binding ShowSettingsCommand}" />
                     <StackPanel>
-                        <Button Style="{StaticResource IconButton}" Content="▦" ToolTip="ワークスペース"
-                                Command="{Binding ShowWorkspacesCommand}" />
                         <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
                                 Command="{Binding ShowExplorerCommand}" />
                         <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
@@ -85,10 +106,8 @@
                     </StackPanel>
                 </DockPanel>
 
-                <!-- Sidebar : Explorer / Sessions / Settings を ActivePanel で切替 -->
+                <!-- Sidebar : Explorer / Tabs / Sessions / Settings を ActivePanel で切替 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="1">
-                    <views:WorkspacesView DataContext="{Binding Workspaces}"
-                                          Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Workspaces}" />
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
                     <views:TabsView DataContext="{Binding Tabs}"
