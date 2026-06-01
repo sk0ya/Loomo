@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -46,6 +47,25 @@ public partial class ShellWindow : Window
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
     private GridLength _savedSidebarWidth = new(220);
 
+    /// <summary>メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。</summary>
+    private PaneNode? _root;
+    /// <summary>ペイン種別 → そのライブコントロールを内包するルート要素。</summary>
+    private readonly Dictionary<PaneKind, FrameworkElement> _paneElements = new();
+    /// <summary>ドラッグ判定中に一時的にマウスを捕捉しているタイトル要素。</summary>
+    private FrameworkElement? _dragHandle;
+    private Point _paneDragStart;
+    private bool _paneDragArmed;
+
+    // ===== ドラッグ中のスナップ風プレビュー（WebView2 の airspace を越えるため最前面 Popup を使う） =====
+    private Popup? _dragPopup;
+    private Canvas? _dragCanvas;
+    private Border? _dragPreview;       // ドロップ先の半分を塗るプレビュー矩形
+    private Border? _dragTargetOutline; // ドロップ先ペイン全体の枠
+    private bool _paneDragging;
+    private PaneKind _dragSource;
+    private PaneKind? _dragTarget;
+    private DropZone? _dragZone;
+
     public ShellWindow(
         ShellViewModel vm,
         TerminalService terminal,
@@ -63,6 +83,8 @@ public partial class ShellWindow : Window
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;
+
+        InitializePanes();
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
@@ -112,6 +134,7 @@ public partial class ShellWindow : Window
                 await SwitchWorkspaceAsync(workspace, captureCurrent: false);
             else
             {
+                ApplyDefaultLayout();
                 BrowserAddressBox.Text = DefaultBrowserUrl;
                 await CreateBrowserTabAsync(DefaultBrowserUrl);
             }
@@ -146,6 +169,665 @@ public partial class ShellWindow : Window
             SidebarSplitterColumn.Width = new GridLength(0);
             SidebarContainer.Visibility = Visibility.Collapsed;
             SidebarSplitter.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    // ===== ペインレイアウト（2D並べ替え・リサイズ・表示切替） =====
+
+    private enum DropZone { Left, Right, Above, Below }
+    private enum SplitKind { Rows, Columns }
+
+    private void InitializePanes()
+    {
+        _paneElements[PaneKind.Terminal] = TerminalPane;
+        _paneElements[PaneKind.Editor] = EditorPane;
+        _paneElements[PaneKind.Browser] = BrowserPane;
+        _paneElements[PaneKind.Ai] = AiPane;
+        // レイアウトの構築は OnLoaded（ワークスペース適用 or 既定）に一本化する。
+    }
+
+    /// <summary>既定レイアウト：[Editor | Browser] / [Terminal] / [AI]。</summary>
+    private void ApplyDefaultLayout()
+    {
+        var top = new PaneSplit { Orientation = SplitKind.Columns, Weight = 2 };
+        top.Children.Add(NewLeaf(PaneKind.Editor));
+        top.Children.Add(NewLeaf(PaneKind.Browser));
+
+        var root = new PaneSplit { Orientation = SplitKind.Rows };
+        root.Children.Add(top);
+        root.Children.Add(NewLeaf(PaneKind.Terminal));
+        root.Children.Add(NewLeaf(PaneKind.Ai));
+
+        _root = root;
+        RebuildPaneLayout();
+    }
+
+    private PaneLeaf NewLeaf(PaneKind kind) => new() { Kind = kind };
+
+    /// <summary>ツリー内のすべてのリーフ（ペイン）を列挙する。</summary>
+    private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null)
+    {
+        node ??= _root;
+        if (node is PaneLeaf leaf)
+        {
+            yield return leaf;
+        }
+        else if (node is PaneSplit split)
+        {
+            foreach (var child in split.Children)
+                foreach (var l in AllLeaves(child))
+                    yield return l;
+        }
+    }
+
+    private PaneLeaf? FindLeaf(PaneKind kind) => AllLeaves().FirstOrDefault(l => l.Kind == kind);
+
+    /// <summary>指定ノードを直接の子に持つスプリットを返す（ルートなら null）。</summary>
+    private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
+    {
+        current ??= _root;
+        if (current is not PaneSplit split)
+            return null;
+        if (split.Children.Contains(target))
+            return split;
+        foreach (var child in split.Children)
+        {
+            var found = FindParent(target, child);
+            if (found is not null)
+                return found;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 現在の <see cref="_root"/>（レイアウトツリー）に合わせて <c>PaneHost</c> を組み直す。
+    /// スプリットごとに Grid を生成し、ペイン本体はその Grid へ再ペアレントする
+    /// （同一ウィンドウ内のため WebView2 等は生存する）。
+    /// </summary>
+    private void RebuildPaneLayout()
+    {
+        // すべてのペインを現在の親から外してからホストを作り直す
+        foreach (var element in _paneElements.Values)
+            if (element.Parent is Panel parent)
+                parent.Children.Remove(element);
+
+        PaneHost.Children.Clear();
+        PaneHost.RowDefinitions.Clear();
+        PaneHost.ColumnDefinitions.Clear();
+
+        _root = Normalize(_root);
+        if (_root is null)
+        {
+            ApplyDefaultLayout();
+            return;
+        }
+
+        var border = (Brush)FindResource("Border");
+        PaneHost.Children.Add(BuildNode(_root, border));
+    }
+
+    /// <summary>1ノード分のビジュアルを生成する（リーフ＝ペイン本体、スプリット＝Grid）。</summary>
+    private FrameworkElement BuildNode(PaneNode node, Brush border)
+    {
+        if (node is PaneLeaf leaf)
+        {
+            var element = _paneElements[leaf.Kind];
+            element.Visibility = Visibility.Visible;
+            return element;
+        }
+
+        var split = (PaneSplit)node;
+        var grid = new Grid();
+        split.Host = grid;
+        var cols = split.Orientation == SplitKind.Columns;
+        var min = cols ? 160.0 : 100.0;
+
+        for (var i = 0; i < split.Children.Count; i++)
+        {
+            if (i > 0)
+            {
+                AddTrack(grid, cols, new GridLength(4));
+                var splitter = NewSplitter(cols, border);
+                SetTrack(splitter, cols, i * 2 - 1);
+                grid.Children.Add(splitter);
+            }
+
+            var child = split.Children[i];
+            AddTrack(grid, cols, new GridLength(child.Weight <= 0 ? 1 : child.Weight, GridUnitType.Star), min);
+            var visual = BuildNode(child, border);
+            SetTrack(visual, cols, i * 2);
+            grid.Children.Add(visual);
+        }
+        return grid;
+    }
+
+    private static void AddTrack(Grid grid, bool cols, GridLength length, double min = 0)
+    {
+        if (cols)
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = length, MinWidth = min });
+        else
+            grid.RowDefinitions.Add(new RowDefinition { Height = length, MinHeight = min });
+    }
+
+    private static void SetTrack(UIElement element, bool cols, int index)
+    {
+        if (cols)
+            Grid.SetColumn(element, index);
+        else
+            Grid.SetRow(element, index);
+    }
+
+    private static GridSplitter NewSplitter(bool cols, Brush border) => new()
+    {
+        Width = cols ? 4 : double.NaN,
+        Height = cols ? double.NaN : 4,
+        ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        VerticalAlignment = VerticalAlignment.Stretch,
+        Background = border
+    };
+
+    /// <summary>GridSplitter 操作後の行高・列幅（star比率）を現在のツリーへ取り込む。</summary>
+    private void CaptureLayoutSizes() => CaptureNode(_root);
+
+    private static void CaptureNode(PaneNode? node)
+    {
+        if (node is not PaneSplit split || split.Host is not { } grid)
+            return;
+
+        var cols = split.Orientation == SplitKind.Columns;
+        for (var i = 0; i < split.Children.Count; i++)
+        {
+            var index = i * 2; // 子は 0,2,4,...（奇数はスプリッター）
+            if (cols)
+            {
+                if (index < grid.ColumnDefinitions.Count)
+                {
+                    var w = grid.ColumnDefinitions[index].Width;
+                    if (w.IsStar && w.Value > 0)
+                        split.Children[i].Weight = w.Value;
+                }
+            }
+            else
+            {
+                if (index < grid.RowDefinitions.Count)
+                {
+                    var h = grid.RowDefinitions[index].Height;
+                    if (h.IsStar && h.Value > 0)
+                        split.Children[i].Weight = h.Value;
+                }
+            }
+            CaptureNode(split.Children[i]);
+        }
+    }
+
+    /// <summary>保存済みレイアウトを適用する。ツリーに無いペインは非表示扱い。</summary>
+    private void ApplyPaneLayout(PaneNodeSnapshot? snapshot)
+    {
+        var built = snapshot is null ? null : BuildFromSnapshot(snapshot, new HashSet<PaneKind>());
+        if (built is not null && AllLeaves(built).Any())
+        {
+            _root = built;
+            RebuildPaneLayout();
+        }
+        else
+        {
+            ApplyDefaultLayout();
+        }
+    }
+
+    /// <summary>スナップショットからツリーを再構築する（重複・未知のペインは捨てる）。</summary>
+    private PaneNode? BuildFromSnapshot(PaneNodeSnapshot snap, HashSet<PaneKind> seen)
+    {
+        if (snap.Children is { Count: > 0 })
+        {
+            var kids = new List<PaneNode>();
+            foreach (var child in snap.Children)
+            {
+                var n = BuildFromSnapshot(child, seen);
+                if (n is not null)
+                    kids.Add(n);
+            }
+            if (kids.Count == 0)
+                return null;
+            if (kids.Count == 1)
+            {
+                kids[0].Weight = snap.Weight > 0 ? snap.Weight : 1;
+                return kids[0];
+            }
+            var split = new PaneSplit
+            {
+                Orientation = snap.Orientation == "Columns" ? SplitKind.Columns : SplitKind.Rows,
+                Weight = snap.Weight > 0 ? snap.Weight : 1
+            };
+            split.Children.AddRange(kids);
+            return split;
+        }
+
+        if (snap.Kind is { } kind && _paneElements.ContainsKey(kind) && seen.Add(kind))
+            return new PaneLeaf { Kind = kind, Weight = snap.Weight > 0 ? snap.Weight : 1 };
+        return null;
+    }
+
+    private static PaneNodeSnapshot ToSnapshot(PaneNode node)
+    {
+        if (node is PaneLeaf leaf)
+            return new PaneNodeSnapshot { Weight = leaf.Weight, Kind = leaf.Kind };
+
+        var split = (PaneSplit)node;
+        return new PaneNodeSnapshot
+        {
+            Weight = split.Weight,
+            Orientation = split.Orientation == SplitKind.Columns ? "Columns" : "Rows",
+            Children = split.Children.Select(ToSnapshot).ToList()
+        };
+    }
+
+    /// <summary>
+    /// ツリーを正規化する：空スプリットを除去し、子が1つのスプリットを畳み、
+    /// 同方向に入れ子になったスプリットをフラット化する。
+    /// </summary>
+    private PaneNode? Normalize(PaneNode? node)
+    {
+        if (node is not PaneSplit split)
+            return node;
+
+        var kids = new List<PaneNode>();
+        foreach (var child in split.Children)
+        {
+            var n = Normalize(child);
+            if (n is null)
+                continue;
+            if (n is PaneSplit inner && inner.Orientation == split.Orientation)
+                kids.AddRange(inner.Children); // 同方向はフラット化
+            else
+                kids.Add(n);
+        }
+
+        if (kids.Count == 0)
+            return null;
+        if (kids.Count == 1)
+        {
+            kids[0].Weight = split.Weight;
+            return kids[0];
+        }
+
+        split.Children.Clear();
+        split.Children.AddRange(kids);
+        return split;
+    }
+
+    private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _paneDragStart = e.GetPosition(null);
+        _paneDragArmed = true;
+        // しきい値到達前にカーソルがタイトルを外れても MouseMove を拾えるよう捕捉する。
+        if (sender is FrameworkElement fe && fe.CaptureMouse())
+            _dragHandle = fe;
+    }
+
+    private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_paneDragging || !_paneDragArmed)
+            return;
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            DisarmTitleDrag();
+            return;
+        }
+
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _paneDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _paneDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
+        {
+            DisarmTitleDrag(); // タイトルの捕捉を解放してからオーバーレイへ捕捉を移す
+            BeginPaneDrag(kind);
+        }
+    }
+
+    private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e) => DisarmTitleDrag();
+
+    /// <summary>ドラッグ判定を解除し、タイトル要素のマウス捕捉を解放する。</summary>
+    private void DisarmTitleDrag()
+    {
+        _paneDragArmed = false;
+        if (_dragHandle is not null)
+        {
+            if (ReferenceEquals(Mouse.Captured, _dragHandle))
+                _dragHandle.ReleaseMouseCapture();
+            _dragHandle = null;
+        }
+    }
+
+    /// <summary>
+    /// スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は最前面の透明 Popup を被せ、
+    /// その上でマウスを追跡＆プレビューを描画する（WebView2/Terminal の上でも正しく重なる）。
+    /// </summary>
+    private void BeginPaneDrag(PaneKind source)
+    {
+        if (AllLeaves().Count() <= 1)
+            return; // 1枚だけなら移動先がない
+
+        EnsureDragOverlay();
+        _dragSource = source;
+        _dragTarget = null;
+        _dragZone = null;
+        _paneDragging = true;
+
+        _dragCanvas!.Width = PaneHost.ActualWidth;
+        _dragCanvas.Height = PaneHost.ActualHeight;
+        _dragPreview!.Visibility = Visibility.Collapsed;
+        _dragTargetOutline!.Visibility = Visibility.Collapsed;
+        _dragPopup!.IsOpen = true;
+
+        // 開いた直後は Popup の HWND が未実体化で捕捉に失敗することがあるため、失敗時は次の入力で再試行する。
+        if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    if (_paneDragging)
+                        Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
+                }),
+                System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private void EnsureDragOverlay()
+    {
+        if (_dragPopup is not null)
+            return;
+
+        var accent = (Brush)FindResource("Accent");
+        _dragTargetOutline = new Border
+        {
+            BorderBrush = accent,
+            BorderThickness = new Thickness(1),
+            Background = MakeTranslucent(accent, 0.10),
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false
+        };
+        _dragPreview = new Border
+        {
+            BorderBrush = accent,
+            BorderThickness = new Thickness(2),
+            Background = MakeTranslucent(accent, 0.35),
+            CornerRadius = new CornerRadius(2),
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false
+        };
+        _dragCanvas = new Canvas { Background = Brushes.Transparent };
+        _dragCanvas.Children.Add(_dragTargetOutline);
+        _dragCanvas.Children.Add(_dragPreview);
+        _dragCanvas.MouseMove += OnDragCanvasMouseMove;
+        _dragCanvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
+        _dragCanvas.LostMouseCapture += OnDragCanvasLostCapture;
+
+        _dragPopup = new Popup
+        {
+            PlacementTarget = PaneHost,
+            Placement = PlacementMode.Relative,
+            AllowsTransparency = true,
+            StaysOpen = true,
+            Child = _dragCanvas
+        };
+    }
+
+    private void OnDragCanvasMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_paneDragging)
+            return;
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            // ボタンアップを取りこぼした場合の保険
+            EndPaneDrag();
+            return;
+        }
+
+        UpdateDragPreview(e.GetPosition(PaneHost));
+    }
+
+    private void UpdateDragPreview(Point pos)
+    {
+        var hit = HitTestCell(pos);
+        if (hit is null)
+        {
+            _dragTarget = null;
+            _dragZone = null;
+            _dragPreview!.Visibility = Visibility.Collapsed;
+            _dragTargetOutline!.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var (kind, rect) = hit.Value;
+        var relX = rect.Width > 0 ? (pos.X - rect.X) / rect.Width : 0.5;
+        var relY = rect.Height > 0 ? (pos.Y - rect.Y) / rect.Height : 0.5;
+        var zone = NearestZone(relX, relY);
+        _dragTarget = kind;
+        _dragZone = zone;
+
+        PlaceOverlay(_dragTargetOutline!, rect);
+        PlaceOverlay(_dragPreview!, ZoneRect(rect, zone));
+        _dragTargetOutline!.Visibility = Visibility.Visible;
+        _dragPreview!.Visibility = Visibility.Visible;
+    }
+
+    private static void PlaceOverlay(Border border, Rect r)
+    {
+        Canvas.SetLeft(border, r.X);
+        Canvas.SetTop(border, r.Y);
+        border.Width = r.Width;
+        border.Height = r.Height;
+    }
+
+    private void OnDragCanvasMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        var source = _dragSource;
+        var target = _dragTarget;
+        var zone = _dragZone;
+        EndPaneDrag();
+
+        if (target is { } t && zone is { } z && t != source)
+            MovePane(source, t, z);
+    }
+
+    private void OnDragCanvasLostCapture(object sender, MouseEventArgs e)
+    {
+        if (_paneDragging)
+            EndPaneDrag();
+    }
+
+    private void EndPaneDrag()
+    {
+        _paneDragging = false;
+        if (ReferenceEquals(Mouse.Captured, _dragCanvas))
+            Mouse.Capture(null);
+        if (_dragPopup is not null)
+            _dragPopup.IsOpen = false;
+        if (_dragPreview is not null)
+            _dragPreview.Visibility = Visibility.Collapsed;
+        if (_dragTargetOutline is not null)
+            _dragTargetOutline.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>カーソル位置にあるペインのセルとその矩形（PaneHost 座標）を返す。</summary>
+    private (PaneKind Kind, Rect Rect)? HitTestCell(Point pos)
+    {
+        foreach (var leaf in AllLeaves())
+        {
+            var element = _paneElements[leaf.Kind];
+            if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+                continue;
+            var topLeft = element.TransformToVisual(PaneHost).Transform(new Point(0, 0));
+            var rect = new Rect(topLeft, new Size(element.ActualWidth, element.ActualHeight));
+            if (rect.Contains(pos))
+                return (leaf.Kind, rect);
+        }
+        return null;
+    }
+
+    /// <summary>セル内の相対位置から最も近い辺（=ドロップ先）を求める。</summary>
+    private static DropZone NearestZone(double relX, double relY)
+    {
+        var dLeft = relX;
+        var dRight = 1 - relX;
+        var dTop = relY;
+        var dBottom = 1 - relY;
+        var min = Math.Min(Math.Min(dLeft, dRight), Math.Min(dTop, dBottom));
+        if (min == dLeft) return DropZone.Left;
+        if (min == dRight) return DropZone.Right;
+        if (min == dTop) return DropZone.Above;
+        return DropZone.Below;
+    }
+
+    private static Rect ZoneRect(Rect r, DropZone zone) => zone switch
+    {
+        DropZone.Left => new Rect(r.X, r.Y, r.Width / 2, r.Height),
+        DropZone.Right => new Rect(r.X + r.Width / 2, r.Y, r.Width / 2, r.Height),
+        DropZone.Above => new Rect(r.X, r.Y, r.Width, r.Height / 2),
+        _ => new Rect(r.X, r.Y + r.Height / 2, r.Width, r.Height / 2),
+    };
+
+    private static Brush MakeTranslucent(Brush source, double opacity)
+    {
+        if (source is SolidColorBrush solid)
+        {
+            var c = solid.Color;
+            return new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), c.R, c.G, c.B));
+        }
+
+        var clone = source.Clone();
+        clone.Opacity = opacity;
+        return clone;
+    }
+
+    private void MovePane(PaneKind source, PaneKind target, DropZone zone)
+    {
+        if (source == target)
+            return;
+
+        var sourceLeaf = FindLeaf(source);
+        var targetLeaf = FindLeaf(target);
+        if (sourceLeaf is null || targetLeaf is null)
+            return;
+
+        CaptureLayoutSizes();
+
+        // 移動元をツリーから外し、ターゲットの指定した辺へ挿入する。
+        RemoveNode(sourceLeaf);
+        sourceLeaf.Weight = 1;
+        InsertRelative(sourceLeaf, targetLeaf, zone);
+
+        _root = Normalize(_root);
+        RebuildPaneLayout();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>ノードを親スプリットから取り外す（畳み込みは Normalize に任せる）。</summary>
+    private void RemoveNode(PaneNode node)
+    {
+        var parent = FindParent(node);
+        if (parent is null)
+            _root = null;
+        else
+            parent.Children.Remove(node);
+    }
+
+    /// <summary>
+    /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入する。
+    /// 望む方向が target の親スプリットと一致すれば兄弟として差し込み、
+    /// 異なれば target を新しいスプリットで包む（＝列の片方だけを上下分割できる）。
+    /// </summary>
+    private void InsertRelative(PaneNode node, PaneLeaf target, DropZone zone)
+    {
+        var wantColumns = zone is DropZone.Left or DropZone.Right;
+        var before = zone is DropZone.Left or DropZone.Above;
+        var desired = wantColumns ? SplitKind.Columns : SplitKind.Rows;
+        var parent = FindParent(target);
+
+        if (parent is not null && parent.Orientation == desired)
+        {
+            var index = parent.Children.IndexOf(target);
+            parent.Children.Insert(before ? index : index + 1, node);
+            return;
+        }
+
+        // target を内包する新しいスプリットへ置き換える。
+        var split = new PaneSplit { Orientation = desired, Weight = target.Weight };
+        target.Weight = 1;
+        if (before)
+        {
+            split.Children.Add(node);
+            split.Children.Add(target);
+        }
+        else
+        {
+            split.Children.Add(target);
+            split.Children.Add(node);
+        }
+
+        if (parent is null)
+            _root = split;
+        else
+            parent.Children[parent.Children.IndexOf(target)] = split;
+    }
+
+    private void OnHidePane(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
+            SetPaneVisible(kind, false);
+    }
+
+    private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
+            SetPaneVisible(kind, FindLeaf(kind) is null);
+    }
+
+    private void SetPaneVisible(PaneKind kind, bool visible)
+    {
+        var found = FindLeaf(kind);
+        var currentlyVisible = found is not null;
+        if (currentlyVisible == visible)
+            return;
+
+        CaptureLayoutSizes();
+
+        if (visible)
+        {
+            AddLeafAtBottom(NewLeaf(kind));
+        }
+        else
+        {
+            // 最後の1枚は隠さない
+            if (AllLeaves().Count() <= 1)
+                return;
+            RemoveNode(found!);
+        }
+
+        _root = Normalize(_root);
+        RebuildPaneLayout();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>
+    private void AddLeafAtBottom(PaneLeaf leaf)
+    {
+        if (_root is null)
+        {
+            _root = leaf;
+        }
+        else if (_root is PaneSplit split && split.Orientation == SplitKind.Rows)
+        {
+            split.Children.Add(leaf);
+        }
+        else
+        {
+            var rows = new PaneSplit { Orientation = SplitKind.Rows };
+            rows.Children.Add(_root);
+            rows.Children.Add(leaf);
+            _root = rows;
         }
     }
 
@@ -555,6 +1237,28 @@ public partial class ShellWindow : Window
         _vm.Tabs.UpdateTabIcon(tab.Id, icon);
     }
 
+    /// <summary>レイアウトツリーのノード基底。</summary>
+    private abstract class PaneNode
+    {
+        /// <summary>親スプリット内での star 比率。</summary>
+        public double Weight { get; set; } = 1;
+    }
+
+    /// <summary>リーフ＝1ペイン。</summary>
+    private sealed class PaneLeaf : PaneNode
+    {
+        public PaneKind Kind { get; init; }
+    }
+
+    /// <summary>スプリット＝入れ子の行（上下）または列（左右）。</summary>
+    private sealed class PaneSplit : PaneNode
+    {
+        public SplitKind Orientation { get; init; }
+        public List<PaneNode> Children { get; } = new();
+        /// <summary>再構築のたびに生成される Grid。サイズ取り込み用の一時参照。</summary>
+        public Grid? Host { get; set; }
+    }
+
     private sealed record TerminalTab(Guid Id, TerminalTabView View);
     private sealed record EditorTab(Guid Id, VimEditorControl Control);
     private sealed record BrowserTab(Guid Id, WebView2 View);
@@ -642,6 +1346,7 @@ public partial class ShellWindow : Window
             DetachBrowserTabs();
             _activeWorkspace = workspace;
             _vm.FolderTree.LoadRoot(workspace.RootPath);
+            ApplyPaneLayout(workspace.PaneLayout);
 
             RestoreTerminalTabs(workspace);
             RestoreEditorTabs(workspace);
@@ -936,6 +1641,9 @@ public partial class ShellWindow : Window
             Title = tab.View.CoreWebView2?.DocumentTitle,
             IsActive = tab.Id == _activeBrowserTab?.Id
         }).ToList();
+
+        CaptureLayoutSizes();
+        snapshot.PaneLayout = _root is null ? null : ToSnapshot(_root);
     }
 
     private void OnClosing(object? sender, CancelEventArgs e) => SaveActiveWorkspaceSnapshot();
