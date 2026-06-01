@@ -74,6 +74,8 @@ public sealed class TabIconService
     {
         var candidates = new[]
         {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps", "pwsh.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64", "WindowsPowerShell", "v1.0", "powershell.exe")
         };
@@ -84,7 +86,7 @@ public sealed class TabIconService
                 return candidate;
         }
 
-        return "powershell.exe";
+        return "pwsh.exe";
     }
 
     private static string? GetBrowserCacheKey(string? faviconUri, string? pageUrl)

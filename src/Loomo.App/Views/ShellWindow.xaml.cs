@@ -151,7 +151,7 @@ public partial class ShellWindow : Window
 
     private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null)
     {
-        var view = new TerminalTabView("powershell.exe", startDirectory);
+        var view = new TerminalTabView("pwsh.exe", startDirectory);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
         return tab;
