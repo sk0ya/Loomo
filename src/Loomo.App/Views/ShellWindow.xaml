@@ -54,7 +54,6 @@
                             Command="{Binding ShowExplorerCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
                             Command="{Binding ShowTabsCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索" />
                     <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
                             Command="{Binding ShowSessionsCommand}" />
                     <Border Height="1" Background="{StaticResource Border}" Margin="10,8" />
