@@ -66,6 +66,12 @@ public partial class ShellWindow : Window
     private PaneKind? _dragTarget;
     private DropZone? _dragZone;
 
+    // ===== ペイン間フォーカス移動（Ctrl+W h/j/k/l） =====
+    /// <summary>直近でキーボードフォーカスを得たペイン（移動の起点）。</summary>
+    private PaneKind? _focusedPane;
+    /// <summary>Ctrl+W プレフィックスを受け取り、次の h/j/k/l を待ち受けている状態。</summary>
+    private bool _awaitingPaneDirection;
+
     public ShellWindow(
         ShellViewModel vm,
         TerminalService terminal,
@@ -94,6 +100,13 @@ public partial class ShellWindow : Window
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
         Loaded += OnLoaded;
+
+        // Ctrl+W に続けて h/j/k/l でフォーカスを上下左右の隣接ペインへ移す（vim 風）。
+        // Terminal/Editor/AI は WPF コントロールなのでトンネリングの PreviewKeyDown で本体より先に拾う。
+        // Browser(WebView2) は別 HWND でキー入力を内部消費するため、Browser ペインに
+        // フォーカスがある間はこのナビゲーションは効かない（既知の制限）。
+        PreviewKeyDown += OnPaneNavKey;
+        PreviewGotKeyboardFocus += OnWindowPreviewGotKeyboardFocus;
 
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -696,12 +709,7 @@ public partial class ShellWindow : Window
     {
         foreach (var leaf in AllLeaves())
         {
-            var element = _paneElements[leaf.Kind];
-            if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
-                continue;
-            var topLeft = element.TransformToVisual(PaneHost).Transform(new Point(0, 0));
-            var rect = new Rect(topLeft, new Size(element.ActualWidth, element.ActualHeight));
-            if (rect.Contains(pos))
+            if (TryGetPaneRect(leaf.Kind, out var rect) && rect.Contains(pos))
                 return (leaf.Kind, rect);
         }
         return null;
@@ -857,6 +865,8 @@ public partial class ShellWindow : Window
             if (VisibleLeafCount() <= 1)
                 return;
             leaf!.Hidden = true;
+            if (_focusedPane == kind)
+                _focusedPane = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
         }
 
         _root = Normalize(_root);
@@ -881,6 +891,162 @@ public partial class ShellWindow : Window
             rows.Children.Add(_root);
             rows.Children.Add(leaf);
             _root = rows;
+        }
+    }
+
+    // ===== ペイン間フォーカス移動（Ctrl+W → h/j/k/l） =====
+
+    /// <summary>
+    /// Ctrl+W を押すと方向キー（h/j/k/l）待ちに入り、続けて押されたキーの向きの
+    /// 隣接ペインへフォーカスを移す。Preview（トンネル）で本体より先に拾い、消費したキーは
+    /// <see cref="RoutedEventArgs.Handled"/> で止める（同一イベントの KeyDown も併せて抑止される）。
+    /// </summary>
+    private void OnPaneNavKey(object sender, KeyEventArgs e)
+    {
+        var key = e.Key;
+
+        if (_awaitingPaneDirection)
+        {
+            if (IsModifierKey(key))
+                return; // Ctrl 等の単独押下は方向キー待ちを維持する
+
+            // Ctrl+W の押しっぱなし・再入力はプレフィックスのまま待ち続ける
+            if (key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            _awaitingPaneDirection = false;
+            if (MapNavDirection(key) is { } direction)
+            {
+                FocusPaneInDirection(direction);
+                e.Handled = true;
+            }
+            // 方向キー以外はプレフィックスを解除し、そのまま素通しさせる
+            return;
+        }
+
+        if (key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            _awaitingPaneDirection = true;
+            e.Handled = true;
+        }
+    }
+
+    private static DropZone? MapNavDirection(Key key) => key switch
+    {
+        Key.H => DropZone.Left,
+        Key.J => DropZone.Below,
+        Key.K => DropZone.Above,
+        Key.L => DropZone.Right,
+        _ => null
+    };
+
+    private static bool IsModifierKey(Key key) => key is
+        Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or
+        Key.LeftAlt or Key.RightAlt or Key.System or Key.LWin or Key.RWin;
+
+    /// <summary>キーボードフォーカスが入ったペインを記録する（移動の起点に使う）。</summary>
+    private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (e.NewFocus is DependencyObject d && FindPaneOf(d) is { } kind)
+            _focusedPane = kind;
+    }
+
+    /// <summary>要素を内包するペイン種別を視覚ツリーを遡って特定する（ペイン外なら null）。</summary>
+    private PaneKind? FindPaneOf(DependencyObject element)
+    {
+        for (var current = element; current is not null; current = GetAnyParent(current))
+        {
+            foreach (var (kind, paneElement) in _paneElements)
+                if (ReferenceEquals(paneElement, current))
+                    return kind;
+        }
+        return null;
+    }
+
+    private static DependencyObject? GetAnyParent(DependencyObject d)
+        => d is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(d)
+            : LogicalTreeHelper.GetParent(d);
+
+    /// <summary>起点ペインから指定方向で最も近い隣接ペインへフォーカスを移す。</summary>
+    private void FocusPaneInDirection(DropZone direction)
+    {
+        var origin = _focusedPane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+        if (origin is not { } originKind || !TryGetPaneRect(originKind, out var from))
+            return;
+
+        var fromCenter = new Point(from.X + from.Width / 2, from.Y + from.Height / 2);
+        PaneKind? best = null;
+        var bestScore = double.MaxValue;
+
+        foreach (var leaf in AllLeaves())
+        {
+            if (leaf.Hidden || leaf.Kind == originKind || !TryGetPaneRect(leaf.Kind, out var r))
+                continue;
+
+            // 指定方向の側にあるペインだけを候補にする（タイル配置なので辺で判定）。
+            const double tolerance = 1.0;
+            var inDirection = direction switch
+            {
+                DropZone.Left => r.X + r.Width <= from.X + tolerance,
+                DropZone.Right => r.X >= from.X + from.Width - tolerance,
+                DropZone.Above => r.Y + r.Height <= from.Y + tolerance,
+                _ => r.Y >= from.Y + from.Height - tolerance,
+            };
+            if (!inDirection)
+                continue;
+
+            var center = new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
+            // 移動軸方向の距離を主に、直交方向のずれを従にして最も近いペインを選ぶ。
+            var (axis, perpendicular) = direction is DropZone.Left or DropZone.Right
+                ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
+                : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
+            var score = axis + perpendicular * 2;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = leaf.Kind;
+            }
+        }
+
+        if (best is { } target)
+            FocusPane(target);
+    }
+
+    /// <summary>ペイン本体の矩形（PaneHost 座標系）を取得する。非表示・未配置なら false。</summary>
+    private bool TryGetPaneRect(PaneKind kind, out Rect rect)
+    {
+        rect = default;
+        if (!_paneElements.TryGetValue(kind, out var element)
+            || !element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+            return false;
+
+        var topLeft = element.TransformToVisual(PaneHost).Transform(new Point(0, 0));
+        rect = new Rect(topLeft, new Size(element.ActualWidth, element.ActualHeight));
+        return true;
+    }
+
+    /// <summary>指定ペインのアクティブな中身へキーボードフォーカスを移す。</summary>
+    private void FocusPane(PaneKind kind)
+    {
+        _focusedPane = kind;
+        switch (kind)
+        {
+            case PaneKind.Terminal:
+                _activeTerminalTab?.View.FocusTerminal();
+                break;
+            case PaneKind.Editor:
+                _activeEditorTab?.Control.Focus();
+                break;
+            case PaneKind.Browser:
+                _activeBrowserTab?.View.Focus();
+                break;
+            case PaneKind.Ai:
+                AiBarHost.FocusInput();
+                break;
         }
     }
 

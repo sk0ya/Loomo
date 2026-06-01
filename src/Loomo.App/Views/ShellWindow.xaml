@@ -364,7 +364,7 @@
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Ai" Click="OnHidePane" />
                     </DockPanel>
-                    <views:AiBarView DataContext="{Binding AiBar}" />
+                    <views:AiBarView x:Name="AiBarHost" DataContext="{Binding AiBar}" />
                 </DockPanel>
 
                 </Grid>   <!-- /PaneHost -->
