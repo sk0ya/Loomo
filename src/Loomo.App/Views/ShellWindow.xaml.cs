@@ -263,26 +263,49 @@ public partial class ShellWindow : Window
         }
 
         var border = (Brush)FindResource("Border");
-        PaneHost.Children.Add(BuildNode(_root, border));
+        var visual = BuildNode(_root, border);
+        if (visual is null)
+        {
+            // 可視ペインが1枚も無い（理論上は起きない）場合は既定へ戻す。
+            ApplyDefaultLayout();
+            return;
+        }
+        PaneHost.Children.Add(visual);
     }
 
-    /// <summary>1ノード分のビジュアルを生成する（リーフ＝ペイン本体、スプリット＝Grid）。</summary>
-    private FrameworkElement BuildNode(PaneNode node, Brush border)
+    /// <summary>
+    /// 1ノード分のビジュアルを生成する（リーフ＝ペイン本体、スプリット＝Grid）。
+    /// 非表示リーフは描画せず、可視な子だけでトラックを組む。すべて非表示なら null。
+    /// </summary>
+    private FrameworkElement? BuildNode(PaneNode node, Brush border)
     {
         if (node is PaneLeaf leaf)
         {
+            if (leaf.Hidden)
+                return null;
             var element = _paneElements[leaf.Kind];
             element.Visibility = Visibility.Visible;
             return element;
         }
 
         var split = (PaneSplit)node;
+        // 描画しないノードのサイズ取り込みを防ぐため、毎回リセットしてから割り当て直す。
+        split.Host = null;
+        foreach (var c in split.Children)
+            c.TrackIndex = -1;
+
+        var visibleChildren = split.Children.Where(IsNodeVisible).ToList();
+        if (visibleChildren.Count == 0)
+            return null;
+        if (visibleChildren.Count == 1)
+            return BuildNode(visibleChildren[0], border);
+
         var grid = new Grid();
         split.Host = grid;
         var cols = split.Orientation == SplitKind.Columns;
         var min = cols ? 160.0 : 100.0;
 
-        for (var i = 0; i < split.Children.Count; i++)
+        for (var i = 0; i < visibleChildren.Count; i++)
         {
             if (i > 0)
             {
@@ -292,14 +315,23 @@ public partial class ShellWindow : Window
                 grid.Children.Add(splitter);
             }
 
-            var child = split.Children[i];
+            var child = visibleChildren[i];
             AddTrack(grid, cols, new GridLength(child.Weight <= 0 ? 1 : child.Weight, GridUnitType.Star), min);
+            child.TrackIndex = i * 2;
             var visual = BuildNode(child, border);
-            SetTrack(visual, cols, i * 2);
+            SetTrack(visual!, cols, i * 2);
             grid.Children.Add(visual);
         }
         return grid;
     }
+
+    /// <summary>ノード（リーフ／スプリット）に可視なペインが含まれるか。</summary>
+    private bool IsNodeVisible(PaneNode node) => node switch
+    {
+        PaneLeaf leaf => !leaf.Hidden,
+        PaneSplit split => split.Children.Any(IsNodeVisible),
+        _ => false
+    };
 
     private static void AddTrack(Grid grid, bool cols, GridLength length, double min = 0)
     {
@@ -332,36 +364,44 @@ public partial class ShellWindow : Window
 
     private static void CaptureNode(PaneNode? node)
     {
-        if (node is not PaneSplit split || split.Host is not { } grid)
+        if (node is not PaneSplit split)
             return;
 
-        var cols = split.Orientation == SplitKind.Columns;
-        for (var i = 0; i < split.Children.Count; i++)
+        if (split.Host is { } grid)
         {
-            var index = i * 2; // 子は 0,2,4,...（奇数はスプリッター）
-            if (cols)
+            var cols = split.Orientation == SplitKind.Columns;
+            foreach (var child in split.Children)
             {
-                if (index < grid.ColumnDefinitions.Count)
+                // 描画された可視な子だけが実トラック（BuildNode が設定）を持つ。
+                var index = child.TrackIndex;
+                if (index < 0)
+                    continue;
+                if (cols)
                 {
-                    var w = grid.ColumnDefinitions[index].Width;
-                    if (w.IsStar && w.Value > 0)
-                        split.Children[i].Weight = w.Value;
+                    if (index < grid.ColumnDefinitions.Count)
+                    {
+                        var w = grid.ColumnDefinitions[index].Width;
+                        if (w.IsStar && w.Value > 0)
+                            child.Weight = w.Value;
+                    }
+                }
+                else
+                {
+                    if (index < grid.RowDefinitions.Count)
+                    {
+                        var h = grid.RowDefinitions[index].Height;
+                        if (h.IsStar && h.Value > 0)
+                            child.Weight = h.Value;
+                    }
                 }
             }
-            else
-            {
-                if (index < grid.RowDefinitions.Count)
-                {
-                    var h = grid.RowDefinitions[index].Height;
-                    if (h.IsStar && h.Value > 0)
-                        split.Children[i].Weight = h.Value;
-                }
-            }
-            CaptureNode(split.Children[i]);
         }
+
+        foreach (var child in split.Children)
+            CaptureNode(child);
     }
 
-    /// <summary>保存済みレイアウトを適用する。ツリーに無いペインは非表示扱い。</summary>
+    /// <summary>保存済みレイアウトを適用する。非表示ペインはリーフの Hidden で復元する。</summary>
     private void ApplyPaneLayout(PaneNodeSnapshot? snapshot)
     {
         var built = snapshot is null ? null : BuildFromSnapshot(snapshot, new HashSet<PaneKind>());
@@ -405,14 +445,14 @@ public partial class ShellWindow : Window
         }
 
         if (snap.Kind is { } kind && _paneElements.ContainsKey(kind) && seen.Add(kind))
-            return new PaneLeaf { Kind = kind, Weight = snap.Weight > 0 ? snap.Weight : 1 };
+            return new PaneLeaf { Kind = kind, Weight = snap.Weight > 0 ? snap.Weight : 1, Hidden = snap.Hidden };
         return null;
     }
 
     private static PaneNodeSnapshot ToSnapshot(PaneNode node)
     {
         if (node is PaneLeaf leaf)
-            return new PaneNodeSnapshot { Weight = leaf.Weight, Kind = leaf.Kind };
+            return new PaneNodeSnapshot { Weight = leaf.Weight, Kind = leaf.Kind, Hidden = leaf.Hidden };
 
         var split = (PaneSplit)node;
         return new PaneNodeSnapshot
@@ -508,7 +548,7 @@ public partial class ShellWindow : Window
     /// </summary>
     private void BeginPaneDrag(PaneKind source)
     {
-        if (AllLeaves().Count() <= 1)
+        if (VisibleLeafCount() <= 1)
             return; // 1枚だけなら移動先がない
 
         EnsureDragOverlay();
@@ -782,13 +822,23 @@ public partial class ShellWindow : Window
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
-            SetPaneVisible(kind, FindLeaf(kind) is null);
+            SetPaneVisible(kind, !IsPaneVisible(kind));
     }
 
+    /// <summary>ペインがツリーに在りかつ表示中か。</summary>
+    private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };
+
+    /// <summary>表示中（非 Hidden）のリーフ数。</summary>
+    private int VisibleLeafCount() => AllLeaves().Count(l => !l.Hidden);
+
+    /// <summary>
+    /// ペインの表示／非表示を切り替える。非表示にしてもリーフはツリーに残し
+    /// <see cref="PaneLeaf.Hidden"/> を立てるだけなので、再表示で元の位置・比率に戻る。
+    /// </summary>
     private void SetPaneVisible(PaneKind kind, bool visible)
     {
-        var found = FindLeaf(kind);
-        var currentlyVisible = found is not null;
+        var leaf = FindLeaf(kind);
+        var currentlyVisible = leaf is { Hidden: false };
         if (currentlyVisible == visible)
             return;
 
@@ -796,14 +846,17 @@ public partial class ShellWindow : Window
 
         if (visible)
         {
-            AddLeafAtBottom(NewLeaf(kind));
+            if (leaf is null)
+                AddLeafAtBottom(NewLeaf(kind)); // 一度もツリーに置かれていないペイン
+            else
+                leaf.Hidden = false;
         }
         else
         {
             // 最後の1枚は隠さない
-            if (AllLeaves().Count() <= 1)
+            if (VisibleLeafCount() <= 1)
                 return;
-            RemoveNode(found!);
+            leaf!.Hidden = true;
         }
 
         _root = Normalize(_root);
@@ -1242,12 +1295,16 @@ public partial class ShellWindow : Window
     {
         /// <summary>親スプリット内での star 比率。</summary>
         public double Weight { get; set; } = 1;
+        /// <summary>直近の描画で割り当てられた Grid トラック番号（未描画は -1）。サイズ取り込み用。</summary>
+        public int TrackIndex { get; set; } = -1;
     }
 
     /// <summary>リーフ＝1ペイン。</summary>
     private sealed class PaneLeaf : PaneNode
     {
         public PaneKind Kind { get; init; }
+        /// <summary>非表示中か。true でもツリーには残し、再表示で元の位置・比率へ戻す。</summary>
+        public bool Hidden { get; set; }
     }
 
     /// <summary>スプリット＝入れ子の行（上下）または列（左右）。</summary>

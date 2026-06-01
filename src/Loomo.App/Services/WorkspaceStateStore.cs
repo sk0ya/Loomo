@@ -66,7 +66,7 @@ public sealed class WorkspaceSnapshot
 
     /// <summary>
     /// メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。
-    /// null なら既定レイアウトを使う。ツリーに現れないペインは「非表示」扱い。
+    /// null なら既定レイアウトを使う。非表示のペインもツリーに残り、リーフの Hidden で表す。
     /// </summary>
     public PaneNodeSnapshot? PaneLayout { get; set; }
 }
@@ -90,6 +90,8 @@ public sealed class PaneNodeSnapshot
     public double Weight { get; set; } = 1;
     /// <summary>リーフのとき、ペイン種別。</summary>
     public PaneKind? Kind { get; set; }
+    /// <summary>リーフのとき、非表示中か。位置・比率を保ったまま隠す。</summary>
+    public bool Hidden { get; set; }
     /// <summary>スプリットのとき、"Rows"（上下に積む）か "Columns"（左右に並べる）。</summary>
     public string? Orientation { get; set; }
     /// <summary>スプリットの子（行なら上→下、列なら左→右の順）。</summary>
