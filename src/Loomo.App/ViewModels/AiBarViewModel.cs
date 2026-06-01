@@ -102,12 +102,15 @@ public sealed partial class AiBarViewModel : ObservableObject
         IsBusy = true;
         _cts = new CancellationTokenSource();
 
+        // トレース（§20）と保存が同じIDを共有するよう、ターン開始前にセッションIDを確定する。
+        _currentSessionId ??= Guid.NewGuid().ToString("N");
+
         Add(EntryKind.User, "あなた", text);
         TranscriptEntry? assistant = null;
 
         try
         {
-            await foreach (var ev in _orchestrator.RunTurnAsync(_conversation, text, _cts.Token))
+            await foreach (var ev in _orchestrator.RunTurnAsync(_conversation, text, _currentSessionId, _cts.Token))
             {
                 switch (ev)
                 {

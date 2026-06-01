@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using sk0ya.Loomo.Core.IO;
 using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.Core.Agent;
@@ -109,7 +110,7 @@ public sealed class ConversationStore
     private string PathFor(string id)
     {
         // パストラバーサル防止：ファイル名に使えない文字を除去
-        var safe = string.Concat(id.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_'));
+        var safe = SafeFileName.Sanitize(id);
         if (safe.Length == 0) safe = Guid.NewGuid().ToString("N");
         return Path.Combine(_dir, safe + ".json");
     }

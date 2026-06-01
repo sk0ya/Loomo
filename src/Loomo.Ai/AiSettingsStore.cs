@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Ai;
@@ -102,6 +103,7 @@ public sealed class AiSettingsStore
         public PersistedProvider Copilot { get; set; } = new();
         public PersistedProvider Local { get; set; } = new();
         public PersistedSafety Safety { get; set; } = new();
+        public PersistedObservability? Observability { get; set; }
 
         public static PersistedSettings From(AiSettings s) => new()
         {
@@ -114,6 +116,7 @@ public sealed class AiSettingsStore
             Copilot = PersistedProvider.From(s.Copilot),
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
+            Observability = PersistedObservability.From(s.Observability),
         };
 
         public void ApplyTo(AiSettings s)
@@ -127,6 +130,27 @@ public sealed class AiSettingsStore
             Copilot.ApplyTo(s.Copilot);
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
+            Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
+        }
+    }
+
+    // ===== 観測性（§20）。平文で保持（秘匿情報ではない）。 =====
+
+    private sealed class PersistedObservability
+    {
+        public bool EnableTracing { get; set; } = true;
+        public int MaxSessions { get; set; } = 200;
+
+        public static PersistedObservability From(ObservabilitySettings o) => new()
+        {
+            EnableTracing = o.EnableTracing,
+            MaxSessions = o.MaxSessions,
+        };
+
+        public void ApplyTo(ObservabilitySettings o)
+        {
+            o.EnableTracing = EnableTracing;
+            o.MaxSessions = MaxSessions;
         }
     }
 

@@ -6,6 +6,7 @@ using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using sk0ya.Loomo.Core.Tools.Implementations;
@@ -77,6 +78,16 @@ public partial class App : Application
         services.AddSingleton<IAgentTool, ProposeEditTool>();
         services.AddSingleton<IAgentTool, RunCommandTool>();
         services.AddSingleton<ToolRegistry>();
+
+        // --- 観測性（§20）：AI操作トレースを JSONL に記録。設定で無効化（オプトアウト）可。 ---
+        // ファクトリは設定ロード後（ShellWindow 解決時）に実行されるため EnableTracing を反映できる。
+        services.AddSingleton<ITraceSink>(sp =>
+        {
+            var obs = sp.GetRequiredService<AiSettings>().Observability;
+            return obs.EnableTracing
+                ? new JsonlTraceSink(maxSessions: obs.MaxSessions)
+                : NullTraceSink.Instance;
+        });
 
         // --- エージェント ---
         services.AddSingleton<AgentOrchestrator>();

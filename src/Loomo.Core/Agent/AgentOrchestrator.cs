@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using Microsoft.Extensions.Logging;
@@ -23,6 +25,7 @@ public sealed class AgentOrchestrator
     private readonly IApprovalService _approval;
     private readonly ISafetyPolicy _safety;
     private readonly IContextWindowPolicy _context;
+    private readonly ITraceSink _trace;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     private const int MaxIterations = 25;
@@ -33,7 +36,8 @@ public sealed class AgentOrchestrator
         IApprovalService approval,
         ISafetyPolicy safety,
         IContextWindowPolicy context,
-        ILogger<AgentOrchestrator> logger)
+        ILogger<AgentOrchestrator> logger,
+        ITraceSink? trace = null)
     {
         _aiFactory = aiFactory;
         _tools = tools;
@@ -41,17 +45,31 @@ public sealed class AgentOrchestrator
         _safety = safety;
         _context = context;
         _logger = logger;
+        _trace = trace ?? NullTraceSink.Instance;
     }
 
     /// <summary>ユーザー入力を処理してイベントを流す。</summary>
+    /// <param name="sessionId">トレース記録用のセッションID（§20）。null/空ならトレースは "unknown" にまとまる。</param>
     public async IAsyncEnumerable<AgentEvent> RunTurnAsync(
         Conversation conversation,
         string userInput,
-        [EnumeratorCancellation] CancellationToken ct)
+        string? sessionId = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
+        sessionId ??= "unknown";
+        var isNewSession = conversation.Messages.Count == 0;
+
         conversation.AddUser(userInput);
         var ai = _aiFactory.ResolveCurrent();
         var definitions = _tools.Definitions;
+
+        var turnId = Guid.NewGuid().ToString("N");
+        var provider = ai.Provider.ToString();
+        var turnClock = Stopwatch.StartNew();
+
+        if (isNewSession)
+            _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider });
+        _trace.Record(sessionId, turnId, TraceKinds.TurnStarted, new { userInput, provider });
 
         for (var iteration = 0; iteration < MaxIterations; iteration++)
         {
@@ -64,6 +82,7 @@ public sealed class AgentOrchestrator
             var outgoing = _context.Fit(conversation);
 
             // --- AIストリームを消費 ---
+            AgentError? streamError = null;
             await foreach (var ev in ai.StreamAsync(outgoing, definitions, ct))
             {
                 switch (ev)
@@ -78,10 +97,26 @@ public sealed class AgentOrchestrator
                         yield return req;
                         break;
                     case AgentError err:
-                        yield return err;
-                        yield break;
+                        streamError = err;
+                        break;
                 }
+                if (streamError is not null) break;
             }
+
+            if (streamError is not null)
+            {
+                _trace.Record(sessionId, turnId, TraceKinds.Error,
+                    new { message = streamError.Message, where = "ai.stream" });
+                yield return streamError;
+                yield break;
+            }
+
+            // ストリーム終了時にアシスタント本文をまとめて記録（TextDelta を合算した全文）。
+            if (!string.IsNullOrEmpty(assistant.Text))
+                _trace.Record(sessionId, turnId, TraceKinds.AiMessage, new { fullText = assistant.Text });
+            foreach (var use in pendingToolUses)
+                _trace.Record(sessionId, turnId, TraceKinds.AiToolUse,
+                    new { toolUseId = use.Id, name = use.Name, argsJson = use.ArgumentsJson });
 
             // 本文もツール呼び出しも無い空応答は履歴に積まない（APIエラー要因になり得る）。
             if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
@@ -90,6 +125,8 @@ public sealed class AgentOrchestrator
             // ツール呼び出しが無ければターン終了
             if (pendingToolUses.Count == 0)
             {
+                _trace.Record(sessionId, turnId, TraceKinds.TurnCompleted,
+                    new { finalText = assistant.Text, iterations = iteration + 1, durationMs = turnClock.ElapsedMilliseconds });
                 yield return new TurnCompleted(assistant.Text);
                 yield break;
             }
@@ -101,7 +138,7 @@ public sealed class AgentOrchestrator
             {
                 ct.ThrowIfCancellationRequested();
                 sink.Clear();
-                var result = await ExecuteToolAsync(use, sink, ct);
+                var result = await ExecuteToolAsync(use, sessionId, turnId, sink, ct);
                 foreach (var e in sink) yield return e;   // 実行中に貯めたイベントを流す
                 toolMessage.ToolResults.Add(result);
             }
@@ -110,11 +147,15 @@ public sealed class AgentOrchestrator
             // ループ継続 → 結果を踏まえてAIが再応答
         }
 
+        _trace.Record(sessionId, turnId, TraceKinds.Error,
+            new { message = $"最大反復回数({MaxIterations})に達しました。", where = "iteration.limit" });
         yield return new AgentError($"最大反復回数({MaxIterations})に達しました。");
     }
 
     private async Task<ToolResultMessage> ExecuteToolAsync(
         ToolUse use,
+        string sessionId,
+        string turnId,
         List<AgentEvent> sink,
         CancellationToken ct)
     {
@@ -122,6 +163,7 @@ public sealed class AgentOrchestrator
         {
             var msg = $"未知のツール: {use.Name}";
             _logger.LogWarning("{Message}", msg);
+            _trace.Record(sessionId, turnId, TraceKinds.Error, new { message = msg, where = "tool.resolve" });
             return new ToolResultMessage(use.Id, msg, IsError: true);
         }
 
@@ -134,11 +176,14 @@ public sealed class AgentOrchestrator
         }
         catch (Exception ex)
         {
+            _trace.Record(sessionId, turnId, TraceKinds.Error, new { message = ex.Message, where = "tool.args" });
             return new ToolResultMessage(use.Id, $"引数JSONの解析失敗: {ex.Message}", IsError: true);
         }
 
         // 安全ポリシー：危険コマンドのブロックリストに一致したら実行せず差し戻す
         var decision = _safety.Evaluate(tool.Name, args);
+        _trace.Record(sessionId, turnId, TraceKinds.SafetyEvaluated,
+            new { tool = tool.Name, blocked = decision.Blocked, reason = decision.Reason });
         if (decision.Blocked)
         {
             _logger.LogWarning("安全ポリシーによりブロック: {Tool} — {Reason}", tool.Name, decision.Reason);
@@ -153,16 +198,30 @@ public sealed class AgentOrchestrator
         {
             var summary = SafeDescribe(tool, args);
             sink.Add(new ApprovalRequested(tool.Name, summary));
+            _trace.Record(sessionId, turnId, TraceKinds.ApprovalRequested, new { tool = tool.Name, summary });
+            var approvalClock = Stopwatch.StartNew();
             var approved = await _approval.RequestApprovalAsync(tool.Name, summary, ct);
+            _trace.Record(sessionId, turnId, TraceKinds.ApprovalResolved,
+                new { tool = tool.Name, approved, waitMs = approvalClock.ElapsedMilliseconds });
             if (!approved)
                 return new ToolResultMessage(use.Id, "ユーザーが実行を拒否しました。", IsError: true);
         }
 
         sink.Add(new ToolExecutionStarted(use));
+        _trace.Record(sessionId, turnId, TraceKinds.ToolStarted, new { toolUseId = use.Id, name = tool.Name });
+        var toolClock = Stopwatch.StartNew();
         try
         {
             var result = await tool.ExecuteAsync(args, ct);
             var resultMessage = new ToolResultMessage(use.Id, result.Content, result.IsError);
+            _trace.Record(sessionId, turnId, TraceKinds.ToolCompleted, new
+            {
+                toolUseId = use.Id,
+                name = tool.Name,
+                isError = result.IsError,
+                durationMs = toolClock.ElapsedMilliseconds,
+                contentLen = result.Content?.Length ?? 0,
+            });
             sink.Add(new ToolExecutionCompleted(use, resultMessage));
             return resultMessage;
         }
@@ -173,6 +232,14 @@ public sealed class AgentOrchestrator
         catch (Exception ex)
         {
             _logger.LogError(ex, "ツール実行エラー: {Tool}", tool.Name);
+            _trace.Record(sessionId, turnId, TraceKinds.ToolCompleted, new
+            {
+                toolUseId = use.Id,
+                name = tool.Name,
+                isError = true,
+                durationMs = toolClock.ElapsedMilliseconds,
+                error = ex.Message,
+            });
             var resultMessage = new ToolResultMessage(use.Id, $"ツール例外: {ex.Message}", IsError: true);
             sink.Add(new ToolExecutionCompleted(use, resultMessage));
             return resultMessage;

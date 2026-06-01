@@ -1,4 +1,5 @@
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Ai;
@@ -17,6 +18,9 @@ public sealed class AiSettings
 
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
+
+    /// <summary>AI操作トレース（観測性・設計書 §20）の設定。</summary>
+    public ObservabilitySettings Observability { get; set; } = new();
 
     public ProviderConfig Claude { get; set; } = new() { Model = "claude-opus-4-8", MaxContextTokens = 180_000 };
     public ProviderConfig OpenAI { get; set; } = new() { Model = "gpt-4o" };
