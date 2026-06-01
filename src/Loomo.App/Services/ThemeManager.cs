@@ -49,10 +49,12 @@ public sealed class ThemeManager
         var app = Application.Current;
         if (app is null) return;
 
-        var dict = new ResourceDictionary
-        {
-            Source = new Uri($"Themes/Palette.{theme}.xaml", UriKind.Relative)
-        };
+        var dict = LoadPalette(theme);
+        // 対応するパレットが見つからない（列挙子追加漏れ・設定ファイル破損など）場合は
+        // 既定の Dark へフォールバックし、起動時に画面が出ないまま落ちるのを防ぐ。
+        if (dict is null && theme != AppTheme.Dark)
+            dict = LoadPalette(AppTheme.Dark);
+        if (dict is null) return;
 
         var merged = app.Resources.MergedDictionaries;
         var existing = merged.FirstOrDefault(d =>
@@ -62,6 +64,22 @@ public sealed class ThemeManager
             merged[merged.IndexOf(existing)] = dict;   // パレットは Controls.xaml より前に保つ
         else
             merged.Insert(0, dict);
+    }
+
+    /// <summary>パレット辞書を読み込む。リソースが存在しない場合は null を返す（例外は投げない）。</summary>
+    private static ResourceDictionary? LoadPalette(AppTheme theme)
+    {
+        try
+        {
+            return new ResourceDictionary
+            {
+                Source = new Uri($"Themes/Palette.{theme}.xaml", UriKind.Relative)
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static void ApplyAccent(string? accentColor)

@@ -46,6 +46,7 @@
                                 Command="{Binding CancelSignInCommand}"
                                 Visibility="{Binding IsSigningIn, Converter={StaticResource BoolToVis}}" />
                         <Button Content="サインアウト" Style="{StaticResource FlatButton}" Background="{DynamicResource BgAlt}"
+                                Foreground="{DynamicResource Fg}"
                                 Margin="8,0,0,0" Command="{Binding SignOutCopilotCommand}"
                                 Visibility="{Binding IsCopilotSignedIn, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>

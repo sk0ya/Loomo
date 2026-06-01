@@ -107,6 +107,7 @@ public partial class ShellWindow : Window
         // フォーカスがある間はこのナビゲーションは効かない（既知の制限）。
         PreviewKeyDown += OnPaneNavKey;
         PreviewGotKeyboardFocus += OnWindowPreviewGotKeyboardFocus;
+        Deactivated += OnWindowDeactivated;
 
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -950,9 +951,16 @@ public partial class ShellWindow : Window
     /// <summary>キーボードフォーカスが入ったペインを記録する（移動の起点に使う）。</summary>
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        // フォーカスが他所へ移ったら、待ち状態の Ctrl+W プレフィックスは破棄する。
+        // （Ctrl+W → 気が変わってクリック/別ペインへ移動 → 後続の h/j/k/l が誤って奪われるのを防ぐ）
+        _awaitingPaneDirection = false;
+
         if (e.NewFocus is DependencyObject d && FindPaneOf(d) is { } kind)
             _focusedPane = kind;
     }
+
+    /// <summary>ウィンドウが非アクティブになったら Ctrl+W の待ち状態を解除する。</summary>
+    private void OnWindowDeactivated(object? sender, EventArgs e) => _awaitingPaneDirection = false;
 
     /// <summary>要素を内包するペイン種別を視覚ツリーを遡って特定する（ペイン外なら null）。</summary>
     private PaneKind? FindPaneOf(DependencyObject element)

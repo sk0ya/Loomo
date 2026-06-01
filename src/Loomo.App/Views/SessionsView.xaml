@@ -15,7 +15,8 @@
             <Button Grid.Column="0" Content="＋ 新規セッション" Style="{StaticResource FlatButton}"
                     HorizontalAlignment="Stretch" Command="{Binding NewCommand}" />
             <Button Grid.Column="1" Content="⟳" Style="{StaticResource FlatButton}" Margin="6,0,0,0"
-                    Background="{DynamicResource BgAlt}" ToolTip="更新" Command="{Binding RefreshCommand}" />
+                    Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
+                    ToolTip="更新" Command="{Binding RefreshCommand}" />
         </Grid>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0,6,8">
