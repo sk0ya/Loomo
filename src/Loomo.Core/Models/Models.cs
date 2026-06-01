@@ -23,6 +23,21 @@ public enum AiProvider
     Local
 }
 
+/// <summary>UIのカラーテーマ（配色）。各値は <c>Themes/Palette.&lt;name&gt;.xaml</c> に一対一で対応する。</summary>
+public enum AppTheme
+{
+    /// <summary>VS Code Dark 系（既定）。</summary>
+    Dark,
+    /// <summary>明るい配色。</summary>
+    Light,
+    /// <summary>Solarized Dark 系。</summary>
+    SolarizedDark,
+    /// <summary>Nord 系（青みがかった暗色）。</summary>
+    Nord,
+    /// <summary>高コントラスト（暗）。</summary>
+    HighContrast
+}
+
 /// <summary>会話のロール。</summary>
 public enum ChatRole
 {

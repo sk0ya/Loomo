@@ -64,7 +64,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Copilot に既にサインイン済みか（GitHub トークン保持）。</summary>
     public bool IsCopilotSignedIn => !string.IsNullOrWhiteSpace(_settings.Copilot.ApiKey);
 
-    public SettingsViewModel(AiSettings settings, AiSettingsStore store, CopilotAuthService copilotAuth, IEditorService editor)
+    public SettingsViewModel(AiSettings settings, AiSettingsStore store, CopilotAuthService copilotAuth,
+        IEditorService editor)
     {
         _settings = settings;
         _store = store;

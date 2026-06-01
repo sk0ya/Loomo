@@ -31,6 +31,9 @@ public partial class App : Application
         var settings = _host.Services.GetRequiredService<AiSettings>();
         _host.Services.GetRequiredService<AiSettingsStore>().Load(settings);
 
+        // 保存済みカラーテーマ・アクセントカラーを適用する
+        _host.Services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
+
         var shell = _host.Services.GetRequiredService<ShellWindow>();
         shell.Show();
     }
@@ -80,6 +83,7 @@ public partial class App : Application
         services.AddSingleton<ConversationStore>();
 
         // --- ViewModels / Window ---
+        services.AddSingleton<ThemeManager>();
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<TabIconService>();
         services.AddSingleton<WorkspaceListViewModel>();
@@ -88,6 +92,7 @@ public partial class App : Application
         services.AddSingleton<TabsViewModel>();
         services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<AppearanceViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }

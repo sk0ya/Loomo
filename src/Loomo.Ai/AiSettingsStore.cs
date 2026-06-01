@@ -94,6 +94,8 @@ public sealed class AiSettingsStore
     private sealed class PersistedSettings
     {
         public AiProvider Provider { get; set; }
+        public AppTheme Theme { get; set; }
+        public string? AccentColor { get; set; }
         public string? SystemPrompt { get; set; }
         public PersistedProvider Claude { get; set; } = new();
         public PersistedProvider OpenAI { get; set; } = new();
@@ -104,6 +106,8 @@ public sealed class AiSettingsStore
         public static PersistedSettings From(AiSettings s) => new()
         {
             Provider = s.Provider,
+            Theme = s.Theme,
+            AccentColor = s.AccentColor,
             SystemPrompt = s.SystemPrompt,
             Claude = PersistedProvider.From(s.Claude),
             OpenAI = PersistedProvider.From(s.OpenAI),
@@ -115,6 +119,8 @@ public sealed class AiSettingsStore
         public void ApplyTo(AiSettings s)
         {
             s.Provider = Provider;
+            s.Theme = Theme;
+            s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
             if (!string.IsNullOrWhiteSpace(SystemPrompt)) s.SystemPrompt = SystemPrompt;
             Claude.ApplyTo(s.Claude);
             OpenAI.ApplyTo(s.OpenAI);

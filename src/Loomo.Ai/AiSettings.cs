@@ -9,6 +9,12 @@ public sealed class AiSettings
     /// <summary>現在選択中のプロバイダ。</summary>
     public AiProvider Provider { get; set; } = AiProvider.Stub;
 
+    /// <summary>UIのカラーテーマ（配色）。既定はダーク。</summary>
+    public AppTheme Theme { get; set; } = AppTheme.Dark;
+
+    /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
+    public string? AccentColor { get; set; }
+
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
 

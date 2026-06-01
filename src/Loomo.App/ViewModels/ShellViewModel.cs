@@ -9,7 +9,8 @@ public enum SidebarPanel
     Explorer,
     Tabs,
     Sessions,
-    Settings
+    Settings,
+    Appearance
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
@@ -21,6 +22,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public TabsViewModel Tabs { get; }
     public SessionsViewModel Sessions { get; }
     public SettingsViewModel Settings { get; }
+    public AppearanceViewModel Appearance { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -34,7 +36,8 @@ public sealed partial class ShellViewModel : ObservableObject
         AiBarViewModel aiBar,
         TabsViewModel tabs,
         SessionsViewModel sessions,
-        SettingsViewModel settings)
+        SettingsViewModel settings,
+        AppearanceViewModel appearance)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -42,6 +45,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Tabs = tabs;
         Sessions = sessions;
         Settings = settings;
+        Appearance = appearance;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する
         Settings.Saved += AiBar.RefreshProviderLabel;
@@ -62,6 +66,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar の設定アイコン。</summary>
     [RelayCommand]
     private void ShowSettings() => Activate(SidebarPanel.Settings);
+
+    /// <summary>ActivityBar の外観（テーマ）アイコン。</summary>
+    [RelayCommand]
+    private void ShowAppearance() => Activate(SidebarPanel.Appearance);
 
     /// <summary>同じパネルを再クリックしたら閉じ、別パネルなら切替えて開く（VS Code 風）。</summary>
     private void Activate(SidebarPanel panel)

@@ -5,7 +5,7 @@
     xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
     Title="Loomo" Height="800" Width="1280"
     Icon="/Assets/Loomo.ico"
-    Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen"
+    Background="{DynamicResource Bg}" WindowStartupLocation="CenterScreen"
     WindowStyle="None" ResizeMode="CanResize">
 
     <WindowChrome.WindowChrome>
@@ -46,9 +46,13 @@
             </Grid.RowDefinitions>
 
             <!-- ActivityBar : ウィンドウ下端まで伸ばす -->
-            <DockPanel Grid.Column="0" Grid.Row="1" Background="{StaticResource ActivityBarBg}">
-                <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
-                        Command="{Binding ShowSettingsCommand}" />
+            <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource ActivityBarBg}">
+                <StackPanel DockPanel.Dock="Bottom">
+                    <Button Style="{StaticResource IconButton}" Content="🎨" ToolTip="外観（テーマ・アクセント）"
+                            Command="{Binding ShowAppearanceCommand}" />
+                    <Button Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
+                            Command="{Binding ShowSettingsCommand}" />
+                </StackPanel>
                 <StackPanel>
                     <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
                             Command="{Binding ShowExplorerCommand}" />
@@ -56,7 +60,7 @@
                             Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
                             Command="{Binding ShowSessionsCommand}" />
-                    <Border Height="1" Background="{StaticResource Border}" Margin="10,8" />
+                    <Border Height="1" Background="{DynamicResource Border}" Margin="10,8" />
                     <!-- ペインの表示トグル（隠したペインの再表示にも使う） -->
                     <Button Style="{StaticResource IconButton}" Content="▦" ToolTip="ターミナル 表示切替"
                             Tag="Terminal" Click="OnTogglePaneVisibility" />
@@ -70,11 +74,11 @@
             </DockPanel>
 
             <!-- ===== カスタムタイトルバー ===== -->
-            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Height="36" Background="{StaticResource ActivityBarBg}">
+            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Height="36" Background="{DynamicResource ActivityBarBg}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
                     <TextBlock Text="🤖" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBlock Text="Loomo" VerticalAlignment="Center"
-                               FontSize="12" Foreground="{StaticResource FgDim}" Margin="0,0,12,0" />
+                               FontSize="12" Foreground="{DynamicResource FgDim}" Margin="0,0,12,0" />
                     <ComboBox Height="24"
                               ItemsSource="{Binding Workspaces.Workspaces}"
                               SelectedItem="{Binding Workspaces.SelectedWorkspace, Mode=TwoWay}"
@@ -135,17 +139,19 @@
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
                     <views:SettingsView DataContext="{Binding Settings}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
+                    <views:AppearanceView DataContext="{Binding Appearance}"
+                                          Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}" />
                 </Grid>
 
                 <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="4"
-                              HorizontalAlignment="Stretch" Background="{StaticResource Border}" />
+                              HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
 
                 <!-- 動的ペインホスト：列定義とスプリッターは code-behind が構築する -->
                 <Grid x:Name="PaneHost" Grid.Column="2">
 
                 <!-- Terminal -->
-                <DockPanel x:Name="TerminalPane" Background="{StaticResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{StaticResource Panel}" LastChildFill="True">
+                <DockPanel x:Name="TerminalPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL"
                                    Tag="Terminal" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
@@ -167,8 +173,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0,6,4,6" Background="{StaticResource BgAlt}"
-                                                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                                Margin="0,6,4,6" Background="{DynamicResource BgAlt}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                 CornerRadius="4">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
@@ -177,21 +183,21 @@
                                                 </Grid.ColumnDefinitions>
                                                 <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
-                                                        Foreground="{StaticResource Fg}" Tag="{Binding Id}"
+                                                        Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnTerminalTabSelected">
                                                     <TextBlock Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
-                                                        Width="24" Padding="0" Foreground="{StaticResource FgDim}"
+                                                        Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
                                                         Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
                                                         Click="OnTerminalTabClosed" />
                                             </Grid>
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource Bg}" />
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -203,8 +209,8 @@
                 </DockPanel>
 
                 <!-- Editor -->
-                <DockPanel x:Name="EditorPane" Background="{StaticResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{StaticResource Panel}" LastChildFill="True">
+                <DockPanel x:Name="EditorPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR"
                                    Tag="Editor" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
@@ -226,8 +232,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0,6,4,6" Background="{StaticResource BgAlt}"
-                                                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                                Margin="0,6,4,6" Background="{DynamicResource BgAlt}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                 CornerRadius="4">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
@@ -236,21 +242,21 @@
                                                 </Grid.ColumnDefinitions>
                                                 <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
-                                                        Foreground="{StaticResource Fg}" Tag="{Binding Id}"
+                                                        Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnEditorTabSelected">
                                                     <TextBlock Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
-                                                        Width="24" Padding="0" Foreground="{StaticResource FgDim}"
+                                                        Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
                                                         Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
                                                         Click="OnEditorTabClosed" />
                                             </Grid>
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource Bg}" />
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -262,8 +268,8 @@
                 </DockPanel>
 
                 <!-- Browser -->
-                <DockPanel x:Name="BrowserPane" Background="{StaticResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{StaticResource Panel}" LastChildFill="True">
+                <DockPanel x:Name="BrowserPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER"
                                    Tag="Browser" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
@@ -285,8 +291,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0,6,4,6" Background="{StaticResource BgAlt}"
-                                                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                                Margin="0,6,4,6" Background="{DynamicResource BgAlt}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                 CornerRadius="4">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
@@ -295,21 +301,21 @@
                                                 </Grid.ColumnDefinitions>
                                                 <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
-                                                        Foreground="{StaticResource Fg}" Tag="{Binding Id}"
+                                                        Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnBrowserTabSelected">
                                                     <TextBlock Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
-                                                        Width="24" Padding="0" Foreground="{StaticResource FgDim}"
+                                                        Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
                                                         Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
                                                         Click="OnBrowserTabClosed" />
                                             </Grid>
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource Bg}" />
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -355,8 +361,8 @@
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->
-                <DockPanel x:Name="AiPane" Background="{StaticResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{StaticResource Panel}" LastChildFill="False">
+                <DockPanel x:Name="AiPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI"
                                    Tag="Ai" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />

@@ -1,0 +1,20 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (VS Code dark 系) =====
+         配色のみをここに集約する。スタイル類は Controls.xaml 側にあり、
+         これらのブラシを DynamicResource で参照するためテーマ切替で即時反映される。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FF1E1E1E" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FF252526" />
+    <SolidColorBrush x:Key="Panel" Color="#FF1E1E1E" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF333333" />
+    <SolidColorBrush x:Key="Border" Color="#FF3C3C3C" />
+    <SolidColorBrush x:Key="Accent" Color="#FF0E639C" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FF1177BB" />
+    <!-- Accent 背景の上に載るテキスト色（どのテーマでも明色を保つ） -->
+    <SolidColorBrush x:Key="AccentFg" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Fg" Color="#FFD4D4D4" />
+    <SolidColorBrush x:Key="FgDim" Color="#FF9D9D9D" />
+
+</ResourceDictionary>

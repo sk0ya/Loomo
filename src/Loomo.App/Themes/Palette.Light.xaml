@@ -1,0 +1,19 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (VS Code light 系) =====
+         キーは Palette.Dark.xaml と一対一で対応させること（テーマ切替で差し替えるため）。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FFF3F3F3" />
+    <SolidColorBrush x:Key="Panel" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FFE8E8E8" />
+    <SolidColorBrush x:Key="Border" Color="#FFD4D4D4" />
+    <SolidColorBrush x:Key="Accent" Color="#FF005FB8" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FF0078D4" />
+    <!-- Accent 背景の上に載るテキスト色（どのテーマでも明色を保つ） -->
+    <SolidColorBrush x:Key="AccentFg" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Fg" Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="FgDim" Color="#FF616161" />
+
+</ResourceDictionary>

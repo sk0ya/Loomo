@@ -40,12 +40,13 @@ public class ShellViewModelTests
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
         var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService());
+        var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager());
 
         var workspaceStore = new WorkspaceStateStore(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workspaces.json"));
         var workspacesVm = new WorkspaceListViewModel(workspaceStore);
 
-        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm);
+        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm, appearanceVm);
     }
 
     [Fact]
