@@ -20,6 +20,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private string? _currentRoot;
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _refreshTimer;
+    private int _refreshQueued;
     // 進行中のフィルタ（デバウンス＋バックグラウンド構築）を、後続の入力で打ち切るためのトークン。
     private CancellationTokenSource? _filterCts;
 
@@ -458,10 +459,28 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _refreshTimer ??= new System.Threading.Timer(_ =>
         {
             var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher is null || dispatcher.CheckAccess())
+            if (dispatcher is null)
+            {
                 RefreshWorkspace();
-            else
-                dispatcher.Invoke(RefreshWorkspace);
+                return;
+            }
+
+            if (Interlocked.Exchange(ref _refreshQueued, 1) == 1)
+                return;
+
+            dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Background,
+                new Action(() =>
+                {
+                    try
+                    {
+                        RefreshWorkspace();
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _refreshQueued, 0);
+                    }
+                }));
         });
 
         _refreshTimer.Change(300, System.Threading.Timeout.Infinite);
