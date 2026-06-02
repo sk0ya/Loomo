@@ -79,8 +79,21 @@
                 </TextBox>
                 <TextBlock IsHitTestVisible="False" Margin="10,0" VerticalAlignment="Center"
                            Foreground="{DynamicResource FgDim}" FontStyle="Italic"
-                           Text="AIに指示を入力...   （例: $ dotnet build  /  open README.md  /  ls）"
-                           Visibility="{Binding Input, Converter={StaticResource EmptyToVis}}" />
+                           Text="AIに指示を入力...   （例: $ dotnet build  /  open README.md  /  ls）">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <!-- 通常は Input が空のときだけ表示 -->
+                            <Setter Property="Visibility"
+                                    Value="{Binding Input, Converter={StaticResource EmptyToVis}}" />
+                            <Style.Triggers>
+                                <!-- フォーカス中（IME変換中含む）は非表示にして重なりを防ぐ -->
+                                <DataTrigger Binding="{Binding IsKeyboardFocused, ElementName=InputBox}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </Grid>
 
             <TextBlock Grid.Column="2" Text="{Binding ProviderLabel}" VerticalAlignment="Center"
