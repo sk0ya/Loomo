@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
@@ -48,6 +49,7 @@ public sealed class OpenAiCompatibleClient : IAiClient
 
         var body = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
 
+        var buffered = new List<AgentEvent>();
         await foreach (var ev in OpenAiProtocol.SendAsync(
             _http, $"{baseUrl}/chat/completions", body, Provider.ToString(),
             req =>
@@ -57,7 +59,41 @@ public sealed class OpenAiCompatibleClient : IAiClient
             },
             ct))
         {
-            yield return ev;
+            if (Provider == AiProvider.Local
+                && ev is AgentError err
+                && IsOllamaToolsUnsupportedError(err.Message))
+            {
+                buffered.Clear();
+                var fallbackBody = OpenAiProtocol.BuildRequest(
+                    conversation,
+                    tools,
+                    cfg.Model,
+                    cfg.MaxTokens,
+                    _settings.SystemPrompt,
+                    includeTools: false);
+
+                await foreach (var fallbackEv in OpenAiProtocol.SendAsync(
+                    _http, $"{baseUrl}/chat/completions", fallbackBody, Provider.ToString(),
+                    req =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(cfg.ApiKey))
+                            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {cfg.ApiKey}");
+                    },
+                    ct))
+                {
+                    yield return fallbackEv;
+                }
+                yield break;
+            }
+
+            buffered.Add(ev);
         }
+
+        foreach (var ev in buffered)
+            yield return ev;
     }
+
+    private static bool IsOllamaToolsUnsupportedError(string message)
+        => message.Contains("does not support tools", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("does not support tool", StringComparison.OrdinalIgnoreCase);
 }

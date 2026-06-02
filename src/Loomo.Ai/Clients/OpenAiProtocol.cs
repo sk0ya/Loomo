@@ -24,8 +24,16 @@ internal static class OpenAiProtocol
         IReadOnlyList<ToolDefinition> tools,
         string model,
         int maxTokens,
-        string systemPrompt)
+        string systemPrompt,
+        bool includeTools = true)
     {
+        if (!includeTools)
+        {
+            systemPrompt +=
+                "\n\n現在選択中のモデルはツール呼び出しに対応していません。" +
+                "ファイル操作やコマンド実行はできないため、必要な操作はユーザーに具体的に案内してください。";
+        }
+
         var messages = new JsonArray
         {
             new JsonObject { ["role"] = "system", ["content"] = systemPrompt }
@@ -40,8 +48,12 @@ internal static class OpenAiProtocol
                     break;
 
                 case ChatRole.Assistant:
-                    var asMsg = new JsonObject { ["role"] = "assistant", ["content"] = m.Text ?? "" };
-                    if (m.ToolUses.Count > 0)
+                    var assistantText = m.Text ?? "";
+                    if (!includeTools && m.ToolUses.Count > 0)
+                        assistantText = AppendToolUseSummary(assistantText, m.ToolUses);
+
+                    var asMsg = new JsonObject { ["role"] = "assistant", ["content"] = assistantText };
+                    if (includeTools && m.ToolUses.Count > 0)
                     {
                         var calls = new JsonArray();
                         foreach (var use in m.ToolUses)
@@ -61,29 +73,43 @@ internal static class OpenAiProtocol
                     break;
 
                 case ChatRole.Tool:
-                    foreach (var r in m.ToolResults)
+                    if (includeTools)
+                    {
+                        foreach (var r in m.ToolResults)
+                            messages.Add(new JsonObject
+                            {
+                                ["role"] = "tool",
+                                ["tool_call_id"] = r.ToolUseId,
+                                ["content"] = r.Content
+                            });
+                    }
+                    else
+                    {
                         messages.Add(new JsonObject
                         {
-                            ["role"] = "tool",
-                            ["tool_call_id"] = r.ToolUseId,
-                            ["content"] = r.Content
+                            ["role"] = "user",
+                            ["content"] = BuildToolResultSummary(m.ToolResults)
                         });
+                    }
                     break;
             }
         }
 
         var toolArray = new JsonArray();
-        foreach (var t in tools)
-            toolArray.Add(new JsonObject
-            {
-                ["type"] = "function",
-                ["function"] = new JsonObject
+        if (includeTools)
+        {
+            foreach (var t in tools)
+                toolArray.Add(new JsonObject
                 {
-                    ["name"] = t.Name,
-                    ["description"] = t.Description,
-                    ["parameters"] = t.InputSchema.DeepClone()
-                }
-            });
+                    ["type"] = "function",
+                    ["function"] = new JsonObject
+                    {
+                        ["name"] = t.Name,
+                        ["description"] = t.Description,
+                        ["parameters"] = t.InputSchema.DeepClone()
+                    }
+                });
+        }
 
         var body = new JsonObject
         {
@@ -97,6 +123,26 @@ internal static class OpenAiProtocol
             body["tool_choice"] = "auto";
         }
         return body;
+    }
+
+    private static string AppendToolUseSummary(string text, IReadOnlyList<ToolUse> uses)
+    {
+        var prefix = string.IsNullOrWhiteSpace(text) ? "" : text + "\n\n";
+        var lines = new List<string> { "過去に要求されたツール呼び出し:" };
+        foreach (var use in uses)
+            lines.Add($"- {use.Name}: {use.ArgumentsJson}");
+        return prefix + string.Join("\n", lines);
+    }
+
+    private static string BuildToolResultSummary(IReadOnlyList<ToolResultMessage> results)
+    {
+        var lines = new List<string> { "過去のツール実行結果:" };
+        foreach (var result in results)
+        {
+            var status = result.IsError ? "error" : "ok";
+            lines.Add($"- {result.ToolUseId} ({status}): {result.Content}");
+        }
+        return string.Join("\n", lines);
     }
 
     /// <summary>リクエストを送り、応答（テキスト / ツール呼び出し）をイベント化して流す。
