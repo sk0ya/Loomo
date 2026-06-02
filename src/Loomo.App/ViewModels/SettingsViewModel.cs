@@ -94,7 +94,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         var cfg = _settings.ConfigFor(provider);
         Model = cfg.Model;
-        ApiKey = cfg.ApiKey ?? "";
+        // Copilot のトークンは GitHub サインインで取得・保持するため、共有の APIキー欄には載せない
+        // （載せると Copilot 切替時にこの空欄が CommitFieldsTo でトークンを上書き消去してしまう）。
+        ApiKey = provider == AiProvider.Copilot ? "" : (cfg.ApiKey ?? "");
         BaseUrl = cfg.BaseUrl ?? "";
         MaxTokens = cfg.MaxTokens;
     }
@@ -104,7 +106,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (provider == AiProvider.Stub) return; // Stub に編集項目は無い
         var cfg = _settings.ConfigFor(provider);
         cfg.Model = Model.Trim();
-        cfg.ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim();
+        // Copilot の ApiKey は SignInCopilot/SignOutCopilot が専管する。ここで空欄により上書きしない。
+        if (provider != AiProvider.Copilot)
+            cfg.ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim();
         cfg.BaseUrl = string.IsNullOrWhiteSpace(BaseUrl) ? null : BaseUrl.Trim();
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
     }
