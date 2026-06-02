@@ -16,7 +16,7 @@
     <RootNamespace>sk0ya.Loomo.App</RootNamespace>
     <AssemblyName>sk0ya.Loomo.App</AssemblyName>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>

@@ -56,7 +56,7 @@ public partial class ShellWindow : Window
     private Point _paneDragStart;
     private bool _paneDragArmed;
 
-    // ===== ドラッグ中のスナップ風プレビュー（WebView2 の airspace を越えるため最前面 Popup を使う） =====
+    // ===== ドラッグ中のスナップ風プレビュー =====
     private Popup? _dragPopup;
     private Canvas? _dragCanvas;
     private Border? _dragPreview;       // ドロップ先の半分を塗るプレビュー矩形
@@ -103,8 +103,8 @@ public partial class ShellWindow : Window
 
         // Ctrl+W に続けて h/j/k/l でフォーカスを上下左右の隣接ペインへ移す（vim 風）。
         // Terminal/Editor/AI は WPF コントロールなのでトンネリングの PreviewKeyDown で本体より先に拾う。
-        // Browser(WebView2) は別 HWND でキー入力を内部消費するため、Browser ペインに
-        // フォーカスがある間はこのナビゲーションは効かない（既知の制限）。
+        // Browser(WebView2) は内部でキー入力を消費するため、Browser ペインにフォーカスがある間は
+        // このナビゲーションが効かない場合がある（既知の制限）。
         PreviewKeyDown += OnPaneNavKey;
         PreviewGotKeyboardFocus += OnWindowPreviewGotKeyboardFocus;
         Deactivated += OnWindowDeactivated;
@@ -558,7 +558,7 @@ public partial class ShellWindow : Window
 
     /// <summary>
     /// スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は最前面の透明 Popup を被せ、
-    /// その上でマウスを追跡＆プレビューを描画する（WebView2/Terminal の上でも正しく重なる）。
+    /// その上でマウスを追跡＆プレビューを描画する。
     /// </summary>
     private void BeginPaneDrag(PaneKind source)
     {
@@ -1299,7 +1299,7 @@ public partial class ShellWindow : Window
 
     private void OnBrowserNavigationCompleted(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (sender is not WebView2 view)
+        if (sender is not WebView2CompositionControl view)
             return;
 
         var tab = _browserTabs.FirstOrDefault(t => ReferenceEquals(t.View, view));
@@ -1426,7 +1426,7 @@ public partial class ShellWindow : Window
         ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
     }
 
-    private WebView2? ActiveBrowserView => _activeBrowserTab?.View;
+    private WebView2CompositionControl? ActiveBrowserView => _activeBrowserTab?.View;
 
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
@@ -1436,7 +1436,7 @@ public partial class ShellWindow : Window
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
         var normalizedUrl = NormalizeBrowserAddress(url);
-        var view = new WebView2
+        var view = new WebView2CompositionControl
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
             Visibility = Visibility.Collapsed
@@ -1559,7 +1559,7 @@ public partial class ShellWindow : Window
 
     private sealed record TerminalTab(Guid Id, TerminalTabView View);
     private sealed record EditorTab(Guid Id, VimEditorControl Control);
-    private sealed record BrowserTab(Guid Id, WebView2 View);
+    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View);
 
     private sealed class TerminalWorkspaceTabs
     {
