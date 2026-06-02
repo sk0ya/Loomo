@@ -61,16 +61,6 @@
                             Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
                             Command="{Binding ShowSessionsCommand}" />
-                    <Border Height="1" Background="{DynamicResource Border}" Margin="10,8" />
-                    <!-- ペインの表示トグル（隠したペインの再表示にも使う） -->
-                    <Button Style="{StaticResource IconButton}" Content="▦" ToolTip="ターミナル 表示切替"
-                            Tag="Terminal" Click="OnTogglePaneVisibility" />
-                    <Button Style="{StaticResource IconButton}" Content="✎" ToolTip="エディタ 表示切替"
-                            Tag="Editor" Click="OnTogglePaneVisibility" />
-                    <Button Style="{StaticResource IconButton}" Content="🌐" ToolTip="ブラウザ 表示切替"
-                            Tag="Browser" Click="OnTogglePaneVisibility" />
-                    <Button Style="{StaticResource IconButton}" Content="🤖" ToolTip="AI 表示切替"
-                            Tag="Ai" Click="OnTogglePaneVisibility" />
                 </StackPanel>
             </DockPanel>
 
@@ -98,9 +88,23 @@
                     </Button>
                 </StackPanel>
 
-                <!-- ウィンドウ操作ボタン（キャプション領域だがクリック可能にする） -->
+                <!-- ウィンドウ操作ボタン＋ペイン表示トグル（キャプション領域だがクリック可能にする） -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             WindowChrome.IsHitTestVisibleInChrome="True">
+                    <!-- ペインの表示トグル（隠したペインの再表示にも使う） -->
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="▦" ToolTip="ターミナル 表示切替"
+                            Tag="Terminal" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="✎" ToolTip="エディタ 表示切替"
+                            Tag="Editor" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="🌐" ToolTip="ブラウザ 表示切替"
+                            Tag="Browser" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="🤖" ToolTip="AI 表示切替"
+                            Tag="Ai" Click="OnTogglePaneVisibility" />
+                    <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
                     <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButton}"
                             ToolTip="最小化" Click="OnMinimize">
                         <Path Stretch="None" StrokeThickness="1" SnapsToDevicePixels="True"
