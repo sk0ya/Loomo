@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -23,7 +24,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly AiSettingsStore _store;
     private readonly CopilotAuthService _copilotAuth;
     private readonly IEditorService _editor;
+    private readonly ModelCatalogService _modelCatalog;
     private CancellationTokenSource? _signInCts;
+    private CancellationTokenSource? _fetchModelsCts;
 
     /// <summary>現在フィールドに読み込まれているプロバイダ。切替時に旧プロバイダへコミットするため保持。</summary>
     private AiProvider _loadedProvider;
@@ -45,6 +48,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _autoApprove;
     [ObservableProperty] private bool _restrictToWorkspaceRoot;
 
+    /// <summary>エンドポイントから取得した利用可能モデルの一覧（選択肢）。</summary>
+    public ObservableCollection<string> AvailableModels { get; } = new();
+
+    /// <summary>モデル一覧を取得中か。</summary>
+    [ObservableProperty] private bool _isFetchingModels;
+
+    /// <summary>モデル選択ドロップダウンを開いているか（取得完了時に自動で開く）。</summary>
+    [ObservableProperty] private bool _modelDropDownOpen;
+
     /// <summary>Copilot サインインの進捗・状態表示。</summary>
     [ObservableProperty] private string _copilotStatus = "";
     [ObservableProperty] private bool _isSigningIn;
@@ -58,6 +70,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>モデル名・トークン上限を表示するか（Stub は不要）。</summary>
     public bool ShowModel => SelectedProvider != AiProvider.Stub;
 
+    /// <summary>モデル一覧の自動取得に対応するプロバイダか（OpenAI互換 / ローカルLLM）。</summary>
+    public bool CanFetchModels => ModelCatalogService.Supports(SelectedProvider);
+
     /// <summary>Copilot のサインインUIを表示するか。</summary>
     public bool ShowCopilotAuth => SelectedProvider == AiProvider.Copilot;
 
@@ -65,17 +80,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool IsCopilotSignedIn => !string.IsNullOrWhiteSpace(_settings.Copilot.ApiKey);
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store, CopilotAuthService copilotAuth,
-        IEditorService editor)
+        IEditorService editor, ModelCatalogService modelCatalog)
     {
         _settings = settings;
         _store = store;
         _copilotAuth = copilotAuth;
         _editor = editor;
+        _modelCatalog = modelCatalog;
         _selectedProvider = settings.Provider;
         _loadedProvider = settings.Provider;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadProviderFields(settings.Provider);
+        // 初期取得は UI スレッドのディスパッチャ経由で行う。コンストラクタ時点では
+        // SynchronizationContext が未確立のことがあり、await 継続が別スレッドで走ると
+        // バインド済み ObservableCollection の更新が失敗するため。アプリ未起動（テスト等）では no-op。
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+            new Action(() => TryAutoFetchModels(autoOpen: false)));
     }
 
     partial void OnSelectedProviderChanged(AiProvider value)
@@ -88,6 +109,21 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowModel));
         OnPropertyChanged(nameof(ShowCopilotAuth));
         OnPropertyChanged(nameof(IsCopilotSignedIn));
+        OnPropertyChanged(nameof(CanFetchModels));
+        // 進行中の取得を中止（切替後のプロバイダに前プロバイダの結果が紛れ込むのを防ぐ）。
+        // 非対応プロバイダへ切り替えた場合は再取得しないため、ここで必ず止める必要がある。
+        _fetchModelsCts?.Cancel();
+        AvailableModels.Clear(); // プロバイダごとにモデル候補は異なるためクリア
+        TryAutoFetchModels(autoOpen: true); // プロバイダ切替は操作起点なので取得後に候補を開いて見せる
+    }
+
+    /// <summary>対応プロバイダなら（OpenAI は鍵があるときのみ）モデル一覧を自動取得する。</summary>
+    private void TryAutoFetchModels(bool autoOpen)
+    {
+        if (!CanFetchModels) return;
+        // OpenAI は鍵未設定だと 401 になるだけなので、自動取得では鍵があるときに限る（ローカルは鍵不要）。
+        if (SelectedProvider == AiProvider.OpenAI && string.IsNullOrWhiteSpace(ApiKey)) return;
+        _ = FetchModelsCoreAsync(autoOpen);
     }
 
     private void LoadProviderFields(AiProvider provider)
@@ -133,6 +169,72 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             Status = $"保存に失敗しました: {ex.Message}";
+        }
+    }
+
+    /// <summary>手動の「再取得」ボタン。取得後に候補ドロップダウンを開いて見せる。</summary>
+    [RelayCommand]
+    private Task FetchModelsAsync() => FetchModelsCoreAsync(autoOpen: true);
+
+    /// <summary>現在のエンドポイント（編集中の BaseUrl / APIキー）から利用可能なモデル一覧を取得し、選択肢に反映する。
+    /// <paramref name="autoOpen"/> が true なら取得成功後にドロップダウンを自動で開く。</summary>
+    private async Task FetchModelsCoreAsync(bool autoOpen)
+    {
+        if (!CanFetchModels) return;
+
+        // 進行中の取得を中止し、最新の要求で置き換える（取り違え・古い結果の反映を防ぐ）。
+        // 各呼び出しは自分の CTS を所有し、自分の finally で破棄する。共有状態
+        // （IsFetchingModels / _fetchModelsCts）は最新の取得だけがリセットする。
+        _fetchModelsCts?.Cancel();
+        var cts = _fetchModelsCts = new CancellationTokenSource();
+        var provider = SelectedProvider;
+        IsFetchingModels = true;
+        try
+        {
+            Status = "モデル一覧を取得しています…";
+            var models = await _modelCatalog.FetchAsync(
+                provider,
+                baseUrlOverride: BaseUrl,
+                apiKeyOverride: ApiKey,
+                ct: cts.Token);
+
+            // 取得中に中止／プロバイダ変更があれば結果は破棄する。
+            if (cts.IsCancellationRequested || provider != SelectedProvider) return;
+
+            AvailableModels.Clear();
+            foreach (var m in models) AvailableModels.Add(m);
+
+            if (AvailableModels.Count == 0)
+            {
+                Status = "モデルが見つかりませんでした。エンドポイントが起動しているか確認してください。";
+            }
+            else
+            {
+                // 既存の選択（保存済みモデル）は勝手に変更しない。未選択のとき、または
+                // ユーザー操作起点の取得で現在値が候補に無いときだけ先頭で補完する。
+                if (!AvailableModels.Contains(Model) && (autoOpen || string.IsNullOrWhiteSpace(Model)))
+                    Model = AvailableModels[0];
+                Status = $"{AvailableModels.Count} 件のモデルを取得しました。";
+                if (autoOpen) ModelDropDownOpen = true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // より新しい取得に置き換えられた／キャンセルされた。Status は上書きしない。
+        }
+        catch (Exception ex)
+        {
+            if (provider == SelectedProvider)
+                Status = $"モデル取得に失敗しました: {ex.Message}";
+        }
+        finally
+        {
+            if (_fetchModelsCts == cts) // この取得が最新のときだけ共有状態を片付ける
+            {
+                IsFetchingModels = false;
+                _fetchModelsCts = null;
+            }
+            cts.Dispose();
         }
     }
 

@@ -12,6 +12,7 @@
     <conv:EnumToVisibilityConverter x:Key="EnumToVis" />
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+    <conv:InverseBoolConverter x:Key="InverseBool" />
 
     <!-- ===== Base text ===== -->
     <Style TargetType="TextBlock">
@@ -244,6 +245,21 @@
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Left" />
 
+                        <!-- 編集可能モード（IsEditable=True）の入力欄。WPF はこの名前を要求する。
+                             右端のドロップダウン矢印（約24px）を覆わないよう右マージンを確保。 -->
+                        <TextBox x:Name="PART_EditableTextBox"
+                                 Style="{x:Null}"
+                                 Background="Transparent"
+                                 Foreground="{TemplateBinding Foreground}"
+                                 CaretBrush="{DynamicResource Fg}"
+                                 BorderThickness="0"
+                                 Padding="{TemplateBinding Padding}"
+                                 Margin="0,0,24,0"
+                                 VerticalContentAlignment="Center"
+                                 Visibility="Collapsed"
+                                 Focusable="True"
+                                 IsReadOnly="{TemplateBinding IsReadOnly}" />
+
                         <Popup x:Name="Popup"
                                Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
@@ -264,6 +280,11 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="HasItems" Value="False">
                             <Setter TargetName="Popup" Property="MinHeight" Value="32" />
+                        </Trigger>
+                        <!-- 編集可能モードでは表示用 ContentSite を隠し、入力欄を表示する。 -->
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />

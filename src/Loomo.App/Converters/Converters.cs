@@ -38,6 +38,16 @@ public sealed class EnumToBoolConverter : IValueConverter
             : Binding.DoNothing;
 }
 
+/// <summary>真偽を反転する（IsEnabled の「〜中は無効化」用）。</summary>
+public sealed class InverseBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is not true;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is not true;
+}
+
 /// <summary>true のとき Collapsed（false で Visible）。</summary>
 public sealed class InverseBoolToVisibilityConverter : IValueConverter
 {

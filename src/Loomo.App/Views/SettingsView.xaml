@@ -22,10 +22,29 @@
                 <RadioButton Style="{StaticResource ProviderRadio}" GroupName="provider" Content="ローカルLLM（Ollama 等）"
                              IsChecked="{Binding SelectedProvider, Converter={StaticResource EnumToBool}, ConverterParameter=Local}" />
 
-                <!-- モデル -->
+                <!-- モデル（OpenAI互換/ローカルLLM は一覧取得＋選択。自由入力も可） -->
                 <StackPanel Visibility="{Binding ShowModel, Converter={StaticResource BoolToVis}}">
                     <TextBlock Style="{StaticResource FieldLabel}" Text="モデル" />
-                    <TextBox Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" IsEditable="True"
+                                  StaysOpenOnEdit="True"
+                                  ItemsSource="{Binding AvailableModels}"
+                                  IsDropDownOpen="{Binding ModelDropDownOpen, Mode=TwoWay}"
+                                  Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="1" Content="再取得" Style="{StaticResource FlatButton}"
+                                Margin="6,0,0,0"
+                                Command="{Binding FetchModelsCommand}"
+                                IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}"
+                                Visibility="{Binding CanFetchModels, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                    <TextBlock Text="エンドポイントから候補を自動取得します（変わらない場合は「再取得」）。一覧に無いモデルは直接入力も可。"
+                               Foreground="{DynamicResource FgDim}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,4,0,0"
+                               Visibility="{Binding CanFetchModels, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
 
                 <!-- API キー -->

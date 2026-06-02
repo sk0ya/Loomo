@@ -69,6 +69,10 @@ public partial class App : Application
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
         services.AddSingleton(sp => new CopilotAuthService(
             sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
+        // ローカルLLM/OpenAI互換エンドポイントから利用可能モデル一覧を取得（設定画面の選択肢）
+        services.AddSingleton(sp => new ModelCatalogService(
+            sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai"),
+            sp.GetRequiredService<AiSettings>()));
 
         // --- ツール ---
         services.AddSingleton<IAgentTool, ListDirectoryTool>();

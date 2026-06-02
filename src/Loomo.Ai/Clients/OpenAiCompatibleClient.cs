@@ -40,6 +40,10 @@ public sealed class OpenAiCompatibleClient : IAiClient
             yield break;
         }
 
+        // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
+        if (Provider == AiProvider.Local)
+            await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
+
         var body = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
 
         await foreach (var ev in OpenAiProtocol.SendAsync(
