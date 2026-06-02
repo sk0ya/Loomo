@@ -29,7 +29,8 @@
 
         <DataTemplate x:Key="TabEntryTemplate">
             <Border x:Name="TabBorder" Height="24" Margin="0" Background="Transparent"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                    MouseDown="OnTabMiddleClick">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />

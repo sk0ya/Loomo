@@ -174,7 +174,8 @@
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
                                                 Margin="0" Background="Transparent"
-                                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
+                                                Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -231,7 +232,8 @@
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
                                                 Margin="0" Background="Transparent"
-                                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
+                                                Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -288,7 +290,8 @@
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
                                                 Margin="0" Background="Transparent"
-                                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
+                                                Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />

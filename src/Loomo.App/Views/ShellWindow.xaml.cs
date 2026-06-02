@@ -1131,6 +1131,25 @@ public partial class ShellWindow : Window
             ActivateTerminalTab(id);
     }
 
+    // タブを中ボタンクリックで閉じる（Terminal / Editor / Browser 共通）
+    private async void OnTabMiddleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle || sender is not FrameworkElement { Tag: Guid id })
+            return;
+
+        e.Handled = true;
+        if (_terminalTabs.Any(t => t.Id == id))
+            await CloseTerminalTabAsync(id);
+        else if (_editorTabs.Any(t => t.Id == id))
+            CloseEditorTab(id);
+        else if (_browserTabs.Any(t => t.Id == id))
+            await CloseBrowserTabAsync(id);
+        else
+            return;
+
+        SaveActiveWorkspaceSnapshot();
+    }
+
     private async void OnTerminalTabClosed(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid id })
