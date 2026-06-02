@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using sk0ya.Loomo.Core.Abstractions;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -18,6 +20,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private string? _currentRoot;
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _refreshTimer;
+    // 進行中のフィルタ（デバウンス＋バックグラウンド構築）を、後続の入力で打ち切るためのトークン。
+    private CancellationTokenSource? _filterCts;
 
     [ObservableProperty]
     private string _rootLabel = "(フォルダ未選択)";
@@ -31,6 +35,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     [ObservableProperty]
     private string _filterStatus = "";
 
+    // インクリメンタル検索（/）のクエリ。空でなければツリーを名前一致でフィルタする。
+    // ヒットしたファイルへ至るフォルダだけを残し、自動展開して中身を見せる。
+    [ObservableProperty]
+    private string _searchFilter = "";
+
     [ObservableProperty]
     private bool _hasVisibleNodes;
 
@@ -40,6 +49,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     public ObservableCollection<FileNodeViewModel> Nodes { get; } = new();
 
     public event EventHandler<string>? FileActivated;
+
+    // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
+    // View 側が先頭ヒットの選択・件数表示を行うために購読する。
+    public event EventHandler? FilterCompleted;
 
     public FolderTreeViewModel(IWorkspaceService workspace)
     {
@@ -69,6 +82,16 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     partial void OnShowChangedOnlyChanged(bool value) => RefreshWorkspace();
 
+    // フィルタ文字の変更はツリーの再構築だけでよい（git 状態の再取得は不要）。
+    // 文字入力を止めないよう、再構築はデバウンス＋バックグラウンドで行う（ScheduleFilter）。
+    // ハイライト用の SearchFilter バインドは即時更新されるので、入力の手応えは保たれる。
+    partial void OnSearchFilterChanged(string value) => ScheduleFilter(value);
+
+    private bool IsFiltering => !string.IsNullOrEmpty(SearchFilter);
+
+    private bool MatchesFilter(string name)
+        => name.Contains(SearchFilter, StringComparison.OrdinalIgnoreCase);
+
     private void RefreshWorkspace()
     {
         if (_currentRoot is null) return;
@@ -78,19 +101,226 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     private void ReloadNodes()
     {
-        Nodes.Clear();
         if (_currentRoot is null)
         {
+            _filterCts?.Cancel();
+            Nodes.Clear();
             HasVisibleNodes = false;
             EmptyMessage = "フォルダを開いてください";
             return;
         }
 
+        // フィルタ中の再構築は重い（全階層の列挙＋git）ため、バックグラウンドへ回す。
+        // 既存表示は ScheduleFilter が完了するまで残し、ちらつきを防ぐ。
+        if (IsFiltering)
+        {
+            ScheduleFilter(SearchFilter);
+            return;
+        }
+
+        // 非フィルタ時はトップレベルのみ（遅延読込）なので同期で十分軽い。
+        _filterCts?.Cancel();
+        Nodes.Clear();
         foreach (var node in EnumerateChildren(_currentRoot))
             Nodes.Add(node);
 
         HasVisibleNodes = Nodes.Count > 0;
         EmptyMessage = CreateEmptyMessage();
+    }
+
+    // シンボリックリンク/ジャンクションの循環で無限再帰しないための保険。実在のソースツリーは
+    // この深さに達しないので、超えたら打ち切る。
+    private const int MaxFilterDepth = 64;
+
+    // フィルタの実体。入力連打中は debounce で再構築を間引き、重い列挙＋git は
+    // Task.Run でバックグラウンド実行する。後続の入力が来たら CancellationToken で打ち切る。
+    private async void ScheduleFilter(string query)
+    {
+        // 進行中のフィルタを打ち切る。古い CTS の Dispose は、その所有タスク自身が
+        // finally で行う（ここで Dispose すると、まだ token を見ている処理が
+        // ObjectDisposedException を投げ得るため）。
+        _filterCts?.Cancel();
+
+        if (_currentRoot is null)
+            return;
+
+        if (string.IsNullOrEmpty(query))
+        {
+            // 解除はトップレベルのみで軽いので即時反映。
+            _filterCts = null;
+            ReloadNodes();
+            FilterCompleted?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _filterCts = cts;
+        var token = cts.Token;
+        var root = _currentRoot;
+
+        try
+        {
+            await Task.Delay(160, token);   // 入力が続く間は再構築しない
+            var built = await Task.Run(() => BuildFilteredTree(root, token), token);
+            token.ThrowIfCancellationRequested();
+
+            // ここは await 後＝UI スレッド。Nodes を一括で差し替える。
+            Nodes.Clear();
+            foreach (var node in built)
+                Nodes.Add(node);
+
+            HasVisibleNodes = Nodes.Count > 0;
+            EmptyMessage = CreateEmptyMessage();
+            FilterCompleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (OperationCanceledException)
+        {
+            // 後続の入力／更新に置き換えられた。表示はそのまま残す。
+        }
+        catch
+        {
+            // 想定外の I/O 等。async void なのでここで握りつぶし、表示は維持する
+            // （UI スレッドへ伝播するとアプリが落ちるため。git 系の例外と同じ防御方針）。
+        }
+        finally
+        {
+            // 自分が現役なら参照を外し、いずれにせよ自分の CTS は確実に破棄する。
+            if (ReferenceEquals(_filterCts, cts))
+                _filterCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private List<FileNodeViewModel> BuildFilteredTree(string root, CancellationToken token)
+    {
+        // ignore 判定は階層単位でまとめて git に問い合わせる（フォルダ単位の多重起動を避ける）。
+        var ignoredPaths = ComputeIgnoredPaths(root, token);
+        return BuildFilteredChildren(root, depth: 0, ignoredPaths, token);
+    }
+
+    // ツリーを階層ごと（BFS）に走査し、git check-ignore を「階層につき 1 回」だけ呼んで
+    // ignore 集合をまとめて得る。ignore されたフォルダ・reparse point はその場で打ち切るため、
+    // node_modules などの巨大ツリーへ潜らない。git 呼び出し回数は概ね「ツリーの深さ」に収まる。
+    private HashSet<string> ComputeIgnoredPaths(string root, CancellationToken token)
+    {
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!(HideIgnoredFiles && !ShowChangedOnly))
+            return ignored;
+
+        var frontier = new List<string> { root };
+        for (var depth = 0; depth <= MaxFilterDepth && frontier.Count > 0; depth++)
+        {
+            token.ThrowIfCancellationRequested();
+
+            var levelDirs = new List<string>();
+            var levelEntries = new List<string>();
+            foreach (var dir in frontier)
+            {
+                if (TryEnumerate(dir, out var subdirs, out var files))
+                {
+                    levelDirs.AddRange(subdirs);
+                    levelEntries.AddRange(subdirs);
+                    levelEntries.AddRange(files);
+                }
+            }
+
+            if (levelEntries.Count == 0)
+                break;
+
+            foreach (var path in _gitState.GetIgnoredPaths(levelEntries))
+                ignored.Add(path);
+
+            // 次の階層は「ignore されておらず、reparse でない」サブフォルダのみ。
+            frontier = levelDirs
+                .Where(d => !ignored.Contains(Path.GetFullPath(d)) && !IsReparsePoint(d))
+                .ToList();
+        }
+
+        return ignored;
+    }
+
+    // 名前が一致するノード（とそこへ至るフォルダ）だけを残し、一致フォルダは自動展開して
+    // 埋もれたヒットを見せる。ignore 集合は事前計算済みなので、ここでは git を呼ばない。
+    private List<FileNodeViewModel> BuildFilteredChildren(
+        string path, int depth, HashSet<string> ignoredPaths, CancellationToken token)
+    {
+        var result = new List<FileNodeViewModel>();
+        if (depth > MaxFilterDepth || !TryEnumerate(path, out var directories, out var files))
+            return result;
+
+        token.ThrowIfCancellationRequested();
+
+        foreach (var directory in directories.OrderBy(d => Path.GetFileName(d)))
+        {
+            token.ThrowIfCancellationRequested();
+
+            if (!ShouldShow(directory, isDirectory: true, ignoredPaths))
+                continue;
+
+            // reparse point（シンボリックリンク/ジャンクション）は循環の恐れがあるので辿らない。
+            // 名前が一致する場合だけ、展開しない葉として見せる。
+            if (IsReparsePoint(directory))
+            {
+                if (MatchesFilter(Path.GetFileName(directory)))
+                {
+                    var leaf = new FileNodeViewModel(directory, true, this);
+                    leaf.LoadChildren(Array.Empty<FileNodeViewModel>());
+                    result.Add(leaf);
+                }
+                continue;
+            }
+
+            var matchingChildren = BuildFilteredChildren(directory, depth + 1, ignoredPaths, token);
+            if (!MatchesFilter(Path.GetFileName(directory)) && matchingChildren.Count == 0)
+                continue;
+
+            var node = new FileNodeViewModel(directory, true, this);
+            node.LoadChildren(matchingChildren);
+            node.IsExpanded = true;
+            result.Add(node);
+        }
+
+        foreach (var file in files.OrderBy(f => Path.GetFileName(f)))
+        {
+            if (!ShouldShow(file, isDirectory: false, ignoredPaths))
+                continue;
+            if (MatchesFilter(Path.GetFileName(file)))
+                result.Add(new FileNodeViewModel(file, false, this));
+        }
+
+        return result;
+    }
+
+    // 全階層を再帰的に列挙するため、アクセス不可なフォルダがあってもそこだけ飛ばして続行する。
+    private static bool TryEnumerate(string path, out string[] directories, out string[] files)
+    {
+        directories = Array.Empty<string>();
+        files = Array.Empty<string>();
+        if (!Directory.Exists(path))
+            return false;
+
+        try
+        {
+            directories = Directory.EnumerateDirectories(path).ToArray();
+            files = Directory.EnumerateFiles(path).ToArray();
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsReparsePoint(string directory)
+    {
+        try
+        {
+            return (new DirectoryInfo(directory).Attributes & FileAttributes.ReparsePoint) != 0;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
     }
 
     private IEnumerable<FileNodeViewModel> EnumerateChildren(string path)
@@ -159,6 +389,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     {
         if (_currentRoot is null)
             return "フォルダを開いてください";
+
+        if (IsFiltering)
+            return $"「{SearchFilter}」に一致する項目はありません";
 
         if (ShowChangedOnly && !_gitState.IsGitRepository)
             return "Git リポジトリではありません";
@@ -500,6 +733,15 @@ public sealed partial class FileNodeViewModel : ObservableObject
             foreach (var child in _owner.Children(FullPath))
                 Children.Add(child);
         }
+    }
+
+    // フィルタ済みの子を先に流し込み、遅延読込を無効化する（展開しても再読込しない）。
+    public void LoadChildren(IReadOnlyList<FileNodeViewModel> children)
+    {
+        _loaded = true;
+        Children.Clear();
+        foreach (var child in children)
+            Children.Add(child);
     }
 
     partial void OnIsSelectedChanged(bool value)

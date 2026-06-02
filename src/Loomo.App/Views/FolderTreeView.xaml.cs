@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,13 +19,27 @@ public partial class FolderTreeView : UserControl
     private readonly List<FileNodeViewModel> _matches = new();
     private int _matchIndex = -1;
 
-    // 検索開始時の選択。Esc キャンセルで元の位置へ戻すために退避する。
-    private FileNodeViewModel? _selectionBeforeSearch;
+    // 検索開始時の選択（パス）。Esc キャンセルでフィルタを解除し、元の位置へ戻すために退避する。
+    // フィルタはツリーを作り直すためインスタンスは無効化される。パスで復元する。
+    private string? _selectionBeforeSearchPath;
 
     // gg（先頭へ）の 1 つ目の g を受け取った状態。
     private bool _pendingG;
 
-    public FolderTreeView() => InitializeComponent();
+    public FolderTreeView()
+    {
+        InitializeComponent();
+        // DataContext はXAML側で後から差し込まれるため、差し替えに追従して購読する。
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is FolderTreeViewModel oldVm)
+            oldVm.FilterCompleted -= OnFilterCompleted;
+        if (e.NewValue is FolderTreeViewModel newVm)
+            newVm.FilterCompleted += OnFilterCompleted;
+    }
 
     private void OnTreeMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -120,6 +135,18 @@ public partial class FolderTreeView : UserControl
                     _pendingG = true;              // 1 つ目の g
                 e.Handled = true;
                 break;
+
+            case Key.Escape:
+                // フィルタ適用中（/ を確定した後）なら Esc で解除し、選択中のファイルを全ツリーで再表示する。
+                if (DataContext is FolderTreeViewModel vm && !string.IsNullOrEmpty(vm.SearchFilter))
+                {
+                    var selected = (tree.SelectedItem as FileNodeViewModel)?.FullPath;
+                    ClearFilter();
+                    if (selected is not null)
+                        RevealPath(selected);
+                    e.Handled = true;
+                }
+                break;
         }
     }
 
@@ -143,10 +170,10 @@ public partial class FolderTreeView : UserControl
 
     private void OpenSearch()
     {
-        _selectionBeforeSearch = FileTree.SelectedItem as FileNodeViewModel;
+        _selectionBeforeSearchPath = (FileTree.SelectedItem as FileNodeViewModel)?.FullPath;
 
         SearchBar.Visibility = Visibility.Visible;
-        SearchBox.Text = "";
+        SearchBox.Text = "";   // TextChanged 経由でフィルタも空に戻る
         SearchStatus.Text = "";
 
         // 直前まで Collapsed だったため、レイアウト確定後でないとフォーカスが移らない。
@@ -156,12 +183,43 @@ public partial class FolderTreeView : UserControl
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
     {
         _searchQuery = SearchBox.Text;
-        RebuildMatches();
 
+        // ツリーのフィルタ（重い列挙＋git）は VM 側でデバウンス＋バックグラウンド実行する。
+        // ここでは即時にクエリだけ渡す（ハイライトの更新もこの設定で走る）。
+        // 先頭ヒットの選択・件数表示は完了通知（FilterCompleted）で行う。
+        if (DataContext is FolderTreeViewModel vm)
+            vm.SearchFilter = _searchQuery;
+
+        if (string.IsNullOrEmpty(_searchQuery))
+        {
+            _matches.Clear();
+            _matchIndex = -1;
+            UpdateSearchStatus();
+        }
+        else
+        {
+            SearchStatus.Text = "検索中…";
+        }
+    }
+
+    // VM のバックグラウンドフィルタが Nodes へ反映され終わったら、先頭ヒットを選び件数を出す。
+    private void OnFilterCompleted(object? sender, EventArgs e)
+    {
+        // 検索バーが開いている間だけ自動選択する（Enter 確定後などに割り込まない）。
+        if (SearchBar.Visibility != Visibility.Visible)
+            return;
+
+        RebuildMatches();
         _matchIndex = _matches.Count > 0 ? 0 : -1;
         if (_matchIndex == 0)
-            // 入力中はフォーカスを検索ボックスに保ったまま、選択だけ移す。
-            SelectAndReveal(_matches[0], focus: false);
+        {
+            // 入力中はフォーカスを検索ボックスに保ったまま、選択だけ先頭ヒットへ移す。
+            // ツリーは直前に作り直されコンテナ未生成なので、レイアウト確定後にスクロールする。
+            var first = _matches[0];
+            first.IsSelected = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                new Action(() => SelectAndReveal(first, focus: false)));
+        }
 
         UpdateSearchStatus();
     }
@@ -196,12 +254,33 @@ public partial class FolderTreeView : UserControl
     {
         SearchBar.Visibility = Visibility.Collapsed;
 
-        if (commit && _matchIndex >= 0 && _matchIndex < _matches.Count)
-            SelectAndReveal(_matches[_matchIndex], focus: true);   // 確定：ヒット位置を保つ
-        else if (!commit && _selectionBeforeSearch is not null)
-            SelectAndReveal(_selectionBeforeSearch, focus: true);  // キャンセル：元の選択へ戻す
+        if (commit)
+        {
+            // 確定：フィルタは維持したまま、選択中のヒットへフォーカスを移す。
+            // フィルタを残すことで「一致したファイルだけ」を引き続き辿れる（Esc で解除）。
+            if (_matchIndex >= 0 && _matchIndex < _matches.Count)
+                SelectAndReveal(_matches[_matchIndex], focus: true);
+            else
+                FileTree.Focus();
+        }
         else
-            FileTree.Focus();
+        {
+            // キャンセル：フィルタを解除して全ツリーへ戻し、元の選択位置を復元する。
+            ClearFilter();
+            if (_selectionBeforeSearchPath is not null)
+                RevealPath(_selectionBeforeSearchPath);
+            else
+                FileTree.Focus();
+        }
+    }
+
+    private void ClearFilter()
+    {
+        _searchQuery = "";
+        _matches.Clear();
+        _matchIndex = -1;
+        if (DataContext is FolderTreeViewModel vm)
+            vm.SearchFilter = "";
     }
 
     private void MoveMatch(int delta, bool focusTree)
@@ -269,6 +348,53 @@ public partial class FolderTreeView : UserControl
                 foreach (var child in VisibleNodes(node.Children))
                     yield return child;
         }
+    }
+
+    // 遅延読込ツリーで指定パスを上から順に展開し、たどり着いたノードを選択・表示する。
+    // フィルタ解除後（全ツリーは未展開）に元の選択を復元するために使う。
+    private void RevealPath(string fullPath)
+    {
+        if (DataContext is FolderTreeViewModel vm)
+            RevealStep(vm.Nodes, fullPath);
+    }
+
+    private void RevealStep(IEnumerable<FileNodeViewModel> level, string fullPath)
+    {
+        FileNodeViewModel? target = null;
+        FileNodeViewModel? descend = null;
+        foreach (var node in level)
+        {
+            if (PathEquals(node.FullPath, fullPath)) { target = node; break; }
+            if (node.IsDirectory && IsAncestor(node.FullPath, fullPath)) { descend = node; break; }
+        }
+
+        if (target is not null)
+        {
+            SelectAndReveal(target, focus: true);
+            return;
+        }
+
+        if (descend is null)
+            return;
+
+        descend.IsExpanded = true;   // VM 側の子を同期読込
+        // 展開したコンテナの生成・レイアウト確定を待ってから次階層へ降りる。
+        Dispatcher.BeginInvoke(DispatcherPriority.Background,
+            new Action(() => RevealStep(descend.Children, fullPath)));
+    }
+
+    private static bool PathEquals(string a, string b)
+        => string.Equals(
+            Path.GetFullPath(a).TrimEnd('\\', '/'),
+            Path.GetFullPath(b).TrimEnd('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAncestor(string directory, string path)
+    {
+        var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
+        var full = Path.GetFullPath(path);
+        return full.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private void SelectAndReveal(FileNodeViewModel node, bool focus)

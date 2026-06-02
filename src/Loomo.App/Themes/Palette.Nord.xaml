@@ -14,5 +14,7 @@
     <SolidColorBrush x:Key="AccentFg" Color="#FFECEFF4" />
     <SolidColorBrush x:Key="Fg" Color="#FFD8DEE9" />
     <SolidColorBrush x:Key="FgDim" Color="#FF8A93A5" />
+    <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明アンバー） -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80EBCB8B" />
 
 </ResourceDictionary>
