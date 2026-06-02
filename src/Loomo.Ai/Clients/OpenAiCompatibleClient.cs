@@ -32,7 +32,9 @@ public sealed class OpenAiCompatibleClient : IAiClient
         [EnumeratorCancellation] CancellationToken ct)
     {
         var cfg = _settings.ConfigFor(Provider);
-        var baseUrl = (cfg.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/');
+        // BaseUrl 未設定時の既定はプロバイダ依存（ローカルLLM は Ollama、それ以外は OpenAI）。
+        var defaultBase = Provider == AiProvider.Local ? OllamaLauncher.DefaultBaseUrl : "https://api.openai.com/v1";
+        var baseUrl = (string.IsNullOrWhiteSpace(cfg.BaseUrl) ? defaultBase : cfg.BaseUrl).TrimEnd('/');
         var requiresKey = Provider != AiProvider.Local;
         if (requiresKey && string.IsNullOrWhiteSpace(cfg.ApiKey))
         {

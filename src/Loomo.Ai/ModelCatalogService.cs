@@ -45,9 +45,11 @@ public sealed class ModelCatalogService
             throw new NotSupportedException($"{provider} はモデル一覧取得に対応していません。");
 
         var cfg = _settings.ConfigFor(provider);
+        // BaseUrl 未設定時の既定はプロバイダ依存（ローカルLLM は Ollama、それ以外は OpenAI）。
+        var defaultBase = provider == AiProvider.Local ? OllamaLauncher.DefaultBaseUrl : "https://api.openai.com/v1";
         var rawBase = !string.IsNullOrWhiteSpace(baseUrlOverride) ? baseUrlOverride
             : !string.IsNullOrWhiteSpace(cfg.BaseUrl) ? cfg.BaseUrl
-            : "https://api.openai.com/v1";
+            : defaultBase;
         var baseUrl = rawBase!.TrimEnd('/');
         var apiKey = !string.IsNullOrWhiteSpace(apiKeyOverride) ? apiKeyOverride : cfg.ApiKey;
 

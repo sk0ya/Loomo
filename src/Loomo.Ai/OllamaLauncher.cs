@@ -13,6 +13,9 @@ namespace sk0ya.Loomo.Ai;
 /// </summary>
 public static class OllamaLauncher
 {
+    /// <summary>ローカルLLM（Ollama）の既定 BaseUrl。BaseUrl 未設定時のフォールバックに使う。</summary>
+    public const string DefaultBaseUrl = "http://localhost:11434/v1";
+
     /// <summary>BaseUrl がローカルループバックを指すか（自動起動の対象判定）。</summary>
     public static bool IsLoopback(string? baseUrl) =>
         !string.IsNullOrWhiteSpace(baseUrl) &&

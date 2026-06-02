@@ -210,9 +210,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             }
             else
             {
-                // 既存の選択（保存済みモデル）は勝手に変更しない。未選択のとき、または
-                // ユーザー操作起点の取得で現在値が候補に無いときだけ先頭で補完する。
-                if (!AvailableModels.Contains(Model) && (autoOpen || string.IsNullOrWhiteSpace(Model)))
+                // 既存の選択（保存済み・入力中のモデル名）は勝手に変更しない。未選択のときだけ
+                // 先頭候補で補完する。候補との不一致（例: "llama3.1" と Ollama の "llama3.1:latest"）
+                // で保存済みモデルを上書きしないため、autoOpen でも非空の値はそのまま残す。
+                if (string.IsNullOrWhiteSpace(Model))
                     Model = AvailableModels[0];
                 Status = $"{AvailableModels.Count} 件のモデルを取得しました。";
                 if (autoOpen) ModelDropDownOpen = true;

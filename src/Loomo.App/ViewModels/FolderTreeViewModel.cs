@@ -99,14 +99,26 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         var directories = Directory.EnumerateDirectories(path).ToArray();
         var files = Directory.EnumerateFiles(path).ToArray();
-        var ignoredPaths = HideIgnoredFiles
+        // 「変更のみ表示」では変更ファイル集合だけを通すため、ignore 判定は不要
+        // （git が変更として報告するパスは ignore 対象になり得ない）。これにより、
+        // 変更フォルダを再帰的に自動展開する際にディレクトリ階層ごとに
+        // `git check-ignore` を同期起動して UI を固める問題を避ける。
+        var ignoredPaths = (HideIgnoredFiles && !ShowChangedOnly)
             ? _gitState.GetIgnoredPaths(directories.Concat(files))
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var visibleDirectories = directories
             .OrderBy(d => Path.GetFileName(d))
             .Where(d => ShouldShow(d, isDirectory: true, ignoredPaths))
-            .Select(d => new FileNodeViewModel(d, true, this));
+            .Select(d =>
+            {
+                var node = new FileNodeViewModel(d, true, this);
+                // 「変更のみ表示」では変更ファイルがフォルダの奥に埋もれて見えなくなるため、
+                // 該当フォルダを自動展開して中の追加/変更ファイルをそのまま見せる。
+                // （展開すると子も同じ経路でフィルタ＆自動展開され、末端まで再帰的に開く）
+                if (ShowChangedOnly) node.IsExpanded = true;
+                return node;
+            });
 
         var visibleFiles = files
             .OrderBy(f => Path.GetFileName(f))
@@ -348,8 +360,11 @@ internal sealed class GitTreeState
             var status = entry[..2];
             var relativePath = entry[3..];
 
+            // リネーム/コピーは -z 形式では「新パス\0旧パス」の順で出力される。
+            // 新パスは entry 側に含まれているので、続く旧パスのエントリを読み飛ばすだけにする
+            // （旧パスはディスク上に存在せず、新パス＝追加扱いのファイルが表示対象）。
             if ((status[0] is 'R' or 'C' || status[1] is 'R' or 'C') && i + 1 < entries.Length)
-                relativePath = entries[++i];
+                i++;
 
             if (string.IsNullOrWhiteSpace(relativePath))
                 continue;
@@ -397,7 +412,11 @@ internal sealed class GitTreeState
     private static GitCommandResult RunGit(string workingDirectory, params string[] args)
         => RunGit(workingDirectory, standardInput: null, args);
 
-    private static GitCommandResult RunGit(string workingDirectory, string? standardInput, params string[] args)
+    // 注意: stdin 版の args は params にしない。params にすると
+    // RunGit(wd, "status", "--porcelain", ...) のような呼び出しで "status" が
+    // standardInput に解決され（git のサブコマンドが渡らず exit 129 になる）。
+    // 明示的な string[] にすることで、可変長引数の呼び出しは必ず上の params 版へ振り分けられる。
+    private static GitCommandResult RunGit(string workingDirectory, string? standardInput, string[] args)
     {
         try
         {
