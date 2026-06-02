@@ -155,10 +155,10 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL"
                                    Tag="Terminal" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Terminal" Click="OnHidePane" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnTerminalNewTab" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
@@ -173,9 +173,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0,6,4,6" Background="{DynamicResource BgAlt}"
-                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                CornerRadius="4">
+                                                Margin="0" Background="Transparent"
+                                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -196,7 +195,6 @@
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
@@ -214,10 +212,10 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR"
                                    Tag="Editor" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Editor" Click="OnHidePane" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
@@ -232,9 +230,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0,6,4,6" Background="{DynamicResource BgAlt}"
-                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                CornerRadius="4">
+                                                Margin="0" Background="Transparent"
+                                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -255,7 +252,6 @@
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
@@ -273,10 +269,10 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER"
                                    Tag="Browser" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Browser" Click="OnHidePane" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnBrowserNewTab" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
@@ -291,9 +287,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0,6,4,6" Background="{DynamicResource BgAlt}"
-                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                CornerRadius="4">
+                                                Margin="0" Background="Transparent"
+                                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -314,7 +309,6 @@
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
@@ -366,7 +360,7 @@
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI"
                                    Tag="Ai" Cursor="SizeAll"
                                    MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="26"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Ai" Click="OnHidePane" />
                     </DockPanel>

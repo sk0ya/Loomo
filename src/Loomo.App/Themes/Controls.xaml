@@ -301,7 +301,7 @@
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Padding" Value="10,3" />
     </Style>
 
     <!-- ===== Field label（設定フォーム用） ===== -->
