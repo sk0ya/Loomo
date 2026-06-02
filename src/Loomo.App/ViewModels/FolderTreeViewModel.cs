@@ -121,12 +121,61 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         // 非フィルタ時はトップレベルのみ（遅延読込）なので同期で十分軽い。
         _filterCts?.Cancel();
-        Nodes.Clear();
-        foreach (var node in EnumerateChildren(_currentRoot))
-            Nodes.Add(node);
+        ReconcileChildren(Nodes, _currentRoot);
 
         HasVisibleNodes = Nodes.Count > 0;
         EmptyMessage = CreateEmptyMessage();
+    }
+
+    // ファイル監視からの再描画で Nodes を丸ごと作り直すと、既存の TreeViewItem コンテナが
+    // 破棄され、選択・展開状態とキーボードフォーカスが毎回失われる（監視は bin/obj/.git 等の
+    // 更新で頻発するため、展開してもすぐ畳まれフォーカスも外れて見える）。そこで Clear せず、
+    // FullPath をキーに既存インスタンスを再利用しながら、増減・並びの差分だけを反映する。
+    // 内容が変わらなければコレクションは無変更＝コンテナもフォーカスも維持される。
+    private void ReconcileChildren(ObservableCollection<FileNodeViewModel> target, string path)
+    {
+        var desired = EnumerateChildren(path).ToList();
+        var desiredPaths = new HashSet<string>(
+            desired.Select(d => d.FullPath), StringComparer.OrdinalIgnoreCase);
+
+        // 1. 消えた項目を除去する。
+        for (var i = target.Count - 1; i >= 0; i--)
+            if (!desiredPaths.Contains(target[i].FullPath))
+                target.RemoveAt(i);
+
+        // 2. desired の順に並べ替えつつ、既存インスタンスは再利用（新規だけ挿入）。
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var want = desired[i];
+            var existingIndex = IndexOfPath(target, want.FullPath);
+            if (existingIndex < 0)
+            {
+                target.Insert(i, want);
+                continue;
+            }
+
+            var keep = target[existingIndex];
+            if (existingIndex != i)
+                target.Move(existingIndex, i);
+
+            // 展開済みディレクトリは中身も差分更新する。畳まれている枝は表示されていないので
+            // 走査せず、遅延読込状態へ戻して次に開いたとき最新を読み直させる。
+            if (keep.IsDirectory)
+            {
+                if (keep.IsExpanded)
+                    ReconcileChildren(keep.Children, keep.FullPath);
+                else
+                    keep.ResetToLazy();
+            }
+        }
+    }
+
+    private static int IndexOfPath(ObservableCollection<FileNodeViewModel> nodes, string fullPath)
+    {
+        for (var i = 0; i < nodes.Count; i++)
+            if (string.Equals(nodes[i].FullPath, fullPath, StringComparison.OrdinalIgnoreCase))
+                return i;
+        return -1;
     }
 
     // シンボリックリンク/ジャンクションの循環で無限再帰しないための保険。実在のソースツリーは
@@ -752,6 +801,18 @@ public sealed partial class FileNodeViewModel : ObservableObject
             foreach (var child in _owner.Children(FullPath))
                 Children.Add(child);
         }
+    }
+
+    // 畳まれた枝を遅延読込前の状態へ戻す。監視更新で中身が古くなっても、次に展開したとき
+    // 最新を読み直すため、ダミーの子だけを残して再読込可能にする。
+    public void ResetToLazy()
+    {
+        if (!IsDirectory || !_loaded)
+            return;
+
+        _loaded = false;
+        Children.Clear();
+        Children.Add(Placeholder);
     }
 
     // フィルタ済みの子を先に流し込み、遅延読込を無効化する（展開しても再読込しない）。
