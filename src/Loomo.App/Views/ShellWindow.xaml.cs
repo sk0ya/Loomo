@@ -68,10 +68,18 @@ public partial class ShellWindow : Window
     private DropZone? _dragZone;
 
     // ===== ペイン間フォーカス移動（Ctrl+W h/j/k/l） =====
-    /// <summary>直近でキーボードフォーカスを得たペイン（移動の起点）。</summary>
-    private PaneKind? _focusedPane;
+    /// <summary>直近でキーボードフォーカスを得た領域（移動の起点）。ペイン本体またはサイドバー。</summary>
+    private FocusTarget? _focusedRegion;
     /// <summary>Ctrl+W プレフィックスを受け取り、次の h/j/k/l を待ち受けている状態。</summary>
     private bool _awaitingPaneDirection;
+
+    /// <summary>フォーカス移動の対象領域：ペイン本体（<see cref="Pane"/> あり）またはサイドバー（null）。</summary>
+    private readonly record struct FocusTarget(PaneKind? Pane)
+    {
+        public bool IsSidebar => Pane is null;
+        public static FocusTarget Sidebar => new((PaneKind?)null);
+        public static FocusTarget Of(PaneKind kind) => new(kind);
+    }
 
     public ShellWindow(
         ShellViewModel vm,
@@ -867,8 +875,8 @@ public partial class ShellWindow : Window
             if (VisibleLeafCount() <= 1)
                 return;
             leaf!.Hidden = true;
-            if (_focusedPane == kind)
-                _focusedPane = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
+            if (_focusedRegion?.Pane == kind)
+                _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
         }
 
         _root = Normalize(_root);
@@ -956,8 +964,21 @@ public partial class ShellWindow : Window
         // （Ctrl+W → 気が変わってクリック/別ペインへ移動 → 後続の h/j/k/l が誤って奪われるのを防ぐ）
         _awaitingPaneDirection = false;
 
-        if (e.NewFocus is DependencyObject d && FindPaneOf(d) is { } kind)
-            _focusedPane = kind;
+        if (e.NewFocus is not DependencyObject d)
+            return;
+        if (FindPaneOf(d) is { } kind)
+            _focusedRegion = FocusTarget.Of(kind);
+        else if (IsWithin(d, SidebarContainer))
+            _focusedRegion = FocusTarget.Sidebar;
+    }
+
+    /// <summary>要素が指定の祖先（論理・視覚いずれか）の内側にあるか。</summary>
+    private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
+    {
+        for (var current = element; current is not null; current = GetAnyParent(current))
+            if (ReferenceEquals(current, ancestor))
+                return true;
+        return false;
     }
 
     /// <summary>ウィンドウが非アクティブになったら Ctrl+W の待ち状態を解除する。</summary>
@@ -980,23 +1001,34 @@ public partial class ShellWindow : Window
             ? VisualTreeHelper.GetParent(d)
             : LogicalTreeHelper.GetParent(d);
 
-    /// <summary>起点ペインから指定方向で最も近い隣接ペインへフォーカスを移す。</summary>
+    /// <summary>
+    /// 起点領域から指定方向で最も近い隣接領域へフォーカスを移す。候補にはペイン本体に加え、
+    /// 表示中ならサイドバー（Explorer 等）も含めるので、最左ペインから Ctrl+W h でサイドバーへ移れる。
+    /// </summary>
     private void FocusPaneInDirection(DropZone direction)
     {
-        var origin = _focusedPane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
-        if (origin is not { } originKind || !TryGetPaneRect(originKind, out var from))
+        var targets = FocusTargets().ToList();
+        if (targets.Count == 0)
             return;
 
+        // 起点：直近フォーカスの領域。見つからなければ最初の候補（=可視ペイン）を起点扱いにする。
+        var originIndex = _focusedRegion is { } region
+            ? targets.FindIndex(t => t.Target == region)
+            : -1;
+        if (originIndex < 0)
+            originIndex = 0;
+        var (originTarget, from) = targets[originIndex];
+
         var fromCenter = new Point(from.X + from.Width / 2, from.Y + from.Height / 2);
-        PaneKind? best = null;
+        FocusTarget? best = null;
         var bestScore = double.MaxValue;
 
-        foreach (var leaf in AllLeaves())
+        foreach (var (target, r) in targets)
         {
-            if (leaf.Hidden || leaf.Kind == originKind || !TryGetPaneRect(leaf.Kind, out var r))
+            if (target == originTarget)
                 continue;
 
-            // 指定方向の側にあるペインだけを候補にする（タイル配置なので辺で判定）。
+            // 指定方向の側にある領域だけを候補にする（タイル配置なので辺で判定）。
             const double tolerance = 1.0;
             var inDirection = direction switch
             {
@@ -1009,7 +1041,7 @@ public partial class ShellWindow : Window
                 continue;
 
             var center = new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
-            // 移動軸方向の距離を主に、直交方向のずれを従にして最も近いペインを選ぶ。
+            // 移動軸方向の距離を主に、直交方向のずれを従にして最も近い領域を選ぶ。
             var (axis, perpendicular) = direction is DropZone.Left or DropZone.Right
                 ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
                 : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
@@ -1017,12 +1049,79 @@ public partial class ShellWindow : Window
             if (score < bestScore)
             {
                 bestScore = score;
-                best = leaf.Kind;
+                best = target;
             }
         }
 
-        if (best is { } target)
-            FocusPane(target);
+        if (best is { } target2)
+            ApplyFocusTarget(target2);
+    }
+
+    /// <summary>ナビゲーション候補（表示中ペイン＋サイドバー）を矩形付きで列挙する。ペインを先頭に並べる。</summary>
+    private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets()
+    {
+        foreach (var leaf in AllLeaves())
+            if (!leaf.Hidden && TryGetPaneRect(leaf.Kind, out var rect))
+                yield return (FocusTarget.Of(leaf.Kind), rect);
+
+        if (TryGetSidebarRect(out var sidebarRect))
+            yield return (FocusTarget.Sidebar, sidebarRect);
+    }
+
+    /// <summary>サイドバーの矩形（PaneHost 座標系）を取得する。非表示・未配置なら false。</summary>
+    private bool TryGetSidebarRect(out Rect rect)
+    {
+        rect = default;
+        if (!_vm.IsSidebarVisible || !SidebarContainer.IsVisible
+            || SidebarContainer.ActualWidth <= 0 || SidebarContainer.ActualHeight <= 0)
+            return false;
+
+        // サイドバーは PaneHost の左隣にあるため X は負になるが、辺判定・距離計算はそのまま成立する。
+        var topLeft = SidebarContainer.TransformToVisual(PaneHost).Transform(new Point(0, 0));
+        rect = new Rect(topLeft, new Size(SidebarContainer.ActualWidth, SidebarContainer.ActualHeight));
+        return true;
+    }
+
+    private void ApplyFocusTarget(FocusTarget target)
+    {
+        if (target.IsSidebar)
+            FocusSidebar();
+        else
+            FocusPane(target.Pane!.Value);
+    }
+
+    /// <summary>表示中のサイドバー（Explorer 等）へキーボードフォーカスを移す。</summary>
+    private void FocusSidebar()
+    {
+        if (!_vm.IsSidebarVisible)
+            return;
+
+        var view = SidebarContainer.Children.OfType<UIElement>()
+            .FirstOrDefault(c => c.Visibility == Visibility.Visible);
+        if (view is null)
+            return;
+
+        _focusedRegion = FocusTarget.Sidebar;
+        if (view is FolderTreeView tree)
+            tree.FocusTree();           // Explorer は中身のツリーへ直接フォーカス（先頭未選択なら選ぶ）
+        else
+            FocusFirstFocusable(view);  // 他パネルは最初のフォーカス可能要素へ
+    }
+
+    /// <summary>要素ツリーを深さ優先でたどり、最初のフォーカス可能要素へフォーカスを移す。</summary>
+    private static bool FocusFirstFocusable(DependencyObject root)
+    {
+        if (root is UIElement { Focusable: true, IsVisible: true, IsEnabled: true } element)
+        {
+            element.Focus();
+            return true;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+            if (FocusFirstFocusable(VisualTreeHelper.GetChild(root, i)))
+                return true;
+        return false;
     }
 
     /// <summary>ペイン本体の矩形（PaneHost 座標系）を取得する。非表示・未配置なら false。</summary>
@@ -1041,7 +1140,7 @@ public partial class ShellWindow : Window
     /// <summary>指定ペインのアクティブな中身へキーボードフォーカスを移す。</summary>
     private void FocusPane(PaneKind kind)
     {
-        _focusedPane = kind;
+        _focusedRegion = FocusTarget.Of(kind);
         switch (kind)
         {
             case PaneKind.Terminal:

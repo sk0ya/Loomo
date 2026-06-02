@@ -41,6 +41,13 @@ public partial class FolderTreeView : UserControl
             newVm.FilterCompleted += OnFilterCompleted;
     }
 
+    /// <summary>ツリー本体へキーボードフォーカスを移す。未選択なら先頭ノードを選んでフォーカスする。</summary>
+    public void FocusTree()
+    {
+        if (!EnsureSelection(FileTree))
+            FileTree.Focus();
+    }
+
     private void OnTreeMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is not TreeView || e.OriginalSource is not DependencyObject source)
