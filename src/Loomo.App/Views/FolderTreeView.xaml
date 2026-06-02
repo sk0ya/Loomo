@@ -125,6 +125,7 @@
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                         <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
                         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="2,1" />
                         <Setter Property="Template">
                             <Setter.Value>
@@ -175,7 +176,7 @@
                                                 Padding="{TemplateBinding Padding}">
                                             <ContentPresenter x:Name="PART_Header"
                                                               ContentSource="Header"
-                                                              HorizontalAlignment="Left"
+                                                              HorizontalAlignment="Stretch"
                                                               VerticalAlignment="Center" />
                                         </Border>
 
@@ -206,11 +207,70 @@
                 <TreeView.ItemTemplate>
                     <HierarchicalDataTemplate DataType="{x:Type vm:FileNodeViewModel}"
                                               ItemsSource="{Binding Children}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Glyph}" Margin="0,0,6,0" />
-                            <TextBlock views:SearchHighlightBehavior.Text="{Binding Name}"
-                                       views:SearchHighlightBehavior.Query="{Binding DataContext.SearchFilter, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                        </StackPanel>
+                        <!-- git 差分マーク: 変更名を状態色で着色し、行右端に状態文字（M/A/U/D/R/C）を出す。
+                             フォルダは配下に変更があれば名前を着色＋右端にドット（●）。 -->
+                        <DockPanel LastChildFill="True">
+                            <TextBlock x:Name="GitBadge" DockPanel.Dock="Right"
+                                       Margin="6,0,4,0"
+                                       FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Visibility="Collapsed" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Glyph}" Margin="0,0,6,0" />
+                                <TextBlock x:Name="GitName"
+                                           views:SearchHighlightBehavior.Text="{Binding Name}"
+                                           views:SearchHighlightBehavior.Query="{Binding DataContext.SearchFilter, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <HierarchicalDataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Modified">
+                                <Setter TargetName="GitBadge" Property="Text" Value="M" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#E2C08D" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#E2C08D" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Added">
+                                <Setter TargetName="GitBadge" Property="Text" Value="A" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#73C991" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#73C991" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Untracked">
+                                <Setter TargetName="GitBadge" Property="Text" Value="U" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#73C991" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#73C991" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Deleted">
+                                <Setter TargetName="GitBadge" Property="Text" Value="D" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#C74E39" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#C74E39" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Renamed">
+                                <Setter TargetName="GitBadge" Property="Text" Value="R" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#73C991" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#73C991" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Conflicted">
+                                <Setter TargetName="GitBadge" Property="Text" Value="C" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#E4676B" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#E4676B" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="DirectoryChanged">
+                                <Setter TargetName="GitBadge" Property="Text" Value="●" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#E2C08D" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#E2C08D" />
+                            </DataTrigger>
+                            <!-- 選択中は Accent 背景に git 色名が低コントラストになるため、名前だけ白へ戻す。
+                                 トリガは後勝ちなので、上の状態色より優先される（右端バッジの色はそのまま）。 -->
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="GitName" Property="Foreground" Value="#FFFFFFFF" />
+                            </DataTrigger>
+                        </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>

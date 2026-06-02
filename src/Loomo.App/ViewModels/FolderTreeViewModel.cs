@@ -158,6 +158,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             if (existingIndex != i)
                 target.Move(existingIndex, i);
 
+            // 再利用するインスタンスは git 状態が古い可能性があるのでマークを更新する。
+            keep.RefreshGitStatus();
+
             // 展開済みディレクトリは中身も差分更新する。畳まれている枝は表示されていないので
             // 走査せず、遅延読込状態へ戻して次に開いたとき最新を読み直させる。
             if (keep.IsDirectory)
@@ -435,6 +438,16 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             : _gitState.ChangedFiles.Contains(fullPath);
     }
 
+    // ツリー上のノードに付ける差分マークの種別。フォルダは配下に変更を含むなら DirectoryChanged。
+    internal GitChangeKind GitStatusFor(string fullPath, bool isDirectory)
+    {
+        if (isDirectory)
+            return _gitState.ChangedDirectories.Contains(Path.GetFullPath(fullPath))
+                ? GitChangeKind.DirectoryChanged
+                : GitChangeKind.None;
+        return _gitState.GetFileStatus(fullPath);
+    }
+
     private string CreateEmptyMessage()
     {
         if (_currentRoot is null)
@@ -536,39 +549,63 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     }
 }
 
+// ツリー上の差分マーク（FileNodeViewModel.GitStatus）の種別。表示文字・色は XAML 側の
+// DataTrigger で割り当てる。DirectoryChanged は「配下に変更を含むフォルダ」を表す集約マーク。
+public enum GitChangeKind
+{
+    None,
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    Untracked,
+    Conflicted,
+    DirectoryChanged,
+}
+
 internal sealed class GitTreeState
 {
     private readonly string _rootPath;
     private readonly string? _gitRootPath;
 
-    public static GitTreeState Empty { get; } = new("", null, new(), new());
+    public static GitTreeState Empty { get; } = new("", null, new(), new(), new());
 
     public bool IsGitRepository => _gitRootPath is not null;
+
+    /// <summary>変更ファイルのフルパス → 変更種別。</summary>
+    public Dictionary<string, GitChangeKind> FileStatuses { get; }
     public HashSet<string> ChangedFiles { get; }
     public HashSet<string> ChangedDirectories { get; }
 
     private GitTreeState(
         string rootPath,
         string? gitRootPath,
+        Dictionary<string, GitChangeKind> fileStatuses,
         HashSet<string> changedFiles,
         HashSet<string> changedDirectories)
     {
         _rootPath = rootPath;
         _gitRootPath = gitRootPath;
+        FileStatuses = fileStatuses;
         ChangedFiles = changedFiles;
         ChangedDirectories = changedDirectories;
     }
+
+    /// <summary>指定ファイルの変更種別（変更なしは None）。</summary>
+    public GitChangeKind GetFileStatus(string fullPath)
+        => FileStatuses.TryGetValue(Path.GetFullPath(fullPath), out var kind) ? kind : GitChangeKind.None;
 
     public static GitTreeState Load(string rootPath)
     {
         var fullRoot = Path.GetFullPath(rootPath);
         var gitRoot = FindGitRoot(fullRoot);
         if (gitRoot is null)
-            return new GitTreeState(fullRoot, null, new(), new());
+            return new GitTreeState(fullRoot, null, new(), new(), new());
 
-        var changedFiles = LoadChangedFiles(gitRoot);
+        var fileStatuses = LoadFileStatuses(gitRoot);
+        var changedFiles = new HashSet<string>(fileStatuses.Keys, StringComparer.OrdinalIgnoreCase);
         var changedDirectories = LoadChangedDirectories(changedFiles, fullRoot);
-        return new GitTreeState(fullRoot, gitRoot, changedFiles, changedDirectories);
+        return new GitTreeState(fullRoot, gitRoot, fileStatuses, changedFiles, changedDirectories);
     }
 
     public HashSet<string> GetIgnoredPaths(IEnumerable<string> fullPaths)
@@ -643,13 +680,14 @@ internal sealed class GitTreeState
         return null;
     }
 
-    private static HashSet<string> LoadChangedFiles(string gitRoot)
+    private static Dictionary<string, GitChangeKind> LoadFileStatuses(string gitRoot)
     {
+        var statuses = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
+
         var result = RunGit(gitRoot, "status", "--porcelain", "-z", "--untracked-files=all");
         if (result.ExitCode != 0)
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            return statuses;
 
-        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var entries = result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
 
         for (var i = 0; i < entries.Length; i++)
@@ -670,10 +708,31 @@ internal sealed class GitTreeState
             if (string.IsNullOrWhiteSpace(relativePath))
                 continue;
 
-            files.Add(Path.GetFullPath(Path.Combine(gitRoot, relativePath)));
+            statuses[Path.GetFullPath(Path.Combine(gitRoot, relativePath))] = MapStatus(status);
         }
 
-        return files;
+        return statuses;
+    }
+
+    // git status --porcelain の XY 2 文字コードを表示用の種別へ落とす。
+    // 競合（U を含む、AA/DD）を最優先で判定し、以降は X か Y のどちらかに現れた文字で分類する。
+    private static GitChangeKind MapStatus(string xy)
+    {
+        if (xy == "??")
+            return GitChangeKind.Untracked;
+
+        var x = xy[0];
+        var y = xy[1];
+
+        if (x is 'U' || y is 'U' || xy is "AA" or "DD")
+            return GitChangeKind.Conflicted;
+        if (x is 'R' || y is 'R')
+            return GitChangeKind.Renamed;
+        if (x is 'A' || y is 'A')
+            return GitChangeKind.Added;
+        if (x is 'D' || y is 'D')
+            return GitChangeKind.Deleted;
+        return GitChangeKind.Modified;
     }
 
     private static HashSet<string> LoadChangedDirectories(HashSet<string> changedFiles, string visibleRoot)
@@ -780,14 +839,22 @@ public sealed partial class FileNodeViewModel : ObservableObject
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isSelected;
 
+    // git の差分マーク。XAML 側の DataTrigger が種別ごとに表示文字・色を割り当てる。
+    [ObservableProperty] private GitChangeKind _gitStatus;
+
     public FileNodeViewModel(string fullPath, bool isDirectory, FolderTreeViewModel owner)
     {
         FullPath = fullPath;
         IsDirectory = isDirectory;
         Name = Path.GetFileName(fullPath);
         _owner = owner;
+        GitStatus = owner.GitStatusFor(fullPath, isDirectory);
         if (isDirectory) Children.Add(Placeholder); // 遅延読込用ダミー
     }
+
+    // 監視更新で git 状態が変わったとき、既存ノード（差分更新で再利用されるインスタンス）の
+    // マークを最新へ更新する。
+    public void RefreshGitStatus() => GitStatus = _owner.GitStatusFor(FullPath, IsDirectory);
 
     private static readonly FileNodeViewModel Placeholder = new();
     private FileNodeViewModel() { FullPath = ""; Name = ""; IsDirectory = false; _owner = null!; }

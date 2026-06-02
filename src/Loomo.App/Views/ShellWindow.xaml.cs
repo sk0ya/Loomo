@@ -14,6 +14,7 @@ using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
+using Editor.Controls.Git;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -1068,7 +1069,13 @@ public partial class ShellWindow : Window
 
     private EditorTab CreateEditorTab(Guid? requestedId = null)
     {
-        var control = new VimEditorControl
+        // GitServiceFactory を渡すと、エディタが行の差分（追加/変更/削除）をガター（行番号脇）に
+        // マーク表示し、ステータスバーにブランチ名を出す。読込/保存/編集のたびに自動で再計算される
+        // （RefreshGitDiff はコントロール内部で発火）。未指定だと NullEditorGitService となり無効。
+        var control = new VimEditorControl(new VimEditorControlOptions
+        {
+            GitServiceFactory = () => new GitDiffProvider()
+        })
         {
             Visibility = Visibility.Collapsed
         };
