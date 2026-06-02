@@ -28,10 +28,14 @@ public partial class FolderTreeView : UserControl
 
     private void OnTreeMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not TreeView tree || e.OriginalSource is not DependencyObject source)
+        if (sender is not TreeView || e.OriginalSource is not DependencyObject source)
             return;
 
-        var item = ItemsControl.ContainerFromElement(tree, source) as TreeViewItem;
+        // ItemsControl.ContainerFromElement(tree, ...) はトップレベルのコンテナを返すため、
+        // 「変更のみ表示」でディレクトリ配下にネストした変更ファイルではディレクトリの
+        // コンテナが返り、IsDirectory 判定で弾かれてしまう。クリック位置から最も近い
+        // TreeViewItem をビジュアルツリーを遡って取得する。
+        var item = FindAncestorTreeViewItem(source);
         if (item?.DataContext is not FileNodeViewModel node || node.IsDirectory)
             return;
 
@@ -40,6 +44,17 @@ public partial class FolderTreeView : UserControl
             vm.NotifyActivated(node.FullPath);
             e.Handled = true;
         }
+    }
+
+    private static TreeViewItem? FindAncestorTreeViewItem(DependencyObject source)
+    {
+        var current = source;
+        while (current is not null and not TreeViewItem)
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+
+        return current as TreeViewItem;
     }
 
     // Vim 風キーボード操作:
