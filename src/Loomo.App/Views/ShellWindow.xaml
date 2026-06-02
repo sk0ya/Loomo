@@ -45,8 +45,9 @@
                 <RowDefinition Height="*" />     <!-- メイン領域（ペイン＋AI） -->
             </Grid.RowDefinitions>
 
-            <!-- ActivityBar : ウィンドウ下端まで伸ばす -->
-            <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource ActivityBarBg}">
+            <!-- ActivityBar : ウィンドウ下端まで伸ばす。空き領域のドラッグでウィンドウを移動できる。 -->
+            <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource ActivityBarBg}"
+                       MouseLeftButtonDown="OnActivityBarMouseDown">
                 <StackPanel DockPanel.Dock="Bottom">
                     <Button Style="{StaticResource IconButton}" Content="🎨" ToolTip="外観（テーマ・アクセント）"
                             Command="{Binding ShowAppearanceCommand}" />

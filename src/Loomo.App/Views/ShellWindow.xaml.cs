@@ -1103,6 +1103,54 @@ public partial class ShellWindow : Window
     private static readonly Geometry MaximizeGeometry = Geometry.Parse("M0.5,0.5 H9.5 V9.5 H0.5 Z");
     private static readonly Geometry RestoreGeometry = Geometry.Parse("M2.5,2.5 V0.5 H9.5 V7.5 H7.5 M0.5,2.5 H7.5 V9.5 H0.5 Z");
 
+    private const int WM_NCLBUTTONDOWN = 0x00A1;
+    private const int HTCAPTION = 0x0002;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
+
+    /// <summary>直近に ActivityBar をクリックした時刻（TickCount64）。ダブルクリック自前判定用。</summary>
+    private long _lastActivityBarClickTick;
+
+    /// <summary>
+    /// ActivityBar の空き領域をドラッグするとウィンドウを移動する（タイトルバーと同じ操作感）。
+    /// アイコンボタン上のクリックはボタン側で処理済みのためここへは伝播しない。
+    /// ダブルクリックは最大化／元に戻すをトグルする。
+    /// </summary>
+    private void OnActivityBarMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+
+        // ネイティブのキャプション移動ループに入ると WPF の ClickCount による
+        // ダブルクリック判定が成立しないため、クリック間隔から自前で判定する。
+        var now = Environment.TickCount64;
+        var isDoubleClick = now - _lastActivityBarClickTick <= GetDoubleClickTime();
+        _lastActivityBarClickTick = isDoubleClick ? 0 : now;
+
+        if (isDoubleClick)
+        {
+            OnMaximizeRestore(sender, e);
+            return;
+        }
+
+        // 最大化中はドラッグで動かさない（WindowChrome のタイトルバー側と挙動を揃える）。
+        if (WindowState != WindowState.Normal)
+            return;
+
+        // DragMove() は WPF 経由でカクつくため、タイトルバー(WindowChrome)と同じ
+        // ネイティブのキャプション移動ループ（HTCAPTION）へ委ねて滑らかに動かす。
+        var hwnd = new WindowInteropHelper(this).Handle;
+        ReleaseCapture();
+        SendMessage(hwnd, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+    }
+
     private void OnMinimize(object sender, RoutedEventArgs e)
         => WindowState = WindowState.Minimized;
 
