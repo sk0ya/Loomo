@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ public sealed partial class AiBarViewModel : ObservableObject
 {
     private readonly AgentOrchestrator _orchestrator;
     private readonly AiSettings _settings;
+    private readonly AiSettingsStore _store;
     private readonly ConversationStore _sessions;
     private Conversation _conversation = new();
     private string? _currentSessionId;
@@ -28,21 +30,58 @@ public sealed partial class AiBarViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _providerLabel;
 
+    /// <summary>タイトルバーのクイック切替に出すプロバイダ一覧。</summary>
+    public IReadOnlyList<AiProvider> Providers { get; } =
+        (AiProvider[])Enum.GetValues(typeof(AiProvider));
+
+    /// <summary>タイトルバーで選択中のプロバイダ。変更すると即時に切り替えて永続化する。</summary>
+    [ObservableProperty] private AiProvider _selectedProvider;
+
+    /// <summary>タイトルバーからプロバイダが切り替えられたとき、選択中のプロバイダを通知する
+    /// （設定パネルの表示を追従させるために使う）。</summary>
+    public event Action<AiProvider>? ProviderSwitched;
+
     public AiBarViewModel(
         AgentOrchestrator orchestrator,
         UiApprovalService approval,
         AiSettings settings,
+        AiSettingsStore store,
         ConversationStore sessions)
     {
         _orchestrator = orchestrator;
         _settings = settings;
+        _store = store;
         _sessions = sessions;
         _providerLabel = settings.Provider.ToString();
+        _selectedProvider = settings.Provider;
         approval.ApprovalRequested += OnApprovalRequested;
     }
 
-    /// <summary>設定変更後に現在のプロバイダ表示を更新する。</summary>
-    public void RefreshProviderLabel() => ProviderLabel = _settings.Provider.ToString();
+    /// <summary>設定変更後に現在のプロバイダ表示・選択を更新する（設定パネル → タイトルバーの同期）。</summary>
+    public void RefreshProviderLabel()
+    {
+        ProviderLabel = _settings.Provider.ToString();
+        SelectedProvider = _settings.Provider;
+    }
+
+    /// <summary>タイトルバーのコンボでプロバイダを切り替えたら即時に反映・永続化する。
+    /// <see cref="AiClientFactory.ResolveCurrent"/> は毎ターン設定を読むため、保存だけで次の応答から有効になる。</summary>
+    partial void OnSelectedProviderChanged(AiProvider value)
+    {
+        if (value == _settings.Provider) return; // 同期由来の再設定（設定パネルからの保存など）は無視
+
+        _settings.Provider = value;
+        ProviderLabel = value.ToString();
+        // 保存に失敗しても切替自体（メモリ上の _settings.Provider）は有効だが、永続化されない旨を
+        // 通知する（無通知だと保存済みと誤認され、次回起動で旧プロバイダに戻る）。
+        try { _store.Save(_settings); }
+        catch (Exception ex)
+        {
+            Add(EntryKind.Error, "⚠️ 設定の保存に失敗",
+                $"プロバイダを {value} に切り替えましたが保存できませんでした（次回起動時は元に戻ります）: {ex.Message}");
+        }
+        ProviderSwitched?.Invoke(value); // 設定パネルの選択を追従させる
+    }
 
     /// <summary>新しい空のセッションを開始する（履歴一覧の「新規」から呼ばれる）。</summary>
     public void StartNewSession()

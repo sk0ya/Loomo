@@ -99,6 +99,13 @@ public sealed partial class SettingsViewModel : ObservableObject
             new Action(() => TryAutoFetchModels(autoOpen: false)));
     }
 
+    /// <summary>タイトルバーのクイック切替に追従して、設定パネルの選択プロバイダを合わせる。
+    /// <see cref="OnSelectedProviderChanged"/> がフィールドの退避・読込を行う（保存は伴わない）。</summary>
+    public void SyncProvider(AiProvider provider)
+    {
+        if (SelectedProvider != provider) SelectedProvider = provider;
+    }
+
     partial void OnSelectedProviderChanged(AiProvider value)
     {
         CommitFieldsTo(_loadedProvider);   // 直前プロバイダの編集をメモリへ退避

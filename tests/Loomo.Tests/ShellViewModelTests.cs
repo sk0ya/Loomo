@@ -33,11 +33,11 @@ public class ShellViewModelTests
 
         var conversations = new ConversationStore(
             Path.Combine(Path.GetTempPath(), "loomo-test-sessions"));
-        var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations);
-        var sessionsVm = new SessionsViewModel(conversations, aiBar);
 
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
+        var aiBar = new AiBarViewModel(orchestrator, approval, settings, store, conversations);
+        var sessionsVm = new SessionsViewModel(conversations, aiBar);
         var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
         var modelCatalog = new ModelCatalogService(new System.Net.Http.HttpClient(), settings);
         var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService(), modelCatalog);
