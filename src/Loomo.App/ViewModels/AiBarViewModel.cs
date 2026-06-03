@@ -24,11 +24,16 @@ public sealed partial class AiBarViewModel : ObservableObject
     private readonly AgentOrchestrator _orchestrator;
     private readonly AiSettings _settings;
     private readonly ConversationStore _sessions;
+    private readonly PromptHistoryStore _historyStore;
     private Conversation _conversation = new();
     private string? _currentSessionId;
     private string? _lastClosedSessionId;   // /resume で復元する直前に閉じたセッション
     private bool _suppressSuggestions;       // プログラムからの Input 書換時に補完を抑止
     private CancellationTokenSource? _cts;
+
+    private readonly List<string> _history = new();   // 送信済みプロンプト（古い→新しい）
+    private int _historyCursor = -1;                   // 履歴ナビ位置（-1 = 未ナビ／編集中の下書き）
+    private string _historyDraft = "";                 // ナビ開始前に編集していた内容
 
     public ObservableCollection<TranscriptEntry> Transcript { get; } = new();
 
@@ -65,11 +70,14 @@ public sealed partial class AiBarViewModel : ObservableObject
         AgentOrchestrator orchestrator,
         UiApprovalService approval,
         AiSettings settings,
-        ConversationStore sessions)
+        ConversationStore sessions,
+        PromptHistoryStore historyStore)
     {
         _orchestrator = orchestrator;
         _settings = settings;
         _sessions = sessions;
+        _historyStore = historyStore;
+        _history.AddRange(historyStore.Load());   // 前回までの送信履歴を引き継ぐ
         _providerLabel = settings.Provider.ToString();
         approval.ApprovalRequested += OnApprovalRequested;
 
@@ -198,6 +206,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     private async Task SendAsync()
     {
         var text = Input.Trim();
+        PushHistory(text);
 
         // スラッシュコマンドなら AI へ送らず即実行する。
         if (TryRunChatCommand(text))
@@ -343,6 +352,52 @@ public sealed partial class AiBarViewModel : ObservableObject
         return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
     }
 
+    // ===== 入力履歴（↑/↓ で呼び出し） =====
+
+    /// <summary>送信したプロンプトを履歴に積む（直前と同一なら積まない）。</summary>
+    private void PushHistory(string text)
+    {
+        _historyCursor = -1;
+        _historyDraft = "";
+        if (string.IsNullOrWhiteSpace(text)) return;
+        if (_history.Count > 0 && _history[^1] == text) return;
+        _history.Add(text);
+        // メモリ上の履歴もファイルと同じ上限で切り詰める（無制限な肥大を防ぐ）。
+        if (_history.Count > _historyStore.MaxEntries)
+            _history.RemoveRange(0, _history.Count - _historyStore.MaxEntries);
+        try { _historyStore.Save(_history); } catch { /* 保存失敗は会話を妨げない */ }
+    }
+
+    /// <summary>↑：ひとつ前の入力履歴を呼び出す。履歴があれば true（キーを消費）。</summary>
+    public bool RecallPreviousHistory()
+    {
+        if (_history.Count == 0) return false;
+        if (_historyCursor < 0)
+        {
+            _historyDraft = Input;            // ナビ開始：いまの下書きを退避
+            _historyCursor = _history.Count;
+        }
+        if (_historyCursor == 0) return true; // 既に最古：消費はするが内容は変えない
+        _historyCursor--;
+        SetInput(_history[_historyCursor]);
+        return true;
+    }
+
+    /// <summary>↓：ひとつ後の入力履歴（末尾を超えたら下書きへ戻す）。ナビ中なら true。</summary>
+    public bool RecallNextHistory()
+    {
+        if (_historyCursor < 0) return false; // ナビ中でなければ素通し
+        if (_historyCursor >= _history.Count - 1)
+        {
+            _historyCursor = -1;
+            SetInput(_historyDraft);          // 末尾を超えたら編集中の下書きへ
+            return true;
+        }
+        _historyCursor++;
+        SetInput(_history[_historyCursor]);
+        return true;
+    }
+
     // ===== スラッシュコマンド =====
 
     /// <summary>入力がスラッシュコマンドなら実行して true。未知の「/...」は通常送信に委ねる。</summary>
@@ -431,7 +486,11 @@ public sealed partial class AiBarViewModel : ObservableObject
     partial void OnInputChanged(string value)
     {
         SendCommand.NotifyCanExecuteChanged();
-        if (!_suppressSuggestions) UpdateCommandSuggestions(value);
+        if (!_suppressSuggestions)
+        {
+            _historyCursor = -1;   // 手入力したら履歴ナビをリセット
+            UpdateCommandSuggestions(value);
+        }
     }
 
     partial void OnIsBusyChanged(bool value) => SendCommand.NotifyCanExecuteChanged();

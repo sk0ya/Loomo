@@ -37,7 +37,8 @@ public class ShellViewModelTests
 
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
-        var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations);
+        var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations,
+            new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")));
         var sessionsVm = new SessionsViewModel(conversations, aiBar);
         var analysisVm = new AnalysisViewModel(
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")),

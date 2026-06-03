@@ -107,6 +107,7 @@ public partial class App : Application
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
         services.AddSingleton<WorkspaceStateStore>();
+        services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<TabIconService>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();

@@ -126,21 +126,41 @@ public partial class AiBarView : UserControl
         }, DispatcherPriority.ContextIdle);
     }
 
-    /// <summary>コマンド補完ポップアップが開いているときの上下/確定/取消キーを処理する。</summary>
+    /// <summary>補完ポップアップ操作（開いているとき）と入力履歴呼び出し（閉じているときの↑/↓）を処理する。</summary>
     private void OnInputPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (DataContext is not AiBarViewModel vm || !vm.IsCommandPopupOpen) return;
+        if (DataContext is not AiBarViewModel vm) return;
 
+        if (vm.IsCommandPopupOpen)
+        {
+            switch (e.Key)
+            {
+                case Key.Down: vm.MoveCommandSelection(1); e.Handled = true; break;
+                case Key.Up: vm.MoveCommandSelection(-1); e.Handled = true; break;
+                // 候補が確定できないときは Tab/Enter を素通しし、本来の挙動（フォーカス移動・通常送信）に委ねる。
+                case Key.Tab: e.Handled = vm.CompleteSelectedCommand(); break;
+                case Key.Enter: e.Handled = vm.AcceptAndRunSelectedCommand(); break;
+                case Key.Escape: vm.CloseCommandPopup(); e.Handled = true; break;
+            }
+            return;
+        }
+
+        // ポップアップが閉じているときの↑/↓は、送信済みプロンプトの履歴をたどる。
         switch (e.Key)
         {
-            case Key.Down: vm.MoveCommandSelection(1); e.Handled = true; break;
-            case Key.Up: vm.MoveCommandSelection(-1); e.Handled = true; break;
-            // 候補が確定できないときは Tab/Enter を素通しし、本来の挙動（フォーカス移動・通常送信）に委ねる。
-            case Key.Tab: e.Handled = vm.CompleteSelectedCommand(); break;
-            case Key.Enter: e.Handled = vm.AcceptAndRunSelectedCommand(); break;
-            case Key.Escape: vm.CloseCommandPopup(); e.Handled = true; break;
+            case Key.Up:
+                if (vm.RecallPreviousHistory()) { MoveCaretToEnd(); e.Handled = true; }
+                break;
+            case Key.Down:
+                if (vm.RecallNextHistory()) { MoveCaretToEnd(); e.Handled = true; }
+                break;
         }
     }
+
+    /// <summary>履歴呼び出し後、キャレットを末尾へ移す（編集を続けやすく）。</summary>
+    private void MoveCaretToEnd()
+        => Dispatcher.BeginInvoke(() => InputBox.CaretIndex = InputBox.Text.Length,
+            DispatcherPriority.Input);
 
     /// <summary>補完候補をクリックで確定・実行する。</summary>
     private void OnCommandListClick(object sender, MouseButtonEventArgs e)
