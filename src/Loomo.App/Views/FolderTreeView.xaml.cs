@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -143,6 +144,16 @@ public partial class FolderTreeView : UserControl
                 e.Handled = true;
                 break;
 
+            case Key.F2:
+                RenameNode(tree.SelectedItem as FileNodeViewModel);
+                e.Handled = true;
+                break;
+
+            case Key.Delete:
+                DeleteNode(tree.SelectedItem as FileNodeViewModel);
+                e.Handled = true;
+                break;
+
             case Key.Escape:
                 // フィルタ適用中（/ を確定した後）なら Esc で解除し、選択中のファイルを全ツリーで再表示する。
                 if (DataContext is FolderTreeViewModel vm && !string.IsNullOrEmpty(vm.SearchFilter))
@@ -172,6 +183,144 @@ public partial class FolderTreeView : UserControl
         if (DataContext is FolderTreeViewModel vm)
             vm.NotifyActivated(node.FullPath);
     }
+
+    // ===== ファイル操作（コンテキストメニュー／F2・Delete） =====
+
+    // 右クリックした項目を選択しておく（後続の操作対象を直感的にする）。空き領域なら何もしない。
+    private void OnTreeRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source
+            && FindAncestorTreeViewItem(source) is { } item)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
+    }
+
+    // メニュー項目が属する ContextMenu の配置対象から操作対象ノードを得る。
+    // 項目の上のメニューならそのノード、ツリー空き領域のメニューなら null（＝ルート対象）。
+    private FileNodeViewModel? ContextNode(object sender)
+    {
+        if (sender is MenuItem { Parent: ContextMenu cm })
+            return cm.PlacementTarget is FrameworkElement { DataContext: FileNodeViewModel node } ? node : null;
+        return FileTree.SelectedItem as FileNodeViewModel;
+    }
+
+    private Window? OwnerWindow => Window.GetWindow(this);
+
+    private void OnNewFileClick(object sender, RoutedEventArgs e) => CreateEntry(ContextNode(sender), isDirectory: false);
+
+    private void OnNewFolderClick(object sender, RoutedEventArgs e) => CreateEntry(ContextNode(sender), isDirectory: true);
+
+    private void CreateEntry(FileNodeViewModel? contextNode, bool isDirectory)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var parent = vm.GetTargetDirectory(contextNode);
+        if (parent is null)
+            return;   // フォルダ未選択
+
+        var title = isDirectory ? "新規フォルダー" : "新規ファイル";
+        var name = InputDialog.Prompt(OwnerWindow, title, $"{title}名を入力:");
+        if (name is null)
+            return;
+
+        try
+        {
+            var created = vm.CreateEntry(parent, name, isDirectory);
+            // 作成先の親を展開して項目を表示・選択し、ファイルはエディタでも開く。
+            // ツリー再構築の直後はコンテナ未生成なので、レイアウト確定後に行う。
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                RevealPath(created);
+                if (!isDirectory)
+                    (DataContext as FolderTreeViewModel)?.NotifyActivated(created);
+            }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void OnRenameClick(object sender, RoutedEventArgs e) => RenameNode(ContextNode(sender));
+
+    private void RenameNode(FileNodeViewModel? node)
+    {
+        if (node is null || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var newName = InputDialog.Prompt(
+            OwnerWindow, "名前の変更", "新しい名前を入力:", node.Name, selectNameOnly: !node.IsDirectory);
+        if (newName is null)
+            return;
+
+        try
+        {
+            var newPath = vm.RenameEntry(node, newName);
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(newPath)));
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void OnDeleteClick(object sender, RoutedEventArgs e) => DeleteNode(ContextNode(sender));
+
+    private void DeleteNode(FileNodeViewModel? node)
+    {
+        if (node is null || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var kind = node.IsDirectory ? "フォルダー" : "ファイル";
+        var confirm = MessageBox.Show(
+            $"{kind}「{node.Name}」をゴミ箱へ移動しますか？",
+            "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK)
+            return;
+
+        try
+        {
+            vm.DeleteEntry(node);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void OnRevealInExplorerClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is not { } node)
+            return;
+
+        try
+        {
+            // ファイルは選択状態で、ディレクトリはその中を開く。
+            if (File.Exists(node.FullPath))
+                Process.Start("explorer.exe", $"/select,\"{node.FullPath}\"");
+            else if (Directory.Exists(node.FullPath))
+                Process.Start("explorer.exe", $"\"{node.FullPath}\"");
+        }
+        catch
+        {
+            // explorer 起動失敗は無視。
+        }
+    }
+
+    private void OnCopyPathClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { } node)
+        {
+            try { Clipboard.SetText(node.FullPath); }
+            catch { /* クリップボードのロック等は無視 */ }
+        }
+    }
+
+    private static void ShowError(string message)
+        => MessageBox.Show(message, "Loomo", MessageBoxButton.OK, MessageBoxImage.Warning);
 
     // ===== 検索（/ → 入力 → n/N） =====
 

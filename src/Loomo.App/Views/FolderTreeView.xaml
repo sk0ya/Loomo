@@ -119,7 +119,15 @@
                       MouseDoubleClick="OnTreeMouseDoubleClick"
                       PreviewKeyDown="OnTreeKeyDown"
                       PreviewTextInput="OnTreePreviewTextInput"
+                      PreviewMouseRightButtonDown="OnTreeRightButtonDown"
                       Visibility="{Binding HasVisibleNodes, Converter={StaticResource BoolToVis}}">
+                <TreeView.ContextMenu>
+                    <!-- 空き領域での右クリック（ルート直下に作成） -->
+                    <ContextMenu>
+                        <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
+                        <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                    </ContextMenu>
+                </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="TreeViewItem">
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -209,7 +217,21 @@
                                               ItemsSource="{Binding Children}">
                         <!-- git 差分マーク: 変更名を状態色で着色し、行右端に状態文字（M/A/U/D/R/C）を出す。
                              フォルダは配下に変更があれば名前を着色＋右端にドット（●）。 -->
+                        <!-- コンテキストメニューは DataTemplate 側に置く（Style 内では Click ハンドラを
+                             直接指定できないため）。配置対象（DockPanel）の DataContext がノード。 -->
                         <DockPanel LastChildFill="True">
+                            <DockPanel.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
+                                    <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                                    <Separator />
+                                    <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
+                                    <MenuItem Header="削除" InputGestureText="Delete" Click="OnDeleteClick" />
+                                    <Separator />
+                                    <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
+                                    <MenuItem Header="パスをコピー" Click="OnCopyPathClick" />
+                                </ContextMenu>
+                            </DockPanel.ContextMenu>
                             <TextBlock x:Name="GitBadge" DockPanel.Dock="Right"
                                        Margin="6,0,4,0"
                                        FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"

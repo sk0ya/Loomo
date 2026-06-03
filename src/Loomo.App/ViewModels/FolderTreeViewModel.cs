@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.Core.Abstractions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -413,6 +414,120 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     }
 
     public IEnumerable<FileNodeViewModel> Children(string dirPath) => EnumerateChildren(dirPath);
+
+    // ===== ファイル操作（新規作成・名前変更・削除） =====
+    // View（コンテキストメニュー／F2・Delete）から呼ばれる。検証に失敗した場合や
+    // I/O が失敗した場合は InvalidOperationException を投げ、呼び出し側がメッセージを表示する。
+    // パスは ResolvePath を通してワークスペースルート配下に限定する（ツールと同じ防御）。
+
+    /// <summary>新規項目の作成先となる親ディレクトリ。ディレクトリ選択時はその中、
+    /// ファイル選択時はその親、未選択時はルート。フォルダ未選択なら null。</summary>
+    public string? GetTargetDirectory(FileNodeViewModel? selected)
+    {
+        if (_currentRoot is null)
+            return null;
+        if (selected is null)
+            return _currentRoot;
+        return selected.IsDirectory ? selected.FullPath : Path.GetDirectoryName(selected.FullPath);
+    }
+
+    /// <summary>指定ディレクトリ直下に空ファイル／フォルダを作成し、作成したフルパスを返す。</summary>
+    public string CreateEntry(string parentDirectory, string name, bool isDirectory)
+    {
+        ValidateName(name);
+        var fullPath = _workspace.ResolvePath(Path.Combine(parentDirectory, name));
+
+        if (File.Exists(fullPath) || Directory.Exists(fullPath))
+            throw new InvalidOperationException("同じ名前の項目が既に存在します。");
+
+        try
+        {
+            if (isDirectory)
+            {
+                Directory.CreateDirectory(fullPath);
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                using (File.Create(fullPath)) { }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"作成に失敗しました: {ex.Message}", ex);
+        }
+
+        RefreshWorkspace();
+        return fullPath;
+    }
+
+    /// <summary>ノードを新しい名前へ変更し、変更後のフルパスを返す。</summary>
+    public string RenameEntry(FileNodeViewModel node, string newName)
+    {
+        ValidateName(newName);
+        var oldPath = _workspace.ResolvePath(node.FullPath);
+        var parent = Path.GetDirectoryName(oldPath)
+            ?? throw new InvalidOperationException("親ディレクトリを特定できません。");
+        var newPath = _workspace.ResolvePath(Path.Combine(parent, newName));
+
+        if (string.Equals(oldPath, newPath, StringComparison.Ordinal))
+            return oldPath;   // 変更なし
+
+        // 大文字小文字だけの変更は許容しつつ、別項目との衝突は防ぐ。
+        if (!string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)
+            && (File.Exists(newPath) || Directory.Exists(newPath)))
+            throw new InvalidOperationException("同じ名前の項目が既に存在します。");
+
+        try
+        {
+            if (node.IsDirectory)
+                Directory.Move(oldPath, newPath);
+            else
+                File.Move(oldPath, newPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"名前の変更に失敗しました: {ex.Message}", ex);
+        }
+
+        RefreshWorkspace();
+        return newPath;
+    }
+
+    /// <summary>ノードをゴミ箱へ送る（完全削除ではない）。</summary>
+    public void DeleteEntry(FileNodeViewModel node)
+    {
+        var path = _workspace.ResolvePath(node.FullPath);
+        try
+        {
+            if (node.IsDirectory)
+            {
+                if (Directory.Exists(path))
+                    FileSystem.DeleteDirectory(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            }
+            else
+            {
+                if (File.Exists(path))
+                    FileSystem.DeleteFile(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
+        {
+            throw new InvalidOperationException($"削除に失敗しました: {ex.Message}", ex);
+        }
+
+        RefreshWorkspace();
+    }
+
+    private static void ValidateName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidOperationException("名前を入力してください。");
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new InvalidOperationException("名前に使用できない文字が含まれています。");
+        if (name is "." or "..")
+            throw new InvalidOperationException("その名前は使用できません。");
+    }
 
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
 
