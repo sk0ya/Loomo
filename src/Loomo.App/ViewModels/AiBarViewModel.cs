@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Ai;
@@ -12,6 +13,9 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>入力欄で「/」から呼び出すスラッシュコマンド1件（補完候補に出す）。</summary>
+public sealed record ChatCommand(string Name, string Description);
+
 /// <summary>下部AIバー（全幅・展開式）の ViewModel。エージェントループを駆動する。</summary>
 public sealed partial class AiBarViewModel : ObservableObject
 {
@@ -21,9 +25,27 @@ public sealed partial class AiBarViewModel : ObservableObject
     private readonly ConversationStore _sessions;
     private Conversation _conversation = new();
     private string? _currentSessionId;
+    private string? _lastClosedSessionId;   // /resume で復元する直前に閉じたセッション
+    private bool _suppressSuggestions;       // プログラムからの Input 書換時に補完を抑止
     private CancellationTokenSource? _cts;
 
     public ObservableCollection<TranscriptEntry> Transcript { get; } = new();
+
+    /// <summary>利用可能なスラッシュコマンド一覧。</summary>
+    public static IReadOnlyList<ChatCommand> AllCommands { get; } = new[]
+    {
+        new ChatCommand("/clear", "現在のセッションを閉じて新規開始"),
+        new ChatCommand("/resume", "直前に閉じたセッションを復元"),
+    };
+
+    /// <summary>「/」入力中に表示するコマンド補完候補。</summary>
+    public ObservableCollection<ChatCommand> CommandSuggestions { get; } = new();
+
+    /// <summary>コマンド補完ポップアップの開閉。</summary>
+    [ObservableProperty] private bool _isCommandPopupOpen;
+
+    /// <summary>補完候補リストでハイライト中の行（-1 で無選択）。</summary>
+    [ObservableProperty] private int _selectedCommandIndex = -1;
 
     [ObservableProperty] private string _input = "";
     [ObservableProperty] private bool _isExpanded;
@@ -91,6 +113,43 @@ public sealed partial class AiBarViewModel : ObservableObject
         Transcript.Clear();
     }
 
+    /// <summary>現在のセッションを閉じて新規開始する（/clear）。直前のIDは /resume 用に控える。</summary>
+    public void ClearSession()
+    {
+        if (_currentSessionId is not null && _conversation.Messages.Count > 0)
+            _lastClosedSessionId = _currentSessionId;
+
+        StartNewSession();
+        IsExpanded = true;
+        Add(EntryKind.Info, "🧹 セッションを閉じました",
+            _lastClosedSessionId is not null
+                ? "/resume で直前のセッションを復元できます。"
+                : "新しいセッションを開始しました。");
+    }
+
+    /// <summary>直前に閉じたセッション（無ければ最新の保存セッション）を復元する（/resume）。</summary>
+    public void ResumeLastSession()
+    {
+        var id = _lastClosedSessionId ?? _sessions.List().FirstOrDefault()?.Id;
+        if (id is null)
+        {
+            IsExpanded = true;
+            Add(EntryKind.Error, "復元できるセッションがありません", "保存済みのセッションが見つかりませんでした。");
+            return;
+        }
+
+        var session = _sessions.Load(id);
+        if (session is null)
+        {
+            IsExpanded = true;
+            Add(EntryKind.Error, "セッションの復元に失敗しました", id);
+            return;
+        }
+
+        RestoreSession(session);
+        _lastClosedSessionId = null;
+    }
+
     /// <summary>保存済みセッションを復元してトランスクリプトを再構築する。</summary>
     public void RestoreSession(LoadedSession session)
     {
@@ -136,7 +195,17 @@ public sealed partial class AiBarViewModel : ObservableObject
     private async Task SendAsync()
     {
         var text = Input.Trim();
+
+        // スラッシュコマンドなら AI へ送らず即実行する。
+        if (TryRunChatCommand(text))
+        {
+            SetInput("");
+            CloseCommandPopup();
+            return;
+        }
+
         Input = "";
+        CloseCommandPopup();
         IsExpanded = true;
         IsBusy = true;
         _cts = new CancellationTokenSource();
@@ -217,6 +286,96 @@ public sealed partial class AiBarViewModel : ObservableObject
     private static string Truncate(string s, int max = 2000)
         => s.Length <= max ? s : s[..max] + $"\n…(+{s.Length - max} 文字)";
 
-    partial void OnInputChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+    // ===== スラッシュコマンド =====
+
+    /// <summary>入力がスラッシュコマンドなら実行して true。未知の「/...」は通常送信に委ねる。</summary>
+    private bool TryRunChatCommand(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text[0] != '/') return false;
+        var name = text.Split(' ', 2)[0].ToLowerInvariant();
+        switch (name)
+        {
+            case "/clear": ClearSession(); return true;
+            case "/resume": ResumeLastSession(); return true;
+            default: return false; // 既知コマンドでなければ通常メッセージとして送る
+        }
+    }
+
+    /// <summary>入力内容に応じてコマンド補完候補を更新する。</summary>
+    private void UpdateCommandSuggestions(string value)
+    {
+        // 「/」始まりで、まだ空白を含まない（=コマンド名入力中）のときだけ候補を出す。
+        if (value.Length > 0 && value[0] == '/' && !value.Contains(' '))
+        {
+            var matches = AllCommands
+                .Where(c => c.Name.StartsWith(value, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            CommandSuggestions.Clear();
+            foreach (var c in matches) CommandSuggestions.Add(c);
+            IsCommandPopupOpen = matches.Count > 0;
+            SelectedCommandIndex = matches.Count > 0 ? 0 : -1;
+        }
+        else
+        {
+            CloseCommandPopup();
+        }
+    }
+
+    public void CloseCommandPopup()
+    {
+        IsCommandPopupOpen = false;
+        CommandSuggestions.Clear();
+        SelectedCommandIndex = -1;
+    }
+
+    /// <summary>補完候補の選択を上下に移動する（端でラップ）。</summary>
+    public void MoveCommandSelection(int delta)
+    {
+        if (CommandSuggestions.Count == 0) return;
+        var i = SelectedCommandIndex + delta;
+        if (i < 0) i = CommandSuggestions.Count - 1;
+        if (i >= CommandSuggestions.Count) i = 0;
+        SelectedCommandIndex = i;
+    }
+
+    private ChatCommand? CurrentSuggestion()
+        => SelectedCommandIndex >= 0 && SelectedCommandIndex < CommandSuggestions.Count
+            ? CommandSuggestions[SelectedCommandIndex]
+            : null;
+
+    /// <summary>選択中の候補で入力を補完する（Tab）。実行はしない。補完したら true。</summary>
+    public bool CompleteSelectedCommand()
+    {
+        if (CurrentSuggestion() is not { } cmd) return false;
+        SetInput(cmd.Name + " ");
+        CloseCommandPopup();
+        return true;
+    }
+
+    /// <summary>選択中の候補を確定して実行する（Enter / クリック）。実行したら true。</summary>
+    public bool AcceptAndRunSelectedCommand()
+    {
+        if (CurrentSuggestion() is not { } cmd) return false;
+        CloseCommandPopup();
+        SetInput(cmd.Name);
+        if (SendCommand.CanExecute(null)) SendCommand.Execute(null);
+        return true;
+    }
+
+    /// <summary>補完を発火させずに入力欄を書き換える。</summary>
+    private void SetInput(string value)
+    {
+        _suppressSuggestions = true;
+        Input = value;
+        _suppressSuggestions = false;
+    }
+
+    partial void OnInputChanged(string value)
+    {
+        SendCommand.NotifyCanExecuteChanged();
+        if (!_suppressSuggestions) UpdateCommandSuggestions(value);
+    }
+
     partial void OnIsBusyChanged(bool value) => SendCommand.NotifyCanExecuteChanged();
 }

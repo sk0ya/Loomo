@@ -21,6 +21,26 @@ public sealed record TraceSessionItem(string SessionId, string Title, DateTime U
     public string Display => $"{Title}  —  {UpdatedAt:yyyy/MM/dd HH:mm}";
 }
 
+/// <summary>複数選択リストの1行（チェック状態付き）。</summary>
+public sealed partial class SelectableSession : ObservableObject
+{
+    private readonly Action _onChanged;
+    public TraceSessionItem Item { get; }
+    public string SessionId => Item.SessionId;
+    public string Display => Item.Display;
+
+    [ObservableProperty] private bool _isSelected;
+
+    public SelectableSession(TraceSessionItem item, bool selected, Action onChanged)
+    {
+        Item = item;
+        _isSelected = selected; // フィールド直接設定で初期化中の通知を避ける
+        _onChanged = onChanged;
+    }
+
+    partial void OnIsSelectedChanged(bool value) => _onChanged();
+}
+
 /// <summary>メトリクス表示の1行（ラベル/値）。</summary>
 public sealed record MetricRow(string Label, string Value);
 
@@ -40,14 +60,16 @@ public sealed partial class AnalysisViewModel : ObservableObject
     private CancellationTokenSource? _cts;
     private string? _proposedPrompt;
     private string? _backupPrompt;
+    private bool _suspendRecompute;   // 一括選択変更中の再集計を抑止
 
-    public ObservableCollection<TraceSessionItem> Sessions { get; } = new();
+    // 選択変更のたびに同じトレースを読み直さないためのキャッシュ（Refresh で破棄）。
+    private readonly Dictionary<string, IReadOnlyList<TraceEvent>> _eventCache = new();
+
+    public ObservableCollection<SelectableSession> Sessions { get; } = new();
     public ObservableCollection<MetricRow> Metrics { get; } = new();
     public ObservableCollection<ToolStat> ToolStats { get; } = new();
     public ObservableCollection<DiffLineVm> PromptDiff { get; } = new();
 
-    [ObservableProperty] private TraceSessionItem? _selectedSession;
-    [ObservableProperty] private bool _crossSession;
     [ObservableProperty] private string _reportText = "";
     [ObservableProperty] private bool _hasReport;
     [ObservableProperty] private bool _hasToolStats;
@@ -77,29 +99,59 @@ public sealed partial class AnalysisViewModel : ObservableObject
     public void Refresh()
     {
         var titles = _conversations.List().ToDictionary(s => s.Id, s => s.Title);
-        var keep = SelectedSession?.SessionId;
+        var prevSelected = Sessions.Where(s => s.IsSelected).Select(s => s.SessionId).ToHashSet();
+        var hadAny = Sessions.Count > 0;
 
+        // ファイルが更新されている可能性があるので読取キャッシュは破棄する。
+        _eventCache.Clear();
+
+        _suspendRecompute = true;
         Sessions.Clear();
         foreach (var f in _reader.List())
         {
             var title = titles.TryGetValue(f.SessionId, out var t) ? t : f.SessionId;
-            Sessions.Add(new TraceSessionItem(f.SessionId, title, f.UpdatedAt, f.SizeBytes));
+            var item = new TraceSessionItem(f.SessionId, title, f.UpdatedAt, f.SizeBytes);
+            Sessions.Add(new SelectableSession(item, prevSelected.Contains(f.SessionId), OnSelectionChanged));
         }
 
-        SelectedSession = Sessions.FirstOrDefault(s => s.SessionId == keep) ?? Sessions.FirstOrDefault();
-        RecomputeMetrics();
-    }
+        // 初回表示は先頭1件を既定選択にしておく。
+        if (!hadAny && Sessions.Count > 0 && !Sessions.Any(s => s.IsSelected))
+            Sessions[0].IsSelected = true;
+        _suspendRecompute = false;
 
-    partial void OnSelectedSessionChanged(TraceSessionItem? value)
-    {
         RecomputeMetrics();
         AnalyzeCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnCrossSessionChanged(bool value)
+    private void OnSelectionChanged()
     {
+        if (_suspendRecompute) return;
         RecomputeMetrics();
         AnalyzeCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void SelectAll() => SetAllSelected(true);
+
+    [RelayCommand]
+    private void ClearSelection() => SetAllSelected(false);
+
+    private void SetAllSelected(bool selected)
+    {
+        _suspendRecompute = true;
+        foreach (var s in Sessions) s.IsSelected = selected;
+        _suspendRecompute = false;
+        OnSelectionChanged();
+    }
+
+    private List<SelectableSession> SelectedSessions() => Sessions.Where(s => s.IsSelected).ToList();
+
+    /// <summary>トレースを読む（同一セッションは Refresh まで使い回す）。選択変更ごとの再読込を避ける。</summary>
+    private IReadOnlyList<TraceEvent> ReadEvents(string sessionId)
+    {
+        if (!_eventCache.TryGetValue(sessionId, out var events))
+            _eventCache[sessionId] = events = _reader.Read(sessionId);
+        return events;
     }
 
     private void RecomputeMetrics()
@@ -107,13 +159,22 @@ public sealed partial class AnalysisViewModel : ObservableObject
         Metrics.Clear();
         ToolStats.Clear();
 
-        if (CrossSession)
+        var selected = SelectedSessions();
+
+        if (selected.Count == 0)
         {
-            var all = _reader.List()
-                .Select(f => SessionMetrics.Compute(f.SessionId, _reader.Read(f.SessionId)))
+            StatusText = Sessions.Count == 0 ? "トレースがありません" : "セッションを選択してください";
+            HasToolStats = false;
+            return;
+        }
+
+        if (selected.Count > 1)
+        {
+            var all = selected
+                .Select(s => SessionMetrics.Compute(s.SessionId, ReadEvents(s.SessionId)))
                 .ToList();
             var c = MetricsAggregator.Compute(all);
-            StatusText = $"横断: {c.SessionCount} セッション";
+            StatusText = $"選択 {c.SessionCount} 件を集計";
             Add("セッション数", c.SessionCount.ToString());
             Add("ターン数", c.TurnCount.ToString());
             Add("平均反復/ターン", $"{c.AvgIterations:0.0}");
@@ -125,10 +186,11 @@ public sealed partial class AnalysisViewModel : ObservableObject
             AddTokens(c.TotalInputTokens, c.TotalOutputTokens);
             foreach (var t in c.ToolStats) ToolStats.Add(t);
         }
-        else if (SelectedSession is { } s)
+        else
         {
-            var m = SessionMetrics.Compute(s.SessionId, _reader.Read(s.SessionId));
-            StatusText = s.Title;
+            var s = selected[0];
+            var m = SessionMetrics.Compute(s.SessionId, ReadEvents(s.SessionId));
+            StatusText = s.Item.Title;
             Add("プロバイダ", m.Provider ?? "—");
             Add("ターン数", m.TurnCount.ToString());
             Add("平均反復/ターン", $"{m.AvgIterations:0.0}");
@@ -142,10 +204,6 @@ public sealed partial class AnalysisViewModel : ObservableObject
             AddTokens(m.TotalInputTokens, m.TotalOutputTokens);
             foreach (var t in m.ToolStats) ToolStats.Add(t);
         }
-        else
-        {
-            StatusText = "トレースがありません";
-        }
 
         HasToolStats = ToolStats.Count > 0;
 
@@ -157,7 +215,7 @@ public sealed partial class AnalysisViewModel : ObservableObject
         }
     }
 
-    private bool CanAnalyze() => !IsBusy && (CrossSession || SelectedSession is not null);
+    private bool CanAnalyze() => !IsBusy && Sessions.Any(s => s.IsSelected);
 
     [RelayCommand(CanExecute = nameof(CanAnalyze))]
     private async Task AnalyzeAsync()
@@ -196,17 +254,17 @@ public sealed partial class AnalysisViewModel : ObservableObject
     private AdvisorInput BuildAdvisorInput()
     {
         var toolInfos = _tools.Definitions.Select(d => new ToolInfo(d.Name, d.Description)).ToList();
+        var selected = SelectedSessions();
 
-        if (CrossSession)
+        if (selected.Count > 1)
         {
-            // 各トレースファイルの読取は1回だけ（メトリクスと失敗サンプルで共有）。
-            var files = _reader.List();
-            var perSession = new List<SessionMetrics>(files.Count);
+            // 選択した各トレースファイルの読取は1回だけ（メトリクスと失敗サンプルで共有）。
+            var perSession = new List<SessionMetrics>(selected.Count);
             var samples = new List<string>();
-            foreach (var f in files)
+            foreach (var s in selected)
             {
-                var events = _reader.Read(f.SessionId);
-                perSession.Add(SessionMetrics.Compute(f.SessionId, events));
+                var events = ReadEvents(s.SessionId);
+                perSession.Add(SessionMetrics.Compute(s.SessionId, events));
                 if (samples.Count < 20)
                     samples.AddRange(ImprovementAdvisor.BuildFailureSamples(events, max: 4));
             }
@@ -216,8 +274,9 @@ public sealed partial class AnalysisViewModel : ObservableObject
         }
         else
         {
-            var events = _reader.Read(SelectedSession!.SessionId);
-            var single = SessionMetrics.Compute(SelectedSession.SessionId, events);
+            var id = selected[0].SessionId;
+            var events = ReadEvents(id);
+            var single = SessionMetrics.Compute(id, events);
             var samples = ImprovementAdvisor.BuildFailureSamples(events);
             return new AdvisorInput(_settings.SystemPrompt, toolInfos, single, null, samples);
         }

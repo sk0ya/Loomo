@@ -7,25 +7,42 @@
     <DockPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="AIログ分析" />
 
-        <!-- 対象選択 -->
-        <Grid DockPanel.Dock="Top" Margin="10,2,10,6">
+        <!-- 対象選択（複数選択） -->
+        <Grid DockPanel.Dock="Top" Margin="10,2,10,4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ComboBox Grid.Column="0" Height="26"
-                      ItemsSource="{Binding Sessions}"
-                      SelectedItem="{Binding SelectedSession, Mode=TwoWay}"
-                      DisplayMemberPath="Display"
-                      IsEnabled="{Binding CrossSession, Converter={StaticResource InverseBool}}"
-                      ToolTip="解析するセッション" />
-            <Button Grid.Column="1" Content="⟳" Style="{StaticResource FlatButton}" Margin="6,0,0,0"
+            <TextBlock Grid.Column="0" Text="対象セッション" VerticalAlignment="Center"
+                       Foreground="{DynamicResource FgDim}" FontSize="12" />
+            <Button Grid.Column="1" Content="全選択" Style="{StaticResource FlatButton}" Margin="0,0,4,0"
+                    Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
+                    Command="{Binding SelectAllCommand}" />
+            <Button Grid.Column="2" Content="解除" Style="{StaticResource FlatButton}" Margin="0,0,4,0"
+                    Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
+                    Command="{Binding ClearSelectionCommand}" />
+            <Button Grid.Column="3" Content="⟳" Style="{StaticResource FlatButton}"
                     Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
                     ToolTip="更新" Command="{Binding RefreshCommand}" />
         </Grid>
 
-        <CheckBox DockPanel.Dock="Top" Margin="12,0,10,6" Foreground="{DynamicResource Fg}"
-                  Content="横断（全セッション）で集計" IsChecked="{Binding CrossSession, Mode=TwoWay}" />
+        <Border DockPanel.Dock="Top" Margin="10,0,10,6" MaxHeight="160"
+                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Sessions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="6,3"
+                                      Foreground="{DynamicResource Fg}" ToolTip="{Binding Display}">
+                                <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                            </CheckBox>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
 
         <TextBlock DockPanel.Dock="Top" Margin="12,0,10,6" FontSize="11"
                    Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"

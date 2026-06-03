@@ -72,14 +72,60 @@
 
             <Grid Grid.Column="1" Margin="6,0">
                 <TextBox x:Name="InputBox" Text="{Binding Input, UpdateSourceTrigger=PropertyChanged}"
-                         VerticalContentAlignment="Center">
+                         VerticalContentAlignment="Center" PreviewKeyDown="OnInputPreviewKeyDown">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding SendCommand}" />
                     </TextBox.InputBindings>
                 </TextBox>
+
+                <!-- スラッシュコマンド補完ポップアップ（入力欄の上に開く） -->
+                <Popup IsOpen="{Binding IsCommandPopupOpen}" PlacementTarget="{Binding ElementName=InputBox}"
+                       Placement="Top" VerticalOffset="-4" StaysOpen="False" AllowsTransparency="True"
+                       MinWidth="340">
+                    <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="6" Padding="4">
+                        <ListBox x:Name="CommandList" ItemsSource="{Binding CommandSuggestions}"
+                                 SelectedIndex="{Binding SelectedCommandIndex, Mode=TwoWay}"
+                                 Background="Transparent" BorderThickness="0"
+                                 PreviewMouseLeftButtonUp="OnCommandListClick"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="8,5">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name}" Width="90" FontWeight="SemiBold"
+                                                   FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource Fg}" />
+                                        <TextBlock Text="{Binding Description}" VerticalAlignment="Center"
+                                                   FontSize="12" Foreground="{DynamicResource FgDim}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Popup>
                 <TextBlock IsHitTestVisible="False" Margin="10,0" VerticalAlignment="Center"
                            Foreground="{DynamicResource FgDim}" FontStyle="Italic"
-                           Text="AIに指示を入力...   （例: $ dotnet build  /  open README.md  /  ls）">
+                           Text="AIに指示を入力...   （「/」でコマンド・例: /clear  /resume）">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <!-- 通常は Input が空のときだけ表示 -->

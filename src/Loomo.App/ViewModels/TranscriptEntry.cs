@@ -8,7 +8,7 @@ using sk0ya.Loomo.Core.Diff;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-public enum EntryKind { User, Assistant, Tool, Approval, Error }
+public enum EntryKind { User, Assistant, Tool, Approval, Error, Info }
 
 /// <summary>AIバーの会話トランスクリプト1項目。</summary>
 public sealed partial class TranscriptEntry : ObservableObject
