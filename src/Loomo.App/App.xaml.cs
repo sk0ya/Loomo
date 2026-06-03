@@ -75,6 +75,8 @@ public partial class App : Application
         // --- ツール ---
         services.AddSingleton<IAgentTool, ListDirectoryTool>();
         services.AddSingleton<IAgentTool, ReadFileTool>();
+        services.AddSingleton<IAgentTool, FindFilesTool>();
+        services.AddSingleton<IAgentTool, SearchFilesTool>();
         services.AddSingleton<IAgentTool, GetSelectionTool>();
         services.AddSingleton<IAgentTool, OpenInEditorTool>();
         services.AddSingleton<IAgentTool, ProposeEditTool>();
