@@ -168,4 +168,19 @@ public partial class AiBarView : UserControl
         if (DataContext is AiBarViewModel vm)
             vm.AcceptAndRunSelectedCommand();
     }
+
+    /// <summary>
+    /// 選択可能にした読み取り専用 TextBox 上のホイール操作を外側の ScrollViewer へ転送する
+    /// （TextBox がイベントを握り潰してトランスクリプトがスクロールしなくなるのを防ぐ）。
+    /// </summary>
+    private void OnTranscriptPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Handled || sender is not Control source) return;
+        e.Handled = true;
+        TranscriptScrollViewer.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = MouseWheelEvent,
+            Source = source,
+        });
+    }
 }

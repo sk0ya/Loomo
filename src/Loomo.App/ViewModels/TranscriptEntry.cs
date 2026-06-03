@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,6 +31,19 @@ public sealed partial class TranscriptEntry : ObservableObject
     public bool HasDiff => DiffLines.Count > 0;
 
     public void AppendText(string chunk) => Text += chunk;
+
+    /// <summary>クリップボードへコピーする際の内容（差分エントリは接頭辞付きで復元）。</summary>
+    public string CopyText => HasDiff
+        ? string.Join(Environment.NewLine, DiffLines.Select(DiffPrefix))
+        : Text;
+
+    private static string DiffPrefix(DiffLineVm line) => line.Kind switch
+    {
+        DiffLineKind.Added => "+" + line.Text,
+        DiffLineKind.Removed => "-" + line.Text,
+        DiffLineKind.Gap => "⋯" + line.Text,
+        _ => " " + line.Text,
+    };
 
     partial void OnIsCollapsedChanged(bool value) => OnPropertyChanged(nameof(CollapseGlyph));
 
@@ -66,6 +81,16 @@ public sealed partial class TranscriptEntry : ObservableObject
 
     [RelayCommand]
     private void ToggleCollapse() => IsCollapsed = !IsCollapsed;
+
+    /// <summary>このエントリの本文（または差分）をクリップボードへコピーする。</summary>
+    [RelayCommand]
+    private void Copy()
+    {
+        var content = CopyText;
+        if (string.IsNullOrEmpty(content)) return;
+        try { Clipboard.SetText(content); }
+        catch { /* クリップボードが他プロセスにロックされている場合は無視 */ }
+    }
 
     [RelayCommand]
     private void Approve()

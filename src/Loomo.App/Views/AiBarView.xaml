@@ -35,6 +35,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Content="{Binding CollapseGlyph}"
                                                 Command="{Binding ToggleCollapseCommand}"
@@ -44,22 +45,36 @@
                                         <TextBlock Grid.Column="1" Text="{Binding Header}" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="2" Content="📋"
+                                                Command="{Binding CopyCommand}"
+                                                Style="{StaticResource IconButton}" Width="22" Height="22"
+                                                Padding="0" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="この内容をコピー" />
                                     </Grid>
                                     <StackPanel Visibility="{Binding IsCollapsed, Converter={StaticResource InverseBoolToVis}}">
-                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                   FontFamily="Cascadia Mono, Consolas">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
+                                        <!-- 本文は読み取り専用 TextBox にして選択・コピーを可能にする -->
+                                        <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
+                                                 TextWrapping="Wrap" BorderThickness="0" Padding="0"
+                                                 Background="Transparent" IsReadOnlyCaretVisible="False"
+                                                 IsTabStop="False" Cursor="IBeam"
+                                                 FontFamily="Cascadia Mono, Consolas"
+                                                 PreviewMouseWheel="OnTranscriptPreviewMouseWheel">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
                                                     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Kind}" Value="Thinking">
                                                             <Setter Property="FontStyle" Value="Italic" />
                                                             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                         </DataTrigger>
+                                                        <!-- 差分エントリ等で本文が空のときは行を占有しない -->
+                                                        <DataTrigger Binding="{Binding Text}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                            </TextBox.Style>
+                                        </TextBox>
                                         <!-- 差分ビュー（propose_edit の承認カード） -->
                                         <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
                                                 BorderBrush="{DynamicResource Border}" BorderThickness="1"
@@ -68,9 +83,13 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Border Background="{Binding Background}">
-                                                            <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
-                                                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                                                       TextWrapping="NoWrap" Padding="6,0" />
+                                                            <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
+                                                                     Foreground="{Binding Foreground}" Background="Transparent"
+                                                                     BorderThickness="0" Padding="6,0" IsTabStop="False"
+                                                                     IsReadOnlyCaretVisible="False" Cursor="IBeam"
+                                                                     FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                     TextWrapping="NoWrap"
+                                                                     PreviewMouseWheel="OnTranscriptPreviewMouseWheel" />
                                                         </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
