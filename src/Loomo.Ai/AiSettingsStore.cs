@@ -94,26 +94,18 @@ public sealed class AiSettingsStore
 
     private sealed class PersistedSettings
     {
-        public AiProvider Provider { get; set; }
         public AppTheme Theme { get; set; }
         public string? AccentColor { get; set; }
         public string? SystemPrompt { get; set; }
-        public PersistedProvider Claude { get; set; } = new();
-        public PersistedProvider OpenAI { get; set; } = new();
-        public PersistedProvider Copilot { get; set; } = new();
         public PersistedProvider Local { get; set; } = new();
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
 
         public static PersistedSettings From(AiSettings s) => new()
         {
-            Provider = s.Provider,
             Theme = s.Theme,
             AccentColor = s.AccentColor,
             SystemPrompt = s.SystemPrompt,
-            Claude = PersistedProvider.From(s.Claude),
-            OpenAI = PersistedProvider.From(s.OpenAI),
-            Copilot = PersistedProvider.From(s.Copilot),
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
@@ -121,13 +113,10 @@ public sealed class AiSettingsStore
 
         public void ApplyTo(AiSettings s)
         {
-            s.Provider = Provider;
+            s.Provider = AiProvider.Local;
             s.Theme = Theme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
             if (!string.IsNullOrWhiteSpace(SystemPrompt)) s.SystemPrompt = SystemPrompt;
-            Claude.ApplyTo(s.Claude);
-            OpenAI.ApplyTo(s.OpenAI);
-            Copilot.ApplyTo(s.Copilot);
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
@@ -208,7 +197,7 @@ public sealed class AiSettingsStore
             c.ApiKey = Unprotect(ApiKeyEnc);
             if (BaseUrl is not null) c.BaseUrl = BaseUrl;
             if (MaxTokens > 0) c.MaxTokens = MaxTokens;
-            // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定（Claude=180k 等）を保つ。
+            // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定を保つ。
             if (MaxContextTokens is { } mct && mct >= 0) c.MaxContextTokens = mct;
         }
     }

@@ -1,7 +1,7 @@
-using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
 using System.Net.Http;
+using sk0ya.Loomo.Ai.Clients;
 
 namespace sk0ya.Loomo.Ai;
 
@@ -19,12 +19,6 @@ public sealed class AiClientFactory : IAiClientFactory
 
     public IAiClient ResolveCurrent() => Resolve(_settings.Provider);
 
-    public IAiClient Resolve(AiProvider provider) => provider switch
-    {
-        AiProvider.Claude => new ClaudeAiClient(_httpFactory.CreateClient("ai"), _settings),
-        AiProvider.OpenAI => new OpenAiCompatibleClient(_httpFactory.CreateClient("ai"), _settings, AiProvider.OpenAI),
-        AiProvider.Local => new OpenAiCompatibleClient(_httpFactory.CreateClient("ai"), _settings, AiProvider.Local),
-        AiProvider.Copilot => new CopilotAiClient(_httpFactory.CreateClient("ai"), _settings),
-        _ => new StubAiClient()
-    };
+    public IAiClient Resolve(AiProvider provider) =>
+        new OpenAiCompatibleClient(_httpFactory.CreateClient("ai"), _settings);
 }

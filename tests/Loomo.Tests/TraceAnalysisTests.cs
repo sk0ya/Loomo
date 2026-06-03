@@ -23,7 +23,7 @@ public class TraceAnalysisTests
     {
         var dir = TempDir();
         var sink = new JsonlTraceSink(dir);
-        sink.Record("s1", "t1", TraceKinds.TurnStarted, new { userInput = "hi", provider = "Stub" });
+        sink.Record("s1", "t1", TraceKinds.TurnStarted, new { userInput = "hi", provider = "Local" });
         sink.Record("s1", "t1", TraceKinds.AiMessage, new { fullText = "ok" });
         await sink.DisposeAsync();
 
@@ -45,8 +45,8 @@ public class TraceAnalysisTests
     {
         var dir = TempDir();
         var sink = new JsonlTraceSink(dir);
-        sink.Record("m", null, TraceKinds.SessionStarted, new { provider = "Claude" });
-        sink.Record("m", "t1", TraceKinds.TurnStarted, new { provider = "Claude" });
+        sink.Record("m", null, TraceKinds.SessionStarted, new { provider = "Local" });
+        sink.Record("m", "t1", TraceKinds.TurnStarted, new { provider = "Local" });
         sink.Record("m", "t1", TraceKinds.AiMessage, new { fullText = "考え中" });
         sink.Record("m", "t1", TraceKinds.SafetyEvaluated, new { tool = "run_command", blocked = true, reason = "danger" });
         sink.Record("m", "t1", TraceKinds.ApprovalResolved, new { tool = "propose_edit", approved = true, waitMs = 1000 });
@@ -58,7 +58,7 @@ public class TraceAnalysisTests
 
         var m = SessionMetrics.Compute("m", new TraceReader(dir).Read("m"));
 
-        Assert.Equal("Claude", m.Provider);
+        Assert.Equal("Local", m.Provider);
         Assert.Equal(1, m.TurnCount);
         Assert.Equal(3, m.TotalIterations);
         Assert.Equal(2, m.ToolCallCount);

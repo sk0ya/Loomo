@@ -67,9 +67,7 @@ public partial class App : Application
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
         // コンテキスト長管理：現在プロバイダの上限に合わせ送信前に履歴をトリム
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
-        services.AddSingleton(sp => new CopilotAuthService(
-            sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
-        // ローカルLLM/OpenAI互換エンドポイントから利用可能モデル一覧を取得（設定画面の選択肢）
+        // Ollama から利用可能モデル一覧を取得（設定画面の選択肢）
         services.AddSingleton(sp => new ModelCatalogService(
             sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai"),
             sp.GetRequiredService<AiSettings>()));

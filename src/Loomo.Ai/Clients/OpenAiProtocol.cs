@@ -15,8 +15,7 @@ using sk0ya.Loomo.Core.Tools;
 namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
-/// OpenAI Chat Completions 互換プロトコルの共通処理。
-/// OpenAI / ローカルLLM / GitHub Copilot（認証後）が共用する。
+/// Ollama の OpenAI Chat Completions 互換プロトコル処理。
 /// </summary>
 internal static class OpenAiProtocol
 {

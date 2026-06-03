@@ -312,36 +312,6 @@
         <Setter Property="Margin" Value="0,10,0,3" />
     </Style>
 
-    <!-- ===== RadioButton（プロバイダ選択用・ピル型） ===== -->
-    <Style x:Key="ProviderRadio" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-        <Setter Property="Margin" Value="0,3,0,0" />
-        <Setter Property="Padding" Value="10,6" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="HorizontalContentAlignment" Value="Left" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="b" Background="{DynamicResource BgAlt}"
-                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                            CornerRadius="4" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
-                        </Trigger>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Accent}" />
-                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- ===== ScrollBar（テーマ対応・スリム化） =====
          WPF 既定のスクロールバーは幅約17pxでシステム色のため、テーマに馴染まない。
          矢印ボタンを廃し、丸みのある細いつまみ（thumb）のみのオーバーレイ風に統一する。 -->

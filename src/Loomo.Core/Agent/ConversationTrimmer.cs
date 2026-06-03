@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Core.Agent;
 /// 純粋関数（副作用なし・決定的）として単体テスト可能。
 ///
 /// 不変条件: 切り詰め後の先頭は必ず <see cref="ChatRole.User"/> メッセージにする。
-/// これにより (1) Anthropic/OpenAI が要求する「会話は user から始まる」を満たし、
+/// これにより (1) OpenAI互換API が要求する「会話は user から始まる」を満たし、
 /// (2) 直前の assistant の tool_use が落ちて tool_result だけが孤立する状態を防ぐ
 /// （tool_result を含む <see cref="ChatRole.Tool"/> は user メッセージより後ろにしか現れないため）。
 /// </summary>

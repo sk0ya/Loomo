@@ -4,87 +4,37 @@
     Background="{DynamicResource BgAlt}">
 
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="設定 — AIプロバイダ" />
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="設定 — Ollama" />
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,4,12,12">
             <StackPanel>
 
-                <!-- プロバイダ選択 -->
-                <TextBlock Style="{StaticResource FieldLabel}" Text="プロバイダ" Margin="0,0,0,3" />
-                <RadioButton Style="{StaticResource ProviderRadio}" GroupName="provider" Content="Stub（鍵不要・動作確認用）"
-                             IsChecked="{Binding SelectedProvider, Converter={StaticResource EnumToBool}, ConverterParameter=Stub}" />
-                <RadioButton Style="{StaticResource ProviderRadio}" GroupName="provider" Content="Claude（Anthropic API）"
-                             IsChecked="{Binding SelectedProvider, Converter={StaticResource EnumToBool}, ConverterParameter=Claude}" />
-                <RadioButton Style="{StaticResource ProviderRadio}" GroupName="provider" Content="OpenAI（互換API）"
-                             IsChecked="{Binding SelectedProvider, Converter={StaticResource EnumToBool}, ConverterParameter=OpenAI}" />
-                <RadioButton Style="{StaticResource ProviderRadio}" GroupName="provider" Content="GitHub Copilot"
-                             IsChecked="{Binding SelectedProvider, Converter={StaticResource EnumToBool}, ConverterParameter=Copilot}" />
-                <RadioButton Style="{StaticResource ProviderRadio}" GroupName="provider" Content="ローカルLLM（Ollama 等）"
-                             IsChecked="{Binding SelectedProvider, Converter={StaticResource EnumToBool}, ConverterParameter=Local}" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="モデル" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0" IsEditable="True"
+                              StaysOpenOnEdit="True"
+                              ItemsSource="{Binding AvailableModels}"
+                              IsDropDownOpen="{Binding ModelDropDownOpen, Mode=TwoWay}"
+                              Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Column="1" Content="再取得" Style="{StaticResource FlatButton}"
+                            Margin="6,0,0,0"
+                            Command="{Binding FetchModelsCommand}"
+                            IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}" />
+                </Grid>
+                <TextBlock Text="Ollama から候補を自動取得します（変わらない場合は「再取得」）。一覧に無いモデルは直接入力も可。"
+                           Foreground="{DynamicResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
 
-                <!-- モデル（OpenAI互換/ローカルLLM は一覧取得＋選択。自由入力も可） -->
-                <StackPanel Visibility="{Binding ShowModel, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="モデル" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox Grid.Column="0" IsEditable="True"
-                                  StaysOpenOnEdit="True"
-                                  ItemsSource="{Binding AvailableModels}"
-                                  IsDropDownOpen="{Binding ModelDropDownOpen, Mode=TwoWay}"
-                                  Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Grid.Column="1" Content="再取得" Style="{StaticResource FlatButton}"
-                                Margin="6,0,0,0"
-                                Command="{Binding FetchModelsCommand}"
-                                IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}"
-                                Visibility="{Binding CanFetchModels, Converter={StaticResource BoolToVis}}" />
-                    </Grid>
-                    <TextBlock Text="エンドポイントから候補を自動取得します（変わらない場合は「再取得」）。一覧に無いモデルは直接入力も可。"
-                               Foreground="{DynamicResource FgDim}" FontSize="11"
-                               TextWrapping="Wrap" Margin="0,4,0,0"
-                               Visibility="{Binding CanFetchModels, Converter={StaticResource BoolToVis}}" />
-                </StackPanel>
+                <TextBlock Style="{StaticResource FieldLabel}" Text="ベースURL（Ollama OpenAI互換エンドポイント）" />
+                <TextBox Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Cascadia Mono, Consolas" />
 
-                <!-- API キー -->
-                <StackPanel Visibility="{Binding ShowApiKey, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="APIキー（DPAPIで暗号化して保存）" />
-                    <TextBox Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}"
-                             FontFamily="Cascadia Mono, Consolas" />
-                </StackPanel>
-
-                <!-- Copilot サインイン -->
-                <StackPanel Visibility="{Binding ShowCopilotAuth, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="GitHub 認証" />
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="GitHub でサインイン" Style="{StaticResource FlatButton}"
-                                Command="{Binding SignInCopilotCommand}"
-                                Visibility="{Binding IsSigningIn, Converter={StaticResource InverseBoolToVis}}" />
-                        <Button Content="キャンセル" Style="{StaticResource FlatButton}" Background="#FF6E1E1E"
-                                Command="{Binding CancelSignInCommand}"
-                                Visibility="{Binding IsSigningIn, Converter={StaticResource BoolToVis}}" />
-                        <Button Content="サインアウト" Style="{StaticResource FlatButton}" Background="{DynamicResource BgAlt}"
-                                Foreground="{DynamicResource Fg}"
-                                Margin="8,0,0,0" Command="{Binding SignOutCopilotCommand}"
-                                Visibility="{Binding IsCopilotSignedIn, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding CopilotStatus}" TextWrapping="Wrap" Margin="0,8,0,0"
-                               Foreground="{DynamicResource FgDim}" FontSize="11" />
-                </StackPanel>
-
-                <!-- Base URL -->
-                <StackPanel Visibility="{Binding ShowBaseUrl, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="ベースURL（OpenAI互換エンドポイント）" />
-                    <TextBox Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                             FontFamily="Cascadia Mono, Consolas" />
-                </StackPanel>
-
-                <!-- 最大トークン -->
-                <StackPanel Visibility="{Binding ShowModel, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
-                    <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
+                <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
+                <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
 
                 <!-- システムプロンプト（中央のエディタ領域で編集） -->
                 <TextBlock Style="{StaticResource FieldLabel}" Text="システムプロンプト" />

@@ -51,10 +51,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Settings = settings;
         Appearance = appearance;
 
-        // 設定保存時に AIバーのプロバイダ表示を更新する（設定パネル → タイトルバー）
+        // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
-        // タイトルバーでの切替を設定パネルの選択へ追従させる（タイトルバー → 設定パネル）
-        AiBar.ProviderSwitched += Settings.SyncProvider;
     }
 
     /// <summary>ActivityBar のエクスプローラアイコン。</summary>

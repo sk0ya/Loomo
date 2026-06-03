@@ -89,14 +89,6 @@
                               Data="M1,3.5 H5 L6.2,5 H14 V12 H1 Z M1,3.5 V2 H5.5 L6.7,3.5 M10,6.5 V10 M8.25,8.25 H11.75" />
                     </Button>
 
-                    <Border Width="1" Margin="12,4" Background="{DynamicResource Border}" />
-
-                    <!-- AIプロバイダのクイック切替（即時反映・永続化される） -->
-                    <ComboBox Height="24"
-                              ItemsSource="{Binding AiBar.Providers}"
-                              SelectedItem="{Binding AiBar.SelectedProvider, Mode=TwoWay}"
-                              ToolTip="AIプロバイダ"
-                              WindowChrome.IsHitTestVisibleInChrome="True" />
                 </StackPanel>
 
                 <!-- ウィンドウ操作ボタン＋ペイン表示トグル（キャプション領域だがクリック可能にする） -->

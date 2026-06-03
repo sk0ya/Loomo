@@ -55,7 +55,7 @@ public class OpenAiCompatibleClientTests
                 MaxTokens = 1024
             }
         };
-        var client = new OpenAiCompatibleClient(http, settings, AiProvider.Local);
+        var client = new OpenAiCompatibleClient(http, settings);
         var conversation = new Conversation();
         conversation.AddUser("こんにちは");
 
@@ -73,6 +73,10 @@ public class OpenAiCompatibleClientTests
         Assert.Equal(2, handler.PostedBodies.Count);
         Assert.True(handler.PostedBodies[0].ContainsKey("tools"));
         Assert.False(handler.PostedBodies[1].ContainsKey("tools"));
+        Assert.Equal("none", handler.PostedBodies[0]["reasoning_effort"]?.GetValue<string>());
+        Assert.Equal("none", handler.PostedBodies[0]["reasoning"]?["effort"]?.GetValue<string>());
+        Assert.Equal("none", handler.PostedBodies[1]["reasoning_effort"]?.GetValue<string>());
+        Assert.Equal("none", handler.PostedBodies[1]["reasoning"]?["effort"]?.GetValue<string>());
     }
 
     [Fact]
@@ -155,7 +159,7 @@ public class OpenAiCompatibleClientTests
         {
             Local = new ProviderConfig { Model = "r1", BaseUrl = "http://localhost:11434/v1", MaxTokens = 1024 }
         };
-        var client = new OpenAiCompatibleClient(http, settings, AiProvider.Local);
+        var client = new OpenAiCompatibleClient(http, settings);
         var conversation = new Conversation();
         conversation.AddUser("こんにちは");
 

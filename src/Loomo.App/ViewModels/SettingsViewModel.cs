@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
@@ -14,7 +12,7 @@ using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>設定パネル（プロバイダ切替・モデル・APIキー等）の ViewModel。
+/// <summary>設定パネル（Ollama モデル・エンドポイント等）の ViewModel。
 /// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
 /// システムプロンプト・危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
 /// 編集する（<see cref="IEditorService.OpenDocumentAsync"/>。保存=:w 時にコールバックで即時反映）。</summary>
@@ -22,24 +20,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly AiSettings _settings;
     private readonly AiSettingsStore _store;
-    private readonly CopilotAuthService _copilotAuth;
     private readonly IEditorService _editor;
     private readonly ModelCatalogService _modelCatalog;
-    private CancellationTokenSource? _signInCts;
     private CancellationTokenSource? _fetchModelsCts;
-
-    /// <summary>現在フィールドに読み込まれているプロバイダ。切替時に旧プロバイダへコミットするため保持。</summary>
-    private AiProvider _loadedProvider;
 
     /// <summary>設定が保存されたときに通知（AIバーのプロバイダ表示更新などに使う）。</summary>
     public event Action? Saved;
 
-    public IReadOnlyList<AiProvider> Providers { get; } =
-        (AiProvider[])Enum.GetValues(typeof(AiProvider));
-
-    [ObservableProperty] private AiProvider _selectedProvider;
     [ObservableProperty] private string _model = "";
-    [ObservableProperty] private string _apiKey = "";
     [ObservableProperty] private string _baseUrl = "";
     [ObservableProperty] private int _maxTokens;
     [ObservableProperty] private string _status = "";
@@ -57,41 +45,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>モデル選択ドロップダウンを開いているか（取得完了時に自動で開く）。</summary>
     [ObservableProperty] private bool _modelDropDownOpen;
 
-    /// <summary>Copilot サインインの進捗・状態表示。</summary>
-    [ObservableProperty] private string _copilotStatus = "";
-    [ObservableProperty] private bool _isSigningIn;
+    public bool CanFetchModels => true;
 
-    /// <summary>APIキー欄を表示するか（手入力するのは Claude / OpenAI のみ。Copilot はサインイン）。</summary>
-    public bool ShowApiKey => SelectedProvider is AiProvider.Claude or AiProvider.OpenAI;
-
-    /// <summary>BaseUrl 欄を表示するか（OpenAI互換 / ローカルLLM）。</summary>
-    public bool ShowBaseUrl => SelectedProvider is AiProvider.OpenAI or AiProvider.Local;
-
-    /// <summary>モデル名・トークン上限を表示するか（Stub は不要）。</summary>
-    public bool ShowModel => SelectedProvider != AiProvider.Stub;
-
-    /// <summary>モデル一覧の自動取得に対応するプロバイダか（OpenAI互換 / ローカルLLM）。</summary>
-    public bool CanFetchModels => ModelCatalogService.Supports(SelectedProvider);
-
-    /// <summary>Copilot のサインインUIを表示するか。</summary>
-    public bool ShowCopilotAuth => SelectedProvider == AiProvider.Copilot;
-
-    /// <summary>Copilot に既にサインイン済みか（GitHub トークン保持）。</summary>
-    public bool IsCopilotSignedIn => !string.IsNullOrWhiteSpace(_settings.Copilot.ApiKey);
-
-    public SettingsViewModel(AiSettings settings, AiSettingsStore store, CopilotAuthService copilotAuth,
+    public SettingsViewModel(AiSettings settings, AiSettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog)
     {
         _settings = settings;
         _store = store;
-        _copilotAuth = copilotAuth;
         _editor = editor;
         _modelCatalog = modelCatalog;
-        _selectedProvider = settings.Provider;
-        _loadedProvider = settings.Provider;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
-        LoadProviderFields(settings.Provider);
+        LoadLocalFields();
         // 初期取得は UI スレッドのディスパッチャ経由で行う。コンストラクタ時点では
         // SynchronizationContext が未確立のことがあり、await 継続が別スレッドで走ると
         // バインド済み ObservableCollection の更新が失敗するため。アプリ未起動（テスト等）では no-op。
@@ -99,59 +64,27 @@ public sealed partial class SettingsViewModel : ObservableObject
             new Action(() => TryAutoFetchModels(autoOpen: false)));
     }
 
-    /// <summary>タイトルバーのクイック切替に追従して、設定パネルの選択プロバイダを合わせる。
-    /// <see cref="OnSelectedProviderChanged"/> がフィールドの退避・読込を行う（保存は伴わない）。</summary>
-    public void SyncProvider(AiProvider provider)
-    {
-        if (SelectedProvider != provider) SelectedProvider = provider;
-    }
+    public void SyncProvider(AiProvider provider) { }
 
-    partial void OnSelectedProviderChanged(AiProvider value)
-    {
-        CommitFieldsTo(_loadedProvider);   // 直前プロバイダの編集をメモリへ退避
-        LoadProviderFields(value);
-        _loadedProvider = value;
-        OnPropertyChanged(nameof(ShowApiKey));
-        OnPropertyChanged(nameof(ShowBaseUrl));
-        OnPropertyChanged(nameof(ShowModel));
-        OnPropertyChanged(nameof(ShowCopilotAuth));
-        OnPropertyChanged(nameof(IsCopilotSignedIn));
-        OnPropertyChanged(nameof(CanFetchModels));
-        // 進行中の取得を中止（切替後のプロバイダに前プロバイダの結果が紛れ込むのを防ぐ）。
-        // 非対応プロバイダへ切り替えた場合は再取得しないため、ここで必ず止める必要がある。
-        _fetchModelsCts?.Cancel();
-        AvailableModels.Clear(); // プロバイダごとにモデル候補は異なるためクリア
-        TryAutoFetchModels(autoOpen: true); // プロバイダ切替は操作起点なので取得後に候補を開いて見せる
-    }
-
-    /// <summary>対応プロバイダなら（OpenAI は鍵があるときのみ）モデル一覧を自動取得する。</summary>
+    /// <summary>Ollama からモデル一覧を自動取得する。</summary>
     private void TryAutoFetchModels(bool autoOpen)
     {
-        if (!CanFetchModels) return;
-        // OpenAI は鍵未設定だと 401 になるだけなので、自動取得では鍵があるときに限る（ローカルは鍵不要）。
-        if (SelectedProvider == AiProvider.OpenAI && string.IsNullOrWhiteSpace(ApiKey)) return;
         _ = FetchModelsCoreAsync(autoOpen);
     }
 
-    private void LoadProviderFields(AiProvider provider)
+    private void LoadLocalFields()
     {
-        var cfg = _settings.ConfigFor(provider);
+        var cfg = _settings.Local;
         Model = cfg.Model;
-        // Copilot のトークンは GitHub サインインで取得・保持するため、共有の APIキー欄には載せない
-        // （載せると Copilot 切替時にこの空欄が CommitFieldsTo でトークンを上書き消去してしまう）。
-        ApiKey = provider == AiProvider.Copilot ? "" : (cfg.ApiKey ?? "");
         BaseUrl = cfg.BaseUrl ?? "";
         MaxTokens = cfg.MaxTokens;
     }
 
-    private void CommitFieldsTo(AiProvider provider)
+    private void CommitLocalFields()
     {
-        if (provider == AiProvider.Stub) return; // Stub に編集項目は無い
-        var cfg = _settings.ConfigFor(provider);
+        var cfg = _settings.Local;
         cfg.Model = Model.Trim();
-        // Copilot の ApiKey は SignInCopilot/SignOutCopilot が専管する。ここで空欄により上書きしない。
-        if (provider != AiProvider.Copilot)
-            cfg.ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim();
+        cfg.ApiKey = null;
         cfg.BaseUrl = string.IsNullOrWhiteSpace(BaseUrl) ? null : BaseUrl.Trim();
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
     }
@@ -159,8 +92,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
-        CommitFieldsTo(SelectedProvider);
-        _settings.Provider = SelectedProvider;
+        CommitLocalFields();
+        _settings.Provider = AiProvider.Local;
 
         // 安全設計を書き戻す（同一インスタンスなので即時反映される）
         _settings.Safety.AutoApprove = AutoApprove;
@@ -187,14 +120,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <paramref name="autoOpen"/> が true なら取得成功後にドロップダウンを自動で開く。</summary>
     private async Task FetchModelsCoreAsync(bool autoOpen)
     {
-        if (!CanFetchModels) return;
-
         // 進行中の取得を中止し、最新の要求で置き換える（取り違え・古い結果の反映を防ぐ）。
         // 各呼び出しは自分の CTS を所有し、自分の finally で破棄する。共有状態
         // （IsFetchingModels / _fetchModelsCts）は最新の取得だけがリセットする。
         _fetchModelsCts?.Cancel();
         var cts = _fetchModelsCts = new CancellationTokenSource();
-        var provider = SelectedProvider;
+        var provider = AiProvider.Local;
         IsFetchingModels = true;
         try
         {
@@ -202,11 +133,11 @@ public sealed partial class SettingsViewModel : ObservableObject
             var models = await _modelCatalog.FetchAsync(
                 provider,
                 baseUrlOverride: BaseUrl,
-                apiKeyOverride: ApiKey,
+                apiKeyOverride: null,
                 ct: cts.Token);
 
             // 取得中に中止／プロバイダ変更があれば結果は破棄する。
-            if (cts.IsCancellationRequested || provider != SelectedProvider) return;
+            if (cts.IsCancellationRequested) return;
 
             AvailableModels.Clear();
             foreach (var m in models) AvailableModels.Add(m);
@@ -232,8 +163,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            if (provider == SelectedProvider)
-                Status = $"モデル取得に失敗しました: {ex.Message}";
+            Status = $"モデル取得に失敗しました: {ex.Message}";
         }
         finally
         {
@@ -308,69 +238,4 @@ public sealed partial class SettingsViewModel : ObservableObject
             .Where(l => l.Length > 0 && !l.StartsWith("#"))
             .ToList();
 
-    /// <summary>GitHub デバイス認証で Copilot 用トークンを取得して保存する。</summary>
-    [RelayCommand]
-    private async Task SignInCopilotAsync()
-    {
-        if (IsSigningIn) return;
-        IsSigningIn = true;
-        _signInCts = new CancellationTokenSource();
-        try
-        {
-            var info = await _copilotAuth.RequestDeviceCodeAsync(_signInCts.Token);
-
-            // ユーザーコードをクリップボードへ入れ、ブラウザで認証ページを開く
-            TrySetClipboard(info.UserCode);
-            TryOpenBrowser(info.VerificationUri);
-            CopilotStatus =
-                $"コード {info.UserCode} を入力してください（クリップボードにコピー済み）。\n" +
-                $"ブラウザ: {info.VerificationUri}\n承認を待っています…";
-
-            var token = await _copilotAuth.PollForAccessTokenAsync(info, _signInCts.Token);
-
-            _settings.Copilot.ApiKey = token;
-            _store.Save(_settings);
-            CopilotStatus = "サインインしました。Copilot が利用できます。";
-            OnPropertyChanged(nameof(IsCopilotSignedIn));
-            Saved?.Invoke();
-        }
-        catch (OperationCanceledException)
-        {
-            CopilotStatus = "サインインをキャンセルしました。";
-        }
-        catch (Exception ex)
-        {
-            CopilotStatus = $"サインインに失敗しました: {ex.Message}";
-        }
-        finally
-        {
-            IsSigningIn = false;
-            _signInCts?.Dispose();
-            _signInCts = null;
-        }
-    }
-
-    [RelayCommand]
-    private void CancelSignIn() => _signInCts?.Cancel();
-
-    /// <summary>保存済み Copilot トークンを破棄する。</summary>
-    [RelayCommand]
-    private void SignOutCopilot()
-    {
-        _settings.Copilot.ApiKey = null;
-        _store.Save(_settings);
-        CopilotStatus = "サインアウトしました。";
-        OnPropertyChanged(nameof(IsCopilotSignedIn));
-    }
-
-    private static void TryOpenBrowser(string url)
-    {
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch { /* 開けなくても URL は表示済み */ }
-    }
-
-    private static void TrySetClipboard(string text)
-    {
-        try { Clipboard.SetText(text); } catch { /* クリップボード使用不可は無視 */ }
-    }
 }

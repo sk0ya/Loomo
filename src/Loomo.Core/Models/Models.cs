@@ -16,10 +16,6 @@ public sealed record FileNode(string Name, string FullPath, bool IsDirectory);
 /// <summary>AIプロバイダ種別。</summary>
 public enum AiProvider
 {
-    Stub,
-    Claude,
-    OpenAI,
-    Copilot,
     Local
 }
 

@@ -37,7 +37,7 @@ public class ShellViewModelTests
 
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
-        var aiBar = new AiBarViewModel(orchestrator, approval, settings, store, conversations);
+        var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations);
         var sessionsVm = new SessionsViewModel(conversations, aiBar);
         var analysisVm = new AnalysisViewModel(
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")),
@@ -45,9 +45,8 @@ public class ShellViewModelTests
             settings, store,
             new ToolRegistry(Enumerable.Empty<IAgentTool>()),
             conversations);
-        var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
         var modelCatalog = new ModelCatalogService(new System.Net.Http.HttpClient(), settings);
-        var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService(), modelCatalog);
+        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog);
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager());
 
         var workspaceStore = new WorkspaceStateStore(

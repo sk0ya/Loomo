@@ -11,7 +11,7 @@ using sk0ya.Loomo.Core.Models;
 namespace sk0ya.Loomo.Ai;
 
 /// <summary>
-/// OpenAI互換エンドポイント（OpenAI 本体・ローカルLLM/Ollama 等）から利用可能なモデル一覧を取得する。
+/// Ollama の OpenAI互換エンドポイントから利用可能なモデル一覧を取得する。
 /// <c>GET {baseUrl}/models</c>（Ollama も <c>/v1/models</c> で互換応答を返す）を叩き、
 /// 設定画面のモデル選択肢として提示する。
 /// </summary>
@@ -26,9 +26,9 @@ public sealed class ModelCatalogService
         _settings = settings;
     }
 
-    /// <summary>モデル一覧取得に対応するプロバイダか（OpenAI互換のみ）。</summary>
+    /// <summary>モデル一覧取得に対応するプロバイダか。</summary>
     public static bool Supports(AiProvider provider) =>
-        provider is AiProvider.OpenAI or AiProvider.Local;
+        provider is AiProvider.Local;
 
     /// <summary>
     /// 指定プロバイダのエンドポイントからモデルIDの一覧を取得する。
@@ -44,18 +44,16 @@ public sealed class ModelCatalogService
         if (!Supports(provider))
             throw new NotSupportedException($"{provider} はモデル一覧取得に対応していません。");
 
-        var cfg = _settings.ConfigFor(provider);
-        // BaseUrl 未設定時の既定はプロバイダ依存（ローカルLLM は Ollama、それ以外は OpenAI）。
-        var defaultBase = provider == AiProvider.Local ? OllamaLauncher.DefaultBaseUrl : "https://api.openai.com/v1";
+        var cfg = _settings.Local;
+        var defaultBase = OllamaLauncher.DefaultBaseUrl;
         var rawBase = !string.IsNullOrWhiteSpace(baseUrlOverride) ? baseUrlOverride
             : !string.IsNullOrWhiteSpace(cfg.BaseUrl) ? cfg.BaseUrl
             : defaultBase;
         var baseUrl = rawBase!.TrimEnd('/');
         var apiKey = !string.IsNullOrWhiteSpace(apiKeyOverride) ? apiKeyOverride : cfg.ApiKey;
 
-        // ローカルLLM は未起動なら Ollama の起動を試みてから取得する（手動起動を不要にする）。
-        if (provider == AiProvider.Local)
-            await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
+        // 未起動なら Ollama の起動を試みてから取得する（手動起動を不要にする）。
+        await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
 
         using var resp = await HttpRetry.SendAsync(_http, () =>
         {

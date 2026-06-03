@@ -70,7 +70,7 @@ public sealed class ImprovementAdvisor
         }
 
         if (!sawText && !notedToolUse)
-            yield return "（提案を取得できませんでした。プロバイダ設定やAPIキーを確認してください。Stub では定型応答になります。）";
+            yield return "（提案を取得できませんでした。Ollama の設定や起動状態を確認してください。）";
     }
 
     /// <summary>

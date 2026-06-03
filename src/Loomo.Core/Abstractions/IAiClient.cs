@@ -6,7 +6,7 @@ using sk0ya.Loomo.Core.Tools;
 namespace sk0ya.Loomo.Core.Abstractions;
 
 /// <summary>
-/// AIプロバイダ抽象。Claude / OpenAI / Copilot / ローカルLLM を同一IFで扱う。
+/// ローカルLLMクライアント抽象。
 /// </summary>
 public interface IAiClient
 {

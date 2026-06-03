@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Ai;
 public sealed class AiSettings
 {
     /// <summary>現在選択中のプロバイダ。</summary>
-    public AiProvider Provider { get; set; } = AiProvider.Stub;
+    public AiProvider Provider { get; set; } = AiProvider.Local;
 
     /// <summary>UIのカラーテーマ（配色）。既定はダーク。</summary>
     public AppTheme Theme { get; set; } = AppTheme.Dark;
@@ -22,11 +22,7 @@ public sealed class AiSettings
     /// <summary>AI操作トレース（観測性・設計書 §20）の設定。</summary>
     public ObservabilitySettings Observability { get; set; } = new();
 
-    public ProviderConfig Claude { get; set; } = new() { Model = "claude-opus-4-8", MaxContextTokens = 180_000 };
-    public ProviderConfig OpenAI { get; set; } = new() { Model = "gpt-4o" };
-    public ProviderConfig Copilot { get; set; } = new() { Model = "gpt-4o" };
-
-    /// <summary>ローカルLLM（Ollama 等 OpenAI互換エンドポイント）。</summary>
+    /// <summary>ローカルLLM（Ollama OpenAI互換エンドポイント）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
         Model = "llama3.1",
@@ -40,14 +36,7 @@ public sealed class AiSettings
         "コマンド実行とファイル編集はユーザー承認が必要です（自動承認モード時は省略されます）。" +
         "破壊的な危険コマンドは安全ポリシーによりブロックされ、ファイルアクセスはワークスペースルート配下に限定されます。";
 
-    public ProviderConfig ConfigFor(AiProvider provider) => provider switch
-    {
-        AiProvider.Claude => Claude,
-        AiProvider.OpenAI => OpenAI,
-        AiProvider.Copilot => Copilot,
-        AiProvider.Local => Local,
-        _ => new ProviderConfig()
-    };
+    public ProviderConfig ConfigFor(AiProvider provider) => Local;
 }
 
 public sealed class ProviderConfig

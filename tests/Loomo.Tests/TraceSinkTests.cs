@@ -162,7 +162,7 @@ public class TraceSinkTests
 
         public ScriptedAiClient(string toolName) => _toolName = toolName;
 
-        public AiProvider Provider => AiProvider.Stub;
+        public AiProvider Provider => AiProvider.Local;
 
         public async IAsyncEnumerable<AgentEvent> StreamAsync(
             Conversation conversation,
