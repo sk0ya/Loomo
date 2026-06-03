@@ -255,6 +255,8 @@ public sealed partial class AiBarViewModel : ObservableObject
         Add(EntryKind.User, "あなた", text);
         TranscriptEntry? assistant = null;
         TranscriptEntry? thinking = null;
+        Stopwatch? assistantClock = null;
+        Stopwatch? thinkingClock = null;
 
         try
         {
@@ -264,18 +266,29 @@ public sealed partial class AiBarViewModel : ObservableObject
                 {
                     case ThinkingDelta think:
                         SetStatus("💭 思考中…");
-                        thinking ??= Add(EntryKind.Thinking, "💭 思考", "");
+                        if (thinking is null)
+                        {
+                            thinking = Add(EntryKind.Thinking, "💭 思考", "");
+                            thinkingClock = Stopwatch.StartNew();
+                        }
                         thinking.AppendText(think.Text);
                         break;
 
                     case TextDelta delta:
                         SetStatus("応答を生成中…");
+                        FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
                         thinking = null; // 本文に入ったので思考ブロックを区切る
-                        assistant ??= Add(EntryKind.Assistant, "🤖 エージェント", "");
+                        if (assistant is null)
+                        {
+                            assistant = Add(EntryKind.Assistant, "🤖 エージェント", "");
+                            assistantClock = Stopwatch.StartNew();
+                        }
                         assistant.AppendText(delta.Text);
                         break;
 
                     case ToolUseRequested req:
+                        FinishTimedEntry(ref assistant, ref assistantClock, "🤖 エージェント");
+                        FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
                         assistant = null; // テキストブロックを区切る
                         thinking = null;
                         SetStatus($"🔧 {req.ToolUse.Name} を準備中…");
@@ -314,6 +327,8 @@ public sealed partial class AiBarViewModel : ObservableObject
         }
         finally
         {
+            FinishTimedEntry(ref assistant, ref assistantClock, "🤖 エージェント");
+            FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
             IsBusy = false;
             ClearStatus();
             _cts?.Dispose();
@@ -345,6 +360,23 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     private static string Truncate(string s, int max = 2000)
         => s.Length <= max ? s : s[..max] + $"\n…(+{s.Length - max} 文字)";
+
+    private static void FinishTimedEntry(ref TranscriptEntry? entry, ref Stopwatch? clock, string baseHeader)
+    {
+        if (entry is null || clock is null) return;
+        clock.Stop();
+        entry.Header = $"{baseHeader} ({FormatDuration(clock.Elapsed)})";
+        clock = null;
+    }
+
+    private static string FormatDuration(TimeSpan elapsed)
+    {
+        if (elapsed.TotalSeconds < 1)
+            return $"{elapsed.TotalMilliseconds:0} ms";
+        if (elapsed.TotalMinutes < 1)
+            return $"{elapsed.TotalSeconds:0.0} 秒";
+        return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
+    }
 
     // ===== スラッシュコマンド =====
 

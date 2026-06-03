@@ -103,6 +103,20 @@ public class OpenAiCompatibleClientTests
         Assert.Contains(events, e => e is TextDelta { Text: "やあ" });
     }
 
+    [Theory]
+    [InlineData("reasoning")]
+    [InlineData("thinking")]
+    public async Task Local_client_surfaces_ollama_reasoning_fields_as_thinking(string fieldName)
+    {
+        var events = await RunLocalAsync(
+            Sse($"{{\"choices\":[{{\"delta\":{{\"{fieldName}\":\"計算している。\"}}}}]}}"),
+            Sse("{\"choices\":[{\"delta\":{\"content\":\"答えは2です。\"}}]}"),
+            "data: [DONE]\n\n");
+
+        Assert.Contains(events, e => e is ThinkingDelta { Text: "計算している。" });
+        Assert.Contains(events, e => e is TextDelta { Text: "答えは2です。" });
+    }
+
     [Fact]
     public async Task Local_client_treats_unclosed_think_as_thinking()
     {

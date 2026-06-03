@@ -289,10 +289,11 @@ internal static class OpenAiProtocol
                 var delta = node?["choices"]?[0]?["delta"];
                 if (delta is null) continue;
 
-                // 思考（DeepSeek 系の専用フィールド）
+                // 思考（プロバイダにより field 名が揺れる: DeepSeek 系は reasoning_content、
+                // Ollama/OpenAI互換のthinkingモデルは reasoning / thinking を返すことがある）
                 if (extractThinking)
                 {
-                    var reasoning = delta["reasoning_content"]?.GetValue<string>();
+                    var reasoning = FirstString(delta, "reasoning_content", "reasoning", "thinking");
                     if (!string.IsNullOrEmpty(reasoning))
                         yield return new ThinkingDelta(reasoning);
                 }
@@ -367,6 +368,16 @@ internal static class OpenAiProtocol
         public string? Id;
         public string Name = "";
         public readonly StringBuilder Args = new();
+    }
+
+    private static string? FirstString(JsonNode node, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var value = node[name]?.GetValue<string>();
+            if (!string.IsNullOrEmpty(value)) return value;
+        }
+        return null;
     }
 
     /// <summary>チャンクを跨いで届く本文から &lt;think&gt;…&lt;/think&gt; を分離するステートフルなパーサ。
