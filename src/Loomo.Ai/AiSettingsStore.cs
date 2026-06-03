@@ -177,6 +177,7 @@ public sealed class AiSettingsStore
         public string? ApiKeyEnc { get; set; }
         public string? BaseUrl { get; set; }
         public int MaxTokens { get; set; } = 4096;
+        public string? ThinkingEffort { get; set; }
 
         // null = 旧設定/未指定 → 既定値を維持。0 = トリム無効（明示）。n>0 = その上限。
         // 非nullable + 既定値だと「未指定」と「0=無効」と「明示値」を区別できないため int? にする。
@@ -188,6 +189,7 @@ public sealed class AiSettingsStore
             ApiKeyEnc = Protect(c.ApiKey),
             BaseUrl = c.BaseUrl,
             MaxTokens = c.MaxTokens,
+            ThinkingEffort = c.ThinkingEffort,
             MaxContextTokens = c.MaxContextTokens,
         };
 
@@ -197,6 +199,7 @@ public sealed class AiSettingsStore
             c.ApiKey = Unprotect(ApiKeyEnc);
             if (BaseUrl is not null) c.BaseUrl = BaseUrl;
             if (MaxTokens > 0) c.MaxTokens = MaxTokens;
+            if (!string.IsNullOrWhiteSpace(ThinkingEffort)) c.ThinkingEffort = ThinkingEffort;
             // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定を保つ。
             if (MaxContextTokens is { } mct && mct >= 0) c.MaxContextTokens = mct;
         }

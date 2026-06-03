@@ -36,6 +36,13 @@
                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
 
+                <TextBlock Style="{StaticResource FieldLabel}" Text="Thinking" />
+                <ComboBox ItemsSource="{Binding ThinkingEfforts}"
+                          SelectedItem="{Binding ThinkingEffort, Mode=TwoWay}" />
+                <TextBlock Text="none は速度優先。low/medium/high は推論量を増やします。"
+                           Foreground="{DynamicResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
+
                 <!-- システムプロンプト（中央のエディタ領域で編集） -->
                 <TextBlock Style="{StaticResource FieldLabel}" Text="システムプロンプト" />
                 <Button Content="エディタで編集" Style="{StaticResource FlatButton}"

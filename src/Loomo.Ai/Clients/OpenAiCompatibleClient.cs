@@ -47,7 +47,7 @@ public sealed class OpenAiCompatibleClient : IAiClient
         // SSE ストリーミング。先頭イベントが「ツール非対応」エラーなら includeTools:false で再送する。
         // （ストリームは貯め込めないので最初の1件だけ覗いて判定する。）
         var body = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
-        DisableLocalThinking(body);
+        ApplyThinkingEffort(body, cfg.ThinkingEffort);
         var fellBack = false;
 
         await using (var en = OpenAiProtocol.SendStreamingAsync(
@@ -73,18 +73,25 @@ public sealed class OpenAiCompatibleClient : IAiClient
         {
             var fallbackBody = OpenAiProtocol.BuildRequest(
                 conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt, includeTools: false);
-            DisableLocalThinking(fallbackBody);
+            ApplyThinkingEffort(fallbackBody, cfg.ThinkingEffort);
             await foreach (var ev in OpenAiProtocol.SendStreamingAsync(
                 _http, endpoint, fallbackBody, Provider.ToString(), Authorize, ct, extractThinking: true))
                 yield return ev;
         }
     }
 
-    private static void DisableLocalThinking(System.Text.Json.Nodes.JsonObject body)
+    private static void ApplyThinkingEffort(System.Text.Json.Nodes.JsonObject body, string? effort)
     {
         // Ollama's OpenAI-compatible endpoint accepts both forms for thinking models.
-        body["reasoning_effort"] = "none";
-        body["reasoning"] = new System.Text.Json.Nodes.JsonObject { ["effort"] = "none" };
+        var normalized = NormalizeThinkingEffort(effort);
+        body["reasoning_effort"] = normalized;
+        body["reasoning"] = new System.Text.Json.Nodes.JsonObject { ["effort"] = normalized };
+    }
+
+    private static string NormalizeThinkingEffort(string? value)
+    {
+        var v = value?.Trim().ToLowerInvariant();
+        return v is "low" or "medium" or "high" ? v : "none";
     }
 
     private static bool IsOllamaToolsUnsupportedError(string message)

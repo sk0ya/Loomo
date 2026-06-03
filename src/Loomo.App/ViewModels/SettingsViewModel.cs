@@ -30,6 +30,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _model = "";
     [ObservableProperty] private string _baseUrl = "";
     [ObservableProperty] private int _maxTokens;
+    [ObservableProperty] private string _thinkingEffort = "none";
     [ObservableProperty] private string _status = "";
 
     // --- 安全設計（設計書 §10） ---
@@ -46,6 +47,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _modelDropDownOpen;
 
     public bool CanFetchModels => true;
+
+    public IReadOnlyList<string> ThinkingEfforts { get; } = new[] { "none", "low", "medium", "high" };
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog)
@@ -78,6 +81,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Model = cfg.Model;
         BaseUrl = cfg.BaseUrl ?? "";
         MaxTokens = cfg.MaxTokens;
+        ThinkingEffort = NormalizeThinkingEffort(cfg.ThinkingEffort);
     }
 
     private void CommitLocalFields()
@@ -87,6 +91,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         cfg.ApiKey = null;
         cfg.BaseUrl = string.IsNullOrWhiteSpace(BaseUrl) ? null : BaseUrl.Trim();
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
+        cfg.ThinkingEffort = NormalizeThinkingEffort(ThinkingEffort);
     }
 
     [RelayCommand]
@@ -238,4 +243,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             .Where(l => l.Length > 0 && !l.StartsWith("#"))
             .ToList();
 
+    private static string NormalizeThinkingEffort(string? value)
+    {
+        var v = value?.Trim().ToLowerInvariant();
+        return v is "low" or "medium" or "high" ? v : "none";
+    }
 }

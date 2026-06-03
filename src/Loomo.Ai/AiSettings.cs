@@ -52,6 +52,9 @@ public sealed class ProviderConfig
     /// <summary>1応答で生成させる最大トークン数（出力上限）。</summary>
     public int MaxTokens { get; set; } = 4096;
 
+    /// <summary>Ollama thinking モデルの推論量。none / low / medium / high。</summary>
+    public string ThinkingEffort { get; set; } = "none";
+
     /// <summary>
     /// モデルのコンテキストウィンドウ上限（入力+出力）。これを超えないよう送信前に古い履歴を切り詰める。
     /// 0以下でトリム無効。既定は 128k 級モデル想定。

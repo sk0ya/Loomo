@@ -80,6 +80,36 @@ public class OpenAiCompatibleClientTests
     }
 
     [Fact]
+    public async Task Local_client_sends_configured_thinking_effort()
+    {
+        var handler = new RecordingHandler(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n" +
+            "data: [DONE]\n\n");
+        using var http = new HttpClient(handler);
+        var settings = new AiSettings
+        {
+            Local = new ProviderConfig
+            {
+                Model = "qwen3:1.7b",
+                BaseUrl = "http://localhost:11434/v1",
+                MaxTokens = 1024,
+                ThinkingEffort = "high"
+            }
+        };
+        var client = new OpenAiCompatibleClient(http, settings);
+        var conversation = new Conversation();
+        conversation.AddUser("考えて");
+
+        await foreach (var _ in client.StreamAsync(conversation, Array.Empty<ToolDefinition>(), CancellationToken.None))
+        {
+        }
+
+        var body = Assert.Single(handler.PostedBodies);
+        Assert.Equal("high", body["reasoning_effort"]?.GetValue<string>());
+        Assert.Equal("high", body["reasoning"]?["effort"]?.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Local_client_splits_think_tags_into_thinking_and_text()
     {
         // 思考タグがチャンクを跨いで届いても復元できることも併せて検証する。
@@ -206,6 +236,31 @@ public class OpenAiCompatibleClientTests
             return Json(HttpStatusCode.OK,
                 "data: {\"choices\":[{\"delta\":{\"content\":\"通常チャットで回答します。\"}}]}\n\n" +
                 "data: [DONE]\n\n");
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode statusCode, string content)
+            => new(statusCode)
+            {
+                Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json")
+            };
+    }
+
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        private readonly string _response;
+
+        public RecordingHandler(string response) => _response = response;
+
+        public List<JsonObject> PostedBodies { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, "{\"data\":[]}");
+
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            PostedBodies.Add(JsonNode.Parse(body)!.AsObject());
+            return Json(HttpStatusCode.OK, _response);
         }
 
         private static HttpResponseMessage Json(HttpStatusCode statusCode, string content)
