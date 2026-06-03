@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,6 +16,7 @@ using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
 using Editor.Controls.Git;
+using Editor.Controls.Themes;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -1179,10 +1181,36 @@ public partial class ShellWindow : Window
         {
             Visibility = Visibility.Collapsed
         };
+        control.SetTheme(BuildEditorTheme());
         var tab = new EditorTab(requestedId ?? Guid.NewGuid(), control);
         control.BufferChanged += (_, _) => UpdateEditorTab(tab);
         control.SaveRequested += (_, _) => QueueEditorTabUpdate(tab);
         return tab;
+    }
+
+    /// <summary>
+    /// エディタの配色は内蔵 Dracula をベースにしつつ、選択ハイライトだけを Loomo の
+    /// アクセント色（半透明）へ差し替える。既定の選択色は暗い背景に埋もれて見えないため。
+    /// <see cref="EditorTheme"/> は init 専用プロパティのみで複製手段が無いので、
+    /// リフレクションで全プロパティを写し取り <c>SelectionBg</c> だけ上書きする
+    /// （ライブラリ側がパレットを更新しても追従でき、Loomo 側に色定義が漏れない）。
+    /// </summary>
+    private static EditorTheme BuildEditorTheme()
+    {
+        var accent = (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
+                     ?? Color.FromRgb(0x61, 0x48, 0xDE);
+        var selection = new SolidColorBrush(Color.FromArgb(0x99, accent.R, accent.G, accent.B));
+
+        var baseTheme = EditorTheme.Dracula;
+        var clone = new EditorTheme();
+        foreach (var prop in typeof(EditorTheme).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!prop.CanRead || !prop.CanWrite)
+                continue;
+            var value = prop.Name == nameof(EditorTheme.SelectionBg) ? selection : prop.GetValue(baseTheme);
+            prop.SetValue(clone, value);
+        }
+        return clone;
     }
 
     private void QueueEditorTabUpdate(EditorTab tab)
