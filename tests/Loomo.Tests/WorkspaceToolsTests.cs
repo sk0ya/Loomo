@@ -6,12 +6,44 @@ using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools.Implementations;
+using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.Tests;
 
 public class WorkspaceToolsTests
 {
+    [Fact]
+    public async Task ListDirectory_accepts_relative_path_under_workspace_root()
+    {
+        using var workspace = ServiceWorkspace.Create();
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath, "src"));
+        File.WriteAllText(Path.Combine(workspace.RootPath, "src", "App.cs"), "class App {}");
+        var sut = new ListDirectoryTool(workspace.Service);
+
+        var result = await sut.ExecuteAsync(Json("""{"path":"src"}"""), CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("App.cs", result.Content);
+    }
+
+    [Fact]
+    public async Task ListDirectory_accepts_absolute_path_under_workspace_root()
+    {
+        using var workspace = ServiceWorkspace.Create();
+        var src = Directory.CreateDirectory(Path.Combine(workspace.RootPath, "src")).FullName;
+        File.WriteAllText(Path.Combine(src, "App.cs"), "class App {}");
+        var sut = new ListDirectoryTool(workspace.Service);
+
+        var result = await sut.ExecuteAsync(
+            Json($$"""{"path":{{JsonSerializer.Serialize(src)}}}"""),
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("App.cs", result.Content);
+    }
+
     [Fact]
     public async Task FindFiles_returns_matching_workspace_relative_paths()
     {
@@ -100,6 +132,28 @@ public class WorkspaceToolsTests
     }
 
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    private sealed class ServiceWorkspace : IDisposable
+    {
+        private ServiceWorkspace(string rootPath)
+        {
+            RootPath = rootPath;
+            Service = new WorkspaceService(new SafetySettings());
+            Service.OpenFolder(rootPath);
+        }
+
+        public string RootPath { get; }
+        public WorkspaceService Service { get; }
+
+        public static ServiceWorkspace Create()
+        {
+            var root = Directory.CreateDirectory(Path.Combine(
+                Path.GetTempPath(), $"loomo-list-directory-{Guid.NewGuid():N}"));
+            return new ServiceWorkspace(root.FullName);
+        }
+
+        public void Dispose() => Directory.Delete(RootPath, recursive: true);
+    }
 
     private sealed class TestWorkspace : IWorkspaceService, IDisposable
     {

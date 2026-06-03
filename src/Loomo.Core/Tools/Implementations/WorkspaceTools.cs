@@ -56,7 +56,6 @@ public sealed class ListDirectoryTool : IAgentTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var path = args.GetString("path");
-        if (string.IsNullOrWhiteSpace(path)) path = _workspace.RootPath ?? ".";
         var nodes = await _workspace.ListAsync(path);
         var sb = new StringBuilder();
         foreach (var n in nodes.OrderByDescending(n => n.IsDirectory).ThenBy(n => n.Name))

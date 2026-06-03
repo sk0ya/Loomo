@@ -263,6 +263,7 @@ internal static class OpenAiProtocol
         var toolCalls = new SortedDictionary<int, StreamToolCall>();
         var finalText = new StringBuilder();
         AgentError? midError = null;
+        var sawAnyModelOutput = false;
 
         try
         {
@@ -294,7 +295,10 @@ internal static class OpenAiProtocol
                 {
                     var reasoning = FirstString(delta, "reasoning_content", "reasoning", "thinking");
                     if (!string.IsNullOrEmpty(reasoning))
+                    {
+                        sawAnyModelOutput = true;
                         yield return new ThinkingDelta(reasoning);
+                    }
                 }
 
                 // 本文（r1 系は <think> タグが埋まるので分離する）
@@ -307,9 +311,10 @@ internal static class OpenAiProtocol
                         {
                             if (isThinking) yield return new ThinkingDelta(txt);
                             else { finalText.Append(txt); yield return new TextDelta(txt); }
+                            sawAnyModelOutput = true;
                         }
                     }
-                    else { finalText.Append(content); yield return new TextDelta(content); }
+                    else { finalText.Append(content); yield return new TextDelta(content); sawAnyModelOutput = true; }
                 }
 
                 // ツール呼び出し（断片で届くので index ごとに組み立てる）
@@ -319,6 +324,7 @@ internal static class OpenAiProtocol
                     {
                         var idx = c?["index"]?.GetValue<int>() ?? 0;
                         if (!toolCalls.TryGetValue(idx, out var acc)) { acc = new StreamToolCall(); toolCalls[idx] = acc; }
+                        sawAnyModelOutput = true;
                         var id = c?["id"]?.GetValue<string>();
                         if (!string.IsNullOrEmpty(id)) acc.Id = id;
                         var fn = c?["function"];
@@ -338,6 +344,7 @@ internal static class OpenAiProtocol
                 {
                     if (tail.IsThinking) yield return new ThinkingDelta(tail.Text);
                     else { finalText.Append(tail.Text); yield return new TextDelta(tail.Text); }
+                    if (!string.IsNullOrEmpty(tail.Text)) sawAnyModelOutput = true;
                 }
 
                 foreach (var tc in toolCalls.Values)
@@ -345,6 +352,12 @@ internal static class OpenAiProtocol
                         tc.Id ?? Guid.NewGuid().ToString("N"),
                         tc.Name,
                         tc.Args.Length > 0 ? tc.Args.ToString() : "{}"));
+
+                if (!sawAnyModelOutput)
+                {
+                    yield return new AgentError($"{providerName} から応答本文が返りませんでした。モデル名、Ollama の起動状態、BaseUrl を確認してください。");
+                    yield break;
+                }
 
                 if (toolCalls.Count == 0)
                     yield return new TurnCompleted(finalText.ToString());

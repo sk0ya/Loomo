@@ -78,6 +78,7 @@ public sealed class AgentOrchestrator
 
             var assistant = new ChatMessage { Role = ChatRole.Assistant };
             var pendingToolUses = new List<ToolUse>();
+            var sawModelOutput = false;
 
             // コンテキスト超過を防ぐため、送信用に履歴をトリム（元会話は保持）。
             var outgoing = _context.Fit(conversation);
@@ -89,14 +90,17 @@ public sealed class AgentOrchestrator
                 switch (ev)
                 {
                     case TextDelta delta:
+                        sawModelOutput = true;
                         assistant.Text = (assistant.Text ?? string.Empty) + delta.Text;
                         yield return delta;
                         break;
                     case ThinkingDelta thinking:
+                        sawModelOutput = true;
                         // 思考は応答本文ではないため履歴へは積まず、UI表示用に通すだけ。
                         yield return thinking;
                         break;
                     case ToolUseRequested req:
+                        sawModelOutput = true;
                         assistant.ToolUses.Add(req.ToolUse);
                         pendingToolUses.Add(req.ToolUse);
                         yield return req;
@@ -113,6 +117,15 @@ public sealed class AgentOrchestrator
                 _trace.Record(sessionId, turnId, TraceKinds.Error,
                     new { message = streamError.Message, where = "ai.stream" });
                 yield return streamError;
+                yield break;
+            }
+
+            if (!sawModelOutput)
+            {
+                var emptyError = new AgentError("AI から応答が返りませんでした。ローカルLLMの起動状態、モデル名、BaseUrl を確認してください。");
+                _trace.Record(sessionId, turnId, TraceKinds.Error,
+                    new { message = emptyError.Message, where = "ai.empty_response" });
+                yield return emptyError;
                 yield break;
             }
 

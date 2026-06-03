@@ -35,8 +35,8 @@ public sealed class WorkspaceService : IWorkspaceService
 
     public void OpenFolder(string rootPath)
     {
-        RootPath = rootPath;
-        RootChanged?.Invoke(this, rootPath);
+        RootPath = Path.GetFullPath(rootPath);
+        RootChanged?.Invoke(this, RootPath);
     }
 
     public Task<IReadOnlyList<FileNode>> ListAsync(string path)

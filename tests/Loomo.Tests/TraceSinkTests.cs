@@ -110,6 +110,34 @@ public class TraceSinkTests
     }
 
     [Fact]
+    public async Task Orchestrator_reports_error_when_ai_stream_is_empty()
+    {
+        var dir = TempDir();
+        var sink = new JsonlTraceSink(dir);
+        var orchestrator = new AgentOrchestrator(
+            new StaticAiClientFactory(new EmptyAiClient()),
+            new ToolRegistry(Array.Empty<IAgentTool>()),
+            new AutoApproveService(),
+            new SafetyPolicy(new SafetySettings()),
+            NoopContextWindowPolicy.Instance,
+            NullLogger<AgentOrchestrator>.Instance,
+            sink);
+
+        var conversation = new Conversation();
+        var events = new List<AgentEvent>();
+        await foreach (var ev in orchestrator.RunTurnAsync(conversation, "こんにちは", "empty1", CancellationToken.None))
+            events.Add(ev);
+        await sink.DisposeAsync();
+
+        var err = Assert.Single(events.OfType<AgentError>());
+        Assert.Contains("応答が返りませんでした", err.Message);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+        Assert.Contains(ReadEvents(dir, "empty1"), e => e.Kind == TraceKinds.Error);
+
+        Directory.Delete(dir, recursive: true);
+    }
+
+    [Fact]
     public async Task JsonlTraceSink_continues_seq_after_restart_for_resumed_session()
     {
         var dir = TempDir();
@@ -185,6 +213,28 @@ public class TraceSinkTests
     {
         private readonly ScriptedAiClient _client;
         public ScriptedAiClientFactory(string toolName) => _client = new ScriptedAiClient(toolName);
+        public IAiClient Resolve(AiProvider provider) => _client;
+        public IAiClient ResolveCurrent() => _client;
+    }
+
+    private sealed class EmptyAiClient : IAiClient
+    {
+        public AiProvider Provider => AiProvider.Local;
+
+        public async IAsyncEnumerable<AgentEvent> StreamAsync(
+            Conversation conversation,
+            IReadOnlyList<ToolDefinition> tools,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Yield();
+            yield break;
+        }
+    }
+
+    private sealed class StaticAiClientFactory : IAiClientFactory
+    {
+        private readonly IAiClient _client;
+        public StaticAiClientFactory(IAiClient client) => _client = client;
         public IAiClient Resolve(AiProvider provider) => _client;
         public IAiClient ResolveCurrent() => _client;
     }

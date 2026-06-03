@@ -164,6 +164,16 @@ public class OpenAiCompatibleClientTests
     }
 
     [Fact]
+    public async Task Local_client_reports_error_when_stream_has_no_model_output()
+    {
+        var events = await RunLocalAsync("data: [DONE]\n\n");
+
+        var err = Assert.Single(events.OfType<AgentError>());
+        Assert.Contains("応答本文が返りませんでした", err.Message);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
     public async Task Local_client_assembles_streamed_tool_call_fragments()
     {
         var events = await RunLocalAsync(
