@@ -111,6 +111,108 @@ public class EditorToolsTests
     }
 
     [Fact]
+    public async Task ApplyPatch_applies_multiple_blocks_in_order()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "one\ntwo\nthree\nfour\n");
+        var sut = new ApplyPatchTool(new CapturingEditor(), workspace);
+
+        var patch = "<<<<<<< SEARCH\none\n=======\nONE\n>>>>>>> REPLACE\n"
+                  + "<<<<<<< SEARCH\nthree\n=======\nTHREE\n>>>>>>> REPLACE\n";
+        var result = await sut.ExecuteAsync(
+            Json(JsonSerializer.Serialize(new { path = "App.cs", patch })),
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal("ONE\ntwo\nTHREE\nfour\n", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task ApplyPatch_matches_lf_search_against_crlf_file()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "alpha\r\nbeta\r\ngamma\r\n");
+        var sut = new ApplyPatchTool(new CapturingEditor(), workspace);
+
+        var patch = "<<<<<<< SEARCH\nbeta\n=======\nBETA\n>>>>>>> REPLACE\n";
+        var result = await sut.ExecuteAsync(
+            Json(JsonSerializer.Serialize(new { path = "App.cs", patch })),
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal("alpha\r\nBETA\r\ngamma\r\n", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task ApplyPatch_rejects_non_unique_search()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "dup\ndup\n");
+        var sut = new ApplyPatchTool(new CapturingEditor(), workspace);
+
+        var patch = "<<<<<<< SEARCH\ndup\n=======\nX\n>>>>>>> REPLACE\n";
+        var result = await sut.ExecuteAsync(
+            Json(JsonSerializer.Serialize(new { path = "App.cs", patch })),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal("dup\ndup\n", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task ApplyPatch_rejects_missing_search()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "one\ntwo\n");
+        var sut = new ApplyPatchTool(new CapturingEditor(), workspace);
+
+        var patch = "<<<<<<< SEARCH\nnope\n=======\nX\n>>>>>>> REPLACE\n";
+        var result = await sut.ExecuteAsync(
+            Json(JsonSerializer.Serialize(new { path = "App.cs", patch })),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal("one\ntwo\n", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task ApplyPatch_rejects_unclosed_block()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "one\n");
+        var sut = new ApplyPatchTool(new CapturingEditor(), workspace);
+
+        var patch = "<<<<<<< SEARCH\none\n=======\nONE\n";
+        var result = await sut.ExecuteAsync(
+            Json(JsonSerializer.Serialize(new { path = "App.cs", patch })),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal("one\n", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task ApplyPatch_describes_diff_for_approval()
+    {
+        using var workspace = TestWorkspace.Create();
+        await File.WriteAllTextAsync(Path.Combine(workspace.RootPath!, "App.cs"), "one\ntwo\n");
+        var sut = new ApplyPatchTool(new CapturingEditor(), workspace);
+
+        var patch = "<<<<<<< SEARCH\ntwo\n=======\nTWO\n>>>>>>> REPLACE\n";
+        var summary = sut.DescribeInvocation(
+            Json(JsonSerializer.Serialize(new { path = "App.cs", patch })));
+
+        Assert.Contains("パッチ適用", summary);
+        Assert.Contains("-two", summary);
+        Assert.Contains("+TWO", summary);
+    }
+
+    [Fact]
     public async Task GetSelectionText_returns_editor_selection()
     {
         var editor = new CapturingEditor { SelectedText = "selected" };
