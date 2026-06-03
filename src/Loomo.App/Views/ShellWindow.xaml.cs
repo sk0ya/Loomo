@@ -93,6 +93,7 @@ public partial class ShellWindow : Window
         _vm = vm;
         _terminal = terminal;
         _editor = editor;
+        _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _workspace = workspace;
         _tabIcons = tabIcons;
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
@@ -1323,6 +1324,31 @@ public partial class ShellWindow : Window
         SaveActiveWorkspaceSnapshot();
     }
 
+    /// <summary>
+    /// 仮想ドキュメント（システムプロンプト・危険コマンド一覧など）を編集するための専用タブを用意する。
+    /// 同名タブが既にあればそれをアクティブ化して再利用し、無ければ新規タブを作成する。
+    /// EditorService が <see cref="VimEditorControl.OpenVirtualDocument"/> を呼ぶ直前にこれを呼ぶため、
+    /// ここでアクティブ化（＝Attach）した control に対して仮想ドキュメントが開かれる。
+    /// </summary>
+    private void OpenVirtualDocumentTab(string title)
+    {
+        var existing = _editorTabs.FirstOrDefault(t =>
+            string.Equals(t.VirtualTitle, title, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            ActivateEditorTab(existing.Id);
+            return;
+        }
+
+        var tab = CreateEditorTab();
+        tab.VirtualTitle = title;
+        _editorTabs.Add(tab);
+        EditorContentHost.Children.Add(tab.Control);
+        _vm.Tabs.AddEditorTab(tab.Id, title, false, false);
+        ActivateEditorTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
     private async Task OpenFileInNewEditorTabAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -1664,7 +1690,12 @@ public partial class ShellWindow : Window
     }
 
     private sealed record TerminalTab(Guid Id, TerminalTabView View);
-    private sealed record EditorTab(Guid Id, VimEditorControl Control);
+    /// <summary><see cref="VirtualTitle"/> は仮想ドキュメント（設定の長文項目など）を開いたタブの表示名。
+    /// 仮想ドキュメントは FilePath を持たないため、タブ名はこの値から決める（通常ファイルは null）。</summary>
+    private sealed record EditorTab(Guid Id, VimEditorControl Control)
+    {
+        public string? VirtualTitle { get; set; }
+    }
     private sealed record BrowserTab(Guid Id, WebView2CompositionControl View);
 
     private sealed class TerminalWorkspaceTabs
@@ -1730,7 +1761,11 @@ public partial class ShellWindow : Window
 
     private void UpdateEditorTab(EditorTab tab)
     {
-        _vm.Tabs.UpdateEditorTab(tab.Id, tab.Control.FilePath, tab.Control.IsModified);
+        // 仮想ドキュメントは FilePath を持たないため、タブ名は VirtualTitle から決める。
+        var title = tab.Control.IsVirtualDocument && !string.IsNullOrEmpty(tab.VirtualTitle)
+            ? tab.VirtualTitle
+            : tab.Control.FilePath;
+        _vm.Tabs.UpdateEditorTab(tab.Id, title, tab.Control.IsModified);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -2020,7 +2055,10 @@ public partial class ShellWindow : Window
             snapshot.Terminal.Title = activeTerminal.HeaderTitle;
         }
 
-        snapshot.EditorTabs = _editorTabs.Select(tab => new EditorTabSnapshot
+        // 仮想ドキュメント（システムプロンプト等の編集タブ）は永続化しない。FilePath を持たず、
+        // 復元しても設定への保存コールバックが失われた「Untitled」タブになってしまうため。
+        var persistableEditorTabs = _editorTabs.Where(tab => !tab.Control.IsVirtualDocument).ToList();
+        snapshot.EditorTabs = persistableEditorTabs.Select(tab => new EditorTabSnapshot
         {
             Id = tab.Id,
             FilePath = tab.Control.FilePath,
@@ -2030,7 +2068,8 @@ public partial class ShellWindow : Window
             IsActive = tab.Id == _activeEditorTab?.Id
         }).ToList();
 
-        var activeEditor = _activeEditorTab?.Control ?? _editorTabs.FirstOrDefault()?.Control;
+        var activeEditor = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)?.Control
+            ?? persistableEditorTabs.FirstOrDefault()?.Control;
         if (activeEditor is not null)
         {
             snapshot.Editor.FilePath = activeEditor.FilePath;

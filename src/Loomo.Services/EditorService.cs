@@ -24,6 +24,14 @@ public sealed class EditorService : IEditorService
     private readonly Dictionary<string, Action<string>> _docCallbacks =
         new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 仮想ドキュメント（設定の長文項目など）を編集用に開く直前、ホストへ「専用のエディタタブを
+    /// 用意せよ」と要求するイベント。引数は表示名。ホスト（ShellWindow）は同名タブがあれば再利用し、
+    /// 無ければ新規タブを作成・アクティブ化して、その control を <see cref="Attach"/> する。
+    /// これにより仮想ドキュメントが現在開いているファイルを上書きせず、独立したタブで開く。
+    /// </summary>
+    public event Action<string>? NewVirtualDocumentTabRequested;
+
     public void Attach(VimEditorControl ctrl)
     {
         if (_ctrl is not null)
@@ -77,6 +85,9 @@ public sealed class EditorService : IEditorService
         var syntax = SyntaxFromName(document.FileName);
         DispatchVoid(() =>
         {
+            // 仮想ドキュメント専用のタブを用意してもらう（同名は再利用）。これにより現在開いている
+            // ファイルを上書きせず、Attach 済みの control が当該タブのものへ差し替わる。
+            NewVirtualDocumentTabRequested?.Invoke(document.FileName);
             var id = _ctrl?.OpenVirtualDocument(document.FileName, document.Content, syntax);
             if (id is not null)
                 lock (_docCallbacks)
