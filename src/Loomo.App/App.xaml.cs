@@ -97,6 +97,10 @@ public partial class App : Application
         services.AddSingleton<AgentOrchestrator>();
         services.AddSingleton<ConversationStore>();
 
+        // --- ログ解析・AI改善提案（観測性 Phase B）---
+        services.AddSingleton<TraceReader>();
+        services.AddSingleton<ImprovementAdvisor>();
+
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
         services.AddSingleton<WorkspaceStateStore>();
@@ -106,6 +110,7 @@ public partial class App : Application
         services.AddSingleton<AiBarViewModel>();
         services.AddSingleton<TabsViewModel>();
         services.AddSingleton<SessionsViewModel>();
+        services.AddSingleton<AnalysisViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();
         services.AddSingleton<ShellViewModel>();

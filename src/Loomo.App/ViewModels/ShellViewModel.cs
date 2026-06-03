@@ -9,6 +9,7 @@ public enum SidebarPanel
     Explorer,
     Tabs,
     Sessions,
+    Analysis,
     Settings,
     Appearance
 }
@@ -21,6 +22,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
     public SessionsViewModel Sessions { get; }
+    public AnalysisViewModel Analysis { get; }
     public SettingsViewModel Settings { get; }
     public AppearanceViewModel Appearance { get; }
 
@@ -36,6 +38,7 @@ public sealed partial class ShellViewModel : ObservableObject
         AiBarViewModel aiBar,
         TabsViewModel tabs,
         SessionsViewModel sessions,
+        AnalysisViewModel analysis,
         SettingsViewModel settings,
         AppearanceViewModel appearance)
     {
@@ -44,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject
         AiBar = aiBar;
         Tabs = tabs;
         Sessions = sessions;
+        Analysis = analysis;
         Settings = settings;
         Appearance = appearance;
 
@@ -64,6 +68,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar の AIセッションアイコン。</summary>
     [RelayCommand]
     private void ShowSessions() => Activate(SidebarPanel.Sessions);
+
+    /// <summary>ActivityBar の AIログ分析アイコン。</summary>
+    [RelayCommand]
+    private void ShowAnalysis() => Activate(SidebarPanel.Analysis);
 
     /// <summary>ActivityBar の設定アイコン。</summary>
     [RelayCommand]

@@ -4,6 +4,7 @@ using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -38,6 +39,12 @@ public class ShellViewModelTests
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var aiBar = new AiBarViewModel(orchestrator, approval, settings, store, conversations);
         var sessionsVm = new SessionsViewModel(conversations, aiBar);
+        var analysisVm = new AnalysisViewModel(
+            new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")),
+            new ImprovementAdvisor(new FakeAiClientFactory()),
+            settings, store,
+            new ToolRegistry(Enumerable.Empty<IAgentTool>()),
+            conversations);
         var copilotAuth = new CopilotAuthService(new System.Net.Http.HttpClient());
         var modelCatalog = new ModelCatalogService(new System.Net.Http.HttpClient(), settings);
         var settingsVm = new SettingsViewModel(settings, store, copilotAuth, new FakeEditorService(), modelCatalog);
@@ -47,7 +54,7 @@ public class ShellViewModelTests
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workspaces.json"));
         var workspacesVm = new WorkspaceListViewModel(workspaceStore);
 
-        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm, appearanceVm);
+        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, analysisVm, settingsVm, appearanceVm);
     }
 
     [Fact]
