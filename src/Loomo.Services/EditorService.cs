@@ -44,7 +44,7 @@ public sealed class EditorService : IEditorService
         => Task.FromResult(Dispatch(() => _ctrl?.Text) ?? string.Empty);
 
     public Task<string> GetSelectedTextAsync()
-        => Task.FromResult(string.Empty); // TODO: VimEngine 経由で選択範囲を取得
+        => Task.FromResult(Dispatch(() => _ctrl?.SelectedText) ?? string.Empty);
 
     public Task<string> ShowDiffAsync(string path, string proposedContent)
     {

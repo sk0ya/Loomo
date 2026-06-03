@@ -80,6 +80,9 @@ public partial class App : Application
         services.AddSingleton<IAgentTool, GetSelectionTool>();
         services.AddSingleton<IAgentTool, OpenInEditorTool>();
         services.AddSingleton<IAgentTool, ProposeEditTool>();
+        services.AddSingleton<IAgentTool, ReplaceTextOnceTool>();
+        services.AddSingleton<IAgentTool, ReplaceRangeTool>();
+        services.AddSingleton<IAgentTool, GetSelectionTextTool>();
         services.AddSingleton<IAgentTool, RunCommandTool>();
         services.AddSingleton<ToolRegistry>();
 
