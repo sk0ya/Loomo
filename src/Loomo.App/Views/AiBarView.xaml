@@ -14,7 +14,7 @@
         <!-- ===== 展開時：トランスクリプト ===== -->
         <Border Grid.Row="0" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,1"
                 Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8">
+            <ScrollViewer x:Name="TranscriptScrollViewer" VerticalScrollBarVisibility="Auto" Padding="8">
                 <ItemsControl ItemsSource="{Binding Transcript}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:TranscriptEntry}">
@@ -31,44 +31,59 @@
                                     </Style>
                                 </Border.Style>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Header}" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource FgDim}" Margin="0,0,0,4" />
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                               FontFamily="Cascadia Mono, Consolas">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Kind}" Value="Thinking">
-                                                        <Setter Property="FontStyle" Value="Italic" />
-                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <!-- 差分ビュー（propose_edit の承認カード） -->
-                                    <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
-                                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                            CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
-                                        <ItemsControl ItemsSource="{Binding DiffLines}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{Binding Background}">
-                                                        <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
-                                                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                                                   TextWrapping="NoWrap" Padding="6,0" />
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </Border>
-                                    <!-- 承認カード -->
-                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
-                                                Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">
-                                        <Button Content="承認して実行" Style="{StaticResource FlatButton}"
-                                                Command="{Binding ApproveCommand}" Margin="0,0,8,0" />
-                                        <Button Content="拒否" Style="{StaticResource FlatButton}"
-                                                Background="#FF6E1E1E" Command="{Binding RejectCommand}" />
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Content="{Binding CollapseGlyph}"
+                                                Command="{Binding ToggleCollapseCommand}"
+                                                Style="{StaticResource IconButton}" Width="22" Height="22"
+                                                Padding="0" FontSize="10" Margin="0,0,6,0"
+                                                ToolTip="ブロックを開閉" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Header}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                    <StackPanel Visibility="{Binding IsCollapsed, Converter={StaticResource InverseBoolToVis}}">
+                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                   FontFamily="Cascadia Mono, Consolas">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                                            <Setter Property="FontStyle" Value="Italic" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <!-- 差分ビュー（propose_edit の承認カード） -->
+                                        <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
+                                            <ItemsControl ItemsSource="{Binding DiffLines}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{Binding Background}">
+                                                            <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                                                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                       TextWrapping="NoWrap" Padding="6,0" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+                                        <!-- 承認カード -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
+                                                    Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">
+                                            <Button Content="承認して実行" Style="{StaticResource FlatButton}"
+                                                    Command="{Binding ApproveCommand}" Margin="0,0,8,0" />
+                                            <Button Content="拒否" Style="{StaticResource FlatButton}"
+                                                    Background="#FF6E1E1E" Command="{Binding RejectCommand}" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

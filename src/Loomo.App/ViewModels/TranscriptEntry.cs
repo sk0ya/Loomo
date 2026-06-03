@@ -17,6 +17,8 @@ public sealed partial class TranscriptEntry : ObservableObject
 
     [ObservableProperty] private string _header = "";
     [ObservableProperty] private string _text = "";
+    [ObservableProperty] private bool _isCollapsed;
+    public string CollapseGlyph => IsCollapsed ? "▶" : "▼";
 
     // 承認カード用
     [ObservableProperty] private bool _isPending;
@@ -27,6 +29,8 @@ public sealed partial class TranscriptEntry : ObservableObject
     public bool HasDiff => DiffLines.Count > 0;
 
     public void AppendText(string chunk) => Text += chunk;
+
+    partial void OnIsCollapsedChanged(bool value) => OnPropertyChanged(nameof(CollapseGlyph));
 
     public void BindApproval(TaskCompletionSource<bool> completion)
     {
@@ -59,6 +63,9 @@ public sealed partial class TranscriptEntry : ObservableObject
         Text = ""; // 差分表示へ切替えるため生サマリは隠す
         OnPropertyChanged(nameof(HasDiff));
     }
+
+    [RelayCommand]
+    private void ToggleCollapse() => IsCollapsed = !IsCollapsed;
 
     [RelayCommand]
     private void Approve()
