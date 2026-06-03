@@ -224,16 +224,105 @@ public class EditorToolsTests
         Assert.Equal("selected", result.Content);
     }
 
+    [Fact]
+    public async Task ReplaceSelection_replaces_unique_selection_in_active_file()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "alpha\nneedle\nomega\n");
+        var editor = new CapturingEditor
+        {
+            ActiveFilePath = path,
+            ActiveContent = "alpha\nneedle\nomega\n",
+            SelectedText = "needle",
+        };
+        var sut = new ReplaceSelectionTool(editor, workspace);
+
+        var result = await sut.ExecuteAsync(
+            Json("""{"new_text":"replacement"}"""),
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal("alpha\nreplacement\nomega\n", await File.ReadAllTextAsync(path));
+        Assert.Equal(path, editor.LastDiffPath);
+    }
+
+    [Fact]
+    public void ReplaceSelection_describes_diff_for_approval()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        var editor = new CapturingEditor
+        {
+            ActiveFilePath = path,
+            ActiveContent = "alpha\nneedle\nomega\n",
+            SelectedText = "needle",
+        };
+        var sut = new ReplaceSelectionTool(editor, workspace);
+
+        var summary = sut.DescribeInvocation(Json("""{"new_text":"replacement"}"""));
+
+        Assert.Contains("選択範囲置換", summary);
+        Assert.Contains("-needle", summary);
+        Assert.Contains("+replacement", summary);
+    }
+
+    [Fact]
+    public async Task ReplaceSelection_rejects_when_no_selection()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        var editor = new CapturingEditor { ActiveFilePath = path, ActiveContent = "alpha\n" };
+        var sut = new ReplaceSelectionTool(editor, workspace);
+
+        var result = await sut.ExecuteAsync(Json("""{"new_text":"x"}"""), CancellationToken.None);
+
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task ReplaceSelection_rejects_when_no_active_file()
+    {
+        using var workspace = TestWorkspace.Create();
+        var editor = new CapturingEditor { SelectedText = "needle" };
+        var sut = new ReplaceSelectionTool(editor, workspace);
+
+        var result = await sut.ExecuteAsync(Json("""{"new_text":"x"}"""), CancellationToken.None);
+
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task ReplaceSelection_rejects_non_unique_selection()
+    {
+        using var workspace = TestWorkspace.Create();
+        var path = Path.Combine(workspace.RootPath!, "App.cs");
+        await File.WriteAllTextAsync(path, "dup\ndup\n");
+        var editor = new CapturingEditor
+        {
+            ActiveFilePath = path,
+            ActiveContent = "dup\ndup\n",
+            SelectedText = "dup",
+        };
+        var sut = new ReplaceSelectionTool(editor, workspace);
+
+        var result = await sut.ExecuteAsync(Json("""{"new_text":"X"}"""), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal("dup\ndup\n", await File.ReadAllTextAsync(path));
+    }
+
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     private sealed class CapturingEditor : IEditorService
     {
-        public string? ActiveFilePath => null;
+        public string? ActiveFilePath { get; set; }
+        public string ActiveContent { get; set; } = string.Empty;
         public string SelectedText { get; set; } = string.Empty;
         public string? LastDiffPath { get; private set; }
 
         public Task OpenFileAsync(string path) => Task.CompletedTask;
-        public Task<string> GetActiveContentAsync() => Task.FromResult(string.Empty);
+        public Task<string> GetActiveContentAsync() => Task.FromResult(ActiveContent);
         public Task<string> GetSelectedTextAsync() => Task.FromResult(SelectedText);
 
         public Task<string> ShowDiffAsync(string path, string proposedContent)

@@ -550,3 +550,114 @@ public sealed class GetSelectionTextTool : IAgentTool
         return ToolResult.Ok(string.IsNullOrEmpty(selection) ? "(選択なし)" : selection);
     }
 }
+
+/// <summary>エディタの現在選択範囲を new_text へ置換する編集案を提示・適用する。</summary>
+public sealed class ReplaceSelectionTool : IAgentTool
+{
+    private readonly IEditorService _editor;
+    private readonly IWorkspaceService _workspace;
+
+    public ReplaceSelectionTool(IEditorService editor, IWorkspaceService workspace)
+    {
+        _editor = editor;
+        _workspace = workspace;
+    }
+
+    public string Name => "replace_selection";
+    public bool RequiresApproval => true;
+
+    public ToolDefinition Definition => new(
+        Name,
+        "エディタで現在選択されているテキストを new_text へ置換し、差分提示後に適用・保存する。"
+        + "アクティブなファイルが対象で、選択テキストがファイル内で一意に一致する場合だけ適用する。",
+        ToolDefinition.ObjectSchema(
+            ("new_text", "string", "選択範囲を置き換える新しいテキスト。", true)));
+
+    public string DescribeInvocation(JsonElement args)
+    {
+        if (!TryResolveTarget(out var path, out var current, out var selection, out var targetError))
+            return $"選択範囲置換\n{targetError}";
+
+        if (!TryBuildProposedContent(current, selection, args.GetString("new_text"), out var proposed, out var error))
+            return $"選択範囲置換: {path}\n{error}";
+
+        return ReplaceTextOnceTool.DescribeEdit("選択範囲置換", path, current, proposed);
+    }
+
+    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    {
+        if (!TryResolveTarget(out var path, out var current, out var selection, out var targetError))
+            return ToolResult.Error(targetError);
+
+        if (!TryBuildProposedContent(current, selection, args.GetString("new_text"), out var proposed, out var error))
+            return ToolResult.Error(error);
+
+        return await ReplaceTextOnceTool.ApplyProposedAsync(_editor, path, proposed);
+    }
+
+    /// <summary>アクティブファイルのパス・現在内容・選択テキストを取得する。
+    /// IEditorService の取得系は同期完了するため Describe からも安全に待てる。</summary>
+    private bool TryResolveTarget(out string path, out string current, out string selection, out string error)
+    {
+        path = "";
+        current = "";
+        selection = "";
+        error = "";
+
+        var active = _editor.ActiveFilePath;
+        if (string.IsNullOrWhiteSpace(active))
+        {
+            error = "アクティブなファイルがありません。";
+            return false;
+        }
+
+        selection = _editor.GetSelectedTextAsync().GetAwaiter().GetResult() ?? "";
+        if (selection.Length == 0)
+        {
+            error = "エディタで選択範囲がありません。";
+            return false;
+        }
+
+        path = _workspace.ResolvePath(active);
+        current = _editor.GetActiveContentAsync().GetAwaiter().GetResult() ?? "";
+        return true;
+    }
+
+    private static bool TryBuildProposedContent(
+        string current,
+        string selection,
+        string newText,
+        out string proposed,
+        out string error)
+    {
+        proposed = current;
+        error = "";
+
+        var count = 0;
+        var offset = 0;
+        var firstIndex = -1;
+        while (offset <= current.Length)
+        {
+            var index = current.IndexOf(selection, offset, System.StringComparison.Ordinal);
+            if (index < 0) break;
+            if (firstIndex < 0) firstIndex = index;
+            count++;
+            offset = index + selection.Length;
+        }
+
+        if (count == 0)
+        {
+            error = "選択テキストがファイル内に見つかりません。";
+            return false;
+        }
+
+        if (count > 1)
+        {
+            error = $"選択テキストが {count} 件一致しました。より広い範囲を選択して一意にしてください。";
+            return false;
+        }
+
+        proposed = current[..firstIndex] + newText + current[(firstIndex + selection.Length)..];
+        return true;
+    }
+}
