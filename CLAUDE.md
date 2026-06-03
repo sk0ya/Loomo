@@ -68,9 +68,15 @@ file-touching tools route through it. `SafetySettings` lives on `AiSettings.Safe
 `OpenAiProtocol` (internal static). All HTTP goes through `Http/HttpRetry` (exponential backoff on
 429/5xx/408 + `HttpRequestException`, honors `Retry-After`).
 
-**Known limitations** (don't assume these exist): clients do *pseudo-streaming* (fetch full response, then
-split into `TextDelta`) — no real SSE. No token/cost usage display. Context management is trim-only (no
-summarization/compaction). Copilot token exchange + chat use **unofficial** endpoints and are E2E-unverified.
+**Streaming**: the **Local** provider uses real SSE (`stream:true`) via `OpenAiProtocol.SendStreamingAsync`
+— text/thinking arrive incrementally, tool-call fragments are reassembled by `index`, and reasoning is
+surfaced as `ThinkingDelta` (from `reasoning_content` or `<think>` tags, the latter split across chunks by
+`ThinkStreamParser`). **Claude / OpenAI / Copilot still do *pseudo-streaming*** (fetch full response, then
+split into `TextDelta`) via the non-streaming `SendAsync`.
+
+**Known limitations** (don't assume these exist): no token/cost usage display. Context management is
+trim-only (no summarization/compaction). Copilot token exchange + chat use **unofficial** endpoints and
+are E2E-unverified.
 
 ### Persistence
 

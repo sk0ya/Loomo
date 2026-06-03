@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -145,7 +147,7 @@ internal static class OpenAiProtocol
         return string.Join("\n", lines);
     }
 
-    /// <summary>リクエストを送り、応答（テキスト / ツール呼び出し）をイベント化して流す。
+    /// <summary>リクエストを送り、応答（テキスト / ツール呼び出し）を一括でイベント化して流す（非ストリーミング）。
     /// <paramref name="configure"/> で認証ヘッダ等を付与する。</summary>
     public static async IAsyncEnumerable<AgentEvent> SendAsync(
         HttpClient http,
@@ -203,5 +205,245 @@ internal static class OpenAiProtocol
 
         if (!hadTool)
             yield return new TurnCompleted(text);
+    }
+
+    /// <summary>SSE（stream:true）で応答を逐次受け取り、届いた分から順にイベント化して流す。
+    /// 擬似ストリーミングと違い、思考・本文がリアルタイムに出る。ローカルLLM 用。</summary>
+    /// <param name="extractThinking">true なら reasoning_content / &lt;think&gt; タグを
+    /// <see cref="ThinkingDelta"/> として分離する（タグはチャンクを跨いでも復元する）。</param>
+    public static async IAsyncEnumerable<AgentEvent> SendStreamingAsync(
+        HttpClient http,
+        string endpoint,
+        JsonObject body,
+        string providerName,
+        Action<HttpRequestMessage>? configure,
+        [EnumeratorCancellation] CancellationToken ct,
+        bool extractThinking = false)
+    {
+        body["stream"] = true;
+
+        HttpResponseMessage? resp = null;
+        AgentError? error = null;
+        try
+        {
+            resp = await HttpRetry.SendAsync(http, () =>
+            {
+                var req = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = JsonContent.Create(body) };
+                configure?.Invoke(req);
+                return req;
+            }, ct, completionOption: HttpCompletionOption.ResponseHeadersRead);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var errBody = await resp.Content.ReadAsStringAsync(ct);
+                error = new AgentError($"{providerName} APIエラー {(int)resp.StatusCode}: {errBody}");
+            }
+        }
+        catch (OperationCanceledException) { resp?.Dispose(); throw; }
+        catch (Exception ex) { error = new AgentError($"{providerName} 呼び出し失敗: {ex.Message}"); }
+
+        if (error is not null) { resp?.Dispose(); yield return error; yield break; }
+
+        Stream? netStream = null;
+        StreamReader? reader = null;
+        try
+        {
+            netStream = await resp!.Content.ReadAsStreamAsync(ct);
+            reader = new StreamReader(netStream);
+        }
+        catch (OperationCanceledException) { resp!.Dispose(); throw; }
+        catch (Exception ex) { error = new AgentError($"{providerName} ストリーム読み取り失敗: {ex.Message}"); }
+
+        if (error is not null)
+        {
+            reader?.Dispose(); netStream?.Dispose(); resp!.Dispose();
+            yield return error; yield break;
+        }
+
+        var parser = extractThinking ? new ThinkStreamParser() : null;
+        var toolCalls = new SortedDictionary<int, StreamToolCall>();
+        var finalText = new StringBuilder();
+        AgentError? midError = null;
+
+        try
+        {
+            while (true)
+            {
+                string? line;
+                try { line = await reader!.ReadLineAsync(ct); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { midError = new AgentError($"{providerName} ストリーム中断: {ex.Message}"); break; }
+
+                if (line is null) break;                    // ストリーム終端
+                if (line.Length == 0) continue;             // イベント区切り
+                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+
+                var payload = line[5..].Trim();
+                if (payload.Length == 0) continue;
+                if (payload == "[DONE]") break;
+
+                JsonNode? node;
+                try { node = JsonNode.Parse(payload); }
+                catch { continue; }                          // 壊れた行はスキップ
+
+                var delta = node?["choices"]?[0]?["delta"];
+                if (delta is null) continue;
+
+                // 思考（DeepSeek 系の専用フィールド）
+                if (extractThinking)
+                {
+                    var reasoning = delta["reasoning_content"]?.GetValue<string>();
+                    if (!string.IsNullOrEmpty(reasoning))
+                        yield return new ThinkingDelta(reasoning);
+                }
+
+                // 本文（r1 系は <think> タグが埋まるので分離する）
+                var content = delta["content"]?.GetValue<string>();
+                if (!string.IsNullOrEmpty(content))
+                {
+                    if (parser is not null)
+                    {
+                        foreach (var (isThinking, txt) in parser.Push(content))
+                        {
+                            if (isThinking) yield return new ThinkingDelta(txt);
+                            else { finalText.Append(txt); yield return new TextDelta(txt); }
+                        }
+                    }
+                    else { finalText.Append(content); yield return new TextDelta(content); }
+                }
+
+                // ツール呼び出し（断片で届くので index ごとに組み立てる）
+                var calls = delta["tool_calls"]?.AsArray();
+                if (calls is not null)
+                    foreach (var c in calls)
+                    {
+                        var idx = c?["index"]?.GetValue<int>() ?? 0;
+                        if (!toolCalls.TryGetValue(idx, out var acc)) { acc = new StreamToolCall(); toolCalls[idx] = acc; }
+                        var id = c?["id"]?.GetValue<string>();
+                        if (!string.IsNullOrEmpty(id)) acc.Id = id;
+                        var fn = c?["function"];
+                        var nm = fn?["name"]?.GetValue<string>();
+                        if (!string.IsNullOrEmpty(nm)) acc.Name = nm;
+                        var ar = fn?["arguments"]?.GetValue<string>();
+                        if (!string.IsNullOrEmpty(ar)) acc.Args.Append(ar);
+                    }
+            }
+
+            // 中断時は組み立て途中（不完全なJSON引数など）のツール呼び出しや保留テキストを出さず、
+            // エラーだけを通知する。
+            if (midError is null)
+            {
+                // 取りこぼした保留分を吐き出す
+                if (parser?.Flush() is { } tail)
+                {
+                    if (tail.IsThinking) yield return new ThinkingDelta(tail.Text);
+                    else { finalText.Append(tail.Text); yield return new TextDelta(tail.Text); }
+                }
+
+                foreach (var tc in toolCalls.Values)
+                    yield return new ToolUseRequested(new ToolUse(
+                        tc.Id ?? Guid.NewGuid().ToString("N"),
+                        tc.Name,
+                        tc.Args.Length > 0 ? tc.Args.ToString() : "{}"));
+
+                if (toolCalls.Count == 0)
+                    yield return new TurnCompleted(finalText.ToString());
+            }
+        }
+        finally
+        {
+            reader!.Dispose();
+            netStream!.Dispose();
+            resp!.Dispose();
+        }
+
+        if (midError is not null)
+            yield return midError;
+    }
+
+    /// <summary>ストリーミング中に組み立てるツール呼び出し1件。</summary>
+    private sealed class StreamToolCall
+    {
+        public string? Id;
+        public string Name = "";
+        public readonly StringBuilder Args = new();
+    }
+
+    /// <summary>チャンクを跨いで届く本文から &lt;think&gt;…&lt;/think&gt; を分離するステートフルなパーサ。
+    /// タグが途中で切れても、確定できない末尾は次チャンクまで保留する。</summary>
+    private sealed class ThinkStreamParser
+    {
+        private static readonly string[] OpenTokens = { "<think>", "<thinking>" };
+        private static readonly string[] CloseTokens = { "</think>", "</thinking>" };
+
+        private bool _inThink;
+        private string _buffer = "";
+
+        public IEnumerable<(bool IsThinking, string Text)> Push(string chunk)
+        {
+            _buffer += chunk;
+            var emitted = new List<(bool, string)>();
+            while (true)
+            {
+                var tokens = _inThink ? CloseTokens : OpenTokens;
+                var (idx, tokLen) = FindEarliest(_buffer, tokens);
+                if (idx >= 0)
+                {
+                    var before = _buffer[..idx];
+                    if (before.Length > 0) emitted.Add((_inThink, before));
+                    _buffer = _buffer[(idx + tokLen)..];
+                    _inThink = !_inThink;
+                    continue;
+                }
+
+                // 完全なタグは無い：タグの途中になり得る末尾だけ保留し、残りは確定として出す。
+                var hold = LongestPartialSuffix(_buffer, tokens);
+                var safeLen = _buffer.Length - hold;
+                if (safeLen > 0)
+                {
+                    emitted.Add((_inThink, _buffer[..safeLen]));
+                    _buffer = _buffer[safeLen..];
+                }
+                break;
+            }
+            return emitted;
+        }
+
+        public (bool IsThinking, string Text)? Flush()
+        {
+            if (_buffer.Length == 0) return null;
+            var r = (_inThink, _buffer);
+            _buffer = "";
+            return r;
+        }
+
+        private static (int Index, int Length) FindEarliest(string buf, string[] tokens)
+        {
+            int bestIdx = -1, bestLen = 0;
+            foreach (var t in tokens)
+            {
+                var i = buf.IndexOf(t, StringComparison.OrdinalIgnoreCase);
+                if (i >= 0 && (bestIdx < 0 || i < bestIdx)) { bestIdx = i; bestLen = t.Length; }
+            }
+            return (bestIdx, bestLen);
+        }
+
+        private static int LongestPartialSuffix(string buf, string[] tokens)
+        {
+            var best = 0;
+            foreach (var t in tokens)
+            {
+                var max = Math.Min(t.Length - 1, buf.Length);
+                for (var k = max; k >= 1; k--)
+                {
+                    if (string.Compare(buf, buf.Length - k, t, 0, k, StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        if (k > best) best = k;
+                        break;
+                    }
+                }
+            }
+            return best;
+        }
     }
 }

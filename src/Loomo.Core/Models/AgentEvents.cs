@@ -9,6 +9,10 @@ public abstract record AgentEvent;
 /// <summary>逐次テキスト（ストリーミング）。</summary>
 public sealed record TextDelta(string Text) : AgentEvent;
 
+/// <summary>モデルの思考（reasoning）テキスト。応答本文ではないので履歴には積まず、UI表示のみに使う。
+/// ローカル推論モデル（&lt;think&gt; タグ / reasoning_content）から取り出す。</summary>
+public sealed record ThinkingDelta(string Text) : AgentEvent;
+
 /// <summary>アシスタントがツール呼び出しを要求した。</summary>
 public sealed record ToolUseRequested(ToolUse ToolUse) : AgentEvent;
 

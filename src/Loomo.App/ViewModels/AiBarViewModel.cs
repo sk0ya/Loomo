@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Agent;
@@ -52,6 +54,14 @@ public sealed partial class AiBarViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _providerLabel;
 
+    /// <summary>処理中に「いま何をしているか」を示すステータス文言（考え中／ツール実行中／承認待ち…）。
+    /// 経過秒を併記して、止まっているのではなく動作中だと分かるようにする。</summary>
+    [ObservableProperty] private string _statusText = "";
+
+    private string _statusPhase = "";                 // 経過秒を除いたフェーズ説明
+    private readonly Stopwatch _statusClock = new();   // 処理開始からの経過時間
+    private readonly DispatcherTimer _statusTimer;     // 経過秒の表示を更新する
+
     /// <summary>タイトルバーのクイック切替に出すプロバイダ一覧。</summary>
     public IReadOnlyList<AiProvider> Providers { get; } =
         (AiProvider[])Enum.GetValues(typeof(AiProvider));
@@ -77,6 +87,34 @@ public sealed partial class AiBarViewModel : ObservableObject
         _providerLabel = settings.Provider.ToString();
         _selectedProvider = settings.Provider;
         approval.ApprovalRequested += OnApprovalRequested;
+
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _statusTimer.Tick += (_, _) => RenderStatus();
+    }
+
+    /// <summary>現在のフェーズに切り替え、経過秒の表示更新を開始する。</summary>
+    private void SetStatus(string phase)
+    {
+        _statusPhase = phase;
+        if (!_statusClock.IsRunning) _statusClock.Restart();
+        if (!_statusTimer.IsEnabled) _statusTimer.Start();
+        RenderStatus();
+    }
+
+    /// <summary>フェーズ文言に経過秒を付けて StatusText を更新する。</summary>
+    private void RenderStatus()
+    {
+        if (string.IsNullOrEmpty(_statusPhase)) { StatusText = ""; return; }
+        StatusText = $"{_statusPhase} （{_statusClock.Elapsed.TotalSeconds:0}秒）";
+    }
+
+    /// <summary>処理終了：タイマー・経過時計を止めてステータスを消す。</summary>
+    private void ClearStatus()
+    {
+        _statusTimer.Stop();
+        _statusClock.Reset();
+        _statusPhase = "";
+        StatusText = "";
     }
 
     /// <summary>設定変更後に現在のプロバイダ表示・選択を更新する（設定パネル → タイトルバーの同期）。</summary>
@@ -209,12 +247,14 @@ public sealed partial class AiBarViewModel : ObservableObject
         IsExpanded = true;
         IsBusy = true;
         _cts = new CancellationTokenSource();
+        SetStatus("考え中…");
 
         // トレース（§20）と保存が同じIDを共有するよう、ターン開始前にセッションIDを確定する。
         _currentSessionId ??= Guid.NewGuid().ToString("N");
 
         Add(EntryKind.User, "あなた", text);
         TranscriptEntry? assistant = null;
+        TranscriptEntry? thinking = null;
 
         try
         {
@@ -222,17 +262,36 @@ public sealed partial class AiBarViewModel : ObservableObject
             {
                 switch (ev)
                 {
+                    case ThinkingDelta think:
+                        SetStatus("💭 思考中…");
+                        thinking ??= Add(EntryKind.Thinking, "💭 思考", "");
+                        thinking.AppendText(think.Text);
+                        break;
+
                     case TextDelta delta:
+                        SetStatus("応答を生成中…");
+                        thinking = null; // 本文に入ったので思考ブロックを区切る
                         assistant ??= Add(EntryKind.Assistant, "🤖 エージェント", "");
                         assistant.AppendText(delta.Text);
                         break;
 
                     case ToolUseRequested req:
                         assistant = null; // テキストブロックを区切る
+                        thinking = null;
+                        SetStatus($"🔧 {req.ToolUse.Name} を準備中…");
                         Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", req.ToolUse.ArgumentsJson);
                         break;
 
+                    case ApprovalRequested approval:
+                        SetStatus($"⏳ {approval.ToolName} の承認待ち…");
+                        break;
+
+                    case ToolExecutionStarted started:
+                        SetStatus($"🔧 {started.ToolUse.Name} を実行中…");
+                        break;
+
                     case ToolExecutionCompleted done:
+                        SetStatus("考え中…"); // ツール結果を踏まえてAIが再応答する
                         Add(EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})", Truncate(done.Result.Content));
                         break;
 
@@ -256,6 +315,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            ClearStatus();
             _cts?.Dispose();
             _cts = null;
 

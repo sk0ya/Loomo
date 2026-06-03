@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- ===== 展開時：トランスクリプト ===== -->
@@ -19,11 +20,32 @@
                         <DataTemplate DataType="{x:Type vm:TranscriptEntry}">
                             <Border Margin="0,4" CornerRadius="6" Padding="10,8"
                                     Background="{DynamicResource Bg}">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <!-- 思考ブロックは控えめに（薄背景・本文と区別） -->
+                                            <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                                <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <StackPanel>
                                     <TextBlock Text="{Binding Header}" FontWeight="SemiBold"
                                                Foreground="{DynamicResource FgDim}" Margin="0,0,0,4" />
                                     <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                               FontFamily="Cascadia Mono, Consolas" />
+                                               FontFamily="Cascadia Mono, Consolas">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                                        <Setter Property="FontStyle" Value="Italic" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <!-- 差分ビュー（propose_edit の承認カード） -->
                                     <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
                                             BorderBrush="{DynamicResource Border}" BorderThickness="1"
@@ -56,8 +78,22 @@
             </ScrollViewer>
         </Border>
 
+        <!-- ===== ステータス行（処理中のみ表示：考え中／実行中／承認待ち＋経過秒） ===== -->
+        <Border Grid.Row="1" Background="{DynamicResource BgAlt}"
+                Padding="12,4" Margin="8,0"
+                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <ProgressBar IsIndeterminate="True" Width="80" Height="4"
+                             Foreground="{DynamicResource Accent}" Background="Transparent"
+                             BorderThickness="0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding StatusText}" Margin="10,0,0,0"
+                           VerticalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource FgDim}" />
+            </StackPanel>
+        </Border>
+
         <!-- ===== 入力バー（常時表示・全幅） ===== -->
-        <Grid Grid.Row="1" Margin="8">
+        <Grid Grid.Row="2" Margin="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />

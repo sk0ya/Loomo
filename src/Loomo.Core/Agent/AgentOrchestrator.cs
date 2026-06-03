@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
@@ -91,6 +92,10 @@ public sealed class AgentOrchestrator
                         assistant.Text = (assistant.Text ?? string.Empty) + delta.Text;
                         yield return delta;
                         break;
+                    case ThinkingDelta thinking:
+                        // 思考は応答本文ではないため履歴へは積まず、UI表示用に通すだけ。
+                        yield return thinking;
+                        break;
                     case ToolUseRequested req:
                         assistant.ToolUses.Add(req.ToolUse);
                         pendingToolUses.Add(req.ToolUse);
@@ -133,14 +138,19 @@ public sealed class AgentOrchestrator
 
             // --- ツールを順に実行 ---
             var toolMessage = new ChatMessage { Role = ChatRole.Tool };
-            var sink = new List<AgentEvent>();
             foreach (var use in pendingToolUses)
             {
                 ct.ThrowIfCancellationRequested();
-                sink.Clear();
-                var result = await ExecuteToolAsync(use, sessionId, turnId, sink, ct);
-                foreach (var e in sink) yield return e;   // 実行中に貯めたイベントを流す
-                toolMessage.ToolResults.Add(result);
+
+                // 実行中のイベント（承認待ち・実行中…）を貯め込まず即時に流す。Channel で実行タスクと
+                // 並行に読み出すことで、承認待ちや長い実行の状態がリアルタイムにUIへ届く。
+                var channel = Channel.CreateUnbounded<AgentEvent>();
+                var execTask = ExecuteToolWithEventsAsync(use, sessionId, turnId, channel.Writer, ct);
+                // ct は渡さない：writer は finally で必ず Complete されるので読み出しは自然に終わり、
+                // キャンセルは execTask の await で観測される（未観測例外を防ぐ）。
+                await foreach (var e in channel.Reader.ReadAllAsync())
+                    yield return e;
+                toolMessage.ToolResults.Add(await execTask);
             }
 
             conversation.Messages.Add(toolMessage);
@@ -152,11 +162,24 @@ public sealed class AgentOrchestrator
         yield return new AgentError($"最大反復回数({MaxIterations})に達しました。");
     }
 
+    /// <summary><see cref="ExecuteToolAsync"/> を実行し、終了時に必ずイベントチャネルを閉じる。
+    /// これにより呼び出し側の読み出しループが確実に終了する。</summary>
+    private async Task<ToolResultMessage> ExecuteToolWithEventsAsync(
+        ToolUse use,
+        string sessionId,
+        string turnId,
+        ChannelWriter<AgentEvent> events,
+        CancellationToken ct)
+    {
+        try { return await ExecuteToolAsync(use, sessionId, turnId, events, ct); }
+        finally { events.Complete(); }
+    }
+
     private async Task<ToolResultMessage> ExecuteToolAsync(
         ToolUse use,
         string sessionId,
         string turnId,
-        List<AgentEvent> sink,
+        ChannelWriter<AgentEvent> events,
         CancellationToken ct)
     {
         if (!_tools.TryGet(use.Name, out var tool))
@@ -188,8 +211,8 @@ public sealed class AgentOrchestrator
         {
             _logger.LogWarning("安全ポリシーによりブロック: {Tool} — {Reason}", tool.Name, decision.Reason);
             var blocked = new ToolResultMessage(use.Id, decision.Reason!, IsError: true);
-            sink.Add(new ToolExecutionStarted(use));
-            sink.Add(new ToolExecutionCompleted(use, blocked));
+            events.TryWrite(new ToolExecutionStarted(use));
+            events.TryWrite(new ToolExecutionCompleted(use, blocked));
             return blocked;
         }
 
@@ -197,7 +220,7 @@ public sealed class AgentOrchestrator
         if (tool.RequiresApproval && !_safety.AutoApprove)
         {
             var summary = SafeDescribe(tool, args);
-            sink.Add(new ApprovalRequested(tool.Name, summary));
+            events.TryWrite(new ApprovalRequested(tool.Name, summary));
             _trace.Record(sessionId, turnId, TraceKinds.ApprovalRequested, new { tool = tool.Name, summary });
             var approvalClock = Stopwatch.StartNew();
             var approved = await _approval.RequestApprovalAsync(tool.Name, summary, ct);
@@ -207,7 +230,7 @@ public sealed class AgentOrchestrator
                 return new ToolResultMessage(use.Id, "ユーザーが実行を拒否しました。", IsError: true);
         }
 
-        sink.Add(new ToolExecutionStarted(use));
+        events.TryWrite(new ToolExecutionStarted(use));
         _trace.Record(sessionId, turnId, TraceKinds.ToolStarted, new { toolUseId = use.Id, name = tool.Name });
         var toolClock = Stopwatch.StartNew();
         try
@@ -222,7 +245,7 @@ public sealed class AgentOrchestrator
                 durationMs = toolClock.ElapsedMilliseconds,
                 contentLen = result.Content?.Length ?? 0,
             });
-            sink.Add(new ToolExecutionCompleted(use, resultMessage));
+            events.TryWrite(new ToolExecutionCompleted(use, resultMessage));
             return resultMessage;
         }
         catch (OperationCanceledException)
@@ -241,7 +264,7 @@ public sealed class AgentOrchestrator
                 error = ex.Message,
             });
             var resultMessage = new ToolResultMessage(use.Id, $"ツール例外: {ex.Message}", IsError: true);
-            sink.Add(new ToolExecutionCompleted(use, resultMessage));
+            events.TryWrite(new ToolExecutionCompleted(use, resultMessage));
             return resultMessage;
         }
     }

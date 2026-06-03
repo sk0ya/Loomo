@@ -50,7 +50,8 @@ public static class HttpRetry
         Func<HttpRequestMessage> requestFactory,
         CancellationToken ct,
         RetryOptions? options = null,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead)
     {
         var opts = options ?? RetryOptions.Default;
         delay ??= static (d, c) => Task.Delay(d, c);
@@ -61,7 +62,8 @@ public static class HttpRetry
             HttpResponseMessage response;
             try
             {
-                response = await http.SendAsync(request, ct);
+                // ストリーミング（SSE）では ResponseHeadersRead を指定し、本文を待たずに読み始める。
+                response = await http.SendAsync(request, completionOption, ct);
             }
             catch (HttpRequestException) when (attempt < opts.MaxAttempts)
             {

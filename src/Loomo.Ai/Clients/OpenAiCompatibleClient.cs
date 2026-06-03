@@ -43,54 +43,58 @@ public sealed class OpenAiCompatibleClient : IAiClient
             yield break;
         }
 
-        // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
-        if (Provider == AiProvider.Local)
-            await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
-
-        var body = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
-
-        var buffered = new List<AgentEvent>();
-        await foreach (var ev in OpenAiProtocol.SendAsync(
-            _http, $"{baseUrl}/chat/completions", body, Provider.ToString(),
-            req =>
-            {
-                if (!string.IsNullOrWhiteSpace(cfg.ApiKey))
-                    req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {cfg.ApiKey}");
-            },
-            ct))
+        var endpoint = $"{baseUrl}/chat/completions";
+        void Authorize(HttpRequestMessage req)
         {
-            if (Provider == AiProvider.Local
-                && ev is AgentError err
-                && IsOllamaToolsUnsupportedError(err.Message))
-            {
-                buffered.Clear();
-                var fallbackBody = OpenAiProtocol.BuildRequest(
-                    conversation,
-                    tools,
-                    cfg.Model,
-                    cfg.MaxTokens,
-                    _settings.SystemPrompt,
-                    includeTools: false);
-
-                await foreach (var fallbackEv in OpenAiProtocol.SendAsync(
-                    _http, $"{baseUrl}/chat/completions", fallbackBody, Provider.ToString(),
-                    req =>
-                    {
-                        if (!string.IsNullOrWhiteSpace(cfg.ApiKey))
-                            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {cfg.ApiKey}");
-                    },
-                    ct))
-                {
-                    yield return fallbackEv;
-                }
-                yield break;
-            }
-
-            buffered.Add(ev);
+            if (!string.IsNullOrWhiteSpace(cfg.ApiKey))
+                req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {cfg.ApiKey}");
         }
 
-        foreach (var ev in buffered)
-            yield return ev;
+        // 非ローカルは従来どおり非ストリーミング（SSE 対応はローカルLLM 限定）。
+        if (Provider != AiProvider.Local)
+        {
+            var body0 = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
+            await foreach (var ev in OpenAiProtocol.SendAsync(
+                _http, endpoint, body0, Provider.ToString(), Authorize, ct))
+                yield return ev;
+            yield break;
+        }
+
+        // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
+        await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
+
+        // SSE ストリーミング。先頭イベントが「ツール非対応」エラーなら includeTools:false で再送する。
+        // （ストリームは貯め込めないので最初の1件だけ覗いて判定する。）
+        var body = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
+        var fellBack = false;
+
+        await using (var en = OpenAiProtocol.SendStreamingAsync(
+                _http, endpoint, body, Provider.ToString(), Authorize, ct, extractThinking: true)
+            .GetAsyncEnumerator(ct))
+        {
+            if (await en.MoveNextAsync())
+            {
+                if (en.Current is AgentError err && IsOllamaToolsUnsupportedError(err.Message))
+                {
+                    fellBack = true;
+                }
+                else
+                {
+                    yield return en.Current;
+                    while (await en.MoveNextAsync())
+                        yield return en.Current;
+                }
+            }
+        }
+
+        if (fellBack)
+        {
+            var fallbackBody = OpenAiProtocol.BuildRequest(
+                conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt, includeTools: false);
+            await foreach (var ev in OpenAiProtocol.SendStreamingAsync(
+                _http, endpoint, fallbackBody, Provider.ToString(), Authorize, ct, extractThinking: true))
+                yield return ev;
+        }
     }
 
     private static bool IsOllamaToolsUnsupportedError(string message)
