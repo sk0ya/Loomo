@@ -18,8 +18,8 @@ public sealed class PwshTool : IAgentTool
 
     public ToolDefinition Definition => new(
         Name,
-        "PowerShell コマンドを実行し、標準出力と終了コードを返す。"
-        + "ファイルの読み取り・検索・一覧・作成・編集も全てこのツールで PowerShell コマンドとして行う。",
+        // 「ファイル操作も全て pwsh」はシステムプロンプト側に集約済みなので説明文では重複させない（プレフィル削減）。
+        "PowerShell コマンドを実行し、標準出力と終了コードを返す。",
         ToolDefinition.ObjectSchema(
             ("command", "string", "実行する PowerShell コマンド行。", true)));
 

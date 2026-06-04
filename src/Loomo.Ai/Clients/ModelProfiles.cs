@@ -70,9 +70,9 @@ public static class ModelProfiles
         MaxOutputTokens = 1024,
         Sampling = new(Temperature: 0.2, TopP: 0.9, RepeatPenalty: 1.05),
         // phi4-mini は冗長・繰り返しになりやすいので、短いスタイル指示だけを添える。
-        // tool calling の行動規則は既定システムプロンプト側へ集約する。
-        StyleGuidance =
-            "\n\nphi4-mini向け: tool が必要な時は文章で代替せず tool_calls を返す。前置きと繰り返しを避ける。",
+        // tool calling の行動規則は既定システムプロンプト側へ集約済みなので重複させず、
+        // ここは phi4-mini 固有の「簡潔さ」ナッジだけに絞る（プレフィル削減）。
+        StyleGuidance = "\n\nphi4-mini向け: 前置きと繰り返しを避け簡潔に。",
     };
 
     /// <summary>
