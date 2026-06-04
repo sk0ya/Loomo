@@ -32,6 +32,21 @@ public sealed record ToolExecutionCompleted(ToolUse ToolUse, ToolResultMessage R
 /// <summary>承認待ちに入った。</summary>
 public sealed record ApprovalRequested(string ToolName, string Summary) : AgentEvent;
 
+/// <summary>
+/// 1回のAI呼び出しの利用統計（トークン数・段階別の所要時間）。
+/// Ollama は最終 <c>done</c> 行で <c>prompt_eval_count</c> / <c>eval_count</c>（トークン）と
+/// <c>load_duration</c> / <c>prompt_eval_duration</c> / <c>eval_duration</c>（ナノ秒）を返す。
+/// これを ms に直して載せ、オーケストレーターが <c>ai.usage</c> トレースに記録する。
+/// 「重みロード / prefill / decode のどこが遅いか」を数値で切り分けるための内部イベント（UIには出さない）。
+/// </summary>
+public sealed record AiUsageReported(
+    long? InputTokens,
+    long? OutputTokens,
+    double? LoadMs,
+    double? PromptEvalMs,
+    double? EvalMs,
+    double? TotalMs) : AgentEvent;
+
 /// <summary>1ターン（アシスタントの応答）が完了。</summary>
 public sealed record TurnCompleted(string? FinalText) : AgentEvent;
 

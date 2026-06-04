@@ -235,6 +235,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         Stopwatch? thinkingClock = null;
         var loggedThinking = false;
         var loggedResponse = false;
+        var aiCallCount = 0;
 
         AppendActivity("AIに送信しました。応答を待っています。");
 
@@ -305,6 +306,11 @@ public sealed partial class AiBarViewModel : ObservableObject
                     case AgentError err:
                         AppendActivity($"エラーで停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         Add(EntryKind.Error, "⚠️ エラー", err.Message);
+                        break;
+
+                    case AiUsageReported usage:
+                        aiCallCount++;
+                        AppendActivity(FormatUsage(usage, aiCallCount));
                         break;
 
                     case TurnCompleted:
@@ -384,6 +390,33 @@ public sealed partial class AiBarViewModel : ObservableObject
         entry.Header = $"{baseHeader} ({FormatDuration(clock.Elapsed)})";
         clock = null;
     }
+
+    /// <summary>AI利用統計を進行状況の1行に整形する。トークン数と、重みロード／prefill／decode の
+    /// 段階別所要を併記して「どの段階で時間を使ったか」をその場で分かるようにする。</summary>
+    private static string FormatUsage(AiUsageReported u, int call)
+    {
+        var parts = new List<string>();
+        if (u.InputTokens is { } it && u.OutputTokens is { } ot)
+            parts.Add($"トークン 入力{it}/出力{ot}");
+        else if (u.OutputTokens is { } o)
+            parts.Add($"出力{o}トークン");
+
+        var stages = new List<string>();
+        if (u.LoadMs is { } load && load >= 1) stages.Add($"ロード{FormatMs(load)}");
+        if (u.PromptEvalMs is { } pe) stages.Add($"prefill{FormatMs(pe)}");
+        if (u.EvalMs is { } ev) stages.Add($"decode{FormatMs(ev)}");
+        if (stages.Count > 0)
+        {
+            var stageText = string.Join("・", stages);
+            if (u.TotalMs is { } total) stageText += $"（計{FormatMs(total)}）";
+            parts.Add(stageText);
+        }
+
+        var body = parts.Count > 0 ? string.Join("｜", parts) : "詳細なし";
+        return $"📊 AI内訳#{call}: {body}";
+    }
+
+    private static string FormatMs(double ms) => FormatDuration(TimeSpan.FromMilliseconds(ms));
 
     private static string FormatDuration(TimeSpan elapsed)
     {

@@ -447,6 +447,34 @@ public class OllamaClientTests
         Assert.DoesNotContain("# ツール呼び出し", system);
     }
 
+    [Fact]
+    public async Task Local_client_reports_usage_from_done_line_with_durations_in_ms()
+    {
+        // done 行のトークン数と所要（ナノ秒）を AiUsageReported（ms）として通知する。
+        var events = await RunLocalAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"こんにちは！\"}," +
+                   "\"done\":true,\"load_duration\":12000000000,\"prompt_eval_count\":1500," +
+                   "\"prompt_eval_duration\":3000000000,\"eval_count\":820," +
+                   "\"eval_duration\":98000000000,\"total_duration\":113000000000}"));
+
+        var usage = Assert.Single(events.OfType<AiUsageReported>());
+        Assert.Equal(1500, usage.InputTokens);
+        Assert.Equal(820, usage.OutputTokens);
+        Assert.Equal(12000, usage.LoadMs);          // 12s 重みロード
+        Assert.Equal(3000, usage.PromptEvalMs);     // 3s prefill
+        Assert.Equal(98000, usage.EvalMs);          // 98s decode（支配項）
+        Assert.Equal(113000, usage.TotalMs);
+    }
+
+    [Fact]
+    public async Task Local_client_omits_usage_when_done_line_has_no_metrics()
+    {
+        var events = await RunLocalAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"こんにちは！\"},\"done\":true}"));
+
+        Assert.Empty(events.OfType<AiUsageReported>());
+    }
+
     private static string Ndjson(string jsonLine) => jsonLine + "\n";
 
     private static async Task<JsonObject> CapturePostedBodyForModelAsync(string model)

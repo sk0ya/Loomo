@@ -312,6 +312,7 @@ internal static class OllamaProtocol
         var finalText = new StringBuilder();
         AgentError? midError = null;
         var sawAnyModelOutput = false;
+        AiUsageReported? usage = null;
 
         try
         {
@@ -366,11 +367,20 @@ internal static class OllamaProtocol
                         }
                 }
 
-                if (node["done"]?.GetValue<bool>() == true) break;
+                // 最終 done 行にトークン数・段階別の所要（ナノ秒）が載る。切り分け計測のため拾う。
+                if (node["done"]?.GetValue<bool>() == true)
+                {
+                    usage = ParseUsage(node);
+                    break;
+                }
             }
 
             if (midError is null)
             {
+                // 利用統計はモデル出力の有無に関わらず、まず通知する（記録目的）。
+                if (usage is not null)
+                    yield return usage;
+
                 // ツール呼び出しを本文テキストとして吐いたモデルの生本文。履歴へ逐語で積み直すため保持する。
                 string? contentDerivedRaw = null;
                 if (toolCalls.Count == 0 && mayUseTools)
@@ -413,6 +423,38 @@ internal static class OllamaProtocol
         if (midError is not null)
             yield return midError;
     }
+
+    /// <summary>
+    /// 最終 <c>done</c> 行から利用統計を取り出す。トークン数（<c>prompt_eval_count</c> /
+    /// <c>eval_count</c>）と段階別の所要をまとめる。Ollama の duration はナノ秒なので ms に直す。
+    /// 値が欠けていても落ちないよう、各項目は null 許容で読む。全項目欠落なら null を返す。
+    /// </summary>
+    private static AiUsageReported? ParseUsage(JsonNode done)
+    {
+        var input = ReadLong(done, "prompt_eval_count");
+        var output = ReadLong(done, "eval_count");
+        var loadMs = NanosToMs(ReadLong(done, "load_duration"));
+        var promptMs = NanosToMs(ReadLong(done, "prompt_eval_duration"));
+        var evalMs = NanosToMs(ReadLong(done, "eval_duration"));
+        var totalMs = NanosToMs(ReadLong(done, "total_duration"));
+
+        if (input is null && output is null && loadMs is null &&
+            promptMs is null && evalMs is null && totalMs is null)
+            return null;
+
+        return new AiUsageReported(input, output, loadMs, promptMs, evalMs, totalMs);
+    }
+
+    private static long? ReadLong(JsonNode node, string name)
+    {
+        var v = node[name];
+        if (v is null) return null;
+        try { return v.GetValue<long>(); }
+        catch { return null; }
+    }
+
+    private static double? NanosToMs(long? nanos)
+        => nanos is null ? null : nanos.Value / 1_000_000.0;
 
     /// <summary>エラー応答ボディから <c>{"error":"..."}</c> のメッセージ本体を取り出す（無ければ原文）。</summary>
     private static string ExtractError(string body)

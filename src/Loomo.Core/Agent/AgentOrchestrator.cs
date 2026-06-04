@@ -130,6 +130,23 @@ public sealed class AgentOrchestrator
                         pendingToolUses.Add(req.ToolUse);
                         yield return req;
                         break;
+                    case AiUsageReported usage:
+                        // 利用統計はモデル出力ではないので sawModelOutput は立てない。
+                        // トークン数と段階別の所要（重みロード/prefill/decode）を ai.usage として記録し、
+                        // UI（進行状況）にも流して、どの段階が遅いかをその場で見えるようにする。
+                        _trace.Record(sessionId, turnId, TraceKinds.AiUsage, new
+                        {
+                            inputTokens = usage.InputTokens,
+                            outputTokens = usage.OutputTokens,
+                            loadMs = usage.LoadMs,
+                            promptEvalMs = usage.PromptEvalMs,
+                            evalMs = usage.EvalMs,
+                            totalMs = usage.TotalMs,
+                            iteration = iteration + 1,
+                            agentId = activeProfile.Id,
+                        });
+                        yield return usage;
+                        break;
                     case AgentError err:
                         streamError = err;
                         break;
