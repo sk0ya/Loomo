@@ -22,10 +22,11 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// </summary>
 internal static class OllamaProtocol
 {
-    /// <summary>モデルをメモリに常駐させ続ける時間。ターン間で再ロードされると毎回コールド起動になり、
-    /// プレフィックスの KV キャッシュ（巨大なツール定義の prefill 結果）も失われて遅くなる。
-    /// 既定 5 分より長く保ってセッション中の体感を安定させる。</summary>
-    private const string KeepAlive = "30m";
+    /// <summary>モデルをメモリに常駐させ続ける時間（秒）。-1 は無期限（Ollama 仕様）。
+    /// ターン間・セッション間で再ロードされると毎回コールド起動になり、プレフィックスの KV キャッシュ
+    /// （巨大なツール定義の prefill 結果）も失われて遅くなる。CPU 実行ではコールドの prefill が支配的
+    /// （モデル重みのページインで数十秒）なので、無期限常駐にしてコールドを「初回 1 回だけ」に抑える。</summary>
+    private const int KeepAlive = -1;
     private static readonly Regex LooseToolCall = new(
         @"^\s*(?:name\s*=\s*)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{(?<body>.*)\}\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
@@ -71,6 +72,9 @@ internal static class OllamaProtocol
 
         // 揮発的な workspaceContext を末尾へ添える対象（最新の user メッセージ）。
         JsonObject? lastUserMsg = null;
+        // 直前のアシスタントが「生本文を逐語再生」したか。逐語再生時は tool_calls を出さないので、
+        // 続くツール結果は role:"tool" ではなく素の user メッセージとして積む（生成列の自然な拡張にする）。
+        var lastAssistantWasVerbatim = false;
 
         foreach (var m in conversation.Messages)
         {
@@ -83,6 +87,17 @@ internal static class OllamaProtocol
                     break;
 
                 case ChatRole.Assistant:
+                    // モデルが本文テキストとして吐いたツール呼び出しは、その生本文を逐語で積み直す。
+                    // tool_calls へ再構成するとスロットの生成トークン列と食い違い、プレフィックスKV再利用が
+                    // 効かず会話全体が再 prefill される。逐語ならツール有りでも厳密拡張になり再利用が効く。
+                    if (m.ProviderContent is not null)
+                    {
+                        messages.Add(new JsonObject { ["role"] = "assistant", ["content"] = m.ProviderContent });
+                        lastAssistantWasVerbatim = true;
+                        break;
+                    }
+
+                    lastAssistantWasVerbatim = false;
                     var assistantText = m.Text ?? "";
                     if (!sendTools && m.ToolUses.Count > 0)
                         assistantText = AppendToolUseSummary(assistantText, m.ToolUses);
@@ -110,7 +125,7 @@ internal static class OllamaProtocol
                     break;
 
                 case ChatRole.Tool:
-                    if (sendTools)
+                    if (sendTools && !lastAssistantWasVerbatim)
                     {
                         foreach (var r in m.ToolResults)
                         {
@@ -126,12 +141,16 @@ internal static class OllamaProtocol
                     }
                     else
                     {
-                        messages.Add(new JsonObject
-                        {
-                            ["role"] = "user",
-                            ["content"] = BuildToolResultSummary(m.ToolResults)
-                        });
+                        // 逐語再生の直後、またはツール非対応モデルでは、結果を素の user テキストとして積む。
+                        // 逐語再生パスでは GUID や status の足場を入れない簡潔形式にする：足場文字列は
+                        // プレフィックスKVキャッシュの再利用を妨げる組み合わせを生むことがあり（実測）、
+                        // モデルにとってもノイズなので、結果本文だけを積んで再利用を最大化する。
+                        var content = lastAssistantWasVerbatim
+                            ? BuildPlainToolResult(m.ToolResults)
+                            : BuildToolResultSummary(m.ToolResults);
+                        messages.Add(new JsonObject { ["role"] = "user", ["content"] = content });
                     }
+                    lastAssistantWasVerbatim = false;
                     break;
             }
         }
@@ -211,6 +230,16 @@ internal static class OllamaProtocol
         foreach (var use in uses)
             lines.Add($"- {use.Name}: {use.ArgumentsJson}");
         return prefix + string.Join("\n", lines);
+    }
+
+    /// <summary>逐語再生パス用のツール結果。GUID/statusの足場を入れず結果本文だけを簡潔に積む
+    /// （プレフィックスKVキャッシュの再利用を妨げにくく、モデルにもノイズが少ない）。</summary>
+    private static string BuildPlainToolResult(IReadOnlyList<ToolResultMessage> results)
+    {
+        var sb = new StringBuilder("ツール実行結果:");
+        foreach (var r in results)
+            sb.Append('\n').Append(r.Content);
+        return sb.ToString();
     }
 
     private static string BuildToolResultSummary(IReadOnlyList<ToolResultMessage> results)
@@ -342,14 +371,24 @@ internal static class OllamaProtocol
 
             if (midError is null)
             {
+                // ツール呼び出しを本文テキストとして吐いたモデルの生本文。履歴へ逐語で積み直すため保持する。
+                string? contentDerivedRaw = null;
                 if (toolCalls.Count == 0 && mayUseTools)
                 {
                     var contentToolCall = TryParseContentToolCall(finalText.ToString(), allowedToolNames);
                     if (contentToolCall is not null)
+                    {
                         toolCalls.Add(contentToolCall);
+                        contentDerivedRaw = finalText.ToString();
+                    }
                     else if (finalText.Length > 0)
                         yield return new TextDelta(finalText.ToString());
                 }
+
+                // 生本文を先に通知（オーケストレーターが ProviderContent に保存）。次ターンの逐語再生で
+                // Ollama のプレフィックスKVキャッシュが効き、ツール往復後の全再 prefill を避けられる。
+                if (contentDerivedRaw is not null)
+                    yield return new AssistantContentCaptured(contentDerivedRaw);
 
                 foreach (var tc in toolCalls)
                     yield return new ToolUseRequested(tc);

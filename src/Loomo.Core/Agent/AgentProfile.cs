@@ -27,34 +27,6 @@ public static class AgentProfiles
 {
     public static readonly AgentProfile Root = new("root", "エージェント");
 
-    public static readonly AgentProfile ChatUnderstanding = new(
-        "chat-understanding",
-        "チャット理解",
-        SystemPromptSuffix:
-        "ステージ: AI1 チャット理解。ユーザー入力を読み、外部確認や作業が必要なら本文で代替せず pwsh tool_use を1件返す。" +
-        "ツール不要ならその場で簡潔に回答する。ツール実行結果がまだ無い段階なので、結果を推測して最終回答しない。");
-
-    public static readonly AgentProfile ResultJudge = new(
-        "result-judge",
-        "結果判断",
-        SystemPromptSuffix:
-"ステージ: AI3 結果判断。直前の tool 結果を読み、目的が満たされたら日本語で簡潔に最終回答する。" +
-            "このステージではツールは使えない。まだ確認や追加作業が必要な場合は、最初の行に [CONTINUE] とだけ書き、" +
-            "続けて次に何をすべきかを一文で示す（次の理解ステージが pwsh を実行する）。" +
-            "目的が満たされたなら [CONTINUE] は付けず、結果から分かる範囲だけで最終回答を返す。");
-
-    public static readonly AgentProfile ToolExecutor = new(
-        "tool-executor",
-        "ツール実行",
-        SystemPromptSuffix:
-"ステージ: AI2 ツール実行。このステージはAIではなく Loomo のC#コードが承認、安全評価、pwsh実行を担当する。");
-
-    public static readonly IReadOnlyList<AgentProfile> ResidentPipeline = new[]
-    {
-        ChatUnderstanding,
-        ResultJudge,
-    };
-
     public static readonly AgentProfile Planner = new(
         "planner",
         "Planner",

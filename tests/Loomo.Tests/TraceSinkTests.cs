@@ -107,10 +107,11 @@ public class TraceSinkTests
         Assert.Contains(TraceKinds.ToolCompleted, kinds);
         Assert.Contains(TraceKinds.AiMessage, kinds);
         Assert.Contains(TraceKinds.TurnCompleted, kinds);
+        // 単段ループ：全反復で Root プロファイル＋同じツール集合（プレフィックスキャッシュ維持）。
         Assert.Equal(
-            new[] {AgentProfiles.ChatUnderstanding.Id, AgentProfiles.ResultJudge.Id},
+            new[] {AgentProfiles.Root.Id, AgentProfiles.Root.Id},
             aiFactory.Client.ProfileIds);
-        Assert.Equal(new[] {1, 0}, aiFactory.Client.ToolCounts);
+        Assert.Equal(new[] {1, 1}, aiFactory.Client.ToolCounts);
 
         Directory.Delete(dir, recursive: true);
     }
@@ -252,36 +253,6 @@ public class TraceSinkTests
         public StaticAiClientFactory(IAiClient client) => _client = client;
         public IAiClient Resolve(AiProvider provider) => _client;
         public IAiClient ResolveCurrent() => _client;
-    }
-
-    private sealed class ContinueThenFinishAiClient : IAiClient
-    {
-        private int _calls;
-
-        public List<string> ProfileIds { get; } = new();
-
-        public AiProvider Provider => AiProvider.Local;
-
-        public async IAsyncEnumerable<AgentEvent> StreamAsync(
-            Conversation conversation,
-            IReadOnlyList<ToolDefinition> tools,
-            [System.Runtime.CompilerServices.EnumeratorCancellation]
-            CancellationToken ct,
-            AgentProfile? profile = null)
-        {
-            ProfileIds.Add(profile?.Id ?? "");
-            await Task.Yield();
-            var call = _calls++;
-            yield return new TextDelta(call switch
-            {
-                0 => "AI2に確認を依頼します。",
-                1 => "追加情報が必要です。",
-                2 => "[CONTINUE]\nもう一度整理してください。",
-                3 => "AI2に最終確認を依頼します。",
-                4 => "十分です。",
-                _ => "完了しました。",
-            });
-        }
     }
 
     private sealed class EchoTool : IAgentTool

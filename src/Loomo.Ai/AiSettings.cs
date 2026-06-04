@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Ai;
 /// <summary>AIプロバイダ設定。appsettings / ユーザー設定からバインドする。</summary>
 public sealed class AiSettings
 {
-    public const string DefaultLocalModel = "phi4-mini:latest";
+    public const string DefaultLocalModel = "qwen2.5-coder:3b";
 
     /// <summary>現在選択中のプロバイダ。</summary>
     public AiProvider Provider { get; set; } = AiProvider.Local;

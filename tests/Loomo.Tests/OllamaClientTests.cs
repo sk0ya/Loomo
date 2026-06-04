@@ -299,7 +299,8 @@ public class OllamaClientTests
         var body = OllamaProtocol.BuildRequest(
             conversation, Array.Empty<ToolDefinition>(), "phi4-mini", 1024, "system");
 
-        Assert.Equal("30m", body["keep_alive"]!.GetValue<string>());
+        // -1 は無期限常駐（Ollama 仕様）。コールド起動を初回1回だけに抑える。
+        Assert.Equal(-1, body["keep_alive"]!.GetValue<int>());
     }
 
     [Fact]
@@ -324,6 +325,46 @@ public class OllamaClientTests
         Assert.Equal(1024, options["num_predict"]!.GetValue<int>());
         Assert.Equal(0.2, options["temperature"]!.GetValue<double>());
         Assert.Equal(0.9, options["top_p"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public void BuildRequest_replays_provider_content_verbatim_and_result_as_user()
+    {
+        // ツール呼び出しを本文テキストで吐いたモデルでは、生本文を逐語で積み直し、
+        // tool_calls へ再構成しない（プレフィックスKV再利用＝turn2高速化のため）。
+        const string raw = "{\"name\":\"pwsh\",\"arguments\":{\"command\":\"Get-Location\"}}";
+        var conversation = new Conversation();
+        conversation.AddUser("pwd");
+        var assistant = new ChatMessage { Role = ChatRole.Assistant, ProviderContent = raw };
+        assistant.ToolUses.Add(new ToolUse("id1", "pwsh", "{\"command\":\"Get-Location\"}"));
+        conversation.Messages.Add(assistant);
+        var toolMsg = new ChatMessage { Role = ChatRole.Tool };
+        toolMsg.ToolResults.Add(new ToolResultMessage("id1", "C:\\Projects\\Loomo", IsError: false));
+        conversation.Messages.Add(toolMsg);
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation,
+            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+            "qwen2.5-coder:3b", 1024, "system", includeTools: true);
+
+        var msgs = body["messages"]!.AsArray();
+        var asst = msgs.Single(m => m!["role"]!.GetValue<string>() == "assistant")!.AsObject();
+        Assert.Equal(raw, asst["content"]!.GetValue<string>());     // 逐語そのまま
+        Assert.False(asst.ContainsKey("tool_calls"));               // 再構成しない
+        Assert.DoesNotContain(msgs, m => m!["role"]!.GetValue<string>() == "tool"); // 結果は user として積む
+        var resultUser = msgs.Last(m => m!["role"]!.GetValue<string>() == "user")!.AsObject();
+        Assert.Contains("C:\\Projects\\Loomo", resultUser["content"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task Local_client_captures_raw_content_for_text_tool_call_replay()
+    {
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"name\\\":\\\"pwsh\\\",\\\"arguments\\\":{\\\"command\\\":\\\"Get-Date\\\"}}\"},\"done\":true}"));
+
+        var captured = Assert.Single(events.OfType<AssistantContentCaptured>());
+        Assert.Equal("{\"name\":\"pwsh\",\"arguments\":{\"command\":\"Get-Date\"}}", captured.RawContent);
+        Assert.Single(events.OfType<ToolUseRequested>());
     }
 
     [Fact]

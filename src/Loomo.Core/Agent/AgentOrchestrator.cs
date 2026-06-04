@@ -59,9 +59,7 @@ public sealed class AgentOrchestrator
         AgentProfile? profile = null)
     {
         sessionId ??= "unknown";
-        var requestedProfile = profile ?? AgentProfiles.Root;
-        var useResidentPipeline = ReferenceEquals(requestedProfile, AgentProfiles.Root)
-                                  || requestedProfile.Id == AgentProfiles.Root.Id;
+        var activeProfile = profile ?? AgentProfiles.Root;
         var isNewSession = conversation.Messages.Count == 0;
 
         conversation.AddUser(userInput);
@@ -73,13 +71,12 @@ public sealed class AgentOrchestrator
         var turnClock = Stopwatch.StartNew();
 
         if (isNewSession)
-            _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider, agentId = requestedProfile.Id });
+            _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider, agentId = activeProfile.Id });
         _trace.Record(sessionId, turnId, TraceKinds.TurnStarted, new
         {
             userInput,
             provider,
-            agentId = requestedProfile.Id,
-            pipeline = useResidentPipeline ? "resident" : "single-profile",
+            agentId = activeProfile.Id,
         });
 
         for (var iteration = 0; iteration < MaxIterations; iteration++)
@@ -89,14 +86,10 @@ public sealed class AgentOrchestrator
             var assistant = new ChatMessage { Role = ChatRole.Assistant };
             var pendingToolUses = new List<ToolUse>();
             var sawModelOutput = false;
-            var activeProfile = useResidentPipeline
-                ? SelectResidentProfile(conversation)
-                : requestedProfile;
-            // 結果判断ステージ(AI3)だけはツールを使わせず最終回答に専念させる。
-            // 理解ステージ(AI1)は pwsh tool_use を出すのが仕事なので、必ずツールを渡す。
-            var activeDefinitions = activeProfile.Id == AgentProfiles.ResultJudge.Id
-                ? Array.Empty<ToolDefinition>()
-                : definitions;
+            // 単段ループ：全反復で同じ profile（既定は Root）と同じツール集合を使う。
+            // system プロンプトとツール配列を反復間でバイト不変に保つことで、Ollama の
+            // プレフィックスKVキャッシュが効き、prefill を毎ターン払い直さずに済む。
+            var activeDefinitions = definitions;
 
             // コンテキスト超過を防ぐため、送信用に履歴をトリム（元会話は保持）。
             var outgoing = _context.Fit(conversation, activeProfile);
@@ -124,6 +117,12 @@ public sealed class AgentOrchestrator
                         sawModelOutput = true;
                         // 思考は応答本文ではないため履歴へは積まず、UI表示用に通すだけ。
                         yield return thinking;
+                        break;
+                    case AssistantContentCaptured cap:
+                        // モデルが生成した生本文を履歴へ逐語保存する（UIには出さない）。次ターンで
+                        // そのまま積み直し、Ollama のプレフィックスKV再利用を効かせるため（turn2 高速化）。
+                        sawModelOutput = true;
+                        assistant.ProviderContent = cap.RawContent;
                         break;
                     case ToolUseRequested req:
                         sawModelOutput = true;
@@ -174,28 +173,6 @@ public sealed class AgentOrchestrator
                         stage = activeProfile.DisplayName,
                     });
 
-            // 結果判断ステージ(AI3)がツール無しで「まだ作業が必要（[CONTINUE]）」と答えたら、
-            // ターンを終えず理解ステージ(AI1)へ戻して次の pwsh 呼び出しを促す（多段ループ）。
-            // モデルが [CONTINUE] を出さなければ従来どおり単発で終了するので、純粋に追加動作。
-            if (pendingToolUses.Count == 0
-                && activeProfile.Id == AgentProfiles.ResultJudge.Id
-                && ShouldContinueResidentPipeline(assistant.Text))
-            {
-                // [CONTINUE] は制御信号なので最終回答には残さない。末尾を assistant にして
-                // 次反復で SelectResidentProfile が理解ステージを選ぶようにする。
-                assistant.Text = StripContinueMarker(assistant.Text);
-                if (string.IsNullOrWhiteSpace(assistant.Text))
-                    assistant.Text = "（作業を続行します）";
-                conversation.Messages.Add(assistant);
-                _trace.Record(sessionId, turnId, TraceKinds.AiMessage, new
-                {
-                    agentId = activeProfile.Id,
-                    stage = activeProfile.DisplayName,
-                    residentContinue = true,
-                });
-                continue;
-            }
-
             // 本文もツール呼び出しも無い空応答は履歴に積まない（APIエラー要因になり得る）。
             if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
                 conversation.Messages.Add(assistant);
@@ -233,23 +210,6 @@ public sealed class AgentOrchestrator
         _trace.Record(sessionId, turnId, TraceKinds.Error,
             new { message = $"最大反復回数({MaxIterations})に達しました。", where = "iteration.limit" });
         yield return new AgentError($"最大反復回数({MaxIterations})に達しました。");
-    }
-
-    private static AgentProfile SelectResidentProfile(Conversation conversation) => conversation.Messages.Count > 0 && conversation.Messages[^1].Role == ChatRole.Tool
-        ? AgentProfiles.ResultJudge
-        : AgentProfiles.ChatUnderstanding;
-
-    private static bool ShouldContinueResidentPipeline(string? text)
-        => text?.TrimStart().StartsWith("[CONTINUE]", StringComparison.OrdinalIgnoreCase) == true;
-
-    /// <summary>先頭の [CONTINUE] 制御マーカーを取り除き、続く本文だけを返す。</summary>
-    private static string StripContinueMarker(string? text)
-    {
-        var trimmed = (text ?? string.Empty).TrimStart();
-        const string marker = "[CONTINUE]";
-        return trimmed.StartsWith(marker, StringComparison.OrdinalIgnoreCase)
-            ? trimmed[marker.Length..].TrimStart()
-            : trimmed;
     }
 
     /// <summary><see cref="ExecuteToolAsync"/> を実行し、終了時に必ずイベントチャネルを閉じる。

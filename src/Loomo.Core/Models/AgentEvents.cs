@@ -16,6 +16,13 @@ public sealed record ThinkingDelta(string Text) : AgentEvent;
 /// <summary>アシスタントがツール呼び出しを要求した。</summary>
 public sealed record ToolUseRequested(ToolUse ToolUse) : AgentEvent;
 
+/// <summary>
+/// ツール呼び出しを「本文テキスト」として吐いたモデルの、生成された生本文。
+/// 履歴へ逐語で積み直してプレフィックスKVキャッシュを効かせるための内部イベントで、
+/// UIには表示しない（オーケストレーターが消費して <see cref="ChatMessage.ProviderContent"/> に保存する）。
+/// </summary>
+public sealed record AssistantContentCaptured(string RawContent) : AgentEvent;
+
 /// <summary>ツールの実行を開始した（UI表示用）。</summary>
 public sealed record ToolExecutionStarted(ToolUse ToolUse) : AgentEvent;
 

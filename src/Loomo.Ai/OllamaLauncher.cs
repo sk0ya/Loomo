@@ -18,7 +18,8 @@ public static class OllamaLauncher
 {
     /// <summary>ローカルLLM（Ollama）の固定URL。</summary>
     public const string DefaultBaseUrl = "http://localhost:11434";
-    private const string KeepAlive = "30m";
+    /// <summary>モデル常駐時間（秒）。-1 は無期限。コールド起動を「初回 1 回だけ」に抑えるため永続常駐させる。</summary>
+    private const int KeepAlive = -1;
 
     public static string Host => DefaultBaseUrl;
 
