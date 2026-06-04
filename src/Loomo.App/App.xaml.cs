@@ -60,6 +60,9 @@ public partial class App : Application
         services.AddSingleton<EditorService>();
         services.AddSingleton<IEditorService>(sp => sp.GetRequiredService<EditorService>());
 
+        services.AddSingleton<BrowserService>();
+        services.AddSingleton<IBrowserService>(sp => sp.GetRequiredService<BrowserService>());
+
         services.AddSingleton<UiApprovalService>();
         services.AddSingleton<IApprovalService>(sp => sp.GetRequiredService<UiApprovalService>());
 
@@ -86,6 +89,12 @@ public partial class App : Application
         services.AddSingleton<IAgentTool, GetSelectionTextTool>();
         services.AddSingleton<IAgentTool, ReplaceSelectionTool>();
         services.AddSingleton<IAgentTool, RunCommandTool>();
+        services.AddSingleton<IAgentTool, BrowserNavigateTool>();
+        services.AddSingleton<IAgentTool, BrowserReadPageTool>();
+        services.AddSingleton<IAgentTool, BrowserCurrentUrlTool>();
+        services.AddSingleton<IAgentTool, BrowserClickTool>();
+        services.AddSingleton<IAgentTool, BrowserTypeTool>();
+        services.AddSingleton<IAgentTool, BrowserScreenshotTool>();
         services.AddSingleton<ToolRegistry>();
 
         // --- 観測性（§20）：AI操作トレースを JSONL に記録。設定で無効化（オプトアウト）可。 ---

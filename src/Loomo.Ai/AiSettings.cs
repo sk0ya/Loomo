@@ -33,7 +33,9 @@ public sealed class AiSettings
         "あなたは開発ワークスペースを操作するAIエージェントです。" +
         "list_directory / read_file / open_in_editor / run_command / propose_edit / get_selection の各ツールを使い、" +
         "ターミナルとエディタを駆使してユーザーのタスクを遂行してください。" +
-        "コマンド実行とファイル編集はユーザー承認が必要です（自動承認モード時は省略されます）。" +
+        "ブラウザペインの操作には browser_navigate / browser_read_page / browser_current_url / " +
+        "browser_click / browser_type / browser_screenshot を使います（クリック・入力はCSSセレクタで対象を指定します）。" +
+        "コマンド実行・ファイル編集・ブラウザの遷移/クリック/入力はユーザー承認が必要です（自動承認モード時は省略されます）。" +
         "破壊的な危険コマンドは安全ポリシーによりブロックされ、ファイルアクセスはワークスペースルート配下に限定されます。";
 
     public ProviderConfig ConfigFor(AiProvider provider) => Local;

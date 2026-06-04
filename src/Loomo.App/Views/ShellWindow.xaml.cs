@@ -25,6 +25,7 @@ public partial class ShellWindow : Window
 {
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
+    private readonly BrowserService _browser;
     private readonly IWorkspaceService _workspace;
     private readonly TabIconService _tabIcons;
     private readonly ShellViewModel _vm;
@@ -87,6 +88,7 @@ public partial class ShellWindow : Window
         ShellViewModel vm,
         TerminalService terminal,
         EditorService editor,
+        BrowserService browser,
         IWorkspaceService workspace,
         TabIconService tabIcons)
     {
@@ -95,6 +97,7 @@ public partial class ShellWindow : Window
         _vm = vm;
         _terminal = terminal;
         _editor = editor;
+        _browser = browser;
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _workspace = workspace;
         _tabIcons = tabIcons;
@@ -1655,6 +1658,8 @@ public partial class ShellWindow : Window
 
         _activeBrowserTab = tab;
         CurrentBrowserWorkspace.ActiveTabId = id;
+        // AIのブラウザ操作（IBrowserService）の対象を、いま見えているタブへ一本化する。
+        _browser.SetActiveView(tab.View);
         _vm.Tabs.ActivateBrowserTab(id);
         BrowserAddressBox.Text = tab.View.Source?.ToString() ?? string.Empty;
         tab.View.Focus();
@@ -2033,6 +2038,7 @@ public partial class ShellWindow : Window
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
         _activeBrowserTab = null;
+        _browser.SetActiveView(null);
     }
 
     private async Task AttachBrowserTabsAsync()

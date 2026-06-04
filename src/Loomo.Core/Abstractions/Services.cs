@@ -66,3 +66,36 @@ public interface IApprovalService
 {
     Task<bool> RequestApprovalAsync(string toolName, string summary, CancellationToken ct);
 }
+
+/// <summary>
+/// ブラウザ（可視 WebView2 ペインのアクティブタブ）への操作を抽象化。
+/// <see cref="ITerminalService"/> が可視ターミナルへ操作を一本化するのと同様に、
+/// AIのブラウザ操作も人間が見ているブラウザペインへ一本化する（別ウィンドウは起動しない）。
+/// 実装は WebView2 に依存するため App 層に置く（Core は UI 非依存を保つ）。
+/// </summary>
+public interface IBrowserService
+{
+    /// <summary>操作可能なアクティブタブ（初期化済み WebView2）が存在するか。</summary>
+    bool IsAvailable { get; }
+
+    /// <summary>指定URLへ遷移し、読み込み完了を待つ。遷移後のURL・タイトルを返す。</summary>
+    Task<BrowserPageInfo> NavigateAsync(string url, CancellationToken ct);
+
+    /// <summary>現在表示中ページのURL・タイトルを返す。</summary>
+    Task<BrowserPageInfo> GetPageInfoAsync(CancellationToken ct);
+
+    /// <summary>現在のページの可視テキスト（document.body.innerText）を抽出する。</summary>
+    Task<string> GetVisibleTextAsync(CancellationToken ct);
+
+    /// <summary>CSSセレクタに一致する最初の要素をクリックする。一致が無ければ例外。</summary>
+    Task ClickAsync(string selector, CancellationToken ct);
+
+    /// <summary>CSSセレクタに一致する入力要素へ値を設定し input/change を発火する。一致が無ければ例外。</summary>
+    Task TypeAsync(string selector, string text, CancellationToken ct);
+
+    /// <summary>現在のページのスクリーンショット(PNG)を撮りバイト列を返す。</summary>
+    Task<byte[]> CaptureScreenshotAsync(CancellationToken ct);
+}
+
+/// <summary>ブラウザの現在ページ情報。</summary>
+public sealed record BrowserPageInfo(string Url, string Title);
