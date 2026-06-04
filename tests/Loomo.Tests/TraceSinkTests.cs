@@ -27,7 +27,7 @@ public class TraceSinkTests
     private static List<TraceEvent> ReadEvents(string dir, string sessionId)
     {
         var path = Path.Combine(dir, sessionId + ".jsonl");
-        var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var opts = new JsonSerializerOptions {PropertyNamingPolicy = JsonNamingPolicy.CamelCase};
         return File.ReadAllLines(path)
             .Where(l => l.Length > 0)
             .Select(l => JsonSerializer.Deserialize<TraceEvent>(l, opts)!)
@@ -40,8 +40,8 @@ public class TraceSinkTests
         var dir = TempDir();
         var sink = new JsonlTraceSink(dir);
 
-        sink.Record("s1", "t1", TraceKinds.TurnStarted, new { userInput = "hello" });
-        sink.Record("s1", "t1", TraceKinds.AiMessage, new { fullText = "hi" });
+        sink.Record("s1", "t1", TraceKinds.TurnStarted, new {userInput = "hello"});
+        sink.Record("s1", "t1", TraceKinds.AiMessage, new {fullText = "hi"});
         await sink.DisposeAsync(); // 残りをフラッシュ
 
         var events = ReadEvents(dir, "s1");
@@ -63,11 +63,11 @@ public class TraceSinkTests
 
         sink.Record("a", null, TraceKinds.SessionStarted, null);
         sink.Record("b", null, TraceKinds.SessionStarted, null);
-        sink.Record("a", "t", TraceKinds.AiMessage, new { fullText = "x" });
+        sink.Record("a", "t", TraceKinds.AiMessage, new {fullText = "x"});
         await sink.DisposeAsync();
 
-        Assert.Equal(new long[] { 0, 1 }, ReadEvents(dir, "a").Select(e => e.Seq));
-        Assert.Equal(new long[] { 0 }, ReadEvents(dir, "b").Select(e => e.Seq));
+        Assert.Equal(new long[] {0, 1}, ReadEvents(dir, "a").Select(e => e.Seq));
+        Assert.Equal(new long[] {0}, ReadEvents(dir, "b").Select(e => e.Seq));
 
         Directory.Delete(dir, recursive: true);
     }
@@ -80,9 +80,10 @@ public class TraceSinkTests
 
         // 1ターン目でツールを1回呼び、2ターン目で最終テキストを返す台本付き AI。
         var tool = new EchoTool();
+        var aiFactory = new ScriptedAiClientFactory(tool.Name);
         var orchestrator = new AgentOrchestrator(
-            new ScriptedAiClientFactory(tool.Name),
-            new ToolRegistry(new IAgentTool[] { tool }),
+            aiFactory,
+            new ToolRegistry(new IAgentTool[] {tool}),
             new AutoApproveService(),
             new SafetyPolicy(new SafetySettings()),
             NoopContextWindowPolicy.Instance,
@@ -94,6 +95,7 @@ public class TraceSinkTests
         {
             // イベントは消費するだけ
         }
+
         await sink.DisposeAsync();
 
         var kinds = ReadEvents(dir, "sess1").Select(e => e.Kind).ToList();
@@ -105,6 +107,10 @@ public class TraceSinkTests
         Assert.Contains(TraceKinds.ToolCompleted, kinds);
         Assert.Contains(TraceKinds.AiMessage, kinds);
         Assert.Contains(TraceKinds.TurnCompleted, kinds);
+        Assert.Equal(
+            new[] {AgentProfiles.ChatUnderstanding.Id, AgentProfiles.ResultJudge.Id},
+            aiFactory.Client.ProfileIds);
+        Assert.Equal(new[] {1, 0}, aiFactory.Client.ToolCounts);
 
         Directory.Delete(dir, recursive: true);
     }
@@ -145,7 +151,7 @@ public class TraceSinkTests
         // 1プロセス目：セッション "r" に2件記録。
         var sink1 = new JsonlTraceSink(dir);
         sink1.Record("r", "t1", TraceKinds.TurnStarted, null);
-        sink1.Record("r", "t1", TraceKinds.AiMessage, new { fullText = "a" });
+        sink1.Record("r", "t1", TraceKinds.AiMessage, new {fullText = "a"});
         await sink1.DisposeAsync();
 
         // 別プロセス相当：新しいシンクで同じセッションへ追記（再起動後のセッション再開）。
@@ -154,7 +160,7 @@ public class TraceSinkTests
         await sink2.DisposeAsync();
 
         // 0 が重複せず、ファイルの行数から続き番号が振られること。
-        Assert.Equal(new long[] { 0, 1, 2 }, ReadEvents(dir, "r").Select(e => e.Seq));
+        Assert.Equal(new long[] {0, 1, 2}, ReadEvents(dir, "r").Select(e => e.Seq));
 
         Directory.Delete(dir, recursive: true);
     }
@@ -164,10 +170,10 @@ public class TraceSinkTests
     {
         var dir = TempDir();
         var sink = new JsonlTraceSink(dir);
-        sink.Record("s", "t", TraceKinds.AiMessage, new { fullText = "x" });
+        sink.Record("s", "t", TraceKinds.AiMessage, new {fullText = "x"});
 
         // ホスト終了経路（同期 IHost.Dispose）相当。IDisposable 実装で例外なくフラッシュされる。
-        ((IDisposable)sink).Dispose();
+        ((IDisposable) sink).Dispose();
 
         Assert.Single(ReadEvents(dir, "s"));
         Directory.Delete(dir, recursive: true);
@@ -177,7 +183,7 @@ public class TraceSinkTests
     public void NullTraceSink_records_nothing()
     {
         // 例外なく no-op であること（既定挙動の確認）。
-        NullTraceSink.Instance.Record("s", "t", TraceKinds.AiMessage, new { x = 1 });
+        NullTraceSink.Instance.Record("s", "t", TraceKinds.AiMessage, new {x = 1});
     }
 
     // ===== テスト用の台本付き AI / ツール / サービス =====
@@ -190,13 +196,20 @@ public class TraceSinkTests
 
         public ScriptedAiClient(string toolName) => _toolName = toolName;
 
+        public List<string> ProfileIds { get; } = new();
+        public List<int> ToolCounts { get; } = new();
+
         public AiProvider Provider => AiProvider.Local;
 
         public async IAsyncEnumerable<AgentEvent> StreamAsync(
             Conversation conversation,
             IReadOnlyList<ToolDefinition> tools,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+            [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken ct,
+            AgentProfile? profile = null)
         {
+            ProfileIds.Add(profile?.Id ?? "");
+            ToolCounts.Add(tools.Count);
             await Task.Yield();
             if (_calls++ == 0)
             {
@@ -211,10 +224,10 @@ public class TraceSinkTests
 
     private sealed class ScriptedAiClientFactory : IAiClientFactory
     {
-        private readonly ScriptedAiClient _client;
-        public ScriptedAiClientFactory(string toolName) => _client = new ScriptedAiClient(toolName);
-        public IAiClient Resolve(AiProvider provider) => _client;
-        public IAiClient ResolveCurrent() => _client;
+        public ScriptedAiClientFactory(string toolName) => Client = new ScriptedAiClient(toolName);
+        public ScriptedAiClient Client { get; }
+        public IAiClient Resolve(AiProvider provider) => Client;
+        public IAiClient ResolveCurrent() => Client;
     }
 
     private sealed class EmptyAiClient : IAiClient
@@ -224,7 +237,9 @@ public class TraceSinkTests
         public async IAsyncEnumerable<AgentEvent> StreamAsync(
             Conversation conversation,
             IReadOnlyList<ToolDefinition> tools,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+            [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken ct,
+            AgentProfile? profile = null)
         {
             await Task.Yield();
             yield break;
@@ -239,12 +254,43 @@ public class TraceSinkTests
         public IAiClient ResolveCurrent() => _client;
     }
 
+    private sealed class ContinueThenFinishAiClient : IAiClient
+    {
+        private int _calls;
+
+        public List<string> ProfileIds { get; } = new();
+
+        public AiProvider Provider => AiProvider.Local;
+
+        public async IAsyncEnumerable<AgentEvent> StreamAsync(
+            Conversation conversation,
+            IReadOnlyList<ToolDefinition> tools,
+            [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken ct,
+            AgentProfile? profile = null)
+        {
+            ProfileIds.Add(profile?.Id ?? "");
+            await Task.Yield();
+            var call = _calls++;
+            yield return new TextDelta(call switch
+            {
+                0 => "AI2に確認を依頼します。",
+                1 => "追加情報が必要です。",
+                2 => "[CONTINUE]\nもう一度整理してください。",
+                3 => "AI2に最終確認を依頼します。",
+                4 => "十分です。",
+                _ => "完了しました。",
+            });
+        }
+    }
+
     private sealed class EchoTool : IAgentTool
     {
         public string Name => "echo";
         public bool RequiresApproval => false;
         public ToolDefinition Definition => new(Name, "echo", ToolDefinition.ObjectSchema());
         public string DescribeInvocation(JsonElement arguments) => Name;
+
         public Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken ct)
             => Task.FromResult(ToolResult.Ok("echoed"));
     }

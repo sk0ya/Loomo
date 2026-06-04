@@ -172,7 +172,11 @@ public sealed class AiSettingsStore
     {
         public string? Model { get; set; }
         public string? ApiKeyEnc { get; set; }
-        public string? BaseUrl { get; set; }
+
+        /// <summary>旧設定からの読み込み互換用。現在は固定ローカルURLを使うため保存しない。</summary>
+        [JsonPropertyName("baseUrl")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? LegacyBaseUrl { get; set; }
         public int MaxTokens { get; set; } = 4096;
 
         /// <summary>thinking を有効にするか。null=未指定（既定維持）。</summary>
@@ -193,7 +197,6 @@ public sealed class AiSettingsStore
         {
             Model = c.Model,
             ApiKeyEnc = Protect(c.ApiKey),
-            BaseUrl = c.BaseUrl,
             MaxTokens = c.MaxTokens,
             Thinking = c.Thinking,
             MaxContextTokens = c.MaxContextTokens,
@@ -205,7 +208,6 @@ public sealed class AiSettingsStore
             if (!string.IsNullOrEmpty(Model))
                 c.Model = IsLegacyDefaultModel(Model) ? AiSettings.DefaultLocalModel : Model;
             c.ApiKey = Unprotect(ApiKeyEnc);
-            if (BaseUrl is not null) c.BaseUrl = BaseUrl;
             if (MaxTokens > 0) c.MaxTokens = MaxTokens;
             // 新形式（bool）を優先。無ければ旧 ThinkingEffort（none 以外を有効）から移行する。
             if (Thinking is { } think) c.Thinking = think;

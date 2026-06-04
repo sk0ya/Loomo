@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading;
+using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
@@ -16,7 +17,8 @@ public interface IAiClient
     IAsyncEnumerable<AgentEvent> StreamAsync(
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools,
-        CancellationToken ct);
+        CancellationToken ct,
+        AgentProfile? profile = null);
 }
 
 /// <summary>現在の設定に応じて IAiClient を解決する。</summary>

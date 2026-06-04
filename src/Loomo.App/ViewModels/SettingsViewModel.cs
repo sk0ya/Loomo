@@ -13,7 +13,7 @@ using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>設定パネル（Ollama モデル・エンドポイント等）の ViewModel。
+/// <summary>設定パネル（Ollama モデル等）の ViewModel。
 /// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
 /// 危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
 /// 編集する（<see cref="IEditorService.OpenDocumentAsync"/>。保存=:w 時にコールバックで即時反映）。</summary>
@@ -29,7 +29,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     public event Action? Saved;
 
     [ObservableProperty] private string _model = "";
-    [ObservableProperty] private string _baseUrl = "";
     [ObservableProperty] private int _maxTokens;
     [ObservableProperty] private bool _thinking;
     [ObservableProperty] private string _status = "";
@@ -59,26 +58,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadLocalFields();
-        // 初期取得は UI スレッドのディスパッチャ経由で行う。コンストラクタ時点では
-        // SynchronizationContext が未確立のことがあり、await 継続が別スレッドで走ると
-        // バインド済み ObservableCollection の更新が失敗するため。アプリ未起動（テスト等）では no-op。
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(
-            new Action(() => TryAutoFetchModels(autoOpen: false)));
     }
 
     public void SyncProvider(AiProvider provider) { }
-
-    /// <summary>Ollama からモデル一覧を自動取得する。</summary>
-    private void TryAutoFetchModels(bool autoOpen)
-    {
-        _ = FetchModelsCoreAsync(autoOpen);
-    }
 
     private void LoadLocalFields()
     {
         var cfg = _settings.Local;
         Model = cfg.Model;
-        BaseUrl = cfg.BaseUrl ?? "";
         MaxTokens = cfg.MaxTokens;
         Thinking = cfg.Thinking;
     }
@@ -88,7 +75,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         var cfg = _settings.Local;
         cfg.Model = Model.Trim();
         cfg.ApiKey = null;
-        cfg.BaseUrl = string.IsNullOrWhiteSpace(BaseUrl) ? null : BaseUrl.Trim();
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
         cfg.Thinking = Thinking;
     }
@@ -120,7 +106,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private Task FetchModelsAsync() => FetchModelsCoreAsync(autoOpen: true);
 
-    /// <summary>現在のエンドポイント（編集中の BaseUrl / APIキー）から利用可能なモデル一覧を取得し、選択肢に反映する。
+    /// <summary>固定のローカル Ollama エンドポイントから利用可能なモデル一覧を取得し、選択肢に反映する。
     /// <paramref name="autoOpen"/> が true なら取得成功後にドロップダウンを自動で開く。</summary>
     private async Task FetchModelsCoreAsync(bool autoOpen)
     {
@@ -136,8 +122,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             Status = "モデル一覧を取得しています…";
             var models = await _modelCatalog.FetchAsync(
                 provider,
-                baseUrlOverride: BaseUrl,
-                apiKeyOverride: null,
                 ct: cts.Token);
 
             // 取得中に中止／プロバイダ変更があれば結果は破棄する。

@@ -27,6 +27,9 @@
                                             <DataTrigger Binding="{Binding Kind}" Value="Thinking">
                                                 <Setter Property="Background" Value="{DynamicResource BgAlt}" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Kind}" Value="Activity">
+                                                <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Border.Style>
@@ -65,6 +68,9 @@
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Kind}" Value="Thinking">
                                                             <Setter Property="FontStyle" Value="Italic" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Activity">
                                                             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                         </DataTrigger>
                                                         <!-- 差分エントリ等で本文が空のときは行を占有しない -->

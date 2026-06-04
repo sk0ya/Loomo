@@ -31,22 +31,18 @@ public sealed class ModelCatalogService
 
     /// <summary>
     /// 指定プロバイダのエンドポイントからモデルIDの一覧を取得する。
-    /// <paramref name="baseUrlOverride"/> / <paramref name="apiKeyOverride"/> を渡すと、
-    /// 設定へ未保存の編集中の値で取得できる（保存前のプレビュー用）。
+    /// 固定のローカル Ollama エンドポイントから取得する。
     /// </summary>
     public async Task<IReadOnlyList<string>> FetchAsync(
         AiProvider provider,
-        string? baseUrlOverride = null,
-        string? apiKeyOverride = null,
         CancellationToken ct = default)
     {
         if (!Supports(provider))
             throw new NotSupportedException($"{provider} はモデル一覧取得に対応していません。");
 
         var cfg = _settings.Local;
-        var rawBase = !string.IsNullOrWhiteSpace(baseUrlOverride) ? baseUrlOverride : cfg.BaseUrl;
-        var host = OllamaLauncher.ResolveHost(rawBase);
-        var apiKey = !string.IsNullOrWhiteSpace(apiKeyOverride) ? apiKeyOverride : cfg.ApiKey;
+        var host = OllamaLauncher.Host;
+        var apiKey = cfg.ApiKey;
 
         // 未起動なら Ollama の起動を試みてから取得する（手動起動を不要にする）。
         await OllamaLauncher.EnsureRunningAsync(_http, host, ct);

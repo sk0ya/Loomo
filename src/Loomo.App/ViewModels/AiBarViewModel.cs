@@ -227,10 +227,16 @@ public sealed partial class AiBarViewModel : ObservableObject
         _currentSessionId ??= Guid.NewGuid().ToString("N");
 
         Add(EntryKind.User, "あなた", text);
+        var turnClock = Stopwatch.StartNew();
+        var activity = Add(EntryKind.Activity, "進行状況", "");
         TranscriptEntry? assistant = null;
         TranscriptEntry? thinking = null;
         Stopwatch? assistantClock = null;
         Stopwatch? thinkingClock = null;
+        var loggedThinking = false;
+        var loggedResponse = false;
+
+        AppendActivity("AIに送信しました。応答を待っています。");
 
         try
         {
@@ -240,6 +246,11 @@ public sealed partial class AiBarViewModel : ObservableObject
                 {
                     case ThinkingDelta think:
                         SetStatus("💭 思考中…");
+                        if (!loggedThinking)
+                        {
+                            AppendActivity("モデルが思考を生成しています。");
+                            loggedThinking = true;
+                        }
                         if (thinking is null)
                         {
                             thinking = Add(EntryKind.Thinking, "💭 思考", "");
@@ -250,6 +261,11 @@ public sealed partial class AiBarViewModel : ObservableObject
 
                     case TextDelta delta:
                         SetStatus("応答を生成中…");
+                        if (!loggedResponse)
+                        {
+                            AppendActivity("回答本文の生成を開始しました。");
+                            loggedResponse = true;
+                        }
                         FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
                         thinking = null; // 本文に入ったので思考ブロックを区切る
                         if (assistant is null)
@@ -266,41 +282,51 @@ public sealed partial class AiBarViewModel : ObservableObject
                         assistant = null; // テキストブロックを区切る
                         thinking = null;
                         SetStatus($"🔧 {req.ToolUse.Name} を準備中…");
+                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています。");
                         Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", req.ToolUse.ArgumentsJson);
                         break;
 
                     case ApprovalRequested approval:
                         SetStatus($"⏳ {approval.ToolName} の承認待ち…");
+                        AppendActivity($"{approval.ToolName} の実行承認を待っています。");
                         break;
 
                     case ToolExecutionStarted started:
                         SetStatus($"🔧 {started.ToolUse.Name} を実行中…");
+                        AppendActivity($"{started.ToolUse.Name} を実行しています。");
                         break;
 
                     case ToolExecutionCompleted done:
                         SetStatus("考え中…"); // ツール結果を踏まえてAIが再応答する
+                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）。結果を踏まえて次の応答を待っています。");
                         Add(EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})", Truncate(done.Result.Content));
                         break;
 
                     case AgentError err:
+                        AppendActivity($"エラーで停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         Add(EntryKind.Error, "⚠️ エラー", err.Message);
                         break;
 
                     case TurnCompleted:
+                        AppendActivity($"回答が完了しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         break;
                 }
             }
         }
         catch (OperationCanceledException)
         {
+            AppendActivity($"ユーザー操作で中断しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
             Add(EntryKind.Error, "⏹ 中断", "ユーザーにより中断されました。");
         }
         catch (Exception ex)
         {
+            AppendActivity($"例外で停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
             Add(EntryKind.Error, "⚠️ 例外", ex.Message);
         }
         finally
         {
+            turnClock.Stop();
+            activity.Header = $"進行状況 ({FormatDuration(turnClock.Elapsed)})";
             FinishTimedEntry(ref assistant, ref assistantClock, "🤖 エージェント");
             FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
             IsBusy = false;
@@ -311,6 +337,12 @@ public sealed partial class AiBarViewModel : ObservableObject
             // ターン終了時にセッションを自動保存（新規なら採番）
             try { _currentSessionId = _sessions.Save(_currentSessionId, _conversation); }
             catch { /* 保存失敗は会話を妨げない */ }
+        }
+
+        void AppendActivity(string message)
+        {
+            var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
+            activity.AppendText($"{prefix}[{FormatDuration(turnClock.Elapsed)}] {message}");
         }
     }
 

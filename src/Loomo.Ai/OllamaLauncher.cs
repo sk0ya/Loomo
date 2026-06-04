@@ -1,8 +1,11 @@
 using System;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Core.Tools;
 
 namespace sk0ya.Loomo.Ai;
 
@@ -13,26 +16,16 @@ namespace sk0ya.Loomo.Ai;
 /// </summary>
 public static class OllamaLauncher
 {
-    /// <summary>ローカルLLM（Ollama）の既定ホスト。BaseUrl 未設定時のフォールバックに使う。</summary>
+    /// <summary>ローカルLLM（Ollama）の固定URL。</summary>
     public const string DefaultBaseUrl = "http://localhost:11434";
+    private const string KeepAlive = "30m";
 
-    /// <summary>
-    /// 設定の BaseUrl をネイティブ API のホストへ正規化する。未設定なら既定ホスト。
-    /// 旧 OpenAI互換設定の末尾 <c>/v1</c> は取り除く（既存設定の移行）。
-    /// </summary>
-    public static string ResolveHost(string? baseUrl)
-    {
-        var raw = string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrl : baseUrl!;
-        var host = raw.TrimEnd('/');
-        if (host.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
-            host = host[..^3].TrimEnd('/');
-        return host;
-    }
+    public static string Host => DefaultBaseUrl;
 
-    /// <summary>BaseUrl がローカルループバックを指すか（自動起動の対象判定）。</summary>
-    public static bool IsLoopback(string? baseUrl) =>
-        !string.IsNullOrWhiteSpace(baseUrl) &&
-        Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) &&
+    /// <summary>URL がローカルループバックを指すか（自動起動の対象判定）。</summary>
+    public static bool IsLoopback(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
         (uri.IsLoopback || string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
@@ -54,6 +47,101 @@ public static class OllamaLauncher
             if (await IsUpAsync(http, root, ct)) return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 指定モデルを空プロンプトで事前ロードし、最初の /api/chat でモデルロードを待たないようにする。
+    /// </summary>
+    public static async Task<bool> WarmModelAsync(
+        HttpClient http,
+        string baseUrl,
+        string model,
+        int numCtx,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+            return false;
+
+        var root = baseUrl.TrimEnd('/');
+        var body = new
+        {
+            model,
+            prompt = "",
+            stream = false,
+            keep_alive = KeepAlive,
+            options = numCtx > 0 ? new { num_ctx = numCtx } : null
+        };
+
+        try
+        {
+            using var resp = await http.PostAsJsonAsync($"{root}/api/generate", body, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 指定システムプロンプトとツール定義のプレフィックスを軽く通し、役割別エージェントの初回待ちを減らす。
+    /// </summary>
+    public static async Task<bool> WarmChatPrefixAsync(
+        HttpClient http,
+        string baseUrl,
+        string model,
+        string systemPrompt,
+        IReadOnlyList<ToolDefinition> tools,
+        int numCtx,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(systemPrompt))
+            return false;
+
+        var options = new JsonObject { ["num_predict"] = 1 };
+        if (numCtx > 0)
+            options["num_ctx"] = numCtx;
+
+        var body = new JsonObject
+        {
+            ["model"] = model,
+            ["stream"] = false,
+            ["think"] = false,
+            ["keep_alive"] = KeepAlive,
+            ["options"] = options,
+            ["messages"] = new JsonArray
+            {
+                new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
+                new JsonObject { ["role"] = "user", ["content"] = "warmup" },
+            }
+        };
+
+        if (tools.Count > 0)
+        {
+            var toolArray = new JsonArray();
+            foreach (var t in tools)
+                toolArray.Add(new JsonObject
+                {
+                    ["type"] = "function",
+                    ["function"] = new JsonObject
+                    {
+                        ["name"] = t.Name,
+                        ["description"] = t.Description,
+                        ["parameters"] = t.InputSchema.DeepClone()
+                    }
+                });
+            body["tools"] = toolArray;
+        }
+
+        try
+        {
+            using var resp = await http.PostAsJsonAsync($"{baseUrl.TrimEnd('/')}/api/chat", body, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
     }
 
     /// <summary>エンドポイントに（4xx含め）HTTP応答があればサーバーは起動中とみなす。</summary>

@@ -35,6 +35,9 @@ public partial class App : Application
         // 保存済みカラーテーマ・アクセントカラーを適用する
         _host.Services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
 
+        // ワークスペース開始時にローカルLLMを非同期でウォームアップする。
+        _host.Services.GetRequiredService<LocalLlmWarmupService>();
+
         var shell = _host.Services.GetRequiredService<ShellWindow>();
         shell.Show();
     }
@@ -102,6 +105,7 @@ public partial class App : Application
 
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
+        services.AddSingleton<LocalLlmWarmupService>();
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<TabIconService>();

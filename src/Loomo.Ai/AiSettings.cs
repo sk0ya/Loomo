@@ -1,3 +1,4 @@
+using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
@@ -28,11 +29,13 @@ public sealed class AiSettings
     public ProviderConfig Local { get; set; } = new()
     {
         Model = DefaultLocalModel,
-        BaseUrl = "http://localhost:11434",
         MaxTokens = 1024
     };
 
     public string SystemPrompt => DefaultSystemPrompt;
+
+    public string BuildSystemPrompt(AgentProfile? profile = null)
+        => (profile ?? AgentProfiles.Root).ApplyTo(SystemPrompt);
 
     /// <summary>既定のシステムプロンプト（設定画面の「デフォルトに戻す」で使用）。
     /// Ollama の tool calling 前提で、長い PowerShell 作法より「必要なら本文ではなく tool call」
@@ -58,9 +61,6 @@ public sealed class ProviderConfig
 
     /// <summary>APIキー。実運用では資格情報マネージャ等から注入する想定。</summary>
     public string? ApiKey { get; set; }
-
-    /// <summary>Ollama ホストのベースURL（ローカルLLM等。末尾の /v1 は自動で除去される）。</summary>
-    public string? BaseUrl { get; set; }
 
     /// <summary>1応答で生成させる最大トークン数（出力上限）。</summary>
     public int MaxTokens { get; set; } = 4096;

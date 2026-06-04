@@ -49,6 +49,9 @@ public sealed class ChatMessage
     public ChatRole Role { get; init; }
     public string? Text { get; set; }
 
+    /// <summary>このメッセージを生成した組み込みAIプロファイルID。ユーザー/ツールでは null。</summary>
+    public string? AgentId { get; set; }
+
     /// <summary>アシスタントが要求したツール呼び出し（複数可）。</summary>
     public List<ToolUse> ToolUses { get; } = new();
 

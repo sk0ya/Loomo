@@ -20,7 +20,7 @@ public sealed class SettingsContextWindowPolicy : IContextWindowPolicy
 
     public SettingsContextWindowPolicy(AiSettings settings) => _settings = settings;
 
-    public Conversation Fit(Conversation conversation)
+    public Conversation Fit(Conversation conversation, AgentProfile? profile = null)
     {
         var cfg = _settings.ConfigFor(_settings.Provider);
 
@@ -33,7 +33,7 @@ public sealed class SettingsContextWindowPolicy : IContextWindowPolicy
         if (contextLimit <= 0)
             return conversation;
 
-        var systemTokens = TokenEstimator.EstimateText(_settings.SystemPrompt);
+        var systemTokens = TokenEstimator.EstimateText(_settings.BuildSystemPrompt(profile));
         var inputBudget = contextLimit - cfg.MaxTokens - systemTokens - SafetyMarginTokens;
         if (inputBudget <= 0)
             return conversation; // 設定が矛盾している場合はトリムせず素通し（API側のエラーに委ねる）

@@ -25,13 +25,9 @@
                             Command="{Binding FetchModelsCommand}"
                             IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}" />
                 </Grid>
-                <TextBlock Text="Ollama から候補を自動取得します（変わらない場合は「再取得」）。一覧に無いモデルは直接入力も可。"
+                <TextBlock Text="「再取得」で固定ローカル Ollama から候補を取得します。一覧に無いモデルは直接入力も可。"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
-
-                <TextBlock Style="{StaticResource FieldLabel}" Text="ベースURL（Ollama OpenAI互換エンドポイント）" />
-                <TextBox Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                         FontFamily="Cascadia Mono, Consolas" />
 
                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />

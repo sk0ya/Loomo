@@ -74,6 +74,7 @@ public class AiSettingsStoreTests
 
             var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
             Assert.False(json.ContainsKey("systemPrompt"));
+            Assert.False(json["local"]!.AsObject().ContainsKey("baseUrl"));
         }
         finally
         {

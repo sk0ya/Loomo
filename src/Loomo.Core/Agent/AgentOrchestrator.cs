@@ -55,9 +55,13 @@ public sealed class AgentOrchestrator
         Conversation conversation,
         string userInput,
         string? sessionId = null,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default,
+        AgentProfile? profile = null)
     {
         sessionId ??= "unknown";
+        var requestedProfile = profile ?? AgentProfiles.Root;
+        var useResidentPipeline = ReferenceEquals(requestedProfile, AgentProfiles.Root)
+                                  || requestedProfile.Id == AgentProfiles.Root.Id;
         var isNewSession = conversation.Messages.Count == 0;
 
         conversation.AddUser(userInput);
@@ -69,8 +73,14 @@ public sealed class AgentOrchestrator
         var turnClock = Stopwatch.StartNew();
 
         if (isNewSession)
-            _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider });
-        _trace.Record(sessionId, turnId, TraceKinds.TurnStarted, new { userInput, provider });
+            _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider, agentId = requestedProfile.Id });
+        _trace.Record(sessionId, turnId, TraceKinds.TurnStarted, new
+        {
+            userInput,
+            provider,
+            agentId = requestedProfile.Id,
+            pipeline = useResidentPipeline ? "resident" : "single-profile",
+        });
 
         for (var iteration = 0; iteration < MaxIterations; iteration++)
         {
@@ -79,13 +89,28 @@ public sealed class AgentOrchestrator
             var assistant = new ChatMessage { Role = ChatRole.Assistant };
             var pendingToolUses = new List<ToolUse>();
             var sawModelOutput = false;
+            var activeProfile = useResidentPipeline
+                ? SelectResidentProfile(conversation)
+                : requestedProfile;
+            var activeDefinitions = activeProfile.Id == AgentProfiles.ResultJudge.Id
+                                    || activeProfile.Id == AgentProfiles.ChatUnderstanding.Id
+                ? Array.Empty<ToolDefinition>()
+                : definitions;
 
             // コンテキスト超過を防ぐため、送信用に履歴をトリム（元会話は保持）。
-            var outgoing = _context.Fit(conversation);
+            var outgoing = _context.Fit(conversation, activeProfile);
 
             // --- AIストリームを消費 ---
             AgentError? streamError = null;
-            await foreach (var ev in ai.StreamAsync(outgoing, definitions, ct))
+            _trace.Record(sessionId, turnId, TraceKinds.AiMessage, new
+            {
+                agentId = activeProfile.Id,
+                stage = activeProfile.DisplayName,
+                started = true,
+                iteration = iteration + 1,
+                toolCount = activeDefinitions.Count,
+            });
+            await foreach (var ev in ai.StreamAsync(outgoing, activeDefinitions, ct, activeProfile))
             {
                 switch (ev)
                 {
@@ -122,7 +147,7 @@ public sealed class AgentOrchestrator
 
             if (!sawModelOutput)
             {
-                var emptyError = new AgentError("AI から応答が返りませんでした。ローカルLLMの起動状態、モデル名、BaseUrl を確認してください。");
+                var emptyError = new AgentError("AI から応答が返りませんでした。ローカルLLMの起動状態とモデル名を確認してください。");
                 _trace.Record(sessionId, turnId, TraceKinds.Error,
                     new { message = emptyError.Message, where = "ai.empty_response" });
                 yield return emptyError;
@@ -131,10 +156,22 @@ public sealed class AgentOrchestrator
 
             // ストリーム終了時にアシスタント本文をまとめて記録（TextDelta を合算した全文）。
             if (!string.IsNullOrEmpty(assistant.Text))
-                _trace.Record(sessionId, turnId, TraceKinds.AiMessage, new { fullText = assistant.Text });
+                _trace.Record(sessionId, turnId, TraceKinds.AiMessage, new
+                {
+                    fullText = assistant.Text,
+                    agentId = activeProfile.Id,
+                    stage = activeProfile.DisplayName,
+                });
             foreach (var use in pendingToolUses)
                 _trace.Record(sessionId, turnId, TraceKinds.AiToolUse,
-                    new { toolUseId = use.Id, name = use.Name, argsJson = use.ArgumentsJson });
+                    new
+                    {
+                        toolUseId = use.Id,
+                        name = use.Name,
+                        argsJson = use.ArgumentsJson,
+                        agentId = activeProfile.Id,
+                        stage = activeProfile.DisplayName,
+                    });
 
             // 本文もツール呼び出しも無い空応答は履歴に積まない（APIエラー要因になり得る）。
             if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
@@ -174,6 +211,13 @@ public sealed class AgentOrchestrator
             new { message = $"最大反復回数({MaxIterations})に達しました。", where = "iteration.limit" });
         yield return new AgentError($"最大反復回数({MaxIterations})に達しました。");
     }
+
+    private static AgentProfile SelectResidentProfile(Conversation conversation) => conversation.Messages.Count > 0 && conversation.Messages[^1].Role == ChatRole.Tool
+        ? AgentProfiles.ResultJudge
+        : AgentProfiles.ChatUnderstanding;
+
+    private static bool ShouldContinueResidentPipeline(string? text)
+        => text?.TrimStart().StartsWith("[CONTINUE]", StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary><see cref="ExecuteToolAsync"/> を実行し、終了時に必ずイベントチャネルを閉じる。
     /// これにより呼び出し側の読み出しループが確実に終了する。</summary>

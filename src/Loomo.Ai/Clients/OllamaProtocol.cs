@@ -356,7 +356,7 @@ internal static class OllamaProtocol
 
                 if (!sawAnyModelOutput)
                 {
-                    yield return new AgentError($"{providerName} から応答本文が返りませんでした。モデル名、Ollama の起動状態、BaseUrl を確認してください。");
+                    yield return new AgentError($"{providerName} から応答本文が返りませんでした。モデル名と Ollama の起動状態を確認してください。");
                     yield break;
                 }
 

@@ -19,6 +19,23 @@ public class AgentLoopTests
     // ===== TokenEstimator =====
 
     [Fact]
+    public void AgentProfile_appends_role_prompt_without_changing_base_prompt()
+    {
+        var prompt = AgentProfiles.Reviewer.ApplyTo("base prompt");
+
+        Assert.StartsWith("base prompt", prompt);
+        Assert.Contains("レビュー担当", prompt);
+    }
+
+    [Fact]
+    public void AgentProfile_override_replaces_base_prompt()
+    {
+        var profile = new AgentProfile("custom", "Custom", SystemPromptOverride: "custom prompt");
+
+        Assert.Equal("custom prompt", profile.ApplyTo("base prompt"));
+    }
+
+    [Fact]
     public void TokenEstimator_is_monotonic_with_length()
     {
         var shortMsg = new ChatMessage { Role = ChatRole.User, Text = "hi" };

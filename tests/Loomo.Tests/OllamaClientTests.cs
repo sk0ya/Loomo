@@ -80,7 +80,7 @@ public class OllamaClientTests
         // 既知の tools 非対応モデル（gemma3 等）は最初からツールを送らないため別経路になる。
         var settings = new AiSettings
         {
-            Local = new ProviderConfig { Model = "mistral:7b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
+            Local = new ProviderConfig { Model = "mistral:7b", MaxTokens = 1024 }
         };
         var client = new OllamaClient(http, settings, new FakeWorkspaceService());
         var conversation = new Conversation();
@@ -418,7 +418,6 @@ public class OllamaClientTests
             Local = new ProviderConfig
             {
                 Model = model,
-                BaseUrl = "http://localhost:11434",
                 MaxTokens = 1024
             }
         };
@@ -443,7 +442,6 @@ public class OllamaClientTests
             Local = new ProviderConfig
             {
                 Model = "qwen3:4b",
-                BaseUrl = "http://localhost:11434",
                 MaxTokens = 1024,
                 Thinking = thinking
             }
@@ -465,7 +463,7 @@ public class OllamaClientTests
         using var http = new HttpClient(handler);
         var settings = new AiSettings
         {
-            Local = new ProviderConfig { Model = "qwen3:4b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
+            Local = new ProviderConfig { Model = "qwen3:4b", MaxTokens = 1024 }
         };
         var client = new OllamaClient(http, settings, new FakeWorkspaceService());
         var conversation = new Conversation();
@@ -483,7 +481,7 @@ public class OllamaClientTests
         using var http = new HttpClient(handler);
         var settings = new AiSettings
         {
-            Local = new ProviderConfig { Model = "qwen3:4b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
+            Local = new ProviderConfig { Model = "qwen3:4b", MaxTokens = 1024 }
         };
         var client = new OllamaClient(http, settings, new FakeWorkspaceService());
         var conversation = new Conversation();
