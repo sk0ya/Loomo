@@ -77,13 +77,13 @@ ActivityBar のアイコンでサイドバーのパネル（Explorer / Sessions 
 
 ## エージェントツール
 
-エージェントが function calling で利用できるツールは **`run_command`（PowerShell 実行）1 つだけ** です。
+エージェントが function calling で利用できるツールは **`pwsh`（PowerShell 実行）1 つだけ** です。
 ファイルの読み取り・検索・一覧・作成・編集も全て PowerShell コマンド（`Get-Content` / `Select-String` /
 `Get-ChildItem` / `Set-Content` など）で行います。
 
 | ツール | 説明 |
 |------|------|
-| `run_command` | 可視ターミナルで PowerShell コマンドを実行し、標準出力と終了コードを返す |
+| `pwsh` | 可視ターミナルで PowerShell コマンドを実行し、標準出力と終了コードを返す |
 
 > ツールを 1 つに絞っているのは、CPU 実行の小型ローカル LLM ではツール定義の前処理（prefill）が
 > 応答時間を支配するためです。定義を最小化することで初回応答を大きく短縮しています。
@@ -91,7 +91,7 @@ ActivityBar のアイコンでサイドバーのパネル（Explorer / Sessions 
 ## AI プロバイダ設定
 
 - 既定は **Stub**（API キー不要・オフライン動作）。
-- 設定画面（ActivityBar ⚙）でプロバイダ / モデル / API キー / BaseUrl / MaxTokens / SystemPrompt を編集。
+- 設定画面（ActivityBar ⚙）でプロバイダ / モデル / API キー / BaseUrl / MaxTokens / 安全設定を編集。
 - 永続化先: `%APPDATA%/Loomo/settings.json`。**API キーは DPAPI（CurrentUser）で暗号化**して保存。
 - 設定はターン毎に読まれるため、変更が即時反映されます。
 - **Copilot** は GitHub Device Flow でサインインし、トークン交換のうえ `api.githubcopilot.com` へ接続（非公式仕様のため E2E 未検証）。

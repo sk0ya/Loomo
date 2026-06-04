@@ -5,7 +5,9 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using sk0ya.Loomo.Ai.Http;
 using sk0ya.Loomo.Core.Models;
@@ -24,6 +26,12 @@ internal static class OllamaProtocol
     /// プレフィックスの KV キャッシュ（巨大なツール定義の prefill 結果）も失われて遅くなる。
     /// 既定 5 分より長く保ってセッション中の体感を安定させる。</summary>
     private const string KeepAlive = "30m";
+    private static readonly Regex LooseToolCall = new(
+        @"^\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{(?<body>.*)\}\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+    private static readonly Regex LooseProperty = new(
+        @"(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*""(?<value>(?:\\.|[^""\\])*)""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
     /// <summary>会話とツール定義から /api/chat リクエストボディを組み立てる。</summary>
     /// <param name="workspaceContext">毎ターン変わる「現在のフォルダ」等の揮発的な文脈。
@@ -227,6 +235,8 @@ internal static class OllamaProtocol
         [EnumeratorCancellation] CancellationToken ct)
     {
         body["stream"] = true;
+        var allowedToolNames = ToolNamesFromBody(body);
+        var mayUseTools = allowedToolNames.Count > 0;
 
         HttpResponseMessage? resp = null;
         AgentError? error = null;
@@ -306,7 +316,8 @@ internal static class OllamaProtocol
                     {
                         sawAnyModelOutput = true;
                         finalText.Append(content);
-                        yield return new TextDelta(content);
+                        if (!mayUseTools)
+                            yield return new TextDelta(content);
                     }
 
                     var calls = message["tool_calls"]?.AsArray();
@@ -328,6 +339,15 @@ internal static class OllamaProtocol
 
             if (midError is null)
             {
+                if (toolCalls.Count == 0 && mayUseTools)
+                {
+                    var contentToolCall = TryParseContentToolCall(finalText.ToString(), allowedToolNames);
+                    if (contentToolCall is not null)
+                        toolCalls.Add(contentToolCall);
+                    else if (finalText.Length > 0)
+                        yield return new TextDelta(finalText.ToString());
+                }
+
                 foreach (var tc in toolCalls)
                     yield return new ToolUseRequested(tc);
 
@@ -365,5 +385,88 @@ internal static class OllamaProtocol
         {
             return body;
         }
+    }
+
+    private static HashSet<string> ToolNamesFromBody(JsonObject body)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var tools = body["tools"]?.AsArray();
+        if (tools is null) return names;
+
+        foreach (var tool in tools)
+        {
+            var name = tool?["function"]?["name"]?.GetValue<string>();
+            if (!string.IsNullOrWhiteSpace(name))
+                names.Add(name);
+        }
+        return names;
+    }
+
+    private static ToolUse? TryParseContentToolCall(string content, IReadOnlySet<string> allowedToolNames)
+    {
+        var json = ExtractJsonObject(content);
+        if (json is null) return TryParseLooseToolCall(content, allowedToolNames);
+
+        JsonNode? node;
+        try { node = JsonNode.Parse(json); }
+        catch { return null; }
+
+        var obj = node as JsonObject;
+        if (obj is null) return null;
+
+        var fn = obj["function"] as JsonObject;
+        var name = fn?["name"]?.GetValue<string>() ?? obj["name"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(name) || !allowedToolNames.Contains(name))
+            return null;
+
+        var args = fn?["arguments"] ?? obj["arguments"];
+        var argsJson = args is null ? "{}" : args.ToJsonString();
+        return new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson);
+    }
+
+    private static ToolUse? TryParseLooseToolCall(string content, IReadOnlySet<string> allowedToolNames)
+    {
+        var match = LooseToolCall.Match(content.Trim());
+        if (!match.Success) return null;
+
+        var name = match.Groups["name"].Value;
+        if (!allowedToolNames.Contains(name)) return null;
+
+        var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match prop in LooseProperty.Matches(match.Groups["body"].Value))
+            props[prop.Groups["key"].Value] = Regex.Unescape(prop.Groups["value"].Value);
+
+        if (!props.TryGetValue("command", out var command) || string.IsNullOrWhiteSpace(command))
+            return null;
+
+        if (props.TryGetValue("arguments", out var argument) &&
+            !string.IsNullOrWhiteSpace(argument) &&
+            !command.Contains(' ', StringComparison.Ordinal))
+        {
+            command += " " + QuotePowerShellArgument(argument);
+        }
+
+        var argsJson = JsonSerializer.Serialize(new { command });
+        return new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson);
+    }
+
+    private static string QuotePowerShellArgument(string value)
+        => "'" + value.Replace("'", "''") + "'";
+
+    private static string? ExtractJsonObject(string content)
+    {
+        var text = content.Trim();
+        if (text.StartsWith("```", StringComparison.Ordinal))
+        {
+            var firstNewline = text.IndexOf('\n');
+            var lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
+            if (firstNewline >= 0 && lastFence > firstNewline)
+                text = text[(firstNewline + 1)..lastFence].Trim();
+        }
+
+        if (text.StartsWith('{') && text.EndsWith('}'))
+            return text;
+
+        return null;
     }
 }

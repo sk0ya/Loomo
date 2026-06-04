@@ -48,7 +48,7 @@ public class TraceAnalysisTests
         sink.Record("m", null, TraceKinds.SessionStarted, new { provider = "Local" });
         sink.Record("m", "t1", TraceKinds.TurnStarted, new { provider = "Local" });
         sink.Record("m", "t1", TraceKinds.AiMessage, new { fullText = "考え中" });
-        sink.Record("m", "t1", TraceKinds.SafetyEvaluated, new { tool = "run_command", blocked = true, reason = "danger" });
+        sink.Record("m", "t1", TraceKinds.SafetyEvaluated, new { tool = "pwsh", blocked = true, reason = "danger" });
         sink.Record("m", "t1", TraceKinds.ApprovalResolved, new { tool = "propose_edit", approved = true, waitMs = 1000 });
         sink.Record("m", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u1", name = "read_file", isError = false, durationMs = 100 });
         sink.Record("m", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u2", name = "read_file", isError = true, durationMs = 300 });
@@ -103,57 +103,21 @@ public class TraceAnalysisTests
         Assert.Equal(1, cross.SessionCount);
     }
 
-    [Fact]
-    public void ExtractRevisedPrompt_prefers_prompt_fence()
-    {
-        var report = "## 分析\n問題あり\n\n## 改訂システムプロンプト\n```prompt\n新しいプロンプト\n二行目\n```\n";
-        Assert.Equal("新しいプロンプト\n二行目", ImprovementAdvisor.ExtractRevisedPrompt(report));
-    }
-
-    [Fact]
-    public void ExtractRevisedPrompt_uses_fence_after_heading_ignoring_later_example()
-    {
-        // prompt タグ無しでも、見出し直後のフェンスを採り、後続の無関係なコード例には惑わされない。
-        var report = "## 改訂システムプロンプト\n```\n新プロンプト本文\n```\n## 補足\n```bash\nrm example\n```";
-        Assert.Equal("新プロンプト本文", ImprovementAdvisor.ExtractRevisedPrompt(report));
-    }
-
-    [Fact]
-    public void ExtractRevisedPrompt_uses_sole_fence()
-    {
-        var report = "本文\n```\nただ一つのプロンプト\n```\n結び";
-        Assert.Equal("ただ一つのプロンプト", ImprovementAdvisor.ExtractRevisedPrompt(report));
-    }
-
-    [Fact]
-    public void ExtractRevisedPrompt_returns_null_when_ambiguous_multiple_fences()
-    {
-        // タグも見出しも無く複数フェンス → 誤適用を避けて null。
-        var report = "本文\n```\nコード例\n```\n結び\n```\n別のコード\n```";
-        Assert.Null(ImprovementAdvisor.ExtractRevisedPrompt(report));
-    }
-
-    [Fact]
-    public void ExtractRevisedPrompt_returns_null_when_no_fence()
-    {
-        Assert.Null(ImprovementAdvisor.ExtractRevisedPrompt("フェンスなしの本文"));
-    }
-
     /// <summary>失敗ツール（引数つき）と記録エラーをサンプルとして抽出すること。</summary>
     [Fact]
     public async Task BuildFailureSamples_collects_failed_tools_and_errors()
     {
         var dir = TempDir();
         var sink = new JsonlTraceSink(dir);
-        sink.Record("f", "t1", TraceKinds.AiToolUse, new { toolUseId = "u1", name = "run_command", argsJson = "{\"command\":\"rm -rf /\"}" });
-        sink.Record("f", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u1", name = "run_command", isError = true, durationMs = 10 });
+        sink.Record("f", "t1", TraceKinds.AiToolUse, new { toolUseId = "u1", name = "pwsh", argsJson = "{\"command\":\"rm -rf /\"}" });
+        sink.Record("f", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u1", name = "pwsh", isError = true, durationMs = 10 });
         sink.Record("f", "t1", TraceKinds.Error, new { message = "解析失敗", where = "tool.args" });
         await sink.DisposeAsync();
 
         var samples = ImprovementAdvisor.BuildFailureSamples(new TraceReader(dir).Read("f"));
 
         Assert.Equal(2, samples.Count);
-        Assert.Contains(samples, s => s.Contains("run_command") && s.Contains("rm -rf /"));
+        Assert.Contains(samples, s => s.Contains("pwsh") && s.Contains("rm -rf /"));
         Assert.Contains(samples, s => s.Contains("解析失敗"));
 
         Directory.Delete(dir, recursive: true);

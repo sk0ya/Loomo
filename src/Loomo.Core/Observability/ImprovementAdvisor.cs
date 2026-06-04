@@ -4,7 +4,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
@@ -24,7 +23,7 @@ public sealed record AdvisorInput(
     IReadOnlyList<string> FailureSamples);
 
 /// <summary>
-/// トレース集計を AI 自身に渡し、エージェントループ・システムプロンプト・ツールの改善提案を
+/// トレース集計を AI 自身に渡し、エージェントループ・ツール運用の改善提案を
 /// 生成する（設計書 §20 の発展）。現在プロバイダのクライアントで一度きりの応答を取り、テキストを流す。
 /// <para>
 /// クライアントは共有 <c>AiSettings.SystemPrompt</c> を system ロールに注入するため、メタ指示は
@@ -73,50 +72,21 @@ public sealed class ImprovementAdvisor
             yield return "（提案を取得できませんでした。Ollama の設定や起動状態を確認してください。）";
     }
 
-    /// <summary>
-    /// レポートから改訂システムプロンプトを抽出する。誤適用（無関係なコード例をシステムプロンプトへ上書き）を
-    /// 避けるため、確度の高い順に：(1) ```prompt フェンス、(2)「改訂システムプロンプト」見出し以降の最初のフェンス、
-    /// (3) レポート全体でフェンスがちょうど1つのときのみそれ、を採る。曖昧なら null（提案なし）。
-    /// </summary>
-    public static string? ExtractRevisedPrompt(string report)
-    {
-        if (string.IsNullOrEmpty(report)) return null;
-
-        const string fence = "```[^\\n]*\\n(.*?)```";
-
-        // (1) ```prompt ... ``` を最優先。
-        var tagged = Regex.Match(report, "```prompt\\s*\\n(.*?)```", RegexOptions.Singleline);
-        if (tagged.Success) return tagged.Groups[1].Value.Trim('\n', '\r');
-
-        // (2) 「改訂システムプロンプト」見出し以降に現れる最初のコードフェンス。
-        var headingIdx = report.IndexOf("改訂システムプロンプト", StringComparison.Ordinal);
-        if (headingIdx >= 0)
-        {
-            var after = Regex.Match(report[headingIdx..], fence, RegexOptions.Singleline);
-            if (after.Success) return after.Groups[1].Value.Trim('\n', '\r');
-        }
-
-        // (3) フェンスが1つだけなら採用。複数あって判別できない場合は推測せず null。
-        var fences = Regex.Matches(report, fence, RegexOptions.Singleline);
-        return fences.Count == 1 ? fences[0].Groups[1].Value.Trim('\n', '\r') : null;
-    }
-
     private static string BuildPrompt(AdvisorInput input)
     {
         var sb = new StringBuilder();
         sb.AppendLine("あなたはAIエージェント「Loomo」の動作ログを解析する改善アドバイザーです。");
-        sb.AppendLine("以下の『現在のシステムプロンプト』『ツール一覧』『動作メトリクス』『失敗サンプル』をもとに、");
-        sb.AppendLine("エージェントループ・システムプロンプト・ツールの使われ方の問題点を診断し、具体的な改善案を日本語で示してください。");
+        sb.AppendLine("以下の『固定システムプロンプト』『ツール一覧』『動作メトリクス』『失敗サンプル』をもとに、");
+        sb.AppendLine("エージェントループ・ツールの使われ方・実装上の問題点を診断し、具体的な改善案を日本語で示してください。");
+        sb.AppendLine("システムプロンプトはユーザー設定として編集できない固定値です。改訂版の全文は出力しないでください。");
         sb.AppendLine("これはメタ解析タスクです。ツールは一切呼び出さず、必ずテキスト（Markdown）だけで回答してください。");
         sb.AppendLine();
         sb.AppendLine("出力は次の Markdown 構成にしてください：");
         sb.AppendLine("## 分析 … メトリクスから読み取れる傾向・問題点");
-        sb.AppendLine("## 推奨 … エージェントループ/ツール運用の具体的な改善提案（箇条書き）");
-        sb.AppendLine("## 改訂システムプロンプト … 改善を反映した完成版の全文を ```prompt フェンスで囲んで出力");
-        sb.AppendLine("（改訂が不要なら理由を述べ、フェンスには現行プロンプトをそのまま入れてください）");
+        sb.AppendLine("## 推奨 … エージェントループ/ツール運用/実装の具体的な改善提案（箇条書き）");
         sb.AppendLine();
         sb.AppendLine("---");
-        sb.AppendLine("# 現在のシステムプロンプト");
+        sb.AppendLine("# 固定システムプロンプト");
         sb.AppendLine(input.CurrentSystemPrompt);
         sb.AppendLine();
         sb.AppendLine("# ツール一覧");

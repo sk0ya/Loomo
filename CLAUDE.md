@@ -46,12 +46,12 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
 
 ### Tools — `Loomo.Core/Tools/`
 
-The agent is given **exactly one tool: `run_command`** (`Tools/Implementations/TerminalTools.cs`), which runs a
+The agent is given **exactly one tool: `pwsh`** (`Tools/Implementations/TerminalTools.cs`), which runs a
 PowerShell command line and returns stdout + exit code. Reads, search, listing, file creation and editing are
 all expressed as PowerShell (`Get-Content` / `Select-String` / `Get-ChildItem` / `Set-Content`); the system
 prompt (`AiSettings.DefaultSystemPrompt`) tells the model so. **Why one tool:** on small CPU-only local LLMs the
 per-turn prefill of the tool-definition block dominates latency (~21s for ~12 tools vs ~2.4s for one), so the
-set was collapsed to `run_command`. `ArgHelper` (`Implementations/ArgHelper.cs`) is the shared JSON-arg reader.
+set was collapsed to `pwsh`. `ArgHelper` (`Implementations/ArgHelper.cs`) is the shared JSON-arg reader.
 `RunCommandTool.RequiresApproval` is true, so every command (reads included) shows an approval card unless
 AutoApprove — `DescribeInvocation` renders the command string. `ToolRegistry` aggregates whatever `IAgentTool`s
 are registered in `App.xaml.cs`; add a tool by implementing `IAgentTool` and registering it there.
@@ -63,9 +63,9 @@ The `IWorkspaceService` / `IEditorService` / `IBrowserService` adapters still ex
 
 ### Safety — `Loomo.Core/Safety/`
 
-`AgentOrchestrator` calls `ISafetyPolicy.Evaluate` **before** every tool execution. `run_command` is matched
+`AgentOrchestrator` calls `ISafetyPolicy.Evaluate` **before** every tool execution. `pwsh` is matched
 against `BlockedCommandPatterns` regexes; a block is returned to the AI as a tool error (never executed).
-Approval cards are shown only when `tool.RequiresApproval && !AutoApprove` (`run_command` always requires it).
+Approval cards are shown only when `tool.RequiresApproval && !AutoApprove` (`pwsh` always requires it).
 `BlockedCommandPatterns` is the **only** workspace-scope guard now that file ops go through the shell rather
 than `IWorkspaceService.ResolvePath` (which still exists for the UI). `SafetySettings` lives on `AiSettings.Safety`
 and is DI-shared as a singleton.
@@ -98,14 +98,14 @@ Ollama request and the history-trim budget (`SettingsContextWindowPolicy` caps t
 silently truncates context the trimmer thought it kept.
 
 `ModelProfile` also carries `StyleGuidance` (kept in the **stable** system prefix; phi4-mini uses it for a
-conciseness nudge). Note the agent only ever has the single `run_command` tool (see Tools), so the per-turn
+conciseness nudge). Note the agent only ever has the single `pwsh` tool (see Tools), so the per-turn
 tool-definition payload is already minimal — this is what cut first-turn prefill from ~21s (≈12 tools) to
 ~2.4s on CPU.
 
 **Prompt-prefix caching (perf-critical)** — Ollama reuses the KV cache for the longest byte-identical prompt
 *prefix* (system + tools), so re-prefilling the large tool-definition block (~16s on CPU-only machines) is
 paid once instead of every turn. Two invariants protect this in `OllamaClient`/`OllamaProtocol.BuildRequest`:
-the system prompt must stay byte-stable across a session (only `SystemPrompt` + `profile.StyleGuidance` — both
+the system prompt must stay byte-stable across a session (`AiSettings.DefaultSystemPrompt` + `profile.StyleGuidance` — both
 constant), and **volatile per-turn context (the "current folder" from `WorkspaceContext.Describe`) is appended
 to the last *user* message, never the system prompt** — putting it in `system` busts the cache and re-pays the
 prefill every turn (measured 16s→0.8s on turn 2 once moved). `BuildRequest` also sends `keep_alive` ("30m") so
@@ -121,7 +121,7 @@ are E2E-unverified.
 
 ### Persistence
 
-`%APPDATA%/Loomo/` holds `settings.json` (provider/model/key/BaseUrl/MaxTokens/SystemPrompt + Safety) and
+`%APPDATA%/Loomo/` holds `settings.json` (provider/model/key/BaseUrl/MaxTokens + Safety; legacy SystemPrompt is ignored) and
 `sessions/*.json`. **API keys are DPAPI-encrypted (CurrentUser)** — classes touching this are
 `[SupportedOSPlatform("windows")]`. Sessions auto-save in the turn-completion `finally`; restore via the
 Sessions panel (`ConversationStore` raises a `Changed` event).

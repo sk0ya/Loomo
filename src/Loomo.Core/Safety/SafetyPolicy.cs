@@ -6,7 +6,7 @@ namespace sk0ya.Loomo.Core.Safety;
 
 /// <summary>
 /// <see cref="SafetySettings"/> に基づく既定の安全ポリシー実装。
-/// run_command の引数を危険コマンドのブロックリストと照合する。
+/// pwsh（PowerShell 実行）の引数を危険コマンドのブロックリストと照合する。
 /// 設定インスタンスを保持し、評価のたびに最新値を読むため設定変更が即時反映される。
 /// </summary>
 public sealed class SafetyPolicy : ISafetyPolicy
@@ -19,7 +19,7 @@ public sealed class SafetyPolicy : ISafetyPolicy
 
     public SafetyDecision Evaluate(string toolName, JsonElement arguments)
     {
-        if (toolName != "run_command") return SafetyDecision.Allow;
+        if (toolName != "pwsh") return SafetyDecision.Allow;
 
         var command = ExtractString(arguments, "command");
         if (string.IsNullOrWhiteSpace(command)) return SafetyDecision.Allow;

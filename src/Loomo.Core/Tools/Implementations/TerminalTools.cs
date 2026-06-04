@@ -6,20 +6,22 @@ using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Core.Tools.Implementations;
 
-/// <summary>ターミナルでコマンドを実行する。</summary>
-public sealed class RunCommandTool : IAgentTool
+/// <summary>PowerShell（pwsh）でコマンドを実行する唯一のエージェントツール。
+/// 読み取り・検索・一覧・作成・編集も全てこのツール経由の PowerShell コマンドで行う。</summary>
+public sealed class PwshTool : IAgentTool
 {
     private readonly ITerminalService _terminal;
-    public RunCommandTool(ITerminalService terminal) => _terminal = terminal;
+    public PwshTool(ITerminalService terminal) => _terminal = terminal;
 
-    public string Name => "run_command";
+    public string Name => "pwsh";
     public bool RequiresApproval => true;   // コマンド実行なので承認必須
 
     public ToolDefinition Definition => new(
         Name,
-        "ワークスペースのターミナルでシェルコマンドを実行し、標準出力と終了コードを返す。",
+        "PowerShell コマンドを実行し、標準出力と終了コードを返す。"
+        + "ファイルの読み取り・検索・一覧・作成・編集も全てこのツールで PowerShell コマンドとして行う。",
         ToolDefinition.ObjectSchema(
-            ("command", "string", "実行するコマンド行。", true)));
+            ("command", "string", "実行する PowerShell コマンド行。", true)));
 
     public string DescribeInvocation(JsonElement args) => $"$ {args.GetString("command")}";
 

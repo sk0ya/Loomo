@@ -18,7 +18,7 @@ public class ConversationStoreTests
         var conv = new Conversation();
         conv.AddUser("ビルドして");
         var assistant = new ChatMessage { Role = ChatRole.Assistant, Text = "了解しました" };
-        assistant.ToolUses.Add(new ToolUse("t1", "run_command", "{\"command\":\"dotnet build\"}"));
+        assistant.ToolUses.Add(new ToolUse("t1", "pwsh", "{\"command\":\"dotnet build\"}"));
         conv.Messages.Add(assistant);
         var toolMsg = new ChatMessage { Role = ChatRole.Tool };
         toolMsg.ToolResults.Add(new ToolResultMessage("t1", "成功", IsError: false));
@@ -34,7 +34,7 @@ public class ConversationStoreTests
         var a = loaded.Conversation.Messages[1];
         Assert.Equal("了解しました", a.Text);
         Assert.Single(a.ToolUses);
-        Assert.Equal("run_command", a.ToolUses[0].Name);
+        Assert.Equal("pwsh", a.ToolUses[0].Name);
         Assert.Equal("成功", loaded.Conversation.Messages[2].ToolResults[0].Content);
     }
 

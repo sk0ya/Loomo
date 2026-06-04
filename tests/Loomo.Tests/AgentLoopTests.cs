@@ -85,7 +85,7 @@ public class AgentLoopTests
         // assistant(tool_use) → tool(result) のペアの「途中」で切れても、
         // 先頭が tool_result にならない（user まで前方に詰める）こと。
         var big = new string('x', 8000);
-        var use = new ToolUse("id1", "run_command", "{}");
+        var use = new ToolUse("id1", "pwsh", "{}");
         var msgs = new List<ChatMessage>
         {
             User("古い"),                                            // 0

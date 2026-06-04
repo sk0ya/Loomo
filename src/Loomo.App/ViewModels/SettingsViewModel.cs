@@ -15,7 +15,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>設定パネル（Ollama モデル・エンドポイント等）の ViewModel。
 /// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
-/// システムプロンプト・危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
+/// 危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
 /// 編集する（<see cref="IEditorService.OpenDocumentAsync"/>。保存=:w 時にコールバックで即時反映）。</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -102,7 +102,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // 安全設計を書き戻す（同一インスタンスなので即時反映される）
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
-        // システムプロンプト・危険コマンド一覧はエディタでの保存（:w）時に即時反映するため、ここでは扱わない。
+        // 危険コマンド一覧はエディタでの保存（:w）時に即時反映するため、ここでは扱わない。
 
         try
         {
@@ -180,33 +180,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>システムプロンプトを中央のエディタペインで開く。保存（:w）で settings.json へ即時反映。</summary>
-    [RelayCommand]
-    private async Task EditSystemPromptAsync()
-    {
-        await _editor.OpenDocumentAsync(new EditorDocument
-        {
-            FileName = "loomo-system-prompt.md",
-            Content = _settings.SystemPrompt,
-            OnSaved = text =>
-            {
-                _settings.SystemPrompt = text.Trim();
-                PersistAndNotify("システムプロンプトを保存しました");
-            }
-        });
-        Status = "システムプロンプトをエディタで開きました。編集して保存（:w）すると反映されます。";
-    }
-
-    /// <summary>システムプロンプトを既定値に戻す（確認のうえ即時反映）。</summary>
-    [RelayCommand]
-    private void ResetSystemPrompt()
-    {
-        if (!Confirm("システムプロンプトを既定値に戻します。現在の内容は失われます。よろしいですか？"))
-            return;
-        _settings.SystemPrompt = AiSettings.DefaultSystemPrompt;
-        PersistAndNotify("システムプロンプトを既定値に戻しました");
-    }
-
     /// <summary>危険コマンドのブロックリストを既定値に戻す（確認のうえ即時反映）。</summary>
     [RelayCommand]
     private void ResetBlockedCommands()
@@ -233,7 +206,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task EditBlockedCommandsAsync()
     {
         const string header =
-            "# ブロックする危険コマンド（run_command の照合に使用）\n" +
+            "# ブロックする危険コマンド（pwsh の照合に使用）\n" +
             "# ・1行に1つ、正規表現で記述します（大文字小文字は無視）。\n" +
             "# ・'#' で始まる行と空行は無視されます。\n" +
             "\n";

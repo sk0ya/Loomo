@@ -44,18 +44,6 @@
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
 
-                <!-- システムプロンプト（中央のエディタ領域で編集） -->
-                <TextBlock Style="{StaticResource FieldLabel}" Text="システムプロンプト" />
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
-                            Command="{Binding EditSystemPromptCommand}" />
-                    <Button Content="デフォルトに戻す" Style="{StaticResource FlatButton}"
-                            Margin="6,0,0,0" Command="{Binding ResetSystemPromptCommand}" />
-                </StackPanel>
-                <TextBlock Text="中央のエディタペインで開きます。保存（:w）すると即時反映されます。"
-                           Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
-
                 <!-- 安全設計（§10） -->
                 <Separator Margin="0,14,0,8" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="安全設計" />

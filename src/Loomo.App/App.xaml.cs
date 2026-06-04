@@ -76,10 +76,10 @@ public partial class App : Application
             sp.GetRequiredService<AiSettings>()));
 
         // --- ツール ---
-        // エージェントには run_command（PowerShell 実行）1 つだけを渡す。読み取り・検索・編集も
+        // エージェントには pwsh（PowerShell 実行）1 つだけを渡す。読み取り・検索・編集も
         // 全て PowerShell コマンドで行わせる。小型ローカルLLM（CPU 実行）ではツール定義の prefill が
         // 支配的なため、定義を最小化して応答を高速化する狙い。
-        services.AddSingleton<IAgentTool, RunCommandTool>();
+        services.AddSingleton<IAgentTool, PwshTool>();
         services.AddSingleton<ToolRegistry>();
 
         // --- 観測性（§20）：AI操作トレースを JSONL に記録。設定で無効化（オプトアウト）可。 ---

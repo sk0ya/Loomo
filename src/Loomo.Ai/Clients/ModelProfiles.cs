@@ -68,12 +68,10 @@ public static class ModelProfiles
         SupportsThinking = false,
         NumCtx = 16384,
         Sampling = new(Temperature: 0.8, TopP: 0.95, RepeatPenalty: 1.05),
-        // phi4-mini は冗長・繰り返しになりやすいので、簡潔さを促す指示を毎ターン添える。
+        // phi4-mini は冗長・繰り返しになりやすいので、短いスタイル指示だけを添える。
+        // tool calling の行動規則は既定システムプロンプト側へ集約する。
         StyleGuidance =
-            "\n\n# 応答スタイル\n" +
-            "- 結論を先に、最小限の言葉で答える。前置き・自己説明・要約の繰り返しは書かない。\n" +
-            "- 質問に直接関係することだけを述べ、同じ内容を言い換えて繰り返さない。\n" +
-            "- 箇条書きは必要な項目だけにし、各項目は1行に収める。",
+            "\n\nphi4-mini向け: 前置き、自己説明、同じ内容の繰り返しを避ける。",
     };
 
     /// <summary>

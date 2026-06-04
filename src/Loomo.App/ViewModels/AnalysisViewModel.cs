@@ -4,12 +4,10 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Agent;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Tools;
 
@@ -46,20 +44,17 @@ public sealed record MetricRow(string Label, string Value);
 
 /// <summary>
 /// AIログ分析パネルの ViewModel（観測性 Phase B + AI改善提案）。
-/// トレースを集計してメトリクスを表示し、AIに改善提案（システムプロンプト改訂案）を生成させて反映する。
+/// トレースを集計してメトリクスを表示し、AIに改善提案を生成させる。
 /// </summary>
 public sealed partial class AnalysisViewModel : ObservableObject
 {
     private readonly TraceReader _reader;
     private readonly ImprovementAdvisor _advisor;
     private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
     private readonly ToolRegistry _tools;
     private readonly ConversationStore _conversations;
 
     private CancellationTokenSource? _cts;
-    private string? _proposedPrompt;
-    private string? _backupPrompt;
     private bool _suspendRecompute;   // 一括選択変更中の再集計を抑止
 
     // 選択変更のたびに同じトレースを読み直さないためのキャッシュ（Refresh で破棄）。
@@ -68,14 +63,11 @@ public sealed partial class AnalysisViewModel : ObservableObject
     public ObservableCollection<SelectableSession> Sessions { get; } = new();
     public ObservableCollection<MetricRow> Metrics { get; } = new();
     public ObservableCollection<ToolStat> ToolStats { get; } = new();
-    public ObservableCollection<DiffLineVm> PromptDiff { get; } = new();
 
     [ObservableProperty] private string _reportText = "";
     [ObservableProperty] private bool _hasReport;
     [ObservableProperty] private bool _hasToolStats;
     [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private bool _hasProposedPrompt;
-    [ObservableProperty] private bool _canUndo;
     [ObservableProperty] private string _statusText = "";
 
     public AnalysisViewModel(
@@ -89,7 +81,6 @@ public sealed partial class AnalysisViewModel : ObservableObject
         _reader = reader;
         _advisor = advisor;
         _settings = settings;
-        _store = store;
         _tools = tools;
         _conversations = conversations;
         Refresh();
@@ -222,15 +213,12 @@ public sealed partial class AnalysisViewModel : ObservableObject
     {
         IsBusy = true;
         ReportText = "";
-        ClearProposal();
         _cts = new CancellationTokenSource();
         try
         {
             var input = BuildAdvisorInput();
             await foreach (var chunk in _advisor.AnalyzeAsync(input, _cts.Token))
                 ReportText += chunk;
-
-            BuildPromptDiff();
         }
         catch (OperationCanceledException)
         {
@@ -282,85 +270,6 @@ public sealed partial class AnalysisViewModel : ObservableObject
         }
     }
 
-    private void BuildPromptDiff()
-    {
-        var revised = ImprovementAdvisor.ExtractRevisedPrompt(ReportText);
-        if (string.IsNullOrWhiteSpace(revised) || revised.Trim() == _settings.SystemPrompt.Trim())
-            return;
-
-        _proposedPrompt = revised;
-        var unified = DiffUtil.ToUnifiedText(DiffUtil.Compute(_settings.SystemPrompt, revised));
-        BuildDiffLines(unified);
-        HasProposedPrompt = true;
-    }
-
-    private void BuildDiffLines(string unified)
-    {
-        PromptDiff.Clear();
-        foreach (var raw in unified.Replace("\r\n", "\n").Split('\n'))
-        {
-            if (raw.Length == 0) { PromptDiff.Add(new DiffLineVm(DiffLineKind.Context, "")); continue; }
-            var (kind, text) = raw[0] switch
-            {
-                '+' => (DiffLineKind.Added, raw[1..]),
-                '-' => (DiffLineKind.Removed, raw[1..]),
-                '⋯' => (DiffLineKind.Gap, raw[1..]),
-                ' ' => (DiffLineKind.Context, raw[1..]),
-                _ => (DiffLineKind.Context, raw)
-            };
-            PromptDiff.Add(new DiffLineVm(kind, text));
-        }
-    }
-
-    private bool CanApply() => HasProposedPrompt && !string.IsNullOrEmpty(_proposedPrompt);
-
-    [RelayCommand(CanExecute = nameof(CanApply))]
-    private void ApplyPrompt()
-    {
-        if (_proposedPrompt is null) return;
-        _backupPrompt = _settings.SystemPrompt;
-        _settings.SystemPrompt = _proposedPrompt;
-        if (TrySave())
-        {
-            CanUndo = true;
-            StatusText = "システムプロンプトを反映しました";
-        }
-    }
-
-    private bool CanUndoApply() => CanUndo && _backupPrompt is not null;
-
-    [RelayCommand(CanExecute = nameof(CanUndoApply))]
-    private void UndoPrompt()
-    {
-        if (_backupPrompt is null) return;
-        _settings.SystemPrompt = _backupPrompt;
-        if (TrySave())
-        {
-            CanUndo = false;
-            StatusText = "システムプロンプトを元に戻しました";
-        }
-    }
-
-    private bool TrySave()
-    {
-        try { _store.Save(_settings); return true; }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"設定の保存に失敗しました: {ex.Message}", "Loomo",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return false;
-        }
-    }
-
-    private void ClearProposal()
-    {
-        HasProposedPrompt = false;
-        _proposedPrompt = null;
-        PromptDiff.Clear();
-    }
-
     partial void OnReportTextChanged(string value) => HasReport = !string.IsNullOrEmpty(value);
     partial void OnIsBusyChanged(bool value) => AnalyzeCommand.NotifyCanExecuteChanged();
-    partial void OnHasProposedPromptChanged(bool value) => ApplyPromptCommand.NotifyCanExecuteChanged();
-    partial void OnCanUndoChanged(bool value) => UndoPromptCommand.NotifyCanExecuteChanged();
 }
