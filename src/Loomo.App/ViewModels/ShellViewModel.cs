@@ -71,9 +71,14 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowAnalysis() => Activate(SidebarPanel.Analysis);
 
-    /// <summary>ActivityBar の設定アイコン。</summary>
+    /// <summary>ActivityBar の設定アイコン。開くときに Ollama のモデル一覧を自動取得する。</summary>
     [RelayCommand]
-    private void ShowSettings() => Activate(SidebarPanel.Settings);
+    private void ShowSettings()
+    {
+        Activate(SidebarPanel.Settings);
+        if (ActivePanel == SidebarPanel.Settings && IsSidebarVisible)
+            Settings.EnsureModelsLoaded();
+    }
 
     /// <summary>ActivityBar の外観（テーマ）アイコン。</summary>
     [RelayCommand]

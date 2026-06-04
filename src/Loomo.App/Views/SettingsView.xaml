@@ -25,7 +25,7 @@
                             Command="{Binding FetchModelsCommand}"
                             IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}" />
                 </Grid>
-                <TextBlock Text="「再取得」で固定ローカル Ollama から候補を取得します。一覧に無いモデルは直接入力も可。"
+                <TextBlock Text="開くと Ollama から候補を自動取得します（「再取得」で更新）。一覧に無いモデルは直接入力も可。"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
 

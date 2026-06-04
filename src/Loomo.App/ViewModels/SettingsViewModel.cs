@@ -102,6 +102,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>設定パネルを開いたときに呼ぶ。まだ候補が無ければ Ollama から自動取得する
+    /// （取得済み／取得中なら何もしない）。手動更新は「再取得」ボタンで行える。</summary>
+    public void EnsureModelsLoaded()
+    {
+        if (IsFetchingModels || AvailableModels.Count > 0) return;
+        _ = FetchModelsCoreAsync(autoOpen: false);
+    }
+
     /// <summary>手動の「再取得」ボタン。取得後に候補ドロップダウンを開いて見せる。</summary>
     [RelayCommand]
     private Task FetchModelsAsync() => FetchModelsCoreAsync(autoOpen: true);
