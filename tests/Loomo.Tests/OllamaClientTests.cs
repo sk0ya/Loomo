@@ -204,6 +204,39 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public void BuildRequest_keeps_system_prompt_stable_and_appends_workspace_context_to_last_user_message()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("これは何？");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "phi4-mini", 1024, "SYSTEM",
+            includeTools: true, wantThink: false, numCtxOverride: 0,
+            workspaceContext: "\n\n# 現在のフォルダ\nルート: C:\\proj");
+
+        var messages = body["messages"]!.AsArray();
+        var system = messages.First(m => m?["role"]?.GetValue<string>() == "system")!["content"]!.GetValue<string>();
+        var user = messages.Last(m => m?["role"]?.GetValue<string>() == "user")!["content"]!.GetValue<string>();
+
+        // 揮発的な文脈は system（安定プレフィックス）には載らず、末尾 user メッセージへ添えられる。
+        Assert.DoesNotContain("現在のフォルダ", system);
+        Assert.StartsWith("これは何？", user);
+        Assert.Contains("現在のフォルダ", user);
+    }
+
+    [Fact]
+    public void BuildRequest_sends_keep_alive_to_keep_model_and_cache_warm()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("やあ");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "phi4-mini", 1024, "system");
+
+        Assert.Equal("30m", body["keep_alive"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void BuildRequest_num_ctx_override_takes_precedence_over_profile()
     {
         var conversation = new Conversation();

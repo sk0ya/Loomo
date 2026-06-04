@@ -77,16 +77,16 @@ ActivityBar のアイコンでサイドバーのパネル（Explorer / Sessions 
 
 ## エージェントツール
 
-エージェントが function calling で利用できるツール:
+エージェントが function calling で利用できるツールは **`run_command`（PowerShell 実行）1 つだけ** です。
+ファイルの読み取り・検索・一覧・作成・編集も全て PowerShell コマンド（`Get-Content` / `Select-String` /
+`Get-ChildItem` / `Set-Content` など）で行います。
 
 | ツール | 説明 |
 |------|------|
-| `list_directory` | ディレクトリ一覧の取得 |
-| `read_file` | ファイル読み取り |
-| `get_selection` | エディタの選択範囲取得 |
-| `run_command` | 可視ターミナルでのコマンド実行 |
-| `open_in_editor` | エディタでファイルを開く |
-| `propose_edit` | 編集提案（統合差分を承認カードで色分け表示し、承認後に適用） |
+| `run_command` | 可視ターミナルで PowerShell コマンドを実行し、標準出力と終了コードを返す |
+
+> ツールを 1 つに絞っているのは、CPU 実行の小型ローカル LLM ではツール定義の前処理（prefill）が
+> 応答時間を支配するためです。定義を最小化することで初回応答を大きく短縮しています。
 
 ## AI プロバイダ設定
 

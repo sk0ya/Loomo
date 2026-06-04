@@ -47,12 +47,17 @@ public sealed class OllamaClient : IAiClient
         // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
         await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
 
-        // 設定のシステムプロンプトに、その時点の「現在のフォルダ」情報と、モデル固有のスタイル指示
-        // （冗長になりやすいモデルへの簡潔化指示など）を動的に添える（設定値そのものは書き換えない）。
-        var systemPrompt = _settings.SystemPrompt + WorkspaceContext.Describe(_workspace) + profile.StyleGuidance;
+        // システムプロンプトは会話を通じて安定させる（ユーザー設定＋モデル固有のスタイル指示のみ）。
+        // Ollama は system＋tools の巨大プレフィックスの KV キャッシュを再利用するため、ここに毎ターン
+        // 変わる内容を混ぜると prefill（CPU 実行では支配的・約40秒）を毎回払い直すことになる。
+        var systemPrompt = _settings.SystemPrompt + profile.StyleGuidance;
+
+        // 「現在のフォルダ」情報は毎ターン変わり得るので、安定プレフィックスではなく最新メッセージ末尾へ添える。
+        var workspaceContext = WorkspaceContext.Describe(_workspace);
 
         System.Text.Json.Nodes.JsonObject Build(bool includeTools) => OllamaProtocol.BuildRequest(
-            conversation, tools, cfg.Model, cfg.MaxTokens, systemPrompt, includeTools, wantThink, cfg.NumCtx);
+            conversation, tools, cfg.Model, cfg.MaxTokens, systemPrompt, includeTools, wantThink, cfg.NumCtx,
+            workspaceContext);
 
         // プロファイルが tools 非対応とするモデルには最初からツールを送らない（無駄な往復を避ける）。
         // 未知モデルで誤って送ってしまった場合のみ、先頭イベントの「ツール非対応」エラーを見て

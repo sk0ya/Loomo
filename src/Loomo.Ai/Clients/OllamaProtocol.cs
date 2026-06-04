@@ -20,7 +20,15 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// </summary>
 internal static class OllamaProtocol
 {
+    /// <summary>モデルをメモリに常駐させ続ける時間。ターン間で再ロードされると毎回コールド起動になり、
+    /// プレフィックスの KV キャッシュ（巨大なツール定義の prefill 結果）も失われて遅くなる。
+    /// 既定 5 分より長く保ってセッション中の体感を安定させる。</summary>
+    private const string KeepAlive = "30m";
+
     /// <summary>会話とツール定義から /api/chat リクエストボディを組み立てる。</summary>
+    /// <param name="workspaceContext">毎ターン変わる「現在のフォルダ」等の揮発的な文脈。
+    /// システムプロンプト（安定プレフィックス）には載せず、最新ユーザーメッセージの末尾へ添える。
+    /// これにより system＋tools の巨大プレフィックスの KV キャッシュが再利用され prefill が省ける。</param>
     public static JsonObject BuildRequest(
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools,
@@ -29,9 +37,10 @@ internal static class OllamaProtocol
         string systemPrompt,
         bool includeTools = true,
         bool wantThink = false,
-        int numCtxOverride = 0)
+        int numCtxOverride = 0,
+        string workspaceContext = "")
     {
-        // モデル別プロファイルで tools / thinking / サンプリング / num_ctx を最適化する。
+        // モデル別プロファイルで thinking / サンプリング / num_ctx を最適化する。
         var profile = ModelProfiles.Resolve(model);
         var thinking = wantThink && profile.SupportsThinking;
         // 呼び出し側が許可していても、モデルが tools 非対応なら送らない（送るとエラーになる）。
@@ -52,12 +61,17 @@ internal static class OllamaProtocol
         // ツール結果メッセージに tool_name を添えるため、tool_use の id→name を覚えておく。
         var toolNameById = new Dictionary<string, string>(StringComparer.Ordinal);
 
+        // 揮発的な workspaceContext を末尾へ添える対象（最新の user メッセージ）。
+        JsonObject? lastUserMsg = null;
+
         foreach (var m in conversation.Messages)
         {
             switch (m.Role)
             {
                 case ChatRole.User:
-                    messages.Add(new JsonObject { ["role"] = "user", ["content"] = m.Text ?? "" });
+                    var userMsg = new JsonObject { ["role"] = "user", ["content"] = m.Text ?? "" };
+                    messages.Add(userMsg);
+                    lastUserMsg = userMsg;
                     break;
 
                 case ChatRole.Assistant:
@@ -114,6 +128,16 @@ internal static class OllamaProtocol
             }
         }
 
+        // 揮発的な文脈は安定プレフィックス（system）ではなく最新 user メッセージ末尾へ。
+        // system＋tools のプレフィックスが byte 安定になり、Ollama がその KV キャッシュを再利用できる。
+        if (!string.IsNullOrEmpty(workspaceContext))
+        {
+            if (lastUserMsg is not null)
+                lastUserMsg["content"] = (lastUserMsg["content"]?.GetValue<string>() ?? "") + workspaceContext;
+            else
+                messages.Add(new JsonObject { ["role"] = "user", ["content"] = workspaceContext });
+        }
+
         var options = new JsonObject { ["num_predict"] = maxTokens };
         // 実効コンテキスト窓（設定の上書き優先・無ければプロファイル既定）。トリム予算もこの値に揃える。
         var numCtx = numCtxOverride > 0 ? numCtxOverride : profile.NumCtx;
@@ -131,6 +155,9 @@ internal static class OllamaProtocol
         // think は常に送る。thinking は (wantThink && SupportsThinking) なので非対応モデルへ true が行くことはなく、
         // オフ時の think:false はどのモデルでも無害で、既定で思考する未知モデルも確実に黙らせられる。
         body["think"] = thinking;
+
+        // モデルを常駐させ、ターン間の再ロードとプレフィックス KV キャッシュの喪失を防ぐ。
+        body["keep_alive"] = KeepAlive;
 
         if (sendTools && tools.Count > 0)
         {

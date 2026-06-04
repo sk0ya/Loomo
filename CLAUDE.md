@@ -46,26 +46,29 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
 
 ### Tools — `Loomo.Core/Tools/`
 
-`IAgentTool` implementations in `Tools/Implementations/` (`WorkspaceTools`, `EditorTools`, `TerminalTools`,
-`BrowserTools`). Designed for small local LLMs, so the set favors **bulk-retrieval + text-anchored editing**
-over many fine-grained steps: read/search = `get_project_tree` (whole tree in one call; skips generated dirs
-and, when the root is a git repo, anything `.gitignore`d via batched `git check-ignore`), `find_files`,
-`search_files`, `read_file`, `get_selection`; editing an existing file = `replace_text_once` (single unique
-match) or `apply_patch` (multiple SEARCH/REPLACE blocks) — there is **no line-number-based edit**; new files
-= `create_file` (errors if the file exists); plus `open_in_editor`, `get_selection_text`, `replace_selection`,
-`run_command`, and the `browser_*` tools (`browser_list_clickables` returns ready-to-use CSS selectors so the
-model never guesses them). Each is registered individually in DI and aggregated by `ToolRegistry`.
-`DescribeInvocation` produces the human summary shown on the approval card (the editing tools return a unified
-diff, expanded to a colored card by `AiBarViewModel.IsDiffTool`). Add a new tool by implementing `IAgentTool`
-and registering it in `App.xaml.cs`.
+The agent is given **exactly one tool: `run_command`** (`Tools/Implementations/TerminalTools.cs`), which runs a
+PowerShell command line and returns stdout + exit code. Reads, search, listing, file creation and editing are
+all expressed as PowerShell (`Get-Content` / `Select-String` / `Get-ChildItem` / `Set-Content`); the system
+prompt (`AiSettings.DefaultSystemPrompt`) tells the model so. **Why one tool:** on small CPU-only local LLMs the
+per-turn prefill of the tool-definition block dominates latency (~21s for ~12 tools vs ~2.4s for one), so the
+set was collapsed to `run_command`. `ArgHelper` (`Implementations/ArgHelper.cs`) is the shared JSON-arg reader.
+`RunCommandTool.RequiresApproval` is true, so every command (reads included) shows an approval card unless
+AutoApprove — `DescribeInvocation` renders the command string. `ToolRegistry` aggregates whatever `IAgentTool`s
+are registered in `App.xaml.cs`; add a tool by implementing `IAgentTool` and registering it there.
+
+Trade-off of the single-tool design: there is no structured editing tool and therefore **no diff approval
+card** (the model edits via shell), no in-app browser automation, and the per-tool `ResolvePath`
+workspace-root confinement no longer guards file writes — only `BlockedCommandPatterns` (see Safety) does.
+The `IWorkspaceService` / `IEditorService` / `IBrowserService` adapters still exist and back the UI panes.
 
 ### Safety — `Loomo.Core/Safety/`
 
 `AgentOrchestrator` calls `ISafetyPolicy.Evaluate` **before** every tool execution. `run_command` is matched
 against `BlockedCommandPatterns` regexes; a block is returned to the AI as a tool error (never executed).
-Approval cards are shown only when `tool.RequiresApproval && !AutoApprove`. Path-traversal is prevented by
-`IWorkspaceService.ResolvePath` (throws `UnauthorizedAccessException` outside the workspace root) — all
-file-touching tools route through it. `SafetySettings` lives on `AiSettings.Safety` and is DI-shared as a singleton.
+Approval cards are shown only when `tool.RequiresApproval && !AutoApprove` (`run_command` always requires it).
+`BlockedCommandPatterns` is the **only** workspace-scope guard now that file ops go through the shell rather
+than `IWorkspaceService.ResolvePath` (which still exists for the UI). `SafetySettings` lives on `AiSettings.Safety`
+and is DI-shared as a singleton.
 
 ### AI clients — `Loomo.Ai/Clients/`
 
@@ -93,6 +96,21 @@ unknowns); `num_ctx` is widened from Ollama's 4096 default; qwen3 uses different
 non-thinking. The effective `num_ctx` (`ProviderConfig.NumCtx` override, else profile) is shared by both the
 Ollama request and the history-trim budget (`SettingsContextWindowPolicy` caps to it) so the model never
 silently truncates context the trimmer thought it kept.
+
+`ModelProfile` also carries `StyleGuidance` (kept in the **stable** system prefix; phi4-mini uses it for a
+conciseness nudge). Note the agent only ever has the single `run_command` tool (see Tools), so the per-turn
+tool-definition payload is already minimal — this is what cut first-turn prefill from ~21s (≈12 tools) to
+~2.4s on CPU.
+
+**Prompt-prefix caching (perf-critical)** — Ollama reuses the KV cache for the longest byte-identical prompt
+*prefix* (system + tools), so re-prefilling the large tool-definition block (~16s on CPU-only machines) is
+paid once instead of every turn. Two invariants protect this in `OllamaClient`/`OllamaProtocol.BuildRequest`:
+the system prompt must stay byte-stable across a session (only `SystemPrompt` + `profile.StyleGuidance` — both
+constant), and **volatile per-turn context (the "current folder" from `WorkspaceContext.Describe`) is appended
+to the last *user* message, never the system prompt** — putting it in `system` busts the cache and re-pays the
+prefill every turn (measured 16s→0.8s on turn 2 once moved). `BuildRequest` also sends `keep_alive` ("30m") so
+the model and its prefix cache stay resident between turns. When editing, keep anything turn-varying out of the
+system message and the `tools` array.
 
 `OllamaLauncher.ResolveHost` normalizes `BaseUrl` to the native host and strips a trailing `/v1` left
 over from the old OpenAI-compatible config, so existing `settings.json` keeps working.

@@ -55,14 +55,18 @@ public static class ModelProfiles
     /// phi4-mini 系（phi4-mini:3.8b）。<c>ollama show</c> の capabilities は completion + tools で、
     /// tools 対応・thinking 非対応（thinking は reasoning 派生モデルのみ）。
     /// Phi-4 推奨のサンプリングは temp0.8 / top_p0.95。小型モデルで繰り返しが出やすいため
-    /// repeat_penalty1.05 を添える。ネイティブ上限 131072 だが gemma3 と同様メモリを抑え 32768 に留める。
+    /// repeat_penalty1.05 を添える。
+    ///
+    /// 性能最適化（このマシンは GPU オフロードされず 100% CPU 実行）:
+    /// num_ctx は 32768 → 16384 に縮小。CPU 実行では速度はほぼ変わらないが KV キャッシュの
+    /// メモリ（32k で約 4GB）を半減でき、エージェント用途（コマンド結果でコンテキストが伸びる）には十分。
     /// </summary>
     public static readonly ModelProfile Phi4Mini = new()
     {
         Family = "phi4-mini",
         SupportsTools = true,
         SupportsThinking = false,
-        NumCtx = 32768,
+        NumCtx = 16384,
         Sampling = new(Temperature: 0.8, TopP: 0.95, RepeatPenalty: 1.05),
         // phi4-mini は冗長・繰り返しになりやすいので、簡潔さを促す指示を毎ターン添える。
         StyleGuidance =
