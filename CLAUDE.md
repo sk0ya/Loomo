@@ -48,7 +48,8 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
 
 `IAgentTool` implementations in `Tools/Implementations/` (`WorkspaceTools`, `EditorTools`, `TerminalTools`,
 `BrowserTools`). Designed for small local LLMs, so the set favors **bulk-retrieval + text-anchored editing**
-over many fine-grained steps: read/search = `get_project_tree` (whole tree in one call), `find_files`,
+over many fine-grained steps: read/search = `get_project_tree` (whole tree in one call; skips generated dirs
+and, when the root is a git repo, anything `.gitignore`d via batched `git check-ignore`), `find_files`,
 `search_files`, `read_file`, `get_selection`; editing an existing file = `replace_text_once` (single unique
 match) or `apply_patch` (multiple SEARCH/REPLACE blocks) — there is **no line-number-based edit**; new files
 = `create_file` (errors if the file exists); plus `open_in_editor`, `get_selection_text`, `replace_selection`,

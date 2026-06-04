@@ -57,6 +57,56 @@ public class WorkspaceToolsTests
     }
 
     [Fact]
+    public async Task GetProjectTree_excludes_gitignored_entries()
+    {
+        using var workspace = TestWorkspace.Create();
+        if (!TryGitInit(workspace.RootPath!)) return; // git が無い環境ではスキップ。
+
+        File.WriteAllText(Path.Combine(workspace.RootPath!, ".gitignore"), "secret.txt\nlogs/\n");
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "keep.txt"), "keep");
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "secret.txt"), "ignored");
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath!, "logs"));
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "logs", "run.log"), "ignored");
+        var sut = new GetProjectTreeTool(workspace);
+
+        var result = await sut.ExecuteAsync(Json("{}"), CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("keep.txt", result.Content);
+        Assert.DoesNotContain("secret.txt", result.Content);
+        Assert.DoesNotContain("logs/", result.Content);
+    }
+
+    private static bool TryGitInit(string root)
+    {
+        try
+        {
+            foreach (var args in new[] { "init", "config user.email t@t.t", "config user.name t" })
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("git")
+                {
+                    WorkingDirectory = root,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                foreach (var a in args.Split(' ')) psi.ArgumentList.Add(a);
+                using var p = System.Diagnostics.Process.Start(psi);
+                if (p is null) return false;
+                p.WaitForExit();
+                if (p.ExitCode != 0) return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [Fact]
     public async Task FindFiles_returns_matching_workspace_relative_paths()
     {
         using var workspace = TestWorkspace.Create();

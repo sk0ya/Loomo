@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -48,11 +49,12 @@ public sealed class GetProjectTreeTool : IAgentTool
     public ToolDefinition Definition => new(
         Name,
         "起点（省略時はワークスペースルート）配下のフォルダ/ファイルをインデント付きツリーで一度にまとめて返す。"
-        + "bin/obj/.git/node_modules などの生成物は除外する。1階層目は常に全て表示し、深い階層は項目数の上限に達するまで"
-        + "浅い順（幅優先）に展開する。展開しきれなかったフォルダは末尾に … が付く。フォルダ構成の全体像を1回で把握するのに使う。",
+        + "bin/obj/.git/node_modules などの生成物と、.gitignore で無視されている項目は除外する。1階層目は常に全て表示し、"
+        + "深い階層は項目数の上限に達するまで浅い順（幅優先）に展開する。展開しきれなかったフォルダは末尾に … が付く。"
+        + "フォルダ構成の全体像を1回で把握するのに使う。",
         ToolDefinition.ObjectSchema(
             ("path", "string", "起点ディレクトリの絶対/相対パス。省略時はワークスペースルート。", false),
-            ("max_entries", "integer", "2階層目以降に表示する最大エントリ数。省略時400、最大5000。", false)));
+            ("max_entries", "integer", "2階層目以降に表示する最大エントリ数。省略時150、最大5000。", false)));
 
     public string DescribeInvocation(JsonElement args) => $"ツリー: {args.GetString("path", "(ルート)")}";
 
@@ -61,13 +63,16 @@ public sealed class GetProjectTreeTool : IAgentTool
         var start = _workspace.ResolvePath(args.GetString("path"));
         if (!Directory.Exists(start)) return Task.FromResult(ToolResult.Error($"ディレクトリが存在しません: {start}"));
 
-        var maxEntries = Math.Max(1, Math.Min(5000, args.GetInt("max_entries", 400)));
+        var maxEntries = Math.Max(1, Math.Min(5000, args.GetInt("max_entries", 150)));
+
+        // .gitignore で無視される項目を除くため、起点が git 管理下なら check-ignore を使う。
+        var ignore = GitIgnoreChecker.Create(start);
 
         // 1階層目は無条件で全て、2階層目以降は budget が尽きるまで幅優先（浅い順）で展開する。
         // ツリー全体を再帰探索せず、表示するノードだけを訪れるので大きなルートでも軽い。
         var root = new TreeNode("", isDir: true, start);
         var queue = new Queue<TreeNode>();
-        foreach (var child in EnumerateChildren(start, ct))
+        foreach (var child in EnumerateChildren(start, ignore, ct))
         {
             root.Children.Add(child);
             if (child.IsDir) queue.Enqueue(child);
@@ -88,7 +93,7 @@ public sealed class GetProjectTreeTool : IAgentTool
             }
 
             dir.Expanded = true;
-            foreach (var child in EnumerateChildren(dir.FullPath, ct))
+            foreach (var child in EnumerateChildren(dir.FullPath, ignore, ct))
             {
                 if (budget <= 0)
                 {
@@ -112,8 +117,8 @@ public sealed class GetProjectTreeTool : IAgentTool
         return Task.FromResult(ToolResult.Ok(sb.ToString()));
     }
 
-    /// <summary>1ディレクトリ直下の子（生成物・シンボリックリンクは除外）をフォルダ→ファイルの名前昇順で返す。</summary>
-    private static IEnumerable<TreeNode> EnumerateChildren(string dir, CancellationToken ct)
+    /// <summary>1ディレクトリ直下の子（生成物・.gitignore対象・シンボリックリンクは除外）をフォルダ→ファイルの名前昇順で返す。</summary>
+    private static IEnumerable<TreeNode> EnumerateChildren(string dir, GitIgnoreChecker ignore, CancellationToken ct)
     {
         string[] subdirs;
         string[] files;
@@ -126,16 +131,19 @@ public sealed class GetProjectTreeTool : IAgentTool
         catch (DirectoryNotFoundException) { yield break; }
         catch (IOException) { yield break; }
 
+        // gitignore 判定は dir 直下の子をまとめて 1 回だけ git に問い合わせる。
+        var ignored = ignore.GetIgnored(dir, subdirs, files, ct);
+
         foreach (var d in subdirs.OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
             ct.ThrowIfCancellationRequested();
-            if (!FindFilesTool.ShouldSkipDirectory(d))
+            if (!FindFilesTool.ShouldSkipDirectory(d) && !ignored.Contains(d))
                 yield return new TreeNode(Path.GetFileName(d), isDir: true, d);
         }
 
         foreach (var f in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
-            if (!FindFilesTool.ShouldSkipFile(f))
+            if (!FindFilesTool.ShouldSkipFile(f) && !ignored.Contains(f))
                 yield return new TreeNode(Path.GetFileName(f), isDir: false, f);
         }
     }
@@ -177,6 +185,106 @@ public sealed class GetProjectTreeTool : IAgentTool
 
         /// <summary>上限により子の一部または全部を出せなかったか。</summary>
         public bool ChildrenOmitted { get; set; }
+    }
+}
+
+/// <summary>
+/// 起点が git 管理下のとき、ディレクトリ直下の子のうち .gitignore で無視される
+/// ものを <c>git check-ignore</c> でまとめて判定する。git が無い・リポジトリ外なら
+/// 以降は問い合わせず、常に「無視なし」を返す。
+/// </summary>
+internal sealed class GitIgnoreChecker
+{
+    private static readonly HashSet<string> None = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _enabled;
+
+    private GitIgnoreChecker(bool enabled) => _enabled = enabled;
+
+    public static GitIgnoreChecker Create(string startDir)
+    {
+        if (!Directory.Exists(startDir)) return new GitIgnoreChecker(false);
+        try
+        {
+            var (exit, output) = RunGit(startDir, stdin: null, "rev-parse", "--is-inside-work-tree");
+            return new GitIgnoreChecker(exit == 0 && output.Trim() == "true");
+        }
+        catch
+        {
+            return new GitIgnoreChecker(false);
+        }
+    }
+
+    /// <summary>dir 直下の子フルパスのうち、.gitignore で無視されるものの集合を返す。</summary>
+    public ISet<string> GetIgnored(string dir, string[] subdirs, string[] files, CancellationToken ct)
+    {
+        if (!_enabled || (subdirs.Length == 0 && files.Length == 0)) return None;
+
+        // 子名のみを cwd=dir として渡す（git は親・ルートの .gitignore も加味して判定する）。
+        var names = new List<string>(subdirs.Length + files.Length);
+        foreach (var d in subdirs) names.Add(Path.GetFileName(d));
+        foreach (var f in files) names.Add(Path.GetFileName(f));
+
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var stdin = string.Join('\0', names) + '\0';
+            var (exit, output) = RunGit(dir, stdin, "check-ignore", "-z", "--stdin");
+
+            // 128 = リポジトリ外/エラー → 以降は問い合わせない。0=一部無視, 1=無視なし。
+            if (exit == 128) { _enabled = false; return None; }
+            if (exit is not 0 and not 1) return None;
+
+            var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+                ignored.Add(Path.Combine(dir, name));
+            return ignored;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return None;
+        }
+    }
+
+    private static (int ExitCode, string Output) RunGit(string workingDir, string? stdin, params string[] args)
+    {
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = workingDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = stdin is not null,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        using var process = Process.Start(psi);
+        if (process is null) return (-1, string.Empty);
+
+        // stdin を書き終える前から stdout を非同期に読み出す。先に読み手を回しておかないと、
+        // 大量の子（数千件）で stdin と stdout の両パイプが同時に詰まりデッドロックする。
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+
+        if (stdin is not null)
+        {
+            process.StandardInput.Write(stdin);
+            process.StandardInput.Close();
+        }
+
+        // git が応答しない場合に無限ハングしないよう、上限時間で打ち切って kill する。
+        if (!process.WaitForExit(5000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { /* 既に終了済み */ }
+            return (-1, string.Empty);
+        }
+
+        return (process.ExitCode, outputTask.GetAwaiter().GetResult());
     }
 }
 
