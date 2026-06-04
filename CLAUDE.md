@@ -44,6 +44,16 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
 - The tool-result message must immediately follow the assistant message that requested it; trimming
   (`ConversationTrimmer`) keeps the first message a `user` to avoid orphaned `tool_result`s.
 
+**Agent-loop latency (read `docs/エージェントループ知見.md` before "make it faster" work).** On CPU-only
+local inference the turn time is **prefill-dominated**, not decode/load. Each AI call's breakdown is recorded as
+the `ai.usage` trace (tokens + `loadMs`/`promptEvalMs`/`evalMs`, parsed in `OllamaProtocol.ParseUsage`, emitted
+as `AiUsageReported`) and shown live in the AI bar progress ("📊 AI内訳", `AiBarViewModel.FormatUsage`) — use
+that to split load vs prefill vs decode before optimizing. Hard-won facts: prefill time does **not** scale
+cleanly with token count, cross-turn prefix-cache reuse is unreliable here (a later turn can be *slower* than an
+earlier one as the conversation grows — full re-prefill each turn), and prompt compression only helps the cold
+first turn. The real lever is **model size** (CPU speed ≈ inversely ∝ params) and GPU VRAM big enough to offload
+(check `ollama ps` for the CPU/GPU split). Don't over-invest in prefix-cache tricks for the CPU path.
+
 ### Tools — `Loomo.Core/Tools/`
 
 The agent is given **exactly one tool: `pwsh`** (`Tools/Implementations/TerminalTools.cs`), which runs a
@@ -97,16 +107,18 @@ non-thinking. The effective `num_ctx` (`ProviderConfig.NumCtx` override, else pr
 Ollama request and the history-trim budget (`SettingsContextWindowPolicy` caps to it) so the model never
 silently truncates context the trimmer thought it kept.
 
-`ModelProfile` also carries `StyleGuidance` (kept in the **stable** system prefix; phi4-mini uses it for a
-conciseness nudge). Note the agent only ever has the single `pwsh` tool (see Tools), so the per-turn
-tool-definition payload is already minimal — this is what cut first-turn prefill from ~21s (≈12 tools) to
-~2.4s on CPU.
+The system prompt is **uniform across models** — there is no per-model prompt injection (the old
+`ModelProfile.StyleGuidance` phi4-mini nudge was removed; model-specific prompt text is intentionally avoided).
+`AiSettings.DefaultSystemPrompt` is **English instructions / Japanese output** (small local models follow
+English tool-calling rules more reliably). Note the agent only ever has the single `pwsh` tool (see Tools), so
+the per-turn tool-definition payload is already minimal — this is what cut first-turn prefill from ~21s
+(≈12 tools) to ~2.4s on CPU.
 
 **Prompt-prefix caching (perf-critical)** — Ollama reuses the KV cache for the longest byte-identical prompt
 *prefix* (system + tools), so re-prefilling the large tool-definition block (~16s on CPU-only machines) is
 paid once instead of every turn. Two invariants protect this in `OllamaClient`/`OllamaProtocol.BuildRequest`:
-the system prompt must stay byte-stable across a session (`AiSettings.DefaultSystemPrompt` + `profile.StyleGuidance` — both
-constant), and **volatile per-turn context (the "current folder" from `WorkspaceContext.Describe`) is appended
+the system prompt must stay byte-stable across a session (`AiSettings.DefaultSystemPrompt`, constant for all
+models), and **volatile per-turn context (the "current folder" from `WorkspaceContext.Describe`) is appended
 to the last *user* message, never the system prompt** — putting it in `system` busts the cache and re-pays the
 prefill every turn (measured 16s→0.8s on turn 2 once moved). `BuildRequest` also sends `keep_alive` ("30m") so
 the model and its prefix cache stay resident between turns. When editing, keep anything turn-varying out of the
