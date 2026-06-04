@@ -43,15 +43,6 @@ public sealed record ModelProfile
     /// </summary>
     public SamplingOptions? NonThinkingSampling { get; init; }
 
-    /// <summary>
-    /// システムプロンプト末尾へ動的に添えるモデル固有のスタイル指示（任意）。
-    /// 冗長になりやすいモデル（phi4-mini 等）へ簡潔さを促す等に使う。
-    /// 空文字なら何も添えない。ユーザー設定のシステムプロンプトは書き換えない。
-    /// この指示は会話を通じて不変なので、システムプロンプトの安定したプレフィックスに含めてよい
-    /// （Ollama はプレフィックスの KV キャッシュを再利用するため、毎ターン変わる内容は別に置く）。
-    /// </summary>
-    public string StyleGuidance { get; init; } = string.Empty;
-
     /// <summary>現在の thinking 状態に応じたサンプリング設定を返す。</summary>
     public SamplingOptions SamplingFor(bool thinking)
         => thinking || NonThinkingSampling is null ? Sampling : NonThinkingSampling;

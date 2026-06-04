@@ -488,14 +488,87 @@ internal static class OllamaProtocol
 
     private static ToolUse? TryParseContentToolCall(string content, IReadOnlySet<string> allowedToolNames)
     {
+        // ① 本文全体がそのまま JSON（必要ならコードフェンス除去）なら、それを tool call として解釈。
         var json = ExtractJsonValue(content);
-        if (json is null) return TryParseLooseToolCall(content, allowedToolNames);
+        if (json is not null)
+        {
+            try
+            {
+                var use = TryBuildToolUseFromJson(JsonNode.Parse(json), allowedToolNames);
+                if (use is not null) return use;
+            }
+            catch { /* 壊れた JSON は下のフォールバックへ */ }
+        }
 
-        JsonNode? node;
-        try { node = JsonNode.Parse(json); }
+        // ② `name=pwsh {command: "..."}` のような緩い1件記法。
+        // ③ 「ツール定義JSONの丸写し ＋ 末尾 arguments={...}」のような壊れた tool call（実モデルで観測）。
+        return TryParseLooseToolCall(content, allowedToolNames)
+            ?? TryParseToolCallWithTrailingArguments(content, allowedToolNames);
+    }
+
+    /// <summary>
+    /// 本文に「許可ツール名 ＋ どこかに arguments=/arguments: {...}」が混在する壊れた tool call を拾う。
+    /// 例：<c>[{"type":"function","function":{"name":"pwsh",...}}]arguments={"command":"Get-Location"}</c>。
+    /// ツール定義をそのまま吐き、末尾に実引数を付けるモデルの実応答を救済する。
+    /// </summary>
+    private static ToolUse? TryParseToolCallWithTrailingArguments(
+        string content, IReadOnlySet<string> allowedToolNames)
+    {
+        var argsIdx = content.LastIndexOf("arguments", StringComparison.OrdinalIgnoreCase);
+        if (argsIdx < 0) return null;
+
+        var braceStart = content.IndexOf('{', argsIdx);
+        if (braceStart < 0) return null;
+
+        var objText = ExtractBalancedObject(content, braceStart);
+        if (objText is null) return null;
+
+        JsonObject? argObj;
+        try { argObj = JsonNode.Parse(objText) as JsonObject; }
         catch { return null; }
+        if (argObj is null || argObj.Count == 0) return null;
 
-        return TryBuildToolUseFromJson(node, allowedToolNames);
+        var name = FindAllowedToolName(content, allowedToolNames);
+        if (name is null) return null;
+
+        return new ToolUse(Guid.NewGuid().ToString("N"), name, argObj.ToJsonString());
+    }
+
+    /// <summary>本文から許可ツール名を特定する（<c>"name":"X"</c> / <c>name=X</c> / 単純出現の順）。</summary>
+    private static string? FindAllowedToolName(string content, IReadOnlySet<string> allowedToolNames)
+    {
+        var m = Regex.Match(content, "\"name\"\\s*:\\s*\"(?<n>[^\"]+)\"");
+        if (m.Success && allowedToolNames.Contains(m.Groups["n"].Value)) return m.Groups["n"].Value;
+
+        m = Regex.Match(content, "name\\s*=\\s*(?<n>[A-Za-z_][A-Za-z0-9_]*)");
+        if (m.Success && allowedToolNames.Contains(m.Groups["n"].Value)) return m.Groups["n"].Value;
+
+        foreach (var name in allowedToolNames)
+            if (content.Contains(name, StringComparison.Ordinal)) return name;
+        return null;
+    }
+
+    /// <summary>位置 <paramref name="start"/>（'{'）から、文字列・エスケープを考慮して対応する '}' までを返す。</summary>
+    private static string? ExtractBalancedObject(string content, int start)
+    {
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var i = start; i < content.Length; i++)
+        {
+            var c = content[i];
+            if (inString)
+            {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') inString = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return content[start..(i + 1)];
+        }
+        return null;
     }
 
     private static ToolUse? TryBuildToolUseFromJson(JsonNode? node, IReadOnlySet<string> allowedToolNames)

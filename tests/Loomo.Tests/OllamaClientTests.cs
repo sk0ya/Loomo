@@ -220,6 +220,26 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_recovers_tool_call_from_echoed_definition_with_trailing_arguments()
+    {
+        // モデルがツール定義JSONを丸写しし、末尾に arguments={...} を付けて吐く壊れた tool call
+        // （実観測）を救済する。正しい command(Get-Location) を tool use として取り出す。
+        var content =
+            "[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"pwsh\\\"," +
+            "\\\"description\\\":\\\"PowerShell\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"," +
+            "\\\"required\\\":[\\\"command\\\"],\\\"properties\\\":{\\\"command\\\":{\\\"type\\\":\\\"string\\\"}}}}}]" +
+            "arguments={\\\"command\\\":\\\"Get-Location\\\"}";
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"" + content + "\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);   // 壊れた本文を回答として漏らさない
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
     public void BuildRequest_applies_qwen3_thinking_sampling_and_num_ctx()
     {
         var conversation = new Conversation();
@@ -412,39 +432,13 @@ public class OllamaClientTests
         Assert.Equal(thinking, profile.SupportsThinking);
     }
 
-    [Theory]
-    [InlineData("phi4-mini:3.8b", true)]
-    [InlineData("qwen3:4b", false)]
-    public async Task System_prompt_carries_phi4_mini_guidance_only_for_phi4_mini(
-        string model, bool expectGuidance)
-    {
-        var body = await CapturePostedBodyForModelAsync(model);
-        var system = body["messages"]!.AsArray()
-            .First(m => m?["role"]?.GetValue<string>() == "system")!["content"]!.GetValue<string>();
-
-        Assert.Equal(expectGuidance, system.Contains("phi4-mini向け"));
-    }
-
     [Fact]
     public void Default_system_prompt_is_short_and_explicitly_guides_tool_calling()
     {
         Assert.True(AiSettings.DefaultSystemPrompt.Length < 500);
-        Assert.Contains("tool calling ループ", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("本文で説明せず pwsh ツールを呼ぶ", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("call the pwsh tool", AiSettings.DefaultSystemPrompt);
         Assert.Contains("{\"command\":\"...\"}", AiSettings.DefaultSystemPrompt);
-    }
-
-    [Fact]
-    public async Task Phi4_mini_system_prompt_keeps_tool_guidance_without_long_model_specific_repeat()
-    {
-        var body = await CapturePostedBodyForModelAsync("phi4-mini:3.8b");
-        var system = body["messages"]!.AsArray()
-            .First(m => m?["role"]?.GetValue<string>() == "system")!["content"]!.GetValue<string>();
-
-        Assert.Contains("本文で説明せず pwsh ツールを呼ぶ", system);
-        Assert.Contains("{\"command\":\"...\"}", system);
-        Assert.Contains("phi4-mini向け", system);
-        Assert.DoesNotContain("# ツール呼び出し", system);
     }
 
     [Fact]
@@ -476,30 +470,6 @@ public class OllamaClientTests
     }
 
     private static string Ndjson(string jsonLine) => jsonLine + "\n";
-
-    private static async Task<JsonObject> CapturePostedBodyForModelAsync(string model)
-    {
-        var handler = new RecordingHandler(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}"));
-        using var http = new HttpClient(handler);
-        var settings = new AiSettings
-        {
-            Local = new ProviderConfig
-            {
-                Model = model,
-                MaxTokens = 1024
-            }
-        };
-        var client = new OllamaClient(http, settings, new FakeWorkspaceService());
-        var conversation = new Conversation();
-        conversation.AddUser("これは何？");
-
-        await foreach (var _ in client.StreamAsync(conversation, Array.Empty<ToolDefinition>(), CancellationToken.None))
-        {
-        }
-
-        return Assert.Single(handler.PostedBodies);
-    }
 
     private static async Task<JsonObject> CapturePostedBodyAsync(bool thinking)
     {

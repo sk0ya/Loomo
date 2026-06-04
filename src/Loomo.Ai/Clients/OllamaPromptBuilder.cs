@@ -7,15 +7,14 @@ public static class OllamaPromptBuilder
 {
     public static string Build(AiSettings settings, AgentProfile? profile, string? workspaceRoot)
     {
-        var cfg = settings.Local;
-        var modelProfile = ModelProfiles.Resolve(cfg.Model);
+        // システムプロンプトは全モデル共通（モデル固有の差し込みはしない）。検索ガイダンスだけ
+        // 環境（rg の有無）で決まる固定値なので、安定プレフィックスに含めて差し支えない。
         return settings.BuildSystemPrompt(profile)
-               + modelProfile.StyleGuidance
                + SearchGuidance(workspaceRoot);
     }
 
     private static string SearchGuidance(string? workspaceRoot)
         => EnvironmentProbe.HasRipgrep(workspaceRoot)
-            ? "\n\n検索: rg を優先。例: rg \"<語>\" <パス>、rg --files <パス>。"
-            : "\n\n検索: Select-String を使う。例: Select-String -Pattern \"<語>\" -Path <パス>。";
+            ? "\n\nSearch: prefer rg, e.g. rg \"<term>\" <path>, rg --files <path>."
+            : "\n\nSearch: use Select-String, e.g. Select-String -Pattern \"<term>\" -Path <path>.";
 }
