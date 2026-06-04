@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -194,6 +195,37 @@ public sealed partial class SettingsViewModel : ObservableObject
             }
         });
         Status = "システムプロンプトをエディタで開きました。編集して保存（:w）すると反映されます。";
+    }
+
+    /// <summary>システムプロンプトを既定値に戻す（確認のうえ即時反映）。</summary>
+    [RelayCommand]
+    private void ResetSystemPrompt()
+    {
+        if (!Confirm("システムプロンプトを既定値に戻します。現在の内容は失われます。よろしいですか？"))
+            return;
+        _settings.SystemPrompt = AiSettings.DefaultSystemPrompt;
+        PersistAndNotify("システムプロンプトを既定値に戻しました");
+    }
+
+    /// <summary>危険コマンドのブロックリストを既定値に戻す（確認のうえ即時反映）。</summary>
+    [RelayCommand]
+    private void ResetBlockedCommands()
+    {
+        if (!Confirm("危険コマンドのブロックリストを既定値に戻します。現在の内容は失われます。よろしいですか？"))
+            return;
+        _settings.Safety.BlockedCommandPatterns =
+            new List<string>(SafetySettings.DefaultBlockedPatterns);
+        PersistAndNotify("危険コマンドのブロックリストを既定値に戻しました");
+    }
+
+    /// <summary>破壊的な操作の前にユーザーへ確認する。アプリ未起動（テスト等）では true を返す。</summary>
+    private static bool Confirm(string message)
+    {
+        if (System.Windows.Application.Current is null) return true;
+        return System.Windows.MessageBox.Show(
+            message, "Loomo",
+            System.Windows.MessageBoxButton.OKCancel,
+            System.Windows.MessageBoxImage.Question) == System.Windows.MessageBoxResult.OK;
     }
 
     /// <summary>危険コマンドのブロックリストを中央のエディタペインで開く。保存（:w）で settings.json へ即時反映。</summary>

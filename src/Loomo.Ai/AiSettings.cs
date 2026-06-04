@@ -29,10 +29,13 @@ public sealed class AiSettings
         BaseUrl = "http://localhost:11434"
     };
 
-    public string SystemPrompt { get; set; } =
-        // ローカルLLM（Ollama）+ Windows 前提に最適化。小〜中規模モデルでも誤動作しにくいよう、
-        // 「推測せずツールで事実確認」「編集前に必読」「1手ずつ」を明示する。ツールの一覧・引数は
-        // API のツール定義で渡るため列挙しない（重複・陳腐化を避ける）。
+    public string SystemPrompt { get; set; } = DefaultSystemPrompt;
+
+    /// <summary>既定のシステムプロンプト（設定画面の「デフォルトに戻す」で使用）。
+    /// ローカルLLM（Ollama）+ Windows 前提に最適化。小〜中規模モデルでも誤動作しにくいよう、
+    /// 「推測せずツールで事実確認」「編集前に必読」「1手ずつ」を明示する。ツールの一覧・引数は
+    /// API のツール定義で渡るため列挙しない（重複・陳腐化を避ける）。</summary>
+    public const string DefaultSystemPrompt =
         "あなたは Windows 上の開発ワークスペースを操作する日本語のAIエージェントです。" +
         "ターミナル・エディタ・ファイル・ブラウザを操作するツールを使い、ユーザーのタスクを最後まで遂行します。\n" +
         "\n" +

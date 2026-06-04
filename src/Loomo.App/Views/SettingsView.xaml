@@ -46,8 +46,12 @@
 
                 <!-- システムプロンプト（中央のエディタ領域で編集） -->
                 <TextBlock Style="{StaticResource FieldLabel}" Text="システムプロンプト" />
-                <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
-                        HorizontalAlignment="Left" Command="{Binding EditSystemPromptCommand}" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
+                            Command="{Binding EditSystemPromptCommand}" />
+                    <Button Content="デフォルトに戻す" Style="{StaticResource FlatButton}"
+                            Margin="6,0,0,0" Command="{Binding ResetSystemPromptCommand}" />
+                </StackPanel>
                 <TextBlock Text="中央のエディタペインで開きます。保存（:w）すると即時反映されます。"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
@@ -62,8 +66,12 @@
                           IsChecked="{Binding RestrictToWorkspaceRoot}" Margin="0,2,0,4"
                           Foreground="{DynamicResource Fg}" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="ブロックする危険コマンド" />
-                <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
-                        HorizontalAlignment="Left" Command="{Binding EditBlockedCommandsCommand}" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
+                            Command="{Binding EditBlockedCommandsCommand}" />
+                    <Button Content="デフォルトに戻す" Style="{StaticResource FlatButton}"
+                            Margin="6,0,0,0" Command="{Binding ResetBlockedCommandsCommand}" />
+                </StackPanel>
                 <TextBlock Text="1行に1つ・正規表現（大文字小文字無視）。中央のエディタペインで開き、保存（:w）で即時反映されます。"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
