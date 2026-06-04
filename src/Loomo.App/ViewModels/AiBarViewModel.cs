@@ -320,9 +320,19 @@ public sealed partial class AiBarViewModel : ObservableObject
     private void OnApprovalRequested(ApprovalContext ctx)
     {
         var entry = Add(EntryKind.Approval, $"承認が必要: {ctx.ToolName}", ctx.Summary);
-        if (ctx.ToolName == "propose_edit")
+        if (ContainsDiff(ctx.Summary))
             entry.SetDiff(ctx.Summary);   // サマリを色付き差分へ展開
         entry.BindApproval(ctx.Completion);
+    }
+
+    /// <summary>承認サマリが統合差分（+/- 接頭辞付きの行）を含むか。編集系ツールの「ヘッダ＋差分」要約は
+    /// 含み、引数不正などのエラー要約は含まないので、ツール名のハードコードより堅牢に差分カードを出し分けられる。</summary>
+    private static bool ContainsDiff(string summary)
+    {
+        foreach (var line in summary.AsSpan().EnumerateLines())
+            if (line.Length > 0 && (line[0] == '+' || line[0] == '-'))
+                return true;
+        return false;
     }
 
     private TranscriptEntry Add(EntryKind kind, string header, string text)

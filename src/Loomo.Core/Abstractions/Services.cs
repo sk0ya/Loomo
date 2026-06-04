@@ -84,6 +84,11 @@ public interface IBrowserService
     /// <summary>現在表示中ページのURL・タイトルを返す。</summary>
     Task<BrowserPageInfo> GetPageInfoAsync(CancellationToken ct);
 
+    /// <summary>現在のページでクリック/入力できる要素（リンク・ボタン・入力欄）を、表示文言と
+    /// そのまま <see cref="ClickAsync"/>/<see cref="TypeAsync"/> へ渡せる CSS セレクタ付きで列挙する。
+    /// セレクタを盲目で推測させず、可視要素から選ばせるための一括取得。</summary>
+    Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct);
+
     /// <summary>現在のページの可視テキスト（document.body.innerText）を抽出する。</summary>
     Task<string> GetVisibleTextAsync(CancellationToken ct);
 
@@ -99,3 +104,6 @@ public interface IBrowserService
 
 /// <summary>ブラウザの現在ページ情報。</summary>
 public sealed record BrowserPageInfo(string Url, string Title);
+
+/// <summary>ページ内のクリック/入力可能な要素。<see cref="Selector"/> は querySelector で再選択できる。</summary>
+public sealed record BrowserClickable(string Tag, string Text, string Selector);

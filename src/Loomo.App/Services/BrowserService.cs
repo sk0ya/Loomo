@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -91,6 +92,63 @@ public sealed class BrowserService : IBrowserService
             var json = await core.ExecuteScriptAsync("document.body ? document.body.innerText : ''");
             return DecodeScriptString(json);
         }, ct);
+
+    public Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct)
+        => OnUiAsync(async core =>
+        {
+            // 結果は JSON 文字列（JSON.stringify 済み）として返るため、二重デコードして配列へ復元する。
+            var inner = DecodeScriptString(await core.ExecuteScriptAsync(ListClickablesScript));
+            if (string.IsNullOrEmpty(inner))
+                return (IReadOnlyList<BrowserClickable>)Array.Empty<BrowserClickable>();
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<BrowserClickable>>(inner, CaseInsensitive)
+                    ?? (IReadOnlyList<BrowserClickable>)Array.Empty<BrowserClickable>();
+            }
+            catch (JsonException)
+            {
+                return Array.Empty<BrowserClickable>();
+            }
+        }, ct);
+
+    private static readonly JsonSerializerOptions CaseInsensitive = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>可視のクリック/入力要素を集め、各要素を querySelector で一意に選べる CSS パス付きで返す。</summary>
+    private const string ListClickablesScript = """
+(function(){
+  function cssPath(el){
+    if(el.id) return '#'+CSS.escape(el.id);
+    var parts=[];
+    while(el && el.nodeType===1 && el!==document.body){
+      if(el.id){ parts.unshift('#'+CSS.escape(el.id)); break; }
+      var sel=el.tagName.toLowerCase();
+      var p=el.parentElement;
+      if(p){
+        var same=Array.prototype.filter.call(p.children,function(c){return c.tagName===el.tagName;});
+        if(same.length>1) sel+=':nth-of-type('+(same.indexOf(el)+1)+')';
+      }
+      parts.unshift(sel);
+      el=p;
+    }
+    return parts.join('>');
+  }
+  var nodes=document.querySelectorAll("a,button,input,select,textarea,[role=button],[onclick]");
+  var out=[];
+  for(var i=0;i<nodes.length && out.length<100;i++){
+    var el=nodes[i];
+    if(el.disabled) continue;
+    var r=el.getBoundingClientRect();
+    if(r.width<=0||r.height<=0) continue;
+    var st=getComputedStyle(el);
+    if(st.visibility==='hidden'||st.display==='none') continue;
+    var t=(el.innerText||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||el.getAttribute('title')||'');
+    t=t.trim().replace(/\s+/g,' ').slice(0,80);
+    out.push({Tag:el.tagName.toLowerCase(),Text:t,Selector:cssPath(el)});
+  }
+  return JSON.stringify(out);
+})()
+""";
 
     public Task ClickAsync(string selector, CancellationToken ct)
         => OnUiAsync(async core =>

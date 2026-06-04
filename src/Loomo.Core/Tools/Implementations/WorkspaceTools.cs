@@ -36,31 +36,147 @@ internal static class ArgHelper
             : fallback;
 }
 
-/// <summary>フォルダ内容の一覧。</summary>
-public sealed class ListDirectoryTool : IAgentTool
+/// <summary>フォルダツリーを一括ダンプする。</summary>
+public sealed class GetProjectTreeTool : IAgentTool
 {
     private readonly IWorkspaceService _workspace;
-    public ListDirectoryTool(IWorkspaceService workspace) => _workspace = workspace;
+    public GetProjectTreeTool(IWorkspaceService workspace) => _workspace = workspace;
 
-    public string Name => "list_directory";
+    public string Name => "get_project_tree";
     public bool RequiresApproval => false;
 
     public ToolDefinition Definition => new(
         Name,
-        "指定パス（省略時はワークスペースルート）のファイル/フォルダ一覧を返す。",
+        "起点（省略時はワークスペースルート）配下のフォルダ/ファイルをインデント付きツリーで一度にまとめて返す。"
+        + "bin/obj/.git/node_modules などの生成物は除外する。1階層目は常に全て表示し、深い階層は項目数の上限に達するまで"
+        + "浅い順（幅優先）に展開する。展開しきれなかったフォルダは末尾に … が付く。フォルダ構成の全体像を1回で把握するのに使う。",
         ToolDefinition.ObjectSchema(
-            ("path", "string", "一覧するディレクトリの絶対/相対パス。省略可。", false)));
+            ("path", "string", "起点ディレクトリの絶対/相対パス。省略時はワークスペースルート。", false),
+            ("max_entries", "integer", "2階層目以降に表示する最大エントリ数。省略時400、最大5000。", false)));
 
-    public string DescribeInvocation(JsonElement args) => $"一覧: {args.GetString("path", "(ルート)")}";
+    public string DescribeInvocation(JsonElement args) => $"ツリー: {args.GetString("path", "(ルート)")}";
 
-    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    public Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
-        var path = args.GetString("path");
-        var nodes = await _workspace.ListAsync(path);
+        var start = _workspace.ResolvePath(args.GetString("path"));
+        if (!Directory.Exists(start)) return Task.FromResult(ToolResult.Error($"ディレクトリが存在しません: {start}"));
+
+        var maxEntries = Math.Max(1, Math.Min(5000, args.GetInt("max_entries", 400)));
+
+        // 1階層目は無条件で全て、2階層目以降は budget が尽きるまで幅優先（浅い順）で展開する。
+        // ツリー全体を再帰探索せず、表示するノードだけを訪れるので大きなルートでも軽い。
+        var root = new TreeNode("", isDir: true, start);
+        var queue = new Queue<TreeNode>();
+        foreach (var child in EnumerateChildren(start, ct))
+        {
+            root.Children.Add(child);
+            if (child.IsDir) queue.Enqueue(child);
+        }
+
+        var budget = maxEntries;
+        var truncated = false;
+        while (queue.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var dir = queue.Dequeue();
+            if (budget <= 0)
+            {
+                // 上限に達したので、このフォルダ以降は展開しない（中身の有無は確認しない）。
+                dir.ChildrenOmitted = true;
+                truncated = true;
+                continue;
+            }
+
+            dir.Expanded = true;
+            foreach (var child in EnumerateChildren(dir.FullPath, ct))
+            {
+                if (budget <= 0)
+                {
+                    dir.ChildrenOmitted = true;
+                    truncated = true;
+                    break;
+                }
+
+                budget--;
+                dir.Children.Add(child);
+                if (child.IsDir) queue.Enqueue(child);
+            }
+        }
+
+        if (root.Children.Count == 0) return Task.FromResult(ToolResult.Ok("(空)"));
+
         var sb = new StringBuilder();
-        foreach (var n in nodes.OrderByDescending(n => n.IsDirectory).ThenBy(n => n.Name))
-            sb.AppendLine(n.IsDirectory ? $"[DIR] {n.Name}" : n.Name);
-        return ToolResult.Ok(sb.Length == 0 ? "(空)" : sb.ToString());
+        Render(root, sb, 0);
+        if (truncated)
+            sb.Append("…(項目上限に達したため一部フォルダは未展開。max_entries を増やすか path で起点を絞る)").Append('\n');
+        return Task.FromResult(ToolResult.Ok(sb.ToString()));
+    }
+
+    /// <summary>1ディレクトリ直下の子（生成物・シンボリックリンクは除外）をフォルダ→ファイルの名前昇順で返す。</summary>
+    private static IEnumerable<TreeNode> EnumerateChildren(string dir, CancellationToken ct)
+    {
+        string[] subdirs;
+        string[] files;
+        try
+        {
+            subdirs = Directory.GetDirectories(dir);
+            files = Directory.GetFiles(dir);
+        }
+        catch (UnauthorizedAccessException) { yield break; }
+        catch (DirectoryNotFoundException) { yield break; }
+        catch (IOException) { yield break; }
+
+        foreach (var d in subdirs.OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!FindFilesTool.ShouldSkipDirectory(d))
+                yield return new TreeNode(Path.GetFileName(d), isDir: true, d);
+        }
+
+        foreach (var f in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!FindFilesTool.ShouldSkipFile(f))
+                yield return new TreeNode(Path.GetFileName(f), isDir: false, f);
+        }
+    }
+
+    private static void Render(TreeNode node, StringBuilder sb, int depth)
+    {
+        foreach (var child in node.Children)
+        {
+            sb.Append(' ', depth * 2).Append(child.Name);
+            if (child.IsDir)
+            {
+                sb.Append('/');
+                // 未展開、または上限で途中まで しか出せなかったフォルダは … で示す。
+                if (!child.Expanded || child.ChildrenOmitted) sb.Append(" …");
+            }
+
+            sb.Append('\n');
+            if (child.IsDir) Render(child, sb, depth + 1);
+        }
+    }
+
+    /// <summary>表示対象として確定したツリーの1ノード（必要なフォルダだけ遅延展開する）。</summary>
+    private sealed class TreeNode
+    {
+        public TreeNode(string name, bool isDir, string fullPath)
+        {
+            Name = name;
+            IsDir = isDir;
+            FullPath = fullPath;
+        }
+
+        public string Name { get; }
+        public bool IsDir { get; }
+        public string FullPath { get; }
+        public List<TreeNode> Children { get; } = new();
+
+        /// <summary>このフォルダの中身を列挙したか（未展開なら子は未知）。</summary>
+        public bool Expanded { get; set; }
+
+        /// <summary>上限により子の一部または全部を出せなかったか。</summary>
+        public bool ChildrenOmitted { get; set; }
     }
 }
 
@@ -181,7 +297,7 @@ public sealed class FindFilesTool : IAgentTool
         }
     }
 
-    private static bool ShouldSkipDirectory(string path)
+    internal static bool ShouldSkipDirectory(string path)
     {
         var name = Path.GetFileName(path);
         if (IsReparsePoint(path)) return true;
@@ -195,7 +311,7 @@ public sealed class FindFilesTool : IAgentTool
             || name.Equals("packages", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool ShouldSkipFile(string path) => IsReparsePoint(path);
+    internal static bool ShouldSkipFile(string path) => IsReparsePoint(path);
 
     private static bool IsReparsePoint(string path)
     {

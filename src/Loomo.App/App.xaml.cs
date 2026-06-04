@@ -76,15 +76,14 @@ public partial class App : Application
             sp.GetRequiredService<AiSettings>()));
 
         // --- ツール ---
-        services.AddSingleton<IAgentTool, ListDirectoryTool>();
+        services.AddSingleton<IAgentTool, GetProjectTreeTool>();
         services.AddSingleton<IAgentTool, ReadFileTool>();
         services.AddSingleton<IAgentTool, FindFilesTool>();
         services.AddSingleton<IAgentTool, SearchFilesTool>();
         services.AddSingleton<IAgentTool, GetSelectionTool>();
         services.AddSingleton<IAgentTool, OpenInEditorTool>();
-        services.AddSingleton<IAgentTool, ProposeEditTool>();
+        services.AddSingleton<IAgentTool, CreateFileTool>();
         services.AddSingleton<IAgentTool, ReplaceTextOnceTool>();
-        services.AddSingleton<IAgentTool, ReplaceRangeTool>();
         services.AddSingleton<IAgentTool, ApplyPatchTool>();
         services.AddSingleton<IAgentTool, GetSelectionTextTool>();
         services.AddSingleton<IAgentTool, ReplaceSelectionTool>();
@@ -92,6 +91,7 @@ public partial class App : Application
         services.AddSingleton<IAgentTool, BrowserNavigateTool>();
         services.AddSingleton<IAgentTool, BrowserReadPageTool>();
         services.AddSingleton<IAgentTool, BrowserCurrentUrlTool>();
+        services.AddSingleton<IAgentTool, BrowserListClickablesTool>();
         services.AddSingleton<IAgentTool, BrowserClickTool>();
         services.AddSingleton<IAgentTool, BrowserTypeTool>();
         services.AddSingleton<IAgentTool, BrowserScreenshotTool>();

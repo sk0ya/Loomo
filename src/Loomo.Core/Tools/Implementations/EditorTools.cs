@@ -41,37 +41,39 @@ public sealed class OpenInEditorTool : IAgentTool
     }
 }
 
-/// <summary>編集案を差分提示し、承認後に適用する。</summary>
-public sealed class ProposeEditTool : IAgentTool
+/// <summary>新規ファイルを作成し、全文を書き込む（既存ファイルには使わない）。</summary>
+public sealed class CreateFileTool : IAgentTool
 {
     private readonly IEditorService _editor;
     private readonly IWorkspaceService _workspace;
-    public ProposeEditTool(IEditorService editor, IWorkspaceService workspace)
+    public CreateFileTool(IEditorService editor, IWorkspaceService workspace)
     {
         _editor = editor;
         _workspace = workspace;
     }
 
-    public string Name => "propose_edit";
+    public string Name => "create_file";
     public bool RequiresApproval => true;   // 書込なので承認必須
 
     public ToolDefinition Definition => new(
         Name,
-        "ファイルの新しい全文を提示し、承認されたら適用・保存する。",
+        "新しいファイルを作成して全文を書き込み、承認されたら保存する。"
+        + "既存ファイルの編集には使わない（その場合は replace_text_once か apply_patch を使う）。",
         ToolDefinition.ObjectSchema(
-            ("path", "string", "編集対象ファイルのパス。", true),
-            ("content", "string", "ファイルの新しい全文。", true)));
+            ("path", "string", "作成するファイルのパス。", true),
+            ("content", "string", "ファイルの全文。", true)));
 
     public string DescribeInvocation(JsonElement args)
     {
         var content = args.GetString("content");
         var path = _workspace.ResolvePath(args.GetString("path"));
-        var current = File.Exists(path) ? File.ReadAllText(path) : "";
-        var (added, removed) = DiffUtil.Stat(current, content);
-        var verb = File.Exists(path) ? "編集" : "新規作成";
-        var diff = DiffUtil.ToUnifiedText(DiffUtil.Compute(current, content));
+        if (File.Exists(path))
+            return $"新規作成: {path}\n既存ファイルです。replace_text_once か apply_patch を使ってください。";
+
+        var (added, _) = DiffUtil.Stat("", content);
+        var diff = DiffUtil.ToUnifiedText(DiffUtil.Compute("", content));
         // 1行目はヘッダ（コンテキスト扱い）、2行目以降が +/-/… 接頭辞付きの差分
-        return $" {verb}: {path}  (+{added} / -{removed})\n{diff}";
+        return $" 新規作成: {path}  (+{added} / -0)\n{diff}";
     }
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
@@ -81,9 +83,12 @@ public sealed class ProposeEditTool : IAgentTool
         if (string.IsNullOrWhiteSpace(rawPath)) return ToolResult.Error("path は必須です。");
 
         var path = _workspace.ResolvePath(rawPath);
+        if (File.Exists(path))
+            return ToolResult.Error("既存ファイルです。replace_text_once か apply_patch を使ってください。");
+
         await _editor.ShowDiffAsync(path, content);
         var ok = await _editor.ApplyEditAsync(path, content);
-        return ok ? ToolResult.Ok($"適用しました: {path}") : ToolResult.Error("適用に失敗しました。");
+        return ok ? ToolResult.Ok($"作成しました: {path}") : ToolResult.Error("作成に失敗しました。");
     }
 }
 
@@ -201,144 +206,6 @@ public sealed class ReplaceTextOnceTool : IAgentTool
         var diff = DiffUtil.ToUnifiedText(DiffUtil.Compute(current, proposed));
         return $" {verb}: {path}  (+{added} / -{removed})\n{diff}";
     }
-}
-
-/// <summary>ファイルの指定行範囲を置換する。</summary>
-public sealed class ReplaceRangeTool : IAgentTool
-{
-    private readonly IEditorService _editor;
-    private readonly IWorkspaceService _workspace;
-
-    public ReplaceRangeTool(IEditorService editor, IWorkspaceService workspace)
-    {
-        _editor = editor;
-        _workspace = workspace;
-    }
-
-    public string Name => "replace_range";
-    public bool RequiresApproval => true;
-
-    public ToolDefinition Definition => new(
-        Name,
-        "ファイルの 1 始まり・両端含む行範囲を replacement へ置換し、差分提示後に適用・保存する。",
-        ToolDefinition.ObjectSchema(
-            ("path", "string", "編集対象ファイルのパス。", true),
-            ("start_line", "integer", "置換開始行。1 始まり。", true),
-            ("end_line", "integer", "置換終了行。1 始まり、両端含む。", true),
-            ("replacement", "string", "置換後のテキスト。複数行可。", true)));
-
-    public string DescribeInvocation(JsonElement args)
-    {
-        var path = _workspace.ResolvePath(args.GetString("path"));
-        var current = File.Exists(path) ? File.ReadAllText(path) : "";
-        if (!TryBuildProposedContent(args, current, out var proposed, out var error))
-            return $"行範囲置換: {path}:{args.GetInt("start_line", 0)}-{args.GetInt("end_line", 0)}\n{error}";
-
-        return ReplaceTextOnceTool.DescribeEdit(
-            $"行範囲置換 {args.GetInt("start_line", 0)}-{args.GetInt("end_line", 0)}",
-            path,
-            current,
-            proposed);
-    }
-
-    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
-    {
-        var rawPath = args.GetString("path");
-        if (string.IsNullOrWhiteSpace(rawPath)) return ToolResult.Error("path は必須です。");
-
-        var startLine = args.GetInt("start_line", 0);
-        var endLine = args.GetInt("end_line", 0);
-        if (startLine < 1) return ToolResult.Error("start_line は 1 以上で指定してください。");
-        if (endLine < startLine) return ToolResult.Error("end_line は start_line 以上で指定してください。");
-
-        var path = _workspace.ResolvePath(rawPath);
-        var current = await File.ReadAllTextAsync(path, ct);
-        if (!TryBuildProposedContent(args, current, out var proposed, out var error))
-            return ToolResult.Error(error);
-
-        return await ReplaceTextOnceTool.ApplyProposedAsync(_editor, path, proposed);
-    }
-
-    private static bool TryBuildProposedContent(
-        JsonElement args,
-        string current,
-        out string proposed,
-        out string error)
-    {
-        proposed = current;
-        error = "";
-
-        var startLine = args.GetInt("start_line", 0);
-        var endLine = args.GetInt("end_line", 0);
-        if (startLine < 1)
-        {
-            error = "start_line は 1 以上で指定してください。";
-            return false;
-        }
-
-        if (endLine < startLine)
-        {
-            error = "end_line は start_line 以上で指定してください。";
-            return false;
-        }
-
-        var replacement = args.GetString("replacement");
-        if (!TryGetLineRangeOffsets(current, startLine, endLine, out var startOffset, out var endOffset, out var lineCount))
-        {
-            error = $"指定行が範囲外です。ファイルは {lineCount} 行です。";
-            return false;
-        }
-
-        var newline = DetectNewLine(current);
-        if (replacement.Length > 0
-            && endOffset < current.Length
-            && !replacement.EndsWith("\n", System.StringComparison.Ordinal)
-            && !replacement.EndsWith("\r", System.StringComparison.Ordinal))
-        {
-            replacement += newline;
-        }
-
-        proposed = current[..startOffset] + replacement + current[endOffset..];
-        return true;
-    }
-
-    private static bool TryGetLineRangeOffsets(
-        string text,
-        int startLine,
-        int endLine,
-        out int startOffset,
-        out int endOffset,
-        out int lineCount)
-    {
-        startOffset = -1;
-        endOffset = -1;
-        lineCount = 1;
-
-        if (startLine == 1) startOffset = 0;
-        for (var i = 0; i < text.Length; i++)
-        {
-            if (text[i] != '\n') continue;
-
-            if (lineCount == endLine)
-            {
-                endOffset = i + 1;
-                break;
-            }
-
-            lineCount++;
-            if (lineCount == startLine) startOffset = i + 1;
-        }
-
-        if (endOffset < 0 && lineCount == endLine)
-        {
-            endOffset = text.Length;
-        }
-
-        return startOffset >= 0 && endOffset >= startOffset;
-    }
-
-    private static string DetectNewLine(string text)
-        => text.Contains("\r\n", System.StringComparison.Ordinal) ? "\r\n" : "\n";
 }
 
 /// <summary>1ファイルへ複数の SEARCH/REPLACE ブロックをまとめて局所適用する。</summary>

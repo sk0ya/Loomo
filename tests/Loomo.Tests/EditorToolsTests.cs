@@ -62,52 +62,34 @@ public class EditorToolsTests
     }
 
     [Fact]
-    public async Task ReplaceRange_replaces_inclusive_line_range()
+    public async Task CreateFile_writes_new_file()
     {
         using var workspace = TestWorkspace.Create();
-        var path = Path.Combine(workspace.RootPath!, "App.cs");
-        await File.WriteAllTextAsync(path, "one\ntwo\nthree\nfour\n");
-        var sut = new ReplaceRangeTool(new CapturingEditor(), workspace);
+        var path = Path.Combine(workspace.RootPath!, "New.cs");
+        var sut = new CreateFileTool(new CapturingEditor(), workspace);
 
         var result = await sut.ExecuteAsync(
-            Json("""{"path":"App.cs","start_line":2,"end_line":3,"replacement":"TWO\nTHREE"}"""),
+            Json("""{"path":"New.cs","content":"class New {}\n"}"""),
             CancellationToken.None);
 
         Assert.False(result.IsError);
-        Assert.Equal("one\nTWO\nTHREE\nfour\n", await File.ReadAllTextAsync(path));
+        Assert.Equal("class New {}\n", await File.ReadAllTextAsync(path));
     }
 
     [Fact]
-    public async Task ReplaceRange_describes_diff_for_approval()
-    {
-        using var workspace = TestWorkspace.Create();
-        await File.WriteAllTextAsync(Path.Combine(workspace.RootPath!, "App.cs"), "one\ntwo\nthree\nfour\n");
-        var sut = new ReplaceRangeTool(new CapturingEditor(), workspace);
-
-        var summary = sut.DescribeInvocation(
-            Json("""{"path":"App.cs","start_line":2,"end_line":3,"replacement":"TWO\nTHREE"}"""));
-
-        Assert.Contains("行範囲置換 2-3", summary);
-        Assert.Contains("-two", summary);
-        Assert.Contains("-three", summary);
-        Assert.Contains("+TWO", summary);
-        Assert.Contains("+THREE", summary);
-    }
-
-    [Fact]
-    public async Task ReplaceRange_rejects_out_of_range_line()
+    public async Task CreateFile_rejects_existing_file()
     {
         using var workspace = TestWorkspace.Create();
         var path = Path.Combine(workspace.RootPath!, "App.cs");
-        await File.WriteAllTextAsync(path, "one\n");
-        var sut = new ReplaceRangeTool(new CapturingEditor(), workspace);
+        await File.WriteAllTextAsync(path, "class App {}\n");
+        var sut = new CreateFileTool(new CapturingEditor(), workspace);
 
         var result = await sut.ExecuteAsync(
-            Json("""{"path":"App.cs","start_line":3,"end_line":3,"replacement":"three"}"""),
+            Json("""{"path":"App.cs","content":"overwritten"}"""),
             CancellationToken.None);
 
         Assert.True(result.IsError);
-        Assert.Equal("one\n", await File.ReadAllTextAsync(path));
+        Assert.Equal("class App {}\n", await File.ReadAllTextAsync(path));
     }
 
     [Fact]

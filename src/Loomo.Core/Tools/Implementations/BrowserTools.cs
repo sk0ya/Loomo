@@ -114,6 +114,50 @@ public sealed class BrowserCurrentUrlTool : IAgentTool
     }
 }
 
+/// <summary>現在のページのクリック/入力可能な要素を一覧する。</summary>
+public sealed class BrowserListClickablesTool : IAgentTool
+{
+    private const int MaxLines = 100;
+
+    private readonly IBrowserService _browser;
+    public BrowserListClickablesTool(IBrowserService browser) => _browser = browser;
+
+    public string Name => "browser_list_clickables";
+    public bool RequiresApproval => false;
+
+    public ToolDefinition Definition => new(
+        Name,
+        "現在のページでクリック/入力できる要素（リンク・ボタン・入力欄）を、表示文言と CSS セレクタ付きで一覧する。"
+        + "ここで得たセレクタをそのまま browser_click / browser_type に渡す。セレクタを推測しないこと。",
+        ToolDefinition.ObjectSchema());
+
+    public string DescribeInvocation(JsonElement args) => "ブラウザ要素一覧";
+
+    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    {
+        if (!_browser.IsAvailable) return ToolResult.Error("ブラウザペインに操作可能なタブがありません。");
+
+        try
+        {
+            var items = await _browser.ListClickablesAsync(ct);
+            if (items.Count == 0) return ToolResult.Ok("(クリック/入力できる要素が見つかりません)");
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var it in items.Take(MaxLines))
+            {
+                var text = string.IsNullOrEmpty(it.Text) ? "(文言なし)" : it.Text;
+                sb.Append('<').Append(it.Tag).Append("> \"").Append(text).Append("\" → ").Append(it.Selector).Append('\n');
+            }
+
+            return ToolResult.Ok(sb.ToString());
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ToolResult.Error(ex.Message);
+        }
+    }
+}
+
 /// <summary>CSSセレクタに一致する要素をクリックする。</summary>
 public sealed class BrowserClickTool : IAgentTool
 {
@@ -125,9 +169,10 @@ public sealed class BrowserClickTool : IAgentTool
 
     public ToolDefinition Definition => new(
         Name,
-        "現在のページでCSSセレクタに一致する最初の要素をクリックする。",
+        "現在のページでCSSセレクタに一致する最初の要素をクリックする。"
+        + "セレクタは推測せず、browser_list_clickables が返したものを使う。",
         ToolDefinition.ObjectSchema(
-            ("selector", "string", "クリック対象のCSSセレクタ。例: button#submit, a.login", true)));
+            ("selector", "string", "クリック対象のCSSセレクタ。browser_list_clickables の出力をそのまま使う。", true)));
 
     public string DescribeInvocation(JsonElement args) => $"ブラウザクリック: {args.GetString("selector")}";
 
@@ -160,9 +205,10 @@ public sealed class BrowserTypeTool : IAgentTool
 
     public ToolDefinition Definition => new(
         Name,
-        "現在のページでCSSセレクタに一致する入力要素へテキストを設定し、input/change を発火する。",
+        "現在のページでCSSセレクタに一致する入力要素へテキストを設定し、input/change を発火する。"
+        + "セレクタは推測せず、browser_list_clickables が返したものを使う。",
         ToolDefinition.ObjectSchema(
-            ("selector", "string", "入力対象のCSSセレクタ。例: input[name=q], textarea#body", true),
+            ("selector", "string", "入力対象のCSSセレクタ。browser_list_clickables の出力をそのまま使う。", true),
             ("text", "string", "設定するテキスト。", true)));
 
     public string DescribeInvocation(JsonElement args)

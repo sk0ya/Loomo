@@ -6,42 +6,54 @@ using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
-using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools.Implementations;
-using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.Tests;
 
 public class WorkspaceToolsTests
 {
     [Fact]
-    public async Task ListDirectory_accepts_relative_path_under_workspace_root()
+    public async Task GetProjectTree_renders_nested_tree_and_skips_generated_dirs()
     {
-        using var workspace = ServiceWorkspace.Create();
-        Directory.CreateDirectory(Path.Combine(workspace.RootPath, "src"));
-        File.WriteAllText(Path.Combine(workspace.RootPath, "src", "App.cs"), "class App {}");
-        var sut = new ListDirectoryTool(workspace.Service);
+        using var workspace = TestWorkspace.Create();
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath!, "src"));
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "src", "App.cs"), "class App {}");
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath!, "obj"));
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "obj", "Generated.cs"), "class Generated {}");
+        var sut = new GetProjectTreeTool(workspace);
 
-        var result = await sut.ExecuteAsync(Json("""{"path":"src"}"""), CancellationToken.None);
+        var result = await sut.ExecuteAsync(Json("{}"), CancellationToken.None);
 
         Assert.False(result.IsError);
+        Assert.Contains("src/", result.Content);
         Assert.Contains("App.cs", result.Content);
+        Assert.DoesNotContain("Generated.cs", result.Content);
     }
 
     [Fact]
-    public async Task ListDirectory_accepts_absolute_path_under_workspace_root()
+    public async Task GetProjectTree_always_lists_first_level_and_caps_deeper_levels()
     {
-        using var workspace = ServiceWorkspace.Create();
-        var src = Directory.CreateDirectory(Path.Combine(workspace.RootPath, "src")).FullName;
-        File.WriteAllText(Path.Combine(src, "App.cs"), "class App {}");
-        var sut = new ListDirectoryTool(workspace.Service);
+        using var workspace = TestWorkspace.Create();
+        // 1階層目は max_entries を超えても全て出す（ここでは 3 ファイル + 1 フォルダ）。
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "one.cs"), "class One {}");
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "two.cs"), "class Two {}");
+        File.WriteAllText(Path.Combine(workspace.RootPath!, "three.cs"), "class Three {}");
+        var sub = Directory.CreateDirectory(Path.Combine(workspace.RootPath!, "sub")).FullName;
+        File.WriteAllText(Path.Combine(sub, "inner1.cs"), "class Inner1 {}");
+        File.WriteAllText(Path.Combine(sub, "inner2.cs"), "class Inner2 {}");
+        var sut = new GetProjectTreeTool(workspace);
 
-        var result = await sut.ExecuteAsync(
-            Json($$"""{"path":{{JsonSerializer.Serialize(src)}}}"""),
-            CancellationToken.None);
+        var result = await sut.ExecuteAsync(Json("""{"max_entries":1}"""), CancellationToken.None);
 
         Assert.False(result.IsError);
-        Assert.Contains("App.cs", result.Content);
+        // 1階層目は上限に関わらず全件。
+        Assert.Contains("one.cs", result.Content);
+        Assert.Contains("two.cs", result.Content);
+        Assert.Contains("three.cs", result.Content);
+        Assert.Contains("sub/", result.Content);
+        // 2階層目は上限まで（1件）だけ展開し、残りは省略される。
+        Assert.Contains("inner1.cs", result.Content);
+        Assert.DoesNotContain("inner2.cs", result.Content);
     }
 
     [Fact]
@@ -132,28 +144,6 @@ public class WorkspaceToolsTests
     }
 
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
-
-    private sealed class ServiceWorkspace : IDisposable
-    {
-        private ServiceWorkspace(string rootPath)
-        {
-            RootPath = rootPath;
-            Service = new WorkspaceService(new SafetySettings());
-            Service.OpenFolder(rootPath);
-        }
-
-        public string RootPath { get; }
-        public WorkspaceService Service { get; }
-
-        public static ServiceWorkspace Create()
-        {
-            var root = Directory.CreateDirectory(Path.Combine(
-                Path.GetTempPath(), $"loomo-list-directory-{Guid.NewGuid():N}"));
-            return new ServiceWorkspace(root.FullName);
-        }
-
-        public void Dispose() => Directory.Delete(RootPath, recursive: true);
-    }
 
     private sealed class TestWorkspace : IWorkspaceService, IDisposable
     {

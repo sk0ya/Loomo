@@ -46,11 +46,17 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
 
 ### Tools — `Loomo.Core/Tools/`
 
-`IAgentTool` implementations in `Tools/Implementations/` (`WorkspaceTools`, `EditorTools`, `TerminalTools`):
-`list_directory`, `read_file`, `get_selection`, `open_in_editor`, `propose_edit`, `run_command`. Each is
-registered individually in DI and aggregated by `ToolRegistry`. `DescribeInvocation` produces the human
-summary shown on the approval card (`propose_edit` returns a unified diff). Add a new tool by implementing
-`IAgentTool` and registering it in `App.xaml.cs`.
+`IAgentTool` implementations in `Tools/Implementations/` (`WorkspaceTools`, `EditorTools`, `TerminalTools`,
+`BrowserTools`). Designed for small local LLMs, so the set favors **bulk-retrieval + text-anchored editing**
+over many fine-grained steps: read/search = `get_project_tree` (whole tree in one call), `find_files`,
+`search_files`, `read_file`, `get_selection`; editing an existing file = `replace_text_once` (single unique
+match) or `apply_patch` (multiple SEARCH/REPLACE blocks) — there is **no line-number-based edit**; new files
+= `create_file` (errors if the file exists); plus `open_in_editor`, `get_selection_text`, `replace_selection`,
+`run_command`, and the `browser_*` tools (`browser_list_clickables` returns ready-to-use CSS selectors so the
+model never guesses them). Each is registered individually in DI and aggregated by `ToolRegistry`.
+`DescribeInvocation` produces the human summary shown on the approval card (the editing tools return a unified
+diff, expanded to a colored card by `AiBarViewModel.IsDiffTool`). Add a new tool by implementing `IAgentTool`
+and registering it in `App.xaml.cs`.
 
 ### Safety — `Loomo.Core/Safety/`
 
