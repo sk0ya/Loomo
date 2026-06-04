@@ -92,8 +92,9 @@ public sealed class AgentOrchestrator
             var activeProfile = useResidentPipeline
                 ? SelectResidentProfile(conversation)
                 : requestedProfile;
+            // 結果判断ステージ(AI3)だけはツールを使わせず最終回答に専念させる。
+            // 理解ステージ(AI1)は pwsh tool_use を出すのが仕事なので、必ずツールを渡す。
             var activeDefinitions = activeProfile.Id == AgentProfiles.ResultJudge.Id
-                                    || activeProfile.Id == AgentProfiles.ChatUnderstanding.Id
                 ? Array.Empty<ToolDefinition>()
                 : definitions;
 
@@ -173,6 +174,28 @@ public sealed class AgentOrchestrator
                         stage = activeProfile.DisplayName,
                     });
 
+            // 結果判断ステージ(AI3)がツール無しで「まだ作業が必要（[CONTINUE]）」と答えたら、
+            // ターンを終えず理解ステージ(AI1)へ戻して次の pwsh 呼び出しを促す（多段ループ）。
+            // モデルが [CONTINUE] を出さなければ従来どおり単発で終了するので、純粋に追加動作。
+            if (pendingToolUses.Count == 0
+                && activeProfile.Id == AgentProfiles.ResultJudge.Id
+                && ShouldContinueResidentPipeline(assistant.Text))
+            {
+                // [CONTINUE] は制御信号なので最終回答には残さない。末尾を assistant にして
+                // 次反復で SelectResidentProfile が理解ステージを選ぶようにする。
+                assistant.Text = StripContinueMarker(assistant.Text);
+                if (string.IsNullOrWhiteSpace(assistant.Text))
+                    assistant.Text = "（作業を続行します）";
+                conversation.Messages.Add(assistant);
+                _trace.Record(sessionId, turnId, TraceKinds.AiMessage, new
+                {
+                    agentId = activeProfile.Id,
+                    stage = activeProfile.DisplayName,
+                    residentContinue = true,
+                });
+                continue;
+            }
+
             // 本文もツール呼び出しも無い空応答は履歴に積まない（APIエラー要因になり得る）。
             if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
                 conversation.Messages.Add(assistant);
@@ -218,6 +241,16 @@ public sealed class AgentOrchestrator
 
     private static bool ShouldContinueResidentPipeline(string? text)
         => text?.TrimStart().StartsWith("[CONTINUE]", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>先頭の [CONTINUE] 制御マーカーを取り除き、続く本文だけを返す。</summary>
+    private static string StripContinueMarker(string? text)
+    {
+        var trimmed = (text ?? string.Empty).TrimStart();
+        const string marker = "[CONTINUE]";
+        return trimmed.StartsWith(marker, StringComparison.OrdinalIgnoreCase)
+            ? trimmed[marker.Length..].TrimStart()
+            : trimmed;
+    }
 
     /// <summary><see cref="ExecuteToolAsync"/> を実行し、終了時に必ずイベントチャネルを閉じる。
     /// これにより呼び出し側の読み出しループが確実に終了する。</summary>

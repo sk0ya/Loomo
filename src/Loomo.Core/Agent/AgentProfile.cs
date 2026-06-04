@@ -38,8 +38,10 @@ public static class AgentProfiles
         "result-judge",
         "結果判断",
         SystemPromptSuffix:
-"ステージ: AI3 結果判断。直前の tool 結果を読み、目的が満たされたら最終回答する。" +
-            "このステージではツールは使えない。結果から分かる範囲だけで、日本語の最終回答を簡潔に返す。");
+"ステージ: AI3 結果判断。直前の tool 結果を読み、目的が満たされたら日本語で簡潔に最終回答する。" +
+            "このステージではツールは使えない。まだ確認や追加作業が必要な場合は、最初の行に [CONTINUE] とだけ書き、" +
+            "続けて次に何をすべきかを一文で示す（次の理解ステージが pwsh を実行する）。" +
+            "目的が満たされたなら [CONTINUE] は付けず、結果から分かる範囲だけで最終回答を返す。");
 
     public static readonly AgentProfile ToolExecutor = new(
         "tool-executor",
