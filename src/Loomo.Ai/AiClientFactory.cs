@@ -20,5 +20,5 @@ public sealed class AiClientFactory : IAiClientFactory
     public IAiClient ResolveCurrent() => Resolve(_settings.Provider);
 
     public IAiClient Resolve(AiProvider provider) =>
-        new OpenAiCompatibleClient(_httpFactory.CreateClient("ai"), _settings);
+        new OllamaClient(_httpFactory.CreateClient("ai"), _settings);
 }

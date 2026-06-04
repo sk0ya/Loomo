@@ -11,9 +11,8 @@ using sk0ya.Loomo.Core.Models;
 namespace sk0ya.Loomo.Ai;
 
 /// <summary>
-/// Ollama の OpenAI互換エンドポイントから利用可能なモデル一覧を取得する。
-/// <c>GET {baseUrl}/models</c>（Ollama も <c>/v1/models</c> で互換応答を返す）を叩き、
-/// 設定画面のモデル選択肢として提示する。
+/// Ollama のネイティブ API から利用可能なモデル一覧を取得する。
+/// <c>GET {host}/api/tags</c> を叩き、設定画面のモデル選択肢として提示する。
 /// </summary>
 public sealed class ModelCatalogService
 {
@@ -45,19 +44,16 @@ public sealed class ModelCatalogService
             throw new NotSupportedException($"{provider} はモデル一覧取得に対応していません。");
 
         var cfg = _settings.Local;
-        var defaultBase = OllamaLauncher.DefaultBaseUrl;
-        var rawBase = !string.IsNullOrWhiteSpace(baseUrlOverride) ? baseUrlOverride
-            : !string.IsNullOrWhiteSpace(cfg.BaseUrl) ? cfg.BaseUrl
-            : defaultBase;
-        var baseUrl = rawBase!.TrimEnd('/');
+        var rawBase = !string.IsNullOrWhiteSpace(baseUrlOverride) ? baseUrlOverride : cfg.BaseUrl;
+        var host = OllamaLauncher.ResolveHost(rawBase);
         var apiKey = !string.IsNullOrWhiteSpace(apiKeyOverride) ? apiKeyOverride : cfg.ApiKey;
 
         // 未起動なら Ollama の起動を試みてから取得する（手動起動を不要にする）。
-        await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
+        await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
 
         using var resp = await HttpRetry.SendAsync(_http, () =>
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/models");
+            var req = new HttpRequestMessage(HttpMethod.Get, $"{host}/api/tags");
             if (!string.IsNullOrWhiteSpace(apiKey))
                 req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
             return req;
@@ -68,16 +64,16 @@ public sealed class ModelCatalogService
             throw new InvalidOperationException($"モデル一覧の取得に失敗しました（{(int)resp.StatusCode}）: {json}");
 
         var root = JsonNode.Parse(json);
-        // OpenAI/Ollama: { "data": [ { "id": "..." }, ... ] }。一部実装は配列を直接返す。
-        var list = root?["data"]?.AsArray() ?? root as JsonArray;
+        // Ollama: { "models": [ { "name": "qwen3:4b", ... }, ... ] }
+        var list = root?["models"]?.AsArray();
         if (list is null)
             return Array.Empty<string>();
 
         return list
-            .Select(n => n?["id"]?.GetValue<string>())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id!)
-            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .Select(n => n?["name"]?.GetValue<string>())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 }

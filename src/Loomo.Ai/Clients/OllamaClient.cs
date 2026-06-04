@@ -10,14 +10,15 @@ using sk0ya.Loomo.Core.Tools;
 namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
-/// Ollama の OpenAI Chat Completions 互換エンドポイントを使うローカルLLMクライアント。
+/// Ollama ネイティブ API（<c>/api/chat</c>）を使うローカルLLMクライアント。
+/// thinking モデルは <c>think</c>（真偽値）で確実に制御でき、思考は本文と分離して返る。
 /// </summary>
-public sealed class OpenAiCompatibleClient : IAiClient
+public sealed class OllamaClient : IAiClient
 {
     private readonly HttpClient _http;
     private readonly AiSettings _settings;
 
-    public OpenAiCompatibleClient(HttpClient http, AiSettings settings)
+    public OllamaClient(HttpClient http, AiSettings settings)
     {
         _http = http;
         _settings = settings;
@@ -31,10 +32,8 @@ public sealed class OpenAiCompatibleClient : IAiClient
         [EnumeratorCancellation] CancellationToken ct)
     {
         var cfg = _settings.Local;
-        var defaultBase = OllamaLauncher.DefaultBaseUrl;
-        var baseUrl = (string.IsNullOrWhiteSpace(cfg.BaseUrl) ? defaultBase : cfg.BaseUrl).TrimEnd('/');
-
-        var endpoint = $"{baseUrl}/chat/completions";
+        var host = OllamaLauncher.ResolveHost(cfg.BaseUrl);
+        var endpoint = $"{host}/api/chat";
         void Authorize(HttpRequestMessage req)
         {
             if (!string.IsNullOrWhiteSpace(cfg.ApiKey))
@@ -42,16 +41,16 @@ public sealed class OpenAiCompatibleClient : IAiClient
         }
 
         // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
-        await OllamaLauncher.EnsureRunningAsync(_http, baseUrl, ct);
+        await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
 
-        // SSE ストリーミング。先頭イベントが「ツール非対応」エラーなら includeTools:false で再送する。
+        // 先頭イベントが「ツール非対応」エラーなら includeTools:false で再送する。
         // （ストリームは貯め込めないので最初の1件だけ覗いて判定する。）
-        var body = OpenAiProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
-        ApplyThinkingEffort(body, cfg.ThinkingEffort);
+        var body = OllamaProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
+        ApplyThinking(body, cfg.ThinkingEffort);
         var fellBack = false;
 
-        await using (var en = OpenAiProtocol.SendStreamingAsync(
-                _http, endpoint, body, Provider.ToString(), Authorize, ct, extractThinking: true)
+        await using (var en = OllamaProtocol.SendChatAsync(
+                _http, endpoint, body, Provider.ToString(), Authorize, ct)
             .GetAsyncEnumerator(ct))
         {
             if (await en.MoveNextAsync())
@@ -71,27 +70,21 @@ public sealed class OpenAiCompatibleClient : IAiClient
 
         if (fellBack)
         {
-            var fallbackBody = OpenAiProtocol.BuildRequest(
+            var fallbackBody = OllamaProtocol.BuildRequest(
                 conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt, includeTools: false);
-            ApplyThinkingEffort(fallbackBody, cfg.ThinkingEffort);
-            await foreach (var ev in OpenAiProtocol.SendStreamingAsync(
-                _http, endpoint, fallbackBody, Provider.ToString(), Authorize, ct, extractThinking: true))
+            ApplyThinking(fallbackBody, cfg.ThinkingEffort);
+            await foreach (var ev in OllamaProtocol.SendChatAsync(
+                _http, endpoint, fallbackBody, Provider.ToString(), Authorize, ct))
                 yield return ev;
         }
     }
 
-    private static void ApplyThinkingEffort(System.Text.Json.Nodes.JsonObject body, string? effort)
+    /// <summary>thinking の有効・無効を <c>think</c> に反映する。none で完全に無効化、それ以外は有効化。</summary>
+    private static void ApplyThinking(System.Text.Json.Nodes.JsonObject body, string? effort)
     {
-        // Ollama's OpenAI-compatible endpoint accepts both forms for thinking models.
-        var normalized = NormalizeThinkingEffort(effort);
-        body["reasoning_effort"] = normalized;
-        body["reasoning"] = new System.Text.Json.Nodes.JsonObject { ["effort"] = normalized };
-    }
-
-    private static string NormalizeThinkingEffort(string? value)
-    {
-        var v = value?.Trim().ToLowerInvariant();
-        return v is "low" or "medium" or "high" ? v : "none";
+        var v = effort?.Trim().ToLowerInvariant();
+        // ネイティブ API の think は真偽値（qwen3 等）。none のときだけ false で確実に thinking を止める。
+        body["think"] = v is "low" or "medium" or "high";
     }
 
     private static bool IsOllamaToolsUnsupportedError(string message)

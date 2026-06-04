@@ -63,16 +63,20 @@ file-touching tools route through it. `SafetySettings` lives on `AiSettings.Safe
 ### AI clients — `Loomo.Ai/Clients/`
 
 `IAiClient` abstracts the provider; `AiClientFactory.ResolveCurrent()` reads the singleton `AiSettings`
-**every turn**, so settings changes apply immediately. Providers: `StubAiClient` (default, no key, offline),
-`ClaudeAiClient`, `OpenAiCompatibleClient`, `CopilotAiClient`. OpenAI-compatible wire logic is shared via
-`OpenAiProtocol` (internal static). All HTTP goes through `Http/HttpRetry` (exponential backoff on
-429/5xx/408 + `HttpRequestException`, honors `Retry-After`).
+**every turn**, so settings changes apply immediately. The only implemented client is `OllamaClient`
+(provider `Local`), talking to a local Ollama via its **native API** (`/api/chat`, `/api/tags`) — the
+wire logic lives in `OllamaProtocol` (internal static). All HTTP goes through `Http/HttpRetry`
+(exponential backoff on 429/5xx/408 + `HttpRequestException`, honors `Retry-After`).
 
-**Streaming**: the **Local** provider uses real SSE (`stream:true`) via `OpenAiProtocol.SendStreamingAsync`
-— text/thinking arrive incrementally, tool-call fragments are reassembled by `index`, and reasoning is
-surfaced as `ThinkingDelta` (from `reasoning_content` or `<think>` tags, the latter split across chunks by
-`ThinkStreamParser`). **Claude / OpenAI / Copilot still do *pseudo-streaming*** (fetch full response, then
-split into `TextDelta`) via the non-streaming `SendAsync`.
+**Streaming**: `OllamaProtocol.SendChatAsync` reads Ollama's NDJSON stream (`stream:true`) line by line.
+Thinking arrives in its own `message.thinking` field (surfaced as `ThinkingDelta`), body in
+`message.content` (`TextDelta`), and `message.tool_calls` carry `arguments` as a **JSON object** (not a
+string). Thinking is toggled with the native boolean `think`: `ThinkingEffort == "none"` sends
+`think:false` (reliably silences qwen3 etc.), any of low/medium/high sends `think:true`. If the model
+rejects tools, the client retries once with `includeTools:false`.
+
+`OllamaLauncher.ResolveHost` normalizes `BaseUrl` to the native host and strips a trailing `/v1` left
+over from the old OpenAI-compatible config, so existing `settings.json` keeps working.
 
 **Known limitations** (don't assume these exist): no token/cost usage display. Context management is
 trim-only (no summarization/compaction). Copilot token exchange + chat use **unofficial** endpoints and

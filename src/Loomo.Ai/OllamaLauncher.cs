@@ -8,13 +8,26 @@ namespace sk0ya.Loomo.Ai;
 
 /// <summary>
 /// ローカルの Ollama サーバーが起動していなければ <c>ollama serve</c> の起動を試みる補助。
-/// ローカルLLM（既定 <c>http://localhost:11434/v1</c>）利用時、サーバーの手動起動を不要にする。
+/// ローカルLLM（既定 <c>http://localhost:11434</c>）利用時、サーバーの手動起動を不要にする。
 /// 遠隔エンドポイントやインストールされていない場合は何もしない（呼び出し側で接続エラーになる）。
 /// </summary>
 public static class OllamaLauncher
 {
-    /// <summary>ローカルLLM（Ollama）の既定 BaseUrl。BaseUrl 未設定時のフォールバックに使う。</summary>
-    public const string DefaultBaseUrl = "http://localhost:11434/v1";
+    /// <summary>ローカルLLM（Ollama）の既定ホスト。BaseUrl 未設定時のフォールバックに使う。</summary>
+    public const string DefaultBaseUrl = "http://localhost:11434";
+
+    /// <summary>
+    /// 設定の BaseUrl をネイティブ API のホストへ正規化する。未設定なら既定ホスト。
+    /// 旧 OpenAI互換設定の末尾 <c>/v1</c> は取り除く（既存設定の移行）。
+    /// </summary>
+    public static string ResolveHost(string? baseUrl)
+    {
+        var raw = string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrl : baseUrl!;
+        var host = raw.TrimEnd('/');
+        if (host.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            host = host[..^3].TrimEnd('/');
+        return host;
+    }
 
     /// <summary>BaseUrl がローカルループバックを指すか（自動起動の対象判定）。</summary>
     public static bool IsLoopback(string? baseUrl) =>
@@ -50,7 +63,7 @@ public static class OllamaLauncher
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(2));
-            using var resp = await http.GetAsync($"{root}/models", cts.Token);
+            using var resp = await http.GetAsync($"{root}/api/tags", cts.Token);
             return true;
         }
         catch (Exception) when (!ct.IsCancellationRequested)

@@ -22,11 +22,11 @@ public sealed class AiSettings
     /// <summary>AI操作トレース（観測性・設計書 §20）の設定。</summary>
     public ObservabilitySettings Observability { get; set; } = new();
 
-    /// <summary>ローカルLLM（Ollama OpenAI互換エンドポイント）。</summary>
+    /// <summary>ローカルLLM（Ollama ネイティブ API /api/chat）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
         Model = "llama3.1",
-        BaseUrl = "http://localhost:11434/v1"
+        BaseUrl = "http://localhost:11434"
     };
 
     public string SystemPrompt { get; set; } =
@@ -48,7 +48,7 @@ public sealed class ProviderConfig
     /// <summary>APIキー。実運用では資格情報マネージャ等から注入する想定。</summary>
     public string? ApiKey { get; set; }
 
-    /// <summary>OpenAI互換エンドポイントのベースURL（ローカルLLM等）。</summary>
+    /// <summary>Ollama ホストのベースURL（ローカルLLM等。末尾の /v1 は自動で除去される）。</summary>
     public string? BaseUrl { get; set; }
 
     /// <summary>1応答で生成させる最大トークン数（出力上限）。</summary>
