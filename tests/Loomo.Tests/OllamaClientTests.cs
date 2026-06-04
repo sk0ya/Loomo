@@ -181,6 +181,45 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_treats_name_prefixed_phi4_tool_content_as_tool_call_when_tools_are_available()
+    {
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"name=pwsh {\\\"command\\\":\\\"Get-Date\\\"}\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Local_client_treats_phi4_function_json_content_as_tool_call_when_tools_are_available()
+    {
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"pwsh\\\",\\\"description\\\":\\\"PowerShell\\\"},\\\"parameters\\\":{\\\"command\\\":\\\"Get-Date\\\"}}]\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Local_client_treats_phi4_root_command_json_content_as_tool_call_when_tools_are_available()
+    {
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"name\\\":\\\"pwsh\\\",\\\"command\\\":\\\"Get-Location\\\"}]\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
     public void BuildRequest_applies_qwen3_thinking_sampling_and_num_ctx()
     {
         var conversation = new Conversation();
@@ -264,6 +303,30 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public void BuildRequest_applies_phi4_mini_fast_tool_profile()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("ファイルを確認して");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation,
+            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+            "phi4-mini:latest",
+            1024,
+            "system",
+            includeTools: true,
+            wantThink: true);
+
+        Assert.True(body.ContainsKey("tools"));
+        Assert.False(body["think"]!.GetValue<bool>());
+        var options = body["options"]!.AsObject();
+        Assert.Equal(8192, options["num_ctx"]!.GetValue<int>());
+        Assert.Equal(1024, options["num_predict"]!.GetValue<int>());
+        Assert.Equal(0.2, options["temperature"]!.GetValue<double>());
+        Assert.Equal(0.9, options["top_p"]!.GetValue<double>());
+    }
+
+    [Fact]
     public void BuildRequest_num_ctx_override_takes_precedence_over_profile()
     {
         var conversation = new Conversation();
@@ -326,7 +389,7 @@ public class OllamaClientTests
     {
         Assert.True(AiSettings.DefaultSystemPrompt.Length < 500);
         Assert.Contains("tool calling ループ", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("説明文ではなく pwsh の tool call を返す", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("本文で説明せず pwsh ツールを呼ぶ", AiSettings.DefaultSystemPrompt);
         Assert.Contains("{\"command\":\"...\"}", AiSettings.DefaultSystemPrompt);
     }
 
@@ -337,7 +400,7 @@ public class OllamaClientTests
         var system = body["messages"]!.AsArray()
             .First(m => m?["role"]?.GetValue<string>() == "system")!["content"]!.GetValue<string>();
 
-        Assert.Contains("説明文ではなく pwsh の tool call を返す", system);
+        Assert.Contains("本文で説明せず pwsh ツールを呼ぶ", system);
         Assert.Contains("{\"command\":\"...\"}", system);
         Assert.Contains("phi4-mini向け", system);
         Assert.DoesNotContain("# ツール呼び出し", system);

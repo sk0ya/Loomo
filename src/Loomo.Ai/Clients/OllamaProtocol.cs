@@ -27,7 +27,7 @@ internal static class OllamaProtocol
     /// 既定 5 分より長く保ってセッション中の体感を安定させる。</summary>
     private const string KeepAlive = "30m";
     private static readonly Regex LooseToolCall = new(
-        @"^\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{(?<body>.*)\}\s*$",
+        @"^\s*(?:name\s*=\s*)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{(?<body>.*)\}\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
     private static readonly Regex LooseProperty = new(
         @"(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*""(?<value>(?:\\.|[^""\\])*)""",
@@ -146,7 +146,10 @@ internal static class OllamaProtocol
                 messages.Add(new JsonObject { ["role"] = "user", ["content"] = workspaceContext });
         }
 
-        var options = new JsonObject { ["num_predict"] = maxTokens };
+        var numPredict = profile.MaxOutputTokens > 0
+            ? Math.Min(maxTokens, profile.MaxOutputTokens)
+            : maxTokens;
+        var options = new JsonObject { ["num_predict"] = numPredict };
         // 実効コンテキスト窓（設定の上書き優先・無ければプロファイル既定）。トリム予算もこの値に揃える。
         var numCtx = numCtxOverride > 0 ? numCtxOverride : profile.NumCtx;
         if (numCtx > 0)
@@ -404,22 +407,42 @@ internal static class OllamaProtocol
 
     private static ToolUse? TryParseContentToolCall(string content, IReadOnlySet<string> allowedToolNames)
     {
-        var json = ExtractJsonObject(content);
+        var json = ExtractJsonValue(content);
         if (json is null) return TryParseLooseToolCall(content, allowedToolNames);
 
         JsonNode? node;
         try { node = JsonNode.Parse(json); }
         catch { return null; }
 
+        return TryBuildToolUseFromJson(node, allowedToolNames);
+    }
+
+    private static ToolUse? TryBuildToolUseFromJson(JsonNode? node, IReadOnlySet<string> allowedToolNames)
+    {
+        if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                var use = TryBuildToolUseFromJson(item, allowedToolNames);
+                if (use is not null) return use;
+            }
+            return null;
+        }
+
         var obj = node as JsonObject;
         if (obj is null) return null;
 
+        // Native tool call ではなく本文に
+        // [{"type":"function","function":{"name":"pwsh",...},"parameters":{"command":"..."}}]
+        // のような JSON を返す phi4-mini の実応答を tool use として扱う。
         var fn = obj["function"] as JsonObject;
         var name = fn?["name"]?.GetValue<string>() ?? obj["name"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name) || !allowedToolNames.Contains(name))
             return null;
 
-        var args = fn?["arguments"] ?? obj["arguments"];
+        var args = fn?["arguments"] ?? obj["arguments"] ?? obj["parameters"];
+        if (args is null && obj["command"]?.GetValue<string>() is { Length: > 0 } command)
+            args = new JsonObject { ["command"] = command };
         var argsJson = args is null ? "{}" : args.ToJsonString();
         return new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson);
     }
@@ -431,6 +454,18 @@ internal static class OllamaProtocol
 
         var name = match.Groups["name"].Value;
         if (!allowedToolNames.Contains(name)) return null;
+
+        var bodyJson = "{" + match.Groups["body"].Value + "}";
+        try
+        {
+            var body = JsonNode.Parse(bodyJson);
+            if (body is JsonObject obj && obj["command"]?.GetValue<string>() is { Length: > 0 })
+                return new ToolUse(Guid.NewGuid().ToString("N"), name, obj.ToJsonString());
+        }
+        catch
+        {
+            // phi4-mini は command: "..." のような非 JSON 形式も返すため、下の緩い抽出へ進む。
+        }
 
         var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (Match prop in LooseProperty.Matches(match.Groups["body"].Value))
@@ -453,7 +488,7 @@ internal static class OllamaProtocol
     private static string QuotePowerShellArgument(string value)
         => "'" + value.Replace("'", "''") + "'";
 
-    private static string? ExtractJsonObject(string content)
+    private static string? ExtractJsonValue(string content)
     {
         var text = content.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
@@ -464,7 +499,8 @@ internal static class OllamaProtocol
                 text = text[(firstNewline + 1)..lastFence].Trim();
         }
 
-        if (text.StartsWith('{') && text.EndsWith('}'))
+        if ((text.StartsWith('{') && text.EndsWith('}')) ||
+            (text.StartsWith('[') && text.EndsWith(']')))
             return text;
 
         return null;

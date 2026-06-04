@@ -7,6 +7,8 @@ namespace sk0ya.Loomo.Ai;
 /// <summary>AIプロバイダ設定。appsettings / ユーザー設定からバインドする。</summary>
 public sealed class AiSettings
 {
+    public const string DefaultLocalModel = "phi4-mini:latest";
+
     /// <summary>現在選択中のプロバイダ。</summary>
     public AiProvider Provider { get; set; } = AiProvider.Local;
 
@@ -25,8 +27,9 @@ public sealed class AiSettings
     /// <summary>ローカルLLM（Ollama ネイティブ API /api/chat）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
-        Model = "llama3.1",
-        BaseUrl = "http://localhost:11434"
+        Model = DefaultLocalModel,
+        BaseUrl = "http://localhost:11434",
+        MaxTokens = 1024
     };
 
     public string SystemPrompt => DefaultSystemPrompt;
@@ -39,8 +42,8 @@ public sealed class AiSettings
         "使えるツールは pwsh だけです。ファイル操作、検索、ビルド、テスト、編集は PowerShell コマンドで行います。\n" +
         "\n" +
         "ルール:\n" +
-        "- 作業にファイル内容やコマンド結果が必要なら、説明文ではなく pwsh の tool call を返す。\n" +
-        "- tool call は name=pwsh、arguments は {\"command\":\"...\"} の JSON オブジェクトにする。\n" +
+        "- 作業にファイル内容やコマンド結果が必要なら、本文で説明せず pwsh ツールを呼ぶ。\n" +
+        "- ツール呼び出しは name=pwsh、arguments={\"command\":\"...\"} の1件だけにする。\n" +
         "- tool 結果を見て、次の tool call か最終回答かを決める。必要なら複数回呼ぶ。\n" +
         "- 推測で答えない。確認していない内容は述べない。\n" +
         "- 危険操作や承認回避はしない。\n" +

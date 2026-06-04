@@ -57,21 +57,22 @@ public static class ModelProfiles
     /// Phi-4 推奨のサンプリングは temp0.8 / top_p0.95。小型モデルで繰り返しが出やすいため
     /// repeat_penalty1.05 を添える。
     ///
-    /// 性能最適化（このマシンは GPU オフロードされず 100% CPU 実行）:
-    /// num_ctx は 32768 → 16384 に縮小。CPU 実行では速度はほぼ変わらないが KV キャッシュの
-    /// メモリ（32k で約 4GB）を半減でき、エージェント用途（コマンド結果でコンテキストが伸びる）には十分。
+    /// 性能最適化:
+    /// num_ctx は 8192 に抑える。phi4-mini で tool calling を行う用途では、巨大な履歴より
+    /// 小さいコンテキストと短い応答を優先した方が初回応答とツール選択が安定して速い。
     /// </summary>
     public static readonly ModelProfile Phi4Mini = new()
     {
         Family = "phi4-mini",
         SupportsTools = true,
         SupportsThinking = false,
-        NumCtx = 16384,
-        Sampling = new(Temperature: 0.8, TopP: 0.95, RepeatPenalty: 1.05),
+        NumCtx = 8192,
+        MaxOutputTokens = 1024,
+        Sampling = new(Temperature: 0.2, TopP: 0.9, RepeatPenalty: 1.05),
         // phi4-mini は冗長・繰り返しになりやすいので、短いスタイル指示だけを添える。
         // tool calling の行動規則は既定システムプロンプト側へ集約する。
         StyleGuidance =
-            "\n\nphi4-mini向け: 前置き、自己説明、同じ内容の繰り返しを避ける。",
+            "\n\nphi4-mini向け: tool が必要な時は文章で代替せず tool_calls を返す。前置きと繰り返しを避ける。",
     };
 
     /// <summary>

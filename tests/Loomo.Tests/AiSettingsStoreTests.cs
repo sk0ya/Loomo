@@ -39,6 +39,32 @@ public class AiSettingsStoreTests
     }
 
     [Fact]
+    public void Load_migrates_legacy_default_model_to_phi4_mini()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, """
+            {
+              "local": {
+                "model": "llama3.1",
+                "baseUrl": "http://localhost:11434"
+              }
+            }
+            """);
+
+        try
+        {
+            var settings = new AiSettings();
+            new AiSettingsStore(path).Load(settings);
+
+            Assert.Equal(AiSettings.DefaultLocalModel, settings.Local.Model);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Save_does_not_persist_system_prompt()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");

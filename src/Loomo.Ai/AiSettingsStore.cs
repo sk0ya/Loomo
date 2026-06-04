@@ -202,7 +202,8 @@ public sealed class AiSettingsStore
 
         public void ApplyTo(ProviderConfig c)
         {
-            if (!string.IsNullOrEmpty(Model)) c.Model = Model;
+            if (!string.IsNullOrEmpty(Model))
+                c.Model = IsLegacyDefaultModel(Model) ? AiSettings.DefaultLocalModel : Model;
             c.ApiKey = Unprotect(ApiKeyEnc);
             if (BaseUrl is not null) c.BaseUrl = BaseUrl;
             if (MaxTokens > 0) c.MaxTokens = MaxTokens;
@@ -213,6 +214,13 @@ public sealed class AiSettingsStore
             // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定を保つ。
             if (MaxContextTokens is { } mct && mct >= 0) c.MaxContextTokens = mct;
             if (NumCtx is { } nc && nc >= 0) c.NumCtx = nc;
+        }
+
+        private static bool IsLegacyDefaultModel(string model)
+        {
+            var id = model.Trim();
+            return string.Equals(id, "llama3.1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(id, "llama3.1:latest", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

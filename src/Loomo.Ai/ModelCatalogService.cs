@@ -73,7 +73,11 @@ public sealed class ModelCatalogService
             .Select(n => n?["name"]?.GetValue<string>())
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name!)
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => Phi4MiniRank(name))
+            .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    private static int Phi4MiniRank(string name)
+        => name.StartsWith("phi4-mini", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
 }

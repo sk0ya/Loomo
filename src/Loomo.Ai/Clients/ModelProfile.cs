@@ -31,6 +31,13 @@ public sealed record ModelProfile
     public SamplingOptions Sampling { get; init; } = SamplingOptions.Unspecified;
 
     /// <summary>
+    /// 1応答の生成上限。0 以下ならユーザー設定の MaxTokens をそのまま使う。
+    /// 小型ローカルモデルでは過大な num_predict が tool call 失敗時の待ち時間を増やすため、
+    /// モデル別に実用上限を持てるようにする。
+    /// </summary>
+    public int MaxOutputTokens { get; init; }
+
+    /// <summary>
     /// thinking を無効化して動かすときのサンプリング上書き（qwen3 等は thinking 有無で
     /// 推奨温度が変わる）。null なら <see cref="Sampling"/> をそのまま使う。
     /// </summary>
