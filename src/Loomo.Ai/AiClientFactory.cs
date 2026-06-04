@@ -10,15 +10,17 @@ public sealed class AiClientFactory : IAiClientFactory
 {
     private readonly IHttpClientFactory _httpFactory;
     private readonly AiSettings _settings;
+    private readonly IWorkspaceService _workspace;
 
-    public AiClientFactory(IHttpClientFactory httpFactory, AiSettings settings)
+    public AiClientFactory(IHttpClientFactory httpFactory, AiSettings settings, IWorkspaceService workspace)
     {
         _httpFactory = httpFactory;
         _settings = settings;
+        _workspace = workspace;
     }
 
     public IAiClient ResolveCurrent() => Resolve(_settings.Provider);
 
     public IAiClient Resolve(AiProvider provider) =>
-        new OllamaClient(_httpFactory.CreateClient("ai"), _settings);
+        new OllamaClient(_httpFactory.CreateClient("ai"), _settings, _workspace);
 }

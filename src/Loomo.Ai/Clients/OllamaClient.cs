@@ -17,11 +17,13 @@ public sealed class OllamaClient : IAiClient
 {
     private readonly HttpClient _http;
     private readonly AiSettings _settings;
+    private readonly IWorkspaceService _workspace;
 
-    public OllamaClient(HttpClient http, AiSettings settings)
+    public OllamaClient(HttpClient http, AiSettings settings, IWorkspaceService workspace)
     {
         _http = http;
         _settings = settings;
+        _workspace = workspace;
     }
 
     public AiProvider Provider => AiProvider.Local;
@@ -45,8 +47,12 @@ public sealed class OllamaClient : IAiClient
         // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
         await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
 
+        // 設定のシステムプロンプトに、その時点の「現在のフォルダ」情報を動的に添える
+        // （設定値そのものは書き換えない）。モデルが毎ターン現在地を把握できるようにする。
+        var systemPrompt = _settings.SystemPrompt + WorkspaceContext.Describe(_workspace);
+
         System.Text.Json.Nodes.JsonObject Build(bool includeTools) => OllamaProtocol.BuildRequest(
-            conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt, includeTools, wantThink, cfg.NumCtx);
+            conversation, tools, cfg.Model, cfg.MaxTokens, systemPrompt, includeTools, wantThink, cfg.NumCtx);
 
         // プロファイルが tools 非対応とするモデルには最初からツールを送らない（無駄な往復を避ける）。
         // 未知モデルで誤って送ってしまった場合のみ、先頭イベントの「ツール非対応」エラーを見て

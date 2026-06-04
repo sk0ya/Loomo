@@ -82,7 +82,7 @@ public class OllamaClientTests
         {
             Local = new ProviderConfig { Model = "mistral:7b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
         };
-        var client = new OllamaClient(http, settings);
+        var client = new OllamaClient(http, settings, new FakeWorkspaceService());
         var conversation = new Conversation();
         conversation.AddUser("こんにちは");
 
@@ -263,7 +263,7 @@ public class OllamaClientTests
                 Thinking = thinking
             }
         };
-        var client = new OllamaClient(http, settings);
+        var client = new OllamaClient(http, settings, new FakeWorkspaceService());
         var conversation = new Conversation();
         conversation.AddUser("考えて");
 
@@ -282,7 +282,7 @@ public class OllamaClientTests
         {
             Local = new ProviderConfig { Model = "qwen3:4b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
         };
-        var client = new OllamaClient(http, settings);
+        var client = new OllamaClient(http, settings, new FakeWorkspaceService());
         var conversation = new Conversation();
         conversation.AddUser("こんにちは");
 
