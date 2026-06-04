@@ -177,11 +177,20 @@ public sealed class AiSettingsStore
         public string? ApiKeyEnc { get; set; }
         public string? BaseUrl { get; set; }
         public int MaxTokens { get; set; } = 4096;
+
+        /// <summary>thinking を有効にするか。null=未指定（既定維持）。</summary>
+        public bool? Thinking { get; set; }
+
+        /// <summary>旧形式（none/low/medium/high）。読み込み時の移行用にのみ保持し、書き出さない。</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? ThinkingEffort { get; set; }
 
         // null = 旧設定/未指定 → 既定値を維持。0 = トリム無効（明示）。n>0 = その上限。
         // 非nullable + 既定値だと「未指定」と「0=無効」と「明示値」を区別できないため int? にする。
         public int? MaxContextTokens { get; set; }
+
+        /// <summary>num_ctx の上書き。null/0 = プロファイル既定を使う。</summary>
+        public int? NumCtx { get; set; }
 
         public static PersistedProvider From(ProviderConfig c) => new()
         {
@@ -189,8 +198,9 @@ public sealed class AiSettingsStore
             ApiKeyEnc = Protect(c.ApiKey),
             BaseUrl = c.BaseUrl,
             MaxTokens = c.MaxTokens,
-            ThinkingEffort = c.ThinkingEffort,
+            Thinking = c.Thinking,
             MaxContextTokens = c.MaxContextTokens,
+            NumCtx = c.NumCtx,
         };
 
         public void ApplyTo(ProviderConfig c)
@@ -199,9 +209,13 @@ public sealed class AiSettingsStore
             c.ApiKey = Unprotect(ApiKeyEnc);
             if (BaseUrl is not null) c.BaseUrl = BaseUrl;
             if (MaxTokens > 0) c.MaxTokens = MaxTokens;
-            if (!string.IsNullOrWhiteSpace(ThinkingEffort)) c.ThinkingEffort = ThinkingEffort;
+            // 新形式（bool）を優先。無ければ旧 ThinkingEffort（none 以外を有効）から移行する。
+            if (Thinking is { } think) c.Thinking = think;
+            else if (!string.IsNullOrWhiteSpace(ThinkingEffort))
+                c.Thinking = !string.Equals(ThinkingEffort.Trim(), "none", StringComparison.OrdinalIgnoreCase);
             // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定を保つ。
             if (MaxContextTokens is { } mct && mct >= 0) c.MaxContextTokens = mct;
+            if (NumCtx is { } nc && nc >= 0) c.NumCtx = nc;
         }
     }
 }

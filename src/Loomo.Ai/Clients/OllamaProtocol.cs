@@ -27,9 +27,17 @@ internal static class OllamaProtocol
         string model,
         int maxTokens,
         string systemPrompt,
-        bool includeTools = true)
+        bool includeTools = true,
+        bool wantThink = false,
+        int numCtxOverride = 0)
     {
-        if (!includeTools)
+        // モデル別プロファイルで tools / thinking / サンプリング / num_ctx を最適化する。
+        var profile = ModelProfiles.Resolve(model);
+        var thinking = wantThink && profile.SupportsThinking;
+        // 呼び出し側が許可していても、モデルが tools 非対応なら送らない（送るとエラーになる）。
+        var sendTools = includeTools && profile.SupportsTools;
+
+        if (!sendTools && tools.Count > 0)
         {
             systemPrompt +=
                 "\n\n現在選択中のモデルはツール呼び出しに対応していません。" +
@@ -54,11 +62,11 @@ internal static class OllamaProtocol
 
                 case ChatRole.Assistant:
                     var assistantText = m.Text ?? "";
-                    if (!includeTools && m.ToolUses.Count > 0)
+                    if (!sendTools && m.ToolUses.Count > 0)
                         assistantText = AppendToolUseSummary(assistantText, m.ToolUses);
 
                     var asMsg = new JsonObject { ["role"] = "assistant", ["content"] = assistantText };
-                    if (includeTools && m.ToolUses.Count > 0)
+                    if (sendTools && m.ToolUses.Count > 0)
                     {
                         var calls = new JsonArray();
                         foreach (var use in m.ToolUses)
@@ -80,7 +88,7 @@ internal static class OllamaProtocol
                     break;
 
                 case ChatRole.Tool:
-                    if (includeTools)
+                    if (sendTools)
                     {
                         foreach (var r in m.ToolResults)
                         {
@@ -106,14 +114,25 @@ internal static class OllamaProtocol
             }
         }
 
+        var options = new JsonObject { ["num_predict"] = maxTokens };
+        // 実効コンテキスト窓（設定の上書き優先・無ければプロファイル既定）。トリム予算もこの値に揃える。
+        var numCtx = numCtxOverride > 0 ? numCtxOverride : profile.NumCtx;
+        if (numCtx > 0)
+            options["num_ctx"] = numCtx;                    // Ollama 既定(4096)はエージェント用途に狭いため広げる
+        profile.SamplingFor(thinking).ApplyTo(options);     // モデルファミリ別の推奨サンプリング
+
         var body = new JsonObject
         {
             ["model"] = model,
             ["messages"] = messages,
-            ["options"] = new JsonObject { ["num_predict"] = maxTokens }
+            ["options"] = options
         };
 
-        if (includeTools && tools.Count > 0)
+        // think は常に送る。thinking は (wantThink && SupportsThinking) なので非対応モデルへ true が行くことはなく、
+        // オフ時の think:false はどのモデルでも無害で、既定で思考する未知モデルも確実に黙らせられる。
+        body["think"] = thinking;
+
+        if (sendTools && tools.Count > 0)
         {
             var toolArray = new JsonArray();
             foreach (var t in tools)

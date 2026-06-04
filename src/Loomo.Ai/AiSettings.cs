@@ -54,12 +54,21 @@ public sealed class ProviderConfig
     /// <summary>1応答で生成させる最大トークン数（出力上限）。</summary>
     public int MaxTokens { get; set; } = 4096;
 
-    /// <summary>Ollama thinking モデルの推論量。none / low / medium / high。</summary>
-    public string ThinkingEffort { get; set; } = "none";
+    /// <summary>thinking を有効にするか。Ollama ネイティブ API の <c>think</c> は真偽値で、
+    /// 推論量の段階指定（low/medium/high）は無く実質オン/オフのため、bool で持つ。
+    /// thinking 非対応モデルでは無視される（<see cref="Clients.ModelProfile.SupportsThinking"/>）。</summary>
+    public bool Thinking { get; set; }
+
+    /// <summary>
+    /// Ollama に渡す <c>num_ctx</c>（モデルの実行時コンテキスト窓）の上書き。
+    /// 0 以下なら <see cref="Clients.ModelProfile.NumCtx"/>（モデル別の推奨値）を使う。
+    /// メモリ制約のある環境ではここで小さくできる。この実効値は履歴トリムの上限にも反映される。
+    /// </summary>
+    public int NumCtx { get; set; }
 
     /// <summary>
     /// モデルのコンテキストウィンドウ上限（入力+出力）。これを超えないよう送信前に古い履歴を切り詰める。
-    /// 0以下でトリム無効。既定は 128k 級モデル想定。
+    /// 実効 <c>num_ctx</c> とこの値の小さい方が実際のトリム上限になる。0以下でトリム無効。
     /// </summary>
     public int MaxContextTokens { get; set; } = 128_000;
 }

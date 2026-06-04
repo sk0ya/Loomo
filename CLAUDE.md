@@ -71,9 +71,21 @@ wire logic lives in `OllamaProtocol` (internal static). All HTTP goes through `H
 **Streaming**: `OllamaProtocol.SendChatAsync` reads Ollama's NDJSON stream (`stream:true`) line by line.
 Thinking arrives in its own `message.thinking` field (surfaced as `ThinkingDelta`), body in
 `message.content` (`TextDelta`), and `message.tool_calls` carry `arguments` as a **JSON object** (not a
-string). Thinking is toggled with the native boolean `think`: `ThinkingEffort == "none"` sends
-`think:false` (reliably silences qwen3 etc.), any of low/medium/high sends `think:true`. If the model
-rejects tools, the client retries once with `includeTools:false`.
+string). Thinking is toggled with the native boolean `think` from the user setting `ProviderConfig.Thinking`
+(a simple on/off — Ollama's `think` is boolean, so there's no low/medium/high). If the model rejects tools,
+the client retries once with `includeTools:false`.
+
+**Per-model profiles** — `Clients/ModelProfiles.cs`: `Resolve(model)` maps a model name (family prefix) to a
+`ModelProfile` that gates `tools`/`think` by capability and supplies the recommended `num_ctx` + sampling
+(`options`). Grounded in each family's official recommendations and `ollama show` capabilities; covers the
+installed qwen3 / qwen2.5 / qwen2.5-coder / gemma3 families, with a safe default for unknown models. Effects:
+`think` is sent as `wantThink && SupportsThinking`, so `think:true` only reaches thinking-capable models (others
+would error) while `think:false` still goes to every model (harmless, and silences default-on thinking); `tools`
+is omitted up front for non-tool models like gemma3 (the error-fallback remains a safety net for misclassified
+unknowns); `num_ctx` is widened from Ollama's 4096 default; qwen3 uses different temps for thinking vs
+non-thinking. The effective `num_ctx` (`ProviderConfig.NumCtx` override, else profile) is shared by both the
+Ollama request and the history-trim budget (`SettingsContextWindowPolicy` caps to it) so the model never
+silently truncates context the trimmer thought it kept.
 
 `OllamaLauncher.ResolveHost` normalizes `BaseUrl` to the native host and strips a trailing `/v1` left
 over from the old OpenAI-compatible config, so existing `settings.json` keeps working.

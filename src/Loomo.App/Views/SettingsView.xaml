@@ -37,9 +37,10 @@
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
 
                 <TextBlock Style="{StaticResource FieldLabel}" Text="Thinking" />
-                <ComboBox ItemsSource="{Binding ThinkingEfforts}"
-                          SelectedItem="{Binding ThinkingEffort, Mode=TwoWay}" />
-                <TextBlock Text="none は速度優先。low/medium/high は推論量を増やします。"
+                <CheckBox Content="思考（thinking）を有効にする"
+                          IsChecked="{Binding Thinking}" Margin="0,2,0,4"
+                          Foreground="{DynamicResource Fg}" />
+                <TextBlock Text="オフは速度優先。オン（thinking 対応モデルのみ）は回答前に推論します。"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
 

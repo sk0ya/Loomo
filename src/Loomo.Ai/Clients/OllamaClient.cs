@@ -32,6 +32,8 @@ public sealed class OllamaClient : IAiClient
         [EnumeratorCancellation] CancellationToken ct)
     {
         var cfg = _settings.Local;
+        var profile = ModelProfiles.Resolve(cfg.Model);
+        var wantThink = cfg.Thinking;
         var host = OllamaLauncher.ResolveHost(cfg.BaseUrl);
         var endpoint = $"{host}/api/chat";
         void Authorize(HttpRequestMessage req)
@@ -43,19 +45,22 @@ public sealed class OllamaClient : IAiClient
         // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
         await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
 
-        // 先頭イベントが「ツール非対応」エラーなら includeTools:false で再送する。
-        // （ストリームは貯め込めないので最初の1件だけ覗いて判定する。）
-        var body = OllamaProtocol.BuildRequest(conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt);
-        ApplyThinking(body, cfg.ThinkingEffort);
+        System.Text.Json.Nodes.JsonObject Build(bool includeTools) => OllamaProtocol.BuildRequest(
+            conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt, includeTools, wantThink, cfg.NumCtx);
+
+        // プロファイルが tools 非対応とするモデルには最初からツールを送らない（無駄な往復を避ける）。
+        // 未知モデルで誤って送ってしまった場合のみ、先頭イベントの「ツール非対応」エラーを見て
+        // includeTools:false で再送する（ストリームは貯め込めないので最初の1件だけ覗いて判定する）。
+        var sentTools = profile.SupportsTools && tools.Count > 0;
         var fellBack = false;
 
         await using (var en = OllamaProtocol.SendChatAsync(
-                _http, endpoint, body, Provider.ToString(), Authorize, ct)
+                _http, endpoint, Build(includeTools: true), Provider.ToString(), Authorize, ct)
             .GetAsyncEnumerator(ct))
         {
             if (await en.MoveNextAsync())
             {
-                if (en.Current is AgentError err && IsOllamaToolsUnsupportedError(err.Message))
+                if (sentTools && en.Current is AgentError err && IsOllamaToolsUnsupportedError(err.Message))
                 {
                     fellBack = true;
                 }
@@ -70,21 +75,10 @@ public sealed class OllamaClient : IAiClient
 
         if (fellBack)
         {
-            var fallbackBody = OllamaProtocol.BuildRequest(
-                conversation, tools, cfg.Model, cfg.MaxTokens, _settings.SystemPrompt, includeTools: false);
-            ApplyThinking(fallbackBody, cfg.ThinkingEffort);
             await foreach (var ev in OllamaProtocol.SendChatAsync(
-                _http, endpoint, fallbackBody, Provider.ToString(), Authorize, ct))
+                _http, endpoint, Build(includeTools: false), Provider.ToString(), Authorize, ct))
                 yield return ev;
         }
-    }
-
-    /// <summary>thinking の有効・無効を <c>think</c> に反映する。none で完全に無効化、それ以外は有効化。</summary>
-    private static void ApplyThinking(System.Text.Json.Nodes.JsonObject body, string? effort)
-    {
-        var v = effort?.Trim().ToLowerInvariant();
-        // ネイティブ API の think は真偽値（qwen3 等）。none のときだけ false で確実に thinking を止める。
-        body["think"] = v is "low" or "medium" or "high";
     }
 
     private static bool IsOllamaToolsUnsupportedError(string message)

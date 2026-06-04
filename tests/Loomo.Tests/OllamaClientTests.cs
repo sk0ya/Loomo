@@ -76,9 +76,11 @@ public class OllamaClientTests
     {
         var handler = new ScriptedHandler();
         using var http = new HttpClient(handler);
+        // 未知モデル（プロファイル既定で tools を試行する）を使い、サーバ拒否時のフォールバックを検証する。
+        // 既知の tools 非対応モデル（gemma3 等）は最初からツールを送らないため別経路になる。
         var settings = new AiSettings
         {
-            Local = new ProviderConfig { Model = "gemma3:4b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
+            Local = new ProviderConfig { Model = "mistral:7b", BaseUrl = "http://localhost:11434", MaxTokens = 1024 }
         };
         var client = new OllamaClient(http, settings);
         var conversation = new Conversation();
@@ -101,16 +103,16 @@ public class OllamaClientTests
     }
 
     [Fact]
-    public async Task Local_client_disables_think_when_effort_is_none()
+    public async Task Local_client_disables_think_when_thinking_is_off()
     {
-        var body = await CapturePostedBodyAsync("none");
+        var body = await CapturePostedBodyAsync(thinking: false);
         Assert.False(body["think"]!.GetValue<bool>());
     }
 
     [Fact]
-    public async Task Local_client_enables_think_when_effort_is_set()
+    public async Task Local_client_enables_think_when_thinking_is_on()
     {
-        var body = await CapturePostedBodyAsync("high");
+        var body = await CapturePostedBodyAsync(thinking: true);
         Assert.True(body["think"]!.GetValue<bool>());
     }
 
@@ -151,9 +153,102 @@ public class OllamaClientTests
         Assert.DoesNotContain(events, e => e is TurnCompleted); // ツール継続のため出さない
     }
 
+    [Fact]
+    public void BuildRequest_applies_qwen3_thinking_sampling_and_num_ctx()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("考えて");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "qwen3:4b", 1024, "system",
+            includeTools: true, wantThink: true);
+
+        Assert.True(body["think"]!.GetValue<bool>());
+        var options = body["options"]!.AsObject();
+        Assert.Equal(32768, options["num_ctx"]!.GetValue<int>());
+        Assert.Equal(0.6, options["temperature"]!.GetValue<double>());     // thinking 時の推奨温度
+        Assert.Equal(0.95, options["top_p"]!.GetValue<double>());
+        Assert.Equal(20, options["top_k"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void BuildRequest_uses_qwen3_non_thinking_sampling_when_think_disabled()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("即答して");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "qwen3:4b", 1024, "system",
+            includeTools: true, wantThink: false);
+
+        Assert.False(body["think"]!.GetValue<bool>());
+        var options = body["options"]!.AsObject();
+        Assert.Equal(0.7, options["temperature"]!.GetValue<double>());     // 非 thinking 時の推奨温度
+        Assert.Equal(0.8, options["top_p"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public void BuildRequest_sends_think_false_for_non_thinking_model_even_when_requested()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("やあ");
+
+        // gemma3 は thinking 非対応。think を要求されても true は送らず、無害な think:false にする
+        // （think:true はエラー、think:false は全モデルで無害で既定オンの未知モデルも黙らせられる）。
+        var body = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "gemma3:4b", 1024, "system",
+            includeTools: true, wantThink: true);
+
+        Assert.False(body["think"]!.GetValue<bool>());
+        Assert.Equal(1.0, body["options"]!["temperature"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public void BuildRequest_num_ctx_override_takes_precedence_over_profile()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("やあ");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "qwen3:4b", 1024, "system",
+            includeTools: true, wantThink: false, numCtxOverride: 4096);
+
+        Assert.Equal(4096, body["options"]!["num_ctx"]!.GetValue<int>());   // プロファイル既定(32768)ではなく上書き値
+    }
+
+    [Fact]
+    public void BuildRequest_omits_tools_for_tool_unsupported_model_despite_includeTools()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("ビルドして");
+
+        // gemma3 は tools 非対応。includeTools:true でもツールは送らない。
+        var body = OllamaProtocol.BuildRequest(
+            conversation,
+            new[] { new ToolDefinition("run_command", "run", ToolDefinition.ObjectSchema()) },
+            "gemma3:4b", 1024, "system", includeTools: true);
+
+        Assert.False(body.ContainsKey("tools"));
+    }
+
+    [Theory]
+    [InlineData("qwen3:4b", true, true)]
+    [InlineData("qwen3:0.6b", true, true)]
+    [InlineData("qwen2.5:3b", true, false)]
+    [InlineData("qwen2.5-coder:3b", true, false)]
+    [InlineData("gemma3:4b", false, false)]
+    [InlineData("some-unknown-model:7b", true, false)]
+    public void Resolve_maps_installed_models_to_expected_capabilities(
+        string model, bool tools, bool thinking)
+    {
+        var profile = ModelProfiles.Resolve(model);
+        Assert.Equal(tools, profile.SupportsTools);
+        Assert.Equal(thinking, profile.SupportsThinking);
+    }
+
     private static string Ndjson(string jsonLine) => jsonLine + "\n";
 
-    private static async Task<JsonObject> CapturePostedBodyAsync(string thinkingEffort)
+    private static async Task<JsonObject> CapturePostedBodyAsync(bool thinking)
     {
         var handler = new RecordingHandler(
             Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}"));
@@ -165,7 +260,7 @@ public class OllamaClientTests
                 Model = "qwen3:4b",
                 BaseUrl = "http://localhost:11434",
                 MaxTokens = 1024,
-                ThinkingEffort = thinkingEffort
+                Thinking = thinking
             }
         };
         var client = new OllamaClient(http, settings);
@@ -228,7 +323,7 @@ public class OllamaClientTests
             if (PostedBodies.Count == 1)
             {
                 return Json(HttpStatusCode.BadRequest,
-                    "{\"error\":\"registry.ollama.ai/library/gemma3:4b does not support tools\"}");
+                    "{\"error\":\"registry.ollama.ai/library/mistral:7b does not support tools\"}");
             }
 
             // フォールバック後の成功応答は NDJSON。
