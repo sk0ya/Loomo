@@ -237,6 +237,8 @@ public class OllamaClientTests
     [InlineData("qwen2.5:3b", true, false)]
     [InlineData("qwen2.5-coder:3b", true, false)]
     [InlineData("gemma3:4b", false, false)]
+    [InlineData("phi4-mini:3.8b", true, false)]
+    [InlineData("phi4-mini", true, false)]
     [InlineData("some-unknown-model:7b", true, false)]
     public void Resolve_maps_installed_models_to_expected_capabilities(
         string model, bool tools, bool thinking)
@@ -246,7 +248,45 @@ public class OllamaClientTests
         Assert.Equal(thinking, profile.SupportsThinking);
     }
 
+    [Theory]
+    [InlineData("phi4-mini:3.8b", true)]
+    [InlineData("qwen3:4b", false)]
+    public async Task System_prompt_carries_conciseness_guidance_only_for_phi4_mini(
+        string model, bool expectGuidance)
+    {
+        var body = await CapturePostedBodyForModelAsync(model);
+        var system = body["messages"]!.AsArray()
+            .First(m => m?["role"]?.GetValue<string>() == "system")!["content"]!.GetValue<string>();
+
+        Assert.Equal(expectGuidance, system.Contains("応答スタイル"));
+    }
+
     private static string Ndjson(string jsonLine) => jsonLine + "\n";
+
+    private static async Task<JsonObject> CapturePostedBodyForModelAsync(string model)
+    {
+        var handler = new RecordingHandler(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}"));
+        using var http = new HttpClient(handler);
+        var settings = new AiSettings
+        {
+            Local = new ProviderConfig
+            {
+                Model = model,
+                BaseUrl = "http://localhost:11434",
+                MaxTokens = 1024
+            }
+        };
+        var client = new OllamaClient(http, settings, new FakeWorkspaceService());
+        var conversation = new Conversation();
+        conversation.AddUser("これは何？");
+
+        await foreach (var _ in client.StreamAsync(conversation, Array.Empty<ToolDefinition>(), CancellationToken.None))
+        {
+        }
+
+        return Assert.Single(handler.PostedBodies);
+    }
 
     private static async Task<JsonObject> CapturePostedBodyAsync(bool thinking)
     {

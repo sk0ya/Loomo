@@ -52,6 +52,27 @@ public static class ModelProfiles
     };
 
     /// <summary>
+    /// phi4-mini 系（phi4-mini:3.8b）。<c>ollama show</c> の capabilities は completion + tools で、
+    /// tools 対応・thinking 非対応（thinking は reasoning 派生モデルのみ）。
+    /// Phi-4 推奨のサンプリングは temp0.8 / top_p0.95。小型モデルで繰り返しが出やすいため
+    /// repeat_penalty1.05 を添える。ネイティブ上限 131072 だが gemma3 と同様メモリを抑え 32768 に留める。
+    /// </summary>
+    public static readonly ModelProfile Phi4Mini = new()
+    {
+        Family = "phi4-mini",
+        SupportsTools = true,
+        SupportsThinking = false,
+        NumCtx = 32768,
+        Sampling = new(Temperature: 0.8, TopP: 0.95, RepeatPenalty: 1.05),
+        // phi4-mini は冗長・繰り返しになりやすいので、簡潔さを促す指示を毎ターン添える。
+        StyleGuidance =
+            "\n\n# 応答スタイル\n" +
+            "- 結論を先に、最小限の言葉で答える。前置き・自己説明・要約の繰り返しは書かない。\n" +
+            "- 質問に直接関係することだけを述べ、同じ内容を言い換えて繰り返さない。\n" +
+            "- 箇条書きは必要な項目だけにし、各項目は1行に収める。",
+    };
+
+    /// <summary>
     /// 未知モデルの既定。tools は試行し（失敗時はクライアントがツール無しで再送）、
     /// thinking は安全側で無効、サンプリングはモデル既定に委ね、num_ctx のみ控えめに広げる。
     /// </summary>
@@ -79,6 +100,7 @@ public static class ModelProfiles
         if (id.StartsWith("qwen2.5-coder")) return Qwen25Coder;
         if (id.StartsWith("qwen2.5")) return Qwen25;
         if (id.StartsWith("gemma3")) return Gemma3;
+        if (id.StartsWith("phi4-mini")) return Phi4Mini;
         return Default;
     }
 }

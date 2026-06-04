@@ -47,9 +47,9 @@ public sealed class OllamaClient : IAiClient
         // ローカルLLM は未起動なら Ollama の起動を試みる（手動起動を不要にする）。
         await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
 
-        // 設定のシステムプロンプトに、その時点の「現在のフォルダ」情報を動的に添える
-        // （設定値そのものは書き換えない）。モデルが毎ターン現在地を把握できるようにする。
-        var systemPrompt = _settings.SystemPrompt + WorkspaceContext.Describe(_workspace);
+        // 設定のシステムプロンプトに、その時点の「現在のフォルダ」情報と、モデル固有のスタイル指示
+        // （冗長になりやすいモデルへの簡潔化指示など）を動的に添える（設定値そのものは書き換えない）。
+        var systemPrompt = _settings.SystemPrompt + WorkspaceContext.Describe(_workspace) + profile.StyleGuidance;
 
         System.Text.Json.Nodes.JsonObject Build(bool includeTools) => OllamaProtocol.BuildRequest(
             conversation, tools, cfg.Model, cfg.MaxTokens, systemPrompt, includeTools, wantThink, cfg.NumCtx);

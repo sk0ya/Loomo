@@ -85,7 +85,7 @@ the client retries once with `includeTools:false`.
 **Per-model profiles** — `Clients/ModelProfiles.cs`: `Resolve(model)` maps a model name (family prefix) to a
 `ModelProfile` that gates `tools`/`think` by capability and supplies the recommended `num_ctx` + sampling
 (`options`). Grounded in each family's official recommendations and `ollama show` capabilities; covers the
-installed qwen3 / qwen2.5 / qwen2.5-coder / gemma3 families, with a safe default for unknown models. Effects:
+installed qwen3 / qwen2.5 / qwen2.5-coder / gemma3 / phi4-mini families, with a safe default for unknown models. Effects:
 `think` is sent as `wantThink && SupportsThinking`, so `think:true` only reaches thinking-capable models (others
 would error) while `think:false` still goes to every model (harmless, and silences default-on thinking); `tools`
 is omitted up front for non-tool models like gemma3 (the error-fallback remains a safety net for misclassified
