@@ -185,10 +185,22 @@ public sealed partial class AiBarViewModel : ObservableObject
                     break;
 
                 case ChatRole.Assistant:
-                    if (!string.IsNullOrWhiteSpace(m.Text))
+                    if (m.ToolUses.Count > 0)
+                    {
+                        // ライブ表示と同様、本文はツールカードへ畳み（最初のツールにのみ併記）独立エントリにしない。
+                        for (var i = 0; i < m.ToolUses.Count; i++)
+                        {
+                            var use = m.ToolUses[i];
+                            var text = i == 0
+                                ? ComposeToolCard(m.Text, use.ArgumentsJson)
+                                : use.ArgumentsJson;
+                            Add(EntryKind.Tool, $"🔧 {use.Name}", text);
+                        }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(m.Text))
+                    {
                         Add(EntryKind.Assistant, "🤖 エージェント", m.Text);
-                    foreach (var use in m.ToolUses)
-                        Add(EntryKind.Tool, $"🔧 {use.Name}", use.ArgumentsJson);
+                    }
                     break;
 
                 case ChatRole.Tool:
@@ -283,14 +295,22 @@ public sealed partial class AiBarViewModel : ObservableObject
                         break;
 
                     case ToolUseRequested req:
-                        FinishTimedEntry(ref assistant, ref assistantClock, "🤖 エージェント");
                         FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
-                        assistant = null; // テキストブロックを区切る
                         thinking = null;
+                        // AIがツール呼び出しと一緒に生成した本文（説明・narration）は、独立した
+                        // 「🤖 エージェント」エントリにはせず、ツールカードへ畳んで併記する。
+                        // 本文 → 複数ツールの場合は最初のツールにのみ付け、以降はそのまま引数だけ出す。
+                        var narration = assistant?.Text;
+                        if (assistant is not null)
+                        {
+                            Transcript.Remove(assistant);   // ライブ表示していた本文エントリを取り下げ、カードへ畳む
+                            assistant = null;               // テキストブロックを区切る
+                            assistantClock = null;
+                        }
                         // 進捗状況に「どのツールを何の引数で呼ぶか」を表示する。
                         SetStatus($"🔧 {req.ToolUse.Name} を準備中… {StreamPreview(req.ToolUse.ArgumentsJson)}");
                         AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", req.ToolUse.ArgumentsJson);
+                        Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", ComposeToolCard(narration, req.ToolUse.ArgumentsJson));
                         break;
 
                     case ApprovalRequested approval:
@@ -390,6 +410,16 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     private static string Truncate(string s, int max = 2000)
         => s.Length <= max ? s : s[..max] + $"\n…(+{s.Length - max} 文字)";
+
+    /// <summary>ツールカードの本文を組み立てる。AIがツール呼び出しと一緒に生成した本文（説明・narration）が
+    /// あれば引数JSONの上に併記し、無ければ引数JSONのみを示す。</summary>
+    private static string ComposeToolCard(string? narration, string argumentsJson)
+    {
+        var text = narration?.Trim();
+        return string.IsNullOrEmpty(text)
+            ? argumentsJson
+            : text + Environment.NewLine + argumentsJson;
+    }
 
     private static void FinishTimedEntry(ref TranscriptEntry? entry, ref Stopwatch? clock, string baseHeader)
     {
