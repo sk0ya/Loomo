@@ -224,6 +224,63 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_converts_textual_arguments_json_object_to_tool_call()
+    {
+        // モデルが arguments JSON オブジェクトだけを本文に吐いた場合（構造化 tool_calls なし）。
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"command\\\":\\\"Get-ChildItem\\\"}\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-ChildItem\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Local_client_converts_textual_arguments_json_with_alias_key_and_code_fence_to_tool_call()
+    {
+        // 別名キー（cmd）＋コードフェンス＋{"name","arguments"} ラップでも拾える。
+        var content = JsonSerializer.Serialize("```json\n{\"name\":\"run_powershell\",\"arguments\":{\"cmd\":\"ls\"}}\n```");
+        var events = await RunLocalWithToolsAsync(
+            Ndjson($"{{\"message\":{{\"role\":\"assistant\",\"content\":{content}}},\"done\":true}}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"ls\"}", tool.ToolUse.ArgumentsJson);
+    }
+
+    [Fact]
+    public async Task Local_client_converts_textual_tool_call_json_array_to_tool_call()
+    {
+        // モデルが tool_calls 風の JSON 配列を本文に吐いた場合（[{"name","arguments"}]）。
+        var content = JsonSerializer.Serialize("[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}]");
+        var events = await RunLocalWithToolsAsync(
+            Ndjson($"{{\"message\":{{\"role\":\"assistant\",\"content\":{content}}},\"done\":true}}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-ChildItem\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Local_client_converts_textual_tool_call_json_array_with_multiple_entries()
+    {
+        // 配列に複数要素があればその数だけツール呼び出しを出す。
+        var content = JsonSerializer.Serialize(
+            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"a\"}},{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"b\"}}]");
+        var events = await RunLocalWithToolsAsync(
+            Ndjson($"{{\"message\":{{\"role\":\"assistant\",\"content\":{content}}},\"done\":true}}"));
+
+        var tools = events.OfType<ToolUseRequested>().ToList();
+        Assert.Equal(2, tools.Count);
+        Assert.Equal("{\"command\":\"a\"}", tools[0].ToolUse.ArgumentsJson);
+        Assert.Equal("{\"command\":\"b\"}", tools[1].ToolUse.ArgumentsJson);
+    }
+
+    [Fact]
     public void BuildRequest_applies_qwen3_thinking_sampling_and_num_ctx()
     {
         var conversation = new Conversation();
@@ -274,24 +331,32 @@ public class OllamaClientTests
     }
 
     [Fact]
-    public void BuildRequest_keeps_system_prompt_stable_and_appends_workspace_context_to_last_user_message()
+    public void PromptBuilder_includes_current_folder_in_system_prompt()
+    {
+        var system = OllamaPromptBuilder.Build(new AiSettings(), profile: null, workspaceRoot: "C:\\proj");
+
+        // 現在のフォルダはフォルダを開き直したときだけ変わる準安定値なので、安定プレフィックス（system）に載せる。
+        Assert.Contains("現在のフォルダ", system);
+        Assert.Contains("C:\\proj", system);
+    }
+
+    [Fact]
+    public void BuildRequest_uses_system_prompt_verbatim_and_leaves_user_message_untouched()
     {
         var conversation = new Conversation();
         conversation.AddUser("これは何？");
 
         var body = OllamaProtocol.BuildRequest(
             conversation, Array.Empty<ToolDefinition>(), "phi4-mini", 1024, "SYSTEM",
-            includeTools: true, wantThink: false, numCtxOverride: 0,
-            workspaceContext: "\n\n# 現在のフォルダ\nルート: C:\\proj");
+            includeTools: true, wantThink: false, numCtxOverride: 0);
 
         var messages = body["messages"]!.AsArray();
         var system = messages.First(m => m?["role"]?.GetValue<string>() == "system")!["content"]!.GetValue<string>();
         var user = messages.Last(m => m?["role"]?.GetValue<string>() == "user")!["content"]!.GetValue<string>();
 
-        // 揮発的な文脈は system（安定プレフィックス）には載らず、末尾 user メッセージへ添えられる。
-        Assert.DoesNotContain("現在のフォルダ", system);
-        Assert.StartsWith("これは何？", user);
-        Assert.Contains("現在のフォルダ", user);
+        // BuildRequest は渡された system プロンプトをそのまま使い、user メッセージには手を加えない。
+        Assert.Equal("SYSTEM", system);
+        Assert.Equal("これは何？", user);
     }
 
     [Fact]

@@ -116,13 +116,14 @@ the per-turn tool-definition payload is already minimal — this is what cut fir
 
 **Prompt-prefix caching (perf-critical)** — Ollama reuses the KV cache for the longest byte-identical prompt
 *prefix* (system + tools), so re-prefilling the large tool-definition block (~16s on CPU-only machines) is
-paid once instead of every turn. Two invariants protect this in `OllamaClient`/`OllamaProtocol.BuildRequest`:
-the system prompt must stay byte-stable across a session (`AiSettings.DefaultSystemPrompt`, constant for all
-models), and **volatile per-turn context (the "current folder" from `WorkspaceContext.Describe`) is appended
-to the last *user* message, never the system prompt** — putting it in `system` busts the cache and re-pays the
-prefill every turn (measured 16s→0.8s on turn 2 once moved). `BuildRequest` also sends `keep_alive` ("30m") so
-the model and its prefix cache stay resident between turns. When editing, keep anything turn-varying out of the
-system message and the `tools` array.
+paid once instead of every turn. The invariant protecting this in `OllamaClient`/`OllamaProtocol.BuildRequest`:
+the system prompt must stay byte-stable across a session — anything that varies *within* a session must stay
+out of the `system` message and the `tools` array, or the cache busts and re-pays the prefill. The system
+prompt (`OllamaPromptBuilder.Build`) is the same `AiSettings.DefaultSystemPrompt` for all models, plus two
+*session-stable* additions: search guidance (rg-vs-Select-String, fixed by environment) and the **current
+folder** (`WorkspaceContext.Describe` — the workspace root, which only changes when the user opens a different
+folder, so it's stable enough for the prefix; switching folders does bust the cache once, which is acceptable).
+`BuildRequest` also sends `keep_alive` so the model and its prefix cache stay resident between turns.
 
 `OllamaLauncher.ResolveHost` normalizes `BaseUrl` to the native host and strips a trailing `/v1` left
 over from the old OpenAI-compatible config, so existing `settings.json` keeps working.

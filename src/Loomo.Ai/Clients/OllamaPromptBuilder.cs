@@ -7,10 +7,12 @@ public static class OllamaPromptBuilder
 {
     public static string Build(AiSettings settings, AgentProfile? profile, string? workspaceRoot)
     {
-        // システムプロンプトは全モデル共通（モデル固有の差し込みはしない）。検索ガイダンスだけ
-        // 環境（rg の有無）で決まる固定値なので、安定プレフィックスに含めて差し支えない。
+        // システムプロンプトは全モデル共通（モデル固有の差し込みはしない）。検索ガイダンスは
+        // 環境（rg の有無）で決まる固定値、現在のフォルダはフォルダを開き直したときだけ変わる
+        // 準安定値なので、いずれも安定プレフィックスに含めて差し支えない。
         return settings.BuildSystemPrompt(profile)
-               + SearchGuidance(workspaceRoot);
+               + SearchGuidance(workspaceRoot)
+               + WorkspaceContext.Describe(workspaceRoot);
     }
 
     private static string SearchGuidance(string? workspaceRoot)

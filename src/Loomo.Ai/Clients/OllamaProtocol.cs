@@ -26,10 +26,9 @@ internal static class OllamaProtocol
     /// （巨大なツール定義の prefill 結果）も失われて遅くなる。CPU 実行ではコールドの prefill が支配的
     /// （モデル重みのページインで数十秒）なので、無期限常駐にしてコールドを「初回 1 回だけ」に抑える。</summary>
     private const int KeepAlive = -1;
-    /// <summary>会話とツール定義から /api/chat リクエストボディを組み立てる。</summary>
-    /// <param name="workspaceContext">毎ターン変わる「現在のフォルダ」等の揮発的な文脈。
-    /// システムプロンプト（安定プレフィックス）には載せず、最新ユーザーメッセージの末尾へ添える。
-    /// これにより system＋tools の巨大プレフィックスの KV キャッシュが再利用され prefill が省ける。</param>
+    /// <summary>会話とツール定義から /api/chat リクエストボディを組み立てる。
+    /// 「現在のフォルダ」等の準安定な文脈は呼び出し側で <c>systemPrompt</c> に含める（ルートは
+    /// フォルダを開き直したときだけ変わるので、system＋tools の安定プレフィックスに載せてよい）。</summary>
     public static JsonObject BuildRequest(
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools,
@@ -39,7 +38,6 @@ internal static class OllamaProtocol
         bool includeTools = true,
         bool wantThink = false,
         int numCtxOverride = 0,
-        string workspaceContext = "",
         int numGpu = -1)
     {
         // モデル別プロファイルで thinking / サンプリング / num_ctx を最適化する。
@@ -63,16 +61,12 @@ internal static class OllamaProtocol
         // ツール結果メッセージに tool_name を添えるため、tool_use の id→name を覚えておく。
         var toolNameById = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // 揮発的な workspaceContext を末尾へ添える対象（最新の user メッセージ）。
-        JsonObject? lastUserMsg = null;
         foreach (var m in conversation.Messages)
         {
             switch (m.Role)
             {
                 case ChatRole.User:
-                    var userMsg = new JsonObject { ["role"] = "user", ["content"] = m.Text ?? "" };
-                    messages.Add(userMsg);
-                    lastUserMsg = userMsg;
+                    messages.Add(new JsonObject { ["role"] = "user", ["content"] = m.Text ?? "" });
                     break;
 
                 case ChatRole.Assistant:
@@ -124,16 +118,6 @@ internal static class OllamaProtocol
                     }
                     break;
             }
-        }
-
-        // 揮発的な文脈は安定プレフィックス（system）ではなく最新 user メッセージ末尾へ。
-        // system＋tools のプレフィックスが byte 安定になり、Ollama がその KV キャッシュを再利用できる。
-        if (!string.IsNullOrEmpty(workspaceContext))
-        {
-            if (lastUserMsg is not null)
-                lastUserMsg["content"] = (lastUserMsg["content"]?.GetValue<string>() ?? "") + workspaceContext;
-            else
-                messages.Add(new JsonObject { ["role"] = "user", ["content"] = workspaceContext });
         }
 
         var numPredict = profile.MaxOutputTokens > 0
@@ -341,8 +325,8 @@ internal static class OllamaProtocol
                 if (usage is not null)
                     yield return usage;
 
-                if (toolCalls.Count == 0 && TryParseTextualRunPowershell(finalText.ToString()) is { } textualToolCall)
-                    toolCalls.Add(textualToolCall);
+                if (toolCalls.Count == 0)
+                    toolCalls.AddRange(TryParseTextualToolCalls(finalText.ToString()));
 
                 foreach (var tc in toolCalls)
                     yield return new ToolUseRequested(tc);
@@ -405,19 +389,71 @@ internal static class OllamaProtocol
     private static double? NanosToMs(long? nanos)
         => nanos is null ? null : nanos.Value / 1_000_000.0;
 
-    private static ToolUse? TryParseTextualRunPowershell(string text)
+    /// <summary>
+    /// モデルが構造化 <c>tool_calls</c> ではなく本文テキストとしてツール呼び出しを書いてしまった場合に拾う。
+    /// 対応形式：関数呼び出し風 <c>run_powershell("...")</c>、引数 JSON オブジェクト <c>{"command":"..."}</c>、
+    /// およびその配列 <c>[{"name":...,"arguments":{...}}]</c>（小モデルが arguments だけ／別名キー／
+    /// コードフェンス付き／配列で吐くことがある）。複数要素の配列はその数だけツール呼び出しを返す。
+    /// </summary>
+    private static IReadOnlyList<ToolUse> TryParseTextualToolCalls(string text)
     {
-        const string functionName = "run_powershell";
+        var s = StripCodeFence(text.Trim());
+
+        // 形式1: run_powershell("コマンド")
         const string prefix = "run_powershell(\"";
         const string suffix = "\")";
-        var s = text.Trim();
-        if (!s.StartsWith(prefix, StringComparison.Ordinal) ||
-            !s.EndsWith(suffix, StringComparison.Ordinal))
-            return null;
+        if (s.StartsWith(prefix, StringComparison.Ordinal) && s.EndsWith(suffix, StringComparison.Ordinal))
+            return new[] { MakeToolUse(s[prefix.Length..^suffix.Length], text) };
 
-        var command = s[prefix.Length..^suffix.Length];
-        var argsJson = new JsonObject { ["command"] = command }.ToJsonString();
-        return new ToolUse(Guid.NewGuid().ToString("N"), functionName, argsJson, text);
+        // 形式2/3: JSON オブジェクト {...} または配列 [{...}, ...]
+        if ((s.StartsWith('{') && s.EndsWith('}')) || (s.StartsWith('[') && s.EndsWith(']')))
+            return ParseJsonToolCalls(s, text);
+
+        return Array.Empty<ToolUse>();
+    }
+
+    /// <summary>JSON オブジェクト／配列からツール呼び出しを取り出す。コマンド未検出の要素は無視する。</summary>
+    private static IReadOnlyList<ToolUse> ParseJsonToolCalls(string json, string rawText)
+    {
+        JsonNode? node;
+        try { node = JsonNode.Parse(json); }
+        catch { return Array.Empty<ToolUse>(); }
+
+        var elements = node is JsonArray arr ? arr : new JsonArray { node };
+        var result = new List<ToolUse>();
+        foreach (var el in elements)
+            if (el is JsonObject obj && ExtractCommandFromJson(obj) is { } command)
+                result.Add(MakeToolUse(command, rawText));
+        return result;
+    }
+
+    private static ToolUse MakeToolUse(string command, string rawText)
+    {
+        var argsJson = new JsonObject { [PwshContract.CommandArg] = command }.ToJsonString();
+        return new ToolUse(Guid.NewGuid().ToString("N"), PwshContract.ToolName, argsJson, rawText);
+    }
+
+    /// <summary>前後の Markdown コードフェンス（```／```json …）を剥がす。無ければ原文を返す。</summary>
+    private static string StripCodeFence(string s)
+    {
+        if (!s.StartsWith("```", StringComparison.Ordinal) || !s.EndsWith("```", StringComparison.Ordinal))
+            return s;
+        var inner = s[3..^3];
+        var nl = inner.IndexOf('\n');           // 開きフェンスの言語指定（```json 等）を落とす
+        if (nl >= 0) inner = inner[(nl + 1)..];
+        return inner.Trim();
+    }
+
+    /// <summary>引数 JSON オブジェクトからコマンド文字列を取り出す。<c>arguments</c> ラップと別名キーに対応。見つからなければ null。</summary>
+    private static string? ExtractCommandFromJson(JsonObject obj)
+    {
+        // {"name":"run_powershell","arguments":{...}} のように引数が入れ子なら中を見る。
+        if (obj["arguments"] is JsonObject nested) obj = nested;
+
+        foreach (var key in PwshContract.CommandKeys)
+            if (obj[key] is JsonValue v && v.TryGetValue<string>(out var command))
+                return command;
+        return null;
     }
 
     /// <summary>エラー応答ボディから <c>{"error":"..."}</c> のメッセージ本体を取り出す（無ければ原文）。</summary>

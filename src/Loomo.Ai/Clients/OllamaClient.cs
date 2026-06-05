@@ -51,15 +51,13 @@ public sealed class OllamaClient : IAiClient
 
         // システムプロンプトは会話を通じて安定させる。Ollama は system＋tools の巨大プレフィックスの KV キャッシュを再利用するため、
         // ここに毎ターン変わる内容を混ぜると prefill（CPU 実行では支配的・約40秒）を毎回払い直す。
-        // 検索ガイダンスは rg の有無で決まる「環境固定」の値なのでプレフィックスに含めて差し支えない。
+        // 検索ガイダンス（rg の有無）と現在のフォルダ（フォルダを開き直したときだけ変わる準安定値）は
+        // ともに OllamaPromptBuilder が安定プレフィックスへ含める。
         var systemPrompt = OllamaPromptBuilder.Build(_settings, profile, _workspace.RootPath);
-
-        // 「現在のフォルダ」情報は毎ターン変わり得るので、安定プレフィックスではなく最新メッセージ末尾へ添える。
-        var workspaceContext = WorkspaceContext.Describe(_workspace);
 
         System.Text.Json.Nodes.JsonObject Build(bool includeTools) => OllamaProtocol.BuildRequest(
             conversation, tools, cfg.Model, cfg.MaxTokens, systemPrompt, includeTools, wantThink, cfg.NumCtx,
-            workspaceContext, cfg.NumGpu);
+            cfg.NumGpu);
 
         // プロファイルが tools 非対応とするモデルには最初からツールを送らない（無駄な往復を避ける）。
         // 未知モデルで誤って送ってしまった場合のみ、先頭イベントの「ツール非対応」エラーを見て
