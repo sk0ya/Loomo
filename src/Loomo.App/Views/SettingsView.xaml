@@ -66,11 +66,8 @@
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
 
-                <!-- 保存 -->
-                <Button Content="保存" Style="{StaticResource FlatButton}"
-                        Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />
-
-                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,10,0,0"
+                <!-- 変更は自動で反映・保存されます（「保存」ボタンは廃止）。 -->
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,14,0,0"
                            Foreground="{DynamicResource FgDim}" FontSize="11" />
             </StackPanel>
         </ScrollViewer>

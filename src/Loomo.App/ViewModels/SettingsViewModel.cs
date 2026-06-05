@@ -24,6 +24,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IEditorService _editor;
     private readonly ModelCatalogService _modelCatalog;
     private CancellationTokenSource? _fetchModelsCts;
+    // 初期ロード中の代入で自動保存（Persist）が走らないようにするためのガード。
+    private bool _suppressPersist = true;
 
     /// <summary>設定が保存されたときに通知（AIバーのプロバイダ表示更新などに使う）。</summary>
     public event Action? Saved;
@@ -65,17 +67,30 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void LoadLocalFields()
     {
+        // 初期ロード中の代入で自動保存が走らないよう抑止する。
+        _suppressPersist = true;
         var cfg = _settings.Local;
         Model = cfg.Model;
         MaxTokens = cfg.MaxTokens;
         NumGpu = cfg.NumGpu;
         Thinking = cfg.Thinking;
+        _suppressPersist = false;
     }
+
+    // 「保存」ボタンは廃止。各項目の変更はその場で共有 AiSettings へ反映し、ファイルへ即永続化する。
+    partial void OnModelChanged(string value) => Persist();
+    partial void OnMaxTokensChanged(int value) => Persist();
+    partial void OnNumGpuChanged(int value) => Persist();
+    partial void OnThinkingChanged(bool value) => Persist();
+    partial void OnAutoApproveChanged(bool value) => Persist();
+    partial void OnRestrictToWorkspaceRootChanged(bool value) => Persist();
 
     private void CommitLocalFields()
     {
         var cfg = _settings.Local;
-        cfg.Model = Model.Trim();
+        // 手入力途中の空値ではモデルを上書きしない（実行中モデルを消さないため）。
+        var name = Model.Trim();
+        if (name.Length > 0) cfg.Model = name;
         cfg.ApiKey = null;
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
         // num_gpu: 負値=自動（送らない）／0=CPU実行／正値=オフロード層数。負値はすべて -1 に正規化する。
@@ -83,21 +98,22 @@ public sealed partial class SettingsViewModel : ObservableObject
         cfg.Thinking = Thinking;
     }
 
-    [RelayCommand]
-    private void Save()
+    /// <summary>変更を共有 <see cref="AiSettings"/> へ即時反映し、ファイルへ永続化する。
+    /// 「保存」ボタンを廃した代わりに、各項目の変更時に自動で呼ばれる（初期ロード中は抑止）。
+    /// 危険コマンド一覧はエディタの保存（:w）時に別途反映するため、ここでは扱わない。</summary>
+    private void Persist()
     {
+        if (_suppressPersist) return;
+
         CommitLocalFields();
         _settings.Provider = AiProvider.Local;
-
-        // 安全設計を書き戻す（同一インスタンスなので即時反映される）
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
-        // 危険コマンド一覧はエディタでの保存（:w）時に即時反映するため、ここでは扱わない。
 
         try
         {
             _store.Save(_settings);
-            Status = $"保存しました — {_store.FilePath}";
+            Status = "設定を反映しました（自動保存済み）";
             Saved?.Invoke();
         }
         catch (Exception ex)
