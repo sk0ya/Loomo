@@ -185,6 +185,29 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_converts_textual_run_powershell_function_call_to_tool_call()
+    {
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"run_powershell(\\\"Get-Location\\\")\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Local_client_converts_empty_textual_run_powershell_function_call_to_tool_call()
+    {
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"run_powershell(\\\"\\\")\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("{\"command\":\"\"}", tool.ToolUse.ArgumentsJson);
+    }
+
+    [Fact]
     public void BuildRequest_applies_qwen3_thinking_sampling_and_num_ctx()
     {
         var conversation = new Conversation();

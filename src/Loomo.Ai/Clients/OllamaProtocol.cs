@@ -275,7 +275,6 @@ internal static class OllamaProtocol
         AgentError? midError = null;
         var sawAnyModelOutput = false;
         AiUsageReported? usage = null;
-        var streamedLen = 0;   // 既に TextDelta として送り出した finalText 内の文字数（二重送出防止）
 
         try
         {
@@ -312,11 +311,6 @@ internal static class OllamaProtocol
                     {
                         sawAnyModelOutput = true;
                         finalText.Append(content);
-                        if (streamedLen < finalText.Length)
-                        {
-                            yield return new TextDelta(finalText.ToString(streamedLen, finalText.Length - streamedLen));
-                            streamedLen = finalText.Length;
-                        }
                     }
 
                     var calls = message["tool_calls"]?.AsArray();
@@ -347,6 +341,9 @@ internal static class OllamaProtocol
                 if (usage is not null)
                     yield return usage;
 
+                if (toolCalls.Count == 0 && TryParseTextualRunPowershell(finalText.ToString()) is { } textualToolCall)
+                    toolCalls.Add(textualToolCall);
+
                 foreach (var tc in toolCalls)
                     yield return new ToolUseRequested(tc);
 
@@ -357,7 +354,12 @@ internal static class OllamaProtocol
                 }
 
                 if (toolCalls.Count == 0)
-                    yield return new TurnCompleted(finalText.ToString());
+                {
+                    var text = finalText.ToString();
+                    if (!string.IsNullOrEmpty(text))
+                        yield return new TextDelta(text);
+                    yield return new TurnCompleted(text);
+                }
             }
         }
         finally
@@ -402,6 +404,73 @@ internal static class OllamaProtocol
 
     private static double? NanosToMs(long? nanos)
         => nanos is null ? null : nanos.Value / 1_000_000.0;
+
+    private static ToolUse? TryParseTextualRunPowershell(string text)
+    {
+        const string functionName = "run_powershell";
+        var s = text.Trim();
+        if (!s.StartsWith(functionName, StringComparison.Ordinal))
+            return null;
+
+        var i = functionName.Length;
+        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
+        if (i >= s.Length || s[i] != '(')
+            return null;
+        i++;
+        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
+
+        if (i >= s.Length || s[i] != '"')
+            return null;
+
+        var start = i;
+        i++;
+        var escaped = false;
+        while (i < s.Length)
+        {
+            var ch = s[i];
+            if (escaped)
+            {
+                escaped = false;
+                i++;
+                continue;
+            }
+            if (ch == '\\')
+            {
+                escaped = true;
+                i++;
+                continue;
+            }
+            if (ch == '"')
+                break;
+            i++;
+        }
+
+        if (i >= s.Length || s[i] != '"')
+            return null;
+
+        var quoted = s.Substring(start, i - start + 1);
+        string command;
+        try
+        {
+            command = JsonSerializer.Deserialize<string>(quoted) ?? "";
+        }
+        catch
+        {
+            return null;
+        }
+
+        i++;
+        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
+        if (i >= s.Length || s[i] != ')')
+            return null;
+        i++;
+        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
+        if (i != s.Length)
+            return null;
+
+        var argsJson = new JsonObject { ["command"] = command }.ToJsonString();
+        return new ToolUse(Guid.NewGuid().ToString("N"), functionName, argsJson, text);
+    }
 
     /// <summary>エラー応答ボディから <c>{"error":"..."}</c> のメッセージ本体を取り出す（無ければ原文）。</summary>
     private static string ExtractError(string body)
