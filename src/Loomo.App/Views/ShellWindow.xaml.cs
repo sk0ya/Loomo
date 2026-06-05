@@ -409,18 +409,20 @@ public partial class ShellWindow : Window
                 {
                     if (index < grid.ColumnDefinitions.Count)
                     {
-                        var w = grid.ColumnDefinitions[index].Width;
-                        if (w.IsStar && w.Value > 0)
-                            child.Weight = w.Value;
+                        var definition = grid.ColumnDefinitions[index];
+                        child.Weight = definition.ActualWidth > 0
+                            ? definition.ActualWidth
+                            : PositiveGridLengthValue(definition.Width, child.Weight);
                     }
                 }
                 else
                 {
                     if (index < grid.RowDefinitions.Count)
                     {
-                        var h = grid.RowDefinitions[index].Height;
-                        if (h.IsStar && h.Value > 0)
-                            child.Weight = h.Value;
+                        var definition = grid.RowDefinitions[index];
+                        child.Weight = definition.ActualHeight > 0
+                            ? definition.ActualHeight
+                            : PositiveGridLengthValue(definition.Height, child.Weight);
                     }
                 }
             }
@@ -429,6 +431,9 @@ public partial class ShellWindow : Window
         foreach (var child in split.Children)
             CaptureNode(child);
     }
+
+    private static double PositiveGridLengthValue(GridLength length, double fallback)
+        => length.Value > 0 ? length.Value : (fallback > 0 ? fallback : 1);
 
     /// <summary>保存済みレイアウトを適用する。非表示ペインはリーフの Hidden で復元する。</summary>
     private void ApplyPaneLayout(PaneNodeSnapshot? snapshot)
@@ -508,7 +513,7 @@ public partial class ShellWindow : Window
             if (n is null)
                 continue;
             if (n is PaneSplit inner && inner.Orientation == split.Orientation)
-                kids.AddRange(inner.Children); // 同方向はフラット化
+                AddFlattenedChildren(kids, inner); // 同方向は比率を保ってフラット化
             else
                 kids.Add(n);
         }
@@ -524,6 +529,18 @@ public partial class ShellWindow : Window
         split.Children.Clear();
         split.Children.AddRange(kids);
         return split;
+    }
+
+    private static void AddFlattenedChildren(List<PaneNode> destination, PaneSplit inner)
+    {
+        var total = inner.Children.Sum(c => c.Weight > 0 ? c.Weight : 1);
+        var scale = total > 0 ? (inner.Weight > 0 ? inner.Weight : 1) / total : 1;
+        foreach (var child in inner.Children)
+        {
+            var weight = child.Weight > 0 ? child.Weight : 1;
+            child.Weight = weight * scale;
+            destination.Add(child);
+        }
     }
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
