@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using sk0ya.Loomo.Core.Tools;
 using sk0ya.Loomo.Core.Tools.Implementations;
 
 namespace sk0ya.Loomo.Core.Safety;
@@ -20,10 +21,10 @@ public sealed class SafetyPolicy : ISafetyPolicy
 
     public SafetyDecision Evaluate(string toolName, JsonElement arguments)
     {
-        if (toolName != "pwsh") return SafetyDecision.Allow;
+        if (toolName != PwshContract.ToolName) return SafetyDecision.Allow;
 
         // 引数はオーケストレータが NormalizeArguments で canonical 化済み（command キーに正規化される）前提。
-        var command = arguments.GetString("command");
+        var command = arguments.GetString(PwshContract.CommandArg);
         if (string.IsNullOrWhiteSpace(command)) return SafetyDecision.Allow;
 
         foreach (var pattern in _settings.BlockedCommandPatterns)

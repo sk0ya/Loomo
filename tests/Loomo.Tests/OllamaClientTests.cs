@@ -220,6 +220,34 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_recovers_root_command_alias_key_as_tool_call()
+    {
+        // 平坦形で command を別名キー（cmd）で吐くモデルも復元し、canonical な command へ寄せる。
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"name\\\":\\\"pwsh\\\",\\\"cmd\\\":\\\"Get-Location\\\"}]\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Local_client_recovers_loose_tool_content_with_alias_key()
+    {
+        // 緩い記法 name=pwsh {script: "..."} の別名キーも command として復元する。
+        var events = await RunLocalWithToolsAsync(
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"name=pwsh {\\\"script\\\":\\\"Get-Date\\\"}\"},\"done\":true}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
     public async Task Local_client_recovers_tool_call_from_echoed_definition_with_trailing_arguments()
     {
         // モデルがツール定義JSONを丸写しし、末尾に arguments={...} を付けて吐く壊れた tool call

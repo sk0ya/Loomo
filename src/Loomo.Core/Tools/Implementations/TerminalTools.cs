@@ -14,11 +14,7 @@ public sealed class PwshTool : IAgentTool
     private readonly ITerminalService _terminal;
     public PwshTool(ITerminalService terminal) => _terminal = terminal;
 
-    /// <summary>command を表す引数キーの揺れ。小モデルは cmd/script/code 等で送ることがあるため別名で吸収する。</summary>
-    private static readonly string[] CommandKeys =
-        { "command", "cmd", "commandline", "command_line", "script", "code", "powershell", "pwsh", "input", "line" };
-
-    public string Name => "pwsh";
+    public string Name => PwshContract.ToolName;
     public bool RequiresApproval => true;   // コマンド実行なので承認必須
 
     public ToolDefinition Definition => new(
@@ -27,23 +23,24 @@ public sealed class PwshTool : IAgentTool
         "PowerShell コマンドを実行し、標準出力と終了コードを返す。",
         ToolDefinition.ObjectSchema(
             // 例示値を添えるとスキーマ層でも具体像が伝わり、小モデルの空引数呼び出しが減る。
-            ("command", "string", "実行する PowerShell コマンド行（例: Get-ChildItem）。空文字は不可。", true)));
+            (PwshContract.CommandArg, "string", "実行する PowerShell コマンド行（例: Get-ChildItem）。空文字は不可。", true)));
 
-    public string DescribeInvocation(JsonElement args) => $"$ {args.GetString("command")}";
+    public string DescribeInvocation(JsonElement args) => $"$ {args.GetString(PwshContract.CommandArg)}";
 
     /// <summary>command の別名キーを吸収し、取れなければ唯一の string プロパティを採用して
     /// canonical な <c>{"command":"..."}</c> へ寄せる。安全評価・要約・実行が同じ値を見る。</summary>
     public JsonElement NormalizeArguments(JsonElement arguments)
     {
-        var command = arguments.GetStringAny(CommandKeys);
+        var command = arguments.GetStringAny(PwshContract.CommandKeys);
         if (string.IsNullOrWhiteSpace(command))
             command = arguments.SingleStringValue();
-        return JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["command"] = command });
+        return JsonSerializer.SerializeToElement(
+            new Dictionary<string, string> { [PwshContract.CommandArg] = command });
     }
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
-        var command = args.GetString("command");
+        var command = args.GetString(PwshContract.CommandArg);
         // 空引数で呼ばれた場合は、再試行ターンが成功するよう正しい呼び出し形をエラー本文で示す。
         if (string.IsNullOrWhiteSpace(command))
             return ToolResult.Error("command が空です。arguments に {\"command\":\"<PowerShellコマンド>\"} を入れて呼び出してください。");

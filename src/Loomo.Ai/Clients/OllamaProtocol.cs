@@ -644,10 +644,22 @@ internal static class OllamaProtocol
             return null;
 
         var args = fn?["arguments"] ?? obj["arguments"] ?? obj["parameters"];
-        if (args is null && obj["command"]?.GetValue<string>() is { Length: > 0 } command)
-            args = new JsonObject { ["command"] = command };
+        // arguments/parameters が無い平坦形 {"name":"pwsh","cmd":"..."} は、別名キーから command を合成する。
+        if (args is null && FindCommandByAlias(obj) is { } command)
+            args = new JsonObject { [PwshContract.CommandArg] = command };
         var argsJson = args is null ? "{}" : args.ToJsonString();
         return new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson);
+    }
+
+    /// <summary>JsonObject から command 値を別名キー（command/cmd/script…）で順に探す（無ければ null）。
+    /// envelope 直下の平坦形を救う用途。キー指定なので "name":"pwsh" の値を誤って拾うことはない。
+    /// 想定外キーの単一 string への最終フォールバックは後段の <c>PwshTool.NormalizeArguments</c> に委ねる。</summary>
+    private static string? FindCommandByAlias(JsonObject obj)
+    {
+        foreach (var key in PwshContract.CommandKeys)
+            if (obj[key] is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrWhiteSpace(s))
+                return s;
+        return null;
     }
 
     private static ToolUse? TryParseLooseToolCall(string content, IReadOnlySet<string> allowedToolNames)
@@ -662,8 +674,9 @@ internal static class OllamaProtocol
         try
         {
             var body = JsonNode.Parse(bodyJson);
-            if (body is JsonObject obj && obj["command"]?.GetValue<string>() is { Length: > 0 })
-                return new ToolUse(Guid.NewGuid().ToString("N"), name, obj.ToJsonString());
+            if (body is JsonObject obj && FindCommandByAlias(obj) is { } found)
+                return new ToolUse(Guid.NewGuid().ToString("N"), name,
+                    new JsonObject { [PwshContract.CommandArg] = found }.ToJsonString());
         }
         catch
         {
@@ -674,7 +687,11 @@ internal static class OllamaProtocol
         foreach (Match prop in LooseProperty.Matches(match.Groups["body"].Value))
             props[prop.Groups["key"].Value] = Regex.Unescape(prop.Groups["value"].Value);
 
-        if (!props.TryGetValue("command", out var command) || string.IsNullOrWhiteSpace(command))
+        // command を別名キー込みで探す（cmd/script 等の非 JSON 記法も救う）。
+        string? command = null;
+        foreach (var key in PwshContract.CommandKeys)
+            if (props.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v)) { command = v; break; }
+        if (command is null)
             return null;
 
         if (props.TryGetValue("arguments", out var argument) &&
