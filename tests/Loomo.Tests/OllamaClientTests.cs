@@ -72,6 +72,25 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public void BuildRequest_with_tools_sends_strict_non_empty_command_schema()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("pwd");
+
+        var body = OllamaProtocol.BuildRequest(
+            conversation,
+            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema(
+                ("command", "string", "PowerShell command", true))) },
+            "phi4-mini",
+            1024,
+            "system");
+
+        var schema = body["tools"]![0]!["function"]!["parameters"]!.AsObject();
+        Assert.False(schema["additionalProperties"]!.GetValue<bool>());
+        Assert.Equal(1, schema["properties"]!["command"]!["minLength"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task Local_client_retries_without_tools_when_ollama_model_rejects_tools()
     {
         var handler = new ScriptedHandler();

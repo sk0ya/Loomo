@@ -15,11 +15,15 @@ public sealed record ToolDefinition(string Name, string Description, JsonObject 
         var required = new JsonArray();
         foreach (var (name, type, description, isRequired) in props)
         {
-            properties[name] = new JsonObject
+            var prop = new JsonObject
             {
                 ["type"] = type,
                 ["description"] = description
             };
+            if (isRequired && type == "string")
+                prop["minLength"] = 1;
+
+            properties[name] = prop;
             if (isRequired) required.Add(name);
         }
 
@@ -27,7 +31,8 @@ public sealed record ToolDefinition(string Name, string Description, JsonObject 
         {
             ["type"] = "object",
             ["properties"] = properties,
-            ["required"] = required
+            ["required"] = required,
+            ["additionalProperties"] = false
         };
     }
 }
