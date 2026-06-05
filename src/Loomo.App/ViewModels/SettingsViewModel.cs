@@ -30,6 +30,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private string _model = "";
     [ObservableProperty] private int _maxTokens;
+    [ObservableProperty] private int _numGpu;
     [ObservableProperty] private bool _thinking;
     [ObservableProperty] private string _status = "";
 
@@ -67,6 +68,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var cfg = _settings.Local;
         Model = cfg.Model;
         MaxTokens = cfg.MaxTokens;
+        NumGpu = cfg.NumGpu;
         Thinking = cfg.Thinking;
     }
 
@@ -76,6 +78,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         cfg.Model = Model.Trim();
         cfg.ApiKey = null;
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
+        // num_gpu: 負値=自動（送らない）／0=CPU実行／正値=オフロード層数。負値はすべて -1 に正規化する。
+        cfg.NumGpu = NumGpu < 0 ? -1 : NumGpu;
         cfg.Thinking = Thinking;
     }
 

@@ -32,6 +32,12 @@
                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
 
+                <TextBlock Style="{StaticResource FieldLabel}" Text="GPU オフロード層数 (num_gpu)" />
+                <TextBox Text="{Binding NumGpu, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Text="-1=自動（Ollama に委ねる）／0=GPU を使わず CPU 実行／正値=オフロードする層数。VRAM の小さい貧弱な GPU では 0 にすると prefill が速くなることがあります。"
+                           Foreground="{DynamicResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
+
                 <TextBlock Style="{StaticResource FieldLabel}" Text="Thinking" />
                 <CheckBox Content="思考（thinking）を有効にする"
                           IsChecked="{Binding Thinking}" Margin="0,2,0,4"
