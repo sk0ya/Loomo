@@ -47,7 +47,8 @@ internal static class OllamaProtocol
         bool includeTools = true,
         bool wantThink = false,
         int numCtxOverride = 0,
-        string workspaceContext = "")
+        string workspaceContext = "",
+        int numGpu = -1)
     {
         // モデル別プロファイルで thinking / サンプリング / num_ctx を最適化する。
         var profile = ModelProfiles.Resolve(model);
@@ -173,6 +174,10 @@ internal static class OllamaProtocol
         var numCtx = numCtxOverride > 0 ? numCtxOverride : profile.NumCtx;
         if (numCtx > 0)
             options["num_ctx"] = numCtx;                    // Ollama 既定(4096)はエージェント用途に狭いため広げる
+        // num_gpu は負値なら送らず Ollama の自動判定に任せる。0 で GPU オフロード無効（100% CPU）。
+        // 貧弱な GPU に一部レイヤーが載ると prefill のボトルネックになる環境向けの逃げ道（設定で 0 を指定）。
+        if (numGpu >= 0)
+            options["num_gpu"] = numGpu;
         profile.SamplingFor(thinking).ApplyTo(options);     // モデルファミリ別の推奨サンプリング
 
         var body = new JsonObject

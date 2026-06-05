@@ -193,6 +193,9 @@ public sealed class AiSettingsStore
         /// <summary>num_ctx の上書き。null/0 = プロファイル既定を使う。</summary>
         public int? NumCtx { get; set; }
 
+        /// <summary>num_gpu の上書き。null = 未指定（既定 -1 維持＝送らない）。0 = GPU オフロード無効（CPU 実行）。</summary>
+        public int? NumGpu { get; set; }
+
         public static PersistedProvider From(ProviderConfig c) => new()
         {
             Model = c.Model,
@@ -201,6 +204,7 @@ public sealed class AiSettingsStore
             Thinking = c.Thinking,
             MaxContextTokens = c.MaxContextTokens,
             NumCtx = c.NumCtx,
+            NumGpu = c.NumGpu,
         };
 
         public void ApplyTo(ProviderConfig c)
@@ -216,6 +220,8 @@ public sealed class AiSettingsStore
             // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定を保つ。
             if (MaxContextTokens is { } mct && mct >= 0) c.MaxContextTokens = mct;
             if (NumCtx is { } nc && nc >= 0) c.NumCtx = nc;
+            // num_gpu は 0（CPU 強制）も負値（送らない）も有効値なので、ファイルに在れば素直に適用する。
+            if (NumGpu is { } ng) c.NumGpu = ng;
         }
 
         private static bool IsLegacyDefaultModel(string model)

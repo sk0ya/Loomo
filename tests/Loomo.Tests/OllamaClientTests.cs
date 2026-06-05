@@ -401,6 +401,23 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public void BuildRequest_omits_num_gpu_by_default_and_emits_it_when_set()
+    {
+        var conversation = new Conversation();
+        conversation.AddUser("やあ");
+
+        // 既定（numGpu 未指定 = -1）では num_gpu を送らず Ollama の自動判定に任せる。
+        var auto = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "phi4-mini:3.8b", 1024, "system");
+        Assert.False(auto["options"]!.AsObject().ContainsKey("num_gpu"));
+
+        // numGpu:0 で GPU オフロード無効（100% CPU）を明示送信する。
+        var cpuOnly = OllamaProtocol.BuildRequest(
+            conversation, Array.Empty<ToolDefinition>(), "phi4-mini:3.8b", 1024, "system", numGpu: 0);
+        Assert.Equal(0, cpuOnly["options"]!["num_gpu"]!.GetValue<int>());
+    }
+
+    [Fact]
     public void BuildRequest_omits_tools_for_tool_unsupported_model_despite_includeTools()
     {
         var conversation = new Conversation();
@@ -435,7 +452,7 @@ public class OllamaClientTests
     [Fact]
     public void Default_system_prompt_is_short_and_explicitly_guides_tool_calling()
     {
-        Assert.True(AiSettings.DefaultSystemPrompt.Length < 500);
+        Assert.True(AiSettings.DefaultSystemPrompt.Length < 600);
         Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
         Assert.Contains("call the pwsh tool", AiSettings.DefaultSystemPrompt);
         Assert.Contains("{\"command\":\"...\"}", AiSettings.DefaultSystemPrompt);

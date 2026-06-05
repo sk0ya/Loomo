@@ -59,7 +59,7 @@ public sealed class OllamaClient : IAiClient
 
         System.Text.Json.Nodes.JsonObject Build(bool includeTools) => OllamaProtocol.BuildRequest(
             conversation, tools, cfg.Model, cfg.MaxTokens, systemPrompt, includeTools, wantThink, cfg.NumCtx,
-            workspaceContext);
+            workspaceContext, cfg.NumGpu);
 
         // プロファイルが tools 非対応とするモデルには最初からツールを送らない（無駄な往復を避ける）。
         // 未知モデルで誤って送ってしまった場合のみ、先頭イベントの「ツール非対応」エラーを見て
