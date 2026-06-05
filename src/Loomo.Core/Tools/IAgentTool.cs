@@ -22,6 +22,11 @@ public interface IAgentTool
     /// <summary>承認カードに表示する短い要約を返す。</summary>
     string DescribeInvocation(JsonElement arguments);
 
+    /// <summary>プロバイダ差や小モデルのキー揺れ（command を cmd/script 等で送る等）を canonical な引数へ正規化する。
+    /// 既定は恒等（変換なし）。オーケストレータが<b>安全評価の前に一度だけ</b>適用するため、ここで別名を寄せても
+    /// 安全評価・要約・実行が同じ正規化済み引数を見る（評価をすり抜けない）。</summary>
+    JsonElement NormalizeArguments(JsonElement arguments) => arguments;
+
     /// <summary>実行。</summary>
     Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken ct);
 }

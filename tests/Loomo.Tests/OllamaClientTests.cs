@@ -452,10 +452,12 @@ public class OllamaClientTests
     [Fact]
     public void Default_system_prompt_is_short_and_explicitly_guides_tool_calling()
     {
-        Assert.True(AiSettings.DefaultSystemPrompt.Length < 600);
+        Assert.True(AiSettings.DefaultSystemPrompt.Length < 800);
         Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
         Assert.Contains("call the pwsh tool", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("{\"command\":\"...\"}", AiSettings.DefaultSystemPrompt);
+        // 空引数呼び出しを抑えるため、具体例と「空で呼ばない」指示を明示する。
+        Assert.Contains("{\"command\":\"Get-ChildItem\"}", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Never call pwsh with empty", AiSettings.DefaultSystemPrompt);
     }
 
     [Fact]

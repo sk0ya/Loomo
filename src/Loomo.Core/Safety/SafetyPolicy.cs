@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using sk0ya.Loomo.Core.Tools.Implementations;
 
 namespace sk0ya.Loomo.Core.Safety;
 
@@ -21,7 +22,8 @@ public sealed class SafetyPolicy : ISafetyPolicy
     {
         if (toolName != "pwsh") return SafetyDecision.Allow;
 
-        var command = ExtractString(arguments, "command");
+        // 引数はオーケストレータが NormalizeArguments で canonical 化済み（command キーに正規化される）前提。
+        var command = arguments.GetString("command");
         if (string.IsNullOrWhiteSpace(command)) return SafetyDecision.Allow;
 
         foreach (var pattern in _settings.BlockedCommandPatterns)
@@ -43,11 +45,4 @@ public sealed class SafetyPolicy : ISafetyPolicy
 
         return SafetyDecision.Allow;
     }
-
-    private static string? ExtractString(JsonElement args, string name)
-        => args.ValueKind == JsonValueKind.Object
-           && args.TryGetProperty(name, out var v)
-           && v.ValueKind == JsonValueKind.String
-            ? v.GetString()
-            : null;
 }

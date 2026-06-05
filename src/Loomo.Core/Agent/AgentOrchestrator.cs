@@ -270,6 +270,14 @@ public sealed class AgentOrchestrator
             return new ToolResultMessage(use.Id, $"引数JSONの解析失敗: {ex.Message}", IsError: true);
         }
 
+        // キー揺れ等を canonical へ寄せる。安全評価・要約・実行が同じ正規化済み引数を見るよう、ここで一度だけ適用する。
+        try { args = tool.NormalizeArguments(args); }
+        catch (Exception ex)
+        {
+            _trace.Record(sessionId, turnId, TraceKinds.Error, new { message = ex.Message, where = "tool.normalize" });
+            // 正規化に失敗しても元の引数のまま続行（安全評価・実行は通常どおり行う）。
+        }
+
         // 安全ポリシー：危険コマンドのブロックリストに一致したら実行せず差し戻す
         var decision = _safety.Evaluate(tool.Name, args);
         _trace.Record(sessionId, turnId, TraceKinds.SafetyEvaluated,

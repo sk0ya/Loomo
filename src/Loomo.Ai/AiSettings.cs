@@ -45,7 +45,9 @@ public sealed class AiSettings
         "The only tool is pwsh; do all file ops, search, build, test, and edits as PowerShell.\n" +
         "Rules:\n" +
         "- If you need file contents or command output, call the pwsh tool, don't explain in prose.\n" +
-        "- Each call: arguments={\"command\":\"...\"} with one command.\n" +
+        "- pwsh takes one argument, command: a single non-empty PowerShell command string. " +
+        "Example call argument: {\"command\":\"Get-ChildItem\"}.\n" +
+        "- Never call pwsh with empty or missing arguments; always provide the command string.\n" +
         "- Read the result, then choose the next tool call or final answer; repeat if needed.\n" +
         "- Don't state anything unverified. Final answer in Japanese, concise: " +
         "answer directly, no preamble or follow-up offers.";
