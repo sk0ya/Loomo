@@ -20,10 +20,10 @@ public sealed class PwshTool : IAgentTool
     public ToolDefinition Definition => new(
         Name,
         // 「ファイル操作も全て PowerShell」はシステムプロンプト側に集約済みなので説明文では重複させない（プレフィル削減）。
-        "Run one PowerShell command and return stdout and exit code.",
+        "Run one non-interactive PowerShell command and return stdout and exit code.",
         ToolDefinition.ObjectSchema(
             // 例示値を添えるとスキーマ層でも具体像が伝わり、小モデルの空引数呼び出しが減る。
-            (PwshContract.CommandArg, "string", "Non-empty PowerShell command line, e.g. Get-ChildItem.", true)));
+            (PwshContract.CommandArg, "string", "Non-empty non-interactive command; avoid pagers and prompts.", true)));
 
     public string DescribeInvocation(JsonElement args) => $"$ {args.GetString(PwshContract.CommandArg)}";
 
@@ -45,6 +45,8 @@ public sealed class PwshTool : IAgentTool
         if (string.IsNullOrWhiteSpace(command))
             return ToolResult.Error("command が空です。arguments に {\"command\":\"<PowerShellコマンド>\"} を入れて呼び出してください。");
 
+        command = MakeNonInteractive(command);
+
         var result = await _terminal.RunCommandAsync(command, ct);
         var sb = new StringBuilder();
         sb.AppendLine($"exit_code: {result.ExitCode}");
@@ -52,5 +54,18 @@ public sealed class PwshTool : IAgentTool
         sb.AppendLine("--- output ---");
         sb.Append(result.Output);
         return result.Success ? ToolResult.Ok(sb.ToString()) : new ToolResult(sb.ToString(), IsError: true);
+    }
+
+    private static string MakeNonInteractive(string command)
+    {
+        var trimmedStart = command.TrimStart();
+        if (!trimmedStart.StartsWith("git ", System.StringComparison.OrdinalIgnoreCase))
+            return command;
+        if (trimmedStart.StartsWith("git --no-pager ", System.StringComparison.OrdinalIgnoreCase)
+            || trimmedStart.StartsWith("git -P ", System.StringComparison.OrdinalIgnoreCase))
+            return command;
+
+        var leading = command[..(command.Length - trimmedStart.Length)];
+        return leading + "git --no-pager " + trimmedStart[4..];
     }
 }
