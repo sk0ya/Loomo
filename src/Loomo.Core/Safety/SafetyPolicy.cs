@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Core.Safety;
 
 /// <summary>
 /// <see cref="SafetySettings"/> に基づく既定の安全ポリシー実装。
-/// pwsh（PowerShell 実行）の引数を危険コマンドのブロックリストと照合する。
+/// run_powershell（PowerShell 実行）の引数を危険コマンドのブロックリストと照合する。
 /// 設定インスタンスを保持し、評価のたびに最新値を読むため設定変更が即時反映される。
 /// </summary>
 public sealed class SafetyPolicy : ISafetyPolicy

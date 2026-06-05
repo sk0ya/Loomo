@@ -49,15 +49,6 @@ public sealed class ChatMessage
     public ChatRole Role { get; init; }
     public string? Text { get; set; }
 
-    /// <summary>
-    /// アシスタントがツール呼び出しを「本文テキスト」として吐くモデル（例: qwen2.5-coder / phi4-mini）で、
-    /// モデルが実際に生成した生本文を逐語で保持する。表示用の <see cref="Text"/> とは別物。
-    /// 次ターンの送信時はこれを逐語でアシスタント発話として積み直す。Ollama のプレフィックスKV再利用は
-    /// 「スロットの[プロンプト＋生成トークン]のバイト完全な拡張」のときだけ効くため、tool_calls へ
-    /// 再構成すると食い違って会話全体が再 prefill される（turn2 が約8倍遅くなる）。null なら従来どおり。
-    /// </summary>
-    public string? ProviderContent { get; set; }
-
     /// <summary>このメッセージを生成した組み込みAIプロファイルID。ユーザー/ツールでは null。</summary>
     public string? AgentId { get; set; }
 
@@ -82,7 +73,7 @@ public sealed class Conversation
 }
 
 /// <summary>アシスタントからのツール呼び出し要求。</summary>
-public sealed record ToolUse(string Id, string Name, string ArgumentsJson);
+public sealed record ToolUse(string Id, string Name, string ArgumentsJson, string? RawJson = null);
 
 /// <summary>ツール実行結果（会話に戻す用）。</summary>
 public sealed record ToolResultMessage(string ToolUseId, string Content, bool IsError);

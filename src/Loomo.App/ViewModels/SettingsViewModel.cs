@@ -218,7 +218,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task EditBlockedCommandsAsync()
     {
         const string header =
-            "# ブロックする危険コマンド（pwsh の照合に使用）\n" +
+            "# ブロックする危険コマンド（run_powershell の照合に使用）\n" +
             "# ・1行に1つ、正規表現で記述します（大文字小文字は無視）。\n" +
             "# ・'#' で始まる行と空行は無視されます。\n" +
             "\n";

@@ -107,6 +107,9 @@ public class TraceSinkTests
         Assert.Contains(TraceKinds.ToolCompleted, kinds);
         Assert.Contains(TraceKinds.AiMessage, kinds);
         Assert.Contains(TraceKinds.TurnCompleted, kinds);
+        var toolUse = ReadEvents(dir, "sess1").Single(e => e.Kind == TraceKinds.AiToolUse);
+        var rawJson = ((JsonElement)toolUse.Payload!).GetProperty("rawJson").GetString();
+        Assert.Equal("{\"raw\":true}", rawJson);
         // 単段ループ：全反復で Root プロファイル＋同じツール集合（プレフィックスキャッシュ維持）。
         Assert.Equal(
             new[] {AgentProfiles.Root.Id, AgentProfiles.Root.Id},
@@ -214,7 +217,7 @@ public class TraceSinkTests
             await Task.Yield();
             if (_calls++ == 0)
             {
-                yield return new ToolUseRequested(new ToolUse("u1", _toolName, "{\"value\":\"hi\"}"));
+                yield return new ToolUseRequested(new ToolUse("u1", _toolName, "{\"value\":\"hi\"}", "{\"raw\":true}"));
             }
             else
             {

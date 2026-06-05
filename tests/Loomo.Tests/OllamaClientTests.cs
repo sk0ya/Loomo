@@ -18,7 +18,7 @@ public class OllamaClientTests
         var conversation = new Conversation();
         conversation.AddUser("ビルドして");
         var assistant = new ChatMessage { Role = ChatRole.Assistant, Text = "確認します" };
-        assistant.ToolUses.Add(new ToolUse("t1", "pwsh", "{\"command\":\"dotnet build\"}"));
+        assistant.ToolUses.Add(new ToolUse("t1", "run_powershell", "{\"command\":\"dotnet build\"}"));
         conversation.Messages.Add(assistant);
         var tool = new ChatMessage { Role = ChatRole.Tool };
         tool.ToolResults.Add(new ToolResultMessage("t1", "成功", IsError: false));
@@ -26,7 +26,7 @@ public class OllamaClientTests
 
         var body = OllamaProtocol.BuildRequest(
             conversation,
-            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+            new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema()) },
             "gemma3:4b",
             1024,
             "system",
@@ -46,7 +46,7 @@ public class OllamaClientTests
         var conversation = new Conversation();
         conversation.AddUser("ビルドして");
         var assistant = new ChatMessage { Role = ChatRole.Assistant, Text = "" };
-        assistant.ToolUses.Add(new ToolUse("t1", "pwsh", "{\"command\":\"dotnet build\"}"));
+        assistant.ToolUses.Add(new ToolUse("t1", "run_powershell", "{\"command\":\"dotnet build\"}"));
         conversation.Messages.Add(assistant);
         var tool = new ChatMessage { Role = ChatRole.Tool };
         tool.ToolResults.Add(new ToolResultMessage("t1", "成功", IsError: false));
@@ -54,7 +54,7 @@ public class OllamaClientTests
 
         var body = OllamaProtocol.BuildRequest(
             conversation,
-            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+            new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema()) },
             "qwen3:4b",
             1024,
             "system");
@@ -68,7 +68,7 @@ public class OllamaClientTests
         Assert.Equal("dotnet build", args!["command"]!.GetValue<string>());
 
         var toolMsg = messages.Single(m => m?["role"]?.GetValue<string>() == "tool")!;
-        Assert.Equal("pwsh", toolMsg["tool_name"]!.GetValue<string>());
+        Assert.Equal("run_powershell", toolMsg["tool_name"]!.GetValue<string>());
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class OllamaClientTests
 
         var body = OllamaProtocol.BuildRequest(
             conversation,
-            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema(
+            new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema(
                 ("command", "string", "PowerShell command", true))) },
             "phi4-mini",
             1024,
@@ -108,7 +108,7 @@ public class OllamaClientTests
         var events = new List<AgentEvent>();
         await foreach (var ev in client.StreamAsync(
                            conversation,
-                           new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+                           new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema()) },
                            CancellationToken.None))
         {
             events.Add(ev);
@@ -164,126 +164,24 @@ public class OllamaClientTests
     public async Task Local_client_emits_tool_call_with_object_arguments()
     {
         var events = await RunLocalAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"pwsh\",\"arguments\":{\"command\":\"ls\"}}}]},\"done\":true}"));
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}}]},\"done\":true}"));
 
         var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
         Assert.Equal("{\"command\":\"ls\"}", tool.ToolUse.ArgumentsJson);
+        Assert.Contains("\"arguments\":{\"command\":\"ls\"}", tool.ToolUse.RawJson);
         Assert.DoesNotContain(events, e => e is TurnCompleted); // ツール継続のため出さない
     }
 
     [Fact]
-    public async Task Local_client_treats_fenced_json_content_as_tool_call_when_tools_are_available()
+    public async Task Local_client_keeps_textual_pseudo_tool_call_as_text()
     {
         var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"```json\\n{\\\"name\\\":\\\"pwsh\\\",\\\"arguments\\\":{\\\"command\\\":\\\"Get-Date\\\"}}\\n```\"},\"done\":true}"));
+            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"run_powershell {Get-Location}\"},\"done\":true}"));
 
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_treats_loose_phi4_tool_content_as_tool_call_when_tools_are_available()
-    {
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"pwsh {command: \\\"dir\\\", arguments: \\\"C:\\\\\\\\Projects\\\\\\\\Loomo\\\\\\\\docs\\\" }\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        var args = JsonNode.Parse(tool.ToolUse.ArgumentsJson)!.AsObject();
-        Assert.Equal("dir 'C:\\Projects\\Loomo\\docs'", args["command"]!.GetValue<string>());
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_treats_name_prefixed_phi4_tool_content_as_tool_call_when_tools_are_available()
-    {
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"name=pwsh {\\\"command\\\":\\\"Get-Date\\\"}\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_treats_phi4_function_json_content_as_tool_call_when_tools_are_available()
-    {
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"pwsh\\\",\\\"description\\\":\\\"PowerShell\\\"},\\\"parameters\\\":{\\\"command\\\":\\\"Get-Date\\\"}}]\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_treats_phi4_root_command_json_content_as_tool_call_when_tools_are_available()
-    {
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"name\\\":\\\"pwsh\\\",\\\"command\\\":\\\"Get-Location\\\"}]\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_recovers_root_command_alias_key_as_tool_call()
-    {
-        // 平坦形で command を別名キー（cmd）で吐くモデルも復元し、canonical な command へ寄せる。
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"name\\\":\\\"pwsh\\\",\\\"cmd\\\":\\\"Get-Location\\\"}]\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_recovers_loose_tool_content_with_alias_key()
-    {
-        // 緩い記法 name=pwsh {script: "..."} の別名キーも command として復元する。
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"name=pwsh {\\\"script\\\":\\\"Get-Date\\\"}\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Date\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
-    }
-
-    [Fact]
-    public async Task Local_client_recovers_tool_call_from_echoed_definition_with_trailing_arguments()
-    {
-        // モデルがツール定義JSONを丸写しし、末尾に arguments={...} を付けて吐く壊れた tool call
-        // （実観測）を救済する。正しい command(Get-Location) を tool use として取り出す。
-        var content =
-            "[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"pwsh\\\"," +
-            "\\\"description\\\":\\\"PowerShell\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"," +
-            "\\\"required\\\":[\\\"command\\\"],\\\"properties\\\":{\\\"command\\\":{\\\"type\\\":\\\"string\\\"}}}}}]" +
-            "arguments={\\\"command\\\":\\\"Get-Location\\\"}";
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"" + content + "\"},\"done\":true}"));
-
-        var tool = Assert.Single(events.OfType<ToolUseRequested>());
-        Assert.Equal("pwsh", tool.ToolUse.Name);
-        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ToolUse.ArgumentsJson);
-        Assert.DoesNotContain(events, e => e is TextDelta);   // 壊れた本文を回答として漏らさない
-        Assert.DoesNotContain(events, e => e is TurnCompleted);
+        Assert.Equal("run_powershell {Get-Location}", string.Concat(events.OfType<TextDelta>().Select(e => e.Text)));
+        Assert.DoesNotContain(events, e => e is ToolUseRequested);
+        Assert.Contains(events, e => e is TurnCompleted);
     }
 
     [Fact]
@@ -378,7 +276,7 @@ public class OllamaClientTests
 
         var body = OllamaProtocol.BuildRequest(
             conversation,
-            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+            new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema()) },
             "phi4-mini:latest",
             1024,
             "system",
@@ -392,46 +290,6 @@ public class OllamaClientTests
         Assert.Equal(1024, options["num_predict"]!.GetValue<int>());
         Assert.Equal(0.2, options["temperature"]!.GetValue<double>());
         Assert.Equal(0.9, options["top_p"]!.GetValue<double>());
-    }
-
-    [Fact]
-    public void BuildRequest_replays_provider_content_verbatim_and_result_as_user()
-    {
-        // ツール呼び出しを本文テキストで吐いたモデルでは、生本文を逐語で積み直し、
-        // tool_calls へ再構成しない（プレフィックスKV再利用＝turn2高速化のため）。
-        const string raw = "{\"name\":\"pwsh\",\"arguments\":{\"command\":\"Get-Location\"}}";
-        var conversation = new Conversation();
-        conversation.AddUser("pwd");
-        var assistant = new ChatMessage { Role = ChatRole.Assistant, ProviderContent = raw };
-        assistant.ToolUses.Add(new ToolUse("id1", "pwsh", "{\"command\":\"Get-Location\"}"));
-        conversation.Messages.Add(assistant);
-        var toolMsg = new ChatMessage { Role = ChatRole.Tool };
-        toolMsg.ToolResults.Add(new ToolResultMessage("id1", "C:\\Projects\\Loomo", IsError: false));
-        conversation.Messages.Add(toolMsg);
-
-        var body = OllamaProtocol.BuildRequest(
-            conversation,
-            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
-            "qwen2.5-coder:3b", 1024, "system", includeTools: true);
-
-        var msgs = body["messages"]!.AsArray();
-        var asst = msgs.Single(m => m!["role"]!.GetValue<string>() == "assistant")!.AsObject();
-        Assert.Equal(raw, asst["content"]!.GetValue<string>());     // 逐語そのまま
-        Assert.False(asst.ContainsKey("tool_calls"));               // 再構成しない
-        Assert.DoesNotContain(msgs, m => m!["role"]!.GetValue<string>() == "tool"); // 結果は user として積む
-        var resultUser = msgs.Last(m => m!["role"]!.GetValue<string>() == "user")!.AsObject();
-        Assert.Contains("C:\\Projects\\Loomo", resultUser["content"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async System.Threading.Tasks.Task Local_client_captures_raw_content_for_text_tool_call_replay()
-    {
-        var events = await RunLocalWithToolsAsync(
-            Ndjson("{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"name\\\":\\\"pwsh\\\",\\\"arguments\\\":{\\\"command\\\":\\\"Get-Date\\\"}}\"},\"done\":true}"));
-
-        var captured = Assert.Single(events.OfType<AssistantContentCaptured>());
-        Assert.Equal("{\"name\":\"pwsh\",\"arguments\":{\"command\":\"Get-Date\"}}", captured.RawContent);
-        Assert.Single(events.OfType<ToolUseRequested>());
     }
 
     [Fact]
@@ -473,7 +331,7 @@ public class OllamaClientTests
         // gemma3 は tools 非対応。includeTools:true でもツールは送らない。
         var body = OllamaProtocol.BuildRequest(
             conversation,
-            new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema()) },
+            new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema()) },
             "gemma3:4b", 1024, "system", includeTools: true);
 
         Assert.False(body.ContainsKey("tools"));
@@ -501,10 +359,12 @@ public class OllamaClientTests
     {
         Assert.True(AiSettings.DefaultSystemPrompt.Length < 800);
         Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("call the pwsh tool", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("call run_powershell", AiSettings.DefaultSystemPrompt);
         // 空引数呼び出しを抑えるため、具体例と「空で呼ばない」指示を明示する。
         Assert.Contains("{\"command\":\"Get-ChildItem\"}", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("Never call pwsh with empty", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Never call run_powershell with empty", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Do not output a tool definition", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("parameters.properties.command", AiSettings.DefaultSystemPrompt);
     }
 
     [Fact]
@@ -595,7 +455,7 @@ public class OllamaClientTests
         var events = new List<AgentEvent>();
         await foreach (var ev in client.StreamAsync(
                            conversation,
-                           new[] { new ToolDefinition("pwsh", "run", ToolDefinition.ObjectSchema(
+                           new[] { new ToolDefinition("run_powershell", "run", ToolDefinition.ObjectSchema(
                                ("command", "string", "PowerShell command", true))) },
                            CancellationToken.None))
             events.Add(ev);

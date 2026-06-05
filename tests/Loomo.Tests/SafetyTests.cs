@@ -19,7 +19,7 @@ public class SafetyTests
     public void Blocks_dangerous_commands(string command)
     {
         var policy = new SafetyPolicy(new SafetySettings());
-        var decision = policy.Evaluate("pwsh", Args(command));
+        var decision = policy.Evaluate("run_powershell", Args(command));
         Assert.True(decision.Blocked);
         Assert.NotNull(decision.Reason);
     }
@@ -33,7 +33,7 @@ public class SafetyTests
     public void Allows_safe_commands(string command)
     {
         var policy = new SafetyPolicy(new SafetySettings());
-        Assert.False(policy.Evaluate("pwsh", Args(command)).Blocked);
+        Assert.False(policy.Evaluate("run_powershell", Args(command)).Blocked);
     }
 
     [Fact]

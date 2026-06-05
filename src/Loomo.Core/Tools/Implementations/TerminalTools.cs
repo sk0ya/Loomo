@@ -19,11 +19,11 @@ public sealed class PwshTool : IAgentTool
 
     public ToolDefinition Definition => new(
         Name,
-        // 「ファイル操作も全て pwsh」はシステムプロンプト側に集約済みなので説明文では重複させない（プレフィル削減）。
-        "PowerShell コマンドを実行し、標準出力と終了コードを返す。",
+        // 「ファイル操作も全て PowerShell」はシステムプロンプト側に集約済みなので説明文では重複させない（プレフィル削減）。
+        "Run one PowerShell command and return stdout and exit code.",
         ToolDefinition.ObjectSchema(
             // 例示値を添えるとスキーマ層でも具体像が伝わり、小モデルの空引数呼び出しが減る。
-            (PwshContract.CommandArg, "string", "実行する PowerShell コマンド行（例: Get-ChildItem）。空文字は不可。", true)));
+            (PwshContract.CommandArg, "string", "Non-empty PowerShell command line, e.g. Get-ChildItem.", true)));
 
     public string DescribeInvocation(JsonElement args) => $"$ {args.GetString(PwshContract.CommandArg)}";
 

@@ -118,12 +118,6 @@ public sealed class AgentOrchestrator
                         // 思考は応答本文ではないため履歴へは積まず、UI表示用に通すだけ。
                         yield return thinking;
                         break;
-                    case AssistantContentCaptured cap:
-                        // モデルが生成した生本文を履歴へ逐語保存する（UIには出さない）。次ターンで
-                        // そのまま積み直し、Ollama のプレフィックスKV再利用を効かせるため（turn2 高速化）。
-                        sawModelOutput = true;
-                        assistant.ProviderContent = cap.RawContent;
-                        break;
                     case ToolUseRequested req:
                         sawModelOutput = true;
                         assistant.ToolUses.Add(req.ToolUse);
@@ -186,6 +180,7 @@ public sealed class AgentOrchestrator
                         toolUseId = use.Id,
                         name = use.Name,
                         argsJson = use.ArgumentsJson,
+                        rawJson = use.RawJson,
                         agentId = activeProfile.Id,
                         stage = activeProfile.DisplayName,
                     });

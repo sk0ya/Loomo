@@ -192,8 +192,8 @@ public sealed partial class AiBarViewModel : ObservableObject
                         {
                             var use = m.ToolUses[i];
                             var text = i == 0
-                                ? ComposeToolCard(m.Text, use.ArgumentsJson)
-                                : use.ArgumentsJson;
+                                ? ComposeToolCard(m.Text, use.ArgumentsJson, use.RawJson)
+                                : ComposeToolCard(null, use.ArgumentsJson, use.RawJson);
                             Add(EntryKind.Tool, $"🔧 {use.Name}", text);
                         }
                     }
@@ -310,7 +310,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                         // 進捗状況に「どのツールを何の引数で呼ぶか」を表示する。
                         SetStatus($"🔧 {req.ToolUse.Name} を準備中… {StreamPreview(req.ToolUse.ArgumentsJson)}");
                         AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", ComposeToolCard(narration, req.ToolUse.ArgumentsJson));
+                        Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", ComposeToolCard(narration, req.ToolUse.ArgumentsJson, req.ToolUse.RawJson));
                         break;
 
                     case ApprovalRequested approval:
@@ -413,12 +413,18 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     /// <summary>ツールカードの本文を組み立てる。AIがツール呼び出しと一緒に生成した本文（説明・narration）が
     /// あれば引数JSONの上に併記し、無ければ引数JSONのみを示す。</summary>
-    private static string ComposeToolCard(string? narration, string argumentsJson)
+    private static string ComposeToolCard(string? narration, string argumentsJson, string? rawJson)
     {
         var text = narration?.Trim();
-        return string.IsNullOrEmpty(text)
-            ? argumentsJson
-            : text + Environment.NewLine + argumentsJson;
+        var raw = rawJson?.Trim();
+        var body = string.IsNullOrEmpty(text)
+            ? "arguments:" + Environment.NewLine + argumentsJson
+            : text + Environment.NewLine + "arguments:" + Environment.NewLine + argumentsJson;
+
+        if (!string.IsNullOrEmpty(raw) && raw != argumentsJson)
+            body += Environment.NewLine + "raw:" + Environment.NewLine + raw;
+
+        return body;
     }
 
     private static void FinishTimedEntry(ref TranscriptEntry? entry, ref Stopwatch? clock, string baseHeader)

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using sk0ya.Loomo.Core.Tools.Implementations;
 
 namespace sk0ya.Loomo.Tests;
@@ -44,4 +45,14 @@ public class PwshArgNormalizationTests
     [Fact]
     public void Empty_object_yields_empty_command()
         => Assert.Equal("", CommandOf("{}"));
+
+    [Fact]
+    public void Definition_uses_short_english_schema_text_for_small_models()
+    {
+        var definition = Tool.Definition;
+        Assert.Equal("Run one PowerShell command and return stdout and exit code.", definition.Description);
+        Assert.Equal(
+            "Non-empty PowerShell command line, e.g. Get-ChildItem.",
+            definition.InputSchema["properties"]!["command"]!["description"]!.GetValue<string>());
+    }
 }

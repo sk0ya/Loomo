@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading;
 using sk0ya.Loomo.Ai.Http;
 using sk0ya.Loomo.Core.Models;
@@ -27,13 +26,6 @@ internal static class OllamaProtocol
     /// （巨大なツール定義の prefill 結果）も失われて遅くなる。CPU 実行ではコールドの prefill が支配的
     /// （モデル重みのページインで数十秒）なので、無期限常駐にしてコールドを「初回 1 回だけ」に抑える。</summary>
     private const int KeepAlive = -1;
-    private static readonly Regex LooseToolCall = new(
-        @"^\s*(?:name\s*=\s*)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{(?<body>.*)\}\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
-    private static readonly Regex LooseProperty = new(
-        @"(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*""(?<value>(?:\\.|[^""\\])*)""",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
-
     /// <summary>会話とツール定義から /api/chat リクエストボディを組み立てる。</summary>
     /// <param name="workspaceContext">毎ターン変わる「現在のフォルダ」等の揮発的な文脈。
     /// システムプロンプト（安定プレフィックス）には載せず、最新ユーザーメッセージの末尾へ添える。
@@ -73,10 +65,6 @@ internal static class OllamaProtocol
 
         // 揮発的な workspaceContext を末尾へ添える対象（最新の user メッセージ）。
         JsonObject? lastUserMsg = null;
-        // 直前のアシスタントが「生本文を逐語再生」したか。逐語再生時は tool_calls を出さないので、
-        // 続くツール結果は role:"tool" ではなく素の user メッセージとして積む（生成列の自然な拡張にする）。
-        var lastAssistantWasVerbatim = false;
-
         foreach (var m in conversation.Messages)
         {
             switch (m.Role)
@@ -88,17 +76,6 @@ internal static class OllamaProtocol
                     break;
 
                 case ChatRole.Assistant:
-                    // モデルが本文テキストとして吐いたツール呼び出しは、その生本文を逐語で積み直す。
-                    // tool_calls へ再構成するとスロットの生成トークン列と食い違い、プレフィックスKV再利用が
-                    // 効かず会話全体が再 prefill される。逐語ならツール有りでも厳密拡張になり再利用が効く。
-                    if (m.ProviderContent is not null)
-                    {
-                        messages.Add(new JsonObject { ["role"] = "assistant", ["content"] = m.ProviderContent });
-                        lastAssistantWasVerbatim = true;
-                        break;
-                    }
-
-                    lastAssistantWasVerbatim = false;
                     var assistantText = m.Text ?? "";
                     if (!sendTools && m.ToolUses.Count > 0)
                         assistantText = AppendToolUseSummary(assistantText, m.ToolUses);
@@ -126,7 +103,7 @@ internal static class OllamaProtocol
                     break;
 
                 case ChatRole.Tool:
-                    if (sendTools && !lastAssistantWasVerbatim)
+                    if (sendTools)
                     {
                         foreach (var r in m.ToolResults)
                         {
@@ -142,16 +119,9 @@ internal static class OllamaProtocol
                     }
                     else
                     {
-                        // 逐語再生の直後、またはツール非対応モデルでは、結果を素の user テキストとして積む。
-                        // 逐語再生パスでは GUID や status の足場を入れない簡潔形式にする：足場文字列は
-                        // プレフィックスKVキャッシュの再利用を妨げる組み合わせを生むことがあり（実測）、
-                        // モデルにとってもノイズなので、結果本文だけを積んで再利用を最大化する。
-                        var content = lastAssistantWasVerbatim
-                            ? BuildPlainToolResult(m.ToolResults)
-                            : BuildToolResultSummary(m.ToolResults);
+                        var content = BuildToolResultSummary(m.ToolResults);
                         messages.Add(new JsonObject { ["role"] = "user", ["content"] = content });
                     }
-                    lastAssistantWasVerbatim = false;
                     break;
             }
         }
@@ -237,16 +207,6 @@ internal static class OllamaProtocol
         return prefix + string.Join("\n", lines);
     }
 
-    /// <summary>逐語再生パス用のツール結果。GUID/statusの足場を入れず結果本文だけを簡潔に積む
-    /// （プレフィックスKVキャッシュの再利用を妨げにくく、モデルにもノイズが少ない）。</summary>
-    private static string BuildPlainToolResult(IReadOnlyList<ToolResultMessage> results)
-    {
-        var sb = new StringBuilder("ツール実行結果:");
-        foreach (var r in results)
-            sb.Append('\n').Append(r.Content);
-        return sb.ToString();
-    }
-
     private static string BuildToolResultSummary(IReadOnlyList<ToolResultMessage> results)
     {
         var lines = new List<string> { "過去のツール実行結果:" };
@@ -272,9 +232,6 @@ internal static class OllamaProtocol
         [EnumeratorCancellation] CancellationToken ct)
     {
         body["stream"] = true;
-        var allowedToolNames = ToolNamesFromBody(body);
-        var mayUseTools = allowedToolNames.Count > 0;
-
         HttpResponseMessage? resp = null;
         AgentError? error = null;
         try
@@ -318,10 +275,6 @@ internal static class OllamaProtocol
         AgentError? midError = null;
         var sawAnyModelOutput = false;
         AiUsageReported? usage = null;
-        // 本文を逐次 TextDelta で流すか、完了まで貯めるか。ツール利用時でも通常の本文は逐次表示したいが、
-        // 本文に紛れ込んだ tool call（壊れたモデル対策）を画面に出さないため、先頭が「tool call っぽい」
-        // 場合だけ抑止して完了後に判定する。null=未判定（先頭が貯まるまで保留）／true=抑止／false=逐次。
-        bool? bufferContentForToolCall = null;
         var streamedLen = 0;   // 既に TextDelta として送り出した finalText 内の文字数（二重送出防止）
 
         try
@@ -359,14 +312,7 @@ internal static class OllamaProtocol
                     {
                         sawAnyModelOutput = true;
                         finalText.Append(content);
-
-                        // 逐次表示の可否を、先頭トークンを判定できる程度に貯まってから一度だけ決める
-                        // （ストリーミングで最初のチャンクが断片でも誤判定しないよう保留する）。ツール無しは常に逐次。
-                        if (bufferContentForToolCall is null && (!mayUseTools || CanDecideContentStreaming(finalText)))
-                            bufferContentForToolCall = mayUseTools && LooksLikeToolCallStart(finalText.ToString(), allowedToolNames);
-
-                        // 逐次表示に決まったら、まだ送っていない分（保留していた先頭含む）をまとめて流す。
-                        if (bufferContentForToolCall == false && streamedLen < finalText.Length)
+                        if (streamedLen < finalText.Length)
                         {
                             yield return new TextDelta(finalText.ToString(streamedLen, finalText.Length - streamedLen));
                             streamedLen = finalText.Length;
@@ -377,13 +323,13 @@ internal static class OllamaProtocol
                     if (calls is not null)
                         foreach (var c in calls)
                         {
-                            var fn = c?["function"];
+                            var fn = c?["function"] as JsonObject;
                             if (fn is null) continue;
                             sawAnyModelOutput = true;
                             var name = fn["name"]?.GetValue<string>() ?? "";
                             var args = fn["arguments"];
                             var argsJson = args is null ? "{}" : args.ToJsonString();
-                            toolCalls.Add(new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson));
+                            toolCalls.Add(new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson, c?.ToJsonString()));
                         }
                 }
 
@@ -400,27 +346,6 @@ internal static class OllamaProtocol
                 // 利用統計はモデル出力の有無に関わらず、まず通知する（記録目的）。
                 if (usage is not null)
                     yield return usage;
-
-                // ツール呼び出しを本文テキストとして吐いたモデルの生本文。履歴へ逐語で積み直すため保持する。
-                string? contentDerivedRaw = null;
-                if (toolCalls.Count == 0 && mayUseTools)
-                {
-                    var contentToolCall = TryParseContentToolCall(finalText.ToString(), allowedToolNames);
-                    if (contentToolCall is not null)
-                    {
-                        toolCalls.Add(contentToolCall);
-                        contentDerivedRaw = finalText.ToString();
-                    }
-                    // tool call でなければ、まだ逐次表示していない残り（抑止／未判定だった本文）をまとめて流す。
-                    // 逐次表示済み（streamedLen 到達）なら二重には出さない。
-                    else if (streamedLen < finalText.Length)
-                        yield return new TextDelta(finalText.ToString(streamedLen, finalText.Length - streamedLen));
-                }
-
-                // 生本文を先に通知（オーケストレーターが ProviderContent に保存）。次ターンの逐語再生で
-                // Ollama のプレフィックスKVキャッシュが効き、ツール往復後の全再 prefill を避けられる。
-                if (contentDerivedRaw is not null)
-                    yield return new AssistantContentCaptured(contentDerivedRaw);
 
                 foreach (var tc in toolCalls)
                     yield return new ToolUseRequested(tc);
@@ -493,236 +418,4 @@ internal static class OllamaProtocol
         }
     }
 
-    private static HashSet<string> ToolNamesFromBody(JsonObject body)
-    {
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        var tools = body["tools"]?.AsArray();
-        if (tools is null) return names;
-
-        foreach (var tool in tools)
-        {
-            var name = tool?["function"]?["name"]?.GetValue<string>();
-            if (!string.IsNullOrWhiteSpace(name))
-                names.Add(name);
-        }
-        return names;
-    }
-
-    /// <summary>逐次表示の可否を判定できるだけ先頭が貯まったか（空白／改行の境界に達した、または一定長を超えた）。
-    /// ストリーミングで最初のチャンクが断片（"p" 等）でも、トークン境界まで待って一度だけ判定するために使う。</summary>
-    private static bool CanDecideContentStreaming(StringBuilder sb)
-    {
-        const int minChars = 16;
-        if (sb.Length >= minChars) return true;
-        for (var i = 0; i < sb.Length; i++)
-            if (char.IsWhiteSpace(sb[i])) return true;
-        return false;
-    }
-
-    /// <summary>本文の先頭が「本文に紛れ込んだ tool call」っぽいか（JSON オブジェクト/配列・コードフェンス開始、
-    /// あるいは <c>name=</c>／許可ツール名で始まる緩い記法）。逐次表示の抑止判定に使う。
-    /// 通常の自然文の回答は false になり逐次表示される。</summary>
-    private static bool LooksLikeToolCallStart(string content, IReadOnlySet<string> allowedToolNames)
-    {
-        var head = content.TrimStart();
-        if (head.Length == 0) return false;
-        if (head[0] is '{' or '[') return true;
-        if (head.StartsWith("```", StringComparison.Ordinal)) return true;
-        // 緩い記法（name=pwsh {...} / "name":"pwsh" / 先頭がツール名）も本文表示せず tool call 判定へ回す。
-        if (head.StartsWith("name", StringComparison.OrdinalIgnoreCase)) return true;
-        foreach (var n in allowedToolNames)
-            if (head.StartsWith(n, StringComparison.Ordinal)) return true;
-        return false;
-    }
-
-    private static ToolUse? TryParseContentToolCall(string content, IReadOnlySet<string> allowedToolNames)
-    {
-        // ① 本文全体がそのまま JSON（必要ならコードフェンス除去）なら、それを tool call として解釈。
-        var json = ExtractJsonValue(content);
-        if (json is not null)
-        {
-            try
-            {
-                var use = TryBuildToolUseFromJson(JsonNode.Parse(json), allowedToolNames);
-                if (use is not null) return use;
-            }
-            catch { /* 壊れた JSON は下のフォールバックへ */ }
-        }
-
-        // ② `name=pwsh {command: "..."}` のような緩い1件記法。
-        // ③ 「ツール定義JSONの丸写し ＋ 末尾 arguments={...}」のような壊れた tool call（実モデルで観測）。
-        return TryParseLooseToolCall(content, allowedToolNames)
-            ?? TryParseToolCallWithTrailingArguments(content, allowedToolNames);
-    }
-
-    /// <summary>
-    /// 本文に「許可ツール名 ＋ どこかに arguments=/arguments: {...}」が混在する壊れた tool call を拾う。
-    /// 例：<c>[{"type":"function","function":{"name":"pwsh",...}}]arguments={"command":"Get-Location"}</c>。
-    /// ツール定義をそのまま吐き、末尾に実引数を付けるモデルの実応答を救済する。
-    /// </summary>
-    private static ToolUse? TryParseToolCallWithTrailingArguments(
-        string content, IReadOnlySet<string> allowedToolNames)
-    {
-        var argsIdx = content.LastIndexOf("arguments", StringComparison.OrdinalIgnoreCase);
-        if (argsIdx < 0) return null;
-
-        var braceStart = content.IndexOf('{', argsIdx);
-        if (braceStart < 0) return null;
-
-        var objText = ExtractBalancedObject(content, braceStart);
-        if (objText is null) return null;
-
-        JsonObject? argObj;
-        try { argObj = JsonNode.Parse(objText) as JsonObject; }
-        catch { return null; }
-        if (argObj is null || argObj.Count == 0) return null;
-
-        var name = FindAllowedToolName(content, allowedToolNames);
-        if (name is null) return null;
-
-        return new ToolUse(Guid.NewGuid().ToString("N"), name, argObj.ToJsonString());
-    }
-
-    /// <summary>本文から許可ツール名を特定する（<c>"name":"X"</c> / <c>name=X</c> / 単純出現の順）。</summary>
-    private static string? FindAllowedToolName(string content, IReadOnlySet<string> allowedToolNames)
-    {
-        var m = Regex.Match(content, "\"name\"\\s*:\\s*\"(?<n>[^\"]+)\"");
-        if (m.Success && allowedToolNames.Contains(m.Groups["n"].Value)) return m.Groups["n"].Value;
-
-        m = Regex.Match(content, "name\\s*=\\s*(?<n>[A-Za-z_][A-Za-z0-9_]*)");
-        if (m.Success && allowedToolNames.Contains(m.Groups["n"].Value)) return m.Groups["n"].Value;
-
-        foreach (var name in allowedToolNames)
-            if (content.Contains(name, StringComparison.Ordinal)) return name;
-        return null;
-    }
-
-    /// <summary>位置 <paramref name="start"/>（'{'）から、文字列・エスケープを考慮して対応する '}' までを返す。</summary>
-    private static string? ExtractBalancedObject(string content, int start)
-    {
-        var depth = 0;
-        var inString = false;
-        var escaped = false;
-        for (var i = start; i < content.Length; i++)
-        {
-            var c = content[i];
-            if (inString)
-            {
-                if (escaped) escaped = false;
-                else if (c == '\\') escaped = true;
-                else if (c == '"') inString = false;
-                continue;
-            }
-            if (c == '"') inString = true;
-            else if (c == '{') depth++;
-            else if (c == '}' && --depth == 0) return content[start..(i + 1)];
-        }
-        return null;
-    }
-
-    private static ToolUse? TryBuildToolUseFromJson(JsonNode? node, IReadOnlySet<string> allowedToolNames)
-    {
-        if (node is JsonArray array)
-        {
-            foreach (var item in array)
-            {
-                var use = TryBuildToolUseFromJson(item, allowedToolNames);
-                if (use is not null) return use;
-            }
-            return null;
-        }
-
-        var obj = node as JsonObject;
-        if (obj is null) return null;
-
-        // Native tool call ではなく本文に
-        // [{"type":"function","function":{"name":"pwsh",...},"parameters":{"command":"..."}}]
-        // のような JSON を返す phi4-mini の実応答を tool use として扱う。
-        var fn = obj["function"] as JsonObject;
-        var name = fn?["name"]?.GetValue<string>() ?? obj["name"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(name) || !allowedToolNames.Contains(name))
-            return null;
-
-        var args = fn?["arguments"] ?? obj["arguments"] ?? obj["parameters"];
-        // arguments/parameters が無い平坦形 {"name":"pwsh","cmd":"..."} は、別名キーから command を合成する。
-        if (args is null && FindCommandByAlias(obj) is { } command)
-            args = new JsonObject { [PwshContract.CommandArg] = command };
-        var argsJson = args is null ? "{}" : args.ToJsonString();
-        return new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson);
-    }
-
-    /// <summary>JsonObject から command 値を別名キー（command/cmd/script…）で順に探す（無ければ null）。
-    /// envelope 直下の平坦形を救う用途。キー指定なので "name":"pwsh" の値を誤って拾うことはない。
-    /// 想定外キーの単一 string への最終フォールバックは後段の <c>PwshTool.NormalizeArguments</c> に委ねる。</summary>
-    private static string? FindCommandByAlias(JsonObject obj)
-    {
-        foreach (var key in PwshContract.CommandKeys)
-            if (obj[key] is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrWhiteSpace(s))
-                return s;
-        return null;
-    }
-
-    private static ToolUse? TryParseLooseToolCall(string content, IReadOnlySet<string> allowedToolNames)
-    {
-        var match = LooseToolCall.Match(content.Trim());
-        if (!match.Success) return null;
-
-        var name = match.Groups["name"].Value;
-        if (!allowedToolNames.Contains(name)) return null;
-
-        var bodyJson = "{" + match.Groups["body"].Value + "}";
-        try
-        {
-            var body = JsonNode.Parse(bodyJson);
-            if (body is JsonObject obj && FindCommandByAlias(obj) is { } found)
-                return new ToolUse(Guid.NewGuid().ToString("N"), name,
-                    new JsonObject { [PwshContract.CommandArg] = found }.ToJsonString());
-        }
-        catch
-        {
-            // phi4-mini は command: "..." のような非 JSON 形式も返すため、下の緩い抽出へ進む。
-        }
-
-        var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match prop in LooseProperty.Matches(match.Groups["body"].Value))
-            props[prop.Groups["key"].Value] = Regex.Unescape(prop.Groups["value"].Value);
-
-        // command を別名キー込みで探す（cmd/script 等の非 JSON 記法も救う）。
-        string? command = null;
-        foreach (var key in PwshContract.CommandKeys)
-            if (props.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v)) { command = v; break; }
-        if (command is null)
-            return null;
-
-        if (props.TryGetValue("arguments", out var argument) &&
-            !string.IsNullOrWhiteSpace(argument) &&
-            !command.Contains(' ', StringComparison.Ordinal))
-        {
-            command += " " + QuotePowerShellArgument(argument);
-        }
-
-        var argsJson = JsonSerializer.Serialize(new { command });
-        return new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson);
-    }
-
-    private static string QuotePowerShellArgument(string value)
-        => "'" + value.Replace("'", "''") + "'";
-
-    private static string? ExtractJsonValue(string content)
-    {
-        var text = content.Trim();
-        if (text.StartsWith("```", StringComparison.Ordinal))
-        {
-            var firstNewline = text.IndexOf('\n');
-            var lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
-            if (firstNewline >= 0 && lastFence > firstNewline)
-                text = text[(firstNewline + 1)..lastFence].Trim();
-        }
-
-        if ((text.StartsWith('{') && text.EndsWith('}')) ||
-            (text.StartsWith('[') && text.EndsWith(']')))
-            return text;
-
-        return null;
-    }
 }

@@ -48,7 +48,7 @@ public class TraceAnalysisTests
         sink.Record("m", null, TraceKinds.SessionStarted, new { provider = "Local" });
         sink.Record("m", "t1", TraceKinds.TurnStarted, new { provider = "Local" });
         sink.Record("m", "t1", TraceKinds.AiMessage, new { fullText = "考え中" });
-        sink.Record("m", "t1", TraceKinds.SafetyEvaluated, new { tool = "pwsh", blocked = true, reason = "danger" });
+        sink.Record("m", "t1", TraceKinds.SafetyEvaluated, new { tool = "run_powershell", blocked = true, reason = "danger" });
         sink.Record("m", "t1", TraceKinds.ApprovalResolved, new { tool = "propose_edit", approved = true, waitMs = 1000 });
         sink.Record("m", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u1", name = "read_file", isError = false, durationMs = 100 });
         sink.Record("m", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u2", name = "read_file", isError = true, durationMs = 300 });
@@ -109,15 +109,15 @@ public class TraceAnalysisTests
     {
         var dir = TempDir();
         var sink = new JsonlTraceSink(dir);
-        sink.Record("f", "t1", TraceKinds.AiToolUse, new { toolUseId = "u1", name = "pwsh", argsJson = "{\"command\":\"rm -rf /\"}" });
-        sink.Record("f", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u1", name = "pwsh", isError = true, durationMs = 10 });
+        sink.Record("f", "t1", TraceKinds.AiToolUse, new { toolUseId = "u1", name = "run_powershell", argsJson = "{\"command\":\"rm -rf /\"}" });
+        sink.Record("f", "t1", TraceKinds.ToolCompleted, new { toolUseId = "u1", name = "run_powershell", isError = true, durationMs = 10 });
         sink.Record("f", "t1", TraceKinds.Error, new { message = "解析失敗", where = "tool.args" });
         await sink.DisposeAsync();
 
         var samples = ImprovementAdvisor.BuildFailureSamples(new TraceReader(dir).Read("f"));
 
         Assert.Equal(2, samples.Count);
-        Assert.Contains(samples, s => s.Contains("pwsh") && s.Contains("rm -rf /"));
+        Assert.Contains(samples, s => s.Contains("run_powershell") && s.Contains("rm -rf /"));
         Assert.Contains(samples, s => s.Contains("解析失敗"));
 
         Directory.Delete(dir, recursive: true);

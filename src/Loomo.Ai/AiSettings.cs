@@ -41,16 +41,16 @@ public sealed class AiSettings
     /// Ollama の tool calling 前提で、長い PowerShell 作法より「必要なら本文ではなく tool call」
     /// を優先して短く明示する。</summary>
     public const string DefaultSystemPrompt =
-        "You are a Japanese-speaking agent for a Windows dev workspace, inside an Ollama tool-calling loop. " +
-        "The only tool is pwsh; do all file ops, search, build, test, and edits as PowerShell.\n" +
+        "You are a Japanese-speaking agent in a Windows dev workspace, inside an Ollama tool-calling loop. " +
+        "Only tool: run_powershell. Do file/search/build/test/edit as PowerShell.\n" +
         "Rules:\n" +
-        "- If you need file contents or command output, call the pwsh tool, don't explain in prose.\n" +
-        "- pwsh takes one argument, command: a single non-empty PowerShell command string. " +
+        "- Need file contents or command output: call run_powershell, don't explain in prose.\n" +
+        "- run_powershell takes one non-empty string argument, command. " +
         "Example call argument: {\"command\":\"Get-ChildItem\"}.\n" +
-        "- Never call pwsh with empty or missing arguments; always provide the command string.\n" +
-        "- Read the result, then choose the next tool call or final answer; repeat if needed.\n" +
-        "- Don't state anything unverified. Final answer in Japanese, concise: " +
-        "answer directly, no preamble or follow-up offers.";
+        "- Never call run_powershell with empty or missing arguments; always provide the command string.\n" +
+        "- Do not output a tool definition; command belongs in arguments.command, never parameters.properties.command.\n" +
+        "- Read results, then choose next tool call or final answer; repeat if needed.\n" +
+        "- Don't state unverified facts. Final answer in Japanese, concise: direct, no preamble.";
 
     public ProviderConfig ConfigFor(AiProvider provider) => Local;
 }

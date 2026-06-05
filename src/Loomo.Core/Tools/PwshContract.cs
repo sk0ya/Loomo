@@ -1,13 +1,13 @@
 namespace sk0ya.Loomo.Core.Tools;
 
 /// <summary>
-/// 唯一のエージェントツール <c>pwsh</c> の契約（ツール名・canonical な引数キー・キー別名）。
-/// 文字列の直書きを避け、ツール定義・安全評価・壊れた tool call の復元が同じ語彙を共有する。
+/// 唯一のエージェントツール <c>run_powershell</c> の契約（ツール名・canonical な引数キー・キー別名）。
+/// 文字列の直書きを避け、ツール定義・安全評価・実行処理が同じ語彙を共有する。
 /// </summary>
 public static class PwshContract
 {
     /// <summary>ツール名。</summary>
-    public const string ToolName = "pwsh";
+    public const string ToolName = "run_powershell";
 
     /// <summary>canonical な引数キー（正規化後は必ずこのキーに揃う）。</summary>
     public const string CommandArg = "command";
