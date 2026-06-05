@@ -318,6 +318,11 @@ internal static class OllamaProtocol
         AgentError? midError = null;
         var sawAnyModelOutput = false;
         AiUsageReported? usage = null;
+        // 本文を逐次 TextDelta で流すか、完了まで貯めるか。ツール利用時でも通常の本文は逐次表示したいが、
+        // 本文に紛れ込んだ tool call（壊れたモデル対策）を画面に出さないため、先頭が「tool call っぽい」
+        // 場合だけ抑止して完了後に判定する。null=未判定（先頭が貯まるまで保留）／true=抑止／false=逐次。
+        bool? bufferContentForToolCall = null;
+        var streamedLen = 0;   // 既に TextDelta として送り出した finalText 内の文字数（二重送出防止）
 
         try
         {
@@ -354,8 +359,18 @@ internal static class OllamaProtocol
                     {
                         sawAnyModelOutput = true;
                         finalText.Append(content);
-                        if (!mayUseTools)
-                            yield return new TextDelta(content);
+
+                        // 逐次表示の可否を、先頭トークンを判定できる程度に貯まってから一度だけ決める
+                        // （ストリーミングで最初のチャンクが断片でも誤判定しないよう保留する）。ツール無しは常に逐次。
+                        if (bufferContentForToolCall is null && (!mayUseTools || CanDecideContentStreaming(finalText)))
+                            bufferContentForToolCall = mayUseTools && LooksLikeToolCallStart(finalText.ToString(), allowedToolNames);
+
+                        // 逐次表示に決まったら、まだ送っていない分（保留していた先頭含む）をまとめて流す。
+                        if (bufferContentForToolCall == false && streamedLen < finalText.Length)
+                        {
+                            yield return new TextDelta(finalText.ToString(streamedLen, finalText.Length - streamedLen));
+                            streamedLen = finalText.Length;
+                        }
                     }
 
                     var calls = message["tool_calls"]?.AsArray();
@@ -396,8 +411,10 @@ internal static class OllamaProtocol
                         toolCalls.Add(contentToolCall);
                         contentDerivedRaw = finalText.ToString();
                     }
-                    else if (finalText.Length > 0)
-                        yield return new TextDelta(finalText.ToString());
+                    // tool call でなければ、まだ逐次表示していない残り（抑止／未判定だった本文）をまとめて流す。
+                    // 逐次表示済み（streamedLen 到達）なら二重には出さない。
+                    else if (streamedLen < finalText.Length)
+                        yield return new TextDelta(finalText.ToString(streamedLen, finalText.Length - streamedLen));
                 }
 
                 // 生本文を先に通知（オーケストレーターが ProviderContent に保存）。次ターンの逐語再生で
@@ -489,6 +506,33 @@ internal static class OllamaProtocol
                 names.Add(name);
         }
         return names;
+    }
+
+    /// <summary>逐次表示の可否を判定できるだけ先頭が貯まったか（空白／改行の境界に達した、または一定長を超えた）。
+    /// ストリーミングで最初のチャンクが断片（"p" 等）でも、トークン境界まで待って一度だけ判定するために使う。</summary>
+    private static bool CanDecideContentStreaming(StringBuilder sb)
+    {
+        const int minChars = 16;
+        if (sb.Length >= minChars) return true;
+        for (var i = 0; i < sb.Length; i++)
+            if (char.IsWhiteSpace(sb[i])) return true;
+        return false;
+    }
+
+    /// <summary>本文の先頭が「本文に紛れ込んだ tool call」っぽいか（JSON オブジェクト/配列・コードフェンス開始、
+    /// あるいは <c>name=</c>／許可ツール名で始まる緩い記法）。逐次表示の抑止判定に使う。
+    /// 通常の自然文の回答は false になり逐次表示される。</summary>
+    private static bool LooksLikeToolCallStart(string content, IReadOnlySet<string> allowedToolNames)
+    {
+        var head = content.TrimStart();
+        if (head.Length == 0) return false;
+        if (head[0] is '{' or '[') return true;
+        if (head.StartsWith("```", StringComparison.Ordinal)) return true;
+        // 緩い記法（name=pwsh {...} / "name":"pwsh" / 先頭がツール名）も本文表示せず tool call 判定へ回す。
+        if (head.StartsWith("name", StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (var n in allowedToolNames)
+            if (head.StartsWith(n, StringComparison.Ordinal)) return true;
+        return false;
     }
 
     private static ToolUse? TryParseContentToolCall(string content, IReadOnlySet<string> allowedToolNames)

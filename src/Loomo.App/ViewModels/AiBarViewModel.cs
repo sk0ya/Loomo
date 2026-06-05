@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
@@ -248,7 +249,6 @@ public sealed partial class AiBarViewModel : ObservableObject
                 switch (ev)
                 {
                     case ThinkingDelta think:
-                        SetStatus("💭 思考中…");
                         if (!loggedThinking)
                         {
                             AppendActivity("モデルが思考を生成しています。");
@@ -260,10 +260,11 @@ public sealed partial class AiBarViewModel : ObservableObject
                             thinkingClock = Stopwatch.StartNew();
                         }
                         thinking.AppendText(think.Text);
+                        // 進捗状況に「いま何を考えているか」を逐次プレビュー表示する。
+                        SetStatus($"💭 思考中… {StreamPreview(thinking.Text)}");
                         break;
 
                     case TextDelta delta:
-                        SetStatus("応答を生成中…");
                         if (!loggedResponse)
                         {
                             AppendActivity("回答本文の生成を開始しました。");
@@ -277,6 +278,8 @@ public sealed partial class AiBarViewModel : ObservableObject
                             assistantClock = Stopwatch.StartNew();
                         }
                         assistant.AppendText(delta.Text);
+                        // 進捗状況に「いま何を出力しているか」を逐次プレビュー表示する。
+                        SetStatus($"応答生成中… {StreamPreview(assistant.Text)}");
                         break;
 
                     case ToolUseRequested req:
@@ -284,8 +287,9 @@ public sealed partial class AiBarViewModel : ObservableObject
                         FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
                         assistant = null; // テキストブロックを区切る
                         thinking = null;
-                        SetStatus($"🔧 {req.ToolUse.Name} を準備中…");
-                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています。");
+                        // 進捗状況に「どのツールを何の引数で呼ぶか」を表示する。
+                        SetStatus($"🔧 {req.ToolUse.Name} を準備中… {StreamPreview(req.ToolUse.ArgumentsJson)}");
+                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {StreamPreview(req.ToolUse.ArgumentsJson)}");
                         Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", req.ToolUse.ArgumentsJson);
                         break;
 
@@ -295,13 +299,15 @@ public sealed partial class AiBarViewModel : ObservableObject
                         break;
 
                     case ToolExecutionStarted started:
-                        SetStatus($"🔧 {started.ToolUse.Name} を実行中…");
-                        AppendActivity($"{started.ToolUse.Name} を実行しています。");
+                        // 進捗状況に「いま実行しているコマンド」を表示する。
+                        SetStatus($"🔧 {started.ToolUse.Name} を実行中… {StreamPreview(started.ToolUse.ArgumentsJson)}");
+                        AppendActivity($"{started.ToolUse.Name} を実行しています: {StreamPreview(started.ToolUse.ArgumentsJson)}");
                         break;
 
                     case ToolExecutionCompleted done:
-                        SetStatus("考え中…"); // ツール結果を踏まえてAIが再応答する
-                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）。結果を踏まえて次の応答を待っています。");
+                        // ツール結果を踏まえてAIが再応答する。直前ツールの結果概要も進捗状況に出す。
+                        SetStatus($"考え中…（直前 {done.ToolUse.Name}: {(done.Result.IsError ? "エラー" : "完了")} {StreamPreview(done.Result.Content)}）");
+                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
                         Add(EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})", Truncate(done.Result.Content));
                         break;
 
@@ -430,6 +436,15 @@ public sealed partial class AiBarViewModel : ObservableObject
 
         var body = parts.Count > 0 ? string.Join("｜", parts) : "詳細なし";
         return $"📊 AI内訳#{call}: {body}";
+    }
+
+    /// <summary>ストリーミング中の本文／思考の「いま出力している内容」を進捗状況の1行プレビューに整形する。
+    /// 改行・連続空白を畳んで末尾の一定文字数だけ見せ、長ければ先頭に省略記号を付ける。</summary>
+    private static string StreamPreview(string text, int max = 48)
+    {
+        var flat = Regex.Replace(text, @"\s+", " ").Trim();
+        if (flat.Length == 0) return "";
+        return flat.Length <= max ? flat : "…" + flat[^max..];
     }
 
     private static string FormatMs(double ms) => FormatDuration(TimeSpan.FromMilliseconds(ms));
