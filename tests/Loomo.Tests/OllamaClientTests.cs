@@ -198,6 +198,22 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_converts_textual_run_powershell_with_windows_path_and_scriptblock_to_tool_call()
+    {
+        const string command = "Get-Item -Path 'C:\\SDD\\SDD_Projects\\NEX_Doc' -Recurse | Where-Object { $_.PSIsContainer }";
+        var content = JsonSerializer.Serialize($"run_powershell(\"{command}\")");
+        var events = await RunLocalWithToolsAsync(
+            Ndjson($"{{\"message\":{{\"role\":\"assistant\",\"content\":{content}}},\"done\":true}}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
+        using var args = JsonDocument.Parse(tool.ToolUse.ArgumentsJson);
+        Assert.Equal(command, args.RootElement.GetProperty("command").GetString());
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
     public async Task Local_client_converts_empty_textual_run_powershell_function_call_to_tool_call()
     {
         var events = await RunLocalWithToolsAsync(

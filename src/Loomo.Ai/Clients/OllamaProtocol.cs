@@ -408,66 +408,14 @@ internal static class OllamaProtocol
     private static ToolUse? TryParseTextualRunPowershell(string text)
     {
         const string functionName = "run_powershell";
+        const string prefix = "run_powershell(\"";
+        const string suffix = "\")";
         var s = text.Trim();
-        if (!s.StartsWith(functionName, StringComparison.Ordinal))
+        if (!s.StartsWith(prefix, StringComparison.Ordinal) ||
+            !s.EndsWith(suffix, StringComparison.Ordinal))
             return null;
 
-        var i = functionName.Length;
-        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
-        if (i >= s.Length || s[i] != '(')
-            return null;
-        i++;
-        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
-
-        if (i >= s.Length || s[i] != '"')
-            return null;
-
-        var start = i;
-        i++;
-        var escaped = false;
-        while (i < s.Length)
-        {
-            var ch = s[i];
-            if (escaped)
-            {
-                escaped = false;
-                i++;
-                continue;
-            }
-            if (ch == '\\')
-            {
-                escaped = true;
-                i++;
-                continue;
-            }
-            if (ch == '"')
-                break;
-            i++;
-        }
-
-        if (i >= s.Length || s[i] != '"')
-            return null;
-
-        var quoted = s.Substring(start, i - start + 1);
-        string command;
-        try
-        {
-            command = JsonSerializer.Deserialize<string>(quoted) ?? "";
-        }
-        catch
-        {
-            return null;
-        }
-
-        i++;
-        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
-        if (i >= s.Length || s[i] != ')')
-            return null;
-        i++;
-        while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
-        if (i != s.Length)
-            return null;
-
+        var command = s[prefix.Length..^suffix.Length];
         var argsJson = new JsonObject { ["command"] = command }.ToJsonString();
         return new ToolUse(Guid.NewGuid().ToString("N"), functionName, argsJson, text);
     }
