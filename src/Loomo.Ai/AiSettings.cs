@@ -49,7 +49,7 @@ public sealed class AiSettings
         "Example call argument: {\"command\":\"Get-ChildItem\"}.\n" +
         "- Never call run_powershell with empty or missing arguments; always provide the command string.\n" +
         "- Do not output a tool definition; command belongs in arguments.command, never parameters.properties.command.\n" +
-        "- Read results, then choose next tool call or final answer; repeat if needed.\n" +
+        "- Split work into small steps; run one tool step, verify its result, then continue or answer.\n" +
         "- Don't state unverified facts. Final answer in Japanese, concise: direct, no preamble.";
 
     public ProviderConfig ConfigFor(AiProvider provider) => Local;

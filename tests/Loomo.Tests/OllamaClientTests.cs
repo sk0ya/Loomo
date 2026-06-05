@@ -238,6 +238,22 @@ public class OllamaClientTests
     }
 
     [Fact]
+    public async Task Local_client_converts_textual_run_powershell_json_arguments_to_tool_call()
+    {
+        const string command = "git log --diff-filter=M --name-status --diff-filter=modified --pretty='%B'";
+        var content = JsonSerializer.Serialize($"run_powershell {{\"command\":\"{command}\"}}");
+        var events = await RunLocalWithToolsAsync(
+            Ndjson($"{{\"message\":{{\"role\":\"assistant\",\"content\":{content}}},\"done\":true}}"));
+
+        var tool = Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Equal("run_powershell", tool.ToolUse.Name);
+        using var args = JsonDocument.Parse(tool.ToolUse.ArgumentsJson);
+        Assert.Equal(command, args.RootElement.GetProperty("command").GetString());
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
     public async Task Local_client_converts_textual_arguments_json_with_alias_key_and_code_fence_to_tool_call()
     {
         // 別名キー（cmd）＋コードフェンス＋{"name","arguments"} ラップでも拾える。

@@ -405,7 +405,16 @@ internal static class OllamaProtocol
         if (s.StartsWith(prefix, StringComparison.Ordinal) && s.EndsWith(suffix, StringComparison.Ordinal))
             return new[] { MakeToolUse(s[prefix.Length..^suffix.Length], text) };
 
-        // 形式2/3: JSON オブジェクト {...} または配列 [{...}, ...]
+        // 形式2: run_powershell {"command":"..."} / run_powershell [{"arguments":{...}}]
+        const string jsonPrefix = "run_powershell ";
+        if (s.StartsWith(jsonPrefix, StringComparison.Ordinal))
+        {
+            var json = s[jsonPrefix.Length..].Trim();
+            if ((json.StartsWith('{') && json.EndsWith('}')) || (json.StartsWith('[') && json.EndsWith(']')))
+                return ParseJsonToolCalls(json, text);
+        }
+
+        // 形式3/4: JSON オブジェクト {...} または配列 [{...}, ...]
         if ((s.StartsWith('{') && s.EndsWith('}')) || (s.StartsWith('[') && s.EndsWith(']')))
             return ParseJsonToolCalls(s, text);
 
