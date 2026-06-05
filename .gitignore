@@ -33,7 +33,6 @@ msbuild.wrn
 **/packages/*
 !**/packages/build/
 !packages/
-!packages/*.nupkg
 *.nuget.props
 *.nuget.targets
 

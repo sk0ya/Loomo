@@ -18,7 +18,7 @@
 | UI | WPF（ダーク基調・VS Code 系の操作感） |
 | アーキテクチャ | MVVM（CommunityToolkit.Mvvm） |
 | DI / 起動 | Microsoft.Extensions.Hosting + DependencyInjection |
-| Terminal | [`sk0ya.Terminal.Controls`](https://www.nuget.org/) 1.0.3（ConPTY / OSC133 シェル統合） |
+| Terminal | [`sk0ya.Terminal.Controls`](https://www.nuget.org/) 1.0.4（ConPTY / OSC133 シェル統合） |
 | Editor | `sk0ya.Editor.Controls` 1.0.0（Vim エディタ） |
 | AI クライアント | Claude / OpenAI 互換 / GitHub Copilot / Stub（`IAiClient` で抽象化） |
 

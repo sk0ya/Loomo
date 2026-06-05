@@ -11,7 +11,7 @@ namespace sk0ya.Loomo.Services;
 /// <summary>
 /// ITerminalService 実装。
 ///
-/// sk0ya.Terminal.Controls 1.0.3 で <see cref="TerminalTabView"/> に
+/// sk0ya.Terminal.Controls 1.0.3 以降で <see cref="TerminalTabView"/> に
 /// <see cref="TerminalTabView.RunCommandAsync"/>（コマンド実行＋stdout/exit取得）が
 /// 追加されたため、エージェントの実行を**可視ターミナルへ一本化**する。
 /// 以前のように独立した PowerShell <c>Process</c> を裏で起動する必要はなく、
