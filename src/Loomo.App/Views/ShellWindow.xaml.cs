@@ -185,7 +185,8 @@ public partial class ShellWindow : Window
             {
                 ApplyDefaultLayout();
                 BrowserAddressBox.Text = DefaultBrowserUrl;
-                await CreateBrowserTabAsync(DefaultBrowserUrl);
+                // WebView2 の生成は遅延（Browser ペインが見えたら背景で実体化する）。
+                CreateBrowserTab(DefaultBrowserUrl);
             }
         }
         catch (Exception ex)
@@ -320,6 +321,9 @@ public partial class ShellWindow : Window
             return;
         }
         PaneHost.Children.Add(visual);
+
+        // Browser ペインが（再）表示されたら、遅延していたアクティブタブの WebView2 を実体化する。
+        ScheduleBrowserRealize(_activeBrowserTab);
     }
 
     /// <summary>
@@ -1869,18 +1873,26 @@ public partial class ShellWindow : Window
             _ = QueueMarkdownPreviewScrollSyncAsync(_markdownPreviewSourceTab.Control.VerticalScrollRatio);
     }
 
-    private void NavigateBrowser(string text)
+    private async void NavigateBrowser(string text)
     {
         var address = NormalizeBrowserAddress(text);
         BrowserAddressBox.Text = address;
 
-        var view = ActiveBrowserView;
-        if (view?.CoreWebView2 is not null)
+        if (_activeBrowserTab is not { } tab)
+            return;
+
+        // 未実体化なら、この URL を保留先にして実体化（＝そのままナビゲート）する。
+        tab.PendingUrl = address;
+        await EnsureBrowserRealizedAsync(tab);
+
+        // 既に実体化済みだった場合は PendingUrl が消費されないので、明示的にナビゲートする。
+        if (tab.View.CoreWebView2 is { } core && tab.PendingUrl is not null)
         {
-            view.CoreWebView2.Navigate(address);
-            UpdateBrowserTab(_activeBrowserTab);
-            SaveActiveWorkspaceSnapshot();
+            tab.PendingUrl = null;
+            core.Navigate(address);
         }
+        UpdateBrowserTab(tab);
+        SaveActiveWorkspaceSnapshot();
     }
 
     private TerminalWorkspaceTabs CurrentTerminalWorkspace
@@ -1995,7 +2007,27 @@ public partial class ShellWindow : Window
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
 
+    /// <summary>
+    /// ブラウザタブを生成して即座に WebView2 まで実体化する（markdown プレビューや新規タブなど、
+    /// 直後に CoreWebView2 を使う呼び出し向け）。起動経路は <see cref="CreateBrowserTab"/>（遅延）を使う。
+    /// </summary>
     private async Task<BrowserTab> CreateBrowserTabAsync(
+        string url,
+        Guid? requestedId = null,
+        string? requestedTitle = null,
+        bool isMarkdownPreview = false)
+    {
+        var tab = CreateBrowserTab(url, requestedId, requestedTitle, isMarkdownPreview);
+        await EnsureBrowserRealizedAsync(tab);
+        return tab;
+    }
+
+    /// <summary>
+    /// ブラウザタブの器（WebView2 コントロール・タブUI）だけを同期で用意し、<b>CoreWebView2 の生成は遅延</b>する。
+    /// 重い <c>EnsureCoreWebView2Async</c> を起動の臨界パスから外すのが狙い。実体化は Browser ペインが
+    /// 見えてアクティブになった時（<see cref="ScheduleBrowserRealize"/>）に背景優先度で行う。
+    /// </summary>
+    private BrowserTab CreateBrowserTab(
         string url,
         Guid? requestedId = null,
         string? requestedTitle = null,
@@ -2003,7 +2035,6 @@ public partial class ShellWindow : Window
     {
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
-        var normalizedUrl = NormalizeBrowserAddress(url);
         var view = new WebView2CompositionControl
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
@@ -2011,18 +2042,63 @@ public partial class ShellWindow : Window
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
 
-        var tab = new BrowserTab(id, view, isMarkdownPreview);
+        // markdown プレビューは UpdateMarkdownPreviewAsync が内容を流し込むので初期ナビゲートは不要。
+        var tab = new BrowserTab(id, view, isMarkdownPreview)
+        {
+            PendingUrl = isMarkdownPreview ? null : NormalizeBrowserAddress(url)
+        };
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
         _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {browserWorkspace.NextTabNumber++}", false);
         ActivateBrowserTab(id);
+        return tab;
+    }
 
-        await view.EnsureCoreWebView2Async();
-        view.CoreWebView2!.FaviconChanged += OnBrowserFaviconChanged;
-        view.Source = new Uri(normalizedUrl);
+    /// <summary>
+    /// タブの CoreWebView2 を生成し、保留中の URL があればナビゲートする（冪等・多重生成防止）。
+    /// </summary>
+    private async Task EnsureBrowserRealizedAsync(BrowserTab tab)
+    {
+        if (tab.RealizationStarted)
+            return;
+        tab.RealizationStarted = true;
+        try
+        {
+            await tab.View.EnsureCoreWebView2Async();
+        }
+        catch
+        {
+            tab.RealizationStarted = false;   // 失敗時は次回の表示・操作で再試行できるようにする
+            return;
+        }
+
+        tab.View.CoreWebView2!.FaviconChanged += OnBrowserFaviconChanged;
+        if (tab.PendingUrl is { } pending)
+        {
+            tab.PendingUrl = null;
+            tab.View.Source = new Uri(pending);
+        }
         UpdateBrowserTab(tab);
         await RefreshBrowserTabIconAsync(tab);
-        return tab;
+    }
+
+    /// <summary>
+    /// Browser ペインが表示中なら、アクティブなブラウザタブの WebView2 実体化を背景優先度で予約する。
+    /// 起動・レイアウト変更の臨界パスをブロックしないよう <see cref="DispatcherPriority.Background"/> で遅延実行する。
+    /// </summary>
+    private void ScheduleBrowserRealize(BrowserTab? tab)
+    {
+        if (tab is null || tab.RealizationStarted || !IsPaneVisible(PaneKind.Browser))
+            return;
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() =>
+            {
+                // 予約後に別タブへ切替・ペイン非表示になっていたら実体化しない。
+                if (ReferenceEquals(_activeBrowserTab, tab) && IsPaneVisible(PaneKind.Browser))
+                    _ = EnsureBrowserRealizedAsync(tab);
+            }));
     }
 
     private async Task CloseBrowserTabAsync(Guid id)
@@ -2078,8 +2154,11 @@ public partial class ShellWindow : Window
         // AIのブラウザ操作（IBrowserService）の対象を、いま見えているタブへ一本化する。
         _browser.SetActiveView(tab.View);
         _vm.Tabs.ActivateBrowserTab(id);
-        BrowserAddressBox.Text = tab.View.Source?.ToString() ?? string.Empty;
+        // 未実体化のタブは Source が null なので、保留中の遷移先 URL を表示する。
+        BrowserAddressBox.Text = tab.View.Source?.ToString() ?? tab.PendingUrl ?? string.Empty;
         tab.View.Focus();
+        // Browser ペインが見えていれば、このタブの WebView2 を背景で実体化する。
+        ScheduleBrowserRealize(tab);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -2146,7 +2225,15 @@ public partial class ShellWindow : Window
     {
         public string? VirtualTitle { get; set; }
     }
-    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View, bool IsMarkdownPreview = false);
+    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View, bool IsMarkdownPreview = false)
+    {
+        /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
+        /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。markdown プレビューは null。</summary>
+        public string? PendingUrl { get; set; }
+
+        /// <summary>CoreWebView2 の生成を開始済みか（多重生成・多重ナビゲートの防止）。</summary>
+        public bool RealizationStarted { get; set; }
+    }
 
     private sealed class TerminalWorkspaceTabs
     {
@@ -2421,8 +2508,9 @@ public partial class ShellWindow : Window
             ? new[] { new BrowserTabSnapshot { Url = DefaultBrowserUrl, Title = "Browser", IsActive = true } }
             : snapshots.ToArray();
 
+        // WebView2 の生成は遅延。アクティブなタブだけが、ペイン表示時に背景で実体化される。
         foreach (var snapshot in tabs)
-            await CreateBrowserTabAsync(
+            CreateBrowserTab(
                 snapshot.Url ?? DefaultBrowserUrl,
                 snapshot.Id == Guid.Empty ? null : snapshot.Id,
                 snapshot.Title);
