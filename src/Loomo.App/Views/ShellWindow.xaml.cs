@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Services;
@@ -47,7 +48,7 @@ public partial class ShellWindow : Window
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
     private WorkspaceSnapshot? _activeWorkspace;
-    private bool _isSwitchingWorkspace;
+    private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";
 
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
@@ -150,10 +151,12 @@ public partial class ShellWindow : Window
         // フォルダを開いたらエージェントの作業ディレクトリを同期
         _workspace.RootChanged += (_, root) =>
         {
-            if (!_isSwitchingWorkspace && !string.IsNullOrEmpty(root))
+            if (_activeTerminalTab is not { } activeTerminal)
+                return;
+
+            if (!string.IsNullOrEmpty(root))
                 _terminal.SetWorkingDirectory(root);
-            if (_activeTerminalTab is { } activeTerminal)
-                UpdateTerminalTab(activeTerminal, activeTerminal.View.HeaderTitle);
+            UpdateTerminalTab(activeTerminal, activeTerminal.View.HeaderTitle);
         };
 
         // FolderTree の単クリックは選択だけ、ダブルクリックで新しいエディタタブを開く。
@@ -383,15 +386,20 @@ public partial class ShellWindow : Window
             Grid.SetRow(element, index);
     }
 
-    private static GridSplitter NewSplitter(bool cols, Brush border) => new()
+    private GridSplitter NewSplitter(bool cols, Brush border)
     {
-        Width = cols ? 4 : double.NaN,
-        Height = cols ? double.NaN : 4,
-        ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
-        HorizontalAlignment = HorizontalAlignment.Stretch,
-        VerticalAlignment = VerticalAlignment.Stretch,
-        Background = border
-    };
+        var splitter = new GridSplitter
+        {
+            Width = cols ? 4 : double.NaN,
+            Height = cols ? double.NaN : 4,
+            ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Background = border
+        };
+        splitter.DragCompleted += (_, _) => SaveActiveWorkspaceSnapshot();
+        return splitter;
+    }
 
     /// <summary>GridSplitter 操作後の行高・列幅（star比率）を現在のツリーへ取り込む。</summary>
     private void CaptureLayoutSizes() => CaptureNode(_root);
@@ -1837,26 +1845,18 @@ public partial class ShellWindow : Window
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent)
     {
         if (captureCurrent)
-            SaveActiveWorkspaceSnapshot();
+            SaveActiveWorkspaceSnapshot(immediate: true);
 
-        _isSwitchingWorkspace = true;
-        try
-        {
-            DetachTerminalTabs();
-            DetachEditorTabs();
-            DetachBrowserTabs();
-            _activeWorkspace = workspace;
-            _vm.FolderTree.LoadRoot(workspace.RootPath);
-            ApplyPaneLayout(workspace.PaneLayout);
+        DetachTerminalTabs();
+        DetachEditorTabs();
+        DetachBrowserTabs();
+        _activeWorkspace = workspace;
+        _vm.FolderTree.LoadRoot(workspace.RootPath);
+        ApplyPaneLayout(workspace.PaneLayout);
 
-            RestoreTerminalTabs(workspace);
-            RestoreEditorTabs(workspace);
-            await RestoreBrowserTabsAsync(workspace);
-        }
-        finally
-        {
-            _isSwitchingWorkspace = false;
-        }
+        RestoreTerminalTabs(workspace);
+        RestoreEditorTabs(workspace);
+        await RestoreBrowserTabsAsync(workspace);
 
         SaveActiveWorkspaceSnapshot();
     }
@@ -2085,9 +2085,34 @@ public partial class ShellWindow : Window
         }
     }
 
-    private void SaveActiveWorkspaceSnapshot()
+    private void SaveActiveWorkspaceSnapshot(bool immediate = false)
     {
-        if (_isSwitchingWorkspace || _activeWorkspace is null)
+        if (_activeWorkspace is null)
+            return;
+
+        if (immediate)
+        {
+            _pendingWorkspaceSnapshotSave?.Abort();
+            _pendingWorkspaceSnapshotSave = null;
+            SaveActiveWorkspaceSnapshotNow();
+            return;
+        }
+
+        if (_pendingWorkspaceSnapshotSave is { Status: DispatcherOperationStatus.Pending })
+            return;
+
+        _pendingWorkspaceSnapshotSave = Dispatcher.BeginInvoke(
+            new Action(() =>
+            {
+                _pendingWorkspaceSnapshotSave = null;
+                SaveActiveWorkspaceSnapshotNow();
+            }),
+            DispatcherPriority.ApplicationIdle);
+    }
+
+    private void SaveActiveWorkspaceSnapshotNow()
+    {
+        if (_activeWorkspace is null)
             return;
 
         CaptureInto(_activeWorkspace);
@@ -2152,7 +2177,8 @@ public partial class ShellWindow : Window
         snapshot.PaneLayout = _root is null ? null : ToSnapshot(_root);
     }
 
-    private void OnClosing(object? sender, CancelEventArgs e) => SaveActiveWorkspaceSnapshot();
+    private void OnClosing(object? sender, CancelEventArgs e)
+        => SaveActiveWorkspaceSnapshot(immediate: true);
 
     private static string EditorTitle(VimEditorControl editor)
         => string.IsNullOrWhiteSpace(editor.FilePath) ? "Untitled" : Path.GetFileName(editor.FilePath);
