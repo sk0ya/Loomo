@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
@@ -9,13 +10,18 @@ namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
 /// 会話・ツール定義・システムプロンプトを <b>Phi-4 のチャットテンプレート文字列</b>に組み立てる。
-/// テンプレートは各メッセージを <c>&lt;|role|&gt;content&lt;|end|&gt;</c> で連結し、末尾に生成開始の
-/// <c>&lt;|assistant|&gt;</c> を置く（microsoft/Phi-4-mini-instruct の chat_template に準拠）。
-/// ローカル小型モデルには tool 定義 JSON を渡すと定義そのものを出力しやすいため、
-/// ツール呼び出しは唯一の tool の引数 JSON <c>{"command":"..."}</c> として本文に書かせる。
+/// 通常メッセージは <c>&lt;|role|&gt;content&lt;|end|&gt;</c>、ツール定義つき system は
+/// <c>&lt;|system|&gt;content&lt;|tool|&gt;toolsJson&lt;|/tool|&gt;&lt;|end|&gt;</c>、
+/// 末尾は生成開始の <c>&lt;|assistant|&gt;</c> にする
+/// （microsoft/Phi-4-mini-instruct の chat_template に準拠）。
 /// </summary>
 public static class Phi4PromptFormatter
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = false
+    };
+
     public static string Build(
         AiSettings settings,
         AgentProfile? profile,
@@ -32,7 +38,7 @@ public static class Phi4PromptFormatter
 
         sb.Append("<|system|>").Append(system);
         if (tools.Count > 0)
-            sb.Append(ToolArgumentGuidance(tools));
+            sb.Append("<|tool|>").Append(ToolBlockJson(tools)).Append("<|/tool|>");
         sb.Append("<|end|>");
 
         foreach (var m in conversation.Messages)
@@ -60,41 +66,45 @@ public static class Phi4PromptFormatter
         return sb.ToString();
     }
 
-    /// <summary>アシスタント履歴の本文。過去のツール呼び出しは、モデルに期待する引数 JSON 形式で残して一貫性を保つ。</summary>
+    /// <summary>アシスタント履歴の本文。過去のツール呼び出しは、Phi-4 の tool-enabled 出力形式で残して一貫性を保つ。</summary>
     private static string AssistantContent(ChatMessage m)
     {
         var text = m.Text ?? "";
         if (m.ToolUses.Count == 0) return text;
 
-        var calls = new List<string>();
+        var calls = new JsonArray();
         foreach (var use in m.ToolUses)
         {
             JsonNode args;
             try { args = JsonNode.Parse(use.ArgumentsJson) ?? new JsonObject(); }
             catch { args = new JsonObject(); }
-            calls.Add(args.ToJsonString());
+            calls.Add(new JsonObject
+            {
+                ["name"] = use.Name,
+                ["arguments"] = args.DeepClone()
+            });
         }
-        var callText = string.Join("\n", calls);
+        var callText = calls.ToJsonString(JsonOptions);
         return string.IsNullOrEmpty(text) ? callText : text + "\n" + callText;
     }
 
-    private static string ToolArgumentGuidance(IReadOnlyList<ToolDefinition> tools)
+    private static string ToolBlockJson(IReadOnlyList<ToolDefinition> tools)
     {
-        // Only run_powershell is registered today. Avoid exposing name/description/parameters here:
-        // local small models tend to copy tool definitions instead of emitting arguments.
-        var tool = tools[0];
-        var commandDescription = "PowerShell command";
-        if (tool.InputSchema["properties"] is JsonObject props
-            && props["command"] is JsonObject command
-            && command["description"] is JsonValue description
-            && description.TryGetValue<string>(out var value)
-            && !string.IsNullOrWhiteSpace(value))
-            commandDescription = value;
-
-        return "\n\nTool output format: when you need PowerShell, output exactly one JSON object and no prose. " +
-               "The first character must be { and the last must be }. Format: " +
-               "{\"command\":\"<" + commandDescription + ">\"}.";
+        var arr = new JsonArray();
+        foreach (var tool in tools)
+        {
+            arr.Add(new JsonObject
+            {
+                ["name"] = tool.Name,
+                ["description"] = tool.Description,
+                ["parameters"] = ToolParameters(tool)
+            });
+        }
+        return arr.ToJsonString(JsonOptions);
     }
+
+    private static JsonNode ToolParameters(ToolDefinition tool)
+        => tool.InputSchema["properties"]?.DeepClone() ?? tool.InputSchema.DeepClone();
 
     private static string SearchGuidance(string? workspaceRoot)
         => EnvironmentProbe.HasRipgrep(workspaceRoot)

@@ -22,11 +22,12 @@ public class Phi4PromptFormatterTests
         var prompt = Phi4PromptFormatter.Build(new AiSettings(), profile: null, workspaceRoot: null, conv, Pwsh());
 
         Assert.StartsWith("<|system|>", prompt);
-        Assert.DoesNotContain("<|tool|>[", prompt);
-        Assert.DoesNotContain("\"name\":\"run_powershell\"", prompt);
-        Assert.Contains("output exactly one JSON object", prompt);
-        Assert.Contains("The first character must be {", prompt);
-        Assert.Contains("{\"command\":\"<PowerShell command>\"}", prompt);
+        Assert.Contains("<|tool|>[", prompt);
+        Assert.Contains("\"name\":\"run_powershell\"", prompt);
+        Assert.Contains("\"parameters\":{\"command\":{\"type\":\"string\"", prompt);
+        Assert.Contains("<|/tool|><|end|>", prompt);
+        Assert.Contains("output exactly [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"<PowerShell command>\"}}]", prompt);
+        Assert.Contains("The first character must be [", prompt);
         Assert.Contains("<|user|>ファイル一覧を出して<|end|>", prompt);
         Assert.EndsWith("<|assistant|>", prompt);                 // add_generation_prompt
     }
@@ -39,7 +40,7 @@ public class Phi4PromptFormatterTests
 
         var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, System.Array.Empty<ToolDefinition>());
 
-        Assert.DoesNotContain("Tool output format:", prompt);
+        Assert.DoesNotContain("<|tool|>", prompt);
         Assert.Contains("<|system|>", prompt);
         Assert.EndsWith("<|assistant|>", prompt);
     }
@@ -71,8 +72,8 @@ public class Phi4PromptFormatterTests
 
         var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
 
-        // アシスタントの過去ツール呼び出しはモデル出力と同じ引数 JSON 形式で履歴に残す。
-        Assert.Contains("<|assistant|>{\"command\":\"dotnet build\"}<|end|>", prompt);
+        // アシスタントの過去ツール呼び出しはモデル出力と同じ JSON 配列形式で履歴に残す。
+        Assert.Contains("<|assistant|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"dotnet build\"}}]<|end|>", prompt);
         // ツール結果は role "tool"（<|tool|>content<|end|>）として描画される。
         Assert.Contains("<|tool|>成功<|end|>", prompt);
     }
@@ -82,7 +83,7 @@ public class Phi4PromptFormatterTests
     {
         Assert.DoesNotContain("Ollama", AiSettings.DefaultSystemPrompt);
         Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("output exactly {\"command\":\"<PowerShell command>\"}", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("The first character must be {", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("output exactly [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"<PowerShell command>\"}}]", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("The first character must be [", AiSettings.DefaultSystemPrompt);
     }
 }
