@@ -40,12 +40,47 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="ExplorerIconButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <DockPanel>
         <Grid DockPanel.Dock="Top" Margin="8,6,6,4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -63,7 +98,35 @@
                        TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
-            <ToggleButton Grid.Column="1" Style="{StaticResource ExplorerToggleButton}"
+            <Button Grid.Column="1" Style="{StaticResource ExplorerIconButton}"
+                    Command="{Binding ExpandAllCommand}"
+                    IsEnabled="{Binding HasVisibleNodes}"
+                    ToolTip="すべて展開">
+                <Path Width="13" Height="13" Stretch="Uniform"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.7"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round"
+                      Data="M2,3 L6.5,7.5 L11,3 M2,8 L6.5,12 L11,8" />
+            </Button>
+
+            <Button Grid.Column="2" Style="{StaticResource ExplorerIconButton}"
+                    Margin="2,0,0,0"
+                    Command="{Binding CollapseAllCommand}"
+                    IsEnabled="{Binding HasVisibleNodes}"
+                    ToolTip="すべて折りたたみ">
+                <Path Width="13" Height="13" Stretch="Uniform"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.7"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round"
+                      Data="M2,5 L6.5,1 L11,5 M2,10 L6.5,6 L11,10" />
+            </Button>
+
+            <ToggleButton Grid.Column="3" Style="{StaticResource ExplorerToggleButton}"
+                          Margin="2,0,0,0"
                           IsChecked="{Binding HideIgnoredFiles}"
                           ToolTip="ignore を非表示">
                 <Path Width="13" Height="13" Stretch="Uniform"
@@ -72,7 +135,7 @@
                       Data="M1,6.5 A5.5,5.5 0 1 1 12,6.5 A5.5,5.5 0 1 1 1,6.5 M3,10 L10,3" />
             </ToggleButton>
 
-            <ToggleButton Grid.Column="2" Style="{StaticResource ExplorerToggleButton}"
+            <ToggleButton Grid.Column="4" Style="{StaticResource ExplorerToggleButton}"
                           Margin="2,0,0,0"
                           IsChecked="{Binding ShowChangedOnly}"
                           ToolTip="変更のみ表示">

@@ -80,6 +80,20 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         RefreshWorkspace();
     }
 
+    [RelayCommand]
+    private void ExpandAll()
+    {
+        foreach (var node in Nodes)
+            ExpandRecursive(node, depth: 0);
+    }
+
+    [RelayCommand]
+    private void CollapseAll()
+    {
+        foreach (var node in Nodes)
+            CollapseRecursive(node);
+    }
+
     partial void OnHideIgnoredFilesChanged(bool value) => RefreshWorkspace();
 
     partial void OnShowChangedOnlyChanged(bool value) => RefreshWorkspace();
@@ -88,6 +102,28 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 文字入力を止めないよう、再構築はデバウンス＋バックグラウンドで行う（ScheduleFilter）。
     // ハイライト用の SearchFilter バインドは即時更新されるので、入力の手応えは保たれる。
     partial void OnSearchFilterChanged(string value) => ScheduleFilter(value);
+
+    private static void ExpandRecursive(FileNodeViewModel node, int depth)
+    {
+        if (!node.IsDirectory || depth > MaxFilterDepth || IsReparsePoint(node.FullPath))
+            return;
+
+        node.IsExpanded = true;
+
+        foreach (var child in node.Children)
+            ExpandRecursive(child, depth + 1);
+    }
+
+    private static void CollapseRecursive(FileNodeViewModel node)
+    {
+        if (!node.IsDirectory)
+            return;
+
+        node.IsExpanded = false;
+
+        foreach (var child in node.Children)
+            CollapseRecursive(child);
+    }
 
     private bool IsFiltering => !string.IsNullOrEmpty(SearchFilter);
 
