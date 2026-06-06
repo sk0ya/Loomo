@@ -20,6 +20,7 @@ using sk0ya.Loomo.Services;
 using Editor.Controls;
 using Editor.Controls.Git;
 using Editor.Controls.Themes;
+using Terminal.Settings;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -1297,31 +1298,74 @@ public partial class ShellWindow : Window
             control.FontSize = ap.EditorFontSize;
     }
 
-    /// <summary>ターミナルへ配色（背景/文字色）とフォント（設定値、未指定なら触らない）を適用する。</summary>
+    /// <summary>ターミナルへ配色（背景/文字色/ANSIパレット）とフォントを適用する。
+    /// sk0ya.Terminal.Controls 1.0.5 の <see cref="TerminalTabView.SetColorTheme"/> / <see cref="TerminalTabView.SetFont"/>
+    /// を使う。WPF の <c>Background</c>/<c>FontFamily</c> を直接書いても描画サーフェスには届かないため、
+    /// 必ずこの専用APIを経由する。フォントは未指定なら現状値を保つ。</summary>
     private void ApplyTerminalAppearance(TerminalTabView view)
     {
         var ap = _settings.Appearance;
-        var (bg, fg) = BuildTerminalColors(ap.TerminalTheme);
-        view.Background = bg;
-        view.Foreground = fg;
-        if (!string.IsNullOrWhiteSpace(ap.TerminalFontFamily))
-            view.FontFamily = new FontFamily(ap.TerminalFontFamily);
-        if (ap.TerminalFontSize > 0)
-            view.FontSize = ap.TerminalFontSize;
+        view.SetColorTheme(BuildTerminalColorTheme(ap.TerminalTheme));
+
+        var family = string.IsNullOrWhiteSpace(ap.TerminalFontFamily)
+            ? view.FontFamilyName
+            : ap.TerminalFontFamily;
+        var size = ap.TerminalFontSize > 0 ? ap.TerminalFontSize : view.TerminalFontSize;
+        view.SetFont(family, size);
     }
 
-    /// <summary>ターミナル配色プリセット名 → (背景, 文字色)。外観パネルの代表色と一致させる。未知名は Dark。</summary>
-    private static (Brush Bg, Brush Fg) BuildTerminalColors(string? name) => name?.Trim().ToLowerInvariant() switch
+    /// <summary>ターミナル配色プリセット名 → <see cref="TerminalColorTheme"/>（背景/文字色/16色ANSIパレット）。
+    /// 外観パネルの代表色（背景/文字色）と一致させる。未知名は Dark。</summary>
+    private static TerminalColorTheme BuildTerminalColorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
     {
-        "light" => (MakeBrush("#FFFFFF"), MakeBrush("#1F1F1F")),
-        "dracula" => (MakeBrush("#282A36"), MakeBrush("#F8F8F2")),
-        "nord" => (MakeBrush("#2E3440"), MakeBrush("#D8DEE9")),
-        "solarizeddark" => (MakeBrush("#002B36"), MakeBrush("#93A1A1")),
-        _ => (MakeBrush("#1E1E1E"), MakeBrush("#D4D4D4")),
+        "light" => MakeTerminalTheme("#1F1F1F", "#FFFFFF", LightAnsiPalette, "#1F1F1F", "#FFB3D7FF"),
+        "dracula" => MakeTerminalTheme("#F8F8F2", "#282A36", DraculaAnsiPalette, "#F8F8F0", "#6644475A"),
+        "nord" => MakeTerminalTheme("#D8DEE9", "#2E3440", NordAnsiPalette, "#D8DEE9", "#66434C5E"),
+        "solarizeddark" => MakeTerminalTheme("#93A1A1", "#002B36", SolarizedDarkAnsiPalette, "#93A1A1", "#66073642"),
+        _ => MakeTerminalTheme("#D4D4D4", "#1E1E1E", DarkAnsiPalette, "#5FAFFF", "#664D4D4D"),
     };
 
-    private static SolidColorBrush MakeBrush(string hex) =>
-        new((Color)ColorConverter.ConvertFromString(hex)!);
+    private static TerminalColorTheme MakeTerminalTheme(
+        string fg, string bg, string[] ansiPalette, string cursor, string selection) =>
+        new(
+            ParseColor(fg),
+            ParseColor(bg),
+            ansiPalette.Select(ParseColor).ToArray(),
+            ParseColor(cursor),
+            ParseColor(selection));
+
+    private static Color ParseColor(string hex) => (Color)ColorConverter.ConvertFromString(hex)!;
+
+    // 16色ANSIパレット（0-7=標準, 8-15=明色）。
+    private static readonly string[] DarkAnsiPalette =
+    {
+        "#0C0C0C", "#C50F1F", "#13A10E", "#C19C00", "#0037DA", "#881798", "#3A96DD", "#CCCCCC",
+        "#767676", "#E74856", "#16C60C", "#F9F1A5", "#3B78FF", "#B4009E", "#61D6D6", "#F2F2F2",
+    };
+
+    private static readonly string[] LightAnsiPalette =
+    {
+        "#000000", "#C50F1F", "#13A10E", "#B58900", "#0037DA", "#881798", "#3A96DD", "#777777",
+        "#5A5A5A", "#A4262C", "#0E8016", "#986801", "#0037DA", "#A100A1", "#178C92", "#1F1F1F",
+    };
+
+    private static readonly string[] DraculaAnsiPalette =
+    {
+        "#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2",
+        "#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF",
+    };
+
+    private static readonly string[] NordAnsiPalette =
+    {
+        "#3B4252", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#88C0D0", "#E5E9F0",
+        "#4C566A", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#8FBCBB", "#ECEFF4",
+    };
+
+    private static readonly string[] SolarizedDarkAnsiPalette =
+    {
+        "#073642", "#DC322F", "#859900", "#B58900", "#268BD2", "#D33682", "#2AA198", "#EEE8D5",
+        "#002B36", "#CB4B16", "#586E75", "#657B83", "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
+    };
 
     /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと Markdown プレビューへ即時反映する。</summary>
     private void ApplyAppearanceToOpenTabs()

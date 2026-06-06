@@ -149,7 +149,7 @@ same instance backs both — Views resolve the concrete control adapter, tools r
 
 ## Working with the sk0ya control libraries (important)
 
-Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.4) and `sk0ya.Editor.Controls`
+Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.5) and `sk0ya.Editor.Controls`
 (1.0.0), but their **namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
 `Editor.Controls.VimEditorControl`. Terminal command execution is unified onto the *visible* terminal:
 `TerminalService` calls `TerminalTabView.RunCommandAsync(command, ct)` on the UI thread
