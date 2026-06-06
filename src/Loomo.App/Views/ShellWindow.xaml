@@ -226,6 +226,9 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Editor" Click="OnHidePane" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="34" Height="24"
+                                Content="MD" FontSize="11" ToolTip="Markdown をブラウザでプレビュー"
+                                Click="OnMarkdownPreview" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"

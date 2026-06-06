@@ -10,6 +10,7 @@ using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Services;
@@ -47,6 +48,15 @@ public partial class ShellWindow : Window
     private TerminalTab? _activeTerminalTab;
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
+    private EditorTab? _markdownPreviewSourceTab;
+    private BrowserTab? _markdownPreviewBrowserTab;
+    private DispatcherTimer? _markdownPreviewDebounceTimer;
+    private WebView2CompositionControl? _markdownPreviewEventsView;
+    private bool _syncingMarkdownPreviewFromEditor;
+    private bool _syncingEditorFromMarkdownPreview;
+    private bool _markdownPreviewScrollSyncQueued;
+    private double _pendingMarkdownPreviewScrollRatio;
+    private BrowserTab? _lastRealActiveBrowserTab;
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";
@@ -1217,8 +1227,19 @@ public partial class ShellWindow : Window
         };
         control.SetTheme(BuildEditorTheme());
         var tab = new EditorTab(requestedId ?? Guid.NewGuid(), control);
-        control.BufferChanged += (_, _) => UpdateEditorTab(tab);
-        control.SaveRequested += (_, _) => QueueEditorTabUpdate(tab);
+        control.BufferChanged += (_, _) =>
+        {
+            UpdateEditorTab(tab);
+            if (ReferenceEquals(_markdownPreviewSourceTab, tab))
+                ScheduleMarkdownPreviewUpdate();
+        };
+        control.SaveRequested += (_, _) =>
+        {
+            QueueEditorTabUpdate(tab);
+            if (ReferenceEquals(_markdownPreviewSourceTab, tab))
+                ScheduleMarkdownPreviewUpdate();
+        };
+        control.MarkdownPreviewRequested += async (_, _) => await OpenMarkdownPreviewAsync(tab);
         return tab;
     }
 
@@ -1422,6 +1443,16 @@ public partial class ShellWindow : Window
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
+        var existing = _editorTabs.FirstOrDefault(t =>
+            string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            ActivateEditorTab(existing.Id);
+            if (_markdownPreviewBrowserTab is not null)
+                await SwitchMarkdownPreviewSourceAsync(existing);
+            return;
+        }
+
         var tab = CreateEditorTab();
         _editorTabs.Add(tab);
         EditorContentHost.Children.Add(tab.Control);
@@ -1429,6 +1460,8 @@ public partial class ShellWindow : Window
         ActivateEditorTab(tab.Id);
         await _editor.OpenFileAsync(path);
         UpdateEditorTab(tab);
+        if (_markdownPreviewBrowserTab is not null)
+            await SwitchMarkdownPreviewSourceAsync(tab);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -1444,6 +1477,212 @@ public partial class ShellWindow : Window
         {
             CloseEditorTab(id);
             SaveActiveWorkspaceSnapshot();
+        }
+    }
+
+    private async void OnMarkdownPreview(object sender, RoutedEventArgs e)
+    {
+        if (_activeEditorTab is not null)
+            await OpenMarkdownPreviewAsync(_activeEditorTab);
+    }
+
+    private async Task OpenMarkdownPreviewAsync(EditorTab sourceTab)
+    {
+        if (_markdownPreviewBrowserTab is null || !_browserTabs.Contains(_markdownPreviewBrowserTab))
+        {
+            _markdownPreviewBrowserTab = await CreateBrowserTabAsync(
+                "about:blank",
+                requestedTitle: "Markdown Preview",
+                isMarkdownPreview: true);
+        }
+        else
+        {
+            ActivateBrowserTab(_markdownPreviewBrowserTab.Id);
+        }
+
+        await SwitchMarkdownPreviewSourceAsync(sourceTab);
+    }
+
+    private async Task SwitchMarkdownPreviewSourceAsync(EditorTab sourceTab)
+    {
+        if (!ReferenceEquals(_markdownPreviewSourceTab, sourceTab))
+        {
+            if (_markdownPreviewSourceTab is not null)
+                _markdownPreviewSourceTab.Control.ViewportScrolled -= MarkdownPreviewSource_ViewportScrolled;
+
+            _markdownPreviewSourceTab = sourceTab;
+            sourceTab.Control.ViewportScrolled += MarkdownPreviewSource_ViewportScrolled;
+        }
+
+        await UpdateMarkdownPreviewAsync();
+    }
+
+    private void ScheduleMarkdownPreviewUpdate()
+    {
+        if (_markdownPreviewSourceTab is null || _markdownPreviewBrowserTab is null)
+            return;
+
+        if (_markdownPreviewDebounceTimer is null)
+        {
+            _markdownPreviewDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            _markdownPreviewDebounceTimer.Tick += async (s, _) =>
+            {
+                ((DispatcherTimer)s!).Stop();
+                await UpdateMarkdownPreviewAsync();
+            };
+        }
+
+        _markdownPreviewDebounceTimer.Stop();
+        _markdownPreviewDebounceTimer.Start();
+    }
+
+    private async Task UpdateMarkdownPreviewAsync()
+    {
+        var source = _markdownPreviewSourceTab;
+        var preview = _markdownPreviewBrowserTab;
+        if (source is null || preview is null || !_browserTabs.Contains(preview))
+            return;
+
+        try
+        {
+            await preview.View.EnsureCoreWebView2Async();
+            AttachMarkdownPreviewWebViewEvents(preview.View);
+        }
+        catch
+        {
+            return;
+        }
+
+        var filePath = source.Control.FilePath;
+        var ext = filePath is null ? string.Empty : Path.GetExtension(filePath).ToLowerInvariant();
+        var title = filePath is null ? "Markdown Preview" : $"Preview: {Path.GetFileName(filePath)}";
+        string html;
+
+        if (ext is ".md" or ".markdown")
+        {
+            html = MarkdownRenderer.RenderToHtml(source.Control.Text, title, "Dracula");
+        }
+        else
+        {
+            html = MarkdownRenderer.RenderToHtml(
+                "## Markdown Preview\n\nActive editor tab is not a Markdown file.",
+                "Markdown Preview",
+                "Dracula");
+        }
+
+        preview.View.CoreWebView2!.NavigateToString(html);
+        _vm.Tabs.UpdateBrowserTab(preview.Id, title);
+        if (ReferenceEquals(_activeBrowserTab, preview))
+            BrowserAddressBox.Text = title;
+    }
+
+    private void AttachMarkdownPreviewWebViewEvents(WebView2CompositionControl view)
+    {
+        if (ReferenceEquals(_markdownPreviewEventsView, view))
+            return;
+
+        DetachMarkdownPreviewWebViewEvents();
+        if (view.CoreWebView2 is null)
+            return;
+
+        view.CoreWebView2.WebMessageReceived += MarkdownPreview_WebMessageReceived;
+        _markdownPreviewEventsView = view;
+    }
+
+    private void DetachMarkdownPreviewWebViewEvents()
+    {
+        if (_markdownPreviewEventsView?.CoreWebView2 is not null)
+            _markdownPreviewEventsView.CoreWebView2.WebMessageReceived -= MarkdownPreview_WebMessageReceived;
+        _markdownPreviewEventsView = null;
+    }
+
+    private void DetachMarkdownPreviewSource()
+    {
+        if (_markdownPreviewSourceTab is not null)
+            _markdownPreviewSourceTab.Control.ViewportScrolled -= MarkdownPreviewSource_ViewportScrolled;
+        _markdownPreviewSourceTab = null;
+    }
+
+    private async void MarkdownPreviewSource_ViewportScrolled(object? sender, EventArgs e)
+    {
+        if (_syncingEditorFromMarkdownPreview || sender is not VimEditorControl editor)
+            return;
+
+        await QueueMarkdownPreviewScrollSyncAsync(editor.VerticalScrollRatio);
+    }
+
+    private void MarkdownPreview_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        if (_syncingMarkdownPreviewFromEditor || _markdownPreviewSourceTab is null)
+            return;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(e.WebMessageAsJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var type)
+                || type.GetString() != "markdownPreviewScroll"
+                || !root.TryGetProperty("ratio", out var ratioElement)
+                || !ratioElement.TryGetDouble(out var ratio))
+                return;
+
+            _syncingEditorFromMarkdownPreview = true;
+            _markdownPreviewSourceTab.Control.ScrollToVerticalRatio(ratio);
+        }
+        catch
+        {
+            // Ignore malformed messages from preview content.
+        }
+        finally
+        {
+            _syncingEditorFromMarkdownPreview = false;
+        }
+    }
+
+    private async Task QueueMarkdownPreviewScrollSyncAsync(double ratio)
+    {
+        _pendingMarkdownPreviewScrollRatio = Math.Clamp(ratio, 0.0, 1.0);
+        if (_markdownPreviewScrollSyncQueued)
+            return;
+
+        _markdownPreviewScrollSyncQueued = true;
+        try
+        {
+            while (_markdownPreviewBrowserTab is not null)
+            {
+                var nextRatio = _pendingMarkdownPreviewScrollRatio;
+                await ScrollMarkdownPreviewToRatioAsync(nextRatio);
+
+                if (Math.Abs(nextRatio - _pendingMarkdownPreviewScrollRatio) < 0.0001)
+                    break;
+            }
+        }
+        finally
+        {
+            _markdownPreviewScrollSyncQueued = false;
+        }
+    }
+
+    private async Task ScrollMarkdownPreviewToRatioAsync(double ratio)
+    {
+        var view = _markdownPreviewBrowserTab?.View;
+        if (view?.CoreWebView2 is null)
+            return;
+
+        _syncingMarkdownPreviewFromEditor = true;
+        try
+        {
+            var script = FormattableString.Invariant(
+                $"window.setMarkdownPreviewScrollRatio && window.setMarkdownPreviewScrollRatio({Math.Clamp(ratio, 0.0, 1.0):R});");
+            await view.ExecuteScriptAsync(script);
+        }
+        catch
+        {
+            // Best effort: the preview can be navigating while the editor scrolls.
+        }
+        finally
+        {
+            _syncingMarkdownPreviewFromEditor = false;
         }
     }
 
@@ -1508,8 +1747,21 @@ public partial class ShellWindow : Window
 
         UpdateBrowserTab(tab);
         _ = RefreshBrowserTabIconAsync(tab);
-        if (ReferenceEquals(_activeBrowserTab, tab) && view.Source is not null)
-            BrowserAddressBox.Text = view.Source.ToString();
+        if (ReferenceEquals(_activeBrowserTab, tab))
+        {
+            if (tab.IsMarkdownPreview)
+            {
+                var docTitle = tab.View.CoreWebView2?.DocumentTitle;
+                BrowserAddressBox.Text = string.IsNullOrEmpty(docTitle) ? "Markdown Preview" : docTitle;
+            }
+            else
+            {
+                BrowserAddressBox.Text = view.Source?.ToString() ?? string.Empty;
+            }
+        }
+
+        if (tab.IsMarkdownPreview && _markdownPreviewSourceTab is not null)
+            _ = QueueMarkdownPreviewScrollSyncAsync(_markdownPreviewSourceTab.Control.VerticalScrollRatio);
     }
 
     private void NavigateBrowser(string text)
@@ -1595,6 +1847,8 @@ public partial class ShellWindow : Window
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(id);
         tab.Control.Focus();
+        if (_markdownPreviewBrowserTab is not null)
+            _ = SwitchMarkdownPreviewSourceAsync(tab);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -1606,6 +1860,11 @@ public partial class ShellWindow : Window
 
         var wasActive = _activeEditorTab?.Id == id;
         var tab = _editorTabs[index];
+        if (ReferenceEquals(_markdownPreviewSourceTab, tab))
+        {
+            _markdownPreviewDebounceTimer?.Stop();
+            DetachMarkdownPreviewSource();
+        }
         EditorContentHost.Children.Remove(tab.Control);
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
@@ -1631,7 +1890,11 @@ public partial class ShellWindow : Window
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
 
-    private async Task CreateBrowserTabAsync(string url, Guid? requestedId = null, string? requestedTitle = null)
+    private async Task<BrowserTab> CreateBrowserTabAsync(
+        string url,
+        Guid? requestedId = null,
+        string? requestedTitle = null,
+        bool isMarkdownPreview = false)
     {
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
@@ -1643,7 +1906,7 @@ public partial class ShellWindow : Window
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
 
-        var tab = new BrowserTab(id, view);
+        var tab = new BrowserTab(id, view, isMarkdownPreview);
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
         _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {browserWorkspace.NextTabNumber++}", false);
@@ -1654,6 +1917,7 @@ public partial class ShellWindow : Window
         view.Source = new Uri(normalizedUrl);
         UpdateBrowserTab(tab);
         await RefreshBrowserTabIconAsync(tab);
+        return tab;
     }
 
     private async Task CloseBrowserTabAsync(Guid id)
@@ -1664,6 +1928,15 @@ public partial class ShellWindow : Window
 
         var wasActive = _activeBrowserTab?.Id == id;
         var tab = _browserTabs[index];
+        if (ReferenceEquals(_markdownPreviewBrowserTab, tab))
+        {
+            _markdownPreviewDebounceTimer?.Stop();
+            DetachMarkdownPreviewWebViewEvents();
+            DetachMarkdownPreviewSource();
+            _markdownPreviewBrowserTab = null;
+        }
+        if (ReferenceEquals(_lastRealActiveBrowserTab, tab))
+            _lastRealActiveBrowserTab = null;
         if (tab.View.CoreWebView2 is not null)
             tab.View.CoreWebView2.FaviconChanged -= OnBrowserFaviconChanged;
         BrowserContentHost.Children.Remove(tab.View);
@@ -1694,6 +1967,8 @@ public partial class ShellWindow : Window
             browserTab.View.Visibility = browserTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
 
         _activeBrowserTab = tab;
+        if (!tab.IsMarkdownPreview)
+            _lastRealActiveBrowserTab = tab;
         CurrentBrowserWorkspace.ActiveTabId = id;
         // AIのブラウザ操作（IBrowserService）の対象を、いま見えているタブへ一本化する。
         _browser.SetActiveView(tab.View);
@@ -1766,7 +2041,7 @@ public partial class ShellWindow : Window
     {
         public string? VirtualTitle { get; set; }
     }
-    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View);
+    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View, bool IsMarkdownPreview = false);
 
     private sealed class TerminalWorkspaceTabs
     {
@@ -2063,11 +2338,38 @@ public partial class ShellWindow : Window
 
     private void DetachBrowserTabs()
     {
+        DiscardMarkdownPreviewTab();
+        _lastRealActiveBrowserTab = null;
         CurrentBrowserWorkspace.ActiveTabId = _activeBrowserTab?.Id;
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
         _activeBrowserTab = null;
         _browser.SetActiveView(null);
+    }
+
+    // マークダウンプレビューはワークスペースをまたいで保持しない。切替時に破棄し、ソースエディタの
+    // ViewportScrolled 購読も解除して、別ワークスペースに stale な参照（とそれ経由のスクロール同期や
+    // 再アタッチ時に蘇る空プレビュータブ）が残らないようにする。
+    private void DiscardMarkdownPreviewTab()
+    {
+        var preview = _markdownPreviewBrowserTab;
+        _markdownPreviewDebounceTimer?.Stop();
+        DetachMarkdownPreviewWebViewEvents();
+        DetachMarkdownPreviewSource();
+        _markdownPreviewBrowserTab = null;
+        if (preview is null)
+            return;
+
+        if (ReferenceEquals(_activeBrowserTab, preview))
+            _activeBrowserTab = null;
+
+        _browserTabs.Remove(preview);
+        if (preview.View.CoreWebView2 is not null)
+            preview.View.CoreWebView2.FaviconChanged -= OnBrowserFaviconChanged;
+        BrowserContentHost.Children.Remove(preview.View);
+        preview.View.NavigationCompleted -= OnBrowserNavigationCompleted;
+        preview.View.Dispose();
+        _vm.Tabs.RemoveBrowserTab(preview.Id);
     }
 
     private async Task AttachBrowserTabsAsync()
@@ -2165,12 +2467,17 @@ public partial class ShellWindow : Window
             snapshot.Editor.IsModified = activeEditor.IsModified;
         }
 
-        snapshot.BrowserTabs = _browserTabs.Select(tab => new BrowserTabSnapshot
+        // プレビュータブは永続化しないので、それがアクティブなときは最後に見ていた実タブを
+        // アクティブ扱いにして、復元時に選択が失われないようにする。
+        var activeRealBrowserId = (_activeBrowserTab is { IsMarkdownPreview: false }
+            ? _activeBrowserTab
+            : _lastRealActiveBrowserTab)?.Id;
+        snapshot.BrowserTabs = _browserTabs.Where(tab => !tab.IsMarkdownPreview).Select(tab => new BrowserTabSnapshot
         {
             Id = tab.Id,
             Url = tab.View.Source?.ToString(),
             Title = tab.View.CoreWebView2?.DocumentTitle,
-            IsActive = tab.Id == _activeBrowserTab?.Id
+            IsActive = tab.Id == activeRealBrowserId
         }).ToList();
 
         CaptureLayoutSizes();
