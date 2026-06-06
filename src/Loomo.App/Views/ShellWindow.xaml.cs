@@ -53,6 +53,15 @@ public partial class ShellWindow : Window
     private BrowserTab? _markdownPreviewBrowserTab;
     private DispatcherTimer? _markdownPreviewDebounceTimer;
     private WebView2CompositionControl? _markdownPreviewEventsView;
+
+    /// <summary>
+    /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。
+    /// 既定だと実行ファイル隣に作られ再ビルドで消えるため、%APPDATA%/Loomo 配下に固定して
+    /// パスワード自動保存やフォルダ等の権限許可をセッションをまたいで永続化する。
+    /// </summary>
+    private static readonly string WebViewUserDataFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Loomo", "WebView2");
     private bool _syncingMarkdownPreviewFromEditor;
     private bool _syncingEditorFromMarkdownPreview;
     private bool _markdownPreviewScrollSyncQueued;
@@ -2038,7 +2047,10 @@ public partial class ShellWindow : Window
         var view = new WebView2CompositionControl
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
-            Visibility = Visibility.Collapsed
+            Visibility = Visibility.Collapsed,
+            // 全タブで同じユーザーデータフォルダを共有 → Cookie・保存パスワード・サイト権限が
+            // タブ間で共通になり、再ビルド・再起動をまたいで残る。
+            CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = WebViewUserDataFolder }
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
 
@@ -2072,6 +2084,7 @@ public partial class ShellWindow : Window
             return;
         }
 
+        ConfigureBrowserCore(tab.View.CoreWebView2!);
         tab.View.CoreWebView2!.FaviconChanged += OnBrowserFaviconChanged;
         if (tab.PendingUrl is { } pending)
         {
@@ -2080,6 +2093,36 @@ public partial class ShellWindow : Window
         }
         UpdateBrowserTab(tab);
         await RefreshBrowserTabIconAsync(tab);
+    }
+
+    /// <summary>
+    /// 実体化した CoreWebView2 を通常ブラウザらしく設定する：パスワードの自動保存・自動入力を有効化し、
+    /// サイト権限（フォルダ/ファイルアクセス・通知・位置情報など）の許可/拒否をプロファイルへ保存させる。
+    /// 永続化先は <see cref="WebViewUserDataFolder"/>。
+    /// </summary>
+    private static void ConfigureBrowserCore(CoreWebView2 core)
+    {
+        var settings = core.Settings;
+        settings.IsPasswordAutosaveEnabled = true;   // 既定 false：これが無いと保存プロンプトすら出ない
+        settings.IsGeneralAutofillEnabled = true;    // 住所など一般フォームの自動入力
+
+        core.PermissionRequested += OnBrowserPermissionRequested;
+    }
+
+    /// <summary>
+    /// サイト権限リクエストの扱い。原則は既定UI（許可/拒否ダイアログ）に任せつつ、ユーザーの選択を
+    /// プロファイルへ保存して次回以降は再確認しないようにする（<see cref="CoreWebView2PermissionRequestedEventArgs.SavesInProfile"/>）。
+    ///
+    /// ただし File System Access API（フォルダ/ファイルの読み書き許可）は Chromium が原則セッション
+    /// 限りでしか権限を保持しないため、<c>SavesInProfile</c> を立てても起動のたびに再確認される。
+    /// dev ツール用途として、この権限だけは自動的に許可してプロンプトを抑止する。
+    /// </summary>
+    private static void OnBrowserPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
+    {
+        e.SavesInProfile = true;
+
+        if (e.PermissionKind == CoreWebView2PermissionKind.FileReadWrite)
+            e.State = CoreWebView2PermissionState.Allow;
     }
 
     /// <summary>
