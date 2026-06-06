@@ -58,9 +58,16 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
         await _gate.WaitAsync(ct);
         try
         {
-            LoadIfNeeded(modelPath);
-            RunWarmup(ct);
+            // モデルロード（数GB）とダミー生成は CPU 同期処理。_gate は非占有時に同期完了するため、
+            // ここで Task.Run へ逃がさないと呼び出し元（起動時は UI スレッド）をロード完了まで
+            // ブロックしてしまう（＝ウィンドウが出ない）。GenerateAsync と同じくバックグラウンドで回す。
+            await Task.Run(() =>
+            {
+                LoadIfNeeded(modelPath);
+                RunWarmup(ct);
+            }, ct);
         }
+        catch (OperationCanceledException) { }
         finally { _gate.Release(); }
     }
 
