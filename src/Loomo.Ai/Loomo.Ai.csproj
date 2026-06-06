@@ -7,6 +7,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <!-- ローカル推論エンジン（ONNX Runtime GenAI・CPU）。phi4-mini を in-process で駆動する。 -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI" Version="0.9.0" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -229,6 +229,9 @@ public sealed class AiSettingsStore
     private sealed class PersistedProvider
     {
         public string? Model { get; set; }
+
+        /// <summary>ONNX モデルフォルダの絶対パス。</summary>
+        public string? ModelPath { get; set; }
         public string? ApiKeyEnc { get; set; }
 
         /// <summary>旧設定からの読み込み互換用。現在は固定ローカルURLを使うため保存しない。</summary>
@@ -257,6 +260,7 @@ public sealed class AiSettingsStore
         public static PersistedProvider From(ProviderConfig c) => new()
         {
             Model = c.Model,
+            ModelPath = c.ModelPath,
             ApiKeyEnc = Protect(c.ApiKey),
             MaxTokens = c.MaxTokens,
             Thinking = c.Thinking,
@@ -269,6 +273,8 @@ public sealed class AiSettingsStore
         {
             if (!string.IsNullOrEmpty(Model))
                 c.Model = IsLegacyDefaultModel(Model) ? AiSettings.DefaultLocalModel : Model;
+            if (!string.IsNullOrEmpty(ModelPath))
+                c.ModelPath = ModelPath;
             c.ApiKey = Unprotect(ApiKeyEnc);
             if (MaxTokens > 0) c.MaxTokens = MaxTokens;
             // 新形式（bool）を優先。無ければ旧 ThinkingEffort（none 以外を有効）から移行する。

@@ -45,14 +45,13 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
   (`ConversationTrimmer`) keeps the first message a `user` to avoid orphaned `tool_result`s.
 
 **Agent-loop latency (read `docs/エージェントループ知見.md` before "make it faster" work).** On CPU-only
-local inference the turn time is **prefill-dominated**, not decode/load. Each AI call's breakdown is recorded as
-the `ai.usage` trace (tokens + `loadMs`/`promptEvalMs`/`evalMs`, parsed in `OllamaProtocol.ParseUsage`, emitted
-as `AiUsageReported`) and shown live in the AI bar progress ("📊 AI内訳", `AiBarViewModel.FormatUsage`) — use
-that to split load vs prefill vs decode before optimizing. Hard-won facts: prefill time does **not** scale
-cleanly with token count, cross-turn prefix-cache reuse is unreliable here (a later turn can be *slower* than an
-earlier one as the conversation grows — full re-prefill each turn), and prompt compression only helps the cold
-first turn. The real lever is **model size** (CPU speed ≈ inversely ∝ params) and GPU VRAM big enough to offload
-(check `ollama ps` for the CPU/GPU split). Don't over-invest in prefix-cache tricks for the CPU path.
+local inference the cold cost is **model load** (tens of seconds, paid once since `Phi4Engine` keeps the model
+resident) and per-turn time is **prefill-dominated**. Each AI call's breakdown is recorded as the `ai.usage`
+trace (tokens + `loadMs`/`promptEvalMs`/`evalMs`, **self-measured** in `Phi4Engine.RunSync` via `Stopwatch` —
+load time only counts on the first turn, first-token time ≈ prefill, the rest ≈ decode — emitted as
+`AiUsageReported`) and shown live in the AI bar progress ("📊 AI内訳", `AiBarViewModel.FormatUsage`) — use that
+to split load vs prefill vs decode before optimizing. The real lever is **model size** (CPU speed ≈ inversely ∝
+params) and keeping the context small (`ModelProfiles.Phi4Mini.NumCtx` is deliberately 8192).
 
 ### Tools — `Loomo.Core/Tools/`
 
@@ -83,61 +82,57 @@ and is DI-shared as a singleton.
 ### AI clients — `Loomo.Ai/Clients/`
 
 `IAiClient` abstracts the provider; `AiClientFactory.ResolveCurrent()` reads the singleton `AiSettings`
-**every turn**, so settings changes apply immediately. The only implemented client is `OllamaClient`
-(provider `Local`), talking to a local Ollama via its **native API** (`/api/chat`, `/api/tags`) — the
-wire logic lives in `OllamaProtocol` (internal static). All HTTP goes through `Http/HttpRetry`
-(exponential backoff on 429/5xx/408 + `HttpRequestException`, honors `Retry-After`).
+**every turn**, so settings changes apply immediately. The only implemented client is `OnnxGenAiClient`
+(provider `Local`), which drives an **in-process ONNX Runtime GenAI** engine — there is **no HTTP / no
+external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU), pinned in
+`src/Loomo.Ai/Loomo.Ai.csproj`; the native runtime DLLs flow to the App output under
+`runtimes/win-x64/native/`.
 
-**Streaming**: `OllamaProtocol.SendChatAsync` reads Ollama's NDJSON stream (`stream:true`) line by line.
-Thinking arrives in its own `message.thinking` field (surfaced as `ThinkingDelta`), body in
-`message.content` (`TextDelta`), and `message.tool_calls` carry `arguments` as a **JSON object** (not a
-string). Thinking is toggled with the native boolean `think` from the user setting `ProviderConfig.Thinking`
-(a simple on/off — Ollama's `think` is boolean, so there's no low/medium/high). If the model rejects tools,
-the client retries once with `includeTools:false`.
+**Engine** — `Clients/Phi4Engine.cs` (DI singleton, `IDisposable`, implements `ILocalInferenceEngine`) owns the
+ORT-GenAI `Model`/`Tokenizer` lifetime. It lazily loads from `ProviderConfig.ModelPath` (a folder containing
+`genai_config.json` + `*.onnx` + tokenizer files, e.g. `microsoft/Phi-4-mini-instruct-onnx` CPU int4) and keeps
+it resident — model load is the cold cost (tens of seconds on CPU), so it's paid once. Generation is batch-size-1,
+serialized with a `SemaphoreSlim`. The decode loop (`AppendTokens` → `GenerateNextToken` → `TokenizerStream.Decode`,
+v0.9.0 API — no `ComputeLogits`) runs on a background thread and writes `TextDelta` + a final `AiUsageReported`
+(token counts + load/prefill/decode `Stopwatch` timings, self-measured) into a `Channel<AgentEvent>`.
 
-**Per-model profiles** — `Clients/ModelProfiles.cs`: `Resolve(model)` maps a model name (family prefix) to a
-`ModelProfile` that gates `tools`/`think` by capability and supplies the recommended `num_ctx` + sampling
-(`options`). Grounded in each family's official recommendations and `ollama show` capabilities; covers the
-installed qwen3 / qwen2.5 / qwen2.5-coder / gemma3 / phi4-mini families, with a safe default for unknown models. Effects:
-`think` is sent as `wantThink && SupportsThinking`, so `think:true` only reaches thinking-capable models (others
-would error) while `think:false` still goes to every model (harmless, and silences default-on thinking); `tools`
-is omitted up front for non-tool models like gemma3 (the error-fallback remains a safety net for misclassified
-unknowns); `num_ctx` is widened from Ollama's 4096 default; qwen3 uses different temps for thinking vs
-non-thinking. The effective `num_ctx` (`ProviderConfig.NumCtx` override, else profile) is shared by both the
-Ollama request and the history-trim budget (`SettingsContextWindowPolicy` caps to it) so the model never
-silently truncates context the trimmer thought it kept.
+**Prompt format** — `Clients/Phi4PromptFormatter.cs` builds the Phi-4 chat-template string directly:
+`<|system|>…<|tool|>[toolsJSON]<|/tool|><|end|>` then `<|{role}|>{content}<|end|>` per message, ending with
+`<|assistant|>`. Tool definitions go in the system turn; tool results render as role `tool`
+(`<|tool|>content<|end|>`). Reuses `WorkspaceContext.Describe` (current folder) and `EnvironmentProbe` (rg guidance).
 
-The system prompt is **uniform across models** — there is no per-model prompt injection (the old
-`ModelProfile.StyleGuidance` phi4-mini nudge was removed; model-specific prompt text is intentionally avoided).
-`AiSettings.DefaultSystemPrompt` is **English instructions / Japanese output** (small local models follow
-English tool-calling rules more reliably). Note the agent only ever has the single `pwsh` tool (see Tools), so
-the per-turn tool-definition payload is already minimal — this is what cut first-turn prefill from ~21s
-(≈12 tools) to ~2.4s on CPU.
+**Tool calling** — Phi-4-mini emits tool calls as a JSON array `[{"name":…,"arguments":{…}}]` in the **body**
+(no structured channel). `OnnxGenAiClient` buffers the full text, then `ToolCallTextParser.Parse` (shared, also
+handles function-call-style, bare arg objects, alias keys, code fences) turns it into `ToolUseRequested`; if it's
+not a tool call it emits one `TextDelta` + `TurnCompleted`. This terminal logic mirrors the old Ollama client.
 
-**Prompt-prefix caching (perf-critical)** — Ollama reuses the KV cache for the longest byte-identical prompt
-*prefix* (system + tools), so re-prefilling the large tool-definition block (~16s on CPU-only machines) is
-paid once instead of every turn. The invariant protecting this in `OllamaClient`/`OllamaProtocol.BuildRequest`:
-the system prompt must stay byte-stable across a session — anything that varies *within* a session must stay
-out of the `system` message and the `tools` array, or the cache busts and re-pays the prefill. The system
-prompt (`OllamaPromptBuilder.Build`) is the same `AiSettings.DefaultSystemPrompt` for all models, plus two
-*session-stable* additions: search guidance (rg-vs-Select-String, fixed by environment) and the **current
-folder** (`WorkspaceContext.Describe` — the workspace root, which only changes when the user opens a different
-folder, so it's stable enough for the prefix; switching folders does bust the cache once, which is acceptable).
-`BuildRequest` also sends `keep_alive` so the model and its prefix cache stay resident between turns.
+**Per-model profiles** — `Clients/ModelProfiles.cs`: `Resolve(model)` maps a model/folder name to a `ModelProfile`
+holding the context window (`NumCtx`) and sampling (temp/top_p/repetition_penalty → ORT-GenAI `SetSearchOption`).
+Only `Phi4Mini` (matches both `phi4-mini` and `phi-4-mini`, so the download folder name resolves) and a `Default`
+remain. The effective context window (`ProviderConfig.NumCtx` override, else profile, via `EffectiveNumCtx`) is
+shared by the engine's `max_length` and the history-trim budget (`SettingsContextWindowPolicy` caps to it) so the
+model never silently truncates context the trimmer thought it kept.
 
-`OllamaLauncher.ResolveHost` normalizes `BaseUrl` to the native host and strips a trailing `/v1` left
-over from the old OpenAI-compatible config, so existing `settings.json` keeps working.
+The system prompt is **uniform across models** (no per-model injection). `AiSettings.DefaultSystemPrompt` is
+**English instructions / Japanese output** (small local models follow English tool-calling rules more reliably).
+The agent only ever has the single `pwsh` tool (see Tools), so the per-turn tool-definition payload is minimal.
 
-**Known limitations** (don't assume these exist): no token/cost usage display. Context management is
-trim-only (no summarization/compaction). Copilot token exchange + chat use **unofficial** endpoints and
-are E2E-unverified.
+**Model acquisition** — `ModelDownloadService` fetches `microsoft/Phi-4-mini-instruct-onnx` (CPU int4) from
+Hugging Face into `%APPDATA%/Loomo/models/<name>/` (streamed, resumable, cancellable); the settings panel has a
+download button + folder picker. `ModelCatalogService` enumerates local ONNX model folders (those with
+`genai_config.json`) under that root for the model dropdown — it no longer does any HTTP.
+
+**Known limitations** (don't assume these exist): thinking/reasoning is not surfaced (phi4-mini-instruct is a
+non-thinking model). Context management is trim-only (no summarization/compaction). The `IBrowserService` /
+Copilot remnants are unused by the agent.
 
 ### Persistence
 
-`%APPDATA%/Loomo/` holds `settings.json` (provider/model/key/BaseUrl/MaxTokens + Safety; legacy SystemPrompt is ignored) and
-`sessions/*.json`. **API keys are DPAPI-encrypted (CurrentUser)** — classes touching this are
-`[SupportedOSPlatform("windows")]`. Sessions auto-save in the turn-completion `finally`; restore via the
-Sessions panel (`ConversationStore` raises a `Changed` event).
+`%APPDATA%/Loomo/` holds `settings.json` (provider/model/`modelPath`/MaxTokens + Safety; legacy
+`baseUrl`/`numGpu`/`thinking`/SystemPrompt fields are read for back-compat but ignored), `models/` (downloaded
+ONNX models), and `sessions/*.json`. **API keys are DPAPI-encrypted (CurrentUser)** — classes touching this are
+`[SupportedOSPlatform("windows")]` (kept for forward-compat; the local engine needs no key). Sessions auto-save
+in the turn-completion `finally`; restore via the Sessions panel (`ConversationStore` raises a `Changed` event).
 
 ### UI — `Loomo.App`
 

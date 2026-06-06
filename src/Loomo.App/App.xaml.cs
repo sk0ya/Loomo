@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
@@ -70,13 +71,17 @@ public partial class App : Application
         services.AddSingleton<IApprovalService>(sp => sp.GetRequiredService<UiApprovalService>());
 
         // --- AI ---
+        // ローカル推論エンジン（ONNX Runtime GenAI・CPU）。モデルを常駐させるためシングルトン。
+        services.AddSingleton<Phi4Engine>();
+        services.AddSingleton<ILocalInferenceEngine>(sp => sp.GetRequiredService<Phi4Engine>());
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
         // コンテキスト長管理：現在プロバイダの上限に合わせ送信前に履歴をトリム
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
-        // Ollama から利用可能モデル一覧を取得（設定画面の選択肢）
-        services.AddSingleton(sp => new ModelCatalogService(
-            sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai"),
-            sp.GetRequiredService<AiSettings>()));
+        // ローカルに配置済みの ONNX モデルフォルダを列挙（設定画面の選択肢）
+        services.AddSingleton(sp => new ModelCatalogService(sp.GetRequiredService<AiSettings>()));
+        // モデルのダウンロード（Hugging Face → %APPDATA%/Loomo/models）
+        services.AddSingleton(sp => new ModelDownloadService(
+            sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
 
         // --- ツール ---
         // エージェントには run_powershell（PowerShell 実行）1 つだけを渡す。読み取り・検索・編集も

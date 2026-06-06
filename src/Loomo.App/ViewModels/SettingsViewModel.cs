@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
@@ -23,7 +25,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly AiSettingsStore _store;
     private readonly IEditorService _editor;
     private readonly ModelCatalogService _modelCatalog;
+    private readonly ModelDownloadService _modelDownload;
     private CancellationTokenSource? _fetchModelsCts;
+    private CancellationTokenSource? _downloadCts;
     // 初期ロード中の代入で自動保存（Persist）が走らないようにするためのガード。
     private bool _suppressPersist = true;
 
@@ -31,11 +35,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     public event Action? Saved;
 
     [ObservableProperty] private string _model = "";
+    [ObservableProperty] private string _modelPath = "";
     [ObservableProperty] private int _maxTokens;
-    [ObservableProperty] private int _numGpu;
-    [ObservableProperty] private bool _thinking;
     [ObservableProperty] private bool _vimEnabled;
     [ObservableProperty] private string _status = "";
+
+    /// <summary>モデルをダウンロード中か。</summary>
+    [ObservableProperty] private bool _isDownloading;
+
+    /// <summary>ダウンロード進捗（0–100、不明時は不定表示用に -1）。</summary>
+    [ObservableProperty] private double _downloadProgress;
 
     // --- 安全設計（設計書 §10） ---
     [ObservableProperty] private bool _autoApprove;
@@ -53,12 +62,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool CanFetchModels => true;
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
-        IEditorService editor, ModelCatalogService modelCatalog)
+        IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload)
     {
         _settings = settings;
         _store = store;
         _editor = editor;
         _modelCatalog = modelCatalog;
+        _modelDownload = modelDownload;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadLocalFields();
@@ -72,18 +82,30 @@ public sealed partial class SettingsViewModel : ObservableObject
         _suppressPersist = true;
         var cfg = _settings.Local;
         Model = cfg.Model;
+        ModelPath = cfg.ModelPath;
         MaxTokens = cfg.MaxTokens;
-        NumGpu = cfg.NumGpu;
-        Thinking = cfg.Thinking;
         VimEnabled = _settings.Vim.Enabled;
         _suppressPersist = false;
     }
 
     // 「保存」ボタンは廃止。各項目の変更はその場で共有 AiSettings へ反映し、ファイルへ即永続化する。
-    partial void OnModelChanged(string value) => Persist();
+    partial void OnModelChanged(string value)
+    {
+        // 一覧から選んだ（または入力した）モデル名に対応するローカルフォルダがあれば ModelPath を追従させる。
+        if (!_suppressPersist)
+        {
+            var resolved = _modelCatalog.ResolvePath(value.Trim());
+            if (!string.IsNullOrEmpty(resolved))
+            {
+                _suppressPersist = true;
+                ModelPath = resolved;
+                _suppressPersist = false;
+            }
+        }
+        Persist();
+    }
+    partial void OnModelPathChanged(string value) => Persist();
     partial void OnMaxTokensChanged(int value) => Persist();
-    partial void OnNumGpuChanged(int value) => Persist();
-    partial void OnThinkingChanged(bool value) => Persist();
     partial void OnVimEnabledChanged(bool value) => Persist();
     partial void OnAutoApproveChanged(bool value) => Persist();
     partial void OnRestrictToWorkspaceRootChanged(bool value) => Persist();
@@ -94,11 +116,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         // 手入力途中の空値ではモデルを上書きしない（実行中モデルを消さないため）。
         var name = Model.Trim();
         if (name.Length > 0) cfg.Model = name;
+        cfg.ModelPath = ModelPath.Trim();
         cfg.ApiKey = null;
         cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
-        // num_gpu: 負値=自動（送らない）／0=CPU実行／正値=オフロード層数。負値はすべて -1 に正規化する。
-        cfg.NumGpu = NumGpu < 0 ? -1 : NumGpu;
-        cfg.Thinking = Thinking;
     }
 
     /// <summary>変更を共有 <see cref="AiSettings"/> へ即時反映し、ファイルへ永続化する。
@@ -126,7 +146,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>設定パネルを開いたときに呼ぶ。まだ候補が無ければ Ollama から自動取得する
+    /// <summary>設定パネルを開いたときに呼ぶ。まだ候補が無ければローカルのモデルフォルダを列挙する
     /// （取得済み／取得中なら何もしない）。手動更新は「再取得」ボタンで行える。</summary>
     public void EnsureModelsLoaded()
     {
@@ -138,7 +158,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private Task FetchModelsAsync() => FetchModelsCoreAsync(autoOpen: true);
 
-    /// <summary>固定のローカル Ollama エンドポイントから利用可能なモデル一覧を取得し、選択肢に反映する。
+    /// <summary>ローカルに配置済みの ONNX モデルフォルダを列挙し、選択肢に反映する。
     /// <paramref name="autoOpen"/> が true なら取得成功後にドロップダウンを自動で開く。</summary>
     private async Task FetchModelsCoreAsync(bool autoOpen)
     {
@@ -164,7 +184,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             if (AvailableModels.Count == 0)
             {
-                Status = "モデルが見つかりませんでした。エンドポイントが起動しているか確認してください。";
+                Status = "ローカルにモデルが見つかりませんでした。「ダウンロード」または「フォルダ選択」で用意してください。";
             }
             else
             {
@@ -191,6 +211,87 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 IsFetchingModels = false;
                 _fetchModelsCts = null;
+            }
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>ONNX モデルフォルダを手動で選ぶ（任意の場所に置いたモデル用）。
+    /// 選んだフォルダを ModelPath に設定し、モデル名（プロファイル解決用）にフォルダ名を流用する。</summary>
+    [RelayCommand]
+    private void BrowseModel()
+    {
+        var initial = !string.IsNullOrWhiteSpace(ModelPath) && Directory.Exists(ModelPath)
+            ? ModelPath
+            : ModelDownloadService.DefaultModelsRoot;
+        var dialog = new OpenFolderDialog
+        {
+            Title = "ONNX モデルフォルダを選択（genai_config.json を含むフォルダ）",
+            InitialDirectory = Directory.Exists(initial) ? initial : null,
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var folder = dialog.FolderName;
+        if (!File.Exists(Path.Combine(folder, "genai_config.json")))
+        {
+            Status = "選択したフォルダに genai_config.json がありません（ONNX モデルフォルダではありません）。";
+            return;
+        }
+
+        ModelPath = folder;                          // OnModelPathChanged → Persist
+        var name = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
+        if (!string.IsNullOrEmpty(name) && !AvailableModels.Contains(name))
+            AvailableModels.Add(name);
+        if (!string.IsNullOrEmpty(name))
+            Model = name;
+        Status = $"モデルフォルダを設定しました: {folder}";
+    }
+
+    /// <summary>phi4-mini（ONNX・CPU int4）を Hugging Face からダウンロードして設定する。</summary>
+    [RelayCommand]
+    private async Task DownloadModelAsync()
+    {
+        if (IsDownloading) return;
+        _downloadCts?.Cancel();
+        var cts = _downloadCts = new CancellationTokenSource();
+        IsDownloading = true;
+        DownloadProgress = 0;
+        try
+        {
+            Status = "モデルをダウンロードしています…";
+            var progress = new Progress<ModelDownloadService.Progress>(p =>
+            {
+                DownloadProgress = p.TotalBytes > 0 ? p.DownloadedBytes * 100.0 / p.TotalBytes : -1;
+                var pct = p.TotalBytes > 0 ? $"{DownloadProgress:0}%" : $"{p.DownloadedBytes / (1024 * 1024)}MB";
+                Status = $"ダウンロード中 ({p.FileIndex}/{p.FileCount}) {p.CurrentFile} — {pct}";
+            });
+
+            var dir = await _modelDownload.DownloadAsync(progress, cts.Token);
+            if (cts.IsCancellationRequested) return;
+
+            ModelPath = dir;                          // OnModelPathChanged → Persist
+            var name = Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar));
+            if (!string.IsNullOrEmpty(name))
+            {
+                if (!AvailableModels.Contains(name)) AvailableModels.Add(name);
+                Model = name;
+            }
+            Status = $"モデルのダウンロードが完了しました: {dir}";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "ダウンロードを中止しました。";
+        }
+        catch (Exception ex)
+        {
+            Status = $"ダウンロードに失敗しました: {ex.Message}";
+        }
+        finally
+        {
+            if (_downloadCts == cts)
+            {
+                IsDownloading = false;
+                _downloadCts = null;
             }
             cts.Dispose();
         }

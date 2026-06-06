@@ -47,8 +47,9 @@ public class ShellViewModelTests
             settings, store,
             new ToolRegistry(Enumerable.Empty<IAgentTool>()),
             conversations);
-        var modelCatalog = new ModelCatalogService(new System.Net.Http.HttpClient(), settings);
-        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog);
+        var modelCatalog = new ModelCatalogService(settings);
+        var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
+        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload);
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager());
 
         var workspaceStore = new WorkspaceStateStore(

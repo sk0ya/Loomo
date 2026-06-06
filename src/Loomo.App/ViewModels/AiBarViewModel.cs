@@ -435,18 +435,15 @@ public sealed partial class AiBarViewModel : ObservableObject
         clock = null;
     }
 
-    /// <summary>このターンで使うAIの実行構成（モデル・num_gpu・num_ctx・thinking）を進行状況の1行に整形する。
+    /// <summary>このターンで使うAIの実行構成（モデル・コンテキスト長・実行EP）を進行状況の1行に整形する。
     /// 何のモデル・設定で動いているのかを毎ターン先頭に出して、遅さ等の原因切り分けに使えるようにする。</summary>
     private string FormatRunConfig()
     {
         var cfg = _settings.Local;
         var model = string.IsNullOrWhiteSpace(cfg.Model) ? "(未設定)" : cfg.Model;
-
-        var gpu = cfg.NumGpu < 0 ? "自動" : cfg.NumGpu == 0 ? "CPU実行(0)" : $"{cfg.NumGpu}層";
         var numCtx = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
-        var think = cfg.Thinking ? "オン" : "オフ";
 
-        return $"⚙️ 実行構成: モデル {model}｜num_gpu {gpu}｜num_ctx {numCtx}｜thinking {think}";
+        return $"⚙️ 実行構成: モデル {model}｜num_ctx {numCtx}｜EP CPU(ONNX)";
     }
 
     /// <summary>AI利用統計を進行状況の1行に整形する。トークン数と、重みロード／prefill／decode の

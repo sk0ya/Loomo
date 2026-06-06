@@ -1,79 +1,99 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using sk0ya.Loomo.Ai.Http;
 using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.Ai;
 
 /// <summary>
-/// Ollama のネイティブ API から利用可能なモデル一覧を取得する。
-/// <c>GET {host}/api/tags</c> を叩き、設定画面のモデル選択肢として提示する。
+/// ローカルに配置済みの ONNX モデルフォルダ（<c>genai_config.json</c> を含むもの）を列挙する。
+/// 既定のモデルルート <c>%APPDATA%/Loomo/models</c> の直下と、現在設定中のモデルフォルダの親を走査し、
+/// 設定画面のモデル選択肢として提示する。HTTP（旧 Ollama <c>/api/tags</c>）には依存しない。
 /// </summary>
 public sealed class ModelCatalogService
 {
-    private readonly HttpClient _http;
     private readonly AiSettings _settings;
 
-    public ModelCatalogService(HttpClient http, AiSettings settings)
-    {
-        _http = http;
-        _settings = settings;
-    }
+    public ModelCatalogService(AiSettings settings) => _settings = settings;
 
     /// <summary>モデル一覧取得に対応するプロバイダか。</summary>
-    public static bool Supports(AiProvider provider) =>
-        provider is AiProvider.Local;
+    public static bool Supports(AiProvider provider) => provider is AiProvider.Local;
 
     /// <summary>
-    /// 指定プロバイダのエンドポイントからモデルIDの一覧を取得する。
-    /// 固定のローカル Ollama エンドポイントから取得する。
+    /// 利用可能なローカル ONNX モデルフォルダ名の一覧を返す（重複排除・名前順、phi4-mini を先頭に）。
+    /// 表示名はフォルダ名。実フォルダは <see cref="ResolvePath"/> で復元できる。
     /// </summary>
-    public async Task<IReadOnlyList<string>> FetchAsync(
-        AiProvider provider,
-        CancellationToken ct = default)
+    public Task<IReadOnlyList<string>> FetchAsync(AiProvider provider, CancellationToken ct = default)
     {
         if (!Supports(provider))
             throw new NotSupportedException($"{provider} はモデル一覧取得に対応していません。");
 
-        var cfg = _settings.Local;
-        var host = OllamaLauncher.Host;
-        var apiKey = cfg.ApiKey;
+        var names = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 未起動なら Ollama の起動を試みてから取得する（手動起動を不要にする）。
-        await OllamaLauncher.EnsureRunningAsync(_http, host, ct);
-
-        using var resp = await HttpRetry.SendAsync(_http, () =>
+        foreach (var dir in EnumerateModelDirs())
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, $"{host}/api/tags");
-            if (!string.IsNullOrWhiteSpace(apiKey))
-                req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
-            return req;
-        }, ct);
+            var name = Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrEmpty(name) && seen.Add(name))
+                names.Add(name);
+        }
 
-        var json = await resp.Content.ReadAsStringAsync(ct);
-        if (!resp.IsSuccessStatusCode)
-            throw new InvalidOperationException($"モデル一覧の取得に失敗しました（{(int)resp.StatusCode}）: {json}");
-
-        var root = JsonNode.Parse(json);
-        // Ollama: { "models": [ { "name": "qwen3:4b", ... }, ... ] }
-        var list = root?["models"]?.AsArray();
-        if (list is null)
-            return Array.Empty<string>();
-
-        return list
-            .Select(n => n?["name"]?.GetValue<string>())
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name!)
-            .OrderBy(name => Phi4MiniRank(name))
-            .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
+        IReadOnlyList<string> result = names
+            .OrderBy(Phi4MiniRank)
+            .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        return Task.FromResult(result);
     }
 
-    private static int Phi4MiniRank(string name)
-        => name.StartsWith("phi4-mini", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+    /// <summary>モデルフォルダ名から実フォルダの絶対パスを復元する。
+    /// モデルルート直下を優先し、無ければ現在のモデルフォルダの親を見る。見つからなければ空文字を返す。</summary>
+    public string ResolvePath(string modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+            return "";
+
+        foreach (var root in Roots())
+        {
+            var candidate = Path.Combine(root, modelName);
+            if (IsOnnxModelDir(candidate)) return candidate;
+        }
+        return "";
+    }
+
+    private IEnumerable<string> EnumerateModelDirs()
+    {
+        foreach (var root in Roots())
+        {
+            if (!Directory.Exists(root)) continue;
+            IEnumerable<string> subdirs;
+            try { subdirs = Directory.EnumerateDirectories(root); }
+            catch { continue; }
+            foreach (var d in subdirs)
+                if (IsOnnxModelDir(d))
+                    yield return d;
+        }
+    }
+
+    /// <summary>走査対象のルート群（既定モデルルート＋現在のモデルフォルダの親）。</summary>
+    private IEnumerable<string> Roots()
+    {
+        yield return ModelDownloadService.DefaultModelsRoot;
+
+        var current = _settings.Local.ModelPath;
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            var parent = Path.GetDirectoryName(current.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrWhiteSpace(parent))
+                yield return parent;
+        }
+    }
+
+    private static bool IsOnnxModelDir(string dir) =>
+        Directory.Exists(dir) && File.Exists(Path.Combine(dir, "genai_config.json"));
+
+    private static int Phi4MiniRank(string name) =>
+        name.Contains("phi", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
 }

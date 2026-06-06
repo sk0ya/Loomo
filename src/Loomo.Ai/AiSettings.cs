@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Ai;
 /// <summary>AIプロバイダ設定。appsettings / ユーザー設定からバインドする。</summary>
 public sealed class AiSettings
 {
-    public const string DefaultLocalModel = "qwen2.5-coder:3b";
+    public const string DefaultLocalModel = "phi4-mini";
 
     /// <summary>現在選択中のプロバイダ。</summary>
     public AiProvider Provider { get; set; } = AiProvider.Local;
@@ -32,7 +32,7 @@ public sealed class AiSettings
     /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
     public AppearanceSettings Appearance { get; set; } = new();
 
-    /// <summary>ローカルLLM（Ollama ネイティブ API /api/chat）。</summary>
+    /// <summary>ローカルLLM（ONNX Runtime GenAI・in-process／CPU）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
         Model = DefaultLocalModel,
@@ -45,10 +45,10 @@ public sealed class AiSettings
         => (profile ?? AgentProfiles.Root).ApplyTo(SystemPrompt);
 
     /// <summary>既定のシステムプロンプト（設定画面の「デフォルトに戻す」で使用）。
-    /// Ollama の tool calling 前提で、長い PowerShell 作法より「必要なら本文ではなく tool call」
+    /// ローカルLLM の tool calling 前提で、長い PowerShell 作法より「必要なら本文ではなく tool call」
     /// を優先して短く明示する。</summary>
     public const string DefaultSystemPrompt =
-        "You are a Japanese-speaking agent in a Windows dev workspace, inside an Ollama tool-calling loop. " +
+        "You are a Japanese-speaking agent in a Windows dev workspace, inside a tool-calling loop. " +
         "Only tool: run_powershell. Do file/search/build/test/edit as PowerShell.\n" +
         "Rules:\n" +
         "- Need file contents or command output: call run_powershell, don't explain in prose.\n" +
@@ -65,6 +65,11 @@ public sealed class AiSettings
 public sealed class ProviderConfig
 {
     public string Model { get; set; } = "";
+
+    /// <summary>ローカル推論エンジン（ONNX Runtime GenAI）が読む ONNX モデルフォルダの絶対パス。
+    /// <c>genai_config.json</c> ＋ <c>*.onnx</c> ＋ tokenizer 一式を含むフォルダ
+    /// （例: <c>microsoft/Phi-4-mini-instruct-onnx</c> の CPU int4 バリアント）。空なら未設定。</summary>
+    public string ModelPath { get; set; } = "";
 
     /// <summary>APIキー。実運用では資格情報マネージャ等から注入する想定。</summary>
     public string? ApiKey { get; set; }

@@ -4,7 +4,7 @@
     Background="{DynamicResource BgAlt}">
 
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="設定 — Ollama" />
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="設定 — ローカルLLM" />
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,4,12,12">
             <StackPanel>
@@ -25,26 +25,30 @@
                             Command="{Binding FetchModelsCommand}"
                             IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}" />
                 </Grid>
-                <TextBlock Text="開くと Ollama から候補を自動取得します（「再取得」で更新）。一覧に無いモデルは直接入力も可。"
+                <TextBlock Text="ローカルに配置済みの ONNX モデルフォルダから選びます（「再取得」で再列挙）。"
+                           Foreground="{DynamicResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
+
+                <TextBlock Style="{StaticResource FieldLabel}" Text="モデルフォルダ" />
+                <TextBox Text="{Binding ModelPath, UpdateSourceTrigger=PropertyChanged}"
+                         IsReadOnly="True" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="フォルダ選択" Style="{StaticResource FlatButton}"
+                            Command="{Binding BrowseModelCommand}" />
+                    <Button Content="phi4-mini をダウンロード" Style="{StaticResource FlatButton}"
+                            Margin="6,0,0,0"
+                            Command="{Binding DownloadModelCommand}"
+                            IsEnabled="{Binding IsDownloading, Converter={StaticResource InverseBool}}" />
+                </StackPanel>
+                <ProgressBar Height="6" Margin="0,6,0,0" Minimum="0" Maximum="100"
+                             Value="{Binding DownloadProgress, Mode=OneWay}"
+                             Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Text="ONNX Runtime GenAI（CPU）が読むフォルダです。genai_config.json を含むフォルダを指定するか、Hugging Face からダウンロードしてください。"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
 
                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Style="{StaticResource FieldLabel}" Text="GPU オフロード層数 (num_gpu)" />
-                <TextBox Text="{Binding NumGpu, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Text="-1=自動（Ollama に委ねる）／0=GPU を使わず CPU 実行／正値=オフロードする層数。VRAM の小さい貧弱な GPU では 0 にすると prefill が速くなることがあります。"
-                           Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
-
-                <TextBlock Style="{StaticResource FieldLabel}" Text="Thinking" />
-                <CheckBox Content="思考（thinking）を有効にする"
-                          IsChecked="{Binding Thinking}" Margin="0,2,0,4"
-                          Foreground="{DynamicResource Fg}" />
-                <TextBlock Text="オフは速度優先。オン（thinking 対応モデルのみ）は回答前に推論します。"
-                           Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
 
                 <Separator Margin="0,14,0,8" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="Editor / Vim" />

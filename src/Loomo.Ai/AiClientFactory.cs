@@ -1,20 +1,20 @@
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
-using System.Net.Http;
 using sk0ya.Loomo.Ai.Clients;
 
 namespace sk0ya.Loomo.Ai;
 
-/// <summary>設定に応じて IAiClient を解決するファクトリ。</summary>
+/// <summary>設定に応じて IAiClient を解決するファクトリ。
+/// ローカル推論は ONNX Runtime GenAI（<see cref="ILocalInferenceEngine"/>）を使う in-process クライアント。</summary>
 public sealed class AiClientFactory : IAiClientFactory
 {
-    private readonly IHttpClientFactory _httpFactory;
+    private readonly ILocalInferenceEngine _engine;
     private readonly AiSettings _settings;
     private readonly IWorkspaceService _workspace;
 
-    public AiClientFactory(IHttpClientFactory httpFactory, AiSettings settings, IWorkspaceService workspace)
+    public AiClientFactory(ILocalInferenceEngine engine, AiSettings settings, IWorkspaceService workspace)
     {
-        _httpFactory = httpFactory;
+        _engine = engine;
         _settings = settings;
         _workspace = workspace;
     }
@@ -22,5 +22,5 @@ public sealed class AiClientFactory : IAiClientFactory
     public IAiClient ResolveCurrent() => Resolve(_settings.Provider);
 
     public IAiClient Resolve(AiProvider provider) =>
-        new OllamaClient(_httpFactory.CreateClient("ai"), _settings, _workspace);
+        new OnnxGenAiClient(_engine, _settings, _workspace);
 }
