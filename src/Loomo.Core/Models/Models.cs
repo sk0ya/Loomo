@@ -52,6 +52,11 @@ public sealed class ChatMessage
     /// <summary>このメッセージを生成した組み込みAIプロファイルID。ユーザー/ツールでは null。</summary>
     public string? AgentId { get; set; }
 
+    /// <summary>このメッセージで始まったターンの「進行状況」ログ（実行構成・AI内訳・各イベントの経過時間）。
+    /// AIコンテキストには使わないUI診断用メタデータで、user メッセージにのみ付く。セッション復元時に
+    /// 進捗表示を再構築するため永続化する（プロンプト整形系はこのフィールドを読まない）。</summary>
+    public string? ProgressLog { get; set; }
+
     /// <summary>アシスタントが要求したツール呼び出し（複数可）。</summary>
     public List<ToolUse> ToolUses { get; } = new();
 

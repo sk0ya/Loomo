@@ -182,6 +182,9 @@ public sealed partial class AiBarViewModel : ObservableObject
             {
                 case ChatRole.User:
                     Add(EntryKind.User, "あなた", m.Text ?? "");
+                    // ライブ表示と同様、user 発言の直後に当該ターンの進行状況を再構築する。
+                    if (!string.IsNullOrEmpty(m.ProgressLog))
+                        Add(EntryKind.Activity, "進行状況", m.ProgressLog);
                     break;
 
                 case ChatRole.Assistant:
@@ -367,6 +370,11 @@ public sealed partial class AiBarViewModel : ObservableObject
             ClearStatus();
             _cts?.Dispose();
             _cts = null;
+
+            // このターンの進行状況ログを、ターンを開始した user メッセージへ畳んで永続化する
+            // （セッション復元時に進捗表示を再構築できるようにする）。
+            var turnUser = _conversation.Messages.LastOrDefault(m => m.Role == ChatRole.User);
+            if (turnUser is not null) turnUser.ProgressLog = activity.Text;
 
             // ターン終了時にセッションを自動保存（新規なら採番）
             try { _currentSessionId = _sessions.Save(_currentSessionId, _conversation); }

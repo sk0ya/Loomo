@@ -140,7 +140,7 @@ public sealed class ConversationStore
             var dto = new SessionDto { Id = id, Title = title, CreatedAt = createdAt, UpdatedAt = updatedAt };
             foreach (var m in c.Messages)
             {
-                var md = new MessageDto { Role = m.Role, Text = m.Text };
+                var md = new MessageDto { Role = m.Role, Text = m.Text, ProgressLog = m.ProgressLog };
                 foreach (var u in m.ToolUses)
                     md.ToolUses.Add(new ToolUseDto { Id = u.Id, Name = u.Name, ArgumentsJson = u.ArgumentsJson, RawJson = u.RawJson });
                 foreach (var r in m.ToolResults)
@@ -155,7 +155,7 @@ public sealed class ConversationStore
             var c = new Conversation();
             foreach (var md in Messages)
             {
-                var m = new ChatMessage { Role = md.Role, Text = md.Text };
+                var m = new ChatMessage { Role = md.Role, Text = md.Text, ProgressLog = md.ProgressLog };
                 foreach (var u in md.ToolUses)
                     m.ToolUses.Add(new ToolUse(u.Id ?? "", u.Name ?? "", u.ArgumentsJson ?? "{}", u.RawJson));
                 foreach (var r in md.ToolResults)
@@ -170,6 +170,7 @@ public sealed class ConversationStore
     {
         public ChatRole Role { get; set; }
         public string? Text { get; set; }
+        public string? ProgressLog { get; set; }
         public List<ToolUseDto> ToolUses { get; set; } = new();
         public List<ToolResultDto> ToolResults { get; set; } = new();
     }

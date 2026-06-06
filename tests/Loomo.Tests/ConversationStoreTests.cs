@@ -40,6 +40,23 @@ public class ConversationStoreTests
     }
 
     [Fact]
+    public void Save_then_load_round_trips_progress_log()
+    {
+        var store = NewStore();
+        var conv = new Conversation();
+        var user = conv.AddUser("ビルドして");
+        user.ProgressLog = "[0 ms] ⚙️ 実行構成: モデル phi-4-mini\n[16.6 秒] 📊 AI内訳#1: トークン 入力347/出力30";
+        conv.Messages.Add(new ChatMessage { Role = ChatRole.Assistant, Text = "完了" });
+
+        var id = store.Save(null, conv);
+        var loaded = store.Load(id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(user.ProgressLog, loaded!.Conversation.Messages[0].ProgressLog);
+        Assert.Null(loaded.Conversation.Messages[1].ProgressLog);   // assistant には付かない
+    }
+
+    [Fact]
     public void Save_with_same_id_updates_in_place()
     {
         var store = NewStore();
