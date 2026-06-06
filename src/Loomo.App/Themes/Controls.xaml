@@ -384,6 +384,31 @@
         <Setter Property="Margin" Value="0,10,0,3" />
     </Style>
 
+    <!-- ===== 設定: セクション見出し ===== -->
+    <!-- 狭いサイドバー幅を食わないよう、枠（カード）ではなく見出し＋区切り線でグループ化する。 -->
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+
+    <!-- ===== 設定: 補足テキスト（小さな説明・折り返し） ===== -->
+    <Style x:Key="FieldHint" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+
+    <!-- ===== 設定: 横いっぱいに伸びるボタン =====
+         狭い列でラベルが見切れないよう、ボタンは横並びにせず全幅で縦に積む。 -->
+    <Style x:Key="WideButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,6,0,0" />
+    </Style>
+
     <!-- ===== ScrollBar（テーマ対応・スリム化） =====
          WPF 既定のスクロールバーは幅約17pxでシステム色のため、テーマに馴染まない。
          矢印ボタンを廃し、丸みのある細いつまみ（thumb）のみのオーバーレイ風に統一する。 -->

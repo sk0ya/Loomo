@@ -4,83 +4,75 @@
     Background="{DynamicResource BgAlt}">
 
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="設定 — ローカルLLM" />
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="設定" />
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,4,12,12">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,4,10,12">
             <StackPanel>
 
-                <TextBlock Style="{StaticResource FieldLabel}" Text="モデル" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox Grid.Column="0" IsEditable="True"
-                              StaysOpenOnEdit="True"
-                              ItemsSource="{Binding AvailableModels}"
-                              IsDropDownOpen="{Binding ModelDropDownOpen, Mode=TwoWay}"
-                              Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Grid.Column="1" Content="再取得" Style="{StaticResource FlatButton}"
-                            Margin="6,0,0,0"
-                            Command="{Binding FetchModelsCommand}"
-                            IsEnabled="{Binding IsFetchingModels, Converter={StaticResource InverseBool}}" />
-                </Grid>
-                <TextBlock Text="ローカルに配置済みの ONNX モデルフォルダから選びます（「再取得」で再列挙）。"
+                <!-- ===== モデル ===== -->
+                <!-- 「モデル」と「モデルフォルダ」は同じ実体（選んだローカルフォルダ）なので
+                     1つのセレクタに統合。フォルダは選択結果として下に注記表示するだけにする。
+                     コンボは IsEditable のまま IsReadOnly で自由入力を封じる（非編集の SelectedItem だと
+                     リスト未取得時に選択が null へ巻き戻り Model が消えるため）。 -->
+                <TextBlock Style="{StaticResource SectionTitle}" Text="モデル" Margin="0,2,0,4" />
+                <ComboBox IsEditable="True" IsReadOnly="True"
+                          ItemsSource="{Binding AvailableModels}"
+                          IsDropDownOpen="{Binding ModelDropDownOpen, Mode=TwoWay}"
+                          Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="ローカルに配置済みの ONNX モデルから選びます。" />
+                <TextBlock Text="{Binding ModelPath, StringFormat='📁 {0}'}"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding ModelPath}"
                            Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
+                           Margin="2,5,0,0" />
 
-                <TextBlock Style="{StaticResource FieldLabel}" Text="モデルフォルダ" />
-                <TextBox Text="{Binding ModelPath, UpdateSourceTrigger=PropertyChanged}"
-                         IsReadOnly="True" TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button Content="フォルダ選択" Style="{StaticResource FlatButton}"
-                            Command="{Binding BrowseModelCommand}" />
-                    <Button Content="phi4-mini をダウンロード" Style="{StaticResource FlatButton}"
-                            Margin="6,0,0,0"
-                            Command="{Binding DownloadModelCommand}"
-                            IsEnabled="{Binding IsDownloading, Converter={StaticResource InverseBool}}" />
-                </StackPanel>
-                <ProgressBar Height="6" Margin="0,6,0,0" Minimum="0" Maximum="100"
+                <Button Style="{StaticResource WideButton}" Content="⬇  ダウンロード"
+                        ToolTip="Hugging Face から phi4-mini（CPU int4）をダウンロードして追加します。"
+                        Command="{Binding DownloadModelCommand}"
+                        IsEnabled="{Binding IsDownloading, Converter={StaticResource InverseBool}}" />
+                <Button Style="{StaticResource WideButton}" Content="📂  別の場所から追加…"
+                        ToolTip="任意の場所にある ONNX モデルフォルダ（genai_config.json を含む）を選んで追加します。"
+                        Command="{Binding BrowseModelCommand}" />
+                <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
                              Value="{Binding DownloadProgress, Mode=OneWay}"
                              Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVis}}" />
-                <TextBlock Text="ONNX Runtime GenAI（CPU）が読むフォルダです。genai_config.json を含むフォルダを指定するか、Hugging Face からダウンロードしてください。"
-                           Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
 
-                <TextBlock Style="{StaticResource FieldLabel}" Text="最大トークン" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="最大出力トークン" />
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
 
-                <Separator Margin="0,14,0,8" />
-                <TextBlock Style="{StaticResource FieldLabel}" Text="Editor / Vim" />
-                <CheckBox Content="Vim キーバインドを有効にする"
-                          IsChecked="{Binding VimEnabled}" Margin="0,2,0,4"
-                          Foreground="{DynamicResource Fg}" />
-                <TextBlock Text="有効/無効は開いているタブにも反映されます。"
-                           Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
+                <!-- ===== エディタ ===== -->
+                <Separator Margin="0,16,0,10" />
+                <TextBlock Style="{StaticResource SectionTitle}" Text="エディタ" />
+                <CheckBox IsChecked="{Binding VimEnabled}" Margin="0,6,0,0"
+                          ToolTip="有効/無効は開いているタブにも反映されます。">
+                    <TextBlock Text="Vim キーバインドを有効にする" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Fg}" />
+                </CheckBox>
 
-                <!-- 安全設計（§10） -->
-                <Separator Margin="0,14,0,8" />
-                <TextBlock Style="{StaticResource FieldLabel}" Text="安全設計" />
-                <CheckBox Content="自動承認モード（信頼ワークスペース向け・コマンド/編集の承認カードを省略）"
-                          IsChecked="{Binding AutoApprove}" Margin="0,2,0,4"
-                          Foreground="{DynamicResource Fg}" />
-                <CheckBox Content="ツールのファイルアクセスをワークスペースルート配下に限定（パストラバーサル防止）"
-                          IsChecked="{Binding RestrictToWorkspaceRoot}" Margin="0,2,0,4"
-                          Foreground="{DynamicResource Fg}" />
+                <!-- ===== 安全設計 ===== -->
+                <Separator Margin="0,16,0,10" />
+                <TextBlock Style="{StaticResource SectionTitle}" Text="安全設計" />
+                <CheckBox IsChecked="{Binding AutoApprove}" Margin="0,6,0,0"
+                          ToolTip="信頼ワークスペース向け。コマンド/編集の承認カードを省略します。">
+                    <TextBlock Text="自動承認モード" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Fg}" />
+                </CheckBox>
+                <CheckBox IsChecked="{Binding RestrictToWorkspaceRoot}" Margin="0,6,0,0"
+                          ToolTip="パストラバーサルを防止します。">
+                    <TextBlock Text="ファイルアクセスをワークスペース内に限定" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Fg}" />
+                </CheckBox>
+
                 <TextBlock Style="{StaticResource FieldLabel}" Text="ブロックする危険コマンド" />
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="エディタで編集" Style="{StaticResource FlatButton}"
-                            Command="{Binding EditBlockedCommandsCommand}" />
-                    <Button Content="デフォルトに戻す" Style="{StaticResource FlatButton}"
-                            Margin="6,0,0,0" Command="{Binding ResetBlockedCommandsCommand}" />
-                </StackPanel>
-                <TextBlock Text="1行に1つ・正規表現（大文字小文字無視）。中央のエディタペインで開き、保存（:w）で即時反映されます。"
-                           Foreground="{DynamicResource FgDim}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,0" />
+                <Button Style="{StaticResource WideButton}" Margin="0,0,0,0" Content="エディタで編集"
+                        Command="{Binding EditBlockedCommandsCommand}" />
+                <Button Style="{StaticResource WideButton}" Content="既定に戻す"
+                        Command="{Binding ResetBlockedCommandsCommand}" />
+                <TextBlock Style="{StaticResource FieldHint}"
+                           Text="1行に1つ・正規表現（大文字小文字無視）。保存（:w）で即時反映。" />
 
                 <!-- 変更は自動で反映・保存されます（「保存」ボタンは廃止）。 -->
-                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,14,0,0"
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,16,0,0"
                            Foreground="{DynamicResource FgDim}" FontSize="11" />
             </StackPanel>
         </ScrollViewer>

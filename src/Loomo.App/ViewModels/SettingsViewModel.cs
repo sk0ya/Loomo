@@ -56,10 +56,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>モデル一覧を取得中か。</summary>
     [ObservableProperty] private bool _isFetchingModels;
 
-    /// <summary>モデル選択ドロップダウンを開いているか（取得完了時に自動で開く）。</summary>
+    /// <summary>モデル選択ドロップダウンを開いているか（XAML の IsDropDownOpen と双方向バインド）。</summary>
     [ObservableProperty] private bool _modelDropDownOpen;
-
-    public bool CanFetchModels => true;
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload)
@@ -146,21 +144,22 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>設定パネルを開いたときに呼ぶ。まだ候補が無ければローカルのモデルフォルダを列挙する
-    /// （取得済み／取得中なら何もしない）。手動更新は「再取得」ボタンで行える。</summary>
+    /// <summary>設定パネルを開いたときに呼ぶ。ローカルのモデルフォルダを列挙し直す
+    /// （専用の「再取得」ボタンは廃止し、パネルを開く＝最新化とした）。取得中なら二重起動しない。
+    /// 一覧の内容が変わらなければコレクションには触れないので、選択中の Model は保持される
+    /// （<see cref="FetchModelsCoreAsync"/>）。</summary>
     public void EnsureModelsLoaded()
     {
-        if (IsFetchingModels || AvailableModels.Count > 0) return;
-        _ = FetchModelsCoreAsync(autoOpen: false);
+        if (IsFetchingModels) return;
+        _ = FetchModelsCoreAsync();
     }
 
-    /// <summary>手動の「再取得」ボタン。取得後に候補ドロップダウンを開いて見せる。</summary>
-    [RelayCommand]
-    private Task FetchModelsAsync() => FetchModelsCoreAsync(autoOpen: true);
-
     /// <summary>ローカルに配置済みの ONNX モデルフォルダを列挙し、選択肢に反映する。
-    /// <paramref name="autoOpen"/> が true なら取得成功後にドロップダウンを自動で開く。</summary>
-    private async Task FetchModelsCoreAsync(bool autoOpen)
+    /// 一覧の内容が前回と同じなら <see cref="AvailableModels"/> には触れない。これは編集可能な
+    /// ComboBox の Text→Model 双方向バインドが、ItemsSource の Clear で空文字に巻き戻り、
+    /// 選択中モデルが先頭候補へすり替わって自動保存・AIクライアント再解決を招くのを防ぐため。
+    /// 内容が変わるときも、退避した選択（Model）を再追加後に復元する。</summary>
+    private async Task FetchModelsCoreAsync()
     {
         // 進行中の取得を中止し、最新の要求で置き換える（取り違え・古い結果の反映を防ぐ）。
         // 各呼び出しは自分の CTS を所有し、自分の finally で破棄する。共有状態
@@ -172,29 +171,35 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             Status = "モデル一覧を取得しています…";
-            var models = await _modelCatalog.FetchAsync(
+            var fetched = (await _modelCatalog.FetchAsync(
                 provider,
-                ct: cts.Token);
+                ct: cts.Token)).ToList();
 
             // 取得中に中止／プロバイダ変更があれば結果は破棄する。
             if (cts.IsCancellationRequested) return;
 
-            AvailableModels.Clear();
-            foreach (var m in models) AvailableModels.Add(m);
+            // 内容が同じなら一覧は触らない（不要な Clear による選択リセット・自動保存を避ける）。
+            if (!AvailableModels.SequenceEqual(fetched))
+            {
+                // Clear で編集可能コンボの Text が空に巻き戻り Model が消えることがあるため、
+                // 退避した選択を再追加後に必ず復元する（候補に無くてもテキストとして保持）。
+                var previous = Model;
+                AvailableModels.Clear();
+                foreach (var m in fetched) AvailableModels.Add(m);
+                if (!string.IsNullOrWhiteSpace(previous))
+                    Model = previous;
+            }
 
             if (AvailableModels.Count == 0)
             {
-                Status = "ローカルにモデルが見つかりませんでした。「ダウンロード」または「フォルダ選択」で用意してください。";
+                Status = "ローカルにモデルが見つかりませんでした。「ダウンロード」または「別の場所から追加」で用意してください。";
             }
             else
             {
-                // 既存の選択（保存済み・入力中のモデル名）は勝手に変更しない。未選択のときだけ
-                // 先頭候補で補完する。候補との不一致（例: "llama3.1" と Ollama の "llama3.1:latest"）
-                // で保存済みモデルを上書きしないため、autoOpen でも非空の値はそのまま残す。
+                // 未選択のときだけ先頭候補で補完する（保存済み・選択中のモデルは上書きしない）。
                 if (string.IsNullOrWhiteSpace(Model))
                     Model = AvailableModels[0];
                 Status = $"{AvailableModels.Count} 件のモデルを取得しました。";
-                if (autoOpen) ModelDropDownOpen = true;
             }
         }
         catch (OperationCanceledException)
