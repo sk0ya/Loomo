@@ -84,10 +84,15 @@ public partial class App : Application
             sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
 
         // --- ツール ---
-        // エージェントには run_powershell（PowerShell 実行）1 つだけを渡す。読み取り・検索・編集も
-        // 全て PowerShell コマンドで行わせる。小型ローカルLLM（CPU 実行）ではツール定義の prefill が
-        // 支配的なため、定義を最小化して応答を高速化する狙い。
+        // 基本は run_powershell（PowerShell 実行）で読み取り・検索・ビルド・テストを行う。
+        // ファイルの新規作成／編集だけは構造化ツール（write_file/edit_file）に分離する：
+        //   - 内容を独立 JSON 引数で渡すので「PS 構文＋JSON の二重エスケープ」を避けられ、小モデルの失敗が減る
+        //   - ResolvePath によるワークスペースルート制限と承認カードの差分表示（安全性）が戻る
+        // ONNX 化で system＋tools の安定プレフィックスが KV キャッシュ再利用されるため（Phi4Engine）、
+        // ツール定義の prefill は初回/暖機 1 回に償却され、数個の追加は毎ターンの負担にならない。
         services.AddSingleton<IAgentTool, PwshTool>();
+        services.AddSingleton<IAgentTool, WriteFileTool>();
+        services.AddSingleton<IAgentTool, EditFileTool>();
         services.AddSingleton<ToolRegistry>();
 
         // --- 観測性（§20）：AI操作トレースを JSONL に記録。設定で無効化（オプトアウト）可。 ---

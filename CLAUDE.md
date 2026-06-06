@@ -43,6 +43,12 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
 - Empty assistant messages (no text and no tool calls) are **never** appended to history — they cause API errors.
 - The tool-result message must immediately follow the assistant message that requested it; trimming
   (`ConversationTrimmer`) keeps the first message a `user` to avoid orphaned `tool_result`s.
+- **Malformed tool-call recovery**: small models sometimes emit a tool-call-looking body that isn't valid JSON.
+  `OnnxGenAiClient` surfaces it as `ToolCallParseFailed(rawText)` (not a terminal error). The loop keeps the raw
+  output (visible in the UI + history) and feeds back a correction so the model retries, up to
+  `MaxToolCallParseRetries` (then it stops with an `AgentError` that includes the raw output). The parser
+  (`ToolCallTextParser`) also salvages the **first** well-formed object from an otherwise-broken array, so one
+  bad entry in a batch doesn't drop a valid leading call.
 
 **Agent-loop latency (read `docs/エージェントループ知見.md` before "make it faster" work).** On CPU-only
 local inference the cold cost is **model load** (tens of seconds, paid once since `Phi4Engine` keeps the model
@@ -55,29 +61,41 @@ params) and keeping the context small (`ModelProfiles.Phi4Mini.NumCtx` is delibe
 
 ### Tools — `Loomo.Core/Tools/`
 
-The agent is given **exactly one tool: `pwsh`** (`Tools/Implementations/TerminalTools.cs`), which runs a
-PowerShell command line and returns stdout + exit code. Reads, search, listing, file creation and editing are
-all expressed as PowerShell (`Get-Content` / `Select-String` / `Get-ChildItem` / `Set-Content`); the system
-prompt (`AiSettings.DefaultSystemPrompt`) tells the model so. **Why one tool:** on small CPU-only local LLMs the
-per-turn prefill of the tool-definition block dominates latency (~21s for ~12 tools vs ~2.4s for one), so the
-set was collapsed to `pwsh`. `ArgHelper` (`Implementations/ArgHelper.cs`) is the shared JSON-arg reader.
-`RunCommandTool.RequiresApproval` is true, so every command (reads included) shows an approval card unless
-AutoApprove — `DescribeInvocation` renders the command string. `ToolRegistry` aggregates whatever `IAgentTool`s
-are registered in `App.xaml.cs`; add a tool by implementing `IAgentTool` and registering it there.
+The agent has **three tools**: `run_powershell` (the workhorse), plus structured `write_file` and `edit_file`.
+- **`run_powershell`** (`Tools/Implementations/TerminalTools.cs`) runs a PowerShell command line and returns
+  stdout + exit code. Reads, search, listing, build, test are all expressed as PowerShell
+  (`Get-Content` / `Select-String` / `Get-ChildItem` / `dotnet …`); the system prompt
+  (`AiSettings.DefaultSystemPrompt`) tells the model so.
+- **`write_file{path,content}`** (`Tools/Implementations/WriteFileTool.cs`) creates/overwrites a file, and
+  **`edit_file{path,old_string,new_string}`** (`EditFileTool.cs`) does a unique exact-match replace
+  (0/multiple matches → clean recoverable error; never a botched in-place edit). Both take the content as its
+  own JSON arg, which sidesteps the PowerShell-syntax × JSON **double-escaping** that small models fail at when
+  writing files via the shell. Both resolve paths through `IWorkspaceService.ResolvePath` (workspace-root
+  confinement) and open the result in the editor pane.
 
-Trade-off of the single-tool design: there is no structured editing tool and therefore **no diff approval
-card** (the model edits via shell), no in-app browser automation, and the per-tool `ResolvePath`
-workspace-root confinement no longer guards file writes — only `BlockedCommandPatterns` (see Safety) does.
-The `IWorkspaceService` / `IEditorService` / `IBrowserService` adapters still exist and back the UI panes.
+**Why so few, and why these:** on small CPU-only local LLMs the tool-definition prefill matters, but the old
+"~21s for ~12 tools vs ~2.4s for one" figure was an **Ollama-era** measurement where the cross-turn prefix KV
+cache didn't work. Under ONNX the cache **does** work (see `Phi4Engine` / `docs/エージェントループ知見.md` §2.1),
+so the stable `system+tools` prefix is prefilled ~once (first turn/warmup), not every turn. The remaining cost
+of adding tools is **selection reliability** (more options → more chance a small model picks wrong → extra
+iterations), so the set is kept small, disjoint, and verb-named. `ArgHelper` (`Implementations/ArgHelper.cs`) is
+the shared JSON-arg reader; each tool's `*Contract` (`PwshContract`, `WriteFileContract`, `EditFileContract`)
+holds its name + canonical/alias arg keys, normalized in `NormalizeArguments`. All three set `RequiresApproval`,
+so each invocation shows an approval card unless AutoApprove — `DescribeInvocation` renders the summary (the
+file tools include a line-count/preview diff). `ToolRegistry` aggregates whatever `IAgentTool`s are registered in
+`App.xaml.cs`; add a tool by implementing `IAgentTool` and registering it there.
+
+Still missing (don't assume): no in-app browser automation tool. The `IBrowserService` adapter exists and backs
+the UI pane but no tool wires it to the agent.
 
 ### Safety — `Loomo.Core/Safety/`
 
-`AgentOrchestrator` calls `ISafetyPolicy.Evaluate` **before** every tool execution. `pwsh` is matched
+`AgentOrchestrator` calls `ISafetyPolicy.Evaluate` **before** every tool execution. `run_powershell` is matched
 against `BlockedCommandPatterns` regexes; a block is returned to the AI as a tool error (never executed).
-Approval cards are shown only when `tool.RequiresApproval && !AutoApprove` (`pwsh` always requires it).
-`BlockedCommandPatterns` is the **only** workspace-scope guard now that file ops go through the shell rather
-than `IWorkspaceService.ResolvePath` (which still exists for the UI). `SafetySettings` lives on `AiSettings.Safety`
-and is DI-shared as a singleton.
+Approval cards are shown only when `tool.RequiresApproval && !AutoApprove` (all three tools require it).
+`BlockedCommandPatterns` guards shell commands; **file writes via `write_file`/`edit_file` are confined to the
+workspace root by `IWorkspaceService.ResolvePath`** (a `pwsh` `Set-Content` still bypasses that and is only
+guarded by the block list). `SafetySettings` lives on `AiSettings.Safety` and is DI-shared as a singleton.
 
 ### AI clients — `Loomo.Ai/Clients/`
 

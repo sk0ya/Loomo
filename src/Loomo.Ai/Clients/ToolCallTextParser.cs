@@ -12,6 +12,8 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// 対応形式：関数呼び出し風 <c>run_powershell("...")</c>、引数 JSON オブジェクト <c>{"command":"..."}</c>、
 /// およびその配列 <c>[{"name":...,"arguments":{...}}]</c>（小モデルが arguments だけ／別名キー／
 /// コードフェンス付き／配列で吐くことがある）。Phi-4-mini の tool call も後者の JSON 配列形式で返る。
+/// JSON 配列／オブジェクトに明示的な <c>name</c> があれば <c>run_powershell</c> 以外（<c>write_file</c>/
+/// <c>edit_file</c> 等）も復元し、引数はそのまま通す（canonical 化は各ツールの NormalizeArguments の責務）。
 /// </summary>
 public static class ToolCallTextParser
 {
@@ -55,19 +57,95 @@ public static class ToolCallTextParser
         return Array.Empty<ToolUse>();
     }
 
-    /// <summary>JSON オブジェクト／配列からツール呼び出しを取り出す。コマンド未検出の要素は無視する。</summary>
+    /// <summary>JSON オブジェクト／配列からツール呼び出しを取り出す。引数未検出の要素は無視する。
+    /// 明示的に <c>run_powershell</c> 以外の <c>name</c> がある要素は、引数をそのまま通す
+    /// （各ツールの <see cref="IAgentTool.NormalizeArguments"/> が後段でキー揺れを吸収する）。
+    /// それ以外（run_powershell・名前なしの復元形）は command を canonical 化して載せる。</summary>
     private static IReadOnlyList<ToolUse> ParseJsonToolCalls(string json, string rawText)
     {
-        JsonNode? node;
-        try { node = JsonNode.Parse(json); }
-        catch { return Array.Empty<ToolUse>(); }
+        var node = TryParseNode(json);
+        if (node is null)
+        {
+            // 配列全体が不正（小モデルは2件目以降の content 等を壊しやすい）。先頭の 1 オブジェクトだけでも
+            // 救えるか試す（文字列を意識した波括弧マッチで先頭の {…} を取り出す）。1ターン1ツールの規律とも整合し、
+            // 先頭が正しければそれを実行して次ターンへ進める（全部巻き添えで捨てない）。
+            var first = TryExtractFirstObject(json);
+            node = first is null ? null : TryParseNode(first);
+            if (node is null) return Array.Empty<ToolUse>();
+        }
 
         var elements = node is JsonArray arr ? arr : new JsonArray { node };
         var result = new List<ToolUse>();
         foreach (var el in elements)
-            if (el is JsonObject obj && ExtractCommandFromJson(obj) is { } command)
+        {
+            if (el is not JsonObject obj) continue;
+
+            var name = GetStringValue(obj, "name");
+            if (!string.IsNullOrEmpty(name) && name != PwshContract.ToolName)
+            {
+                var argsJson = ExtractArgsObject(obj).ToJsonString();
+                result.Add(new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson, rawText));
+                continue;
+            }
+
+            if (ExtractCommandFromJson(obj) is { } command)
                 result.Add(MakeToolUse(command, rawText));
+        }
         return result;
+    }
+
+    /// <summary>ツール引数オブジェクトを取り出す。<c>arguments</c>/<c>parameters</c> ラップがあればその中、
+    /// 無ければ <c>name</c>/<c>description</c> を除いた残りを引数とみなす。</summary>
+    private static JsonObject ExtractArgsObject(JsonObject obj)
+    {
+        if (obj["arguments"] is JsonObject args) return args;
+        if (obj["parameters"] is JsonObject parameters) return parameters;
+
+        var rest = new JsonObject();
+        foreach (var kv in obj)
+            if (kv.Key is not ("name" or "description"))
+                rest[kv.Key] = kv.Value?.DeepClone();
+        return rest;
+    }
+
+    private static string? GetStringValue(JsonObject obj, string key)
+        => obj[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
+    private static JsonNode? TryParseNode(string s)
+    {
+        try { return JsonNode.Parse(s); }
+        catch { return null; }
+    }
+
+    /// <summary>文字列リテラルを意識して波括弧の対応を取り、先頭で完結する <c>{…}</c> を返す（無ければ null）。
+    /// 文字列内の <c>{</c>/<c>}</c>/<c>"</c>（<c>\"</c> エスケープ込み）は数えない。</summary>
+    private static string? TryExtractFirstObject(string s)
+    {
+        var depth = 0;
+        var inStr = false;
+        var esc = false;
+        var start = -1;
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (inStr)
+            {
+                if (esc) esc = false;
+                else if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            switch (c)
+            {
+                case '"': inStr = true; break;
+                case '{': if (depth++ == 0) start = i; break;
+                case '}':
+                    if (--depth == 0 && start >= 0)
+                        return s[start..(i + 1)];
+                    break;
+            }
+        }
+        return null;
     }
 
     private static ToolUse MakeToolUse(string command, string rawText)

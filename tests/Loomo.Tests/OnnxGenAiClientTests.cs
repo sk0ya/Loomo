@@ -97,4 +97,18 @@ public class OnnxGenAiClientTests
         Assert.Contains("応答本文が返りませんでした", err.Message);
         Assert.DoesNotContain(events, e => e is TurnCompleted);
     }
+
+    [Fact]
+    public async Task Unparseable_tool_call_attempt_emits_parse_failed_with_raw_text()
+    {
+        // ツール呼び出しらしき不正JSON（全要素が壊れて1件も拾えない）。生JSONを最終回答として黙って出す
+        // のでも終端エラーにするのでもなく、生出力ごと ToolCallParseFailed で差し戻して再試行可能にする。
+        const string raw = "[{\"name\":\"write_file\",\"content=\"oops\"}]";
+        var events = await RunAsync(new TextDelta(raw));
+
+        var failed = Assert.Single(events.OfType<ToolCallParseFailed>());
+        Assert.Equal(raw, failed.RawText);   // 生出力がそのまま伝わる（ユーザー/AI が何が出たか分かる）
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+        Assert.DoesNotContain(events, e => e is AgentError);
+    }
 }

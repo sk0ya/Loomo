@@ -27,7 +27,7 @@ public class Phi4PromptFormatterTests
         Assert.Contains("\"name\":\"run_powershell\"", prompt);
         Assert.Contains("\"parameters\":{\"command\":{\"type\":\"string\"", prompt);
         Assert.Contains("<|/tool|><|end|>", prompt);
-        Assert.Contains("output exactly [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"<PowerShell command>\"}}]", prompt);
+        Assert.Contains("Output exactly [{\"name\":\"<tool>\",\"arguments\":{...}}]", prompt);
         Assert.Contains("The first character must be [", prompt);
         Assert.Contains("<|user|>ファイル一覧を出して<|end|>", prompt);
         Assert.EndsWith("<|assistant|>", prompt);                 // add_generation_prompt
@@ -108,7 +108,10 @@ public class Phi4PromptFormatterTests
     {
         Assert.DoesNotContain("Ollama", AiSettings.DefaultSystemPrompt);
         Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("output exactly [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"<PowerShell command>\"}}]", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Output exactly [{\"name\":\"<tool>\",\"arguments\":{...}}]", AiSettings.DefaultSystemPrompt);
         Assert.Contains("The first character must be [", AiSettings.DefaultSystemPrompt);
+        // 追加した構造化ファイルツールがプロンプトに告知されていること。
+        Assert.Contains("write_file{path,content}", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("edit_file{path,old_string,new_string}", AiSettings.DefaultSystemPrompt);
     }
 }

@@ -100,9 +100,26 @@ public sealed class OnnxGenAiClient : IAiClient
 
         if (toolCalls.Count == 0)
         {
+            // ツール呼び出しらしき本文なのに 1 件も解釈できなかった＝不正な JSON。生の JSON を最終回答として
+            // 黙って出す（実行されず "何も起きない" ように見える）のではなく、生出力ごと差し戻して
+            // オーケストレータに再試行させる（AI が自己修正できる／UI が何を出したか見られる）。
+            if (LooksLikeToolCallAttempt(text))
+            {
+                yield return new ToolCallParseFailed(text);
+                yield break;
+            }
             if (!string.IsNullOrEmpty(text))
                 yield return new TextDelta(text);
             yield return new TurnCompleted(text);
         }
+    }
+
+    /// <summary>本文がツール呼び出しの試みに見えるか（JSON 配列／オブジェクトで始まり tool call のキーを含む）。
+    /// パース不能でも生 JSON を回答として出さず、誤りを返して再試行させるための判定。</summary>
+    private static bool LooksLikeToolCallAttempt(string text)
+    {
+        var t = text.TrimStart();
+        if (t.Length == 0 || (t[0] != '[' && t[0] != '{')) return false;
+        return text.Contains("\"name\"") || text.Contains("\"arguments\"") || text.Contains("\"command\"");
     }
 }

@@ -40,6 +40,13 @@ public sealed record AiUsageReported(
     double? EvalMs,
     double? TotalMs) : AgentEvent;
 
+/// <summary>
+/// ツール呼び出しらしき本文を生成したが、JSON として解釈できなかった（不正なJSON）。
+/// <see cref="RawText"/> はモデルが実際に出力した生テキスト。終端エラーにせず、これを履歴へ戻して
+/// オーケストレータが AI に正しいJSONで出し直させる（＝AIが自己修正できる）／UI が生出力を可視化するための信号。
+/// </summary>
+public sealed record ToolCallParseFailed(string RawText) : AgentEvent;
+
 /// <summary>1ターン（アシスタントの応答）が完了。</summary>
 public sealed record TurnCompleted(string? FinalText) : AgentEvent;
 

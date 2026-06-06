@@ -334,6 +334,21 @@ public sealed partial class AiBarViewModel : ObservableObject
                         Add(EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})", Truncate(done.Result.Content));
                         break;
 
+                    case ToolCallParseFailed parseFailed:
+                        // 何が出力されたか分かるよう生出力を見せ、AI に再試行させる旨を示す。
+                        FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
+                        thinking = null;
+                        if (assistant is not null)
+                        {
+                            Transcript.Remove(assistant);   // ライブ表示していた本文を取り下げてカードへ畳む
+                            assistant = null;
+                            assistantClock = null;
+                        }
+                        SetStatus("⚠️ ツール呼び出しJSONが不正。AIに再試行させています…");
+                        AppendActivity("ツール呼び出しのJSONが不正でした。モデルの生出力を表示し、正しいJSONで出し直させます。");
+                        Add(EntryKind.Error, "⚠️ 不正なツール出力（再試行）", parseFailed.RawText);
+                        break;
+
                     case AgentError err:
                         AppendActivity($"エラーで停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         Add(EntryKind.Error, "⚠️ エラー", err.Message);

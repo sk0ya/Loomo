@@ -31,6 +31,10 @@ public sealed class AgentOrchestrator
 
     private const int MaxIterations = 25;
 
+    /// <summary>不正なツール呼び出しJSONを AI に出し直させる最大回数（1ターン内）。
+    /// 修正できないモデルが延々と prefill を浪費するのを防ぐ上限。超えたらエラーで打ち切る。</summary>
+    private const int MaxToolCallParseRetries = 2;
+
     public AgentOrchestrator(
         IAiClientFactory aiFactory,
         ToolRegistry tools,
@@ -69,6 +73,7 @@ public sealed class AgentOrchestrator
         var turnId = Guid.NewGuid().ToString("N");
         var provider = ai.Provider.ToString();
         var turnClock = Stopwatch.StartNew();
+        var parseRetries = 0;
 
         if (isNewSession)
             _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider, agentId = activeProfile.Id });
@@ -86,6 +91,7 @@ public sealed class AgentOrchestrator
             var assistant = new ChatMessage { Role = ChatRole.Assistant };
             var pendingToolUses = new List<ToolUse>();
             var sawModelOutput = false;
+            ToolCallParseFailed? parseFailed = null;
             // 単段ループ：全反復で同じ profile（既定は Root）と同じツール集合を使う。
             // system プロンプトとツール配列を反復間でバイト不変に保つことで、Ollama の
             // プレフィックスKVキャッシュが効き、prefill を毎ターン払い直さずに済む。
@@ -123,6 +129,14 @@ public sealed class AgentOrchestrator
                         assistant.ToolUses.Add(req.ToolUse);
                         pendingToolUses.Add(req.ToolUse);
                         yield return req;
+                        break;
+                    case ToolCallParseFailed pf:
+                        // ツール呼び出しらしき不正JSON。生出力をアシスタント本文として残し（モデルが自分の
+                        // 誤りを次ターンで見られる）、UI へも流して可視化する。再試行はストリーム終了後に判断。
+                        sawModelOutput = true;
+                        assistant.Text = (assistant.Text ?? string.Empty) + pf.RawText;
+                        parseFailed = pf;
+                        yield return pf;
                         break;
                     case AiUsageReported usage:
                         // 利用統計はモデル出力ではないので sawModelOutput は立てない。
@@ -189,9 +203,40 @@ public sealed class AgentOrchestrator
             if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
                 conversation.Messages.Add(assistant);
 
-            // ツール呼び出しが無ければターン終了
             if (pendingToolUses.Count == 0)
             {
+                // 不正なツール呼び出しJSON：終端にせず、誤りを差し戻して AI に正しいJSONで出し直させる。
+                if (parseFailed is not null)
+                {
+                    if (parseRetries < MaxToolCallParseRetries)
+                    {
+                        parseRetries++;
+                        _trace.Record(sessionId, turnId, TraceKinds.Error, new
+                        {
+                            message = "ツール呼び出しJSONを解釈できませんでした。再試行します。",
+                            where = "toolcall.parse",
+                            attempt = parseRetries,
+                            raw = parseFailed.RawText,
+                        });
+                        conversation.AddUser(
+                            "前の返信はツール呼び出しのJSONとして解釈できませんでした。ツールを使うなら、" +
+                            "配列にオブジェクトを1つだけ含む正しいJSONで出し直してください" +
+                            "（キーと値は \":\" 区切り、文字列内の \" は \\\" でエスケープ）。" +
+                            "ツールが不要なら日本語の文章だけで答えてください。");
+                        continue;   // 次の反復で再生成
+                    }
+
+                    // 上限到達：生出力を添えてエラーで打ち切る（何が出たかは残す）。
+                    var giveUp = $"ツール呼び出しのJSONを{MaxToolCallParseRetries + 1}回連続で解釈できませんでした。"
+                                 + "モデルの出力が不正なJSONのままのため中断します。\n--- モデルの出力 ---\n"
+                                 + parseFailed.RawText;
+                    _trace.Record(sessionId, turnId, TraceKinds.Error,
+                        new { message = giveUp, where = "toolcall.parse.giveup" });
+                    yield return new AgentError(giveUp);
+                    yield break;
+                }
+
+                // ツール呼び出しが無ければターン終了
                 _trace.Record(sessionId, turnId, TraceKinds.TurnCompleted,
                     new { finalText = assistant.Text, iterations = iteration + 1, durationMs = turnClock.ElapsedMilliseconds });
                 yield return new TurnCompleted(assistant.Text);
