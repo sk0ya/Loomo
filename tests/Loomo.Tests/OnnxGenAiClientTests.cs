@@ -59,6 +59,31 @@ public class OnnxGenAiClientTests
     }
 
     [Fact]
+    public async Task Streams_raw_chunks_live_while_buffering_for_final_decision()
+    {
+        // 生成中の各チャンクは揮発性の RawTextDelta として逐次（順序どおり）流れ、終端で確定 TextDelta が出る。
+        var events = await RunAsync(new TextDelta("こん"), new TextDelta("にちは"));
+
+        Assert.Equal(
+            new[] { "こん", "にちは" },
+            events.OfType<RawTextDelta>().Select(r => r.Text).ToArray());
+        // RawTextDelta は確定本文より前に流れる（ライブプレビュー → 確定の順）。
+        Assert.True(events.FindIndex(e => e is RawTextDelta) < events.FindIndex(e => e is TextDelta));
+        Assert.Equal("こんにちは", string.Concat(events.OfType<TextDelta>().Select(t => t.Text)));
+    }
+
+    [Fact]
+    public async Task Tool_call_text_streams_raw_but_never_becomes_text_delta()
+    {
+        // ツール呼び出しJSONも生成中は RawTextDelta で見えるが、確定本文（TextDelta）には漏れない。
+        var events = await RunAsync(new TextDelta("{\"command\":\"ls\"}"));
+
+        Assert.Contains(events, e => e is RawTextDelta);
+        Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.DoesNotContain(events, e => e is TextDelta);
+    }
+
+    [Fact]
     public async Task Converts_tool_call_arguments_json_to_tool_use_without_turn_completed()
     {
         var events = await RunAsync(new TextDelta("{\"command\":\"ls\"}"));

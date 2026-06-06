@@ -114,6 +114,11 @@ public sealed class AgentOrchestrator
             {
                 switch (ev)
                 {
+                    case RawTextDelta rawDelta:
+                        // 揮発性のライブ出力：確定本文ではないので履歴へ積まず（sawModelOutput も立てない）、
+                        // UI の進捗プレビュー用にそのまま素通しする。確定は終端の TextDelta／ToolUseRequested が担う。
+                        yield return rawDelta;
+                        break;
                     case TextDelta delta:
                         sawModelOutput = true;
                         assistant.Text = (assistant.Text ?? string.Empty) + delta.Text;

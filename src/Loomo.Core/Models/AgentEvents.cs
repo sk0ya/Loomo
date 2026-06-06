@@ -6,8 +6,17 @@ namespace sk0ya.Loomo.Core.Models;
 /// </summary>
 public abstract record AgentEvent;
 
-/// <summary>逐次テキスト（ストリーミング）。</summary>
+/// <summary>逐次テキスト（ストリーミング）。確定した応答本文として履歴・トランスクリプトへ積まれる。</summary>
 public sealed record TextDelta(string Text) : AgentEvent;
+
+/// <summary>
+/// モデルがいま生成している<b>生</b>の逐次出力（揮発性）。<see cref="OnnxGenAiClient"/> は本文を終端まで
+/// バッファしてからツール呼び出しか通常テキストかを判定するため、確定前のトークンはこのイベントで先に流す。
+/// 履歴にもトランスクリプトにも積まず、進捗状況のライブプレビュー専用（次の確定イベント＝<see cref="TextDelta"/>
+/// ／<see cref="ToolUseRequested"/>／<see cref="ToolCallParseFailed"/> が出たら役目を終える）。
+/// これにより、ツール呼び出しJSONが確定前に生のまま回答へ漏れることなく、生成中の様子だけをリアルタイム表示できる。
+/// </summary>
+public sealed record RawTextDelta(string Text) : AgentEvent;
 
 /// <summary>モデルの思考（reasoning）テキスト。応答本文ではないので履歴には積まず、UI表示のみに使う。
 /// ローカル推論モデル（&lt;think&gt; タグ / reasoning_content）から取り出す。</summary>

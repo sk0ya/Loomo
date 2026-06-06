@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -253,6 +254,8 @@ public sealed partial class AiBarViewModel : ObservableObject
         var loggedThinking = false;
         var loggedResponse = false;
         var aiCallCount = 0;
+        var rawStream = new StringBuilder();   // 現在のAI呼び出しの揮発性ライブ出力（進捗プレビュー専用）
+        var volatileTail = "";                 // 「進行状況」末尾に付けている揮発プレビュー文字列（未保存）
 
         AppendActivity(FormatRunConfig());
         AppendActivity("AIに送信しました。応答を待っています。");
@@ -279,6 +282,21 @@ public sealed partial class AiBarViewModel : ObservableObject
                         SetStatus($"💭 思考中… {StreamPreview(thinking.Text)}");
                         break;
 
+                    case RawTextDelta raw:
+                        // 揮発性のライブ出力：トランスクリプト・履歴には残さず、「進行状況」エントリの末尾に
+                        // 「いま生成中の生テキスト」を逐次プレビューする（確定すると揮発タグごと取り除かれる）。
+                        if (!loggedResponse)
+                        {
+                            AppendActivity("回答本文の生成を開始しました。");
+                            SetStatus("応答生成中…");
+                            loggedResponse = true;
+                        }
+                        rawStream.Append(raw.Text);
+                        // 末尾だけ流すのではなく、生成済みの全文を改行を保ったまま貯めて見せる（確定時に揮発タグごと消える）。
+                        var preview = rawStream.ToString().Trim();
+                        SetVolatile(preview.Length == 0 ? "" : $"💬 生成中:{Environment.NewLine}{preview}");
+                        break;
+
                     case TextDelta delta:
                         if (!loggedResponse)
                         {
@@ -293,8 +311,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                             assistantClock = Stopwatch.StartNew();
                         }
                         assistant.AppendText(delta.Text);
-                        // 進捗状況に「いま何を出力しているか」を逐次プレビュー表示する。
-                        SetStatus($"応答生成中… {StreamPreview(assistant.Text)}");
+                        SetStatus("応答生成中…");
                         break;
 
                     case ToolUseRequested req:
@@ -357,6 +374,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                     case AiUsageReported usage:
                         aiCallCount++;
                         AppendActivity(FormatUsage(usage, aiCallCount));
+                        rawStream.Clear();   // このAI呼び出しは終了。次の呼び出しの揮発プレビューを新規に始める
                         break;
 
                     case TurnCompleted:
@@ -377,6 +395,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         }
         finally
         {
+            ClearVolatile();   // 揮発プレビューが残ったまま ProgressLog に保存されないよう必ず片付ける
             turnClock.Stop();
             activity.Header = $"進行状況 ({FormatDuration(turnClock.Elapsed)})";
             FinishTimedEntry(ref assistant, ref assistantClock, "🤖 エージェント");
@@ -398,8 +417,27 @@ public sealed partial class AiBarViewModel : ObservableObject
 
         void AppendActivity(string message)
         {
+            ClearVolatile();   // 揮発プレビューを挟まないよう、恒久ログを足す前に末尾を片付ける
             var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
             activity.AppendText($"{prefix}[{FormatDuration(turnClock.Elapsed)}] {message}");
+        }
+
+        // 「進行状況」エントリ末尾に付ける揮発プレビュー（保存対象の ProgressLog には残さない）。
+        // 末尾に現在の揮発タグぶんだけ後付けし、更新時は古いタグを切り落としてから付け直す。
+        void SetVolatile(string preview)
+        {
+            ClearVolatile();
+            if (preview.Length == 0) return;
+            var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
+            volatileTail = prefix + preview;
+            activity.AppendText(volatileTail);
+        }
+
+        void ClearVolatile()
+        {
+            if (volatileTail.Length == 0) return;
+            activity.Text = activity.Text[..^volatileTail.Length];
+            volatileTail = "";
         }
     }
 

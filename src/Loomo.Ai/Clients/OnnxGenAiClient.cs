@@ -61,9 +61,12 @@ public sealed class OnnxGenAiClient : IAiClient
             switch (ev)
             {
                 case TextDelta td:
-                    // 本文はバッファし、終端でツール呼び出しか通常テキストかを判定してから出す
+                    // 本文はバッファし、終端でツール呼び出しか通常テキストかを判定してから確定出力する。
+                    // ただし生成中の様子は見えるよう、生のチャンクを揮発性の RawTextDelta として先に流す
+                    // （履歴には積まれず、UI の進捗プレビュー専用）。
                     sawText = true;
                     finalText.Append(td.Text);
+                    yield return new RawTextDelta(td.Text);
                     break;
                 case AiUsageReported usage:
                     yield return usage;     // 利用統計はそのまま通知（記録目的）
