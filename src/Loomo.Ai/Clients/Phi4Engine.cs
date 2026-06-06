@@ -48,47 +48,41 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
     }
 
     /// <summary>
-    /// モデルをロードし、さらに<b>ダミー生成を1回</b>走らせて重みをページインさせる（暖機）。
-    /// <c>new Model()</c> だけでは mmap した数 GB の重みに触れず、最初の実プロンプトの prefill で
-    /// 初回タッチのページイン（ディスク→RAM、CPU 実行で十数秒）を払ってしまう。それを起動時の
-    /// バックグラウンドへ前倒しして、ユーザーの初回プロンプトを暖かい状態にする。
+    /// 常駐 <see cref="_generator"/> の KV を、<b>最初の実ターンとバイト単位で一致する安定プレフィックス</b>
+    /// （system プロンプト＋ツール定義）で前もって満たしておく（暖機）。狙いは2つ:
+    /// <list type="bullet">
+    ///   <item><see cref="Generator.AppendTokens"/> 内の prefill が全レイヤーの重みに触れ、mmap した数 GB を
+    ///   ディスク→RAM へページインさせる（<c>new Model()</c> だけでは触れず、初回プロンプトで払う羽目になる）。</item>
+    ///   <item>初回の実ターンは <see cref="PrepareKvCache"/> の最長共通接頭辞でこの KV を<b>再利用</b>するため、
+    ///   安定プレフィックスの prefill を払い直さずに済む（CPU 実行では prefill が支配的なので効果大）。</item>
+    /// </list>
+    /// 必ず実ターンと同じ <paramref name="maxLength"/>／<paramref name="sampling"/> で呼ぶこと
+    /// （不一致だと <see cref="EnsureGenerator"/> が Generator を作り直し、温めた KV が消える）。
+    /// 起動時の root は未確定なので、ワークスペース確定後に同じプレフィックスで呼び直せば再利用が最大化する
+    /// （差分だけ <see cref="PrepareKvCache"/> が貼り直す）。
     /// </summary>
-    public async Task WarmUpAsync(string modelPath, CancellationToken ct)
+    public async Task PrimeAsync(
+        string modelPath, string stablePrompt, int maxLength, SamplingOptions sampling, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
         {
-            // モデルロード（数GB）とダミー生成は CPU 同期処理。_gate は非占有時に同期完了するため、
-            // ここで Task.Run へ逃がさないと呼び出し元（起動時は UI スレッド）をロード完了まで
-            // ブロックしてしまう（＝ウィンドウが出ない）。GenerateAsync と同じくバックグラウンドで回す。
+            // モデルロード（数GB）と prefill は CPU 同期処理。_gate は非占有時に同期完了するため、
+            // Task.Run へ逃がさないと呼び出し元（起動時は UI スレッド）をブロックしてしまう。
             await Task.Run(() =>
             {
                 LoadIfNeeded(modelPath);
-                RunWarmup(ct);
+                int[] tokens;
+                using (var seq = _tokenizer!.Encode(stablePrompt))
+                    tokens = seq[0].ToArray();
+
+                EnsureGenerator(_model!, maxLength, sampling);
+                ct.ThrowIfCancellationRequested();
+                PrepareKvCache(_generator!, tokens);   // prefill（重みのページイン）＋ _fedTokens を記録
             }, ct);
         }
         catch (OperationCanceledException) { }
         finally { _gate.Release(); }
-    }
-
-    /// <summary>ダミーの短いプロンプトで prefill＋1トークン生成を走らせ、全レイヤーの重みをページインさせる。
-    /// 常駐 <see cref="_generator"/> は使わず使い捨ての Generator で行うので、本番の prefix 再利用を汚さない。</summary>
-    private void RunWarmup(CancellationToken ct)
-    {
-        var model = _model!;
-        var tokenizer = _tokenizer!;
-        int[] tokens;
-        using (var seq = tokenizer.Encode("warm up"))
-            tokens = seq[0].ToArray();
-
-        using var gp = new GeneratorParams(model);
-        gp.SetSearchOption("max_length", tokens.Length + 1);
-        gp.SetSearchOption("do_sample", false);
-        using var gen = new Generator(model, gp);
-        gen.AppendTokens(tokens.AsSpan());
-        ct.ThrowIfCancellationRequested();
-        if (!gen.IsDone())
-            gen.GenerateNextToken();   // ここで全重みに触れてページインさせる
     }
 
     public async Task GenerateAsync(GenerationRequest request, ChannelWriter<AgentEvent> sink, CancellationToken ct)

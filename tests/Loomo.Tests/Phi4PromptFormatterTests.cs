@@ -1,6 +1,7 @@
 using System.Linq;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Ai.Clients;
+using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
@@ -76,6 +77,30 @@ public class Phi4PromptFormatterTests
         Assert.Contains("<|assistant|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"dotnet build\"}}]<|end|>", prompt);
         // ツール結果は role "tool"（<|tool|>content<|end|>）として描画される。
         Assert.Contains("<|tool|>成功<|end|>", prompt);
+    }
+
+    [Fact]
+    public void Warmup_prefix_is_an_exact_prefix_of_the_first_real_turn()
+    {
+        // 暖機（LocalLlmWarmupService）は会話を空にして Build した文字列で常駐 Generator を温める。
+        // その system ブロックが、実ターン（同じ settings/profile/root/tools ＋<|user|>…）の
+        // 先頭と完全一致することが、KV プレフィックス再利用の前提。ここを回帰として固定する。
+        var settings = new AiSettings();
+        var tools = Pwsh();
+        const string root = "C:\\proj";
+
+        var warmup = Phi4PromptFormatter.Build(settings, AgentProfiles.Root, root, new Conversation(), tools);
+
+        var conv = new Conversation();
+        conv.AddUser("ファイル一覧を出して");
+        var real = Phi4PromptFormatter.Build(settings, AgentProfiles.Root, root, conv, tools);
+
+        // 暖機文字列は末尾の <|assistant|>（生成開始マーカ）を除けば実ターンの接頭辞になっている。
+        Assert.EndsWith("<|assistant|>", warmup);
+        var systemBlock = warmup[..^"<|assistant|>".Length];
+        Assert.StartsWith(systemBlock, real);
+        // system ブロックの直後で初めて分岐する（暖機は<|assistant|>、実ターンは<|user|>）。
+        Assert.StartsWith(systemBlock + "<|user|>", real);
     }
 
     [Fact]
