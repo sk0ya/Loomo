@@ -39,7 +39,8 @@ public class ShellViewModelTests
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations,
             new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")));
-        var sessionsVm = new SessionsViewModel(conversations, aiBar);
+        var sessionsVm = new SessionsViewModel(conversations, aiBar,
+            new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
         var analysisVm = new AnalysisViewModel(
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")),
             new ImprovementAdvisor(new FakeAiClientFactory()),

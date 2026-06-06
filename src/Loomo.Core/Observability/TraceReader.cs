@@ -49,6 +49,14 @@ public sealed class TraceReader
         return list.OrderByDescending(f => f.UpdatedAt).ToList();
     }
 
+    /// <summary>指定セッションのトレースファイルを削除する（無ければ何もしない）。</summary>
+    public void Delete(string sessionId)
+    {
+        try { File.Delete(PathFor(sessionId)); }
+        catch (IOException) { /* ロック中などは無視 */ }
+        catch (UnauthorizedAccessException) { /* 権限なしは無視 */ }
+    }
+
     /// <summary>指定セッションのトレースイベントを順序どおりに読み込む。無ければ空。</summary>
     public IReadOnlyList<TraceEvent> Read(string sessionId)
     {

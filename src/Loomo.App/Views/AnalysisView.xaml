@@ -13,19 +13,15 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="対象セッション" VerticalAlignment="Center"
                        Foreground="{DynamicResource FgDim}" FontSize="12" />
             <Button Grid.Column="1" Content="全選択" Style="{StaticResource FlatButton}" Margin="0,0,4,0"
                     Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
                     Command="{Binding SelectAllCommand}" />
-            <Button Grid.Column="2" Content="解除" Style="{StaticResource FlatButton}" Margin="0,0,4,0"
+            <Button Grid.Column="2" Content="解除" Style="{StaticResource FlatButton}"
                     Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
                     Command="{Binding ClearSelectionCommand}" />
-            <Button Grid.Column="3" Content="⟳" Style="{StaticResource FlatButton}"
-                    Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
-                    ToolTip="更新" Command="{Binding RefreshCommand}" />
         </Grid>
 
         <Border DockPanel.Dock="Top" Margin="10,0,10,6" MaxHeight="160"

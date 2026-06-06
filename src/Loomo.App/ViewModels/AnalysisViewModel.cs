@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
@@ -83,7 +84,16 @@ public sealed partial class AnalysisViewModel : ObservableObject
         _settings = settings;
         _tools = tools;
         _conversations = conversations;
+        // セッション保存（ターン終了）ごとに一覧を更新し、AIセッション一覧と歩調を合わせる。
+        _conversations.Changed += OnConversationsChanged;
         Refresh();
+    }
+
+    private void OnConversationsChanged()
+    {
+        var app = Application.Current;
+        if (app is null || app.Dispatcher.CheckAccess()) Refresh();
+        else app.Dispatcher.Invoke(Refresh);
     }
 
     [RelayCommand]
