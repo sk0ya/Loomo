@@ -42,6 +42,16 @@ public static class ToolCallTextParser
         if ((s.StartsWith('{') && s.EndsWith('}')) || (s.StartsWith('[') && s.EndsWith(']')))
             return ParseJsonToolCalls(s, text);
 
+        // 小型モデルが配列の先頭 "[" だけを落として {"name":...}] と出すことがある。
+        // その場合は配列として補正すると通常の JSON tool call と同じ経路で扱える。
+        if (s.StartsWith('{') && s.EndsWith(']'))
+            return ParseJsonToolCalls("[" + s, text);
+
+        // {"command":...} の先頭 "{" だけを落として "command":...} と出すことがある。
+        // 唯一の tool 引数 JSON として補正できる形だけ扱う。
+        if (s.StartsWith("\"command\":", StringComparison.Ordinal) && s.EndsWith('}'))
+            return ParseJsonToolCalls("{" + s, text);
+
         return Array.Empty<ToolUse>();
     }
 

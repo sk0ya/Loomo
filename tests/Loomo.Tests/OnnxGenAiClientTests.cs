@@ -59,10 +59,9 @@ public class OnnxGenAiClientTests
     }
 
     [Fact]
-    public async Task Converts_tool_call_json_array_to_tool_use_without_turn_completed()
+    public async Task Converts_tool_call_arguments_json_to_tool_use_without_turn_completed()
     {
-        var events = await RunAsync(new TextDelta(
-            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}]"));
+        var events = await RunAsync(new TextDelta("{\"command\":\"ls\"}"));
 
         var tool = Assert.Single(events.OfType<ToolUseRequested>());
         Assert.Equal("run_powershell", tool.ToolUse.Name);

@@ -9,10 +9,10 @@ namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
 /// 会話・ツール定義・システムプロンプトを <b>Phi-4 のチャットテンプレート文字列</b>に組み立てる。
-/// テンプレートは各メッセージを <c>&lt;|role|&gt;content&lt;|end|&gt;</c> で連結し、tools 付き system は
-/// <c>&lt;|system|&gt;content&lt;|tool|&gt;[…JSON…]&lt;|/tool|&gt;&lt;|end|&gt;</c>、末尾に生成開始の
+/// テンプレートは各メッセージを <c>&lt;|role|&gt;content&lt;|end|&gt;</c> で連結し、末尾に生成開始の
 /// <c>&lt;|assistant|&gt;</c> を置く（microsoft/Phi-4-mini-instruct の chat_template に準拠）。
-/// ツール呼び出しは本文に JSON 配列で返るため、復元は <see cref="ToolCallTextParser"/> が担う。
+/// ローカル小型モデルには tool 定義 JSON を渡すと定義そのものを出力しやすいため、
+/// ツール呼び出しは唯一の tool の引数 JSON <c>{"command":"..."}</c> として本文に書かせる。
 /// </summary>
 public static class Phi4PromptFormatter
 {
@@ -32,7 +32,7 @@ public static class Phi4PromptFormatter
 
         sb.Append("<|system|>").Append(system);
         if (tools.Count > 0)
-            sb.Append("<|tool|>").Append(SerializeTools(tools)).Append("<|/tool|>");
+            sb.Append(ToolArgumentGuidance(tools));
         sb.Append("<|end|>");
 
         foreach (var m in conversation.Messages)
@@ -60,36 +60,40 @@ public static class Phi4PromptFormatter
         return sb.ToString();
     }
 
-    /// <summary>アシスタント履歴の本文。過去のツール呼び出しは、モデルが吐く JSON 配列形式で残して一貫性を保つ。</summary>
+    /// <summary>アシスタント履歴の本文。過去のツール呼び出しは、モデルに期待する引数 JSON 形式で残して一貫性を保つ。</summary>
     private static string AssistantContent(ChatMessage m)
     {
         var text = m.Text ?? "";
         if (m.ToolUses.Count == 0) return text;
 
-        var arr = new JsonArray();
+        var calls = new List<string>();
         foreach (var use in m.ToolUses)
         {
             JsonNode args;
             try { args = JsonNode.Parse(use.ArgumentsJson) ?? new JsonObject(); }
             catch { args = new JsonObject(); }
-            arr.Add(new JsonObject { ["name"] = use.Name, ["arguments"] = args });
+            calls.Add(args.ToJsonString());
         }
-        var calls = arr.ToJsonString();
-        return string.IsNullOrEmpty(text) ? calls : text + "\n" + calls;
+        var callText = string.Join("\n", calls);
+        return string.IsNullOrEmpty(text) ? callText : text + "\n" + callText;
     }
 
-    /// <summary>ツール定義を Phi-4 が期待する JSON 配列文字列（name/description/parameters）に直す。</summary>
-    private static string SerializeTools(IReadOnlyList<ToolDefinition> tools)
+    private static string ToolArgumentGuidance(IReadOnlyList<ToolDefinition> tools)
     {
-        var arr = new JsonArray();
-        foreach (var t in tools)
-            arr.Add(new JsonObject
-            {
-                ["name"] = t.Name,
-                ["description"] = t.Description,
-                ["parameters"] = t.InputSchema.DeepClone()
-            });
-        return arr.ToJsonString();
+        // Only run_powershell is registered today. Avoid exposing name/description/parameters here:
+        // local small models tend to copy tool definitions instead of emitting arguments.
+        var tool = tools[0];
+        var commandDescription = "PowerShell command";
+        if (tool.InputSchema["properties"] is JsonObject props
+            && props["command"] is JsonObject command
+            && command["description"] is JsonValue description
+            && description.TryGetValue<string>(out var value)
+            && !string.IsNullOrWhiteSpace(value))
+            commandDescription = value;
+
+        return "\n\nTool output format: when you need PowerShell, output exactly one JSON object and no prose. " +
+               "The first character must be { and the last must be }. Format: " +
+               "{\"command\":\"<" + commandDescription + ">\"}.";
     }
 
     private static string SearchGuidance(string? workspaceRoot)

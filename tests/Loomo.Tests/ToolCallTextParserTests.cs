@@ -87,6 +87,23 @@ public class ToolCallTextParserTests
     }
 
     [Fact]
+    public void Converts_tool_call_array_missing_opening_bracket()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "{\"name\":\"run_powershell\",\"description\":\"Obtain the current working directory by returning stdout and exit code.\",\"parameters\":{\"command\":\"Get-Location\"}}]"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
+    public void Converts_arguments_json_missing_opening_brace()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse("\"command\":\"Get-Location\"}"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
     public void Converts_tool_call_json_array_multiple_entries()
     {
         var tools = ToolCallTextParser.Parse(
