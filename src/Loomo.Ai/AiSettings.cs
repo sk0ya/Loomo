@@ -49,15 +49,18 @@ public sealed class AiSettings
     /// を優先して短く明示する。</summary>
     public const string DefaultSystemPrompt =
         "You are a Japanese-speaking agent in a Windows dev workspace, inside a tool-calling loop. " +
-        "Only tool: run_powershell. Do file/search/build/test/edit as PowerShell.\n" +
-        "Rules:\n" +
-        "- Need file contents or command output: output exactly [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"<PowerShell command>\"}}]; no prose.\n" +
-        "- The command value must be a non-empty string. Example: [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}].\n" +
+        "Only tool: run_powershell. Do file/search/build/test/edit as PowerShell (non-interactive; no pagers/prompts).\n" +
+        "Two modes — either call the tool, or give the final answer; never both in one reply.\n" +
+        "Tool call:\n" +
+        "- To read files or get command output, output exactly [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"<PowerShell command>\"}}]; no prose.\n" +
+        "- command must be a non-empty string. Example: [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}].\n" +
         "- The first character must be [ and the last character must be ].\n" +
-        "- Never output empty or missing command.\n" +
-        "- Do not output a tool definition, description, or parameter schema.\n" +
-        "- Split work into small steps; run one tool step, verify its result, then continue or answer.\n" +
-        "- Don't state unverified facts. Final answer in Japanese, concise: direct, no preamble.";
+        "- Never output an empty/missing command, a tool definition, a description, or a parameter schema.\n" +
+        "Work:\n" +
+        "- Split work into small steps; run one tool step, verify its result, then continue.\n" +
+        "- Don't state unverified facts; check with the tool first.\n" +
+        "Final answer:\n" +
+        "- When you have enough, reply in plain Japanese text with NO JSON and NO tool call: concise, direct, no preamble.";
 
     public ProviderConfig ConfigFor(AiProvider provider) => Local;
 }
