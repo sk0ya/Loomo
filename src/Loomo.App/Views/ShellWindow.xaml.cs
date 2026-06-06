@@ -125,6 +125,7 @@ public partial class ShellWindow : Window
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
+        vm.Appearance.AppearanceChanged += ApplyAppearanceToOpenTabs;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
@@ -1207,6 +1208,7 @@ public partial class ShellWindow : Window
     private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null)
     {
         var view = new TerminalTabView("pwsh.exe", startDirectory);
+        ApplyTerminalAppearance(view);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
         return tab;
@@ -1225,7 +1227,7 @@ public partial class ShellWindow : Window
             VimEnabled = _settings.Vim.Enabled,
             Visibility = Visibility.Collapsed
         };
-        control.SetTheme(BuildEditorTheme());
+        ApplyEditorAppearance(control);
         var tab = new EditorTab(requestedId ?? Guid.NewGuid(), control);
         control.BufferChanged += (_, _) =>
         {
@@ -1250,19 +1252,19 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>
-    /// エディタの配色は内蔵 Dracula をベースにしつつ、選択ハイライトだけを Loomo の
-    /// アクセント色（半透明）へ差し替える。既定の選択色は暗い背景に埋もれて見えないため。
-    /// <see cref="EditorTheme"/> は init 専用プロパティのみで複製手段が無いので、
+    /// エディタの配色は設定で選んだプリセット（<see cref="AppearanceSettings.EditorTheme"/>）を
+    /// ベースにしつつ、選択ハイライトだけを Loomo のアクセント色（半透明）へ差し替える。
+    /// 既定の選択色は暗い背景に埋もれて見えないため。<see cref="EditorTheme"/> は複製手段が無いので、
     /// リフレクションで全プロパティを写し取り <c>SelectionBg</c> だけ上書きする
     /// （ライブラリ側がパレットを更新しても追従でき、Loomo 側に色定義が漏れない）。
     /// </summary>
-    private static EditorTheme BuildEditorTheme()
+    private EditorTheme BuildEditorTheme()
     {
         var accent = (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
                      ?? Color.FromRgb(0x61, 0x48, 0xDE);
         var selection = new SolidColorBrush(Color.FromArgb(0x99, accent.R, accent.G, accent.B));
 
-        var baseTheme = EditorTheme.Dracula;
+        var baseTheme = ResolveEditorTheme(_settings.Appearance.EditorTheme);
         var clone = new EditorTheme();
         foreach (var prop in typeof(EditorTheme).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -1272,6 +1274,64 @@ public partial class ShellWindow : Window
             prop.SetValue(clone, value);
         }
         return clone;
+    }
+
+    /// <summary>設定のテーマ名から <see cref="EditorTheme"/> の組み込みプリセットを解決する。未知名は Dracula。</summary>
+    private static EditorTheme ResolveEditorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
+    {
+        "dark" => EditorTheme.Dark,
+        "nord" => EditorTheme.Nord,
+        "tokyonight" => EditorTheme.TokyoNight,
+        "onedark" => EditorTheme.OneDark,
+        _ => EditorTheme.Dracula,
+    };
+
+    /// <summary>エディタへ配色テーマとフォント（設定値、未指定なら触らない）を適用する。</summary>
+    private void ApplyEditorAppearance(VimEditorControl control)
+    {
+        control.SetTheme(BuildEditorTheme());
+        var ap = _settings.Appearance;
+        if (!string.IsNullOrWhiteSpace(ap.EditorFontFamily))
+            control.FontFamily = new FontFamily(ap.EditorFontFamily);
+        if (ap.EditorFontSize > 0)
+            control.FontSize = ap.EditorFontSize;
+    }
+
+    /// <summary>ターミナルへ配色（背景/文字色）とフォント（設定値、未指定なら触らない）を適用する。</summary>
+    private void ApplyTerminalAppearance(TerminalTabView view)
+    {
+        var ap = _settings.Appearance;
+        var (bg, fg) = BuildTerminalColors(ap.TerminalTheme);
+        view.Background = bg;
+        view.Foreground = fg;
+        if (!string.IsNullOrWhiteSpace(ap.TerminalFontFamily))
+            view.FontFamily = new FontFamily(ap.TerminalFontFamily);
+        if (ap.TerminalFontSize > 0)
+            view.FontSize = ap.TerminalFontSize;
+    }
+
+    /// <summary>ターミナル配色プリセット名 → (背景, 文字色)。外観パネルの代表色と一致させる。未知名は Dark。</summary>
+    private static (Brush Bg, Brush Fg) BuildTerminalColors(string? name) => name?.Trim().ToLowerInvariant() switch
+    {
+        "light" => (MakeBrush("#FFFFFF"), MakeBrush("#1F1F1F")),
+        "dracula" => (MakeBrush("#282A36"), MakeBrush("#F8F8F2")),
+        "nord" => (MakeBrush("#2E3440"), MakeBrush("#D8DEE9")),
+        "solarizeddark" => (MakeBrush("#002B36"), MakeBrush("#93A1A1")),
+        _ => (MakeBrush("#1E1E1E"), MakeBrush("#D4D4D4")),
+    };
+
+    private static SolidColorBrush MakeBrush(string hex) =>
+        new((Color)ColorConverter.ConvertFromString(hex)!);
+
+    /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと Markdown プレビューへ即時反映する。</summary>
+    private void ApplyAppearanceToOpenTabs()
+    {
+        foreach (var tab in _editorTabs)
+            ApplyEditorAppearance(tab.Control);
+        foreach (var tab in _terminalTabs)
+            ApplyTerminalAppearance(tab.View);
+        if (_markdownPreviewSourceTab is not null)
+            ScheduleMarkdownPreviewUpdate();
     }
 
     private void QueueEditorTabUpdate(EditorTab tab)
@@ -1558,16 +1618,17 @@ public partial class ShellWindow : Window
         var title = filePath is null ? "Markdown Preview" : $"Preview: {Path.GetFileName(filePath)}";
         string html;
 
+        var previewStyle = _settings.Appearance.MarkdownPreviewTheme;
         if (ext is ".md" or ".markdown")
         {
-            html = MarkdownRenderer.RenderToHtml(source.Control.Text, title, "Dracula");
+            html = MarkdownRenderer.RenderToHtml(source.Control.Text, title, previewStyle);
         }
         else
         {
             html = MarkdownRenderer.RenderToHtml(
                 "## Markdown Preview\n\nActive editor tab is not a Markdown file.",
                 "Markdown Preview",
-                "Dracula");
+                previewStyle);
         }
 
         preview.View.CoreWebView2!.NavigateToString(html);

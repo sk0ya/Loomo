@@ -100,6 +100,7 @@ public sealed class AiSettingsStore
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
         public PersistedVim? Vim { get; set; }
+        public PersistedAppearance? Appearance { get; set; }
 
         public static PersistedSettings From(AiSettings s) => new()
         {
@@ -109,6 +110,7 @@ public sealed class AiSettingsStore
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
             Vim = PersistedVim.From(s.Vim),
+            Appearance = PersistedAppearance.From(s.Appearance),
         };
 
         public void ApplyTo(AiSettings s)
@@ -120,6 +122,42 @@ public sealed class AiSettingsStore
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
             Vim?.ApplyTo(s.Vim);
+            Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
+        }
+    }
+
+    // ===== 外観（エディタ/プレビュー/ターミナルの配色・フォント）。平文で保持。 =====
+
+    private sealed class PersistedAppearance
+    {
+        public string? EditorTheme { get; set; }
+        public string? EditorFontFamily { get; set; }
+        public double EditorFontSize { get; set; }
+        public string? MarkdownPreviewTheme { get; set; }
+        public string? TerminalTheme { get; set; }
+        public string? TerminalFontFamily { get; set; }
+        public double TerminalFontSize { get; set; }
+
+        public static PersistedAppearance From(AppearanceSettings a) => new()
+        {
+            EditorTheme = a.EditorTheme,
+            EditorFontFamily = a.EditorFontFamily,
+            EditorFontSize = a.EditorFontSize,
+            MarkdownPreviewTheme = a.MarkdownPreviewTheme,
+            TerminalTheme = a.TerminalTheme,
+            TerminalFontFamily = a.TerminalFontFamily,
+            TerminalFontSize = a.TerminalFontSize,
+        };
+
+        public void ApplyTo(AppearanceSettings a)
+        {
+            if (!string.IsNullOrWhiteSpace(EditorTheme)) a.EditorTheme = EditorTheme;
+            a.EditorFontFamily = string.IsNullOrWhiteSpace(EditorFontFamily) ? null : EditorFontFamily;
+            if (EditorFontSize > 0) a.EditorFontSize = EditorFontSize;
+            if (!string.IsNullOrWhiteSpace(MarkdownPreviewTheme)) a.MarkdownPreviewTheme = MarkdownPreviewTheme;
+            if (!string.IsNullOrWhiteSpace(TerminalTheme)) a.TerminalTheme = TerminalTheme;
+            a.TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily;
+            if (TerminalFontSize > 0) a.TerminalFontSize = TerminalFontSize;
         }
     }
 

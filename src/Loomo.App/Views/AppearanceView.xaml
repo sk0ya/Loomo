@@ -107,6 +107,36 @@
                 <TextBlock Style="{StaticResource FieldLabel}" Text="任意指定（#RRGGBB）" />
                 <TextBox Text="{Binding AccentColor, UpdateSourceTrigger=LostFocus}"
                          FontFamily="Cascadia Mono, Consolas" />
+
+                <!-- エディタ -->
+                <Separator Margin="0,16,0,8" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="エディタ — テーマ" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding EditorThemes}"
+                          SelectedItem="{Binding SelectedEditorTheme}" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" />
+                <TextBox Text="{Binding EditorFontFamily, UpdateSourceTrigger=LostFocus}"
+                         FontFamily="Cascadia Mono, Consolas" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
+                <TextBox Text="{Binding EditorFontSize, UpdateSourceTrigger=LostFocus}"
+                         FontFamily="Cascadia Mono, Consolas" />
+
+                <!-- Markdown プレビュー -->
+                <Separator Margin="0,16,0,8" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー — テーマ" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding PreviewThemes}"
+                          SelectedItem="{Binding SelectedPreviewTheme}" />
+
+                <!-- ターミナル -->
+                <Separator Margin="0,16,0,8" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル — テーマ（背景 / 文字色）" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding TerminalThemes}"
+                          SelectedItem="{Binding SelectedTerminalTheme}" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" />
+                <TextBox Text="{Binding TerminalFontFamily, UpdateSourceTrigger=LostFocus}"
+                         FontFamily="Cascadia Mono, Consolas" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
+                <TextBox Text="{Binding TerminalFontSize, UpdateSourceTrigger=LostFocus}"
+                         FontFamily="Cascadia Mono, Consolas" />
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

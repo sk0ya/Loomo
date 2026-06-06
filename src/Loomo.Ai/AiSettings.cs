@@ -28,6 +28,10 @@ public sealed class AiSettings
     /// <summary>埋め込み Vim エディタの設定。</summary>
     public VimSettings Vim { get; set; } = new();
 
+    /// <summary>エディタ／Markdownプレビュー／ターミナルの配色・フォント設定。
+    /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
+    public AppearanceSettings Appearance { get; set; } = new();
+
     /// <summary>ローカルLLM（Ollama ネイティブ API /api/chat）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
@@ -102,4 +106,30 @@ public sealed class VimSettings
     /// 埋め込みエディタで Vim キーバインドを有効にする。
     /// </summary>
     public bool Enabled { get; set; } = false;
+}
+
+/// <summary>エディタ／Markdownプレビュー／ターミナルの配色・フォント設定。
+/// テーマ名はコンポーネントごとに使えるプリセット名（UI 適用時に解決する）。</summary>
+public sealed class AppearanceSettings
+{
+    /// <summary>エディタの配色テーマ。<c>Dracula / Dark / Nord / TokyoNight / OneDark</c>。</summary>
+    public string EditorTheme { get; set; } = "Dracula";
+
+    /// <summary>エディタのフォントファミリ。null/空ならコントロール既定。</summary>
+    public string? EditorFontFamily { get; set; }
+
+    /// <summary>エディタのフォントサイズ。0 以下ならコントロール既定。</summary>
+    public double EditorFontSize { get; set; }
+
+    /// <summary>Markdownプレビューの配色テーマ。<c>Dracula / Dark / Light / GitHub</c>。</summary>
+    public string MarkdownPreviewTheme { get; set; } = "Dracula";
+
+    /// <summary>ターミナルの配色テーマ（背景/文字色のプリセット）。<c>Dark / Light / Dracula / Nord / SolarizedDark</c>。</summary>
+    public string TerminalTheme { get; set; } = "Dark";
+
+    /// <summary>ターミナルのフォントファミリ。null/空ならコントロール既定。</summary>
+    public string? TerminalFontFamily { get; set; }
+
+    /// <summary>ターミナルのフォントサイズ。0 以下ならコントロール既定。</summary>
+    public double TerminalFontSize { get; set; }
 }
