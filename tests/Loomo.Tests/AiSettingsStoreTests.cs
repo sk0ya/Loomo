@@ -81,4 +81,36 @@ public class AiSettingsStoreTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void Save_and_load_persists_vim_enabled()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new AiSettings();
+            saved.Vim.Enabled = true;
+
+            var store = new AiSettingsStore(path);
+            store.Save(saved);
+
+            var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.True(json["vim"]!["enabled"]!.GetValue<bool>());
+
+            var loaded = new AiSettings();
+            store.Load(loaded);
+
+            Assert.True(loaded.Vim.Enabled);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Vim_is_disabled_by_default()
+    {
+        Assert.False(new AiSettings().Vim.Enabled);
+    }
 }

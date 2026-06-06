@@ -12,6 +12,7 @@ using System.Windows.Media;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
@@ -28,6 +29,7 @@ public partial class ShellWindow : Window
     private readonly BrowserService _browser;
     private readonly IWorkspaceService _workspace;
     private readonly TabIconService _tabIcons;
+    private readonly AiSettings _settings;
     private readonly ShellViewModel _vm;
     private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
     private readonly Dictionary<Guid, EditorWorkspaceTabs> _editorWorkspaces = new();
@@ -90,7 +92,8 @@ public partial class ShellWindow : Window
         EditorService editor,
         BrowserService browser,
         IWorkspaceService workspace,
-        TabIconService tabIcons)
+        TabIconService tabIcons,
+        AiSettings settings)
     {
         InitializeComponent();
         DataContext = vm;
@@ -101,6 +104,7 @@ public partial class ShellWindow : Window
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _workspace = workspace;
         _tabIcons = tabIcons;
+        _settings = settings;
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;
@@ -109,6 +113,7 @@ public partial class ShellWindow : Window
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
+        vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
@@ -1199,6 +1204,7 @@ public partial class ShellWindow : Window
             GitServiceFactory = () => new GitDiffProvider()
         })
         {
+            VimEnabled = _settings.Vim.Enabled,
             Visibility = Visibility.Collapsed
         };
         control.SetTheme(BuildEditorTheme());
@@ -1206,6 +1212,12 @@ public partial class ShellWindow : Window
         control.BufferChanged += (_, _) => UpdateEditorTab(tab);
         control.SaveRequested += (_, _) => QueueEditorTabUpdate(tab);
         return tab;
+    }
+
+    private void ApplyVimEnabledToOpenEditorTabs()
+    {
+        foreach (var tab in _editorTabs)
+            tab.Control.VimEnabled = _settings.Vim.Enabled;
     }
 
     /// <summary>

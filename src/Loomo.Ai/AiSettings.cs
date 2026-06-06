@@ -25,6 +25,9 @@ public sealed class AiSettings
     /// <summary>AI操作トレース（観測性・設計書 §20）の設定。</summary>
     public ObservabilitySettings Observability { get; set; } = new();
 
+    /// <summary>埋め込み Vim エディタの設定。</summary>
+    public VimSettings Vim { get; set; } = new();
+
     /// <summary>ローカルLLM（Ollama ネイティブ API /api/chat）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
@@ -91,4 +94,12 @@ public sealed class ProviderConfig
     /// そうした環境では 0 にして CPU 実行へ寄せると速い。まともな GPU があるマシンでは負値のままにする。
     /// </summary>
     public int NumGpu { get; set; } = -1;
+}
+
+public sealed class VimSettings
+{
+    /// <summary>
+    /// 埋め込みエディタで Vim キーバインドを有効にする。
+    /// </summary>
+    public bool Enabled { get; set; } = false;
 }

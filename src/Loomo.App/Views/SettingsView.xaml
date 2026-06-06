@@ -46,6 +46,15 @@
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
 
+                <Separator Margin="0,14,0,8" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="Editor / Vim" />
+                <CheckBox Content="Vim キーバインドを有効にする"
+                          IsChecked="{Binding VimEnabled}" Margin="0,2,0,4"
+                          Foreground="{DynamicResource Fg}" />
+                <TextBlock Text="有効/無効は開いているタブにも反映されます。"
+                           Foreground="{DynamicResource FgDim}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,0" />
+
                 <!-- 安全設計（§10） -->
                 <Separator Margin="0,14,0,8" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="安全設計" />

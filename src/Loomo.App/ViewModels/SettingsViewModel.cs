@@ -34,6 +34,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _maxTokens;
     [ObservableProperty] private int _numGpu;
     [ObservableProperty] private bool _thinking;
+    [ObservableProperty] private bool _vimEnabled;
     [ObservableProperty] private string _status = "";
 
     // --- 安全設計（設計書 §10） ---
@@ -74,6 +75,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         MaxTokens = cfg.MaxTokens;
         NumGpu = cfg.NumGpu;
         Thinking = cfg.Thinking;
+        VimEnabled = _settings.Vim.Enabled;
         _suppressPersist = false;
     }
 
@@ -82,6 +84,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnMaxTokensChanged(int value) => Persist();
     partial void OnNumGpuChanged(int value) => Persist();
     partial void OnThinkingChanged(bool value) => Persist();
+    partial void OnVimEnabledChanged(bool value) => Persist();
     partial void OnAutoApproveChanged(bool value) => Persist();
     partial void OnRestrictToWorkspaceRootChanged(bool value) => Persist();
 
@@ -107,6 +110,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         CommitLocalFields();
         _settings.Provider = AiProvider.Local;
+        _settings.Vim.Enabled = VimEnabled;
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
 

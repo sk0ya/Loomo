@@ -99,6 +99,7 @@ public sealed class AiSettingsStore
         public PersistedProvider Local { get; set; } = new();
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
+        public PersistedVim? Vim { get; set; }
 
         public static PersistedSettings From(AiSettings s) => new()
         {
@@ -107,6 +108,7 @@ public sealed class AiSettingsStore
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
+            Vim = PersistedVim.From(s.Vim),
         };
 
         public void ApplyTo(AiSettings s)
@@ -117,6 +119,24 @@ public sealed class AiSettingsStore
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
+            Vim?.ApplyTo(s.Vim);
+        }
+    }
+
+    // ===== Vim エディタ設定。平文で保持（秘匿情報ではない）。 =====
+
+    private sealed class PersistedVim
+    {
+        public bool Enabled { get; set; } = false;
+
+        public static PersistedVim From(VimSettings v) => new()
+        {
+            Enabled = v.Enabled,
+        };
+
+        public void ApplyTo(VimSettings v)
+        {
+            v.Enabled = Enabled;
         }
     }
 
