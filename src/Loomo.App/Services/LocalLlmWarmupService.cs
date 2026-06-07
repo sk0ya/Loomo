@@ -30,9 +30,20 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
 
     // 実行中の暖機（prime）件数。起動時とワークスペース確定が重なると複数同時に走り得るため計数で持つ。
     private int _activePrimes;
+    private long _warmupStartedAtUnixMs;
 
     /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けないよう UI で使う。</summary>
     public bool IsWarmingUp => Volatile.Read(ref _activePrimes) > 0;
+
+    /// <summary>現在のウォームアップが始まった時刻。停止中は null。</summary>
+    public DateTimeOffset? WarmupStartedAt
+    {
+        get
+        {
+            var unixMs = Interlocked.Read(ref _warmupStartedAtUnixMs);
+            return unixMs == 0 ? null : DateTimeOffset.FromUnixTimeMilliseconds(unixMs).ToLocalTime();
+        }
+    }
 
     /// <summary><see cref="IsWarmingUp"/> が変化したときに通知する（開始↔終了の遷移時のみ）。</summary>
     public event Action? StateChanged;
@@ -92,13 +103,19 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     private void BeginWarmup()
     {
         if (Interlocked.Increment(ref _activePrimes) == 1)
+        {
+            Interlocked.Exchange(ref _warmupStartedAtUnixMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             StateChanged?.Invoke();
+        }
     }
 
     private void EndWarmup()
     {
         if (Interlocked.Decrement(ref _activePrimes) == 0)
+        {
+            Interlocked.Exchange(ref _warmupStartedAtUnixMs, 0);
             StateChanged?.Invoke();
+        }
     }
 
     public void Dispose()

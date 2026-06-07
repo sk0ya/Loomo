@@ -10,6 +10,9 @@ public interface IAiWarmup
     /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けない。</summary>
     bool IsWarmingUp { get; }
 
+    /// <summary>現在のウォームアップが始まった時刻。停止中は null。</summary>
+    DateTimeOffset? WarmupStartedAt { get; }
+
     /// <summary><see cref="IsWarmingUp"/> が変化したときに通知する（開始↔終了の遷移時のみ）。</summary>
     event Action? StateChanged;
 

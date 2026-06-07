@@ -66,6 +66,8 @@ public sealed partial class AiBarViewModel : ObservableObject
     /// その旨をバーに表示する。</summary>
     [ObservableProperty] private bool _isWarmingUp;
 
+    [ObservableProperty] private string _warmupStatusText = "";
+
     [ObservableProperty] private string _providerLabel;
 
     /// <summary>処理中に「いま何をしているか」を示すステータス文言（考え中／ツール実行中／承認待ち…）。
@@ -75,6 +77,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     private string _statusPhase = "";                 // 経過秒を除いたフェーズ説明
     private readonly Stopwatch _statusClock = new();   // 処理開始からの経過時間
     private readonly DispatcherTimer _statusTimer;     // 経過秒の表示を更新する
+    private readonly DispatcherTimer _warmupTimer;     // ウォームアップ経過秒の表示を更新する
 
     public AiBarViewModel(
         AgentOrchestrator orchestrator,
@@ -93,19 +96,51 @@ public sealed partial class AiBarViewModel : ObservableObject
         _providerLabel = settings.Provider.ToString();
         approval.ApprovalRequested += OnApprovalRequested;
 
-        // ウォームアップの実行中は送信を抑止し、バーに状態を出す。
-        _isWarmingUp = warmup.IsWarmingUp;
-        warmup.StateChanged += OnWarmupStateChanged;
-
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _statusTimer.Tick += (_, _) => RenderStatus();
+
+        _warmupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _warmupTimer.Tick += (_, _) => RenderWarmupStatus();
+
+        // ウォームアップの実行中は送信を抑止し、バーに状態と経過時間を出す。
+        _isWarmingUp = warmup.IsWarmingUp;
+        warmup.StateChanged += OnWarmupStateChanged;
+        ApplyWarmupState();
     }
 
     /// <summary>暖機サービスからの状態変化通知。UIスレッドへ整えてから反映する。</summary>
     private void OnWarmupStateChanged()
     {
-        if (_dispatcher.CheckAccess()) IsWarmingUp = _warmup.IsWarmingUp;
-        else _dispatcher.BeginInvoke(() => IsWarmingUp = _warmup.IsWarmingUp);
+        if (_dispatcher.CheckAccess()) ApplyWarmupState();
+        else _dispatcher.BeginInvoke(ApplyWarmupState);
+    }
+
+    private void ApplyWarmupState()
+    {
+        IsWarmingUp = _warmup.IsWarmingUp;
+        if (IsWarmingUp)
+        {
+            if (!_warmupTimer.IsEnabled) _warmupTimer.Start();
+            RenderWarmupStatus();
+        }
+        else
+        {
+            _warmupTimer.Stop();
+            WarmupStatusText = "";
+        }
+    }
+
+    private void RenderWarmupStatus()
+    {
+        if (!IsWarmingUp || _warmup.WarmupStartedAt is not { } startedAt)
+        {
+            WarmupStatusText = "";
+            return;
+        }
+
+        var elapsed = DateTimeOffset.Now - startedAt;
+        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+        WarmupStatusText = $"🔥 ウォームアップ中… {FormatWarmupDuration(elapsed)} 経過。モデルとプロンプトを準備しています（完了までAIへの指示はできません）";
     }
 
     /// <summary>現在のフェーズに切り替え、経過秒の表示更新を開始する。</summary>
@@ -566,6 +601,13 @@ public sealed partial class AiBarViewModel : ObservableObject
     }
 
     private static string FormatMs(double ms) => FormatDuration(TimeSpan.FromMilliseconds(ms));
+
+    private static string FormatWarmupDuration(TimeSpan elapsed)
+    {
+        if (elapsed.TotalMinutes < 1)
+            return $"{Math.Floor(elapsed.TotalSeconds):0} 秒";
+        return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
+    }
 
     private static string FormatDuration(TimeSpan elapsed)
     {

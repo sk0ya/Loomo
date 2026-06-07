@@ -13,6 +13,7 @@ namespace sk0ya.Loomo.Tests;
 internal sealed class FakeAiWarmup : IAiWarmup
 {
     public bool IsWarmingUp => false;
+    public DateTimeOffset? WarmupStartedAt => null;
 #pragma warning disable CS0067 // テストでは発火させないイベント
     public event Action? StateChanged;
 #pragma warning restore CS0067
