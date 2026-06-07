@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -179,6 +180,7 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
         var outputTokens = 0;
         var budget = Math.Min(req.MaxNewTokens, Math.Max(0, maxLength - inputTokens));
         var generated = new List<int>(256);    // 反復ガード用：このターンの生成トークン列
+        var generatedText = new StringBuilder(2048);
 
         while (outputTokens < budget && !generator.IsDone())
         {
@@ -194,12 +196,14 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
 
             var piece = stream.Decode(token);
             if (!string.IsNullOrEmpty(piece))
+            {
+                generatedText.Append(piece);
                 sink.TryWrite(new TextDelta(piece));
+            }
 
-            // repetition collapse 保険。repetition_penalty でも抜けられない短周期ループ（" . " の暴走等）に
-            // 落ちたら、budget 一杯まで無意味なゴミを吐き続けず即停止する（ORT の no_repeat_ngram_size は
-            // 0.9.0 CPU で無視されるため、ここで確実に断つ）。
-            if (IsLoopingTail(generated))
+            // repetition collapse 保険。短いトークン周期だけでなく、同じ文章/JSONブロックを何度も
+            // 生成する長周期ループも止める（ORT の no_repeat_ngram_size は 0.9.0 CPU で無視される）。
+            if (IsLoopingTail(generated) || IsRepeatingTextTail(generatedText))
                 break;
         }
 
@@ -230,6 +234,37 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
 
             if (looping) return true;
         }
+        return false;
+    }
+
+    /// <summary>
+    /// デコード済みテキスト末尾で、同じ文章ブロックが連続しているかを検出する。
+    /// トークン単位では捕まえにくい、数十〜数百文字の回答ブロック反復を止めるための保険。
+    /// </summary>
+    internal static bool IsRepeatingTextTail(StringBuilder text, int minUnitChars = 24, int maxUnitChars = 600, int minRepeats = 3)
+    {
+        var len = text.Length;
+        if (len < minUnitChars * minRepeats) return false;
+
+        var maxUnit = Math.Min(maxUnitChars, len / minRepeats);
+        for (var unit = minUnitChars; unit <= maxUnit; unit++)
+        {
+            var repeated = true;
+            for (var r = 1; r < minRepeats && repeated; r++)
+            {
+                var a = len - unit;
+                var b = len - unit * (r + 1);
+                for (var i = 0; i < unit; i++)
+                {
+                    if (text[a + i] == text[b + i]) continue;
+                    repeated = false;
+                    break;
+                }
+            }
+
+            if (repeated) return true;
+        }
+
         return false;
     }
 
