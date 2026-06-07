@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
@@ -121,7 +123,79 @@ public static class ToolCallTextParser
     private static JsonNode? TryParseNode(string s)
     {
         try { return JsonNode.Parse(s); }
-        catch { return null; }
+        catch { /* 下のフォールバック補修へ */ }
+
+        // フォールバック：小型モデルが壊しやすい2系統のJSON誤りを限定補修して再パースする。
+        //  (1) キー代入のタイプミス: "content="… のように ":" を "=" と書く（write_file で頻出）。
+        //  (2) 無効なバックスラッシュエスケープ: \. \s \d .\src を JSON 文字列に素で書く（正規表現/パス）。
+        // (1)→(2) の順に適用（先に ":" を復元してから文字列境界を見てエスケープを直す）。
+        var repaired = RepairInvalidEscapes(RepairKeyAssignmentTypo(s));
+        if (repaired != s)
+        {
+            try { return JsonNode.Parse(repaired); }
+            catch { /* 補修しても駄目なら諦める */ }
+        }
+        return null;
+    }
+
+    /// <summary>正規キー（command/content/path/old_string/new_string）の直後が <c>=</c> になっている
+    /// タイプミス <c>"content="…</c> を、本来の <c>"content":"…</c> へ補修する。
+    /// 正しい JSON では key の後は必ず <c>:</c> なので、<c>"知っているキー名="</c> は曖昧さなくこの誤りに限られる。</summary>
+    private static string RepairKeyAssignmentTypo(string s)
+        => KeyTypoPattern.Replace(s, "\"$1\":\"");
+
+    private static readonly Regex KeyTypoPattern =
+        new("\"(command|content|path|old_string|new_string)=\"", RegexOptions.Compiled);
+
+    /// <summary>JSON 文字列リテラル内の無効なバックスラッシュエスケープを <c>\\</c> へ二重化して有効化する。
+    /// 有効なエスケープ（<c>\" \\ \/ \b \f \n \r \t</c> と <c>\uXXXX</c>）はそのまま残す。
+    /// 文字列の外（構造部分）は一切触らない。補修不要ならば入力をそのまま返す（参照一致で判定可能）。</summary>
+    private static string RepairInvalidEscapes(string s)
+    {
+        StringBuilder? sb = null;   // 変更が無ければ確保せず原文を返す
+        var inStr = false;
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (!inStr)
+            {
+                sb?.Append(c);
+                if (c == '"') inStr = true;
+                continue;
+            }
+            if (c == '"') { sb?.Append(c); inStr = false; continue; }
+            if (c == '\\')
+            {
+                var next = i + 1 < s.Length ? s[i + 1] : '\0';
+                var valid = next is '"' or '\\' or '/' or 'b' or 'f' or 'n' or 'r' or 't'
+                            || (next == 'u' && i + 5 < s.Length && IsHex(s, i + 2, 4));
+                if (valid)
+                {
+                    var take = next == 'u' ? 6 : 2;
+                    sb?.Append(s, i, take);
+                    i += take - 1;
+                    continue;
+                }
+                // 無効：バックスラッシュを二重化（次の文字は次反復で通常どおり処理）。
+                sb ??= new StringBuilder(s.Length + 8).Append(s, 0, i);
+                sb.Append('\\').Append('\\');
+                continue;
+            }
+            sb?.Append(c);
+        }
+        return sb?.ToString() ?? s;
+    }
+
+    private static bool IsHex(string s, int start, int count)
+    {
+        for (var i = start; i < start + count; i++)
+        {
+            if (i >= s.Length) return false;
+            var c = s[i];
+            var hex = c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+            if (!hex) return false;
+        }
+        return true;
     }
 
     /// <summary>文字列リテラルを意識して波括弧の対応を取り、先頭で完結する <c>{…}</c> を返す（無ければ null）。

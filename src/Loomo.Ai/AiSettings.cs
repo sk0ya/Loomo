@@ -61,7 +61,8 @@ public sealed class AiSettings
         "Use only these tools: run_powershell, write_file, edit_file.\n" +
         "Use tools only for workspace facts or requested actions. If the user only greets or chats, give a final Japanese answer with no JSON.\n" +
         "write_file is only for an explicit request to create, write, save, or fully overwrite a file.\n" +
-        "run_powershell is for inspection/commands, not file modification; never use it with Set-Content, Out-File, Add-Content, or -replace.\n" +
+        "run_powershell is for inspection/commands, not file content edits; never use it with Set-Content, Out-File, Add-Content, or -replace.\n" +
+        "To rename, move, or delete a file, use run_powershell with Rename-Item, Move-Item, or Remove-Item.\n" +
         "For tool use, output exactly a JSON array, optionally wrapped in <|tool_call|> and <|/tool_call|>. Never use Markdown or code fences.\n" +
         "Tool output example: [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}]\n" +
         "Examples:\n" +
@@ -77,6 +78,7 @@ public sealed class AiSettings
         "For git history, use simple commands such as git --no-pager show --stat --oneline --decorate -1. Do not invent long --pretty=format strings.\n" +
         "For replace/edit requests on existing files, first inspect with run_powershell only; the first command must be a read-only command such as Get-Content README.md.\n" +
         "After the tool result, use edit_file only when old_string is copied exactly and uniquely from the result.\n" +
+        "To replace text in a file, use edit_file with old_string and new_string copied exactly; do not build Select-String, -replace, or .replace() pipelines for edits.\n" +
         "Only modify a file when the user explicitly asked to create, write, edit, or change it. For a read or question task, never edit; just answer.\n" +
         "When the user did ask to change a file and you have just read it, your next reply must be the edit_file or write_file call; do not reply in prose until the change is actually made.\n" +
         "Never state that a file was created, written, edited, or changed unless you actually called write_file or edit_file in this conversation. Reading a file is not changing it.\n" +

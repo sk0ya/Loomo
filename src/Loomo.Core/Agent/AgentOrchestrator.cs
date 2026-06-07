@@ -35,6 +35,12 @@ public sealed class AgentOrchestrator
     /// 修正できないモデルが延々と prefill を浪費するのを防ぐ上限。超えたらエラーで打ち切る。</summary>
     private const int MaxToolCallParseRetries = 2;
 
+    /// <summary>同一（ツール名＋引数）の<b>失敗</b>呼び出しがこの回数に達したらターンを打ち切る上限。
+    /// 小モデルは同じ不正引数（例: 空 old_string での edit_file）を延々と再生産し、結果を見ても
+    /// 引数を変えないことがある。MaxIterations(25) まで回すと prefill/decode を空費するため、
+    /// 「同じ失敗を繰り返している」ことを検知して早期に止める安全網。</summary>
+    private const int MaxRepeatedToolFailures = 3;
+
     public AgentOrchestrator(
         IAiClientFactory aiFactory,
         ToolRegistry tools,
@@ -74,6 +80,8 @@ public sealed class AgentOrchestrator
         var provider = ai.Provider.ToString();
         var turnClock = Stopwatch.StartNew();
         var parseRetries = 0;
+        // ターン内で「同一の失敗ツール呼び出し」が何回出たかを数える（暴走ループの早期打ち切り用）。
+        var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
         if (isNewSession)
             _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider, agentId = activeProfile.Id });
@@ -265,6 +273,30 @@ public sealed class AgentOrchestrator
             var toolMessage = new ChatMessage { Role = ChatRole.Tool };
             toolMessage.ToolResults.AddRange(toolResults);
             conversation.Messages.Add(toolMessage);
+
+            // 進捗ガード：同一（ツール名＋引数）の失敗呼び出しがしきい値に達したら、これ以上反復しても
+            // 同じゴミを再生産するだけなので打ち切る。pendingToolUses と toolResults は配列順で対応する。
+            for (var i = 0; i < toolResults.Count && i < pendingToolUses.Count; i++)
+            {
+                if (!toolResults[i].IsError) continue;
+                var use = pendingToolUses[i];
+                var sig = use.Name + "" + (use.ArgumentsJson ?? string.Empty);
+                var count = failureCounts[sig] = failureCounts.GetValueOrDefault(sig) + 1;
+                if (count < MaxRepeatedToolFailures) continue;
+
+                var stuck = $"同じツール呼び出し（{use.Name}）が{count}回連続で同じ失敗を返しました。"
+                            + "引数が改善していないため、これ以上の反復を中断します。"
+                            + "別のアプローチが必要です。\n--- 最後のエラー ---\n" + toolResults[i].Content;
+                _trace.Record(sessionId, turnId, TraceKinds.Error, new
+                {
+                    message = stuck,
+                    where = "toolcall.repeat_failure",
+                    tool = use.Name,
+                    count,
+                });
+                yield return new AgentError(stuck);
+                yield break;
+            }
             // ループ継続 → 結果を踏まえてAIが再応答
         }
 

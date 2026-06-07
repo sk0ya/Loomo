@@ -145,6 +145,32 @@ public class FileToolTests : IDisposable
     }
 
     [Fact]
+    public async Task EditFile_empty_old_string_appends_to_end()
+    {
+        var path = Path2("edit.txt");
+        await File.WriteAllTextAsync(path, "line1\n");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"\",\"new_string\":\"line2\"}}"), CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal("line1\nline2", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task EditFile_empty_old_string_appends_newline_when_file_lacks_trailing_newline()
+    {
+        var path = Path2("edit.txt");
+        await File.WriteAllTextAsync(path, "line1");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"\",\"new_string\":\"line2\"}}"), CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal("line1\nline2", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
     public async Task EditFile_missing_file_returns_error()
     {
         var result = await Edit().ExecuteAsync(

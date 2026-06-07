@@ -59,3 +59,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .DS_Store
+
+# Claude Code ランタイム状態
+.claude/
+
+# 評価ハーネスの生成レポート（AgentCapabilityHarness が毎回出力／手動スナップショット）
+harness-report*.md

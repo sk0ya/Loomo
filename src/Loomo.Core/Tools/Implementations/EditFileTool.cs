@@ -28,6 +28,9 @@ public sealed class EditFileTool : IAgentTool
     public string Name => EditFileContract.ToolName;
     public bool RequiresApproval => true;
 
+    // 注: old_string が空のとき末尾追記する挙動は実装に持つが、ツール定義の説明文には載せない。
+    // 説明文を増やすと小モデルが write 過多（読み取りタスクでも write_file）に傾く非局所回帰が出たため、
+    // 「モデルが追記で自然に空 old_string を投げる」習性を実行側で受け止めるに留める（プロンプト無摂動）。
     public ToolDefinition Definition => new(
         Name,
         "Replace text in an existing file. old_string must match the file exactly and be unique; new_string is the replacement (empty to delete).",
@@ -67,9 +70,6 @@ public sealed class EditFileTool : IAgentTool
                 "path が空です。arguments に {\"path\":..,\"old_string\":..,\"new_string\":..} を入れて呼び出してください。");
 
         var oldStr = args.GetString(EditFileContract.OldArg);
-        if (string.IsNullOrEmpty(oldStr))
-            return ToolResult.Error("old_string が空です。置換したい既存の文字列を指定してください（新規作成は write_file を使う）。");
-
         var newStr = args.GetString(EditFileContract.NewArg);
 
         string resolved;
@@ -83,6 +83,23 @@ public sealed class EditFileTool : IAgentTool
         try { content = await File.ReadAllTextAsync(resolved, ct); }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return ToolResult.Error($"読み込みに失敗しました: {ex.Message}"); }
+
+        // old_string 空＝末尾追記。小モデルの「追記」の自然な手（空 old_string での edit_file）を
+        // エラーにせず意図どおり成立させる。既存内容が改行で終わっていなければ改行を1つ補い、追記行が
+        // 前の行に連結しないようにする（new_string が改行始まりなら二重化しない）。
+        if (string.IsNullOrEmpty(oldStr))
+        {
+            if (string.IsNullOrEmpty(newStr))
+                return ToolResult.Error("old_string も new_string も空です。追記する内容を new_string に指定してください。");
+
+            var sep = content.Length > 0 && !content.EndsWith("\n") && !newStr.StartsWith("\n") ? "\n" : "";
+            try { await File.WriteAllTextAsync(resolved, content + sep + newStr, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { return ToolResult.Error($"書き込みに失敗しました: {ex.Message}"); }
+
+            try { await _editor.OpenFileAsync(resolved); } catch { /* 表示は best-effort */ }
+            return ToolResult.Ok($"追記完了: {resolved}（末尾に {newStr.Length} 文字を追記）");
+        }
 
         var count = FileToolText.CountOccurrences(content, oldStr);
         if (count == 0)

@@ -126,9 +126,10 @@ public class OnnxGenAiClientTests
     [Fact]
     public async Task Unparseable_tool_call_attempt_emits_parse_failed_with_raw_text()
     {
-        // ツール呼び出しらしき不正JSON（全要素が壊れて1件も拾えない）。生JSONを最終回答として黙って出す
-        // のでも終端エラーにするのでもなく、生出力ごと ToolCallParseFailed で差し戻して再試行可能にする。
-        const string raw = "[{\"name\":\"write_file\",\"content=\"oops\"}]";
+        // ツール呼び出しらしき不正JSON（補修しても1件も拾えない＝値が欠落して構造ごと壊れている）。
+        // 生JSONを最終回答として黙って出すのでも終端エラーにするのでもなく、生出力ごと ToolCallParseFailed で
+        // 差し戻して再試行可能にする。※ "content=" 等の打ち間違いは補修で救えるようになったため別の壊れ方を使う。
+        const string raw = "[{\"name\":\"write_file\",\"content\":}]";
         var events = await RunAsync(new TextDelta(raw));
 
         var failed = Assert.Single(events.OfType<ToolCallParseFailed>());

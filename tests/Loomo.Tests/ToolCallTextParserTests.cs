@@ -178,12 +178,11 @@ public class ToolCallTextParserTests
     [Fact]
     public void Salvages_first_valid_object_when_later_entries_are_malformed_json()
     {
-        // 実際に観測された出力：先頭の run_powershell は正しいが、続く write_file 群が
-        // "content="（: 抜け・クオート欠落）で不正。配列全体は JsonNode.Parse 不能。
-        // 先頭の1オブジェクトだけ救って実行できること（巻き添えで全捨てしない）。
+        // 先頭の run_powershell は正しいが、続く write_file はカンマ欠落で構造ごと不正（補修でも直らない）。
+        // 配列全体は JsonNode.Parse 不能。先頭の1オブジェクトだけ救って実行できること（巻き添えで全捨てしない）。
         const string malformed =
             "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem -Recurse -Filter *.html | Where-Object { $_.Length -gt 0 }\"}}, " +
-            "{\"name\":\"write_file\",\"arguments\":{\"path\":\"C:\\\\t\\\\a.html\",\"content=\"<html></html>\"}}]";
+            "{\"name\":\"write_file\" \"arguments\":{\"path\":\"a.html\"}}]";
 
         var tool = Assert.Single(ToolCallTextParser.Parse(malformed));
         Assert.Equal("run_powershell", tool.Name);
@@ -194,8 +193,56 @@ public class ToolCallTextParserTests
     [Fact]
     public void Returns_empty_when_first_object_itself_is_malformed()
     {
-        // 先頭が壊れていれば救えない（空を返す）。クライアント側が不正JSONとして仕切り直させる。
-        Assert.Empty(ToolCallTextParser.Parse("[{\"name\":\"write_file\",\"content=\"oops\"}]"));
+        // 先頭が（補修しても）壊れていれば救えない（空を返す）。クライアント側が不正JSONとして仕切り直させる。
+        Assert.Empty(ToolCallTextParser.Parse("[{\"name\":\"write_file\",\"content\":}]"));
+    }
+
+    [Fact]
+    public void Repairs_key_assignment_typo_colon_written_as_equals()
+    {
+        // 実測: create-nested タスクでモデルが "content":" を "content=" と書き、配列全体がパース不能に。
+        // 既知キーの "key=" は ":" の打ち間違いと一意に判定できるので補修して救済する。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "[{\"name\":\"write_file\",\"arguments\":{\"path\":\"docs/guide/intro.md\",\"content=\"# Intro\\nWelcome.\"}}]"));
+        Assert.Equal("write_file", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("docs/guide/intro.md", args.RootElement.GetProperty("path").GetString());
+        Assert.Equal("# Intro\nWelcome.", args.RootElement.GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public void Repairs_invalid_regex_backslash_escape_in_command()
+    {
+        // 実測: edit-file タスクでモデルが PowerShell 正規表現 '1\.2\.3' を JSON 文字列に素で書き、
+        // \. が無効エスケープになって配列全体がパース不能に。バックスラッシュ二重化で救済する。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-Content README.md | Select-String '1\\.2\\.3'\"}}]"));
+        Assert.Equal("run_powershell", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        // 復元後のコマンド文字列にはモデルが意図した正規表現 \.（リテラルのドット）がそのまま残る。
+        Assert.Contains("'1\\.2\\.3'", args.RootElement.GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public void Repairs_invalid_backslash_path_escape()
+    {
+        // 実測: multi-step タスクで .\src\util.txt と書き、\s/\u(非hex) が無効エスケープに。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-Content .\\src\\util.txt\"}}]"));
+        Assert.Equal("run_powershell", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("Get-Content .\\src\\util.txt", args.RootElement.GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public void Keeps_valid_escapes_intact_while_repairing()
+    {
+        // 有効な \n と無効な \d が混在。\n は保持、\d だけ二重化されること。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "[{\"name\":\"write_file\",\"arguments\":{\"path\":\"a.txt\",\"content\":\"line1\\nmatch \\d+ digits\"}}]"));
+        Assert.Equal("write_file", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("line1\nmatch \\d+ digits", args.RootElement.GetProperty("content").GetString());
     }
 
     [Fact]
