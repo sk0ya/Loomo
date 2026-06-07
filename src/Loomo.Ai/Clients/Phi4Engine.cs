@@ -165,6 +165,7 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
         double? prefillMs = null;
         var outputTokens = 0;
         var budget = Math.Min(req.MaxNewTokens, Math.Max(0, maxLength - inputTokens));
+        var generated = new List<int>(256);    // 反復ガード用：このターンの生成トークン列
 
         while (outputTokens < budget && !generator.IsDone())
         {
@@ -175,11 +176,18 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
             var seq = generator.GetSequence(0);
             var token = seq[seq.Length - 1];
             _fedTokens.Add(token);                 // 生成トークンも次ターンの共通接頭辞計算に含める
+            generated.Add(token);
             outputTokens++;
 
             var piece = stream.Decode(token);
             if (!string.IsNullOrEmpty(piece))
                 sink.TryWrite(new TextDelta(piece));
+
+            // repetition collapse 保険。repetition_penalty でも抜けられない短周期ループ（" . " の暴走等）に
+            // 落ちたら、budget 一杯まで無意味なゴミを吐き続けず即停止する（ORT の no_repeat_ngram_size は
+            // 0.9.0 CPU で無視されるため、ここで確実に断つ）。
+            if (IsLoopingTail(generated))
+                break;
         }
 
         var totalGenMs = sw.Elapsed.TotalMilliseconds;
@@ -187,6 +195,29 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
         sink.TryWrite(new AiUsageReported(
             inputTokens, outputTokens,
             loadMs > 0 ? loadMs : null, prefillMs, evalMs, loadMs + totalGenMs));
+    }
+
+    /// <summary>
+    /// 末尾が短周期の繰り返しループに陥っているか（repetition collapse の検知）。長さ <paramref name="maxUnit"/>
+    /// 以下の繰り返し単位が末尾で <paramref name="minRepeats"/> 回以上連続していれば true。" . " のような
+    /// 1〜数トークンの暴走を捕まえる。エージェント／ツール用途では短周期の多数回反復はまず崩壊なので、
+    /// 正常な短い反復を巻き込まないよう繰り返し回数のしきい値は高めに取る。
+    /// </summary>
+    private static bool IsLoopingTail(List<int> g, int maxUnit = 8, int minRepeats = 10)
+    {
+        for (var unit = 1; unit <= maxUnit; unit++)
+        {
+            var need = unit * minRepeats;
+            if (g.Count < need) continue;
+
+            var looping = true;
+            for (var k = 1; k < minRepeats && looping; k++)
+                for (var j = 0; j < unit; j++)
+                    if (g[g.Count - 1 - j] != g[g.Count - 1 - j - k * unit]) { looping = false; break; }
+
+            if (looping) return true;
+        }
+        return false;
     }
 
     /// <summary>
