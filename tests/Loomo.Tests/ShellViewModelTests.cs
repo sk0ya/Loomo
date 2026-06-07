@@ -38,7 +38,8 @@ public class ShellViewModelTests
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations,
-            new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")));
+            new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")),
+            new FakeAiWarmup());
         var sessionsVm = new SessionsViewModel(conversations, aiBar,
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
         var analysisVm = new AnalysisViewModel(
@@ -49,7 +50,7 @@ public class ShellViewModelTests
             conversations);
         var modelCatalog = new ModelCatalogService(settings);
         var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
-        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload);
+        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload, new FakeAiWarmup());
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager());
 
         var workspaceStore = new WorkspaceStateStore(

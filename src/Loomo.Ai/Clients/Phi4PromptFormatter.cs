@@ -85,7 +85,7 @@ public static class Phi4PromptFormatter
             });
         }
         var callText = calls.ToJsonString(JsonOptions);
-        return string.IsNullOrEmpty(text) ? callText : text + "\n" + callText;
+        return string.IsNullOrEmpty(text) ? callText : callText + "\n" + text;
     }
 
     private static string ToolBlockJson(IReadOnlyList<ToolDefinition> tools)

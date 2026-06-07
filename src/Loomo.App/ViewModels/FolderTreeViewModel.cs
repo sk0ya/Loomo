@@ -52,6 +52,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     public event EventHandler<string>? FileActivated;
 
+    // FolderTree の HTML をアプリ内ブラウザで開く要求。View（コンテキストメニュー）から発火し、
+    // ShellWindow がブラウザペインに新規タブを開いて file:// URL をナビゲートする。
+    public event EventHandler<string>? OpenInBrowserRequested;
+
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;
@@ -574,6 +578,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             FileActivated?.Invoke(this, fullPath);
     }
 
+    /// <summary>HTML ファイルをアプリ内ブラウザで開くよう要求する（ShellWindow が処理）。</summary>
+    public void RequestOpenInBrowser(string fullPath)
+    {
+        if (File.Exists(fullPath))
+            OpenInBrowserRequested?.Invoke(this, fullPath);
+    }
+
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)
     {
         var fullPath = Path.GetFullPath(path);
@@ -984,6 +995,11 @@ public sealed partial class FileNodeViewModel : ObservableObject
     public string Name { get; }
     public bool IsDirectory { get; }
     public string Glyph => IsDirectory ? "📁" : "📄";
+
+    // HTML ファイルだけ「ブラウザで開く」コンテキストメニューを出すための判定。
+    public bool IsHtml => !IsDirectory
+        && (FullPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+            || FullPath.EndsWith(".htm", StringComparison.OrdinalIgnoreCase));
 
     public ObservableCollection<FileNodeViewModel> Children { get; } = new();
 

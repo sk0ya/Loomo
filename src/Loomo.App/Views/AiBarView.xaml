@@ -133,6 +133,20 @@
             </StackPanel>
         </Border>
 
+        <!-- ===== ウォームアップ中の通知。完了までAIへの指示は受け付けない ===== -->
+        <Border Grid.Row="1" Background="{DynamicResource BgAlt}"
+                Padding="12,4" Margin="8,0"
+                Visibility="{Binding IsWarmingUp, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <ProgressBar IsIndeterminate="True" Width="80" Height="4"
+                             Foreground="{DynamicResource Accent}" Background="Transparent"
+                             BorderThickness="0" VerticalAlignment="Center" />
+                <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource FgDim}"
+                           Text="🔥 ウォームアップ中… モデルとプロンプトを準備しています（完了までAIへの指示はできません）" />
+            </StackPanel>
+        </Border>
+
         <!-- ===== 入力バー（常時表示・全幅） ===== -->
         <Grid Grid.Row="2" Margin="8">
             <Grid.ColumnDefinitions>
@@ -149,7 +163,8 @@
 
             <Grid Grid.Column="1" Margin="6,0">
                 <TextBox x:Name="InputBox" Text="{Binding Input, UpdateSourceTrigger=PropertyChanged}"
-                         VerticalContentAlignment="Center" PreviewKeyDown="OnInputPreviewKeyDown">
+                         VerticalContentAlignment="Center" PreviewKeyDown="OnInputPreviewKeyDown"
+                         IsEnabled="{Binding IsWarmingUp, Converter={StaticResource InverseBool}}">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding SendCommand}" />
                     </TextBox.InputBindings>

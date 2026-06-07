@@ -291,6 +291,9 @@
                                     <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
                                     <MenuItem Header="削除" InputGestureText="Delete" Click="OnDeleteClick" />
                                     <Separator />
+                                    <!-- HTML ファイルのときだけアプリ内ブラウザで開く項目を出す。 -->
+                                    <MenuItem Header="ブラウザで開く" Click="OnOpenInBrowserClick"
+                                              Visibility="{Binding IsHtml, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="パスをコピー" Click="OnCopyPathClick" />
                                 </ContextMenu>

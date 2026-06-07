@@ -20,13 +20,22 @@ namespace sk0ya.Loomo.App.Services;
 /// 組み立てる。起動直後はワークスペースルートが未確定なため、確定（<see cref="IWorkspaceService.RootChanged"/>）
 /// のたびに同じ要領で貼り直し、プレフィックスを実ターンと一致させ続ける（差分のみ再 prefill されるので安価）。
 /// </summary>
-public sealed class LocalLlmWarmupService : IDisposable
+public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
 {
     private readonly AiSettings _settings;
     private readonly Phi4Engine _engine;
     private readonly IWorkspaceService _workspace;
     private readonly ToolRegistry _tools;
     private readonly CancellationTokenSource _startupCts = new();
+
+    // 実行中の暖機（prime）件数。起動時とワークスペース確定が重なると複数同時に走り得るため計数で持つ。
+    private int _activePrimes;
+
+    /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けないよう UI で使う。</summary>
+    public bool IsWarmingUp => Volatile.Read(ref _activePrimes) > 0;
+
+    /// <summary><see cref="IsWarmingUp"/> が変化したときに通知する（開始↔終了の遷移時のみ）。</summary>
+    public event Action? StateChanged;
 
     public LocalLlmWarmupService(
         AiSettings settings, Phi4Engine engine, IWorkspaceService workspace, ToolRegistry tools)
@@ -46,14 +55,23 @@ public sealed class LocalLlmWarmupService : IDisposable
 
     private void OnRootChanged(object? sender, string? root) => _ = PrimeAsync(_startupCts.Token);
 
+    /// <summary>ウォームアップを改めて要求する。設定でONに切り替えた直後などに呼ぶ。
+    /// 無効時・モデル未設定時は何もしない。</summary>
+    public void RequestWarmup() => _ = PrimeAsync(_startupCts.Token);
+
     private async Task PrimeAsync(CancellationToken ct)
     {
+        // ウォームアップが無効なら事前ロードしない（最初のAIターンで通常どおりロード／prefill する）。
+        if (!_settings.WarmupEnabled)
+            return;
+
+        var cfg = _settings.Local;
+        if (string.IsNullOrWhiteSpace(cfg.ModelPath))
+            return;
+
+        BeginWarmup();
         try
         {
-            var cfg = _settings.Local;
-            if (string.IsNullOrWhiteSpace(cfg.ModelPath))
-                return;
-
             // 最初の実ターンと同じ経路で安定プレフィックスを組み立てる。会話は空なので Build は
             // 「<|system|>…<|tool|>…<|/tool|><|end|><|assistant|>」を返し、その system ブロックが
             // 実ターン（同じ system ブロック＋<|user|>…）との最長共通接頭辞になる。
@@ -67,6 +85,20 @@ public sealed class LocalLlmWarmupService : IDisposable
         }
         catch (OperationCanceledException) { }
         catch { /* 暖機は体感改善用。失敗は通常のAI呼び出し時に改めて顕在化する。 */ }
+        finally { EndWarmup(); }
+    }
+
+    // 暖機の開始/終了を計数し、状態が 0↔1 を跨ぐとき（実行中↔停止）だけ通知する。
+    private void BeginWarmup()
+    {
+        if (Interlocked.Increment(ref _activePrimes) == 1)
+            StateChanged?.Invoke();
+    }
+
+    private void EndWarmup()
+    {
+        if (Interlocked.Decrement(ref _activePrimes) == 0)
+            StateChanged?.Invoke();
     }
 
     public void Dispose()

@@ -96,9 +96,16 @@ public sealed class OnnxGenAiClient : IAiClient
 
         var text = finalText.ToString();
 
-        // ストリーム中に配列モードでツール呼び出しを出し切っていれば、ここで確定（TextDelta/TurnCompleted は出さない＝ツール継続）。
+        // ストリーム中に配列モードでツール呼び出しを出し切っていれば、ここで確定（TurnCompleted は出さない＝ツール継続）。
         if (scanner.EmittedCount > 0)
+        {
+            // 配列の外側にモデルが書いた自然文（前置き＝通常は空白のみ／配列後の後置き）は、ここまで揮発性の
+            // RawTextDelta でしか流れていない。確定本文として TextDelta で出し、履歴に残す（捨てない）。
+            var surrounding = ExtractTextOutsideArray(text, scanner);
+            if (!string.IsNullOrEmpty(surrounding))
+                yield return new TextDelta(surrounding);
             yield break;
+        }
 
         // 何も前倒しできなかった場合のみ、実績ある終端パーサで判定する
         // （単体 {…}／run_powershell(...)／コードフェンス／先頭欠落の復元／通常テキスト／不正JSON）。
@@ -128,6 +135,17 @@ public sealed class OnnxGenAiClient : IAiClient
                 yield return new TextDelta(text);
             yield return new TurnCompleted(text);
         }
+    }
+
+    /// <summary>ツール呼び出し配列の外側にモデルが書いた自然文（前置き＝通常は空白のみ／配列後の後置き）を取り出す。
+    /// 配列を綺麗に閉じている（<see cref="StreamingToolCallScanner.JsonEndIndex"/> が 0 以上）ときだけ境界が確定するので、
+    /// それ以外は空を返す（未完／不正要素で打ち切った残骸を本文へ混ぜない）。</summary>
+    private static string ExtractTextOutsideArray(string fullText, StreamingToolCallScanner scanner)
+    {
+        if (scanner.JsonEndIndex < 0) return string.Empty;
+        var leading = scanner.JsonStartIndex > 0 ? fullText[..scanner.JsonStartIndex] : string.Empty;
+        var trailing = scanner.JsonEndIndex < fullText.Length ? fullText[scanner.JsonEndIndex..] : string.Empty;
+        return (leading + trailing).Trim();
     }
 
     /// <summary>本文がツール呼び出しの試みに見えるか（JSON 配列／オブジェクトで始まり tool call のキーを含む）。

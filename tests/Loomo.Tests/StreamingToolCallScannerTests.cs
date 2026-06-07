@@ -91,6 +91,30 @@ public class StreamingToolCallScannerTests
     }
 
     [Fact]
+    public void Exposes_array_boundaries_with_leading_whitespace_and_trailing_text()
+    {
+        // 配列の前後（前置き空白・配列後の自然文）を確定本文として拾えるよう、開き '[' と閉じ ']' の次位置を公開する。
+        const string s = "  [{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}] done";
+        var scanner = new StreamingToolCallScanner();
+        scanner.Feed(s);
+
+        Assert.Equal(2, scanner.JsonStartIndex);          // 先頭2文字は空白
+        Assert.Equal(s.IndexOf("] ") + 1, scanner.JsonEndIndex);
+        Assert.Equal(" done", s[scanner.JsonEndIndex..]);
+    }
+
+    [Fact]
+    public void Leaves_json_end_unset_when_array_never_closes()
+    {
+        // 不正要素で打ち切った／配列が閉じていない場合は境界を確定させない（残骸を本文へ混ぜないため）。
+        var scanner = new StreamingToolCallScanner();
+        scanner.Feed("[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}},{\"foo\":\"bar\"}]");
+
+        Assert.Equal(1, scanner.EmittedCount);
+        Assert.Equal(-1, scanner.JsonEndIndex);
+    }
+
+    [Fact]
     public void Stops_after_first_unparseable_object_keeping_leading_valid_ones()
     {
         // 1件目は正常、2件目は name/command を欠く（解釈不能）→ そこで打ち切り、3件目は捨てる。

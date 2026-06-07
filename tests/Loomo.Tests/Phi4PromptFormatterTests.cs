@@ -80,6 +80,22 @@ public class Phi4PromptFormatterTests
     }
 
     [Fact]
+    public void Renders_assistant_text_after_tool_calls_to_preserve_stream_order()
+    {
+        var conv = new Conversation();
+        conv.AddUser("一覧を出して");
+        var assistant = new ChatMessage { Role = ChatRole.Assistant, Text = "一覧を取得します。" };
+        assistant.ToolUses.Add(new ToolUse("t1", "run_powershell", "{\"command\":\"ls\"}"));
+        conv.Messages.Add(assistant);
+
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+
+        Assert.Contains(
+            "<|assistant|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}]\n一覧を取得します。<|end|>",
+            prompt);
+    }
+
+    [Fact]
     public void Warmup_prefix_is_an_exact_prefix_of_the_first_real_turn()
     {
         // 暖機（LocalLlmWarmupService）は会話を空にして Build した文字列で常駐 Generator を温める。

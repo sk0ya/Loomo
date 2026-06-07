@@ -16,6 +16,14 @@ public sealed class AiSettings
     /// <summary>UIのカラーテーマ（配色）。既定はダーク。</summary>
     public AppTheme Theme { get; set; } = AppTheme.Dark;
 
+    /// <summary>AIウォームアップを有効にするか。既定は有効。
+    /// 有効なら起動時／ワークスペース確定時に Phi-4-mini をロードし、system プロンプト＋ツール定義の
+    /// 安定プレフィックスを常駐 Generator へ prefill して KV キャッシュを温める（初回ターンの prefill を
+    /// 払い直さず体感が速くなる）。暖機の実行中は AI への指示を受け付けない
+    /// （<see cref="Clients.Phi4Engine"/> がモデルロード・prefill 中で占有されるため）。
+    /// 無効にすると暖機を一切行わず、最初のAIターンで通常どおりロード／prefill する。</summary>
+    public bool WarmupEnabled { get; set; } = true;
+
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 

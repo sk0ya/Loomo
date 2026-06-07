@@ -2,11 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
 namespace sk0ya.Loomo.Tests;
+
+/// <summary>ウォームアップの副作用なしフェイク。常に停止状態。</summary>
+internal sealed class FakeAiWarmup : IAiWarmup
+{
+    public bool IsWarmingUp => false;
+#pragma warning disable CS0067 // テストでは発火させないイベント
+    public event Action? StateChanged;
+#pragma warning restore CS0067
+    public void RequestWarmup() { }
+}
 
 /// <summary>VM 構築に必要な最小限のワークスペース実装（副作用なし）。</summary>
 internal sealed class FakeWorkspaceService : IWorkspaceService

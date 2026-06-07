@@ -291,6 +291,13 @@ public partial class FolderTreeView : UserControl
         }
     }
 
+    private void OnOpenInBrowserClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: false } node
+            && DataContext is FolderTreeViewModel vm)
+            vm.RequestOpenInBrowser(node.FullPath);
+    }
+
     private void OnRevealInExplorerClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is not { } node)

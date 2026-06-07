@@ -26,6 +26,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IEditorService _editor;
     private readonly ModelCatalogService _modelCatalog;
     private readonly ModelDownloadService _modelDownload;
+    private readonly Services.IAiWarmup _warmup;
     private CancellationTokenSource? _fetchModelsCts;
     private CancellationTokenSource? _downloadCts;
     // 初期ロード中の代入で自動保存（Persist）が走らないようにするためのガード。
@@ -37,6 +38,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _model = "";
     [ObservableProperty] private string _modelPath = "";
     [ObservableProperty] private int _maxTokens;
+
+    /// <summary>AIウォームアップを有効にするか。ONにすると起動時／ワークスペース確定時に
+    /// モデルとプロンプトを事前ロードして初回ターンを速くする（実行中はAI指示を受け付けない）。</summary>
+    [ObservableProperty] private bool _warmupEnabled;
+
     [ObservableProperty] private bool _vimEnabled;
     [ObservableProperty] private string _status = "";
 
@@ -60,13 +66,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _modelDropDownOpen;
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
-        IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload)
+        IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload,
+        Services.IAiWarmup warmup)
     {
         _settings = settings;
         _store = store;
         _editor = editor;
         _modelCatalog = modelCatalog;
         _modelDownload = modelDownload;
+        _warmup = warmup;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadLocalFields();
@@ -82,6 +90,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Model = cfg.Model;
         ModelPath = cfg.ModelPath;
         MaxTokens = cfg.MaxTokens;
+        WarmupEnabled = _settings.WarmupEnabled;
         VimEnabled = _settings.Vim.Enabled;
         _suppressPersist = false;
     }
@@ -105,6 +114,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnModelPathChanged(string value) => Persist();
     partial void OnMaxTokensChanged(int value) => Persist();
     partial void OnVimEnabledChanged(bool value) => Persist();
+    partial void OnWarmupEnabledChanged(bool value)
+    {
+        if (_suppressPersist) return;
+        Persist();
+        // ONに切り替えたら、その場でウォームアップを開始して初回ターンを速くする。
+        if (value) _warmup.RequestWarmup();
+    }
     partial void OnAutoApproveChanged(bool value) => Persist();
     partial void OnRestrictToWorkspaceRootChanged(bool value) => Persist();
 
@@ -128,6 +144,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         CommitLocalFields();
         _settings.Provider = AiProvider.Local;
+        _settings.WarmupEnabled = WarmupEnabled;
         _settings.Vim.Enabled = VimEnabled;
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;

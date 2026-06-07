@@ -40,6 +40,12 @@
                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大出力トークン" />
                 <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
 
+                <CheckBox IsChecked="{Binding WarmupEnabled}" Margin="0,10,0,0"
+                          ToolTip="起動時・ワークスペース確定時にモデルとシステムプロンプトを事前ロードし、初回ターンを速くします。実行中はAIへの指示を受け付けません。">
+                    <TextBlock Text="AIウォームアップを有効にする" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Fg}" />
+                </CheckBox>
+
                 <!-- ===== エディタ ===== -->
                 <Separator Margin="0,16,0,10" />
                 <TextBlock Style="{StaticResource SectionTitle}" Text="エディタ" />

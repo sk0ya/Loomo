@@ -154,6 +154,32 @@ public class OnnxGenAiClientTests
     }
 
     [Fact]
+    public async Task Preserves_trailing_text_after_tool_call_array_as_confirmed_text_delta()
+    {
+        // 配列のツール呼び出しに同伴した後置きの自然文を捨てず、確定本文（TextDelta）として残す（履歴に積まれる）。
+        var events = await RunAsync(new TextDelta(
+            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}]\n一覧を取得します。"));
+
+        Assert.Single(events.OfType<ToolUseRequested>());
+        var text = Assert.Single(events.OfType<TextDelta>());
+        Assert.Equal("一覧を取得します。", text.Text);
+        // ツール継続なので終端は出さない。確定本文はツール確定の後に流れる。
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+        Assert.True(events.FindIndex(e => e is ToolUseRequested) < events.FindIndex(e => e is TextDelta));
+    }
+
+    [Fact]
+    public async Task Pure_tool_call_array_emits_no_text_delta()
+    {
+        // 配列外に自然文が無ければ余計な TextDelta は出さない（従来挙動の維持）。
+        var events = await RunAsync(new TextDelta(
+            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}]"));
+
+        Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.DoesNotContain(events, e => e is TextDelta);
+    }
+
+    [Fact]
     public async Task Dispatches_tool_use_early_before_later_chunks_arrive()
     {
         // 早期ディスパッチ：1件目の ToolUseRequested は、2件目のチャンク（RawTextDelta）より前に出る。

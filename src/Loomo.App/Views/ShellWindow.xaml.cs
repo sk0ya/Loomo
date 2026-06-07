@@ -182,6 +182,8 @@ public partial class ShellWindow : Window
 
         // FolderTree の単クリックは選択だけ、ダブルクリックで新しいエディタタブを開く。
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
+        // FolderTree の HTML を「ブラウザで開く」とアプリ内ブラウザの新規タブで開く。
+        vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -1579,6 +1581,21 @@ public partial class ShellWindow : Window
         UpdateEditorTab(tab);
         if (_markdownPreviewBrowserTab is not null)
             await SwitchMarkdownPreviewSourceAsync(tab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>FolderTree の HTML をアプリ内ブラウザの新規タブで開く（file:// URL）。</summary>
+    private async Task OpenFileInBrowserAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        // ブラウザペインが隠れていれば表示してから開く。
+        if (!IsPaneVisible(PaneKind.Browser))
+            SetPaneVisible(PaneKind.Browser, true);
+
+        var url = new Uri(Path.GetFullPath(path)).AbsoluteUri;   // file:///C:/...
+        await CreateBrowserTabAsync(url, requestedTitle: Path.GetFileName(path));
         SaveActiveWorkspaceSnapshot();
     }
 

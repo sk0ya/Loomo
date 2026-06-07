@@ -116,6 +116,7 @@ public partial class App : Application
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
         services.AddSingleton<LocalLlmWarmupService>();
+        services.AddSingleton<IAiWarmup>(sp => sp.GetRequiredService<LocalLlmWarmupService>());
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<TabIconService>();

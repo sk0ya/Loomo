@@ -96,6 +96,10 @@ public sealed class AiSettingsStore
     {
         public AppTheme Theme { get; set; }
         public string? AccentColor { get; set; }
+
+        /// <summary>AIウォームアップの有効/無効。null=旧設定（未指定）→ 既定（有効）を維持。</summary>
+        public bool? WarmupEnabled { get; set; }
+
         public PersistedProvider Local { get; set; } = new();
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
@@ -106,6 +110,7 @@ public sealed class AiSettingsStore
         {
             Theme = s.Theme,
             AccentColor = s.AccentColor,
+            WarmupEnabled = s.WarmupEnabled,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
@@ -118,6 +123,7 @@ public sealed class AiSettingsStore
             s.Provider = AiProvider.Local;
             s.Theme = Theme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
+            if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持

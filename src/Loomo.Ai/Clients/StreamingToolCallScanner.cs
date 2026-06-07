@@ -41,6 +41,15 @@ public sealed class StreamingToolCallScanner
     /// （＝終端の <see cref="ToolCallTextParser.Parse"/> に判定を委ねるべき）ことを意味する。</summary>
     public int EmittedCount { get; private set; }
 
+    /// <summary>ツール呼び出し配列を開く <c>[</c> の絶対位置（全文先頭からのインデックス）。配列モードに
+    /// 入っていなければ -1。手前は空白のみのはずだが、配列外テキストの境界を測るために公開する。</summary>
+    public int JsonStartIndex { get; private set; } = -1;
+
+    /// <summary>トップレベル配列を閉じた <c>]</c> の<b>次</b>の絶対位置（end-exclusive）。配列を綺麗に閉じて
+    /// いない（未完／不正要素で打ち切り）場合は -1。これが 0 以上のときだけ、配列の外側に書かれたテキストを
+    /// 確定本文として安全に取り出せる（途中の壊れた残骸を本文へ混ぜないため）。</summary>
+    public int JsonEndIndex { get; private set; } = -1;
+
     /// <summary>チャンクを与え、そのチャンクで新たに完成したツール呼び出しを順序どおり返す。</summary>
     public IReadOnlyList<ToolUse> Feed(string chunk)
     {
@@ -90,7 +99,9 @@ public sealed class StreamingToolCallScanner
                 case ']':
                     if (_objectDepth == 0)
                     {
-                        // トップレベル配列を閉じた：走査終了（後続テキストは無視）。
+                        // トップレベル配列を閉じた：走査終了。後続テキストはツール抽出には使わないが、
+                        // 境界（end-exclusive）を記録して、呼び出し側が配列外の自然文を確定本文として拾えるようにする。
+                        JsonEndIndex = _pos + 1;
                         _stopped = true;
                         _pos++;
                         return (IReadOnlyList<ToolUse>?)results ?? Array.Empty<ToolUse>();
@@ -113,6 +124,7 @@ public sealed class StreamingToolCallScanner
             _stopped = true;                          // 配列でない → 終端パーサに委ねる
             return false;
         }
+        JsonStartIndex = _pos;                        // 開き '[' の絶対位置（配列外テキストの境界に使う）
         _decided = true;
         _pos++;                                       // 開き '[' を消費
         return true;

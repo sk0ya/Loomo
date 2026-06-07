@@ -28,6 +28,8 @@ public sealed partial class AiBarViewModel : ObservableObject
     private readonly AiSettings _settings;
     private readonly ConversationStore _sessions;
     private readonly PromptHistoryStore _historyStore;
+    private readonly IAiWarmup _warmup;
+    private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
     private Conversation _conversation = new();
     private string? _currentSessionId;
     private string? _lastClosedSessionId;   // /resume で復元する直前に閉じたセッション
@@ -59,6 +61,11 @@ public sealed partial class AiBarViewModel : ObservableObject
     [ObservableProperty] private string _input = "";
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isBusy;
+
+    /// <summary>AIウォームアップの実行中か。実行中は AI への指示（送信）を受け付けず、
+    /// その旨をバーに表示する。</summary>
+    [ObservableProperty] private bool _isWarmingUp;
+
     [ObservableProperty] private string _providerLabel;
 
     /// <summary>処理中に「いま何をしているか」を示すステータス文言（考え中／ツール実行中／承認待ち…）。
@@ -74,18 +81,31 @@ public sealed partial class AiBarViewModel : ObservableObject
         UiApprovalService approval,
         AiSettings settings,
         ConversationStore sessions,
-        PromptHistoryStore historyStore)
+        PromptHistoryStore historyStore,
+        IAiWarmup warmup)
     {
         _orchestrator = orchestrator;
         _settings = settings;
         _sessions = sessions;
         _historyStore = historyStore;
+        _warmup = warmup;
         _history.AddRange(historyStore.Load());   // 前回までの送信履歴を引き継ぐ
         _providerLabel = settings.Provider.ToString();
         approval.ApprovalRequested += OnApprovalRequested;
 
+        // ウォームアップの実行中は送信を抑止し、バーに状態を出す。
+        _isWarmingUp = warmup.IsWarmingUp;
+        warmup.StateChanged += OnWarmupStateChanged;
+
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _statusTimer.Tick += (_, _) => RenderStatus();
+    }
+
+    /// <summary>暖機サービスからの状態変化通知。UIスレッドへ整えてから反映する。</summary>
+    private void OnWarmupStateChanged()
+    {
+        if (_dispatcher.CheckAccess()) IsWarmingUp = _warmup.IsWarmingUp;
+        else _dispatcher.BeginInvoke(() => IsWarmingUp = _warmup.IsWarmingUp);
     }
 
     /// <summary>現在のフェーズに切り替え、経過秒の表示更新を開始する。</summary>
@@ -218,7 +238,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;
 
-    private bool CanSend() => !IsBusy && !string.IsNullOrWhiteSpace(Input);
+    private bool CanSend() => !IsBusy && !IsWarmingUp && !string.IsNullOrWhiteSpace(Input);
 
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
@@ -698,4 +718,6 @@ public sealed partial class AiBarViewModel : ObservableObject
     }
 
     partial void OnIsBusyChanged(bool value) => SendCommand.NotifyCanExecuteChanged();
+
+    partial void OnIsWarmingUpChanged(bool value) => SendCommand.NotifyCanExecuteChanged();
 }
