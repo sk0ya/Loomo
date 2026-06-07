@@ -27,8 +27,8 @@ public class Phi4PromptFormatterTests
         Assert.Contains("\"name\":\"run_powershell\"", prompt);
         Assert.Contains("\"parameters\":{\"command\":{\"type\":\"string\"", prompt);
         Assert.Contains("<|/tool|><|end|>", prompt);
-        Assert.Contains("Output exactly [{\"name\":\"<tool>\",\"arguments\":{...}}, ...]", prompt);
-        Assert.Contains("The first character must be [", prompt);
+        Assert.Contains("output only valid JSON array", prompt);
+        Assert.Contains("First char [; last char ]", prompt);
         Assert.Contains("<|user|>ファイル一覧を出して<|end|>", prompt);
         Assert.EndsWith("<|assistant|>", prompt);                 // add_generation_prompt
     }
@@ -124,13 +124,12 @@ public class Phi4PromptFormatterTests
     {
         Assert.DoesNotContain("Ollama", AiSettings.DefaultSystemPrompt);
         Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("Output exactly [{\"name\":\"<tool>\",\"arguments\":{...}}, ...]", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("The first character must be [", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("output only valid JSON array", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("First char [; last char ]", AiSettings.DefaultSystemPrompt);
         // 独立した操作のみ複数許可（依存する操作は1つずつ）という方針が告知されていること。
         Assert.Contains("INDEPENDENT operations", AiSettings.DefaultSystemPrompt);
         Assert.Contains("MUST be separate steps", AiSettings.DefaultSystemPrompt);
         // 追加した構造化ファイルツールがプロンプトに告知されていること。
-        Assert.Contains("write_file{path,content}", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("edit_file{path,old_string,new_string}", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Before edit_file, read the file first", AiSettings.DefaultSystemPrompt);
     }
 }
