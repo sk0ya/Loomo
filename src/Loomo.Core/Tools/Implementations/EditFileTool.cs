@@ -14,7 +14,7 @@ namespace sk0ya.Loomo.Core.Tools.Implementations;
 /// （壊れた <c>-replace</c> でファイルを黙って破損させない＝小モデルが外しても安全に再試行できる）。
 /// パスは <see cref="IWorkspaceService.ResolvePath"/> でワークスペースルート配下へ確定し、編集後はエディタで開く。
 /// </summary>
-public sealed class EditFileTool : IAgentTool
+public sealed class EditFileTool : IAgentTool, IFileMutationTool
 {
     private readonly IWorkspaceService _workspace;
     private readonly IEditorService _editor;
@@ -27,6 +27,18 @@ public sealed class EditFileTool : IAgentTool
 
     public string Name => EditFileContract.ToolName;
     public bool RequiresApproval => true;
+
+    // edit_file は対象箇所だけの置換／追記なので「破壊的全文上書き」ではない（多段の絞り込み編集は正当）。
+    public bool FullyOverwritesTarget => false;
+
+    /// <summary>canonical な絶対パスへ解決（相対／絶対を同一キーへ寄せる）。ルート外・未指定は null。</summary>
+    public string? ResolveTargetPath(JsonElement normalizedArguments)
+    {
+        var path = normalizedArguments.GetString(EditFileContract.PathArg);
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        try { return _workspace.ResolvePath(path); }
+        catch { return null; }
+    }
 
     // 注: old_string が空のとき末尾追記する挙動は実装に持つが、ツール定義の説明文には載せない。
     // 説明文を増やすと小モデルが write 過多（読み取りタスクでも write_file）に傾く非局所回帰が出たため、

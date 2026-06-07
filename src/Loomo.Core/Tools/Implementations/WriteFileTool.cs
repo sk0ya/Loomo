@@ -15,7 +15,7 @@ namespace sk0ya.Loomo.Core.Tools.Implementations;
 /// パスは <see cref="IWorkspaceService.ResolvePath"/> でワークスペースルート配下へ確定（パストラバーサル防止）、
 /// 承認カード（<see cref="DescribeInvocation"/>）に行数差分を出し、書き込み後はエディタで開いて結果を可視化する。
 /// </summary>
-public sealed class WriteFileTool : IAgentTool
+public sealed class WriteFileTool : IAgentTool, IFileMutationTool
 {
     private readonly IWorkspaceService _workspace;
     private readonly IEditorService _editor;
@@ -28,6 +28,18 @@ public sealed class WriteFileTool : IAgentTool
 
     public string Name => WriteFileContract.ToolName;
     public bool RequiresApproval => true;   // 書き込みなので承認必須
+
+    // write_file は全文上書き。同一ターンで既に変更済みのファイルへの再上書きは破壊的なのでループ側で止める。
+    public bool FullyOverwritesTarget => true;
+
+    /// <summary>canonical な絶対パスへ解決（相対／絶対を同一キーへ寄せる）。ルート外・未指定は null。</summary>
+    public string? ResolveTargetPath(JsonElement normalizedArguments)
+    {
+        var path = normalizedArguments.GetString(WriteFileContract.PathArg);
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        try { return _workspace.ResolvePath(path); }
+        catch { return null; }
+    }
 
     public ToolDefinition Definition => new(
         Name,

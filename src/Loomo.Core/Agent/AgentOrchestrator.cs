@@ -82,6 +82,12 @@ public sealed class AgentOrchestrator
         var parseRetries = 0;
         // ターン内で「同一の失敗ツール呼び出し」が何回出たかを数える（暴走ループの早期打ち切り用）。
         var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        // ターン内で edit_file の対象限定編集（部分置換・追記）に成功したファイルの canonical 絶対パス。
+        // この後に同じファイルへ write_file の全文上書きが来たら、直前の編集を丸ごと破壊するため決定論的に
+        // ブロックする（小モデルが正しい編集の直後に全文上書きで本文を壊す主要失敗モードの対策）。
+        // write_file→write_file（自分で全文を書いた直後の全文書き直し）は破壊ではないので記録しない＝許可する。
+        // 反復をまたいで保持する。
+        var editedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (isNewSession)
             _trace.Record(sessionId, null, TraceKinds.SessionStarted, new { provider, agentId = activeProfile.Id });
@@ -159,7 +165,7 @@ public sealed class AgentOrchestrator
                         // 実行中のイベント（承認待ち・実行中…）を貯め込まず即時に流す。Channel で実行タスクと
                         // 並行に読み出すことで、承認待ちや長い実行の状態がリアルタイムにUIへ届く。
                         var execChannel = Channel.CreateUnbounded<AgentEvent>();
-                        var execTask = ExecuteToolWithEventsAsync(req.ToolUse, sessionId, turnId, execChannel.Writer, ct);
+                        var execTask = ExecuteToolWithEventsAsync(req.ToolUse, sessionId, turnId, execChannel.Writer, editedPaths, ct);
                         // ct は渡さない：writer は finally で必ず Complete されるので読み出しは自然に終わり、
                         // キャンセルは execTask の await で観測される（未観測例外を防ぐ）。
                         await foreach (var e in execChannel.Reader.ReadAllAsync())
@@ -312,9 +318,10 @@ public sealed class AgentOrchestrator
         string sessionId,
         string turnId,
         ChannelWriter<AgentEvent> events,
+        HashSet<string> editedPaths,
         CancellationToken ct)
     {
-        try { return await ExecuteToolAsync(use, sessionId, turnId, events, ct); }
+        try { return await ExecuteToolAsync(use, sessionId, turnId, events, editedPaths, ct); }
         finally { events.Complete(); }
     }
 
@@ -323,6 +330,7 @@ public sealed class AgentOrchestrator
         string sessionId,
         string turnId,
         ChannelWriter<AgentEvent> events,
+        HashSet<string> editedPaths,
         CancellationToken ct)
     {
         if (!_tools.TryGet(use.Name, out var tool))
@@ -352,6 +360,29 @@ public sealed class AgentOrchestrator
         {
             _trace.Record(sessionId, turnId, TraceKinds.Error, new { message = ex.Message, where = "tool.normalize" });
             // 正規化に失敗しても元の引数のまま続行（安全評価・実行は通常どおり行う）。
+        }
+
+        // 冗長な破壊的上書きガード：同一ターンで edit_file が対象限定編集したファイルを、後続の write_file が
+        // 全文上書きしようとしたら、実行せず差し戻す（直前の正しい編集を丸ごと破壊しない）。edit_file 自身の
+        // 対象限定変更・追記は対象外（多段の絞り込み編集は正当）。write_file→write_file（自分で書いた全文の
+        // 書き直し）も破壊ではないので対象外。pwsh など IFileMutationTool 非実装のツールも対象外。
+        if (tool is IFileMutationTool mutation && mutation.FullyOverwritesTarget)
+        {
+            var target = SafeResolveTarget(mutation, args);
+            if (target is not null && editedPaths.Contains(target))
+            {
+                var msg = "このターンで edit_file が編集したファイルを write_file で全文上書きしようとしました（"
+                          + target + "）。直前の編集が破棄されるためブロックしました。変更は完了しています。"
+                          + "やり直しは不要なので、ツールを呼ばず日本語で結果を報告してください。"
+                          + "さらに修正が必要な場合のみ、edit_file で対象箇所だけを変更してください。";
+                _logger.LogWarning("冗長な破壊的上書きをブロック: {Path}", target);
+                _trace.Record(sessionId, turnId, TraceKinds.Error,
+                    new { message = msg, where = "tool.redundant_overwrite", path = target });
+                var blocked = new ToolResultMessage(use.Id, msg, IsError: true);
+                events.TryWrite(new ToolExecutionStarted(use));
+                events.TryWrite(new ToolExecutionCompleted(use, blocked));
+                return blocked;
+            }
         }
 
         // 安全ポリシー：危険コマンドのブロックリストに一致したら実行せず差し戻す
@@ -389,6 +420,13 @@ public sealed class AgentOrchestrator
             var result = await tool.ExecuteAsync(args, ct);
             var content = NormalizeToolResultContent(tool.Name, result);
             var resultMessage = new ToolResultMessage(use.Id, content, result.IsError);
+            // 対象限定編集（edit_file）に成功したファイルだけ記録：以降の反復で同じファイルへの破壊的な
+            // 全文上書き（write_file）をガードする。write_file 自身の成功は記録しない（全文の書き直しは破壊でない）。
+            if (!result.IsError && tool is IFileMutationTool fileTool && !fileTool.FullyOverwritesTarget)
+            {
+                var target = SafeResolveTarget(fileTool, args);
+                if (target is not null) editedPaths.Add(target);
+            }
             _trace.Record(sessionId, turnId, TraceKinds.ToolCompleted, new
             {
                 toolUseId = use.Id,
@@ -426,6 +464,13 @@ public sealed class AgentOrchestrator
     {
         try { return tool.DescribeInvocation(args); }
         catch { return tool.Name; }
+    }
+
+    /// <summary>ファイル変更ツールの対象パスを安全に解決（例外は null 扱い）。冗長上書きガードの比較キー用。</summary>
+    private static string? SafeResolveTarget(IFileMutationTool tool, JsonElement args)
+    {
+        try { return tool.ResolveTargetPath(args); }
+        catch { return null; }
     }
 
     private static string NormalizeToolResultContent(string toolName, ToolResult result)
