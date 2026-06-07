@@ -14,6 +14,8 @@ public partial class AiBarView : UserControl
     private readonly HashSet<TranscriptEntry> _observedEntries = new();
     private AiBarViewModel? _viewModel;
     private bool _scrollQueued;
+    // 末尾追従中か。ユーザーが上へスクロールすると false（追従停止）、再び最下部まで戻すと true（追従再開）。
+    private bool _autoScrollEnabled = true;
 
     public AiBarView()
     {
@@ -121,9 +123,27 @@ public partial class AiBarView : UserControl
         Dispatcher.BeginInvoke(() =>
         {
             _scrollQueued = false;
-            if (_viewModel?.IsExpanded == true && TranscriptScrollViewer.Visibility == Visibility.Visible)
+            // ユーザーが上へスクロールして追従を止めている間は末尾へ飛ばさない。
+            if (_autoScrollEnabled
+                && _viewModel?.IsExpanded == true
+                && TranscriptScrollViewer.Visibility == Visibility.Visible)
                 TranscriptScrollViewer.ScrollToEnd();
         }, DispatcherPriority.ContextIdle);
+    }
+
+    /// <summary>
+    /// ユーザー操作によるスクロールを検知して末尾追従の有効/無効を切り替える。
+    /// コンテンツ増加（ExtentHeightChange != 0）による変化は無視し、ユーザーが上へ動かしたら追従を止め、
+    /// 最下部まで戻したら追従を再開する。
+    /// </summary>
+    private void OnTranscriptScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        // 出力でコンテンツが伸びたことによる変化は判定対象外（追従中の自動スクロールを誤判定しない）。
+        if (e.ExtentHeightChange != 0) return;
+
+        const double tolerance = 1.0;
+        bool atBottom = e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - tolerance;
+        _autoScrollEnabled = atBottom;
     }
 
     /// <summary>補完ポップアップ操作（開いているとき）と入力履歴呼び出し（閉じているときの↑/↓）を処理する。</summary>
