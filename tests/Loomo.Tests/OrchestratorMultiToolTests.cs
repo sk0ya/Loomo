@@ -71,6 +71,32 @@ public class OrchestratorMultiToolTests
         Assert.Equal("done", Assert.Single(events.OfType<TurnCompleted>()).FinalText);
     }
 
+    [Fact]
+    public async Task Empty_tool_output_is_recorded_as_completed_result()
+    {
+        var tools = new ToolRegistry(new IAgentTool[] { new EmptyOutputTool() });
+        var ai = new ScriptedAiClient(
+            new AgentEvent[] { new ToolUseRequested(new ToolUse("id-empty", "empty_tool", "{}")) },
+            new AgentEvent[] { new TextDelta("done") });
+
+        var conv = new Conversation();
+        var orch = new AgentOrchestrator(
+            new FixedFactory(ai), tools, new AutoApprove(), new AllowAllSafety(),
+            NoopContextWindowPolicy.Instance, NullLogger<AgentOrchestrator>.Instance);
+
+        var events = new List<AgentEvent>();
+        await foreach (var e in orch.RunTurnAsync(conv, "やって")) events.Add(e);
+
+        var completed = Assert.Single(events.OfType<ToolExecutionCompleted>());
+        Assert.Equal("tool completed: empty_tool (no output)", completed.Result.Content);
+        Assert.False(completed.Result.IsError);
+
+        var toolMsg = Assert.Single(conv.Messages, m => m.Role == ChatRole.Tool);
+        var result = Assert.Single(toolMsg.ToolResults);
+        Assert.Equal("id-empty", result.ToolUseId);
+        Assert.Equal("tool completed: empty_tool (no output)", result.Content);
+    }
+
     /// <summary>実行された名前を共有リストへ記録するだけのツール（副作用なし）。</summary>
     private sealed class RecordingTool : IAgentTool
     {
@@ -87,6 +113,16 @@ public class OrchestratorMultiToolTests
             _order.Add(Name);
             return Task.FromResult(ToolResult.Ok($"ran {Name}"));
         }
+    }
+
+    private sealed class EmptyOutputTool : IAgentTool
+    {
+        public string Name => "empty_tool";
+        public ToolDefinition Definition => new(Name, "returns no output", new JsonObject());
+        public bool RequiresApproval => false;
+        public string DescribeInvocation(JsonElement arguments) => Name;
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken ct)
+            => Task.FromResult(ToolResult.Ok(""));
     }
 
     private sealed class ScriptedAiClient : IAiClient

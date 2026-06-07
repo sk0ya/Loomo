@@ -129,7 +129,14 @@ public class Phi4PromptFormatterTests
         // 独立した操作のみ複数許可（依存する操作は1つずつ）という方針が告知されていること。
         Assert.Contains("INDEPENDENT operations", AiSettings.DefaultSystemPrompt);
         Assert.Contains("MUST be separate steps", AiSettings.DefaultSystemPrompt);
-        // 追加した構造化ファイルツールがプロンプトに告知されていること。
+        // run_powershell の呼び出し形を明示し、小モデルが関数風や空引数へ崩れるのを抑える。
+        Assert.Contains("\"name\":\"run_powershell\"", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("\"arguments\":{\"command\":\"Get-ChildItem\"}", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Do not write code fences or run_powershell(\"...\")", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("you MUST use a tool first", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("non-interactive", AiSettings.DefaultSystemPrompt);
+        // 構造化ファイルツールがプロンプトに告知されていること。
+        Assert.Contains("Use write_file for new/full file writes", AiSettings.DefaultSystemPrompt);
         Assert.Contains("Before edit_file, read the file first", AiSettings.DefaultSystemPrompt);
     }
 }

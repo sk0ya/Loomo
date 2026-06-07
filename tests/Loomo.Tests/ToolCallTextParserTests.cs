@@ -78,6 +78,24 @@ public class ToolCallTextParserTests
     }
 
     [Fact]
+    public void Converts_tool_call_json_array_embedded_in_narration()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "確認します。\n[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}]\n実行します。"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"Get-ChildItem\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
+    public void Converts_tool_call_json_object_embedded_in_narration()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "まずこれを使います: {\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-Location\"}}"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"Get-Location\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
     public void Converts_parameters_object_when_model_confuses_schema_with_arguments()
     {
         var tool = Assert.Single(ToolCallTextParser.Parse(

@@ -354,14 +354,16 @@ public sealed class AgentOrchestrator
         try
         {
             var result = await tool.ExecuteAsync(args, ct);
-            var resultMessage = new ToolResultMessage(use.Id, result.Content, result.IsError);
+            var content = NormalizeToolResultContent(tool.Name, result);
+            var resultMessage = new ToolResultMessage(use.Id, content, result.IsError);
             _trace.Record(sessionId, turnId, TraceKinds.ToolCompleted, new
             {
                 toolUseId = use.Id,
                 name = tool.Name,
                 isError = result.IsError,
                 durationMs = toolClock.ElapsedMilliseconds,
-                contentLen = result.Content?.Length ?? 0,
+                contentLen = content.Length,
+                originalContentLen = result.Content?.Length ?? 0,
             });
             events.TryWrite(new ToolExecutionCompleted(use, resultMessage));
             return resultMessage;
@@ -391,5 +393,14 @@ public sealed class AgentOrchestrator
     {
         try { return tool.DescribeInvocation(args); }
         catch { return tool.Name; }
+    }
+
+    private static string NormalizeToolResultContent(string toolName, ToolResult result)
+    {
+        if (!string.IsNullOrEmpty(result.Content))
+            return result.Content;
+
+        var state = result.IsError ? "failed" : "completed";
+        return $"tool {state}: {toolName} (no output)";
     }
 }

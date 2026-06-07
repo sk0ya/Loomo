@@ -54,6 +54,13 @@ public static class ToolCallTextParser
         if (s.StartsWith("\"command\":", StringComparison.Ordinal) && s.EndsWith('}'))
             return ParseJsonToolCalls("{" + s, text);
 
+        // 小型モデルは「実行します:」等の前置き/後置き文を混ぜてから JSON tool call を書くことがある。
+        // そのまま最終回答扱いにするとツールが呼ばれないため、本文中の最初の JSON オブジェクト/配列を
+        // tool call らしいキーが含まれる場合に限って救済する。
+        var embedded = TryExtractFirstJsonValue(s);
+        if (embedded is not null && LooksLikeToolJson(embedded))
+            return ParseJsonToolCalls(embedded, text);
+
         return Array.Empty<ToolUse>();
     }
 
@@ -147,6 +154,56 @@ public static class ToolCallTextParser
         }
         return null;
     }
+
+    /// <summary>本文中の最初の JSON オブジェクトまたは配列を、文字列リテラルを意識して取り出す。</summary>
+    private static string? TryExtractFirstJsonValue(string s)
+    {
+        var start = -1;
+        var open = '\0';
+        var close = '\0';
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (s[i] is '{' or '[')
+            {
+                start = i;
+                open = s[i];
+                close = open == '{' ? '}' : ']';
+                break;
+            }
+        }
+        if (start < 0) return null;
+
+        var depth = 0;
+        var inStr = false;
+        var esc = false;
+        for (var i = start; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (inStr)
+            {
+                if (esc) esc = false;
+                else if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inStr = true;
+                continue;
+            }
+            if (c == open) depth++;
+            else if (c == close && --depth == 0)
+                return s[start..(i + 1)];
+        }
+        return null;
+    }
+
+    private static bool LooksLikeToolJson(string json)
+        => json.Contains("\"name\"", StringComparison.Ordinal)
+           || json.Contains("\"arguments\"", StringComparison.Ordinal)
+           || json.Contains("\"parameters\"", StringComparison.Ordinal)
+           || json.Contains("\"command\"", StringComparison.Ordinal);
 
     private static ToolUse MakeToolUse(string command, string rawText)
     {
