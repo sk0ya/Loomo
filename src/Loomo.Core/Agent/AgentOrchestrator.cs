@@ -90,6 +90,7 @@ public sealed class AgentOrchestrator
 
             var assistant = new ChatMessage { Role = ChatRole.Assistant };
             var pendingToolUses = new List<ToolUse>();
+            var toolResults = new List<ToolResultMessage>();   // インライン実行した結果（配列順）
             var sawModelOutput = false;
             ToolCallParseFailed? parseFailed = null;
             // 単段ループ：全反復で同じ profile（既定は Root）と同じツール集合を使う。
@@ -134,6 +135,27 @@ public sealed class AgentOrchestrator
                         assistant.ToolUses.Add(req.ToolUse);
                         pendingToolUses.Add(req.ToolUse);
                         yield return req;
+
+                        // 検知した時点で即実行する（全文確定を待たない）。await 中もエンジンは次のオブジェクトを
+                        // 背景でデコードし続けるため、生成とツール実行が重なる。実行は配列どおりの順序を維持する。
+                        _trace.Record(sessionId, turnId, TraceKinds.AiToolUse, new
+                        {
+                            toolUseId = req.ToolUse.Id,
+                            name = req.ToolUse.Name,
+                            argsJson = req.ToolUse.ArgumentsJson,
+                            rawJson = req.ToolUse.RawJson,
+                            agentId = activeProfile.Id,
+                            stage = activeProfile.DisplayName,
+                        });
+                        // 実行中のイベント（承認待ち・実行中…）を貯め込まず即時に流す。Channel で実行タスクと
+                        // 並行に読み出すことで、承認待ちや長い実行の状態がリアルタイムにUIへ届く。
+                        var execChannel = Channel.CreateUnbounded<AgentEvent>();
+                        var execTask = ExecuteToolWithEventsAsync(req.ToolUse, sessionId, turnId, execChannel.Writer, ct);
+                        // ct は渡さない：writer は finally で必ず Complete されるので読み出しは自然に終わり、
+                        // キャンセルは execTask の await で観測される（未観測例外を防ぐ）。
+                        await foreach (var e in execChannel.Reader.ReadAllAsync())
+                            yield return e;
+                        toolResults.Add(await execTask);
                         break;
                     case ToolCallParseFailed pf:
                         // ツール呼び出しらしき不正JSON。生出力をアシスタント本文として残し（モデルが自分の
@@ -192,18 +214,6 @@ public sealed class AgentOrchestrator
                     agentId = activeProfile.Id,
                     stage = activeProfile.DisplayName,
                 });
-            foreach (var use in pendingToolUses)
-                _trace.Record(sessionId, turnId, TraceKinds.AiToolUse,
-                    new
-                    {
-                        toolUseId = use.Id,
-                        name = use.Name,
-                        argsJson = use.ArgumentsJson,
-                        rawJson = use.RawJson,
-                        agentId = activeProfile.Id,
-                        stage = activeProfile.DisplayName,
-                    });
-
             // 本文もツール呼び出しも無い空応答は履歴に積まない（APIエラー要因になり得る）。
             if (!string.IsNullOrEmpty(assistant.Text) || pendingToolUses.Count > 0)
                 conversation.Messages.Add(assistant);
@@ -248,23 +258,11 @@ public sealed class AgentOrchestrator
                 yield break;
             }
 
-            // --- ツールを順に実行 ---
+            // ツールはストリーム検知時にインライン実行済み（生成と重ねて配列順に実行）。結果を1つの
+            // tool メッセージにまとめ、アシスタントメッセージ直後に積む（tool_result はアシスタント直後に
+            // 来る不変条件を維持）。
             var toolMessage = new ChatMessage { Role = ChatRole.Tool };
-            foreach (var use in pendingToolUses)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                // 実行中のイベント（承認待ち・実行中…）を貯め込まず即時に流す。Channel で実行タスクと
-                // 並行に読み出すことで、承認待ちや長い実行の状態がリアルタイムにUIへ届く。
-                var channel = Channel.CreateUnbounded<AgentEvent>();
-                var execTask = ExecuteToolWithEventsAsync(use, sessionId, turnId, channel.Writer, ct);
-                // ct は渡さない：writer は finally で必ず Complete されるので読み出しは自然に終わり、
-                // キャンセルは execTask の await で観測される（未観測例外を防ぐ）。
-                await foreach (var e in channel.Reader.ReadAllAsync())
-                    yield return e;
-                toolMessage.ToolResults.Add(await execTask);
-            }
-
+            toolMessage.ToolResults.AddRange(toolResults);
             conversation.Messages.Add(toolMessage);
             // ループ継続 → 結果を踏まえてAIが再応答
         }

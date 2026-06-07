@@ -136,4 +136,34 @@ public class OnnxGenAiClientTests
         Assert.DoesNotContain(events, e => e is TurnCompleted);
         Assert.DoesNotContain(events, e => e is AgentError);
     }
+
+    [Fact]
+    public async Task Streams_tool_call_array_as_multiple_tool_uses_in_order()
+    {
+        // ツール呼び出し配列は要素数ぶんの ToolUseRequested として順序どおり出て、本文/終端は出さない（ツール継続）。
+        var events = await RunAsync(new TextDelta(
+            "[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"a\"}}," +
+            "{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"b\"}}]"));
+
+        var tools = events.OfType<ToolUseRequested>().ToList();
+        Assert.Equal(2, tools.Count);
+        Assert.Equal("{\"command\":\"a\"}", tools[0].ToolUse.ArgumentsJson);
+        Assert.Equal("{\"command\":\"b\"}", tools[1].ToolUse.ArgumentsJson);
+        Assert.DoesNotContain(events, e => e is TextDelta);
+        Assert.DoesNotContain(events, e => e is TurnCompleted);
+    }
+
+    [Fact]
+    public async Task Dispatches_tool_use_early_before_later_chunks_arrive()
+    {
+        // 早期ディスパッチ：1件目の ToolUseRequested は、2件目のチャンク（RawTextDelta）より前に出る。
+        var events = await RunAsync(
+            new TextDelta("[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"a\"}},"),
+            new TextDelta("{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"b\"}}]"));
+
+        Assert.Equal(2, events.OfType<ToolUseRequested>().Count());
+        var firstTool = events.FindIndex(e => e is ToolUseRequested);
+        var lastRaw = events.FindLastIndex(e => e is RawTextDelta);
+        Assert.True(firstTool < lastRaw, "1件目のツールは2件目のチャンク到達前に確定するはず");
+    }
 }

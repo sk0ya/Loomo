@@ -317,6 +317,10 @@ public sealed partial class AiBarViewModel : ObservableObject
                     case ToolUseRequested req:
                         FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
                         thinking = null;
+                        // ツールが確定したので、配列の生 JSON を見せていた揮発プレビューは消す
+                        // （以降はツールカードで表示する。複数ツールでも二重表示にならない）。
+                        rawStream.Clear();
+                        SetVolatile("");
                         // AIがツール呼び出しと一緒に生成した本文（説明・narration）は、独立した
                         // 「🤖 エージェント」エントリにはせず、ツールカードへ畳んで併記する。
                         // 本文 → 複数ツールの場合は最初のツールにのみ付け、以降はそのまま引数だけ出す。

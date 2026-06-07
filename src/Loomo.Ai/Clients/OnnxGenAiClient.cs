@@ -55,6 +55,9 @@ public sealed class OnnxGenAiClient : IAiClient
         var finalText = new StringBuilder();
         var sawText = false;
         AgentError? error = null;
+        // ストリーム中にツール呼び出し配列のオブジェクトが閉じるたび、終端を待たず ToolUseRequested を前倒しで流す。
+        // これによりオーケストレータは「実行できるツールから」順次（生成と重ねて）実行できる。
+        var scanner = new StreamingToolCallScanner();
 
         await foreach (var ev in channel.Reader.ReadAllAsync(ct))
         {
@@ -67,6 +70,9 @@ public sealed class OnnxGenAiClient : IAiClient
                     sawText = true;
                     finalText.Append(td.Text);
                     yield return new RawTextDelta(td.Text);
+                    // 加えて、完成したツール呼び出しがあれば即座に確定通知（早期ディスパッチ）。
+                    foreach (var tc in scanner.Feed(td.Text))
+                        yield return new ToolUseRequested(tc);
                     break;
                 case AiUsageReported usage:
                     yield return usage;     // 利用統計はそのまま通知（記録目的）
@@ -89,6 +95,13 @@ public sealed class OnnxGenAiClient : IAiClient
         }
 
         var text = finalText.ToString();
+
+        // ストリーム中に配列モードでツール呼び出しを出し切っていれば、ここで確定（TextDelta/TurnCompleted は出さない＝ツール継続）。
+        if (scanner.EmittedCount > 0)
+            yield break;
+
+        // 何も前倒しできなかった場合のみ、実績ある終端パーサで判定する
+        // （単体 {…}／run_powershell(...)／コードフェンス／先頭欠落の復元／通常テキスト／不正JSON）。
         var toolCalls = ToolCallTextParser.Parse(text);
 
         foreach (var tc in toolCalls)
