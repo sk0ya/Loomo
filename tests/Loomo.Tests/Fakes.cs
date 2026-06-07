@@ -14,6 +14,10 @@ internal sealed class FakeAiWarmup : IAiWarmup
 {
     public bool IsWarmingUp => false;
     public DateTimeOffset? WarmupStartedAt => null;
+    public string CurrentStatus => "";
+    public string StatusDetails => "";
+    public IReadOnlyList<WarmupStageTiming> StageTimings => Array.Empty<WarmupStageTiming>();
+    public TimeSpan? TotalDuration => null;
 #pragma warning disable CS0067 // テストでは発火させないイベント
     public event Action? StateChanged;
 #pragma warning restore CS0067

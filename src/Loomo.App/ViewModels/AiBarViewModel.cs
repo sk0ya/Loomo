@@ -21,6 +21,8 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>入力欄で「/」から呼び出すスラッシュコマンド1件（補完候補に出す）。</summary>
 public sealed record ChatCommand(string Name, string Description);
 
+public sealed record WarmupCompletionStage(string Name, string Duration);
+
 /// <summary>下部AIバー（全幅・展開式）の ViewModel。エージェントループを駆動する。</summary>
 public sealed partial class AiBarViewModel : ObservableObject
 {
@@ -67,6 +69,12 @@ public sealed partial class AiBarViewModel : ObservableObject
     [ObservableProperty] private bool _isWarmingUp;
 
     [ObservableProperty] private string _warmupStatusText = "";
+
+    [ObservableProperty] private bool _isWarmupCompletionVisible;
+
+    [ObservableProperty] private string _warmupCompletionTotalText = "";
+
+    public ObservableCollection<WarmupCompletionStage> WarmupCompletionStages { get; } = new();
 
     [ObservableProperty] private string _providerLabel;
 
@@ -120,6 +128,9 @@ public sealed partial class AiBarViewModel : ObservableObject
         IsWarmingUp = _warmup.IsWarmingUp;
         if (IsWarmingUp)
         {
+            IsWarmupCompletionVisible = false;
+            WarmupCompletionTotalText = "";
+            WarmupCompletionStages.Clear();
             if (!_warmupTimer.IsEnabled) _warmupTimer.Start();
             RenderWarmupStatus();
         }
@@ -127,12 +138,13 @@ public sealed partial class AiBarViewModel : ObservableObject
         {
             _warmupTimer.Stop();
             WarmupStatusText = "";
+            RenderWarmupCompletion();
         }
     }
 
     private void RenderWarmupStatus()
     {
-        if (!IsWarmingUp || _warmup.WarmupStartedAt is not { } startedAt)
+        if (_warmup.WarmupStartedAt is not { } startedAt)
         {
             WarmupStatusText = "";
             return;
@@ -140,7 +152,22 @@ public sealed partial class AiBarViewModel : ObservableObject
 
         var elapsed = DateTimeOffset.Now - startedAt;
         if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
-        WarmupStatusText = $"🔥 ウォームアップ中… {FormatWarmupDuration(elapsed)} 経過。モデルとプロンプトを準備しています（完了までAIへの指示はできません）";
+        var current = string.IsNullOrWhiteSpace(_warmup.CurrentStatus)
+            ? "モデルとプロンプトを準備しています"
+            : _warmup.CurrentStatus;
+        WarmupStatusText = $"ウォームアップ中… {current}。{FormatWarmupDuration(elapsed)} 経過（完了までAIへの指示はできません）";
+    }
+
+    private void RenderWarmupCompletion()
+    {
+        WarmupCompletionStages.Clear();
+        foreach (var stage in _warmup.StageTimings.Where(ShouldShowWarmupStage))
+            WarmupCompletionStages.Add(new WarmupCompletionStage(DisplayWarmupStageName(stage.Name), FormatDuration(stage.Elapsed)));
+
+        WarmupCompletionTotalText = _warmup.TotalDuration is { } total
+            ? FormatDuration(total)
+            : "";
+        IsWarmupCompletionVisible = WarmupCompletionStages.Count > 0 || !string.IsNullOrWhiteSpace(WarmupCompletionTotalText);
     }
 
     /// <summary>現在のフェーズに切り替え、経過秒の表示更新を開始する。</summary>
@@ -291,6 +318,9 @@ public sealed partial class AiBarViewModel : ObservableObject
 
         Input = "";
         CloseCommandPopup();
+        IsWarmupCompletionVisible = false;
+        WarmupCompletionTotalText = "";
+        WarmupCompletionStages.Clear();
         IsExpanded = true;
         IsBusy = true;
         _cts = new CancellationTokenSource();
@@ -601,6 +631,36 @@ public sealed partial class AiBarViewModel : ObservableObject
     }
 
     private static string FormatMs(double ms) => FormatDuration(TimeSpan.FromMilliseconds(ms));
+
+    private static string DisplayWarmupStageName(string status)
+    {
+        var s = Regex.Replace(status, @"（.*?）", "").Trim();
+        return s switch
+        {
+            "ウォームアップを開始しています" => "開始",
+            "プロンプトを組み立てています" => "プロンプト",
+            "モデル設定を確認しています" => "設定確認",
+            "モデルをロードしています" => "モデルロード",
+            "プロンプトをトークン化しています" => "トークン化",
+            "プロンプトをトークン化しています（モデルはロード済み）" => "トークン化",
+            "生成器を準備しています" => "生成器",
+            "KVキャッシュを作成しています" => "KVキャッシュ",
+            "ウォームアップを完了しています" => "完了処理",
+            _ => s
+        };
+    }
+
+    private static bool ShouldShowWarmupStage(WarmupStageTiming stage)
+    {
+        if (stage.Elapsed < TimeSpan.FromMilliseconds(1))
+            return false;
+
+        var s = Regex.Replace(stage.Name, @"（.*?）", "").Trim();
+        return s is not "ウォームアップを開始しています"
+            and not "プロンプトを組み立てています"
+            and not "モデル設定を確認しています"
+            and not "プロンプトをトークン化しています";
+    }
 
     private static string FormatWarmupDuration(TimeSpan elapsed)
     {

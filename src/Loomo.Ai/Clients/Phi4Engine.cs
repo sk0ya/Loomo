@@ -62,7 +62,12 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
     /// （差分だけ <see cref="PrepareKvCache"/> が貼り直す）。
     /// </summary>
     public async Task PrimeAsync(
-        string modelPath, string stablePrompt, int maxLength, SamplingOptions sampling, CancellationToken ct)
+        string modelPath,
+        string stablePrompt,
+        int maxLength,
+        SamplingOptions sampling,
+        CancellationToken ct,
+        Action<string>? progress = null)
     {
         await _gate.WaitAsync(ct);
         try
@@ -71,14 +76,22 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
             // Task.Run へ逃がさないと呼び出し元（起動時は UI スレッド）をブロックしてしまう。
             await Task.Run(() =>
             {
-                LoadIfNeeded(modelPath);
+                progress?.Invoke("モデルをロードしています");
+                var loadedNow = LoadIfNeeded(modelPath);
+                progress?.Invoke(loadedNow
+                    ? "プロンプトをトークン化しています"
+                    : "プロンプトをトークン化しています（モデルはロード済み）");
+
                 int[] tokens;
                 using (var seq = _tokenizer!.Encode(stablePrompt))
                     tokens = seq[0].ToArray();
 
+                progress?.Invoke($"生成器を準備しています（{tokens.Length} トークン）");
                 EnsureGenerator(_model!, maxLength, sampling);
                 ct.ThrowIfCancellationRequested();
+                progress?.Invoke($"KVキャッシュを作成しています（prefill {tokens.Length} トークン）");
                 PrepareKvCache(_generator!, tokens);   // prefill（重みのページイン）＋ _fedTokens を記録
+                progress?.Invoke("ウォームアップを完了しています");
             }, ct);
         }
         catch (OperationCanceledException) { }

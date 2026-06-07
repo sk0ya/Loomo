@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 
 namespace sk0ya.Loomo.App.Services;
+
+public sealed record WarmupStageTiming(string Name, TimeSpan Elapsed);
 
 /// <summary>AIウォームアップの状態通知・再要求の窓口。ViewModel は具体実装
 /// （<see cref="LocalLlmWarmupService"/>・ONNXエンジン依存）ではなくこの抽象に依存する
@@ -13,7 +16,19 @@ public interface IAiWarmup
     /// <summary>現在のウォームアップが始まった時刻。停止中は null。</summary>
     DateTimeOffset? WarmupStartedAt { get; }
 
-    /// <summary><see cref="IsWarmingUp"/> が変化したときに通知する（開始↔終了の遷移時のみ）。</summary>
+    /// <summary>ウォームアップ中に現在実行している段階。完了後は直近の完了状態。</summary>
+    string CurrentStatus { get; }
+
+    /// <summary>ウォームアップの現在/直近の段階別所要。完了後も次のAIチャット開始まで残る。</summary>
+    string StatusDetails { get; }
+
+    /// <summary>ウォームアップの現在/直近の段階別所要を構造化したもの。</summary>
+    IReadOnlyList<WarmupStageTiming> StageTimings { get; }
+
+    /// <summary>直近ウォームアップの合計所要。未実行なら null。</summary>
+    TimeSpan? TotalDuration { get; }
+
+    /// <summary><see cref="IsWarmingUp"/>、<see cref="CurrentStatus"/>、<see cref="StatusDetails"/> が変化したときに通知する。</summary>
     event Action? StateChanged;
 
     /// <summary>暖機を改めて要求する（無効時・モデル未設定時は何もしない）。</summary>

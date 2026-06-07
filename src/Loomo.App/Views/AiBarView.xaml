@@ -137,14 +137,81 @@
         <Border Grid.Row="1" Background="{DynamicResource BgAlt}"
                 Padding="12,4" Margin="8,0"
                 Visibility="{Binding IsWarmingUp, Converter={StaticResource BoolToVis}}">
-            <StackPanel Orientation="Horizontal">
-                <ProgressBar IsIndeterminate="True" Width="80" Height="4"
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ProgressBar Grid.Column="0" IsIndeterminate="True" Width="80" Height="4"
                              Foreground="{DynamicResource Accent}" Background="Transparent"
                              BorderThickness="0" VerticalAlignment="Center" />
-                <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12"
+                <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12"
                            Foreground="{DynamicResource FgDim}"
+                           TextWrapping="Wrap"
                            Text="{Binding WarmupStatusText}" />
-            </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===== ウォームアップ完了後の内訳。AIチャット開始まで残す ===== -->
+        <Border Grid.Row="1" Background="{DynamicResource BgAlt}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                Padding="12,7" Margin="8,0"
+                Visibility="{Binding IsWarmupCompletionVisible, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="3" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{DynamicResource Accent}" CornerRadius="2" />
+
+                <StackPanel Grid.Column="1" Margin="10,0,12,0">
+                    <TextBlock Text="ウォームアップ完了"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Fg}" />
+                    <ItemsControl ItemsSource="{Binding WarmupCompletionStages}" Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource Bg}"
+                                        BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="6,2"
+                                        Margin="0,0,6,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource FgDim}" />
+                                        <TextBlock Text="{Binding Duration}"
+                                                   FontSize="11"
+                                                   FontFamily="Cascadia Mono, Consolas"
+                                                   Foreground="{DynamicResource Fg}"
+                                                   Margin="6,0,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                    <TextBlock Text="合計"
+                               FontSize="10"
+                               Foreground="{DynamicResource FgDim}"
+                               HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding WarmupCompletionTotalText}"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               FontFamily="Cascadia Mono, Consolas"
+                               Foreground="{DynamicResource Fg}" />
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- ===== 入力バー（常時表示・全幅） ===== -->

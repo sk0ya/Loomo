@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Ai;
@@ -27,10 +30,20 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     private readonly IWorkspaceService _workspace;
     private readonly ToolRegistry _tools;
     private readonly CancellationTokenSource _startupCts = new();
+    private readonly object _requestLock = new();
+    private readonly object _statusLock = new();
 
-    // 実行中の暖機（prime）件数。起動時とワークスペース確定が重なると複数同時に走り得るため計数で持つ。
+    private long _requestSeq;
+    private bool _workerRunning;
     private int _activePrimes;
     private long _warmupStartedAtUnixMs;
+    private string _currentStatus = "";
+    private string _statusDetails = "";
+    private readonly Stopwatch _warmupClock = new();
+    private readonly Stopwatch _stageClock = new();
+    private readonly List<WarmupStageTiming> _stageTimings = new();
+    private string? _stageName;
+    private TimeSpan? _totalDuration;
 
     /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けないよう UI で使う。</summary>
     public bool IsWarmingUp => Volatile.Read(ref _activePrimes) > 0;
@@ -45,7 +58,40 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         }
     }
 
-    /// <summary><see cref="IsWarmingUp"/> が変化したときに通知する（開始↔終了の遷移時のみ）。</summary>
+    /// <summary>ウォームアップ中に現在実行している段階。完了後は直近の完了状態。</summary>
+    public string CurrentStatus => Volatile.Read(ref _currentStatus);
+
+    /// <summary>ウォームアップの現在/直近の段階別所要。完了後も次のAIチャット開始まで残る。</summary>
+    public string StatusDetails
+    {
+        get
+        {
+            lock (_statusLock)
+                return IsWarmingUp ? BuildDetailsLocked(includeCurrent: true) : _statusDetails;
+        }
+    }
+
+    /// <summary>ウォームアップの現在/直近の段階別所要を構造化したもの。</summary>
+    public IReadOnlyList<WarmupStageTiming> StageTimings
+    {
+        get
+        {
+            lock (_statusLock)
+                return BuildTimingsLocked(includeCurrent: IsWarmingUp);
+        }
+    }
+
+    /// <summary>直近ウォームアップの合計所要。未実行なら null。</summary>
+    public TimeSpan? TotalDuration
+    {
+        get
+        {
+            lock (_statusLock)
+                return IsWarmingUp ? _warmupClock.Elapsed : _totalDuration;
+        }
+    }
+
+    /// <summary><see cref="IsWarmingUp"/>、<see cref="CurrentStatus"/>、<see cref="StatusDetails"/> が変化したときに通知する。</summary>
     public event Action? StateChanged;
 
     public LocalLlmWarmupService(
@@ -59,16 +105,68 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         // ワークスペースが確定／切り替わるたびに、プレフィックスを実ターンと一致させ直す。
         _workspace.RootChanged += OnRootChanged;
 
-        // 起動直後に現在の状態（多くの場合 root 未確定）で一度暖機する。重みのページインはここで前倒しされ、
-        // 直後に RootChanged が来れば差分だけ貼り直す。
-        _ = PrimeAsync(_startupCts.Token);
+        // 起動直後は root 確定通知が続けて来ることがあるため、短く遅延して連続要求をまとめる。
+        RequestWarmup();
     }
 
-    private void OnRootChanged(object? sender, string? root) => _ = PrimeAsync(_startupCts.Token);
+    private void OnRootChanged(object? sender, string? root) => RequestWarmup();
 
     /// <summary>ウォームアップを改めて要求する。設定でONに切り替えた直後などに呼ぶ。
     /// 無効時・モデル未設定時は何もしない。</summary>
-    public void RequestWarmup() => _ = PrimeAsync(_startupCts.Token);
+    public void RequestWarmup()
+    {
+        if (!_settings.WarmupEnabled)
+            return;
+        if (string.IsNullOrWhiteSpace(_settings.Local.ModelPath))
+            return;
+
+        lock (_requestLock)
+        {
+            Interlocked.Increment(ref _requestSeq);
+            if (_workerRunning) return;
+            _workerRunning = true;
+        }
+
+        _ = RunPrimeWorkerAsync(_startupCts.Token);
+    }
+
+    private async Task RunPrimeWorkerAsync(CancellationToken ct)
+    {
+        var completedSeq = 0L;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var observed = Interlocked.Read(ref _requestSeq);
+
+                // 起動直後や workspace root 変更直後の連続通知を 1 回の暖機に畳む。
+                await Task.Delay(500, ct);
+                var afterDelay = Interlocked.Read(ref _requestSeq);
+                if (afterDelay != observed)
+                    continue;
+
+                await PrimeAsync(ct);
+                completedSeq = afterDelay;
+
+                if (Interlocked.Read(ref _requestSeq) == afterDelay)
+                    break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            lock (_requestLock)
+            {
+                _workerRunning = false;
+                if (!ct.IsCancellationRequested && Interlocked.Read(ref _requestSeq) != completedSeq)
+                {
+                    // 終了処理との隙間に入った要求を拾う。
+                    _workerRunning = true;
+                    _ = RunPrimeWorkerAsync(ct);
+                }
+            }
+        }
+    }
 
     private async Task PrimeAsync(CancellationToken ct)
     {
@@ -83,6 +181,8 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         BeginWarmup();
         try
         {
+            SetStatus("プロンプトを組み立てています");
+
             // 最初の実ターンと同じ経路で安定プレフィックスを組み立てる。会話は空なので Build は
             // 「<|system|>…<|tool|>…<|/tool|><|end|><|assistant|>」を返し、その system ブロックが
             // 実ターン（同じ system ブロック＋<|user|>…）との最長共通接頭辞になる。
@@ -92,11 +192,31 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
             var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
             var sampling = ModelProfiles.Resolve(cfg.Model).Sampling;
 
-            await _engine.PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct);
+            SetStatus("モデル設定を確認しています");
+            await _engine.PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct, SetStatus);
         }
         catch (OperationCanceledException) { }
         catch { /* 暖機は体感改善用。失敗は通常のAI呼び出し時に改めて顕在化する。 */ }
         finally { EndWarmup(); }
+    }
+
+    private void SetStatus(string status)
+    {
+        var changed = false;
+        lock (_statusLock)
+        {
+            if (string.Equals(_currentStatus, status, StringComparison.Ordinal))
+                return;
+
+            CompleteCurrentStageLocked();
+            _stageName = status;
+            _stageClock.Restart();
+            _currentStatus = status;
+            _statusDetails = BuildDetailsLocked(includeCurrent: false);
+            changed = true;
+        }
+
+        if (changed) StateChanged?.Invoke();
     }
 
     // 暖機の開始/終了を計数し、状態が 0↔1 を跨ぐとき（実行中↔停止）だけ通知する。
@@ -105,6 +225,16 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         if (Interlocked.Increment(ref _activePrimes) == 1)
         {
             Interlocked.Exchange(ref _warmupStartedAtUnixMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            lock (_statusLock)
+            {
+                _stageTimings.Clear();
+                _warmupClock.Restart();
+                _stageName = "ウォームアップを開始しています";
+                _stageClock.Restart();
+                _currentStatus = _stageName;
+                _statusDetails = "";
+                _totalDuration = null;
+            }
             StateChanged?.Invoke();
         }
     }
@@ -114,10 +244,62 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         if (Interlocked.Decrement(ref _activePrimes) == 0)
         {
             Interlocked.Exchange(ref _warmupStartedAtUnixMs, 0);
+            lock (_statusLock)
+            {
+                CompleteCurrentStageLocked();
+                _warmupClock.Stop();
+                _totalDuration = _warmupClock.Elapsed;
+                _currentStatus = "ウォームアップ完了";
+                _statusDetails = BuildDetailsLocked(includeCurrent: false);
+            }
             StateChanged?.Invoke();
         }
     }
 
+    private void CompleteCurrentStageLocked()
+    {
+        if (_stageName is null || !_stageClock.IsRunning)
+            return;
+
+        _stageClock.Stop();
+        if (_stageClock.Elapsed >= TimeSpan.FromMilliseconds(1))
+            _stageTimings.Add(new WarmupStageTiming(_stageName, _stageClock.Elapsed));
+    }
+
+    private IReadOnlyList<WarmupStageTiming> BuildTimingsLocked(bool includeCurrent)
+    {
+        var timings = _stageTimings.ToList();
+        if (includeCurrent && _stageName is not null && _stageClock.IsRunning)
+            timings.Add(new WarmupStageTiming(_stageName, _stageClock.Elapsed));
+        return timings;
+    }
+
+    private string BuildDetailsLocked(bool includeCurrent)
+    {
+        var timings = BuildTimingsLocked(includeCurrent);
+
+        if (timings.Count == 0)
+            return "";
+
+        var parts = timings
+            .Where(t => t.Elapsed >= TimeSpan.FromMilliseconds(1))
+            .Select(t => $"{t.Name} {FormatDuration(t.Elapsed)}")
+            .ToList();
+
+        if (_warmupClock.Elapsed >= TimeSpan.FromMilliseconds(1))
+            parts.Add($"合計 {FormatDuration(_warmupClock.Elapsed)}");
+
+        return string.Join(" / ", parts);
+    }
+
+    private static string FormatDuration(TimeSpan elapsed)
+    {
+        if (elapsed.TotalSeconds < 1)
+            return $"{elapsed.TotalMilliseconds:0} ms";
+        if (elapsed.TotalMinutes < 1)
+            return $"{elapsed.TotalSeconds:0.0} 秒";
+        return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
+    }
     public void Dispose()
     {
         _workspace.RootChanged -= OnRootChanged;
