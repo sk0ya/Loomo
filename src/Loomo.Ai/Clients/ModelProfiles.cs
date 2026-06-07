@@ -9,12 +9,9 @@ public static class ModelProfiles
 {
     /// <summary>
     /// phi4-mini 系（microsoft/Phi-4-mini-instruct-onnx）。CPU で in-process 駆動する想定。
-    /// Phi-4 推奨のサンプリングを ORT-GenAI の search option（temperature / top_p / repetition_penalty）へ写す。
-    /// 小型モデル（int4）は長い生成で繰り返しループ（repetition collapse）に陥りやすく、command や
-    /// write_file の content など長文を 1 本の JSON 引数に吐く用途で顕著。repetition_penalty を 1.15 に上げて
-    /// 発生確率を下げる（1.05 では弱すぎた）。なお ORT-GenAI 0.9.0(CPU) では no_repeat_ngram_size は
-    /// 無視される（実測で no-op）ため使わず、確実な停止は Phi4Engine のデコードループ反復ガードで担保する。
-    /// temperature はツール選択の安定性を保つため 0.2 のまま。
+    /// ツール呼び出し用途では sampling を指定しない（greedy 相当）。実測では temperature/top_p を入れると
+    /// <c>rg</c>/<c>read_file</c>/<c>build</c> 等の架空ツール名や長い後続説明が増え、greedy 相当の方が
+    /// JSON とツール名の安定性が高かった。短周期ループの停止は Phi4Engine のデコードループ反復ガードで担保する。
     ///
     /// 性能最適化:
     /// コンテキスト窓（max_length のもと）は 8192 に抑える。tool calling 用途では、巨大な履歴より
@@ -25,7 +22,7 @@ public static class ModelProfiles
         Family = "phi4-mini",
         NumCtx = 8192,
         MaxOutputTokens = 1024,
-        Sampling = new(Temperature: 0.2, TopP: 0.9, RepeatPenalty: 1.15),
+        Sampling = SamplingOptions.Unspecified,
     };
 
     /// <summary>未知モデルの既定。サンプリングはモデル既定に委ね、コンテキストのみ控えめに広げる。</summary>

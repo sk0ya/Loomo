@@ -23,7 +23,7 @@ public static class ToolCallTextParser
     /// </summary>
     public static IReadOnlyList<ToolUse> Parse(string text)
     {
-        var s = StripCodeFence(text.Trim());
+        var s = StripToolWrapper(StripCodeFence(text.Trim()));
 
         // 形式1: run_powershell("コマンド")
         const string prefix = "run_powershell(\"";
@@ -220,6 +220,26 @@ public static class ToolCallTextParser
         var nl = inner.IndexOf('\n');           // 開きフェンスの言語指定（```json 等）を落とす
         if (nl >= 0) inner = inner[(nl + 1)..];
         return inner.Trim();
+    }
+
+    /// <summary>Phi-4-mini が tool call 用特殊トークンで JSON を包むことがあるため、本文判定前に剥がす。
+    /// <c>&lt;|tool_response|&gt;</c> は本来は結果側トークンだが、小モデルが誤って tool call に使う場合がある。</summary>
+    private static string StripToolWrapper(string s)
+    {
+        foreach (var (start, end) in new[]
+                 {
+                     ("<|tool_call|>", "<|/tool_call|>"),
+                     ("<|tool_response|>", "<|/tool_response|>")
+                 })
+        {
+            if (!s.StartsWith(start, StringComparison.Ordinal)) continue;
+            var inner = s[start.Length..];
+            var endIndex = inner.IndexOf(end, StringComparison.Ordinal);
+            if (endIndex >= 0)
+                inner = inner[..endIndex];
+            return inner.Trim();
+        }
+        return s;
     }
 
     /// <summary>引数 JSON オブジェクトからコマンド文字列を取り出す。<c>arguments</c>/<c>parameters</c> ラップと別名キーに対応。見つからなければ null。</summary>

@@ -17,6 +17,7 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// 揺れ吸収は同パーサに集約）。</para>
 ///
 /// <para>適用条件: <b>最初の非空白文字が <c>[</c> のときだけ</b>有効化する（Phi-4-mini のツール呼び出し形式）。
+/// 先頭に Phi-4-mini の <c>&lt;|tool_call|&gt;</c> 特殊トークンがある場合はそれを読み飛ばしてから判定する。
 /// それ以外（<c>{…}</c> 単体・<c>run_powershell(...)</c>・コードフェンス・先頭欠落の復元形・通常テキスト）は
 /// <see cref="Disabled"/> にして何も返さず、リスクの高い復元・サルベージは終端の
 /// <see cref="ToolCallTextParser.Parse"/>（実績あり）に委ねる。</para>
@@ -119,6 +120,9 @@ public sealed class StreamingToolCallScanner
         while (_pos < _buf.Length && char.IsWhiteSpace(_buf[_pos])) _pos++;
         if (_pos >= _buf.Length) return false;        // まだ空白のみ
 
+        SkipOptionalToolWrapperStart();
+
+        if (_pos >= _buf.Length) return false;
         if (_buf[_pos] != '[')
         {
             _stopped = true;                          // 配列でない → 終端パーサに委ねる
@@ -128,5 +132,24 @@ public sealed class StreamingToolCallScanner
         _decided = true;
         _pos++;                                       // 開き '[' を消費
         return true;
+    }
+
+    private void SkipOptionalToolWrapperStart()
+    {
+        foreach (var tag in new[] { "<|tool_call|>", "<|tool_response|>" })
+        {
+            if (_buf.Length - _pos < tag.Length) continue;
+            var matches = true;
+            for (var i = 0; i < tag.Length; i++)
+            {
+                if (_buf[_pos + i] == tag[i]) continue;
+                matches = false;
+                break;
+            }
+            if (!matches) continue;
+            _pos += tag.Length;
+            while (_pos < _buf.Length && char.IsWhiteSpace(_buf[_pos])) _pos++;
+            return;
+        }
     }
 }

@@ -27,8 +27,8 @@ public class Phi4PromptFormatterTests
         Assert.Contains("\"name\":\"run_powershell\"", prompt);
         Assert.Contains("\"parameters\":{\"command\":{\"type\":\"string\"", prompt);
         Assert.Contains("<|/tool|><|end|>", prompt);
-        Assert.Contains("output only valid JSON array", prompt);
-        Assert.Contains("First char [; last char ]", prompt);
+        Assert.Contains("Use only these tools: run_powershell, write_file, edit_file.", prompt);
+        Assert.Contains("Tool output example", prompt);
         Assert.Contains("<|user|>ファイル一覧を出して<|end|>", prompt);
         Assert.EndsWith("<|assistant|>", prompt);                 // add_generation_prompt
     }
@@ -123,20 +123,25 @@ public class Phi4PromptFormatterTests
     public void Default_system_prompt_is_engine_neutral_and_guides_tool_calling()
     {
         Assert.DoesNotContain("Ollama", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("tool-calling loop", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("output only valid JSON array", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("First char [; last char ]", AiSettings.DefaultSystemPrompt);
-        // 独立した操作のみ複数許可（依存する操作は1つずつ）という方針が告知されていること。
-        Assert.Contains("INDEPENDENT operations", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("MUST be separate steps", AiSettings.DefaultSystemPrompt);
-        // run_powershell の呼び出し形を明示し、小モデルが関数風や空引数へ崩れるのを抑える。
+        Assert.Contains("Use only these tools: run_powershell, write_file, edit_file.", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("optionally wrapped in <|tool_call|>", AiSettings.DefaultSystemPrompt);
+        // run_powershell の呼び出し形を具体例で示し、小モデルが rg/read_file/build 等の架空ツール名へ崩れるのを抑える。
         Assert.Contains("\"name\":\"run_powershell\"", AiSettings.DefaultSystemPrompt);
         Assert.Contains("\"arguments\":{\"command\":\"Get-ChildItem\"}", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("Do not write code fences or run_powershell(\"...\")", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("you MUST use a tool first", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Read README", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Search code", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("dotnet build", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Last commit", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("git --no-pager show --stat --oneline --decorate -1", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Do not invent long --pretty=format strings", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Before editing README", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("read_file, search, and build are not tool names", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Use a tool first", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("If the user only greets or chats", AiSettings.DefaultSystemPrompt);
         Assert.Contains("non-interactive", AiSettings.DefaultSystemPrompt);
         // 構造化ファイルツールがプロンプトに告知されていること。
-        Assert.Contains("Use write_file for new/full file writes", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("Before edit_file, read the file first", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("\"name\":\"write_file\"", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("first inspect with run_powershell only", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("never use it with Set-Content", AiSettings.DefaultSystemPrompt);
     }
 }

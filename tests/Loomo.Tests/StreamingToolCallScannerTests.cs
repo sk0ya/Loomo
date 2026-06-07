@@ -30,6 +30,14 @@ public class StreamingToolCallScannerTests
     }
 
     [Fact]
+    public void Emits_phi4_tool_call_wrapped_array()
+    {
+        var t = Assert.Single(FeedAll("<|tool_call|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}]<|/tool_call|>"));
+        Assert.Equal("run_powershell", t.Name);
+        Assert.Equal("{\"command\":\"ls\"}", t.ArgumentsJson);
+    }
+
+    [Fact]
     public void Emits_multiple_objects_in_order_in_one_chunk()
     {
         var tools = FeedAll(

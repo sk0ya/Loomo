@@ -78,6 +78,25 @@ public class ToolCallTextParserTests
     }
 
     [Fact]
+    public void Converts_phi4_tool_call_wrapped_json_array()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "<|tool_call|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}]<|/tool_call|>"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"Get-ChildItem\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
+    public void Converts_phi4_tool_response_wrapped_json_array_when_model_uses_wrong_tag()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "<|tool_response|>[{\"name\":\"write_file\",\"arguments\":{\"path\":\"a.txt\",\"content\":\"A\"}}]"));
+        Assert.Equal("write_file", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("a.txt", args.RootElement.GetProperty("path").GetString());
+    }
+
+    [Fact]
     public void Converts_tool_call_json_array_embedded_in_narration()
     {
         var tool = Assert.Single(ToolCallTextParser.Parse(
