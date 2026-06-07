@@ -77,6 +77,9 @@ public sealed class AiSettings
         "For git history, use simple commands such as git --no-pager show --stat --oneline --decorate -1. Do not invent long --pretty=format strings.\n" +
         "For replace/edit requests on existing files, first inspect with run_powershell only; the first command must be a read-only command such as Get-Content README.md.\n" +
         "After the tool result, use edit_file only when old_string is copied exactly and uniquely from the result.\n" +
+        "Only modify a file when the user explicitly asked to create, write, edit, or change it. For a read or question task, never edit; just answer.\n" +
+        "When the user did ask to change a file and you have just read it, your next reply must be the edit_file or write_file call; do not reply in prose until the change is actually made.\n" +
+        "Never state that a file was created, written, edited, or changed unless you actually called write_file or edit_file in this conversation. Reading a file is not changing it.\n" +
         "Use exactly one tool call when steps depend on results. Do not combine read/write/edit in one reply.\n" +
         "PowerShell must be complete and non-interactive; avoid pagers, prompts, editors, and bare cd.\n" +
         "For final answers, use concise Japanese prose only. No JSON, arrays, Markdown, or code fences.";

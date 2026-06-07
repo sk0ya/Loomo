@@ -111,7 +111,8 @@ public sealed class AgentOrchestrator
                 iteration = iteration + 1,
                 toolCount = activeDefinitions.Count,
             });
-            await foreach (var ev in ai.StreamAsync(outgoing, activeDefinitions, ct, activeProfile))
+            await foreach (var ev in ai.StreamAsync(outgoing, activeDefinitions, ct, activeProfile,
+                               retryDiversify: parseRetries > 0))
             {
                 switch (ev)
                 {

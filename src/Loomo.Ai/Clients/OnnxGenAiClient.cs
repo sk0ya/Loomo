@@ -37,7 +37,8 @@ public sealed class OnnxGenAiClient : IAiClient
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools,
         [EnumeratorCancellation] CancellationToken ct,
-        AgentProfile? profile = null)
+        AgentProfile? profile = null,
+        bool retryDiversify = false)
     {
         var cfg = _settings.Local;
         var modelProfile = ModelProfiles.Resolve(cfg.Model);
@@ -46,7 +47,12 @@ public sealed class OnnxGenAiClient : IAiClient
         var maxNewTokens = modelProfile.MaxOutputTokens > 0
             ? Math.Min(cfg.MaxTokens, modelProfile.MaxOutputTokens)
             : cfg.MaxTokens;
-        var request = new GenerationRequest(prompt, cfg.ModelPath ?? "", maxLength, maxNewTokens, modelProfile.Sampling);
+        // 通常は greedy（tool JSON が安定）。ただしツール呼び出しJSON解釈失敗からの再試行時だけは、
+        // greedy だと同じ不正出力を再生産して prefill を無駄に払い直すため、微小な温度で出力をずらす。
+        var sampling = retryDiversify
+            ? new SamplingOptions(Temperature: 0.7, TopP: 0.9)
+            : modelProfile.Sampling;
+        var request = new GenerationRequest(prompt, cfg.ModelPath ?? "", maxLength, maxNewTokens, sampling);
 
         var channel = Channel.CreateUnbounded<AgentEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });

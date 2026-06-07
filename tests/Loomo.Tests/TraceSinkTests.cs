@@ -210,7 +210,8 @@ public class TraceSinkTests
             IReadOnlyList<ToolDefinition> tools,
             [System.Runtime.CompilerServices.EnumeratorCancellation]
             CancellationToken ct,
-            AgentProfile? profile = null)
+            AgentProfile? profile = null,
+            bool retryDiversify = false)
         {
             ProfileIds.Add(profile?.Id ?? "");
             ToolCounts.Add(tools.Count);
@@ -243,7 +244,8 @@ public class TraceSinkTests
             IReadOnlyList<ToolDefinition> tools,
             [System.Runtime.CompilerServices.EnumeratorCancellation]
             CancellationToken ct,
-            AgentProfile? profile = null)
+            AgentProfile? profile = null,
+            bool retryDiversify = false)
         {
             await Task.Yield();
             yield break;

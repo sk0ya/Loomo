@@ -134,7 +134,8 @@ public class OrchestratorMultiToolTests
 
         public async IAsyncEnumerable<AgentEvent> StreamAsync(
             Conversation conversation, IReadOnlyList<ToolDefinition> tools,
-            [EnumeratorCancellation] CancellationToken ct, AgentProfile? profile = null)
+            [EnumeratorCancellation] CancellationToken ct, AgentProfile? profile = null,
+            bool retryDiversify = false)
         {
             var events = _turns.Count > 0 ? _turns.Dequeue() : new AgentEvent[] { new TextDelta("") };
             foreach (var e in events)
