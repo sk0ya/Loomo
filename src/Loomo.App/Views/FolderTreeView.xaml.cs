@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -70,14 +71,32 @@ public partial class FolderTreeView : UserControl
     }
 
     private static TreeViewItem? FindAncestorTreeViewItem(DependencyObject source)
+        => FindAncestor<TreeViewItem>(source);
+
+    private static T? FindAncestor<T>(DependencyObject source) where T : DependencyObject
     {
         var current = source;
-        while (current is not null and not TreeViewItem)
+        while (current is not null and not T)
             current = current is Visual or System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(current)
                 : LogicalTreeHelper.GetParent(current);
 
-        return current as TreeViewItem;
+        return current as T;
+    }
+
+    // フォルダ行を 1 クリックで開閉する（クリックした階層だけをトグルし、配下は遅延読込の
+    // ままにして完全展開はしない）。矢印トグル自身のクリックは IsChecked 経由で既にトグル
+    // されるため除外する。ダブルクリック（ClickCount=2）は二重トグルになるので無視する。
+    private void OnTreeMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 1 || e.OriginalSource is not DependencyObject source)
+            return;
+
+        if (FindAncestor<ToggleButton>(source) is not null)
+            return;
+
+        if (FindAncestorTreeViewItem(source)?.DataContext is FileNodeViewModel { IsDirectory: true } node)
+            node.IsExpanded = !node.IsExpanded;
     }
 
     // Vim 風キーボード操作:

@@ -180,6 +180,7 @@
             <TreeView x:Name="FileTree" ItemsSource="{Binding Nodes}" Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource Fg}"
                       MouseDoubleClick="OnTreeMouseDoubleClick"
+                      PreviewMouseLeftButtonUp="OnTreeMouseLeftButtonUp"
                       PreviewKeyDown="OnTreeKeyDown"
                       PreviewTextInput="OnTreePreviewTextInput"
                       PreviewMouseRightButtonDown="OnTreeRightButtonDown"
@@ -202,58 +203,72 @@
                             <Setter.Value>
                                 <ControlTemplate TargetType="TreeViewItem">
                                     <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="16" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition />
                                         </Grid.RowDefinitions>
 
-                                        <ToggleButton x:Name="Expander"
-                                                      Grid.Column="0"
-                                                      ClickMode="Press"
-                                                      Focusable="False"
-                                                      IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
-                                            <ToggleButton.Template>
-                                                <ControlTemplate TargetType="ToggleButton">
-                                                    <Border Background="Transparent" Width="16" Height="16">
-                                                        <Path x:Name="Arrow"
-                                                              Width="7" Height="7"
-                                                              Stretch="Uniform"
-                                                              HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"
-                                                              Fill="{DynamicResource FgDim}"
-                                                              Data="M0,0 L4,4 L0,8 Z" />
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsChecked" Value="True">
-                                                            <Setter TargetName="Arrow" Property="RenderTransform">
-                                                                <Setter.Value>
-                                                                    <RotateTransform Angle="90" CenterX="3.5" CenterY="3.5" />
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </ToggleButton.Template>
-                                        </ToggleButton>
-
+                                        <!-- ヘッダ行（矢印＋名前）をまるごと Bd で包む。ハイライトは行全幅で塗られ、
+                                             かつ Bd は子（ItemsHost）を含まないので、子をホバーしても親が光らない。 -->
                                         <Border x:Name="Bd"
-                                                Grid.Column="1"
+                                                Grid.Row="0"
                                                 Background="Transparent"
-                                                CornerRadius="3"
-                                                Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter x:Name="PART_Header"
-                                                              ContentSource="Header"
-                                                              HorizontalAlignment="Stretch"
-                                                              VerticalAlignment="Center" />
+                                                CornerRadius="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="16" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <ToggleButton x:Name="Expander"
+                                                              Grid.Column="0"
+                                                              ClickMode="Press"
+                                                              Focusable="False"
+                                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                                    <ToggleButton.Template>
+                                                        <ControlTemplate TargetType="ToggleButton">
+                                                            <Border Background="Transparent" Width="16" Height="16">
+                                                                <Path x:Name="Arrow"
+                                                                      Width="8" Height="8"
+                                                                      Stretch="Uniform"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"
+                                                                      Fill="{DynamicResource FgDim}"
+                                                                      Data="M0,0 L4,4 L0,8 Z" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsChecked" Value="True">
+                                                                    <Setter TargetName="Arrow" Property="RenderTransform">
+                                                                        <Setter.Value>
+                                                                            <RotateTransform Angle="90" CenterX="4" CenterY="4" />
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                </Trigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </ToggleButton.Template>
+                                                </ToggleButton>
+
+                                                <ContentPresenter x:Name="PART_Header"
+                                                                  Grid.Column="1"
+                                                                  ContentSource="Header"
+                                                                  Margin="{TemplateBinding Padding}"
+                                                                  HorizontalAlignment="Stretch"
+                                                                  VerticalAlignment="Center" />
+                                            </Grid>
                                         </Border>
 
-                                        <ItemsPresenter x:Name="ItemsHost"
-                                                        Grid.Row="1"
-                                                        Grid.Column="1" />
+                                        <!-- 子要素。左端に淡いガイド線を引いて親子関係を追いやすくし、
+                                             矢印列ぶん（16px）だけインデントする。 -->
+                                        <Border Grid.Row="1"
+                                                Margin="16,0,0,0"
+                                                BorderBrush="{DynamicResource Border}"
+                                                BorderThickness="1,0,0,0">
+                                            <ItemsPresenter x:Name="ItemsHost" />
+                                        </Border>
                                     </Grid>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsExpanded" Value="False">
@@ -262,12 +277,14 @@
                                         <Trigger Property="HasItems" Value="False">
                                             <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
                                         </Trigger>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                                        <!-- ホバーは Bd（ヘッダ行）自身の判定にする。TreeViewItem.IsMouseOver だと
+                                             子をホバーしたとき親まで光ってしまうため。 -->
+                                        <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Border}" />
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
                                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}" />
-                                            <Setter Property="Foreground" Value="#FFFFFFFF" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -282,7 +299,9 @@
                              フォルダは配下に変更があれば名前を着色＋右端にドット（●）。 -->
                         <!-- コンテキストメニューは DataTemplate 側に置く（Style 内では Click ハンドラを
                              直接指定できないため）。配置対象（DockPanel）の DataContext がノード。 -->
-                        <DockPanel LastChildFill="True">
+                        <!-- 名前の右側の空白でも右クリックをこの DockPanel が受けるよう、透明背景で
+                             行全幅をヒットテスト対象にする（無いと背後の TreeView の空白用メニューが出る）。 -->
+                        <DockPanel LastChildFill="True" Background="Transparent">
                             <DockPanel.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
