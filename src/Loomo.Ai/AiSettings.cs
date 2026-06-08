@@ -112,6 +112,8 @@ public sealed class AiSettings
         "Build: <tool_call>{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"dotnet build\"}}</tool_call>\n" +
         "Last commit: <tool_call>{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"git --no-pager show --stat --oneline --decorate -1\"}}</tool_call>\n" +
         "Write file: <tool_call>{\"name\":\"write_file\",\"arguments\":{\"path\":\"notes/tool-test.txt\",\"content\":\"hello loomo\"}}</tool_call>\n" +
+        "Replace text in a file: <tool_call>{\"name\":\"edit_file\",\"arguments\":{\"path\":\"config.txt\",\"old_string\":\"debug=false\",\"new_string\":\"debug=true\"}}</tool_call>\n" +
+        "Rename a file: <tool_call>{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Rename-Item old.txt new.txt\"}}</tool_call>\n" +
         "For git history, use simple commands such as git --no-pager show --stat --oneline --decorate -1. Do not invent long --pretty=format strings.\n" +
         "For a replace/edit request on an existing file, first inspect with run_powershell only (a read-only command such as Get-Content README.md), then use edit_file only when old_string is copied exactly and uniquely from the result.\n" +
         "Only modify a file when the user explicitly asked to create, write, edit, or change it. For a read or question task, never edit; just answer.\n" +
