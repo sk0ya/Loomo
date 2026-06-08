@@ -303,4 +303,28 @@ public class ToolCallTextParserTests
             ToolCallTextParser.StripThinkBlocks("<think>考え中…</think>\n最終回答です。"));
         Assert.Equal("普通の回答", ToolCallTextParser.StripThinkBlocks("普通の回答"));
     }
+
+    [Fact]
+    public void Repairs_key_colon_written_as_comma_in_qwen3_tool_call()
+    {
+        // 実測(Qwen3-1.7B create-nested): キー直後を ":" でなく "," と書いて配列がパース不能に。
+        // 既知キーの "content"," は一意にこの誤りなので "content":" へ補修して救済する。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "<tool_call>{\"name\":\"write_file\",\"arguments\":{\"path\":\"docs/guide/intro.md\",\"content\",\"# Intro\\n\"}}</tool_call>"));
+        Assert.Equal("write_file", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("docs/guide/intro.md", args.RootElement.GetProperty("path").GetString());
+        Assert.Equal("# Intro\n", args.RootElement.GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public void Repairs_old_string_colon_written_as_comma()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "[{\"name\":\"edit_file\",\"arguments\":{\"path\":\"a.md\",\"old_string\",\"foo\",\"new_string\":\"bar\"}}]"));
+        Assert.Equal("edit_file", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("foo", args.RootElement.GetProperty("old_string").GetString());
+        Assert.Equal("bar", args.RootElement.GetProperty("new_string").GetString());
+    }
 }

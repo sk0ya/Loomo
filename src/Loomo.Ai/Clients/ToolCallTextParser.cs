@@ -169,7 +169,7 @@ public static class ToolCallTextParser
         catch { /* 下のフォールバック補修へ */ }
 
         // フォールバック：小型モデルが壊しやすい2系統のJSON誤りを限定補修して再パースする。
-        //  (1) キー代入のタイプミス: "content="… のように ":" を "=" と書く（write_file で頻出）。
+        //  (1) キー代入のタイプミス: "content="… や "old_string",… のように ":" を "=" / "," と書く。
         //  (2) 無効なバックスラッシュエスケープ: \. \s \d .\src を JSON 文字列に素で書く（正規表現/パス）。
         // (1)→(2) の順に適用（先に ":" を復元してから文字列境界を見てエスケープを直す）。
         var repaired = RepairInvalidEscapes(RepairKeyAssignmentTypo(s));
@@ -181,14 +181,18 @@ public static class ToolCallTextParser
         return null;
     }
 
-    /// <summary>正規キー（command/content/path/old_string/new_string）の直後が <c>=</c> になっている
-    /// タイプミス <c>"content="…</c> を、本来の <c>"content":"…</c> へ補修する。
-    /// 正しい JSON では key の後は必ず <c>:</c> なので、<c>"知っているキー名="</c> は曖昧さなくこの誤りに限られる。</summary>
+    /// <summary>正規キー（command/content/path/old_string/new_string）と値の間の区切りが <c>:</c> でない
+    /// 2種のタイプミスを補修する。(1) <c>"content="…</c>（<c>:</c> を <c>=</c>＝キー閉じ引用符も落とす）→ <c>"content":"…</c>。
+    /// (2) <c>"old_string","…</c>（キーは閉じたが <c>:</c> を <c>,</c> と書く。Qwen3 の <c>&lt;tool_call&gt;</c> で実測）→ <c>"old_string":"…</c>。
+    /// 正しい JSON では key の後は必ず <c>:</c> なので、<b>既知キー名に続く <c>="</c> / <c>","</c></b> は曖昧さなくこの誤りに限られる
+    /// （しかもこの補修は <c>JsonNode.Parse</c> が失敗した本文にのみ走る＝正常 JSON は触らない）。</summary>
     private static string RepairKeyAssignmentTypo(string s)
-        => KeyTypoPattern.Replace(s, "\"$1\":\"");
+        => KeyCommaTypoPattern.Replace(KeyEqualsTypoPattern.Replace(s, "\"$1\":\""), "\"$1\":\"");
 
-    private static readonly Regex KeyTypoPattern =
+    private static readonly Regex KeyEqualsTypoPattern =
         new("\"(command|content|path|old_string|new_string)=\"", RegexOptions.Compiled);
+    private static readonly Regex KeyCommaTypoPattern =
+        new("\"(command|content|path|old_string|new_string)\",\"", RegexOptions.Compiled);
 
     /// <summary>JSON 文字列リテラル内の無効なバックスラッシュエスケープを <c>\\</c> へ二重化して有効化する。
     /// 有効なエスケープ（<c>\" \\ \/ \b \f \n \r \t</c> と <c>\uXXXX</c>）はそのまま残す。

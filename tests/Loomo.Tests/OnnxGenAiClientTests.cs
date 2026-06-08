@@ -47,6 +47,45 @@ public class OnnxGenAiClientTests
         return events;
     }
 
+    /// <summary>渡された <see cref="GenerationRequest"/> を記録するだけのフェイクエンジン。</summary>
+    private sealed class CapturingEngine : ILocalInferenceEngine
+    {
+        public GenerationRequest? Last { get; private set; }
+        public Task GenerateAsync(GenerationRequest request, ChannelWriter<AgentEvent> sink, CancellationToken ct)
+        {
+            Last = request;
+            sink.TryWrite(new TextDelta("ok"));
+            sink.TryComplete();
+            return Task.CompletedTask;
+        }
+    }
+
+    private static async Task<GenerationRequest> CaptureRequestAsync(bool retryDiversify)
+    {
+        var engine = new CapturingEngine();
+        var client = new OnnxGenAiClient(engine, new AiSettings(), new FakeWorkspaceService());
+        var conv = new Conversation();
+        conv.AddUser("やあ");
+        await foreach (var _ in client.StreamAsync(conv, System.Array.Empty<ToolDefinition>(),
+                           CancellationToken.None, profile: null, retryDiversify: retryDiversify)) { }
+        return engine.Last!;
+    }
+
+    [Fact]
+    public async Task Retry_diversify_opens_top_k_so_temperature_actually_samples()
+    {
+        // genai_config の既定は top_k=1（=温度を上げても候補1つで greedy）。リトライ多様化では top_k を
+        // 明示的に開かないと出力が分岐せず、同じ不正JSONを再生産してしまう。retry 時は top_k>1 を要求する。
+        var retry = await CaptureRequestAsync(retryDiversify: true);
+        Assert.NotNull(retry.Sampling.TopK);
+        Assert.True(retry.Sampling.TopK > 1, "リトライ多様化では候補プールを開くため top_k>1 が必要");
+        Assert.NotNull(retry.Sampling.Temperature);
+
+        // 通常時はモデル別プロファイルに委ねる（既定 AiSettings=phi4 未指定＝greedy 相当で top_k を上書きしない）。
+        var normal = await CaptureRequestAsync(retryDiversify: false);
+        Assert.Null(normal.Sampling.TopK);
+    }
+
     [Fact]
     public async Task Buffers_text_and_emits_single_delta_then_turn_completed()
     {

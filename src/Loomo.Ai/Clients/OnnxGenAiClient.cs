@@ -47,10 +47,13 @@ public sealed class OnnxGenAiClient : IAiClient
         var maxNewTokens = modelProfile.MaxOutputTokens > 0
             ? Math.Min(cfg.MaxTokens, modelProfile.MaxOutputTokens)
             : cfg.MaxTokens;
-        // 通常は greedy（tool JSON が安定）。ただしツール呼び出しJSON解釈失敗からの再試行時だけは、
-        // greedy だと同じ不正出力を再生産して prefill を無駄に払い直すため、微小な温度で出力をずらす。
+        // ツール呼び出しJSON解釈失敗からの再試行時は、同じ不正出力を再生産して prefill を無駄に払い直さない
+        // よう出力を散らす。⚠ ここで temperature/top_p だけ上げても無意味だった：genai_config の既定が
+        // top_k=1（phi4・qwen3 とも実測）で、候補が1つに絞られ温度が効かず greedy のまま＝3回ともバイト同一の
+        // ゴミを再生産していた。top_k を明示的に開く（候補プールを作る）ことで初めて温度/top_p が効き、リトライが
+        // 実際に分岐する。通常時はモデル別プロファイルのサンプリング（qwen3 は top_k=20、phi4 は未指定＝greedy）。
         var sampling = retryDiversify
-            ? new SamplingOptions(Temperature: 0.7, TopP: 0.9)
+            ? new SamplingOptions(Temperature: 0.8, TopP: 0.95, TopK: 40)
             : modelProfile.Sampling;
         var request = new GenerationRequest(prompt, cfg.ModelPath ?? "", maxLength, maxNewTokens, sampling);
 
