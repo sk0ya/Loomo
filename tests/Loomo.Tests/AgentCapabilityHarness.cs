@@ -270,6 +270,9 @@ public sealed class AgentCapabilityHarness
             rec.WriteTo(body);
             DumpFiles(body);
             body.AppendLine();
+            // タスクごとに途中経過を書き出す。重いモデルでネイティブクラッシュしても完了分の結果が残るよう、
+            // 最終レポート（ループ後にサマリ付きで1回書く）とは別に partial を逐次更新する。
+            try { File.WriteAllText(Path.Combine(@"C:\Projects\Loomo", $"harness-report-{ModelFolderName}-partial.md"), body.ToString()); } catch { }
         }
 
         // 先頭にサマリ表。R>1 なら成功率と flaky（0<成功<試行）を 🟠 で可視化する。前後比較の一目把握用。
