@@ -1124,7 +1124,7 @@ internal static class FileIcons
 
     // 16x16 座標系。Path は Stretch=Uniform で行内に縮小される。線端は丸めてレンダリングする。
     private static readonly Geometry FolderGeometry =
-        ParseGeometry("M2,5 L6,5 L7.6,6.8 L14,6.8 L14,12.5 L2,12.5 Z");
+        ParseGeometry("M2.5,3.5 L6,3.5 L7.5,5.3 L13.5,5.3 L13.5,13.5 L2.5,13.5 Z");
 
     // 折り目付きの書類シルエット（既定／その他全般）。
     private static readonly Geometry DocumentGeometry =
