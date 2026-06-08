@@ -666,20 +666,26 @@ public partial class ShellWindow : Window
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // タイトルのダブルクリックでそのペインをズーム／復元する（tmux の zoom 相当）。
-        if (e.ClickCount == 2 && sender is FrameworkElement { Tag: string zoomTag }
-            && Enum.TryParse<PaneKind>(zoomTag, out var zoomKind))
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
+            return;
+
+        // ダブルクリックでそのペインをズーム／復元する（tmux の zoom 相当）。
+        // ただしタブや操作ボタンの上では割り込まない（タブの2連クリックやボタンの
+        // ダブルクリックを横取りしないため）。
+        if (e.ClickCount == 2)
         {
-            ToggleZoomFor(zoomKind);
+            if (IsWithinButton(e.OriginalSource))
+                return;
+            ToggleZoomFor(kind);
             e.Handled = true;
             return;
         }
 
+        // ここでは捕捉しない（下にあるタブ／ボタンのクリックを殺さないため）。開始位置だけ控え、
+        // しきい値を超えて動いたときに初めて OnPaneTitleMouseMove がドラッグを開始する。
+        // Preview（トンネル）で拾うので、タブ・ボタンの上から掴んでもヘッダー全域でドラッグできる。
         _paneDragStart = e.GetPosition(null);
         _paneDragArmed = true;
-        // しきい値到達前にカーソルがタイトルを外れても MouseMove を拾えるよう捕捉する。
-        if (sender is FrameworkElement fe && fe.CaptureMouse())
-            _dragHandle = fe;
     }
 
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
@@ -699,14 +705,16 @@ public partial class ShellWindow : Window
 
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
         {
-            DisarmTitleDrag(); // タイトルの捕捉を解放してからオーバーレイへ捕捉を移す
+            // しきい値超え。BeginPaneDrag がオーバーレイへ捕捉を移すので、タブ／ボタンが
+            // 押下時に握った捕捉も奪われ、ドラッグへ切り替わる（＝そのクリックは成立しない）。
+            DisarmTitleDrag();
             BeginPaneDrag(kind);
         }
     }
 
     private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e) => DisarmTitleDrag();
 
-    /// <summary>ドラッグ判定を解除し、タイトル要素のマウス捕捉を解放する。</summary>
+    /// <summary>ドラッグ判定を解除する。</summary>
     private void DisarmTitleDrag()
     {
         _paneDragArmed = false;
@@ -716,6 +724,21 @@ public partial class ShellWindow : Window
                 _dragHandle.ReleaseMouseCapture();
             _dragHandle = null;
         }
+    }
+
+    /// <summary>ヒットテストの起点要素が（ツリーを遡って）ボタンの内側にあるか。</summary>
+    private static bool IsWithinButton(object? source)
+    {
+        var current = source as DependencyObject;
+        while (current is not null)
+        {
+            if (current is System.Windows.Controls.Primitives.ButtonBase)
+                return true;
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+        return false;
     }
 
     /// <summary>

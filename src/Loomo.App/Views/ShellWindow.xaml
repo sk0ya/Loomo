@@ -161,10 +161,10 @@
 
                 <!-- Terminal -->
                 <DockPanel x:Name="TerminalPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL"
-                                   Tag="Terminal" Cursor="SizeAll"
-                                   MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                               Tag="Terminal" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Terminal" Click="OnHidePane" />
@@ -219,10 +219,10 @@
 
                 <!-- Editor -->
                 <DockPanel x:Name="EditorPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR"
-                                   Tag="Editor" Cursor="SizeAll"
-                                   MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                               Tag="Editor" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Editor" Click="OnHidePane" />
@@ -280,10 +280,10 @@
 
                 <!-- Browser -->
                 <DockPanel x:Name="BrowserPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER"
-                                   Tag="Browser" Cursor="SizeAll"
-                                   MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                               Tag="Browser" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Browser" Click="OnHidePane" />
@@ -372,10 +372,10 @@
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->
                 <DockPanel x:Name="AiPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI"
-                                   Tag="Ai" Cursor="SizeAll"
-                                   MouseLeftButtonDown="OnPaneTitleMouseDown" MouseMove="OnPaneTitleMouseMove" />
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="Ai" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Ai" Click="OnHidePane" />
