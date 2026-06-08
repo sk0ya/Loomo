@@ -183,14 +183,15 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         {
             SetStatus("プロンプトを組み立てています");
 
-            // 最初の実ターンと同じ経路で安定プレフィックスを組み立てる。会話は空なので Build は
-            // 「<|system|>…<|tool|>…<|/tool|><|end|><|assistant|>」を返し、その system ブロックが
-            // 実ターン（同じ system ブロック＋<|user|>…）との最長共通接頭辞になる。
+            // 最初の実ターンと同じ経路（モデルの ChatFormat に応じたフォーマッタ）で安定プレフィックスを
+            // 組み立てる。会話は空なので Build は system ブロック＋生成開始マーカを返し、その system ブロックが
+            // 実ターン（同じ system ブロック＋ユーザーターン）との最長共通接頭辞になる。
             // profile は対話セッション既定の Root（AgentOrchestrator.RunTurnAsync と一致）。
-            var prompt = Phi4PromptFormatter.Build(
-                _settings, AgentProfiles.Root, _workspace.RootPath, new Conversation(), _tools.Definitions);
+            var modelProfile = ModelProfiles.Resolve(cfg.Model);
+            var prompt = ChatPrompt.Build(
+                modelProfile.Format, _settings, AgentProfiles.Root, _workspace.RootPath, new Conversation(), _tools.Definitions);
             var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
-            var sampling = ModelProfiles.Resolve(cfg.Model).Sampling;
+            var sampling = modelProfile.Sampling;
 
             SetStatus("モデル設定を確認しています");
             await _engine.PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct, SetStatus);

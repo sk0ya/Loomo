@@ -256,4 +256,51 @@ public class ToolCallTextParserTests
         Assert.Equal("{\"command\":\"ls\"}", tools[0].ArgumentsJson);
         Assert.Equal("write_file", tools[1].Name);
     }
+
+    [Fact]
+    public void Converts_qwen3_hermes_tool_call_tag()
+    {
+        // Qwen3 は Hermes 形式 <tool_call>{…}</tool_call> でツールを呼ぶ。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "<tool_call>\n{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"Get-ChildItem\"}}\n</tool_call>"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"Get-ChildItem\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
+    public void Converts_multiple_qwen3_hermes_tool_calls()
+    {
+        var tools = ToolCallTextParser.Parse(
+            "<tool_call>{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"a\"}}</tool_call>\n" +
+            "<tool_call>{\"name\":\"write_file\",\"arguments\":{\"path\":\"b.txt\",\"content\":\"x\"}}</tool_call>").ToList();
+        Assert.Equal(2, tools.Count);
+        Assert.Equal("{\"command\":\"a\"}", tools[0].ArgumentsJson);
+        Assert.Equal("write_file", tools[1].Name);
+    }
+
+    [Fact]
+    public void Strips_think_block_before_qwen3_tool_call()
+    {
+        // no_think でも空の <think></think> が前置されることがある。除去してから tool call を拾う。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "<think>\n\n</think>\n\n<tool_call>{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}</tool_call>"));
+        Assert.Equal("run_powershell", tool.Name);
+        Assert.Equal("{\"command\":\"ls\"}", tool.ArgumentsJson);
+    }
+
+    [Fact]
+    public void Recovers_qwen3_tool_call_missing_closing_tag()
+    {
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "<tool_call>{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}"));
+        Assert.Equal("run_powershell", tool.Name);
+    }
+
+    [Fact]
+    public void StripThinkBlocks_removes_think_keeps_answer()
+    {
+        Assert.Equal("最終回答です。",
+            ToolCallTextParser.StripThinkBlocks("<think>考え中…</think>\n最終回答です。"));
+        Assert.Equal("普通の回答", ToolCallTextParser.StripThinkBlocks("普通の回答"));
+    }
 }

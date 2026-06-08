@@ -25,6 +25,14 @@ public static class ToolCallTextParser
     /// </summary>
     public static IReadOnlyList<ToolUse> Parse(string text)
     {
+        // Qwen3 等の thinking ブロックは本文判定の前に取り除く（中の文章を tool call/最終回答と誤認しない）。
+        text = StripThinkBlocks(text);
+
+        // Qwen3（Hermes 形式）は <tool_call>{…}</tool_call> を 1 件以上出す。先にこれを拾う
+        // （複数ブロックをすべて復元する。Phi-4 の <|tool_call|> パイプ記法・素の配列は従来経路で扱う）。
+        var hermes = ParseHermesToolCalls(text);
+        if (hermes.Count > 0) return hermes;
+
         var s = StripToolWrapper(StripCodeFence(text.Trim()));
 
         // 形式1: run_powershell("コマンド")
@@ -65,6 +73,41 @@ public static class ToolCallTextParser
 
         return Array.Empty<ToolUse>();
     }
+
+    /// <summary>Qwen3（Hermes 形式）の <c>&lt;tool_call&gt;…&lt;/tool_call&gt;</c> ブロックをすべて取り出し、
+    /// 各ブロック内の JSON を 1 ツール呼び出しへ変換する。閉じタグが無い末尾ブロックは行末まで（=全文末尾まで）を
+    /// 中身とみなして救済する。<c>&lt;tool_call&gt;</c> を含まなければ空を返し、従来経路に委ねる。</summary>
+    private static IReadOnlyList<ToolUse> ParseHermesToolCalls(string text)
+    {
+        const string open = "<tool_call>";
+        const string close = "</tool_call>";
+        if (!text.Contains(open, StringComparison.Ordinal)) return Array.Empty<ToolUse>();
+
+        var result = new List<ToolUse>();
+        var i = 0;
+        while (true)
+        {
+            var start = text.IndexOf(open, i, StringComparison.Ordinal);
+            if (start < 0) break;
+            start += open.Length;
+
+            var end = text.IndexOf(close, start, StringComparison.Ordinal);
+            var inner = end < 0 ? text[start..] : text[start..end];
+            result.AddRange(ParseJsonToolCalls(StripCodeFence(inner.Trim()), text));
+
+            i = end < 0 ? text.Length : end + close.Length;
+        }
+        return result;
+    }
+
+    /// <summary>thinking ブロック <c>&lt;think&gt;…&lt;/think&gt;</c> を取り除く（Qwen3 を no_think で動かしても
+    /// 空ブロックが残ることがあり、tool call/最終回答の判定や本文へ混ざるのを防ぐ）。閉じていない単独の
+    /// <c>&lt;think&gt;</c> は、後続にツール呼び出し等の実体が続きうるため触らない。</summary>
+    public static string StripThinkBlocks(string text)
+        => string.IsNullOrEmpty(text) ? text : ThinkPattern.Replace(text, "").Trim();
+
+    private static readonly Regex ThinkPattern =
+        new("<think>.*?</think>", RegexOptions.Compiled | RegexOptions.Singleline);
 
     /// <summary>JSON オブジェクト／配列からツール呼び出しを取り出す。引数未検出の要素は無視する。
     /// 明示的に <c>run_powershell</c> 以外の <c>name</c> がある要素は、引数をそのまま通す

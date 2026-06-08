@@ -26,8 +26,14 @@
                            Foreground="{DynamicResource FgDim}" FontSize="11"
                            Margin="2,5,0,0" />
 
+                <TextBlock Style="{StaticResource FieldLabel}" Text="ダウンロードするモデル" />
+                <ComboBox ItemsSource="{Binding DownloadableModels}"
+                          SelectedItem="{Binding SelectedDownloadModel, Mode=TwoWay}"
+                          DisplayMemberPath="DisplayName"
+                          IsEnabled="{Binding IsDownloading, Converter={StaticResource InverseBool}}"
+                          ToolTip="Hugging Face から取得する ONNX（CPU int4・ORT-GenAI 互換）モデルを選びます。" />
                 <Button Style="{StaticResource WideButton}" Content="⬇  ダウンロード"
-                        ToolTip="Hugging Face から phi4-mini（CPU int4）をダウンロードして追加します。"
+                        ToolTip="選択したモデル（CPU int4）を Hugging Face からダウンロードして追加します。"
                         Command="{Binding DownloadModelCommand}"
                         IsEnabled="{Binding IsDownloading, Converter={StaticResource InverseBool}}" />
                 <Button Style="{StaticResource WideButton}" Content="📂  別の場所から追加…"

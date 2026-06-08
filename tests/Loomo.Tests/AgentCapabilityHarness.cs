@@ -32,9 +32,15 @@ public sealed class AgentCapabilityHarness
     private readonly ITestOutputHelper _out;
     public AgentCapabilityHarness(ITestOutputHelper output) => _out = output;
 
+    /// <summary>計測対象モデルのフォルダ名。環境変数 HARNESS_MODEL で切り替え可（既定は phi4-mini）。
+    /// 例: <c>$env:HARNESS_MODEL='qwen3-4b-cpu-int4'</c> で Qwen3-4B を測る。</summary>
+    private static string ModelFolderName =>
+        Environment.GetEnvironmentVariable("HARNESS_MODEL") is { Length: > 0 } m
+            ? m : "phi-4-mini-instruct-cpu-int4";
+
     private static string ModelPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Loomo", "models", "phi-4-mini-instruct-cpu-int4");
+            "Loomo", "models", ModelFolderName);
 
     /// <summary>各タスクの初期状態（タスクごとにこの内容へ再シードして隔離する）。
     /// オラクルが「不変であるべきファイル」を照合する基準にもなる。キーは "/" 区切りの相対パス。</summary>
@@ -75,7 +81,7 @@ public sealed class AgentCapabilityHarness
 
         // --- 設定（実モデルを指す） ---
         var settings = new AiSettings();
-        settings.Local.Model = "phi-4-mini-instruct-cpu-int4";
+        settings.Local.Model = ModelFolderName;
         settings.Local.ModelPath = ModelPath;
         settings.Local.MaxTokens = 1024;
         settings.Safety.AutoApprove = true;
@@ -283,11 +289,15 @@ public sealed class AgentCapabilityHarness
         header.AppendLine();
 
         var full = header.ToString() + body.ToString();
-        var outPath = Path.Combine(AppContext.BaseDirectory, "harness-report.md");
+        // モデルごとにファイルを分け、別モデルのレポートを上書きしないようにする
+        // （既定 phi4-mini は従来名のまま、それ以外は -<model> サフィックス）。
+        var suffix = ModelFolderName == "phi-4-mini-instruct-cpu-int4" ? "" : "-" + ModelFolderName;
+        var fileName = $"harness-report{suffix}.md";
+        var outPath = Path.Combine(AppContext.BaseDirectory, fileName);
         File.WriteAllText(outPath, full);
         _out.WriteLine($"REPORT: {outPath}  ({passed}/{verdicts.Count} PASS)");
         // リポジトリ直下にもコピー（読みやすいよう）
-        try { File.WriteAllText(@"C:\Projects\Loomo\harness-report.md", full); } catch { }
+        try { File.WriteAllText(Path.Combine(@"C:\Projects\Loomo", fileName), full); } catch { }
     }
 
     private sealed class TurnRecord

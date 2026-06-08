@@ -30,9 +30,7 @@ public static class Phi4PromptFormatter
         IReadOnlyList<ToolDefinition> tools)
     {
         // システムプロンプトは安定要素のみ（検索ガイダンスは環境固定、現在フォルダは準安定）。
-        var system = settings.BuildSystemPrompt(profile)
-                     + SearchGuidance(workspaceRoot)
-                     + WorkspaceContext.Describe(workspaceRoot);
+        var system = PromptShared.SystemText(settings, profile, workspaceRoot, ChatFormat.Phi4);
 
         var sb = new StringBuilder();
 
@@ -103,11 +101,5 @@ public static class Phi4PromptFormatter
         return arr.ToJsonString(JsonOptions);
     }
 
-    private static JsonNode ToolParameters(ToolDefinition tool)
-        => tool.InputSchema["properties"]?.DeepClone() ?? tool.InputSchema.DeepClone();
-
-    private static string SearchGuidance(string? workspaceRoot)
-        => EnvironmentProbe.HasRipgrep(workspaceRoot)
-            ? "\n\nSearch: prefer rg, e.g. rg \"<term>\" <path>, rg --files <path>."
-            : "\n\nSearch: use Select-String, e.g. Select-String -Pattern \"<term>\" -Path <path>.";
+    private static JsonNode ToolParameters(ToolDefinition tool) => PromptShared.ToolParameters(tool);
 }

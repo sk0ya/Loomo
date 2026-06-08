@@ -65,6 +65,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>モデル選択ドロップダウンを開いているか（XAML の IsDropDownOpen と双方向バインド）。</summary>
     [ObservableProperty] private bool _modelDropDownOpen;
 
+    /// <summary>ダウンロード可能なモデルの選択肢（Hugging Face のカタログ）。</summary>
+    public ObservableCollection<DownloadableModel> DownloadableModels { get; } =
+        new(ModelDownloadService.Catalog);
+
+    /// <summary>ダウンロードボタンで取得する対象モデル。既定は phi4-mini。</summary>
+    [ObservableProperty] private DownloadableModel _selectedDownloadModel =
+        ModelDownloadService.Default;
+
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload,
         Services.IAiWarmup warmup)
@@ -269,18 +277,19 @@ public sealed partial class SettingsViewModel : ObservableObject
         Status = $"モデルフォルダを設定しました: {folder}";
     }
 
-    /// <summary>phi4-mini（ONNX・CPU int4）を Hugging Face からダウンロードして設定する。</summary>
+    /// <summary>選択中のモデル（ONNX・CPU int4）を Hugging Face からダウンロードして設定する。</summary>
     [RelayCommand]
     private async Task DownloadModelAsync()
     {
         if (IsDownloading) return;
+        var model = SelectedDownloadModel ?? ModelDownloadService.Default;
         _downloadCts?.Cancel();
         var cts = _downloadCts = new CancellationTokenSource();
         IsDownloading = true;
         DownloadProgress = 0;
         try
         {
-            Status = "モデルをダウンロードしています…";
+            Status = $"{model.DisplayName} をダウンロードしています…";
             var progress = new Progress<ModelDownloadService.Progress>(p =>
             {
                 DownloadProgress = p.TotalBytes > 0 ? p.DownloadedBytes * 100.0 / p.TotalBytes : -1;
@@ -288,7 +297,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 Status = $"ダウンロード中 ({p.FileIndex}/{p.FileCount}) {p.CurrentFile} — {pct}";
             });
 
-            var dir = await _modelDownload.DownloadAsync(progress, cts.Token);
+            var dir = await _modelDownload.DownloadAsync(model, progress, cts.Token);
             if (cts.IsCancellationRequested) return;
 
             ModelPath = dir;                          // OnModelPathChanged → Persist

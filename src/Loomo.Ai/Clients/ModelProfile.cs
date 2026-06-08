@@ -3,6 +3,21 @@ using System.Text.Json.Nodes;
 namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
+/// モデルが使うチャットテンプレート／ツール呼び出しの記法。プロンプト組み立てと
+/// 本文からのツール呼び出し抽出を、これに従って切り替える。
+/// </summary>
+public enum ChatFormat
+{
+    /// <summary>Phi-4 系：<c>&lt;|system|&gt;…&lt;|tool|&gt;[…]&lt;|/tool|&gt;&lt;|end|&gt;</c>、
+    /// ツール呼び出しは本文に JSON 配列 <c>[{"name":…,"arguments":{…}}]</c>。</summary>
+    Phi4,
+
+    /// <summary>Qwen3 系（ChatML）：<c>&lt;|im_start|&gt;role…&lt;|im_end|&gt;</c>、ツール定義は system に
+    /// <c>&lt;tools&gt;…&lt;/tools&gt;</c>、呼び出しは Hermes 風 <c>&lt;tool_call&gt;{…}&lt;/tool_call&gt;</c>。</summary>
+    Qwen3,
+}
+
+/// <summary>
 /// モデル別の最適な呼び出しプロファイル。capabilities（tools / thinking 対応）と、
 /// 各モデルファミリの公式推奨サンプリング・コンテキスト長を保持し、Ollama
 /// <c>/api/chat</c> の <c>options</c> 構築や <c>think</c>・<c>tools</c> の送出可否に使う。
@@ -12,6 +27,9 @@ public sealed record ModelProfile
 {
     /// <summary>プロファイル名（診断・テスト用。例: "qwen3"）。</summary>
     public required string Family { get; init; }
+
+    /// <summary>このモデルのチャットテンプレート／ツール記法。プロンプト組み立てと本文パースの切り替えに使う。</summary>
+    public ChatFormat Format { get; init; } = ChatFormat.Phi4;
 
     /// <summary>function calling（tools）に対応するか。false なら tools を送らない。</summary>
     public bool SupportsTools { get; init; } = true;

@@ -25,6 +25,28 @@ public static class ModelProfiles
         Sampling = SamplingOptions.Unspecified,
     };
 
+    /// <summary>
+    /// Qwen3 系（lokinfey の CPU int4 ビルド・1.7B/4B）。ChatML テンプレート＋Hermes 風 tool call を使う。
+    ///
+    /// サンプリング:
+    /// Qwen3 公式は<b>greedy デコードを明確に非推奨</b>（繰り返し崩壊・性能低下を招く）としており、
+    /// non-thinking モードの推奨値 temperature=0.7 / top_p=0.8 / top_k=20 を用いる。
+    /// さらに ORT 0.9.0 CPU で有効な repetition_penalty を軽く効かせて長文反復を抑える
+    /// （phi4-mini は greedy が安定だったが、Qwen3 は別系統なので公式推奨に従う）。
+    ///
+    /// 性能最適化:
+    /// ネイティブ上限は 32768 だが、tool calling 用途では小さいコンテキストの方が初回応答と
+    /// ツール選択が安定して速いため、phi4-mini と同じ 8192 に抑える。
+    /// </summary>
+    public static readonly ModelProfile Qwen3 = new()
+    {
+        Family = "qwen3",
+        Format = ChatFormat.Qwen3,
+        NumCtx = 8192,
+        MaxOutputTokens = 1024,
+        Sampling = new SamplingOptions(Temperature: 0.7, TopP: 0.8, TopK: 20, RepeatPenalty: 1.05),
+    };
+
     /// <summary>未知モデルの既定。サンプリングはモデル既定に委ね、コンテキストのみ控えめに広げる。</summary>
     public static readonly ModelProfile Default = new()
     {
@@ -47,6 +69,8 @@ public static class ModelProfiles
     {
         var id = (model ?? string.Empty).Trim().ToLowerInvariant();
         if (id.Contains("phi4-mini") || id.Contains("phi-4-mini")) return Phi4Mini;
+        // "qwen3" / "qwen-3" / "qwen_3" いずれの表記でも拾う（DLフォルダ名 "qwen3-1.7b-cpu-int4" もここに合致）。
+        if (id.Contains("qwen3") || id.Contains("qwen-3") || id.Contains("qwen_3")) return Qwen3;
         return Default;
     }
 }

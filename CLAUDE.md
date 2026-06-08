@@ -114,31 +114,43 @@ serialized with a `SemaphoreSlim`. The decode loop (`AppendTokens` → `Generate
 v0.9.0 API — no `ComputeLogits`) runs on a background thread and writes `TextDelta` + a final `AiUsageReported`
 (token counts + load/prefill/decode `Stopwatch` timings, self-measured) into a `Channel<AgentEvent>`.
 
-**Prompt format** — `Clients/Phi4PromptFormatter.cs` builds the Phi-4 chat-template string directly:
-`<|system|>…<|tool|>[toolsJSON]<|/tool|><|end|>` then `<|{role}|>{content}<|end|>` per message, ending with
-`<|assistant|>`. Tool definitions go in the system turn; tool results render as role `tool`
-(`<|tool|>content<|end|>`). Reuses `WorkspaceContext.Describe` (current folder) and `EnvironmentProbe` (rg guidance).
+**Prompt format** — chosen per model's `ChatFormat` via the `Clients/ChatPrompt.cs` dispatcher (both the real turn
+in `OnnxGenAiClient` and warmup in `LocalLlmWarmupService` go through it, so the warmed KV prefix stays a byte-exact
+prefix of the first turn). `Clients/Phi4PromptFormatter.cs` builds the Phi-4 template
+(`<|system|>…<|tool|>[toolsJSON]<|/tool|><|end|>` then `<|{role}|>{content}<|end|>`, ending `<|assistant|>`).
+`Clients/Qwen3PromptFormatter.cs` builds the Qwen3 **ChatML** template (`<|im_start|>role\ncontent<|im_end|>`,
+tools as a Hermes `<tools>…</tools>` block in the system turn, tool results as `<tool_response>` user turns, ending
+`<|im_start|>assistant\n<think>\n\n</think>\n\n` to force **no-think**). Shared bits (system text, rg guidance, tool
+params) live in `Clients/PromptShared.cs`. Both reuse `WorkspaceContext.Describe` + `EnvironmentProbe`.
 
-**Tool calling** — Phi-4-mini emits tool calls as a JSON array `[{"name":…,"arguments":{…}}]` in the **body**
-(no structured channel). `OnnxGenAiClient` buffers the full text, then `ToolCallTextParser.Parse` (shared, also
-handles function-call-style, bare arg objects, alias keys, code fences) turns it into `ToolUseRequested`; if it's
-not a tool call it emits one `TextDelta` + `TurnCompleted`. This terminal logic mirrors the old Ollama client.
+**Tool calling** — Phi-4-mini emits a JSON array `[{"name":…,"arguments":{…}}]` in the **body**; Qwen3 emits one or
+more Hermes `<tool_call>{…}</tool_call>` blocks (and may wrap thinking in `<think>…</think>`). `OnnxGenAiClient`
+buffers the full text, then `ToolCallTextParser.Parse` (shared) turns it into `ToolUseRequested` — it strips
+`<think>` blocks, extracts all `<tool_call>` tags, and also handles function-call-style, bare arg objects, alias
+keys, and code fences. If it's not a tool call it emits one `TextDelta` + `TurnCompleted` (think-stripped). This
+terminal logic mirrors the old Ollama client.
 
 **Per-model profiles** — `Clients/ModelProfiles.cs`: `Resolve(model)` maps a model/folder name to a `ModelProfile`
 holding the context window (`NumCtx`) and sampling (temp/top_p/repetition_penalty → ORT-GenAI `SetSearchOption`).
-Only `Phi4Mini` (matches both `phi4-mini` and `phi-4-mini`, so the download folder name resolves) and a `Default`
-remain. The effective context window (`ProviderConfig.NumCtx` override, else profile, via `EffectiveNumCtx`) is
+`Phi4Mini` (matches `phi4-mini`/`phi-4-mini`), `Qwen3` (matches `qwen3`/`qwen-3`, so the `qwen3-*-cpu-int4` download
+folders resolve; carries `Format = ChatFormat.Qwen3` + Qwen's recommended non-thinking sampling), and a `Default`.
+Each profile also carries a `ChatFormat` selecting the prompt formatter (above). The effective context window
+(`ProviderConfig.NumCtx` override, else profile, via `EffectiveNumCtx`) is
 shared by the engine's `max_length` and the history-trim budget (`SettingsContextWindowPolicy` caps to it) so the
 model never silently truncates context the trimmer thought it kept.
 
-The system prompt is **uniform across models** (no per-model injection). `AiSettings.DefaultSystemPrompt` is
-**English instructions / Japanese output** (small local models follow English tool-calling rules more reliably).
-The agent only ever has the single `pwsh` tool (see Tools), so the per-turn tool-definition payload is minimal.
+System prompts are **English instructions / Japanese output** (small local models follow English tool-calling rules
+more reliably). There are now two, picked by `ChatFormat`: `AiSettings.DefaultSystemPrompt` (Phi-4, JSON-array
+tool-call examples) and `AiSettings.Qwen3SystemPrompt` (same behavioral rules but Hermes `<tool_call>` examples +
+no-think). `BuildSystemPrompt(profile, format)` chooses.
 
-**Model acquisition** — `ModelDownloadService` fetches `microsoft/Phi-4-mini-instruct-onnx` (CPU int4) from
-Hugging Face into `%APPDATA%/Loomo/models/<name>/` (streamed, resumable, cancellable); the settings panel has a
-download button + folder picker. `ModelCatalogService` enumerates local ONNX model folders (those with
-`genai_config.json`) under that root for the model dropdown — it no longer does any HTTP.
+**Model acquisition** — `ModelDownloadService.Catalog` lists the downloadable ONNX (CPU int4, ORT-GenAI-compatible)
+models: `microsoft/Phi-4-mini-instruct-onnx`, plus `lokinfey/Qwen3-1.7B-ONNX-INT4-CPU` and
+`lokinfey/Qwen3-4B-ONNX-INT4-CPU`. **Only repos whose target folder has `genai_config.json` work** — the
+`onnx-community/Qwen3-*-ONNX` builds are transformers.js-targeted (no `genai_config.json`) and are **not** usable.
+`DownloadAsync(DownloadableModel, …)` streams into `%APPDATA%/Loomo/models/<FolderName>/` (resumable, cancellable);
+the settings panel has a download-model dropdown + download button + folder picker. `ModelCatalogService` enumerates
+local ONNX model folders (those with `genai_config.json`) under that root for the model dropdown — no HTTP.
 
 **Known limitations** (don't assume these exist): thinking/reasoning is not surfaced (phi4-mini-instruct is a
 non-thinking model). Context management is trim-only (no summarization/compaction). The `IBrowserService` /

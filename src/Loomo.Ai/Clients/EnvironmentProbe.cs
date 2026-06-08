@@ -1,31 +1,23 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
 /// 実行環境で使える外部コマンドを判定する。検索ガイダンスを rg の有無で動的に切り替えるために使う。
-/// 判定はワークスペースルート単位でキャッシュし、ルートが変わった（＝ワークスペースが決定し直された）
-/// ときだけ実プロセスで再確認する。毎ターン実プロセスを起動しないための最適化。
+/// 判定はワークスペースルート単位でキャッシュし、各ルートにつき一度だけ実プロセスで確認する
+/// （毎ターン実プロセスを起動しないための最適化）。ルートごとに独立したキャッシュ項目を持つので、
+/// 複数ルートが交互に問い合わされても互いの判定を上書き（＝再プロービング）しない。
 /// </summary>
 internal static class EnvironmentProbe
 {
-    private static readonly object Gate = new();
-    private static bool? _hasRipgrep;
-    private static string? _probedForRoot;
+    // ルート（null も含む）→ rg の有無。ルート単位で 1 回だけ確定させ、以降は固定値を返す。
+    private static readonly ConcurrentDictionary<string, bool> Cache = new();
 
-    /// <summary>ripgrep（<c>rg</c>）が PATH 上にあるか。ルートが前回判定時と変われば再判定する。</summary>
+    /// <summary>ripgrep（<c>rg</c>）が PATH 上にあるか。ルートごとに一度だけ実判定し、結果を固定する。</summary>
     public static bool HasRipgrep(string? workspaceRoot)
-    {
-        lock (Gate)
-        {
-            if (_hasRipgrep is { } cached && _probedForRoot == workspaceRoot)
-                return cached;
-            _probedForRoot = workspaceRoot;
-            _hasRipgrep = Probe("rg", "--version");
-            return _hasRipgrep.Value;
-        }
-    }
+        => Cache.GetOrAdd(workspaceRoot ?? "", static _ => Probe("rg", "--version"));
 
     private static bool Probe(string exe, string args)
     {
