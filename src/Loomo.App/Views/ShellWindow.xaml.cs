@@ -74,6 +74,10 @@ public partial class ShellWindow : Window
     /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
     private GridLength _savedSidebarWidth = new(220);
 
+    /// <summary>分割スプリッターのトラック厚（px）。見た目の線は細いが、掴み判定をこの幅で確保する。</summary>
+    private const double SplitterThickness = 6;
+    /// <summary>一時的に全面表示（ズーム）しているペイン。null なら通常のタイル表示。ツリーは保持する。</summary>
+    private PaneKind? _zoomedPane;
     /// <summary>メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。</summary>
     private PaneNode? _root;
     /// <summary>ペイン種別 → そのライブコントロールを内包するルート要素。</summary>
@@ -131,6 +135,12 @@ public partial class ShellWindow : Window
         _browserTabs = _scratchBrowserWorkspace.Tabs;
 
         InitializePanes();
+
+        // サイドバーのスプリッターもペイン用と同じ手触りに：ホバーで光らせ、ダブルクリックで既定幅へ。
+        SidebarSplitter.Cursor = Cursors.SizeWE;
+        SidebarSplitter.MouseEnter += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Accent");
+        SidebarSplitter.MouseLeave += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Border");
+        SidebarSplitter.MouseDoubleClick += (_, _) => SidebarColumn.Width = new GridLength(220);
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
@@ -218,7 +228,7 @@ public partial class ShellWindow : Window
         {
             SidebarColumn.MinWidth = 120;
             SidebarColumn.Width = _savedSidebarWidth.Value > 0 ? _savedSidebarWidth : new GridLength(220);
-            SidebarSplitterColumn.Width = new GridLength(4);
+            SidebarSplitterColumn.Width = new GridLength(SplitterThickness);
             SidebarContainer.Visibility = Visibility.Visible;
             SidebarSplitter.Visibility = Visibility.Visible;
         }
@@ -250,6 +260,7 @@ public partial class ShellWindow : Window
     /// <summary>既定レイアウト：[Editor | Browser] / [Terminal] / [AI]。</summary>
     private void ApplyDefaultLayout()
     {
+        _zoomedPane = null;
         var top = new PaneSplit { Orientation = SplitKind.Columns, Weight = 2 };
         top.Children.Add(NewLeaf(PaneKind.Editor));
         top.Children.Add(NewLeaf(PaneKind.Browser));
@@ -323,6 +334,19 @@ public partial class ShellWindow : Window
             return;
         }
 
+        // ズーム中はツリーを保ったまま、対象ペイン1枚だけを全面表示する。
+        if (_zoomedPane is { } zoom)
+        {
+            if (FindLeaf(zoom) is { Hidden: false } && _paneElements.TryGetValue(zoom, out var zoomElement))
+            {
+                zoomElement.Visibility = Visibility.Visible;
+                PaneHost.Children.Add(zoomElement);
+                ScheduleBrowserRealize(_activeBrowserTab);
+                return;
+            }
+            _zoomedPane = null; // 対象が隠れた/消えていたらズーム解除して通常描画へ
+        }
+
         var border = (Brush)FindResource("Border");
         var visual = BuildNode(_root, border);
         if (visual is null)
@@ -373,8 +397,8 @@ public partial class ShellWindow : Window
         {
             if (i > 0)
             {
-                AddTrack(grid, cols, new GridLength(4));
-                var splitter = NewSplitter(cols, border);
+                AddTrack(grid, cols, new GridLength(SplitterThickness));
+                var splitter = NewSplitter(cols, border, split);
                 SetTrack(splitter, cols, i * 2 - 1);
                 grid.Children.Add(splitter);
             }
@@ -413,19 +437,69 @@ public partial class ShellWindow : Window
             Grid.SetRow(element, index);
     }
 
-    private GridSplitter NewSplitter(bool cols, Brush border)
+    private GridSplitter NewSplitter(bool cols, Brush border, PaneSplit split)
     {
+        var accent = (Brush)FindResource("Accent");
         var splitter = new GridSplitter
         {
-            Width = cols ? 4 : double.NaN,
-            Height = cols ? double.NaN : 4,
+            Width = cols ? SplitterThickness : double.NaN,
+            Height = cols ? double.NaN : SplitterThickness,
             ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
-            Background = border
+            Background = border,
+            Cursor = cols ? Cursors.SizeWE : Cursors.SizeNS,
+            ToolTip = "ドラッグでリサイズ／ダブルクリックで均等化"
         };
+        // ホバーでアクセント色に光らせ、「ここを掴める」ことを明示する。
+        splitter.MouseEnter += (_, _) => splitter.Background = accent;
+        splitter.MouseLeave += (_, _) => splitter.Background = border;
         splitter.DragCompleted += (_, _) => SaveActiveWorkspaceSnapshot();
+        splitter.MouseDoubleClick += (_, e) => { EqualizeSiblings(split); e.Handled = true; };
         return splitter;
+    }
+
+    /// <summary>スプリッターのダブルクリックで、その分割直下の可視ペインの比率を均等に戻す。</summary>
+    private void EqualizeSiblings(PaneSplit split)
+    {
+        foreach (var child in split.Children)
+            child.Weight = 1;
+        RebuildPaneLayout();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>フォーカス中（無ければ最初の可視）ペインのズームをトグルする。</summary>
+    private void ToggleZoom()
+    {
+        if (_zoomedPane is not null)
+        {
+            ZoomPane(null);
+            return;
+        }
+        var target = _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+        if (target is { } kind)
+            ZoomPane(kind);
+    }
+
+    /// <summary>指定ペインのズームをトグルする（タイトルのダブルクリック用）。</summary>
+    private void ToggleZoomFor(PaneKind kind) => ZoomPane(_zoomedPane == kind ? null : kind);
+
+    /// <summary>
+    /// ペインを一時的に全面表示する／解除する。ツリーは保持するので、解除すれば元の配置・比率へ戻る。
+    /// ズームに入る前に現在の比率を取り込んでおき、復元時に崩れないようにする。
+    /// </summary>
+    private void ZoomPane(PaneKind? kind)
+    {
+        if (kind is { } k && (!IsPaneVisible(k) || VisibleLeafCount() <= 1))
+            return; // 1枚だけ、または隠れているペインはズームしない
+        if (_zoomedPane is null && kind is not null)
+            CaptureLayoutSizes();
+        _zoomedPane = kind;
+        RebuildPaneLayout();
+        if (kind is { } focus)
+            FocusPane(focus);
+        else if (_focusedRegion?.Pane is { } prev)
+            FocusPane(prev);
     }
 
     /// <summary>GridSplitter 操作後の行高・列幅（star比率）を現在のツリーへ取り込む。</summary>
@@ -478,6 +552,7 @@ public partial class ShellWindow : Window
     /// <summary>保存済みレイアウトを適用する。非表示ペインはリーフの Hidden で復元する。</summary>
     private void ApplyPaneLayout(PaneNodeSnapshot? snapshot)
     {
+        _zoomedPane = null;
         var built = snapshot is null ? null : BuildFromSnapshot(snapshot, new HashSet<PaneKind>());
         if (built is not null && AllLeaves(built).Any())
         {
@@ -585,6 +660,15 @@ public partial class ShellWindow : Window
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // タイトルのダブルクリックでそのペインをズーム／復元する（tmux の zoom 相当）。
+        if (e.ClickCount == 2 && sender is FrameworkElement { Tag: string zoomTag }
+            && Enum.TryParse<PaneKind>(zoomTag, out var zoomKind))
+        {
+            ToggleZoomFor(zoomKind);
+            e.Handled = true;
+            return;
+        }
+
         _paneDragStart = e.GetPosition(null);
         _paneDragArmed = true;
         // しきい値到達前にカーソルがタイトルを外れても MouseMove を拾えるよう捕捉する。
@@ -634,6 +718,8 @@ public partial class ShellWindow : Window
     /// </summary>
     private void BeginPaneDrag(PaneKind source)
     {
+        if (_zoomedPane is not null)
+            return; // ズーム中は移動先が1枚しか見えないので並べ替えしない
         if (VisibleLeafCount() <= 1)
             return; // 1枚だけなら移動先がない
 
@@ -942,6 +1028,7 @@ public partial class ShellWindow : Window
                 _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
         }
 
+        _zoomedPane = null; // 表示構成が変わるのでズームは解除する
         _root = Normalize(_root);
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
@@ -991,6 +1078,12 @@ public partial class ShellWindow : Window
             }
 
             _awaitingPaneDirection = false;
+            if (key == Key.Z)
+            {
+                ToggleZoom(); // Ctrl+W z でフォーカス中ペインをズーム／復元
+                e.Handled = true;
+                return;
+            }
             if (MapNavDirection(key) is { } direction)
             {
                 FocusPaneInDirection(direction);
