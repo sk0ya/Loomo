@@ -204,6 +204,8 @@ public partial class ShellWindow : Window
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
         // FolderTree の HTML を「ブラウザで開く」とアプリ内ブラウザの新規タブで開く。
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
+        // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
+        vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -1612,6 +1614,31 @@ public partial class ShellWindow : Window
                 AiBarHost.FocusInput();
                 break;
         }
+    }
+
+    /// <summary>
+    /// FolderTree の「ターミナルにセット」要求を処理する。フォルダは可視ターミナルでそのフォルダへ
+    /// cd し、ファイルはパスをプロンプトへ入力する（実行はしない＝ユーザーがコマンドを組み立てられる）。
+    /// いずれもターミナルペインを表示してフォーカスする。
+    /// </summary>
+    private void OnSetInTerminalRequested(object? sender, TerminalSetRequest request)
+    {
+        SetPaneVisible(PaneKind.Terminal, true);
+
+        if (request.IsDirectory)
+        {
+            // 可視ターミナル＋エージェント cwd の両方を追従させる（既存のフォルダ追従と同じ経路）。
+            _terminal.SetWorkingDirectory(request.FullPath);
+        }
+        else
+        {
+            // 空白を含むパスは引用してそのまま使えるようにする。改行は付けない（未実行）。
+            var path = request.FullPath;
+            var text = path.IndexOf(' ') >= 0 ? $"\"{path}\"" : path;
+            _activeTerminalTab?.View.SendTerminalInput(text);
+        }
+
+        FocusPane(PaneKind.Terminal);
     }
 
     // ===== ペイン内分割の操作（Ctrl+W v/s/q） =====

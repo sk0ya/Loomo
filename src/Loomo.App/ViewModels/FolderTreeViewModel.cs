@@ -57,6 +57,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ShellWindow がブラウザペインに新規タブを開いて file:// URL をナビゲートする。
     public event EventHandler<string>? OpenInBrowserRequested;
 
+    // FolderTree の項目を可視ターミナルへ「セット」する要求。View（コンテキストメニュー）から発火し、
+    // ShellWindow が処理する：フォルダはそのフォルダへ cd、ファイルはパスをプロンプトへ入力（未実行）。
+    public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
+
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;
@@ -586,6 +590,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             OpenInBrowserRequested?.Invoke(this, fullPath);
     }
 
+    /// <summary>項目を可視ターミナルへセットするよう要求する（ShellWindow が処理）。
+    /// フォルダはそのフォルダへ cd、ファイルはパスをプロンプトへ入力する。</summary>
+    public void RequestSetInTerminal(FileNodeViewModel node)
+    {
+        if (node.IsDirectory ? Directory.Exists(node.FullPath) : File.Exists(node.FullPath))
+            SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(node.FullPath, node.IsDirectory));
+    }
+
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)
     {
         var fullPath = Path.GetFullPath(path);
@@ -711,6 +723,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _refreshTimer.Change(300, System.Threading.Timeout.Infinite);
     }
 }
+
+// 「ターミナルにセット」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
+public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
 
 // ツリー上の差分マーク（FileNodeViewModel.GitStatus）の種別。表示文字・色は XAML 側の
 // DataTrigger で割り当てる。DirectoryChanged は「配下に変更を含むフォルダ」を表す集約マーク。

@@ -336,6 +336,12 @@ public partial class FolderTreeView : UserControl
         }
     }
 
+    private void OnSetInTerminalClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestSetInTerminal(node);
+    }
+
     private void OnCopyPathClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { } node)
