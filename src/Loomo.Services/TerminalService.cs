@@ -13,11 +13,12 @@ namespace sk0ya.Loomo.Services;
 /// <summary>
 /// ITerminalService 実装。
 ///
-/// sk0ya.Terminal.Controls 1.0.3 以降で <see cref="TerminalTabView"/> に
-/// <see cref="TerminalTabView.RunCommandAsync"/>（コマンド実行＋stdout/exit取得）が
-/// 追加されたため、エージェントの実行を**可視ターミナルへ一本化**する。
-/// 以前のように独立した PowerShell <c>Process</c> を裏で起動する必要はなく、
-/// AI が打ったコマンドも人間が打ったコマンドと同じターミナルに表示・記録される。
+/// エージェント（AI）のコマンド実行は**可視ターミナルへは流さず**、独立した非対話
+/// PowerShell <c>Process</c> を裏で起動して stdout/exit を取得する。AI の実行ログで
+/// 人間のターミナルが汚れたり操作が混ざったりしないようにするため。可視ターミナルは
+/// 人間専用で、<see cref="SetWorkingDirectory"/> によるフォルダ追従（cd 反映）にのみ用いる。
+/// （以前は <see cref="TerminalTabView.RunCommandAsync"/> へ一本化していたが、AI 実行を
+/// ターミナルに流すのをやめてこの方式に戻した。）
 /// </summary>
 public sealed class TerminalService : ITerminalService
 {
@@ -52,38 +53,11 @@ public sealed class TerminalService : ITerminalService
 
     public async Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
     {
-        var view = _view
-            ?? throw new InvalidOperationException(
-                "可視ターミナルが未アタッチです。ShellWindow で Attach を呼んでください。");
-
         IsExecuting = true;
         try
         {
-            // TerminalTabView は WPF コントロールなので UI スレッドで実行する。
-            var tcr = await view.Dispatcher
-                .InvokeAsync(() => view.RunCommandAsync(command, ct))
-                .Task.Unwrap();
-
-            // 端末がコマンドを「一度も実行できなかった」ときの保険。センチネル＝完了未検知
-            // (Completed=false) かつ ExitCode=-1 かつ出力空。これはシェル統合が未確立／シェル種別
-            // 不明／セッション未初期化など、可視ターミナルがまだ実行可能状態でないときに即座に返る値
-            // （Terminal 側 ExecuteAgentCommandAsync）。この場合だけ独立プロセスで実行し直す。
-            // キャンセル要求時はユーザー/ループが意図的に止めたので再実行しない。
-            if (!tcr.Completed && tcr.ExitCode == -1 && string.IsNullOrEmpty(tcr.Output)
-                && !ct.IsCancellationRequested)
-            {
-                var fallback = await RunViaProcessAsync(command, ct);
-                CommandExecuted?.Invoke(this, fallback);
-                return fallback;
-            }
-
-            TrackChdir(command);
-            // shell integration が有効なら、実際の cwd をターミナルから取得して同期する。
-            if (view.IsShellIntegrationActive && Directory.Exists(view.WorkingDirectory))
-                _cwd = view.WorkingDirectory;
-
-            var success = tcr.Completed && tcr.ExitCode == 0;
-            var result = new CommandResult(command, tcr.Output, tcr.ExitCode, _cwd, success);
+            // AI の実行は可視ターミナルに流さず、常に独立した非対話プロセスで実行する。
+            var result = await RunViaProcessAsync(command, ct);
             CommandExecuted?.Invoke(this, result);
             return result;
         }
@@ -93,9 +67,9 @@ public sealed class TerminalService : ITerminalService
         }
     }
 
-    /// <summary>可視ターミナルがまだ実行できない（起動直後でシェル統合未確立など）ときのフォールバック。
-    /// 独立した PowerShell プロセスで**非対話**実行し、stdout/stderr/exit を取得する。
-    /// 端末ペインには表示されない点に注意（あくまで端末未準備時の保険）。cwd は現在値を引き継ぐ。</summary>
+    /// <summary>独立した PowerShell プロセスで**非対話**実行し、stdout/stderr/exit を取得する。
+    /// 端末ペインには表示されない（AI の実行は人間のターミナルに流さない）。cwd は現在値を引き継ぎ、
+    /// <c>cd</c> は <see cref="TrackChdir"/> で追従する。</summary>
     private async Task<CommandResult> RunViaProcessAsync(string command, CancellationToken ct)
     {
         var psi = new ProcessStartInfo

@@ -181,10 +181,12 @@ same instance backs both — Views resolve the concrete control adapter, tools r
 
 Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.5) and `sk0ya.Editor.Controls`
 (1.0.5), but their **namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
-`Editor.Controls.VimEditorControl`. Terminal command execution is unified onto the *visible* terminal:
-`TerminalService` calls `TerminalTabView.RunCommandAsync(command, ct)` on the UI thread
-(`Dispatcher.InvokeAsync(...).Task.Unwrap()`), returning `TerminalCommandResult`. cwd syncs from
-`WorkingDirectory` when `IsShellIntegrationActive`, else falls back to detecting `cd`. The package version
+`Editor.Controls.VimEditorControl`. **The agent's command execution does NOT flow to the visible terminal** —
+`TerminalService.RunCommandAsync` always runs the command in an independent non-interactive PowerShell
+`Process` (`RunViaProcessAsync`) so AI output never mixes into the human's terminal; the visible terminal is
+human-only. cwd is tracked via `cd` detection (`TrackChdir`). `SetWorkingDirectory` still drives
+`TerminalTabView.RunCommandAsync` on the UI thread to make the *visible* terminal follow the opened folder.
+The package version
 is pinned in **one place only**: `src/Loomo.Services/Loomo.Services.csproj` (App references transitively).
 
 Reflecting over these assemblies via the shell tends to hallucinate — dump API to a file and Grep it, or use
