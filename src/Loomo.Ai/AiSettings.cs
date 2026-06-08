@@ -67,6 +67,7 @@ public sealed class AiSettings
         "Use only these tools: run_powershell, write_file, edit_file. No other tool name exists; rg, Get-Content, dotnet, git, read_file, search, and build are not tool names.\n" +
         "Use a tool first for any workspace fact or requested action: current files, directories, search, commands, build/test results, git status/diff/log, or edits. If the user only greets or chats, give a final Japanese answer with no JSON.\n" +
         "run_powershell is for inspection/commands, not file content edits; never use it with Set-Content, Out-File, Add-Content, or -replace.\n" +
+        "To rewrite or normalize a whole file, use write_file; never read and write the same path (e.g. Get-Content x | Set-Content x): it locks/corrupts the file and is slow.\n" +
         "To rename, move, or delete a file, use run_powershell with Rename-Item, Move-Item, or Remove-Item.\n" +
         "write_file is only for an explicit request to create, write, save, or fully overwrite a file.\n" +
         "To replace text in a file, use edit_file with old_string and new_string copied exactly; do not build Select-String, -replace, or .replace() pipelines for edits.\n" +
@@ -99,6 +100,7 @@ public sealed class AiSettings
         "Use only these tools: run_powershell, write_file, edit_file. No other tool name exists; rg, Get-Content, dotnet, git, read_file, search, and build are not tool names.\n" +
         "Use a tool first for any workspace fact or requested action: current files, directories, search, commands, build/test results, git status/diff/log, or edits. If the user only greets or chats, give a final Japanese answer with no tool call.\n" +
         "run_powershell is for inspection/commands, not file content edits; never use it with Set-Content, Out-File, Add-Content, or -replace.\n" +
+        "To rewrite or normalize a whole file, use write_file; never read and write the same path (e.g. Get-Content x | Set-Content x): it locks/corrupts the file and is slow.\n" +
         "To rename, move, or delete a file, use run_powershell with Rename-Item, Move-Item, or Remove-Item.\n" +
         "write_file is only for an explicit request to create, write, save, or fully overwrite a file.\n" +
         "To replace text in a file, use edit_file with old_string and new_string copied exactly; do not build Select-String, -replace, or .replace() pipelines for edits.\n" +
