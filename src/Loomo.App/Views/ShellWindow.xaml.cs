@@ -109,12 +109,18 @@ public partial class ShellWindow : Window
     /// <summary>リサイズモード中に表示する操作ヒント（下部中央の小バナー）。</summary>
     private Popup? _resizeHintPopup;
 
+    // ===== ペイン内分割（vim 風 Ctrl+W v/s）。トップレベルの4ペイン木とは独立に各ペインの中身を分割する。 =====
+    private PaneSplitView? _editorViews;
+    private PaneSplitView? _terminalViews;
+
     /// <summary>フォーカス移動の対象領域：ペイン本体（<see cref="Pane"/> あり）またはサイドバー（null）。</summary>
-    private readonly record struct FocusTarget(PaneKind? Pane)
+    private readonly record struct FocusTarget(PaneKind? Pane, Guid ViewportId = default)
     {
         public bool IsSidebar => Pane is null;
         public static FocusTarget Sidebar => new((PaneKind?)null);
         public static FocusTarget Of(PaneKind kind) => new(kind);
+        /// <summary>ペイン内分割のビューポートを指す対象（hjkl 移動でビュー横断に使う）。</summary>
+        public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
 
     public ShellWindow(
@@ -172,7 +178,6 @@ public partial class ShellWindow : Window
         // sk0ya コントロールを生成してホストへ配置し、サービスへ結びつける
         var termTab = CreateTerminalTab(startDir);
         _terminalTabs.Add(termTab);
-        TerminalContentHost.Children.Add(termTab.View);
         _vm.Tabs.AddTerminalTab(termTab.Id, termTab.View.HeaderTitle, false);
         ActivateTerminalTab(termTab.Id);
         _terminal.SetWorkingDirectory(startDir);
@@ -180,7 +185,6 @@ public partial class ShellWindow : Window
 
         var editorTab = CreateEditorTab();
         _editorTabs.Add(editorTab);
-        EditorContentHost.Children.Add(editorTab.Control);
         _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.Control.FilePath, editorTab.Control.IsModified, false);
         ActivateEditorTab(editorTab.Id);
         UpdateEditorTab(editorTab);
@@ -260,6 +264,24 @@ public partial class ShellWindow : Window
         _paneElements[PaneKind.Editor] = EditorPane;
         _paneElements[PaneKind.Browser] = BrowserPane;
         _paneElements[PaneKind.Ai] = AiPane;
+
+        // 各コンテンツホスト内の分割マネージャ。タブID→コントロールの解決はワークスペース現在のタブ一覧から行う。
+        _editorViews = new PaneSplitView(
+            EditorContentHost,
+            id => _editorTabs.FirstOrDefault(t => t.Id == id)?.Control,
+            () => _editorTabs.Select(t => (FrameworkElement)t.Control),
+            () => (Brush)FindResource("Border"),
+            () => (Brush)FindResource("Accent"),
+            el => el.Focus(),
+            () => SaveActiveWorkspaceSnapshot());
+        _terminalViews = new PaneSplitView(
+            TerminalContentHost,
+            id => _terminalTabs.FirstOrDefault(t => t.Id == id)?.View,
+            () => _terminalTabs.Select(t => (FrameworkElement)t.View),
+            () => (Brush)FindResource("Border"),
+            () => (Brush)FindResource("Accent"),
+            el => { if (el is TerminalTabView tv) tv.FocusTerminal(); else el.Focus(); },
+            () => SaveActiveWorkspaceSnapshot());
         // レイアウトの構築は OnLoaded（ワークスペース適用 or 既定）に一本化する。
     }
 
@@ -489,6 +511,23 @@ public partial class ShellWindow : Window
 
     /// <summary>指定ペインのズームをトグルする（タイトルのダブルクリック用）。</summary>
     private void ToggleZoomFor(PaneKind kind) => ZoomPane(_zoomedPane == kind ? null : kind);
+
+    /// <summary>
+    /// Ctrl+W x：フォーカス中の領域を隠す。サイドバーにフォーカスがあればサイドバーを閉じ、
+    /// ペインにフォーカスがあれば（無ければ最初の可視ペインを）非表示にする。
+    /// 隠したペインはタイトルバーの表示トグルから戻せる（<see cref="SetPaneVisible"/> 参照）。
+    /// </summary>
+    private void HideFocusedRegion()
+    {
+        if (_focusedRegion is { IsSidebar: true })
+        {
+            _vm.IsSidebarVisible = false;
+            return;
+        }
+        var target = _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+        if (target is { } kind)
+            SetPaneVisible(kind, false);
+    }
 
     /// <summary>
     /// ペインを一時的に全面表示する／解除する。ツリーは保持するので、解除すれば元の配置・比率へ戻る。
@@ -1138,6 +1177,21 @@ public partial class ShellWindow : Window
                 e.Handled = true;
                 return;
             }
+            if (key == Key.X)
+            {
+                // Ctrl+W x：分割中ならまずその分割ビューポートを消す。分割が無ければペイン（またはサイドバー）を隠す。
+                if (!CloseFocusedViewport())
+                    HideFocusedRegion();
+                e.Handled = true;
+                return;
+            }
+            if (key is Key.V or Key.S or Key.Q)
+            {
+                // Ctrl+W v/s でペイン内を分割（v=左右 / s=上下）、q で分割を畳む。Editor/Terminal のみ作用。
+                HandleViewportSplitKey(key);
+                e.Handled = true;
+                return;
+            }
             if (MapNavDirection(key) is { } direction)
             {
                 // Shift 併用はフォーカス中ペインのリサイズ（以降はモードに入り連打で伸縮可）、
@@ -1313,7 +1367,13 @@ public partial class ShellWindow : Window
         if (e.NewFocus is not DependencyObject d)
             return;
         if (FindPaneOf(d) is { } kind)
-            _focusedRegion = FocusTarget.Of(kind);
+        {
+            // 分割中ならどのビューポートが取得したかまで記録する（hjkl 移動の起点に使う）。
+            if (ViewsFor(kind) is { } views && views.SetFocusedFromElement(d) is { } viewId)
+                _focusedRegion = FocusTarget.Viewport(kind, viewId);
+            else
+                _focusedRegion = FocusTarget.Of(kind);
+        }
         else if (IsWithin(d, SidebarContainer))
             _focusedRegion = FocusTarget.Sidebar;
     }
@@ -1411,12 +1471,32 @@ public partial class ShellWindow : Window
     private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets()
     {
         foreach (var leaf in AllLeaves())
-            if (!leaf.Hidden && TryGetPaneRect(leaf.Kind, out var rect))
+        {
+            if (leaf.Hidden)
+                continue;
+            // 内部分割しているペインはビューポート単位、それ以外はペイン全体を1候補にする。
+            if (ViewsFor(leaf.Kind) is { LeafCount: > 1 } views)
+            {
+                foreach (var (id, rect) in views.ViewportRects(PaneHost))
+                    yield return (FocusTarget.Viewport(leaf.Kind, id), rect);
+            }
+            else if (TryGetPaneRect(leaf.Kind, out var rect))
+            {
                 yield return (FocusTarget.Of(leaf.Kind), rect);
+            }
+        }
 
         if (TryGetSidebarRect(out var sidebarRect))
             yield return (FocusTarget.Sidebar, sidebarRect);
     }
+
+    /// <summary>そのペインの内部分割マネージャ（Editor/Terminal のみ。それ以外は null）。</summary>
+    private PaneSplitView? ViewsFor(PaneKind kind) => kind switch
+    {
+        PaneKind.Editor => _editorViews,
+        PaneKind.Terminal => _terminalViews,
+        _ => null
+    };
 
     /// <summary>サイドバーの矩形（PaneHost 座標系）を取得する。非表示・未配置なら false。</summary>
     private bool TryGetSidebarRect(out Rect rect)
@@ -1435,9 +1515,33 @@ public partial class ShellWindow : Window
     private void ApplyFocusTarget(FocusTarget target)
     {
         if (target.IsSidebar)
+        {
             FocusSidebar();
+            return;
+        }
+
+        var kind = target.Pane!.Value;
+        if (target.ViewportId != default && ViewsFor(kind) is { } views)
+        {
+            views.FocusViewport(target.ViewportId);
+            _focusedRegion = target;
+            SyncActiveFromViewport(kind);
+        }
         else
-            FocusPane(target.Pane!.Value);
+        {
+            FocusPane(kind);
+        }
+    }
+
+    /// <summary>フォーカス中ビューポートのタブに合わせて strip 強調・サービスアタッチを追従させる。</summary>
+    private void SyncActiveFromViewport(PaneKind kind)
+    {
+        if (kind == PaneKind.Editor && _editorViews?.FocusedTabId is { } eid
+            && _editorTabs.FirstOrDefault(t => t.Id == eid) is { } et)
+            SetActiveEditorTab(et);
+        else if (kind == PaneKind.Terminal && _terminalViews?.FocusedTabId is { } tid
+            && _terminalTabs.FirstOrDefault(t => t.Id == tid) is { } tt)
+            SetActiveTerminalTab(tt);
     }
 
     /// <summary>表示中のサイドバー（Explorer 等）へキーボードフォーカスを移す。</summary>
@@ -1494,10 +1598,12 @@ public partial class ShellWindow : Window
         switch (kind)
         {
             case PaneKind.Terminal:
-                _activeTerminalTab?.View.FocusTerminal();
+                if (_terminalViews is { } tv) tv.FocusFocused();
+                else _activeTerminalTab?.View.FocusTerminal();
                 break;
             case PaneKind.Editor:
-                _activeEditorTab?.Control.Focus();
+                if (_editorViews is { } ev) ev.FocusFocused();
+                else _activeEditorTab?.Control.Focus();
                 break;
             case PaneKind.Browser:
                 _activeBrowserTab?.View.Focus();
@@ -1506,6 +1612,114 @@ public partial class ShellWindow : Window
                 AiBarHost.FocusInput();
                 break;
         }
+    }
+
+    // ===== ペイン内分割の操作（Ctrl+W v/s/q） =====
+
+    /// <summary>
+    /// フォーカス中ペインが内部分割しているなら、その分割ビューポートを1枚畳む。
+    /// 畳めた（＝分割があった）場合のみ true。分割が無ければ false（呼び元はペイン非表示へフォールバック）。
+    /// </summary>
+    private bool CloseFocusedViewport()
+    {
+        switch (_focusedRegion?.Pane)
+        {
+            case PaneKind.Editor when _editorViews is { LeafCount: > 1 }:
+                CloseEditorView();
+                return true;
+            case PaneKind.Terminal when _terminalViews is { LeafCount: > 1 }:
+                CloseTerminalView();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Ctrl+W v/s/q を、フォーカス中ペイン（Editor / Terminal のみ）の分割操作へ振り分ける。</summary>
+    private void HandleViewportSplitKey(Key key)
+    {
+        switch (_focusedRegion?.Pane)
+        {
+            case PaneKind.Editor:
+                if (key == Key.V) SplitEditorView(SplitKind.Columns);
+                else if (key == Key.S) SplitEditorView(SplitKind.Rows);
+                else CloseEditorView();
+                break;
+            case PaneKind.Terminal:
+                if (key == Key.V) SplitTerminalView(SplitKind.Columns);
+                else if (key == Key.S) SplitTerminalView(SplitKind.Rows);
+                else CloseTerminalView();
+                break;
+        }
+    }
+
+    /// <summary>Editor ペインを分割し、フォーカス中タブと同じ内容を別コントロールで開いた新ビューポートを隣に置く。</summary>
+    private void SplitEditorView(SplitKind orientation)
+    {
+        if (_editorViews is null)
+            return;
+        var src = _editorViews.FocusedTabId is { } sid
+            ? _editorTabs.FirstOrDefault(t => t.Id == sid)
+            : _activeEditorTab;
+
+        var newTab = CreateEditorTab();
+        _editorTabs.Add(newTab);
+        _vm.Tabs.AddEditorTab(newTab.Id, src?.Control.FilePath, src?.Control.IsModified ?? false, false);
+
+        // 真 vim 風：同じ内容をもう1つのコントロールで開く（保存済みファイルは読み直し、未保存はテキストを複製）。
+        if (src is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(src.Control.FilePath) && File.Exists(src.Control.FilePath) && !src.Control.IsModified)
+                newTab.Control.LoadFile(src.Control.FilePath);
+            else
+                newTab.Control.SetText(src.Control.Text);
+        }
+
+        _editorViews.SplitFocused(orientation, newTab.Id);
+        SetActiveEditorTab(newTab);
+        UpdateEditorTab(newTab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>Editor のフォーカス中ビューポートを畳む（タブ自体は閉じない）。</summary>
+    private void CloseEditorView()
+    {
+        if (_editorViews?.CloseFocused() != true)
+            return;
+        if (_editorViews.FocusedTabId is { } id && _editorTabs.FirstOrDefault(t => t.Id == id) is { } tab)
+            SetActiveEditorTab(tab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>Terminal ペインを分割し、同じ作業ディレクトリの新しいターミナルを隣のビューポートに置く。</summary>
+    private void SplitTerminalView(SplitKind orientation)
+    {
+        if (_terminalViews is null)
+            return;
+        var src = _terminalViews.FocusedTabId is { } sid
+            ? _terminalTabs.FirstOrDefault(t => t.Id == sid)
+            : _activeTerminalTab;
+        var cwd = src?.View.WorkingDirectory;
+        if (string.IsNullOrWhiteSpace(cwd) || !Directory.Exists(cwd))
+            cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+
+        var newTab = CreateTerminalTab(cwd);
+        _terminalTabs.Add(newTab);
+        _vm.Tabs.AddTerminalTab(newTab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
+
+        _terminalViews.SplitFocused(orientation, newTab.Id);
+        SetActiveTerminalTab(newTab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>Terminal のフォーカス中ビューポートを畳む（タブ自体は閉じない）。</summary>
+    private void CloseTerminalView()
+    {
+        if (_terminalViews?.CloseFocused() != true)
+            return;
+        if (_terminalViews.FocusedTabId is { } id && _terminalTabs.FirstOrDefault(t => t.Id == id) is { } tab)
+            SetActiveTerminalTab(tab);
+        SaveActiveWorkspaceSnapshot();
     }
 
     private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null)
@@ -1769,7 +1983,6 @@ public partial class ShellWindow : Window
 
         var tab = CreateTerminalTab(startDir);
         _terminalTabs.Add(tab);
-        TerminalContentHost.Children.Add(tab.View);
         _vm.Tabs.AddTerminalTab(tab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
         ActivateTerminalTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
@@ -1813,7 +2026,6 @@ public partial class ShellWindow : Window
     {
         var tab = CreateEditorTab();
         _editorTabs.Add(tab);
-        EditorContentHost.Children.Add(tab.Control);
         _vm.Tabs.AddEditorTab(tab.Id, null, false, false);
         ActivateEditorTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
@@ -1838,7 +2050,6 @@ public partial class ShellWindow : Window
         var tab = CreateEditorTab();
         tab.VirtualTitle = title;
         _editorTabs.Add(tab);
-        EditorContentHost.Children.Add(tab.Control);
         _vm.Tabs.AddEditorTab(tab.Id, title, false, false);
         ActivateEditorTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
@@ -1861,7 +2072,6 @@ public partial class ShellWindow : Window
 
         var tab = CreateEditorTab();
         _editorTabs.Add(tab);
-        EditorContentHost.Children.Add(tab.Control);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
         await _editor.OpenFileAsync(path);
@@ -2220,8 +2430,7 @@ public partial class ShellWindow : Window
         if (tab is null)
             return;
 
-        foreach (var terminalTab in _terminalTabs)
-            terminalTab.View.Visibility = terminalTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
+        _terminalViews?.Activate(id);
 
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = id;
@@ -2229,8 +2438,18 @@ public partial class ShellWindow : Window
         if (Directory.Exists(tab.View.WorkingDirectory))
             _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
         _vm.Tabs.ActivateTerminalTab(id);
-        tab.View.FocusTerminal();
         SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。</summary>
+    private void SetActiveTerminalTab(TerminalTab tab)
+    {
+        _activeTerminalTab = tab;
+        CurrentTerminalWorkspace.ActiveTabId = tab.Id;
+        _terminal.Attach(tab.View);
+        if (Directory.Exists(tab.View.WorkingDirectory))
+            _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
+        _vm.Tabs.ActivateTerminalTab(tab.Id);
     }
 
     private async Task CloseTerminalTabAsync(Guid id)
@@ -2241,26 +2460,34 @@ public partial class ShellWindow : Window
 
         var wasActive = _activeTerminalTab?.Id == id;
         var tab = _terminalTabs[index];
-        TerminalContentHost.Children.Remove(tab.View);
+        PaneSplitView.Detach(tab.View);
         await tab.View.CloseAsync();
         _terminalTabs.RemoveAt(index);
         _vm.Tabs.RemoveTerminalTab(id);
-
-        if (!wasActive)
-            return;
+        _terminalViews?.RemoveTab(id);
 
         if (_terminalTabs.Count == 0)
         {
             var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
             var newTab = CreateTerminalTab(startDir);
             _terminalTabs.Add(newTab);
-            TerminalContentHost.Children.Add(newTab.View);
             _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
             ActivateTerminalTab(newTab.Id);
             return;
         }
 
-        ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
+        _terminalViews?.RepairTabs(_terminalTabs.Select(t => t.Id));
+
+        if (wasActive)
+        {
+            ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
+        }
+        else
+        {
+            _terminalViews?.Rebuild();
+            if (_terminalViews?.FocusedTabId is { } fid && _terminalTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
+                SetActiveTerminalTab(ft);
+        }
     }
 
     private void ActivateEditorTab(Guid id)
@@ -2269,17 +2496,25 @@ public partial class ShellWindow : Window
         if (tab is null)
             return;
 
-        foreach (var editorTab in _editorTabs)
-            editorTab.Control.Visibility = editorTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
+        // フォーカス中ビューポートへこのタブを割り当てて再描画＋フォーカス（分割していなければ単一ビューポート）。
+        _editorViews?.Activate(id);
 
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = id;
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(id);
-        tab.Control.Focus();
         if (_markdownPreviewBrowserTab is not null)
             _ = SwitchMarkdownPreviewSourceAsync(tab);
         SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。</summary>
+    private void SetActiveEditorTab(EditorTab tab)
+    {
+        _activeEditorTab = tab;
+        CurrentEditorWorkspace.ActiveTabId = tab.Id;
+        _editor.Attach(tab.Control);
+        _vm.Tabs.ActivateEditorTab(tab.Id);
     }
 
     private void CloseEditorTab(Guid id)
@@ -2295,24 +2530,32 @@ public partial class ShellWindow : Window
             _markdownPreviewDebounceTimer?.Stop();
             DetachMarkdownPreviewSource();
         }
-        EditorContentHost.Children.Remove(tab.Control);
+        PaneSplitView.Detach(tab.Control);
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
-
-        if (!wasActive)
-            return;
+        _editorViews?.RemoveTab(id);
 
         if (_editorTabs.Count == 0)
         {
             var newTab = CreateEditorTab();
             _editorTabs.Add(newTab);
-            EditorContentHost.Children.Add(newTab.Control);
             _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
             ActivateEditorTab(newTab.Id);
             return;
         }
 
-        ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
+        _editorViews?.RepairTabs(_editorTabs.Select(t => t.Id));
+
+        if (wasActive)
+        {
+            ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
+        }
+        else
+        {
+            _editorViews?.Rebuild();
+            if (_editorViews?.FocusedTabId is { } fid && _editorTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
+                SetActiveEditorTab(ft);
+        }
     }
 
     private WebView2CompositionControl? ActiveBrowserView => _activeBrowserTab?.View;
@@ -2565,6 +2808,490 @@ public partial class ShellWindow : Window
         public Grid? Host { get; set; }
     }
 
+    // ===== ペイン内分割（vim 風 Ctrl+W v/s）=====
+
+    /// <summary>ビューポート木の1ノード。</summary>
+    private abstract class ViewNode
+    {
+        /// <summary>親スプリット内での star 比率。</summary>
+        public double Weight { get; set; } = 1;
+        /// <summary>直近の描画で割り当てられた Grid トラック番号（未描画は -1）。サイズ取り込み用。</summary>
+        public int TrackIndex { get; set; } = -1;
+    }
+
+    /// <summary>リーフ＝1ビューポート。<see cref="TabId"/> のコントロールを <see cref="Container"/> に映す。</summary>
+    private sealed class ViewLeaf : ViewNode
+    {
+        /// <summary>ビューポートの安定ID（フォーカス追跡・ナビ用。タブIDとは別）。</summary>
+        public Guid Id { get; } = Guid.NewGuid();
+        /// <summary>このビューポートが表示しているタブ。</summary>
+        public Guid TabId { get; set; }
+        /// <summary>コントロールを内包する枠（フォーカス時にアクセント枠を出す）。再構築で再利用する。</summary>
+        public Border Container { get; } = new() { BorderThickness = new Thickness(0), Focusable = false };
+    }
+
+    /// <summary>スプリット＝入れ子の行（上下）または列（左右）。</summary>
+    private sealed class ViewSplit : ViewNode
+    {
+        public ShellWindow.SplitKind Orientation { get; init; }
+        public List<ViewNode> Children { get; } = new();
+        public Grid? Host { get; set; }
+    }
+
+    /// <summary>
+    /// 1つのペイン（Editor / Terminal）の <c>ContentHost</c>（Grid）内を複数ビューポートへ分割管理する。
+    /// 各ビューポートは既存タブの1つを表示する（コントロールは1タブ＝1インスタンスのため）。表示していない
+    /// コントロールは <see cref="_parking"/>（非表示）へ退避し破棄しない。トップレベルのペイン木とは独立。
+    /// </summary>
+    private sealed class PaneSplitView
+    {
+        private readonly Grid _host;
+        private readonly Func<Guid, FrameworkElement?> _resolve;        // タブID → コントロール
+        private readonly Func<IEnumerable<FrameworkElement>> _allControls;
+        private readonly Func<Brush> _border;
+        private readonly Func<Brush> _accent;
+        private readonly Action<FrameworkElement> _focusControl;
+        private readonly Action _onChanged;
+        private readonly Grid _parking = new() { Visibility = Visibility.Collapsed };
+
+        private ViewNode? _root;
+        private ViewLeaf? _focused;
+
+        public PaneSplitView(
+            Grid host,
+            Func<Guid, FrameworkElement?> resolve,
+            Func<IEnumerable<FrameworkElement>> allControls,
+            Func<Brush> border,
+            Func<Brush> accent,
+            Action<FrameworkElement> focusControl,
+            Action onChanged)
+        {
+            _host = host;
+            _resolve = resolve;
+            _allControls = allControls;
+            _border = border;
+            _accent = accent;
+            _focusControl = focusControl;
+            _onChanged = onChanged;
+        }
+
+        public int LeafCount => Leaves().Count();
+        public Guid? FocusedTabId => _focused?.TabId;
+        public Guid? FocusedViewportId => _focused?.Id;
+        public bool IsShown(Guid tabId) => Leaves().Any(l => l.TabId == tabId);
+
+        /// <summary>木を捨ててコンテンツホストを空にする（ワークスペース切替時）。コントロールは破棄しない。</summary>
+        public void Reset()
+        {
+            _root = null;
+            _focused = null;
+            _host.Children.Clear();
+            _host.RowDefinitions.Clear();
+            _host.ColumnDefinitions.Clear();
+        }
+
+        /// <summary>指定タブを表示する。既に表示中ならそのビューポートへフォーカス、無ければフォーカス中ビューポートへ割り当てる。</summary>
+        public void Activate(Guid tabId)
+        {
+            if (_root is null)
+            {
+                var leaf = new ViewLeaf { TabId = tabId };
+                _root = leaf;
+                _focused = leaf;
+            }
+            else if (FindLeafByTab(tabId) is { } shown)
+            {
+                _focused = shown;
+            }
+            else
+            {
+                _focused ??= Leaves().FirstOrDefault();
+                if (_focused is null)
+                {
+                    var leaf = new ViewLeaf { TabId = tabId };
+                    _root = leaf;
+                    _focused = leaf;
+                }
+                else
+                {
+                    _focused.TabId = tabId;
+                }
+            }
+            Rebuild();
+            FocusFocused();
+        }
+
+        /// <summary>フォーカス中ビューポートの隣へ新しいビューポート（newTabId 表示）を挿入し、そこへフォーカスする。</summary>
+        public void SplitFocused(ShellWindow.SplitKind orientation, Guid newTabId)
+        {
+            CaptureSizes();
+            var target = _focused ?? Leaves().FirstOrDefault();
+            var leaf = new ViewLeaf { TabId = newTabId };
+            if (target is null || _root is null)
+            {
+                _root = leaf;
+            }
+            else
+            {
+                Insert(target, leaf, orientation);
+                _root = Normalize(_root);
+            }
+            _focused = leaf;
+            Rebuild();
+            FocusFocused();
+        }
+
+        /// <summary>フォーカス中ビューポートを畳む（2枚以上のときのみ）。タブ自体は閉じない。</summary>
+        public bool CloseFocused()
+        {
+            if (LeafCount <= 1 || _focused is null)
+                return false;
+            CaptureSizes();
+            Remove(_focused);
+            _root = Normalize(_root);
+            _focused = Leaves().FirstOrDefault();
+            Rebuild();
+            FocusFocused();
+            return true;
+        }
+
+        /// <summary>タブが閉じられたとき：それを表示していたビューポートを畳む（最後の1枚なら残す）。</summary>
+        public void RemoveTab(Guid tabId)
+        {
+            var leaf = FindLeafByTab(tabId);
+            if (leaf is null)
+                return;
+            if (LeafCount > 1)
+            {
+                Remove(leaf);
+                _root = Normalize(_root);
+                if (_focused == leaf)
+                    _focused = Leaves().FirstOrDefault();
+            }
+        }
+
+        /// <summary>表示中タブが有効IDの集合に無いビューポートを、未使用の有効タブへ振り直す。</summary>
+        public void RepairTabs(IEnumerable<Guid> validTabIds)
+        {
+            var valid = validTabIds.ToHashSet();
+            var used = new HashSet<Guid>();
+            foreach (var leaf in Leaves())
+            {
+                if (!valid.Contains(leaf.TabId))
+                {
+                    var replacement = valid.FirstOrDefault(v => !used.Contains(v));
+                    if (replacement != default || valid.Contains(default))
+                        leaf.TabId = replacement;
+                }
+                used.Add(leaf.TabId);
+            }
+        }
+
+        /// <summary>指定ビューポートをフォーカスして中身のコントロールへキーボードフォーカスを移す。</summary>
+        public void FocusViewport(Guid viewportId)
+        {
+            if (FindLeafById(viewportId) is not { } leaf)
+                return;
+            _focused = leaf;
+            UpdateFocusBorders();
+            if (_resolve(leaf.TabId) is { } control)
+                _focusControl(control);
+        }
+
+        /// <summary>キーボードフォーカスを得た要素から、それを内包するビューポートをフォーカス扱いにする（再フォーカスはしない）。</summary>
+        public Guid? SetFocusedFromElement(DependencyObject element)
+        {
+            foreach (var leaf in Leaves())
+            {
+                for (DependencyObject? cur = element; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+                {
+                    if (ReferenceEquals(cur, leaf.Container))
+                    {
+                        _focused = leaf;
+                        UpdateFocusBorders();
+                        return leaf.Id;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>フォーカス中ビューポートのコントロールへキーボードフォーカスを移す。</summary>
+        public void FocusFocused()
+        {
+            if (_focused is { } leaf && _resolve(leaf.TabId) is { } control)
+                _focusControl(control);
+        }
+
+        /// <summary>各ビューポートの矩形（relativeTo 座標系）を列挙する。</summary>
+        public IEnumerable<(Guid Id, Rect Rect)> ViewportRects(Visual relativeTo)
+        {
+            foreach (var leaf in Leaves())
+            {
+                var c = leaf.Container;
+                if (!c.IsVisible || c.ActualWidth <= 0 || c.ActualHeight <= 0)
+                    continue;
+                var topLeft = c.TransformToVisual(relativeTo).Transform(new Point(0, 0));
+                yield return (leaf.Id, new Rect(topLeft, new Size(c.ActualWidth, c.ActualHeight)));
+            }
+        }
+
+        // ----- レンダリング -----
+
+        public void Rebuild()
+        {
+            if (_root is null)
+            {
+                _host.Children.Clear();
+                return;
+            }
+            _root = Normalize(_root);
+
+            // 既存の親から全コントロール・全コンテナを外してから組み直す。
+            foreach (var el in _allControls())
+                Detach(el);
+            foreach (var leaf in Leaves())
+            {
+                leaf.Container.Child = null;
+                Detach(leaf.Container);
+            }
+            Detach(_parking);
+            _host.Children.Clear();
+            _host.RowDefinitions.Clear();
+            _host.ColumnDefinitions.Clear();
+
+            var visual = Build(_root!);
+            _host.Children.Add(visual);
+
+            // 各ビューポートに表示コントロールを差し込み、残りは parking へ退避。
+            var shown = new HashSet<FrameworkElement>();
+            foreach (var leaf in Leaves())
+            {
+                if (_resolve(leaf.TabId) is { } control)
+                {
+                    Detach(control);
+                    control.Visibility = Visibility.Visible;
+                    leaf.Container.Child = control;
+                    shown.Add(control);
+                }
+            }
+            _parking.Children.Clear();
+            foreach (var el in _allControls())
+            {
+                if (shown.Contains(el))
+                    continue;
+                Detach(el);
+                el.Visibility = Visibility.Collapsed;
+                _parking.Children.Add(el);
+            }
+            _host.Children.Add(_parking);
+
+            UpdateFocusBorders();
+        }
+
+        private FrameworkElement Build(ViewNode node)
+        {
+            if (node is ViewLeaf leaf)
+                return leaf.Container;
+
+            var split = (ViewSplit)node;
+            split.Host = null;
+            foreach (var c in split.Children)
+                c.TrackIndex = -1;
+            if (split.Children.Count == 1)
+                return Build(split.Children[0]);
+
+            var grid = new Grid();
+            split.Host = grid;
+            var cols = split.Orientation == ShellWindow.SplitKind.Columns;
+            var min = cols ? 160.0 : 80.0;
+
+            for (var i = 0; i < split.Children.Count; i++)
+            {
+                if (i > 0)
+                {
+                    ShellWindow.AddTrack(grid, cols, new GridLength(ShellWindow.SplitterThickness));
+                    var splitter = NewSplitter(cols);
+                    ShellWindow.SetTrack(splitter, cols, i * 2 - 1);
+                    grid.Children.Add(splitter);
+                }
+                var child = split.Children[i];
+                ShellWindow.AddTrack(grid, cols, new GridLength(child.Weight <= 0 ? 1 : child.Weight, GridUnitType.Star), min);
+                child.TrackIndex = i * 2;
+                var visual = Build(child);
+                ShellWindow.SetTrack(visual, cols, i * 2);
+                grid.Children.Add(visual);
+            }
+            return grid;
+        }
+
+        private GridSplitter NewSplitter(bool cols)
+        {
+            var splitter = new GridSplitter
+            {
+                Width = cols ? ShellWindow.SplitterThickness : double.NaN,
+                Height = cols ? double.NaN : ShellWindow.SplitterThickness,
+                ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Background = _border(),
+                Cursor = cols ? Cursors.SizeWE : Cursors.SizeNS,
+                ToolTip = "ドラッグでリサイズ"
+            };
+            splitter.MouseEnter += (_, _) => splitter.Background = _accent();
+            splitter.MouseLeave += (_, _) => splitter.Background = _border();
+            splitter.DragCompleted += (_, _) => { CaptureSizes(); _onChanged(); };
+            return splitter;
+        }
+
+        private void UpdateFocusBorders()
+        {
+            var multi = LeafCount > 1;
+            foreach (var leaf in Leaves())
+            {
+                var on = multi && ReferenceEquals(leaf, _focused);
+                leaf.Container.BorderThickness = new Thickness(on ? 1 : 0);
+                leaf.Container.BorderBrush = on ? _accent() : null;
+            }
+        }
+
+        // ----- ツリー操作 -----
+
+        internal static void Detach(FrameworkElement el)
+        {
+            switch (el.Parent)
+            {
+                case Panel p: p.Children.Remove(el); break;
+                case Decorator d: d.Child = null; break;
+                case ContentControl c: c.Content = null; break;
+            }
+        }
+
+        private IEnumerable<ViewLeaf> Leaves(ViewNode? node = null)
+        {
+            node ??= _root;
+            if (node is ViewLeaf leaf)
+                yield return leaf;
+            else if (node is ViewSplit split)
+                foreach (var child in split.Children)
+                    foreach (var l in Leaves(child))
+                        yield return l;
+        }
+
+        private ViewLeaf? FindLeafByTab(Guid tabId) => Leaves().FirstOrDefault(l => l.TabId == tabId);
+        private ViewLeaf? FindLeafById(Guid id) => Leaves().FirstOrDefault(l => l.Id == id);
+
+        private ViewSplit? FindParent(ViewNode target, ViewNode? current = null)
+        {
+            current ??= _root;
+            if (current is not ViewSplit split)
+                return null;
+            if (split.Children.Contains(target))
+                return split;
+            foreach (var child in split.Children)
+                if (FindParent(target, child) is { } found)
+                    return found;
+            return null;
+        }
+
+        private void Insert(ViewNode target, ViewNode node, ShellWindow.SplitKind orientation)
+        {
+            var parent = FindParent(target);
+            if (parent is not null && parent.Orientation == orientation)
+            {
+                parent.Children.Insert(parent.Children.IndexOf(target) + 1, node);
+                return;
+            }
+
+            var split = new ViewSplit { Orientation = orientation, Weight = target.Weight };
+            target.Weight = 1;
+            node.Weight = 1;
+            split.Children.Add(target);
+            split.Children.Add(node);
+            if (parent is null)
+                _root = split;
+            else
+                parent.Children[parent.Children.IndexOf(target)] = split;
+        }
+
+        private void Remove(ViewNode node)
+        {
+            var parent = FindParent(node);
+            if (parent is null)
+                _root = null;
+            else
+                parent.Children.Remove(node);
+        }
+
+        private ViewNode? Normalize(ViewNode? node)
+        {
+            if (node is not ViewSplit split)
+                return node;
+
+            var kids = new List<ViewNode>();
+            foreach (var child in split.Children)
+            {
+                var n = Normalize(child);
+                if (n is null)
+                    continue;
+                if (n is ViewSplit inner && inner.Orientation == split.Orientation)
+                {
+                    var total = inner.Children.Sum(c => c.Weight > 0 ? c.Weight : 1);
+                    var scale = total > 0 ? (inner.Weight > 0 ? inner.Weight : 1) / total : 1;
+                    foreach (var c in inner.Children)
+                    {
+                        c.Weight = (c.Weight > 0 ? c.Weight : 1) * scale;
+                        kids.Add(c);
+                    }
+                }
+                else
+                {
+                    kids.Add(n);
+                }
+            }
+
+            if (kids.Count == 0)
+                return null;
+            if (kids.Count == 1)
+            {
+                kids[0].Weight = split.Weight;
+                return kids[0];
+            }
+            split.Children.Clear();
+            split.Children.AddRange(kids);
+            return split;
+        }
+
+        private void CaptureSizes(ViewNode? node = null)
+        {
+            node ??= _root;
+            if (node is not ViewSplit split)
+                return;
+            if (split.Host is { } grid)
+            {
+                var cols = split.Orientation == ShellWindow.SplitKind.Columns;
+                foreach (var child in split.Children)
+                {
+                    var index = child.TrackIndex;
+                    if (index < 0)
+                        continue;
+                    if (cols && index < grid.ColumnDefinitions.Count)
+                    {
+                        var w = grid.ColumnDefinitions[index].ActualWidth;
+                        if (w > 0) child.Weight = w;
+                    }
+                    else if (!cols && index < grid.RowDefinitions.Count)
+                    {
+                        var h = grid.RowDefinitions[index].ActualHeight;
+                        if (h > 0) child.Weight = h;
+                    }
+                }
+            }
+            foreach (var child in split.Children)
+                CaptureSizes(child);
+        }
+    }
+
     private sealed record TerminalTab(Guid Id, TerminalTabView View);
     /// <summary><see cref="VirtualTitle"/> は仮想ドキュメント（設定の長文項目など）を開いたタブの表示名。
     /// 仮想ドキュメントは FilePath を持たないため、タブ名はこの値から決める（通常ファイルは null）。</summary>
@@ -2724,7 +3451,6 @@ public partial class ShellWindow : Window
             var cwd = Directory.Exists(snapshot.WorkingDirectory) ? snapshot.WorkingDirectory! : workspace.RootPath;
             var tab = CreateTerminalTab(cwd, snapshot.Id == Guid.Empty ? null : snapshot.Id);
             _terminalTabs.Add(tab);
-            TerminalContentHost.Children.Add(tab.View);
             _vm.Tabs.AddTerminalTab(tab.Id, snapshot.Title ?? tab.View.HeaderTitle, false);
         }
 
@@ -2764,7 +3490,6 @@ public partial class ShellWindow : Window
             var tab = CreateEditorTab(snapshot.Id == Guid.Empty ? null : snapshot.Id);
             RestoreEditor(tab.Control, snapshot);
             _editorTabs.Add(tab);
-            EditorContentHost.Children.Add(tab.Control);
             _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
         }
 
@@ -2795,45 +3520,37 @@ public partial class ShellWindow : Window
     private void DetachTerminalTabs()
     {
         CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;
-        TerminalContentHost.Children.Clear();
+        // 分割木を畳んでコンテンツホストを空に（次ワークスペースは単一ビューポートから再構築）。コントロールは破棄しない。
+        _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
         _activeTerminalTab = null;
     }
 
     private void AttachTerminalTabs()
     {
-        TerminalContentHost.Children.Clear();
+        _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
 
+        // コントロールの配置は後続の ActivateTerminalTab（→ PaneSplitView.Activate）が行う。ここでは strip のみ復元。
         foreach (var tab in _terminalTabs)
-        {
-            if (!TerminalContentHost.Children.Contains(tab.View))
-                TerminalContentHost.Children.Add(tab.View);
-
             _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
-        }
     }
 
     private void DetachEditorTabs()
     {
         CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;
-        EditorContentHost.Children.Clear();
+        _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
         _activeEditorTab = null;
     }
 
     private void AttachEditorTabs()
     {
-        EditorContentHost.Children.Clear();
+        _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
 
         foreach (var tab in _editorTabs)
-        {
-            if (!EditorContentHost.Children.Contains(tab.Control))
-                EditorContentHost.Children.Add(tab.Control);
-
             _vm.Tabs.AddEditorTab(tab.Id, tab.Control.FilePath, tab.Control.IsModified, false);
-        }
     }
 
     private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace)
