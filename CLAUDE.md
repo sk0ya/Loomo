@@ -148,8 +148,11 @@ no-think). `BuildSystemPrompt(profile, format)` chooses.
 
 **Model acquisition** — `ModelDownloadService.Catalog` lists the downloadable ONNX (CPU int4, ORT-GenAI-compatible)
 models: `microsoft/Phi-4-mini-instruct-onnx`, plus `lokinfey/Qwen3-1.7B-ONNX-INT4-CPU` and
-`lokinfey/Qwen3-4B-ONNX-INT4-CPU`. **Only repos whose target folder has `genai_config.json` work** — the
-`onnx-community/Qwen3-*-ONNX` builds are transformers.js-targeted (no `genai_config.json`) and are **not** usable.
+`lokinfey/Qwen3-4B-ONNX-INT4-CPU`. **Only repos whose target folder has `genai_config.json` work** — an
+`onnx-community/Qwen3-*-ONNX` repo's *root*/`onnx/` is transformers.js-targeted (no `genai_config.json`), but its
+`onnxruntime/cpu_and_mobile/<variant>/` subfolder *does* ship a genai-compatible build (e.g.
+`onnx-community/Qwen3-8B-ONNX` → `onnxruntime/cpu_and_mobile/cpu-int4-kld-block-128/` has `genai_config.json`; loads
+under ORT `0.14.1`, but 8B int4 is ~262s/turn on this CPU — non-viable, see `docs` / memory).
 `DownloadAsync(DownloadableModel, …)` streams into `%APPDATA%/Loomo/models/<FolderName>/` (resumable, cancellable);
 the settings panel has a download-model dropdown + download button + folder picker. `ModelCatalogService` enumerates
 local ONNX model folders (those with `genai_config.json`) under that root for the model dropdown — no HTTP.
