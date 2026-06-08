@@ -1653,8 +1653,12 @@ public partial class ShellWindow : Window
         }
     }
 
-    /// <summary>Editor ペインを分割し、フォーカス中タブと同じ内容を別コントロールで開いた新ビューポートを隣に置く。</summary>
-    private void SplitEditorView(SplitKind orientation)
+    /// <summary>
+    /// Editor ペインを分割し、新しいビューポートを隣に置く。<paramref name="filePath"/> を指定した
+    /// （<c>:vsplit foo</c> / <c>:split foo</c> 由来の）場合はそのファイルを開き、無指定なら
+    /// フォーカス中タブと同じ内容を別コントロールへ複製する（真 vim 風）。
+    /// </summary>
+    private void SplitEditorView(SplitKind orientation, string? filePath = null)
     {
         if (_editorViews is null)
             return;
@@ -1662,13 +1666,19 @@ public partial class ShellWindow : Window
             ? _editorTabs.FirstOrDefault(t => t.Id == sid)
             : _activeEditorTab;
 
+        var openPath = ResolveEditorPath(filePath, src);
+
         var newTab = CreateEditorTab();
         _editorTabs.Add(newTab);
-        _vm.Tabs.AddEditorTab(newTab.Id, src?.Control.FilePath, src?.Control.IsModified ?? false, false);
+        _vm.Tabs.AddEditorTab(newTab.Id, openPath ?? src?.Control.FilePath, src?.Control.IsModified ?? false, false);
 
-        // 真 vim 風：同じ内容をもう1つのコントロールで開く（保存済みファイルは読み直し、未保存はテキストを複製）。
-        if (src is not null)
+        if (openPath is not null)
         {
+            newTab.Control.LoadFile(openPath);
+        }
+        else if (src is not null)
+        {
+            // 同じ内容をもう1つのコントロールで開く（保存済みファイルは読み直し、未保存はテキストを複製）。
             if (!string.IsNullOrWhiteSpace(src.Control.FilePath) && File.Exists(src.Control.FilePath) && !src.Control.IsModified)
                 newTab.Control.LoadFile(src.Control.FilePath);
             else
@@ -1678,6 +1688,76 @@ public partial class ShellWindow : Window
         _editorViews.SplitFocused(orientation, newTab.Id);
         SetActiveEditorTab(newTab);
         UpdateEditorTab(newTab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>
+    /// エディタ由来のウィンドウ/タブ操作で渡されたパス（相対可）を、開ける実ファイルへ解決する。
+    /// 絶対パス→ソースタブのあるフォルダ→ワークスペースルートの順に探し、存在しなければ null。
+    /// </summary>
+    private string? ResolveEditorPath(string? filePath, EditorTab? src)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return null;
+        if (Path.IsPathRooted(filePath))
+            return File.Exists(filePath) ? Path.GetFullPath(filePath) : null;
+
+        var bases = new[]
+        {
+            src is { } s && !string.IsNullOrWhiteSpace(s.Control.FilePath)
+                ? Path.GetDirectoryName(s.Control.FilePath)
+                : null,
+            _activeWorkspace?.RootPath,
+            _terminal.CurrentDirectory,
+        };
+        foreach (var dir in bases)
+        {
+            if (string.IsNullOrWhiteSpace(dir))
+                continue;
+            var candidate = Path.GetFullPath(Path.Combine(dir, filePath));
+            if (File.Exists(candidate))
+                return candidate;
+        }
+        return null;
+    }
+
+    /// <summary>エディタの <c>:tabnew</c> 由来：ファイル指定があればそれを、無ければ空タブを新規エディタタブで開く。</summary>
+    private async Task OpenEditorTabFromEditorAsync(string? filePath)
+    {
+        var openPath = ResolveEditorPath(filePath, _activeEditorTab);
+        if (openPath is not null)
+        {
+            await OpenFileInNewEditorTabAsync(openPath);
+            return;
+        }
+
+        var tab = CreateEditorTab();
+        _editorTabs.Add(tab);
+        _vm.Tabs.AddEditorTab(tab.Id, null, false, false);
+        ActivateEditorTab(tab.Id);
+        UpdateEditorTab(tab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>エディタの <c>gt</c> / <c>gT</c> 由来：アクティブなエディタタブを巡回切り替えする。</summary>
+    private void CycleEditorTab(int step)
+    {
+        if (_editorTabs.Count <= 1)
+            return;
+        var index = _activeEditorTab is { } active ? _editorTabs.FindIndex(t => t.Id == active.Id) : 0;
+        if (index < 0)
+            index = 0;
+        var count = _editorTabs.Count;
+        var next = ((index + step) % count + count) % count;
+        ActivateEditorTab(_editorTabs[next].Id);
+    }
+
+    /// <summary>エディタの <c>:tabclose</c> 由来：アクティブなエディタタブを閉じる。</summary>
+    private void CloseActiveEditorTab()
+    {
+        if (_activeEditorTab is not { } active)
+            return;
+        CloseEditorTab(active.Id);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -1745,6 +1825,9 @@ public partial class ShellWindow : Window
             Visibility = Visibility.Collapsed
         };
         ApplyEditorAppearance(control);
+        // 分割時もステータスバーを1つに集約する（sk0ya.Editor.Controls 1.0.5 の共有ステータスバー機能）。
+        // 各コントロールの内蔵バーは隠れ、フォーカス中エディタの状態だけが下端の共有バーへ流れる。
+        control.SetSharedStatusBar(EditorSharedStatusBar);
         var tab = new EditorTab(requestedId ?? Guid.NewGuid(), control);
         control.BufferChanged += (_, _) =>
         {
@@ -1759,6 +1842,19 @@ public partial class ShellWindow : Window
                 ScheduleMarkdownPreviewUpdate();
         };
         control.MarkdownPreviewRequested += async (_, _) => await OpenMarkdownPreviewAsync(tab);
+
+        // エディタ内の Vim ウィンドウ/タブ操作（:vsplit / :split / :tabnew / gt / gT / :tabclose / :close）を、
+        // ホスト側の分割・タブ実装へ橋渡しする
+        // （sk0ya.Editor.Controls 1.0.5 の公開API：エディタはイベントを発火するだけで、レイアウトはホストが担う）。
+        // イベントはフォーカス中のエディタから発火するので、その時点のフォーカス領域に対して作用させる。
+        // ※ Ctrl+W 系のウィンドウ移動（h/j/k/l/w）はシェルの OnPaneNavKey が Window の PreviewKeyDown で
+        //   先取りして処理するため WindowNavRequested は購読しない（購読しても発火しないデッド配線になる）。
+        control.SplitRequested += (_, e) => SplitEditorView(e.Vertical ? SplitKind.Columns : SplitKind.Rows, e.FilePath);
+        control.NewTabRequested += async (_, e) => await OpenEditorTabFromEditorAsync(e.FilePath);
+        control.NextTabRequested += (_, _) => CycleEditorTab(+1);
+        control.PrevTabRequested += (_, _) => CycleEditorTab(-1);
+        control.CloseTabRequested += (_, _) => CloseActiveEditorTab();
+        control.WindowCloseRequested += (_, _) => CloseEditorView();
         return tab;
     }
 
