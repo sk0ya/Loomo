@@ -102,6 +102,12 @@ public partial class ShellWindow : Window
     private FocusTarget? _focusedRegion;
     /// <summary>Ctrl+W プレフィックスを受け取り、次の h/j/k/l を待ち受けている状態。</summary>
     private bool _awaitingPaneDirection;
+    /// <summary>リサイズモード：h/j/k/l 連打でフォーカス中ペインを伸縮し続けられる。Esc/Enter・他キー・フォーカス移動で抜ける。</summary>
+    private bool _resizeMode;
+    /// <summary>リサイズ自身が起こすフォーカス移動でモードを抜けてしまうのを防ぐガード。</summary>
+    private bool _suppressResizeExit;
+    /// <summary>リサイズモード中に表示する操作ヒント（下部中央の小バナー）。</summary>
+    private Popup? _resizeHintPopup;
 
     /// <summary>フォーカス移動の対象領域：ペイン本体（<see cref="Pane"/> あり）またはサイドバー（null）。</summary>
     private readonly record struct FocusTarget(PaneKind? Pane)
@@ -1054,7 +1060,7 @@ public partial class ShellWindow : Window
         }
     }
 
-    // ===== ペイン間フォーカス移動（Ctrl+W → h/j/k/l） =====
+    // ===== ペイン操作（Ctrl+W → h/j/k/l 移動 / Shift+h/j/k/l リサイズ / z ズーム） =====
 
     /// <summary>
     /// Ctrl+W を押すと方向キー（h/j/k/l）待ちに入り、続けて押されたキーの向きの
@@ -1064,6 +1070,31 @@ public partial class ShellWindow : Window
     private void OnPaneNavKey(object sender, KeyEventArgs e)
     {
         var key = e.Key;
+
+        // リサイズモード中は h/j/k/l（修飾不要）で伸縮し続ける。Ctrl+W で移動プレフィックスへ復帰、
+        // Esc/Enter で確定終了、その他のキーはモードを抜けて通常入力としてそのまま流す。
+        if (_resizeMode)
+        {
+            if (IsModifierKey(key))
+                return; // Shift 等の単独押下はモード維持
+            if (key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                SetResizeMode(false);
+                _awaitingPaneDirection = true;
+                e.Handled = true;
+                return;
+            }
+            if (MapNavDirection(key) is { } resizeDir)
+            {
+                ResizeFocusedPane(resizeDir);
+                e.Handled = true;
+                return;
+            }
+            SetResizeMode(false);
+            if (key is Key.Escape or Key.Return)
+                e.Handled = true;
+            return;
+        }
 
         if (_awaitingPaneDirection)
         {
@@ -1086,7 +1117,15 @@ public partial class ShellWindow : Window
             }
             if (MapNavDirection(key) is { } direction)
             {
-                FocusPaneInDirection(direction);
+                // Shift 併用はフォーカス中ペインのリサイズ（以降はモードに入り連打で伸縮可）、
+                // 単独は隣接ペインへフォーカス移動。
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    ResizeFocusedPane(direction);
+                    SetResizeMode(true);
+                }
+                else
+                    FocusPaneInDirection(direction);
                 e.Handled = true;
             }
             // 方向キー以外はプレフィックスを解除し、そのまま素通しさせる
@@ -1113,12 +1152,140 @@ public partial class ShellWindow : Window
         Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or
         Key.LeftAlt or Key.RightAlt or Key.System or Key.LWin or Key.RWin;
 
+    /// <summary>1回のキーリサイズで動かす量（その分割の合計比率に対する割合）。</summary>
+    private const double ResizeStepRatio = 0.08;
+
+    /// <summary>
+    /// フォーカス中ペインを指定方向へリサイズする（L=広く / H=狭く / J=高く / K=低く）。
+    /// 方向の軸に一致する最も近い祖先スプリットを探し、フォーカスペイン側の子の比率を増減する。
+    /// 軸に合うスプリットが無い（その方向に分割が無い）場合は何もしない。
+    /// </summary>
+    private void ResizeFocusedPane(DropZone direction)
+    {
+        if (_zoomedPane is not null || _focusedRegion is not { } region)
+            return;
+
+        var horizontal = direction is DropZone.Left or DropZone.Right;
+        var grow = direction is DropZone.Right or DropZone.Below;
+
+        // サイドバーは Grid 列なので幅を直接増減する（縦方向のリサイズ対象は持たない）。
+        if (region.IsSidebar)
+        {
+            if (!horizontal || !_vm.IsSidebarVisible)
+                return;
+            var width = SidebarColumn.ActualWidth > 0 ? SidebarColumn.ActualWidth : SidebarColumn.Width.Value;
+            SidebarColumn.Width = new GridLength(Math.Max(SidebarColumn.MinWidth, width + (grow ? 24 : -24)));
+            return;
+        }
+
+        if (region.Pane is not { } kind || FindLeaf(kind) is not { Hidden: false } leaf)
+            return;
+
+        var wantOrientation = horizontal ? SplitKind.Columns : SplitKind.Rows;
+        CaptureLayoutSizes();
+        if (FindAncestorSplit(leaf, wantOrientation) is not { } target)
+            return;
+        var (split, child) = target;
+
+        var total = split.Children.Sum(c => c.Weight > 0 ? c.Weight : 1);
+        var step = total * ResizeStepRatio;
+        var min = total * 0.1; // 1ペインを潰し切らないための下限
+        var current = child.Weight > 0 ? child.Weight : 1;
+        child.Weight = Math.Max(min, current + (grow ? step : -step));
+
+        // 再構築＋再フォーカスが起こすフォーカス移動でリサイズモードを抜けないようガードする。
+        // 端末等の非同期フォーカスが流れ切るまで保持したいので、解除は Input 優先度で遅延させる。
+        _suppressResizeExit = true;
+        RebuildPaneLayout();
+        SaveActiveWorkspaceSnapshot();
+        FocusPane(kind);
+        Dispatcher.BeginInvoke(new Action(() => _suppressResizeExit = false), DispatcherPriority.Input);
+    }
+
+    /// <summary>
+    /// <paramref name="leaf"/> から根へ向かい、向き <paramref name="orientation"/> に一致する最も近い
+    /// 祖先スプリットと、その分割直下にある（リーフへ至る経路上の）子ノードを返す。無ければ null。
+    /// </summary>
+    private (PaneSplit Split, PaneNode Child)? FindAncestorSplit(PaneNode leaf, SplitKind orientation)
+    {
+        var node = leaf;
+        for (var parent = FindParent(node); parent is not null; parent = FindParent(node))
+        {
+            if (parent.Orientation == orientation)
+                return (parent, node);
+            node = parent;
+        }
+        return null;
+    }
+
+    /// <summary>リサイズモードのオン/オフを切り替え、操作ヒントの表示も連動させる。</summary>
+    private void SetResizeMode(bool on)
+    {
+        if (_resizeMode == on)
+            return;
+        _resizeMode = on;
+        if (on)
+        {
+            EnsureResizeHint();
+            PositionResizeHint();
+            _resizeHintPopup!.IsOpen = true;
+        }
+        else if (_resizeHintPopup is not null)
+        {
+            _resizeHintPopup.IsOpen = false;
+        }
+    }
+
+    private void EnsureResizeHint()
+    {
+        if (_resizeHintPopup is not null)
+            return;
+
+        var banner = new Border
+        {
+            Background = (Brush)FindResource("Panel"),
+            BorderBrush = (Brush)FindResource("Accent"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(12, 6, 12, 6),
+            Child = new TextBlock
+            {
+                Text = "リサイズモード　h/j/k/l で伸縮　・　Esc で終了",
+                Foreground = (Brush)FindResource("Fg"),
+                FontSize = 12
+            }
+        };
+        _resizeHintPopup = new Popup
+        {
+            PlacementTarget = PaneHost,
+            Placement = PlacementMode.Relative,
+            AllowsTransparency = true,
+            StaysOpen = true,
+            Child = banner
+        };
+    }
+
+    /// <summary>ヒントを PaneHost の下部中央へ置く。</summary>
+    private void PositionResizeHint()
+    {
+        if (_resizeHintPopup is null)
+            return;
+        const double estimatedWidth = 340;
+        _resizeHintPopup.HorizontalOffset = Math.Max(8, (PaneHost.ActualWidth - estimatedWidth) / 2);
+        _resizeHintPopup.VerticalOffset = Math.Max(8, PaneHost.ActualHeight - 48);
+    }
+
     /// <summary>キーボードフォーカスが入ったペインを記録する（移動の起点に使う）。</summary>
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         // フォーカスが他所へ移ったら、待ち状態の Ctrl+W プレフィックスは破棄する。
         // （Ctrl+W → 気が変わってクリック/別ペインへ移動 → 後続の h/j/k/l が誤って奪われるのを防ぐ）
         _awaitingPaneDirection = false;
+
+        // リサイズ自身が起こすフォーカス移動（ガード中）以外でフォーカスが動いたら、
+        // ユーザー操作とみなしてリサイズモードを終了する（次のキー入力が誤って奪われない）。
+        if (_resizeMode && !_suppressResizeExit)
+            SetResizeMode(false);
 
         if (e.NewFocus is not DependencyObject d)
             return;
@@ -1137,8 +1304,12 @@ public partial class ShellWindow : Window
         return false;
     }
 
-    /// <summary>ウィンドウが非アクティブになったら Ctrl+W の待ち状態を解除する。</summary>
-    private void OnWindowDeactivated(object? sender, EventArgs e) => _awaitingPaneDirection = false;
+    /// <summary>ウィンドウが非アクティブになったら Ctrl+W の待ち状態とリサイズモードを解除する。</summary>
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        _awaitingPaneDirection = false;
+        SetResizeMode(false);
+    }
 
     /// <summary>要素を内包するペイン種別を視覚ツリーを遡って特定する（ペイン外なら null）。</summary>
     private PaneKind? FindPaneOf(DependencyObject element)
