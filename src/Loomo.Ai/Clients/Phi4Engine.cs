@@ -202,7 +202,8 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
             }
 
             // repetition collapse 保険。短いトークン周期だけでなく、同じ文章/JSONブロックを何度も
-            // 生成する長周期ループも止める（ORT の no_repeat_ngram_size は 0.9.0 CPU で無視される）。
+            // 生成する長周期ループも止める（ORT の no_repeat_ngram_size は 0.9.0 CPU で無視された。
+            // 0.14.1 でも挙動は未再確認のため、この決定論的ガードを常に効かせて確実に停止させる）。
             if (IsLoopingTail(generated) || IsRepeatingTextTail(generatedText))
                 break;
         }

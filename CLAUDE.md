@@ -102,16 +102,18 @@ guarded by the block list). `SafetySettings` lives on `AiSettings.Safety` and is
 `IAiClient` abstracts the provider; `AiClientFactory.ResolveCurrent()` reads the singleton `AiSettings`
 **every turn**, so settings changes apply immediately. The only implemented client is `OnnxGenAiClient`
 (provider `Local`), which drives an **in-process ONNX Runtime GenAI** engine — there is **no HTTP / no
-external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU), pinned in
+external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU) `0.14.1`, pinned in
 `src/Loomo.Ai/Loomo.Ai.csproj`; the native runtime DLLs flow to the App output under
-`runtimes/win-x64/native/`.
+`runtimes/win-x64/native/`. (Bumped from `0.9.0` to load newer ONNX builds — e.g. `onnx-community/Qwen3-8B-ONNX`
+int4, whose `GatherBlockQuantized` carries a `bits` attribute that `0.9.0`'s native ORT rejects; the decode-loop
+API is unchanged across the bump.)
 
 **Engine** — `Clients/Phi4Engine.cs` (DI singleton, `IDisposable`, implements `ILocalInferenceEngine`) owns the
 ORT-GenAI `Model`/`Tokenizer` lifetime. It lazily loads from `ProviderConfig.ModelPath` (a folder containing
 `genai_config.json` + `*.onnx` + tokenizer files, e.g. `microsoft/Phi-4-mini-instruct-onnx` CPU int4) and keeps
 it resident — model load is the cold cost (tens of seconds on CPU), so it's paid once. Generation is batch-size-1,
 serialized with a `SemaphoreSlim`. The decode loop (`AppendTokens` → `GenerateNextToken` → `TokenizerStream.Decode`,
-v0.9.0 API — no `ComputeLogits`) runs on a background thread and writes `TextDelta` + a final `AiUsageReported`
+no `ComputeLogits` — same API on 0.9.0 and 0.14.1) runs on a background thread and writes `TextDelta` + a final `AiUsageReported`
 (token counts + load/prefill/decode `Stopwatch` timings, self-measured) into a `Channel<AgentEvent>`.
 
 **Prompt format** — chosen per model's `ChatFormat` via the `Clients/ChatPrompt.cs` dispatcher (both the real turn

@@ -31,7 +31,7 @@ public static class ModelProfiles
     /// サンプリング:
     /// Qwen3 公式は<b>greedy デコードを明確に非推奨</b>（繰り返し崩壊・性能低下を招く）としており、
     /// non-thinking モードの推奨値 temperature=0.7 / top_p=0.8 / top_k=20 を用いる。
-    /// さらに ORT 0.9.0 CPU で有効な repetition_penalty を軽く効かせて長文反復を抑える
+    /// さらに ORT CPU で有効な repetition_penalty を軽く効かせて長文反復を抑える
     /// （phi4-mini は greedy が安定だったが、Qwen3 は別系統なので公式推奨に従う）。
     ///
     /// 性能最適化:
