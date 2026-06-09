@@ -19,32 +19,47 @@ namespace sk0ya.Loomo.App;
 
 public partial class App : Application
 {
-    private IHost? _host;
+    private ServiceProvider? _services;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        StartupProfiler.Mark("OnStartup 開始");
         base.OnStartup(e);
 
-        _host = Host.CreateDefaultBuilder()
-            .ConfigureServices(ConfigureServices)
-            .Build();
+        // 汎用ホスト（Host.CreateDefaultBuilder）は appsettings.json 探索・環境変数/コマンドライン構成・
+        // 既定ロギングプロバイダ（Console/Debug/EventSource/EventLog）の登録を起動毎に行うが、本アプリは
+        // どれも使わない。臨界パスを縮めるため最小の ServiceProvider を直接構築する。
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _services = services.BuildServiceProvider();
+        StartupProfiler.Mark("ServiceProvider 構築完了");
 
         // 保存済み設定（プロバイダ・APIキー等）を起動時に反映する
-        var settings = _host.Services.GetRequiredService<AiSettings>();
-        _host.Services.GetRequiredService<AiSettingsStore>().Load(settings);
+        var settings = _services.GetRequiredService<AiSettings>();
+        _services.GetRequiredService<AiSettingsStore>().Load(settings);
+        StartupProfiler.Mark("設定ロード完了");
 
         // 保存済みカラーテーマ・アクセントカラーを適用する
-        _host.Services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
+        _services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
+        StartupProfiler.Mark("テーマ適用完了");
 
         // ワークスペース開始時にローカルLLMを非同期でウォームアップする。
-        _host.Services.GetRequiredService<LocalLlmWarmupService>();
+        _services.GetRequiredService<LocalLlmWarmupService>();
+        StartupProfiler.Mark("ウォームアップ起動完了");
 
-        var shell = _host.Services.GetRequiredService<ShellWindow>();
+        var shell = _services.GetRequiredService<ShellWindow>();
+        StartupProfiler.Mark("ShellWindow 解決完了");
+        shell.ContentRendered += (_, _) => StartupProfiler.Mark("ContentRendered（初フレーム）");
         shell.Show();
+        StartupProfiler.Mark("Show() 呼び出し完了");
     }
 
     private static void ConfigureServices(IServiceCollection services)
     {
+        // ILogger<T> の供給のみ（プロバイダは登録しない＝出力なし・起動コストなし）。
+        // AgentOrchestrator が ILogger<AgentOrchestrator> を要求するため必要。
+        services.AddLogging();
+
         // --- 設定 ---
         services.AddSingleton<AiSettings>();
         services.AddSingleton<AiSettingsStore>();
@@ -132,7 +147,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _host?.Dispose();
+        _services?.Dispose();
         base.OnExit(e);
     }
 }

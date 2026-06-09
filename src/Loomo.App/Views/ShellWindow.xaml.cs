@@ -132,7 +132,9 @@ public partial class ShellWindow : Window
         TabIconService tabIcons,
         AiSettings settings)
     {
+        StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
+        StartupProfiler.Mark("InitializeComponent 完了");
         DataContext = vm;
         _vm = vm;
         _terminal = terminal;
@@ -175,19 +177,27 @@ public partial class ShellWindow : Window
 
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-        // sk0ya コントロールを生成してホストへ配置し、サービスへ結びつける
-        var termTab = CreateTerminalTab(startDir);
-        _terminalTabs.Add(termTab);
-        _vm.Tabs.AddTerminalTab(termTab.Id, termTab.View.HeaderTitle, false);
-        ActivateTerminalTab(termTab.Id);
-        _terminal.SetWorkingDirectory(startDir);
-        UpdateTerminalTab(termTab, termTab.View.HeaderTitle);
+        // sk0ya コントロールを生成してホストへ配置し、サービスへ結びつける。
+        // ただし起動時に復元するワークスペースがある場合、OnLoaded の SwitchWorkspaceAsync が
+        // スクラッチタブを Detach して作り直すため、ここでの端末/エディタ生成（各 ~150-300ms の
+        // コントロール実体化）は捨てられる純粋な無駄になる。復元予定が無い時だけ作る。
+        if (vm.Workspaces.ActiveWorkspace is null)
+        {
+            var termTab = CreateTerminalTab(startDir);
+            _terminalTabs.Add(termTab);
+            _vm.Tabs.AddTerminalTab(termTab.Id, termTab.View.HeaderTitle, false);
+            ActivateTerminalTab(termTab.Id);
+            _terminal.SetWorkingDirectory(startDir);
+            UpdateTerminalTab(termTab, termTab.View.HeaderTitle);
+            StartupProfiler.Mark("初期ターミナルタブ生成完了");
 
-        var editorTab = CreateEditorTab();
-        _editorTabs.Add(editorTab);
-        _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.Control.FilePath, editorTab.Control.IsModified, false);
-        ActivateEditorTab(editorTab.Id);
-        UpdateEditorTab(editorTab);
+            var editorTab = CreateEditorTab();
+            _editorTabs.Add(editorTab);
+            _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.Control.FilePath, editorTab.Control.IsModified, false);
+            ActivateEditorTab(editorTab.Id);
+            UpdateEditorTab(editorTab);
+            StartupProfiler.Mark("初期エディタタブ生成完了");
+        }
 
         // フォルダを開いたらエージェントの作業ディレクトリを同期
         _workspace.RootChanged += (_, root) =>
@@ -206,14 +216,16 @@ public partial class ShellWindow : Window
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
+        StartupProfiler.Mark("ShellWindow ctor 完了");
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        StartupProfiler.Mark("OnLoaded 開始");
         try
         {
             if (_vm.Workspaces.ActiveWorkspace is { } workspace)
-                await SwitchWorkspaceAsync(workspace, captureCurrent: false);
+                await SwitchWorkspaceAsync(workspace, captureCurrent: false, deferHydration: true);
             else
             {
                 ApplyDefaultLayout();
@@ -226,6 +238,7 @@ public partial class ShellWindow : Window
         {
             BrowserAddressBox.Text = $"WebView2 initialization failed: {ex.Message}";
         }
+        StartupProfiler.Mark("OnLoaded 完了");
     }
 
     private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -3506,7 +3519,12 @@ public partial class ShellWindow : Window
     private async void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
         => await SwitchWorkspaceAsync(workspace, captureCurrent: true);
 
-    private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent)
+    /// <param name="deferHydration">
+    /// true なら、レイアウト（ペイン枠）だけ同期で適用し、重いタブ実体化（端末の ConPTY 起動・
+    /// エディタコントロール生成＋ファイル読込＋Git差分）は<b>初フレーム描画後</b>に Background 優先度で行う。
+    /// 起動時に使い、ウィンドウを素早く表示してから内容をハイドレートする。
+    /// </param>
+    private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false)
     {
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);
@@ -3516,11 +3534,24 @@ public partial class ShellWindow : Window
         DetachBrowserTabs();
         _activeWorkspace = workspace;
         _vm.FolderTree.LoadRoot(workspace.RootPath);
+        StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         ApplyPaneLayout(workspace.PaneLayout);
+        StartupProfiler.Mark("  復元:ApplyPaneLayout");
+
+        // 起動時は、ここで一旦メッセージループへ戻して初フレームを描画させる。Background 優先度は
+        // Render より低いので、空のペイン枠が先に出てから下のタブ実体化が走る（体感の起動を短縮）。
+        if (deferHydration)
+        {
+            await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+            StartupProfiler.Mark("  復元:初フレーム後に継続");
+        }
 
         RestoreTerminalTabs(workspace);
+        StartupProfiler.Mark("  復元:RestoreTerminalTabs");
         RestoreEditorTabs(workspace);
+        StartupProfiler.Mark("  復元:RestoreEditorTabs");
         await RestoreBrowserTabsAsync(workspace);
+        StartupProfiler.Mark("  復元:RestoreBrowserTabs");
 
         SaveActiveWorkspaceSnapshot();
     }
