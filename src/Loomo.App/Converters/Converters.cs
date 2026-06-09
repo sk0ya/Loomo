@@ -38,6 +38,16 @@ public sealed class EnumToBoolConverter : IValueConverter
             : Binding.DoNothing;
 }
 
+/// <summary>コレクション件数が 0 より大きいとき Visible（空セクションを畳む用）。</summary>
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>真偽を反転する（IsEnabled の「〜中は無効化」用）。</summary>
 public sealed class InverseBoolConverter : IValueConverter
 {

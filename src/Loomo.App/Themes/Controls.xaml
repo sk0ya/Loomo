@@ -13,6 +13,7 @@
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:InverseBoolConverter x:Key="InverseBool" />
+    <conv:CountToVisibilityConverter x:Key="CountToVis" />
 
     <!-- ===== Base text ===== -->
     <Style TargetType="TextBlock">

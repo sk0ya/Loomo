@@ -5,9 +5,10 @@
 
     <UserControl.Resources>
         <Style x:Key="TabSectionLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="Margin" Value="0,2,0,1" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="3,8,0,2" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Opacity" Value="0.75" />
         </Style>
 
         <Style x:Key="SidebarTabButton" TargetType="Button">
@@ -28,36 +29,39 @@
         </Style>
 
         <DataTemplate x:Key="TabEntryTemplate">
-            <Border x:Name="TabBorder" Height="24" Margin="0" Background="Transparent"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
-                    MouseDown="OnTabMiddleClick">
+            <Border x:Name="TabBorder" Height="28" Margin="0,1" CornerRadius="4"
+                    Background="Transparent" MouseDown="OnTabMiddleClick">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="24" />
-                    </Grid.ColumnDefinitions>
+                    <!-- アクティブタブのアクセントバー -->
+                    <Border x:Name="ActiveBar" Width="3" CornerRadius="2" Margin="1,4"
+                            HorizontalAlignment="Left" Background="Transparent" />
 
-                    <Button Grid.Column="0" Style="{StaticResource SidebarTabButton}"
-                            Padding="5,0,2,0" HorizontalContentAlignment="Stretch"
+                    <!-- 行全体クリックでアクティブ化（×ボタン領域は右パディングで確保） -->
+                    <Button Style="{StaticResource SidebarTabButton}"
+                            Padding="7,0,24,0" HorizontalContentAlignment="Stretch"
                             Foreground="{DynamicResource Fg}"
                             Command="{Binding DataContext.ActivateTabCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                             CommandParameter="{Binding}">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Image Grid.Column="0" Source="{Binding Icon}"
-                                   Width="14" Height="14" Margin="0,0,4,0"
+                                   Width="14" Height="14" Margin="0,0,7,0"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12"
+                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12.5"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" />
                         </Grid>
                     </Button>
 
-                    <Button Grid.Column="1" Style="{StaticResource SidebarTabButton}"
-                            Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
+                    <!-- ×ボタン：行ホバー時のみ表示 -->
+                    <Button x:Name="CloseButton" Style="{StaticResource SidebarTabButton}"
+                            Width="20" Height="20" Margin="0,0,4,0" Padding="0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Visibility="Collapsed" Opacity="0.8"
+                            Foreground="{DynamicResource FgDim}"
                             ToolTip="タブを閉じる"
                             Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                             CommandParameter="{Binding}">
@@ -69,9 +73,18 @@
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
+                <Trigger SourceName="TabBorder" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
+                    <Setter TargetName="CloseButton" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <Trigger SourceName="CloseButton" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="CloseButton" Property="Opacity" Value="1" />
+                    <Setter TargetName="CloseButton" Property="Foreground" Value="{DynamicResource Fg}" />
+                </Trigger>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
-                    <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                    <Setter TargetName="ActiveBar" Property="Background" Value="{DynamicResource Accent}" />
+                    <Setter TargetName="CloseButton" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -80,16 +93,22 @@
     <DockPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="TABS" />
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0,6,8">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="2,0,3,6">
             <StackPanel>
-                <TextBlock Style="{StaticResource TabSectionLabel}" Text="TERMINAL" Margin="0,0,0,1" />
-                <ItemsControl ItemsSource="{Binding TerminalTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
+                <StackPanel Visibility="{Binding TerminalTabs.Count, Converter={StaticResource CountToVis}}">
+                    <TextBlock Style="{StaticResource TabSectionLabel}" Text="TERMINAL" Margin="3,2,0,2" />
+                    <ItemsControl ItemsSource="{Binding TerminalTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
+                </StackPanel>
 
-                <TextBlock Style="{StaticResource TabSectionLabel}" Text="EDITOR" />
-                <ItemsControl ItemsSource="{Binding EditorTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
+                <StackPanel Visibility="{Binding EditorTabs.Count, Converter={StaticResource CountToVis}}">
+                    <TextBlock Style="{StaticResource TabSectionLabel}" Text="EDITOR" />
+                    <ItemsControl ItemsSource="{Binding EditorTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
+                </StackPanel>
 
-                <TextBlock Style="{StaticResource TabSectionLabel}" Text="BROWSER" />
-                <ItemsControl ItemsSource="{Binding BrowserTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
+                <StackPanel Visibility="{Binding BrowserTabs.Count, Converter={StaticResource CountToVis}}">
+                    <TextBlock Style="{StaticResource TabSectionLabel}" Text="BROWSER" />
+                    <ItemsControl ItemsSource="{Binding BrowserTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
