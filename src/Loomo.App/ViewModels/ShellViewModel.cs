@@ -59,9 +59,14 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowTabs() => Activate(SidebarPanel.Tabs);
 
-    /// <summary>ActivityBar の AIセッションアイコン。</summary>
+    /// <summary>ActivityBar の AIセッションアイコン。開くときに保存済みセッション一覧を遅延読込する。</summary>
     [RelayCommand]
-    private void ShowSessions() => Activate(SidebarPanel.Sessions);
+    private void ShowSessions()
+    {
+        Activate(SidebarPanel.Sessions);
+        if (ActivePanel == SidebarPanel.Sessions && IsSidebarVisible)
+            Sessions.EnsureLoaded();
+    }
 
     /// <summary>ActivityBar の設定アイコン。開くときに Ollama のモデル一覧を自動取得する。</summary>
     [RelayCommand]

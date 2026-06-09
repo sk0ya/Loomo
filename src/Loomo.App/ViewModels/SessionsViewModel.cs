@@ -16,17 +16,31 @@ public sealed partial class SessionsViewModel : ObservableObject
 
     public ObservableCollection<SessionSummary> Sessions { get; } = new();
 
+    /// <summary>初回の一覧読込を済ませたか。Sessions パネルを開くまで遅延する。</summary>
+    private bool _loaded;
+
     public SessionsViewModel(ConversationStore store, AiBarViewModel aiBar, TraceReader traces)
     {
         _store = store;
         _aiBar = aiBar;
         _traces = traces;
+        // 一覧の読込は List() が全セッション JSON をフル読込・デシリアライズするため重い。
+        // Sessions パネルは既定で非表示なので、初回表示時（EnsureLoaded）まで遅延し起動を軽くする。
         _store.Changed += OnStoreChanged;
+    }
+
+    /// <summary>Sessions パネルが初めて開かれたときに一覧を読み込む（以降は Changed で追従）。</summary>
+    public void EnsureLoaded()
+    {
+        if (_loaded) return;
+        _loaded = true;
         Refresh();
     }
 
     private void OnStoreChanged()
     {
+        // まだ一度も開いていなければ、次に開いたとき EnsureLoaded が最新を読むので何もしない。
+        if (!_loaded) return;
         var app = Application.Current;
         if (app is null || app.Dispatcher.CheckAccess()) Refresh();
         else app.Dispatcher.Invoke(Refresh);
@@ -35,6 +49,7 @@ public sealed partial class SessionsViewModel : ObservableObject
     [RelayCommand]
     public void Refresh()
     {
+        _loaded = true;
         Sessions.Clear();
         foreach (var s in _store.List()) Sessions.Add(s);
     }
