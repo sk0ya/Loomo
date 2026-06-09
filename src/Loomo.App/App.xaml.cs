@@ -109,9 +109,8 @@ public partial class App : Application
         services.AddSingleton<AgentOrchestrator>();
         services.AddSingleton<ConversationStore>();
 
-        // --- ログ解析・AI改善提案（観測性 Phase B）---
+        // --- トレース読取（AIセッション一覧の所要時間表示などに利用）---
         services.AddSingleton<TraceReader>();
-        services.AddSingleton<ImprovementAdvisor>();
 
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
@@ -125,7 +124,6 @@ public partial class App : Application
         services.AddSingleton<AiBarViewModel>();
         services.AddSingleton<TabsViewModel>();
         services.AddSingleton<SessionsViewModel>();
-        services.AddSingleton<AnalysisViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();
         services.AddSingleton<ShellViewModel>();

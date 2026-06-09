@@ -42,12 +42,6 @@ public class ShellViewModelTests
             new FakeAiWarmup());
         var sessionsVm = new SessionsViewModel(conversations, aiBar,
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
-        var analysisVm = new AnalysisViewModel(
-            new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")),
-            new ImprovementAdvisor(new FakeAiClientFactory()),
-            settings, store,
-            new ToolRegistry(Enumerable.Empty<IAgentTool>()),
-            conversations);
         var modelCatalog = new ModelCatalogService(settings);
         var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
         var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload, new FakeAiWarmup());
@@ -57,7 +51,7 @@ public class ShellViewModelTests
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workspaces.json"));
         var workspacesVm = new WorkspaceListViewModel(workspaceStore);
 
-        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, analysisVm, settingsVm, appearanceVm);
+        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm, appearanceVm);
     }
 
     [Fact]

@@ -62,8 +62,6 @@
                             Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
                             Command="{Binding ShowSessionsCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="📊" ToolTip="AIログ分析"
-                            Command="{Binding ShowAnalysisCommand}" />
                 </StackPanel>
             </DockPanel>
 
@@ -146,8 +144,6 @@
                                     Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Tabs}" />
                     <views:SessionsView DataContext="{Binding Sessions}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
-                    <views:AnalysisView DataContext="{Binding Analysis}"
-                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Analysis}" />
                     <views:SettingsView DataContext="{Binding Settings}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
                     <views:AppearanceView DataContext="{Binding Appearance}"
