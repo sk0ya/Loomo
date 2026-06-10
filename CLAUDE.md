@@ -143,8 +143,11 @@ model never silently truncates context the trimmer thought it kept.
 
 System prompts are **English instructions / Japanese output** (small local models follow English tool-calling rules
 more reliably). There are now two, picked by `ChatFormat`: `AiSettings.DefaultSystemPrompt` (Phi-4, JSON-array
-tool-call examples) and `AiSettings.Qwen3SystemPrompt` (same behavioral rules but Hermes `<tool_call>` examples +
-no-think). `BuildSystemPrompt(profile, format)` chooses.
+tool-call examples) and `AiSettings.Qwen3SystemPrompt` (Hermes `<tool_call>` examples + no-think; restructured
+2026-06 into general principles — facts only from tool results, no success claims after errors, complete & verify
+all parts, exact old_string copy). **The Qwen3 prompt's few-shot examples must not name harness seed files**
+(README.md etc.) — that contaminated the capability eval once; `Qwen3PromptFormatterTests` now asserts it.
+`BuildSystemPrompt(profile, format)` chooses.
 
 **Model acquisition** — `ModelDownloadService.Catalog` lists the downloadable ONNX (CPU int4, ORT-GenAI-compatible)
 models: `microsoft/Phi-4-mini-instruct-onnx`, plus `lokinfey/Qwen3-1.7B-ONNX-INT4-CPU` and

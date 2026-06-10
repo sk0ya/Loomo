@@ -115,11 +115,32 @@ public sealed class EditFileTool : IAgentTool, IFileMutationTool
 
         var count = FileToolText.CountOccurrences(content, oldStr);
         if (count == 0)
+        {
+            // 大文字小文字・改行コードだけが違う近傍候補があれば、ファイル上の実テキストを添えて返す。
+            // 「実際の文字列をコピーして」だけだと小モデルは再読せず推測のまま諦めて虚偽の完了報告に
+            // 流れるため（multi-file-bump の主要故障）、復旧をそのまま複写するだけの作業にする。
+            var near = FileToolText.FindNearMatch(content, oldStr);
+            if (near is not null)
+                return ToolResult.Error(
+                    "old_string が見つかりませんでした。大文字小文字・改行コード・エスケープだけが異なる箇所が"
+                    + "あります。次の実際のテキストを一字一句そのまま old_string に指定して再実行してください:\n" + near);
             return ToolResult.Error(
                 "old_string が見つかりませんでした。対象ファイルの実際の文字列をそのまま（空白・改行込みで）コピーして指定してください。");
+        }
         if (count > 1)
+        {
+            // 「長めに指定して」「読み直して」だけだと小モデルは読んだ後も同じ短い old_string を再送して
+            // 反復上限で死ぬ（実測）。一致を含む実際の行をエラーに列挙し、復旧を「行をコピーして
+            // 1箇所ずつ置換」する機械的な作業に変える。全置換の別経路（write_file）も案内する。
+            var lines = FileToolText.LinesContaining(content, oldStr, max: 3);
+            var lineHint = lines.Count > 0
+                ? "一致を含む行: " + string.Join(" ", lines.ConvertAll(l => "「" + l + "」"))
+                  + "。行全体を old_string にコピーして1箇所ずつ置換してください。"
+                : "実際のテキストの前後を含めてコピーして一意にしてください。";
             return ToolResult.Error(
-                $"old_string が {count} 箇所一致しました。一意に特定できるよう前後の行を含めて長めに指定してください。");
+                $"old_string が {count} 箇所一致しました。{lineHint}"
+                + "全部の箇所を置き換えたい場合は、write_file で全文を書き換えても構いません。");
+        }
 
         var updated = FileToolText.ReplaceFirst(content, oldStr, newStr);
         try { await File.WriteAllTextAsync(resolved, updated, ct); }

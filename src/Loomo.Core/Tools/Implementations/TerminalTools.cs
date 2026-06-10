@@ -45,6 +45,16 @@ public sealed class PwshTool : IAgentTool
         if (string.IsNullOrWhiteSpace(command))
             return ToolResult.Error("command が空です。arguments に {\"command\":\"<PowerShellコマンド>\"} を入れて呼び出してください。");
 
+        // 同一ファイルを読みながら同じパイプラインで書き戻すコマンドは、ファイル破壊（使用中エラー・
+        // 内容消失）になるため実行前に差し戻し、安全な書き方を案内する（実行はしない）。
+        var sameFile = PwshSameFilePipeGuard.DetectSameFileReadWrite(command);
+        if (sameFile is not null)
+            return ToolResult.Error(
+                $"このコマンドは {sameFile} を Get-Content で読みながら同じパイプラインで書き込むため、"
+                + "「別のプロセスで使用中」エラーやファイル内容の消失を起こします。実行していません。"
+                + "$c = Get-Content <file> のように一度変数へ読み込んでから Set-Content <file> $c で"
+                + "書き戻すか、行の置換・削除・追記なら edit_file を使ってください。");
+
         command = MakeNonInteractive(command);
 
         var result = await _terminal.RunCommandAsync(command, ct);
@@ -53,7 +63,25 @@ public sealed class PwshTool : IAgentTool
         sb.AppendLine($"cwd: {result.WorkingDirectory}");
         sb.AppendLine("--- output ---");
         sb.Append(result.Output);
-        return result.Success ? ToolResult.Ok(sb.ToString()) : new ToolResult(sb.ToString(), IsError: true);
+        if (result.Success) return ToolResult.Ok(sb.ToString());
+
+        // 失敗時は既知の回復可能パターンに復旧手順を1行添える。小モデルはエラー文だけだと諦めて
+        // ユーザーへ作業を投げ返す／失敗を「無かった」ことにするため、次の一手を機械的に示す。
+        var hint = RecoveryHint(result.Output);
+        if (hint is not null) sb.AppendLine().Append(hint);
+        return new ToolResult(sb.ToString(), IsError: true);
+    }
+
+    /// <summary>失敗出力から既知の回復手順を判定する（無ければ null）。</summary>
+    private static string? RecoveryHint(string output)
+    {
+        // 日本語メッセージは「パス '<実パス>' の一部が見つかりませんでした」形式（パスが間に挟まる）なので
+        // 後半だけで照合する。コンソール幅の折返しで語中に改行が入ることがあるため、語尾は含めない。
+        if (output.Contains("の一部が見つかりません") ||
+            output.Contains("Could not find a part of the path", System.StringComparison.OrdinalIgnoreCase))
+            return "ヒント: 途中のフォルダが存在しない可能性があります。"
+                   + "New-Item -ItemType Directory -Force <フォルダ> で作成してから同じコマンドを再実行してください。";
+        return null;
     }
 
     private static string MakeNonInteractive(string command)

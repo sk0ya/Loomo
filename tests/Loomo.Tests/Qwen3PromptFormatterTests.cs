@@ -37,6 +37,35 @@ public class Qwen3PromptFormatterTests
     }
 
     [Fact]
+    public void System_prompt_has_no_harness_seed_vocabulary()
+    {
+        // 過適合の回帰ガード：システムプロンプトの few-shot 例に能力ハーネス（AgentCapabilityHarness）の
+        // シードファイル名やタスク固有の固有名詞が混入すると、ハーネスが「プロンプトが暗記した名前で通る」
+        // 評価になってしまい、汎化性能を測れなくなる。例はハーネスと無関係な名前だけを使うこと。
+        var p = AiSettings.Qwen3SystemPrompt;
+        foreach (var seedName in new[]
+                 { "README.md", "app.py", "util.txt", "config.json", "numbers.txt", "todo.md",
+                   "main.py", "hello.txt", "intro.md", "run.ps1", "readme-copy.md" })
+            Assert.DoesNotContain(seedName, p);
+    }
+
+    [Fact]
+    public void System_prompt_keeps_load_bearing_structure()
+    {
+        // 実測で効果が確認されている構造要素：許可ツール名の列挙・ラベル付き例・編集規律・日本語最終回答。
+        var p = AiSettings.Qwen3SystemPrompt;
+        Assert.Contains("run_powershell", p);
+        Assert.Contains("write_file", p);
+        Assert.Contains("edit_file", p);
+        Assert.Contains("<tool_call>", p);
+        Assert.Contains("List files:", p);
+        Assert.Contains("Rename-Item", p);
+        Assert.Contains("old_string exactly", p);
+        Assert.Contains("Japanese", p);
+        Assert.DoesNotContain("<think>\n", p);   // 例文に think ブロックそのものは含めない
+    }
+
+    [Fact]
     public void Omits_tools_block_when_no_tools()
     {
         var conv = new Conversation();

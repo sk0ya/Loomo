@@ -118,6 +118,54 @@ public class FileToolTests : IDisposable
     }
 
     [Fact]
+    public async Task EditFile_case_mismatch_returns_actual_text_hint()
+    {
+        // multi-file-bump の実故障：実体 "Version: 1.2.3" に小文字の "version: 1.2.3" を指定して
+        // not-found → 虚偽の完了報告。エラーに実テキストを添えて、再試行を機械的な複写にする。
+        var path = Path2("edit.txt");
+        await File.WriteAllTextAsync(path, "# Sample\nVersion: 1.2.3\n");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"version: 1.2.3\",\"new_string\":\"version: 2.0.0\"}}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("Version: 1.2.3", result.Content);
+        Assert.Contains("そのまま old_string に指定", result.Content);
+        Assert.Equal("# Sample\nVersion: 1.2.3\n", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task EditFile_newline_mismatch_returns_actual_text_hint()
+    {
+        // 実ファイルは CRLF、old_string は LF（モデルは \n で書きがち）→ 実際の CRLF テキストを提示。
+        var path = Path2("edit.txt");
+        await File.WriteAllTextAsync(path, "alpha\r\nbeta\r\ngamma");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"alpha\\nbeta\",\"new_string\":\"x\"}}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("alpha\r\nbeta", result.Content);
+        Assert.Equal("alpha\r\nbeta\r\ngamma", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task EditFile_no_near_match_keeps_generic_not_found_error()
+    {
+        var path = Path2("edit.txt");
+        await File.WriteAllTextAsync(path, "abc");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"xyz\",\"new_string\":\"q\"}}"), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.DoesNotContain("異なる箇所", result.Content);
+        Assert.Contains("コピーして指定", result.Content);
+    }
+
+    [Fact]
     public async Task EditFile_ambiguous_match_returns_count_error()
     {
         var path = Path2("edit.txt");
@@ -129,6 +177,41 @@ public class FileToolTests : IDisposable
         Assert.True(result.IsError);
         Assert.Contains("3 箇所", result.Content);
         Assert.Equal("x x x", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task EditFile_ambiguous_match_lists_containing_lines()
+    {
+        // replace-all 型の実故障：曖昧エラー後もモデルは同じ短い old_string を再送する。
+        // 一致行そのものを列挙して「行をコピーして1箇所ずつ」を機械的にできるようにする。
+        var path = Path2("edit.txt");
+        await File.WriteAllTextAsync(path, "TODO: write docs\nTODO: add tests\nDone: setup project\n");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"TODO\",\"new_string\":\"DONE\"}}"), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("TODO: write docs", result.Content);
+        Assert.Contains("TODO: add tests", result.Content);
+        Assert.Contains("行全体を old_string にコピー", result.Content);
+        Assert.Contains("write_file", result.Content);
+    }
+
+    [Fact]
+    public async Task EditFile_double_escaped_old_string_returns_unescaped_hint()
+    {
+        // insert-json-key 型の実故障：JSON の二重エスケープ（\" が文字として残る）old_string で
+        // not-found を繰り返す。剥がした形で一致する箇所があれば実テキストを提示する。
+        var path = Path2("edit.json");
+        await File.WriteAllTextAsync(path, "{\n  \"name\": \"loomo\"\n}\n");
+
+        var result = await Edit().ExecuteAsync(
+            Args($"{{\"path\":\"{Json(path)}\",\"old_string\":\"\\\\\\\"name\\\\\\\": \\\\\\\"loomo\\\\\\\"\",\"new_string\":\"x\"}}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("\"name\": \"loomo\"", result.Content);
+        Assert.Contains("そのまま old_string に指定", result.Content);
     }
 
     [Fact]

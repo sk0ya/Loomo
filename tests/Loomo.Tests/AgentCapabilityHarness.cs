@@ -51,6 +51,7 @@ public sealed class AgentCapabilityHarness
         ["src/util.txt"] = "alpha\nbeta\ngamma\n",
         ["config.json"]  = "{\n  \"name\": \"loomo\",\n  \"version\": \"1.2.3\"\n}\n",
         ["numbers.txt"]  = "3\n7\n5\n",
+        ["todo.md"]      = "TODO: write docs\nTODO: add tests\nDone: setup project\n",
     };
 
     private sealed record HarnessTask(string Name, string Prompt, Func<TurnRecord, (bool ok, string detail)> Oracle);
@@ -206,12 +207,103 @@ public sealed class AgentCapabilityHarness
             new("create-nested", "docs/guide/intro.md を作って、先頭に「# Intro」と書いて。", rec =>
                 (Has(ReadOrNull("docs/guide/intro.md"), "# Intro"),
                  "ネストディレクトリに作成")),
+
+            // ---- 汎化検証ケース：システムプロンプトの few-shot 例と語彙・ファイル名・操作が被らない群。
+            //      「プロンプトが評価セットに過適合していないか」を測るために、例に無い操作
+            //      （コピー・削除・最大値・件数・横断検索・全置換・JSONキー追加・意味的修正）を選ぶ。 ----
+            new("fix-bug", "app.py のバグを修正して。", rec =>
+            {
+                // 空白の揺れ（a+b / a + b）を吸収して比較。コメント行は残っていても消えていてもよいが、
+                // return が加算に直り、減算が消え、print 行が保持されていること。
+                var a = Norm(ReadOrNull("app.py")).Replace(" ", "");
+                return (a.Contains("returna+b") && !a.Contains("a-b") && a.Contains("print(add(2,3))"),
+                        "return a+b へ修正・print 行保持");
+            }),
+
+            new("replace-word", "src/util.txt の gamma を delta に置き換えて。", rec =>
+            {
+                var u = Norm(ReadOrNull("src/util.txt"));
+                return (u.Contains("delta") && !u.Contains("gamma") && u.Contains("alpha") && u.Contains("beta"),
+                        "gamma→delta・他行保持");
+            }),
+
+            new("copy-file", "README.md を docs/readme-copy.md という名前でコピーして。", rec =>
+                (Has(ReadOrNull("docs/readme-copy.md"), "Sample Project") && Unchanged("README.md"),
+                 "コピー作成・元ファイル不変")),
+
+            new("delete-file", "numbers.txt を削除して。", rec =>
+                (ReadOrNull("numbers.txt") == null && Unchanged("README.md", "src/util.txt"),
+                 "numbers.txt 削除・他ファイル不変")),
+
+            new("max-number", "numbers.txt の中で一番大きい数値はどれ？数だけ答えて。", rec =>
+                (Has(rec.FinalText.ToString(), "7") && Unchanged("numbers.txt"),
+                 "回答に 7・ファイル不変")),
+
+            new("count-files", "このワークスペースには .txt ファイルが何個ある？数だけ答えて。", rec =>
+                // .txt は numbers.txt と src/util.txt の2つ（サブフォルダ込みで数える必要がある）。
+                (Has(rec.FinalText.ToString(), "2") && Unchanged("numbers.txt", "src/util.txt"),
+                 "回答に 2・ファイル不変")),
+
+            new("find-text", "「gamma」という単語を含むファイルはどれ？ファイル名を教えて。", rec =>
+            {
+                // gamma を含むのは src/util.txt だけ。「全ファイルを列挙して util も含まれていた」偽陽性を
+                // 通さないよう、含まれないファイルへの言及が無いことまで要求する（緩いオラクルは虚偽PASSを通す）。
+                var t = rec.FinalText.ToString();
+                var ok = Has(t, "util") && !Has(t, "config") && !Has(t, "numbers") && !Has(t, "README")
+                         && !Has(t, "app.py") && !Has(t, "todo") && Unchanged("src/util.txt");
+                return (ok, "util.txt のみ特定・ファイル不変");
+            }),
+
+            new("create-script", "scripts/run.ps1 を作って、内容は「dotnet build」と「dotnet test」の2行にして。", rec =>
+            {
+                var s = ReadOrNull("scripts/run.ps1");
+                return (Has(s, "dotnet build") && Has(s, "dotnet test"),
+                        "スクリプト作成・2コマンド入り");
+            }),
+
+            new("replace-all", "todo.md の TODO を全部 DONE に置き換えて。", rec =>
+            {
+                // edit_file は一意一致が必要なので、行ごとの2回編集か read→write_file 全文書き直しが正解経路。
+                var t = Norm(ReadOrNull("todo.md"));
+                return (t.Contains("DONE: write docs") && t.Contains("DONE: add tests")
+                        && t.Contains("Done: setup project") && !t.Contains("TODO"),
+                        "TODO 2箇所→DONE・Done 行保持");
+            }),
+
+            new("insert-json-key", "config.json に \"license\": \"MIT\" というエントリを追加して。他の内容はそのまま。", rec =>
+            {
+                // 文字列含有でなく JSON として厳格に判定（緩いオラクルは壊れた JSON の虚偽 PASS を通す）。
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(ReadOrNull("config.json") ?? "");
+                    var root = doc.RootElement;
+                    var ok = root.TryGetProperty("license", out var lic) && lic.GetString() == "MIT"
+                          && root.TryGetProperty("name", out var name) && name.GetString() == "loomo"
+                          && root.TryGetProperty("version", out var ver) && ver.GetString() == "1.2.3";
+                    return (ok, "license=MIT 追加・既存キー保持・JSON妥当");
+                }
+                catch (Exception ex) { return (false, "JSON不正: " + ex.Message.Split('\n')[0]); }
+            }),
         };
+
+        // 構成タグ（HARNESS_REPORT_SUFFIX）：同一モデルでプロンプト等の構成違いを別レポートに分けて
+        // 上書きを防ぐ（例: baseline / candidate）。ヘッダにも記録して後から取り違えないようにする。
+        var reportTag = Environment.GetEnvironmentVariable("HARNESS_REPORT_SUFFIX");
+
+        // タスク名フィルタ（HARNESS_TASKS、カンマ区切り）：testhost のネイティブクラッシュ（長時間推論で
+        // 既知）後に、残ったタスクだけを再実行して結果を継ぎ足すための再開手段。
+        if (Environment.GetEnvironmentVariable("HARNESS_TASKS") is { Length: > 0 } only)
+        {
+            var names = only.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            tasks = tasks.Where(t => names.Contains(t.Name)).ToArray();
+        }
 
         var header = new StringBuilder();
         header.AppendLine("# Loomo エージェント能力ハーネス結果");
         header.AppendLine($"- 実行日時: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         header.AppendLine($"- モデル: {settings.Local.Model}");
+        if (!string.IsNullOrEmpty(reportTag)) header.AppendLine($"- 構成タグ: {reportTag}");
         header.AppendLine($"- ワークスペース: {ws}");
         header.AppendLine();
 
@@ -263,6 +355,16 @@ public sealed class AgentCapabilityHarness
                 if (last.ok) pass++;
                 _out.WriteLine($"[{task.Name}] {(repeats > 1 ? $"trial {trial + 1}/{repeats} " : "")}" +
                                $"{(last.ok ? "PASS" : "FAIL")} in {sw.ElapsedMilliseconds}ms, iters={rec.Iterations} — {last.detail}");
+                // 試行ごとの判定を逐次追記する（ITestOutputHelper はクラッシュで失われるため別ファイルに永続化）。
+                // testhost がネイティブクラッシュしても、ここまでの成功率（x/R）をこのログから復元できる。
+                try
+                {
+                    File.AppendAllText(
+                        Path.Combine(@"C:\Projects\Loomo",
+                            $"harness-report-{ModelFolderName}{(string.IsNullOrEmpty(reportTag) ? "" : "-" + reportTag)}-trials.log"),
+                        $"{task.Name}\ttrial {trial + 1}/{repeats}\t{(last.ok ? "PASS" : "FAIL")}\t{sw.ElapsedMilliseconds}ms\titers={rec.Iterations}\t{last.detail}{Environment.NewLine}");
+                }
+                catch { }
             }
 
             verdicts.Add((task.Name, pass, repeats, last.detail, rec.ElapsedMs, rec.Iterations));
@@ -272,7 +374,7 @@ public sealed class AgentCapabilityHarness
             body.AppendLine();
             // タスクごとに途中経過を書き出す。重いモデルでネイティブクラッシュしても完了分の結果が残るよう、
             // 最終レポート（ループ後にサマリ付きで1回書く）とは別に partial を逐次更新する。
-            try { File.WriteAllText(Path.Combine(@"C:\Projects\Loomo", $"harness-report-{ModelFolderName}-partial.md"), body.ToString()); } catch { }
+            try { File.WriteAllText(Path.Combine(@"C:\Projects\Loomo", $"harness-report-{ModelFolderName}{(string.IsNullOrEmpty(reportTag) ? "" : "-" + reportTag)}-partial.md"), body.ToString()); } catch { }
         }
 
         // 先頭にサマリ表。R>1 なら成功率と flaky（0<成功<試行）を 🟠 で可視化する。前後比較の一目把握用。
@@ -295,6 +397,7 @@ public sealed class AgentCapabilityHarness
         // モデルごとにファイルを分け、別モデルのレポートを上書きしないようにする
         // （既定 phi4-mini は従来名のまま、それ以外は -<model> サフィックス）。
         var suffix = ModelFolderName == "phi-4-mini-instruct-cpu-int4" ? "" : "-" + ModelFolderName;
+        if (!string.IsNullOrEmpty(reportTag)) suffix += "-" + reportTag;
         var fileName = $"harness-report{suffix}.md";
         var outPath = Path.Combine(AppContext.BaseDirectory, fileName);
         File.WriteAllText(outPath, full);

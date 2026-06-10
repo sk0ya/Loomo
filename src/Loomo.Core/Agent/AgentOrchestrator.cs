@@ -82,6 +82,10 @@ public sealed class AgentOrchestrator
         var parseRetries = 0;
         // ターン内で「同一の失敗ツール呼び出し」が何回出たかを数える（暴走ループの早期打ち切り用）。
         var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        // 直前の反復のツール結果にエラーが含まれていたか（虚偽成功ガード用）。
+        var lastBatchHadError = false;
+        // 虚偽成功ガードの差し戻しを使ったか（1ターン1回だけ。無限の押し問答を防ぐ）。
+        var errorStopNudged = false;
         // ターン内で edit_file の対象限定編集（部分置換・追記）に成功したファイルの canonical 絶対パス。
         // この後に同じファイルへ write_file の全文上書きが来たら、直前の編集を丸ごと破壊するため決定論的に
         // ブロックする（小モデルが正しい編集の直後に全文上書きで本文を壊す主要失敗モードの対策）。
@@ -266,6 +270,30 @@ public sealed class AgentOrchestrator
                     yield break;
                 }
 
+                // 虚偽成功ガード：直前の反復でツールが失敗したのに、ツールを呼ばず最終回答で終わろうと
+                // した場合、1ターンに1回だけ差し戻す。小モデルはエラーの後に「完了しました」と虚偽報告
+                // したり、エラーを「見つかりませんでした」等の偽の事実に変換したりする（実測の主要残存
+                // 故障）。修正再実行か正直な失敗報告かをモデルに選ばせる（正直な報告なら次の反復で
+                // そのまま終端する。ガードは挙動を強制しない＝誤発火しても1反復ぶんのコストで済む）。
+                if (lastBatchHadError && !errorStopNudged)
+                {
+                    errorStopNudged = true;
+                    _trace.Record(sessionId, turnId, TraceKinds.Error, new
+                    {
+                        message = "ツール失敗直後の最終回答を差し戻し（虚偽成功ガード）。",
+                        where = "turn.error_stop_nudge",
+                        finalText = assistant.Text,
+                    });
+                    // 「修正して再実行か正直な報告か」だけだと、小モデルは修正版コマンドを文章で提案して
+                    // 実行せずに終わる（実測）。実行を第一指示にし、説明だけの回答を明示的に禁じる。
+                    conversation.AddUser(
+                        "直前のツール呼び出しは失敗しています。エラーメッセージに基づいて呼び出しを修正し、" +
+                        "今すぐツールを再実行してください。修正案や原因をツールを呼ばずに文章で説明しては" +
+                        "いけません。どうしても回復できない場合のみ、何が失敗したかを正直に報告してください。" +
+                        "失敗した操作を完了済みとして報告してはいけません。");
+                    continue;
+                }
+
                 // ツール呼び出しが無ければターン終了
                 _trace.Record(sessionId, turnId, TraceKinds.TurnCompleted,
                     new { finalText = assistant.Text, iterations = iteration + 1, durationMs = turnClock.ElapsedMilliseconds });
@@ -279,6 +307,11 @@ public sealed class AgentOrchestrator
             var toolMessage = new ChatMessage { Role = ChatRole.Tool };
             toolMessage.ToolResults.AddRange(toolResults);
             conversation.Messages.Add(toolMessage);
+
+            // 虚偽成功ガード用：この反復の結果にエラーが含まれていたかを記録する。
+            lastBatchHadError = false;
+            foreach (var r in toolResults)
+                if (r.IsError) { lastBatchHadError = true; break; }
 
             // 進捗ガード：同一（ツール名＋引数）の失敗呼び出しがしきい値に達したら、これ以上反復しても
             // 同じゴミを再生産するだけなので打ち切る。pendingToolUses と toolResults は配列順で対応する。
