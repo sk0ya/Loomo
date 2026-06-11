@@ -430,6 +430,8 @@ public partial class ShellWindow : Window
             return;
         }
 
+        UpdatePaneToggleStates();
+
         // ズーム中はツリーを保ったまま、対象ペイン1枚だけを全面表示する。
         if (_zoomedPane is { } zoom)
         {
@@ -1134,7 +1136,41 @@ public partial class ShellWindow : Window
     {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
             SetPaneVisible(kind, !IsPaneVisible(kind));
+
+        // SetPaneVisible が何もしなかった場合（最後の1枚は隠さない等）も、クリックで
+        // 勝手に反転した IsChecked を実状態へ戻す必要があるためここでも同期する。
+        UpdatePaneToggleStates();
     }
+
+    /// <summary>
+    /// タイトルバーのペイントグルを実際の表示状態へ同期する（IsChecked＝表示中→アクセント色）。
+    /// ツールチップも「表示／隠す」を状態に合わせて切り替える。
+    /// </summary>
+    private void UpdatePaneToggleStates()
+    {
+        foreach (var child in PaneToggleBar.Children)
+        {
+            if (child is not ToggleButton { Tag: string tag } button || !Enum.TryParse<PaneKind>(tag, out var kind))
+                continue;
+            var visible = IsPaneVisible(kind);
+            button.IsChecked = visible;
+            button.ToolTip = $"{PaneLabel(kind)} を{(visible ? "隠す" : "表示")}";
+        }
+    }
+
+    /// <summary>ペインの日本語表示名（ペイントグルのツールチップ用）。</summary>
+    private static string PaneLabel(PaneKind kind) => kind switch
+    {
+        PaneKind.Terminal => "ターミナル",
+        PaneKind.Editor => "エディタ",
+        PaneKind.EditorSupport => "エディタサポート",
+        PaneKind.Browser => "ブラウザ",
+        PaneKind.Ai => "AI",
+        PaneKind.Git => "Git",
+        PaneKind.Diff => "Diff",
+        PaneKind.Trace => "トレース",
+        _ => kind.ToString(),
+    };
 
     /// <summary>ペインがツリーに在りかつ表示中か。</summary>
     private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };
