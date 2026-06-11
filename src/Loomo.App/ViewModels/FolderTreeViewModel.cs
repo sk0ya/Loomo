@@ -19,7 +19,16 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 {
     private readonly IWorkspaceService _workspace;
     private GitTreeState _gitState = GitTreeState.Empty;
+    // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
+    private string? _workspaceRoot;
+    // ツリーに表示中のルート。ピン留めフォルダへの切替で _workspaceRoot 配下のフォルダになり得る。
     private string? _currentRoot;
+    // ピン留めフォルダ（正規化済みフルパス）。バックグラウンドのフィルタ構築からも参照されるため、
+    // 変更時はインスタンスごと差し替える（enumeration 中の変更による例外を避ける）。
+    private HashSet<string> _pinnedPaths = new(StringComparer.OrdinalIgnoreCase);
+    // LoadRoot / ピン解除での選択肢再構築中に、ComboBox からの選択変更（SelectedRootOption）で
+    // 表示切替・保存イベントが多重発火しないよう抑止するフラグ。
+    private bool _suppressRootSelection;
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _refreshTimer;
     private int _refreshQueued;
@@ -51,6 +60,16 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     public ObservableCollection<FileNodeViewModel> Nodes { get; } = new();
 
+    // ルート切替 ComboBox の候補。先頭がワークスペースルート、以降がピン留めフォルダ。
+    public ObservableCollection<FolderRootOption> RootOptions { get; } = new();
+
+    [ObservableProperty]
+    private FolderRootOption? _selectedRootOption;
+
+    // ピン留めの追加/解除・表示ルートの切替があったとき。ShellWindow が購読して
+    // ワークスペーススナップショットへ保存する。
+    public event EventHandler? RootStateChanged;
+
     public event EventHandler<string>? FileActivated;
 
     // ファイルの単クリックでのプレビュー表示要求。ShellWindow がプレビュータブ
@@ -74,17 +93,205 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _workspace = workspace;
     }
 
-    public void LoadRoot(string path)
+    /// <summary>
+    /// ワークスペースルートを確定（ツールのパス制限・ターミナルの基準はこのルート）し、
+    /// ピン留め候補を復元してツリーを表示する。treeRootPath が候補にあればそれを表示ルートにする。
+    /// </summary>
+    public void LoadRoot(string path, IReadOnlyList<string>? pinnedFolders = null, string? treeRootPath = null)
     {
         _workspace.OpenFolder(path);
+        _workspaceRoot = Path.GetFullPath(path);
+
+        BuildRootOptions(pinnedFolders ?? Array.Empty<string>());
+
+        var initial = treeRootPath is null ? null : FindRootOption(treeRootPath);
+        SelectRootOption(initial ?? RootOptions[0]);
+    }
+
+    /// <summary>スナップショット保存用のピン一覧（フルパス）。</summary>
+    public IReadOnlyList<string> PinnedFolders
+        => RootOptions.Where(o => o.IsPinned).Select(o => o.FullPath).ToList();
+
+    /// <summary>表示中ルートがワークスペースルートと異なるときだけそのパス（保存用）。</summary>
+    public string? TreeRootOverride
+        => _workspaceRoot is null || _currentRoot is null || PathsEqual(_currentRoot, _workspaceRoot)
+            ? null
+            : _currentRoot;
+
+    public bool IsPinnedPath(string fullPath)
+        => fullPath.Length > 0 && _pinnedPaths.Contains(Path.GetFullPath(fullPath));
+
+    /// <summary>フォルダをピン留めし、ルート切替候補へ追加する。</summary>
+    public void PinFolder(string fullPath)
+    {
+        if (_workspaceRoot is null)
+            return;
+
+        var full = Path.GetFullPath(fullPath);
+        if (PathsEqual(full, _workspaceRoot) || IsPinnedPath(full) || !Directory.Exists(full))
+            return;
+
+        RootOptions.Add(new FolderRootOption(full, LabelFor(full), isPinned: true));
+        RebuildPinnedSet();
+        RefreshPinMarks();
+        RootStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>ピン留めを解除する。表示中ルートだった場合はワークスペースルートへ戻す。</summary>
+    public void UnpinFolder(string fullPath)
+    {
+        var option = RootOptions.FirstOrDefault(o => o.IsPinned && PathsEqual(o.FullPath, fullPath));
+        if (option is null)
+            return;
+
+        var wasCurrent = _currentRoot is not null && PathsEqual(option.FullPath, _currentRoot);
+        RootOptions.Remove(option);
+        RebuildPinnedSet();
+        RefreshPinMarks();
+
+        if (wasCurrent && RootOptions.Count > 0)
+            SelectRootOption(RootOptions[0]);
+
+        RootStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void UnpinCurrentRoot()
+    {
+        if (SelectedRootOption is { IsPinned: true } option)
+            UnpinFolder(option.FullPath);
+    }
+
+    // ComboBox からの切替。候補再構築中（_suppressRootSelection）や、解除で選択が一時的に
+    // null になったときは何もしない。
+    partial void OnSelectedRootOptionChanged(FolderRootOption? value)
+    {
+        if (_suppressRootSelection || value is null)
+            return;
+        if (_currentRoot is not null && PathsEqual(value.FullPath, _currentRoot))
+            return;
+
+        SetDisplayRoot(value.FullPath);
+        RootStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void BuildRootOptions(IEnumerable<string> pinnedFolders)
+    {
+        _suppressRootSelection = true;
+        try
+        {
+            RootOptions.Clear();
+            RootOptions.Add(new FolderRootOption(_workspaceRoot!, LabelFor(_workspaceRoot!), isPinned: false));
+
+            // 消えたピン・ルートと同一のピンは読み込み時に捨てる（保存時に自然に消える）。
+            foreach (var pin in pinnedFolders)
+            {
+                if (string.IsNullOrWhiteSpace(pin))
+                    continue;
+                var full = Path.GetFullPath(pin);
+                if (PathsEqual(full, _workspaceRoot!) || !Directory.Exists(full))
+                    continue;
+                if (RootOptions.Any(o => PathsEqual(o.FullPath, full)))
+                    continue;
+                RootOptions.Add(new FolderRootOption(full, LabelFor(full), isPinned: true));
+            }
+        }
+        finally
+        {
+            _suppressRootSelection = false;
+        }
+
+        RebuildPinnedSet();
+    }
+
+    private void RebuildPinnedSet()
+        => _pinnedPaths = new HashSet<string>(
+            RootOptions.Where(o => o.IsPinned).Select(o => o.FullPath),
+            StringComparer.OrdinalIgnoreCase);
+
+    private FolderRootOption? FindRootOption(string fullPath)
+    {
+        try
+        {
+            var full = Path.GetFullPath(fullPath);
+            return RootOptions.FirstOrDefault(o => PathsEqual(o.FullPath, full));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;   // 保存データの不正パスは無視してルートへ戻す
+        }
+    }
+
+    // 選択（ComboBox 表示）と表示ルートを同期させる。OnSelectedRootOptionChanged 経由の
+    // 二重切替・保存イベントは抑止する（呼び出し元が必要なら明示的に発火する）。
+    private void SelectRootOption(FolderRootOption option)
+    {
+        _suppressRootSelection = true;
+        try
+        {
+            SelectedRootOption = option;
+        }
+        finally
+        {
+            _suppressRootSelection = false;
+        }
+
+        if (_currentRoot is null || !PathsEqual(option.FullPath, _currentRoot))
+            SetDisplayRoot(option.FullPath);
+    }
+
+    // ツリーの表示ルートを差し替える（ワークスペースの確定はしない）。
+    private void SetDisplayRoot(string path)
+    {
         _currentRoot = Path.GetFullPath(path);
         RootLabel = Path.GetFileName(path.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(RootLabel)) RootLabel = path;
 
         RefreshGitState();
         ReloadNodes();
-        StartWatching(path);
+        StartWatching(_currentRoot);
     }
+
+    // ComboBox の表示名。ワークスペースルートはフォルダ名、ピンはルートからの相対パス
+    // （同名フォルダの区別がつくように）。ルート外・ドライブ違いはフルパスのまま。
+    private string LabelFor(string fullPath)
+    {
+        var name = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+        if (string.IsNullOrEmpty(name))
+            name = fullPath;
+
+        if (_workspaceRoot is null || PathsEqual(fullPath, _workspaceRoot))
+            return name;
+
+        var relative = Path.GetRelativePath(_workspaceRoot, fullPath);
+        return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative)
+            ? fullPath
+            : relative;
+    }
+
+    // ピン状態の変化を、読込済みノードの IsPinned（コンテキストメニューの出し分け）へ反映する。
+    private void RefreshPinMarks()
+    {
+        static IEnumerable<FileNodeViewModel> Walk(IEnumerable<FileNodeViewModel> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                yield return node;
+                foreach (var child in Walk(node.Children))
+                    yield return child;
+            }
+        }
+
+        foreach (var node in Walk(Nodes))
+            if (node.IsDirectory && node.FullPath.Length > 0)
+                node.IsPinned = IsPinnedPath(node.FullPath);
+    }
+
+    private static bool PathsEqual(string a, string b)
+        => string.Equals(
+            Path.GetFullPath(a).TrimEnd('\\', '/'),
+            Path.GetFullPath(b).TrimEnd('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
 
     [RelayCommand]
     private void Refresh()
@@ -738,6 +945,22 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 // 「ターミナルにセット」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
 public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
 
+/// <summary>ルート切替 ComboBox の 1 候補。先頭はワークスペースルート（IsPinned=false）、
+/// 以降はピン留めフォルダ。Label はルートからの相対パスで同名フォルダを区別する。</summary>
+public sealed class FolderRootOption
+{
+    public FolderRootOption(string fullPath, string label, bool isPinned)
+    {
+        FullPath = fullPath;
+        Label = label;
+        IsPinned = isPinned;
+    }
+
+    public string FullPath { get; }
+    public string Label { get; }
+    public bool IsPinned { get; }
+}
+
 // ツリー上の差分マーク（FileNodeViewModel.GitStatus）の種別。表示文字・色は XAML 側の
 // DataTrigger で割り当てる。DirectoryChanged は「配下に変更を含むフォルダ」を表す集約マーク。
 public enum GitChangeKind
@@ -1040,6 +1263,15 @@ public sealed partial class FileNodeViewModel : ObservableObject
     // git の差分マーク。XAML 側の DataTrigger が種別ごとに表示文字・色を割り当てる。
     [ObservableProperty] private GitChangeKind _gitStatus;
 
+    // ピン留め済みか（コンテキストメニューの「ピン留め／解除」の出し分け）。
+    // ピン状態の変更時は owner（RefreshPinMarks）が読込済みノードへ反映する。
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPinnable))]
+    private bool _isPinned;
+
+    /// <summary>「ピン留め」メニューを出すか（フォルダかつ未ピン）。</summary>
+    public bool IsPinnable => IsDirectory && !IsPinned;
+
     public FileNodeViewModel(string fullPath, bool isDirectory, FolderTreeViewModel owner)
     {
         FullPath = fullPath;
@@ -1047,6 +1279,8 @@ public sealed partial class FileNodeViewModel : ObservableObject
         Name = Path.GetFileName(fullPath);
         _owner = owner;
         GitStatus = owner.GitStatusFor(fullPath, isDirectory);
+        if (isDirectory)
+            _isPinned = owner.IsPinnedPath(fullPath);
 
         var iconKind = FileIcons.Classify(fullPath, isDirectory);
         IconGeometry = FileIcons.GeometryFor(iconKind);

@@ -230,6 +230,8 @@ public partial class ShellWindow : Window
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
+        // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
+        vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         // サイドバー Git パネルの「セッションを開く」：Git ペインを表示してフォーカスする。
         vm.GitPanel.SessionOpenRequested += (_, _) =>
         {
@@ -3655,7 +3657,7 @@ public partial class ShellWindow : Window
         DetachEditorTabs();
         DetachBrowserTabs();
         _activeWorkspace = workspace;
-        _vm.FolderTree.LoadRoot(workspace.RootPath);
+        _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
         StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         ApplyPaneLayout(workspace.PaneLayout);
         StartupProfiler.Mark("  復元:ApplyPaneLayout");
@@ -3986,6 +3988,9 @@ public partial class ShellWindow : Window
             Title = tab.View.CoreWebView2?.DocumentTitle,
             IsActive = tab.Id == _activeBrowserTab?.Id
         }).ToList();
+
+        snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
+        snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
 
         CaptureLayoutSizes();
         snapshot.PaneLayout = _root is null ? null : ToSnapshot(_root);

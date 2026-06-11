@@ -64,6 +64,12 @@ public sealed class WorkspaceSnapshot
     public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
     public List<BrowserTabSnapshot> BrowserTabs { get; set; } = new();
 
+    /// <summary>FolderTree でピン留めしたフォルダ（フルパス）。ルート切替 ComboBox の候補になる。</summary>
+    public List<string> PinnedFolders { get; set; } = new();
+
+    /// <summary>FolderTree の表示中ルート。null ならワークスペースルートを表示する。</summary>
+    public string? TreeRootPath { get; set; }
+
     /// <summary>
     /// メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。
     /// null なら既定レイアウトを使う。非表示のペインもツリーに残り、リーフの Hidden で表す。

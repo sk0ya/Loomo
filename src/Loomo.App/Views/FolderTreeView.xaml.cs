@@ -348,6 +348,18 @@ public partial class FolderTreeView : UserControl
             vm.RequestSetInTerminal(node);
     }
 
+    private void OnPinClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
+            vm.PinFolder(node.FullPath);
+    }
+
+    private void OnUnpinClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
+            vm.UnpinFolder(node.FullPath);
+    }
+
     private void OnCopyPathClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { } node)
