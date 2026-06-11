@@ -110,7 +110,8 @@
         </Style>
     </Window.Resources>
 
-    <!-- 最大化サイズは code-behind の WM_GETMINMAXINFO でワーク領域に制限する（タスクバーを覆わない） -->
+    <!-- 最大化は code-behind で制御：通常は WM_GETMINMAXINFO でワーク領域に制限し、
+         横並びのマルチモニタへは疑似最大化（SetWindowPos）で跨ぐ。タスクバーは覆わない -->
     <Border x:Name="RootBorder">
         <Grid>
             <Grid.ColumnDefinitions>
@@ -220,6 +221,14 @@
                         <Path Stretch="None" StrokeThickness="1" SnapsToDevicePixels="True"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                               Data="M0,5 H10" />
+                    </Button>
+                    <!-- 跨ぎ最大化：横並びのモニタが2枚以上あるときだけ code-behind が表示する -->
+                    <Button x:Name="SpanMaximizeButton" Style="{StaticResource CaptionButton}"
+                            ToolTip="全モニタへ最大化" Click="OnSpanMaximize" Visibility="Collapsed"
+                            AutomationProperties.Name="全モニタへ最大化">
+                        <Path Stretch="None" StrokeThickness="1" SnapsToDevicePixels="True"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              Data="M0.5,0.5 H6.5 V9.5 H0.5 Z M8.5,0.5 H14.5 V9.5 H8.5 Z" />
                     </Button>
                     <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}"
                             ToolTip="最大化" Click="OnMaximizeRestore">

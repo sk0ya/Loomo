@@ -2225,7 +2225,23 @@ public partial class ShellWindow : Window
         => WindowState = WindowState.Minimized;
 
     private void OnMaximizeRestore(object sender, RoutedEventArgs e)
-        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    {
+        if (_isSpanMaximized)
+        {
+            RestoreFromSpan();
+            return;
+        }
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    }
+
+    /// <summary>跨ぎ最大化ボタン：全モニタへの疑似最大化／復元をトグルする。</summary>
+    private void OnSpanMaximize(object sender, RoutedEventArgs e)
+    {
+        if (_isSpanMaximized)
+            RestoreFromSpan();
+        else if (!TrySpanMaximize())
+            WindowState = WindowState.Maximized; // 横並びのモニタが無ければ通常の最大化
+    }
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 
@@ -4103,8 +4119,16 @@ public partial class ShellWindow : Window
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
 
-        CaptureLayoutSizes();
-        snapshot.PaneLayout = _root is null ? null : ToSnapshot(_root);
+        if (_isSpanMaximized && _spanSavedLayout is { } savedLayout)
+        {
+            // 跨ぎ最大化中の一時レイアウトは永続化せず、跨ぐ前のレイアウトを保存する。
+            snapshot.PaneLayout = savedLayout;
+        }
+        else
+        {
+            CaptureLayoutSizes();
+            snapshot.PaneLayout = _root is null ? null : ToSnapshot(_root);
+        }
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)
@@ -4135,29 +4159,43 @@ public partial class ShellWindow : Window
 
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
-        var maximized = WindowState == WindowState.Maximized;
-        // 最大化/復元アイコンを切り替える。
-        MaximizeIcon.Data = maximized ? RestoreGeometry : MaximizeGeometry;
-        MaximizeButton.ToolTip = maximized ? "元に戻す" : "最大化";
+        // Win+↑ 等で本物の最大化（1モニタ）へ入ったら跨ぎ状態は破棄する（レイアウトも戻す）。
+        if (WindowState == WindowState.Maximized && _isSpanMaximized)
+            ExitSpanState();
+        UpdateMaximizeGlyph();
     }
 
-    // ===== 最大化時にタスクバーを覆わないようワーク領域へ制限する（WindowStyle=None 対策） =====
+    // ===== 最大化サイズの制御（WindowStyle=None 対策＋マルチモニタ跨ぎ） =====
     //
     // WindowStyle="None" のボーダレスウィンドウは、最大化するとモニタ全体（タスクバー含む）に
     // 広がってしまい、最下部の AI バーがタスクバーの裏に隠れる。WM_GETMINMAXINFO を処理して
-    // 最大化サイズをモニタのワーク領域（タスクバーを除いた範囲）に収める。
+    // 最大化サイズをワーク領域（タスクバーを除いた範囲）に収める。
+    //
+    // マルチモニタ跨ぎ：本物の最大化（WS_MAXIMIZE）はウィンドウマネージャが1モニタへクリップする
+    // ため、WM_GETMINMAXINFO で大きなサイズを返しても跨げない。そこで「疑似最大化」を行う：
+    // WindowState は Normal のまま、横並び全モニタのワーク領域を連結した矩形へ SetWindowPos で
+    // 広げ、復元用に元の矩形を保存する。入口はタイトルバーの専用ボタン（横並びモニタがあるとき
+    // だけ表示）。通常の最大化ボタン・ダブルクリック・Win+↑ はデフォルトの1モニタ最大化のまま。
+    // 跨ぎ中はペインをモニタ単位の列へ振り分け、どのペインも継ぎ目を跨がないようにする
+    // （ApplySpanPaneLayout。解除時に元のレイアウトへ復元）。
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         var source = (HwndSource)PresentationSource.FromVisual(this)!;
         source.AddHook(WndProc);
+        UpdateSpanButtonVisibility();
     }
 
     private const int WM_GETMINMAXINFO = 0x0024;
+    private const int WM_SYSCOMMAND = 0x0112;
+    private const int WM_DISPLAYCHANGE = 0x007E;
+    private const int SC_SIZE = 0xF000;
+    private const int SC_MOVE = 0xF010;
+    private const int SC_MAXIMIZE = 0xF030;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
-    private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == HorizontalWheelScroll.WM_MOUSEHWHEEL)
         {
@@ -4189,8 +4227,298 @@ public partial class ShellWindow : Window
                 }
             }
         }
+        else if (msg == WM_SYSCOMMAND)
+        {
+            // 下位4ビットはマウス由来の付加情報なのでマスクして比較する。
+            var command = (int)(wParam.ToInt64() & 0xFFF0);
+            if (command == SC_MAXIMIZE && _isSpanMaximized)
+            {
+                // 跨ぎ中のタイトルバーダブルクリックは復元へ。
+                // 通常時は既定の1モニタ最大化（デフォルトは跨がない）。
+                RestoreFromSpan();
+                handled = true;
+            }
+            else if (command is SC_MOVE or SC_SIZE && _isSpanMaximized)
+            {
+                // 跨ぎ中にユーザーが移動・リサイズを始めたら、その操作を尊重して跨ぎ状態だけ解く
+                // （ペインレイアウトは跨ぐ前へ戻す。ウィンドウ矩形はユーザー操作に任せる）。
+                ExitSpanState();
+            }
+        }
+        else if (msg == WM_DISPLAYCHANGE)
+        {
+            UpdateSpanButtonVisibility();
+        }
         return IntPtr.Zero;
     }
+
+    /// <summary>
+    /// 現在のモニタのワーク領域 <paramref name="currentWork"/> と縦方向に重なる（＝横並びの）
+    /// 全モニタのワーク領域を左から順に返す。縦積み等の重ならないモニタは含めない。
+    /// </summary>
+    private static List<RECT> GetSideBySideWorkAreas(RECT currentWork)
+    {
+        var works = new List<RECT>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero,
+            (IntPtr hMon, IntPtr _, ref RECT _, IntPtr _) =>
+            {
+                var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                if (GetMonitorInfo(hMon, ref info))
+                    works.Add(info.rcWork);
+                return true;
+            },
+            IntPtr.Zero);
+
+        var result = works
+            .Where(w => w.Bottom > currentWork.Top && w.Top < currentWork.Bottom)
+            .OrderBy(w => w.Left)
+            .ToList();
+        return result.Count > 0 ? result : new List<RECT> { currentWork };
+    }
+
+    /// <summary>
+    /// 疑似最大化（跨ぎ）先の矩形を求める。横並びの全モニタのワーク領域を横に連結し、
+    /// 縦はそれらの共通帯に収める（どのモニタ上でもタスクバーを覆わない）。
+    /// 横並びのモニタが無い（1枚・縦積み）場合は現在のワーク領域をそのまま返す。
+    /// </summary>
+    private static RECT ComputeMaximizeRect(RECT currentWork)
+    {
+        var result = currentWork;
+        var top = currentWork.Top;
+        var bottom = currentWork.Bottom;
+        foreach (var w in GetSideBySideWorkAreas(currentWork))
+        {
+            result.Left = Math.Min(result.Left, w.Left);
+            result.Right = Math.Max(result.Right, w.Right);
+            top = Math.Max(top, w.Top);
+            bottom = Math.Min(bottom, w.Bottom);
+        }
+
+        // 共通帯が成立しない（理論上のみ）場合は現在のワーク領域へフォールバック
+        if (bottom <= top)
+            return currentWork;
+        result.Top = top;
+        result.Bottom = bottom;
+        return result;
+    }
+
+    /// <summary>疑似最大化（マルチモニタ跨ぎ）中か。WindowState は Normal のまま運用する。</summary>
+    private bool _isSpanMaximized;
+    /// <summary>疑似最大化に入る前のウィンドウ矩形（物理px）。復元に使う。</summary>
+    private RECT? _spanRestoreBounds;
+    /// <summary>疑似最大化に入る前のペインレイアウト。解除時に復元する。</summary>
+    private PaneNodeSnapshot? _spanSavedLayout;
+
+    /// <summary>
+    /// 横並びのモニタがあれば、それらのワーク領域を連結した矩形へ疑似最大化する。
+    /// 跨ぐ先が現在のモニタ1枚と変わらなければ何もせず false（通常の最大化に任せる）。
+    /// </summary>
+    private bool TrySpanMaximize()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+            return false;
+        var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (monitor == IntPtr.Zero)
+            return false;
+        var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(monitor, ref monitorInfo))
+            return false;
+
+        var work = monitorInfo.rcWork;
+        var areas = GetSideBySideWorkAreas(work);
+        var span = ComputeMaximizeRect(work);
+        if (span.Left == work.Left && span.Right == work.Right)
+            return false; // 横並びのモニタが無い
+
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+        if (!GetWindowRect(hwnd, out var current))
+            return false;
+        _spanRestoreBounds = current;
+        _isSpanMaximized = true;
+        // リサイズ前の見た目（ペインの相対位置）を基準に振り分けてから広げる。
+        ApplySpanPaneLayout(areas, span);
+        SetWindowPos(hwnd, IntPtr.Zero,
+            span.Left, span.Top, span.Right - span.Left, span.Bottom - span.Top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        UpdateMaximizeGlyph();
+        return true;
+    }
+
+    /// <summary>
+    /// 跨ぎ最大化用のペインレイアウトを適用する。表示中の各ペインを（現在の中心位置の比率で）
+    /// 担当モニタへ振り分け、列の境界がモニタの継ぎ目と一致するルート列レイアウトへ組み替える。
+    /// これでどのペインも継ぎ目を跨いで表示されない。元のレイアウトは
+    /// <see cref="_spanSavedLayout"/> に保存し、跨ぎ解除時に復元する。
+    /// 可視ペインが1枚しか無い・ズーム中の場合は組み替えない（継ぎ目跨ぎは許容）。
+    /// </summary>
+    private void ApplySpanPaneLayout(List<RECT> areas, RECT span)
+    {
+        _spanSavedLayout = null;
+        if (areas.Count < 2 || _zoomedPane is not null)
+            return;
+        var visible = AllLeaves().Where(l => !l.Hidden).ToList();
+        if (visible.Count < 2)
+            return;
+        var hostWidth = PaneHost.ActualWidth;
+        var hostHeight = PaneHost.ActualHeight;
+        if (hostWidth <= 0 || hostHeight <= 0)
+            return;
+
+        CaptureLayoutSizes();
+        _spanSavedLayout = _root is null ? null : ToSnapshot(_root);
+
+        // 各ペインの現在の中心位置（PaneHost 内の比率）。矩形が取れないものは中央扱い。
+        var infos = visible.Select(leaf =>
+        {
+            if (TryGetPaneRect(leaf.Kind, out var r))
+                return (Leaf: leaf,
+                        Cx: (r.X + r.Width / 2) / hostWidth,
+                        Cy: (r.Y + r.Height / 2) / hostHeight,
+                        Height: Math.Max(r.Height, 1.0));
+            return (Leaf: leaf, Cx: 0.5, Cy: 0.5, Height: 1.0);
+        }).ToList();
+
+        // 中心位置の横比率を、スパン全体に対する各モニタの横範囲へ対応付けて割り当てる。
+        var spanWidth = (double)(span.Right - span.Left);
+        var groups = areas.Select(_ => new List<(PaneLeaf Leaf, double Cx, double Cy, double Height)>()).ToList();
+        foreach (var info in infos)
+        {
+            var index = areas.FindIndex(a => info.Cx < (a.Right - span.Left) / spanWidth);
+            groups[index < 0 ? areas.Count - 1 : index].Add(info);
+        }
+
+        // 空のモニタが出たら、左から順の均等割りへフォールバック（どのモニタにも1枚は置く）。
+        if (groups.Any(g => g.Count == 0) && infos.Count >= areas.Count)
+        {
+            var ordered = infos.OrderBy(i => i.Cx).ThenBy(i => i.Cy).ToList();
+            groups = areas.Select(_ => new List<(PaneLeaf Leaf, double Cx, double Cy, double Height)>()).ToList();
+            for (var i = 0; i < ordered.Count; i++)
+                groups[i * areas.Count / ordered.Count].Add(ordered[i]);
+        }
+
+        // PaneHost はウィンドウ左端から ActivityBar＋サイドバー分ずれているため、その分を
+        // 左端モニタの列幅から差し引いて、列の境界が継ぎ目に乗るように重みを決める（物理px）。
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var hostLeft = PaneHost.TransformToVisual(this).Transform(new Point(0, 0)).X * dpi.DpiScaleX;
+        var hostRightGap = ActualWidth * dpi.DpiScaleX - hostLeft - hostWidth * dpi.DpiScaleX;
+
+        var root = new PaneSplit { Orientation = SplitKind.Columns };
+        double pending = 0;
+        for (var i = 0; i < areas.Count; i++)
+        {
+            double width = areas[i].Right - areas[i].Left;
+            if (i == 0)
+                width -= hostLeft;
+            if (i == areas.Count - 1)
+                width -= hostRightGap;
+            width += pending;
+            if (groups[i].Count == 0)
+            {
+                pending = width; // 置くものが無いモニタの幅は右隣の列が吸収する
+                continue;
+            }
+            pending = 0;
+            root.Children.Add(BuildSpanColumn(groups[i], Math.Max(width, 1)));
+        }
+        if (pending > 0 && root.Children.Count > 0)
+            root.Children[^1].Weight += pending;
+
+        if (root.Children.Count < 2)
+        {
+            _spanSavedLayout = null; // 列分割が成立しないなら現状のまま
+            return;
+        }
+
+        _zoomedPane = null;
+        _root = root;
+        RebuildPaneLayout();
+    }
+
+    /// <summary>1モニタ分の列ノード：割り当てられたペインを現在の縦位置順に縦積みする。</summary>
+    private static PaneNode BuildSpanColumn(List<(PaneLeaf Leaf, double Cx, double Cy, double Height)> group, double weight)
+    {
+        var ordered = group.OrderBy(g => g.Cy).ThenBy(g => g.Cx).ToList();
+        if (ordered.Count == 1)
+        {
+            ordered[0].Leaf.Weight = weight;
+            return ordered[0].Leaf;
+        }
+        var rows = new PaneSplit { Orientation = SplitKind.Rows, Weight = weight };
+        foreach (var item in ordered)
+        {
+            item.Leaf.Weight = item.Height;
+            rows.Children.Add(item.Leaf);
+        }
+        return rows;
+    }
+
+    /// <summary>疑似最大化を解き、入る前の矩形とペインレイアウトへ戻す。</summary>
+    private void RestoreFromSpan()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (_spanRestoreBounds is { } rect && hwnd != IntPtr.Zero)
+            SetWindowPos(hwnd, IntPtr.Zero,
+                rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        ExitSpanState();
+    }
+
+    /// <summary>跨ぎ状態だけを解く（ウィンドウ矩形は触らない）。ペインレイアウトは跨ぐ前へ復元する。</summary>
+    private void ExitSpanState()
+    {
+        _isSpanMaximized = false;
+        _spanRestoreBounds = null;
+        if (_spanSavedLayout is { } saved)
+        {
+            _spanSavedLayout = null;
+            ApplyPaneLayout(saved);
+            SaveActiveWorkspaceSnapshot();
+        }
+        UpdateMaximizeGlyph();
+    }
+
+    /// <summary>最大化／復元／跨ぎボタンの見た目を実状態（本物の最大化＋疑似最大化）へ同期する。</summary>
+    private void UpdateMaximizeGlyph()
+    {
+        var maximized = _isSpanMaximized || WindowState == WindowState.Maximized;
+        MaximizeIcon.Data = maximized ? RestoreGeometry : MaximizeGeometry;
+        MaximizeButton.ToolTip = maximized ? "元に戻す" : "最大化";
+        SpanMaximizeButton.ToolTip = _isSpanMaximized ? "元に戻す" : "全モニタへ最大化";
+    }
+
+    /// <summary>跨ぎ最大化ボタンは横並びのモニタが2枚以上あるときだけ見せる。</summary>
+    private void UpdateSpanButtonVisibility()
+    {
+        var visible = false;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info))
+                visible = GetSideBySideWorkAreas(info.rcWork).Count >= 2;
+        }
+        SpanMaximizeButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
