@@ -1,0 +1,365 @@
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
+using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Layout;
+using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Services;
+using Editor.Controls;
+using Editor.Controls.Git;
+using Editor.Controls.Themes;
+using Terminal.Settings;
+using Terminal.Tabs;
+
+namespace sk0ya.Loomo.App.Views;
+/// <summary>ShellWindow: ターミナル／エディタのタブ管理（作成・選択・クローズ・プレビュータブ）</summary>
+public partial class ShellWindow
+{
+    private void OnTerminalNewTab(object sender, RoutedEventArgs e)
+    {
+        var startDir = _activeTerminalTab?.View.WorkingDirectory;
+        if (string.IsNullOrWhiteSpace(startDir) || !Directory.Exists(startDir))
+            startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+
+        var tab = CreateTerminalTab(startDir);
+        _terminalTabs.Add(tab);
+        _vm.Tabs.AddTerminalTab(tab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
+        ActivateTerminalTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private void OnTerminalTabSelected(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+            ActivateTerminalTab(id);
+    }
+
+    // タブを中ボタンクリックで閉じる（Terminal / Editor / Browser 共通）
+    private async void OnTabMiddleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle || sender is not FrameworkElement { Tag: Guid id })
+            return;
+
+        e.Handled = true;
+        if (_terminalTabs.Any(t => t.Id == id))
+            await CloseTerminalTabAsync(id);
+        else if (_editorTabs.Any(t => t.Id == id))
+            CloseEditorTab(id);
+        else if (_browserTabs.Any(t => t.Id == id))
+            await CloseBrowserTabAsync(id);
+        else
+            return;
+
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private async void OnTerminalTabClosed(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+        {
+            await CloseTerminalTabAsync(id);
+            SaveActiveWorkspaceSnapshot();
+        }
+    }
+
+    private void OnEditorNewTab(object sender, RoutedEventArgs e)
+    {
+        var tab = CreateEditorTab();
+        _editorTabs.Add(tab);
+        _vm.Tabs.AddEditorTab(tab.Id, null, false, false);
+        ActivateEditorTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>
+    /// 仮想ドキュメント（システムプロンプト・危険コマンド一覧など）を編集するための専用タブを用意する。
+    /// 同名タブが既にあればそれをアクティブ化して再利用し、無ければ新規タブを作成する。
+    /// EditorService が <see cref="VimEditorControl.OpenVirtualDocument"/> を呼ぶ直前にこれを呼ぶため、
+    /// ここでアクティブ化（＝Attach）した control に対して仮想ドキュメントが開かれる。
+    /// </summary>
+    private void OpenVirtualDocumentTab(string title)
+    {
+        var existing = _editorTabs.FirstOrDefault(t =>
+            string.Equals(t.VirtualTitle, title, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            ActivateEditorTab(existing.Id);
+            return;
+        }
+
+        var tab = CreateEditorTab();
+        tab.VirtualTitle = title;
+        _editorTabs.Add(tab);
+        _vm.Tabs.AddEditorTab(tab.Id, title, false, false);
+        ActivateEditorTab(tab.Id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private async Task OpenFileInNewEditorTabAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        var existing = _editorTabs.FirstOrDefault(t =>
+            string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            // 明示的に開いた（ダブルクリック・Enter 等）ので、プレビュー中なら通常タブへ確定する。
+            if (ReferenceEquals(_previewEditorTab, existing))
+                SetPreviewTab(null);
+            ActivateEditorTab(existing.Id);
+            return;
+        }
+
+        var tab = CreateEditorTab();
+        _editorTabs.Add(tab);
+        _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
+        ActivateEditorTab(tab.Id);
+        await _editor.OpenFileAsync(path);
+        UpdateEditorTab(tab);
+        // タブ活性化の時点では FilePath が未確定だったので、読込後に EditorSupport を同期し直す。
+        await UpdateEditorSupportAsync();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>
+    /// FolderTree の単クリックでファイルをプレビュータブ（タイトル斜体）で開く。
+    /// 未編集のプレビュータブ（無ければ空の Untitled タブ）を使い回して中身だけ差し替えるので、
+    /// クリックのたびにタブが増えない。プレビュータブは編集された時点で通常タブへ昇格する
+    /// （<see cref="UpdateEditorTab"/>）。既にタブで開いているファイルはそれをアクティブ化するだけ。
+    /// </summary>
+    private async Task OpenFileInPreviewTabAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        var existing = _editorTabs.FirstOrDefault(t =>
+            string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            ActivateEditorTab(existing.Id);
+            return;
+        }
+
+        // 差し替え先：未編集のプレビュータブ、無ければアクティブな空の Untitled タブを転用する。
+        var target = _previewEditorTab is { } preview && _editorTabs.Contains(preview)
+                     && !preview.Control.IsModified && !preview.Control.IsVirtualDocument
+            ? preview
+            : _activeEditorTab is { } active && _editorTabs.Contains(active)
+              && string.IsNullOrEmpty(active.Control.FilePath) && !active.Control.IsModified
+              && !active.Control.IsVirtualDocument && active.VirtualTitle is null
+                ? active
+                : null;
+
+        if (target is null)
+        {
+            target = CreateEditorTab();
+            _editorTabs.Add(target);
+            _vm.Tabs.AddEditorTab(target.Id, path, false, false);
+        }
+
+        ActivateEditorTab(target.Id);
+        await _editor.OpenFileAsync(path);
+        // LoadFile 中の BufferChanged が UpdateEditorTab の昇格判定を誤爆させないよう、読込後に印を付ける。
+        SetPreviewTab(target);
+        UpdateEditorTab(target);
+        await UpdateEditorSupportAsync();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。</summary>
+    private void SetPreviewTab(EditorTab? tab)
+    {
+        if (_previewEditorTab is { } old && !ReferenceEquals(old, tab))
+            _vm.Tabs.SetEditorTabPreview(old.Id, false);
+        _previewEditorTab = tab;
+        if (tab is not null)
+            _vm.Tabs.SetEditorTabPreview(tab.Id, true);
+    }
+
+    /// <summary>FolderTree の HTML をアプリ内ブラウザの新規タブで開く（file:// URL）。</summary>
+    private async Task OpenFileInBrowserAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        // ブラウザペインが隠れていれば表示してから開く。
+        if (!IsPaneVisible(PaneKind.Browser))
+            SetPaneVisible(PaneKind.Browser, true);
+
+        var url = new Uri(Path.GetFullPath(path)).AbsoluteUri;   // file:///C:/...
+        await CreateBrowserTabAsync(url, requestedTitle: Path.GetFileName(path));
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private void OnEditorTabSelected(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+            ActivateEditorTab(id);
+    }
+
+    private void OnEditorTabClosed(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Guid id })
+        {
+            CloseEditorTab(id);
+            SaveActiveWorkspaceSnapshot();
+        }
+    }
+
+    private TerminalWorkspaceTabs CurrentTerminalWorkspace
+        => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
+
+    private EditorWorkspaceTabs CurrentEditorWorkspace
+        => _activeEditorWorkspace ?? _scratchEditorWorkspace;
+
+    private void ActivateTerminalTab(Guid id)
+    {
+        var tab = _terminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+
+        _terminalViews?.Activate(id);
+
+        _activeTerminalTab = tab;
+        CurrentTerminalWorkspace.ActiveTabId = id;
+        _terminal.Attach(tab.View);
+        if (Directory.Exists(tab.View.WorkingDirectory))
+            _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
+        _vm.Tabs.ActivateTerminalTab(id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。</summary>
+    private void SetActiveTerminalTab(TerminalTab tab)
+    {
+        _activeTerminalTab = tab;
+        CurrentTerminalWorkspace.ActiveTabId = tab.Id;
+        _terminal.Attach(tab.View);
+        if (Directory.Exists(tab.View.WorkingDirectory))
+            _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
+        _vm.Tabs.ActivateTerminalTab(tab.Id);
+    }
+
+    private async Task CloseTerminalTabAsync(Guid id)
+    {
+        var index = _terminalTabs.FindIndex(t => t.Id == id);
+        if (index < 0)
+            return;
+
+        var wasActive = _activeTerminalTab?.Id == id;
+        var tab = _terminalTabs[index];
+        PaneSplitView.Detach(tab.View);
+        await tab.View.CloseAsync();
+        _terminalTabs.RemoveAt(index);
+        _vm.Tabs.RemoveTerminalTab(id);
+        _terminalViews?.RemoveTab(id);
+
+        if (_terminalTabs.Count == 0)
+        {
+            var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+            var newTab = CreateTerminalTab(startDir);
+            _terminalTabs.Add(newTab);
+            _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
+            ActivateTerminalTab(newTab.Id);
+            return;
+        }
+
+        _terminalViews?.RepairTabs(_terminalTabs.Select(t => t.Id));
+
+        if (wasActive)
+        {
+            ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
+        }
+        else
+        {
+            _terminalViews?.Rebuild();
+            if (_terminalViews?.FocusedTabId is { } fid && _terminalTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
+                SetActiveTerminalTab(ft);
+        }
+    }
+
+    private void ActivateEditorTab(Guid id)
+    {
+        var tab = _editorTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+
+        // フォーカス中ビューポートへこのタブを割り当てて再描画＋フォーカス（分割していなければ単一ビューポート）。
+        _editorViews?.Activate(id);
+
+        _activeEditorTab = tab;
+        CurrentEditorWorkspace.ActiveTabId = id;
+        _editor.Attach(tab.Control);
+        _vm.Tabs.ActivateEditorTab(id);
+        _ = SwitchEditorSupportSourceAsync(tab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。</summary>
+    private void SetActiveEditorTab(EditorTab tab)
+    {
+        _activeEditorTab = tab;
+        CurrentEditorWorkspace.ActiveTabId = tab.Id;
+        _editor.Attach(tab.Control);
+        _vm.Tabs.ActivateEditorTab(tab.Id);
+        _ = SwitchEditorSupportSourceAsync(tab);
+    }
+
+    private void CloseEditorTab(Guid id)
+    {
+        var index = _editorTabs.FindIndex(t => t.Id == id);
+        if (index < 0)
+            return;
+
+        var wasActive = _activeEditorTab?.Id == id;
+        var tab = _editorTabs[index];
+        if (ReferenceEquals(_editorSupportSourceTab, tab))
+        {
+            _editorSupportDebounceTimer?.Stop();
+            DetachEditorSupportSource();
+        }
+        PaneSplitView.Detach(tab.Control);
+        if (ReferenceEquals(_previewEditorTab, tab))
+            _previewEditorTab = null;
+        _editorTabs.RemoveAt(index);
+        _vm.Tabs.RemoveEditorTab(id);
+        _editorViews?.RemoveTab(id);
+
+        if (_editorTabs.Count == 0)
+        {
+            var newTab = CreateEditorTab();
+            _editorTabs.Add(newTab);
+            _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
+            ActivateEditorTab(newTab.Id);
+            return;
+        }
+
+        _editorViews?.RepairTabs(_editorTabs.Select(t => t.Id));
+
+        if (wasActive)
+        {
+            ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
+        }
+        else
+        {
+            _editorViews?.Rebuild();
+            if (_editorViews?.FocusedTabId is { } fid && _editorTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
+                SetActiveEditorTab(ft);
+        }
+    }
+
+}
