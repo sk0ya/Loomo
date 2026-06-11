@@ -29,7 +29,6 @@ public sealed partial class AiBarViewModel : ObservableObject
     private readonly AgentOrchestrator _orchestrator;
     private readonly AiSettings _settings;
     private readonly ConversationStore _sessions;
-    private readonly PromptHistoryStore _historyStore;
     private readonly IAiWarmup _warmup;
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
     private Conversation _conversation = new();
@@ -38,9 +37,8 @@ public sealed partial class AiBarViewModel : ObservableObject
     private bool _suppressSuggestions;       // プログラムからの Input 書換時に補完を抑止
     private CancellationTokenSource? _cts;
 
-    private readonly List<string> _history = new();   // 送信済みプロンプト（古い→新しい）
-    private int _historyCursor = -1;                   // 履歴ナビ位置（-1 = 未ナビ／編集中の下書き）
-    private string _historyDraft = "";                 // ナビ開始前に編集していた内容
+    // ↑/↓ の入力履歴ナビゲーション（実体は PromptInputHistory）。
+    private readonly PromptInputHistory _inputHistory;
 
     public ObservableCollection<TranscriptEntry> Transcript { get; } = new();
 
@@ -98,9 +96,8 @@ public sealed partial class AiBarViewModel : ObservableObject
         _orchestrator = orchestrator;
         _settings = settings;
         _sessions = sessions;
-        _historyStore = historyStore;
         _warmup = warmup;
-        _history.AddRange(historyStore.Load());   // 前回までの送信履歴を引き継ぐ
+        _inputHistory = new PromptInputHistory(historyStore);   // 前回までの送信履歴を引き継ぐ
         _providerLabel = settings.Provider.ToString();
         approval.ApprovalRequested += OnApprovalRequested;
 
@@ -681,46 +678,21 @@ public sealed partial class AiBarViewModel : ObservableObject
     // ===== 入力履歴（↑/↓ で呼び出し） =====
 
     /// <summary>送信したプロンプトを履歴に積む（直前と同一なら積まない）。</summary>
-    private void PushHistory(string text)
-    {
-        _historyCursor = -1;
-        _historyDraft = "";
-        if (string.IsNullOrWhiteSpace(text)) return;
-        if (_history.Count > 0 && _history[^1] == text) return;
-        _history.Add(text);
-        // メモリ上の履歴もファイルと同じ上限で切り詰める（無制限な肥大を防ぐ）。
-        if (_history.Count > _historyStore.MaxEntries)
-            _history.RemoveRange(0, _history.Count - _historyStore.MaxEntries);
-        try { _historyStore.Save(_history); } catch { /* 保存失敗は会話を妨げない */ }
-    }
+    private void PushHistory(string text) => _inputHistory.Push(text);
 
     /// <summary>↑：ひとつ前の入力履歴を呼び出す。履歴があれば true（キーを消費）。</summary>
     public bool RecallPreviousHistory()
     {
-        if (_history.Count == 0) return false;
-        if (_historyCursor < 0)
-        {
-            _historyDraft = Input;            // ナビ開始：いまの下書きを退避
-            _historyCursor = _history.Count;
-        }
-        if (_historyCursor == 0) return true; // 既に最古：消費はするが内容は変えない
-        _historyCursor--;
-        SetInput(_history[_historyCursor]);
+        if (!_inputHistory.RecallPrevious(Input, out var recalled)) return false;
+        if (recalled is not null) SetInput(recalled);
         return true;
     }
 
     /// <summary>↓：ひとつ後の入力履歴（末尾を超えたら下書きへ戻す）。ナビ中なら true。</summary>
     public bool RecallNextHistory()
     {
-        if (_historyCursor < 0) return false; // ナビ中でなければ素通し
-        if (_historyCursor >= _history.Count - 1)
-        {
-            _historyCursor = -1;
-            SetInput(_historyDraft);          // 末尾を超えたら編集中の下書きへ
-            return true;
-        }
-        _historyCursor++;
-        SetInput(_history[_historyCursor]);
+        if (!_inputHistory.RecallNext(out var recalled)) return false;
+        SetInput(recalled!);
         return true;
     }
 
@@ -814,7 +786,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         SendCommand.NotifyCanExecuteChanged();
         if (!_suppressSuggestions)
         {
-            _historyCursor = -1;   // 手入力したら履歴ナビをリセット
+            _inputHistory.ResetNavigation();   // 手入力したら履歴ナビをリセット
             UpdateCommandSuggestions(value);
         }
     }
