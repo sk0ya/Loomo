@@ -44,6 +44,17 @@ public sealed class AgentCapabilityHarness
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Loomo", "models", ModelFolderName);
 
+    /// <summary>レポート・試行ログの出力先。リポジトリ直下を散らかさないよう docs/reports に集約する。</summary>
+    private static string ReportDir
+    {
+        get
+        {
+            var dir = @"C:\Projects\Loomo\docs\reports";
+            try { Directory.CreateDirectory(dir); } catch { }
+            return dir;
+        }
+    }
+
     /// <summary>各タスクの初期状態（タスクごとにこの内容へ再シードして隔離する）。
     /// オラクルが「不変であるべきファイル」を照合する基準にもなる。キーは "/" 区切りの相対パス。</summary>
     private static readonly Dictionary<string, string> SeedFiles = new()
@@ -368,7 +379,7 @@ public sealed class AgentCapabilityHarness
                 try
                 {
                     File.AppendAllText(
-                        Path.Combine(@"C:\Projects\Loomo",
+                        Path.Combine(ReportDir,
                             $"harness-report-{ModelFolderName}{(string.IsNullOrEmpty(reportTag) ? "" : "-" + reportTag)}-trials.log"),
                         $"{task.Name}\ttrial {trial + 1}/{repeats}\t{(last.ok ? "PASS" : "FAIL")}\t{sw.ElapsedMilliseconds}ms\titers={rec.Iterations}\t{last.detail}{Environment.NewLine}");
                 }
@@ -382,7 +393,7 @@ public sealed class AgentCapabilityHarness
             body.AppendLine();
             // タスクごとに途中経過を書き出す。重いモデルでネイティブクラッシュしても完了分の結果が残るよう、
             // 最終レポート（ループ後にサマリ付きで1回書く）とは別に partial を逐次更新する。
-            try { File.WriteAllText(Path.Combine(@"C:\Projects\Loomo", $"harness-report-{ModelFolderName}{(string.IsNullOrEmpty(reportTag) ? "" : "-" + reportTag)}-partial.md"), body.ToString()); } catch { }
+            try { File.WriteAllText(Path.Combine(ReportDir, $"harness-report-{ModelFolderName}{(string.IsNullOrEmpty(reportTag) ? "" : "-" + reportTag)}-partial.md"), body.ToString()); } catch { }
         }
 
         // 先頭にサマリ表。R>1 なら成功率と flaky（0<成功<試行）を 🟠 で可視化する。前後比較の一目把握用。
@@ -410,8 +421,8 @@ public sealed class AgentCapabilityHarness
         var outPath = Path.Combine(AppContext.BaseDirectory, fileName);
         File.WriteAllText(outPath, full);
         _out.WriteLine($"REPORT: {outPath}  ({passed}/{verdicts.Count} PASS)");
-        // リポジトリ直下にもコピー（読みやすいよう）
-        try { File.WriteAllText(Path.Combine(@"C:\Projects\Loomo", fileName), full); } catch { }
+        // docs/reports にもコピー（読みやすいよう）
+        try { File.WriteAllText(Path.Combine(ReportDir, fileName), full); } catch { }
     }
 
     private sealed class TurnRecord
