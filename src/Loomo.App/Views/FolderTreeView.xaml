@@ -214,6 +214,9 @@
                 </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="TreeViewItem">
+                        <!-- 既定の BringIntoView は深い項目を見せようと水平にもスクロールして
+                             うっとうしいため、縦方向のみのスクロールに差し替える。 -->
+                        <EventSetter Event="RequestBringIntoView" Handler="OnItemRequestBringIntoView" />
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                         <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
                         <Setter Property="Foreground" Value="{DynamicResource Fg}" />

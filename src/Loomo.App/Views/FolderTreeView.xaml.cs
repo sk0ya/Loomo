@@ -616,6 +616,47 @@ public partial class FolderTreeView : UserControl
             container.Focus();
     }
 
+    // TreeViewItem 既定の BringIntoView は、インデントの深い項目を丸ごと見せようと
+    // 水平方向にもスクロールしてしまう（展開・選択のたびに右へ流れる）。
+    // 既定動作を止め、ヘッダ行が縦方向に見える分だけスクロールする。
+    private void OnItemRequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        if (sender is not TreeViewItem item)
+            return;
+
+        e.Handled = true;
+
+        if (FindDescendant<ScrollViewer>(FileTree) is not { } scrollViewer)
+            return;
+
+        // 対象はヘッダ行（Bd）のみ。item 全体だと展開済みの子を含む高さになる。
+        var header = item.Template?.FindName("Bd", item) as FrameworkElement ?? item;
+        if (!header.IsVisible)
+            return;
+
+        var top = header.TransformToVisual(scrollViewer).Transform(default).Y;
+        var bottom = top + header.ActualHeight;
+
+        if (top < 0)
+            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + top);
+        else if (bottom > scrollViewer.ViewportHeight)
+            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + (bottom - scrollViewer.ViewportHeight));
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                return match;
+            if (FindDescendant<T>(child) is { } found)
+                return found;
+        }
+
+        return null;
+    }
+
     // データ項目に対応する TreeViewItem を、展開済みコンテナを辿って探す。
     private static TreeViewItem? FindContainer(ItemsControl parent, FileNodeViewModel target)
     {
