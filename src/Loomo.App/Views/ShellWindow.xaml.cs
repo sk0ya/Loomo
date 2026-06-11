@@ -100,7 +100,6 @@ public partial class ShellWindow : Window
     private bool _paneDragArmed;
 
     // ===== ドラッグ中のスナップ風プレビュー =====
-    private Popup? _dragPopup;
     private Canvas? _dragCanvas;
     private Border? _dragPreview;       // ドロップ先の半分を塗るプレビュー矩形
     private Border? _dragTargetOutline; // ドロップ先ペイン全体の枠
@@ -851,8 +850,10 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>
-    /// スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は最前面の透明 Popup を被せ、
-    /// その上でマウスを追跡＆プレビューを描画する。
+    /// スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は PaneHost と同セルの透明オーバーレイ
+    /// （<c>PaneDragOverlay</c>）を被せ、その上でマウスを追跡＆プレビューを描画する。
+    /// Popup ではなくウィンドウ内レイヤなのは、Popup が1モニタへクリップされて
+    /// マルチモニタ跨ぎ最大化中に隣のモニタでプレビューが見えなくなるため。
     /// </summary>
     private void BeginPaneDrag(PaneKind source)
     {
@@ -867,13 +868,11 @@ public partial class ShellWindow : Window
         _dragZone = null;
         _paneDragging = true;
 
-        _dragCanvas!.Width = PaneHost.ActualWidth;
-        _dragCanvas.Height = PaneHost.ActualHeight;
         _dragPreview!.Visibility = Visibility.Collapsed;
         _dragTargetOutline!.Visibility = Visibility.Collapsed;
-        _dragPopup!.IsOpen = true;
+        PaneDragOverlay.Visibility = Visibility.Visible;
 
-        // 開いた直後は Popup の HWND が未実体化で捕捉に失敗することがあるため、失敗時は次の入力で再試行する。
+        // 表示直後で捕捉に失敗した場合は次の入力タイミングで再試行する。
         if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
             Dispatcher.BeginInvoke(
                 new Action(() =>
@@ -886,7 +885,7 @@ public partial class ShellWindow : Window
 
     private void EnsureDragOverlay()
     {
-        if (_dragPopup is not null)
+        if (_dragCanvas is not null)
             return;
 
         var accent = (Brush)FindResource("Accent");
@@ -907,21 +906,14 @@ public partial class ShellWindow : Window
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false
         };
+        // PaneDragOverlay は PaneHost と同セルなので、Canvas 上の座標＝PaneHost 座標になる。
         _dragCanvas = new Canvas { Background = Brushes.Transparent };
         _dragCanvas.Children.Add(_dragTargetOutline);
         _dragCanvas.Children.Add(_dragPreview);
         _dragCanvas.MouseMove += OnDragCanvasMouseMove;
         _dragCanvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
         _dragCanvas.LostMouseCapture += OnDragCanvasLostCapture;
-
-        _dragPopup = new Popup
-        {
-            PlacementTarget = PaneHost,
-            Placement = PlacementMode.Relative,
-            AllowsTransparency = true,
-            StaysOpen = true,
-            Child = _dragCanvas
-        };
+        PaneDragOverlay.Children.Add(_dragCanvas);
     }
 
     private void OnDragCanvasMouseMove(object sender, MouseEventArgs e)
@@ -993,8 +985,7 @@ public partial class ShellWindow : Window
         _paneDragging = false;
         if (ReferenceEquals(Mouse.Captured, _dragCanvas))
             Mouse.Capture(null);
-        if (_dragPopup is not null)
-            _dragPopup.IsOpen = false;
+        PaneDragOverlay.Visibility = Visibility.Collapsed;
         if (_dragPreview is not null)
             _dragPreview.Visibility = Visibility.Collapsed;
         if (_dragTargetOutline is not null)
@@ -1060,42 +1051,60 @@ public partial class ShellWindow : Window
         CaptureLayoutSizes();
 
         // 移動元をツリーから外し、ターゲットの指定した辺へ挿入する。
-        RemoveNode(sourceLeaf);
+        _root = RemoveNode(_root, sourceLeaf);
         sourceLeaf.Weight = 1;
-        InsertRelative(sourceLeaf, targetLeaf, zone);
+        _root = InsertRelative(_root, sourceLeaf, targetLeaf, zone);
+
+        // 跨ぎ最大化中の移動は、解除時に戻す保存レイアウトへも同じ論理操作を反映する
+        // （解除やスナップショット保存で移動が巻き戻らないように）。
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
+            _spanSavedRoot = MoveInTree(savedRoot, source, target, zone);
 
         _root = Normalize(_root);
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>ノードを親スプリットから取り外す（畳み込みは Normalize に任せる）。</summary>
-    private void RemoveNode(PaneNode node)
+    /// <summary>指定ツリー上で <see cref="MovePane"/> と同じ移動を行い、新しいルートを返す。</summary>
+    private PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone)
     {
-        var parent = FindParent(node);
+        var sourceLeaf = AllLeaves(root).FirstOrDefault(l => l.Kind == source);
+        var targetLeaf = AllLeaves(root).FirstOrDefault(l => l.Kind == target);
+        if (sourceLeaf is null || targetLeaf is null || ReferenceEquals(sourceLeaf, targetLeaf))
+            return root;
+
+        var newRoot = RemoveNode(root, sourceLeaf);
+        sourceLeaf.Weight = 1;
+        return Normalize(InsertRelative(newRoot, sourceLeaf, targetLeaf, zone));
+    }
+
+    /// <summary>ノードを親スプリットから取り外し、新しいルートを返す（畳み込みは Normalize に任せる）。</summary>
+    private PaneNode? RemoveNode(PaneNode? root, PaneNode node)
+    {
+        var parent = FindParent(node, root);
         if (parent is null)
-            _root = null;
-        else
-            parent.Children.Remove(node);
+            return ReferenceEquals(root, node) ? null : root;
+        parent.Children.Remove(node);
+        return root;
     }
 
     /// <summary>
-    /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入する。
+    /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入し、新しいルートを返す。
     /// 望む方向が target の親スプリットと一致すれば兄弟として差し込み、
     /// 異なれば target を新しいスプリットで包む（＝列の片方だけを上下分割できる）。
     /// </summary>
-    private void InsertRelative(PaneNode node, PaneLeaf target, DropZone zone)
+    private PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneLeaf target, DropZone zone)
     {
         var wantColumns = zone is DropZone.Left or DropZone.Right;
         var before = zone is DropZone.Left or DropZone.Above;
         var desired = wantColumns ? SplitKind.Columns : SplitKind.Rows;
-        var parent = FindParent(target);
+        var parent = FindParent(target, root);
 
         if (parent is not null && parent.Orientation == desired)
         {
             var index = parent.Children.IndexOf(target);
             parent.Children.Insert(before ? index : index + 1, node);
-            return;
+            return root;
         }
 
         // target を内包する新しいスプリットへ置き換える。
@@ -1113,9 +1122,9 @@ public partial class ShellWindow : Window
         }
 
         if (parent is null)
-            _root = split;
-        else
-            parent.Children[parent.Children.IndexOf(target)] = split;
+            return split;
+        parent.Children[parent.Children.IndexOf(target)] = split;
+        return root;
     }
 
     private void OnHidePane(object sender, RoutedEventArgs e)
@@ -1194,7 +1203,16 @@ public partial class ShellWindow : Window
         if (visible)
         {
             if (leaf is null)
-                AddLeafAtBottom(NewLeaf(kind)); // 一度もツリーに置かれていないペイン
+            {
+                // 一度もツリーに置かれていないペイン。跨ぎ最大化中はモニタの継ぎ目を跨ぐ
+                // 全幅の行ではなく、右端の列の最下段へ入れる。
+                var newLeaf = NewLeaf(kind);
+                if (_isSpanMaximized && _root is PaneSplit { Orientation: SplitKind.Columns } columns
+                    && columns.Children.Count > 0)
+                    columns.Children[^1] = AddLeafAtBottom(columns.Children[^1], newLeaf);
+                else
+                    AddLeafAtBottom(newLeaf);
+            }
             else
                 leaf.Hidden = false;
         }
@@ -1206,6 +1224,16 @@ public partial class ShellWindow : Window
             leaf!.Hidden = true;
             if (_focusedRegion?.Pane == kind)
                 _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
+        }
+
+        // 跨ぎ最大化中の表示切替は、解除時に戻す保存レイアウトへも反映する
+        // （跨ぎ解除やスナップショット保存で表示状態が巻き戻らないように）。
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
+        {
+            if (AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == kind) is { } savedLeaf)
+                savedLeaf.Hidden = !visible;
+            else if (visible)
+                _spanSavedRoot = AddLeafAtBottom(savedRoot, NewLeaf(kind));
         }
 
         // EditorSupport の表示はユーザー操作を最優先で記憶する（自動開閉はガード中なので除外）。
@@ -1223,23 +1251,24 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>
-    private void AddLeafAtBottom(PaneLeaf leaf)
+    private void AddLeafAtBottom(PaneLeaf leaf) => _root = AddLeafAtBottom(_root, leaf);
+
+    /// <summary>指定ツリーの最下段の新しい行としてリーフを追加し、新しいルートを返す。
+    /// 既存ノードを行スプリットで包む場合は外側の重み（親スプリット内の比率）を引き継ぐ。</summary>
+    private static PaneNode AddLeafAtBottom(PaneNode? root, PaneLeaf leaf)
     {
-        if (_root is null)
+        if (root is null)
+            return leaf;
+        if (root is PaneSplit { Orientation: SplitKind.Rows } rows)
         {
-            _root = leaf;
-        }
-        else if (_root is PaneSplit split && split.Orientation == SplitKind.Rows)
-        {
-            split.Children.Add(leaf);
-        }
-        else
-        {
-            var rows = new PaneSplit { Orientation = SplitKind.Rows };
-            rows.Children.Add(_root);
             rows.Children.Add(leaf);
-            _root = rows;
+            return rows;
         }
+        var wrap = new PaneSplit { Orientation = SplitKind.Rows, Weight = root.Weight };
+        root.Weight = 1;
+        wrap.Children.Add(root);
+        wrap.Children.Add(leaf);
+        return wrap;
     }
 
     // ===== ペイン操作（Ctrl+W → h/j/k/l 移動 / Shift+h/j/k/l リサイズ / z ズーム） =====
@@ -2576,13 +2605,23 @@ public partial class ShellWindow : Window
     /// </summary>
     private void EnsureEditorSupportLeafBesideEditor()
     {
+        // 跨ぎ最大化中は、解除時に戻す保存レイアウトにも同じ位置（Editor の右隣・隠した状態）で
+        // 確保しておく（解除後の再表示位置が最下段の全幅行に落ちないように）。
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot
+            && AllLeaves(savedRoot).All(l => l.Kind != PaneKind.EditorSupport)
+            && AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == PaneKind.Editor) is { } savedEditor)
+        {
+            _spanSavedRoot = InsertRelative(
+                savedRoot, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, savedEditor, DropZone.Right);
+        }
+
         if (FindLeaf(PaneKind.EditorSupport) is not null)
             return;
         if (FindLeaf(PaneKind.Editor) is not { } editorLeaf)
             return; // Editor がツリーに無い場合は SetPaneVisible の既定動作（最下段へ追加）に任せる
 
         CaptureLayoutSizes();
-        InsertRelative(new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
+        _root = InsertRelative(_root, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
     }
 
     /// <summary>EditorSupport ペインの WebView2 を遅延生成し、CoreWebView2 まで実体化して返す（失敗時 null）。</summary>
@@ -3787,6 +3826,12 @@ public partial class ShellWindow : Window
         _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
         StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         ApplyPaneLayout(workspace.PaneLayout);
+        // 跨ぎ最大化中のワークスペース切替：切替先のレイアウトを基準に列振り分けを適用し直す。
+        // これをしないと切替先のペインがモニタの継ぎ目を跨いだまま表示され、さらに古い
+        // _spanSavedRoot（切替前ワークスペースのレイアウト）が切替先のスナップショットへ
+        // 保存されてレイアウトが混入する。
+        if (_isSpanMaximized)
+            ReapplySpanPaneLayout();
         StartupProfiler.Mark("  復元:ApplyPaneLayout");
 
         // 起動時は、ここで一旦メッセージループへ戻して初フレームを描画させる。Background 優先度は
@@ -4119,10 +4164,11 @@ public partial class ShellWindow : Window
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
 
-        if (_isSpanMaximized && _spanSavedLayout is { } savedLayout)
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
         {
-            // 跨ぎ最大化中の一時レイアウトは永続化せず、跨ぐ前のレイアウトを保存する。
-            snapshot.PaneLayout = savedLayout;
+            // 跨ぎ最大化中の一時レイアウト（モニタ単位の列）は永続化せず、跨ぐ前のレイアウト
+            // （跨ぎ中の表示切替・移動は反映済み）を保存する。
+            snapshot.PaneLayout = ToSnapshot(savedRoot);
         }
         else
         {
@@ -4306,8 +4352,9 @@ public partial class ShellWindow : Window
     private bool _isSpanMaximized;
     /// <summary>疑似最大化に入る前のウィンドウ矩形（物理px）。復元に使う。</summary>
     private RECT? _spanRestoreBounds;
-    /// <summary>疑似最大化に入る前のペインレイアウト。解除時に復元する。</summary>
-    private PaneNodeSnapshot? _spanSavedLayout;
+    /// <summary>疑似最大化に入る前のペインレイアウト（深いコピー）。解除時に復元する。
+    /// 跨ぎ中の表示切替・ペイン移動はこのツリーへも反映し、スナップショット保存にもこれを使う。</summary>
+    private PaneNode? _spanSavedRoot;
 
     /// <summary>
     /// 横並びのモニタがあれば、それらのワーク領域を連結した矩形へ疑似最大化する。
@@ -4350,12 +4397,12 @@ public partial class ShellWindow : Window
     /// 跨ぎ最大化用のペインレイアウトを適用する。表示中の各ペインを（現在の中心位置の比率で）
     /// 担当モニタへ振り分け、列の境界がモニタの継ぎ目と一致するルート列レイアウトへ組み替える。
     /// これでどのペインも継ぎ目を跨いで表示されない。元のレイアウトは
-    /// <see cref="_spanSavedLayout"/> に保存し、跨ぎ解除時に復元する。
+    /// <see cref="_spanSavedRoot"/> に保存し、跨ぎ解除時に復元する。
     /// 可視ペインが1枚しか無い・ズーム中の場合は組み替えない（継ぎ目跨ぎは許容）。
     /// </summary>
     private void ApplySpanPaneLayout(List<RECT> areas, RECT span)
     {
-        _spanSavedLayout = null;
+        _spanSavedRoot = null;
         if (areas.Count < 2 || _zoomedPane is not null)
             return;
         var visible = AllLeaves().Where(l => !l.Hidden).ToList();
@@ -4367,7 +4414,9 @@ public partial class ShellWindow : Window
             return;
 
         CaptureLayoutSizes();
-        _spanSavedLayout = _root is null ? null : ToSnapshot(_root);
+        var hiddenLeaves = AllLeaves().Where(l => l.Hidden).ToList();
+        // 復元用は深いコピーで保存する（以降の列組み替えによるリーフ Weight 書き換えの影響を受けない）。
+        _spanSavedRoot = _root is null ? null : BuildFromSnapshot(ToSnapshot(_root), new HashSet<PaneKind>());
 
         // 各ペインの現在の中心位置（PaneHost 内の比率）。矩形が取れないものは中央扱い。
         var infos = visible.Select(leaf =>
@@ -4396,6 +4445,15 @@ public partial class ShellWindow : Window
             groups = areas.Select(_ => new List<(PaneLeaf Leaf, double Cx, double Cy, double Height)>()).ToList();
             for (var i = 0; i < ordered.Count; i++)
                 groups[i * areas.Count / ordered.Count].Add(ordered[i]);
+        }
+
+        // 非表示リーフもツリーへ残す（跨ぎ中の再表示が列の中へ収まり、表示トグル・自動表示が機能し続ける）。
+        // 画面上の矩形を持たないため、左端の（中身のある）列の最下段へ Hidden のまま置く。
+        // 再表示されたときの高さは列内の平均に合わせる。
+        foreach (var hiddenLeaf in hiddenLeaves)
+        {
+            var group = groups.FirstOrDefault(g => g.Count > 0) ?? groups[0];
+            group.Add((hiddenLeaf, 0.0, double.MaxValue, group.Count > 0 ? group.Average(i => i.Height) : 1.0));
         }
 
         // PaneHost はウィンドウ左端から ActivityBar＋サイドバー分ずれているため、その分を
@@ -4427,7 +4485,7 @@ public partial class ShellWindow : Window
 
         if (root.Children.Count < 2)
         {
-            _spanSavedLayout = null; // 列分割が成立しないなら現状のまま
+            _spanSavedRoot = null; // 列分割が成立しないなら現状のまま
             return;
         }
 
@@ -4454,6 +4512,29 @@ public partial class ShellWindow : Window
         return rows;
     }
 
+    /// <summary>
+    /// 跨ぎ最大化中にペインレイアウトの出どころが変わった（ワークスペース切替等）とき、
+    /// 新しいレイアウトを基準に現在のモニタ構成で列振り分けを適用し直す。
+    /// <see cref="_spanSavedRoot"/> も適用し直す直前のレイアウトで取り直されるため、
+    /// 解除時・スナップショット保存時に切替前のレイアウトを引きずらない。
+    /// </summary>
+    private void ReapplySpanPaneLayout()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+            return;
+        var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (monitor == IntPtr.Zero)
+            return;
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(monitor, ref info))
+            return;
+
+        // 適用直後のレイアウトでも実測のペイン矩形で振り分けられるよう、先にレイアウトを確定させる。
+        PaneHost.UpdateLayout();
+        ApplySpanPaneLayout(GetSideBySideWorkAreas(info.rcWork), ComputeMaximizeRect(info.rcWork));
+    }
+
     /// <summary>疑似最大化を解き、入る前の矩形とペインレイアウトへ戻す。</summary>
     private void RestoreFromSpan()
     {
@@ -4465,15 +4546,18 @@ public partial class ShellWindow : Window
         ExitSpanState();
     }
 
-    /// <summary>跨ぎ状態だけを解く（ウィンドウ矩形は触らない）。ペインレイアウトは跨ぐ前へ復元する。</summary>
+    /// <summary>跨ぎ状態だけを解く（ウィンドウ矩形は触らない）。ペインレイアウトは跨ぐ前
+    /// （＝跨ぎ中の表示切替・移動を反映済みの保存ツリー）へ復元する。</summary>
     private void ExitSpanState()
     {
         _isSpanMaximized = false;
         _spanRestoreBounds = null;
-        if (_spanSavedLayout is { } saved)
+        if (_spanSavedRoot is { } saved)
         {
-            _spanSavedLayout = null;
-            ApplyPaneLayout(saved);
+            _spanSavedRoot = null;
+            _zoomedPane = null;
+            _root = saved;
+            RebuildPaneLayout();
             SaveActiveWorkspaceSnapshot();
         }
         UpdateMaximizeGlyph();

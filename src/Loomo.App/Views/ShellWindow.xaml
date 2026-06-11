@@ -621,6 +621,11 @@
                 </DockPanel>
 
                 </Grid>   <!-- /PaneHost -->
+
+                <!-- ペインドラッグ中のスナップ風プレビュー用オーバーレイ（PaneHost と同じセルへ重ねる）。
+                     Popup は1モニタへクリップされ、跨ぎ最大化中に隣のモニタでプレビューが見えないため
+                     ウィンドウ内のレイヤとして被せる。 -->
+                <Grid x:Name="PaneDragOverlay" Grid.Column="2" Panel.ZIndex="100" Visibility="Collapsed" />
             </Grid>
         </Grid>
     </Border>
