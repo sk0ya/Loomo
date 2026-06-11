@@ -7,6 +7,7 @@ using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
@@ -124,6 +125,9 @@ public partial class App : Application
         });
 
         // --- エージェント ---
+        // AI のファイル変更（write_file/edit_file）を前後全文付きで記録するジャーナル（Diff セッションが読む）
+        services.AddSingleton<FileChangeJournal>();
+        services.AddSingleton<IFileChangeJournal>(sp => sp.GetRequiredService<FileChangeJournal>());
         services.AddSingleton<AgentOrchestrator>();
         services.AddSingleton<ConversationStore>();
 
@@ -150,6 +154,8 @@ public partial class App : Application
         services.AddSingleton<AppearanceViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionViewModel>();
+        services.AddSingleton<DiffSessionViewModel>();
+        services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }

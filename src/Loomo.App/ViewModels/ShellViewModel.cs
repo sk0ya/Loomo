@@ -26,6 +26,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public AppearanceViewModel Appearance { get; }
     public GitPanelViewModel GitPanel { get; }
     public GitSessionViewModel GitSession { get; }
+    public DiffSessionViewModel DiffSession { get; }
+    public TraceSessionViewModel TraceSession { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -42,7 +44,9 @@ public sealed partial class ShellViewModel : ObservableObject
         SettingsViewModel settings,
         AppearanceViewModel appearance,
         GitPanelViewModel gitPanel,
-        GitSessionViewModel gitSession)
+        GitSessionViewModel gitSession,
+        DiffSessionViewModel diffSession,
+        TraceSessionViewModel traceSession)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -53,6 +57,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Appearance = appearance;
         GitPanel = gitPanel;
         GitSession = gitSession;
+        DiffSession = diffSession;
+        TraceSession = traceSession;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;

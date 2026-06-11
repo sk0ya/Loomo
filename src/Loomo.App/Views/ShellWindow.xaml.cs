@@ -246,6 +246,17 @@ public partial class ShellWindow : Window
             if (e.NewValue is true)
                 _vm.GitSession.EnsureLoaded();
         };
+        // Diff / Trace ペインも同様に初表示で遅延読込する。
+        DiffPane.IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true)
+                _vm.DiffSession.EnsureLoaded();
+        };
+        TracePane.IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true)
+                _vm.TraceSession.EnsureLoaded();
+        };
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
 
@@ -311,6 +322,8 @@ public partial class ShellWindow : Window
         _paneElements[PaneKind.Browser] = BrowserPane;
         _paneElements[PaneKind.Ai] = AiPane;
         _paneElements[PaneKind.Git] = GitPane;
+        _paneElements[PaneKind.Diff] = DiffPane;
+        _paneElements[PaneKind.Trace] = TracePane;
 
         // 各コンテンツホスト内の分割マネージャ。タブID→コントロールの解決はワークスペース現在のタブ一覧から行う。
         _editorViews = new PaneSplitView(
@@ -1673,6 +1686,12 @@ public partial class ShellWindow : Window
                 break;
             case PaneKind.Git:
                 GitSessionHost.Focus();
+                break;
+            case PaneKind.Diff:
+                DiffSessionHost.Focus();
+                break;
+            case PaneKind.Trace:
+                TraceSessionHost.Focus();
                 break;
         }
     }

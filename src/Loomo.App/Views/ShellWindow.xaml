@@ -112,6 +112,12 @@
                             Content="⎇" ToolTip="Git 表示切替"
                             Tag="Git" Click="OnTogglePaneVisibility" />
                     <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="±" ToolTip="Diff 表示切替"
+                            Tag="Diff" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="📊" ToolTip="トレース 表示切替"
+                            Tag="Trace" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
                             Content="🤖" ToolTip="AI 表示切替"
                             Tag="Ai" Click="OnTogglePaneVisibility" />
                     <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
@@ -408,6 +414,32 @@
                                 Tag="Git" Click="OnHidePane" />
                     </DockPanel>
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
+                </DockPanel>
+
+                <!-- Diff : セッションペイン（AI変更レビュー＋Git作業ツリー差分） -->
+                <DockPanel x:Name="DiffPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="Diff" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="DIFF" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Tag="Diff" Click="OnHidePane" />
+                    </DockPanel>
+                    <views:DiffSessionView x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" />
+                </DockPanel>
+
+                <!-- Trace : セッションペイン（AI操作トレースのタイムライン表示・読み取り専用） -->
+                <DockPanel x:Name="TracePane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="Trace" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TRACE" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Tag="Trace" Click="OnHidePane" />
+                    </DockPanel>
+                    <views:TraceSessionView x:Name="TraceSessionHost" DataContext="{Binding TraceSession}" />
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->

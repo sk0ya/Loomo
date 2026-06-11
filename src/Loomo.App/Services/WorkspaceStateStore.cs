@@ -85,7 +85,9 @@ public enum PaneKind
     Browser,
     Ai,
     EditorSupport,
-    Git
+    Git,
+    Diff,
+    Trace
 }
 
 /// <summary>
