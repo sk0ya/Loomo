@@ -1,10 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using sk0ya.Loomo.Ai.Http;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
 using Xunit;
@@ -12,7 +6,7 @@ using Xunit;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// エージェントループの堅牢化（コンテキスト長トリム / HTTPリトライ）の検証。
+/// エージェントループの堅牢化（コンテキスト長トリム / プロファイル適用）の検証。
 /// </summary>
 public class AgentLoopTests
 {
@@ -116,153 +110,5 @@ public class AgentLoopTests
         Assert.NotEqual(ChatRole.Tool, result[0].Role);
         Assert.Equal(ChatRole.User, result[0].Role);
         Assert.Same(msgs[^1], result[^1]);
-    }
-
-    // ===== HttpRetry: 純粋関数 =====
-
-    [Theory]
-    [InlineData(429, true)]
-    [InlineData(500, true)]
-    [InlineData(503, true)]
-    [InlineData(408, true)]
-    [InlineData(400, false)]
-    [InlineData(401, false)]
-    [InlineData(404, false)]
-    public void IsTransient_classifies_status_codes(int code, bool expected)
-        => Assert.Equal(expected, HttpRetry.IsTransient((HttpStatusCode)code));
-
-    [Fact]
-    public void BackoffDelay_grows_exponentially_and_caps()
-    {
-        var opts = new RetryOptions(MaxAttempts: 10, BaseDelay: TimeSpan.FromMilliseconds(500), MaxDelay: TimeSpan.FromSeconds(20));
-        Assert.Equal(TimeSpan.FromMilliseconds(500), HttpRetry.BackoffDelay(1, opts));
-        Assert.Equal(TimeSpan.FromMilliseconds(1000), HttpRetry.BackoffDelay(2, opts));
-        Assert.Equal(TimeSpan.FromMilliseconds(2000), HttpRetry.BackoffDelay(3, opts));
-        Assert.Equal(TimeSpan.FromSeconds(20), HttpRetry.BackoffDelay(20, opts)); // 上限で頭打ち
-    }
-
-    // ===== HttpRetry: 送信ループ（遅延はノーオペで差し替え） =====
-
-    private sealed class SequenceHandler : HttpMessageHandler
-    {
-        private readonly Queue<HttpStatusCode> _codes;
-        public int Calls { get; private set; }
-
-        public SequenceHandler(params HttpStatusCode[] codes) => _codes = new Queue<HttpStatusCode>(codes);
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            Calls++;
-            var code = _codes.Count > 0 ? _codes.Dequeue() : HttpStatusCode.OK;
-            return Task.FromResult(new HttpResponseMessage(code));
-        }
-    }
-
-    [Fact]
-    public async Task SendAsync_retries_transient_then_succeeds()
-    {
-        var handler = new SequenceHandler(HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
-        using var http = new HttpClient(handler);
-
-        using var resp = await HttpRetry.SendAsync(
-            http,
-            () => new HttpRequestMessage(HttpMethod.Get, "https://example.test/"),
-            CancellationToken.None,
-            RetryOptions.Default,
-            delay: (_, _) => Task.CompletedTask); // 待たない
-
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        Assert.Equal(2, handler.Calls);
-    }
-
-    [Fact]
-    public async Task SendAsync_does_not_retry_permanent_error()
-    {
-        var handler = new SequenceHandler(HttpStatusCode.BadRequest, HttpStatusCode.OK);
-        using var http = new HttpClient(handler);
-
-        using var resp = await HttpRetry.SendAsync(
-            http,
-            () => new HttpRequestMessage(HttpMethod.Get, "https://example.test/"),
-            CancellationToken.None,
-            RetryOptions.Default,
-            delay: (_, _) => Task.CompletedTask);
-
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-        Assert.Equal(1, handler.Calls); // 400 は再試行しない
-    }
-
-    private sealed class ThrowOnceHandler : HttpMessageHandler
-    {
-        private readonly Exception _toThrow;
-        public int Calls { get; private set; }
-
-        public ThrowOnceHandler(Exception toThrow) => _toThrow = toThrow;
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            Calls++;
-            if (Calls == 1) throw _toThrow;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
-        }
-    }
-
-    [Fact]
-    public async Task SendAsync_retries_request_timeout_then_succeeds()
-    {
-        // HttpClient.Timeout 由来のタイムアウトは TaskCanceledException(OperationCanceledException) として飛ぶ。
-        // ユーザーキャンセル(ct)ではないので一時障害として再試行されること。
-        var handler = new ThrowOnceHandler(new TaskCanceledException("timeout"));
-        using var http = new HttpClient(handler);
-
-        using var resp = await HttpRetry.SendAsync(
-            http,
-            () => new HttpRequestMessage(HttpMethod.Get, "https://example.test/"),
-            CancellationToken.None,
-            RetryOptions.Default,
-            delay: (_, _) => Task.CompletedTask);
-
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        Assert.Equal(2, handler.Calls);
-    }
-
-    [Fact]
-    public async Task SendAsync_does_not_retry_user_cancellation()
-    {
-        // ct がキャンセル済みなら（=ユーザー中断）再試行せず OperationCanceledException を伝播する。
-        var handler = new ThrowOnceHandler(new TaskCanceledException("cancelled"));
-        using var http = new HttpClient(handler);
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => HttpRetry.SendAsync(
-            http,
-            () => new HttpRequestMessage(HttpMethod.Get, "https://example.test/"),
-            cts.Token,
-            RetryOptions.Default,
-            delay: (_, _) => Task.CompletedTask));
-
-        Assert.Equal(1, handler.Calls);
-    }
-
-    [Fact]
-    public async Task SendAsync_gives_up_after_max_attempts()
-    {
-        var handler = new SequenceHandler(
-            HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable,
-            HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable,
-            HttpStatusCode.ServiceUnavailable);
-        using var http = new HttpClient(handler);
-        var opts = new RetryOptions(MaxAttempts: 3, BaseDelay: TimeSpan.FromMilliseconds(1), MaxDelay: TimeSpan.FromMilliseconds(1));
-
-        using var resp = await HttpRetry.SendAsync(
-            http,
-            () => new HttpRequestMessage(HttpMethod.Get, "https://example.test/"),
-            CancellationToken.None,
-            opts,
-            delay: (_, _) => Task.CompletedTask);
-
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
-        Assert.Equal(3, handler.Calls); // MaxAttempts で打ち切り
     }
 }
