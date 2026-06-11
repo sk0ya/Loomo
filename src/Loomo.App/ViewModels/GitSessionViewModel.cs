@@ -1,0 +1,235 @@
+using System;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+using System.Windows;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Services;
+
+namespace sk0ya.Loomo.App.ViewModels;
+
+/// <summary>
+/// Git セッションペインの ViewModel。コミットグラフ（git log --graph）・ブランチ一覧と、
+/// rebase / merge / cherry-pick / reset などサイドバーに収まらない操作を担う。
+/// 名前入力（新規ブランチ等）や破壊的操作の確認はビュー側ダイアログで行い、ここは git 操作に徹する。
+/// </summary>
+public sealed partial class GitSessionViewModel : ObservableObject
+{
+    private readonly GitService _git;
+    private readonly IEditorService _editor;
+    private bool _loaded;
+    private GitStatusSnapshot _status = new();
+
+    [ObservableProperty] private bool _isRepository = true;
+    [ObservableProperty] private string _branchLabel = "";
+    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private string _statusMessage = "";
+    [ObservableProperty] private bool _statusIsError;
+
+    /// <summary>選択中のコミット行。変更で詳細（show --stat）を読み込む。</summary>
+    [ObservableProperty] private GitLogRow? _selectedLogRow;
+    [ObservableProperty] private string _commitDetail = "";
+
+    /// <summary>rebase / merge / cherry-pick が進行中か（続行・中止バナーの表示）。</summary>
+    [ObservableProperty] private bool _operationInProgress;
+    [ObservableProperty] private string _operationLabel = "";
+    /// <summary>進行中操作が「スキップ」を持つか（rebase / cherry-pick のみ）。</summary>
+    [ObservableProperty] private bool _operationCanSkip;
+
+    public ObservableCollection<GitBranchInfo> Branches { get; } = new();
+    public ObservableCollection<GitLogRow> LogRows { get; } = new();
+
+    public GitSessionViewModel(GitService git, IEditorService editor)
+    {
+        _git = git;
+        _editor = editor;
+        _git.RepositoryChanged += OnRepositoryChanged;
+    }
+
+    /// <summary>Git ペインが初めて表示されたときに読み込む（以降は RepositoryChanged で追従）。</summary>
+    public void EnsureLoaded()
+    {
+        if (_loaded) return;
+        _loaded = true;
+        _ = RefreshAsync();
+    }
+
+    private void OnRepositoryChanged(object? sender, EventArgs e)
+    {
+        if (!_loaded) return;
+        var app = Application.Current;
+        if (app is null) return;
+        app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
+    }
+
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        _loaded = true;
+        _status = await _git.GetStatusAsync();
+        IsRepository = _status.IsRepository;
+
+        if (!_status.IsRepository)
+        {
+            BranchLabel = "";
+            Branches.Clear();
+            LogRows.Clear();
+            CommitDetail = "";
+            OperationInProgress = false;
+            return;
+        }
+
+        BranchLabel = (_status.Ahead, _status.Behind) switch
+        {
+            (0, 0) => _status.Branch,
+            (var a, 0) => $"{_status.Branch} ↑{a}",
+            (0, var b) => $"{_status.Branch} ↓{b}",
+            var (a, b) => $"{_status.Branch} ↑{a} ↓{b}",
+        };
+
+        OperationInProgress = _status.OperationInProgress;
+        OperationLabel = _status.RebaseInProgress ? "リベースが進行中です（コンフリクトを解消してください）"
+            : _status.MergeInProgress ? "マージが進行中です（コンフリクトを解消してください）"
+            : _status.CherryPickInProgress ? "チェリーピックが進行中です（コンフリクトを解消してください）"
+            : "";
+        OperationCanSkip = _status.RebaseInProgress || _status.CherryPickInProgress;
+
+        var branches = await _git.GetBranchesAsync();
+        Branches.Clear();
+        foreach (var branch in branches)
+            Branches.Add(branch);
+
+        var selectedHash = SelectedLogRow?.Hash;
+        var log = await _git.GetLogAsync();
+        LogRows.Clear();
+        GitLogRow? reselect = null;
+        foreach (var row in log)
+        {
+            LogRows.Add(row);
+            if (selectedHash is not null && row.Hash == selectedHash)
+                reselect = row;
+        }
+        SelectedLogRow = reselect;
+        if (reselect is null)
+            CommitDetail = "";
+    }
+
+    partial void OnSelectedLogRowChanged(GitLogRow? value)
+    {
+        if (value?.Hash is not { } hash)
+            return;
+        _ = LoadCommitDetailAsync(hash);
+    }
+
+    private async Task LoadCommitDetailAsync(string hash)
+    {
+        CommitDetail = await _git.GetCommitSummaryAsync(hash);
+    }
+
+    // ===== 同期 =====
+
+    [RelayCommand] private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());
+    [RelayCommand] private Task PullAsync() => RunOpAsync("プル", () => _git.PullAsync());
+    [RelayCommand] private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
+
+    // ===== ブランチ操作（対象はビューから引数で渡す） =====
+
+    public Task<GitCommandResult?> CheckoutBranchAsync(GitBranchInfo branch) => branch.IsRemote
+        ? RunOpAsync($"チェックアウト {branch.Name}", () => _git.CheckoutTrackAsync(branch.Name))
+        : RunOpAsync($"チェックアウト {branch.Name}", () => _git.CheckoutAsync(branch.Name));
+
+    public Task<GitCommandResult?> CreateBranchAsync(string name, string? startPoint = null) =>
+        RunOpAsync($"ブランチ作成 {name}", () => _git.CreateBranchAsync(name, startPoint));
+
+    public Task<GitCommandResult?> DeleteBranchAsync(GitBranchInfo branch, bool force) =>
+        RunOpAsync($"ブランチ削除 {branch.Name}", () => _git.DeleteBranchAsync(branch.Name, force));
+
+    public Task<GitCommandResult?> MergeAsync(GitBranchInfo branch) =>
+        RunOpAsync($"{branch.Name} をマージ", () => _git.MergeAsync(branch.Name));
+
+    public Task<GitCommandResult?> RebaseAsync(GitBranchInfo branch) =>
+        RunOpAsync($"{branch.Name} へリベース", () => _git.RebaseAsync(branch.Name));
+
+    // ===== コミット操作 =====
+
+    public Task<GitCommandResult?> CheckoutCommitAsync(GitLogRow row) => row.Hash is null
+        ? Task.FromResult<GitCommandResult?>(null)
+        : RunOpAsync($"チェックアウト {row.ShortHash}", () => _git.CheckoutCommitAsync(row.Hash));
+
+    public Task<GitCommandResult?> CherryPickAsync(GitLogRow row) => row.Hash is null
+        ? Task.FromResult<GitCommandResult?>(null)
+        : RunOpAsync($"チェリーピック {row.ShortHash}", () => _git.CherryPickAsync(row.Hash));
+
+    public Task<GitCommandResult?> RevertAsync(GitLogRow row) => row.Hash is null
+        ? Task.FromResult<GitCommandResult?>(null)
+        : RunOpAsync($"リバート {row.ShortHash}", () => _git.RevertAsync(row.Hash));
+
+    public Task<GitCommandResult?> ResetAsync(GitLogRow row, GitResetMode mode) => row.Hash is null
+        ? Task.FromResult<GitCommandResult?>(null)
+        : RunOpAsync($"リセット（{mode.ToString().ToLowerInvariant()}）{row.ShortHash}",
+            () => _git.ResetAsync(row.Hash, mode));
+
+    /// <summary>コミットのフルパッチをエディタの仮想ドキュメントで開く。</summary>
+    public async Task OpenPatchAsync(GitLogRow row)
+    {
+        if (row.Hash is null) return;
+        var patch = await _git.GetCommitPatchAsync(row.Hash);
+        await _editor.OpenDocumentAsync(new EditorDocument
+        {
+            FileName = $"commit-{row.ShortHash}.diff",
+            Content = patch,
+            OnSaved = _ => { },  // 読み取り専用の用途
+        });
+    }
+
+    // ===== 進行中操作（rebase / merge / cherry-pick）の続行・スキップ・中止 =====
+
+    [RelayCommand]
+    private Task ContinueOperationAsync() =>
+        _status.RebaseInProgress ? RunOpAsync("リベース続行", () => _git.RebaseContinueAsync())
+        : _status.CherryPickInProgress ? RunOpAsync("チェリーピック続行", () => _git.CherryPickContinueAsync())
+        : _status.MergeInProgress ? RunOpAsync("マージ続行", () => _git.MergeContinueAsync())
+        : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SkipOperationAsync() =>
+        _status.RebaseInProgress ? RunOpAsync("リベーススキップ", () => _git.RebaseSkipAsync())
+        : _status.CherryPickInProgress ? RunOpAsync("チェリーピックスキップ", () => _git.CherryPickSkipAsync())
+        : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task AbortOperationAsync() =>
+        _status.RebaseInProgress ? RunOpAsync("リベース中止", () => _git.RebaseAbortAsync())
+        : _status.CherryPickInProgress ? RunOpAsync("チェリーピック中止", () => _git.CherryPickAbortAsync())
+        : _status.MergeInProgress ? RunOpAsync("マージ中止", () => _git.MergeAbortAsync())
+        : Task.CompletedTask;
+
+    /// <summary>更新系操作の共通枠：多重実行の抑止・結果メッセージの表示。実行できなければ null。</summary>
+    private async Task<GitCommandResult?> RunOpAsync(string label, Func<Task<GitCommandResult>> operation)
+    {
+        if (IsBusy) return null;
+        IsBusy = true;
+        StatusMessage = $"{label}を実行中…";
+        StatusIsError = false;
+        try
+        {
+            var result = await operation();
+            StatusIsError = !result.Success;
+            StatusMessage = result.Success
+                ? $"{label}が完了しました。"
+                : Truncate(result.Message);
+            return result;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static string Truncate(string text)
+    {
+        var t = text.Trim();
+        return t.Length <= 300 ? t : t[..300] + "…";
+    }
+}

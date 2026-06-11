@@ -85,6 +85,9 @@ public partial class App : Application
         services.AddSingleton<UiApprovalService>();
         services.AddSingleton<IApprovalService>(sp => sp.GetRequiredService<UiApprovalService>());
 
+        // Git クライアント（git CLI を独立プロセスで実行。サイドバー・Git ペイン双方が共有）
+        services.AddSingleton<GitService>();
+
         // --- AI ---
         // ローカル推論エンジン（ONNX Runtime GenAI・CPU）。モデルを常駐させるためシングルトン。
         services.AddSingleton<Phi4Engine>();
@@ -145,6 +148,8 @@ public partial class App : Application
         services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();
+        services.AddSingleton<GitPanelViewModel>();
+        services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }

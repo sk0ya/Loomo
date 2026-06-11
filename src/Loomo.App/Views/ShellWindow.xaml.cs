@@ -230,6 +230,18 @@ public partial class ShellWindow : Window
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
+        // サイドバー Git パネルの「セッションを開く」：Git ペインを表示してフォーカスする。
+        vm.GitPanel.SessionOpenRequested += (_, _) =>
+        {
+            SetPaneVisible(PaneKind.Git, true);
+            FocusPane(PaneKind.Git);
+        };
+        // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込する。
+        GitPane.IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true)
+                _vm.GitSession.EnsureLoaded();
+        };
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
 
@@ -294,6 +306,7 @@ public partial class ShellWindow : Window
         _paneElements[PaneKind.EditorSupport] = EditorSupportPane;
         _paneElements[PaneKind.Browser] = BrowserPane;
         _paneElements[PaneKind.Ai] = AiPane;
+        _paneElements[PaneKind.Git] = GitPane;
 
         // 各コンテンツホスト内の分割マネージャ。タブID→コントロールの解決はワークスペース現在のタブ一覧から行う。
         _editorViews = new PaneSplitView(
@@ -1653,6 +1666,9 @@ public partial class ShellWindow : Window
                 break;
             case PaneKind.Ai:
                 AiBarHost.FocusInput();
+                break;
+            case PaneKind.Git:
+                GitSessionHost.Focus();
                 break;
         }
     }

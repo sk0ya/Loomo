@@ -60,6 +60,8 @@
                             Command="{Binding ShowExplorerCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
                             Command="{Binding ShowTabsCommand}" />
+                    <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
+                            Command="{Binding ShowGitCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
                             Command="{Binding ShowSessionsCommand}" />
                 </StackPanel>
@@ -107,6 +109,9 @@
                             Content="🌐" ToolTip="ブラウザ 表示切替"
                             Tag="Browser" Click="OnTogglePaneVisibility" />
                     <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="⎇" ToolTip="Git 表示切替"
+                            Tag="Git" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
                             Content="🤖" ToolTip="AI 表示切替"
                             Tag="Ai" Click="OnTogglePaneVisibility" />
                     <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
@@ -145,6 +150,8 @@
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
                     <views:TabsView DataContext="{Binding Tabs}"
                                     Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Tabs}" />
+                    <views:GitPanelView DataContext="{Binding GitPanel}"
+                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Git}" />
                     <views:SessionsView DataContext="{Binding Sessions}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
                     <views:SettingsView DataContext="{Binding Settings}"
@@ -388,6 +395,19 @@
                                 Padding="10,4" Height="28" Click="OnBrowserGo" />
                     </Grid>
                     <Grid x:Name="BrowserContentHost" />
+                </DockPanel>
+
+                <!-- Git : セッションペイン（コミットグラフ・ブランチ・rebase 等の複雑操作） -->
+                <DockPanel x:Name="GitPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="Git" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="GIT" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Tag="Git" Click="OnHidePane" />
+                    </DockPanel>
+                    <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->

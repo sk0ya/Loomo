@@ -78,7 +78,8 @@ public enum PaneKind
     Editor,
     Browser,
     Ai,
-    EditorSupport
+    EditorSupport,
+    Git
 }
 
 /// <summary>

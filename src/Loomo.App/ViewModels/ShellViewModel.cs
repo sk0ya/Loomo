@@ -10,7 +10,8 @@ public enum SidebarPanel
     Tabs,
     Sessions,
     Settings,
-    Appearance
+    Appearance,
+    Git
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
@@ -23,6 +24,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public SessionsViewModel Sessions { get; }
     public SettingsViewModel Settings { get; }
     public AppearanceViewModel Appearance { get; }
+    public GitPanelViewModel GitPanel { get; }
+    public GitSessionViewModel GitSession { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -37,7 +40,9 @@ public sealed partial class ShellViewModel : ObservableObject
         TabsViewModel tabs,
         SessionsViewModel sessions,
         SettingsViewModel settings,
-        AppearanceViewModel appearance)
+        AppearanceViewModel appearance,
+        GitPanelViewModel gitPanel,
+        GitSessionViewModel gitSession)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -46,6 +51,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Sessions = sessions;
         Settings = settings;
         Appearance = appearance;
+        GitPanel = gitPanel;
+        GitSession = gitSession;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
@@ -80,6 +87,15 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar の外観（テーマ）アイコン。</summary>
     [RelayCommand]
     private void ShowAppearance() => Activate(SidebarPanel.Appearance);
+
+    /// <summary>ActivityBar の Git アイコン。開くときにリポジトリ状態を遅延読込する。</summary>
+    [RelayCommand]
+    private void ShowGit()
+    {
+        Activate(SidebarPanel.Git);
+        if (ActivePanel == SidebarPanel.Git && IsSidebarVisible)
+            GitPanel.EnsureLoaded();
+    }
 
     /// <summary>同じパネルを再クリックしたら閉じ、別パネルなら切替えて開く（VS Code 風）。</summary>
     private void Activate(SidebarPanel panel)

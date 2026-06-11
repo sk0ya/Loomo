@@ -51,7 +51,12 @@ public class ShellViewModelTests
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workspaces.json"));
         var workspacesVm = new WorkspaceListViewModel(workspaceStore);
 
-        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm, appearanceVm);
+        var git = new sk0ya.Loomo.Services.GitService(workspace);
+        var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService());
+        var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService());
+
+        return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
+            appearanceVm, gitPanelVm, gitSessionVm);
     }
 
     [Fact]
