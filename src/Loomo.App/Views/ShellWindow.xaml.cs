@@ -64,6 +64,8 @@ public partial class ShellWindow : Window
     private bool? _editorSupportUserVisibility;
     /// <summary>自動開閉中の SetPaneVisible をユーザー操作と区別するガード。</summary>
     private bool _editorSupportAutoToggling;
+    /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>
+    private string? _editorSupportMappedFolder;
 
     /// <summary>
     /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。
@@ -2422,6 +2424,8 @@ public partial class ShellWindow : Window
         {
             title = provider.DescribeTitle(filePath);
             html = provider.RenderHtml(filePath, source.Control.Text);
+            UpdateEditorSupportVirtualHost(
+                view.CoreWebView2, MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder);
         }
         else
         {
@@ -2435,6 +2439,30 @@ public partial class ShellWindow : Window
 
         view.CoreWebView2.NavigateToString(html);
         EditorSupportTitle.Text = title;
+    }
+
+    /// <summary>
+    /// プレビューの相対パス画像（&lt;base href&gt; = <see cref="MarkdownRenderer.PreviewVirtualHost"/>）を
+    /// 表示中ファイルのフォルダから読めるよう、仮想ホストのマップ先を切り替える。
+    /// NavigateToString のページは about:blank オリジンのため file:// は読めず、このマップが必要。
+    /// </summary>
+    private void UpdateEditorSupportVirtualHost(CoreWebView2 core, string? folder)
+    {
+        if (string.IsNullOrEmpty(folder)
+            || string.Equals(folder, _editorSupportMappedFolder, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            // 同名ホストへの再呼び出しはマップ先の差し替えになる。DenyCors でも <img> は読める。
+            core.SetVirtualHostNameToFolderMapping(
+                MarkdownRenderer.PreviewVirtualHost, folder, CoreWebView2HostResourceAccessKind.DenyCors);
+            _editorSupportMappedFolder = folder;
+        }
+        catch
+        {
+            // マップ失敗（無効なフォルダ等）でもプレビュー本文の表示は続ける（画像だけ出ない）。
+        }
     }
 
     /// <summary>EditorSupport ペインの自動開閉（ユーザー操作と区別するためガードを立てて呼ぶ）。</summary>
@@ -2503,6 +2531,20 @@ public partial class ShellWindow : Window
         if (!_editorSupportWebEventsAttached && _editorSupportView.CoreWebView2 is not null)
         {
             _editorSupportView.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
+
+            // 同梱 Web アセット（mermaid.min.js）の配信元。アプリ出力フォルダ固定なので一度だけマップする。
+            try
+            {
+                _editorSupportView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    MarkdownRenderer.AssetsVirtualHost,
+                    Path.Combine(AppContext.BaseDirectory, "Assets", "Web"),
+                    CoreWebView2HostResourceAccessKind.DenyCors);
+            }
+            catch
+            {
+                // マップ失敗時は mermaid 図が原文表示になるだけで、プレビュー自体は動く。
+            }
+
             _editorSupportWebEventsAttached = true;
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -39,12 +40,55 @@ public sealed class EditorSupportRegistry
             : _providers.FirstOrDefault(p => p.CanSupport(filePath));
 }
 
+/// <summary>
+/// プレビューの相対パス画像解決に使う、仮想ホストのマップ先フォルダと base href の決定。
+/// base href を埋め込む <see cref="MarkdownEditorSupport"/> と、実際にマップする ShellWindow の
+/// 両方がここを通ることで、判断が食い違わないようにする。
+/// </summary>
+public static class MarkdownPreviewPaths
+{
+    /// <summary>
+    /// ファイルがワークスペースルート配下なら、ルートをマップ先にして base href をファイルの
+    /// フォルダ位置（例: https://preview.loomo/docs/）にする。これで <c>../assets/img.png</c> のように
+    /// ルート内で上のフォルダへ遡る画像も解決できる。ルート未設定・ルート外（別ドライブ含む）は
+    /// 従来どおりファイルのフォルダをマップ先にする。
+    /// </summary>
+    public static (string MapFolder, string BaseHref) Resolve(string? workspaceRoot, string filePath)
+    {
+        var fileDir = Path.GetDirectoryName(filePath) ?? "";
+        var hostRoot = $"https://{MarkdownRenderer.PreviewVirtualHost}/";
+
+        if (string.IsNullOrWhiteSpace(workspaceRoot) || fileDir.Length == 0)
+            return (fileDir, hostRoot);
+
+        var rel = Path.GetRelativePath(workspaceRoot, fileDir);
+        var outsideRoot = rel == ".."
+            || rel.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || Path.IsPathRooted(rel); // 別ドライブだと GetRelativePath は絶対パスを返す
+
+        if (outsideRoot)
+            return (fileDir, hostRoot);
+
+        var href = rel == "."
+            ? hostRoot
+            : hostRoot + string.Join('/',
+                rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                   .Select(Uri.EscapeDataString)) + "/";
+        return (workspaceRoot, href);
+    }
+}
+
 /// <summary>Markdown（.md / .markdown）のライブプレビュー。</summary>
 public sealed class MarkdownEditorSupport : IEditorSupportProvider
 {
     private readonly AiSettings _settings;
+    private readonly IWorkspaceService _workspace;
 
-    public MarkdownEditorSupport(AiSettings settings) => _settings = settings;
+    public MarkdownEditorSupport(AiSettings settings, IWorkspaceService workspace)
+    {
+        _settings = settings;
+        _workspace = workspace;
+    }
 
     public bool CanSupport(string filePath)
         => Path.GetExtension(filePath).ToLowerInvariant() is ".md" or ".markdown";
@@ -52,5 +96,10 @@ public sealed class MarkdownEditorSupport : IEditorSupportProvider
     public string DescribeTitle(string filePath) => $"Preview: {Path.GetFileName(filePath)}";
 
     public string RenderHtml(string filePath, string text)
-        => MarkdownRenderer.RenderToHtml(text, DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
+        => MarkdownRenderer.RenderToHtml(
+            text,
+            DescribeTitle(filePath),
+            _settings.Appearance.MarkdownPreviewTheme,
+            // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
+            baseHref: MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
 }

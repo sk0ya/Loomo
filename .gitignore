@@ -62,3 +62,6 @@ Desktop.ini
 
 # Claude Code ランタイム状態
 .claude/
+
+# ビルド時に取得する同梱 Web アセット（Loomo.App.csproj の DownloadMermaid ターゲット参照）
+src/Loomo.App/Assets/Web/mermaid.min.js

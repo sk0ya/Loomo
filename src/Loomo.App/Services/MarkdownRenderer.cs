@@ -6,12 +6,25 @@ namespace sk0ya.Loomo.App.Services;
 
 internal static class MarkdownRenderer
 {
-    public static string RenderToHtml(string markdown, string? title = null, string styleName = "Dracula")
+    /// <summary>
+    /// プレビュー内の相対パス画像を解決するための WebView2 仮想ホスト名。
+    /// ShellWindow が SetVirtualHostNameToFolderMapping でプレビュー対象ファイルのフォルダへ
+    /// マップし、ページには &lt;base href&gt; としてこのホストを埋め込む。
+    /// </summary>
+    public const string PreviewVirtualHost = "preview.loomo";
+
+    /// <summary>
+    /// 同梱 Web アセット（mermaid.min.js 等）を配信する WebView2 仮想ホスト名。
+    /// ShellWindow がアプリ出力の Assets/Web フォルダへマップする。
+    /// </summary>
+    public const string AssetsVirtualHost = "assets.loomo";
+
+    public static string RenderToHtml(string markdown, string? title = null, string styleName = "Dracula", string? baseHref = null)
     {
         var body = new StringBuilder();
         // U+0001 は Inline() のコードスパン退避に使う番兵。原文に紛れ込むと復元が壊れるので除去する。
         ProcessBlocks(markdown.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\u0001", ""), body);
-        return BuildPage(body.ToString(), title, styleName);
+        return BuildPage(body.ToString(), title, styleName, baseHref);
     }
 
     private static void ProcessBlocks(string text, StringBuilder html)
@@ -27,8 +40,11 @@ internal static class MarkdownRenderer
                 var fence = line.TrimStart();
                 var fenceChar = fence[0];
                 var lang = fence.Length > 3 ? Encode(fence[3..].Trim()) : "";
+                // mermaid フェンスは <pre class="mermaid"> として出力し、ページ側の mermaid.js が
+                // 図へ変換する（テキストは textContent として読まれるので HTML エンコードでよい）。
+                var isMermaid = lang.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
                 var cls = lang.Length > 0 ? $" class=\"language-{lang}\"" : "";
-                html.Append($"<pre><code{cls}>");
+                html.Append(isMermaid ? "<pre class=\"mermaid\">" : $"<pre><code{cls}>");
                 i++;
                 while (i < lines.Length && !lines[i].TrimStart().StartsWith(fenceChar.ToString() + fenceChar + fenceChar))
                 {
@@ -36,7 +52,7 @@ internal static class MarkdownRenderer
                     i++;
                 }
                 i++;
-                html.AppendLine("</code></pre>");
+                html.AppendLine(isMermaid ? "</pre>" : "</code></pre>");
                 continue;
             }
 
@@ -222,19 +238,23 @@ internal static class MarkdownRenderer
     private static readonly Regex ItalicUnderRe = new(@"_([^\s_].*?[^\s_]?)_(?!_)", RegexOptions.Compiled);
     private static readonly Regex StrikeRe = new(@"~~(.+?)~~", RegexOptions.Compiled);
 
-    private static string BuildPage(string body, string? title, string styleName)
+    private static string BuildPage(string body, string? title, string styleName, string? baseHref = null)
     {
         var t = title != null ? Encode(title) : "Preview";
         var css = PreviewCss(styleName);
+        var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{EncodeAttribute(baseHref)}\">";
+        var mermaidScript = body.Contains("class=\"mermaid\"") ? BuildMermaidScript(styleName) : "";
         return $$"""
             <!DOCTYPE html>
             <html>
             <head>
             <meta charset="utf-8">
+            {{baseTag}}
             <title>{{t}}</title>
             <style>
             {{css}}
             </style>
+            {{mermaidScript}}
             <script>
             (() => {
                 let suppressScrollMessage = false;
@@ -267,6 +287,23 @@ internal static class MarkdownRenderer
             </head>
             <body>{{body}}</body>
             </html>
+            """;
+    }
+
+    /// <summary>
+    /// mermaid フェンスがあるときだけ埋め込む描画スクリプト。アプリ同梱の mermaid.min.js
+    /// （<see cref="AssetsVirtualHost"/> 経由）を読むのでオフラインでも動く。読み込めない場合や
+    /// 編集途中の構文エラー（suppressErrorRendering）は原文テキストのまま残る。
+    /// テーマはプレビューテーマの明暗に合わせる。
+    /// </summary>
+    private static string BuildMermaidScript(string styleName)
+    {
+        var theme = NormalizeStyle(styleName) is "Light" or "GitHub" ? "default" : "dark";
+        return $$"""
+            <script src="https://{{AssetsVirtualHost}}/mermaid.min.js"></script>
+            <script>
+            window.mermaid?.initialize({ startOnLoad: true, theme: '{{theme}}', suppressErrorRendering: true });
+            </script>
             """;
     }
 
@@ -349,6 +386,12 @@ internal static class MarkdownRenderer
                 font-size: 0.87em;
                 line-height: 1.5;
             }
+            pre.mermaid {
+                background: transparent;
+                border: none;
+                text-align: center;
+            }
+            pre.mermaid svg { max-width: 100%; }
             blockquote {
                 border-left: 4px solid {{muted}};
                 margin: 14px 0;
