@@ -4287,7 +4287,11 @@ public partial class ShellWindow : Window
             else if (command is SC_MOVE or SC_SIZE && _isSpanMaximized)
             {
                 // 跨ぎ中にユーザーが移動・リサイズを始めたら、その操作を尊重して跨ぎ状態だけ解く
-                // （ペインレイアウトは跨ぐ前へ戻す。ウィンドウ矩形はユーザー操作に任せる）。
+                // （ペインレイアウトは跨ぐ前へ戻す）。タイトルバーのドラッグ移動（下位ビットが
+                // HTCAPTION）は本物の最大化解除ドラッグと同じく、移動ループへ入る前に跨ぐ前の
+                // サイズへ縮めてカーソル下に配置する。リサイズと keyboard 移動は矩形を触らない。
+                if (command == SC_MOVE && (wParam.ToInt64() & 0x000F) == HTCAPTION)
+                    ShrinkToSpanRestoreSizeAtCursor(hwnd);
                 ExitSpanState();
             }
         }
@@ -4546,6 +4550,28 @@ public partial class ShellWindow : Window
         ExitSpanState();
     }
 
+    /// <summary>
+    /// 跨ぎ最大化中にタイトルバーのドラッグ移動が始まる直前、ウィンドウを跨ぐ前のサイズへ
+    /// 縮めてカーソル下へ配置する（本物の最大化をドラッグで解除したときと同じ挙動）。
+    /// カーソルの横位置のウィンドウ内比率を保つので、掴んだ点がタイトルバー上に残ったまま
+    /// 移動ループへ入れる。ここで縮めた矩形がそのまま移動後のウィンドウサイズになる。
+    /// </summary>
+    private void ShrinkToSpanRestoreSizeAtCursor(IntPtr hwnd)
+    {
+        if (_spanRestoreBounds is not { } restore)
+            return;
+        if (!GetWindowRect(hwnd, out var current) || !GetCursorPos(out var cursor))
+            return;
+
+        var width = restore.Right - restore.Left;
+        var height = restore.Bottom - restore.Top;
+        var spanWidth = Math.Max(current.Right - current.Left, 1);
+        var ratio = Math.Clamp((cursor.X - current.Left) / (double)spanWidth, 0.0, 1.0);
+        var left = cursor.X - (int)Math.Round(width * ratio);
+        SetWindowPos(hwnd, IntPtr.Zero, left, current.Top, width, height,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
     /// <summary>跨ぎ状態だけを解く（ウィンドウ矩形は触らない）。ペインレイアウトは跨ぐ前
     /// （＝跨ぎ中の表示切替・移動を反映済みの保存ツリー）へ復元する。</summary>
     private void ExitSpanState()
@@ -4593,6 +4619,10 @@ public partial class ShellWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out POINT lpPoint);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
