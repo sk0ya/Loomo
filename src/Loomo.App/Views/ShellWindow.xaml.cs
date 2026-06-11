@@ -14,6 +14,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
@@ -316,8 +317,6 @@ public partial class ShellWindow : Window
 
     // ===== ペインレイアウト（2D並べ替え・リサイズ・表示切替） =====
 
-    private enum DropZone { Left, Right, Above, Below }
-    private enum SplitKind { Rows, Columns }
 
     private void InitializePanes()
     {
@@ -371,40 +370,14 @@ public partial class ShellWindow : Window
 
     private PaneLeaf NewLeaf(PaneKind kind) => new() { Kind = kind };
 
-    /// <summary>ツリー内のすべてのリーフ（ペイン）を列挙する。</summary>
-    private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null)
-    {
-        node ??= _root;
-        if (node is PaneLeaf leaf)
-        {
-            yield return leaf;
-        }
-        else if (node is PaneSplit split)
-        {
-            foreach (var child in split.Children)
-                foreach (var l in AllLeaves(child))
-                    yield return l;
-        }
-    }
+    /// <summary>ツリー内のすべてのリーフ（ペイン）を列挙する（実体は <see cref="PaneLayoutTree"/>）。</summary>
+    private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null) => PaneLayoutTree.AllLeaves(node ?? _root);
 
-    private PaneLeaf? FindLeaf(PaneKind kind) => AllLeaves().FirstOrDefault(l => l.Kind == kind);
+    private PaneLeaf? FindLeaf(PaneKind kind) => PaneLayoutTree.FindLeaf(_root, kind);
 
     /// <summary>指定ノードを直接の子に持つスプリットを返す（ルートなら null）。</summary>
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
-    {
-        current ??= _root;
-        if (current is not PaneSplit split)
-            return null;
-        if (split.Children.Contains(target))
-            return split;
-        foreach (var child in split.Children)
-        {
-            var found = FindParent(target, child);
-            if (found is not null)
-                return found;
-        }
-        return null;
-    }
+        => PaneLayoutTree.FindParent(current ?? _root, target);
 
     /// <summary>
     /// 現在の <see cref="_root"/>（レイアウトツリー）に合わせて <c>PaneHost</c> を組み直す。
@@ -511,12 +484,7 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>ノード（リーフ／スプリット）に可視なペインが含まれるか。</summary>
-    private bool IsNodeVisible(PaneNode node) => node switch
-    {
-        PaneLeaf leaf => !leaf.Hidden,
-        PaneSplit split => split.Children.Any(IsNodeVisible),
-        _ => false
-    };
+    private static bool IsNodeVisible(PaneNode node) => PaneLayoutTree.IsNodeVisible(node);
 
     private static void AddTrack(Grid grid, bool cols, GridLength length, double min = 0)
     {
@@ -681,96 +649,15 @@ public partial class ShellWindow : Window
 
     /// <summary>スナップショットからツリーを再構築する（重複・未知のペインは捨てる）。</summary>
     private PaneNode? BuildFromSnapshot(PaneNodeSnapshot snap, HashSet<PaneKind> seen)
-    {
-        if (snap.Children is { Count: > 0 })
-        {
-            var kids = new List<PaneNode>();
-            foreach (var child in snap.Children)
-            {
-                var n = BuildFromSnapshot(child, seen);
-                if (n is not null)
-                    kids.Add(n);
-            }
-            if (kids.Count == 0)
-                return null;
-            if (kids.Count == 1)
-            {
-                kids[0].Weight = snap.Weight > 0 ? snap.Weight : 1;
-                return kids[0];
-            }
-            var split = new PaneSplit
-            {
-                Orientation = snap.Orientation == "Columns" ? SplitKind.Columns : SplitKind.Rows,
-                Weight = snap.Weight > 0 ? snap.Weight : 1
-            };
-            split.Children.AddRange(kids);
-            return split;
-        }
+        => PaneLayoutTree.BuildFromSnapshot(snap, seen, _paneElements.ContainsKey);
 
-        if (snap.Kind is { } kind && _paneElements.ContainsKey(kind) && seen.Add(kind))
-            return new PaneLeaf { Kind = kind, Weight = snap.Weight > 0 ? snap.Weight : 1, Hidden = snap.Hidden };
-        return null;
-    }
-
-    private static PaneNodeSnapshot ToSnapshot(PaneNode node)
-    {
-        if (node is PaneLeaf leaf)
-            return new PaneNodeSnapshot { Weight = leaf.Weight, Kind = leaf.Kind, Hidden = leaf.Hidden };
-
-        var split = (PaneSplit)node;
-        return new PaneNodeSnapshot
-        {
-            Weight = split.Weight,
-            Orientation = split.Orientation == SplitKind.Columns ? "Columns" : "Rows",
-            Children = split.Children.Select(ToSnapshot).ToList()
-        };
-    }
+    private static PaneNodeSnapshot ToSnapshot(PaneNode node) => PaneLayoutTree.ToSnapshot(node);
 
     /// <summary>
     /// ツリーを正規化する：空スプリットを除去し、子が1つのスプリットを畳み、
     /// 同方向に入れ子になったスプリットをフラット化する。
     /// </summary>
-    private PaneNode? Normalize(PaneNode? node)
-    {
-        if (node is not PaneSplit split)
-            return node;
-
-        var kids = new List<PaneNode>();
-        foreach (var child in split.Children)
-        {
-            var n = Normalize(child);
-            if (n is null)
-                continue;
-            if (n is PaneSplit inner && inner.Orientation == split.Orientation)
-                AddFlattenedChildren(kids, inner); // 同方向は比率を保ってフラット化
-            else
-                kids.Add(n);
-        }
-
-        if (kids.Count == 0)
-            return null;
-        if (kids.Count == 1)
-        {
-            kids[0].Weight = split.Weight;
-            return kids[0];
-        }
-
-        split.Children.Clear();
-        split.Children.AddRange(kids);
-        return split;
-    }
-
-    private static void AddFlattenedChildren(List<PaneNode> destination, PaneSplit inner)
-    {
-        var total = inner.Children.Sum(c => c.Weight > 0 ? c.Weight : 1);
-        var scale = total > 0 ? (inner.Weight > 0 ? inner.Weight : 1) / total : 1;
-        foreach (var child in inner.Children)
-        {
-            var weight = child.Weight > 0 ? child.Weight : 1;
-            child.Weight = weight * scale;
-            destination.Add(child);
-        }
-    }
+    private static PaneNode? Normalize(PaneNode? node) => PaneLayoutTree.Normalize(node);
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -1066,66 +953,18 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>指定ツリー上で <see cref="MovePane"/> と同じ移動を行い、新しいルートを返す。</summary>
-    private PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone)
-    {
-        var sourceLeaf = AllLeaves(root).FirstOrDefault(l => l.Kind == source);
-        var targetLeaf = AllLeaves(root).FirstOrDefault(l => l.Kind == target);
-        if (sourceLeaf is null || targetLeaf is null || ReferenceEquals(sourceLeaf, targetLeaf))
-            return root;
-
-        var newRoot = RemoveNode(root, sourceLeaf);
-        sourceLeaf.Weight = 1;
-        return Normalize(InsertRelative(newRoot, sourceLeaf, targetLeaf, zone));
-    }
+    private static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone)
+        => PaneLayoutTree.MoveInTree(root, source, target, zone);
 
     /// <summary>ノードを親スプリットから取り外し、新しいルートを返す（畳み込みは Normalize に任せる）。</summary>
-    private PaneNode? RemoveNode(PaneNode? root, PaneNode node)
-    {
-        var parent = FindParent(node, root);
-        if (parent is null)
-            return ReferenceEquals(root, node) ? null : root;
-        parent.Children.Remove(node);
-        return root;
-    }
+    private static PaneNode? RemoveNode(PaneNode? root, PaneNode node) => PaneLayoutTree.RemoveNode(root, node);
 
     /// <summary>
-    /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入し、新しいルートを返す。
-    /// 望む方向が target の親スプリットと一致すれば兄弟として差し込み、
-    /// 異なれば target を新しいスプリットで包む（＝列の片方だけを上下分割できる）。
+    /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入し、新しいルートを返す
+    /// （実体は <see cref="PaneLayoutTree.InsertRelative"/>）。
     /// </summary>
-    private PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneLeaf target, DropZone zone)
-    {
-        var wantColumns = zone is DropZone.Left or DropZone.Right;
-        var before = zone is DropZone.Left or DropZone.Above;
-        var desired = wantColumns ? SplitKind.Columns : SplitKind.Rows;
-        var parent = FindParent(target, root);
-
-        if (parent is not null && parent.Orientation == desired)
-        {
-            var index = parent.Children.IndexOf(target);
-            parent.Children.Insert(before ? index : index + 1, node);
-            return root;
-        }
-
-        // target を内包する新しいスプリットへ置き換える。
-        var split = new PaneSplit { Orientation = desired, Weight = target.Weight };
-        target.Weight = 1;
-        if (before)
-        {
-            split.Children.Add(node);
-            split.Children.Add(target);
-        }
-        else
-        {
-            split.Children.Add(target);
-            split.Children.Add(node);
-        }
-
-        if (parent is null)
-            return split;
-        parent.Children[parent.Children.IndexOf(target)] = split;
-        return root;
-    }
+    private static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneLeaf target, DropZone zone)
+        => PaneLayoutTree.InsertRelative(root, node, target, zone);
 
     private void OnHidePane(object sender, RoutedEventArgs e)
     {
@@ -1255,21 +1094,7 @@ public partial class ShellWindow : Window
 
     /// <summary>指定ツリーの最下段の新しい行としてリーフを追加し、新しいルートを返す。
     /// 既存ノードを行スプリットで包む場合は外側の重み（親スプリット内の比率）を引き継ぐ。</summary>
-    private static PaneNode AddLeafAtBottom(PaneNode? root, PaneLeaf leaf)
-    {
-        if (root is null)
-            return leaf;
-        if (root is PaneSplit { Orientation: SplitKind.Rows } rows)
-        {
-            rows.Children.Add(leaf);
-            return rows;
-        }
-        var wrap = new PaneSplit { Orientation = SplitKind.Rows, Weight = root.Weight };
-        root.Weight = 1;
-        wrap.Children.Add(root);
-        wrap.Children.Add(leaf);
-        return wrap;
-    }
+    private static PaneNode AddLeafAtBottom(PaneNode? root, PaneLeaf leaf) => PaneLayoutTree.AddLeafAtBottom(root, leaf);
 
     // ===== ペイン操作（Ctrl+W → h/j/k/l 移動 / Shift+h/j/k/l リサイズ / z ズーム） =====
 
@@ -3205,30 +3030,7 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>レイアウトツリーのノード基底。</summary>
-    private abstract class PaneNode
-    {
-        /// <summary>親スプリット内での star 比率。</summary>
-        public double Weight { get; set; } = 1;
-        /// <summary>直近の描画で割り当てられた Grid トラック番号（未描画は -1）。サイズ取り込み用。</summary>
-        public int TrackIndex { get; set; } = -1;
-    }
-
-    /// <summary>リーフ＝1ペイン。</summary>
-    private sealed class PaneLeaf : PaneNode
-    {
-        public PaneKind Kind { get; init; }
-        /// <summary>非表示中か。true でもツリーには残し、再表示で元の位置・比率へ戻す。</summary>
-        public bool Hidden { get; set; }
-    }
-
-    /// <summary>スプリット＝入れ子の行（上下）または列（左右）。</summary>
-    private sealed class PaneSplit : PaneNode
-    {
-        public SplitKind Orientation { get; init; }
-        public List<PaneNode> Children { get; } = new();
-        /// <summary>再構築のたびに生成される Grid。サイズ取り込み用の一時参照。</summary>
-        public Grid? Host { get; set; }
-    }
+    // ペインレイアウトツリーのモデルと純粋操作は Layout/PaneLayout.cs（PaneLayoutTree）にある。
 
     // ===== ペイン内分割（vim 風 Ctrl+W v/s）=====
 
@@ -3255,7 +3057,7 @@ public partial class ShellWindow : Window
     /// <summary>スプリット＝入れ子の行（上下）または列（左右）。</summary>
     private sealed class ViewSplit : ViewNode
     {
-        public ShellWindow.SplitKind Orientation { get; init; }
+        public SplitKind Orientation { get; init; }
         public List<ViewNode> Children { get; } = new();
         public Grid? Host { get; set; }
     }
@@ -3344,7 +3146,7 @@ public partial class ShellWindow : Window
         }
 
         /// <summary>フォーカス中ビューポートの隣へ新しいビューポート（newTabId 表示）を挿入し、そこへフォーカスする。</summary>
-        public void SplitFocused(ShellWindow.SplitKind orientation, Guid newTabId)
+        public void SplitFocused(SplitKind orientation, Guid newTabId)
         {
             CaptureSizes();
             var target = _focused ?? Leaves().FirstOrDefault();
@@ -3525,7 +3327,7 @@ public partial class ShellWindow : Window
 
             var grid = new Grid();
             split.Host = grid;
-            var cols = split.Orientation == ShellWindow.SplitKind.Columns;
+            var cols = split.Orientation == SplitKind.Columns;
             var min = cols ? 160.0 : 80.0;
 
             for (var i = 0; i < split.Children.Count; i++)
@@ -3616,7 +3418,7 @@ public partial class ShellWindow : Window
             return null;
         }
 
-        private void Insert(ViewNode target, ViewNode node, ShellWindow.SplitKind orientation)
+        private void Insert(ViewNode target, ViewNode node, SplitKind orientation)
         {
             var parent = FindParent(target);
             if (parent is not null && parent.Orientation == orientation)
@@ -3691,7 +3493,7 @@ public partial class ShellWindow : Window
                 return;
             if (split.Host is { } grid)
             {
-                var cols = split.Orientation == ShellWindow.SplitKind.Columns;
+                var cols = split.Orientation == SplitKind.Columns;
                 foreach (var child in split.Children)
                 {
                     var index = child.TrackIndex;
