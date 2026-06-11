@@ -4048,7 +4048,16 @@ public partial class ShellWindow : Window
 
     private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_GETMINMAXINFO)
+        if (msg == HorizontalWheelScroll.WM_MOUSEHWHEEL)
+        {
+            if (HorizontalWheelScroll.Handle(wParam))
+            {
+                handled = true;
+                // WM_MOUSEHWHEEL は処理したら TRUE を返す（WM_MOUSEWHEEL と逆の慣習）。
+                return new IntPtr(1);
+            }
+        }
+        else if (msg == WM_GETMINMAXINFO)
         {
             var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
             if (monitor != IntPtr.Zero)
