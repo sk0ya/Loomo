@@ -53,6 +53,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     public event EventHandler<string>? FileActivated;
 
+    // ファイルの単クリックでのプレビュー表示要求。ShellWindow がプレビュータブ
+    // （編集するまで確定せず、次のクリックで中身が差し替わる）で開く。
+    public event EventHandler<string>? FilePreviewRequested;
+
     // FolderTree の HTML をアプリ内ブラウザで開く要求。View（コンテキストメニュー）から発火し、
     // ShellWindow がブラウザペインに新規タブを開いて file:// URL をナビゲートする。
     public event EventHandler<string>? OpenInBrowserRequested;
@@ -581,6 +585,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _workspace.SelectedPath = fullPath;
         if (File.Exists(fullPath))
             FileActivated?.Invoke(this, fullPath);
+    }
+
+    public void NotifyPreviewRequested(string fullPath)
+    {
+        _workspace.SelectedPath = fullPath;
+        if (File.Exists(fullPath))
+            FilePreviewRequested?.Invoke(this, fullPath);
     }
 
     /// <summary>HTML ファイルをアプリ内ブラウザで開くよう要求する（ShellWindow が処理）。</summary>

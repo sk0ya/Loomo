@@ -36,6 +36,9 @@ public sealed partial class TabEntryViewModel : ObservableObject
     [ObservableProperty] private string _title;
     [ObservableProperty] private bool _isActive;
     [ObservableProperty] private ImageSource? _icon;
+
+    /// <summary>プレビュータブ（FolderTree の単クリックで開き、編集するまで確定しない）。タイトルを斜体で表示する。</summary>
+    [ObservableProperty] private bool _isPreview;
 }
 
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
@@ -121,6 +124,14 @@ public sealed partial class TabsViewModel : ObservableObject
 
         tab.Title = title;
         tab.Icon = _icons.GetFileIcon(path);
+    }
+
+    /// <summary>エディタタブのプレビュー表示（斜体）を切り替える。</summary>
+    public void SetEditorTabPreview(Guid id, bool isPreview)
+    {
+        var tab = EditorTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is not null)
+            tab.IsPreview = isPreview;
     }
 
     public void ActivateEditorTab(Guid id)

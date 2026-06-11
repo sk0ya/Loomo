@@ -84,8 +84,9 @@ public partial class FolderTreeView : UserControl
         return current as T;
     }
 
-    // フォルダ行を 1 クリックで開閉する（クリックした階層だけをトグルし、配下は遅延読込の
-    // ままにして完全展開はしない）。矢印トグル自身のクリックは IsChecked 経由で既にトグル
+    // 1 クリック操作：フォルダ行は開閉（クリックした階層だけをトグルし、配下は遅延読込の
+    // ままにして完全展開はしない）、ファイル行はプレビュータブで開く（編集するまでタブ確定せず、
+    // 次のクリックで中身が差し替わる）。矢印トグル自身のクリックは IsChecked 経由で既にトグル
     // されるため除外する。ダブルクリック（ClickCount=2）は二重トグルになるので無視する。
     private void OnTreeMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
@@ -95,8 +96,13 @@ public partial class FolderTreeView : UserControl
         if (FindAncestor<ToggleButton>(source) is not null)
             return;
 
-        if (FindAncestorTreeViewItem(source)?.DataContext is FileNodeViewModel { IsDirectory: true } node)
+        if (FindAncestorTreeViewItem(source)?.DataContext is not FileNodeViewModel node)
+            return;
+
+        if (node.IsDirectory)
             node.IsExpanded = !node.IsExpanded;
+        else if (DataContext is FolderTreeViewModel vm)
+            vm.NotifyPreviewRequested(node.FullPath);
     }
 
     // Vim 風キーボード操作:

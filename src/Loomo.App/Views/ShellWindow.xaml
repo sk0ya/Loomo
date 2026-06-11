@@ -253,7 +253,7 @@
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnEditorTabSelected">
-                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                    <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
@@ -265,6 +265,10 @@
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                            </DataTrigger>
+                                            <!-- プレビュータブ（編集するまで確定しない）は VS Code 同様に斜体で示す -->
+                                            <DataTrigger Binding="{Binding IsPreview}" Value="True">
+                                                <Setter TargetName="TabTitle" Property="FontStyle" Value="Italic" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>

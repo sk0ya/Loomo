@@ -50,6 +50,9 @@ public partial class ShellWindow : Window
     private TerminalTab? _activeTerminalTab;
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
+    /// <summary>FolderTree の単クリックで開いたプレビュータブ（VS Code 風）。1つだけ使い回し、
+    /// 別ファイルのクリックで中身を差し替える。編集（modified）された時点で通常タブへ昇格し null へ戻る。</summary>
+    private EditorTab? _previewEditorTab;
     // ===== EditorSupport ペイン =====
     // アクティブなエディタタブのファイルに対応する IEditorSupportProvider が登録されていれば
     // （Markdown プレビュー等）、その HTML を専用 WebView2 へ自動表示する。
@@ -219,7 +222,9 @@ public partial class ShellWindow : Window
             UpdateTerminalTab(activeTerminal, activeTerminal.View.HeaderTitle);
         };
 
-        // FolderTree の単クリックは選択だけ、ダブルクリックで新しいエディタタブを開く。
+        // FolderTree の単クリックはプレビュータブ（編集するまで確定せず中身が差し替わる）で開き、
+        // ダブルクリック・Enter は通常のエディタタブとして確定する。
+        vm.FolderTree.FilePreviewRequested += async (_, path) => await OpenFileInPreviewTabAsync(path);
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
         // FolderTree の HTML を「ブラウザで開く」とアプリ内ブラウザの新規タブで開く。
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
@@ -2224,6 +2229,9 @@ public partial class ShellWindow : Window
             string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
+            // 明示的に開いた（ダブルクリック・Enter 等）ので、プレビュー中なら通常タブへ確定する。
+            if (ReferenceEquals(_previewEditorTab, existing))
+                SetPreviewTab(null);
             ActivateEditorTab(existing.Id);
             return;
         }
@@ -2237,6 +2245,61 @@ public partial class ShellWindow : Window
         // タブ活性化の時点では FilePath が未確定だったので、読込後に EditorSupport を同期し直す。
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>
+    /// FolderTree の単クリックでファイルをプレビュータブ（タイトル斜体）で開く。
+    /// 未編集のプレビュータブ（無ければ空の Untitled タブ）を使い回して中身だけ差し替えるので、
+    /// クリックのたびにタブが増えない。プレビュータブは編集された時点で通常タブへ昇格する
+    /// （<see cref="UpdateEditorTab"/>）。既にタブで開いているファイルはそれをアクティブ化するだけ。
+    /// </summary>
+    private async Task OpenFileInPreviewTabAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        var existing = _editorTabs.FirstOrDefault(t =>
+            string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            ActivateEditorTab(existing.Id);
+            return;
+        }
+
+        // 差し替え先：未編集のプレビュータブ、無ければアクティブな空の Untitled タブを転用する。
+        var target = _previewEditorTab is { } preview && _editorTabs.Contains(preview)
+                     && !preview.Control.IsModified && !preview.Control.IsVirtualDocument
+            ? preview
+            : _activeEditorTab is { } active && _editorTabs.Contains(active)
+              && string.IsNullOrEmpty(active.Control.FilePath) && !active.Control.IsModified
+              && !active.Control.IsVirtualDocument && active.VirtualTitle is null
+                ? active
+                : null;
+
+        if (target is null)
+        {
+            target = CreateEditorTab();
+            _editorTabs.Add(target);
+            _vm.Tabs.AddEditorTab(target.Id, path, false, false);
+        }
+
+        ActivateEditorTab(target.Id);
+        await _editor.OpenFileAsync(path);
+        // LoadFile 中の BufferChanged が UpdateEditorTab の昇格判定を誤爆させないよう、読込後に印を付ける。
+        SetPreviewTab(target);
+        UpdateEditorTab(target);
+        await UpdateEditorSupportAsync();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。</summary>
+    private void SetPreviewTab(EditorTab? tab)
+    {
+        if (_previewEditorTab is { } old && !ReferenceEquals(old, tab))
+            _vm.Tabs.SetEditorTabPreview(old.Id, false);
+        _previewEditorTab = tab;
+        if (tab is not null)
+            _vm.Tabs.SetEditorTabPreview(tab.Id, true);
     }
 
     /// <summary>FolderTree の HTML をアプリ内ブラウザの新規タブで開く（file:// URL）。</summary>
@@ -2718,6 +2781,8 @@ public partial class ShellWindow : Window
             DetachEditorSupportSource();
         }
         PaneSplitView.Detach(tab.Control);
+        if (ReferenceEquals(_previewEditorTab, tab))
+            _previewEditorTab = null;
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);
@@ -3545,6 +3610,10 @@ public partial class ShellWindow : Window
 
     private void UpdateEditorTab(EditorTab tab)
     {
+        // プレビュータブは編集された時点で通常タブへ昇格する（次のクリックは新しいプレビューになる）。
+        if (ReferenceEquals(_previewEditorTab, tab) && tab.Control.IsModified)
+            SetPreviewTab(null);
+
         // 仮想ドキュメントは FilePath を持たないため、タブ名は VirtualTitle から決める。
         var title = tab.Control.IsVirtualDocument && !string.IsNullOrEmpty(tab.VirtualTitle)
             ? tab.VirtualTitle
@@ -3737,6 +3806,8 @@ public partial class ShellWindow : Window
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
         _activeEditorTab = null;
+        // プレビュー状態はワークスペースをまたいで持ち越さない（復元後は通常タブとして扱う）。
+        _previewEditorTab = null;
     }
 
     private void AttachEditorTabs()
