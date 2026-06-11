@@ -16,6 +16,7 @@ using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using sk0ya.Loomo.Core.Tools.Implementations;
+using sk0ya.Loomo.Services;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -24,7 +25,8 @@ namespace sk0ya.Loomo.Tests;
 /// <summary>
 /// 実モデル（phi-4-mini ONNX）＋実ツール（run_powershell/write_file/edit_file）で
 /// AgentOrchestrator をヘッドレス駆動し、「何をどこまで任せられるか」を実測するハーネス。
-/// GUI を介さず、ターミナルは実 pwsh、ワークスペースは一時フォルダに差し替える。
+/// GUI を介さず、ターミナルは実 TerminalService（独立 PowerShell プロセス実行）、
+/// ワークスペースは一時フォルダに差し替える。
 /// 既定では Skip（手動実行）。RUN_AGENT_HARNESS=1 で有効化。
 /// </summary>
 public sealed class AgentCapabilityHarness
@@ -89,7 +91,13 @@ public sealed class AgentCapabilityHarness
 
         // --- サービス（ヘッドレス実装） ---
         var workspace = new HeadlessWorkspace(ws);
-        var terminal = new HeadlessTerminal(ws);
+        // ターミナルは実 TerminalService をそのまま使う（可視ターミナル未 Attach なので UI には触れない）。
+        // UTF-8 前置句・stdin 即EOF（rg がパス省略時に stdin を読んで永久に待つのを防ぐ）・
+        // キャンセル時のプロセスツリー kill・2分安全網まで、実機と同一挙動で評価するため。
+        // （旧 HeadlessTerminal は stdin を閉じず子も kill しなかったため、モデルの `rg gamma -r .` が
+        //   stdin 待ちで 5 分タイムアウト→rg が漏れて testhost のパイプを握る、が find-text の実敗因だった。）
+        var terminal = new TerminalService();
+        terminal.SetWorkingDirectory(ws);
         var editor = new HeadlessEditor();
         using var engine = new Phi4Engine();
 
@@ -500,47 +508,6 @@ public sealed class AgentCapabilityHarness
         }
         public event EventHandler<string?>? SelectionChanged;
         public event EventHandler<string?>? RootChanged;
-    }
-
-    private sealed class HeadlessTerminal : ITerminalService
-    {
-        private string _cwd;
-        public HeadlessTerminal(string cwd) => _cwd = cwd;
-        public string CurrentDirectory => _cwd;
-        public bool IsExecuting { get; private set; }
-        public void SetWorkingDirectory(string path) => _cwd = path;
-        public event EventHandler<CommandResult>? CommandExecuted;
-
-        public async Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
-        {
-            IsExecuting = true;
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = _cwd,
-                };
-                psi.ArgumentList.Add("-NoProfile");
-                psi.ArgumentList.Add("-NonInteractive");
-                psi.ArgumentList.Add("-Command");
-                psi.ArgumentList.Add(command);
-
-                using var proc = Process.Start(psi)!;
-                var stdout = await proc.StandardOutput.ReadToEndAsync(ct);
-                var stderr = await proc.StandardError.ReadToEndAsync(ct);
-                await proc.WaitForExitAsync(ct);
-                var output = stdout + (string.IsNullOrWhiteSpace(stderr) ? "" : "\n[stderr]\n" + stderr);
-                var result = new CommandResult(command, output.TrimEnd(), proc.ExitCode, _cwd, proc.ExitCode == 0);
-                CommandExecuted?.Invoke(this, result);
-                return result;
-            }
-            finally { IsExecuting = false; }
-        }
     }
 
     private sealed class HeadlessEditor : IEditorService

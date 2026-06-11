@@ -67,13 +67,18 @@ public sealed class PwshTool : IAgentTool
 
         // 失敗時は既知の回復可能パターンに復旧手順を1行添える。小モデルはエラー文だけだと諦めて
         // ユーザーへ作業を投げ返す／失敗を「無かった」ことにするため、次の一手を機械的に示す。
-        var hint = RecoveryHint(result.Output);
+        var hint = RecoveryHint(command, result.Output);
         if (hint is not null) sb.AppendLine().Append(hint);
         return new ToolResult(sb.ToString(), IsError: true);
     }
 
-    /// <summary>失敗出力から既知の回復手順を判定する（無ければ null）。</summary>
-    private static string? RecoveryHint(string output)
+    /// <summary>rg の <c>--files</c> をトークンとして検出する（<c>--files-with-matches</c> 等の
+    /// 正当なフラグには一致させない）。</summary>
+    private static readonly System.Text.RegularExpressions.Regex RgFilesFlag =
+        new(@"--files(?![\w-])", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>失敗したコマンドと出力から既知の回復手順を判定する（無ければ null）。</summary>
+    private static string? RecoveryHint(string command, string output)
     {
         // 日本語メッセージは「パス '<実パス>' の一部が見つかりませんでした」形式（パスが間に挟まる）なので
         // 後半だけで照合する。コンソール幅の折返しで語中に改行が入ることがあるため、語尾は含めない。
@@ -81,6 +86,17 @@ public sealed class PwshTool : IAgentTool
             output.Contains("Could not find a part of the path", System.StringComparison.OrdinalIgnoreCase))
             return "ヒント: 途中のフォルダが存在しない可能性があります。"
                    + "New-Item -ItemType Directory -Force <フォルダ> で作成してから同じコマンドを再実行してください。";
+
+        // rg --files はパターンを取らない（ファイル名列挙のみ）。`rg --files <語>` は語をパス扱いして
+        // 「rg: <語>: … (os error 2)」で失敗し、小モデルはこれを「該当ファイルなし」と誤読して
+        // 虚偽の「見つかりませんでした」を最終回答にする。--files を外した正形を機械的に示す。
+        // （os error 2 の判定はロケール非依存。--files-with-matches は正当な用法なので除外。）
+        if (RgFilesFlag.IsMatch(command) && output.Contains("rg: ") && output.Contains("(os error 2)"))
+        {
+            var suggested = RgFilesFlag.Replace(command.Replace("  ", " "), "").Replace("  ", " ").Trim();
+            return "ヒント: rg の --files は検索パターンを取らず、ファイル名を列挙するだけです。"
+                   + $"ファイル内容を検索するには --files を外して再実行してください（例: {suggested}）。";
+        }
         return null;
     }
 

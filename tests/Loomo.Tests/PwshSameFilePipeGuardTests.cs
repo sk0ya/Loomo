@@ -73,6 +73,40 @@ public class PwshSameFilePipeGuardTests
     }
 
     [Fact]
+    public async Task Rg_files_misuse_failure_gets_content_search_hint()
+    {
+        // find-text 型の実故障：`rg --files <パターン>` はパターンをパス扱いして os error 2 で失敗し、
+        // 小モデルはこれを「該当ファイルなし」と誤読して虚偽の「見つかりませんでした」を回答する。
+        // --files を外した正形をエラー本文に機械的に示す。
+        var terminal = new FailingTerminal(
+            "rg: gamma: 指定されたファイルが見つかりません。 (os error 2)\n.\\todo.md\n.\\src\\util.txt");
+        var tool = new PwshTool(terminal);
+        using var doc = JsonDocument.Parse("{\"command\":\"rg --files \\\"gamma\\\" .\"}");
+
+        var result = await tool.ExecuteAsync(doc.RootElement, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("--files は検索パターンを取らず", result.Content);
+        Assert.Contains("rg \"gamma\" .", result.Content);   // --files を外した実行例を提示
+    }
+
+    [Fact]
+    public async Task Rg_files_with_matches_failure_gets_no_files_hint()
+    {
+        // --files-with-matches は正当な用法（パターンを取る）。パス間違い等で失敗しても
+        // 「--files はパターンを取らない」ヒントを誤って出さない。
+        var terminal = new FailingTerminal(
+            "rg: bad-dir: 指定されたファイルが見つかりません。 (os error 2)");
+        var tool = new PwshTool(terminal);
+        using var doc = JsonDocument.Parse("{\"command\":\"rg --files-with-matches gamma bad-dir\"}");
+
+        var result = await tool.ExecuteAsync(doc.RootElement, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.DoesNotContain("検索パターンを取らず", result.Content);
+    }
+
+    [Fact]
     public async Task Unrelated_failure_gets_no_recovery_hint()
     {
         var terminal = new FailingTerminal("[stderr] なにか別のエラー");

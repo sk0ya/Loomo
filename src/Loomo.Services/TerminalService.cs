@@ -88,7 +88,7 @@ public sealed class TerminalService : ITerminalService
         psi.ArgumentList.Add("-NoProfile");
         psi.ArgumentList.Add("-NonInteractive");
         psi.ArgumentList.Add("-Command");
-        psi.ArgumentList.Add(command);
+        psi.ArgumentList.Add(Utf8Preamble + command);
 
         using var proc = new Process { StartInfo = psi };
         var sb = new StringBuilder();
@@ -126,6 +126,19 @@ public sealed class TerminalService : ITerminalService
         var exit = proc.ExitCode;
         lock (sync) return new CommandResult(command, sb.ToString(), exit, _cwd, exit == 0);
     }
+
+    /// <summary>子 PowerShell の入出力を UTF-8 に固定するプリアンブル（コマンドの前置句）。
+    /// 既定では子シェルがネイティブツール（rg/git 等）の UTF-8 出力を
+    /// <c>[Console]::OutputEncoding</c>（日本語環境では cp932）で誤デコードし、特に stderr の
+    /// エラー文が文字化けして AI が失敗理由を読めず自己修正できなくなる。
+    /// <c>[Console]::OutputEncoding</c> はネイティブ出力のデコードと子シェル自身の stdout
+    /// エンコードの両方を司り、呼び出し側の <c>StandardOutputEncoding=UTF8</c> と整合する。
+    /// <c>$OutputEncoding</c> はネイティブコマンドへパイプ入力する際のエンコード（BOM なし UTF-8）。
+    /// 設定に失敗してもコマンド実行自体は続行する（try/catch）。
+    /// ハーネス（AgentCapabilityHarness）はこの TerminalService をそのまま使うので挙動が揃う。</summary>
+    private const string Utf8Preamble =
+        "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " +
+        "$OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }; ";
 
     /// <summary>フォールバック実行で使う PowerShell 実行ファイル。
     /// <b>WindowsApps（ストア版パッケージ/実行エイリアス）の pwsh は避ける</b>：
