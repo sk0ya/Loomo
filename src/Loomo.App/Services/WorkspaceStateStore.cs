@@ -71,13 +71,14 @@ public sealed class WorkspaceSnapshot
     public PaneNodeSnapshot? PaneLayout { get; set; }
 }
 
-/// <summary>メイン領域に並ぶペインの種別。</summary>
+/// <summary>メイン領域に並ぶペインの種別。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
 public enum PaneKind
 {
     Terminal,
     Editor,
     Browser,
-    Ai
+    Ai,
+    EditorSupport
 }
 
 /// <summary>

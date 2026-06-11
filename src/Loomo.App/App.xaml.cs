@@ -127,6 +127,10 @@ public partial class App : Application
         // --- トレース読取（AIセッション一覧の所要時間表示などに利用）---
         services.AddSingleton<TraceReader>();
 
+        // --- EditorSupport（アクティブなエディタのファイルに応じた自動表示。拡張子対応はここへ追加登録） ---
+        services.AddSingleton<IEditorSupportProvider, MarkdownEditorSupport>();
+        services.AddSingleton<EditorSupportRegistry>();
+
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
         services.AddSingleton<LocalLlmWarmupService>();

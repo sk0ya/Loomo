@@ -101,6 +101,9 @@
                             Content="✎" ToolTip="エディタ 表示切替"
                             Tag="Editor" Click="OnTogglePaneVisibility" />
                     <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
+                            Content="📖" ToolTip="エディタサポート 表示切替"
+                            Tag="EditorSupport" Click="OnTogglePaneVisibility" />
+                    <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
                             Content="🌐" ToolTip="ブラウザ 表示切替"
                             Tag="Browser" Click="OnTogglePaneVisibility" />
                     <Button Style="{StaticResource CaptionButton}" Width="40" FontSize="14"
@@ -223,9 +226,6 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Editor" Click="OnHidePane" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="34" Height="24"
-                                Content="MD" FontSize="11" ToolTip="Markdown をブラウザでプレビュー"
-                                Click="OnMarkdownPreview" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
@@ -276,6 +276,22 @@
                          自前のバーを隠してここへ状態を流す（フォーカス中のエディタの mode/file/cursor を表示）。 -->
                     <editor:VimStatusBar x:Name="EditorSharedStatusBar" DockPanel.Dock="Bottom" />
                     <Grid x:Name="EditorContentHost" />
+                </DockPanel>
+
+                <!-- EditorSupport : アクティブなエディタのファイルに対応するサポート（Markdown プレビュー等）を自動表示 -->
+                <DockPanel x:Name="EditorSupportPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                               Tag="EditorSupport" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR SUPPORT" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Tag="EditorSupport" Click="OnHidePane" />
+                        <TextBlock x:Name="EditorSupportTitle" VerticalAlignment="Center" Margin="4,0,8,0"
+                                   FontSize="11" Foreground="{DynamicResource FgDim}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <Grid x:Name="EditorSupportContentHost" />
                 </DockPanel>
 
                 <!-- Browser -->

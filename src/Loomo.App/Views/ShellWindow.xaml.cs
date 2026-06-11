@@ -33,6 +33,7 @@ public partial class ShellWindow : Window
     private readonly IWorkspaceService _workspace;
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
+    private readonly EditorSupportRegistry _editorSupports;
     private readonly ShellViewModel _vm;
     private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
     private readonly Dictionary<Guid, EditorWorkspaceTabs> _editorWorkspaces = new();
@@ -49,10 +50,17 @@ public partial class ShellWindow : Window
     private TerminalTab? _activeTerminalTab;
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
-    private EditorTab? _markdownPreviewSourceTab;
-    private BrowserTab? _markdownPreviewBrowserTab;
-    private DispatcherTimer? _markdownPreviewDebounceTimer;
-    private WebView2CompositionControl? _markdownPreviewEventsView;
+    // ===== EditorSupport ペイン =====
+    // アクティブなエディタタブのファイルに対応する IEditorSupportProvider が登録されていれば
+    // （Markdown プレビュー等）、その HTML を専用 WebView2 へ自動表示する。
+    private EditorTab? _editorSupportSourceTab;
+    private WebView2CompositionControl? _editorSupportView;
+    private bool _editorSupportWebEventsAttached;
+    private DispatcherTimer? _editorSupportDebounceTimer;
+    /// <summary>EditorSupport ペイン表示へのユーザー指定。null は自動（対応プロバイダの有無で開閉）。</summary>
+    private bool? _editorSupportUserVisibility;
+    /// <summary>自動開閉中の SetPaneVisible をユーザー操作と区別するガード。</summary>
+    private bool _editorSupportAutoToggling;
 
     /// <summary>
     /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。
@@ -62,11 +70,10 @@ public partial class ShellWindow : Window
     private static readonly string WebViewUserDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "WebView2");
-    private bool _syncingMarkdownPreviewFromEditor;
-    private bool _syncingEditorFromMarkdownPreview;
-    private bool _markdownPreviewScrollSyncQueued;
-    private double _pendingMarkdownPreviewScrollRatio;
-    private BrowserTab? _lastRealActiveBrowserTab;
+    private bool _syncingSupportFromEditor;
+    private bool _syncingEditorFromSupport;
+    private bool _editorSupportScrollSyncQueued;
+    private double _pendingEditorSupportScrollRatio;
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";
@@ -130,7 +137,8 @@ public partial class ShellWindow : Window
         BrowserService browser,
         IWorkspaceService workspace,
         TabIconService tabIcons,
-        AiSettings settings)
+        AiSettings settings,
+        EditorSupportRegistry editorSupports)
     {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
@@ -144,6 +152,7 @@ public partial class ShellWindow : Window
         _workspace = workspace;
         _tabIcons = tabIcons;
         _settings = settings;
+        _editorSupports = editorSupports;
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;
@@ -277,6 +286,7 @@ public partial class ShellWindow : Window
     {
         _paneElements[PaneKind.Terminal] = TerminalPane;
         _paneElements[PaneKind.Editor] = EditorPane;
+        _paneElements[PaneKind.EditorSupport] = EditorSupportPane;
         _paneElements[PaneKind.Browser] = BrowserPane;
         _paneElements[PaneKind.Ai] = AiPane;
 
@@ -300,12 +310,14 @@ public partial class ShellWindow : Window
         // レイアウトの構築は OnLoaded（ワークスペース適用 or 既定）に一本化する。
     }
 
-    /// <summary>既定レイアウト：[Editor | Browser] / [Terminal] / [AI]。</summary>
+    /// <summary>既定レイアウト：[Editor | (EditorSupport:隠) | Browser] / [Terminal] / [AI]。</summary>
     private void ApplyDefaultLayout()
     {
         _zoomedPane = null;
         var top = new PaneSplit { Orientation = SplitKind.Columns, Weight = 2 };
         top.Children.Add(NewLeaf(PaneKind.Editor));
+        // EditorSupport は対応ファイルを開いたとき自動で現れる（位置だけ Editor の右に確保しておく）。
+        top.Children.Add(new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true });
         top.Children.Add(NewLeaf(PaneKind.Browser));
 
         var root = new PaneSplit { Orientation = SplitKind.Rows };
@@ -1111,6 +1123,14 @@ public partial class ShellWindow : Window
                 _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
         }
 
+        // EditorSupport の表示はユーザー操作を最優先で記憶する（自動開閉はガード中なので除外）。
+        if (kind == PaneKind.EditorSupport && !_editorSupportAutoToggling)
+        {
+            _editorSupportUserVisibility = visible;
+            if (visible)
+                _ = UpdateEditorSupportAsync(); // 手動で開いたら現在のエディタ内容を流し込む
+        }
+
         _zoomedPane = null; // 表示構成が変わるのでズームは解除する
         _root = Normalize(_root);
         RebuildPaneLayout();
@@ -1620,6 +1640,9 @@ public partial class ShellWindow : Window
                 if (_editorViews is { } ev) ev.FocusFocused();
                 else _activeEditorTab?.Control.Focus();
                 break;
+            case PaneKind.EditorSupport:
+                _editorSupportView?.Focus();
+                break;
             case PaneKind.Browser:
                 _activeBrowserTab?.View.Focus();
                 break;
@@ -1872,16 +1895,17 @@ public partial class ShellWindow : Window
         control.BufferChanged += (_, _) =>
         {
             UpdateEditorTab(tab);
-            if (ReferenceEquals(_markdownPreviewSourceTab, tab))
-                ScheduleMarkdownPreviewUpdate();
+            if (ReferenceEquals(_editorSupportSourceTab, tab))
+                ScheduleEditorSupportUpdate();
         };
         control.SaveRequested += (_, _) =>
         {
             QueueEditorTabUpdate(tab);
-            if (ReferenceEquals(_markdownPreviewSourceTab, tab))
-                ScheduleMarkdownPreviewUpdate();
+            if (ReferenceEquals(_editorSupportSourceTab, tab))
+                ScheduleEditorSupportUpdate();
         };
-        control.MarkdownPreviewRequested += async (_, _) => await OpenMarkdownPreviewAsync(tab);
+        // エディタからの明示的なプレビュー要求は、EditorSupport ペインを「手動で開いた」扱いにする。
+        control.MarkdownPreviewRequested += async (_, _) => await OpenEditorSupportAsync(tab);
 
         // エディタ内の Vim ウィンドウ/タブ操作（:vsplit / :split / :tabnew / gt / gT / :tabclose / :close）を、
         // ホスト側の分割・タブ実装へ橋渡しする
@@ -2019,15 +2043,15 @@ public partial class ShellWindow : Window
         "#002B36", "#CB4B16", "#586E75", "#657B83", "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
     };
 
-    /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと Markdown プレビューへ即時反映する。</summary>
+    /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと EditorSupport ペインへ即時反映する。</summary>
     private void ApplyAppearanceToOpenTabs()
     {
         foreach (var tab in _editorTabs)
             ApplyEditorAppearance(tab.Control);
         foreach (var tab in _terminalTabs)
             ApplyTerminalAppearance(tab.View);
-        if (_markdownPreviewSourceTab is not null)
-            ScheduleMarkdownPreviewUpdate();
+        if (_editorSupportSourceTab is not null)
+            ScheduleEditorSupportUpdate();
     }
 
     private void QueueEditorTabUpdate(EditorTab tab)
@@ -2201,8 +2225,6 @@ public partial class ShellWindow : Window
         if (existing is not null)
         {
             ActivateEditorTab(existing.Id);
-            if (_markdownPreviewBrowserTab is not null)
-                await SwitchMarkdownPreviewSourceAsync(existing);
             return;
         }
 
@@ -2212,8 +2234,8 @@ public partial class ShellWindow : Window
         ActivateEditorTab(tab.Id);
         await _editor.OpenFileAsync(path);
         UpdateEditorTab(tab);
-        if (_markdownPreviewBrowserTab is not null)
-            await SwitchMarkdownPreviewSourceAsync(tab);
+        // タブ活性化の時点では FilePath が未確定だったので、読込後に EditorSupport を同期し直す。
+        await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -2247,141 +2269,183 @@ public partial class ShellWindow : Window
         }
     }
 
-    private async void OnMarkdownPreview(object sender, RoutedEventArgs e)
+    /// <summary>エディタからの明示プレビュー要求：EditorSupport ペインを手動表示扱いで開き、内容を流し込む。</summary>
+    private async Task OpenEditorSupportAsync(EditorTab sourceTab)
     {
-        if (_activeEditorTab is not null)
-            await OpenMarkdownPreviewAsync(_activeEditorTab);
+        _editorSupportUserVisibility = true;
+        await SwitchEditorSupportSourceAsync(sourceTab);
+        await UpdateEditorSupportAsync();
     }
 
-    private async Task OpenMarkdownPreviewAsync(EditorTab sourceTab)
+    /// <summary>EditorSupport の追従先エディタタブを切り替えて内容を更新する（同一タブなら何もしない）。</summary>
+    private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab)
     {
-        if (_markdownPreviewBrowserTab is null || !_browserTabs.Contains(_markdownPreviewBrowserTab))
-        {
-            _markdownPreviewBrowserTab = await CreateBrowserTabAsync(
-                "about:blank",
-                requestedTitle: "Markdown Preview",
-                isMarkdownPreview: true);
-        }
-        else
-        {
-            ActivateBrowserTab(_markdownPreviewBrowserTab.Id);
-        }
-
-        await SwitchMarkdownPreviewSourceAsync(sourceTab);
-    }
-
-    private async Task SwitchMarkdownPreviewSourceAsync(EditorTab sourceTab)
-    {
-        if (!ReferenceEquals(_markdownPreviewSourceTab, sourceTab))
-        {
-            if (_markdownPreviewSourceTab is not null)
-                _markdownPreviewSourceTab.Control.ViewportScrolled -= MarkdownPreviewSource_ViewportScrolled;
-
-            _markdownPreviewSourceTab = sourceTab;
-            sourceTab.Control.ViewportScrolled += MarkdownPreviewSource_ViewportScrolled;
-        }
-
-        await UpdateMarkdownPreviewAsync();
-    }
-
-    private void ScheduleMarkdownPreviewUpdate()
-    {
-        if (_markdownPreviewSourceTab is null || _markdownPreviewBrowserTab is null)
+        if (ReferenceEquals(_editorSupportSourceTab, sourceTab))
             return;
 
-        if (_markdownPreviewDebounceTimer is null)
+        if (_editorSupportSourceTab is not null)
+            _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+
+        _editorSupportSourceTab = sourceTab;
+        sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
+
+        await UpdateEditorSupportAsync();
+    }
+
+    /// <summary>編集中の連続更新をまとめる（300ms デバウンスで <see cref="UpdateEditorSupportAsync"/>）。</summary>
+    private void ScheduleEditorSupportUpdate()
+    {
+        if (_editorSupportSourceTab is null)
+            return;
+
+        if (_editorSupportDebounceTimer is null)
         {
-            _markdownPreviewDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-            _markdownPreviewDebounceTimer.Tick += async (s, _) =>
+            _editorSupportDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            _editorSupportDebounceTimer.Tick += async (s, _) =>
             {
                 ((DispatcherTimer)s!).Stop();
-                await UpdateMarkdownPreviewAsync();
+                await UpdateEditorSupportAsync();
             };
         }
 
-        _markdownPreviewDebounceTimer.Stop();
-        _markdownPreviewDebounceTimer.Start();
+        _editorSupportDebounceTimer.Stop();
+        _editorSupportDebounceTimer.Start();
     }
 
-    private async Task UpdateMarkdownPreviewAsync()
+    /// <summary>
+    /// 追従先エディタの内容を EditorSupport ペインへ反映する。ファイルに対応する
+    /// <see cref="IEditorSupportProvider"/> が無ければペインを自動で閉じ、あれば自動で開く
+    /// （ユーザーのトグル操作 <see cref="_editorSupportUserVisibility"/> が最優先）。
+    /// </summary>
+    private async Task UpdateEditorSupportAsync()
     {
-        var source = _markdownPreviewSourceTab;
-        var preview = _markdownPreviewBrowserTab;
-        if (source is null || preview is null || !_browserTabs.Contains(preview))
+        var source = _editorSupportSourceTab;
+        if (source is null)
             return;
-
-        try
-        {
-            await preview.View.EnsureCoreWebView2Async();
-            AttachMarkdownPreviewWebViewEvents(preview.View);
-        }
-        catch
-        {
-            return;
-        }
 
         var filePath = source.Control.FilePath;
-        var ext = filePath is null ? string.Empty : Path.GetExtension(filePath).ToLowerInvariant();
-        var title = filePath is null ? "Markdown Preview" : $"Preview: {Path.GetFileName(filePath)}";
-        string html;
+        var provider = _editorSupports.Resolve(filePath);
 
-        var previewStyle = _settings.Appearance.MarkdownPreviewTheme;
-        if (ext is ".md" or ".markdown")
+        var shouldShow = _editorSupportUserVisibility ?? provider is not null;
+        SetEditorSupportVisibleAuto(shouldShow);
+        if (!shouldShow || !IsPaneVisible(PaneKind.EditorSupport))
+            return;
+
+        var view = await EnsureEditorSupportViewAsync();
+        if (view?.CoreWebView2 is null)
+            return;
+
+        string title;
+        string html;
+        if (provider is not null && filePath is not null)
         {
-            html = MarkdownRenderer.RenderToHtml(source.Control.Text, title, previewStyle);
+            title = provider.DescribeTitle(filePath);
+            html = provider.RenderHtml(filePath, source.Control.Text);
         }
         else
         {
+            // 手動表示中で対応プロバイダの無いファイル：案内だけ出す。
+            title = "Editor Support";
             html = MarkdownRenderer.RenderToHtml(
-                "## Markdown Preview\n\nActive editor tab is not a Markdown file.",
-                "Markdown Preview",
-                previewStyle);
+                "## Editor Support\n\nこのファイルに対応するサポートはありません。",
+                title,
+                _settings.Appearance.MarkdownPreviewTheme);
         }
 
-        preview.View.CoreWebView2!.NavigateToString(html);
-        _vm.Tabs.UpdateBrowserTab(preview.Id, title);
-        if (ReferenceEquals(_activeBrowserTab, preview))
-            BrowserAddressBox.Text = title;
+        view.CoreWebView2.NavigateToString(html);
+        EditorSupportTitle.Text = title;
     }
 
-    private void AttachMarkdownPreviewWebViewEvents(WebView2CompositionControl view)
+    /// <summary>EditorSupport ペインの自動開閉（ユーザー操作と区別するためガードを立てて呼ぶ）。</summary>
+    private void SetEditorSupportVisibleAuto(bool visible)
     {
-        if (ReferenceEquals(_markdownPreviewEventsView, view))
+        if (IsPaneVisible(PaneKind.EditorSupport) == visible)
             return;
 
-        DetachMarkdownPreviewWebViewEvents();
-        if (view.CoreWebView2 is null)
+        if (visible)
+            EnsureEditorSupportLeafBesideEditor();
+
+        _editorSupportAutoToggling = true;
+        try
+        {
+            SetPaneVisible(PaneKind.EditorSupport, visible);
+        }
+        finally
+        {
+            _editorSupportAutoToggling = false;
+        }
+    }
+
+    /// <summary>
+    /// EditorSupport リーフがレイアウトツリーに無ければ Editor の右隣へ（隠した状態で）挿入する。
+    /// 既定の <see cref="AddLeafAtBottom"/>（最下段の新しい行）よりプレビュー用途に適した位置になる。
+    /// </summary>
+    private void EnsureEditorSupportLeafBesideEditor()
+    {
+        if (FindLeaf(PaneKind.EditorSupport) is not null)
+            return;
+        if (FindLeaf(PaneKind.Editor) is not { } editorLeaf)
+            return; // Editor がツリーに無い場合は SetPaneVisible の既定動作（最下段へ追加）に任せる
+
+        CaptureLayoutSizes();
+        InsertRelative(new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
+    }
+
+    /// <summary>EditorSupport ペインの WebView2 を遅延生成し、CoreWebView2 まで実体化して返す（失敗時 null）。</summary>
+    private async Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync()
+    {
+        if (_editorSupportView is null)
+        {
+            _editorSupportView = new WebView2CompositionControl
+            {
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
+                CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = WebViewUserDataFolder }
+            };
+            // コンテンツの描画が終わったら、エディタの現在位置までスクロールを合わせ直す。
+            _editorSupportView.NavigationCompleted += (_, _) =>
+            {
+                if (_editorSupportSourceTab is not null)
+                    _ = QueueEditorSupportScrollSyncAsync(_editorSupportSourceTab.Control.VerticalScrollRatio);
+            };
+            EditorSupportContentHost.Children.Add(_editorSupportView);
+        }
+
+        try
+        {
+            await _editorSupportView.EnsureCoreWebView2Async();
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (!_editorSupportWebEventsAttached && _editorSupportView.CoreWebView2 is not null)
+        {
+            _editorSupportView.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
+            _editorSupportWebEventsAttached = true;
+        }
+
+        return _editorSupportView;
+    }
+
+    private void DetachEditorSupportSource()
+    {
+        if (_editorSupportSourceTab is not null)
+            _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+        _editorSupportSourceTab = null;
+    }
+
+    private async void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e)
+    {
+        if (_syncingEditorFromSupport || sender is not VimEditorControl editor)
             return;
 
-        view.CoreWebView2.WebMessageReceived += MarkdownPreview_WebMessageReceived;
-        _markdownPreviewEventsView = view;
+        await QueueEditorSupportScrollSyncAsync(editor.VerticalScrollRatio);
     }
 
-    private void DetachMarkdownPreviewWebViewEvents()
+    private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (_markdownPreviewEventsView?.CoreWebView2 is not null)
-            _markdownPreviewEventsView.CoreWebView2.WebMessageReceived -= MarkdownPreview_WebMessageReceived;
-        _markdownPreviewEventsView = null;
-    }
-
-    private void DetachMarkdownPreviewSource()
-    {
-        if (_markdownPreviewSourceTab is not null)
-            _markdownPreviewSourceTab.Control.ViewportScrolled -= MarkdownPreviewSource_ViewportScrolled;
-        _markdownPreviewSourceTab = null;
-    }
-
-    private async void MarkdownPreviewSource_ViewportScrolled(object? sender, EventArgs e)
-    {
-        if (_syncingEditorFromMarkdownPreview || sender is not VimEditorControl editor)
-            return;
-
-        await QueueMarkdownPreviewScrollSyncAsync(editor.VerticalScrollRatio);
-    }
-
-    private void MarkdownPreview_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-    {
-        if (_syncingMarkdownPreviewFromEditor || _markdownPreviewSourceTab is null)
+        if (_syncingSupportFromEditor || _editorSupportSourceTab is null)
             return;
 
         try
@@ -2394,8 +2458,8 @@ public partial class ShellWindow : Window
                 || !ratioElement.TryGetDouble(out var ratio))
                 return;
 
-            _syncingEditorFromMarkdownPreview = true;
-            _markdownPreviewSourceTab.Control.ScrollToVerticalRatio(ratio);
+            _syncingEditorFromSupport = true;
+            _editorSupportSourceTab.Control.ScrollToVerticalRatio(ratio);
         }
         catch
         {
@@ -2403,41 +2467,41 @@ public partial class ShellWindow : Window
         }
         finally
         {
-            _syncingEditorFromMarkdownPreview = false;
+            _syncingEditorFromSupport = false;
         }
     }
 
-    private async Task QueueMarkdownPreviewScrollSyncAsync(double ratio)
+    private async Task QueueEditorSupportScrollSyncAsync(double ratio)
     {
-        _pendingMarkdownPreviewScrollRatio = Math.Clamp(ratio, 0.0, 1.0);
-        if (_markdownPreviewScrollSyncQueued)
+        _pendingEditorSupportScrollRatio = Math.Clamp(ratio, 0.0, 1.0);
+        if (_editorSupportScrollSyncQueued)
             return;
 
-        _markdownPreviewScrollSyncQueued = true;
+        _editorSupportScrollSyncQueued = true;
         try
         {
-            while (_markdownPreviewBrowserTab is not null)
+            while (_editorSupportView is not null)
             {
-                var nextRatio = _pendingMarkdownPreviewScrollRatio;
-                await ScrollMarkdownPreviewToRatioAsync(nextRatio);
+                var nextRatio = _pendingEditorSupportScrollRatio;
+                await ScrollEditorSupportToRatioAsync(nextRatio);
 
-                if (Math.Abs(nextRatio - _pendingMarkdownPreviewScrollRatio) < 0.0001)
+                if (Math.Abs(nextRatio - _pendingEditorSupportScrollRatio) < 0.0001)
                     break;
             }
         }
         finally
         {
-            _markdownPreviewScrollSyncQueued = false;
+            _editorSupportScrollSyncQueued = false;
         }
     }
 
-    private async Task ScrollMarkdownPreviewToRatioAsync(double ratio)
+    private async Task ScrollEditorSupportToRatioAsync(double ratio)
     {
-        var view = _markdownPreviewBrowserTab?.View;
+        var view = _editorSupportView;
         if (view?.CoreWebView2 is null)
             return;
 
-        _syncingMarkdownPreviewFromEditor = true;
+        _syncingSupportFromEditor = true;
         try
         {
             var script = FormattableString.Invariant(
@@ -2450,7 +2514,7 @@ public partial class ShellWindow : Window
         }
         finally
         {
-            _syncingMarkdownPreviewFromEditor = false;
+            _syncingSupportFromEditor = false;
         }
     }
 
@@ -2516,20 +2580,7 @@ public partial class ShellWindow : Window
         UpdateBrowserTab(tab);
         _ = RefreshBrowserTabIconAsync(tab);
         if (ReferenceEquals(_activeBrowserTab, tab))
-        {
-            if (tab.IsMarkdownPreview)
-            {
-                var docTitle = tab.View.CoreWebView2?.DocumentTitle;
-                BrowserAddressBox.Text = string.IsNullOrEmpty(docTitle) ? "Markdown Preview" : docTitle;
-            }
-            else
-            {
-                BrowserAddressBox.Text = view.Source?.ToString() ?? string.Empty;
-            }
-        }
-
-        if (tab.IsMarkdownPreview && _markdownPreviewSourceTab is not null)
-            _ = QueueMarkdownPreviewScrollSyncAsync(_markdownPreviewSourceTab.Control.VerticalScrollRatio);
+            BrowserAddressBox.Text = view.Source?.ToString() ?? string.Empty;
     }
 
     private async void NavigateBrowser(string text)
@@ -2639,8 +2690,7 @@ public partial class ShellWindow : Window
         CurrentEditorWorkspace.ActiveTabId = id;
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(id);
-        if (_markdownPreviewBrowserTab is not null)
-            _ = SwitchMarkdownPreviewSourceAsync(tab);
+        _ = SwitchEditorSupportSourceAsync(tab);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -2651,6 +2701,7 @@ public partial class ShellWindow : Window
         CurrentEditorWorkspace.ActiveTabId = tab.Id;
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(tab.Id);
+        _ = SwitchEditorSupportSourceAsync(tab);
     }
 
     private void CloseEditorTab(Guid id)
@@ -2661,10 +2712,10 @@ public partial class ShellWindow : Window
 
         var wasActive = _activeEditorTab?.Id == id;
         var tab = _editorTabs[index];
-        if (ReferenceEquals(_markdownPreviewSourceTab, tab))
+        if (ReferenceEquals(_editorSupportSourceTab, tab))
         {
-            _markdownPreviewDebounceTimer?.Stop();
-            DetachMarkdownPreviewSource();
+            _editorSupportDebounceTimer?.Stop();
+            DetachEditorSupportSource();
         }
         PaneSplitView.Detach(tab.Control);
         _editorTabs.RemoveAt(index);
@@ -2700,16 +2751,15 @@ public partial class ShellWindow : Window
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
 
     /// <summary>
-    /// ブラウザタブを生成して即座に WebView2 まで実体化する（markdown プレビューや新規タブなど、
-    /// 直後に CoreWebView2 を使う呼び出し向け）。起動経路は <see cref="CreateBrowserTab"/>（遅延）を使う。
+    /// ブラウザタブを生成して即座に WebView2 まで実体化する（新規タブなど、直後に CoreWebView2 を
+    /// 使う呼び出し向け）。起動経路は <see cref="CreateBrowserTab"/>（遅延）を使う。
     /// </summary>
     private async Task<BrowserTab> CreateBrowserTabAsync(
         string url,
         Guid? requestedId = null,
-        string? requestedTitle = null,
-        bool isMarkdownPreview = false)
+        string? requestedTitle = null)
     {
-        var tab = CreateBrowserTab(url, requestedId, requestedTitle, isMarkdownPreview);
+        var tab = CreateBrowserTab(url, requestedId, requestedTitle);
         await EnsureBrowserRealizedAsync(tab);
         return tab;
     }
@@ -2722,8 +2772,7 @@ public partial class ShellWindow : Window
     private BrowserTab CreateBrowserTab(
         string url,
         Guid? requestedId = null,
-        string? requestedTitle = null,
-        bool isMarkdownPreview = false)
+        string? requestedTitle = null)
     {
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
@@ -2737,10 +2786,9 @@ public partial class ShellWindow : Window
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
 
-        // markdown プレビューは UpdateMarkdownPreviewAsync が内容を流し込むので初期ナビゲートは不要。
-        var tab = new BrowserTab(id, view, isMarkdownPreview)
+        var tab = new BrowserTab(id, view)
         {
-            PendingUrl = isMarkdownPreview ? null : NormalizeBrowserAddress(url)
+            PendingUrl = NormalizeBrowserAddress(url)
         };
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
@@ -2835,15 +2883,6 @@ public partial class ShellWindow : Window
 
         var wasActive = _activeBrowserTab?.Id == id;
         var tab = _browserTabs[index];
-        if (ReferenceEquals(_markdownPreviewBrowserTab, tab))
-        {
-            _markdownPreviewDebounceTimer?.Stop();
-            DetachMarkdownPreviewWebViewEvents();
-            DetachMarkdownPreviewSource();
-            _markdownPreviewBrowserTab = null;
-        }
-        if (ReferenceEquals(_lastRealActiveBrowserTab, tab))
-            _lastRealActiveBrowserTab = null;
         if (tab.View.CoreWebView2 is not null)
             tab.View.CoreWebView2.FaviconChanged -= OnBrowserFaviconChanged;
         BrowserContentHost.Children.Remove(tab.View);
@@ -2874,8 +2913,6 @@ public partial class ShellWindow : Window
             browserTab.View.Visibility = browserTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
 
         _activeBrowserTab = tab;
-        if (!tab.IsMarkdownPreview)
-            _lastRealActiveBrowserTab = tab;
         CurrentBrowserWorkspace.ActiveTabId = id;
         // AIのブラウザ操作（IBrowserService）の対象を、いま見えているタブへ一本化する。
         _browser.SetActiveView(tab.View);
@@ -3435,10 +3472,10 @@ public partial class ShellWindow : Window
     {
         public string? VirtualTitle { get; set; }
     }
-    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View, bool IsMarkdownPreview = false)
+    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
     {
         /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
-        /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。markdown プレビューは null。</summary>
+        /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。</summary>
         public string? PendingUrl { get; set; }
 
         /// <summary>CoreWebView2 の生成を開始済みか（多重生成・多重ナビゲートの防止）。</summary>
@@ -3692,6 +3729,10 @@ public partial class ShellWindow : Window
 
     private void DetachEditorTabs()
     {
+        // EditorSupport の追従先は別ワークスペースへ持ち越さない（stale な購読・参照を残さない）。
+        // 内容は復元後の ActivateEditorTab → SwitchEditorSupportSourceAsync が作り直す。
+        _editorSupportDebounceTimer?.Stop();
+        DetachEditorSupportSource();
         CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
@@ -3749,38 +3790,11 @@ public partial class ShellWindow : Window
 
     private void DetachBrowserTabs()
     {
-        DiscardMarkdownPreviewTab();
-        _lastRealActiveBrowserTab = null;
         CurrentBrowserWorkspace.ActiveTabId = _activeBrowserTab?.Id;
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
         _activeBrowserTab = null;
         _browser.SetActiveView(null);
-    }
-
-    // マークダウンプレビューはワークスペースをまたいで保持しない。切替時に破棄し、ソースエディタの
-    // ViewportScrolled 購読も解除して、別ワークスペースに stale な参照（とそれ経由のスクロール同期や
-    // 再アタッチ時に蘇る空プレビュータブ）が残らないようにする。
-    private void DiscardMarkdownPreviewTab()
-    {
-        var preview = _markdownPreviewBrowserTab;
-        _markdownPreviewDebounceTimer?.Stop();
-        DetachMarkdownPreviewWebViewEvents();
-        DetachMarkdownPreviewSource();
-        _markdownPreviewBrowserTab = null;
-        if (preview is null)
-            return;
-
-        if (ReferenceEquals(_activeBrowserTab, preview))
-            _activeBrowserTab = null;
-
-        _browserTabs.Remove(preview);
-        if (preview.View.CoreWebView2 is not null)
-            preview.View.CoreWebView2.FaviconChanged -= OnBrowserFaviconChanged;
-        BrowserContentHost.Children.Remove(preview.View);
-        preview.View.NavigationCompleted -= OnBrowserNavigationCompleted;
-        preview.View.Dispose();
-        _vm.Tabs.RemoveBrowserTab(preview.Id);
     }
 
     private async Task AttachBrowserTabsAsync()
@@ -3878,17 +3892,12 @@ public partial class ShellWindow : Window
             snapshot.Editor.IsModified = activeEditor.IsModified;
         }
 
-        // プレビュータブは永続化しないので、それがアクティブなときは最後に見ていた実タブを
-        // アクティブ扱いにして、復元時に選択が失われないようにする。
-        var activeRealBrowserId = (_activeBrowserTab is { IsMarkdownPreview: false }
-            ? _activeBrowserTab
-            : _lastRealActiveBrowserTab)?.Id;
-        snapshot.BrowserTabs = _browserTabs.Where(tab => !tab.IsMarkdownPreview).Select(tab => new BrowserTabSnapshot
+        snapshot.BrowserTabs = _browserTabs.Select(tab => new BrowserTabSnapshot
         {
             Id = tab.Id,
             Url = tab.View.Source?.ToString(),
             Title = tab.View.CoreWebView2?.DocumentTitle,
-            IsActive = tab.Id == activeRealBrowserId
+            IsActive = tab.Id == _activeBrowserTab?.Id
         }).ToList();
 
         CaptureLayoutSizes();
