@@ -36,15 +36,19 @@ public sealed class DiffFileItem
     /// <summary>巻き戻し可能か（新規=削除 / 変更=旧全文の復元）。</summary>
     public bool CanRevert => IsAi && (IsNew || OldContent is not null);
 
-    // --- Git変更のとき ---
+    // --- Git変更のとき（作業ツリー） ---
     public GitChangeEntry? Entry { get; init; }
     public bool IsStaged { get; init; }
+
+    // --- Gitコミット範囲のとき ---
+    public GitCommitFileChange? CommitFile { get; init; }
 }
 
 /// <summary>
-/// Diff セッションペインの ViewModel。2つのソースを切り替えて表示する：
+/// Diff セッションペインの ViewModel。2つのソースを切り替えて表示する（既定は Git）：
 /// AI変更（<see cref="IFileChangeJournal"/> が記録した write_file / edit_file の前後全文）と、
-/// Git の作業ツリー差分（ステージ済み・未ステージ）。AI変更はファイル単位の巻き戻しに対応する。
+/// Git の差分（作業ツリーのステージ済み・未ステージ。Git セッションからの連携で
+/// 特定コミットの変更・コミット範囲の差分も表示できる）。AI変更はファイル単位の巻き戻しに対応する。
 /// </summary>
 public sealed partial class DiffSessionViewModel : ObservableObject
 {
@@ -54,7 +58,12 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private readonly IWorkspaceService _workspace;
     private bool _loaded;
 
-    [ObservableProperty] private bool _isGitMode;
+    /// <summary>Git モードでの表示対象コミット範囲。null は作業ツリー。From=null は To 1コミットの変更。</summary>
+    private (string? From, string To)? _commitRange;
+
+    [ObservableProperty] private bool _isGitMode = true;
+    /// <summary>コミット範囲を表示中のヘッダーラベル（空なら作業ツリー表示）。</summary>
+    [ObservableProperty] private string _gitTargetLabel = "";
     [ObservableProperty] private DiffFileItem? _selectedFile;
     [ObservableProperty] private string _emptyMessage = "";
     [ObservableProperty] private string _statusMessage = "";
@@ -91,17 +100,63 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
     }
 
-    partial void OnIsGitModeChanged(bool value) => _ = RefreshAsync();
+    partial void OnIsGitModeChanged(bool value)
+    {
+        // AI変更モードへ切り替えたらコミット範囲は解除（戻ったときは作業ツリーから）
+        if (!value)
+        {
+            _commitRange = null;
+            GitTargetLabel = "";
+        }
+        _ = RefreshAsync();
+    }
 
     partial void OnSelectedFileChanged(DiffFileItem? value) => _ = LoadDiffAsync(value);
 
+    /// <summary>
+    /// Git セッションから：コミット範囲の差分を表示する（from=null は to 1コミットの変更）。
+    /// ペインの表示は呼び出し側（ShellWindow）が行う。
+    /// </summary>
+    public void ShowCommitRange(string? fromHash, string toHash, string label)
+    {
+        _loaded = true;
+        _commitRange = (fromHash, toHash);
+        GitTargetLabel = label;
+        if (!IsGitMode)
+            IsGitMode = true;  // OnIsGitModeChanged 経由で更新が走る
+        else
+            _ = RefreshAsync();
+    }
+
+    /// <summary>コミット範囲の表示を解除して作業ツリー差分へ戻る。</summary>
     [RelayCommand]
+    private void ClearGitTarget()
+    {
+        if (_commitRange is null) return;
+        _commitRange = null;
+        GitTargetLabel = "";
+        _ = RefreshAsync();
+    }
+
     private async Task RefreshAsync()
     {
         _loaded = true;
         var selectedPath = SelectedFile?.FullPath;
 
-        var (items, emptyMessage) = IsGitMode ? await BuildGitItemsAsync() : BuildAiItems();
+        var (items, emptyMessage) = !IsGitMode ? BuildAiItems()
+            : _commitRange is { } range ? await BuildCommitItemsAsync(range)
+            : await BuildGitItemsAsync();
+
+        // 一覧に変化がなければ作り直さない（自動更新のたびに選択・スクロールが飛ぶチラつきの防止）。
+        // AI変更は差分内容も item に閉じ、コミット範囲は不変なのでこれで完結。Git 作業ツリーだけは
+        // 同じ一覧のままファイル内容が変わりうるので、差分本体を静かに読み直す（同一なら再描画しない）。
+        if (SameAsCurrentFiles(items))
+        {
+            EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
+            if (IsGitMode && _commitRange is null)
+                await LoadDiffAsync(SelectedFile);
+            return;
+        }
 
         Files.Clear();
         DiffFileItem? reselect = null;
@@ -118,6 +173,31 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         SelectedFile = reselect ?? Files.FirstOrDefault();
         if (SelectedFile is null)
             DiffRows.Clear();
+    }
+
+    /// <summary>計算し直した一覧が現在の表示と同一か（差分内容の手掛かりになるフィールドまで比較する）。</summary>
+    private bool SameAsCurrentFiles(List<DiffFileItem> items)
+    {
+        if (items.Count != Files.Count)
+            return false;
+        for (var i = 0; i < items.Count; i++)
+        {
+            var a = items[i];
+            var b = Files[i];
+            if (!string.Equals(a.FullPath, b.FullPath, StringComparison.OrdinalIgnoreCase)
+                || a.DisplayPath != b.DisplayPath
+                || a.Badge != b.Badge
+                || a.Stats != b.Stats
+                || a.IsAi != b.IsAi
+                || a.IsNew != b.IsNew
+                || a.IsStaged != b.IsStaged
+                || a.OldContent != b.OldContent
+                || a.NewContent != b.NewContent
+                || !Equals(a.Entry, b.Entry)
+                || !Equals(a.CommitFile, b.CommitFile))
+                return false;
+        }
+        return true;
     }
 
     // ===== AI変更（ジャーナル） =====
@@ -184,6 +264,23 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         return (items, "Git の変更はありません。");
     }
 
+    // ===== Gitコミット範囲 =====
+
+    private async Task<(List<DiffFileItem> Items, string EmptyMessage)> BuildCommitItemsAsync(
+        (string? From, string To) range)
+    {
+        var changes = await _git.GetRangeChangesAsync(range.From, range.To);
+        var root = _workspace.RootPath ?? "";
+        var items = changes.Select(c => new DiffFileItem
+        {
+            FullPath = Path.Combine(root, c.Path),
+            DisplayPath = c.Path,
+            Badge = c.Status.ToString(),
+            CommitFile = c,
+        }).ToList();
+        return (items, "この範囲に変更ファイルはありません。");
+    }
+
     /// <summary>ワークスペースルート配下なら相対パスへ（表示用）。</summary>
     private string ToDisplayPath(string fullPath)
     {
@@ -196,32 +293,55 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     // ===== 差分本体 =====
 
+    /// <summary>読込の世代番号。読込中に選択や一覧が変わったとき、古い結果の適用を捨てる。</summary>
+    private int _diffLoadVersion;
+
+    /// <summary>
+    /// 差分本体を読み込む。全行を組み立ててから、現在の表示と異なるときだけ差し替える
+    /// （Clear→await→再追加だと自動更新のたびに空白が見えてチラつくため）。
+    /// </summary>
     private async Task LoadDiffAsync(DiffFileItem? item)
     {
+        var version = ++_diffLoadVersion;
+        var rows = await BuildDiffRowsAsync(item);
+        if (version != _diffLoadVersion)
+            return; // より新しい読込が始まっている
+        if (rows.Count == DiffRows.Count && rows.SequenceEqual(DiffRows))
+            return; // 同一内容（DiffRowVm は record なので値比較）
         DiffRows.Clear();
-        if (item is null) return;
+        foreach (var row in rows)
+            DiffRows.Add(row);
+    }
+
+    private async Task<List<DiffRowVm>> BuildDiffRowsAsync(DiffFileItem? item)
+    {
+        var rows = new List<DiffRowVm>();
+        if (item is null) return rows;
 
         if (item.IsAi)
         {
             if (item.OldContent is null || item.NewContent is null)
             {
-                DiffRows.Add(new DiffRowVm("Header",
+                rows.Add(new DiffRowVm("Header",
                     "（ファイルが大きいため全文を保持していません。差分を表示できません）"));
-                return;
+                return rows;
             }
             foreach (var line in DiffUtil.Compute(item.OldContent, item.NewContent))
-                DiffRows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
-            return;
+                rows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
+            return rows;
         }
 
-        var text = await _git.GetDiffTextAsync(item.Entry!, item.IsStaged);
+        var text = item.CommitFile is { } commitFile && _commitRange is { } range
+            ? await _git.GetRangeFileDiffAsync(range.From, range.To, commitFile)
+            : await _git.GetDiffTextAsync(item.Entry!, item.IsStaged);
         if (text.Length == 0)
         {
-            DiffRows.Add(new DiffRowVm("Header", "（差分はありません）"));
-            return;
+            rows.Add(new DiffRowVm("Header", "（差分はありません）"));
+            return rows;
         }
         foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
-            DiffRows.Add(new DiffRowVm(ClassifyPatchLine(raw), raw));
+            rows.Add(new DiffRowVm(ClassifyPatchLine(raw), raw));
+        return rows;
     }
 
     /// <summary>git の unified diff 1行を表示種別へ分類する。</summary>

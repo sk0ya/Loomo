@@ -16,6 +16,41 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <!-- ペインヘッダー内に並べる操作ボタン（GIT/DIFF/TRACE のツールバーをヘッダーへ集約） -->
+        <Style x:Key="PaneHeaderToolButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Diff のソース切替（AI変更 / Git）のセグメントボタン -->
+        <Style x:Key="SourceToggle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="Margin" Value="0,0,2,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="TabStripButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -412,6 +447,21 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Git" Click="OnHidePane" />
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                       Margin="2,0,4,0" />
+                            <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="12" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⭮ フェッチ"
+                                    Command="{Binding GitSession.FetchCommand}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇣ プル"
+                                    Command="{Binding GitSession.PullCommand}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇡ プッシュ"
+                                    Command="{Binding GitSession.PushCommand}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="＋ ブランチ"
+                                    ToolTip="HEAD から新しいブランチを作成" Click="OnGitNewBranch" />
+                        </StackPanel>
                     </DockPanel>
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
                 </DockPanel>
@@ -425,6 +475,45 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Diff" Click="OnHidePane" />
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                                    Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="12"
+                                                 IsChecked="{Binding DiffSession.IsGitMode}" />
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="AI変更" FontSize="12"
+                                                 IsChecked="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBool}}" />
+                                </StackPanel>
+                            </Border>
+                            <!-- Git セッションから連携されたコミット範囲の表示中ラベル＋解除 -->
+                            <StackPanel Orientation="Horizontal">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DiffSession.GitTargetLabel}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="{Binding DiffSession.GitTargetLabel}" FontSize="12"
+                                           Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
+                                           Margin="0,0,6,0" TextTrimming="CharacterEllipsis" MaxWidth="240" />
+                                <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 作業ツリーへ"
+                                        ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
+                                        Command="{Binding DiffSession.ClearGitTargetCommand}" />
+                            </StackPanel>
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="エディタで開く"
+                                    Command="{Binding DiffSession.OpenInEditorCommand}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="元に戻す"
+                                    ToolTip="選択中ファイルの AI 変更を巻き戻す（新規作成なら削除）"
+                                    Command="{Binding DiffSession.RevertCommand}"
+                                    Visibility="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBoolToVis}}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="記録をクリア"
+                                    ToolTip="AI変更の記録をすべて消す（ファイル自体は変更しない）"
+                                    Command="{Binding DiffSession.ClearAiChangesCommand}"
+                                    Visibility="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBoolToVis}}" />
+                        </StackPanel>
                     </DockPanel>
                     <views:DiffSessionView x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" />
                 </DockPanel>
@@ -438,6 +527,14 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Trace" Click="OnHidePane" />
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="削除"
+                                    ToolTip="選択中セッションのトレースファイルを削除"
+                                    Command="{Binding TraceSession.DeleteSelectedCommand}" />
+                            <TextBlock Text="{Binding TraceSession.SummaryLabel}" VerticalAlignment="Center"
+                                       Margin="2,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                     </DockPanel>
                     <views:TraceSessionView x:Name="TraceSessionHost" DataContext="{Binding TraceSession}" />
                 </DockPanel>

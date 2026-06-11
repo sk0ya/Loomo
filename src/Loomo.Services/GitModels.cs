@@ -35,6 +35,12 @@ public sealed record GitChangeEntry(
     bool IsUntracked,
     bool IsConflicted);
 
+/// <summary>コミット／コミット範囲の変更ファイル1件（git の name-status 1行）。</summary>
+/// <param name="Status">状態文字（A/M/D/R 等。R100 などのスコアは落とす）。</param>
+/// <param name="Path">リポジトリルートからの相対パス（リネーム時は新パス）。</param>
+/// <param name="OrigPath">リネーム・コピー時の元パス（それ以外は null）。</param>
+public sealed record GitCommitFileChange(char Status, string Path, string? OrigPath);
+
 /// <summary>git status の取得結果スナップショット。</summary>
 public sealed record GitStatusSnapshot
 {

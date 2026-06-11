@@ -4,12 +4,6 @@
     Background="{DynamicResource Panel}" Focusable="True">
 
     <UserControl.Resources>
-        <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
-            <Setter Property="Padding" Value="8,3" />
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="FontSize" Value="12" />
-        </Style>
-
         <!-- 一覧アイテム共通（GitSessionView と同じ見た目） -->
         <Style x:Key="TraceListItem" TargetType="ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -46,18 +40,7 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- ツールバー -->
-        <DockPanel DockPanel.Dock="Top" Margin="8,4" LastChildFill="False">
-            <StackPanel Orientation="Horizontal">
-                <Button Style="{StaticResource ToolbarButton}" Content="↻ 更新" Command="{Binding RefreshCommand}" />
-                <Button Style="{StaticResource ToolbarButton}" Content="削除"
-                        ToolTip="選択中セッションのトレースファイルを削除"
-                        Command="{Binding DeleteSelectedCommand}" />
-                <TextBlock Text="{Binding SummaryLabel}" VerticalAlignment="Center" Margin="8,0,0,0"
-                           FontSize="12" Foreground="{DynamicResource FgDim}" />
-            </StackPanel>
-        </DockPanel>
-
+        <!-- ツールバー（更新・削除）はペインヘッダー側（ShellWindow）へ集約 -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="210" MinWidth="140" />

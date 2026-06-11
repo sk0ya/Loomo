@@ -240,6 +240,12 @@ public partial class ShellWindow : Window
             SetPaneVisible(PaneKind.Git, true);
             FocusPane(PaneKind.Git);
         };
+        // Git セッションの「DIFF ペインで差分を表示」：Diff ペインを表示してフォーカスする。
+        vm.GitSession.DiffOpenRequested += (_, _) =>
+        {
+            SetPaneVisible(PaneKind.Diff, true);
+            FocusPane(PaneKind.Diff);
+        };
         // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込する。
         GitPane.IsVisibleChanged += (_, e) =>
         {
@@ -1114,6 +1120,14 @@ public partial class ShellWindow : Window
     {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
             SetPaneVisible(kind, false);
+    }
+
+    /// <summary>Git ペインヘッダーの「＋ブランチ」：名前を聞いて HEAD からブランチを作成する。</summary>
+    private async void OnGitNewBranch(object sender, RoutedEventArgs e)
+    {
+        var name = InputDialog.Prompt(this, "新しいブランチ", "ブランチ名を入力してください");
+        if (!string.IsNullOrWhiteSpace(name))
+            await _vm.GitSession.CreateBranchAsync(name);
     }
 
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)

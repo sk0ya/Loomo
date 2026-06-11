@@ -20,21 +20,68 @@ namespace sk0ya.Loomo.Services;
 public sealed class GitService
 {
     private const int TimeoutMs = 120_000;
+    /// <summary>ワークスペース監視→RepositoryChanged 発火のデバウンス幅。ビルド等の連続イベントをまとめる。</summary>
+    private const int WatchDebounceMs = 800;
 
     private readonly IWorkspaceService _workspace;
+    private FileSystemWatcher? _watcher;
+    private Timer? _watchDebounce;
 
     public GitService(IWorkspaceService workspace)
     {
         _workspace = workspace;
-        workspace.RootChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        workspace.RootChanged += (_, _) =>
+        {
+            StartWatching();
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        };
+        StartWatching();
     }
 
     /// <summary>
-    /// リポジトリ状態が変わった可能性があるとき（更新系コマンド実行後・ワークスペース切替時）。
+    /// リポジトリ状態が変わった可能性があるとき（更新系コマンド実行後・ワークスペース切替時・
+    /// ワークスペース監視がファイル変化を検出したとき）。
     /// 失敗時も発火する（コンフリクト中断などは失敗でも作業ツリーが動くため）。
     /// UI スレッドとは限らないので購読側でディスパッチすること。
     /// </summary>
     public event EventHandler? RepositoryChanged;
+
+    /// <summary>
+    /// ワークスペース全体（.git 含む）を監視し、外部の git 操作（人間のターミナル・エージェントの
+    /// run_powershell）やファイル編集でも RepositoryChanged を発火する。自前の git status が
+    /// .git/index を書き戻して再発火することがあるが、2巡目で安定するためループにはならない。
+    /// </summary>
+    private void StartWatching()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+
+        var root = RootPath;
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+            return;
+
+        var watcher = new FileSystemWatcher(root)
+        {
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.FileName
+                | NotifyFilters.DirectoryName
+                | NotifyFilters.LastWrite
+                | NotifyFilters.Size,
+        };
+        watcher.Changed += (_, _) => ScheduleRepositoryChanged();
+        watcher.Created += (_, _) => ScheduleRepositoryChanged();
+        watcher.Deleted += (_, _) => ScheduleRepositoryChanged();
+        watcher.Renamed += (_, _) => ScheduleRepositoryChanged();
+        watcher.Error += (_, _) => ScheduleRepositoryChanged(); // バッファ溢れ＝何かが大量に変わった
+        watcher.EnableRaisingEvents = true;
+        _watcher = watcher;
+    }
+
+    private void ScheduleRepositoryChanged()
+    {
+        _watchDebounce ??= new Timer(_ => RepositoryChanged?.Invoke(this, EventArgs.Empty));
+        _watchDebounce.Change(WatchDebounceMs, Timeout.Infinite);
+    }
 
     public string? RootPath => _workspace.RootPath;
 
@@ -146,6 +193,51 @@ public sealed class GitService
     public async Task<string> GetCommitPatchAsync(string hash)
     {
         var result = await RunAsync("show", hash).ConfigureAwait(false);
+        return result.Success ? result.Output : result.Message;
+    }
+
+    /// <summary>
+    /// コミット範囲の変更ファイル一覧。<paramref name="fromHash"/> が null なら
+    /// <paramref name="toHash"/> 1コミットの変更（親との diff。ルートコミット対応、マージは第1親と比較）、
+    /// 指定があれば両端スナップショット間の diff（from..to の到達差ではなく単純比較）。
+    /// </summary>
+    public async Task<IReadOnlyList<GitCommitFileChange>> GetRangeChangesAsync(string? fromHash, string toHash)
+    {
+        var result = fromHash is null
+            ? await RunAsync("diff-tree", "--root", "-r", "-m", "--first-parent",
+                "--no-commit-id", "--name-status", toHash).ConfigureAwait(false)
+            : await RunAsync("diff", "--name-status", fromHash, toHash).ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<GitCommitFileChange>();
+
+        var list = new List<GitCommitFileChange>();
+        foreach (var line in result.Output.Split('\n'))
+        {
+            var l = line.TrimEnd('\r');
+            if (l.Length == 0) continue;
+            var parts = l.Split('\t');
+            if (parts.Length < 2 || parts[0].Length == 0) continue;
+            var status = parts[0][0]; // "R100" などのスコアは落とす
+            var (path, orig) = parts.Length >= 3 ? (parts[2], parts[1]) : (parts[1], (string?)null);
+            list.Add(new GitCommitFileChange(status, path, orig));
+        }
+        return list;
+    }
+
+    /// <summary>コミット範囲（<see cref="GetRangeChangesAsync"/> と同じ規約）の1ファイル差分テキスト。</summary>
+    public async Task<string> GetRangeFileDiffAsync(string? fromHash, string toHash, GitCommitFileChange file)
+    {
+        var args = new List<string>();
+        if (fromHash is null)
+            args.AddRange(new[]
+                { "diff-tree", "--root", "-p", "-m", "--first-parent", "--no-commit-id", toHash });
+        else
+            args.AddRange(new[] { "diff", fromHash, toHash });
+        args.Add("--");
+        if (file.OrigPath is not null)
+            args.Add(file.OrigPath);
+        args.Add(file.Path);
+        var result = await RunAsync(args.ToArray()).ConfigureAwait(false);
         return result.Success ? result.Output : result.Message;
     }
 

@@ -4,39 +4,6 @@
     Background="{DynamicResource Panel}" Focusable="True">
 
     <UserControl.Resources>
-        <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
-            <Setter Property="Padding" Value="8,3" />
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="FontSize" Value="12" />
-        </Style>
-
-        <!-- ソース切替（AI変更 / Git）のセグメントボタン -->
-        <Style x:Key="SourceToggle" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-            <Setter Property="Padding" Value="10,3" />
-            <Setter Property="Margin" Value="0,0,2,0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="b" Background="Transparent" CornerRadius="3"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
-                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- 一覧アイテム共通（GitSessionView と同じ見た目） -->
         <Style x:Key="DiffListItem" TargetType="ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -87,30 +54,7 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- ツールバー -->
-        <DockPanel DockPanel.Dock="Top" Margin="8,4" LastChildFill="False">
-            <StackPanel Orientation="Horizontal">
-                <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="2" Margin="0,0,10,0">
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton Style="{StaticResource SourceToggle}" Content="AI変更"
-                                     IsChecked="{Binding IsGitMode, Converter={StaticResource InverseBool}}" />
-                        <RadioButton Style="{StaticResource SourceToggle}" Content="Git"
-                                     IsChecked="{Binding IsGitMode}" />
-                    </StackPanel>
-                </Border>
-                <Button Style="{StaticResource ToolbarButton}" Content="↻ 更新" Command="{Binding RefreshCommand}" />
-                <Button Style="{StaticResource ToolbarButton}" Content="エディタで開く"
-                        Command="{Binding OpenInEditorCommand}" />
-                <Button Style="{StaticResource ToolbarButton}" Content="元に戻す"
-                        ToolTip="選択中ファイルの AI 変更を巻き戻す（新規作成なら削除）"
-                        Command="{Binding RevertCommand}"
-                        Visibility="{Binding IsGitMode, Converter={StaticResource InverseBoolToVis}}" />
-                <Button Style="{StaticResource ToolbarButton}" Content="記録をクリア"
-                        ToolTip="AI変更の記録をすべて消す（ファイル自体は変更しない）"
-                        Command="{Binding ClearAiChangesCommand}"
-                        Visibility="{Binding IsGitMode, Converter={StaticResource InverseBoolToVis}}" />
-            </StackPanel>
-        </DockPanel>
+        <!-- ツールバー（ソース切替・更新等）はペインヘッダー側（ShellWindow）へ集約 -->
 
         <!-- 実行結果メッセージ -->
         <TextBlock DockPanel.Dock="Bottom" Margin="10,2,10,6" FontSize="11"

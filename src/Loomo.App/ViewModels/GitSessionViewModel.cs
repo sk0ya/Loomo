@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -18,6 +20,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
 {
     private readonly GitService _git;
     private readonly IEditorService _editor;
+    private readonly DiffSessionViewModel _diff;
     private bool _loaded;
     private GitStatusSnapshot _status = new();
 
@@ -40,12 +43,16 @@ public sealed partial class GitSessionViewModel : ObservableObject
     public ObservableCollection<GitBranchInfo> Branches { get; } = new();
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
 
-    public GitSessionViewModel(GitService git, IEditorService editor)
+    public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff)
     {
         _git = git;
         _editor = editor;
+        _diff = diff;
         _git.RepositoryChanged += OnRepositoryChanged;
     }
+
+    /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
+    public event EventHandler? DiffOpenRequested;
 
     /// <summary>Git ペインが初めて表示されたときに読み込む（以降は RepositoryChanged で追従）。</summary>
     public void EnsureLoaded()
@@ -63,7 +70,6 @@ public sealed partial class GitSessionViewModel : ObservableObject
         app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
     }
 
-    [RelayCommand]
     private async Task RefreshAsync()
     {
         _loaded = true;
@@ -169,6 +175,32 @@ public sealed partial class GitSessionViewModel : ObservableObject
         ? Task.FromResult<GitCommandResult?>(null)
         : RunOpAsync($"リセット（{mode.ToString().ToLowerInvariant()}）{row.ShortHash}",
             () => _git.ResetAsync(row.Hash, mode));
+
+    /// <summary>
+    /// 選択コミットの差分を Diff セッションで表示する。
+    /// 1件ならそのコミットの変更、2件以上なら一覧上の端点（最古と最新）のスナップショット比較。
+    /// </summary>
+    public void OpenDiffForCommits(IReadOnlyList<GitLogRow> rows)
+    {
+        var commits = rows.Where(r => r.Hash is not null).ToList();
+        if (commits.Count == 0)
+            return;
+
+        if (commits.Count == 1)
+        {
+            var c = commits[0];
+            _diff.ShowCommitRange(null, c.Hash!, $"コミット {c.ShortHash}");
+        }
+        else
+        {
+            // LogRows は新しい順なので、一覧上の位置から両端（最新・最古）を決める
+            var ordered = commits.OrderBy(c => LogRows.IndexOf(c)).ToList();
+            var newest = ordered[0];
+            var oldest = ordered[^1];
+            _diff.ShowCommitRange(oldest.Hash!, newest.Hash!, $"{oldest.ShortHash} → {newest.ShortHash}");
+        }
+        DiffOpenRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>コミットのフルパッチをエディタの仮想ドキュメントで開く。</summary>
     public async Task OpenPatchAsync(GitLogRow row)

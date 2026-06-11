@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -92,19 +93,19 @@ public partial class GitSessionView : UserControl
         }
     }
 
-    private async void OnNewBranch(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm)
-            return;
-        var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ", "ブランチ名を入力してください");
-        if (!string.IsNullOrWhiteSpace(name))
-            await vm.CreateBranchAsync(name);
-    }
-
     // ===== コミット操作 =====
 
     private GitLogRow? SelectedCommit =>
         LogList.SelectedItem is GitLogRow { IsCommit: true } row ? row : null;
+
+    /// <summary>選択コミットの差分を Diff セッションへ（1件=コミットの変更、複数=端点間の比較）。</summary>
+    private void OnCommitShowDiff(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+            return;
+        var rows = LogList.SelectedItems.OfType<GitLogRow>().Where(r => r.IsCommit).ToList();
+        vm.OpenDiffForCommits(rows);
+    }
 
     private async void OnCommitCreateBranch(object sender, RoutedEventArgs e)
     {

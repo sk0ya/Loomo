@@ -35,6 +35,9 @@ public sealed class TraceReader
 
     public TraceReader(string dir) => _dir = dir;
 
+    /// <summary>トレースファイルのディレクトリ（自動更新の監視用）。</summary>
+    public string DirectoryPath => _dir;
+
     /// <summary>trace ディレクトリの jsonl ファイルを新しい順に列挙する。</summary>
     public IReadOnlyList<TraceFileInfo> List()
     {

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -43,8 +45,13 @@ public sealed partial class TraceSessionViewModel : ObservableObject
 {
     private static readonly JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
 
+    /// <summary>監視イベント→再読込のデバウンス幅。エージェント実行中の連続追記をまとめる。</summary>
+    private const int RefreshDebounceMs = 700;
+
     private readonly TraceReader _reader;
     private bool _loaded;
+    private FileSystemWatcher? _watcher;
+    private Timer? _refreshDebounce;
 
     [ObservableProperty] private TraceSessionItem? _selectedSession;
     [ObservableProperty] private TraceRowVm? _selectedRow;
@@ -58,15 +65,50 @@ public sealed partial class TraceSessionViewModel : ObservableObject
 
     public TraceSessionViewModel(TraceReader reader) => _reader = reader;
 
-    /// <summary>トレースペインが初めて表示されたときに一覧を読み込む。</summary>
+    /// <summary>トレースペインが初めて表示されたときに一覧を読み込み、以降はフォルダ監視で自動更新する。</summary>
     public void EnsureLoaded()
     {
         if (_loaded) return;
         _loaded = true;
+        StartWatching();
         _ = RefreshAsync();
     }
 
-    [RelayCommand]
+    /// <summary>traces フォルダを監視し、JsonlTraceSink の追記・ローテーションに追従する。</summary>
+    private void StartWatching()
+    {
+        try
+        {
+            Directory.CreateDirectory(_reader.DirectoryPath);
+            var watcher = new FileSystemWatcher(_reader.DirectoryPath, "*.jsonl")
+            {
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            watcher.Changed += (_, _) => ScheduleRefresh();
+            watcher.Created += (_, _) => ScheduleRefresh();
+            watcher.Deleted += (_, _) => ScheduleRefresh();
+            watcher.Renamed += (_, _) => ScheduleRefresh();
+            watcher.Error += (_, _) => ScheduleRefresh();
+            watcher.EnableRaisingEvents = true;
+            _watcher = watcher;
+        }
+        catch (Exception)
+        {
+            // 監視を張れなくても閲覧自体はできる（手動でペインを開き直せば再読込される）
+        }
+    }
+
+    private void ScheduleRefresh()
+    {
+        _refreshDebounce ??= new Timer(_ =>
+        {
+            var app = Application.Current;
+            if (app is null) return;
+            app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
+        });
+        _refreshDebounce.Change(RefreshDebounceMs, Timeout.Infinite);
+    }
+
     private async Task RefreshAsync()
     {
         _loaded = true;
@@ -119,6 +161,8 @@ public sealed partial class TraceSessionViewModel : ObservableObject
 
     private async Task LoadRowsAsync(TraceSessionItem? session)
     {
+        // jsonl は追記のみなので、自動更新の再読込では同じインデックスの行を選び直せる
+        var keepIndex = SelectedRow is { } sel ? Rows.IndexOf(sel) : -1;
         Rows.Clear();
         SummaryLabel = "";
         DetailText = "";
@@ -146,6 +190,9 @@ public sealed partial class TraceSessionViewModel : ObservableObject
 
         SummaryLabel = events.Count == 0 ? "（イベントなし）"
             : $"ターン {turns}・合計 {totalTurnMs / 1000.0:0.#}s・in {totalIn:N0} tok / out {totalOut:N0} tok";
+
+        if (keepIndex >= 0 && keepIndex < Rows.Count)
+            SelectedRow = Rows[keepIndex];
     }
 
     // ===== イベント → 表示行 =====
