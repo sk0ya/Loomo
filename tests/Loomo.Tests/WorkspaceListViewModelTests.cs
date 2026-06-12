@@ -73,4 +73,32 @@ public class WorkspaceListViewModelTests
         Assert.True(loaded.Stage?.IsActive);
         Assert.Equal(PaneKind.Diff, loaded.Stage?.Pane);
     }
+
+    [Fact]
+    public void New_workspace_snapshot_defaults_to_stage_mode()
+    {
+        var snapshot = new WorkspaceSnapshot();
+
+        Assert.True(snapshot.Stage?.IsActive);
+        Assert.Equal(PaneKind.Editor, snapshot.Stage?.Pane);
+    }
+
+    [Fact]
+    public void Workspace_state_preserves_explicit_non_stage_mode()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
+        var store = new WorkspaceStateStore(path);
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = "C:\\work",
+            Stage = new StageSnapshot { IsActive = false }
+        };
+
+        store.Save(new WorkspaceState { Workspaces = [workspace] });
+
+        var loaded = store.Load().Workspaces.Single();
+        Assert.False(loaded.Stage?.IsActive);
+        Assert.Null(loaded.Stage?.Pane);
+    }
 }

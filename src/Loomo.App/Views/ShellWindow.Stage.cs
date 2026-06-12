@@ -117,6 +117,7 @@ public partial class ShellWindow
     private void PrepareStageSnapshot(StageSnapshot? snapshot)
     {
         ClearStageModeForWorkspaceSwitch();
+        snapshot ??= StageSnapshot.Default();
 
         if (snapshot?.IsActive != true)
             return;
