@@ -496,10 +496,21 @@ public sealed class AgentCapabilityHarness
     private sealed class HeadlessWorkspace : IWorkspaceService
     {
         private readonly string _root;
+        private string? _selectedPath;
         public HeadlessWorkspace(string root) => _root = Path.GetFullPath(root);
         public string? RootPath => _root;
-        public string? SelectedPath { get; set; }
-        public void OpenFolder(string rootPath) { }
+        public string? SelectedPath
+        {
+            get => _selectedPath;
+            set
+            {
+                if (_selectedPath == value)
+                    return;
+                _selectedPath = value;
+                SelectionChanged?.Invoke(this, value);
+            }
+        }
+        public void OpenFolder(string rootPath) => RootChanged?.Invoke(this, RootPath);
         public Task<IReadOnlyList<FileNode>> ListAsync(string path)
         {
             var dir = ResolvePath(path);
