@@ -10,6 +10,8 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
+    <!-- CSV/TSV の EditorSupport 表示（Vim キーバインド付きグリッド）。名前空間は VGrid.* -->
+    <PackageReference Include="VGrid.Editor" Version="1.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

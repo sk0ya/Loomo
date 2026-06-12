@@ -90,16 +90,30 @@ public partial class ShellWindow
         if (!shouldShow || !IsPaneVisible(PaneKind.EditorSupport))
             return;
 
+        // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。
+        if (provider is IEditorSupportVisualProvider visual && filePath is not null)
+        {
+            if (_editorSupportEditSubscribed.Add(visual))
+                visual.ContentEdited += EditorSupportVisual_ContentEdited;
+
+            ShowEditorSupportVisual(visual.GetOrCreateView());
+            EditorSupportTitle.Text = visual.DescribeTitle(filePath);
+            await visual.UpdateAsync(filePath, source.Control.Text);
+            return;
+        }
+
+        // HTML（WebView2）系。直前までビジュアル系を表示していたら退ける。
+        HideEditorSupportVisual();
         var view = await EnsureEditorSupportViewAsync();
         if (view?.CoreWebView2 is null)
             return;
 
         string title;
         string html;
-        if (provider is not null && filePath is not null)
+        if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
         {
-            title = provider.DescribeTitle(filePath);
-            html = provider.RenderHtml(filePath, source.Control.Text);
+            title = htmlProvider.DescribeTitle(filePath);
+            html = htmlProvider.RenderHtml(filePath, source.Control.Text);
             UpdateEditorSupportVirtualHost(
                 view.CoreWebView2, MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder);
         }
@@ -115,6 +129,49 @@ public partial class ShellWindow
 
         view.CoreWebView2.NavigateToString(html);
         EditorSupportTitle.Text = title;
+    }
+
+    /// <summary>ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。</summary>
+    private void ShowEditorSupportVisual(FrameworkElement view)
+    {
+        if (!ReferenceEquals(_editorSupportVisual, view))
+        {
+            if (_editorSupportVisual is not null)
+                EditorSupportContentHost.Children.Remove(_editorSupportVisual);
+            EditorSupportContentHost.Children.Add(view);
+            _editorSupportVisual = view;
+        }
+
+        view.Visibility = Visibility.Visible;
+        if (_editorSupportView is not null)
+            _editorSupportView.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>ビジュアル提供者のビューを隠し、WebView2 表示へ戻す。</summary>
+    private void HideEditorSupportVisual()
+    {
+        if (_editorSupportVisual is not null)
+            _editorSupportVisual.Visibility = Visibility.Collapsed;
+        if (_editorSupportView is not null)
+            _editorSupportView.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// ビジュアル提供者内での編集（CSV/TSV グリッド等）を、追従中のエディタタブの本文へ書き戻す。
+    /// SetText で BufferChanged が発火しデバウンス更新が走るが、提供者側が内容比較で再パースを
+    /// 抑止するためループしない。エディタタブは通常の編集と同じく未保存（modified）になる。
+    /// </summary>
+    private void EditorSupportVisual_ContentEdited(object? sender, EditorSupportContentEdited e)
+    {
+        var tab = _editorSupportSourceTab;
+        if (tab is null
+            || !string.Equals(tab.Control.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (tab.Control.Text == e.Text)
+            return;
+
+        tab.Control.SetText(e.Text);
     }
 
     /// <summary>

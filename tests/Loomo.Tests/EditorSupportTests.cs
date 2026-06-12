@@ -20,7 +20,7 @@ public class EditorSupportTests
     }
 
     private static EditorSupportRegistry CreateRegistry()
-        => new(new IEditorSupportProvider[] { CreateSupport() });
+        => new(new IEditorSupportProvider[] { CreateSupport(), new VGridEditorSupport(new AiSettings()) });
 
     [Theory]
     [InlineData(@"C:\work\README.md")]
@@ -31,6 +31,25 @@ public class EditorSupportTests
         var provider = CreateRegistry().Resolve(path);
 
         Assert.IsType<MarkdownEditorSupport>(provider);
+    }
+
+    [Theory]
+    [InlineData(@"C:\work\data.csv")]
+    [InlineData(@"C:\work\data.tsv")]
+    [InlineData(@"C:\work\UPPER.CSV")]
+    public void Resolve_CsvTsvファイルにはVGridプロバイダを返す(string path)
+    {
+        var provider = CreateRegistry().Resolve(path);
+
+        Assert.IsType<VGridEditorSupport>(provider);
+    }
+
+    [Fact]
+    public void VGridSupport_タイトルはGridプレフィックスとファイル名()
+    {
+        var support = new VGridEditorSupport(new AiSettings());
+
+        Assert.Equal("Grid: data.csv", support.DescribeTitle(@"C:\work\data.csv"));
     }
 
     [Theory]
@@ -145,5 +164,67 @@ public class MarkdownPreviewPathsTests
 
         Assert.Equal(@"C:\work\docs", folder);
         Assert.Equal("https://preview.loomo/", baseHref);
+    }
+}
+
+/// <summary>
+/// VGridTextSync：エディタ本文 ⇔ TsvDocument の往復変換（CSV/TSV 双方向同期の純ロジック部分）。
+/// グリッド余白（EnsureSize の空行・空列）が本文へ漏れないこと、エコー検出の正規化比較を確認する。
+/// </summary>
+public class VGridTextSyncTests
+{
+    [Fact]
+    public void Tsvの往復_本文が保たれグリッド余白は出力されない()
+    {
+        var doc = VGridTextSync.BuildDocument(@"C:\work\data.tsv", "a\tb\nc\td");
+
+        // EnsureSize で実データより大きなグリッドになっている
+        Assert.True(doc.RowCount > 2);
+
+        Assert.Equal("a\tb\nc\td", VGridTextSync.Serialize(doc, "\n", trailingNewline: false));
+    }
+
+    [Fact]
+    public void Csvの往復_カンマや引用符はDelimiterStrategyのエスケープ規則に従う()
+    {
+        var doc = VGridTextSync.BuildDocument(@"C:\work\data.csv", "name,note\n\"a,b\",plain");
+
+        var text = VGridTextSync.Serialize(doc, "\n", trailingNewline: false);
+
+        Assert.Equal("name,note\n\"a,b\",plain", text);
+    }
+
+    [Fact]
+    public void セル編集が出力へ反映される()
+    {
+        var doc = VGridTextSync.BuildDocument(@"C:\work\data.csv", "a,b\nc,d");
+
+        doc.Rows[1].Cells[1].Value = "edited";
+
+        Assert.Equal("a,b\nc,edited", VGridTextSync.Serialize(doc, "\n", trailingNewline: false));
+    }
+
+    [Fact]
+    public void 改行コードと末尾改行を指定どおり踏襲する()
+    {
+        var doc = VGridTextSync.BuildDocument(@"C:\work\data.csv", "a,b\r\nc,d\r\n");
+
+        Assert.Equal("a,b\r\nc,d\r\n", VGridTextSync.Serialize(doc, "\r\n", trailingNewline: true));
+    }
+
+    [Theory]
+    [InlineData("a,b\nc,d", "a,b\r\nc,d")]      // 改行コードの違いは同内容
+    [InlineData("a,b\nc,d", "a,b\nc,d\n\n")]    // 末尾の空行も同内容
+    public void NormalizeForCompare_改行差と末尾空行を無視して一致する(string left, string right)
+    {
+        Assert.Equal(VGridTextSync.NormalizeForCompare(left), VGridTextSync.NormalizeForCompare(right));
+    }
+
+    [Fact]
+    public void NormalizeForCompare_内容が違えば一致しない()
+    {
+        Assert.NotEqual(
+            VGridTextSync.NormalizeForCompare("a,b"),
+            VGridTextSync.NormalizeForCompare("a,c"));
     }
 }

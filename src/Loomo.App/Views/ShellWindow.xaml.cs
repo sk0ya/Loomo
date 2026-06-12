@@ -57,8 +57,13 @@ public partial class ShellWindow : Window
     // ===== EditorSupport ペイン =====
     // アクティブなエディタタブのファイルに対応する IEditorSupportProvider が登録されていれば
     // （Markdown プレビュー等）、その HTML を専用 WebView2 へ自動表示する。
+    // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示する。
     private EditorTab? _editorSupportSourceTab;
     private WebView2CompositionControl? _editorSupportView;
+    /// <summary>現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。</summary>
+    private FrameworkElement? _editorSupportVisual;
+    /// <summary>ContentEdited（グリッド編集→エディタ書き戻し）を購読済みのビジュアル提供者。</summary>
+    private readonly HashSet<IEditorSupportVisualProvider> _editorSupportEditSubscribed = new();
     private bool _editorSupportWebEventsAttached;
     private DispatcherTimer? _editorSupportDebounceTimer;
     /// <summary>EditorSupport ペイン表示へのユーザー指定。null は自動（対応プロバイダの有無で開閉）。</summary>

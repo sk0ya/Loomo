@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -10,8 +12,10 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>
 /// EditorSupport ペインへ表示するコンテンツの提供者。アクティブなエディタタブのファイルに
 /// 対応する提供者が登録されていれば、EditorSupport ペインが自動でその内容を表示する
-/// （Markdown ならプレビュー等）。新しい拡張子へ対応するには、この実装を App.xaml.cs の DI へ
-/// 追加登録するだけでよい。
+/// （Markdown ならプレビュー等）。新しい拡張子へ対応するには、表示方式に応じて
+/// <see cref="IEditorSupportHtmlProvider"/>（WebView2 へ HTML）か
+/// <see cref="IEditorSupportVisualProvider"/>（WPF コントロールをそのまま表示）を実装し、
+/// App.xaml.cs の DI へ追加登録するだけでよい。
 /// </summary>
 public interface IEditorSupportProvider
 {
@@ -20,10 +24,36 @@ public interface IEditorSupportProvider
 
     /// <summary>ペインのヘッダーへ出す表示名（例: "Preview: README.md"）。</summary>
     string DescribeTitle(string filePath);
+}
 
+/// <summary>HTML を生成して EditorSupport ペインの WebView2 へ表示する提供者（Markdown プレビュー等）。</summary>
+public interface IEditorSupportHtmlProvider : IEditorSupportProvider
+{
     /// <summary>エディタの現在テキストから、表示用の完全な HTML ドキュメントを生成する。</summary>
     string RenderHtml(string filePath, string text);
 }
+
+/// <summary>
+/// WPF コントロールをそのまま EditorSupport ペインへ表示する提供者（CSV/TSV グリッド等）。
+/// ビューは提供者側が1つ保持して使い回す（ペインは1枚なので同時表示は常に1つ）。
+/// </summary>
+public interface IEditorSupportVisualProvider : IEditorSupportProvider
+{
+    /// <summary>ペインへ載せるビューを生成（初回）または再利用して返す。UI スレッドで呼ばれる。</summary>
+    FrameworkElement GetOrCreateView();
+
+    /// <summary>エディタの現在テキストをビューへ反映する。UI スレッドで呼ばれる。</summary>
+    Task UpdateAsync(string filePath, string text);
+
+    /// <summary>
+    /// ビュー内での編集をエディタ本文へ書き戻すための通知（編集できない提供者は発火しなくてよい）。
+    /// ShellWindow が購読し、追従中のエディタタブのテキストを差し替える。UI スレッドで発火する。
+    /// </summary>
+    event EventHandler<EditorSupportContentEdited>? ContentEdited;
+}
+
+/// <summary>ビジュアル提供者内の編集結果（エディタ本文へ書き戻す完全なテキスト）。</summary>
+public sealed record EditorSupportContentEdited(string FilePath, string Text);
 
 /// <summary>登録された <see cref="IEditorSupportProvider"/> からファイルに対応するものを解決する。</summary>
 public sealed class EditorSupportRegistry
@@ -79,7 +109,7 @@ public static class MarkdownPreviewPaths
 }
 
 /// <summary>Markdown（.md / .markdown）のライブプレビュー。</summary>
-public sealed class MarkdownEditorSupport : IEditorSupportProvider
+public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
 {
     private readonly AiSettings _settings;
     private readonly IWorkspaceService _workspace;
