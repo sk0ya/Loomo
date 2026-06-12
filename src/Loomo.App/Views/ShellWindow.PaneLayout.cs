@@ -99,6 +99,15 @@ public partial class ShellWindow
     /// </summary>
     private void RebuildPaneLayout()
     {
+        // ステージモード中はタイルを組まずステージ側を組み直す（SetPaneVisible 等の
+        // 既存フローがそのまま流れてきても表示が壊れないように）。ツリーへの変更は
+        // 反映済みなので、ステージ解除時の再構築で通常レイアウトにも現れる。
+        if (_stageActive)
+        {
+            RebuildStage();
+            return;
+        }
+
         // すべてのペインを現在の親から外してからホストを作り直す
         foreach (var element in _paneElements.Values)
             if (element.Parent is Panel parent)
@@ -246,9 +255,15 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>フォーカス中（無ければ最初の可視）ペインのズームをトグルする。</summary>
+    /// <summary>フォーカス中（無ければ最初の可視）ペインのズームをトグルする。
+    /// ステージモード中は「全面表示」の意味を俯瞰へ読み替える。</summary>
     private void ToggleZoom()
     {
+        if (_stageActive)
+        {
+            ToggleOverview();
+            return;
+        }
         if (_zoomedPane is not null)
         {
             ZoomPane(null);
@@ -274,6 +289,9 @@ public partial class ShellWindow
             _vm.IsSidebarVisible = false;
             return;
         }
+        // ステージモード中はペインを「隠す」概念が無い（全員が舞台か袖にいる）。
+        if (_stageActive)
+            return;
         var target = _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
         if (target is { } kind)
             SetPaneVisible(kind, false);
@@ -374,6 +392,9 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // ステージモード中はタイル前提の操作（ドラッグ移動・ダブルクリックズーム）を無効化する。
+        if (_stageActive)
+            return;
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
 
@@ -398,7 +419,7 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
     {
-        if (_paneDragging || !_paneDragArmed)
+        if (_stageActive || _paneDragging || !_paneDragArmed)
             return;
         if (e.LeftButton != MouseButtonState.Pressed)
         {

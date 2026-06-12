@@ -254,6 +254,14 @@
                 <!-- ウィンドウ操作ボタン＋ペイン表示トグル（キャプション領域だがクリック可能にする） -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             WindowChrome.IsHitTestVisibleInChrome="True">
+                    <!-- ステージモード：舞台＋袖のセッション表示へ切替（ShellWindow.Stage.cs） -->
+                    <ToggleButton x:Name="StageModeToggle" Style="{StaticResource PaneToggle}"
+                                  ToolTip="ステージモード（1ペインを舞台に、他は袖でライブ待機）"
+                                  Click="OnToggleStageMode">
+                        <Path Style="{StaticResource PaneToggleIcon}"
+                              Data="M2,3 H10.5 V13 H2 Z M12,3 H14 V6.5 H12 Z M12,9.5 H14 V13 H12 Z" />
+                    </ToggleButton>
+                    <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
                     <!-- ペインの表示トグル（隠したペインの再表示にも使う）。アクセント色＝表示中／グレー＝非表示。 -->
                     <StackPanel x:Name="PaneToggleBar" Orientation="Horizontal">
                         <!-- ターミナル：プロンプト >_ -->
@@ -715,6 +723,36 @@
                 </DockPanel>
 
                 </Grid>   <!-- /PaneHost -->
+
+                <!-- ステージモード：1ペインを「舞台」に全面表示し、残りは右端の「袖」で生きたまま
+                     縮小表示する（構築は ShellWindow.Stage.cs）。タイル表示（PaneHost）とは
+                     表示の差し替えだけで切替わり、レイアウトツリー（_root）には触れない。 -->
+                <Grid x:Name="StageHost" Grid.Column="2" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid x:Name="StageArea" Grid.Column="0" Margin="10,8,6,10" />
+                    <DockPanel Grid.Column="1" Margin="0,8,10,10">
+                        <Button DockPanel.Dock="Top" Style="{StaticResource FlatButton}" Padding="8,4"
+                                Margin="0,0,0,8" Content="⊞ 俯瞰"
+                                ToolTip="全セッションを一望（クリックでダイブ／Ctrl+W z）"
+                                Click="OnToggleOverview" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="WingStrip" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <!-- 俯瞰：全セッションをカードで一望する Exposé 風レイヤ（背景クリックで閉じる） -->
+                    <Grid x:Name="OverviewLayer" Grid.ColumnSpan="2" Visibility="Collapsed"
+                          Background="#B2101010" MouseLeftButtonUp="OnOverviewBackgroundClick">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled" VerticalAlignment="Center">
+                            <WrapPanel x:Name="OverviewPanel" HorizontalAlignment="Center" MaxWidth="1100"
+                                       Margin="24" />
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
 
                 <!-- ペインドラッグ中のスナップ風プレビュー用オーバーレイ（PaneHost と同じセルへ重ねる）。
                      Popup は1モニタへクリップされ、跨ぎ最大化中に隣のモニタでプレビューが見えないため

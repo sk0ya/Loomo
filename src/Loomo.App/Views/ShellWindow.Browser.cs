@@ -232,7 +232,8 @@ public partial class ShellWindow
     /// </summary>
     private void ScheduleBrowserRealize(BrowserTab? tab)
     {
-        if (tab is null || tab.RealizationStarted || !IsPaneVisible(PaneKind.Browser))
+        // ステージモード中はブラウザも必ず（舞台か袖の）どこかに見えている。
+        if (tab is null || tab.RealizationStarted || !(_stageActive || IsPaneVisible(PaneKind.Browser)))
             return;
 
         Dispatcher.BeginInvoke(
@@ -240,7 +241,7 @@ public partial class ShellWindow
             new Action(() =>
             {
                 // 予約後に別タブへ切替・ペイン非表示になっていたら実体化しない。
-                if (ReferenceEquals(_activeBrowserTab, tab) && IsPaneVisible(PaneKind.Browser))
+                if (ReferenceEquals(_activeBrowserTab, tab) && (_stageActive || IsPaneVisible(PaneKind.Browser)))
                     _ = EnsureBrowserRealizedAsync(tab);
             }));
     }

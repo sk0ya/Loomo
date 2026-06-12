@@ -323,6 +323,12 @@ public partial class ShellWindow
     /// </summary>
     private void FocusPaneInDirection(DropZone direction)
     {
+        // ステージモード中の h/j/k/l は「舞台の転換」（並び順で前後のペインへ）と読み替える。
+        if (_stageActive)
+        {
+            CycleStage(direction is DropZone.Below or DropZone.Right ? 1 : -1);
+            return;
+        }
         var targets = FocusTargets().ToList();
         if (targets.Count == 0)
             return;
@@ -500,6 +506,10 @@ public partial class ShellWindow
     /// <summary>指定ペインのアクティブな中身へキーボードフォーカスを移す。</summary>
     private void FocusPane(PaneKind kind)
     {
+        // ステージモード中は、フォーカス対象を舞台へ立てる（AI がファイルを開いた・
+        // 差分を出した等の既存フローがそのまま「舞台の自動転換」になる）。
+        if (_stageActive && kind != _stagePane)
+            SetStagePane(kind);
         _focusedRegion = FocusTarget.Of(kind);
         switch (kind)
         {
