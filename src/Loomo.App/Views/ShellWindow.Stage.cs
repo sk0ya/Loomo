@@ -33,6 +33,8 @@ public partial class ShellWindow
     private DispatcherTimer? _stageResizeTimer;
     /// <summary>直近の構築に使った仮想キャンバス寸法（＝舞台の実寸）。</summary>
     private Size _stageBuiltSize;
+    /// <summary>袖カードの VisualBrush が参照する、舞台サイズにレイアウト済みの非表示ホスト。</summary>
+    private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
     /// <summary>袖カードの幅。高さは舞台の縦横比から導出される。</summary>
     private const double WingCardWidth = 180;
     /// <summary>俯瞰カードの幅。</summary>
@@ -88,8 +90,10 @@ public partial class ShellWindow
         _stageResizeTimer?.Stop();
         DetachPaneElements();
         StageArea.Children.Clear();
+        StageSourceArea.Children.Clear();
         WingStrip.Children.Clear();
         OverviewPanel.Children.Clear();
+        _stageThumbnailHosts.Clear();
         OverviewLayer.Visibility = Visibility.Collapsed;
         StageHost.Visibility = Visibility.Collapsed;
         PaneHost.Opacity = 1;
@@ -171,13 +175,16 @@ public partial class ShellWindow
         if (!_stageActive)
             return;
 
-        RebuildPaneHostAsStageSource();
+        DetachPaneElements();
         StageArea.Children.Clear();
+        StageSourceArea.Children.Clear();
         WingStrip.Children.Clear();
         OverviewPanel.Children.Clear();
+        _stageThumbnailHosts.Clear();
 
         var virtualSize = StageVirtualSize();
         _stageBuiltSize = virtualSize;
+        BuildStageThumbnailSources(virtualSize);
 
         if (_overviewActive)
         {
@@ -193,8 +200,6 @@ public partial class ShellWindow
 
         // 舞台：選択ペインを角丸カードで全面に立てる
         var element = _paneElements[_stagePane];
-        if (element.Parent is Panel stageSourceParent)
-            stageSourceParent.Children.Remove(element);
         element.Visibility = Visibility.Visible;
         var host = new Grid();
         host.SizeChanged += (_, e) => host.Clip = new RectangleGeometry(new Rect(e.NewSize), 7, 7);
@@ -210,7 +215,7 @@ public partial class ShellWindow
         StageArea.Children.Add(wrap);
 
         // 袖：舞台以外のペインをサムネイルカードとして並べる。
-        foreach (var kind in StageOrder.Where(k => k != _stagePane))
+        foreach (var kind in StageOrder.Where(k => _overviewActive || k != _stagePane))
             WingStrip.Children.Add(BuildSessionCard(
                 kind, WingCardWidth, virtualSize, isOverview: false));
 
@@ -221,19 +226,23 @@ public partial class ShellWindow
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(DumpStageDiagnostics));
     }
 
-    /// <summary>ステージ背面の PaneHost を通常レイアウトで維持し、VisualBrush の描画元にする。</summary>
-    private void RebuildPaneHostAsStageSource()
+    /// <summary>袖カードの描画元を舞台サイズでレイアウトする。</summary>
+    private void BuildStageThumbnailSources(Size virtualSize)
     {
-        _stageActive = false;
-        try
+        foreach (var kind in StageOrder.Where(k => _overviewActive || k != _stagePane))
         {
-            RebuildPaneLayout();
-        }
-        finally
-        {
-            _stageActive = true;
-            PaneHost.Opacity = 0;
-            PaneHost.IsHitTestVisible = false;
+            var element = _paneElements[kind];
+            element.Visibility = Visibility.Visible;
+
+            var host = new Grid
+            {
+                Width = virtualSize.Width,
+                Height = virtualSize.Height,
+                Clip = new RectangleGeometry(new Rect(0, 0, virtualSize.Width, virtualSize.Height)),
+            };
+            host.Children.Add(element);
+            StageSourceArea.Children.Add(host);
+            _stageThumbnailHosts[kind] = host;
         }
     }
 
@@ -268,9 +277,11 @@ public partial class ShellWindow
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && kind == _stagePane;
 
-        var element = _paneElements[kind];
-        var sourceWidth = Math.Max(element.ActualWidth, 1);
-        var sourceHeight = Math.Max(element.ActualHeight, 1);
+        var source = _stageThumbnailHosts.TryGetValue(kind, out var host)
+            ? host
+            : _paneElements[kind];
+        var sourceWidth = Math.Max(virtualSize.Width, 1);
+        var sourceHeight = Math.Max(virtualSize.Height, 1);
         var scale = width / sourceWidth;
         var height = Math.Round(virtualSize.Height * (width / virtualSize.Width));
         var scaledHeight = sourceHeight * scale;
@@ -303,7 +314,7 @@ public partial class ShellWindow
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             IsHitTestVisible = false,
-            Background = new VisualBrush(element)
+            Background = new VisualBrush(source)
             {
                 ViewboxUnits = BrushMappingMode.Absolute,
                 Viewbox = new Rect(0, 0, sourceWidth, sourceHeight),

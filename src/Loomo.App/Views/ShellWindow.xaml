@@ -732,6 +732,8 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
+                    <Grid x:Name="StageSourceArea" Grid.Column="0" Margin="10,8,6,10"
+                          Opacity="0" IsHitTestVisible="False" Panel.ZIndex="-1" />
                     <Grid x:Name="StageArea" Grid.Column="0" Margin="10,8,6,10" />
                     <DockPanel Grid.Column="1" Margin="0,8,10,10">
                         <Button DockPanel.Dock="Top" Style="{StaticResource FlatButton}" Padding="8,4"
