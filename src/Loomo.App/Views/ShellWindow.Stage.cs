@@ -47,11 +47,10 @@ public partial class ShellWindow
     /// <summary>袖・俯瞰での並び順（よく使うものから）。</summary>
     private static readonly PaneKind[] StageOrder =
     [
-        PaneKind.Editor, PaneKind.Terminal, PaneKind.Ai, PaneKind.Diff,
-        PaneKind.Git,
+        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport,
+        PaneKind.Git, PaneKind.Diff, PaneKind.Ai,
         // AI トレースは通常セッションとしては表示しない。
         // PaneKind.Trace,
-        PaneKind.Browser, PaneKind.EditorSupport,
     ];
 
     private void OnToggleStageMode(object sender, RoutedEventArgs e)
