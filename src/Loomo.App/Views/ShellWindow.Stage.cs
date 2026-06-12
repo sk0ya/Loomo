@@ -60,13 +60,18 @@ public partial class ShellWindow
     }
 
     private void EnterStageMode()
+        => EnterStageMode(null);
+
+    private void EnterStageMode(PaneKind? pane)
     {
         if (_stageActive)
             return;
         _stageActive = true;
         _overviewActive = false;
         _zoomedPane = null;
-        _stagePane = _focusedRegion?.Pane
+        _stagePane = pane is { } requested && _paneElements.ContainsKey(requested)
+            ? requested
+            : _focusedRegion?.Pane
             ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind
             ?? PaneKind.Editor;
         PaneHost.Opacity = 0;
@@ -76,6 +81,66 @@ public partial class ShellWindow
         PaneToggleBar.Visibility = Visibility.Collapsed;
         StageModeToggle.IsChecked = true;
         StageHost.SizeChanged += OnStageHostSizeChanged;
+        RebuildStage();
+        FocusPane(_stagePane);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>ワークスペース切替前に、保存済み状態を変えずステージ表示だけ通常状態へ戻す。</summary>
+    private void ClearStageModeForWorkspaceSwitch()
+    {
+        if (!_stageActive)
+            return;
+
+        _stageActive = false;
+        _overviewActive = false;
+        StageHost.SizeChanged -= OnStageHostSizeChanged;
+        _stageResizeTimer?.Stop();
+        DetachPaneElements();
+        StageArea.Children.Clear();
+        StageSourceArea.Children.Clear();
+        WingStrip.Children.Clear();
+        OverviewPanel.Children.Clear();
+        _stageThumbnailHosts.Clear();
+        OverviewLayer.Visibility = Visibility.Collapsed;
+        StageHost.Visibility = Visibility.Collapsed;
+        PaneHost.Opacity = 1;
+        PaneHost.IsHitTestVisible = true;
+        PaneToggleBar.Visibility = Visibility.Visible;
+        StageModeToggle.IsChecked = false;
+    }
+
+    /// <summary>
+    /// ワークスペース復元時、ペインレイアウト適用前にステージ表示状態だけ先に立てる。
+    /// これにより ApplyPaneLayout がタイル表示を描かず、最初からステージとして組み直す。
+    /// </summary>
+    private void PrepareStageSnapshot(StageSnapshot? snapshot)
+    {
+        ClearStageModeForWorkspaceSwitch();
+
+        if (snapshot?.IsActive != true)
+            return;
+
+        _stageActive = true;
+        _overviewActive = false;
+        _zoomedPane = null;
+        _stagePane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
+            ? requested
+            : PaneKind.Editor;
+        PaneHost.Opacity = 0;
+        PaneHost.IsHitTestVisible = false;
+        StageHost.Visibility = Visibility.Visible;
+        PaneToggleBar.Visibility = Visibility.Collapsed;
+        StageModeToggle.IsChecked = true;
+        StageHost.SizeChanged += OnStageHostSizeChanged;
+    }
+
+    /// <summary>タブ実体の復元後に、ステージの内容とフォーカスを確定する。</summary>
+    private void CompleteStageSnapshotRestore()
+    {
+        if (!_stageActive)
+            return;
+
         RebuildStage();
         FocusPane(_stagePane);
     }
@@ -102,6 +167,7 @@ public partial class ShellWindow
         StageModeToggle.IsChecked = false;
         RebuildPaneLayout();
         FocusPane(_stagePane);
+        SaveActiveWorkspaceSnapshot();
     }
 
     /// <summary>舞台のペインを差し替える（袖・俯瞰カードのクリック先）。</summary>
@@ -112,6 +178,7 @@ public partial class ShellWindow
         _overviewActive = false;
         _stagePane = kind;
         RebuildStage();
+        SaveActiveWorkspaceSnapshot();
     }
 
     /// <summary>舞台を並び順で前後のペインへ転換する（ステージ中の Ctrl+W h/j/k/l）。</summary>

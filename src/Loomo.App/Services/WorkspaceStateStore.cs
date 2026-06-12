@@ -75,6 +75,9 @@ public sealed class WorkspaceSnapshot
     /// null なら既定レイアウトを使う。非表示のペインもツリーに残り、リーフの Hidden で表す。
     /// </summary>
     public PaneNodeSnapshot? PaneLayout { get; set; }
+
+    /// <summary>ステージモードの表示状態。null なら通常レイアウトとして扱う。</summary>
+    public StageSnapshot? Stage { get; set; }
 }
 
 /// <summary>メイン領域に並ぶペインの種別。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
@@ -106,6 +109,14 @@ public sealed class PaneNodeSnapshot
     public string? Orientation { get; set; }
     /// <summary>スプリットの子（行なら上→下、列なら左→右の順）。</summary>
     public List<PaneNodeSnapshot> Children { get; set; } = new();
+}
+
+public sealed class StageSnapshot
+{
+    /// <summary>ステージモード中か。</summary>
+    public bool IsActive { get; set; }
+    /// <summary>舞台に立っているペイン。null なら復元時に既定選択へフォールバックする。</summary>
+    public PaneKind? Pane { get; set; }
 }
 
 public sealed class TerminalSnapshot

@@ -133,12 +133,15 @@ public partial class ShellWindow
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);
 
+        ClearStageModeForWorkspaceSwitch();
         DetachTerminalTabs();
         DetachEditorTabs();
         DetachBrowserTabs();
         _activeWorkspace = workspace;
         _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
         StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
+        PrepareStageSnapshot(workspace.Stage);
+        StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         ApplyPaneLayout(workspace.PaneLayout);
         // 跨ぎ最大化中のワークスペース切替：切替先のレイアウトを基準に列振り分けを適用し直す。
         // これをしないと切替先のペインがモニタの継ぎ目を跨いだまま表示され、さらに古い
@@ -162,6 +165,8 @@ public partial class ShellWindow
         StartupProfiler.Mark("  復元:RestoreEditorTabs");
         await RestoreBrowserTabsAsync(workspace);
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
+        CompleteStageSnapshotRestore();
+        StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
 
         SaveActiveWorkspaceSnapshot();
     }
@@ -477,6 +482,11 @@ public partial class ShellWindow
 
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
+        snapshot.Stage = new StageSnapshot
+        {
+            IsActive = _stageActive,
+            Pane = _stageActive ? _stagePane : null
+        };
 
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
         {
