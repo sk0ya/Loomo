@@ -104,8 +104,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
             : "";
         OperationCanSkip = _status.RebaseInProgress || _status.CherryPickInProgress;
 
+        // 構成が変わらなければ同一インスタンスが返り、ビュー（開閉・選択）はそのまま保たれる
         var branches = await _git.GetBranchesAsync();
-        BranchTree = BranchTreeBuilder.Build(branches);
+        BranchTree = BranchTreeBuilder.Update(BranchTree, branches);
 
         var selectedHash = SelectedLogRow?.Hash;
         var log = await _git.GetLogAsync();

@@ -18,8 +18,9 @@ public sealed class BranchTreeNode
     public bool IsFolder => Branch is null;
     public bool IsCurrent => Branch?.IsCurrent == true;
     public bool IsRemote => Branch?.IsRemote == true;
-    /// <summary>TreeView の展開状態（ItemContainerStyle が TwoWay でバインドする）。</summary>
-    public bool IsExpanded { get; set; } = true;
+    /// <summary>TreeView の展開状態（ItemContainerStyle が TwoWay でバインドする）。
+    /// 既定は折りたたみで、現在ブランチへの経路上のフォルダだけ Build が展開する。</summary>
+    public bool IsExpanded { get; set; }
     /// <summary>リーフのツールチップ：フルネーム＋上流（あれば）。フォルダには出さない。</summary>
     public string? ToolTip => Branch is null ? null
         : string.IsNullOrEmpty(Branch.Upstream) ? Branch.Name : $"{Branch.Name} → {Branch.Upstream}";
@@ -33,6 +34,48 @@ public sealed class BranchTreeNode
 public static class BranchTreeBuilder
 {
     public const int MinBranchesForTree = 3;
+
+    /// <summary>
+    /// リフレッシュ用：ブランチ構成が <paramref name="current"/> と同じならインスタンスをそのまま返す
+    /// （ビューの開閉・選択・スクロールを壊さない。RepositoryChanged はファイル編集でも頻発するため）。
+    /// 変わったときだけ作り直し、ユーザーが操作した開閉状態をラベルパスで引き継ぐ。
+    /// </summary>
+    public static IReadOnlyList<BranchTreeNode> Update(
+        IReadOnlyList<BranchTreeNode> current, IReadOnlyList<GitBranchInfo> branches)
+    {
+        if (Flatten(current).SequenceEqual(branches))
+            return current;
+
+        var tree = Build(branches);
+        CarryExpansion(current, tree);
+        return tree;
+    }
+
+    private static IEnumerable<GitBranchInfo> Flatten(IReadOnlyList<BranchTreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Branch is { } branch)
+                yield return branch;
+            foreach (var child in Flatten(node.Children))
+                yield return child;
+        }
+    }
+
+    /// <summary>旧ツリーのフォルダ開閉状態を同じラベルパスの新フォルダへ移す。
+    /// ただし現在ブランチへの経路（Build が展開済み）は畳まない（チェックアウト直後に見えるように）。</summary>
+    private static void CarryExpansion(
+        IReadOnlyList<BranchTreeNode> oldNodes, IReadOnlyList<BranchTreeNode> newNodes)
+    {
+        foreach (var newFolder in newNodes.Where(n => n.IsFolder))
+        {
+            var oldFolder = oldNodes.FirstOrDefault(n => n.IsFolder && n.Label == newFolder.Label);
+            if (oldFolder is null)
+                continue;
+            newFolder.IsExpanded |= oldFolder.IsExpanded;
+            CarryExpansion(oldFolder.Children, newFolder.Children);
+        }
+    }
 
     public static IReadOnlyList<BranchTreeNode> Build(IReadOnlyList<GitBranchInfo> branches)
     {
@@ -55,6 +98,8 @@ public static class BranchTreeBuilder
                     folder = new BranchTreeNode { Label = label };
                     children.Add(folder);
                 }
+                // 現在ブランチが埋もれて見えなくならないよう、その経路上だけ既定で展開する
+                folder.IsExpanded |= branch.IsCurrent;
                 children = folder.Children;
             }
             children.Add(new BranchTreeNode { Label = segments[^1], Branch = branch });

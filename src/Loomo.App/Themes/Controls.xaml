@@ -496,13 +496,14 @@
 
     <!-- ===== ブランチツリー（Git セッションペイン／タイトルバーのブランチ切替で共用） ===== -->
 
-    <!-- ノード表示：✓＝現在ブランチ（幅は常に確保して桁を揃える）、リモートとフォルダは淡色 -->
+    <!-- ノード表示：現在ブランチは ✓＋アクセント色で目立たせる（✓ は現在行にだけ出して幅を取らない）。
+         リモートとフォルダは淡色 -->
     <HierarchicalDataTemplate x:Key="BranchNodeTemplate" ItemsSource="{Binding Children}">
         <StackPanel Orientation="Horizontal" ToolTip="{Binding ToolTip}">
-            <TextBlock Width="14" Text="✓" Foreground="{DynamicResource Accent}">
+            <TextBlock Text="✓ " Foreground="{DynamicResource Accent}" FontSize="12">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Hidden" />
+                        <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                                 <Setter Property="Visibility" Value="Visible" />
@@ -523,6 +524,7 @@
                                 <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </DataTrigger>
                         </Style.Triggers>
@@ -538,7 +540,7 @@
         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="Padding" Value="2,2" />
+        <Setter Property="Padding" Value="4,1" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TreeViewItem">
@@ -552,7 +554,8 @@
                         <Border x:Name="Bd" Grid.Row="0" Background="Transparent" CornerRadius="3">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="16" />
+                                    <!-- 矢印列はフォルダ行だけ。リーフ行は確保せず左へ詰める -->
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
 
@@ -561,7 +564,7 @@
                                               IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
                                     <ToggleButton.Template>
                                         <ControlTemplate TargetType="ToggleButton">
-                                            <Border Background="Transparent" Width="16" Height="16">
+                                            <Border Background="Transparent" Width="13" Height="14">
                                                 <Path x:Name="Arrow" Width="8" Height="8" Stretch="Uniform"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                                       Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z" />
@@ -589,8 +592,8 @@
                             </Grid>
                         </Border>
 
-                        <!-- 子要素：矢印列ぶん（16px）インデントし、左に淡いガイド線 -->
-                        <Border Grid.Row="1" Margin="16,0,0,0"
+                        <!-- 子要素：矢印列ぶんだけインデントし、左に淡いガイド線 -->
+                        <Border Grid.Row="1" Margin="11,0,0,0"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
                             <ItemsPresenter x:Name="ItemsHost" />
                         </Border>
@@ -599,8 +602,9 @@
                         <Trigger Property="IsExpanded" Value="False">
                             <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
                         </Trigger>
+                        <!-- リーフは矢印を Collapsed にして列ごと畳む（無駄なすきまを作らない） -->
                         <Trigger Property="HasItems" Value="False">
-                            <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                            <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
                         </Trigger>
                         <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />

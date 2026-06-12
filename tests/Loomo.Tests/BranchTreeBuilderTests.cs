@@ -107,6 +107,69 @@ public sealed class BranchTreeBuilderTests
     }
 
     [Fact]
+    public void 既定では現在ブランチへの経路だけ展開される()
+    {
+        var tree = BranchTreeBuilder.Build(new[]
+        {
+            Branch("feature/login", current: true),
+            Branch("origin/feature/login", remote: true),
+            Branch("origin/main", remote: true),
+        });
+
+        Assert.True(tree.Single(n => n.Label == "feature").IsExpanded);
+        var origin = tree.Single(n => n.Label == "origin");
+        Assert.False(origin.IsExpanded);
+        Assert.False(origin.Children.Single(n => n.IsFolder).IsExpanded);
+    }
+
+    [Fact]
+    public void 構成が同じならUpdateは同一インスタンスを返しビューを壊さない()
+    {
+        var branches = new[]
+        {
+            Branch("feature/login"),
+            Branch("feature/signup"),
+            Branch("main", current: true),
+        };
+        var tree = BranchTreeBuilder.Build(branches);
+        tree[0].IsExpanded = true;  // ユーザー操作相当
+
+        // 同じ構成（別インスタンスの配列）での更新は no-op
+        var updated = BranchTreeBuilder.Update(tree, new[]
+        {
+            Branch("feature/login"),
+            Branch("feature/signup"),
+            Branch("main", current: true),
+        });
+        Assert.Same(tree, updated);
+    }
+
+    [Fact]
+    public void 構成が変わったら開閉状態を引き継いで作り直す()
+    {
+        var tree = BranchTreeBuilder.Build(new[]
+        {
+            Branch("feature/login"),
+            Branch("fix/crash"),
+            Branch("main", current: true),
+        });
+        tree.Single(n => n.Label == "feature").IsExpanded = true;  // ユーザーが開いた
+
+        // fix/crash へチェックアウトした後の構成
+        var updated = BranchTreeBuilder.Update(tree, new[]
+        {
+            Branch("feature/login"),
+            Branch("fix/crash", current: true),
+            Branch("main"),
+        });
+
+        Assert.NotSame(tree, updated);
+        // ユーザーが開いた feature はそのまま、新しい現在ブランチの経路 fix も展開
+        Assert.True(updated.Single(n => n.Label == "feature").IsExpanded);
+        Assert.True(updated.Single(n => n.Label == "fix").IsExpanded);
+    }
+
+    [Fact]
     public void ツールチップはフルネームと上流を示しフォルダには出さない()
     {
         var tree = BranchTreeBuilder.Build(new[]
