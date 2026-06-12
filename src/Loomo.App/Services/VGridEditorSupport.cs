@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Media;
 using System.Windows.Threading;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Models;
@@ -62,9 +61,8 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider
 
     /// <summary>
     /// VGrid.Editor のテーマ辞書（DataGrid*Brush 等）をビュー自身の Resources へマージする。
-    /// アプリ全体ではなくビューへスコープすることで、Loomo 側のテーマキーと衝突しない。
-    /// 例外：ヘッダー背景の3キーは VGrid のコンバータが Application.Current.Resources から
-    /// 直接引くため、その3つだけアプリ直下へも複製する（Loomo は同名キーを使っていない）。
+    /// アプリ全体ではなくビューへスコープすることで、Loomo 側のテーマキーと衝突しない
+    /// （ヘッダー背景も VGrid.Editor 1.0.1 から要素ツリー解決になり、このスコープで届く）。
     /// </summary>
     private void ApplyTheme(TsvEditorControl view)
     {
@@ -79,21 +77,6 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider
         };
         view.Resources.MergedDictionaries.Clear(); // ここで入れたテーマ辞書だけが入っている
         view.Resources.MergedDictionaries.Add(dict);
-
-        if (Application.Current is { } app)
-        {
-            foreach (var key in new[]
-                     {
-                         "DataGridHeaderBackgroundBrush",
-                         "DataGridCurrentRowHeaderBrush",
-                         "DataGridCurrentColumnHeaderBrush",
-                     })
-            {
-                if (dict[key] is Brush brush)
-                    app.Resources[key] = brush;
-            }
-        }
-
         _appliedLightTheme = light;
     }
 
