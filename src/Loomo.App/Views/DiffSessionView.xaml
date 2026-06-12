@@ -51,6 +51,76 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
+        <!-- 左右並びの差分1行：左=削除側 / 右=追加側。Gap・Header は全幅1本で表示 -->
+        <DataTemplate x:Key="SideRowTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="leftBg" Background="Transparent" Padding="6,0">
+                    <TextBlock x:Name="leftText" Text="{Binding LeftText}"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                               Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" />
+                </Border>
+                <Border x:Name="divider" Grid.Column="1" Width="1"
+                        Background="{DynamicResource Border}" />
+                <Border x:Name="rightBg" Grid.Column="2" Background="Transparent" Padding="6,0">
+                    <TextBlock x:Name="rightText" Text="{Binding RightText}"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                               Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" />
+                </Border>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding LeftKind}" Value="Removed">
+                    <Setter TargetName="leftBg" Property="Background" Value="#1FE57373" />
+                    <Setter TargetName="leftText" Property="Foreground" Value="#FFE57373" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding LeftKind}" Value="Empty">
+                    <Setter TargetName="leftBg" Property="Background" Value="#14808080" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RightKind}" Value="Added">
+                    <Setter TargetName="rightBg" Property="Background" Value="#1F4CAF50" />
+                    <Setter TargetName="rightText" Property="Foreground" Value="#FF81C784" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RightKind}" Value="Empty">
+                    <Setter TargetName="rightBg" Property="Background" Value="#14808080" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding LeftKind}" Value="Gap">
+                    <Setter TargetName="leftBg" Property="Grid.ColumnSpan" Value="3" />
+                    <Setter TargetName="divider" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="rightBg" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="leftText" Property="Foreground" Value="{DynamicResource Accent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding LeftKind}" Value="Header">
+                    <Setter TargetName="leftBg" Property="Grid.ColumnSpan" Value="3" />
+                    <Setter TargetName="divider" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="rightBg" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="leftText" Property="Foreground" Value="{DynamicResource FgDim}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 差分本体の行コンテナ（統合・左右で共用） -->
+        <Style x:Key="DiffBodyItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DiffSideBodyItem" TargetType="ListBoxItem" BasedOn="{StaticResource DiffBodyItem}">
+            <Setter Property="Padding" Value="0" />
+        </Style>
     </UserControl.Resources>
 
     <DockPanel>
@@ -124,30 +194,25 @@
             <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                           Background="{DynamicResource Border}" />
 
-            <!-- 差分本体 -->
-            <ListBox Grid.Column="2" ItemsSource="{Binding DiffRows}"
-                     Background="{DynamicResource BgAlt}" BorderThickness="0"
-                     ItemTemplate="{StaticResource DiffRowTemplate}"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                     VirtualizingPanel.IsVirtualizing="True"
-                     VirtualizingPanel.VirtualizationMode="Recycling">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="6,0" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Focusable" Value="False" />
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border Padding="{TemplateBinding Padding}">
-                                        <ContentPresenter />
-                                    </Border>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-            </ListBox>
+            <!-- 差分本体（統合 / 左右並びを IsSideBySide で切替） -->
+            <Grid Grid.Column="2">
+                <ListBox ItemsSource="{Binding DiffRows}"
+                         Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}"
+                         Background="{DynamicResource BgAlt}" BorderThickness="0"
+                         ItemTemplate="{StaticResource DiffRowTemplate}"
+                         ItemContainerStyle="{StaticResource DiffBodyItem}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling" />
+                <ListBox ItemsSource="{Binding SideRows}"
+                         Visibility="{Binding IsSideBySide, Converter={StaticResource BoolToVis}}"
+                         Background="{DynamicResource BgAlt}" BorderThickness="0"
+                         ItemTemplate="{StaticResource SideRowTemplate}"
+                         ItemContainerStyle="{StaticResource DiffSideBodyItem}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling" />
+            </Grid>
         </Grid>
     </DockPanel>
 </UserControl>

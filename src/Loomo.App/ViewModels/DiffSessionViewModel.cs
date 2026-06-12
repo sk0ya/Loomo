@@ -16,6 +16,12 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>Diff セッションの差分1行。Kind は DiffLineKind 名＋"Header"（git ヘッダ行）。</summary>
 public sealed record DiffRowVm(string Kind, string Text);
 
+/// <summary>
+/// 左右並び表示の差分1行。Kind は <see cref="SideCellKind"/> 名。
+/// Gap / Header は左右共通の1行として全幅表示する（テンプレート側で判定）。
+/// </summary>
+public sealed record DiffSideRowVm(string LeftKind, string LeftText, string RightKind, string RightText);
+
 /// <summary>Diff セッションのファイル1行（AI変更 or Git変更）。</summary>
 public sealed class DiffFileItem
 {
@@ -62,6 +68,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private (string? From, string To)? _commitRange;
 
     [ObservableProperty] private bool _isGitMode = true;
+    /// <summary>差分本体を左右並び（side-by-side）で表示するか。false は統合（unified）表示。</summary>
+    [ObservableProperty] private bool _isSideBySide;
     /// <summary>コミット範囲を表示中のヘッダーラベル（空なら作業ツリー表示）。</summary>
     [ObservableProperty] private string _gitTargetLabel = "";
     [ObservableProperty] private DiffFileItem? _selectedFile;
@@ -71,6 +79,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     public ObservableCollection<DiffFileItem> Files { get; } = new();
     public ObservableCollection<DiffRowVm> DiffRows { get; } = new();
+    public ObservableCollection<DiffSideRowVm> SideRows { get; } = new();
 
     public DiffSessionViewModel(
         IFileChangeJournal journal, GitService git, IEditorService editor, IWorkspaceService workspace)
@@ -112,6 +121,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     }
 
     partial void OnSelectedFileChanged(DiffFileItem? value) => _ = LoadDiffAsync(value);
+
+    // 表示形式の切替時は同じ選択の差分を組み立て直すだけ（一覧は変わらない）
+    partial void OnIsSideBySideChanged(bool value) => _ = LoadDiffAsync(SelectedFile);
 
     /// <summary>
     /// Git セッションから：コミット範囲の差分を表示する（from=null は to 1コミットの変更）。
@@ -172,7 +184,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
         SelectedFile = reselect ?? Files.FirstOrDefault();
         if (SelectedFile is null)
+        {
             DiffRows.Clear();
+            SideRows.Clear();
+        }
     }
 
     /// <summary>計算し直した一覧が現在の表示と同一か（差分内容の手掛かりになるフィールドまで比較する）。</summary>
@@ -299,19 +314,45 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// <summary>
     /// 差分本体を読み込む。全行を組み立ててから、現在の表示と異なるときだけ差し替える
     /// （Clear→await→再追加だと自動更新のたびに空白が見えてチラつくため）。
+    /// 表示中の形式（統合／左右）のコレクションだけを組み立てる。
     /// </summary>
     private async Task LoadDiffAsync(DiffFileItem? item)
     {
         var version = ++_diffLoadVersion;
-        var rows = await BuildDiffRowsAsync(item);
-        if (version != _diffLoadVersion)
-            return; // より新しい読込が始まっている
-        if (rows.Count == DiffRows.Count && rows.SequenceEqual(DiffRows))
-            return; // 同一内容（DiffRowVm は record なので値比較）
-        DiffRows.Clear();
-        foreach (var row in rows)
-            DiffRows.Add(row);
+        if (IsSideBySide)
+        {
+            var rows = await BuildSideRowsAsync(item);
+            if (version != _diffLoadVersion)
+                return; // より新しい読込が始まっている
+            ReplaceIfChanged(SideRows, rows);
+        }
+        else
+        {
+            var rows = await BuildDiffRowsAsync(item);
+            if (version != _diffLoadVersion)
+                return;
+            ReplaceIfChanged(DiffRows, rows);
+        }
     }
+
+    /// <summary>同一内容なら再描画しない差し替え（行 VM は record なので値比較）。</summary>
+    private static void ReplaceIfChanged<T>(ObservableCollection<T> target, List<T> rows)
+    {
+        if (rows.Count == target.Count && rows.SequenceEqual(target))
+            return;
+        target.Clear();
+        foreach (var row in rows)
+            target.Add(row);
+    }
+
+    /// <summary>Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。</summary>
+    private Task<string> GetPatchTextAsync(DiffFileItem item)
+        => item.CommitFile is { } commitFile && _commitRange is { } range
+            ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile)
+            : _git.GetDiffTextAsync(item.Entry!, item.IsStaged);
+
+    private const string TooLargeMessage = "（ファイルが大きいため全文を保持していません。差分を表示できません）";
+    private const string NoDiffMessage = "（差分はありません）";
 
     private async Task<List<DiffRowVm>> BuildDiffRowsAsync(DiffFileItem? item)
     {
@@ -322,8 +363,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         {
             if (item.OldContent is null || item.NewContent is null)
             {
-                rows.Add(new DiffRowVm("Header",
-                    "（ファイルが大きいため全文を保持していません。差分を表示できません）"));
+                rows.Add(new DiffRowVm("Header", TooLargeMessage));
                 return rows;
             }
             foreach (var line in DiffUtil.Compute(item.OldContent, item.NewContent))
@@ -331,35 +371,50 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             return rows;
         }
 
-        var text = item.CommitFile is { } commitFile && _commitRange is { } range
-            ? await _git.GetRangeFileDiffAsync(range.From, range.To, commitFile)
-            : await _git.GetDiffTextAsync(item.Entry!, item.IsStaged);
+        var text = await GetPatchTextAsync(item);
         if (text.Length == 0)
         {
-            rows.Add(new DiffRowVm("Header", "（差分はありません）"));
+            rows.Add(new DiffRowVm("Header", NoDiffMessage));
             return rows;
         }
         foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
-            rows.Add(new DiffRowVm(ClassifyPatchLine(raw), raw));
+            rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw));
         return rows;
     }
 
-    /// <summary>git の unified diff 1行を表示種別へ分類する。</summary>
-    private static string ClassifyPatchLine(string line)
+    private async Task<List<DiffSideRowVm>> BuildSideRowsAsync(DiffFileItem? item)
     {
-        if (line.StartsWith("+++", StringComparison.Ordinal)
-            || line.StartsWith("---", StringComparison.Ordinal)
-            || line.StartsWith("diff ", StringComparison.Ordinal)
-            || line.StartsWith("index ", StringComparison.Ordinal)
-            || line.StartsWith("new file", StringComparison.Ordinal)
-            || line.StartsWith("deleted file", StringComparison.Ordinal)
-            || line.StartsWith("rename ", StringComparison.Ordinal)
-            || line.StartsWith("#", StringComparison.Ordinal))
-            return "Header";
-        if (line.StartsWith("@@", StringComparison.Ordinal)) return "Gap";
-        if (line.StartsWith("+", StringComparison.Ordinal)) return "Added";
-        if (line.StartsWith("-", StringComparison.Ordinal)) return "Removed";
-        return "Context";
+        var rows = new List<DiffSideRowVm>();
+        if (item is null) return rows;
+
+        if (item.IsAi)
+        {
+            if (item.OldContent is null || item.NewContent is null)
+            {
+                rows.Add(SharedRow("Header", TooLargeMessage));
+                return rows;
+            }
+            AddSideRows(rows, SideBySideDiff.Build(DiffUtil.Compute(item.OldContent, item.NewContent)));
+            return rows;
+        }
+
+        var text = await GetPatchTextAsync(item);
+        if (text.Length == 0)
+        {
+            rows.Add(SharedRow("Header", NoDiffMessage));
+            return rows;
+        }
+        AddSideRows(rows, SideBySideDiff.FromUnifiedPatch(text));
+        return rows;
+    }
+
+    private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text);
+
+    private static void AddSideRows(List<DiffSideRowVm> rows, IReadOnlyList<SideBySideRow> source)
+    {
+        foreach (var row in source)
+            rows.Add(new DiffSideRowVm(
+                row.LeftKind.ToString(), row.LeftText, row.RightKind.ToString(), row.RightText));
     }
 
     // ===== 操作 =====

@@ -635,6 +635,18 @@
                                                  IsChecked="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBool}}" />
                                 </StackPanel>
                             </Border>
+                            <!-- 差分の表示形式（統合 / 左右並び） -->
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                                    Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="統合" FontSize="12"
+                                                 ToolTip="差分を1列で表示（unified）"
+                                                 IsChecked="{Binding DiffSession.IsSideBySide, Converter={StaticResource InverseBool}}" />
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="左右" FontSize="12"
+                                                 ToolTip="削除を左・追加を右に並べて表示（side by side）"
+                                                 IsChecked="{Binding DiffSession.IsSideBySide}" />
+                                </StackPanel>
+                            </Border>
                             <!-- Git セッションから連携されたコミット範囲の表示中ラベル＋解除 -->
                             <StackPanel Orientation="Horizontal">
                                 <StackPanel.Style>
