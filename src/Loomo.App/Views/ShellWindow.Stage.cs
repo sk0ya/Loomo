@@ -48,7 +48,10 @@ public partial class ShellWindow
     private static readonly PaneKind[] StageOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Ai, PaneKind.Diff,
-        PaneKind.Git, PaneKind.Trace, PaneKind.Browser, PaneKind.EditorSupport,
+        PaneKind.Git,
+        // AI トレースは通常セッションとしては表示しない。
+        // PaneKind.Trace,
+        PaneKind.Browser, PaneKind.EditorSupport,
     ];
 
     private void OnToggleStageMode(object sender, RoutedEventArgs e)
