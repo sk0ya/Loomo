@@ -176,6 +176,8 @@
                             Command="{Binding ShowGitCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
                             Command="{Binding ShowSessionsCommand}" />
+                    <Button Style="{StaticResource IconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
+                            Command="{Binding ShowPegboardCommand}" />
                 </StackPanel>
             </DockPanel>
 
@@ -357,6 +359,8 @@
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
                     <views:AppearanceView DataContext="{Binding Appearance}"
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}" />
+                    <views:PegboardView DataContext="{Binding Pegboard}"
+                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Pegboard}" />
                 </Grid>
 
                 <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="6"
@@ -376,6 +380,14 @@
                                 Tag="Terminal" Click="OnHidePane" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnTerminalNewTab" />
+                        <!-- コンポーザ（§23.2）の表示/非表示。下部にはめ込んだ複数行コマンド入力 -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                ToolTip="コンポーザ（複数行コマンドを Vim で組み立てて実行）を表示/非表示"
+                                Click="OnToggleComposer">
+                            <Path Width="14" Height="12" Stretch="Uniform" StrokeThickness="1.4"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Data="M2.5,3.5 H13.5 M2.5,6.5 H9.5 M2.5,9.5 H8 M9.5,9 L13.5,11.5 L9.5,14 Z" />
+                        </Button>
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
                                       PanningMode="HorizontalOnly"
@@ -420,7 +432,33 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
-                    <Grid x:Name="TerminalContentHost" />
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition x:Name="ComposerSplitterRow" Height="0" />
+                            <RowDefinition x:Name="ComposerRow" Height="0" />
+                        </Grid.RowDefinitions>
+                        <Grid x:Name="TerminalContentHost" Grid.Row="0" />
+                        <GridSplitter x:Name="ComposerSplitter" Grid.Row="1" Height="6"
+                                      HorizontalAlignment="Stretch" Background="{DynamicResource Border}"
+                                      Visibility="Collapsed" />
+                        <!-- コンポーザ（§23.2）：複数行コマンドを Vim で組み立てて Ctrl+Enter で上のターミナルへ -->
+                        <DockPanel x:Name="ComposerSection" Grid.Row="2" Visibility="Collapsed"
+                                   Background="{DynamicResource Panel}"
+                                   PreviewKeyDown="OnComposerPreviewKeyDown">
+                            <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="22"
+                                        Content="✕" FontSize="11" ToolTip="コンポーザを閉じる" Click="OnToggleComposer" />
+                                <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderToolButton}"
+                                        Content="▶ 実行"
+                                        ToolTip="本文をこのターミナルで実行（Ctrl+Enter。複数行は一時 .ps1 経由）"
+                                        Click="OnComposerRun" />
+                                <TextBlock DockPanel.Dock="Left" Text="Ctrl+Enter" VerticalAlignment="Center"
+                                           Margin="2,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}" />
+                            </DockPanel>
+                            <Border x:Name="ComposerEditorHost" Background="{DynamicResource Panel}" />
+                        </DockPanel>
+                    </Grid>
                 </DockPanel>
 
                 <!-- Editor -->

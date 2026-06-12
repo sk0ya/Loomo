@@ -78,6 +78,27 @@ public sealed class WorkspaceSnapshot
 
     /// <summary>ステージモードの表示状態。未保存の旧ワークスペースは既定でステージ表示にする。</summary>
     public StageSnapshot? Stage { get; set; } = StageSnapshot.Default();
+
+    /// <summary>コマンドコンポーザ（§23.2）の本文。エディタタブ同様、全文をそのまま保存する。</summary>
+    public string? ComposerText { get; set; }
+
+    /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
+    public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
+}
+
+/// <summary>ペグボード（§23.3）の1アイテム。</summary>
+public sealed class PegboardItemSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>"text" | "url" | "file"（開くときの振る舞いを決める）。</summary>
+    public string Type { get; set; } = "text";
+    /// <summary>本文（text はスニペット全文、url は URL、file はフルパス）。</summary>
+    public string Content { get; set; } = "";
+    /// <summary>一覧の見出し。null なら Content の先頭行を表示に使う。</summary>
+    public string? Title { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>上部固定。</summary>
+    public bool Pinned { get; set; }
 }
 
 /// <summary>メイン領域に並ぶペインの種別。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>

@@ -60,7 +60,7 @@ public class ShellViewModelTests
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
-            appearanceVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm);
+            appearanceVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm, new PegboardViewModel());
     }
 
     [Fact]
@@ -101,6 +101,16 @@ public class ShellViewModelTests
         sut.ShowTabsCommand.Execute(null);
         Assert.True(sut.IsSidebarVisible);
         Assert.Equal(SidebarPanel.Tabs, sut.ActivePanel);
+    }
+
+    [Fact]
+    public void ShowPegboard_switches_panel_and_keeps_open()
+    {
+        var sut = CreateSut();
+
+        sut.ShowPegboardCommand.Execute(null);
+        Assert.True(sut.IsSidebarVisible);
+        Assert.Equal(SidebarPanel.Pegboard, sut.ActivePanel);
     }
 
     [Fact]

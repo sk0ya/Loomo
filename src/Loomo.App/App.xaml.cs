@@ -157,6 +157,7 @@ public partial class App : Application
         services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<DiffSessionViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
+        services.AddSingleton<PegboardViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }

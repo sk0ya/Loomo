@@ -11,7 +11,8 @@ public enum SidebarPanel
     Sessions,
     Settings,
     Appearance,
-    Git
+    Git,
+    Pegboard
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
@@ -28,6 +29,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public GitSessionViewModel GitSession { get; }
     public DiffSessionViewModel DiffSession { get; }
     public TraceSessionViewModel TraceSession { get; }
+    public PegboardViewModel Pegboard { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -46,7 +48,8 @@ public sealed partial class ShellViewModel : ObservableObject
         GitPanelViewModel gitPanel,
         GitSessionViewModel gitSession,
         DiffSessionViewModel diffSession,
-        TraceSessionViewModel traceSession)
+        TraceSessionViewModel traceSession,
+        PegboardViewModel pegboard)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -59,6 +62,7 @@ public sealed partial class ShellViewModel : ObservableObject
         GitSession = gitSession;
         DiffSession = diffSession;
         TraceSession = traceSession;
+        Pegboard = pegboard;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
@@ -93,6 +97,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar の外観（テーマ）アイコン。</summary>
     [RelayCommand]
     private void ShowAppearance() => Activate(SidebarPanel.Appearance);
+
+    /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
+    [RelayCommand]
+    private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
 
     /// <summary>ActivityBar の Git アイコン。開くときにリポジトリ状態を遅延読込する。</summary>
     [RelayCommand]

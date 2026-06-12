@@ -268,6 +268,7 @@ public partial class ShellWindow : Window
             if (e.NewValue is true)
                 _vm.TraceSession.EnsureLoaded();
         };
+        InitializePegboard();
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
 

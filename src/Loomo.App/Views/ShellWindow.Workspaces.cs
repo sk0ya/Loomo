@@ -140,6 +140,9 @@ public partial class ShellWindow
         _activeWorkspace = workspace;
         _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
         StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
+        // コンポーザ本文とペグボードはワークスペース毎（どちらも軽量・同期）。
+        RestoreComposer(workspace.ComposerText);
+        _vm.Pegboard.LoadItems(workspace.Pegboard);
         PrepareStageSnapshot(workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         ApplyPaneLayout(workspace.PaneLayout);
@@ -482,6 +485,8 @@ public partial class ShellWindow
 
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
+        snapshot.ComposerText = CaptureComposerText();
+        snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
         snapshot.Stage = new StageSnapshot
         {
             IsActive = _stageActive,
