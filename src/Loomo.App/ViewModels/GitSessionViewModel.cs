@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 
@@ -40,7 +41,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>進行中操作が「スキップ」を持つか（rebase / cherry-pick のみ）。</summary>
     [ObservableProperty] private bool _operationCanSkip;
 
-    public ObservableCollection<GitBranchInfo> Branches { get; } = new();
+    /// <summary>ブランチ一覧のツリー（3個以上で "/" 区切りのフォルダ表示、未満はフラット）。</summary>
+    [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
+
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
 
     public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff)
@@ -79,7 +82,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         if (!_status.IsRepository)
         {
             BranchLabel = "";
-            Branches.Clear();
+            BranchTree = Array.Empty<BranchTreeNode>();
             LogRows.Clear();
             CommitDetail = "";
             OperationInProgress = false;
@@ -102,9 +105,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         OperationCanSkip = _status.RebaseInProgress || _status.CherryPickInProgress;
 
         var branches = await _git.GetBranchesAsync();
-        Branches.Clear();
-        foreach (var branch in branches)
-            Branches.Add(branch);
+        BranchTree = BranchTreeBuilder.Build(branches);
 
         var selectedHash = SelectedLogRow?.Hash;
         var log = await _git.GetLogAsync();

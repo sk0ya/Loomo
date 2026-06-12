@@ -290,6 +290,11 @@ public partial class ShellWindow : Window
         {
             BrowserAddressBox.Text = $"WebView2 initialization failed: {ex.Message}";
         }
+
+        // タイトルバーのブランチ表示は Git ペインを開かなくても要るため、
+        // 初期描画が落ち着いてから Git 状態を遅延読込する。
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+            new Action(() => _vm.GitSession.EnsureLoaded()));
         StartupProfiler.Mark("OnLoaded 完了");
     }
 

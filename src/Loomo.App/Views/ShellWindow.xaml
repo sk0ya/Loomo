@@ -24,6 +24,41 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
+        <!-- ブランチポップアップの行（ブランチ項目・新規作成）。ホバーで背景を付ける素のメニュー風ボタン -->
+        <Style x:Key="BranchMenuItem" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- タイトルバーのブランチ切替ボタン。非リポジトリ（BranchLabel が空）のときは非表示 -->
+        <Style x:Key="TitleBarBranchButton" TargetType="Button" BasedOn="{StaticResource BranchMenuItem}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding GitSession.BranchLabel}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- Diff のソース切替（AI変更 / Git）のセグメントボタン -->
         <Style x:Key="SourceToggle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -166,6 +201,53 @@
                               StrokeThickness="1.6"
                               Data="M1,3.5 H5 L6.2,5 H14 V12 H1 Z M1,3.5 V2 H5.5 L6.7,3.5 M10,6.5 V10 M8.25,8.25 H11.75" />
                     </Button>
+
+                    <!-- Git ブランチ切替：現在ブランチをクリックで一覧ポップアップ→選択でチェックアウト -->
+                    <Button x:Name="BranchButton" Height="24" Margin="10,0,0,0" Padding="8,0"
+                            Style="{StaticResource TitleBarBranchButton}"
+                            ToolTip="ブランチを切り替え" Click="OnTitleBarBranchClick"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                       Margin="0,0,5,0" />
+                            <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="12"
+                                       VerticalAlignment="Center" MaxWidth="220"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                                       VerticalAlignment="Center" Margin="5,1,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="BranchPopup" PlacementTarget="{Binding ElementName=BranchButton}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="4" Padding="4"
+                                MinWidth="240" MaxWidth="360" Margin="0,2,8,8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                            </Border.Effect>
+                            <DockPanel>
+                                <!-- フッター：新規ブランチ作成＋このポップアップ発の操作が失敗したときの理由表示 -->
+                                <StackPanel DockPanel.Dock="Bottom">
+                                    <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
+                                    <Button Style="{StaticResource BranchMenuItem}" FontSize="12"
+                                            Content="＋ 新しいブランチ" Click="OnTitleBarNewBranchClick" />
+                                    <TextBlock x:Name="BranchPopupStatus" Margin="10,2,10,4" FontSize="11"
+                                               Foreground="#FFE57373" TextWrapping="Wrap"
+                                               MaxHeight="80" Visibility="Collapsed" />
+                                </StackPanel>
+                                <!-- ブランチツリー（3個以上で "/" フォルダ表示）。クリック＝リーフはチェックアウト、
+                                     フォルダは開閉（code-behind の OnTitleBarBranchTreeClick） -->
+                                <TreeView x:Name="BranchPopupTree" MaxHeight="360"
+                                          Background="Transparent" BorderThickness="0"
+                                          Foreground="{DynamicResource Fg}"
+                                          ItemsSource="{Binding GitSession.BranchTree}"
+                                          ItemContainerStyle="{StaticResource BranchTreeItem}"
+                                          ItemTemplate="{StaticResource BranchNodeTemplate}"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          PreviewMouseLeftButtonUp="OnTitleBarBranchTreeClick" />
+                            </DockPanel>
+                        </Border>
+                    </Popup>
 
                 </StackPanel>
 

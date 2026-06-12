@@ -494,4 +494,124 @@
         </Style.Triggers>
     </Style>
 
+    <!-- ===== ブランチツリー（Git セッションペイン／タイトルバーのブランチ切替で共用） ===== -->
+
+    <!-- ノード表示：✓＝現在ブランチ（幅は常に確保して桁を揃える）、リモートとフォルダは淡色 -->
+    <HierarchicalDataTemplate x:Key="BranchNodeTemplate" ItemsSource="{Binding Children}">
+        <StackPanel Orientation="Horizontal" ToolTip="{Binding ToolTip}">
+            <TextBlock Width="14" Text="✓" Foreground="{DynamicResource Accent}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Hidden" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <TextBlock Text="{Binding Label}" FontSize="12" TextTrimming="CharacterEllipsis">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRemote}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </StackPanel>
+    </HierarchicalDataTemplate>
+
+    <!-- ツリー項目：FolderTree と同じ作り（ヘッダ行だけをホバー/選択ハイライト・子に左ガイド線）。
+         選択は控えめな Border 色（現在ブランチの ✓ と紛れないように） -->
+    <Style x:Key="BranchTreeItem" TargetType="TreeViewItem">
+        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Padding" Value="2,2" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TreeViewItem">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition />
+                        </Grid.RowDefinitions>
+
+                        <!-- ヘッダ行（矢印＋名前）。Bd は子を含まないので、子のホバーで親は光らない -->
+                        <Border x:Name="Bd" Grid.Row="0" Background="Transparent" CornerRadius="3">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <ToggleButton x:Name="Expander" Grid.Column="0"
+                                              ClickMode="Press" Focusable="False"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent" Width="16" Height="16">
+                                                <Path x:Name="Arrow" Width="8" Height="8" Stretch="Uniform"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="Arrow" Property="RenderTransform">
+                                                        <Setter.Value>
+                                                            <RotateTransform Angle="90" CenterX="4" CenterY="4" />
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+
+                                <ContentPresenter x:Name="PART_Header" Grid.Column="1"
+                                                  ContentSource="Header"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- 子要素：矢印列ぶん（16px）インデントし、左に淡いガイド線 -->
+                        <Border Grid.Row="1" Margin="16,0,0,0"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
+                            <ItemsPresenter x:Name="ItemsHost" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="False">
+                            <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="HasItems" Value="False">
+                            <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                        </Trigger>
+                        <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Border}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

@@ -101,11 +101,15 @@
                 <DockPanel Grid.Column="0">
                     <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="11" FontWeight="SemiBold"
                                Foreground="{DynamicResource FgDim}" Text="ブランチ（ダブルクリックでチェックアウト）" TextWrapping="Wrap" />
-                    <ListBox x:Name="BranchList" Style="{StaticResource GitList}"
-                             ItemsSource="{Binding Branches}"
-                             MouseDoubleClick="OnBranchDoubleClick"
-                             PreviewMouseRightButtonDown="OnListRightClickSelect">
-                        <ListBox.ContextMenu>
+                    <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
+                              Foreground="{DynamicResource Fg}"
+                              ItemsSource="{Binding BranchTree}"
+                              ItemContainerStyle="{StaticResource BranchTreeItem}"
+                              ItemTemplate="{StaticResource BranchNodeTemplate}"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              MouseDoubleClick="OnBranchDoubleClick"
+                              PreviewMouseRightButtonDown="OnListRightClickSelect">
+                        <TreeView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="チェックアウト" Click="OnBranchCheckout" />
                                 <MenuItem Header="現在のブランチへマージ" Click="OnBranchMerge" />
@@ -113,38 +117,8 @@
                                 <Separator />
                                 <MenuItem Header="削除" Click="OnBranchDelete" />
                             </ContextMenu>
-                        </ListBox.ContextMenu>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Upstream}">
-                                    <TextBlock Width="12" Text="✓" Foreground="{DynamicResource Accent}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Hidden" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRemote}" Value="True">
-                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                        </TreeView.ContextMenu>
+                    </TreeView>
                 </DockPanel>
 
                 <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"

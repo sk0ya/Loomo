@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Services;
 
@@ -26,21 +27,22 @@ public partial class GitSessionView : UserControl
     /// <summary>右クリックでも対象行を選択状態にする（コンテキストメニューの対象を確定させる）。</summary>
     private void OnListRightClickSelect(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not ListBox list)
-            return;
         var element = e.OriginalSource as DependencyObject;
         // OriginalSource が Run 等の FrameworkContentElement のことがある（VisualTreeHelper だと例外）
-        while (element is not null && element is not ListBoxItem)
+        while (element is not null and not ListBoxItem and not TreeViewItem)
             element = element is Visual or System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(element)
                 : LogicalTreeHelper.GetParent(element);
-        if (element is ListBoxItem item)
-            item.IsSelected = true;
+        if (element is ListBoxItem listItem)
+            listItem.IsSelected = true;
+        else if (element is TreeViewItem treeItem)
+            treeItem.IsSelected = true;
     }
 
     // ===== ブランチ操作 =====
 
-    private GitBranchInfo? SelectedBranch => BranchList.SelectedItem as GitBranchInfo;
+    /// <summary>ツリーで選択中のブランチ。フォルダノード選択中は null（各操作は何もしない）。</summary>
+    private GitBranchInfo? SelectedBranch => (BranchList.SelectedItem as BranchTreeNode)?.Branch;
 
     private async void OnBranchDoubleClick(object sender, MouseButtonEventArgs e)
     {
