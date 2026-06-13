@@ -31,6 +31,34 @@
             </StackPanel>
         </DataTemplate>
 
+        <!-- モデル入手ポップアップを開くアイコントグル（モデル欄の右隣）。 -->
+        <Style x:Key="AcquireToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 左ナビのカテゴリ項目（全幅・ホバー/選択でハイライト）。 -->
         <Style x:Key="CategoryNavItem" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -88,14 +116,14 @@
                                    Foreground="{DynamicResource Fg}" />
                     </Grid>
                     <StackPanel Margin="8,4,8,8">
-                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="AI"
-                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Ai}" />
-                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="外観"
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="🎨  外観"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Appearance}" />
-                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="エディタ"
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="📝  エディタ"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Editor}" />
-                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="安全設計"
-                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Safety}" />
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="🖥  ターミナル"
+                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal}" />
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="🤖  AI"
+                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Ai}" />
                     </StackPanel>
                 </DockPanel>
 
@@ -116,33 +144,58 @@
                             <!-- ===== AI ===== -->
                             <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Ai}">
                                 <TextBlock Style="{StaticResource SectionTitle}" Text="モデル" Margin="0,0,0,4" />
-                                <ComboBox IsEditable="True" IsReadOnly="True"
-                                          ItemsSource="{Binding Settings.AvailableModels}"
-                                          IsDropDownOpen="{Binding Settings.ModelDropDownOpen, Mode=TwoWay}"
-                                          Text="{Binding Settings.Model, UpdateSourceTrigger=PropertyChanged}"
-                                          ToolTip="ローカルに配置済みの ONNX モデルから選びます。" />
+                                <!-- モデル選択 ＋ 入手アイコン（右隣）。入手UIはポップアップに畳む。 -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0" IsEditable="True" IsReadOnly="True"
+                                              ItemsSource="{Binding Settings.AvailableModels}"
+                                              IsDropDownOpen="{Binding Settings.ModelDropDownOpen, Mode=TwoWay}"
+                                              Text="{Binding Settings.Model, UpdateSourceTrigger=PropertyChanged}"
+                                              ToolTip="ローカルに配置済みの ONNX モデルから選びます。" />
+                                    <ToggleButton x:Name="AcquireToggle" Grid.Column="1"
+                                                  Style="{StaticResource AcquireToggle}"
+                                                  Width="30" Margin="6,0,0,0" Content="＋"
+                                                  ToolTip="モデルを入手（ダウンロード／別の場所から追加）" />
+                                    <Popup IsOpen="{Binding IsChecked, ElementName=AcquireToggle}" StaysOpen="False"
+                                           AllowsTransparency="True" PlacementTarget="{Binding ElementName=AcquireToggle}"
+                                           Placement="Bottom" HorizontalOffset="-262" VerticalOffset="2">
+                                        <Border Width="300" Background="{DynamicResource Panel}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                CornerRadius="6" Padding="12" Margin="0,0,10,10">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.35" />
+                                            </Border.Effect>
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource FieldLabel}" Text="Hugging Face から入手"
+                                                           Margin="0,0,0,4" />
+                                                <ComboBox ItemsSource="{Binding Settings.DownloadableModels}"
+                                                          SelectedItem="{Binding Settings.SelectedDownloadModel, Mode=TwoWay}"
+                                                          DisplayMemberPath="DisplayName"
+                                                          IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}"
+                                                          ToolTip="Hugging Face から取得する ONNX（CPU int4・ORT-GenAI 互換）モデルを選びます。" />
+                                                <Button Style="{StaticResource WideSecondaryButton}" Content="⬇  ダウンロード"
+                                                        ToolTip="選択したモデル（CPU int4）を Hugging Face からダウンロードして追加します。"
+                                                        Command="{Binding Settings.DownloadModelCommand}"
+                                                        IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}" />
+                                                <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
+                                                             Value="{Binding Settings.DownloadProgress, Mode=OneWay}"
+                                                             Visibility="{Binding Settings.IsDownloading, Converter={StaticResource BoolToVis}}" />
+                                                <Separator Margin="0,10,0,0" />
+                                                <Button Style="{StaticResource WideSecondaryButton}" Content="📂  別の場所から追加…"
+                                                        ToolTip="任意の場所にある ONNX モデルフォルダ（genai_config.json を含む）を選んで追加します。"
+                                                        Command="{Binding Settings.BrowseModelCommand}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
                                 <TextBlock Text="{Binding Settings.ModelPath, StringFormat='📁 {0}'}"
                                            TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Settings.ModelPath}"
                                            Foreground="{DynamicResource FgDim}" FontSize="11"
                                            Margin="2,5,0,0" />
-
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="モデルを入手" />
-                                <ComboBox ItemsSource="{Binding Settings.DownloadableModels}"
-                                          SelectedItem="{Binding Settings.SelectedDownloadModel, Mode=TwoWay}"
-                                          DisplayMemberPath="DisplayName"
-                                          IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}"
-                                          ToolTip="Hugging Face から取得する ONNX（CPU int4・ORT-GenAI 互換）モデルを選びます。" />
-                                <Button Style="{StaticResource WideSecondaryButton}" Content="⬇  ダウンロード"
-                                        ToolTip="選択したモデル（CPU int4）を Hugging Face からダウンロードして追加します。"
-                                        Command="{Binding Settings.DownloadModelCommand}"
-                                        IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}" />
-                                <Button Style="{StaticResource WideSecondaryButton}" Content="📂  別の場所から追加…"
-                                        ToolTip="任意の場所にある ONNX モデルフォルダ（genai_config.json を含む）を選んで追加します。"
-                                        Command="{Binding Settings.BrowseModelCommand}" />
-                                <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
-                                             Value="{Binding Settings.DownloadProgress, Mode=OneWay}"
-                                             Visibility="{Binding Settings.IsDownloading, Converter={StaticResource BoolToVis}}" />
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大出力トークン" />
                                 <TextBox Text="{Binding Settings.MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
@@ -153,64 +206,8 @@
                                     <TextBlock Text="AIウォームアップを有効にする" TextWrapping="Wrap" />
                                 </CheckBox>
 
-                                <TextBlock Text="{Binding Settings.Status}" TextWrapping="Wrap" Margin="0,16,0,0"
-                                           Foreground="{DynamicResource FgDim}" FontSize="11" />
-                            </StackPanel>
-
-                            <!-- ===== 外観 ===== -->
-                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}">
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ（アプリ全体）" Margin="0,0,0,4" />
-                                <ComboBox ItemsSource="{Binding Appearance.Themes}" SelectedItem="{Binding Appearance.SelectedTheme}"
-                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
-
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="アクセントカラー" Margin="0,10,0,4" />
-                                <ComboBox ItemsSource="{Binding Appearance.Accents}" SelectedItem="{Binding Appearance.SelectedAccent}"
-                                          ItemTemplate="{StaticResource AccentItemTemplate}" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="任意指定（#RRGGBB）" />
-                                <TextBox Text="{Binding Appearance.AccentColor, UpdateSourceTrigger=LostFocus}"
-                                         FontFamily="Cascadia Mono, Consolas" />
-
-                                <Separator Margin="0,16,0,8" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル — テーマ" Margin="0,0,0,4" />
-                                <ComboBox ItemsSource="{Binding Appearance.TerminalThemes}" SelectedItem="{Binding Appearance.SelectedTerminalTheme}"
-                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" />
-                                <TextBox Text="{Binding Appearance.TerminalFontFamily, UpdateSourceTrigger=LostFocus}"
-                                         FontFamily="Cascadia Mono, Consolas" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
-                                <TextBox Text="{Binding Appearance.TerminalFontSize, UpdateSourceTrigger=LostFocus}"
-                                         FontFamily="Cascadia Mono, Consolas" />
-
-                                <Separator Margin="0,16,0,8" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー — テーマ" Margin="0,0,0,4" />
-                                <ComboBox ItemsSource="{Binding Appearance.PreviewThemes}" SelectedItem="{Binding Appearance.SelectedPreviewTheme}"
-                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
-
-                                <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
-                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
-                            </StackPanel>
-
-                            <!-- ===== エディタ ===== -->
-                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Editor}">
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="エディタ — テーマ" Margin="0,0,0,4" />
-                                <ComboBox ItemsSource="{Binding Appearance.EditorThemes}" SelectedItem="{Binding Appearance.SelectedEditorTheme}"
-                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" />
-                                <TextBox Text="{Binding Appearance.EditorFontFamily, UpdateSourceTrigger=LostFocus}"
-                                         FontFamily="Cascadia Mono, Consolas" />
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
-                                <TextBox Text="{Binding Appearance.EditorFontSize, UpdateSourceTrigger=LostFocus}"
-                                         FontFamily="Cascadia Mono, Consolas" />
-
                                 <Separator Margin="0,16,0,10" />
-                                <CheckBox IsChecked="{Binding Settings.VimEnabled}"
-                                          ToolTip="有効/無効は開いているタブにも反映されます。">
-                                    <TextBlock Text="Vim キーバインドを有効にする" TextWrapping="Wrap" />
-                                </CheckBox>
-                            </StackPanel>
-
-                            <!-- ===== 安全設計 ===== -->
-                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Safety}">
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="安全設計" Margin="0,0,0,8" />
                                 <CheckBox IsChecked="{Binding Settings.AutoApprove}"
                                           ToolTip="信頼ワークスペース向け。コマンド/編集の承認カードを省略します。">
                                     <TextBlock Text="自動承認モード" TextWrapping="Wrap" />
@@ -230,6 +227,65 @@
 
                                 <TextBlock Text="{Binding Settings.Status}" TextWrapping="Wrap" Margin="0,16,0,0"
                                            Foreground="{DynamicResource FgDim}" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- ===== 外観（カラーテーマはアプリ全体・エディタ・ターミナル・プレビューをここに集約） ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}">
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ（アプリ全体）" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.Themes}" SelectedItem="{Binding Appearance.SelectedTheme}"
+                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="アクセントカラー" Margin="0,10,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.Accents}" SelectedItem="{Binding Appearance.SelectedAccent}"
+                                          ItemTemplate="{StaticResource AccentItemTemplate}" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="任意指定（#RRGGBB）" />
+                                <TextBox Text="{Binding Appearance.AccentColor, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas" />
+
+                                <Separator Margin="0,16,0,8" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="エディタ — テーマ" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.EditorThemes}" SelectedItem="{Binding Appearance.SelectedEditorTheme}"
+                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル — テーマ" Margin="0,10,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.TerminalThemes}" SelectedItem="{Binding Appearance.SelectedTerminalTheme}"
+                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー — テーマ" Margin="0,10,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.PreviewThemes}" SelectedItem="{Binding Appearance.SelectedPreviewTheme}"
+                                          ItemTemplate="{StaticResource PresetItemTemplate}" />
+
+                                <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
+                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- ===== エディタ（テーマは「外観」へ集約） ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Editor}">
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" Margin="0,0,0,3" />
+                                <TextBox Text="{Binding Appearance.EditorFontFamily, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
+                                <TextBox Text="{Binding Appearance.EditorFontSize, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas" />
+
+                                <Separator Margin="0,16,0,10" />
+                                <CheckBox IsChecked="{Binding Settings.VimEnabled}"
+                                          ToolTip="有効/無効は開いているタブにも反映されます。">
+                                    <TextBlock Text="Vim キーバインドを有効にする" TextWrapping="Wrap" />
+                                </CheckBox>
+                            </StackPanel>
+
+                            <!-- ===== ターミナル（テーマは「外観」へ集約） ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Terminal}">
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" Margin="0,0,0,3" />
+                                <TextBox Text="{Binding Appearance.TerminalFontFamily, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
+                                <TextBox Text="{Binding Appearance.TerminalFontSize, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas" />
+
+                                <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
+                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
                             </StackPanel>
                         </Grid>
                     </ScrollViewer>

@@ -164,7 +164,11 @@
                 <StackPanel DockPanel.Dock="Bottom">
                     <Button Style="{StaticResource IconButton}" Content="🎨" ToolTip="外観（テーマ・アクセント）"
                             Command="{Binding ShowAppearanceCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
+                    <Button Style="{StaticResource IconButton}" Content="📝" ToolTip="エディタ設定"
+                            Command="{Binding ShowEditorSettingsCommand}" />
+                    <Button Style="{StaticResource IconButton}" Content="🖥" ToolTip="ターミナル設定"
+                            Command="{Binding ShowTerminalSettingsCommand}" />
+                    <Button Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定（AI・安全設計）"
                             Command="{Binding ShowSettingsCommand}" />
                 </StackPanel>
                 <StackPanel>

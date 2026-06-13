@@ -18,10 +18,10 @@ public enum SidebarPanel
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
 public enum SettingsCategory
 {
-    Ai,
     Appearance,
     Editor,
-    Safety
+    Terminal,
+    Ai
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
@@ -108,6 +108,14 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar の外観（テーマ）アイコン。設定オーバーレイを外観カテゴリで開く。</summary>
     [RelayCommand]
     private void ShowAppearance() => OpenSettingsOverlay(SettingsCategory.Appearance);
+
+    /// <summary>ActivityBar のエディタアイコン。設定オーバーレイをエディタカテゴリで開く。</summary>
+    [RelayCommand]
+    private void ShowEditorSettings() => OpenSettingsOverlay(SettingsCategory.Editor);
+
+    /// <summary>ActivityBar のターミナルアイコン。設定オーバーレイをターミナルカテゴリで開く。</summary>
+    [RelayCommand]
+    private void ShowTerminalSettings() => OpenSettingsOverlay(SettingsCategory.Terminal);
 
     /// <summary>設定オーバーレイを指定カテゴリで開く。既に同じカテゴリで開いていればトグルで閉じる。</summary>
     private void OpenSettingsOverlay(SettingsCategory category)
