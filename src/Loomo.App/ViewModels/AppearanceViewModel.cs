@@ -1,52 +1,58 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>外観（カラーテーマ・アクセントカラー）の設定パネルの ViewModel。
-/// テーマ／アクセントとも「色をクリックして選ぶ」スウォッチUIで、選択は共有の <see cref="AiSettings"/>（Singleton）へ
-/// 書き戻し、<see cref="ThemeManager"/> で即時適用し <c>settings.json</c> へ永続化する（プレビューと保存を兼ねる）。</summary>
+/// <summary>外観（カラーテーマ・アクセント・各ペインの配色／フォント）の設定パネルの ViewModel。
+/// アプリ全体・エディタ・ターミナル・Markdownプレビューの配色、およびアクセントは、いずれも「色チップ付きの
+/// コンボボックスから選ぶ」同一UIに統一する。選択は共有の <see cref="AiSettings"/>（Singleton）へ書き戻して
+/// 即時適用＋<c>settings.json</c> へ永続化する。アプリ全体テーマは <see cref="ThemeManager"/> 経由、その他の
+/// ペインは <see cref="AppearanceChanged"/> でホスト（ShellWindow）へ即時反映を促す。</summary>
 public sealed partial class AppearanceViewModel : ObservableObject
 {
     private readonly AiSettings _settings;
     private readonly AiSettingsStore _store;
     private readonly ThemeManager _themeManager;
 
-    /// <summary>テーマのスウォッチ（配色プレビュー）。<see cref="AppTheme"/> に値を足すだけで増やせる。</summary>
-    public IReadOnlyList<ThemeSwatch> Themes { get; }
+    /// <summary>アプリ全体のカラーテーマの選択肢。<see cref="AppTheme"/> に値を足すだけで増やせる。</summary>
+    public IReadOnlyList<PresetSwatch> Themes { get; }
 
-    /// <summary>アクセントカラーのスウォッチ。先頭は「テーマ既定」（Hex 空）。</summary>
+    /// <summary>アクセントカラーの選択肢。先頭は「テーマ既定」（Hex 空）。</summary>
     public IReadOnlyList<AccentSwatch> Accents { get; }
 
-    /// <summary>アクセントカラーの上書き（"#RRGGBB"）。空ならテーマ既定。</summary>
+    /// <summary>エディタの配色テーマの選択肢。チップの色はライブラリ各プリセットの背景／文字／アクセント。</summary>
+    public IReadOnlyList<PresetSwatch> EditorThemes { get; }
+
+    /// <summary>Markdownプレビューの配色テーマの選択肢。</summary>
+    public IReadOnlyList<PresetSwatch> PreviewThemes { get; }
+
+    /// <summary>ターミナルの配色テーマの選択肢（背景／文字色／カーソル色）。</summary>
+    public IReadOnlyList<PresetSwatch> TerminalThemes { get; }
+
+    /// <summary>コンボボックスで選択中の各項目。<c>SelectedItem</c> に双方向バインドする。</summary>
+    [ObservableProperty] private PresetSwatch _selectedTheme;
+    [ObservableProperty] private AccentSwatch? _selectedAccent;
+    [ObservableProperty] private PresetSwatch _selectedEditorTheme;
+    [ObservableProperty] private PresetSwatch _selectedPreviewTheme;
+    [ObservableProperty] private PresetSwatch _selectedTerminalTheme;
+
+    /// <summary>アクセントカラーの上書き（"#RRGGBB"）。空ならテーマ既定。コンボボックスと任意指定の入力欄で共有する。</summary>
     [ObservableProperty] private string _accentColor = "";
 
     [ObservableProperty] private string _status = "";
 
-    /// <summary>エディタの配色テーマの選択肢。</summary>
-    public IReadOnlyList<string> EditorThemes { get; } =
-        new[] { "Dracula", "Dark", "Nord", "TokyoNight", "OneDark" };
-
-    /// <summary>Markdownプレビューの配色テーマの選択肢。</summary>
-    public IReadOnlyList<string> PreviewThemes { get; } =
-        new[] { "Dracula", "Dark", "Light", "GitHub" };
-
-    /// <summary>ターミナルの配色テーマ（背景/文字色）の選択肢。</summary>
-    public IReadOnlyList<string> TerminalThemes { get; } =
-        new[] { "Dark", "Light", "Dracula", "Nord", "SolarizedDark" };
-
-    [ObservableProperty] private string _selectedEditorTheme = "Dracula";
     [ObservableProperty] private string _editorFontFamily = "";
     [ObservableProperty] private string _editorFontSize = "";
-    [ObservableProperty] private string _selectedPreviewTheme = "Dracula";
-    [ObservableProperty] private string _selectedTerminalTheme = "Dark";
     [ObservableProperty] private string _terminalFontFamily = "";
     [ObservableProperty] private string _terminalFontSize = "";
+
+    /// <summary>アクセント上書きを反映中の再入を防ぐフラグ（コンボ選択 ⇄ AccentColor の往復ループ回避）。</summary>
+    private bool _syncingAccent;
 
     /// <summary>エディタ／プレビュー／ターミナルの配色・フォント設定が変わったときに発火する。
     /// ホスト（ShellWindow）が購読し、開いているタブやプレビューへ即時反映する。</summary>
@@ -58,14 +64,14 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _store = store;
         _themeManager = themeManager;
 
-        // スウォッチの色は各パレットの代表色（Bg / Accent / Fg）を固定で持つ（適用中テーマとは独立に表示）
+        // チップの色は各テーマの固定代表色（適用中の配色とは独立に表示）。Key は永続化値／照合に使う。
         Themes = new[]
         {
-            new ThemeSwatch(AppTheme.Dark,          "ダーク",         "#FF1E1E1E", "#FF0E639C", "#FFD4D4D4"),
-            new ThemeSwatch(AppTheme.Light,         "ライト",         "#FFFFFFFF", "#FF005FB8", "#FF1F1F1F"),
-            new ThemeSwatch(AppTheme.SolarizedDark, "Solarized",      "#FF002B36", "#FF268BD2", "#FF93A1A1"),
-            new ThemeSwatch(AppTheme.Nord,          "Nord",           "#FF2E3440", "#FF5E81AC", "#FFD8DEE9"),
-            new ThemeSwatch(AppTheme.HighContrast,  "高コントラスト", "#FF000000", "#FF1AEBFF", "#FFFFFFFF"),
+            new PresetSwatch(nameof(AppTheme.Dark),         "ダーク",         "#1E1E1E", "#0E639C", "#D4D4D4"),
+            new PresetSwatch(nameof(AppTheme.Light),        "ライト",         "#FFFFFF", "#005FB8", "#1F1F1F"),
+            new PresetSwatch(nameof(AppTheme.SolarizedDark),"Solarized",      "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch(nameof(AppTheme.Nord),         "Nord",           "#2E3440", "#5E81AC", "#D8DEE9"),
+            new PresetSwatch(nameof(AppTheme.HighContrast), "高コントラスト", "#000000", "#1AEBFF", "#FFFFFF"),
         };
 
         Accents = new[]
@@ -80,43 +86,92 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new AccentSwatch("オレンジ",   "#FFD9730D"),
         };
 
-        _accentColor = settings.AccentColor ?? "";
-        SetThemeSelection(settings.Theme);
-        SetAccentSelection(_accentColor);
+        // 代表色は ShellWindow.ViewportSplit の各プリセット定義（背景／文字／アクセント・カーソル）と一致させる。
+        EditorThemes = new[]
+        {
+            new PresetSwatch("Dracula",   "Dracula",    "#282A36", "#BD93F9", "#F8F8F2"),
+            new PresetSwatch("Dark",      "Dark",       "#1E1E1E", "#569CD6", "#D4D4D4"),
+            new PresetSwatch("Nord",      "Nord",       "#2E3440", "#88C0D0", "#D8DEE9"),
+            new PresetSwatch("TokyoNight","TokyoNight", "#1A1B26", "#7AA2F7", "#C0CAF5"),
+            new PresetSwatch("OneDark",   "OneDark",    "#282C34", "#61AFEF", "#ABB2BF"),
+        };
 
+        PreviewThemes = new[]
+        {
+            new PresetSwatch("Dracula", "Dracula", "#282A36", "#8BE9FD", "#F8F8F2"),
+            new PresetSwatch("Dark",    "Dark",    "#1E1E1E", "#4FC1FF", "#D4D4D4"),
+            new PresetSwatch("Light",   "Light",   "#FFFFFF", "#0969DA", "#24292F"),
+            new PresetSwatch("GitHub",  "GitHub",  "#FFFFFF", "#CF222E", "#24292F"),
+        };
+
+        TerminalThemes = new[]
+        {
+            new PresetSwatch("Dark",         "Dark",      "#1E1E1E", "#5FAFFF", "#D4D4D4"),
+            new PresetSwatch("Light",        "Light",     "#FFFFFF", "#0037DA", "#1F1F1F"),
+            new PresetSwatch("Dracula",      "Dracula",   "#282A36", "#BD93F9", "#F8F8F2"),
+            new PresetSwatch("Nord",         "Nord",      "#2E3440", "#88C0D0", "#D8DEE9"),
+            new PresetSwatch("SolarizedDark","Solarized", "#002B36", "#268BD2", "#93A1A1"),
+        };
+
+        // 初期選択は背面フィールドへ直接代入（プロパティ setter を介さず OnXxxChanged を発火させない）。
         var ap = settings.Appearance;
-        _selectedEditorTheme = NormalizeChoice(ap.EditorTheme, EditorThemes, "Dracula");
+        _accentColor = settings.AccentColor ?? "";
+        _selectedTheme = Match(Themes, settings.Theme.ToString(), 0);
+        _selectedAccent = Accents.FirstOrDefault(a => string.Equals(a.Hex, _accentColor, StringComparison.OrdinalIgnoreCase));
+        _selectedEditorTheme = Match(EditorThemes, ap.EditorTheme, 0);
+        _selectedPreviewTheme = Match(PreviewThemes, ap.MarkdownPreviewTheme, 0);
+        _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
+
         _editorFontFamily = ap.EditorFontFamily ?? "";
         _editorFontSize = ap.EditorFontSize > 0 ? ap.EditorFontSize.ToString("0.#") : "";
-        _selectedPreviewTheme = NormalizeChoice(ap.MarkdownPreviewTheme, PreviewThemes, "Dracula");
-        _selectedTerminalTheme = NormalizeChoice(ap.TerminalTheme, TerminalThemes, "Dark");
         _terminalFontFamily = ap.TerminalFontFamily ?? "";
         _terminalFontSize = ap.TerminalFontSize > 0 ? ap.TerminalFontSize.ToString("0.#") : "";
     }
 
-    /// <summary>保存値が選択肢に無い場合は既定へ寄せる（大文字小文字は無視）。</summary>
-    private static string NormalizeChoice(string? value, IReadOnlyList<string> choices, string fallback)
-    {
-        foreach (var c in choices)
-            if (string.Equals(c, value, StringComparison.OrdinalIgnoreCase)) return c;
-        return fallback;
-    }
+    /// <summary>Key が保存値と一致する選択肢を返す。無ければ <paramref name="fallbackIndex"/> 番目（既定）。</summary>
+    private static PresetSwatch Match(IReadOnlyList<PresetSwatch> choices, string? key, int fallbackIndex) =>
+        choices.FirstOrDefault(c => string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase))
+        ?? choices[fallbackIndex];
 
-    /// <summary>テーマのスウォッチをクリック：即時適用＆永続化（アクセント上書きは維持される）。</summary>
-    [RelayCommand]
-    private void SelectTheme(AppTheme theme)
+    /// <summary>アプリ全体テーマ：選択を即時適用＆永続化（アクセント上書きは維持される）。</summary>
+    partial void OnSelectedThemeChanged(PresetSwatch value)
     {
+        if (value is null || !Enum.TryParse<AppTheme>(value.Key, out var theme) || _settings.Theme == theme) return;
         _settings.Theme = theme;
         _themeManager.ApplyTheme(theme);
-        SetThemeSelection(theme);
         Persist("テーマを変更しました");
     }
 
-    /// <summary>アクセントのスウォッチをクリック：<see cref="AccentColor"/> 経由で適用する（空=テーマ既定）。</summary>
-    [RelayCommand]
-    private void SelectAccent(string? hex) => AccentColor = hex ?? "";
+    /// <summary>アクセント：選択を <see cref="AccentColor"/> 経由で適用する（空=テーマ既定）。</summary>
+    partial void OnSelectedAccentChanged(AccentSwatch? value)
+    {
+        if (_syncingAccent || value is null) return;
+        AccentColor = value.Hex;
+    }
 
-    /// <summary>アクセント指定が変わったら検証して即時適用＆永続化。空ならテーマ既定へ戻す。</summary>
+    partial void OnSelectedEditorThemeChanged(PresetSwatch value)
+    {
+        if (value is null || string.Equals(_settings.Appearance.EditorTheme, value.Key, StringComparison.Ordinal)) return;
+        _settings.Appearance.EditorTheme = value.Key;
+        PersistAppearance("エディタのテーマを変更しました");
+    }
+
+    partial void OnSelectedPreviewThemeChanged(PresetSwatch value)
+    {
+        if (value is null || string.Equals(_settings.Appearance.MarkdownPreviewTheme, value.Key, StringComparison.Ordinal)) return;
+        _settings.Appearance.MarkdownPreviewTheme = value.Key;
+        PersistAppearance("プレビューのテーマを変更しました");
+    }
+
+    partial void OnSelectedTerminalThemeChanged(PresetSwatch value)
+    {
+        if (value is null || string.Equals(_settings.Appearance.TerminalTheme, value.Key, StringComparison.Ordinal)) return;
+        _settings.Appearance.TerminalTheme = value.Key;
+        PersistAppearance("ターミナルのテーマを変更しました");
+    }
+
+    /// <summary>アクセント指定が変わったら検証して即時適用＆永続化。空ならテーマ既定へ戻す。
+    /// 適用後はコンボボックスの選択（<see cref="SelectedAccent"/>）を一致するプリセット（無ければ null）へ同期する。</summary>
     partial void OnAccentColorChanged(string value)
     {
         var trimmed = value?.Trim() ?? "";
@@ -124,7 +179,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         {
             _settings.AccentColor = null;
             _themeManager.ApplyAccentColor(null);
-            SetAccentSelection("");
+            SyncAccentSelection("");
             Persist("アクセントをテーマ既定に戻しました");
             return;
         }
@@ -139,14 +194,17 @@ public sealed partial class AppearanceViewModel : ObservableObject
         }
         _settings.AccentColor = trimmed;
         _themeManager.ApplyAccentColor(trimmed);
-        SetAccentSelection(trimmed);
+        SyncAccentSelection(trimmed);
         Persist("アクセントカラーを変更しました");
     }
 
-    partial void OnSelectedEditorThemeChanged(string value)
+    /// <summary>コンボボックスの選択を現在のアクセント値に合わせる（一致が無ければ null＝任意指定中）。
+    /// 再入フラグで OnSelectedAccentChanged → AccentColor の往復を防ぐ。</summary>
+    private void SyncAccentSelection(string hex)
     {
-        _settings.Appearance.EditorTheme = value;
-        PersistAppearance("エディタのテーマを変更しました");
+        _syncingAccent = true;
+        SelectedAccent = Accents.FirstOrDefault(a => string.Equals(a.Hex, hex, StringComparison.OrdinalIgnoreCase));
+        _syncingAccent = false;
     }
 
     partial void OnEditorFontFamilyChanged(string value)
@@ -159,18 +217,6 @@ public sealed partial class AppearanceViewModel : ObservableObject
         ApplyFontSize(value, v => _settings.Appearance.EditorFontSize = v,
             () => _settings.Appearance.EditorFontSize, () => _editorFontSize,
             v => _editorFontSize = v, nameof(EditorFontSize), "エディタのフォントサイズを変更しました");
-
-    partial void OnSelectedPreviewThemeChanged(string value)
-    {
-        _settings.Appearance.MarkdownPreviewTheme = value;
-        PersistAppearance("プレビューのテーマを変更しました");
-    }
-
-    partial void OnSelectedTerminalThemeChanged(string value)
-    {
-        _settings.Appearance.TerminalTheme = value;
-        PersistAppearance("ターミナルのテーマを変更しました");
-    }
 
     partial void OnTerminalFontFamilyChanged(string value)
     {
@@ -214,17 +260,6 @@ public sealed partial class AppearanceViewModel : ObservableObject
         AppearanceChanged?.Invoke();
     }
 
-    private void SetThemeSelection(AppTheme theme)
-    {
-        foreach (var s in Themes) s.IsSelected = s.Theme == theme;
-    }
-
-    private void SetAccentSelection(string hex)
-    {
-        foreach (var a in Accents)
-            a.IsSelected = string.Equals(a.Hex, hex, StringComparison.OrdinalIgnoreCase);
-    }
-
     private void Persist(string message)
     {
         try
@@ -238,28 +273,27 @@ public sealed partial class AppearanceViewModel : ObservableObject
         }
     }
 
-    /// <summary>テーマのスウォッチ1つ。配色プレビュー用の代表色と選択状態を持つ。</summary>
-    public sealed partial class ThemeSwatch : ObservableObject
+    /// <summary>配色プリセット1つ。コンボボックスの色チップ用の代表色（背景／アクセント／文字）を持つ。
+    /// アプリ全体テーマ・エディタ・ターミナル・プレビューで共通。<see cref="Key"/> は永続化値／照合キー。</summary>
+    public sealed class PresetSwatch
     {
-        public AppTheme Theme { get; }
+        public string Key { get; }
         public string Name { get; }
         public string Bg { get; }
         public string Accent { get; }
         public string Fg { get; }
-        [ObservableProperty] private bool _isSelected;
 
-        public ThemeSwatch(AppTheme theme, string name, string bg, string accent, string fg)
+        public PresetSwatch(string key, string name, string bg, string accent, string fg)
         {
-            Theme = theme; Name = name; Bg = bg; Accent = accent; Fg = fg;
+            Key = key; Name = name; Bg = bg; Accent = accent; Fg = fg;
         }
     }
 
-    /// <summary>アクセントのスウォッチ1つ。Hex が空文字なら「テーマ既定」。</summary>
-    public sealed partial class AccentSwatch : ObservableObject
+    /// <summary>アクセントのプリセット1つ。Hex が空文字なら「テーマ既定」。</summary>
+    public sealed class AccentSwatch
     {
         public string Name { get; }
         public string Hex { get; }
-        [ObservableProperty] private bool _isSelected;
 
         public AccentSwatch(string name, string hex) { Name = name; Hex = hex; }
     }

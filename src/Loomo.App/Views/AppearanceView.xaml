@@ -4,106 +4,50 @@
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
-        <!-- テーマのスウォッチ（配色プレビュー＋ラベル）。クリックで適用、選択中はアクセント枠 -->
-        <DataTemplate x:Key="ThemeSwatchTemplate">
-            <Button Cursor="Hand" ToolTip="{Binding Name}"
-                    Command="{Binding DataContext.SelectThemeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                    CommandParameter="{Binding Theme}">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="ring" CornerRadius="6" BorderThickness="2" BorderBrush="Transparent"
-                                Padding="2" Margin="0,0,8,8">
-                            <StackPanel Width="66">
-                                <Border Height="42" CornerRadius="4" ClipToBounds="True"
-                                        Background="{Binding Bg}"
-                                        BorderBrush="{DynamicResource Border}" BorderThickness="1">
-                                    <Grid>
-                                        <TextBlock Text="Aa" FontSize="16" FontWeight="SemiBold"
-                                                   Foreground="{Binding Fg}"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        <Border Height="7" VerticalAlignment="Bottom" Background="{Binding Accent}" />
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="{Binding Name}" FontSize="11" TextAlignment="Center"
-                                           TextTrimming="CharacterEllipsis" Margin="0,3,0,0"
-                                           Foreground="{DynamicResource Fg}" />
-                            </StackPanel>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                            </DataTrigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
+        <!-- 配色プリセットの行（色チップ＋ラベル）。コンボボックスのドロップダウンと選択ボックスの両方で使う。
+             アプリ全体テーマ／エディタ／ターミナル／プレビューで共通。 -->
+        <DataTemplate x:Key="PresetItemTemplate">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- 背景色チップ＋下端にアクセント帯（縮小版プレビュー） -->
+                <Border Width="14" Height="14" CornerRadius="3" ClipToBounds="True"
+                        Background="{Binding Bg}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                    <Border Height="4" VerticalAlignment="Bottom" Background="{Binding Accent}" />
+                </Border>
+                <TextBlock Text="{Binding Name}" Margin="7,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Fg}" />
+            </StackPanel>
         </DataTemplate>
 
-        <!-- アクセントのスウォッチ（単色／「既定」）。クリックで適用、選択中はアクセント枠 -->
-        <DataTemplate x:Key="AccentSwatchTemplate">
-            <Button Cursor="Hand" ToolTip="{Binding Name}"
-                    Command="{Binding DataContext.SelectAccentCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                    CommandParameter="{Binding Hex}">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="ring" CornerRadius="6" BorderThickness="2" BorderBrush="Transparent"
-                                Padding="2" Margin="0,0,8,8">
-                            <Grid Width="30" Height="30">
-                                <!-- 下地（既定スウォッチや空色のとき見える） -->
-                                <Border CornerRadius="4" Background="{DynamicResource BgAlt}"
-                                        BorderBrush="{DynamicResource Border}" BorderThickness="1" />
-                                <!-- 色（Hex 空なら透明で下地が見える） -->
-                                <Border CornerRadius="4" Background="{Binding Hex}" />
-                                <TextBlock Text="既定" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource Fg}"
-                                           Visibility="{Binding Hex, Converter={StaticResource EmptyToVis}}" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                            </DataTrigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
+        <!-- アクセントの行（単色チップ／「既定」は下地が見える）。 -->
+        <DataTemplate x:Key="AccentItemTemplate">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Grid Width="14" Height="14">
+                    <Border CornerRadius="3" Background="{DynamicResource BgAlt}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1" />
+                    <Border CornerRadius="3" Background="{Binding Hex}" />
+                </Grid>
+                <TextBlock Text="{Binding Name}" Margin="7,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Fg}" />
+            </StackPanel>
         </DataTemplate>
     </UserControl.Resources>
 
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="外観 — テーマ / アクセント" />
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="外観" />
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,4,12,12">
             <StackPanel>
 
-                <!-- カラーテーマ -->
-                <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ" Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding Themes}" ItemTemplate="{StaticResource ThemeSwatchTemplate}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
+                <!-- アプリ全体のカラーテーマ -->
+                <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ（アプリ全体）" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}"
+                          ItemTemplate="{StaticResource PresetItemTemplate}" />
 
                 <!-- アクセントカラー -->
-                <Separator Margin="0,12,0,8" />
-                <TextBlock Style="{StaticResource FieldLabel}" Text="アクセントカラー" Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding Accents}" ItemTemplate="{StaticResource AccentSwatchTemplate}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-
-                <!-- 任意指定（16進） -->
+                <TextBlock Style="{StaticResource FieldLabel}" Text="アクセントカラー" Margin="0,10,0,4" />
+                <ComboBox ItemsSource="{Binding Accents}" SelectedItem="{Binding SelectedAccent}"
+                          ItemTemplate="{StaticResource AccentItemTemplate}" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="任意指定（#RRGGBB）" />
                 <TextBox Text="{Binding AccentColor, UpdateSourceTrigger=LostFocus}"
                          FontFamily="Cascadia Mono, Consolas" />
@@ -111,8 +55,8 @@
                 <!-- エディタ -->
                 <Separator Margin="0,16,0,8" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="エディタ — テーマ" Margin="0,0,0,4" />
-                <ComboBox ItemsSource="{Binding EditorThemes}"
-                          SelectedItem="{Binding SelectedEditorTheme}" />
+                <ComboBox ItemsSource="{Binding EditorThemes}" SelectedItem="{Binding SelectedEditorTheme}"
+                          ItemTemplate="{StaticResource PresetItemTemplate}" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" />
                 <TextBox Text="{Binding EditorFontFamily, UpdateSourceTrigger=LostFocus}"
                          FontFamily="Cascadia Mono, Consolas" />
@@ -120,23 +64,27 @@
                 <TextBox Text="{Binding EditorFontSize, UpdateSourceTrigger=LostFocus}"
                          FontFamily="Cascadia Mono, Consolas" />
 
-                <!-- Markdown プレビュー -->
-                <Separator Margin="0,16,0,8" />
-                <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー — テーマ" Margin="0,0,0,4" />
-                <ComboBox ItemsSource="{Binding PreviewThemes}"
-                          SelectedItem="{Binding SelectedPreviewTheme}" />
-
                 <!-- ターミナル -->
                 <Separator Margin="0,16,0,8" />
-                <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル — テーマ（背景 / 文字色）" Margin="0,0,0,4" />
-                <ComboBox ItemsSource="{Binding TerminalThemes}"
-                          SelectedItem="{Binding SelectedTerminalTheme}" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル — テーマ" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding TerminalThemes}" SelectedItem="{Binding SelectedTerminalTheme}"
+                          ItemTemplate="{StaticResource PresetItemTemplate}" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="フォント（空で既定）" />
                 <TextBox Text="{Binding TerminalFontFamily, UpdateSourceTrigger=LostFocus}"
                          FontFamily="Cascadia Mono, Consolas" />
                 <TextBlock Style="{StaticResource FieldLabel}" Text="フォントサイズ（空で既定 / 4〜96）" />
                 <TextBox Text="{Binding TerminalFontSize, UpdateSourceTrigger=LostFocus}"
                          FontFamily="Cascadia Mono, Consolas" />
+
+                <!-- Markdown プレビュー -->
+                <Separator Margin="0,16,0,8" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー — テーマ" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding PreviewThemes}" SelectedItem="{Binding SelectedPreviewTheme}"
+                          ItemTemplate="{StaticResource PresetItemTemplate}" />
+
+                <!-- ステータス -->
+                <TextBlock Text="{Binding Status}" Foreground="{DynamicResource FgDim}"
+                           Margin="0,14,0,0" TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
