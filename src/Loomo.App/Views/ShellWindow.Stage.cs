@@ -145,7 +145,13 @@ public partial class ShellWindow
             return;
 
         RebuildStage();
-        FocusPane(_stagePane);
+        // 組み直し直後は舞台の要素がまだレイアウト前（IsVisible=false）で Focus が失敗し得るため、
+        // レイアウト確定後（Loaded 優先度）にフォーカスを入れる。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (_stageActive)
+                FocusPane(_stagePane);
+        }));
     }
 
     private void ExitStageMode()

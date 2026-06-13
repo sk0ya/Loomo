@@ -301,8 +301,15 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
             return $"{elapsed.TotalSeconds:0.0} 秒";
         return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
     }
+    private bool _disposed;
+
+    /// <summary>冪等にする：concrete＋interface の二重 DI 登録で同一インスタンスが2回 Dispose され、
+    /// 2回目の Cancel() が ObjectDisposedException で終了時クラッシュになっていた。</summary>
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
         _workspace.RootChanged -= OnRootChanged;
         _startupCts.Cancel();
         _startupCts.Dispose();

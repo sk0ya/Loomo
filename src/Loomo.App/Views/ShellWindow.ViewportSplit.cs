@@ -218,7 +218,13 @@ public partial class ShellWindow
 
     private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null)
     {
-        var view = new TerminalTabView("pwsh.exe", startDirectory);
+        var view = new TerminalTabView("pwsh.exe", startDirectory)
+        {
+            // 初回セッションの自動起動（ConPTY・非同期）が完了時にフォーカスを奪わないようにする。
+            // これが true だと、ワークスペース復元の最後に舞台へ入れたフォーカスを
+            // 約1秒後のセッション起動が横取りする（sk0ya.Terminal.Controls 1.0.9）。
+            AutoFocusOnStart = false,
+        };
         ApplyTerminalAppearance(view);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
