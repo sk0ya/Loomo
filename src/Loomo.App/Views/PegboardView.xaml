@@ -99,24 +99,48 @@
                                 <DockPanel DockPanel.Dock="Top" LastChildFill="True">
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding TypeGlyph}" FontSize="11"
                                                Margin="0,0,4,0" VerticalAlignment="Center" />
-                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <!-- 右肩：通常は作成時刻、カードにホバーすると操作アイコン群へ差し替え（高密度・脱クラッタ）。
+                                         全操作は右クリックメニューにもある。 -->
+                                    <Grid DockPanel.Dock="Right" VerticalAlignment="Center" Margin="4,0,0,0">
                                         <TextBlock Text="{Binding CreatedLabel}" FontSize="10"
-                                                   Foreground="{DynamicResource FgDim}" Margin="0,0,4,0"
-                                                   VerticalAlignment="Center" />
-                                        <Button Style="{StaticResource CardButton}" Content="📌"
-                                                ToolTip="上部に固定／解除"
-                                                Command="{Binding DataContext.TogglePinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <Button Style="{StaticResource CardButton}" Content="コピー"
-                                                Command="{Binding DataContext.CopyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <Button Style="{StaticResource CardButton}" Content="{Binding OpenLabel}"
-                                                Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <Button Style="{StaticResource CardButton}" Content="✕" ToolTip="削除"
-                                                Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
-                                    </StackPanel>
+                                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                                   HorizontalAlignment="Right">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <Button Style="{StaticResource CardButton}" Content="📌"
+                                                    ToolTip="上部に固定／解除"
+                                                    Command="{Binding DataContext.TogglePinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Style="{StaticResource CardButton}" Content="📋" ToolTip="コピー"
+                                                    Command="{Binding DataContext.CopyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Style="{StaticResource CardButton}" Content="↗" ToolTip="{Binding OpenLabel}"
+                                                    Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Style="{StaticResource CardButton}" Content="✕" ToolTip="削除"
+                                                    Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </Grid>
                                     <TextBlock Text="{Binding DisplayTitle}" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding Content}" VerticalAlignment="Center" />
