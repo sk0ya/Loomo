@@ -71,6 +71,39 @@
         </Setter>
     </Style>
 
+    <!-- ===== Secondary (ghost / outline) button =====
+         アクセント色の塗りボタン（FlatButton）と対。主要でない操作（モデル入手など）を
+         枠線だけの控えめな見た目にして、画面内でアクセント色を主要操作だけに絞る。 -->
+    <Style x:Key="SecondaryButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Icon (activity bar) button ===== -->
     <Style x:Key="IconButton" TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -153,6 +186,54 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="FontSize" Value="13" />
+    </Style>
+
+    <!-- ===== CheckBox =====
+         WPF 既定の CheckBox は OS 配色でダークテーマから浮くため、テーマブラシで描き直す。
+         左に角丸ボックス（チェック時は Accent で塗り、✓ を AccentFg で描く）＋右にラベル。
+         ラベルは ContentPresenter 経由で親の Foreground を継承する。 -->
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="box" Grid.Column="0" Width="16" Height="16"
+                                CornerRadius="3" Margin="0,1,8,0" VerticalAlignment="Top"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                            <Path x:Name="check" Width="10" Height="10" Stretch="Uniform"
+                                  Visibility="Collapsed"
+                                  Stroke="{DynamicResource AccentFg}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" Data="M1,5 L4,8.5 L9,1.5" />
+                        </Border>
+                        <ContentPresenter Grid.Column="1" VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="box" Property="Background" Value="{DynamicResource Accent}" />
+                            <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            <Setter TargetName="check" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===== ComboBox ===== -->
@@ -407,6 +488,13 @@
     <!-- ===== 設定: 横いっぱいに伸びるボタン =====
          狭い列でラベルが見切れないよう、ボタンは横並びにせず全幅で縦に積む。 -->
     <Style x:Key="WideButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,6,0,0" />
+    </Style>
+
+    <!-- WideButton のゴースト版（控えめな全幅ボタン。モデル入手など主要でない操作向け）。 -->
+    <Style x:Key="WideSecondaryButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="Margin" Value="0,6,0,0" />

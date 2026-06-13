@@ -37,14 +37,14 @@ public class ShellViewModelTests
 
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
-        var aiBar = new AiBarViewModel(orchestrator, approval, settings, conversations,
+        var modelCatalog = new ModelCatalogService(settings);
+        var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
+        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload, new FakeAiWarmup());
+        var aiBar = new AiBarViewModel(orchestrator, approval, settings, settingsVm, conversations,
             new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")),
             new FakeAiWarmup());
         var sessionsVm = new SessionsViewModel(conversations, aiBar,
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
-        var modelCatalog = new ModelCatalogService(settings);
-        var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
-        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload, new FakeAiWarmup());
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager());
 
         var workspaceStore = new WorkspaceStateStore(
@@ -84,13 +84,23 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public void ShowSettings_switches_panel_and_keeps_open()
+    public void ShowSettings_opens_overlay_on_ai_category()
     {
         var sut = CreateSut();
 
         sut.ShowSettingsCommand.Execute(null);
-        Assert.True(sut.IsSidebarVisible);
-        Assert.Equal(SidebarPanel.Settings, sut.ActivePanel);
+        Assert.True(sut.IsSettingsOverlayOpen);
+        Assert.Equal(SettingsCategory.Ai, sut.SettingsCategory);
+    }
+
+    [Fact]
+    public void ShowAppearance_opens_overlay_on_appearance_category()
+    {
+        var sut = CreateSut();
+
+        sut.ShowAppearanceCommand.Execute(null);
+        Assert.True(sut.IsSettingsOverlayOpen);
+        Assert.Equal(SettingsCategory.Appearance, sut.SettingsCategory);
     }
 
     [Fact]
@@ -114,14 +124,13 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public void ShowSettings_twice_collapses_sidebar()
+    public void ShowSettings_twice_closes_overlay()
     {
         var sut = CreateSut();
 
-        sut.ShowSettingsCommand.Execute(null);   // Explorer → Settings（表示）
-        sut.ShowSettingsCommand.Execute(null);   // 同一パネル再クリック → 閉じる
+        sut.ShowSettingsCommand.Execute(null);   // 設定オーバーレイを開く
+        sut.ShowSettingsCommand.Execute(null);   // 同一カテゴリ再クリック → 閉じる
 
-        Assert.False(sut.IsSidebarVisible);
-        Assert.Equal(SidebarPanel.Settings, sut.ActivePanel);
+        Assert.False(sut.IsSettingsOverlayOpen);
     }
 }

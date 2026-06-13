@@ -30,6 +30,29 @@ public sealed partial class TranscriptEntry : ObservableObject
     public ObservableCollection<DiffLineVm> DiffLines { get; } = new();
     public bool HasDiff => DiffLines.Count > 0;
 
+    // /model の一覧（クリックで切替できるモデル候補）
+    public ObservableCollection<ModelChoiceVm> ModelChoices { get; } = new();
+    public bool HasModelChoices => ModelChoices.Count > 0;
+
+    /// <summary>クリックで選べるモデル候補を設定する。クリック時は選択行の ● を移してから
+    /// <paramref name="onSelect"/>（実際の切替）を呼ぶ。</summary>
+    public void SetModelChoices(IEnumerable<string> names, string current, Action<string> onSelect)
+    {
+        ModelChoices.Clear();
+        foreach (var name in names)
+        {
+            ModelChoices.Add(new ModelChoiceVm(
+                name,
+                string.Equals(name, current, StringComparison.OrdinalIgnoreCase),
+                chosen =>
+                {
+                    foreach (var c in ModelChoices) c.IsCurrent = ReferenceEquals(c, chosen);
+                    onSelect(chosen.Name);
+                }));
+        }
+        OnPropertyChanged(nameof(HasModelChoices));
+    }
+
     public void AppendText(string chunk) => Text += chunk;
 
     /// <summary>クリップボードへコピーする際の内容（差分エントリは接頭辞付きで復元）。</summary>
@@ -107,6 +130,27 @@ public sealed partial class TranscriptEntry : ObservableObject
         _completion?.TrySetResult(false);
         Header = "⛔ 拒否: " + Header;
     }
+}
+
+/// <summary>/model 一覧の1行（クリックで切替できるモデル候補）。● は現在のモデル。</summary>
+public sealed partial class ModelChoiceVm : ObservableObject
+{
+    public string Name { get; }
+
+    /// <summary>現在選択中のモデルか（クリックで移動する）。</summary>
+    [ObservableProperty] private bool _isCurrent;
+
+    private readonly Action<ModelChoiceVm> _onClick;
+
+    public ModelChoiceVm(string name, bool isCurrent, Action<ModelChoiceVm> onClick)
+    {
+        Name = name;
+        _isCurrent = isCurrent;
+        _onClick = onClick;
+    }
+
+    [RelayCommand]
+    private void Select() => _onClick(this);
 }
 
 /// <summary>差分1行の表示モデル（種別に応じた配色を持つ）。</summary>

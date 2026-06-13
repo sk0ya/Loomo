@@ -15,6 +15,15 @@ public enum SidebarPanel
     Pegboard
 }
 
+/// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
+public enum SettingsCategory
+{
+    Ai,
+    Appearance,
+    Editor,
+    Safety
+}
+
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
 public sealed partial class ShellViewModel : ObservableObject
 {
@@ -36,6 +45,12 @@ public sealed partial class ShellViewModel : ObservableObject
 
     /// <summary>サイドバーに現在表示しているパネル。</summary>
     [ObservableProperty] private SidebarPanel _activePanel = SidebarPanel.Explorer;
+
+    /// <summary>中央オーバーレイの設定画面を開いているか。</summary>
+    [ObservableProperty] private bool _isSettingsOverlayOpen;
+
+    /// <summary>設定オーバーレイで選択中のカテゴリ（左ナビ）。</summary>
+    [ObservableProperty] private SettingsCategory _settingsCategory = SettingsCategory.Ai;
 
     public ShellViewModel(
         FolderTreeViewModel folderTree,
@@ -85,18 +100,31 @@ public sealed partial class ShellViewModel : ObservableObject
             Sessions.EnsureLoaded();
     }
 
-    /// <summary>ActivityBar の設定アイコン。開くときに Ollama のモデル一覧を自動取得する。</summary>
+    /// <summary>ActivityBar の設定アイコン。中央オーバーレイの設定画面を AI カテゴリで開く
+    /// （同じカテゴリで開いていれば閉じる＝トグル）。開くときにローカルのモデル一覧を取得する。</summary>
     [RelayCommand]
-    private void ShowSettings()
+    private void ShowSettings() => OpenSettingsOverlay(SettingsCategory.Ai);
+
+    /// <summary>ActivityBar の外観（テーマ）アイコン。設定オーバーレイを外観カテゴリで開く。</summary>
+    [RelayCommand]
+    private void ShowAppearance() => OpenSettingsOverlay(SettingsCategory.Appearance);
+
+    /// <summary>設定オーバーレイを指定カテゴリで開く。既に同じカテゴリで開いていればトグルで閉じる。</summary>
+    private void OpenSettingsOverlay(SettingsCategory category)
     {
-        Activate(SidebarPanel.Settings);
-        if (ActivePanel == SidebarPanel.Settings && IsSidebarVisible)
-            Settings.EnsureModelsLoaded();
+        if (IsSettingsOverlayOpen && SettingsCategory == category)
+        {
+            IsSettingsOverlayOpen = false;
+            return;
+        }
+        SettingsCategory = category;
+        IsSettingsOverlayOpen = true;
+        Settings.EnsureModelsLoaded();
     }
 
-    /// <summary>ActivityBar の外観（テーマ）アイコン。</summary>
+    /// <summary>設定オーバーレイを閉じる（Esc・背景クリック・閉じるボタン）。</summary>
     [RelayCommand]
-    private void ShowAppearance() => Activate(SidebarPanel.Appearance);
+    private void CloseSettingsOverlay() => IsSettingsOverlayOpen = false;
 
     /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
     [RelayCommand]

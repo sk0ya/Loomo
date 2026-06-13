@@ -28,6 +28,7 @@ public sealed partial class AiBarViewModel : ObservableObject
 {
     private readonly AgentOrchestrator _orchestrator;
     private readonly AiSettings _settings;
+    private readonly SettingsViewModel _settingsVm;
     private readonly ConversationStore _sessions;
     private readonly IAiWarmup _warmup;
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
@@ -45,6 +46,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     /// <summary>利用可能なスラッシュコマンド一覧。</summary>
     public static IReadOnlyList<ChatCommand> AllCommands { get; } = new[]
     {
+        new ChatCommand("/model", "モデルを切替（/model で一覧・/model 名前 で選択）"),
         new ChatCommand("/clear", "現在のセッションを閉じて新規開始"),
         new ChatCommand("/resume", "直前に閉じたセッションを復元"),
     };
@@ -89,12 +91,14 @@ public sealed partial class AiBarViewModel : ObservableObject
         AgentOrchestrator orchestrator,
         UiApprovalService approval,
         AiSettings settings,
+        SettingsViewModel settingsVm,
         ConversationStore sessions,
         PromptHistoryStore historyStore,
         IAiWarmup warmup)
     {
         _orchestrator = orchestrator;
         _settings = settings;
+        _settingsVm = settingsVm;
         _sessions = sessions;
         _warmup = warmup;
         _inputHistory = new PromptInputHistory(historyStore);   // 前回までの送信履歴を引き継ぐ
@@ -282,7 +286,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                     }
                     else if (!string.IsNullOrWhiteSpace(m.Text))
                     {
-                        Add(EntryKind.Assistant, "🤖 エージェント", m.Text);
+                        Add(EntryKind.Assistant, "エージェント", m.Text);
                     }
                     break;
 
@@ -389,7 +393,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                         thinking = null; // 本文に入ったので思考ブロックを区切る
                         if (assistant is null)
                         {
-                            assistant = Add(EntryKind.Assistant, "🤖 エージェント", "");
+                            assistant = Add(EntryKind.Assistant, "エージェント", "");
                             assistantClock = Stopwatch.StartNew();
                         }
                         assistant.AppendText(delta.Text);
@@ -484,7 +488,7 @@ public sealed partial class AiBarViewModel : ObservableObject
             ClearVolatile();   // 揮発プレビューが残ったまま ProgressLog に保存されないよう必ず片付ける
             turnClock.Stop();
             activity.Header = $"進行状況 ({FormatDuration(turnClock.Elapsed)})";
-            FinishTimedEntry(ref assistant, ref assistantClock, "🤖 エージェント");
+            FinishTimedEntry(ref assistant, ref assistantClock, "エージェント");
             FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
             IsBusy = false;
             ClearStatus();
@@ -705,10 +709,58 @@ public sealed partial class AiBarViewModel : ObservableObject
         var name = text.Split(' ', 2)[0].ToLowerInvariant();
         switch (name)
         {
+            case "/model": RunModelCommand(text); return true;
             case "/clear": ClearSession(); return true;
             case "/resume": ResumeLastSession(); return true;
             default: return false; // 既知コマンドでなければ通常メッセージとして送る
         }
+    }
+
+    /// <summary>/model コマンド。引数なしで一覧（現在のモデルに●）、引数ありで切替える。
+    /// モデル状態は <see cref="SettingsViewModel"/> を単一の真実として共有し、切替は次のターンから効く。</summary>
+    private void RunModelCommand(string text)
+    {
+        IsExpanded = true;
+        _settingsVm.EnsureModelsLoaded();   // ローカルのモデル一覧を最新化（同期的に埋まる）
+        var models = _settingsVm.AvailableModels.ToList();
+        var current = _settingsVm.Model;
+        var arg = text.Length > "/model".Length ? text["/model".Length..].Trim() : "";
+
+        if (arg.Length == 0)
+        {
+            if (models.Count == 0)
+            {
+                Add(EntryKind.Info, "🧩 モデル",
+                    "ローカルにモデルがありません。設定（⚙）でダウンロード／追加してください。");
+                return;
+            }
+            // クリックで切替できる一覧を出す（● が現在のモデル）。/model <名前> でも切替可能。
+            var entry = Add(EntryKind.Info, "🧩 モデル", "クリックで切替できます（● が現在のモデル）。");
+            entry.SetModelChoices(models, current, SelectModelByName);
+            return;
+        }
+
+        // 完全一致を優先し、無ければ部分一致（先頭から1件）で拾う。
+        var match = models.FirstOrDefault(m => string.Equals(m, arg, StringComparison.OrdinalIgnoreCase))
+            ?? models.FirstOrDefault(m => m.Contains(arg, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            Add(EntryKind.Error, "モデルが見つかりません",
+                models.Count == 0
+                    ? $"'{arg}' に一致するモデルがありません（ローカルにモデルがありません）。"
+                    : $"'{arg}' に一致するモデルがありません。候補: {string.Join(", ", models)}");
+            return;
+        }
+
+        SelectModelByName(match);
+    }
+
+    /// <summary>モデルを切替える（一覧クリック・/model 名前 で共用）。状態は SettingsViewModel が持ち、
+    /// パス解決と settings.json 永続化を行う（OnModelChanged）。適用は次のターンから。</summary>
+    private void SelectModelByName(string name)
+    {
+        _settingsVm.Model = name;
+        Add(EntryKind.Info, "🧩 モデルを切替えました", $"{name}（次のターンから適用されます）");
     }
 
     /// <summary>入力内容に応じてコマンド補完候補を更新する。</summary>

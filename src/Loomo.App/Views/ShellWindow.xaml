@@ -356,10 +356,7 @@
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Git}" />
                     <views:SessionsView DataContext="{Binding Sessions}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
-                    <views:SettingsView DataContext="{Binding Settings}"
-                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Settings}" />
-                    <views:AppearanceView DataContext="{Binding Appearance}"
-                                          Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}" />
+                    <!-- 設定／外観はサイドバーではなく中央オーバーレイ（SettingsOverlayView）で開く。 -->
                     <views:PegboardView DataContext="{Binding Pegboard}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Pegboard}" />
                 </Grid>
@@ -804,6 +801,12 @@
                      Popup は1モニタへクリップされ、跨ぎ最大化中に隣のモニタでプレビューが見えないため
                      ウィンドウ内のレイヤとして被せる。 -->
                 <Grid x:Name="PaneDragOverlay" Grid.Column="2" Panel.ZIndex="100" Visibility="Collapsed" />
+
+                <!-- 設定の中央オーバーレイ（ActivityBar の ⚙/🎨 で開く）。サイドバーの縦積みを置き換え、
+                     左カテゴリ[AI/外観/エディタ/安全]＋右内容の広い設定画面を中央に被せる。
+                     起動を軽くするため中身は初回オープン時に遅延生成する（code-behind が Content を差し込む）。 -->
+                <ContentControl x:Name="SettingsOverlayHost" Grid.ColumnSpan="3" Panel.ZIndex="150"
+                                Visibility="{Binding IsSettingsOverlayOpen, Converter={StaticResource BoolToVis}}" />
 
                 <!-- コマンドパレット：部屋の全操作（移動・表示・タブ・コンポーザ・ペグボード・WS切替）を
                      名前で検索して実行する（Ctrl+Shift+P / Ctrl+W p。ShellWindow.CommandPalette.cs）。 -->

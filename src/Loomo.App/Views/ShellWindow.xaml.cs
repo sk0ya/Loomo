@@ -298,13 +298,25 @@ public partial class ShellWindow : Window
         // 初期描画が落ち着いてから Git 状態を遅延読込する。
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
             new Action(() => _vm.GitSession.EnsureLoaded()));
+
         StartupProfiler.Mark("OnLoaded 完了");
     }
 
     private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ShellViewModel.IsSidebarVisible) && sender is ShellViewModel vm)
+        if (sender is not ShellViewModel vm) return;
+        if (e.PropertyName == nameof(ShellViewModel.IsSidebarVisible))
             ApplySidebarVisibility(vm.IsSidebarVisible);
+        else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen) && vm.IsSettingsOverlayOpen)
+            EnsureSettingsOverlayCreated();
+    }
+
+    /// <summary>設定オーバーレイの中身は初回オープン時にだけ生成する（起動コストを払わない）。
+    /// DataContext は ContentControl から ShellViewModel を継承する。</summary>
+    private void EnsureSettingsOverlayCreated()
+    {
+        if (SettingsOverlayHost.Content is null)
+            SettingsOverlayHost.Content = new SettingsOverlayView();
     }
 
     private void ApplySidebarVisibility(bool visible)

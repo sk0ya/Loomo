@@ -4,6 +4,32 @@
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
     Background="{DynamicResource BgAlt}">
 
+    <UserControl.Resources>
+        <!-- /model 一覧の各行（クリックで切替）。ホバーで淡く持ち上がる素のメニュー風ボタン。 -->
+        <Style x:Key="ModelChoiceButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -11,107 +37,268 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ===== 展開時：トランスクリプト ===== -->
-        <Border Grid.Row="0" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,1"
-                Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-            <ScrollViewer x:Name="TranscriptScrollViewer" VerticalScrollBarVisibility="Auto" Padding="8"
+        <!-- ===== トランスクリプト（役割別フラット行・常時表示） =====
+             各行は Kind（あなた/エージェント/ツール/思考/進行/エラー/承認）で見た目を切替える。
+             あなた・エージェントは自然文として読みやすくプロポーショナル体、ツール/思考/進行は
+             控えめな等幅の折りたたみカード。コピーは行ホバーで現れる。 -->
+        <Border Grid.Row="0" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,1">
+            <ScrollViewer x:Name="TranscriptScrollViewer" VerticalScrollBarVisibility="Auto" Padding="8,6"
                           ScrollChanged="OnTranscriptScrollChanged">
                 <ItemsControl ItemsSource="{Binding Transcript}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:TranscriptEntry}">
-                            <Border Margin="0,4" CornerRadius="6" Padding="10,8"
-                                    Background="{DynamicResource Bg}">
+                            <!-- 行のルート。ホバーでコピーボタンを出すため x:Name で参照する。 -->
+                            <Border x:Name="RowRoot" Margin="0,2" CornerRadius="5" Padding="0">
                                 <Border.Style>
                                     <Style TargetType="Border">
+                                        <Setter Property="Background" Value="Transparent" />
                                         <Style.Triggers>
-                                            <!-- 思考ブロックは控えめに（薄背景・本文と区別） -->
+                                            <DataTrigger Binding="{Binding Kind}" Value="User">
+                                                <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                                            </DataTrigger>
                                             <DataTrigger Binding="{Binding Kind}" Value="Thinking">
                                                 <Setter Property="Background" Value="{DynamicResource BgAlt}" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Kind}" Value="Activity">
                                                 <Setter Property="Background" Value="{DynamicResource BgAlt}" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Kind}" Value="Tool">
+                                                <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Kind}" Value="Error">
+                                                <Setter Property="Background" Value="#1FE05252" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Border.Style>
-                                <StackPanel>
-                                    <Grid Margin="0,0,0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0" Content="{Binding CollapseGlyph}"
-                                                Command="{Binding ToggleCollapseCommand}"
-                                                Style="{StaticResource IconButton}" Width="22" Height="22"
-                                                Padding="0" FontSize="10" Margin="0,0,6,0"
-                                                ToolTip="ブロックを開閉" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Header}" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <Button Grid.Column="2" Content="📋"
-                                                Command="{Binding CopyCommand}"
-                                                Style="{StaticResource IconButton}" Width="22" Height="22"
-                                                Padding="0" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="この内容をコピー" />
-                                    </Grid>
-                                    <StackPanel Visibility="{Binding IsCollapsed, Converter={StaticResource InverseBoolToVis}}">
-                                        <!-- 本文は読み取り専用 TextBox にして選択・コピーを可能にする -->
-                                        <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
-                                                 TextWrapping="Wrap" BorderThickness="0" Padding="0"
-                                                 Background="Transparent" IsReadOnlyCaretVisible="False"
-                                                 IsTabStop="False" Cursor="IBeam"
-                                                 FontFamily="Cascadia Mono, Consolas"
-                                                 PreviewMouseWheel="OnTranscriptPreviewMouseWheel">
-                                            <TextBox.Style>
-                                                <Style TargetType="TextBox">
-                                                    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Kind}" Value="Thinking">
-                                                            <Setter Property="FontStyle" Value="Italic" />
-                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Kind}" Value="Activity">
-                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                        </DataTrigger>
-                                                        <!-- 差分エントリ等で本文が空のときは行を占有しない -->
-                                                        <DataTrigger Binding="{Binding Text}" Value="">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBox.Style>
-                                        </TextBox>
-                                        <!-- 差分ビュー（propose_edit の承認カード） -->
-                                        <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
-                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
-                                            <ItemsControl ItemsSource="{Binding DiffLines}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="3" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- 役割を示す左の縦バー -->
+                                    <Border Grid.Column="0" CornerRadius="2" Margin="0,1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource Border}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="User">
+                                                        <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Approval">
+                                                        <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                                        <Setter Property="Background" Value="{DynamicResource FgDim}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Activity">
+                                                        <Setter Property="Background" Value="{DynamicResource FgDim}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Tool">
+                                                        <Setter Property="Background" Value="{DynamicResource FgDim}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Info">
+                                                        <Setter Property="Background" Value="{DynamicResource FgDim}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Error">
+                                                        <Setter Property="Background" Value="#FFE05252" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Margin="9,6,8,7">
+                                        <!-- ヘッダー行（折りたたみグリフ＋役割ラベル＋ホバーで出るコピー） -->
+                                        <Grid Margin="0,0,0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <!-- 開閉ボタンは冗長な記録系（ツール/思考/進行）でのみ表示 -->
+                                            <Button Grid.Column="0" Content="{Binding CollapseGlyph}"
+                                                    Command="{Binding ToggleCollapseCommand}"
+                                                    Width="18" Height="18"
+                                                    Padding="0" FontSize="9" Margin="0,0,6,0"
+                                                    ToolTip="ブロックを開閉">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Tool">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Activity">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                            <!-- 役割アバター（あなた=👤／エージェント=🤖）。col0 で開閉ボタンと排他表示。 -->
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,7,0" FontSize="14">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="User">
+                                                                <Setter Property="Text" Value="👤" />
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Assistant">
+                                                                <Setter Property="Text" Value="🤖" />
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <!-- 役割ラベル。あなた／エージェントは大きく色付きで強調し、誰の発言か一目で分かるようにする。 -->
+                                            <TextBlock Grid.Column="1" Text="{Binding Header}" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                                        <Setter Property="FontSize" Value="11" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="User">
+                                                                <Setter Property="FontSize" Value="12.5" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Assistant">
+                                                                <Setter Property="FontSize" Value="12.5" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <!-- コピーは行ホバー時のみ表示（ElementName で行ルートの IsMouseOver を見る） -->
+                                            <Button Grid.Column="2" Content="📋"
+                                                    Command="{Binding CopyCommand}"
+                                                    Width="20" Height="20"
+                                                    Padding="0" FontSize="10" Margin="6,0,0,0"
+                                                    ToolTip="この内容をコピー">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                                        <Setter Property="Opacity" Value="0" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=RowRoot}" Value="True">
+                                                                <Setter Property="Opacity" Value="1" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </Grid>
+                                        <StackPanel Visibility="{Binding IsCollapsed, Converter={StaticResource InverseBoolToVis}}">
+                                            <!-- 本文は読み取り専用 TextBox にして選択・コピーを可能にする。
+                                                 自然文（あなた/エージェント/エラー/情報）はプロポーショナル体、
+                                                 記録系（ツール/思考/進行）は等幅に切替える。 -->
+                                            <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
+                                                     TextWrapping="Wrap" BorderThickness="0" Padding="0"
+                                                     Background="Transparent" IsReadOnlyCaretVisible="False"
+                                                     IsTabStop="False" Cursor="IBeam"
+                                                     PreviewMouseWheel="OnTranscriptPreviewMouseWheel">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                                        <Setter Property="FontFamily" Value="Segoe UI" />
+                                                        <Setter Property="FontSize" Value="13" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                                                <Setter Property="FontStyle" Value="Italic" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                                                <Setter Property="FontSize" Value="12" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Activity">
+                                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                                                <Setter Property="FontSize" Value="12" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Kind}" Value="Tool">
+                                                                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                                                <Setter Property="FontSize" Value="12" />
+                                                            </DataTrigger>
+                                                            <!-- 差分エントリ等で本文が空のときは行を占有しない -->
+                                                            <DataTrigger Binding="{Binding Text}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                            <!-- 差分ビュー（propose_edit の承認カード） -->
+                                            <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
+                                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                    CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
+                                                <ItemsControl ItemsSource="{Binding DiffLines}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="{Binding Background}">
+                                                                <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
+                                                                         Foreground="{Binding Foreground}" Background="Transparent"
+                                                                         BorderThickness="0" Padding="6,0" IsTabStop="False"
+                                                                         IsReadOnlyCaretVisible="False" Cursor="IBeam"
+                                                                         FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                         TextWrapping="NoWrap"
+                                                                         PreviewMouseWheel="OnTranscriptPreviewMouseWheel" />
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Border>
+                                            <!-- /model のモデル候補（クリックで切替・● が現在） -->
+                                            <ItemsControl ItemsSource="{Binding ModelChoices}" Margin="0,4,0,0"
+                                                          Visibility="{Binding HasModelChoices, Converter={StaticResource BoolToVis}}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <Border Background="{Binding Background}">
-                                                            <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
-                                                                     Foreground="{Binding Foreground}" Background="Transparent"
-                                                                     BorderThickness="0" Padding="6,0" IsTabStop="False"
-                                                                     IsReadOnlyCaretVisible="False" Cursor="IBeam"
-                                                                     FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                                                     TextWrapping="NoWrap"
-                                                                     PreviewMouseWheel="OnTranscriptPreviewMouseWheel" />
-                                                        </Border>
+                                                        <Button Style="{StaticResource ModelChoiceButton}"
+                                                                Command="{Binding SelectCommand}"
+                                                                ToolTip="このモデルに切替（次のターンから適用）">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Width="18" TextAlignment="Center"
+                                                                           VerticalAlignment="Center" FontSize="12">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Text" Value="○" />
+                                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                                                    <Setter Property="Text" Value="●" />
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <TextBlock Text="{Binding Name}" Margin="6,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                           Foreground="{DynamicResource Fg}" />
+                                                            </StackPanel>
+                                                        </Button>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                        </Border>
-                                        <!-- 承認カード -->
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
-                                                    Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">
-                                            <Button Content="承認して実行" Style="{StaticResource FlatButton}"
-                                                    Command="{Binding ApproveCommand}" Margin="0,0,8,0" />
-                                            <Button Content="拒否" Style="{StaticResource FlatButton}"
-                                                    Background="#FF6E1E1E" Command="{Binding RejectCommand}" />
+                                            <!-- 承認カード -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
+                                                        Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">
+                                                <Button Content="承認して実行" Style="{StaticResource FlatButton}"
+                                                        Command="{Binding ApproveCommand}" Margin="0,0,8,0" />
+                                                <Button Content="拒否" Style="{StaticResource FlatButton}"
+                                                        Background="#FF6E1E1E" Command="{Binding RejectCommand}" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </StackPanel>
-                                </StackPanel>
+                                </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -217,18 +404,13 @@
         <!-- ===== 入力バー（常時表示・全幅） ===== -->
         <Grid Grid.Row="2" Margin="8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Style="{StaticResource IconButton}" Width="34" Height="34"
-                    FontSize="14" Content="🤖" ToolTip="展開/格納"
-                    Command="{Binding ToggleExpandCommand}" />
-
-            <Grid Grid.Column="1" Margin="6,0">
+            <!-- モデル切替・新規セッションは「/」コマンド（/model・/clear）で行うため、入力欄だけのすっきりした行にする。 -->
+            <Grid Grid.Column="0">
                 <!-- ウォームアップ中も入力欄は編集可能にしておく（送信だけ抑止：SendCommand の CanExecute が IsWarmingUp を見る）。 -->
                 <TextBox x:Name="InputBox" Text="{Binding Input, UpdateSourceTrigger=PropertyChanged}"
                          VerticalContentAlignment="Center" PreviewKeyDown="OnInputPreviewKeyDown">
@@ -284,7 +466,7 @@
                 </Popup>
                 <TextBlock IsHitTestVisible="False" Margin="10,0" VerticalAlignment="Center"
                            Foreground="{DynamicResource FgDim}" FontStyle="Italic"
-                           Text="AIに指示を入力...   （「/」でコマンド・例: /clear  /resume）">
+                           Text="AIに指示を入力...   （「/」でコマンド・例: /model  /clear  /resume）">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <!-- 通常は Input が空のときだけ表示 -->
@@ -301,12 +483,9 @@
                 </TextBlock>
             </Grid>
 
-            <TextBlock Grid.Column="2" Text="{Binding ProviderLabel}" VerticalAlignment="Center"
-                       Foreground="{DynamicResource FgDim}" Margin="6,0" FontSize="11" />
-
-            <Button Grid.Column="3" Content="送信" Style="{StaticResource FlatButton}"
-                    Command="{Binding SendCommand}" Margin="0,0,6,0" />
-            <Button Grid.Column="4" Content="⏹" Style="{StaticResource FlatButton}"
+            <Button Grid.Column="1" Content="送信" Style="{StaticResource FlatButton}"
+                    Command="{Binding SendCommand}" Margin="6,0,6,0" />
+            <Button Grid.Column="2" Content="⏹" Style="{StaticResource FlatButton}"
                     Background="#FF6E1E1E" Command="{Binding CancelCommand}"
                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
         </Grid>
