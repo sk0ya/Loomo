@@ -380,7 +380,8 @@ public partial class ShellWindow
     private static readonly string[] DarkAnsiPalette =
     {
         "#0C0C0C", "#C50F1F", "#13A10E", "#C19C00", "#0037DA", "#881798", "#3A96DD", "#CCCCCC",
-        "#767676", "#E74856", "#16C60C", "#F9F1A5", "#3B78FF", "#B4009E", "#61D6D6", "#F2F2F2",
+        // index 8(明色の黒)はPSReadLineが引数/演算子に使う。背景#1E1E1Eに埋もれない明度へ(#767676→)。
+        "#9D9D9D", "#E74856", "#16C60C", "#F9F1A5", "#3B78FF", "#B4009E", "#61D6D6", "#F2F2F2",
     };
 
     private static readonly string[] LightAnsiPalette =
@@ -392,19 +393,22 @@ public partial class ShellWindow
     private static readonly string[] DraculaAnsiPalette =
     {
         "#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2",
-        "#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF",
+        // index 8(引数/演算子色)はDraculaのcomment#6272A4だと背景#282A36でコントラスト不足→明るめに。
+        "#8A95C2", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF",
     };
 
     private static readonly string[] NordAnsiPalette =
     {
         "#3B4252", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#88C0D0", "#E5E9F0",
-        "#4C566A", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#8FBCBB", "#ECEFF4",
+        // index 8(引数/演算子色)はNordのnord3#4C566Aだと背景#2E3440に埋もれる→明るめのフロスト寄りに。
+        "#909FBB", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#8FBCBB", "#ECEFF4",
     };
 
     private static readonly string[] SolarizedDarkAnsiPalette =
     {
         "#073642", "#DC322F", "#859900", "#B58900", "#268BD2", "#D33682", "#2AA198", "#EEE8D5",
-        "#002B36", "#CB4B16", "#586E75", "#657B83", "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
+        // index 8(引数/演算子色)は本来base03#002B36で背景と同色＝不可視。base0#839496へ変更し可読に。
+        "#839496", "#CB4B16", "#586E75", "#657B83", "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
     };
 
     /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと EditorSupport ペインへ即時反映する。</summary>
