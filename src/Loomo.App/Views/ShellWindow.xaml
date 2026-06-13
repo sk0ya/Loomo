@@ -296,11 +296,12 @@
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M5,2.5 V7.5 M2.5,5 H7.5 M8.5,11.5 H13.5" />
                         </ToggleButton>
-                        <!-- トレース：パルス（タイムライン） -->
+                        <!-- トレース：パルス（タイムライン）。タイトルバーからの表示切替は廃止（§24）。
                         <ToggleButton Style="{StaticResource PaneToggle}" Tag="Trace" Click="OnTogglePaneVisibility">
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M1.5,8 H4.5 L6.5,3.5 L9.5,12.5 L11.5,8 H14.5" />
                         </ToggleButton>
+                        -->
                         <!-- AI：スパーク -->
                         <ToggleButton Style="{StaticResource PaneToggle}" Tag="Ai" Click="OnTogglePaneVisibility">
                             <Path Style="{StaticResource PaneToggleIcon}"
