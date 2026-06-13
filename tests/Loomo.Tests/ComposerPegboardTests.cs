@@ -114,6 +114,73 @@ public class ComposerPegboardTests
     }
 
     [Fact]
+    public void Material_flow_commands_raise_their_requests()
+    {
+        var vm = new PegboardViewModel();
+        vm.AddContent("dotnet build");
+        var item = vm.Items[0];
+
+        PegboardItemVm? toTerminal = null;
+        PegboardItemVm? toComposer = null;
+        var editorPin = 0;
+        vm.SendToTerminalRequested += (_, i) => toTerminal = i;
+        vm.InsertToComposerRequested += (_, i) => toComposer = i;
+        vm.EditorSelectionPinRequested += (_, _) => editorPin++;
+
+        vm.SendToTerminalCommand.Execute(item);
+        vm.InsertToComposerCommand.Execute(item);
+        vm.PinEditorSelectionCommand.Execute(null);
+
+        Assert.Same(item, toTerminal);
+        Assert.Same(item, toComposer);
+        Assert.Equal(1, editorPin);
+    }
+
+    // ===== WorkspaceSnapshot（復元の完全性） =====
+
+    [Fact]
+    public void Workspace_snapshot_roundtrips_view_state_fields()
+    {
+        var path = Path.Combine(TempDir(), "workspaces.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var store = new WorkspaceStateStore(path);
+
+        var state = new WorkspaceState();
+        state.Workspaces.Add(new WorkspaceSnapshot
+        {
+            RootPath = @"C:\Projects\Loomo",
+            ComposerVisible = true,
+            ComposerHeight = 220,
+            Stage = new StageSnapshot { IsActive = true, Pane = PaneKind.Terminal, Overview = true },
+            EditorTabs =
+            {
+                new EditorTabSnapshot
+                {
+                    FilePath = @"C:\Projects\Loomo\README.md",
+                    CaretLine = 41,
+                    CaretColumn = 7,
+                    ScrollRatio = 0.65,
+                },
+            },
+        });
+
+        store.Save(state);
+        var loaded = store.Load();
+
+        var ws = Assert.Single(loaded.Workspaces);
+        Assert.True(ws.ComposerVisible);
+        Assert.Equal(220, ws.ComposerHeight);
+        Assert.True(ws.Stage!.Overview);
+        Assert.Equal(PaneKind.Terminal, ws.Stage.Pane);
+        var tab = Assert.Single(ws.EditorTabs);
+        Assert.Equal(41, tab.CaretLine);
+        Assert.Equal(7, tab.CaretColumn);
+        Assert.Equal(0.65, tab.ScrollRatio);
+
+        Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+    }
+
+    [Fact]
     public void Delete_removes_item_and_updates_empty_message()
     {
         var vm = new PegboardViewModel();

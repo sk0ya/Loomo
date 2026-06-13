@@ -40,10 +40,14 @@
                 Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
                 ToolTip="クリップボードのテキストをカードとして貼る（URL・ファイルパスは自動判別）"
                 Command="{Binding AddFromClipboardCommand}" />
-        <Button DockPanel.Dock="Top" Margin="10,0,10,8" Content="📌 ブラウザのURLをピン"
+        <Button DockPanel.Dock="Top" Margin="10,0,10,2" Content="📌 ブラウザのURLをピン"
                 Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
                 ToolTip="ブラウザペインで表示中のページを貼る"
                 Command="{Binding PinBrowserUrlCommand}" />
+        <Button DockPanel.Dock="Top" Margin="10,0,10,8" Content="📌 エディタの選択をピン"
+                Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
+                ToolTip="アクティブなエディタで選択中のテキストを貼る"
+                Command="{Binding PinEditorSelectionCommand}" />
 
         <Grid>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -51,7 +55,35 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border Background="{DynamicResource Bg}" CornerRadius="3"
-                                BorderThickness="1" Margin="4,2" Padding="6,3">
+                                BorderThickness="1" Margin="4,2" Padding="6,3"
+                                PreviewMouseLeftButtonDown="OnCardMouseDown"
+                                PreviewMouseMove="OnCardMouseMove">
+                            <!-- 右クリック：ペイン間の「素材の流れ」操作（ターミナル/コンポーザへ）。
+                                 ContextMenu は placement 先（カード）の DataContext＝アイテムを継承する -->
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="ターミナルへ送る（入力のみ・複数行はコンポーザへ）"
+                                              Command="{Binding PlacementTarget.Tag.SendToTerminalCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}" />
+                                    <MenuItem Header="コンポーザへ挿入"
+                                              Command="{Binding PlacementTarget.Tag.InsertToComposerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}" />
+                                    <Separator />
+                                    <MenuItem Header="コピー"
+                                              Command="{Binding PlacementTarget.Tag.CopyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}" />
+                                    <MenuItem Header="{Binding OpenLabel}"
+                                              Command="{Binding PlacementTarget.Tag.OpenCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}" />
+                                    <Separator />
+                                    <MenuItem Header="削除"
+                                              Command="{Binding PlacementTarget.Tag.DeleteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
+                            <Border.Tag>
+                                <Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=ItemsControl}" />
+                            </Border.Tag>
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="BorderBrush" Value="{DynamicResource Border}" />

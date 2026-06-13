@@ -19,6 +19,9 @@ public partial class ShellWindow
         _vm.Pegboard.Changed += (_, _) => SaveActiveWorkspaceSnapshot();
         _vm.Pegboard.OpenRequested += async (_, item) => await OpenPegboardItemAsync(item);
         _vm.Pegboard.BrowserPinRequested += (_, _) => PinBrowserUrlToPegboard();
+        _vm.Pegboard.EditorSelectionPinRequested += (_, _) => PinEditorSelectionToPegboard();
+        _vm.Pegboard.SendToTerminalRequested += (_, item) => SendPegboardItemToTerminal(item);
+        _vm.Pegboard.InsertToComposerRequested += (_, item) => InsertIntoComposer(item.Content);
     }
 
     /// <summary>「ブラウザのURLをピン」：ブラウザペインで表示中のページをカードにする。</summary>
@@ -27,6 +30,34 @@ public partial class ShellWindow
         if (_activeBrowserTab?.View.Source?.ToString() is { Length: > 0 } url)
             _vm.Pegboard.AddContent(url, type: "url",
                 title: _activeBrowserTab.View.CoreWebView2?.DocumentTitle);
+    }
+
+    /// <summary>「エディタの選択をピン」：アクティブエディタの選択テキストをカードにする（素材の流れ）。</summary>
+    private void PinEditorSelectionToPegboard()
+    {
+        if (_activeEditorTab?.Control.SelectedText is { Length: > 0 } text)
+            _vm.Pegboard.AddContent(text, type: "text");
+    }
+
+    /// <summary>
+    /// 「ターミナルへ送る」：単一行は可視ターミナルのプロンプトへ入力する（実行はしない＝
+    /// FolderTree の「ターミナルにセット」と同じ流儀）。複数行はプロンプトで暴発しないよう
+    /// コンポーザへ流し、推敲してから Ctrl+Enter で実行してもらう。
+    /// </summary>
+    private void SendPegboardItemToTerminal(PegboardItemVm item)
+    {
+        var content = item.Content;
+        if (content.Contains('\n'))
+        {
+            InsertIntoComposer(content);
+            return;
+        }
+
+        SetPaneVisible(PaneKind.Terminal, true);
+        // 空白を含むパスはそのまま使えるよう引用する（ファイル/フォルダのカードのみ）。
+        var text = item.Type == "file" && content.IndexOf(' ') >= 0 ? $"\"{content}\"" : content;
+        _activeTerminalTab?.View.SendTerminalInput(text);
+        FocusPane(PaneKind.Terminal);
     }
 
     /// <summary>カードの「開く」：url→ブラウザ新タブ / file→エディタ（フォルダはターミナル cd）/ text→エディタの仮想ドキュメント。</summary>

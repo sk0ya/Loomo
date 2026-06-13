@@ -222,6 +222,7 @@ public partial class ShellWindow
         ApplyTerminalAppearance(view);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
+        HookTerminalActivity(tab);
         return tab;
     }
 

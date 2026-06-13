@@ -455,6 +455,11 @@
                                         Click="OnComposerRun" />
                                 <TextBlock DockPanel.Dock="Left" Text="Ctrl+Enter" VerticalAlignment="Center"
                                            Margin="2,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}" />
+                                <!-- 組み立てたコマンドを道具掛けへ（§23.3 素材の流れ：作業台→ペグボード） -->
+                                <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderToolButton}"
+                                        Content="📌 ペグボードへ" Margin="8,0,0,0"
+                                        ToolTip="本文をペグボードにピンして再利用する"
+                                        Click="OnComposerPinToPegboard" />
                             </DockPanel>
                             <Border x:Name="ComposerEditorHost" Background="{DynamicResource Panel}" />
                         </DockPanel>
@@ -798,6 +803,49 @@
                      Popup は1モニタへクリップされ、跨ぎ最大化中に隣のモニタでプレビューが見えないため
                      ウィンドウ内のレイヤとして被せる。 -->
                 <Grid x:Name="PaneDragOverlay" Grid.Column="2" Panel.ZIndex="100" Visibility="Collapsed" />
+
+                <!-- コマンドパレット：部屋の全操作（移動・表示・タブ・コンポーザ・ペグボード・WS切替）を
+                     名前で検索して実行する（Ctrl+Shift+P / Ctrl+W p。ShellWindow.CommandPalette.cs）。 -->
+                <Grid x:Name="CommandPaletteOverlay" Grid.ColumnSpan="3" Panel.ZIndex="200" Visibility="Collapsed"
+                      Background="#59101010" MouseLeftButtonDown="OnPaletteBackgroundMouseDown">
+                    <Border Width="560" MaxHeight="440" HorizontalAlignment="Center" VerticalAlignment="Top"
+                            Margin="0,46,0,0" Background="{DynamicResource Panel}"
+                            BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="6"
+                            MouseLeftButtonDown="OnPaletteBoxMouseDown">
+                        <DockPanel Margin="6">
+                            <TextBox x:Name="PaletteInput" DockPanel.Dock="Top" Margin="4" Padding="6,4" FontSize="13"
+                                     Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                     BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                     TextChanged="OnPaletteTextChanged" PreviewKeyDown="OnPaletteInputKeyDown" />
+                            <ListBox x:Name="PaletteList" Margin="4,0,4,4" BorderThickness="0"
+                                     Background="Transparent" Foreground="{DynamicResource Fg}"
+                                     HorizontalContentAlignment="Stretch"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.ScrollUnit="Item">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="6,3" />
+                                        <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPaletteItemClick" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="11"
+                                                       Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock FontSize="12" TextTrimming="CharacterEllipsis"><Run
+                                                    Text="{Binding Category, Mode=OneWay}"
+                                                    Foreground="{DynamicResource FgDim}" /><Run
+                                                    Text=" › " Foreground="{DynamicResource FgDim}" /><Run
+                                                    Text="{Binding Title, Mode=OneWay}" /></TextBlock>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+                </Grid>
             </Grid>
         </Grid>
     </Border>

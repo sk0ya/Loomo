@@ -39,6 +39,25 @@ public partial class ShellWindow
     {
         var key = e.Key;
 
+        // コマンドパレット表示中はキーをパレットに委ねる（Esc の保険だけここでも拾う）。
+        if (IsPaletteOpen)
+        {
+            if (key == Key.Escape)
+            {
+                CloseCommandPalette(refocus: true);
+                e.Handled = true;
+            }
+            return;
+        }
+
+        // Ctrl+Shift+P：コマンドパレット（部屋の全操作を名前で呼ぶ）。
+        if (key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            OpenCommandPalette();
+            e.Handled = true;
+            return;
+        }
+
         // リサイズモード中は h/j/k/l（修飾不要）で伸縮し続ける。Ctrl+W で移動プレフィックスへ復帰、
         // Esc/Enter で確定終了、その他のキーはモードを抜けて通常入力としてそのまま流す。
         if (_resizeMode)
@@ -80,6 +99,12 @@ public partial class ShellWindow
             if (key == Key.Z)
             {
                 ToggleZoom(); // Ctrl+W z でフォーカス中ペインをズーム／復元
+                e.Handled = true;
+                return;
+            }
+            if (key == Key.P)
+            {
+                OpenCommandPalette(); // Ctrl+W p でもコマンドパレット（Vim の流儀でプレフィックスから）
                 e.Handled = true;
                 return;
             }

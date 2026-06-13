@@ -182,7 +182,7 @@ same instance backs both — Views resolve the concrete control adapter, tools r
 
 ## Working with the sk0ya control libraries (important)
 
-Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.5) and `sk0ya.Editor.Controls`
+Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.8) and `sk0ya.Editor.Controls`
 (1.0.5), but their **namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
 `Editor.Controls.VimEditorControl`. **The agent's command execution does NOT flow to the visible terminal** —
 `TerminalService.RunCommandAsync` always runs the command in an independent non-interactive PowerShell
@@ -191,6 +191,10 @@ human-only. cwd is tracked via `cd` detection (`TrackChdir`). `SetWorkingDirecto
 `TerminalTabView.RunCommandAsync` on the UI thread to make the *visible* terminal follow the opened folder.
 The package version
 is pinned in **one place only**: `src/Loomo.Services/Loomo.Services.csproj` (App references transitively).
+
+Terminal 1.0.7 auto-injects OSC 133 shell integration into interactive pwsh; 1.0.8 exposes the
+`TerminalTabView.ShellCommandActivity` public event (command phase + exit code, for human-typed commands
+too) — Loomo's stage-wing activity badges (`ShellWindow.PaneActivity.cs`, 設計書 §24.1) are built on it.
 
 Reflecting over these assemblies via the shell tends to hallucinate — dump API to a file and Grep it, or use
 `MetadataLoadContext`. The Terminal library source is at `C:\Projects\Terminal` (ConPTY, OSC133 shell

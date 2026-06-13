@@ -82,6 +82,12 @@ public sealed class WorkspaceSnapshot
     /// <summary>コマンドコンポーザ（§23.2）の本文。エディタタブ同様、全文をそのまま保存する。</summary>
     public string? ComposerText { get; set; }
 
+    /// <summary>コマンドコンポーザの表示状態（開いたまま離れたら開いたまま戻る）。</summary>
+    public bool ComposerVisible { get; set; }
+
+    /// <summary>コマンドコンポーザの高さ（px）。null なら既定値。</summary>
+    public double? ComposerHeight { get; set; }
+
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
 }
@@ -140,6 +146,8 @@ public sealed class StageSnapshot
     public bool IsActive { get; set; }
     /// <summary>舞台に立っているペイン。null なら復元時に既定選択へフォールバックする。</summary>
     public PaneKind? Pane { get; set; }
+    /// <summary>俯瞰（全カード一望）レイヤを開いたまま離れたか。</summary>
+    public bool Overview { get; set; }
 }
 
 public sealed class TerminalSnapshot
@@ -171,6 +179,13 @@ public sealed class EditorTabSnapshot
     public string? Title { get; set; }
     public bool IsModified { get; set; }
     public bool IsActive { get; set; }
+
+    /// <summary>カーソル位置（0始まり）。復元時に <c>NavigateTo</c> で戻す。</summary>
+    public int CaretLine { get; set; }
+    public int CaretColumn { get; set; }
+
+    /// <summary>縦スクロール位置（0..1）。レイアウト前は取れないため null あり・復元はベストエフォート。</summary>
+    public double? ScrollRatio { get; set; }
 }
 
 public sealed class BrowserTabSnapshot

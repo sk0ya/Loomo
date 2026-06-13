@@ -86,6 +86,29 @@ public partial class ShellWindow
 
     private void OnComposerRun(object sender, RoutedEventArgs e) => RunComposer();
 
+    /// <summary>「📌 ペグボードへ」：組み立てた本文をペグボードへピンして再利用できるようにする。</summary>
+    private void OnComposerPinToPegboard(object sender, RoutedEventArgs e)
+    {
+        var text = CaptureComposerText();
+        if (!string.IsNullOrWhiteSpace(text))
+            _vm.Pegboard.AddContent(text, type: "text");
+    }
+
+    /// <summary>ペグボード等からの「コンポーザへ挿入」。表示して本文の末尾に足す（素材の流れ）。</summary>
+    private void InsertIntoComposer(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        SetComposerVisible(true);
+        var editor = _composerEditor!;   // SetComposerVisible(true) が実体化する
+        var current = editor.Text;
+        editor.SetText(string.IsNullOrWhiteSpace(current)
+            ? text
+            : current.TrimEnd('\r', '\n') + Environment.NewLine + text);
+        editor.Focus();
+    }
+
     /// <summary>コンポーザ本文を直上の可視ターミナルで実行する（複数行は一時 .ps1 経由・§23.2）。
     /// フォーカスはコンポーザに残す（コマンドを推敲しながら繰り返し実行する使い方のため）。</summary>
     private void RunComposer()
@@ -115,14 +138,27 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>ワークスペース切替時の本文復元（スナップショット→エディタ）。</summary>
-    private void RestoreComposer(string? composerText)
+    /// <summary>ワークスペース切替時の復元（本文・表示状態・高さ）。開いたまま離れたら開いたまま戻る。</summary>
+    private void RestoreComposer(WorkspaceSnapshot workspace)
     {
-        _composerPendingText = composerText ?? string.Empty;
+        _composerPendingText = workspace.ComposerText ?? string.Empty;
         _composerEditor?.SetText(_composerPendingText);
+
+        // 順序に注意：SetComposerVisible(false) は現在の高さを _composerHeight へ退避するため、
+        // 復元値の反映は表示切替の後に行う（切替前だと旧ワークスペースの高さで上書きされる）。
+        SetComposerVisible(workspace.ComposerVisible);
+        _composerHeight = workspace.ComposerHeight is { } height and >= 60
+            ? height
+            : ComposerDefaultHeight;
+        if (IsComposerVisible)
+            ComposerRow.Height = new GridLength(_composerHeight);
     }
 
     /// <summary>スナップショット保存時の本文捕捉。エディタ未生成なら直近の復元値を保つ。</summary>
     private string CaptureComposerText()
         => _composerEditor?.Text ?? _composerPendingText;
+
+    /// <summary>スナップショット保存時の高さ捕捉（表示中はスプリッタで変わり得る現在値を優先）。</summary>
+    private double CaptureComposerHeight()
+        => IsComposerVisible && ComposerRow.Height.IsAbsolute ? ComposerRow.Height.Value : _composerHeight;
 }

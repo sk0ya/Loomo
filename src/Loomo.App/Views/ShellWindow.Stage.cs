@@ -125,7 +125,7 @@ public partial class ShellWindow
             return;
 
         _stageActive = true;
-        _overviewActive = false;
+        _overviewActive = snapshot.Overview;   // 俯瞰を開いたまま離れたら俯瞰のまま戻る
         _zoomedPane = null;
         _stagePane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
@@ -170,6 +170,9 @@ public partial class ShellWindow
         StageModeToggle.IsChecked = false;
         RebuildPaneLayout();
         FocusPane(_stagePane);
+        // タイル表示でターミナルが見えるようになったなら、未確認の結果は「見た」扱い。
+        if (IsPaneVisible(PaneKind.Terminal))
+            MarkPaneActivitySeen(PaneKind.Terminal);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -181,6 +184,7 @@ public partial class ShellWindow
         _overviewActive = false;
         _stagePane = kind;
         RebuildStage();
+        MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -251,6 +255,7 @@ public partial class ShellWindow
         WingStrip.Children.Clear();
         OverviewPanel.Children.Clear();
         _stageThumbnailHosts.Clear();
+        _stageActivityBadges.Clear();
 
         var virtualSize = StageVirtualSize();
         _stageBuiltSize = virtualSize;
@@ -411,6 +416,9 @@ public partial class ShellWindow
             },
         });
         card.Child = root;
+
+        // ターミナルカードには活動バッジ（実行中／未確認の成功・失敗）を重ねる（§袖=周辺視野）。
+        AttachActivityBadge(root, kind, isOverview);
 
         var rest = isOverview ? 1.0 : WingRestOpacity;
         card.Opacity = rest;

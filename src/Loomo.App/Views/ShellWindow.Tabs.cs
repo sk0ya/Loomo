@@ -267,6 +267,7 @@ public partial class ShellWindow
         _terminalTabs.RemoveAt(index);
         _vm.Tabs.RemoveTerminalTab(id);
         _terminalViews?.RemoveTab(id);
+        ForgetTerminalActivity(id);
 
         if (_terminalTabs.Count == 0)
         {

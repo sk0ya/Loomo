@@ -64,6 +64,15 @@ public sealed partial class PegboardViewModel : ObservableObject
     /// <summary>「ブラウザのURLをピン」要求。表示中 URL の取得は ShellWindow が担う。</summary>
     public event EventHandler? BrowserPinRequested;
 
+    /// <summary>「エディタの選択をピン」要求。選択テキストの取得は ShellWindow が担う。</summary>
+    public event EventHandler? EditorSelectionPinRequested;
+
+    /// <summary>「ターミナルへ送る」要求（素材の流れ）。送信先の解決は ShellWindow が担う。</summary>
+    public event EventHandler<PegboardItemVm>? SendToTerminalRequested;
+
+    /// <summary>「コンポーザへ挿入」要求（素材の流れ）。挿入は ShellWindow が担う。</summary>
+    public event EventHandler<PegboardItemVm>? InsertToComposerRequested;
+
     [ObservableProperty] private string _emptyMessage = "";
 
     public PegboardViewModel() => UpdateEmptyMessage();
@@ -128,6 +137,18 @@ public sealed partial class PegboardViewModel : ObservableObject
     /// <summary>ブラウザで表示中のページをピンする（URL 取得は ShellWindow 側）。</summary>
     [RelayCommand]
     private void PinBrowserUrl() => BrowserPinRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>エディタの選択テキストをピンする（選択の取得は ShellWindow 側）。</summary>
+    [RelayCommand]
+    private void PinEditorSelection() => EditorSelectionPinRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>アイテムを可視ターミナルのプロンプトへ送る（実行はしない）。</summary>
+    [RelayCommand]
+    private void SendToTerminal(PegboardItemVm item) => SendToTerminalRequested?.Invoke(this, item);
+
+    /// <summary>アイテムをコンポーザ本文の末尾へ挿入する。</summary>
+    [RelayCommand]
+    private void InsertToComposer(PegboardItemVm item) => InsertToComposerRequested?.Invoke(this, item);
 
     [RelayCommand]
     private void Copy(PegboardItemVm item)

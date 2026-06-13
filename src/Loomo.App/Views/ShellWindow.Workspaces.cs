@@ -141,7 +141,7 @@ public partial class ShellWindow
         _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
         StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         // コンポーザ本文とペグボードはワークスペース毎（どちらも軽量・同期）。
-        RestoreComposer(workspace.ComposerText);
+        RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
         PrepareStageSnapshot(workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
@@ -180,16 +180,34 @@ public partial class ShellWindow
         {
             editor.LoadFile(snapshot.FilePath);
             if (!snapshot.IsModified)
+            {
+                RestoreEditorViewState(editor, snapshot);
                 return;
+            }
         }
 
         if (snapshot.IsModified || string.IsNullOrWhiteSpace(snapshot.FilePath))
         {
             editor.SetText(snapshot.Text ?? string.Empty);
+            RestoreEditorViewState(editor, snapshot);
             return;
         }
 
         editor.SetText(string.Empty);
+    }
+
+    /// <summary>カーソル位置とスクロールを戻す（復元の完全性・§19.5）。カーソルはモデル状態なので
+    /// 即時に効く。スクロールはレイアウト後でないと算出できないため Loaded 優先度へ遅延し、
+    /// それでも取れない場合はカーソル可視化スクロールに任せるベストエフォート。</summary>
+    private static void RestoreEditorViewState(VimEditorControl editor, EditorTabSnapshot snapshot)
+    {
+        if (snapshot.CaretLine > 0 || snapshot.CaretColumn > 0)
+            editor.NavigateTo(snapshot.CaretLine, snapshot.CaretColumn);
+
+        if (snapshot.ScrollRatio is { } ratio and > 0)
+            editor.Dispatcher.BeginInvoke(
+                new Action(() => editor.ScrollToVerticalRatio(ratio)),
+                DispatcherPriority.Loaded);
     }
 
     private void RestoreTerminalTabs(WorkspaceSnapshot workspace)
@@ -463,7 +481,10 @@ public partial class ShellWindow
             Text = tab.Control.Text,
             Title = EditorTitle(tab.Control),
             IsModified = tab.Control.IsModified,
-            IsActive = tab.Id == _activeEditorTab?.Id
+            IsActive = tab.Id == _activeEditorTab?.Id,
+            CaretLine = tab.Control.Caret.Line,
+            CaretColumn = tab.Control.Caret.Column,
+            ScrollRatio = tab.Control.VerticalScrollRatio
         }).ToList();
 
         var activeEditor = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)?.Control
@@ -486,11 +507,14 @@ public partial class ShellWindow
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
         snapshot.ComposerText = CaptureComposerText();
+        snapshot.ComposerVisible = IsComposerVisible;
+        snapshot.ComposerHeight = CaptureComposerHeight();
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
         snapshot.Stage = new StageSnapshot
         {
             IsActive = _stageActive,
-            Pane = _stageActive ? _stagePane : null
+            Pane = _stageActive ? _stagePane : null,
+            Overview = _stageActive && _overviewActive
         };
 
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
