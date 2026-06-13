@@ -228,6 +228,9 @@ public partial class ShellWindow
         ApplyTerminalAppearance(view);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
+        // ターミナル本文の URL クリックを Loomo で受け、http/https は内蔵ブラウザへ振り分ける
+        // （sk0ya.Terminal.Controls 1.0.10）。
+        view.HyperlinkActivated += OnTerminalLinkActivated;
         HookTerminalActivity(tab);
         return tab;
     }
