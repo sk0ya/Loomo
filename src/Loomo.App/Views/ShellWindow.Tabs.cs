@@ -196,12 +196,31 @@ public partial class ShellWindow
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
+        await OpenUrlInBrowserAsync(new Uri(Path.GetFullPath(path)).AbsoluteUri, Path.GetFileName(path));
+    }
+
+    /// <summary>エディタ本文の URL クリック（Ctrl+Click / gx）を、OS 既定ブラウザではなく内蔵ブラウザペインで開く。</summary>
+    private void OnEditorLinkClicked(object? sender, LinkClickedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Url))
+            return;
+
+        // 既定動作（Process.Start で OS のブラウザを開く）を抑止し、内蔵ブラウザで開く。
+        e.Handled = true;
+        _ = OpenUrlInBrowserAsync(e.Url, null);
+    }
+
+    /// <summary>任意の URL をアプリ内ブラウザの新規タブで開く（必要ならブラウザペインを表示する）。</summary>
+    private async Task OpenUrlInBrowserAsync(string url, string? title)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+
         // ブラウザペインが隠れていれば表示してから開く。
         if (!IsPaneVisible(PaneKind.Browser))
             SetPaneVisible(PaneKind.Browser, true);
 
-        var url = new Uri(Path.GetFullPath(path)).AbsoluteUri;   // file:///C:/...
-        await CreateBrowserTabAsync(url, requestedTitle: Path.GetFileName(path));
+        await CreateBrowserTabAsync(url, requestedTitle: title);
         SaveActiveWorkspaceSnapshot();
     }
 

@@ -69,6 +69,8 @@ public partial class ShellWindow
             VimEnabled = _settings.Vim.Enabled,
         };
         ApplyEditorAppearance(editor);
+        // 本文中のURLクリック（Ctrl+Click / gx）も内蔵ブラウザで開く（タブのエディタと同じ扱い）。
+        editor.LinkClicked += OnEditorLinkClicked;
         editor.SetText(_composerPendingText);
         _composerEditor = editor;
         ComposerEditorHost.Child = editor;
