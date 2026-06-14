@@ -14,6 +14,7 @@
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:InverseBoolConverter x:Key="InverseBool" />
     <conv:CountToVisibilityConverter x:Key="CountToVis" />
+    <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
 
     <!-- ===== Base text ===== -->
     <Style TargetType="TextBlock">

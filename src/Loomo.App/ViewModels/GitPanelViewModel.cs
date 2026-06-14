@@ -1,6 +1,9 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -66,6 +69,34 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     public ObservableCollection<GitChangeItem> Staged { get; } = new();
     public ObservableCollection<GitChangeItem> Unstaged { get; } = new();
+
+    // 各リストの選択スナップショット（コードビハインドの SelectionChanged から差し替える）。
+    // 一括コマンドはここを対象にするので、コマンド側は引数を取らない。
+    private readonly List<GitChangeItem> _stagedSelection = new();
+    private readonly List<GitChangeItem> _unstagedSelection = new();
+
+    /// <summary>ステージ済みリストで選択中の件数（選択件数バーの表示・有効化に使う）。</summary>
+    [ObservableProperty] private int _stagedSelectedCount;
+    /// <summary>変更リストで選択中の件数。</summary>
+    [ObservableProperty] private int _unstagedSelectedCount;
+
+    /// <summary>ステージ済みリストの選択をビューから受け取る。</summary>
+    public void SetStagedSelection(IList items)
+    {
+        _stagedSelection.Clear();
+        foreach (var o in items)
+            if (o is GitChangeItem g) _stagedSelection.Add(g);
+        StagedSelectedCount = _stagedSelection.Count;
+    }
+
+    /// <summary>変更リストの選択をビューから受け取る。</summary>
+    public void SetUnstagedSelection(IList items)
+    {
+        _unstagedSelection.Clear();
+        foreach (var o in items)
+            if (o is GitChangeItem g) _unstagedSelection.Add(g);
+        UnstagedSelectedCount = _unstagedSelection.Count;
+    }
 
     public GitPanelViewModel(
         GitService git, IEditorService editor, IWorkspaceService workspace, DiffSessionViewModel diff)
@@ -172,6 +203,60 @@ public sealed partial class GitPanelViewModel : ObservableObject
             "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes) return;
         await RunOpAsync("破棄", () => _git.DiscardAsync(item.Entry));
+    }
+
+    // ===== 選択分の一括操作 =====
+
+    /// <summary>変更リストで選択中のファイルをまとめてステージする。</summary>
+    [RelayCommand]
+    private Task StageSelectedAsync()
+    {
+        var paths = _unstagedSelection.Select(i => i.Entry.Path).ToArray();
+        return paths.Length == 0 ? Task.CompletedTask : RunOpAsync("ステージ", () => _git.StageAsync(paths));
+    }
+
+    /// <summary>ステージ済みリストで選択中のファイルをまとめてアンステージする。</summary>
+    [RelayCommand]
+    private Task UnstageSelectedAsync()
+    {
+        var paths = _stagedSelection.Select(i => i.Entry.Path).ToArray();
+        return paths.Length == 0 ? Task.CompletedTask : RunOpAsync("アンステージ", () => _git.UnstageAsync(paths));
+    }
+
+    /// <summary>変更リストで選択中のファイルをまとめて破棄する。確認は件数・未追跡の有無を1回だけ出す。</summary>
+    [RelayCommand]
+    private async Task DiscardSelectedAsync()
+    {
+        var entries = _unstagedSelection.Select(i => i.Entry).ToArray();
+        if (entries.Length == 0) return;
+        var untrackedCount = entries.Count(e => e.IsUntracked);
+        var detail = untrackedCount > 0
+            ? $"（うち {untrackedCount} 件は未追跡ファイルなので削除されます。）\n"
+            : "";
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{entries.Length} 件の変更を破棄しますか？\n{detail}作業ツリーの変更が失われます。",
+            "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        await RunOpAsync("破棄", () => _git.DiscardAsync(entries));
+    }
+
+    /// <summary>変更（未ステージ）すべてを破棄する。確認を1回出してからまとめて実行する。</summary>
+    [RelayCommand]
+    private async Task DiscardAllAsync()
+    {
+        var entries = Unstaged.Select(i => i.Entry).ToArray();
+        if (entries.Length == 0) return;
+        var untrackedCount = entries.Count(e => e.IsUntracked);
+        var detail = untrackedCount > 0
+            ? $"（うち {untrackedCount} 件は未追跡ファイルなので削除されます。）\n"
+            : "";
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"変更 {entries.Length} 件をすべて破棄しますか？\n{detail}作業ツリーの変更が失われます。",
+            "すべての変更を破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        await RunOpAsync("破棄", () => _git.DiscardAsync(entries));
     }
 
     [RelayCommand]

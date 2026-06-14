@@ -270,10 +270,34 @@ public sealed class GitService
     public Task<GitCommandResult> UnstageAsync(string path) => MutateAsync("restore", "--staged", "--", path);
     public Task<GitCommandResult> UnstageAllAsync() => MutateAsync("restore", "--staged", "--", ".");
 
+    /// <summary>複数パスをまとめてステージする（git は 1 コマンドで複数パスを取れる）。空なら何もしない。</summary>
+    public Task<GitCommandResult> StageAsync(IReadOnlyCollection<string> paths) => paths.Count == 0
+        ? Task.FromResult(new GitCommandResult(0, "", ""))
+        : MutateAsync(new[] { "add", "-A", "--" }.Concat(paths).ToArray());
+
+    /// <summary>複数パスをまとめてアンステージする。空なら何もしない。</summary>
+    public Task<GitCommandResult> UnstageAsync(IReadOnlyCollection<string> paths) => paths.Count == 0
+        ? Task.FromResult(new GitCommandResult(0, "", ""))
+        : MutateAsync(new[] { "restore", "--staged", "--" }.Concat(paths).ToArray());
+
     /// <summary>変更を破棄する。未追跡は削除（git clean）、追跡済みは作業ツリーを復元する。破壊的。</summary>
     public Task<GitCommandResult> DiscardAsync(GitChangeEntry entry) => entry.IsUntracked
         ? MutateAsync("clean", "-fd", "--", entry.Path)
         : MutateAsync("restore", "--", entry.Path);
+
+    /// <summary>複数の変更をまとめて破棄する。未追跡（git clean）と追跡済み（git restore）でコマンドが
+    /// 違うため分けて実行し、結果を1つに集約して返す。いずれかが失敗したら以降は実行しない。破壊的。</summary>
+    public async Task<GitCommandResult> DiscardAsync(IReadOnlyCollection<GitChangeEntry> entries)
+    {
+        var untracked = entries.Where(e => e.IsUntracked).Select(e => e.Path).ToArray();
+        var tracked = entries.Where(e => !e.IsUntracked).Select(e => e.Path).ToArray();
+        GitCommandResult? last = null;
+        if (untracked.Length > 0)
+            last = await MutateAsync(new[] { "clean", "-fd", "--" }.Concat(untracked).ToArray()).ConfigureAwait(false);
+        if (tracked.Length > 0 && (last is null || last.Success))
+            last = await MutateAsync(new[] { "restore", "--" }.Concat(tracked).ToArray()).ConfigureAwait(false);
+        return last ?? new GitCommandResult(0, "", "");
+    }
 
     public Task<GitCommandResult> CommitAsync(string message, bool amend = false) => amend
         ? MutateAsync("commit", "--amend", "-m", message)

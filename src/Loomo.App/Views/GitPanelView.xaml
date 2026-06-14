@@ -73,37 +73,69 @@
             </Setter>
         </Style>
 
-        <!-- 変更行本体（クリックでファイルを開く） -->
-        <Style x:Key="ChangeRowButton" TargetType="Button">
+        <!-- 変更行コンテナ（クリック=選択 / ダブルクリックで開く・コードビハインド）。
+             既定の選択クロムを差し替え、ホバー=Bg・選択=Border の控えめなハイライトにする。 -->
+        <Style x:Key="ChangeRowItem" TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="Margin" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="{TemplateBinding Background}" Padding="4,3" CornerRadius="4">
-                            <ContentPresenter />
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <!-- Border の Background はテンプレートバインドで ListBoxItem.Background を映す。
+                             選択色は下の Style.Triggers で ListBoxItem.Background を差し替えて反映させる
+                             （ControlTemplate のトリガーで Border を直接塗ると、Border 側のローカル値に
+                             負けて効かない＝WPF の値優先順位の罠）。 -->
+                        <Border Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Stretch" />
                         </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <!-- ホバーでは何も変えない。選択行だけアクセント色で塗り、連続選択は
+                     同色の帯になってひと塊に見える（角丸ゼロ＋行間ゼロ）。 -->
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SelectionBg}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
-        <!-- 変更行の右クリックメニュー。ContextMenu はビジュアルツリー外なので、対象ボタン（PlacementTarget）
-             の Tag に載せた ViewModel 経由でコマンドへ、DataContext からその行（GitChangeItem）を引数に渡す。 -->
-        <ContextMenu x:Key="ChangeRowMenu">
+        <!-- セクション見出しの一括操作群（常時表示）。 -->
+        <Style x:Key="HeaderActions" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 変更行の右クリックメニュー（変更セクション用）。PlacementTarget は ListBox。
+             開く/差分はフォーカス行（SelectedItem）に、ステージ/破棄は選択全体（VM 保持）に作用する。 -->
+        <ContextMenu x:Key="UnstagedRowMenu">
             <MenuItem Header="ファイルを開く"
-                      Command="{Binding PlacementTarget.Tag.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                      Command="{Binding PlacementTarget.DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <MenuItem Header="差分を開く"
-                      Command="{Binding PlacementTarget.Tag.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                      Command="{Binding PlacementTarget.DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
+            <MenuItem Header="選択をステージ"
+                      Command="{Binding PlacementTarget.DataContext.StageSelectedCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="選択を破棄"
+                      Command="{Binding PlacementTarget.DataContext.DiscardSelectedCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
+
+        <!-- 変更行の右クリックメニュー（ステージ済みセクション用） -->
+        <ContextMenu x:Key="StagedRowMenu">
+            <MenuItem Header="ファイルを開く"
+                      Command="{Binding PlacementTarget.DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="差分を開く"
+                      Command="{Binding PlacementTarget.DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
+            <MenuItem Header="選択をアンステージ"
+                      Command="{Binding PlacementTarget.DataContext.UnstageSelectedCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
 
         <!-- 件数ピル（セクション見出しの右） -->
@@ -247,14 +279,18 @@
             <Border DockPanel.Dock="Top" Height="1" Margin="8,0,8,4"
                     Background="{DynamicResource Border}" />
 
-            <!-- 変更一覧（ステージ済み／変更） -->
+            <!-- 変更一覧（ステージ済み／変更）。VS Code のソース管理に倣う：
+                 行は「ファイル名＋淡色パス … （ホバー時のみ操作アイコン）… 状態文字（右端・色分け）」。
+                 複数選択して右クリックで一括操作（ステージ/アンステージ/破棄）。 -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0">
                 <StackPanel>
                     <!-- ステージ済み（空ならセクションごと畳む） -->
                     <StackPanel Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}">
-                        <DockPanel Margin="4,2">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="−"
-                                    ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
+                        <DockPanel Margin="4,2" Background="Transparent">
+                            <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                                <Button Style="{StaticResource RowActionButton}" Content="−"
+                                        ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
                                            FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -265,40 +301,45 @@
                                 </Border>
                             </StackPanel>
                         </DockPanel>
-                        <ItemsControl ItemsSource="{Binding Staged}">
-                            <ItemsControl.ItemTemplate>
+                        <ListBox ItemsSource="{Binding Staged}" SelectionMode="Extended"
+                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                 ItemContainerStyle="{StaticResource ChangeRowItem}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 SelectionChanged="StagedList_SelectionChanged"
+                                 MouseDoubleClick="ChangeList_MouseDoubleClick"
+                                 PreviewMouseRightButtonDown="ChangeList_PreviewMouseRightButtonDown"
+                                 ContextMenu="{StaticResource StagedRowMenu}">
+                            <ListBox.InputBindings>
+                                <KeyBinding Key="Delete" Command="{Binding UnstageSelectedCommand}" />
+                            </ListBox.InputBindings>
+                            <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <DockPanel Margin="4,0">
-                                        <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="−"
-                                                ToolTip="アンステージ"
-                                                Command="{Binding DataContext.UnstageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <Button Style="{StaticResource ChangeRowButton}" ToolTip="{Binding ToolTipText}"
-                                                Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}"
-                                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                ContextMenu="{StaticResource ChangeRowMenu}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Status}" Width="16" Foreground="{DynamicResource Accent}"
-                                                           TextAlignment="Center" FontWeight="SemiBold"
-                                                           FontFamily="Cascadia Mono, Consolas" />
-                                                <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                           FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                        </Button>
+                                    <DockPanel Background="Transparent" ToolTip="{Binding ToolTipText}">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Width="16" Margin="4,0,2,0"
+                                                   Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
+                                                   TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                   FontFamily="Cascadia Mono, Consolas" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
+                                                       FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
                                     </DockPanel>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </StackPanel>
 
                     <!-- 変更（未ステージ・未追跡・コンフリクト） -->
-                    <DockPanel Margin="4,8,4,2">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="＋"
-                                ToolTip="すべてステージ" Command="{Binding StageAllCommand}" />
+                    <DockPanel Margin="4,8,4,2" Background="Transparent">
+                        <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                            <Button Style="{StaticResource RowActionButton}" Content="↶"
+                                    ToolTip="すべて破棄" Command="{Binding DiscardAllCommand}" />
+                            <Button Style="{StaticResource RowActionButton}" Content="＋"
+                                    ToolTip="すべてステージ" Command="{Binding StageAllCommand}" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="変更" Foreground="{DynamicResource FgDim}"
                                        FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -309,49 +350,35 @@
                             </Border>
                         </StackPanel>
                     </DockPanel>
-                    <ItemsControl ItemsSource="{Binding Unstaged}">
-                        <ItemsControl.ItemTemplate>
+                    <ListBox ItemsSource="{Binding Unstaged}" SelectionMode="Extended"
+                             Background="Transparent" BorderThickness="0" Padding="0"
+                             ItemContainerStyle="{StaticResource ChangeRowItem}"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             SelectionChanged="UnstagedList_SelectionChanged"
+                             MouseDoubleClick="ChangeList_MouseDoubleClick"
+                             PreviewMouseRightButtonDown="ChangeList_PreviewMouseRightButtonDown"
+                             ContextMenu="{StaticResource UnstagedRowMenu}">
+                        <ListBox.InputBindings>
+                            <KeyBinding Key="Delete" Command="{Binding DiscardSelectedCommand}" />
+                        </ListBox.InputBindings>
+                        <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <DockPanel Margin="4,0">
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="＋"
-                                            ToolTip="ステージ"
-                                            Command="{Binding DataContext.StageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="↶"
-                                            ToolTip="変更を破棄"
-                                            Command="{Binding DataContext.DiscardCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <Button Style="{StaticResource ChangeRowButton}" ToolTip="{Binding ToolTipText}"
-                                            Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}"
-                                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            ContextMenu="{StaticResource ChangeRowMenu}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Status}" Width="16"
-                                                       TextAlignment="Center" FontWeight="SemiBold"
-                                                       FontFamily="Cascadia Mono, Consolas">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsConflicted}" Value="True">
-                                                                <Setter Property="Foreground" Value="#FFE57373" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                       FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Button>
+                                <DockPanel Background="Transparent" ToolTip="{Binding ToolTipText}">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Width="16" Margin="4,0,2,0"
+                                               Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
+                                               TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               FontFamily="Cascadia Mono, Consolas" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
+                                                   FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
                                 </DockPanel>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </StackPanel>
             </ScrollViewer>
         </DockPanel>

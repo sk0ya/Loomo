@@ -2,8 +2,40 @@ using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Media;
 
 namespace sk0ya.Loomo.App.Converters;
+
+/// <summary>Git の状態文字（M/A/D/R/?/U…）を一般的な配色のブラシに変換する。
+/// VS Code のソース管理に倣ったセマンティック色（テーマ非依存）。</summary>
+public sealed class GitStatusToBrushConverter : IValueConverter
+{
+    private static readonly Brush Modified = Freeze("#E2C08D"); // 変更：ゴールド
+    private static readonly Brush Added = Freeze("#73C991");    // 追加・未追跡：緑
+    private static readonly Brush Deleted = Freeze("#E57373");  // 削除・コンフリクト：赤
+    private static readonly Brush Renamed = Freeze("#6CB6FF");  // リネーム：青
+    private static readonly Brush Other = Freeze("#9DA5B4");    // その他：灰
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => (value as string) switch
+        {
+            "M" => Modified,
+            "A" or "?" or "C" => Added,
+            "D" or "U" => Deleted,
+            "R" => Renamed,
+            _ => Other,
+        };
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+
+    private static Brush Freeze(string hex)
+    {
+        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        b.Freeze();
+        return b;
+    }
+}
 
 /// <summary>文字列が空のとき Visible（ウォーターマーク表示用）。</summary>
 public sealed class EmptyStringToVisibilityConverter : IValueConverter

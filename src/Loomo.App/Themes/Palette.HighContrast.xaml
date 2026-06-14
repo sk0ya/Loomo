@@ -16,5 +16,7 @@
     <SolidColorBrush x:Key="FgDim" Color="#FFD0D0D0" />
     <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明イエロー） -->
     <SolidColorBrush x:Key="SearchHighlight" Color="#80FFFF00" />
+    <!-- リストの選択行背景（高コントラスト：白文字が読める濃い青） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FF0060C0" />
 
 </ResourceDictionary>
