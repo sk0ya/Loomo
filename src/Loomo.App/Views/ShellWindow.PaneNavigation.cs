@@ -31,18 +31,16 @@ public partial class ShellWindow
     // ===== ペイン操作（Ctrl+W → h/j/k/l 移動 / Shift+h/j/k/l リサイズ / z ズーム） =====
 
     /// <summary>
-    /// Ctrl+W を押すと方向キー（h/j/k/l）待ちに入り、続けて押されたキーの向きの
-    /// 隣接ペインへフォーカスを移す。Preview（トンネル）で本体より先に拾い、消費したキーは
-    /// <see cref="RoutedEventArgs.Handled"/> で止める（同一イベントの KeyDown も併せて抑止される）。
+    /// ウィンドウ全体のキー入力（Preview＝トンネル）を受け、コマンドパレット以外は
+    /// <see cref="KeyboardDispatcher"/> へ委ねる。バインドの解釈（Ctrl+W プレフィックス連鎖・
+    /// h/j/k/l 方向移動・リサイズモード・z/x/v/s/q 等）はすべてデータ駆動で、設定画面での
+    /// 再割り当てが即反映される。パレット表示中は Esc の保険だけここで拾う。
     /// </summary>
     private void OnPaneNavKey(object sender, KeyEventArgs e)
     {
-        var key = e.Key;
-
-        // コマンドパレット表示中はキーをパレットに委ねる（Esc の保険だけここでも拾う）。
         if (IsPaletteOpen)
         {
-            if (key == Key.Escape)
+            if (e.Key == Key.Escape)
             {
                 CloseCommandPalette(refocus: true);
                 e.Handled = true;
@@ -50,115 +48,8 @@ public partial class ShellWindow
             return;
         }
 
-        // Ctrl+Shift+P：コマンドパレット（部屋の全操作を名前で呼ぶ）。
-        if (key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            OpenCommandPalette();
-            e.Handled = true;
-            return;
-        }
-
-        // リサイズモード中は h/j/k/l（修飾不要）で伸縮し続ける。Ctrl+W で移動プレフィックスへ復帰、
-        // Esc/Enter で確定終了、その他のキーはモードを抜けて通常入力としてそのまま流す。
-        if (_resizeMode)
-        {
-            if (IsModifierKey(key))
-                return; // Shift 等の単独押下はモード維持
-            if (key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                SetResizeMode(false);
-                _awaitingPaneDirection = true;
-                e.Handled = true;
-                return;
-            }
-            if (MapNavDirection(key) is { } resizeDir)
-            {
-                ResizeFocusedPane(resizeDir);
-                e.Handled = true;
-                return;
-            }
-            SetResizeMode(false);
-            if (key is Key.Escape or Key.Return)
-                e.Handled = true;
-            return;
-        }
-
-        if (_awaitingPaneDirection)
-        {
-            if (IsModifierKey(key))
-                return; // Ctrl 等の単独押下は方向キー待ちを維持する
-
-            // Ctrl+W の押しっぱなし・再入力はプレフィックスのまま待ち続ける
-            if (key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                e.Handled = true;
-                return;
-            }
-
-            _awaitingPaneDirection = false;
-            if (key == Key.Z)
-            {
-                ToggleZoom(); // Ctrl+W z でフォーカス中ペインをズーム／復元
-                e.Handled = true;
-                return;
-            }
-            if (key == Key.P)
-            {
-                OpenCommandPalette(); // Ctrl+W p でもコマンドパレット（Vim の流儀でプレフィックスから）
-                e.Handled = true;
-                return;
-            }
-            if (key == Key.X)
-            {
-                // Ctrl+W x：分割中ならまずその分割ビューポートを消す。分割が無ければペイン（またはサイドバー）を隠す。
-                if (!CloseFocusedViewport())
-                    HideFocusedRegion();
-                e.Handled = true;
-                return;
-            }
-            if (key is Key.V or Key.S or Key.Q)
-            {
-                // Ctrl+W v/s でペイン内を分割（v=左右 / s=上下）、q で分割を畳む。Editor/Terminal のみ作用。
-                HandleViewportSplitKey(key);
-                e.Handled = true;
-                return;
-            }
-            if (MapNavDirection(key) is { } direction)
-            {
-                // Shift 併用はフォーカス中ペインのリサイズ（以降はモードに入り連打で伸縮可）、
-                // 単独は隣接ペインへフォーカス移動。
-                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
-                {
-                    ResizeFocusedPane(direction);
-                    SetResizeMode(true);
-                }
-                else
-                    FocusPaneInDirection(direction);
-                e.Handled = true;
-            }
-            // 方向キー以外はプレフィックスを解除し、そのまま素通しさせる
-            return;
-        }
-
-        if (key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-        {
-            _awaitingPaneDirection = true;
-            e.Handled = true;
-        }
+        _keyboard?.HandlePreviewKeyDown(e);
     }
-
-    private static DropZone? MapNavDirection(Key key) => key switch
-    {
-        Key.H => DropZone.Left,
-        Key.J => DropZone.Below,
-        Key.K => DropZone.Above,
-        Key.L => DropZone.Right,
-        _ => null
-    };
-
-    private static bool IsModifierKey(Key key) => key is
-        Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or
-        Key.LeftAlt or Key.RightAlt or Key.System or Key.LWin or Key.RWin;
 
     /// <summary>1回のキーリサイズで動かす量（その分割の合計比率に対する割合）。</summary>
     private const double ResizeStepRatio = 0.08;
@@ -286,14 +177,11 @@ public partial class ShellWindow
     /// <summary>キーボードフォーカスが入ったペインを記録する（移動の起点に使う）。</summary>
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        // フォーカスが他所へ移ったら、待ち状態の Ctrl+W プレフィックスは破棄する。
-        // （Ctrl+W → 気が変わってクリック/別ペインへ移動 → 後続の h/j/k/l が誤って奪われるのを防ぐ）
-        _awaitingPaneDirection = false;
-
+        // フォーカスが他所へ移ったら、待ち状態のプレフィックス連鎖は破棄する
+        // （Ctrl+W → 気が変わってクリック/別ペインへ移動 → 後続の h/j/k/l が誤って奪われるのを防ぐ）。
         // リサイズ自身が起こすフォーカス移動（ガード中）以外でフォーカスが動いたら、
-        // ユーザー操作とみなしてリサイズモードを終了する（次のキー入力が誤って奪われない）。
-        if (_resizeMode && !_suppressResizeExit)
-            SetResizeMode(false);
+        // ユーザー操作とみなしてリサイズモードも終了する。
+        _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
 
         if (e.NewFocus is not DependencyObject d)
             return;
@@ -318,12 +206,9 @@ public partial class ShellWindow
         return false;
     }
 
-    /// <summary>ウィンドウが非アクティブになったら Ctrl+W の待ち状態とリサイズモードを解除する。</summary>
+    /// <summary>ウィンドウが非アクティブになったらプレフィックス待ち・リサイズモードを解除する。</summary>
     private void OnWindowDeactivated(object? sender, EventArgs e)
-    {
-        _awaitingPaneDirection = false;
-        SetResizeMode(false);
-    }
+        => _keyboard?.Reset();
 
     /// <summary>要素を内包するペイン種別を視覚ツリーを遡って特定する（ペイン外なら null）。</summary>
     private PaneKind? FindPaneOf(DependencyObject element)

@@ -105,6 +105,7 @@ public sealed class AiSettingsStore
         public PersistedObservability? Observability { get; set; }
         public PersistedVim? Vim { get; set; }
         public PersistedAppearance? Appearance { get; set; }
+        public PersistedKeybindings? Keybindings { get; set; }
 
         public static PersistedSettings From(AiSettings s) => new()
         {
@@ -116,6 +117,7 @@ public sealed class AiSettingsStore
             Observability = PersistedObservability.From(s.Observability),
             Vim = PersistedVim.From(s.Vim),
             Appearance = PersistedAppearance.From(s.Appearance),
+            Keybindings = PersistedKeybindings.From(s.Keybindings),
         };
 
         public void ApplyTo(AiSettings s)
@@ -129,6 +131,29 @@ public sealed class AiSettingsStore
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
             Vim?.ApplyTo(s.Vim);
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
+            Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
+        }
+    }
+
+    // ===== キーボードショートカットの上書き。平文で保持（秘匿情報ではない）。 =====
+
+    private sealed class PersistedKeybindings
+    {
+        /// <summary>コマンド Id → ジェスチャ表記。既定と異なるものだけ。</summary>
+        public Dictionary<string, string> Overrides { get; set; } = new();
+
+        public static PersistedKeybindings From(KeybindingSettings k) => new()
+        {
+            Overrides = new Dictionary<string, string>(k.Overrides),
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(KeybindingSettings k)
+        {
+            k.Overrides.Clear();
+            if (Overrides is null) return;
+            foreach (var (id, gesture) in Overrides)
+                k.Overrides[id] = gesture;
         }
     }
 

@@ -76,10 +76,14 @@ public partial class ShellWindow
         ComposerEditorHost.Child = editor;
     }
 
-    /// <summary>Ctrl+Enter（コンポーザ内のどこでも）で実行。Vim 編集と衝突しないトンネリングで先取りする。</summary>
+    /// <summary>コンポーザ内のどこでも、<c>composer.run</c> の実効ジェスチャ（既定 Ctrl+Enter）で実行する。
+    /// Vim 編集と衝突しないトンネリングで先取りする。ウィンドウ全体のディスパッチャはこのコマンドの
+    /// アクションを持たない（＝消費しない）ため、コンポーザにフォーカスがある時だけここで拾える。
+    /// 単一ジェスチャのみ対応（連鎖を割り当てた場合はコンポーザ内ショートカットとしては無効）。</summary>
     private void OnComposerPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+        if (_keybindings.For("composer.run") is { Count: 1 } seq
+            && Input.KeyChord.FromEvent(e) is { } chord && chord.Equals(seq.First))
         {
             e.Handled = true;
             RunComposer();

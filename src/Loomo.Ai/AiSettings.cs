@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
@@ -35,6 +36,9 @@ public sealed class AiSettings
 
     /// <summary>埋め込み Vim エディタの設定。</summary>
     public VimSettings Vim { get; set; } = new();
+
+    /// <summary>キーボードショートカットのユーザー上書き（既定と異なるものだけ保持）。</summary>
+    public KeybindingSettings Keybindings { get; set; } = new();
 
     /// <summary>エディタ／Markdownプレビュー／ターミナルの配色・フォント設定。
     /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
@@ -184,6 +188,16 @@ public sealed class VimSettings
     /// 埋め込みエディタで Vim キーバインドを有効にする。
     /// </summary>
     public bool Enabled { get; set; } = false;
+}
+
+/// <summary>キーボードショートカットのユーザー上書き。
+/// キーはコマンド Id（例 <c>pane.focus.left</c>）、値はジェスチャ表記（例 <c>Ctrl+W H</c>）。
+/// 既定（カタログ）と同じものは保持せず、変更したものだけを持つ。値を空文字にすると「未割当」を表す
+/// （既定でキーが付くコマンドのバインドを意図的に外した状態）。ジェスチャ表記の解釈は UI 層（App）が担う
+/// ため、ここでは文字列のまま保持し WPF へ依存しない。</summary>
+public sealed class KeybindingSettings
+{
+    public Dictionary<string, string> Overrides { get; set; } = new();
 }
 
 /// <summary>エディタ／Markdownプレビュー／ターミナルの配色・フォント設定。

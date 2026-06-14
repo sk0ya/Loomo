@@ -21,7 +21,8 @@ public enum SettingsCategory
     Appearance,
     Editor,
     Terminal,
-    Ai
+    Ai,
+    Keyboard
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
@@ -34,6 +35,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public SessionsViewModel Sessions { get; }
     public SettingsViewModel Settings { get; }
     public AppearanceViewModel Appearance { get; }
+    public KeybindingsViewModel Keyboard { get; }
     public GitPanelViewModel GitPanel { get; }
     public GitSessionViewModel GitSession { get; }
     public DiffSessionViewModel DiffSession { get; }
@@ -60,6 +62,7 @@ public sealed partial class ShellViewModel : ObservableObject
         SessionsViewModel sessions,
         SettingsViewModel settings,
         AppearanceViewModel appearance,
+        KeybindingsViewModel keyboard,
         GitPanelViewModel gitPanel,
         GitSessionViewModel gitSession,
         DiffSessionViewModel diffSession,
@@ -73,6 +76,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Sessions = sessions;
         Settings = settings;
         Appearance = appearance;
+        Keyboard = keyboard;
         GitPanel = gitPanel;
         GitSession = gitSession;
         DiffSession = diffSession;
@@ -116,6 +120,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar のターミナルアイコン。設定オーバーレイをターミナルカテゴリで開く。</summary>
     [RelayCommand]
     private void ShowTerminalSettings() => OpenSettingsOverlay(SettingsCategory.Terminal);
+
+    /// <summary>設定オーバーレイをキーボードカテゴリで開く。</summary>
+    [RelayCommand]
+    private void ShowKeyboardSettings() => OpenSettingsOverlay(SettingsCategory.Keyboard);
 
     /// <summary>設定オーバーレイを指定カテゴリで開く。既に同じカテゴリで開いていればトグルで閉じる。</summary>
     private void OpenSettingsOverlay(SettingsCategory category)

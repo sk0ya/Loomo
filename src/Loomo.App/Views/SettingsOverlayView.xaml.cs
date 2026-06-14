@@ -24,11 +24,23 @@ public partial class SettingsOverlayView : UserControl
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // キーキャプチャ中（KeyCaptureBox にフォーカス）のキーは横取りしない。Esc も取消に使うため委ねる。
+        if (IsWithinCaptureBox(e.OriginalSource as DependencyObject))
+            return;
+
         if (e.Key == Key.Escape && DataContext is ShellViewModel vm)
         {
             vm.CloseSettingsOverlayCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private static bool IsWithinCaptureBox(DependencyObject? source)
+    {
+        for (var node = source; node is not null; node = System.Windows.Media.VisualTreeHelper.GetParent(node))
+            if (node is KeyCaptureBox)
+                return true;
+        return false;
     }
 
     /// <summary>背景（薄暗がり）クリックで閉じる。</summary>

@@ -146,6 +146,7 @@ public partial class App : Application
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<TabIconService>();
+        services.AddSingleton<Input.KeybindingService>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<AiBarViewModel>();
@@ -153,6 +154,7 @@ public partial class App : Application
         services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();
+        services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<DiffSessionViewModel>();

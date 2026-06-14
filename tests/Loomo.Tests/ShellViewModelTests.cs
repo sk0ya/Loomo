@@ -46,6 +46,7 @@ public class ShellViewModelTests
         var sessionsVm = new SessionsViewModel(conversations, aiBar,
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager());
+        var keyboardVm = new KeybindingsViewModel(new sk0ya.Loomo.App.Input.KeybindingService(settings, store));
 
         var workspaceStore = new WorkspaceStateStore(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workspaces.json"));
@@ -60,7 +61,7 @@ public class ShellViewModelTests
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
-            appearanceVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm, new PegboardViewModel());
+            appearanceVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm, new PegboardViewModel());
     }
 
     [Fact]

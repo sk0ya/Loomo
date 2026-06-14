@@ -14,6 +14,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Input;
 using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
@@ -35,7 +36,10 @@ public partial class ShellWindow : Window
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
     private readonly EditorSupportRegistry _editorSupports;
+    private readonly KeybindingService _keybindings;
     private readonly ShellViewModel _vm;
+    /// <summary>キーボードショートカットのディスパッチャ（実効バインド→コマンド実行）。</summary>
+    private KeyboardDispatcher? _keyboard;
     private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
     private readonly Dictionary<Guid, EditorWorkspaceTabs> _editorWorkspaces = new();
     private readonly Dictionary<Guid, BrowserWorkspaceTabs> _browserWorkspaces = new();
@@ -117,9 +121,7 @@ public partial class ShellWindow : Window
     // ===== ペイン間フォーカス移動（Ctrl+W h/j/k/l） =====
     /// <summary>直近でキーボードフォーカスを得た領域（移動の起点）。ペイン本体またはサイドバー。</summary>
     private FocusTarget? _focusedRegion;
-    /// <summary>Ctrl+W プレフィックスを受け取り、次の h/j/k/l を待ち受けている状態。</summary>
-    private bool _awaitingPaneDirection;
-    /// <summary>リサイズモード：h/j/k/l 連打でフォーカス中ペインを伸縮し続けられる。Esc/Enter・他キー・フォーカス移動で抜ける。</summary>
+    /// <summary>リサイズモードのヒント表示が出ているか（モード本体の状態は <see cref="KeyboardDispatcher"/> が持つ）。</summary>
     private bool _resizeMode;
     /// <summary>リサイズ自身が起こすフォーカス移動でモードを抜けてしまうのを防ぐガード。</summary>
     private bool _suppressResizeExit;
@@ -148,7 +150,8 @@ public partial class ShellWindow : Window
         IWorkspaceService workspace,
         TabIconService tabIcons,
         AiSettings settings,
-        EditorSupportRegistry editorSupports)
+        EditorSupportRegistry editorSupports,
+        KeybindingService keybindings)
     {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
@@ -163,6 +166,8 @@ public partial class ShellWindow : Window
         _tabIcons = tabIcons;
         _settings = settings;
         _editorSupports = editorSupports;
+        _keybindings = keybindings;
+        _keyboard = BuildKeyboardDispatcher();
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;

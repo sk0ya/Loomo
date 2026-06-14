@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.App.Services;
 /// コマンドパレット（部屋全体の操作統一）の1コマンド。カテゴリ＋名前で検索され、
 /// 選択されると <see cref="Execute"/> が走る。一覧の構築は ShellWindow が担う。
 /// </summary>
-public sealed record PaletteCommand(string Category, string Title, Action Execute, string? Shortcut = null)
+public sealed record PaletteCommand(string Category, string Title, Action Execute, string? Shortcut = null, string? Id = null)
 {
     /// <summary>検索対象のテキスト（カテゴリも含めて引っかける）。</summary>
     public string SearchText => $"{Category} {Title}";

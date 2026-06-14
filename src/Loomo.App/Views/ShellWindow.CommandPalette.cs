@@ -113,6 +113,9 @@ public partial class ShellWindow
     {
         var list = new List<PaletteCommand>();
 
+        // カタログコマンドの実効ジェスチャ（再割り当てに追従）。
+        string? Sc(string id) => _keybindings.For(id)?.Format();
+
         // ステージ
         list.Add(new("ステージ",
             _stageActive ? "ステージモードを解除（タイル表示へ）" : "ステージモードへ（舞台＋袖）",
@@ -138,14 +141,17 @@ public partial class ShellWindow
         }
 
         // タブ
-        list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs())));
-        list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs())));
-        list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs())));
+        list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()),
+            Sc("tab.newTerminal"), "tab.newTerminal"));
+        list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()),
+            Sc("tab.newEditor"), "tab.newEditor"));
+        list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()),
+            Sc("tab.newBrowser"), "tab.newBrowser"));
 
         // コンポーザ（作業台）
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く",
             () => SetComposerVisible(!IsComposerVisible)));
-        list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, "Ctrl+Enter"));
+        list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
         list.Add(new("コンポーザ", "本文をペグボードへピン",
             () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
 
@@ -156,13 +162,21 @@ public partial class ShellWindow
         list.Add(new("ペグボード", "ブラウザのURLをピン", PinBrowserUrlToPegboard));
 
         // サイドバー
-        list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null)));
-        list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null)));
-        list.Add(new("サイドバー", "AIセッション", () => _vm.ShowSessionsCommand.Execute(null)));
-        list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null)));
-        list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null)));
-        list.Add(new("サイドバー", "設定", () => _vm.ShowSettingsCommand.Execute(null)));
-        list.Add(new("サイドバー", "外観（テーマ）", () => _vm.ShowAppearanceCommand.Execute(null)));
+        list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null),
+            Sc("sidebar.explorer"), "sidebar.explorer"));
+        list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null),
+            Sc("sidebar.tabs"), "sidebar.tabs"));
+        list.Add(new("サイドバー", "AIセッション", () => _vm.ShowSessionsCommand.Execute(null),
+            Sc("sidebar.sessions"), "sidebar.sessions"));
+        list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null),
+            Sc("sidebar.git"), "sidebar.git"));
+        list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null),
+            Sc("sidebar.pegboard"), "sidebar.pegboard"));
+        list.Add(new("サイドバー", "設定", () => _vm.ShowSettingsCommand.Execute(null),
+            Sc("sidebar.settings"), "sidebar.settings"));
+        list.Add(new("サイドバー", "外観（テーマ）", () => _vm.ShowAppearanceCommand.Execute(null),
+            Sc("sidebar.appearance"), "sidebar.appearance"));
+        list.Add(new("サイドバー", "キーボード設定", () => _vm.ShowKeyboardSettingsCommand.Execute(null)));
 
         // ワークスペース
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive))
