@@ -393,7 +393,7 @@ public partial class ShellWindow
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
         // ステージモード中はタイル前提の操作（ドラッグ移動・ダブルクリックズーム）を無効化する。
-        // ただし配役モードでは、ペイン自身のタイトルバーを掴んでスロットを入れ替えられるようにする。
+        // ただし配置モードでは、ペイン自身のタイトルバーを掴んでスロットを入れ替えられるようにする。
         if (_stageActive)
         {
             if (ProgramActive && sender is FrameworkElement { Tag: string stag }
@@ -428,7 +428,7 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
     {
-        // 配役モードでは、ペインのタイトルバーをしきい値超えで掴んだらスロット入れ替えのドラッグを開始する。
+        // 配置モードでは、ペインのタイトルバーをしきい値超えで掴んだらスロット入れ替えのドラッグを開始する。
         if (_stageActive)
         {
             if (ProgramActive && _stageDragArmed && e.LeftButton == MouseButtonState.Pressed
@@ -734,7 +734,7 @@ public partial class ShellWindow
     {
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
-        // 配役モードでサブの「—」は、タイル用の非表示ではなく舞台から降ろす。
+        // 配置モードでサブの「—」は、タイル用の非表示ではなく舞台から降ろす。
         if (_stageActive && ProgramActive && _stageSubs.Any(s => s.Kind == kind))
         {
             RemoveSub(kind);

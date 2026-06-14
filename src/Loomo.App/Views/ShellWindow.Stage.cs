@@ -27,10 +27,10 @@ public partial class ShellWindow
     private bool _stageActive;
     /// <summary>舞台に立っている主役ペイン。</summary>
     private PaneKind _stagePane;
-    /// <summary>配役モードのサブ（最大2枚・順序＝Sub1,Sub2）。空なら従来の単一ステージ。</summary>
+    /// <summary>配置モードのサブ（最大2枚・順序＝Sub1,Sub2）。空なら従来の単一ステージ。</summary>
     private readonly List<StageSub> _stageSubs = new();
 
-    /// <summary>配役モード中か（サブが1枚以上立っている）。</summary>
+    /// <summary>配置モード中か（サブが1枚以上立っている）。</summary>
     private bool ProgramActive => _stageSubs.Count > 0;
     /// <summary>舞台に立っているペイン（主役＋サブ）。</summary>
     private IEnumerable<PaneKind> OnStagePanes() => new[] { _stagePane }.Concat(_stageSubs.Select(s => s.Kind));
@@ -102,8 +102,8 @@ public partial class ShellWindow
             EnterStageMode();
     }
 
-    /// <summary>配役をやめてステージ（舞台1枚）へ戻す。サブを全部降ろすだけで主役は据え置き。
-    /// タイトルバーの配役ドロップダウンの「なし」から呼ぶ。</summary>
+    /// <summary>配置をやめてステージ（舞台1枚）へ戻す。サブを全部降ろすだけで主役は据え置き。
+    /// タイトルバーの配置ドロップダウンの「なし」から呼ぶ。</summary>
     private void StopProgram()
     {
         if (!_stageActive || !ProgramActive)
@@ -126,7 +126,7 @@ public partial class ShellWindow
         _stageActive = true;
         _overviewActive = false;
         _zoomedPane = null;
-        _stageSubs.Clear();   // 入場は単一ステージから（配役は袖ドラッグ／保存配役で立てる）
+        _stageSubs.Clear();   // 入場は単一ステージから（配置は袖ドラッグ／保存配置で立てる）
         _stageRightFraction = _stageBottomFraction = DefaultStageFraction;
         _stagePane = pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
@@ -188,7 +188,7 @@ public partial class ShellWindow
         _stagePane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
             : PaneKind.Editor;
-        // 配役モードのサブを復元（主役と重複・未知ペインは捨てる）。
+        // 配置モードのサブを復元（主役と重複・未知ペインは捨てる）。
         _stageSubs.Clear();
         foreach (var sub in snapshot.Subs)
             if (sub.Kind != _stagePane && _paneElements.ContainsKey(sub.Kind)
@@ -275,7 +275,7 @@ public partial class ShellWindow
     }
 
     /// <summary>舞台を並び順で前後のペインへ転換する（ステージ中の Ctrl+T / Ctrl+W h/j/k/l）。
-    /// 配役モード中は主役を固定したまま、末尾サブを舞台外ペインの輪で送る。</summary>
+    /// 配置モード中は主役を固定したまま、末尾サブを舞台外ペインの輪で送る。</summary>
     private void CycleStage(int direction)
     {
         if (ProgramActive)
@@ -380,7 +380,7 @@ public partial class ShellWindow
 
         OverviewLayer.Visibility = Visibility.Collapsed;
 
-        // 舞台：単一ステージなら主役を全面に、配役モードなら主役＋サブを格子に立てる。
+        // 舞台：単一ステージなら主役を全面に、配置モードなら主役＋サブを格子に立てる。
         if (ProgramActive)
             StageArea.Children.Add(BuildProgramStage());
         else
@@ -542,7 +542,7 @@ public partial class ShellWindow
             SetStagePane(kind);
             FocusPane(kind);
         };
-        // 俯瞰でない袖カードは、舞台スロットへドラッグして入れ替え／配役化できるドラッグ元にする。
+        // 俯瞰でない袖カードは、舞台スロットへドラッグして入れ替え／配置化できるドラッグ元にする。
         if (!isOverview)
             ArmStageDrag(card, () => new WingSlot(kind));
         return card;
@@ -569,9 +569,9 @@ public partial class ShellWindow
         }
     }
 
-    // ===== 配役モード：舞台の複数立て（主役＋サブ） =====
+    // ===== 配置モード：舞台の複数立て（主役＋サブ） =====
 
-    /// <summary>配役モードの舞台を組む：主役（左・大）＋右ドックのサブ列、下ドックのサブ行。
+    /// <summary>配置モードの舞台を組む：主役（左・大）＋右ドックのサブ列、下ドックのサブ行。
     /// スロット間に GridSplitter を挟み、ドラッグで比率を変えられる（比率は永続化）。</summary>
     private FrameworkElement BuildProgramStage()
     {
@@ -661,7 +661,7 @@ public partial class ShellWindow
         return grid;
     }
 
-    /// <summary>配役スロット間のスプリッター。ドラッグ完了で実寸を比率へ取り込み永続化する。</summary>
+    /// <summary>配置スロット間のスプリッター。ドラッグ完了で実寸を比率へ取り込み永続化する。</summary>
     private GridSplitter NewStageSplitter(bool cols)
     {
         var border = (Brush)FindResource("Border");
@@ -760,7 +760,7 @@ public partial class ShellWindow
         return index >= 0 ? new SubSlot(index) : new WingSlot(kind);
     }
 
-    /// <summary>袖（舞台外）ペインを新しいサブとして迎える（配役モードへの突入も兼ねる）。</summary>
+    /// <summary>袖（舞台外）ペインを新しいサブとして迎える（配置モードへの突入も兼ねる）。</summary>
     private void AddSub(PaneKind kind, StageDock dock)
     {
         if (!_stageActive)
@@ -772,14 +772,14 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>サブを降ろす。0 件になれば配役モード終了＝主役だけの単一ステージへ戻る。</summary>
+    /// <summary>サブを降ろす。0 件になれば配置モード終了＝主役だけの単一ステージへ戻る。</summary>
     private void RemoveSub(PaneKind kind)
     {
         if (!_stageActive)
             return;
         SetStageState(StageProgramLogic.RemoveSub(CurrentStage(), kind));
         if (!ProgramActive)
-            _activeProgramName = null;   // Main 一人 → 配役終了
+            _activeProgramName = null;   // Main 一人 → 配置終了
         UpdateProgramButton();
         RebuildStage();
         FocusPane(_stagePane);

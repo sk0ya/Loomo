@@ -10,18 +10,18 @@ using sk0ya.Loomo.App.Services;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// ShellWindow: 配役（舞台の Main＋Sub 配置）の保存・呼び出し。ワークスペース毎に保持し、
-/// タイトルバーの「🎬 配役」ドロップダウンから切り替える。状態遷移そのものは
+/// ShellWindow: 配置（舞台の Main＋Sub レイアウト）の保存・呼び出し。ワークスペース毎に保持し、
+/// タイトルバーの「🎬 配置」ドロップダウンから切り替える。状態遷移そのものは
 /// <see cref="StageProgramLogic"/>（純ロジック）と <c>ShellWindow.Stage.cs</c> 側が持つ。
 /// </summary>
 public partial class ShellWindow
 {
-    /// <summary>このワークスペースに保存した配役（タイトルバーのドロップダウンに並ぶ）。</summary>
+    /// <summary>このワークスペースに保存した配置（タイトルバーのドロップダウンに並ぶ）。</summary>
     private readonly List<StageProgram> _programs = new();
-    /// <summary>現在読み込み中の配役名（即席配置なら null）。</summary>
+    /// <summary>現在読み込み中の配置名（即席配置なら null）。</summary>
     private string? _activeProgramName;
 
-    /// <summary>ワークスペース復元時に保存配役を読み込む。</summary>
+    /// <summary>ワークスペース復元時に保存配置を読み込む。</summary>
     private void LoadPrograms(IEnumerable<StageProgram> programs)
     {
         _programs.Clear();
@@ -29,7 +29,7 @@ public partial class ShellWindow
         UpdateProgramButton();
     }
 
-    /// <summary>タイトルバーのステージトグルと配役ボタンの表示／ラベルを現状へ同期する。</summary>
+    /// <summary>タイトルバーのステージトグルと配置ボタンの表示／ラベルを現状へ同期する。</summary>
     private void UpdateProgramButton()
     {
         if (StageModeToggle is not null)
@@ -51,12 +51,12 @@ public partial class ShellWindow
         ProgramPopup.IsOpen = true;
     }
 
-    /// <summary>ポップアップの中身（保存配役の一覧）を組み直す。</summary>
+    /// <summary>ポップアップの中身（保存配置の一覧）を組み直す。</summary>
     private void BuildProgramPopup()
     {
         ProgramPopupList.Children.Clear();
 
-        // 「なし」＝配役を解除してステージ（舞台1枚）へ戻す。常に先頭に置く。
+        // 「なし」＝配置を解除してステージ（舞台1枚）へ戻す。常に先頭に置く。
         var none = new Button
         {
             Style = (Style)FindResource("BranchMenuItem"),
@@ -66,7 +66,7 @@ public partial class ShellWindow
                 Text = "なし（ステージ／舞台1枚）",
                 Foreground = ProgramActive ? (Brush)FindResource("Fg") : (Brush)FindResource("Accent"),
             },
-            ToolTip = "配役を解除して舞台1枚のステージへ戻す",
+            ToolTip = "配置を解除して舞台1枚のステージへ戻す",
         };
         none.Click += (_, _) =>
         {
@@ -85,7 +85,7 @@ public partial class ShellWindow
         {
             ProgramPopupList.Children.Add(new TextBlock
             {
-                Text = "保存した配役はまだありません",
+                Text = "保存した配置はまだありません",
                 FontSize = 12,
                 Margin = new Thickness(10, 6, 10, 6),
                 Foreground = (Brush)FindResource("FgDim"),
@@ -101,7 +101,7 @@ public partial class ShellWindow
             {
                 Content = "✕",
                 FontSize = 11,
-                ToolTip = "この配役を削除",
+                ToolTip = "この配置を削除",
                 Width = 28,
                 Style = (Style)FindResource("BranchMenuItem"),
             };
@@ -148,7 +148,7 @@ public partial class ShellWindow
         return $"{prog.Name}  ({string.Join(" · ", parts)})";
     }
 
-    /// <summary>保存配役を舞台へ立てる（主役＋サブを設定して組み直す）。</summary>
+    /// <summary>保存配置を舞台へ立てる（主役＋サブを設定して組み直す）。</summary>
     private void LoadProgram(string name)
     {
         var prog = _programs.FirstOrDefault(p => p.Name == name);
@@ -172,7 +172,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>現在の舞台配置（主役＋サブ）を配役として保存（同名は上書き）。</summary>
+    /// <summary>現在の舞台レイアウト（主役＋サブ）を配置として保存（同名は上書き）。</summary>
     private void SaveCurrentAsProgram(string name)
     {
         name = name.Trim();
@@ -202,7 +202,7 @@ public partial class ShellWindow
     {
         var name = ProgramNameInput.Text;
         if (string.IsNullOrWhiteSpace(name))
-            name = _activeProgramName ?? $"配役 {_programs.Count + 1}";
+            name = _activeProgramName ?? $"配置 {_programs.Count + 1}";
         SaveCurrentAsProgram(name);
         ProgramNameInput.Clear();
         BuildProgramPopup();

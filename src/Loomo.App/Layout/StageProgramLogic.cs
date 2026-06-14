@@ -4,16 +4,16 @@ using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Layout;
 
-/// <summary>配役モードで舞台に立つ Sub 1枚（種別＋ドック位置＋同ドック内の比率）。値で比較できるよう record。</summary>
+/// <summary>配置モードで舞台に立つ Sub 1枚（種別＋ドック位置＋同ドック内の比率）。値で比較できるよう record。</summary>
 public sealed record StageSub(PaneKind Kind, StageDock Dock, double Weight = 1);
 
 /// <summary>
-/// 配役モードの舞台状態（主役 1枚＋サブ 0..2枚）の不変スナップショット。
-/// Sub が 0 件なら従来の単一ステージ、1件以上なら配役モード、という派生状態。
+/// 配置モードの舞台状態（主役 1枚＋サブ 0..2枚）の不変スナップショット。
+/// Sub が 0 件なら従来の単一ステージ、1件以上なら配置モード、という派生状態。
 /// </summary>
 public sealed record StageState(PaneKind Main, IReadOnlyList<StageSub> Subs)
 {
-    /// <summary>配役モード中か（サブが1件以上）。</summary>
+    /// <summary>配置モード中か（サブが1件以上）。</summary>
     public bool ProgramActive => Subs.Count > 0;
 
     /// <summary>舞台に立っているペイン（主役＋サブ）。</summary>
@@ -39,7 +39,7 @@ public sealed record SubSlot(int Index) : StageSlot;
 public sealed record NewSubSlot(StageDock Dock) : StageSlot;
 
 /// <summary>
-/// 配役モードの舞台状態に対する純粋操作（Ctrl+T 巡回・袖/主役/サブの入れ替え）。
+/// 配置モードの舞台状態に対する純粋操作（Ctrl+T 巡回・袖/主役/サブの入れ替え）。
 /// UI に触れないので単体テストできる（<see cref="PaneLayoutTree"/> と同方針）。
 /// </summary>
 public static class StageProgramLogic
@@ -116,7 +116,7 @@ public static class StageProgramLogic
         return state with { Main = main, Subs = subs };
     }
 
-    /// <summary>袖（舞台外）ペインを新しいサブとして迎える（配役モードへの突入も兼ねる）。</summary>
+    /// <summary>袖（舞台外）ペインを新しいサブとして迎える（配置モードへの突入も兼ねる）。</summary>
     public static StageState AddSub(StageState state, PaneKind kind, StageDock dock)
     {
         if (state.Main == kind)
@@ -136,7 +136,7 @@ public static class StageProgramLogic
         return state with { Subs = subs };
     }
 
-    /// <summary>サブを降ろす。0 件になれば <see cref="StageState.ProgramActive"/> が false に戻る（＝配役終了）。</summary>
+    /// <summary>サブを降ろす。0 件になれば <see cref="StageState.ProgramActive"/> が false に戻る（＝配置終了）。</summary>
     public static StageState RemoveSub(StageState state, PaneKind kind)
         => state with { Subs = state.Subs.Where(s => s.Kind != kind).ToList() };
 

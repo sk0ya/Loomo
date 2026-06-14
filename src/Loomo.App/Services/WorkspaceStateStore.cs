@@ -79,7 +79,7 @@ public sealed class WorkspaceSnapshot
     /// <summary>ステージモードの表示状態。未保存の旧ワークスペースは既定でステージ表示にする。</summary>
     public StageSnapshot? Stage { get; set; } = StageSnapshot.Default();
 
-    /// <summary>このワークスペースに保存した配役（舞台の Main＋Sub 配置）。タイトルバーから呼び出す。</summary>
+    /// <summary>このワークスペースに保存した配置（舞台の Main＋Sub レイアウト）。タイトルバーから呼び出す。</summary>
     public List<StageProgram> Programs { get; set; } = new();
 
     /// <summary>コマンドコンポーザ（§23.2）の本文。エディタタブ同様、全文をそのまま保存する。</summary>
@@ -141,7 +141,7 @@ public sealed class PaneNodeSnapshot
     public List<PaneNodeSnapshot> Children { get; set; } = new();
 }
 
-/// <summary>配役モードで Sub を舞台のどこへ立てるか（Main の右に縦積み／Main の下に横並び）。
+/// <summary>配置モードで Sub を舞台のどこへ立てるか（Main の右に縦積み／Main の下に横並び）。
 /// 値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
 public enum StageDock
 {
@@ -149,7 +149,7 @@ public enum StageDock
     Bottom
 }
 
-/// <summary>配役モードで舞台に立つ Sub 1枚（ペイン種別＋ドック位置＋同ドック内の比率）。</summary>
+/// <summary>配置モードで舞台に立つ Sub 1枚（ペイン種別＋ドック位置＋同ドック内の比率）。</summary>
 public sealed class StageSubSnapshot
 {
     public PaneKind Kind { get; set; }
@@ -158,7 +158,7 @@ public sealed class StageSubSnapshot
     public double Weight { get; set; } = 1;
 }
 
-/// <summary>保存した「配役」：舞台の Main＋Sub 配置に名前を付けたもの（ワークスペース毎）。</summary>
+/// <summary>保存した「配置」：舞台の Main＋Sub レイアウトに名前を付けたもの（ワークスペース毎）。</summary>
 public sealed class StageProgram
 {
     public string Name { get; set; } = "";
@@ -180,13 +180,13 @@ public sealed class StageSnapshot
     public bool IsActive { get; set; }
     /// <summary>舞台に立っている主役ペイン。null なら復元時に既定選択へフォールバックする。</summary>
     public PaneKind? Pane { get; set; }
-    /// <summary>配役モードのサブ（最大2枚）。空なら単一ステージ（従来）。</summary>
+    /// <summary>配置モードのサブ（最大2枚）。空なら単一ステージ（従来）。</summary>
     public List<StageSubSnapshot> Subs { get; set; } = new();
     /// <summary>右ドック列が占める横幅の割合（0 なら既定）。リサイズで更新。</summary>
     public double RightFraction { get; set; }
     /// <summary>下ドック行が占める高さの割合（0 なら既定）。リサイズで更新。</summary>
     public double BottomFraction { get; set; }
-    /// <summary>現在の配役名（保存配役から読み込み中なら）。null なら未保存の即席配置。</summary>
+    /// <summary>現在の配置名（保存配置から読み込み中なら）。null なら未保存の即席配置。</summary>
     public string? ProgramName { get; set; }
     /// <summary>俯瞰（全カード一望）レイヤを開いたまま離れたか。</summary>
     public bool Overview { get; set; }

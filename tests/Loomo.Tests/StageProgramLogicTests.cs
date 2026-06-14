@@ -7,7 +7,7 @@ using Xunit;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// 配役モードの純ロジック（Ctrl+T 巡回・袖/主役/サブの入れ替え・終了条件）の検証。
+/// 配置モードの純ロジック（Ctrl+T 巡回・袖/主役/サブの入れ替え・終了条件）の検証。
 /// UI（舞台の見た目）は並列 STA で BAML 競合しフレーキーなので、状態遷移だけ純関数で押さえる。
 /// </summary>
 public class StageProgramLogicTests
@@ -163,7 +163,7 @@ public class StageProgramLogicTests
         var s = State(PaneKind.Editor, Sub(PaneKind.Terminal));
         var r = StageProgramLogic.RemoveSub(s, PaneKind.Terminal);
 
-        Assert.False(r.ProgramActive);                      // Main 一人 → 配役終了
+        Assert.False(r.ProgramActive);                      // Main 一人 → 配置終了
         Assert.Equal(PaneKind.Editor, r.Main);
     }
 }
