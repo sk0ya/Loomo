@@ -146,13 +146,22 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
 
-    /// <summary>ActivityBar の Git アイコン。開くときにリポジトリ状態を遅延読込する。</summary>
+    /// <summary>ActivityBar の Git アイコン。表示中は作業ツリーをライブ監視して自動更新する
+    /// （実際の開始・停止は <see cref="UpdateGitPanelLive"/> が可視状態の変化に応じて行う）。</summary>
     [RelayCommand]
-    private void ShowGit()
+    private void ShowGit() => Activate(SidebarPanel.Git);
+
+    // サイドバーの表示状態・選択パネルが変わるたびに、Git パネルのライブ監視を入切する。
+    partial void OnActivePanelChanged(SidebarPanel value) => UpdateGitPanelLive();
+    partial void OnIsSidebarVisibleChanged(bool value) => UpdateGitPanelLive();
+
+    /// <summary>Git パネルが「見えている」ときだけライブ監視する。開いた瞬間に最新化される。</summary>
+    private void UpdateGitPanelLive()
     {
-        Activate(SidebarPanel.Git);
-        if (ActivePanel == SidebarPanel.Git && IsSidebarVisible)
-            GitPanel.EnsureLoaded();
+        if (IsSidebarVisible && ActivePanel == SidebarPanel.Git)
+            GitPanel.StartLiveTracking();
+        else
+            GitPanel.StopLiveTracking();
     }
 
     /// <summary>同じパネルを再クリックしたら閉じ、別パネルなら切替えて開く（VS Code 風）。</summary>

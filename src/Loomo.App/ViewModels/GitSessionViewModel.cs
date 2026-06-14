@@ -57,12 +57,24 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
     public event EventHandler? DiffOpenRequested;
 
+    private IDisposable? _live;
+
     /// <summary>Git ペインが初めて表示されたときに読み込む（以降は RepositoryChanged で追従）。</summary>
     public void EnsureLoaded()
     {
         if (_loaded) return;
         _loaded = true;
         _ = RefreshAsync();
+    }
+
+    /// <summary>Git ペインが見えている間のライブ監視を開始する。</summary>
+    public void StartLiveTracking() => _live ??= _git.TrackLiveChanges();
+
+    /// <summary>Git ペインが隠れたらライブ監視を止める。</summary>
+    public void StopLiveTracking()
+    {
+        _live?.Dispose();
+        _live = null;
     }
 
     private void OnRepositoryChanged(object? sender, EventArgs e)

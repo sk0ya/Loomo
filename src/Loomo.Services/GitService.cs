@@ -20,22 +20,24 @@ namespace sk0ya.Loomo.Services;
 public sealed class GitService
 {
     private const int TimeoutMs = 120_000;
-    /// <summary>ワークスペース監視→RepositoryChanged 発火のデバウンス幅。ビルド等の連続イベントをまとめる。</summary>
-    private const int WatchDebounceMs = 800;
+    /// <summary>ライブ監視のポーリング間隔。見えている間だけ、この間隔で軽く状態を見る。</summary>
+    private const int PollIntervalMs = 1500;
 
     private readonly IWorkspaceService _workspace;
-    private FileSystemWatcher? _watcher;
-    private Timer? _watchDebounce;
+    // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
+    private Timer? _pollTimer;
+    private int _liveTrackers;
+    private string? _lastSignature;
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
 
     public GitService(IWorkspaceService workspace)
     {
         _workspace = workspace;
         workspace.RootChanged += (_, _) =>
         {
-            StartWatching();
+            _lastSignature = null; // リポジトリが替わったら署名を取り直す
             RepositoryChanged?.Invoke(this, EventArgs.Empty);
         };
-        StartWatching();
     }
 
     /// <summary>
@@ -47,40 +49,58 @@ public sealed class GitService
     public event EventHandler? RepositoryChanged;
 
     /// <summary>
-    /// ワークスペース全体（.git 含む）を監視し、外部の git 操作（人間のターミナル・エージェントの
-    /// run_powershell）やファイル編集でも RepositoryChanged を発火する。自前の git status が
-    /// .git/index を書き戻して再発火することがあるが、2巡目で安定するためループにはならない。
+    /// ライブ監視を開始する（戻り値を Dispose すると解除）。git ビュー（サイドバー Git パネル・
+    /// Git/Diff ペイン）が画面に出ている間だけ呼び、その間 <see cref="PollIntervalMs"/> ごとに
+    /// 作業ツリーの状態を軽くチェックして、変化したときだけ <see cref="RepositoryChanged"/> を発火する。
+    /// FileSystemWatcher は使わない（ワークスペース全体の再帰監視はビルド成果物の大量変化で重く、
+    /// 自前 git status の .git/index 書き戻しで誤発火もするため）。複数ビューから呼ばれても
+    /// ポーリングは1つ（参照カウント）で、どのビューも見えていない間はゼロコスト。
     /// </summary>
-    private void StartWatching()
+    public IDisposable TrackLiveChanges()
     {
-        _watcher?.Dispose();
-        _watcher = null;
-
-        var root = RootPath;
-        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
-            return;
-
-        var watcher = new FileSystemWatcher(root)
+        if (Interlocked.Increment(ref _liveTrackers) == 1)
         {
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName
-                | NotifyFilters.DirectoryName
-                | NotifyFilters.LastWrite
-                | NotifyFilters.Size,
-        };
-        watcher.Changed += (_, _) => ScheduleRepositoryChanged();
-        watcher.Created += (_, _) => ScheduleRepositoryChanged();
-        watcher.Deleted += (_, _) => ScheduleRepositoryChanged();
-        watcher.Renamed += (_, _) => ScheduleRepositoryChanged();
-        watcher.Error += (_, _) => ScheduleRepositoryChanged(); // バッファ溢れ＝何かが大量に変わった
-        watcher.EnableRaisingEvents = true;
-        _watcher = watcher;
+            _lastSignature = null; // 開始直後は基準を取り直し、最初のチェックでは発火しない
+            _pollTimer ??= new Timer(_ => _ = PollOnceAsync());
+            _pollTimer.Change(PollIntervalMs, PollIntervalMs);
+        }
+        return new LiveTracker(this);
     }
 
-    private void ScheduleRepositoryChanged()
+    private void ReleaseLiveTracking()
     {
-        _watchDebounce ??= new Timer(_ => RepositoryChanged?.Invoke(this, EventArgs.Empty));
-        _watchDebounce.Change(WatchDebounceMs, Timeout.Infinite);
+        if (Interlocked.Decrement(ref _liveTrackers) == 0)
+            _pollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
+    /// <summary>作業ツリーの署名（git status の porcelain 出力）を取り、前回と違えば変化を通知する。
+    /// 前回のポーリングがまだ走っていれば今回は飛ばす（多重起動しない）。状態が同じなら
+    /// 出力も同じなので、git status による .git/index の書き戻しでは発火しない。</summary>
+    private async Task PollOnceAsync()
+    {
+        if (!_pollGate.Wait(0)) return;
+        try
+        {
+            var root = RootPath;
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
+            var result = await RunAsync("status", "--porcelain=v2", "--branch").ConfigureAwait(false);
+            if (!result.Success) return;
+            var prev = _lastSignature;
+            _lastSignature = result.Output;
+            if (prev is not null && !string.Equals(prev, result.Output, StringComparison.Ordinal))
+                RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            _pollGate.Release();
+        }
+    }
+
+    private sealed class LiveTracker : IDisposable
+    {
+        private GitService? _owner;
+        public LiveTracker(GitService owner) => _owner = owner;
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.ReleaseLiveTracking();
     }
 
     public string? RootPath => _workspace.RootPath;

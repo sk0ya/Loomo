@@ -244,29 +244,33 @@ public partial class ShellWindow : Window
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
-        // サイドバー Git パネルの「セッションを開く」：Git ペインを表示してフォーカスする。
-        vm.GitPanel.SessionOpenRequested += (_, _) =>
-        {
-            SetPaneVisible(PaneKind.Git, true);
-            FocusPane(PaneKind.Git);
-        };
         // Git セッションの「DIFF ペインで差分を表示」：Diff ペインを表示してフォーカスする。
         vm.GitSession.DiffOpenRequested += (_, _) =>
         {
             SetPaneVisible(PaneKind.Diff, true);
             FocusPane(PaneKind.Diff);
         };
-        // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込する。
+        // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込し、見えている間だけライブ監視する。
         GitPane.IsVisibleChanged += (_, e) =>
         {
             if (e.NewValue is true)
+            {
                 _vm.GitSession.EnsureLoaded();
+                _vm.GitSession.StartLiveTracking();
+            }
+            else
+                _vm.GitSession.StopLiveTracking();
         };
-        // Diff / Trace ペインも同様に初表示で遅延読込する。
+        // Diff ペインも同様に、初表示で遅延読込し、見えている間だけライブ監視する。
         DiffPane.IsVisibleChanged += (_, e) =>
         {
             if (e.NewValue is true)
+            {
                 _vm.DiffSession.EnsureLoaded();
+                _vm.DiffSession.StartLiveTracking();
+            }
+            else
+                _vm.DiffSession.StopLiveTracking();
         };
         TracePane.IsVisibleChanged += (_, e) =>
         {

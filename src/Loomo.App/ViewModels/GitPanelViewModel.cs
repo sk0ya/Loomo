@@ -49,8 +49,10 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     [ObservableProperty] private bool _isRepository = true;
     [ObservableProperty] private string _branchLabel = "";
-    /// <summary>上流との差分（例: "↑2 ↓1"）。同期済み・上流なしは空。</summary>
-    [ObservableProperty] private string _syncLabel = "";
+    /// <summary>上流より進んでいるコミット数（プッシュ対象）。0 なら送るものなし。</summary>
+    [ObservableProperty] private int _ahead;
+    /// <summary>上流より遅れているコミット数（プル対象）。0 なら取り込むものなし。</summary>
+    [ObservableProperty] private int _behind;
     [ObservableProperty] private string _commitMessage = "";
     [ObservableProperty] private bool _amend;
     [ObservableProperty] private bool _isBusy;
@@ -60,9 +62,6 @@ public sealed partial class GitPanelViewModel : ObservableObject
     public ObservableCollection<GitChangeItem> Staged { get; } = new();
     public ObservableCollection<GitChangeItem> Unstaged { get; } = new();
 
-    /// <summary>「セッションを開く」ボタン。ShellWindow が Git ペインの表示・フォーカスで応える。</summary>
-    public event EventHandler? SessionOpenRequested;
-
     public GitPanelViewModel(GitService git, IEditorService editor)
     {
         _git = git;
@@ -70,12 +69,22 @@ public sealed partial class GitPanelViewModel : ObservableObject
         _git.RepositoryChanged += OnRepositoryChanged;
     }
 
-    /// <summary>Git パネルが初めて開かれたときに状態を読み込む（以降は RepositoryChanged で追従）。</summary>
-    public void EnsureLoaded()
+    private IDisposable? _live;
+
+    /// <summary>Git パネルが見えている間のライブ監視を開始する（手動更新ボタンの代わり）。
+    /// 開いた瞬間に最新化し、以降は GitService の軽量ポーリングが変化を取り込む。</summary>
+    public void StartLiveTracking()
     {
-        if (_loaded) return;
-        _loaded = true;
+        if (_live is not null) return;
+        _live = _git.TrackLiveChanges();
         _ = RefreshAsync();
+    }
+
+    /// <summary>Git パネルが隠れたらライブ監視を止める（見えていない間はチェックしない）。</summary>
+    public void StopLiveTracking()
+    {
+        _live?.Dispose();
+        _live = null;
     }
 
     private void OnRepositoryChanged(object? sender, EventArgs e)
@@ -97,20 +106,16 @@ public sealed partial class GitPanelViewModel : ObservableObject
         if (!status.IsRepository)
         {
             BranchLabel = "";
-            SyncLabel = "";
+            Ahead = 0;
+            Behind = 0;
             Staged.Clear();
             Unstaged.Clear();
             return;
         }
 
         BranchLabel = status.Branch;
-        SyncLabel = (status.Ahead, status.Behind) switch
-        {
-            (0, 0) => "",
-            (var a, 0) => $"↑{a}",
-            (0, var b) => $"↓{b}",
-            var (a, b) => $"↑{a} ↓{b}",
-        };
+        Ahead = status.Ahead;
+        Behind = status.Behind;
 
         Staged.Clear();
         foreach (var entry in status.Staged)
@@ -193,9 +198,6 @@ public sealed partial class GitPanelViewModel : ObservableObject
             OnSaved = _ => { },  // 読み取り専用の用途（:w しても何も永続化しない）
         });
     }
-
-    [RelayCommand]
-    private void OpenSession() => SessionOpenRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>更新系操作の共通枠：多重実行の抑止・結果メッセージの表示。</summary>
     private async Task RunOpAsync(string label, Func<Task<GitCommandResult>> operation)

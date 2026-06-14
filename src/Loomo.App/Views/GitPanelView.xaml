@@ -4,23 +4,68 @@
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
-        <!-- 変更行の小さな操作ボタン（ホバーで浮き出る） -->
+        <!-- 同期操作ボタン（フェッチ・プル・プッシュ）。アイコン＋件数を載せられるよう可変幅。
+             件数の色分けは中の TextBlock 側で行うので、ここでは前景色を触らない。 -->
+        <Style x:Key="SyncButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="7,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="b" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 同期ボタンの矢印：対象がある（件数>0）ときアクセント色、無いとき淡色 -->
+        <Style x:Key="SyncArrow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        </Style>
+        <!-- 同期ボタンの件数：対象があるときだけ表示し、アクセント色で目立たせる -->
+        <Style x:Key="SyncCount" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="3,0,0,0" />
+            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+        </Style>
+
+        <!-- 変更行・セクションの小さな操作ボタン（ホバーで浮き出る） -->
         <Style x:Key="RowActionButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Width" Value="22" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -37,7 +82,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="{TemplateBinding Background}" Padding="4,2" CornerRadius="3">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" Padding="4,3" CornerRadius="4">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -48,6 +93,17 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- 件数ピル（セクション見出しの右） -->
+        <Style x:Key="CountPill" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Border}" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="MinWidth" Value="18" />
+            <Setter Property="Height" Value="15" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="6,0,0,0" />
         </Style>
     </UserControl.Resources>
 
@@ -66,31 +122,87 @@
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
 
-            <!-- ブランチ＋同期操作 -->
-            <DockPanel DockPanel.Dock="Top" Margin="10,0,10,6" LastChildFill="True">
-                <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="↻"
-                        ToolTip="更新" Command="{Binding RefreshCommand}" />
-                <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="⇡"
-                        ToolTip="プッシュ" Command="{Binding PushCommand}" />
-                <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="⇣"
-                        ToolTip="プル" Command="{Binding PullCommand}" />
-                <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="⭮"
-                        ToolTip="フェッチ" Command="{Binding FetchCommand}" />
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" Margin="0,0,4,0" />
-                    <TextBlock Text="{Binding BranchLabel}" FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis" MaxWidth="110"
-                               ToolTip="{Binding BranchLabel}" />
-                    <TextBlock Text="{Binding SyncLabel}" Foreground="{DynamicResource FgDim}" Margin="6,0,0,0" />
+            <!-- ブランチ＋同期操作（カード・2行） -->
+            <Border DockPanel.Dock="Top" Margin="8,2,8,6" Padding="8,6" CornerRadius="5"
+                    Background="{DynamicResource Bg}">
+                <StackPanel>
+                    <!-- 1行目：ブランチ名（全幅。長くてもここで省略表示） -->
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⎇" FontSize="14" Foreground="{DynamicResource Accent}"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding BranchLabel}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding BranchLabel}" />
+                    </StackPanel>
+
+                    <!-- 2行目：同期操作。プル/プッシュは件数を出して対象の有無を見える化する。 -->
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Style="{StaticResource SyncButton}" ToolTip="フェッチ（リモートの最新を取得）"
+                                Command="{Binding FetchCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⭮" Style="{StaticResource SyncArrow}" />
+                                <TextBlock Text="フェッチ" FontSize="11" VerticalAlignment="Center"
+                                           Margin="5,0,0,0" Foreground="{DynamicResource FgDim}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource SyncButton}" ToolTip="プル（リモートの変更を取り込む）"
+                                Command="{Binding PullCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="↓" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource SyncArrow}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Behind, Converter={StaticResource CountToVis}}" Value="Visible">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Behind}" Style="{StaticResource SyncCount}"
+                                           Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource SyncButton}" ToolTip="プッシュ（ローカルの変更を送る）"
+                                Command="{Binding PushCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="↑" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource SyncArrow}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Ahead, Converter={StaticResource CountToVis}}" Value="Visible">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Ahead}" Style="{StaticResource SyncCount}"
+                                           Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </StackPanel>
-            </DockPanel>
+            </Border>
 
             <!-- コミットメッセージ＋コミット -->
-            <StackPanel DockPanel.Dock="Top" Margin="10,0,10,6">
-                <TextBox Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48" MaxHeight="120"
-                         VerticalScrollBarVisibility="Auto"
-                         ToolTip="コミットメッセージ" />
+            <StackPanel DockPanel.Dock="Top" Margin="8,0,8,6">
+                <Grid>
+                    <TextBox Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MaxHeight="120"
+                             VerticalScrollBarVisibility="Auto">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Return" Modifiers="Ctrl" Command="{Binding CommitCommand}" />
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <TextBlock Text="メッセージ（Ctrl+Enter でコミット）" Foreground="{DynamicResource FgDim}"
+                               Margin="9,7,0,0" IsHitTestVisible="False" VerticalAlignment="Top"
+                               Visibility="{Binding CommitMessage, Converter={StaticResource EmptyToVis}}" />
+                </Grid>
                 <DockPanel Margin="0,6,0,0">
                     <CheckBox DockPanel.Dock="Right" Content="amend" VerticalAlignment="Center"
                               Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
@@ -101,12 +213,6 @@
                             IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                 </DockPanel>
             </StackPanel>
-
-            <!-- セッションを開く -->
-            <Button DockPanel.Dock="Top" Margin="10,0,10,6" Style="{StaticResource FlatButton}"
-                    HorizontalAlignment="Stretch" Content="🌳 Git セッションを開く"
-                    ToolTip="ログツリー・ブランチ操作・リベースなどは Git ペインで行う"
-                    Command="{Binding OpenSessionCommand}" />
 
             <!-- 実行結果メッセージ -->
             <TextBlock DockPanel.Dock="Bottom" Margin="10,4,10,8" FontSize="11"
@@ -126,48 +232,69 @@
                 </TextBlock.Style>
             </TextBlock>
 
+            <!-- ヘッダー群と変更一覧の区切り -->
+            <Border DockPanel.Dock="Top" Height="1" Margin="8,0,8,4"
+                    Background="{DynamicResource Border}" />
+
             <!-- 変更一覧（ステージ済み／変更） -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0">
                 <StackPanel>
-                    <!-- ステージ済み -->
-                    <DockPanel Margin="4,2">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="−"
-                                ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
-                        <TextBlock Foreground="{DynamicResource FgDim}" FontSize="11" FontWeight="SemiBold">
-                            <Run Text="ステージ済み" /><Run Text=" " /><Run Text="{Binding Staged.Count, Mode=OneWay}" />
-                        </TextBlock>
-                    </DockPanel>
-                    <ItemsControl ItemsSource="{Binding Staged}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="4,0">
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="−"
-                                            ToolTip="アンステージ"
-                                            Command="{Binding DataContext.UnstageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <Button Style="{StaticResource ChangeRowButton}" ToolTip="{Binding ToolTipText}"
-                                            Command="{Binding DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Status}" Width="14" Foreground="{DynamicResource Accent}"
-                                                       FontFamily="Cascadia Mono, Consolas" />
-                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                       FontSize="11" Margin="6,1,0,0" TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Button>
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- ステージ済み（空ならセクションごと畳む） -->
+                    <StackPanel Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}">
+                        <DockPanel Margin="4,2">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="−"
+                                    ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
+                                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Border Style="{StaticResource CountPill}">
+                                    <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="10"
+                                               Foreground="{DynamicResource Fg}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding Staged}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="4,0">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="−"
+                                                ToolTip="アンステージ"
+                                                Command="{Binding DataContext.UnstageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Style="{StaticResource ChangeRowButton}" ToolTip="{Binding ToolTipText}"
+                                                Command="{Binding DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Status}" Width="16" Foreground="{DynamicResource Accent}"
+                                                           TextAlignment="Center" FontWeight="SemiBold"
+                                                           FontFamily="Cascadia Mono, Consolas" />
+                                                <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
+                                                           FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
 
                     <!-- 変更（未ステージ・未追跡・コンフリクト） -->
                     <DockPanel Margin="4,8,4,2">
                         <Button DockPanel.Dock="Right" Style="{StaticResource RowActionButton}" Content="＋"
                                 ToolTip="すべてステージ" Command="{Binding StageAllCommand}" />
-                        <TextBlock Foreground="{DynamicResource FgDim}" FontSize="11" FontWeight="SemiBold">
-                            <Run Text="変更" /><Run Text=" " /><Run Text="{Binding Unstaged.Count, Mode=OneWay}" />
-                        </TextBlock>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="変更" Foreground="{DynamicResource FgDim}"
+                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Border Style="{StaticResource CountPill}">
+                                <TextBlock Text="{Binding Unstaged.Count, Mode=OneWay}" FontSize="10"
+                                           Foreground="{DynamicResource Fg}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
                     </DockPanel>
                     <ItemsControl ItemsSource="{Binding Unstaged}">
                         <ItemsControl.ItemTemplate>
@@ -185,7 +312,8 @@
                                             Command="{Binding DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding}">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Status}" Width="14"
+                                            <TextBlock Text="{Binding Status}" Width="16"
+                                                       TextAlignment="Center" FontWeight="SemiBold"
                                                        FontFamily="Cascadia Mono, Consolas">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
@@ -198,9 +326,11 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                       FontSize="11" Margin="6,1,0,0" TextTrimming="CharacterEllipsis" />
+                                                       FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </Button>
                                 </DockPanel>

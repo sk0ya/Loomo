@@ -92,12 +92,24 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _git.RepositoryChanged += (_, _) => DispatchRefresh();
     }
 
+    private IDisposable? _live;
+
     /// <summary>Diff ペインが初めて表示されたときに読み込む（以降はジャーナル／リポジトリ変化で追従）。</summary>
     public void EnsureLoaded()
     {
         if (_loaded) return;
         _loaded = true;
         _ = RefreshAsync();
+    }
+
+    /// <summary>Diff ペインが見えている間のライブ監視を開始する（作業ツリー差分の追従用）。</summary>
+    public void StartLiveTracking() => _live ??= _git.TrackLiveChanges();
+
+    /// <summary>Diff ペインが隠れたらライブ監視を止める。</summary>
+    public void StopLiveTracking()
+    {
+        _live?.Dispose();
+        _live = null;
     }
 
     private void DispatchRefresh()
