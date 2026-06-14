@@ -212,6 +212,41 @@ public partial class ShellWindow
     }
 
     /// <summary>
+    /// エディタ本文のファイルパスクリック（Ctrl+Click / gx）を、現在ファイルまたはワークスペースを
+    /// 基準に解決して Loomo のエディタタブで開く。
+    /// </summary>
+    private void OnEditorFileLinkClicked(object? sender, FileLinkClickedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Path))
+            return;
+
+        var currentPath = (sender as VimEditorControl)?.FilePath;
+        if (!EditorFileLinkResolver.TryResolve(
+                e.Path,
+                currentPath,
+                _workspace.RootPath,
+                out var fullPath,
+                out var line,
+                out var column,
+                out var isDirectory))
+        {
+            e.Handled = true;
+            if (sender is VimEditorControl editor)
+                editor.ShowStatusMessage($"ファイルが存在しません: {e.Path}");
+            return;
+        }
+
+        e.Handled = true;
+        if (isDirectory)
+        {
+            _workspace.SelectedPath = fullPath;
+            return;
+        }
+
+        _ = OpenPathInEditorAsync(fullPath, line, column);
+    }
+
+    /// <summary>
     /// ターミナル本文のクリック（OSC 8 ハイパーリンク／検出した URL・ファイルパス）を Loomo で受け、
     /// 振り分ける（sk0ya.Terminal.Controls 1.0.12 は生テキスト <c>Target</c> を渡してくる）。
     /// http/https は内蔵ブラウザペインで、ファイルパス（必要なら :行[:列] 付き）はエディタで開く。

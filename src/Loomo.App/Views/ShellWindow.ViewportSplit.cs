@@ -270,6 +270,7 @@ public partial class ShellWindow
         // エディタ本文中のURLを Ctrl+Click / gx で開く操作（sk0ya.Editor.Controls 1.0.6）は、
         // OS の既定ブラウザではなく Loomo 内蔵のブラウザペインで開く（Handled=true で既定動作を抑止）。
         control.LinkClicked += OnEditorLinkClicked;
+        control.FileLinkClicked += OnEditorFileLinkClicked;
 
         // エディタ内の Vim ウィンドウ/タブ操作（:vsplit / :split / :tabnew / gt / gT / :tabclose / :close）を、
         // ホスト側の分割・タブ実装へ橋渡しする
