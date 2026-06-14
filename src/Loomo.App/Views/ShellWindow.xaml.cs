@@ -76,6 +76,16 @@ public partial class ShellWindow : Window
     private bool _editorSupportAutoToggling;
     /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>
     private string? _editorSupportMappedFolder;
+    /// <summary>WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。</summary>
+    private Task<bool>? _editorSupportInitTask;
+    /// <summary>HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。</summary>
+    private int _editorSupportRenderSeq;
+    /// <summary>最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。</summary>
+    private string? _editorSupportPendingHtml;
+    /// <summary>最新の描画に対応する仮想ホストのマップ先（プロバイダ無しなら null）。</summary>
+    private string? _editorSupportPendingMapFolder;
+    /// <summary>起動直後の初回ナビゲーション取りこぼし対策（初回完了時に最新内容を一度だけ描き直す）を実施済みか。</summary>
+    private bool _editorSupportFirstRenderHealed;
 
     /// <summary>
     /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。

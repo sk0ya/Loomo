@@ -104,18 +104,17 @@ public partial class ShellWindow
 
         // HTML（WebView2）系。直前までビジュアル系を表示していたら退ける。
         HideEditorSupportVisual();
-        var view = await EnsureEditorSupportViewAsync();
-        if (view?.CoreWebView2 is null)
-            return;
 
+        // 描画内容は init を待つ前に確定し、最新の要求として登録する。WebView2 の初回初期化は
+        // 起動時だけ数秒かかり、その間に複数の更新が積み重なるため、シーケンス番号で最後の1つへ畳む。
         string title;
         string html;
+        string? mapFolder = null;
         if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
         {
             title = htmlProvider.DescribeTitle(filePath);
             html = htmlProvider.RenderHtml(filePath, source.Control.Text);
-            UpdateEditorSupportVirtualHost(
-                view.CoreWebView2, MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder);
+            mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
         }
         else
         {
@@ -127,8 +126,40 @@ public partial class ShellWindow
                 _settings.Appearance.MarkdownPreviewTheme);
         }
 
-        view.CoreWebView2.NavigateToString(html);
+        _editorSupportPendingHtml = html;
+        _editorSupportPendingMapFolder = mapFolder;
         EditorSupportTitle.Text = title;
+        var seq = ++_editorSupportRenderSeq;
+
+        var view = await EnsureEditorSupportViewAsync();
+        if (view?.CoreWebView2 is null)
+            return;
+
+        // init を待っている間に新しい描画要求が来ていれば、そちらが描くのでこのコールは降りる
+        // （起動時に殺到した要求が同時に NavigateToString して初回ナビゲーションを潰し合うのを防ぐ）。
+        if (seq != _editorSupportRenderSeq)
+            return;
+
+        RenderPendingEditorSupportHtml(view.CoreWebView2);
+    }
+
+    /// <summary>最新の描画内容（<see cref="_editorSupportPendingHtml"/>）を WebView2 へ反映する。</summary>
+    private void RenderPendingEditorSupportHtml(CoreWebView2 core)
+    {
+        if (_editorSupportPendingHtml is null)
+            return;
+
+        if (_editorSupportPendingMapFolder is not null)
+            UpdateEditorSupportVirtualHost(core, _editorSupportPendingMapFolder);
+
+        try
+        {
+            core.NavigateToString(_editorSupportPendingHtml);
+        }
+        catch
+        {
+            // NavigateToString の上限（約2MB）超過などで失敗しても落とさない（プレビューは前回内容のまま）。
+        }
     }
 
     /// <summary>ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。</summary>
@@ -253,32 +284,45 @@ public partial class ShellWindow
                 DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
                 CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = WebViewUserDataFolder }
             };
-            // コンテンツの描画が終わったら、エディタの現在位置までスクロールを合わせ直す。
-            _editorSupportView.NavigationCompleted += (_, _) =>
-            {
-                if (_editorSupportSourceTab is not null)
-                    _ = QueueEditorSupportScrollSyncAsync(_editorSupportSourceTab.Control.VerticalScrollRatio);
-            };
+            _editorSupportView.NavigationCompleted += OnEditorSupportNavigationCompleted;
             EditorSupportContentHost.Children.Add(_editorSupportView);
         }
 
-        try
+        // 初期化は1回だけ。起動時に殺到する複数の描画要求が同じ初期化 Task を待つことで、
+        // EnsureCoreWebView2Async の多重呼び出し（＝初回ナビゲーションのレース）を防ぐ。
+        _editorSupportInitTask ??= InitializeEditorSupportCoreAsync(_editorSupportView);
+        if (!await _editorSupportInitTask)
         {
-            await _editorSupportView.EnsureCoreWebView2Async();
-        }
-        catch
-        {
+            _editorSupportInitTask = null; // 失敗時は次回やり直せるようにする
             return null;
         }
 
-        if (!_editorSupportWebEventsAttached && _editorSupportView.CoreWebView2 is not null)
+        return _editorSupportView;
+    }
+
+    /// <summary>CoreWebView2 を実体化し、Web イベントと同梱アセットのホストマップを一度だけ設定する。</summary>
+    private async Task<bool> InitializeEditorSupportCoreAsync(WebView2CompositionControl view)
+    {
+        try
         {
-            _editorSupportView.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
+            await view.EnsureCoreWebView2Async();
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (view.CoreWebView2 is null)
+            return false;
+
+        if (!_editorSupportWebEventsAttached)
+        {
+            view.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
 
             // 同梱 Web アセット（mermaid.min.js）の配信元。アプリ出力フォルダ固定なので一度だけマップする。
             try
             {
-                _editorSupportView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                view.CoreWebView2.SetVirtualHostNameToFolderMapping(
                     MarkdownRenderer.AssetsVirtualHost,
                     Path.Combine(AppContext.BaseDirectory, "Assets", "Web"),
                     CoreWebView2HostResourceAccessKind.DenyCors);
@@ -291,7 +335,22 @@ public partial class ShellWindow
             _editorSupportWebEventsAttached = true;
         }
 
-        return _editorSupportView;
+        return true;
+    }
+
+    private void OnEditorSupportNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        // 起動直後だけ、生成直後の WebView2 が初回ナビゲーションを取りこぼすことがある。最初の完了時に
+        // 最新内容を一度だけ描き直して自己修復する（描き直しの完了は latch 済みなので再帰しない）。
+        if (!_editorSupportFirstRenderHealed && _editorSupportView?.CoreWebView2 is { } core)
+        {
+            _editorSupportFirstRenderHealed = true;
+            RenderPendingEditorSupportHtml(core);
+        }
+
+        // コンテンツの描画が終わったら、エディタの現在位置までスクロールを合わせ直す。
+        if (_editorSupportSourceTab is not null)
+            _ = QueueEditorSupportScrollSyncAsync(_editorSupportSourceTab.Control.VerticalScrollRatio);
     }
 
     private void DetachEditorSupportSource()
