@@ -85,13 +85,13 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public void ShowSettings_opens_overlay_on_ai_category()
+    public void ShowSettings_opens_overlay_on_appearance_category()
     {
         var sut = CreateSut();
 
         sut.ShowSettingsCommand.Execute(null);
         Assert.True(sut.IsSettingsOverlayOpen);
-        Assert.Equal(SettingsCategory.Ai, sut.SettingsCategory);
+        Assert.Equal(SettingsCategory.Appearance, sut.SettingsCategory);
     }
 
     [Fact]

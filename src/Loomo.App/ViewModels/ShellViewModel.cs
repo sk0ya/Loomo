@@ -104,10 +104,10 @@ public sealed partial class ShellViewModel : ObservableObject
             Sessions.EnsureLoaded();
     }
 
-    /// <summary>ActivityBar の設定アイコン。中央オーバーレイの設定画面を AI カテゴリで開く
+    /// <summary>ActivityBar の設定（歯車）アイコン。中央オーバーレイの設定画面を外観カテゴリで開く
     /// （同じカテゴリで開いていれば閉じる＝トグル）。開くときにローカルのモデル一覧を取得する。</summary>
     [RelayCommand]
-    private void ShowSettings() => OpenSettingsOverlay(SettingsCategory.Ai);
+    private void ShowSettings() => OpenSettingsOverlay(SettingsCategory.Appearance);
 
     /// <summary>ActivityBar の外観（テーマ）アイコン。設定オーバーレイを外観カテゴリで開く。</summary>
     [RelayCommand]
