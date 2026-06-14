@@ -194,6 +194,18 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
+    /// <summary>
+    /// 舞台のものを切り替える（Ctrl+T）。ステージ未開始ならまず開始して現ペインを舞台へ立て、
+    /// 開始済みなら並び順で前後のペインへ転換する＝1キーで舞台入り→歩いて回せる。
+    /// </summary>
+    private void CycleOrEnterStage(int direction)
+    {
+        if (_stageActive)
+            CycleStage(direction);
+        else
+            EnterStageMode();
+    }
+
     /// <summary>舞台を並び順で前後のペインへ転換する（ステージ中の Ctrl+W h/j/k/l）。</summary>
     private void CycleStage(int direction)
     {

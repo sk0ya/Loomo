@@ -35,6 +35,7 @@ public static class CommandCatalog
     private const string CatComposer = "コンポーザ";
     private const string CatSidebar = "サイドバー";
     private const string CatTab = "タブ";
+    private const string CatStage = "ステージ";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new[]
     {
@@ -56,6 +57,10 @@ public static class CommandCatalog
         new CommandDescriptor("pane.split.vertical", CatPane, "ペインを左右に分割", "Ctrl+W V"),
         new CommandDescriptor("pane.split.horizontal", CatPane, "ペインを上下に分割", "Ctrl+W S"),
         new CommandDescriptor("pane.split.closeView", CatPane, "分割ビューを畳む", "Ctrl+W Q"),
+
+        // ===== ステージ =====
+        new CommandDescriptor("stage.cycle", CatStage, "舞台のものを次へ切り替え", "Ctrl+T"),
+        new CommandDescriptor("stage.cyclePrev", CatStage, "舞台のものを前へ切り替え", "Ctrl+Shift+T"),
 
         // ===== コンポーザ =====
         new CommandDescriptor("composer.run", CatComposer, "本文をターミナルで実行", "Ctrl+Enter"),

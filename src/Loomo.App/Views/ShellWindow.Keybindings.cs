@@ -45,6 +45,10 @@ public partial class ShellWindow
             ["pane.split.horizontal"] = () => HandleViewportSplitKey(Key.S),
             ["pane.split.closeView"] = () => HandleViewportSplitKey(Key.Q),
 
+            // ステージ：舞台のものを切り替える（未開始なら開始して舞台へ立てる）
+            ["stage.cycle"] = () => CycleOrEnterStage(1),
+            ["stage.cyclePrev"] = () => CycleOrEnterStage(-1),
+
             // タブ（既定未割当。キーを割り当てると有効）
             ["tab.newTerminal"] = () => OnTerminalNewTab(this, new RoutedEventArgs()),
             ["tab.newEditor"] = () => OnEditorNewTab(this, new RoutedEventArgs()),
