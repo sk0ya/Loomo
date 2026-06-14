@@ -183,7 +183,7 @@ same instance backs both — Views resolve the concrete control adapter, tools r
 ## Working with the sk0ya control libraries (important)
 
 Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.9) and `sk0ya.Editor.Controls`
-(1.0.6), but their **namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
+(1.0.7), but their **namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
 `Editor.Controls.VimEditorControl`. **The agent's command execution does NOT flow to the visible terminal** —
 `TerminalService.RunCommandAsync` always runs the command in an independent non-interactive PowerShell
 `Process` (`RunViaProcessAsync`) so AI output never mixes into the human's terminal; the visible terminal is

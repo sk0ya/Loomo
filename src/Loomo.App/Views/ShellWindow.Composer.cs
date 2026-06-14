@@ -63,10 +63,13 @@ public partial class ShellWindow
             return;
 
         // タブのエディタ（CreateEditorTab）と違い、Git 差分・分割/タブ橋渡し・共有ステータスバーは
-        // 使わない素のコントロール。外観と Vim 有効設定だけ揃える。
+        // 使わない素のコントロール。さらに MinimalChrome（sk0ya.Editor.Controls 1.0.7）で行番号桁・
+        // ステータスバー・スクロールバー・ミニマップを隠し、素の TextBox 風の見た目にする
+        // （Vim 編集自体は残す）。外観と Vim 有効設定だけ揃える。
         var editor = new VimEditorControl(new VimEditorControlOptions())
         {
             VimEnabled = _settings.Vim.Enabled,
+            MinimalChrome = true,
         };
         ApplyEditorAppearance(editor);
         // 本文中のURLクリック（Ctrl+Click / gx）も内蔵ブラウザで開く（タブのエディタと同じ扱い）。
