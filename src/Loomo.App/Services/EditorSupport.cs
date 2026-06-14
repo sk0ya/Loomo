@@ -4,6 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -19,8 +22,8 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public interface IEditorSupportProvider
 {
-    /// <summary>このファイルに対応できるか（拡張子などで判定する）。</summary>
-    bool CanSupport(string filePath);
+    /// <summary>この provider が担当する拡張子（例: ".md"）。</summary>
+    IReadOnlyCollection<string> SupportedExtensions { get; }
 
     /// <summary>ペインのヘッダーへ出す表示名（例: "Preview: README.md"）。</summary>
     string DescribeTitle(string filePath);
@@ -58,16 +61,49 @@ public sealed record EditorSupportContentEdited(string FilePath, string Text);
 /// <summary>登録された <see cref="IEditorSupportProvider"/> からファイルに対応するものを解決する。</summary>
 public sealed class EditorSupportRegistry
 {
-    private readonly IReadOnlyList<IEditorSupportProvider> _providers;
+    private readonly IReadOnlyDictionary<string, IEditorSupportProvider> _providersByExtension;
 
     public EditorSupportRegistry(IEnumerable<IEditorSupportProvider> providers)
-        => _providers = providers.ToList();
+    {
+        var map = new Dictionary<string, IEditorSupportProvider>(StringComparer.OrdinalIgnoreCase);
+        foreach (var provider in providers)
+        {
+            foreach (var extension in provider.SupportedExtensions)
+            {
+                var normalized = NormalizeExtension(extension);
+                if (map.TryGetValue(normalized, out var existing))
+                    throw new InvalidOperationException(
+                        $"EditorSupport provider for '{normalized}' is already registered: " +
+                        $"{existing.GetType().Name}, {provider.GetType().Name}");
+
+                map.Add(normalized, provider);
+            }
+        }
+
+        _providersByExtension = map;
+    }
 
     /// <summary>ファイルに対応する最初の提供者を返す。未対応・パス無しは null。</summary>
     public IEditorSupportProvider? Resolve(string? filePath)
-        => string.IsNullOrWhiteSpace(filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return null;
+
+        var extension = Path.GetExtension(filePath);
+        return string.IsNullOrWhiteSpace(extension)
             ? null
-            : _providers.FirstOrDefault(p => p.CanSupport(filePath));
+            : _providersByExtension.GetValueOrDefault(NormalizeExtension(extension));
+    }
+
+    private static string NormalizeExtension(string extension)
+    {
+        var normalized = extension.Trim();
+        if (normalized.Length == 0)
+            throw new ArgumentException("Extension must not be empty.", nameof(extension));
+        return normalized.StartsWith(".", StringComparison.Ordinal)
+            ? normalized
+            : "." + normalized;
+    }
 }
 
 /// <summary>
@@ -113,6 +149,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
 {
     private readonly AiSettings _settings;
     private readonly IWorkspaceService _workspace;
+    private static readonly string[] Extensions = [".md", ".markdown"];
 
     public MarkdownEditorSupport(AiSettings settings, IWorkspaceService workspace)
     {
@@ -120,8 +157,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
         _workspace = workspace;
     }
 
-    public bool CanSupport(string filePath)
-        => Path.GetExtension(filePath).ToLowerInvariant() is ".md" or ".markdown";
+    public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
     public string DescribeTitle(string filePath) => $"Preview: {Path.GetFileName(filePath)}";
 
@@ -132,4 +168,116 @@ public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
             _settings.Appearance.MarkdownPreviewTheme,
             // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
             baseHref: MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
+}
+
+/// <summary>画像ファイル（.png / .ico など）のプレビュー。</summary>
+public sealed class ImageEditorSupport : IEditorSupportVisualProvider
+{
+    private static readonly string[] Extensions =
+        [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".tif", ".tiff"];
+
+    private Grid? _view;
+    private Image? _image;
+    private TextBlock? _caption;
+
+    public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
+
+    public IReadOnlyCollection<string> SupportedExtensions => Extensions;
+
+    public string DescribeTitle(string filePath) => $"Image: {Path.GetFileName(filePath)}";
+
+    public FrameworkElement GetOrCreateView()
+    {
+        if (_view is not null)
+            return _view;
+
+        _image = new Image
+        {
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var imageHost = new Border
+        {
+            Margin = new Thickness(20, 20, 20, 8),
+            Background = CreateCheckerBrush(),
+            Child = _image
+        };
+
+        _caption = new TextBlock
+        {
+            Margin = new Thickness(20, 0, 20, 16),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(154, 160, 166)),
+            FontSize = 12
+        };
+
+        _view = new Grid();
+        _view.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        _view.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _view.Children.Add(imageHost);
+        Grid.SetRow(imageHost, 0);
+        _view.Children.Add(_caption);
+        Grid.SetRow(_caption, 1);
+        return _view;
+    }
+
+    public Task UpdateAsync(string filePath, string text)
+    {
+        GetOrCreateView();
+        if (_image is null || _caption is null)
+            return Task.CompletedTask;
+
+        _caption.Text = Path.GetFileName(filePath);
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(filePath, UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            _image.Source = bitmap;
+        }
+        catch
+        {
+            _image.Source = null;
+            _caption.Text = $"{Path.GetFileName(filePath)}\n画像を読み込めませんでした。";
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Brush CreateCheckerBrush()
+    {
+        var group = new DrawingGroup();
+        group.Children.Add(new GeometryDrawing(
+            new SolidColorBrush(Color.FromRgb(48, 49, 52)),
+            null,
+            new RectangleGeometry(new Rect(0, 0, 24, 24))));
+        group.Children.Add(new GeometryDrawing(
+            new SolidColorBrush(Color.FromRgb(37, 37, 38)),
+            null,
+            new GeometryGroup
+            {
+                Children =
+                {
+                    new RectangleGeometry(new Rect(0, 0, 12, 12)),
+                    new RectangleGeometry(new Rect(12, 12, 12, 12))
+                }
+            }));
+
+        var brush = new DrawingBrush(group)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 24, 24),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
+        brush.Freeze();
+        return brush;
+    }
 }

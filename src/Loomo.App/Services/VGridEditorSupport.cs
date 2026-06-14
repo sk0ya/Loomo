@@ -30,6 +30,7 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider
 {
     /// <summary>グリッド編集をエディタ本文へまとめて書き戻すまでの猶予。</summary>
     private static readonly TimeSpan WriteBackDelay = TimeSpan.FromMilliseconds(500);
+    private static readonly string[] Extensions = [".csv", ".tsv"];
 
     private readonly AiSettings _settings;
     private TsvEditorControl? _view;
@@ -47,8 +48,7 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider
 
     public VGridEditorSupport(AiSettings settings) => _settings = settings;
 
-    public bool CanSupport(string filePath)
-        => Path.GetExtension(filePath).ToLowerInvariant() is ".csv" or ".tsv";
+    public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
     public string DescribeTitle(string filePath) => $"Grid: {Path.GetFileName(filePath)}";
 

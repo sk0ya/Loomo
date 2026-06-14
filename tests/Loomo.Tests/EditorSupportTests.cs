@@ -20,7 +20,14 @@ public class EditorSupportTests
     }
 
     private static EditorSupportRegistry CreateRegistry()
-        => new(new IEditorSupportProvider[] { CreateSupport(), new VGridEditorSupport(new AiSettings()) });
+    {
+        return new(new IEditorSupportProvider[]
+        {
+            CreateSupport(),
+            new ImageEditorSupport(),
+            new VGridEditorSupport(new AiSettings())
+        });
+    }
 
     [Theory]
     [InlineData(@"C:\work\README.md")]
@@ -44,6 +51,18 @@ public class EditorSupportTests
         Assert.IsType<VGridEditorSupport>(provider);
     }
 
+    [Theory]
+    [InlineData(@"C:\work\image.png")]
+    [InlineData(@"C:\work\favicon.ico")]
+    [InlineData(@"C:\work\photo.JPG")]
+    [InlineData(@"C:\work\scan.tiff")]
+    public void Resolve_画像ファイルには画像プロバイダを返す(string path)
+    {
+        var provider = CreateRegistry().Resolve(path);
+
+        Assert.IsType<ImageEditorSupport>(provider);
+    }
+
     [Fact]
     public void VGridSupport_タイトルはGridプレフィックスとファイル名()
     {
@@ -60,6 +79,22 @@ public class EditorSupportTests
     public void Resolve_未対応や無効なパスにはnullを返す(string? path)
     {
         Assert.Null(CreateRegistry().Resolve(path));
+    }
+
+    [Fact]
+    public void Registry_同じ拡張子の重複登録は例外にする()
+    {
+        var workspace = new FakeWorkspaceService();
+        var settings = new AiSettings();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new EditorSupportRegistry(
+            new IEditorSupportProvider[]
+            {
+                new MarkdownEditorSupport(settings, workspace),
+                new DuplicateEditorSupport()
+            }));
+
+        Assert.Contains(".md", ex.Message);
     }
 
     [Fact]
@@ -113,6 +148,24 @@ public class EditorSupportTests
         Assert.DoesNotContain("mermaid.min.js", html);
         Assert.Contains("language-csharp", html);
     }
+
+    [Fact]
+    public void ImageSupport_WPFビジュアルプロバイダとして画像を扱う()
+    {
+        var support = new ImageEditorSupport();
+
+        Assert.IsAssignableFrom<IEditorSupportVisualProvider>(support);
+        Assert.Equal("Image: app icon.ico", support.DescribeTitle(@"C:\work\assets\app icon.ico"));
+    }
+}
+
+file sealed class DuplicateEditorSupport : IEditorSupportHtmlProvider
+{
+    public IReadOnlyCollection<string> SupportedExtensions { get; } = [".md"];
+
+    public string DescribeTitle(string filePath) => Path.GetFileName(filePath);
+
+    public string RenderHtml(string filePath, string text) => "";
 }
 
 /// <summary>
