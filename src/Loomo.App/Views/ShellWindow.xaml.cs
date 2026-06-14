@@ -250,6 +250,12 @@ public partial class ShellWindow : Window
             SetPaneVisible(PaneKind.Diff, true);
             FocusPane(PaneKind.Diff);
         };
+        // サイドバー Git パネルの「差分を開く」も同様に Diff ペインを表示してフォーカスする。
+        vm.GitPanel.DiffOpenRequested += (_, _) =>
+        {
+            SetPaneVisible(PaneKind.Diff, true);
+            FocusPane(PaneKind.Diff);
+        };
         // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込し、見えている間だけライブ監視する。
         GitPane.IsVisibleChanged += (_, e) =>
         {

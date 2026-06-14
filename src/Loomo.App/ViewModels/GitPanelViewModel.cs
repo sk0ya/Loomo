@@ -43,6 +43,11 @@ public sealed partial class GitPanelViewModel : ObservableObject
 {
     private readonly GitService _git;
     private readonly IEditorService _editor;
+    private readonly IWorkspaceService _workspace;
+    private readonly DiffSessionViewModel _diff;
+
+    /// <summary>「差分を開く」操作：Diff ペインの表示を呼び出し側（ShellWindow）へ要求する。</summary>
+    public event EventHandler? DiffOpenRequested;
 
     /// <summary>初回の読込を済ませたか。Git パネルを開くまで遅延する。</summary>
     private bool _loaded;
@@ -62,10 +67,13 @@ public sealed partial class GitPanelViewModel : ObservableObject
     public ObservableCollection<GitChangeItem> Staged { get; } = new();
     public ObservableCollection<GitChangeItem> Unstaged { get; } = new();
 
-    public GitPanelViewModel(GitService git, IEditorService editor)
+    public GitPanelViewModel(
+        GitService git, IEditorService editor, IWorkspaceService workspace, DiffSessionViewModel diff)
     {
         _git = git;
         _editor = editor;
+        _workspace = workspace;
+        _diff = diff;
         _git.RepositoryChanged += OnRepositoryChanged;
     }
 
@@ -185,18 +193,26 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
     }
 
-    /// <summary>変更行クリック：差分（未追跡は内容）をエディタの仮想ドキュメントで開く。</summary>
+    /// <summary>変更行クリック：そのファイルの実体をエディタで開く（差分ではなくファイルそのもの）。
+    /// 削除済みエントリは開く実体が無いので何もしない。</summary>
+    [RelayCommand]
+    private async Task OpenFileAsync(GitChangeItem? item)
+    {
+        if (item is null) return;
+        var root = _workspace.RootPath;
+        if (string.IsNullOrEmpty(root)) return;
+        var fullPath = Path.Combine(root, item.Entry.Path);
+        if (!File.Exists(fullPath)) return;  // 削除済みなど、開く実体が無い
+        await _editor.OpenFileAsync(fullPath);
+    }
+
+    /// <summary>変更行のコンテキストメニュー「差分を開く」：その作業ツリー差分を Diff ペインで開く。</summary>
     [RelayCommand]
     private async Task OpenDiffAsync(GitChangeItem? item)
     {
         if (item is null) return;
-        var diff = await _git.GetDiffTextAsync(item.Entry, item.IsStaged);
-        await _editor.OpenDocumentAsync(new EditorDocument
-        {
-            FileName = $"{item.FileName}.diff",
-            Content = diff.Length > 0 ? diff : "（差分はありません）",
-            OnSaved = _ => { },  // 読み取り専用の用途（:w しても何も永続化しない）
-        });
+        await _diff.ShowWorkingTreeFileAsync(item.Entry, item.IsStaged);
+        DiffOpenRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>更新系操作の共通枠：多重実行の抑止・結果メッセージの表示。</summary>

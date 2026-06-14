@@ -73,7 +73,7 @@
             </Setter>
         </Style>
 
-        <!-- 変更行本体（クリックで差分を開く） -->
+        <!-- 変更行本体（クリックでファイルを開く） -->
         <Style x:Key="ChangeRowButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -94,6 +94,17 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 変更行の右クリックメニュー。ContextMenu はビジュアルツリー外なので、対象ボタン（PlacementTarget）
+             の Tag に載せた ViewModel 経由でコマンドへ、DataContext からその行（GitChangeItem）を引数に渡す。 -->
+        <ContextMenu x:Key="ChangeRowMenu">
+            <MenuItem Header="ファイルを開く"
+                      Command="{Binding PlacementTarget.Tag.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="差分を開く"
+                      Command="{Binding PlacementTarget.Tag.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
 
         <!-- 件数ピル（セクション見出しの右） -->
         <Style x:Key="CountPill" TargetType="Border">
@@ -263,8 +274,10 @@
                                                 Command="{Binding DataContext.UnstageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" />
                                         <Button Style="{StaticResource ChangeRowButton}" ToolTip="{Binding ToolTipText}"
-                                                Command="{Binding DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}">
+                                                Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"
+                                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                ContextMenu="{StaticResource ChangeRowMenu}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding Status}" Width="16" Foreground="{DynamicResource Accent}"
                                                            TextAlignment="Center" FontWeight="SemiBold"
@@ -309,8 +322,10 @@
                                             Command="{Binding DataContext.DiscardCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding}" />
                                     <Button Style="{StaticResource ChangeRowButton}" ToolTip="{Binding ToolTipText}"
-                                            Command="{Binding DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}">
+                                            Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            ContextMenu="{StaticResource ChangeRowMenu}">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Status}" Width="16"
                                                        TextAlignment="Center" FontWeight="SemiBold"

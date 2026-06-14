@@ -152,6 +152,24 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             _ = RefreshAsync();
     }
 
+    /// <summary>
+    /// サイドバー Git パネルから：作業ツリーの特定ファイルの差分を表示する。
+    /// コミット範囲を解除して作業ツリー（Git）モードへ切り替え、一覧を読み直してそのファイルを選択する。
+    /// ペインの表示は呼び出し側（ShellWindow）が行う。
+    /// </summary>
+    public async Task ShowWorkingTreeFileAsync(GitChangeEntry entry, bool isStaged)
+    {
+        _loaded = true;
+        _commitRange = null;
+        GitTargetLabel = "";
+        IsGitMode = true;
+        await RefreshAsync();
+        SelectedFile = Files.FirstOrDefault(f =>
+            f.IsStaged == isStaged
+            && string.Equals(f.DisplayPath, entry.Path, StringComparison.OrdinalIgnoreCase))
+            ?? SelectedFile;
+    }
+
     /// <summary>コミット範囲の表示を解除して作業ツリー差分へ戻る。</summary>
     [RelayCommand]
     private void ClearGitTarget()
