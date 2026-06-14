@@ -143,6 +143,7 @@ public partial class ShellWindow
         // コンポーザ本文とペグボードはワークスペース毎（どちらも軽量・同期）。
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
+        LoadPrograms(workspace.Programs);
         PrepareStageSnapshot(workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         ApplyPaneLayout(workspace.PaneLayout);
@@ -514,8 +515,22 @@ public partial class ShellWindow
         {
             IsActive = _stageActive,
             Pane = _stageActive ? _stagePane : null,
+            Subs = _stageActive
+                ? _stageSubs.Select(s => new StageSubSnapshot { Kind = s.Kind, Dock = s.Dock, Weight = s.Weight }).ToList()
+                : new(),
+            RightFraction = _stageActive ? _stageRightFraction : 0,
+            BottomFraction = _stageActive ? _stageBottomFraction : 0,
+            ProgramName = _stageActive ? _activeProgramName : null,
             Overview = _stageActive && _overviewActive
         };
+        snapshot.Programs = _programs.Select(p => new StageProgram
+        {
+            Name = p.Name,
+            Main = p.Main,
+            Subs = p.Subs.Select(s => new StageSubSnapshot { Kind = s.Kind, Dock = s.Dock, Weight = s.Weight }).ToList(),
+            RightFraction = p.RightFraction,
+            BottomFraction = p.BottomFraction
+        }).ToList();
 
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
         {

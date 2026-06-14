@@ -417,9 +417,20 @@ public partial class ShellWindow
     private void FocusPane(PaneKind kind)
     {
         // ステージモード中は、フォーカス対象を舞台へ立てる（AI がファイルを開いた・
-        // 差分を出した等の既存フローがそのまま「舞台の自動転換」になる）。
-        if (_stageActive && kind != _stagePane)
-            SetStagePane(kind);
+        // 差分を出した等の既存フローがそのまま「舞台の自動転換」になる）。配役モード中は
+        // 主役を崩さず、舞台外のペインだけサブとして迎える（既に在台なら何もしない）。
+        if (_stageActive)
+        {
+            if (ProgramActive)
+            {
+                if (!OnStage(kind))
+                    AddSub(kind, StageDock.Right);
+            }
+            else if (kind != _stagePane)
+            {
+                SetStagePane(kind);
+            }
+        }
         _focusedRegion = FocusTarget.Of(kind);
         switch (kind)
         {

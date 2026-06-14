@@ -263,6 +263,51 @@
                         <Path Style="{StaticResource PaneToggleIcon}"
                               Data="M2,3 H10.5 V13 H2 Z M12,3 H14 V6.5 H12 Z M12,9.5 H14 V13 H12 Z" />
                     </ToggleButton>
+
+                    <!-- 配役（舞台の Main＋Sub 配置）の保存・切替。ステージ中だけ表示（ShellWindow.StageProgram.cs）。 -->
+                    <Button x:Name="ProgramButton" Height="24" Margin="2,0,0,0" Padding="8,0"
+                            Style="{StaticResource BranchMenuItem}" Visibility="Collapsed"
+                            ToolTip="配役（舞台の配置）を保存・切替" Click="OnProgramMenuClick"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🎬" VerticalAlignment="Center" Margin="0,0,5,0" />
+                            <TextBlock Text="配役:" Foreground="{DynamicResource FgDim}" FontSize="12"
+                                       VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock x:Name="ProgramButtonLabel" Text="なし" FontSize="12"
+                                       VerticalAlignment="Center" MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                                       VerticalAlignment="Center" Margin="5,1,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="ProgramPopup" PlacementTarget="{Binding ElementName=ProgramButton}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="4" Padding="4"
+                                MinWidth="260" MaxWidth="380" Margin="0,2,8,8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                            </Border.Effect>
+                            <DockPanel>
+                                <!-- フッター：配役名入力＋保存 -->
+                                <StackPanel DockPanel.Dock="Bottom">
+                                    <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
+                                    <DockPanel LastChildFill="True" Margin="4,2">
+                                        <Button DockPanel.Dock="Right" Content="＋ 保存"
+                                                Style="{StaticResource FlatButton}" Padding="10,3" Margin="6,0,0,0"
+                                                Click="OnProgramSaveClick"
+                                                ToolTip="現在の舞台配置を配役として保存（名前未入力なら自動命名）" />
+                                        <TextBox x:Name="ProgramNameInput" VerticalContentAlignment="Center"
+                                                 Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                                 BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                                 ToolTip="配役名" />
+                                    </DockPanel>
+                                </StackPanel>
+                                <!-- 保存配役の一覧（code-behind の BuildProgramPopup が構築） -->
+                                <StackPanel x:Name="ProgramPopupList" />
+                            </DockPanel>
+                        </Border>
+                    </Popup>
+
                     <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
                     <!-- ペインの表示トグル（隠したペインの再表示にも使う）。アクセント色＝表示中／グレー＝非表示。 -->
                     <StackPanel x:Name="PaneToggleBar" Orientation="Horizontal">
@@ -776,6 +821,10 @@
                     <Grid x:Name="StageSourceArea" Grid.Column="0" Margin="10,8,6,10"
                           Opacity="0" IsHitTestVisible="False" Panel.ZIndex="-1" />
                     <Grid x:Name="StageArea" Grid.Column="0" Margin="10,8,6,10" />
+                    <!-- 配役モードのドラッグ中だけ可視化する透明ドロップゾーン層（StageArea と同セル・同マージン）。
+                         ライブコントロールがドロップを奪うため、確実に受ける（ShellWindow.Stage.cs）。 -->
+                    <Grid x:Name="StageDropOverlay" Grid.Column="0" Margin="10,8,6,10"
+                          Panel.ZIndex="50" Visibility="Collapsed" AllowDrop="True" />
                     <DockPanel Grid.Column="1" Margin="0,8,10,10">
                         <Button DockPanel.Dock="Top" Style="{StaticResource FlatButton}" Padding="8,4"
                                 Margin="0,0,0,8" Content="⊞ 俯瞰"

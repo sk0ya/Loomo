@@ -393,8 +393,17 @@ public partial class ShellWindow
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
         // ステージモード中はタイル前提の操作（ドラッグ移動・ダブルクリックズーム）を無効化する。
+        // ただし配役モードでは、ペイン自身のタイトルバーを掴んでスロットを入れ替えられるようにする。
         if (_stageActive)
+        {
+            if (ProgramActive && sender is FrameworkElement { Tag: string stag }
+                && Enum.TryParse<PaneKind>(stag, out var skind) && OnStage(skind))
+            {
+                _stageDragStart = e.GetPosition(null);
+                _stageDragArmed = true;
+            }
             return;
+        }
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
 
@@ -419,7 +428,24 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
     {
-        if (_stageActive || _paneDragging || !_paneDragArmed)
+        // 配役モードでは、ペインのタイトルバーをしきい値超えで掴んだらスロット入れ替えのドラッグを開始する。
+        if (_stageActive)
+        {
+            if (ProgramActive && _stageDragArmed && e.LeftButton == MouseButtonState.Pressed
+                && sender is FrameworkElement { Tag: string stag }
+                && Enum.TryParse<PaneKind>(stag, out var skind) && OnStage(skind))
+            {
+                var sp = e.GetPosition(null);
+                if (Math.Abs(sp.X - _stageDragStart.X) >= SystemParameters.MinimumHorizontalDragDistance
+                    || Math.Abs(sp.Y - _stageDragStart.Y) >= SystemParameters.MinimumVerticalDragDistance)
+                {
+                    _stageDragArmed = false;
+                    BeginStageDrag((UIElement)sender, SlotForKind(skind));
+                }
+            }
+            return;
+        }
+        if (_paneDragging || !_paneDragArmed)
             return;
         if (e.LeftButton != MouseButtonState.Pressed)
         {
@@ -441,7 +467,11 @@ public partial class ShellWindow
         }
     }
 
-    private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e) => DisarmTitleDrag();
+    private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        _stageDragArmed = false;
+        DisarmTitleDrag();
+    }
 
     /// <summary>ドラッグ判定を解除する。</summary>
     private void DisarmTitleDrag()
@@ -702,8 +732,15 @@ public partial class ShellWindow
 
     private void OnHidePane(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
-            SetPaneVisible(kind, false);
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
+            return;
+        // 配役モードでサブの「—」は、タイル用の非表示ではなく舞台から降ろす。
+        if (_stageActive && ProgramActive && _stageSubs.Any(s => s.Kind == kind))
+        {
+            RemoveSub(kind);
+            return;
+        }
+        SetPaneVisible(kind, false);
     }
 
     /// <summary>Git ペインヘッダーの「＋ブランチ」：名前を聞いて HEAD からブランチを作成する。</summary>
