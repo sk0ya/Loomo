@@ -17,7 +17,7 @@
   <ItemGroup>
     <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.9" />
     <PackageReference Include="sk0ya.Editor.Controls.Defaults" Version="1.0.9" />
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.14" />
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.15" />
   </ItemGroup>
 
 </Project>
