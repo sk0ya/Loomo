@@ -483,6 +483,7 @@ public partial class ShellWindow
         CurrentEditorWorkspace.ActiveTabId = id;
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(id);
+        QueueEditorTabHeaderIntoView(id);
         _ = SwitchEditorSupportSourceAsync(tab);
         SaveActiveWorkspaceSnapshot();
     }
@@ -494,7 +495,55 @@ public partial class ShellWindow
         CurrentEditorWorkspace.ActiveTabId = tab.Id;
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(tab.Id);
+        QueueEditorTabHeaderIntoView(tab.Id);
         _ = SwitchEditorSupportSourceAsync(tab);
+    }
+
+    private void QueueEditorTabHeaderIntoView(Guid id)
+    {
+        Dispatcher.BeginInvoke(
+            new Action(() => ScrollEditorTabHeaderIntoView(id)),
+            DispatcherPriority.Loaded);
+    }
+
+    private void ScrollEditorTabHeaderIntoView(Guid id)
+    {
+        if (EditorTabStripScrollViewer.ViewportWidth <= 0)
+            return;
+
+        EditorTabStripItems.UpdateLayout();
+        if (FindEditorTabHeader(id, EditorTabStripItems) is not { } header)
+            return;
+
+        var bounds = header.TransformToAncestor(EditorTabStripScrollViewer)
+            .TransformBounds(new Rect(0, 0, header.ActualWidth, header.ActualHeight));
+
+        if (bounds.Left < 0)
+        {
+            EditorTabStripScrollViewer.ScrollToHorizontalOffset(
+                Math.Max(0, EditorTabStripScrollViewer.HorizontalOffset + bounds.Left));
+        }
+        else if (bounds.Right > EditorTabStripScrollViewer.ViewportWidth)
+        {
+            EditorTabStripScrollViewer.ScrollToHorizontalOffset(
+                EditorTabStripScrollViewer.HorizontalOffset + bounds.Right - EditorTabStripScrollViewer.ViewportWidth);
+        }
+    }
+
+    private static FrameworkElement? FindEditorTabHeader(Guid id, DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement { DataContext: TabEntryViewModel tab } element && tab.Id == id)
+                return element;
+
+            if (FindEditorTabHeader(id, child) is { } found)
+                return found;
+        }
+
+        return null;
     }
 
     private void CloseEditorTab(Guid id)

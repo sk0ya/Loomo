@@ -520,11 +520,12 @@
                                 Tag="Editor" Click="OnHidePane" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                        <ScrollViewer x:Name="EditorTabStripScrollViewer"
+                                      HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
                                       PanningMode="HorizontalOnly"
                                       PreviewMouseWheel="OnTabStripMouseWheel">
-                            <ItemsControl ItemsSource="{Binding Tabs.EditorTabs}">
+                            <ItemsControl x:Name="EditorTabStripItems" ItemsSource="{Binding Tabs.EditorTabs}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal" />
