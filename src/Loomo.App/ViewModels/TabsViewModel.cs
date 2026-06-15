@@ -103,12 +103,18 @@ public sealed partial class TabsViewModel : ObservableObject
         if (isModified)
             title += " *";
 
-        EditorTabs.Add(new TabEntryViewModel(
+        var tab = new TabEntryViewModel(
             id,
             TabEntryKind.Editor,
             title,
             isActive,
-            _icons.GetFileIcon(path)));
+            _icons.GetFileIcon(path));
+
+        var previewIndex = IndexOfPreviewEditorTab();
+        if (previewIndex >= 0)
+            EditorTabs.Insert(previewIndex, tab);
+        else
+            EditorTabs.Add(tab);
     }
 
     public void UpdateEditorTab(Guid id, string? path, bool isModified)
@@ -131,7 +137,30 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         var tab = EditorTabs.FirstOrDefault(t => t.Id == id);
         if (tab is not null)
+        {
             tab.IsPreview = isPreview;
+            if (isPreview)
+                MoveEditorTabToEnd(tab);
+        }
+    }
+
+    private void MoveEditorTabToEnd(TabEntryViewModel tab)
+    {
+        var index = EditorTabs.IndexOf(tab);
+        var last = EditorTabs.Count - 1;
+        if (index >= 0 && index < last)
+            EditorTabs.Move(index, last);
+    }
+
+    private int IndexOfPreviewEditorTab()
+    {
+        for (var i = 0; i < EditorTabs.Count; i++)
+        {
+            if (EditorTabs[i].IsPreview)
+                return i;
+        }
+
+        return -1;
     }
 
     public void ActivateEditorTab(Guid id)

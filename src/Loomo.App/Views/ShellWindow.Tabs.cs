@@ -188,7 +188,24 @@ public partial class ShellWindow
             _vm.Tabs.SetEditorTabPreview(old.Id, false);
         _previewEditorTab = tab;
         if (tab is not null)
+        {
+            MovePreviewEditorTabToEnd();
             _vm.Tabs.SetEditorTabPreview(tab.Id, true);
+        }
+    }
+
+    private void MovePreviewEditorTabToEnd()
+    {
+        if (_previewEditorTab is not { } preview)
+            return;
+
+        var index = _editorTabs.FindIndex(t => ReferenceEquals(t, preview));
+        var last = _editorTabs.Count - 1;
+        if (index < 0 || index == last)
+            return;
+
+        _editorTabs.RemoveAt(index);
+        _editorTabs.Add(preview);
     }
 
     /// <summary>FolderTree の HTML をアプリ内ブラウザの新規タブで開く（file:// URL）。</summary>
