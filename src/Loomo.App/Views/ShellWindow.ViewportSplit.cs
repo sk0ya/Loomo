@@ -657,6 +657,57 @@ public partial class ShellWindow
                 _focusControl(control);
         }
 
+        /// <summary>フォーカス中ビューポートから指定方向の最寄りビューポートへ移る。移れたときだけ true。</summary>
+        public bool FocusInDirection(DropZone direction, Visual relativeTo)
+        {
+            if (_focused is null || LeafCount <= 1)
+                return false;
+
+            var rects = ViewportRects(relativeTo).ToList();
+            var fromEntry = rects.FirstOrDefault(r => r.Id == _focused.Id);
+            if (fromEntry.Id == default)
+                return false;
+
+            var from = fromEntry.Rect;
+            var fromCenter = new Point(from.X + from.Width / 2, from.Y + from.Height / 2);
+            Guid bestId = default;
+            var bestScore = double.MaxValue;
+
+            foreach (var (id, rect) in rects)
+            {
+                if (id == _focused.Id)
+                    continue;
+
+                const double tolerance = 1.0;
+                var inDirection = direction switch
+                {
+                    DropZone.Left => rect.X + rect.Width <= from.X + tolerance,
+                    DropZone.Right => rect.X >= from.X + from.Width - tolerance,
+                    DropZone.Above => rect.Y + rect.Height <= from.Y + tolerance,
+                    _ => rect.Y >= from.Y + from.Height - tolerance,
+                };
+                if (!inDirection)
+                    continue;
+
+                var center = new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+                var (axis, perpendicular) = direction is DropZone.Left or DropZone.Right
+                    ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
+                    : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
+                var score = axis + perpendicular * 2;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestId = id;
+                }
+            }
+
+            if (bestId == default)
+                return false;
+
+            FocusViewport(bestId);
+            return true;
+        }
+
         /// <summary>各ビューポートの矩形（relativeTo 座標系）を列挙する。</summary>
         public IEnumerable<(Guid Id, Rect Rect)> ViewportRects(Visual relativeTo)
         {
