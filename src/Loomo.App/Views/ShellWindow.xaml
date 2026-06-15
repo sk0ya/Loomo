@@ -583,6 +583,13 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="EditorSupport" Click="OnHidePane" />
+                        <ToggleButton x:Name="EditorSupportPinToggle" DockPanel.Dock="Right"
+                                      Style="{StaticResource PaneToggle}" Width="30" Height="24"
+                                      ToolTip="現在のサポート対象にピン留め"
+                                      Click="OnToggleEditorSupportPin">
+                            <Path Style="{StaticResource PaneToggleIcon}"
+                                  Data="M8,2 L14,8 M10,4 L5,9 L4,13 L8,12 L13,7 M8,12 L4,16" />
+                        </ToggleButton>
                         <TextBlock x:Name="EditorSupportTitle" VerticalAlignment="Center" Margin="4,0,8,0"
                                    FontSize="11" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />

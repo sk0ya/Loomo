@@ -72,6 +72,8 @@ public partial class ShellWindow : Window
     private DispatcherTimer? _editorSupportDebounceTimer;
     /// <summary>EditorSupport ペイン表示へのユーザー指定。null は自動（対応プロバイダの有無で開閉）。</summary>
     private bool? _editorSupportUserVisibility;
+    /// <summary>EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。</summary>
+    private bool _editorSupportSourcePinned;
     /// <summary>自動開閉中の SetPaneVisible をユーザー操作と区別するガード。</summary>
     private bool _editorSupportAutoToggling;
     /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>

@@ -333,6 +333,8 @@ public partial class ShellWindow
         // 内容は復元後の ActivateEditorTab → SwitchEditorSupportSourceAsync が作り直す。
         _editorSupportDebounceTimer?.Stop();
         DetachEditorSupportSource();
+        _editorSupportSourcePinned = false;
+        UpdateEditorSupportPinToggle();
         CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();

@@ -492,6 +492,8 @@ public partial class ShellWindow
         {
             _editorSupportDebounceTimer?.Stop();
             DetachEditorSupportSource();
+            _editorSupportSourcePinned = false;
+            UpdateEditorSupportPinToggle();
         }
         PaneSplitView.Detach(tab.Control);
         if (ReferenceEquals(_previewEditorTab, tab))

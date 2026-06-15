@@ -32,14 +32,16 @@ public partial class ShellWindow
     private async Task OpenEditorSupportAsync(EditorTab sourceTab)
     {
         _editorSupportUserVisibility = true;
-        await SwitchEditorSupportSourceAsync(sourceTab);
+        await SwitchEditorSupportSourceAsync(sourceTab, force: true);
         await UpdateEditorSupportAsync();
     }
 
     /// <summary>EditorSupport の追従先エディタタブを切り替えて内容を更新する（同一タブなら何もしない）。</summary>
-    private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab)
+    private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab, bool force = false)
     {
         if (ReferenceEquals(_editorSupportSourceTab, sourceTab))
+            return;
+        if (_editorSupportSourcePinned && !force && _editorSupportSourceTab is not null)
             return;
 
         if (_editorSupportSourceTab is not null)
@@ -47,8 +49,34 @@ public partial class ShellWindow
 
         _editorSupportSourceTab = sourceTab;
         sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
+        UpdateEditorSupportPinToggle();
 
         await UpdateEditorSupportAsync();
+    }
+
+    /// <summary>EditorSupport ヘッダーのピン：追従先タブを現在の対象へ固定／固定解除する。</summary>
+    private async void OnToggleEditorSupportPin(object sender, RoutedEventArgs e)
+    {
+        _editorSupportSourcePinned = EditorSupportPinToggle.IsChecked == true;
+        UpdateEditorSupportPinToggle();
+
+        if (_editorSupportSourcePinned)
+        {
+            if (_editorSupportSourceTab is null && _activeEditorTab is not null)
+                await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
+            return;
+        }
+
+        if (_activeEditorTab is not null)
+            await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
+    }
+
+    private void UpdateEditorSupportPinToggle()
+    {
+        EditorSupportPinToggle.IsChecked = _editorSupportSourcePinned;
+        EditorSupportPinToggle.ToolTip = _editorSupportSourcePinned
+            ? "ピン留めを解除してアクティブなエディタに追従"
+            : "現在のサポート対象にピン留め";
     }
 
     /// <summary>編集中の連続更新をまとめる（300ms デバウンスで <see cref="UpdateEditorSupportAsync"/>）。</summary>
