@@ -1,4 +1,9 @@
 using System.IO;
+using System.Threading;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 
@@ -156,6 +161,165 @@ public class EditorSupportTests
 
         Assert.IsAssignableFrom<IEditorSupportVisualProvider>(support);
         Assert.Equal("Image: app icon.ico", support.DescribeTitle(@"C:\work\assets\app icon.ico"));
+    }
+
+    [Theory]
+    [InlineData(800, 600, 1600, 1200)]
+    [InlineData(320, 240, 1920, 1080)]
+    [InlineData(1024, 256, 512, 512)]
+    [InlineData(256, 1024, 512, 512)]
+    public void ImageFitMath_計算した倍率では画像が表示領域からはみ出さない(
+        double viewportWidth,
+        double viewportHeight,
+        double imageWidth,
+        double imageHeight)
+    {
+        var zoom = ImageFitMath.CalculateFitZoom(viewportWidth, viewportHeight, imageWidth, imageHeight);
+
+        Assert.True(imageWidth * zoom <= viewportWidth - ImageFitMath.SafetyInset + 0.001);
+        Assert.True(imageHeight * zoom <= viewportHeight - ImageFitMath.SafetyInset + 0.001);
+    }
+
+    [Fact]
+    public void ImageFitMath_画像Dpiで変わるDip寸法をそのまま使ってフィット倍率を出す()
+    {
+        // 3840px wide at 192 DPI is 1920 DIP wide in WPF; pixel widthで計算すると過剰に縮む。
+        var zoom = ImageFitMath.CalculateFitZoom(
+            viewportWidth: 960,
+            viewportHeight: 540,
+            imageWidth: 1920,
+            imageHeight: 1080);
+
+        Assert.Equal((540 - ImageFitMath.SafetyInset) / 1080, zoom, precision: 6);
+    }
+
+    [Fact]
+    public void ImageSupport_実WPFレイアウトでも初期フィット表示は見切れない()
+    {
+        WpfLayoutTestHost.RunSta(() =>
+        {
+            var imagePath = Path.Combine(Path.GetTempPath(), $"loomo-fit-test-{Guid.NewGuid():N}.png");
+            WpfLayoutTestHost.WriteTestPng(imagePath, pixelWidth: 1600, pixelHeight: 1200);
+
+            try
+            {
+                var support = new ImageEditorSupport();
+                var view = support.GetOrCreateView();
+                var window = new Window
+                {
+                    Width = 360,
+                    Height = 260,
+                    Content = view,
+                    ShowInTaskbar = false,
+                    WindowStyle = WindowStyle.None
+                };
+
+                window.Show();
+                WpfLayoutTestHost.PumpDispatcher();
+                support.UpdateAsync(imagePath, "").GetAwaiter().GetResult();
+                WpfLayoutTestHost.PumpDispatcher();
+                WpfLayoutTestHost.PumpDispatcher();
+
+                var scroll = WpfLayoutTestHost.FindVisualChild<ScrollViewer>(view);
+                var image = WpfLayoutTestHost.FindVisualChild<Image>(view);
+                Assert.NotNull(scroll);
+                Assert.NotNull(image);
+
+                var maxWidth = scroll!.ViewportWidth - ImageFitMath.SafetyInset;
+                var maxHeight = scroll.ViewportHeight - ImageFitMath.SafetyInset;
+                Assert.True(image!.ActualWidth <= maxWidth + 0.001,
+                    $"Image actual width {image.ActualWidth}, width property {image.Width}, source {image.Source?.Width} must be <= viewport {scroll.ViewportWidth} - inset. Extent={scroll.ExtentWidth}.");
+                Assert.True(image.ActualHeight <= maxHeight + 0.001,
+                    $"Image actual height {image.ActualHeight}, height property {image.Height}, source {image.Source?.Height} must be <= viewport {scroll.ViewportHeight} - inset. Extent={scroll.ExtentHeight}.");
+
+                window.Close();
+            }
+            finally
+            {
+                File.Delete(imagePath);
+            }
+        });
+    }
+}
+
+file static class WpfLayoutTestHost
+{
+    public static T? FindVisualChild<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                return match;
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+                return descendant;
+        }
+
+        return null;
+    }
+
+    public static void RunSta(Action action)
+    {
+        Exception? exception = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (exception is not null)
+            throw exception;
+    }
+
+    public static void PumpDispatcher()
+    {
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        _ = System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+            new Action(() => frame.Continue = false));
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+    }
+
+    public static void WriteTestPng(string path, int pixelWidth, int pixelHeight)
+    {
+        var stride = pixelWidth * 4;
+        var pixels = new byte[stride * pixelHeight];
+        for (var y = 0; y < pixelHeight; y++)
+        {
+            for (var x = 0; x < pixelWidth; x++)
+            {
+                var offset = y * stride + x * 4;
+                pixels[offset + 0] = 0x40;
+                pixels[offset + 1] = (byte)(x % 256);
+                pixels[offset + 2] = (byte)(y % 256);
+                pixels[offset + 3] = 0xFF;
+            }
+        }
+
+        var bitmap = BitmapSource.Create(
+            pixelWidth,
+            pixelHeight,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            palette: null,
+            pixels,
+            stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 }
 
