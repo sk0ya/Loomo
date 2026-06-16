@@ -136,6 +136,7 @@
                              ItemsSource="{Binding LogRows}"
                              SelectedItem="{Binding SelectedLogRow}"
                              SelectionMode="Extended"
+                             MouseDoubleClick="OnCommitShowDiff"
                              PreviewMouseRightButtonDown="OnListRightClickSelect"
                              FontFamily="Cascadia Mono, Consolas">
                         <ListBox.ContextMenu>
