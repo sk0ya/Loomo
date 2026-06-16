@@ -108,7 +108,22 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider
         gridViewModel.LoadDocument(document);
         var vimState = new VimState { CommandHistory = history };
 
-        _view.Tab = new TabItemViewModel(filePath, document, vimState, gridViewModel);
+        // グリッドは Tab（DataContext）差し替えのたびに、カーソル位置のセルへキーボードフォーカスを
+        // 奪う（VGrid.Editor の DataGridManager.UpdateDataGridSelection → cell.Focus()）。本ビューは
+        // エディタ本文の従属プレビューなので、ユーザーがエディタで打鍵 → BufferChanged 由来で再パース
+        // されるたびにフォーカスを奪われると、エディタから抜けてしまう。VGrid が用意する
+        // IsRestoringSession（＝プログラム的ロード時はフォーカスを取らない）を Tab 差し替えの間だけ
+        // 立てて抑止する。DataContextChanged は setter 内で同期発火し、その時点の値が捕捉されるので
+        // 直後に戻してよい。
+        _view.IsRestoringSession = true;
+        try
+        {
+            _view.Tab = new TabItemViewModel(filePath, document, vimState, gridViewModel);
+        }
+        finally
+        {
+            _view.IsRestoringSession = false;
+        }
         _document = document;
         _lastPath = filePath;
         _lastText = text;
