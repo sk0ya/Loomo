@@ -143,8 +143,9 @@ public partial class ShellWindow
         // コンポーザ本文とペグボードはワークスペース毎（どちらも軽量・同期）。
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
-        LoadPrograms(workspace.Programs);
-        PrepareStageSnapshot(workspace.Stage);
+        LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
+        LoadEnabledSessions(workspace.EnabledSessions);
+        PrepareStageSnapshot(ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         ApplyPaneLayout(workspace.PaneLayout);
         // 跨ぎ最大化中のワークスペース切替：切替先のレイアウトを基準に列振り分けを適用し直す。
@@ -174,6 +175,15 @@ public partial class ShellWindow
 
         SaveActiveWorkspaceSnapshot();
     }
+
+    /// <summary>復元時のモード判定。<see cref="WorkspaceSnapshot.Mode"/> が正。null の旧データは
+    /// かつてのステージ ON をソロ、それ以外（タイル／旧配置）をレイアウトへ移行する。</summary>
+    private static bool ResolveSoloMode(WorkspaceSnapshot ws) => ws.Mode switch
+    {
+        DisplayMode.Solo => true,
+        DisplayMode.Layout => false,
+        _ => ws.Stage?.IsActive == true,
+    };
 
     private static void RestoreEditor(VimEditorControl editor, EditorTabSnapshot snapshot)
     {
@@ -513,26 +523,18 @@ public partial class ShellWindow
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
+        snapshot.Mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        snapshot.EnabledSessions = _enabledSessions.ToList();
         snapshot.Stage = new StageSnapshot
         {
             IsActive = _stageActive,
             Pane = _stageActive ? _stagePane : null,
-            Subs = _stageActive
-                ? _stageSubs.Select(s => new StageSubSnapshot { Kind = s.Kind, Dock = s.Dock, Weight = s.Weight }).ToList()
-                : new(),
-            RightFraction = _stageActive ? _stageRightFraction : 0,
-            BottomFraction = _stageActive ? _stageBottomFraction : 0,
-            ProgramName = _stageActive ? _activeProgramName : null,
             Overview = _stageActive && _overviewActive
         };
-        snapshot.Programs = _programs.Select(p => new StageProgram
-        {
-            Name = p.Name,
-            Main = p.Main,
-            Subs = p.Subs.Select(s => new StageSubSnapshot { Kind = s.Kind, Dock = s.Dock, Weight = s.Weight }).ToList(),
-            RightFraction = p.RightFraction,
-            BottomFraction = p.BottomFraction
-        }).ToList();
+        snapshot.Layouts = _layouts.Select(l => new SavedLayout { Name = l.Name, Tree = l.Tree }).ToList();
+        snapshot.ScratchLayout = _scratchLayout;
+        snapshot.ActiveLayoutIndex = _activeLayoutIndex;
+        snapshot.LayoutDirty = _layoutDirty;
 
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
         {

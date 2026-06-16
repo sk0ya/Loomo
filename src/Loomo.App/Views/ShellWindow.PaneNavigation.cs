@@ -240,9 +240,8 @@ public partial class ShellWindow
     /// </summary>
     private void FocusPaneInDirection(DropZone direction)
     {
-        // ステージモード中でも、Editor/Terminal の内部分割がある場合は vim 風に
-        // そのペイン内のビューポート移動を優先する。端まで来たら、配置モードの Main/Sub 間を移る。
-        // そこにも移動先がなければ、従来通りステージを切り替える。
+        // ソロモード中でも、Editor/Terminal の内部分割がある場合は vim 風に
+        // そのペイン内のビューポート移動を優先する。端まで来たら舞台を切り替える。
         if (_stageActive && _focusedRegion?.Pane is { } stageFocused
             && ViewsFor(stageFocused) is { LeafCount: > 1 } stageViews)
         {
@@ -253,22 +252,9 @@ public partial class ShellWindow
                 SyncActiveFromViewport(stageFocused);
                 return;
             }
-            else if (ProgramActive && FocusOnStagePaneInDirection(direction))
-            {
-                return;
-            }
         }
 
-        // 配置モード中は、舞台上の Main/Sub スロットを見た目の方向で移動する。
-        // 端で移動先がない場合はステージ切り替えへフォールバックする。
-        if (_stageActive && ProgramActive)
-        {
-            if (!FocusOnStagePaneInDirection(direction))
-                CycleStage(StageCycleDirection(direction));
-            return;
-        }
-
-        // 単一ステージ中の h/j/k/l は「舞台の転換」（並び順で前後のペインへ）と読み替える。
+        // ソロモード中の h/j/k/l は「舞台の転換」（並び順で前後のペインへ）と読み替える。
         if (_stageActive)
         {
             CycleStage(StageCycleDirection(direction));
@@ -326,73 +312,6 @@ public partial class ShellWindow
 
     private static int StageCycleDirection(DropZone direction)
         => direction is DropZone.Below or DropZone.Right ? 1 : -1;
-
-    /// <summary>ステージ配置モードの Main/Sub スロット間で、指定方向の最寄りペインへフォーカスする。</summary>
-    private bool FocusOnStagePaneInDirection(DropZone direction)
-    {
-        if (!_stageActive || !ProgramActive)
-            return false;
-
-        var targets = StageFocusTargets().ToList();
-        if (targets.Count == 0)
-            return false;
-
-        var originPane = _focusedRegion?.Pane is { } pane && OnStage(pane) ? pane : _stagePane;
-        var originIndex = targets.FindIndex(t => t.Kind == originPane);
-        if (originIndex < 0)
-            originIndex = 0;
-
-        var (originKind, from) = targets[originIndex];
-        var fromCenter = new Point(from.X + from.Width / 2, from.Y + from.Height / 2);
-        PaneKind? best = null;
-        var bestScore = double.MaxValue;
-
-        foreach (var (kind, rect) in targets)
-        {
-            if (kind == originKind)
-                continue;
-
-            const double tolerance = 1.0;
-            var inDirection = direction switch
-            {
-                DropZone.Left => rect.X + rect.Width <= from.X + tolerance,
-                DropZone.Right => rect.X >= from.X + from.Width - tolerance,
-                DropZone.Above => rect.Y + rect.Height <= from.Y + tolerance,
-                _ => rect.Y >= from.Y + from.Height - tolerance,
-            };
-            if (!inDirection)
-                continue;
-
-            var center = new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
-            var (axis, perpendicular) = direction is DropZone.Left or DropZone.Right
-                ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
-                : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
-            var score = axis + perpendicular * 2;
-            if (score < bestScore)
-            {
-                bestScore = score;
-                best = kind;
-            }
-        }
-
-        if (best is not { } next)
-            return false;
-
-        FocusPane(next);
-        return true;
-    }
-
-    /// <summary>ステージ配置モードでフォーカス移動対象になる Main/Sub スロットを矩形付きで列挙する。</summary>
-    private IEnumerable<(PaneKind Kind, Rect Rect)> StageFocusTargets()
-    {
-        if (_mainSlotElement is { } main && BoundsIn(PaneHost, main) is { } mainRect)
-            yield return (_stagePane, mainRect);
-
-        foreach (var (index, element) in _subSlotElements)
-            if (index >= 0 && index < _stageSubs.Count
-                && BoundsIn(PaneHost, element) is { } rect)
-                yield return (_stageSubs[index].Kind, rect);
-    }
 
     /// <summary>ナビゲーション候補（表示中ペイン＋サイドバー）を矩形付きで列挙する。ペインを先頭に並べる。</summary>
     private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets()
@@ -521,21 +440,10 @@ public partial class ShellWindow
     /// <summary>指定ペインのアクティブな中身へキーボードフォーカスを移す。</summary>
     private void FocusPane(PaneKind kind)
     {
-        // ステージモード中は、フォーカス対象を舞台へ立てる（AI がファイルを開いた・
-        // 差分を出した等の既存フローがそのまま「舞台の自動転換」になる）。配置モード中は
-        // 主役を崩さず、舞台外のペインだけサブとして迎える（既に在台なら何もしない）。
-        if (_stageActive)
-        {
-            if (ProgramActive)
-            {
-                if (!OnStage(kind))
-                    AddSub(kind, StageDock.Right);
-            }
-            else if (kind != _stagePane)
-            {
-                SetStagePane(kind);
-            }
-        }
+        // ソロモード中は、フォーカス対象を舞台へ立てる（AI がファイルを開いた・
+        // 差分を出した等の既存フローがそのまま「舞台の自動転換」になる）。
+        if (_stageActive && kind != _stagePane)
+            SetStagePane(kind);
         _focusedRegion = FocusTarget.Of(kind);
         switch (kind)
         {

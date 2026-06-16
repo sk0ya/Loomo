@@ -124,6 +124,12 @@ public partial class ShellWindow
             return;
         }
 
+        // 不変条件：Main（タイル）に出ている（非 Hidden の）リーフは必ず有効扱いにする。
+        // レイアウト切替や旧データ移行で、Main に出ているのにトグルが消灯…という不整合を防ぐ。
+        foreach (var leaf in AllLeaves())
+            if (!leaf.Hidden)
+                _enabledSessions.Add(leaf.Kind);
+
         UpdatePaneToggleStates();
 
         // ズーム中はツリーを保ったまま、対象ペイン1枚だけを全面表示する。
@@ -134,6 +140,7 @@ public partial class ShellWindow
                 zoomElement.Visibility = Visibility.Visible;
                 PaneHost.Children.Add(zoomElement);
                 ScheduleBrowserRealize(_activeBrowserTab);
+                ScheduleLayoutWings();
                 return;
             }
             _zoomedPane = null; // 対象が隠れた/消えていたらズーム解除して通常描画へ
@@ -151,6 +158,8 @@ public partial class ShellWindow
 
         // Browser ペインが（再）表示されたら、遅延していたアクティブタブの WebView2 を実体化する。
         ScheduleBrowserRealize(_activeBrowserTab);
+        // 袖（ミニチュア）はレイアウトモードでも常設。レイアウト確定後にライブ実体から組み直す。
+        ScheduleLayoutWings();
     }
 
     /// <summary>
@@ -241,7 +250,7 @@ public partial class ShellWindow
         // ホバーでアクセント色に光らせ、「ここを掴める」ことを明示する。
         splitter.MouseEnter += (_, _) => splitter.Background = accent;
         splitter.MouseLeave += (_, _) => splitter.Background = border;
-        splitter.DragCompleted += (_, _) => SaveActiveWorkspaceSnapshot();
+        splitter.DragCompleted += (_, _) => { MarkLayoutDirty(); SaveActiveWorkspaceSnapshot(); };
         splitter.MouseDoubleClick += (_, e) => { EqualizeSiblings(split); e.Handled = true; };
         return splitter;
     }
@@ -251,8 +260,19 @@ public partial class ShellWindow
     {
         foreach (var child in split.Children)
             child.Weight = 1;
+        MarkLayoutDirty();
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>レイアウトモードでタイル配置を編集したら、現在の保存レイアウトから「未保存」へ印を付ける
+    /// （次の Ctrl+T 巡回でスクラッチへ退避される）。ソロモードでは何もしない。</summary>
+    private void MarkLayoutDirty()
+    {
+        if (_stageActive || _layoutDirty)
+            return;
+        _layoutDirty = true;
+        UpdateModeButtons();
     }
 
     /// <summary>フォーカス中（無ければ最初の可視）ペインのズームをトグルする。
@@ -392,18 +412,9 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // ステージモード中はタイル前提の操作（ドラッグ移動・ダブルクリックズーム）を無効化する。
-        // ただし配置モードでは、ペイン自身のタイトルバーを掴んでスロットを入れ替えられるようにする。
+        // ソロモード中はタイル前提の操作（ドラッグ移動・ダブルクリックズーム）を無効化する（舞台は1枚）。
         if (_stageActive)
-        {
-            if (ProgramActive && sender is FrameworkElement { Tag: string stag }
-                && Enum.TryParse<PaneKind>(stag, out var skind) && OnStage(skind))
-            {
-                _stageDragStart = e.GetPosition(null);
-                _stageDragArmed = true;
-            }
             return;
-        }
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
 
@@ -428,23 +439,9 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
     {
-        // 配置モードでは、ペインのタイトルバーをしきい値超えで掴んだらスロット入れ替えのドラッグを開始する。
+        // ソロモード中はタイル前提の並べ替えドラッグを無効化する。
         if (_stageActive)
-        {
-            if (ProgramActive && _stageDragArmed && e.LeftButton == MouseButtonState.Pressed
-                && sender is FrameworkElement { Tag: string stag }
-                && Enum.TryParse<PaneKind>(stag, out var skind) && OnStage(skind))
-            {
-                var sp = e.GetPosition(null);
-                if (Math.Abs(sp.X - _stageDragStart.X) >= SystemParameters.MinimumHorizontalDragDistance
-                    || Math.Abs(sp.Y - _stageDragStart.Y) >= SystemParameters.MinimumVerticalDragDistance)
-                {
-                    _stageDragArmed = false;
-                    BeginStageDrag((UIElement)sender, SlotForKind(skind));
-                }
-            }
             return;
-        }
         if (_paneDragging || !_paneDragArmed)
             return;
         if (e.LeftButton != MouseButtonState.Pressed)
@@ -469,7 +466,6 @@ public partial class ShellWindow
 
     private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e)
     {
-        _stageDragArmed = false;
         DisarmTitleDrag();
     }
 
@@ -712,6 +708,7 @@ public partial class ShellWindow
             _spanSavedRoot = MoveInTree(savedRoot, source, target, zone);
 
         _root = Normalize(_root);
+        MarkLayoutDirty();
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }
@@ -734,12 +731,6 @@ public partial class ShellWindow
     {
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
-        // 配置モードでサブの「—」は、タイル用の非表示ではなく舞台から降ろす。
-        if (_stageActive && ProgramActive && _stageSubs.Any(s => s.Kind == kind))
-        {
-            RemoveSub(kind);
-            return;
-        }
         SetPaneVisible(kind, false);
     }
 
@@ -754,16 +745,16 @@ public partial class ShellWindow
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
-            SetPaneVisible(kind, !IsPaneVisible(kind));
+            ToggleSessionEnabled(kind);
 
-        // SetPaneVisible が何もしなかった場合（最後の1枚は隠さない等）も、クリックで
+        // ToggleSessionEnabled が何もしなかった場合（最後の1枚は無効化できない等）も、クリックで
         // 勝手に反転した IsChecked を実状態へ戻す必要があるためここでも同期する。
         UpdatePaneToggleStates();
     }
 
     /// <summary>
-    /// タイトルバーのペイントグルを実際の表示状態へ同期する（IsChecked＝表示中→アクセント色）。
-    /// ツールチップも「表示／隠す」を状態に合わせて切り替える。
+    /// タイトルバーのペイントグルを実際の有効状態へ同期する（IsChecked＝有効→アクセント色）。
+    /// ツールチップも「有効化／無効化」を状態に合わせて切り替える。
     /// </summary>
     private void UpdatePaneToggleStates()
     {
@@ -771,9 +762,9 @@ public partial class ShellWindow
         {
             if (child is not ToggleButton { Tag: string tag } button || !Enum.TryParse<PaneKind>(tag, out var kind))
                 continue;
-            var visible = IsPaneVisible(kind);
-            button.IsChecked = visible;
-            button.ToolTip = $"{PaneLabel(kind)} を{(visible ? "隠す" : "表示")}";
+            var enabled = IsSessionEnabled(kind);
+            button.IsChecked = enabled;
+            button.ToolTip = $"{PaneLabel(kind)} を{(enabled ? "無効化" : "有効化")}";
         }
     }
 
@@ -805,6 +796,13 @@ public partial class ShellWindow
     {
         var leaf = FindLeaf(kind);
         var currentlyVisible = leaf is { Hidden: false };
+
+        // Main に出るペインは必ず有効扱いにする（トグル以外の自動表示＝EditorSupport・ターミナル
+        // セット等から呼ばれても「Main に出ている＝無効」という不整合を生まない）。隠す側では
+        // 有効状態は変えない（隠れた有効セッションは袖へ回る）。
+        if (visible)
+            _enabledSessions.Add(kind);
+
         if (currentlyVisible == visible)
             return;
 
@@ -856,6 +854,7 @@ public partial class ShellWindow
 
         _zoomedPane = null; // 表示構成が変わるのでズームは解除する
         _root = Normalize(_root);
+        MarkLayoutDirty();
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }

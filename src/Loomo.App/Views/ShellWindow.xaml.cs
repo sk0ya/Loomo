@@ -308,7 +308,8 @@ public partial class ShellWindow : Window
                 await SwitchWorkspaceAsync(workspace, captureCurrent: false, deferHydration: true);
             else
             {
-                PrepareStageSnapshot(StageSnapshot.Default());
+                LoadLayouts(System.Array.Empty<SavedLayout>(), scratch: null, activeIndex: -1, dirty: false);
+                PrepareStageSnapshot(solo: true, StageSnapshot.Default());
                 ApplyDefaultLayout();
                 BrowserAddressBox.Text = DefaultBrowserUrl;
                 // WebView2 の生成は遅延（Browser ペインが見えたら背景で実体化する）。

@@ -10,64 +10,27 @@ using sk0ya.Loomo.App.Services;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// ShellWindow: ステージモード（舞台＋袖）。1ペインを全面の「舞台」に立て、残りのペインは
+/// ShellWindow: ソロモード（舞台＋袖）。1ペインを全面の「舞台」に立て、残りのペインは
 /// 右端の「袖」でペインを VisualBrush として縮小表示する。袖カードは実コントロールを
 /// 子に持たず、元の表示を描くだけなので、袖表示のためにペインを動かさない。
-/// タイル表示（PaneHost）とは表示の差し替えだけで切替わり、レイアウトツリー（_root）には
-/// 一切触れない — 解除すれば元のタイル配置・比率へそのまま戻る。
+/// レイアウトモード（タイル表示／PaneHost）とは表示の差し替えだけで切替わり、
+/// レイアウトツリー（_root）には一切触れない — レイアウトへ戻せば元のタイル配置・比率がそのまま戻る。
 /// 「俯瞰」は全セッションをカードで一望する Exposé 風レイヤ（クリックで舞台へダイブ）。
-/// ステージ中に <c>FocusPane</c> が呼ばれると対象が自動で舞台に立つので、AI がファイルを
+/// ソロ中に <c>FocusPane</c> が呼ばれると対象が自動で舞台に立つので、AI がファイルを
 /// 開いた・差分を出した等の既存フローがそのまま「舞台の自動転換」になる。
 /// </summary>
 public partial class ShellWindow
 {
-    // ===== ステージモード（舞台＋袖＋俯瞰） =====
+    // ===== ソロモード（舞台＋袖＋俯瞰） =====
 
-    /// <summary>ステージモード中か。中は RebuildPaneLayout がステージの組み直しへ委譲される。</summary>
+    /// <summary>ソロモード中か（true＝ソロ、false＝レイアウトモード）。中は RebuildPaneLayout がステージの組み直しへ委譲される。</summary>
     private bool _stageActive;
-    /// <summary>舞台に立っている主役ペイン。</summary>
+    /// <summary>舞台に立っているペイン。</summary>
     private PaneKind _stagePane;
-    /// <summary>配置モードのサブ（最大2枚・順序＝Sub1,Sub2）。空なら従来の単一ステージ。</summary>
-    private readonly List<StageSub> _stageSubs = new();
 
-    /// <summary>配置モード中か（サブが1枚以上立っている）。</summary>
-    private bool ProgramActive => _stageSubs.Count > 0;
-    /// <summary>舞台に立っているペイン（主役＋サブ）。</summary>
-    private IEnumerable<PaneKind> OnStagePanes() => new[] { _stagePane }.Concat(_stageSubs.Select(s => s.Kind));
     /// <summary>指定ペインが舞台に立っているか。</summary>
-    private bool OnStage(PaneKind kind) => _stagePane == kind || _stageSubs.Any(s => s.Kind == kind);
-    /// <summary>現在の舞台状態を純ロジック用スナップショットへ。</summary>
-    private StageState CurrentStage() => new(_stagePane, _stageSubs.ToList());
-    /// <summary>純ロジックの結果を舞台状態へ書き戻す。</summary>
-    private void SetStageState(StageState state)
-    {
-        _stagePane = state.Main;
-        _stageSubs.Clear();
-        _stageSubs.AddRange(state.Subs);
-    }
+    private bool OnStage(PaneKind kind) => _stagePane == kind;
 
-    /// <summary>スロット境界の参照（ドロップオーバーレイのゾーン配置に使う）。</summary>
-    private FrameworkElement? _mainSlotElement;
-    private readonly List<(int Index, FrameworkElement Element)> _subSlotElements = new();
-
-    /// <summary>右ドック列／下ドック行が占める割合（リサイズで更新・0 なら既定）。</summary>
-    private const double DefaultStageFraction = 0.34;
-    private double _stageRightFraction = DefaultStageFraction;
-    private double _stageBottomFraction = DefaultStageFraction;
-    /// <summary>リサイズ後にトラック実寸を比率へ取り込むためのグリッド／並び参照。</summary>
-    private Grid? _stageOuterGrid;
-    private Grid? _stageTopGrid;
-    private Grid? _stageRightGrid;
-    private Grid? _stageBottomGrid;
-    private readonly List<StageSub> _stageRightOrder = new();
-    private readonly List<StageSub> _stageBottomOrder = new();
-    /// <summary>ドラッグ中の発生元スロット（袖／主役／サブ）。</summary>
-    private StageSlot? _stageDragOrigin;
-    private Point _stageDragStart;
-    private bool _stageDragArmed;
-    private bool _suppressNextWingClick;
-    /// <summary>舞台スロットのドラッグであることを示す DataObject フォーマット。</summary>
-    private const string StagePaneDragFormat = "Loomo.StagePane";
     /// <summary>俯瞰（全カード一望）レイヤを表示中か。</summary>
     private bool _overviewActive;
     /// <summary>リサイズ追従のデバウンス用タイマー。発火時に仮想寸法が変わっていたら組み直す。</summary>
@@ -76,6 +39,11 @@ public partial class ShellWindow
     private Size _stageBuiltSize;
     /// <summary>袖カードの VisualBrush が参照する、舞台サイズにレイアウト済みの非表示ホスト。</summary>
     private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
+
+    /// <summary>有効なセッション（タイトルバーの表示トグルが ON のもの）。タイル配置（<c>_root</c>）とは独立した集合で、
+    /// 通常はタイルより広い。Main に出ている有効セッションはそのまま Main に、Main に出ていない有効セッションは
+    /// 袖（ミニチュア）に出る（＝有効セッションは Main と袖のどちらかに必ず出る）。無効なセッションはどちらにも出さない。</summary>
+    private readonly HashSet<PaneKind> _enabledSessions = new();
     /// <summary>袖カードの幅。高さは舞台の縦横比から導出される。</summary>
     private const double WingCardWidth = 180;
     /// <summary>俯瞰カードの幅。</summary>
@@ -94,31 +62,22 @@ public partial class ShellWindow
         // PaneKind.Trace,
     ];
 
-    private void OnToggleStageMode(object sender, RoutedEventArgs e)
+    /// <summary>ソロ⇄レイアウトの切替（タイトルバーのトグル／Ctrl+Shift+T）。</summary>
+    private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
+
+    /// <summary>ソロ⇄レイアウトを切り替える。</summary>
+    private void ToggleDisplayMode()
     {
         if (_stageActive)
-            ExitStageMode();
+            ExitStageMode();   // → レイアウトモード
         else
-            EnterStageMode();
-    }
-
-    /// <summary>配置をやめてステージ（舞台1枚）へ戻す。サブを全部降ろすだけで主役は据え置き。
-    /// タイトルバーの配置ドロップダウンの「なし」から呼ぶ。</summary>
-    private void StopProgram()
-    {
-        if (!_stageActive || !ProgramActive)
-            return;
-        _stageSubs.Clear();
-        _activeProgramName = null;
-        UpdateProgramButton();
-        RebuildStage();
-        FocusPane(_stagePane);
-        SaveActiveWorkspaceSnapshot();
+            EnterStageMode();  // → ソロモード
     }
 
     private void EnterStageMode()
         => EnterStageMode(null);
 
+    /// <summary>レイアウトモードからソロモード（単一ステージ）へ入る。</summary>
     private void EnterStageMode(PaneKind? pane)
     {
         if (_stageActive)
@@ -126,8 +85,6 @@ public partial class ShellWindow
         _stageActive = true;
         _overviewActive = false;
         _zoomedPane = null;
-        _stageSubs.Clear();   // 入場は単一ステージから（配置は袖ドラッグ／保存配置で立てる）
-        _stageRightFraction = _stageBottomFraction = DefaultStageFraction;
         _stagePane = pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
             : _focusedRegion?.Pane
@@ -136,10 +93,8 @@ public partial class ShellWindow
         PaneHost.Opacity = 0;
         PaneHost.IsHitTestVisible = false;
         StageHost.Visibility = Visibility.Visible;
-        // ステージ中はタイトルバーの表示トグルを畳み、舞台＋サムネイルカードの表示へ寄せる。
-        PaneToggleBar.Visibility = Visibility.Collapsed;
         StageHost.SizeChanged += OnStageHostSizeChanged;
-        UpdateProgramButton();
+        UpdateModeButtons();
         RebuildStage();
         FocusPane(_stagePane);
         SaveActiveWorkspaceSnapshot();
@@ -153,7 +108,6 @@ public partial class ShellWindow
 
         _stageActive = false;
         _overviewActive = false;
-        _stageSubs.Clear();
         StageHost.SizeChanged -= OnStageHostSizeChanged;
         _stageResizeTimer?.Stop();
         DetachPaneElements();
@@ -167,42 +121,31 @@ public partial class ShellWindow
         PaneHost.Opacity = 1;
         PaneHost.IsHitTestVisible = true;
         PaneToggleBar.Visibility = Visibility.Visible;
-        UpdateProgramButton();
+        UpdateModeButtons();
     }
 
     /// <summary>
-    /// ワークスペース復元時、ペインレイアウト適用前にステージ表示状態だけ先に立てる。
+    /// ワークスペース復元時、ペインレイアウト適用前にソロ表示状態だけ先に立てる。
     /// これにより ApplyPaneLayout がタイル表示を描かず、最初からステージとして組み直す。
     /// </summary>
-    private void PrepareStageSnapshot(StageSnapshot? snapshot)
+    private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot)
     {
         ClearStageModeForWorkspaceSwitch();
-        snapshot ??= StageSnapshot.Default();
-
-        if (snapshot?.IsActive != true)
+        if (!solo)
             return;
 
+        snapshot ??= StageSnapshot.Default();
         _stageActive = true;
         _overviewActive = snapshot.Overview;   // 俯瞰を開いたまま離れたら俯瞰のまま戻る
         _zoomedPane = null;
         _stagePane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
             : PaneKind.Editor;
-        // 配置モードのサブを復元（主役と重複・未知ペインは捨てる）。
-        _stageSubs.Clear();
-        foreach (var sub in snapshot.Subs)
-            if (sub.Kind != _stagePane && _paneElements.ContainsKey(sub.Kind)
-                && _stageSubs.All(s => s.Kind != sub.Kind) && _stageSubs.Count < StageProgramLogic.MaxSubs)
-                _stageSubs.Add(new StageSub(sub.Kind, sub.Dock, sub.Weight));
-        _stageRightFraction = snapshot.RightFraction;
-        _stageBottomFraction = snapshot.BottomFraction;
-        _activeProgramName = snapshot.ProgramName;
         PaneHost.Opacity = 0;
         PaneHost.IsHitTestVisible = false;
         StageHost.Visibility = Visibility.Visible;
-        PaneToggleBar.Visibility = Visibility.Collapsed;
         StageHost.SizeChanged += OnStageHostSizeChanged;
-        UpdateProgramButton();
+        UpdateModeButtons();
     }
 
     /// <summary>タブ実体の復元後に、ステージの内容とフォーカスを確定する。</summary>
@@ -221,13 +164,13 @@ public partial class ShellWindow
         }));
     }
 
+    /// <summary>ソロモードを抜けてレイアウトモード（タイル表示）へ戻す。</summary>
     private void ExitStageMode()
     {
         if (!_stageActive)
             return;
         _stageActive = false;
         _overviewActive = false;
-        _stageSubs.Clear();
         StageHost.SizeChanged -= OnStageHostSizeChanged;
         _stageResizeTimer?.Stop();
         DetachPaneElements();
@@ -241,7 +184,7 @@ public partial class ShellWindow
         PaneHost.Opacity = 1;
         PaneHost.IsHitTestVisible = true;
         PaneToggleBar.Visibility = Visibility.Visible;
-        UpdateProgramButton();
+        UpdateModeButtons();
         RebuildPaneLayout();
         FocusPane(_stagePane);
         // タイル表示でターミナルが見えるようになったなら、未確認の結果は「見た」扱い。
@@ -263,36 +206,20 @@ public partial class ShellWindow
     }
 
     /// <summary>
-    /// 舞台のものを切り替える（Ctrl+T）。ステージ未開始ならまず開始して現ペインを舞台へ立て、
-    /// 開始済みなら並び順で前後のペインへ転換する＝1キーで舞台入り→歩いて回せる。
+    /// Ctrl+T：現在のモードに応じた巡回。ソロは舞台のものを並び順で前後へ転換し、
+    /// レイアウトは保存レイアウトを巡回する（<see cref="CycleLayout"/>）。
     /// </summary>
-    private void CycleOrEnterStage(int direction)
+    private void CycleInActiveMode(int direction)
     {
         if (_stageActive)
             CycleStage(direction);
         else
-            EnterStageMode();
+            CycleLayout(direction);
     }
 
-    /// <summary>舞台を並び順で前後のペインへ転換する（ステージ中の Ctrl+T / Ctrl+W h/j/k/l）。
-    /// 配置モード中は主役を固定したまま、末尾サブを舞台外ペインの輪で送る。</summary>
+    /// <summary>舞台を並び順で前後のペインへ転換する（ソロ中の Ctrl+T / Ctrl+W h/j/k/l）。</summary>
     private void CycleStage(int direction)
     {
-        if (ProgramActive)
-        {
-            var before = _stageSubs[^1].Kind;
-            SetStageState(StageProgramLogic.NextSubCycle(CurrentStage(), StageOrder, direction));
-            var after = _stageSubs[^1].Kind;
-            RebuildStage();
-            if (after != before)
-            {
-                MarkPaneActivitySeen(after);
-                FocusPane(after);
-            }
-            SaveActiveWorkspaceSnapshot();
-            return;
-        }
-
         var index = Array.IndexOf(StageOrder, _stagePane);
         var next = StageOrder[((index < 0 ? 0 : index) + direction + StageOrder.Length) % StageOrder.Length];
         SetStagePane(next);
@@ -345,7 +272,83 @@ public partial class ShellWindow
         _stageResizeTimer.Start();
     }
 
-    /// <summary>ステージモードの画面を組み直す（舞台1枚＋袖カード、または俯瞰カード一覧）。</summary>
+    /// <summary>セッションが有効か（タイトルバーの表示トグルが ON）。タイル配置とは独立で、
+    /// 有効なら Main か袖のどちらかに必ず出る。無効ならどちらにも出さない。</summary>
+    private bool IsSessionEnabled(PaneKind kind) => _enabledSessions.Contains(kind);
+
+    /// <summary>そのセッションが Main（舞台／タイル）に実際に表示されているか。
+    /// ソロは舞台に立っている1枚、レイアウトはズーム中なら対象1枚・通常は可視リーフすべて。
+    /// 有効なのに Main に出ていないセッションは袖（ミニチュア）に出す（＝有効なら Main か袖のどちらか）。</summary>
+    private bool IsShownInMain(PaneKind kind)
+    {
+        if (_stageActive)
+            return !_overviewActive && OnStage(kind);
+        if (_zoomedPane is { } zoom)
+            return zoom == kind && IsPaneVisible(kind);
+        return IsPaneVisible(kind);
+    }
+
+    /// <summary>有効セッション集合を復元する（null／空の旧データは全セッション有効＝袖が常時にぎわう既定）。</summary>
+    private void LoadEnabledSessions(IEnumerable<PaneKind>? enabled)
+    {
+        _enabledSessions.Clear();
+        if (enabled is not null)
+            foreach (var kind in enabled)
+                if (_paneElements.ContainsKey(kind))
+                    _enabledSessions.Add(kind);
+        if (_enabledSessions.Count == 0)
+            foreach (var kind in StageOrder)
+                _enabledSessions.Add(kind);
+    }
+
+    /// <summary>タイトルバーのトグルでセッションの有効／無効を切り替える。
+    /// 有効化：レイアウトにタイル（隠れたリーフ）があれば Main へ戻し、無ければ袖（ミニチュア）に出す。
+    /// 無効化：Main に出ていれば隠して（最後の1枚は隠さない）どこにも出さない。</summary>
+    private void ToggleSessionEnabled(PaneKind kind)
+    {
+        if (_enabledSessions.Contains(kind))
+        {
+            // 無効化：Main に出ていれば隠す。最後の1枚は隠せないので、その場合は有効のまま据え置く。
+            if (IsPaneVisible(kind))
+            {
+                SetPaneVisible(kind, false);
+                if (IsPaneVisible(kind))
+                    return;
+            }
+            _enabledSessions.Remove(kind);
+            RebuildSessionsView();
+        }
+        else
+        {
+            _enabledSessions.Add(kind);
+            // レイアウトに在って隠れているタイルなら Main へ戻す（SetPaneVisible が再構築・保存まで行う）。
+            // タイルが無い（＝レイアウト未配置）なら袖に出すだけ。
+            if (FindLeaf(kind) is { Hidden: true })
+                SetPaneVisible(kind, true);
+            else
+                RebuildSessionsView();
+        }
+    }
+
+    /// <summary>有効セッションの変化を画面へ反映する（トグル状態・Main／袖の組み直し・保存）。
+    /// SetPaneVisible を経た経路は既に再構築済みなので、それ以外の経路から呼ぶ。</summary>
+    private void RebuildSessionsView()
+    {
+        UpdatePaneToggleStates();
+        if (_stageActive)
+            RebuildStage();
+        else
+        {
+            RebuildWings();
+            UpdateWingHostVisibility();
+        }
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>俯瞰に並べるセッション（有効なもの＋舞台に立っているもの）。</summary>
+    private IEnumerable<PaneKind> OverviewKinds() => StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
+
+    /// <summary>ソロモードの画面を組み直す（舞台1枚＋袖カード、または俯瞰カード一覧）。</summary>
     private void RebuildStage()
     {
         if (!_stageActive)
@@ -354,15 +357,9 @@ public partial class ShellWindow
         DetachPaneElements();
         StageArea.Children.Clear();
         StageSourceArea.Children.Clear();
-        WingStrip.Children.Clear();
         OverviewPanel.Children.Clear();
         _stageThumbnailHosts.Clear();
         _stageActivityBadges.Clear();
-        _mainSlotElement = null;
-        _subSlotElements.Clear();
-        _stageOuterGrid = _stageTopGrid = _stageRightGrid = _stageBottomGrid = null;
-        _stageRightOrder.Clear();
-        _stageBottomOrder.Clear();
 
         var virtualSize = StageVirtualSize();
         _stageBuiltSize = virtualSize;
@@ -371,26 +368,20 @@ public partial class ShellWindow
         if (_overviewActive)
         {
             OverviewLayer.Visibility = Visibility.Visible;
-            foreach (var kind in StageOrder)
+            foreach (var kind in OverviewKinds())
                 OverviewPanel.Children.Add(BuildSessionCard(
                     kind, OverviewCardWidth, virtualSize, isOverview: true));
-            ScheduleBrowserRealize(_activeBrowserTab);
-            return;
+        }
+        else
+        {
+            OverviewLayer.Visibility = Visibility.Collapsed;
+            // 舞台：主役を全面に立てる。
+            StageArea.Children.Add(BuildLiveSlot(_stagePane));
         }
 
-        OverviewLayer.Visibility = Visibility.Collapsed;
-
-        // 舞台：単一ステージなら主役を全面に、配置モードなら主役＋サブを格子に立てる。
-        if (ProgramActive)
-            StageArea.Children.Add(BuildProgramStage());
-        else
-            StageArea.Children.Add(BuildLiveSlot(_stagePane, isMain: true, subIndex: -1));
-
-        // 袖：舞台に立っていないペインをサムネイルカードとして並べる。
-        foreach (var kind in StageOrder.Where(k => !OnStage(k)))
-            WingStrip.Children.Add(BuildSessionCard(
-                kind, WingCardWidth, virtualSize, isOverview: false));
-
+        RebuildWings();
+        UpdatePaneToggleStates();
+        UpdateWingHostVisibility();
         ScheduleBrowserRealize(_activeBrowserTab);
 
         // 一時診断：LOOMO_STAGE_DEBUG=1 でレイアウト確定後の実寸を %TEMP% へ書き出す
@@ -398,10 +389,13 @@ public partial class ShellWindow
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(DumpStageDiagnostics));
     }
 
-    /// <summary>袖カードの描画元を舞台サイズでレイアウトする。</summary>
+    /// <summary>袖・俯瞰カードの描画元（実体ペイン）を舞台サイズでレイアウトする（ソロモード専用）。</summary>
     private void BuildStageThumbnailSources(Size virtualSize)
     {
-        foreach (var kind in StageOrder.Where(k => _overviewActive || !OnStage(k)))
+        var kinds = _overviewActive
+            ? OverviewKinds()
+            : StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k));
+        foreach (var kind in kinds)
         {
             var element = _paneElements[kind];
             element.Visibility = Visibility.Visible;
@@ -416,6 +410,81 @@ public partial class ShellWindow
             StageSourceArea.Children.Add(host);
             _stageThumbnailHosts[kind] = host;
         }
+    }
+
+    /// <summary>袖（ミニチュア）を組み直す。両モードとも「有効だが Main に出ていない」セッションを
+    /// 実体ペインのライブ縮小で並べる（Main に出ているもの・無効なものは出さない）。
+    /// ソロは舞台外の有効セッション、レイアウトはタイル未配置やズーム中の非ズームペインが対象。</summary>
+    private void RebuildWings()
+    {
+        WingStrip.Children.Clear();
+        if (_stageActive)
+        {
+            foreach (var kind in StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k)))
+                WingStrip.Children.Add(BuildSessionCard(kind, WingCardWidth, _stageBuiltSize, isOverview: false));
+        }
+        else
+        {
+            var virtualSize = BuildLayoutWingSources();
+            foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
+                WingStrip.Children.Add(BuildLayoutWingCard(kind, virtualSize, WingCardWidth));
+        }
+    }
+
+    /// <summary>レイアウトモードの袖カードの描画元を組む：有効だが Main に出ていないペイン
+    /// （タイル未配置・ズーム中の非ズームペイン等）を Main 領域サイズの非表示ホスト（StageSourceArea）へ
+    /// 寄せてレイアウトする。これらは PaneHost に居ないため、ライブ縮小の描画元として別途アレンジが要る。</summary>
+    private Size BuildLayoutWingSources()
+    {
+        StageSourceArea.Children.Clear();
+        _stageThumbnailHosts.Clear();
+
+        var width = PaneHost.ActualWidth > 0 ? PaneHost.ActualWidth : StageVirtualSize().Width;
+        var height = PaneHost.ActualHeight > 0 ? PaneHost.ActualHeight : StageVirtualSize().Height;
+        var virtualSize = new Size(Math.Max(width, 1), Math.Max(height, 1));
+
+        foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
+        {
+            var element = _paneElements[kind];
+            if (element.Parent is Panel parent)
+                parent.Children.Remove(element);
+            element.Visibility = Visibility.Visible;
+
+            var host = new Grid
+            {
+                Width = virtualSize.Width,
+                Height = virtualSize.Height,
+                Clip = new RectangleGeometry(new Rect(0, 0, virtualSize.Width, virtualSize.Height)),
+            };
+            host.Children.Add(element);
+            StageSourceArea.Children.Add(host);
+            _stageThumbnailHosts[kind] = host;
+        }
+        return virtualSize;
+    }
+
+    /// <summary>レイアウトモードで袖を組み直す。実体ペインはタイルに在るので、レイアウト確定後（Loaded）に
+    /// ライブ要素の実寸でカードを作る。</summary>
+    private void ScheduleLayoutWings()
+    {
+        if (_stageActive)
+            return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (_stageActive)
+                return;
+            RebuildWings();
+            UpdateWingHostVisibility();
+        }));
+    }
+
+    /// <summary>袖の列（WingHost）の表示と、俯瞰ボタン（ソロ専用）の表示を現状へ同期する。</summary>
+    private void UpdateWingHostVisibility()
+    {
+        if (WingHost is null)
+            return;
+        WingHost.Visibility = WingStrip.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>一時診断：袖カードと VisualBrush 描画元の実寸をログする。</summary>
@@ -438,25 +507,51 @@ public partial class ShellWindow
             System.IO.Path.Combine(System.IO.Path.GetTempPath(), "loomo-stage-diag.txt"), sb.ToString());
     }
 
+    /// <summary>ソロ／俯瞰のカード：舞台サイズにレイアウトした非表示ホスト（StageSourceArea）を縮小描画する。
+    /// クリックでそのセッションを舞台へ立てる。</summary>
+    private Border BuildSessionCard(PaneKind kind, double width, Size virtualSize, bool isOverview)
+    {
+        Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
+        return BuildCard(kind, width, source, virtualSize.Width, virtualSize.Height, isOverview,
+            () => { SetStagePane(kind); FocusPane(kind); });
+    }
+
+    /// <summary>レイアウトモードの袖カード：Main 領域サイズへ寄せた非表示ホスト（<see cref="BuildLayoutWingSources"/>）
+    /// をライブ縮小で描画する。クリックでそのペインを Main へ出す（ズーム中なら対象をズーム、そうでなければ
+    /// タイルが隠れていれば再表示してフォーカス）。</summary>
+    private Border BuildLayoutWingCard(PaneKind kind, Size virtualSize, double width)
+    {
+        Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
+        return BuildCard(kind, width, source, virtualSize.Width, virtualSize.Height, isOverview: false,
+            () =>
+            {
+                if (_zoomedPane is not null)
+                {
+                    if (IsPaneVisible(kind))
+                        ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
+                    return;
+                }
+                if (!IsPaneVisible(kind))
+                    SetPaneVisible(kind, true);   // タイル未配置／隠れていれば Main へ出す
+                FocusPane(kind);
+            });
+    }
+
     /// <summary>
-    /// セッションカードを作る。カード枠は舞台比率で固定し、VisualBrush で元ペインを描く。
-    /// 入りきらない部分はカードの Clip で切る。
+    /// セッションカードの共通部分を作る。カード枠は元の縦横比で固定し、VisualBrush で <paramref name="source"/>
+    /// を描く。入りきらない部分はカードの Clip で切る。
     /// </summary>
-    private Border BuildSessionCard(
-        PaneKind kind, double width, Size virtualSize, bool isOverview)
+    private Border BuildCard(
+        PaneKind kind, double width, Visual source, double sourceWidth, double sourceHeight,
+        bool isOverview, Action onClick)
     {
         var borderBrush = (Brush)FindResource("Border");
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && OnStage(kind);
 
-        var source = _stageThumbnailHosts.TryGetValue(kind, out var host)
-            ? host
-            : _paneElements[kind];
-        var sourceWidth = Math.Max(virtualSize.Width, 1);
-        var sourceHeight = Math.Max(virtualSize.Height, 1);
-        var scale = width / sourceWidth;
-        var height = Math.Round(virtualSize.Height * (width / virtualSize.Width));
-        var scaledHeight = sourceHeight * scale;
+        sourceWidth = Math.Max(sourceWidth, 1);
+        sourceHeight = Math.Max(sourceHeight, 1);
+        var height = Math.Round(width * sourceHeight / sourceWidth);
 
         var card = new Border
         {
@@ -468,7 +563,7 @@ public partial class ShellWindow
             BorderBrush = onStage ? accent : borderBrush,
             BorderThickness = new Thickness(1),
             Cursor = Cursors.Hand,
-            ToolTip = $"{PaneLabel(kind)} を舞台へ",
+            ToolTip = PaneLabel(kind),
             Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6),
         };
 
@@ -491,7 +586,7 @@ public partial class ShellWindow
                 ViewboxUnits = BrushMappingMode.Absolute,
                 Viewbox = new Rect(0, 0, sourceWidth, sourceHeight),
                 ViewportUnits = BrushMappingMode.Absolute,
-                Viewport = new Rect(0, 0, width, scaledHeight),
+                Viewport = new Rect(0, 0, width, height),
                 Stretch = Stretch.Fill,
                 AlignmentX = AlignmentX.Left,
                 AlignmentY = AlignmentY.Top,
@@ -534,23 +629,34 @@ public partial class ShellWindow
         card.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true; // 俯瞰レイヤの背景クリック（＝俯瞰を閉じる）と区別する
-            if (_suppressNextWingClick)   // 直前にドラッグが起きたクリックは無視
-            {
-                _suppressNextWingClick = false;
-                return;
-            }
-            SetStagePane(kind);
-            FocusPane(kind);
+            onClick();
         };
-        // 俯瞰でない袖カードは、舞台スロットへドラッグして入れ替え／配置化できるドラッグ元にする。
-        if (!isOverview)
-            ArmStageDrag(card, () => new WingSlot(kind));
         return card;
+    }
+
+    /// <summary>実体ペインを角丸枠に入れた舞台スロットを作る。ペイン自身のタイトルバーがあるので余計なヘッダは足さない。</summary>
+    private Border BuildLiveSlot(PaneKind kind)
+    {
+        var element = _paneElements[kind];
+        element.Visibility = Visibility.Visible;
+
+        var host = new Grid();
+        host.SizeChanged += (_, e) => host.Clip = new RectangleGeometry(new Rect(e.NewSize), 7, 7);
+        host.Children.Add(element);
+
+        return new Border
+        {
+            Background = (Brush)FindResource("Panel"),
+            BorderBrush = (Brush)FindResource("Border"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Child = host,
+        };
     }
 
     private void OnToggleOverview(object sender, RoutedEventArgs e) => ToggleOverview();
 
-    /// <summary>俯瞰（全セッションのカード一覧）をトグルする。ステージ中の Ctrl+W z でも入れる。</summary>
+    /// <summary>俯瞰（全セッションのカード一覧）をトグルする。ソロ中の Ctrl+W z でも入れる。</summary>
     private void ToggleOverview()
     {
         if (!_stageActive)
@@ -567,368 +673,5 @@ public partial class ShellWindow
             _overviewActive = false;
             RebuildStage();
         }
-    }
-
-    // ===== 配置モード：舞台の複数立て（主役＋サブ） =====
-
-    /// <summary>配置モードの舞台を組む：主役（左・大）＋右ドックのサブ列、下ドックのサブ行。
-    /// スロット間に GridSplitter を挟み、ドラッグで比率を変えられる（比率は永続化）。</summary>
-    private FrameworkElement BuildProgramStage()
-    {
-        var bottomSubs = _stageSubs.Where(s => s.Dock == StageDock.Bottom).ToList();
-        var rightSubs = _stageSubs.Where(s => s.Dock == StageDock.Right).ToList();
-        _stageRightOrder.AddRange(rightSubs);
-        _stageBottomOrder.AddRange(bottomSubs);
-
-        var rightFrac = StageFraction(_stageRightFraction);
-        var bottomFrac = StageFraction(_stageBottomFraction);
-
-        // 上段：主役（左・大）＋右サブ列。列スプリッターで主役／右列を伸縮。
-        var top = new Grid();
-        _stageTopGrid = top;
-        var mainSlot = BuildLiveSlot(_stagePane, isMain: true, subIndex: -1);
-        if (rightSubs.Count > 0)
-        {
-            AddTrack(top, true, new GridLength(1 - rightFrac, GridUnitType.Star), 120);
-            Grid.SetColumn(mainSlot, 0);
-            top.Children.Add(mainSlot);
-
-            AddTrack(top, true, new GridLength(SplitterThickness));
-            var splitter = NewStageSplitter(cols: true);
-            Grid.SetColumn(splitter, 1);
-            top.Children.Add(splitter);
-
-            AddTrack(top, true, new GridLength(rightFrac, GridUnitType.Star), 120);
-            var rightCol = BuildStackedSubs(rightSubs, cols: false);
-            Grid.SetColumn(rightCol, 2);
-            top.Children.Add(rightCol);
-        }
-        else
-        {
-            AddTrack(top, true, new GridLength(1, GridUnitType.Star));
-            Grid.SetColumn(mainSlot, 0);
-            top.Children.Add(mainSlot);
-        }
-
-        if (bottomSubs.Count == 0)
-            return top;
-
-        // 縦：上段＋下サブ行。行スプリッターで上下を伸縮。
-        var outer = new Grid();
-        _stageOuterGrid = outer;
-        AddTrack(outer, false, new GridLength(1 - bottomFrac, GridUnitType.Star), 100);
-        Grid.SetRow(top, 0);
-        outer.Children.Add(top);
-
-        AddTrack(outer, false, new GridLength(SplitterThickness));
-        var hsplitter = NewStageSplitter(cols: false);
-        Grid.SetRow(hsplitter, 1);
-        outer.Children.Add(hsplitter);
-
-        AddTrack(outer, false, new GridLength(bottomFrac, GridUnitType.Star), 100);
-        var bottomRow = BuildStackedSubs(bottomSubs, cols: true);
-        Grid.SetRow(bottomRow, 2);
-        outer.Children.Add(bottomRow);
-
-        return outer;
-    }
-
-    /// <summary>同じドックの複数サブを軸（cols=横並び／false=縦積み）に並べ、間にスプリッターを挟む。</summary>
-    private Grid BuildStackedSubs(List<StageSub> subs, bool cols)
-    {
-        var grid = new Grid();
-        if (cols)
-            _stageBottomGrid = grid;
-        else
-            _stageRightGrid = grid;
-
-        var min = cols ? 120.0 : 80.0;
-        for (var i = 0; i < subs.Count; i++)
-        {
-            if (i > 0)
-            {
-                AddTrack(grid, cols, new GridLength(SplitterThickness));
-                var splitter = NewStageSplitter(cols);
-                SetTrack(splitter, cols, i * 2 - 1);
-                grid.Children.Add(splitter);
-            }
-            var weight = subs[i].Weight <= 0 ? 1 : subs[i].Weight;
-            AddTrack(grid, cols, new GridLength(weight, GridUnitType.Star), min);
-            var slot = BuildLiveSlot(subs[i].Kind, isMain: false, subIndex: _stageSubs.IndexOf(subs[i]));
-            SetTrack(slot, cols, i * 2);
-            grid.Children.Add(slot);
-        }
-        return grid;
-    }
-
-    /// <summary>配置スロット間のスプリッター。ドラッグ完了で実寸を比率へ取り込み永続化する。</summary>
-    private GridSplitter NewStageSplitter(bool cols)
-    {
-        var border = (Brush)FindResource("Border");
-        var accent = (Brush)FindResource("Accent");
-        var splitter = new GridSplitter
-        {
-            Width = cols ? SplitterThickness : double.NaN,
-            Height = cols ? double.NaN : SplitterThickness,
-            ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Background = border,
-            Cursor = cols ? Cursors.SizeWE : Cursors.SizeNS,
-            ToolTip = "ドラッグでリサイズ",
-        };
-        splitter.MouseEnter += (_, _) => splitter.Background = accent;
-        splitter.MouseLeave += (_, _) => splitter.Background = border;
-        splitter.DragCompleted += (_, _) => { CaptureStageSizes(); SaveActiveWorkspaceSnapshot(); };
-        return splitter;
-    }
-
-    /// <summary>リサイズ後、各グリッドのトラック実寸を比率／サブ Weight へ取り込む（次の組み直しで保つ）。</summary>
-    private void CaptureStageSizes()
-    {
-        if (_stageTopGrid is { ColumnDefinitions.Count: >= 3 } top)
-        {
-            var sum = top.ColumnDefinitions[0].ActualWidth + top.ColumnDefinitions[2].ActualWidth;
-            if (sum > 0)
-                _stageRightFraction = top.ColumnDefinitions[2].ActualWidth / sum;
-        }
-        if (_stageOuterGrid is { RowDefinitions.Count: >= 3 } outer)
-        {
-            var sum = outer.RowDefinitions[0].ActualHeight + outer.RowDefinitions[2].ActualHeight;
-            if (sum > 0)
-                _stageBottomFraction = outer.RowDefinitions[2].ActualHeight / sum;
-        }
-        CaptureStackedWeights(_stageRightGrid, _stageRightOrder, cols: false);
-        CaptureStackedWeights(_stageBottomGrid, _stageBottomOrder, cols: true);
-    }
-
-    private void CaptureStackedWeights(Grid? grid, List<StageSub> order, bool cols)
-    {
-        if (grid is null || order.Count < 2)
-            return;
-        for (var i = 0; i < order.Count; i++)
-        {
-            var track = i * 2;
-            var size = cols
-                ? track < grid.ColumnDefinitions.Count ? grid.ColumnDefinitions[track].ActualWidth : 0
-                : track < grid.RowDefinitions.Count ? grid.RowDefinitions[track].ActualHeight : 0;
-            if (size <= 0)
-                continue;
-            var idx = _stageSubs.IndexOf(order[i]);
-            if (idx >= 0)
-                _stageSubs[idx] = _stageSubs[idx] with { Weight = size };
-        }
-    }
-
-    /// <summary>永続化された割合を妥当な範囲へ（0／範囲外は既定へ寄せる）。</summary>
-    private static double StageFraction(double value)
-        => value <= 0 ? DefaultStageFraction : Math.Clamp(value, 0.12, 0.88);
-
-    /// <summary>実体ペインを角丸枠に入れたスロットを作る。ペイン自身のタイトルバーを取手／降ろしに使うので
-    /// 余計なヘッダは足さない（主役は枠をアクセント色にして区別）。</summary>
-    private Border BuildLiveSlot(PaneKind kind, bool isMain, int subIndex)
-    {
-        var element = _paneElements[kind];
-        element.Visibility = Visibility.Visible;
-
-        var host = new Grid();
-        host.SizeChanged += (_, e) => host.Clip = new RectangleGeometry(new Rect(e.NewSize), 7, 7);
-        host.Children.Add(element);
-
-        var wrap = new Border
-        {
-            Background = (Brush)FindResource("Panel"),
-            BorderBrush = (Brush)FindResource(isMain ? "Accent" : "Border"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Child = host,
-        };
-
-        if (isMain)
-            _mainSlotElement = wrap;
-        else
-            _subSlotElements.Add((subIndex, wrap));
-        return wrap;
-    }
-
-    /// <summary>ペイン種別から、その実体が今いる舞台スロットを返す（ドラッグ元の決定に使う）。</summary>
-    private StageSlot SlotForKind(PaneKind kind)
-    {
-        if (kind == _stagePane)
-            return new MainSlot();
-        var index = _stageSubs.FindIndex(s => s.Kind == kind);
-        return index >= 0 ? new SubSlot(index) : new WingSlot(kind);
-    }
-
-    /// <summary>袖（舞台外）ペインを新しいサブとして迎える（配置モードへの突入も兼ねる）。</summary>
-    private void AddSub(PaneKind kind, StageDock dock)
-    {
-        if (!_stageActive)
-            return;
-        SetStageState(StageProgramLogic.AddSub(CurrentStage(), kind, dock));
-        UpdateProgramButton();
-        RebuildStage();
-        MarkPaneActivitySeen(kind);
-        SaveActiveWorkspaceSnapshot();
-    }
-
-    /// <summary>サブを降ろす。0 件になれば配置モード終了＝主役だけの単一ステージへ戻る。</summary>
-    private void RemoveSub(PaneKind kind)
-    {
-        if (!_stageActive)
-            return;
-        SetStageState(StageProgramLogic.RemoveSub(CurrentStage(), kind));
-        if (!ProgramActive)
-            _activeProgramName = null;   // Main 一人 → 配置終了
-        UpdateProgramButton();
-        RebuildStage();
-        FocusPane(_stagePane);
-        SaveActiveWorkspaceSnapshot();
-    }
-
-    // ===== ドラッグ＆ドロップ（袖／主役／サブの入れ替え） =====
-
-    /// <summary>要素を舞台スロットのドラッグ元にする（クリックと区別する小さなしきい値ガード付き）。</summary>
-    private void ArmStageDrag(UIElement source, Func<StageSlot> origin)
-    {
-        source.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            _stageDragStart = e.GetPosition(null);
-            _stageDragArmed = true;
-            _suppressNextWingClick = false;
-        };
-        source.PreviewMouseMove += (_, e) =>
-        {
-            if (!_stageDragArmed || e.LeftButton != MouseButtonState.Pressed)
-                return;
-            var p = e.GetPosition(null);
-            if (Math.Abs(p.X - _stageDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
-                && Math.Abs(p.Y - _stageDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
-                return;
-            _stageDragArmed = false;
-            _suppressNextWingClick = true;
-            BeginStageDrag(source, origin());
-        };
-        source.PreviewMouseLeftButtonUp += (_, _) => _stageDragArmed = false;
-    }
-
-    private void BeginStageDrag(UIElement source, StageSlot origin)
-    {
-        _stageDragOrigin = origin;
-        ShowStageDropOverlay();
-        try
-        {
-            DragDrop.DoDragDrop(source, new DataObject(StagePaneDragFormat, true), DragDropEffects.Move);
-        }
-        finally
-        {
-            _stageDragOrigin = null;
-            HideStageDropOverlay();
-        }
-    }
-
-    /// <summary>ドラッグ中だけ、スロット格子に重なる透明ドロップゾーンを立てる（ライブ操作の邪魔をしない）。</summary>
-    private void ShowStageDropOverlay()
-    {
-        StageDropOverlay.Children.Clear();
-        var canvas = new Canvas();
-        StageDropOverlay.Children.Add(canvas);
-
-        if (_mainSlotElement is { } mainEl && BoundsIn(StageDropOverlay, mainEl) is { } mainRect)
-        {
-            AddDropZone(canvas, mainRect, new MainSlot());   // 中央＝主役入れ替え
-            // 主役の右端／下端＝サブ追加（空きがあるときだけ）。
-            if (_stageSubs.Count < StageProgramLogic.MaxSubs)
-            {
-                var edge = Math.Min(72, Math.Min(mainRect.Width, mainRect.Height) / 3);
-                AddDropZone(canvas, new Rect(mainRect.Right - edge, mainRect.Top, edge, mainRect.Height),
-                    new NewSubSlot(StageDock.Right));
-                AddDropZone(canvas, new Rect(mainRect.Left, mainRect.Bottom - edge, mainRect.Width, edge),
-                    new NewSubSlot(StageDock.Bottom));
-            }
-        }
-
-        foreach (var (index, el) in _subSlotElements)
-            if (BoundsIn(StageDropOverlay, el) is { } r)
-                AddDropZone(canvas, r, new SubSlot(index));
-
-        StageDropOverlay.Visibility = Visibility.Visible;
-    }
-
-    private void HideStageDropOverlay()
-    {
-        StageDropOverlay.Visibility = Visibility.Collapsed;
-        StageDropOverlay.Children.Clear();
-    }
-
-    private static Rect? BoundsIn(Visual relativeTo, FrameworkElement element)
-    {
-        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
-            return null;
-        var topLeft = element.TransformToVisual(relativeTo).Transform(new Point(0, 0));
-        return new Rect(topLeft, new Size(element.ActualWidth, element.ActualHeight));
-    }
-
-    private void AddDropZone(Canvas canvas, Rect rect, StageSlot target)
-    {
-        var zone = new Border
-        {
-            Width = Math.Max(0, rect.Width),
-            Height = Math.Max(0, rect.Height),
-            Background = Brushes.Transparent,   // Transparent でもヒットする（null は不可）
-            BorderBrush = (Brush)FindResource("Accent"),
-            BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(6),
-            AllowDrop = true,
-        };
-        Canvas.SetLeft(zone, rect.X);
-        Canvas.SetTop(zone, rect.Y);
-
-        zone.DragEnter += (_, e) =>
-        {
-            if (!e.Data.GetDataPresent(StagePaneDragFormat))
-                return;
-            zone.Background = new SolidColorBrush(Color.FromArgb(0x40, 0x4F, 0x9D, 0xFF));
-            zone.BorderThickness = new Thickness(2);
-            e.Effects = DragDropEffects.Move;
-            e.Handled = true;
-        };
-        zone.DragOver += (_, e) =>
-        {
-            e.Effects = e.Data.GetDataPresent(StagePaneDragFormat) ? DragDropEffects.Move : DragDropEffects.None;
-            e.Handled = true;
-        };
-        zone.DragLeave += (_, _) =>
-        {
-            zone.Background = Brushes.Transparent;
-            zone.BorderThickness = new Thickness(0);
-        };
-        zone.Drop += (_, e) =>
-        {
-            e.Handled = true;
-            if (e.Data.GetDataPresent(StagePaneDragFormat))
-                HandleStageDrop(target);
-        };
-        canvas.Children.Add(zone);
-    }
-
-    private void HandleStageDrop(StageSlot target)
-    {
-        if (_stageDragOrigin is not { } from)
-            return;
-
-        var state = CurrentStage();
-        var next = target is NewSubSlot ns && from is WingSlot wing
-            ? StageProgramLogic.AddSub(state, wing.Kind, ns.Dock)
-            : StageProgramLogic.ApplySwap(state, from, target);
-
-        SetStageState(next);
-        if (!ProgramActive)
-            _activeProgramName = null;
-        UpdateProgramButton();
-        HideStageDropOverlay();
-        RebuildStage();
-        FocusPane(_stagePane);
-        SaveActiveWorkspaceSnapshot();
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace sk0ya.Loomo.App.Services;
@@ -76,11 +77,28 @@ public sealed class WorkspaceSnapshot
     /// </summary>
     public PaneNodeSnapshot? PaneLayout { get; set; }
 
-    /// <summary>ステージモードの表示状態。未保存の旧ワークスペースは既定でステージ表示にする。</summary>
+    /// <summary>表示モード（ソロ／レイアウト）。null の旧データは復元時に <see cref="Stage"/> から移行する。</summary>
+    public DisplayMode? Mode { get; set; }
+
+    /// <summary>有効なセッション（タイトルバーの表示トグルが ON のもの）。Main（タイル／舞台）と
+    /// 袖（ミニチュア）のどちらかに必ず出る。Main に出ていない有効セッションは袖に出るため、
+    /// この集合がタイル配置より広いほど袖は常時にぎわう。null／空の旧データは全セッション有効として復元する。</summary>
+    public List<PaneKind>? EnabledSessions { get; set; }
+
+    /// <summary>ソロモード（単一ステージ＋袖＋俯瞰）の表示状態。未保存の旧ワークスペースは既定でソロにする。</summary>
     public StageSnapshot? Stage { get; set; } = StageSnapshot.Default();
 
-    /// <summary>このワークスペースに保存した配置（舞台の Main＋Sub レイアウト）。タイトルバーから呼び出す。</summary>
-    public List<StageProgram> Programs { get; set; } = new();
+    /// <summary>レイアウトモードに保存した名前付きレイアウト（Ctrl+T 巡回に並ぶ）。空なら既定3種を投入する。</summary>
+    public List<SavedLayout> Layouts { get; set; } = new();
+
+    /// <summary>未保存作業を退避する単一スクラッチ枠（次の未保存編集で上書きされる）。</summary>
+    public PaneNodeSnapshot? ScratchLayout { get; set; }
+
+    /// <summary>レイアウト巡回の現在位置（-1＝スクラッチ、0..n＝<see cref="Layouts"/>[i]）。</summary>
+    public int ActiveLayoutIndex { get; set; } = -1;
+
+    /// <summary>現在のタイル配置が保存レイアウトから変化しているか（巡回で現配置をスクラッチへ退避するかの判定に使う）。</summary>
+    public bool LayoutDirty { get; set; }
 
     /// <summary>コマンドコンポーザ（§23.2）の本文。エディタタブ同様、全文をそのまま保存する。</summary>
     public string? ComposerText { get; set; }
@@ -141,53 +159,46 @@ public sealed class PaneNodeSnapshot
     public List<PaneNodeSnapshot> Children { get; set; } = new();
 }
 
-/// <summary>配置モードで Sub を舞台のどこへ立てるか（Main の右に縦積み／Main の下に横並び）。
-/// 値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
-public enum StageDock
+/// <summary>セッションの表示モード。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
+public enum DisplayMode
 {
-    Right,
-    Bottom
+    /// <summary>ソロ：1ペインを舞台に立て、他は袖でライブ待機（＋俯瞰）。</summary>
+    Solo,
+    /// <summary>レイアウト：自由タイルで組み、名前付きで保存・Ctrl+T で巡回する。</summary>
+    Layout
 }
 
-/// <summary>配置モードで舞台に立つ Sub 1枚（ペイン種別＋ドック位置＋同ドック内の比率）。</summary>
-public sealed class StageSubSnapshot
-{
-    public PaneKind Kind { get; set; }
-    public StageDock Dock { get; set; } = StageDock.Right;
-    /// <summary>同じドックに複数 Sub があるときの star 比率（リサイズで更新）。</summary>
-    public double Weight { get; set; } = 1;
-}
-
-/// <summary>保存した「配置」：舞台の Main＋Sub レイアウトに名前を付けたもの（ワークスペース毎）。</summary>
-public sealed class StageProgram
+/// <summary>レイアウトモードに保存した名前付きレイアウト（ワークスペース毎）。ツリーは <see cref="PaneNodeSnapshot"/>。</summary>
+public sealed class SavedLayout
 {
     public string Name { get; set; } = "";
-    /// <summary>主役（舞台で大きく立つ1枚）。</summary>
-    public PaneKind Main { get; set; }
-    /// <summary>サブ（最大2枚。順序＝Sub1, Sub2）。</summary>
-    public List<StageSubSnapshot> Subs { get; set; } = new();
-    /// <summary>右ドック列が占める横幅の割合（0 なら既定）。</summary>
-    public double RightFraction { get; set; }
-    /// <summary>下ドック行が占める高さの割合（0 なら既定）。</summary>
-    public double BottomFraction { get; set; }
+    /// <summary>このレイアウトのペイン配置ツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。</summary>
+    public PaneNodeSnapshot Tree { get; set; } = new();
+
+    /// <summary>新規ワークスペース／旧データ移行時に投入する既定レイアウト3種。</summary>
+    public static List<SavedLayout> Defaults() => new()
+    {
+        new SavedLayout { Name = "エディタ＋サポート", Tree = Columns(Leaf(PaneKind.Editor), Leaf(PaneKind.EditorSupport)) },
+        new SavedLayout { Name = "Web開発", Tree = Rows(Columns(Leaf(PaneKind.Editor), Leaf(PaneKind.Browser)), Leaf(PaneKind.Terminal)) },
+        new SavedLayout { Name = "差分レビュー", Tree = Rows(Leaf(PaneKind.Diff), Leaf(PaneKind.Git)) },
+    };
+
+    private static PaneNodeSnapshot Leaf(PaneKind kind) => new() { Kind = kind };
+    private static PaneNodeSnapshot Columns(params PaneNodeSnapshot[] children)
+        => new() { Orientation = "Columns", Children = children.ToList() };
+    private static PaneNodeSnapshot Rows(params PaneNodeSnapshot[] children)
+        => new() { Orientation = "Rows", Children = children.ToList() };
 }
 
+/// <summary>ソロモード（単一ステージ＋袖＋俯瞰）の表示状態。</summary>
 public sealed class StageSnapshot
 {
     public static StageSnapshot Default() => new() { IsActive = true, Pane = PaneKind.Editor };
 
-    /// <summary>ステージモード中か。</summary>
+    /// <summary>旧データ移行用：かつてステージモード中だったか（現在は <see cref="WorkspaceSnapshot.Mode"/> が正）。</summary>
     public bool IsActive { get; set; }
-    /// <summary>舞台に立っている主役ペイン。null なら復元時に既定選択へフォールバックする。</summary>
+    /// <summary>舞台に立っているペイン。null なら復元時に既定選択へフォールバックする。</summary>
     public PaneKind? Pane { get; set; }
-    /// <summary>配置モードのサブ（最大2枚）。空なら単一ステージ（従来）。</summary>
-    public List<StageSubSnapshot> Subs { get; set; } = new();
-    /// <summary>右ドック列が占める横幅の割合（0 なら既定）。リサイズで更新。</summary>
-    public double RightFraction { get; set; }
-    /// <summary>下ドック行が占める高さの割合（0 なら既定）。リサイズで更新。</summary>
-    public double BottomFraction { get; set; }
-    /// <summary>現在の配置名（保存配置から読み込み中なら）。null なら未保存の即席配置。</summary>
-    public string? ProgramName { get; set; }
     /// <summary>俯瞰（全カード一望）レイヤを開いたまま離れたか。</summary>
     public bool Overview { get; set; }
 }
