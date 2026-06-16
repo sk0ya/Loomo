@@ -38,6 +38,13 @@ public partial class ShellWindow
     /// </summary>
     private void OnPaneNavKey(object sender, KeyEventArgs e)
     {
+        // IME 合成中（変換確定の Enter・候補選択の矢印・Esc 等）は WPF が Key.ImeProcessed で届ける。
+        // この間はシェルのキー処理を一切行わず、フォーカス中のエディタ／IME に委ねる。さもないと
+        // 合成キーまで毎打 KeyboardResolver にかける無駄処理になり、さらにプレフィックス待ち・
+        // リサイズモード中は確定 Enter を奪って「確定文字が入らない」「キャレット位置がずれる」原因になる。
+        if (e.Key == Key.ImeProcessed)
+            return;
+
         if (IsPaletteOpen)
         {
             if (e.Key == Key.Escape)

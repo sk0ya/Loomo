@@ -30,12 +30,14 @@ public readonly record struct KeyChord(ModifierKeys Modifiers, Key Key)
 
     public override string ToString() => Format();
 
-    /// <summary>WPF のキーイベントから chord を作る。修飾子のみ・None は null（ジェスチャ未確定）。
-    /// Alt 併用時の <see cref="Key.System"/> は実キー（<see cref="KeyEventArgs.SystemKey"/>）へ読み替える。</summary>
+    /// <summary>WPF のキーイベントから chord を作る。修飾子のみ・None・IME 合成中は null（ジェスチャ未確定）。
+    /// Alt 併用時の <see cref="Key.System"/> は実キー（<see cref="KeyEventArgs.SystemKey"/>）へ読み替える。
+    /// IME 合成中のキーは <see cref="Key.ImeProcessed"/> で届くので、ジェスチャ・バインドキャプチャ
+    /// いずれの対象にもしない（合成を妨げない）。</summary>
     public static KeyChord? FromEvent(KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key == Key.None || IsModifierKey(key)) return null;
+        if (key == Key.None || key == Key.ImeProcessed || IsModifierKey(key)) return null;
         return new KeyChord(Keyboard.Modifiers, key);
     }
 
