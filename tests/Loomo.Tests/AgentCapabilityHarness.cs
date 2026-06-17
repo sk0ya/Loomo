@@ -110,7 +110,7 @@ public sealed class AgentCapabilityHarness
         var terminal = new TerminalService();
         terminal.SetWorkingDirectory(ws);
         var editor = new HeadlessEditor();
-        using var engine = new Phi4Engine();
+        using var engine = new OnnxGenAiEngine();
 
         var factory = new AiClientFactory(engine, settings, workspace);
         var tools = new ToolRegistry(new IAgentTool[]

@@ -26,7 +26,7 @@ namespace sk0ya.Loomo.App.Services;
 public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
 {
     private readonly AiSettings _settings;
-    private readonly Phi4Engine _engine;
+    private readonly OnnxGenAiEngine _engine;
     private readonly IWorkspaceService _workspace;
     private readonly ToolRegistry _tools;
     private readonly CancellationTokenSource _startupCts = new();
@@ -95,7 +95,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     public event Action? StateChanged;
 
     public LocalLlmWarmupService(
-        AiSettings settings, Phi4Engine engine, IWorkspaceService workspace, ToolRegistry tools)
+        AiSettings settings, OnnxGenAiEngine engine, IWorkspaceService workspace, ToolRegistry tools)
     {
         _settings = settings;
         _engine = engine;

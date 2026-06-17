@@ -12,7 +12,7 @@ using sk0ya.Loomo.Core.Tools;
 namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
-/// ONNX Runtime GenAI（<see cref="ILocalInferenceEngine"/> 実体は <see cref="Phi4Engine"/>）を使う
+/// ONNX Runtime GenAI（<see cref="ILocalInferenceEngine"/> 実体は <see cref="OnnxGenAiEngine"/>）を使う
 /// ローカルLLMクライアント。Ollama HTTP クライアントの置き換え。
 /// プロンプトを <see cref="Phi4PromptFormatter"/> で組み立ててエンジンへ渡し、本文をバッファして
 /// 終端でツール呼び出しを判定する（小型モデルは構造化 tool_calls を出さず本文に JSON 配列で書くため、
@@ -68,34 +68,44 @@ public sealed class OnnxGenAiClient : IAiClient
         // これによりオーケストレータは「実行できるツールから」順次（生成と重ねて）実行できる。
         var scanner = new StreamingToolCallScanner();
 
-        await foreach (var ev in channel.Reader.ReadAllAsync(ct))
+        try
         {
-            switch (ev)
+            await foreach (var ev in channel.Reader.ReadAllAsync(ct))
             {
-                case TextDelta td:
-                    // 本文はバッファし、終端でツール呼び出しか通常テキストかを判定してから確定出力する。
-                    // ただし生成中の様子は見えるよう、生のチャンクを揮発性の RawTextDelta として先に流す
-                    // （履歴には積まれず、UI の進捗プレビュー専用）。
-                    sawText = true;
-                    finalText.Append(td.Text);
-                    yield return new RawTextDelta(td.Text);
-                    // 加えて、完成したツール呼び出しがあれば即座に確定通知（早期ディスパッチ）。
-                    foreach (var tc in scanner.Feed(td.Text))
-                        yield return new ToolUseRequested(tc);
-                    break;
-                case AiUsageReported usage:
-                    yield return usage;     // 利用統計はそのまま通知（記録目的）
-                    break;
-                case AgentError e:
-                    error = e;
-                    break;
-                default:
-                    yield return ev;        // 念のため他イベントは素通し
-                    break;
+                switch (ev)
+                {
+                    case TextDelta td:
+                        // 本文はバッファし、終端でツール呼び出しか通常テキストかを判定してから確定出力する。
+                        // ただし生成中の様子は見えるよう、生のチャンクを揮発性の RawTextDelta として先に流す
+                        // （履歴には積まれず、UI の進捗プレビュー専用）。
+                        sawText = true;
+                        finalText.Append(td.Text);
+                        yield return new RawTextDelta(td.Text);
+                        // 加えて、完成したツール呼び出しがあれば即座に確定通知（早期ディスパッチ）。
+                        foreach (var tc in scanner.Feed(td.Text))
+                            yield return new ToolUseRequested(tc);
+                        break;
+                    case AiUsageReported usage:
+                        yield return usage;     // 利用統計はそのまま通知（記録目的）
+                        break;
+                    case AgentError e:
+                        error = e;
+                        break;
+                    default:
+                        yield return ev;        // 念のため他イベントは素通し
+                        break;
+                }
             }
         }
-
-        await genTask;      // 例外・後始末の観測
+        finally
+        {
+            // 停止（ct キャンセル）時も、エンジンの生成タスクが実際に終了する＝直列化セマフォ（_gate）が
+            // 解放されるまで待ってから抜ける。待たずに抜けると、停止後もエンジンの生成がバックグラウンドで
+            // ゲートを保持し続け、直後の新ターン（例: /clear して再送信）が _gate.WaitAsync で詰まって体感が
+            // 遅くなる。prefill はチャンク化済みで停止要求は1チャンク以内に観測されるため、この待ちは短い。
+            // GenerateAsync は全例外を内部処理し AgentError をチャネルへ流して正常完了するので、ここは投げない。
+            try { await genTask; } catch { /* 取消・後始末例外は握りつぶす（gen 側で報告済み） */ }
+        }
 
         if (error is not null)
         {

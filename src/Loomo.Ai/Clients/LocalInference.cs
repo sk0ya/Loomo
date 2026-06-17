@@ -17,7 +17,7 @@ public sealed record GenerationRequest(
 /// ローカル推論エンジン抽象。<see cref="OnnxGenAiClient"/> から呼ばれ、生成結果を
 /// <see cref="TextDelta"/>（逐次本文）と <see cref="AiUsageReported"/>（トークン数・所要）として
 /// チャネルへ流す。失敗時は <see cref="AgentError"/> を流す。常に writer を完了させる。
-/// 実体は <see cref="Phi4Engine"/>（ONNX Runtime GenAI）。テストでは差し替え可能。
+/// 実体は <see cref="OnnxGenAiEngine"/>（ONNX Runtime GenAI）。テストでは差し替え可能。
 /// </summary>
 public interface ILocalInferenceEngine
 {

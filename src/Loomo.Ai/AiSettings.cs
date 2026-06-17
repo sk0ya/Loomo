@@ -21,7 +21,7 @@ public sealed class AiSettings
     /// 有効なら起動時／ワークスペース確定時に Phi-4-mini をロードし、system プロンプト＋ツール定義の
     /// 安定プレフィックスを常駐 Generator へ prefill して KV キャッシュを温める（初回ターンの prefill を
     /// 払い直さず体感が速くなる）。暖機の実行中は AI への指示を受け付けない
-    /// （<see cref="Clients.Phi4Engine"/> がモデルロード・prefill 中で占有されるため）。
+    /// （<see cref="Clients.OnnxGenAiEngine"/> がモデルロード・prefill 中で占有されるため）。
     /// 無効にすると暖機を一切行わず、最初のAIターンで通常どおりロード／prefill する。</summary>
     public bool WarmupEnabled { get; set; } = true;
 

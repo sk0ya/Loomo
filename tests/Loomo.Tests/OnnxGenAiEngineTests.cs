@@ -3,7 +3,7 @@ using sk0ya.Loomo.Ai.Clients;
 
 namespace sk0ya.Loomo.Tests;
 
-public class Phi4EngineTests
+public class OnnxGenAiEngineTests
 {
     [Fact]
     public void Detects_repeated_long_answer_block()
@@ -14,7 +14,7 @@ public class Phi4EngineTests
 
         var text = new StringBuilder(block + block + block);
 
-        Assert.True(Phi4Engine.IsRepeatingTextTail(text));
+        Assert.True(OnnxGenAiEngine.IsRepeatingTextTail(text));
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public class Phi4EngineTests
             "AT114フォルダが見つかりました。更新日時は2026/06/07 16:06です。" +
             "必要であれば、このフォルダ内のファイル一覧も確認できます。");
 
-        Assert.False(Phi4Engine.IsRepeatingTextTail(text));
+        Assert.False(OnnxGenAiEngine.IsRepeatingTextTail(text));
     }
 
     [Fact]
@@ -36,6 +36,6 @@ public class Phi4EngineTests
 
         var text = new StringBuilder(block + block);
 
-        Assert.False(Phi4Engine.IsRepeatingTextTail(text));
+        Assert.False(OnnxGenAiEngine.IsRepeatingTextTail(text));
     }
 }

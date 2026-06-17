@@ -12,9 +12,10 @@ using sk0ya.Loomo.Core.Models;
 namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
-/// ONNX Runtime GenAI を使った in-process ローカル推論エンジン（CPU・phi4-mini 前提）。
-/// 多 GB の <see cref="Model"/>/<see cref="Tokenizer"/> の寿命を所有し、初回ロードしたら常駐させる
-/// （コールドを初回 1 回に抑える）。生成は batch size 1 前提のため <see cref="SemaphoreSlim"/> で直列化する。
+/// ONNX Runtime GenAI を使った in-process ローカル推論エンジン（CPU 前提・モデル非依存：phi4-mini /
+/// qwen3 など genai_config を持つ ONNX モデル共通）。多 GB の <see cref="Model"/>/<see cref="Tokenizer"/>
+/// の寿命を所有し、初回ロードしたら常駐させる（コールドを初回 1 回に抑える）。生成は batch size 1 前提のため
+/// <see cref="SemaphoreSlim"/> で直列化する。
 ///
 /// 性能の要：<see cref="Generator"/> もセッション内で常駐させ、ターン間で前回フィードしたトークン列と
 /// 今回プロンプトの<b>最長共通接頭辞は KV キャッシュを再利用</b>（<c>RewindTo</c> + 分岐分だけ
@@ -22,7 +23,7 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// 既存履歴）の再 prefill を初回 1 回に抑えるのが最大の効き手。生成結果は <see cref="TextDelta"/>
 /// （逐次本文）＋<see cref="AiUsageReported"/>（自前計測の所要・トークン数）としてチャネルへ流す。
 /// </summary>
-public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
+public sealed class OnnxGenAiEngine : ILocalInferenceEngine, IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly OgaHandle _oga = new();
@@ -36,6 +37,12 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
     private readonly List<int> _fedTokens = new();
     private int _generatorMaxLength;
     private SamplingOptions? _generatorSampling;
+
+    // prefill（プロンプト評価）を一括ではなくこの粒度で AppendTokens し、チャンク間で停止要求を確認する。
+    // CPU では prefill が支配的かつ AppendTokens は同期ブロッキングで途中中断できないため、分割しないと
+    // prefill 中の停止が効かない（完走まで無反応になる）。粒度を小さくすると応答性は上がるが prefill が
+    // 細切れになるオーバーヘッドが増えるので、停止の体感（数百ms以内）と両立する値にする。
+    private const int PrefillChunkTokens = 128;
 
     /// <summary>モデルがロード済みか。</summary>
     public bool IsLoaded => _model is not null;
@@ -91,7 +98,7 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
                 EnsureGenerator(_model!, maxLength, sampling);
                 ct.ThrowIfCancellationRequested();
                 progress?.Invoke($"KVキャッシュを作成しています（prefill {tokens.Length} トークン）");
-                PrepareKvCache(_generator!, tokens);   // prefill（重みのページイン）＋ _fedTokens を記録
+                PrepareKvCache(_generator!, tokens, ct);   // prefill（重みのページイン）＋ _fedTokens を記録
                 progress?.Invoke("ウォームアップを完了しています");
             }, ct);
         }
@@ -174,7 +181,7 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
         // prefill（プロンプト評価）は AppendTokens 内で走る。AppendTokens の前から計測し、
         // 「最初のトークンが出るまで」を prefill とみなす（計測漏れを防ぐ）。
         var sw = Stopwatch.StartNew();
-        PrepareKvCache(generator, promptTokens);
+        PrepareKvCache(generator, promptTokens, ct);
 
         double? prefillMs = null;
         var outputTokens = 0;
@@ -271,9 +278,11 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
 
     /// <summary>
     /// 今回プロンプトを Generator の KV に載せる。前回フィード分との最長共通接頭辞は再利用し、分岐分のみ
-    /// <c>AppendTokens</c> で再 prefill する。失敗時は Generator を作り直して全プロンプトを載せ直す（保険）。
+    /// <c>AppendTokens</c> で再 prefill する。分岐分は <see cref="PrefillChunkTokens"/> 単位で分割して載せ、
+    /// チャンク間で <paramref name="ct"/> を確認して停止に応答する（一括だと prefill 完走まで停止が効かない）。
+    /// 失敗時は Generator を作り直して全プロンプトを載せ直す（保険）。停止要求はそのまま伝播させる。
     /// </summary>
-    private void PrepareKvCache(Generator generator, int[] promptTokens)
+    private void PrepareKvCache(Generator generator, int[] promptTokens, CancellationToken ct)
     {
         try
         {
@@ -285,13 +294,20 @@ public sealed class Phi4Engine : ILocalInferenceEngine, IDisposable
                 _fedTokens.RemoveRange(common, _fedTokens.Count - common);
             }
 
-            if (common < promptTokens.Length)
+            // 分岐分をチャンクに分けて prefill。途中で停止しても _fedTokens は実際に KV へ載ったぶんだけ
+            // 進めるので、次ターンの最長共通接頭辞計算（prefix 再利用）が壊れない。
+            for (var pos = common; pos < promptTokens.Length; pos += PrefillChunkTokens)
             {
-                var suffix = promptTokens.AsSpan(common);
-                generator.AppendTokens(suffix);                // 分岐分だけ再 prefill
-                for (var i = common; i < promptTokens.Length; i++)
+                ct.ThrowIfCancellationRequested();
+                var end = Math.Min(pos + PrefillChunkTokens, promptTokens.Length);
+                generator.AppendTokens(promptTokens.AsSpan(pos, end - pos));
+                for (var i = pos; i < end; i++)
                     _fedTokens.Add(promptTokens[i]);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;     // 停止要求は prefill 失敗扱いにせず伝播（再作成パスへ落とさない）
         }
         catch
         {

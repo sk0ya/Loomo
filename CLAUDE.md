@@ -51,9 +51,9 @@ repeat (max 25 iterations) → final text. Key invariants when editing this file
   bad entry in a batch doesn't drop a valid leading call.
 
 **Agent-loop latency (read `docs/エージェントループ知見.md` before "make it faster" work).** On CPU-only
-local inference the cold cost is **model load** (tens of seconds, paid once since `Phi4Engine` keeps the model
+local inference the cold cost is **model load** (tens of seconds, paid once since `OnnxGenAiEngine` keeps the model
 resident) and per-turn time is **prefill-dominated**. Each AI call's breakdown is recorded as the `ai.usage`
-trace (tokens + `loadMs`/`promptEvalMs`/`evalMs`, **self-measured** in `Phi4Engine.RunSync` via `Stopwatch` —
+trace (tokens + `loadMs`/`promptEvalMs`/`evalMs`, **self-measured** in `OnnxGenAiEngine.RunSync` via `Stopwatch` —
 load time only counts on the first turn, first-token time ≈ prefill, the rest ≈ decode — emitted as
 `AiUsageReported`) and shown live in the AI bar progress ("📊 AI内訳", `AiBarViewModel.FormatUsage`) — use that
 to split load vs prefill vs decode before optimizing. The real lever is **model size** (CPU speed ≈ inversely ∝
@@ -94,7 +94,7 @@ The agent has **four tools**: `run_powershell` (the workhorse), structured `writ
 
 **Why so few, and why these:** on small CPU-only local LLMs the tool-definition prefill matters, but the old
 "~21s for ~12 tools vs ~2.4s for one" figure was an **Ollama-era** measurement where the cross-turn prefix KV
-cache didn't work. Under ONNX the cache **does** work (see `Phi4Engine` / `docs/エージェントループ知見.md` §2.1),
+cache didn't work. Under ONNX the cache **does** work (see `OnnxGenAiEngine` / `docs/エージェントループ知見.md` §2.1),
 so the stable `system+tools` prefix is prefilled ~once (first turn/warmup), not every turn. The remaining cost
 of adding tools is **selection reliability** (more options → more chance a small model picks wrong → extra
 iterations), so the set is kept small, disjoint, and verb-named. `ArgHelper` (`Implementations/ArgHelper.cs`) is
@@ -128,7 +128,7 @@ external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxR
 int4, whose `GatherBlockQuantized` carries a `bits` attribute that `0.9.0`'s native ORT rejects; the decode-loop
 API is unchanged across the bump.)
 
-**Engine** — `Clients/Phi4Engine.cs` (DI singleton, `IDisposable`, implements `ILocalInferenceEngine`) owns the
+**Engine** — `Clients/OnnxGenAiEngine.cs` (DI singleton, `IDisposable`, implements `ILocalInferenceEngine`) owns the
 ORT-GenAI `Model`/`Tokenizer` lifetime. It lazily loads from `ProviderConfig.ModelPath` (a folder containing
 `genai_config.json` + `*.onnx` + tokenizer files, e.g. `microsoft/Phi-4-mini-instruct-onnx` CPU int4) and keeps
 it resident — model load is the cold cost (tens of seconds on CPU), so it's paid once. Generation is batch-size-1,

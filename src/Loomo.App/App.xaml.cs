@@ -91,8 +91,8 @@ public partial class App : Application
 
         // --- AI ---
         // ローカル推論エンジン（ONNX Runtime GenAI・CPU）。モデルを常駐させるためシングルトン。
-        services.AddSingleton<Phi4Engine>();
-        services.AddSingleton<ILocalInferenceEngine>(sp => sp.GetRequiredService<Phi4Engine>());
+        services.AddSingleton<OnnxGenAiEngine>();
+        services.AddSingleton<ILocalInferenceEngine>(sp => sp.GetRequiredService<OnnxGenAiEngine>());
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
         // コンテキスト長管理：現在プロバイダの上限に合わせ送信前に履歴をトリム
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
@@ -107,7 +107,7 @@ public partial class App : Application
         // ファイルの新規作成／編集だけは構造化ツール（write_file/edit_file）に分離する：
         //   - 内容を独立 JSON 引数で渡すので「PS 構文＋JSON の二重エスケープ」を避けられ、小モデルの失敗が減る
         //   - ResolvePath によるワークスペースルート制限と承認カードの差分表示（安全性）が戻る
-        // ONNX 化で system＋tools の安定プレフィックスが KV キャッシュ再利用されるため（Phi4Engine）、
+        // ONNX 化で system＋tools の安定プレフィックスが KV キャッシュ再利用されるため（OnnxGenAiEngine）、
         // ツール定義の prefill は初回/暖機 1 回に償却され、数個の追加は毎ターンの負担にならない。
         services.AddSingleton<IAgentTool, PwshTool>();
         services.AddSingleton<IAgentTool, WriteFileTool>();
