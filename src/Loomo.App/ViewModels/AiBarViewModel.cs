@@ -36,6 +36,8 @@ public sealed partial class AiBarViewModel : ObservableObject
     private string? _currentSessionId;
     private string? _lastClosedSessionId;   // /resume で復元する直前に閉じたセッション
     private bool _suppressSuggestions;       // プログラムからの Input 書換時に補完を抑止
+    private bool _suppressWarmupCompletion;   // 送信に伴うウォームアップは完了内訳を出さない（直後にターンが始まるため）
+    private bool _wasWarmingUp;                // 直前に「ウォームアップ中」だったか（中→完了の遷移を一度だけ拾う）
     private CancellationTokenSource? _cts;
 
     // ↑/↓ の入力履歴ナビゲーション（実体は PromptInputHistory）。
@@ -129,6 +131,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         IsWarmingUp = _warmup.IsWarmingUp;
         if (IsWarmingUp)
         {
+            _wasWarmingUp = true;
             IsWarmupCompletionVisible = false;
             WarmupCompletionTotalText = "";
             WarmupCompletionStages.Clear();
@@ -139,7 +142,26 @@ public sealed partial class AiBarViewModel : ObservableObject
         {
             _warmupTimer.Stop();
             WarmupStatusText = "";
-            RenderWarmupCompletion();
+
+            // ウォームアップ「中→完了」の遷移のときだけ完了内訳を扱う。SetStatus（段階表示）は
+            // エンジンの Task.Run 内＝バックグラウンドスレッドからも飛ぶため、その StateChanged が
+            // BeginInvoke で遅れて届くと、完了後（IsWarmingUp は既に false）にこの else が再実行される。
+            // 遷移を一度だけ拾うことで、その遅延コールバックが完了内訳を再描画して「残り続ける」のを防ぐ。
+            if (!_wasWarmingUp)
+                return;
+            _wasWarmingUp = false;
+
+            if (_suppressWarmupCompletion)
+            {
+                // 送信に伴って実行したウォームアップは、直後にこのターンが始まるので完了内訳は出さない。
+                IsWarmupCompletionVisible = false;
+                WarmupCompletionTotalText = "";
+                WarmupCompletionStages.Clear();
+            }
+            else
+            {
+                RenderWarmupCompletion();
+            }
         }
     }
 
@@ -325,10 +347,12 @@ public sealed partial class AiBarViewModel : ObservableObject
         // モデル未ロードならチャット実行前にウォームアップしておく。これをしないと最初のターンで
         // 数十秒のモデルロードが「考え中…」のまま無反応に見える（何が起きているか分からない）。
         // ウォームアップ中は IsWarmingUp 表示が出る（送信は CanSend が抑止）。
+        // このウォームアップは送信に伴うもので、直後にこのターンが始まるため「完了」内訳表示は出さない。
+        _suppressWarmupCompletion = true;
         try { await _warmup.EnsureWarmAsync(_cts.Token); }
         catch (OperationCanceledException) { /* 後段 RunTurnAsync 側でまとめて扱う */ }
 
-        // ウォームアップ完了の内訳表示は、続けて始めるこのターンの「考え中…」表示と重なるので畳む。
+        // 直前（起動時など）のウォームアップ完了表示が残っていれば、このターンの「考え中…」と重なるので畳む。
         IsWarmupCompletionVisible = false;
         WarmupCompletionTotalText = "";
         WarmupCompletionStages.Clear();
@@ -493,6 +517,9 @@ public sealed partial class AiBarViewModel : ObservableObject
         }
         finally
         {
+            // モデルがロード済みでウォームアップが走らなかった場合などに抑止フラグが次の自発的
+            // ウォームアップへ漏れないよう、ターン終了時に必ず戻す（終了遷移で既に消費されていれば no-op）。
+            _suppressWarmupCompletion = false;
             ClearVolatile();   // 揮発プレビューが残ったまま ProgressLog に保存されないよう必ず片付ける
             turnClock.Stop();
             activity.Header = $"進行状況 ({FormatDuration(turnClock.Elapsed)})";
