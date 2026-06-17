@@ -112,6 +112,9 @@ public partial class App : Application
         services.AddSingleton<IAgentTool, PwshTool>();
         services.AddSingleton<IAgentTool, WriteFileTool>();
         services.AddSingleton<IAgentTool, EditFileTool>();
+        // ワークスペース外の情報を調べるブラウザ検索。可視ブラウザペインのアクティブタブ（IBrowserService）で
+        // 検索し、結果ページのテキストを返す（別ウィンドウは起動しない）。
+        services.AddSingleton<IAgentTool, WebSearchTool>();
         services.AddSingleton<ToolRegistry>();
 
         // --- 観測性（§20）：AI操作トレースを JSONL に記録。設定で無効化（オプトアウト）可。 ---

@@ -61,7 +61,8 @@ params) and keeping the context small (`ModelProfiles.Phi4Mini.NumCtx` is delibe
 
 ### Tools — `Loomo.Core/Tools/`
 
-The agent has **three tools**: `run_powershell` (the workhorse), plus structured `write_file` and `edit_file`.
+The agent has **four tools**: `run_powershell` (the workhorse), structured `write_file` and `edit_file`, plus
+`web_search`.
 - **`run_powershell`** (`Tools/Implementations/TerminalTools.cs`) runs a PowerShell command line and returns
   stdout + exit code. Reads, search, listing, build, test are all expressed as PowerShell
   (`Get-Content` / `Select-String` / `Get-ChildItem` / `dotnet …`); the system prompt
@@ -72,6 +73,17 @@ The agent has **three tools**: `run_powershell` (the workhorse), plus structured
   own JSON arg, which sidesteps the PowerShell-syntax × JSON **double-escaping** that small models fail at when
   writing files via the shell. Both resolve paths through `IWorkspaceService.ResolvePath` (workspace-root
   confinement) and open the result in the editor pane.
+- **`web_search{query}`** (`Tools/Implementations/WebSearchTool.cs`) looks up external info: it drives
+  `IBrowserService` (the **visible** browser pane's active tab — same "AI operates the visible panes" philosophy
+  as Terminal/Editor, no separate window) to navigate Bing and return the result page's visible text
+  (`GetVisibleTextAsync`, capped to `MaxResultChars`). `CleanPageText` then strips only **safe** chrome
+  (cookie-consent banner, skip links, the search-tab nav row, the echoed query, breadcrumb `›` display-URL lines,
+  "…を表示" show-more buttons, adjacent duplicate lines, blank lines) by trimmed whole-line match — never
+  substring, so result snippets and the top answer box (live scores/standings/news) survive — to save tokens
+  before the cap. Two designs were **tried and dropped**, both verified on the live page: structured `li.b_algo`
+  parsing (dropped the top answer box; hrefs were `bing.com/ck/a?…` redirect blobs) and a DOM link-density
+  (jusText-style) extractor (the raw-text + line-clean version read better in practice). If no browser tab is
+  realized, `IsAvailable` is false and it returns a recoverable error.
 
 **Why so few, and why these:** on small CPU-only local LLMs the tool-definition prefill matters, but the old
 "~21s for ~12 tools vs ~2.4s for one" figure was an **Ollama-era** measurement where the cross-turn prefix KV
@@ -80,13 +92,14 @@ so the stable `system+tools` prefix is prefilled ~once (first turn/warmup), not 
 of adding tools is **selection reliability** (more options → more chance a small model picks wrong → extra
 iterations), so the set is kept small, disjoint, and verb-named. `ArgHelper` (`Implementations/ArgHelper.cs`) is
 the shared JSON-arg reader; each tool's `*Contract` (`PwshContract`, `WriteFileContract`, `EditFileContract`)
-holds its name + canonical/alias arg keys, normalized in `NormalizeArguments`. All three set `RequiresApproval`,
+holds its name + canonical/alias arg keys, normalized in `NormalizeArguments`. All four set `RequiresApproval`,
 so each invocation shows an approval card unless AutoApprove — `DescribeInvocation` renders the summary (the
 file tools include a line-count/preview diff). `ToolRegistry` aggregates whatever `IAgentTool`s are registered in
 `App.xaml.cs`; add a tool by implementing `IAgentTool` and registering it there.
 
-Still missing (don't assume): no in-app browser automation tool. The `IBrowserService` adapter exists and backs
-the UI pane but no tool wires it to the agent.
+Still missing (don't assume): no general browser *automation* tool (click/type/navigate as agent steps). The
+`IBrowserService` adapter exposes click/type/navigate and backs the UI pane, but only `web_search` wires it to
+the agent so far (navigate + read text); the click/type surface is not yet exposed as a tool.
 
 ### Safety — `Loomo.Core/Safety/`
 

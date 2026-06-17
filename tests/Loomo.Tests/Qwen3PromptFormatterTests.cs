@@ -57,6 +57,7 @@ public class Qwen3PromptFormatterTests
         Assert.Contains("run_powershell", p);
         Assert.Contains("write_file", p);
         Assert.Contains("edit_file", p);
+        Assert.Contains("web_search", p);
         Assert.Contains("<tool_call>", p);
         Assert.Contains("List files:", p);
         Assert.Contains("Rename-Item", p);

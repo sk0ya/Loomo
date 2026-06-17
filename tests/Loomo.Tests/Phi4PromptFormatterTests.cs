@@ -27,7 +27,7 @@ public class Phi4PromptFormatterTests
         Assert.Contains("\"name\":\"run_powershell\"", prompt);
         Assert.Contains("\"parameters\":{\"command\":{\"type\":\"string\"", prompt);
         Assert.Contains("<|/tool|><|end|>", prompt);
-        Assert.Contains("Use only these tools: run_powershell, write_file, edit_file.", prompt);
+        Assert.Contains("Use only these tools: run_powershell, write_file, edit_file, web_search.", prompt);
         Assert.Contains("Tool output example", prompt);
         Assert.Contains("<|user|>ファイル一覧を出して<|end|>", prompt);
         Assert.EndsWith("<|assistant|>", prompt);                 // add_generation_prompt
@@ -123,7 +123,7 @@ public class Phi4PromptFormatterTests
     public void Default_system_prompt_is_engine_neutral_and_guides_tool_calling()
     {
         Assert.DoesNotContain("Ollama", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("Use only these tools: run_powershell, write_file, edit_file.", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Use only these tools: run_powershell, write_file, edit_file, web_search.", AiSettings.DefaultSystemPrompt);
         Assert.Contains("optionally wrapped in <|tool_call|>", AiSettings.DefaultSystemPrompt);
         // run_powershell の呼び出し形を具体例で示し、小モデルが rg/read_file/build 等の架空ツール名へ崩れるのを抑える。
         Assert.Contains("\"name\":\"run_powershell\"", AiSettings.DefaultSystemPrompt);
@@ -141,6 +141,7 @@ public class Phi4PromptFormatterTests
         Assert.Contains("non-interactive", AiSettings.DefaultSystemPrompt);
         // 構造化ファイルツールがプロンプトに告知されていること。
         Assert.Contains("\"name\":\"write_file\"", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("\"name\":\"web_search\"", AiSettings.DefaultSystemPrompt);
         Assert.Contains("first inspect with run_powershell only", AiSettings.DefaultSystemPrompt);
         Assert.Contains("never use it with Set-Content", AiSettings.DefaultSystemPrompt);
     }
