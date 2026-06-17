@@ -22,6 +22,7 @@ internal sealed class FakeAiWarmup : IAiWarmup
     public event Action? StateChanged;
 #pragma warning restore CS0067
     public void RequestWarmup() { }
+    public Task EnsureWarmAsync(CancellationToken ct) => Task.CompletedTask;
 }
 
 /// <summary>VM 構築に必要な最小限のワークスペース実装（副作用なし）。</summary>

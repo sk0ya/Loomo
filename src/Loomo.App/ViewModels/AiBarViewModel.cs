@@ -319,12 +319,20 @@ public sealed partial class AiBarViewModel : ObservableObject
 
         Input = "";
         CloseCommandPopup();
+        IsExpanded = true;
+        _cts = new CancellationTokenSource();
+
+        // モデル未ロードならチャット実行前にウォームアップしておく。これをしないと最初のターンで
+        // 数十秒のモデルロードが「考え中…」のまま無反応に見える（何が起きているか分からない）。
+        // ウォームアップ中は IsWarmingUp 表示が出る（送信は CanSend が抑止）。
+        try { await _warmup.EnsureWarmAsync(_cts.Token); }
+        catch (OperationCanceledException) { /* 後段 RunTurnAsync 側でまとめて扱う */ }
+
+        // ウォームアップ完了の内訳表示は、続けて始めるこのターンの「考え中…」表示と重なるので畳む。
         IsWarmupCompletionVisible = false;
         WarmupCompletionTotalText = "";
         WarmupCompletionStages.Clear();
-        IsExpanded = true;
         IsBusy = true;
-        _cts = new CancellationTokenSource();
         SetStatus("考え中…");
 
         // トレース（§20）と保存が同じIDを共有するよう、ターン開始前にセッションIDを確定する。

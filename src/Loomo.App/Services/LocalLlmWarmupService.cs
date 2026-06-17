@@ -130,6 +130,22 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         _ = RunPrimeWorkerAsync(_startupCts.Token);
     }
 
+    /// <summary>モデル未ロードなら、その場でウォームアップ（ロード＋KVプレフィックスの prefill）を実行し、
+    /// 完了まで待つ。ロード済みなら即座に返る。チャット送信の直前に呼び、初回ターンで避けられない
+    /// 数十秒のモデルロードを「固まったまま」にせず、ウォームアップ表示付きで待たせる。
+    /// 通常ターンと同じ KV を温めるので、続くターンは prefill を払い直さない。</summary>
+    public async Task EnsureWarmAsync(CancellationToken ct)
+    {
+        if (_engine.IsLoaded)
+            return;
+        if (string.IsNullOrWhiteSpace(_settings.Local.ModelPath))
+            return;
+
+        // WarmupEnabled が無効でも、送信前のこの経路では強制的にロード＋暖機する
+        // （ユーザーが今まさに待っているので、進捗を見せるのが目的）。
+        await PrimeAsync(ct, force: true);
+    }
+
     private async Task RunPrimeWorkerAsync(CancellationToken ct)
     {
         var completedSeq = 0L;
@@ -168,10 +184,11 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         }
     }
 
-    private async Task PrimeAsync(CancellationToken ct)
+    private async Task PrimeAsync(CancellationToken ct, bool force = false)
     {
         // ウォームアップが無効なら事前ロードしない（最初のAIターンで通常どおりロード／prefill する）。
-        if (!_settings.WarmupEnabled)
+        // ただし送信直前の EnsureWarmAsync 経由（force）は、設定に依らず実行する。
+        if (!force && !_settings.WarmupEnabled)
             return;
 
         var cfg = _settings.Local;

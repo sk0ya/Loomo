@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -33,4 +35,10 @@ public interface IAiWarmup
 
     /// <summary>暖機を改めて要求する（無効時・モデル未設定時は何もしない）。</summary>
     void RequestWarmup();
+
+    /// <summary>モデルがまだロードされていなければ、その場でウォームアップして完了まで待つ
+    /// （チャット送信の直前に呼ぶ）。ロード済みなら即座に返る。<see cref="IsWarmingUp"/> 等の
+    /// 状態通知を伴うため、待っている間 UI に進捗を出せる。<c>WarmupEnabled</c> 設定には依らない
+    /// （無効でも、初回ターンで避けられないモデルロードに進捗表示を付けるための経路）。</summary>
+    Task EnsureWarmAsync(CancellationToken ct);
 }
