@@ -93,6 +93,9 @@ public sealed class BrowserService : IBrowserService
             return DecodeScriptString(json);
         }, ct);
 
+    public Task<string> EvaluateScriptAsync(string script, CancellationToken ct)
+        => OnUiAsync(async core => DecodeScriptString(await core.ExecuteScriptAsync(script)), ct);
+
     public Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct)
         => OnUiAsync(async core =>
         {

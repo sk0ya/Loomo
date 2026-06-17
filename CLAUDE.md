@@ -75,15 +75,22 @@ The agent has **four tools**: `run_powershell` (the workhorse), structured `writ
   confinement) and open the result in the editor pane.
 - **`web_search{query}`** (`Tools/Implementations/WebSearchTool.cs`) looks up external info: it drives
   `IBrowserService` (the **visible** browser pane's active tab — same "AI operates the visible panes" philosophy
-  as Terminal/Editor, no separate window) to navigate Bing and return the result page's visible text
-  (`GetVisibleTextAsync`, capped to `MaxResultChars`). `CleanPageText` then strips only **safe** chrome
-  (cookie-consent banner, skip links, the search-tab nav row, the echoed query, breadcrumb `›` display-URL lines,
-  "…を表示" show-more buttons, adjacent duplicate lines, blank lines) by trimmed whole-line match — never
-  substring, so result snippets and the top answer box (live scores/standings/news) survive — to save tokens
-  before the cap. Two designs were **tried and dropped**, both verified on the live page: structured `li.b_algo`
-  parsing (dropped the top answer box; hrefs were `bing.com/ck/a?…` redirect blobs) and a DOM link-density
-  (jusText-style) extractor (the raw-text + line-clean version read better in practice). If no browser tab is
-  realized, `IsAvailable` is false and it returns a recoverable error.
+  as Terminal/Editor, no separate window) to navigate Bing, then **structured-extracts** just the answer box
+  (summary / live scores / standings / weather) plus the top organic results (title + **real URL** + snippet)
+  via `EvaluateScriptAsync(BingExtractScript)` — related-search / image / video / shopping carousels and the
+  footer (≈30% of the visible text, measured) are never collected. The earlier reasons for *not* doing this were
+  fixed in the script: the answer box is grabbed explicitly (`li.b_ans`), and the `bing.com/ck/a?…&u=a1<base64url>`
+  redirect href is decoded back to the real URL (else falls back to the displayed `cite`). Organic results live
+  **deeper than** `#b_results`'s direct children, so the selector is the descendant `#b_results li.b_algo` (the
+  strict `>` child selector missed them — that was the real fragility). `TrimAnswerTail` drops the answer box's
+  trailing widgets (cut at the first 「さらに表示」「すべて表示」「すべて閲覧」「YouTube視聴回数」 marker).
+  Size is bounded by **structure** (`MaxResults`=6 × `MaxSnippetChars`, `MaxAnswerChars`), with `MaxResultChars`
+  as a final safety cap. If extraction yields nothing (DOM change / no answer-or-results, after one 700ms retry
+  for late-injected results), it **falls back** to `GetVisibleTextAsync` + `CleanPageText`, which strips only
+  **safe** chrome (cookie-consent banner, skip links, search-tab nav row, echoed query, breadcrumb `›` display-URL
+  lines, "…を表示" show-more buttons, adjacent dupes, blank lines) by trimmed whole-line match — never substring,
+  so the older raw-text behavior is preserved as the floor. An earlier DOM link-density (jusText-style) extractor
+  was tried and dropped. If no browser tab is realized, `IsAvailable` is false and it returns a recoverable error.
 
 **Why so few, and why these:** on small CPU-only local LLMs the tool-definition prefill matters, but the old
 "~21s for ~12 tools vs ~2.4s for one" figure was an **Ollama-era** measurement where the cross-turn prefix KV

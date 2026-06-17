@@ -15,13 +15,14 @@ namespace sk0ya.Loomo.Core.Tools.Implementations;
 /// <see cref="ITerminalService"/>/<see cref="IEditorService"/> と同じく「AIは可視ペインを操作する」思想に従い、
 /// 別ウィンドウは起動しない（ブラウザペインに開いたタブがそのまま操作対象になる）。
 ///
-/// 返すのはページの可視テキスト（document.body.innerText）。結果項目だけを構造抽出する案も試したが、
-/// Bing が冒頭に置く「まとめ」（ライブスコア・順位表・ニュース等の回答ボックス）が落ち、リンクも
-/// リダイレクト追跡 URL（bing.com/ck/a?...）になって実 URL が失われたため、生テキストの方が情報量・
-/// 先頭のまとめ・実ドメイン表示の点で小モデルにとって有用だった（実機検証で確認）。
-/// ただし明らかなクロム（Cookie 同意バナー・スキップリンク・検索タブのナビ・空行・検索語の反復・
-/// 表示用パンくず URL・「…を表示」等の展開ボタン・連続重複行）は <see cref="CleanPageText"/> で安全に削り、
-/// トークンを節約してから切り詰める（まとめ・結果は壊さない）。
+/// まず <b>構造抽出</b>（<see cref="BingExtractScript"/>）で「回答ボックス（まとめ・ライブスコア・順位表・
+/// ニュース等）＋オーガニック上位結果（タイトル・実URL・スニペット）」だけを取り出して返す。関連検索・
+/// 画像/動画/ショッピングのカルーセル・フッタといったノイズ（実測で可視テキストの約3割）は収集しない。
+/// 過去に構造抽出を見送った理由（Bing 冒頭の「まとめ」が落ちる／リンクが <c>bing.com/ck/a?...</c> リダイレクトに
+/// なる）は、回答ボックスノードを明示的に拾い、<c>u=</c> パラメータを base64url デコードすることで解消した。
+/// 抽出が空（DOM 変更・回答ボックス/結果なし）のときだけ従来の可視テキスト方式へフォールバックし、
+/// <see cref="CleanPageText"/> で明らかなクロム（Cookie 同意バナー・スキップリンク・検索タブのナビ・空行・
+/// 検索語の反復・表示用パンくず URL・「…を表示」等の展開ボタン・連続重複行）を安全に削ってから切り詰める。
 /// </summary>
 public sealed class WebSearchTool : IAgentTool
 {
@@ -69,28 +70,179 @@ public sealed class WebSearchTool : IAgentTool
         var url = "https://www.bing.com/search?q=" + Uri.EscapeDataString(query);
 
         BrowserPageInfo page;
-        string text;
+        SerpExtract? extract;
+        string rawText = string.Empty;
         try
         {
             page = await _browser.NavigateAsync(url, ct);
-            text = await _browser.GetVisibleTextAsync(ct);
+            extract = await TryExtractAsync(ct);                 // まず構造抽出（まとめ＋上位結果）
+            // Bing は結果を遅延注入することがあるため、空なら少し待って一度だけ再試行。
+            if (extract is null || extract.IsEmpty)
+            {
+                await Task.Delay(700, ct);
+                extract = await TryExtractAsync(ct);
+            }
+            if (extract is null || extract.IsEmpty)
+                rawText = await _browser.GetVisibleTextAsync(ct) ?? string.Empty;  // それでも取れなければ生テキストへフォールバック
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return ToolResult.Error($"ブラウザ検索に失敗しました: {ex.Message}"); }
 
-        text = CleanPageText(text ?? string.Empty, query);
-        var truncated = text.Length > MaxResultChars;
-        if (truncated) text = text[..MaxResultChars];
+        var body = extract is { IsEmpty: false }
+            ? FormatStructured(extract)                          // 構造抽出が取れた → まとめ＋上位K件だけ返す
+            : CleanPageText(rawText, query);                     // フォールバック：行クロム除去した生テキスト
+
+        var truncated = body.Length > MaxResultChars;
+        if (truncated) body = body[..MaxResultChars];
 
         var sb = new StringBuilder();
         sb.AppendLine($"query: {query}");
         sb.AppendLine($"url: {page.Url}");
         sb.AppendLine($"title: {page.Title}");
-        sb.AppendLine("--- page text ---");
-        sb.Append(text);
+        sb.AppendLine(extract is { IsEmpty: false } ? "--- results ---" : "--- page text ---");
+        sb.Append(body);
         if (truncated) sb.AppendLine().Append($"（…{MaxResultChars}文字で切り詰め）");
         return ToolResult.Ok(sb.ToString());
     }
+
+    /// <summary>上限：返すオーガニック結果件数、まとめ（回答ボックス）文字数、各スニペット文字数。
+    /// 「文字数で頭切り」ではなく「構造（件数×スニペット長）」でトークンを縛るための値。</summary>
+    private const int MaxResults = 6;
+    private const int MaxAnswerChars = 1500;
+    private const int MaxSnippetChars = 300;
+
+    /// <summary>Bing SERP の構造抽出結果。<see cref="Answer"/> は回答ボックス（まとめ・スコア・順位表等）、
+    /// <see cref="Results"/> はオーガニック上位結果（タイトル・実URL・スニペット）。</summary>
+    private sealed record SerpExtract(string Answer, IReadOnlyList<SerpResult> Results)
+    {
+        public bool IsEmpty => string.IsNullOrWhiteSpace(Answer) && Results.Count == 0;
+    }
+
+    private sealed record SerpResult(string Title, string Url, string Snippet);
+
+    /// <summary>ブラウザ上で Bing SERP の構造抽出 JS を走らせ、<see cref="SerpExtract"/> へ復元する。
+    /// 抽出/パースに失敗したら null（呼び出し側で生テキストへフォールバック）。</summary>
+    private async Task<SerpExtract?> TryExtractAsync(CancellationToken ct)
+    {
+        string json;
+        try { json = await _browser.EvaluateScriptAsync(BingExtractScript, ct); }
+        catch (OperationCanceledException) { throw; }
+        catch { return null; }
+        if (string.IsNullOrWhiteSpace(json)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var answer = root.TryGetProperty("answer", out var a) ? (a.GetString() ?? "") : "";
+            var results = new List<SerpResult>();
+            if (root.TryGetProperty("results", out var rs) && rs.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var r in rs.EnumerateArray())
+                {
+                    var title = r.TryGetProperty("title", out var t) ? (t.GetString() ?? "") : "";
+                    if (string.IsNullOrWhiteSpace(title)) continue;
+                    var ru = r.TryGetProperty("url", out var u) ? (u.GetString() ?? "") : "";
+                    var sn = r.TryGetProperty("snippet", out var s) ? (s.GetString() ?? "") : "";
+                    results.Add(new SerpResult(title.Trim(), ru.Trim(), sn.Trim()));
+                }
+            }
+            return new SerpExtract(answer.Trim(), results);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>構造抽出を、まとめ＋番号付き上位結果の読みやすいテキストへ整形する。
+    /// まとめ・スニペットはそれぞれ上限文字数で切り、結果は最大 <see cref="MaxResults"/> 件。</summary>
+    private static string FormatStructured(SerpExtract e)
+    {
+        var sb = new StringBuilder();
+        var answer = TrimAnswerTail(e.Answer);
+        if (!string.IsNullOrWhiteSpace(answer))
+        {
+            var ans = answer.Length > MaxAnswerChars ? answer[..MaxAnswerChars] + "…" : answer;
+            sb.AppendLine("[answer]");
+            sb.AppendLine(ans);
+        }
+        var n = 0;
+        foreach (var r in e.Results)
+        {
+            if (n >= MaxResults) break;
+            n++;
+            sb.AppendLine($"{n}. {r.Title}");
+            if (!string.IsNullOrEmpty(r.Url)) sb.AppendLine($"   {r.Url}");
+            if (!string.IsNullOrEmpty(r.Snippet))
+            {
+                var sn = r.Snippet.Length > MaxSnippetChars ? r.Snippet[..MaxSnippetChars] + "…" : r.Snippet;
+                sb.AppendLine($"   {sn}");
+            }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>回答ボックスの innerText には本文の後に隣接ウィジェット（動画カルーセル・「他の人はこちらも検索」・
+    /// 「すべて表示／さらに表示」で展開するカード列）が連結されることがある。本文＝先頭は正しいので、
+    /// これら「展開境界」マーカーの最初の出現以降を切り捨ててノイズだけ落とす（本文は壊さない）。</summary>
+    private static readonly string[] AnswerTailMarkers = { "さらに表示", "すべて表示", "すべて閲覧", "YouTube視聴回数" };
+
+    internal static string TrimAnswerTail(string answer)
+    {
+        if (string.IsNullOrEmpty(answer)) return answer ?? string.Empty;
+        var cut = -1;
+        foreach (var m in AnswerTailMarkers)
+        {
+            var i = answer.IndexOf(m, StringComparison.Ordinal);
+            if (i >= 0 && (cut < 0 || i < cut)) cut = i;
+        }
+        return (cut < 0 ? answer : answer[..cut]).TrimEnd();
+    }
+
+    /// <summary>Bing SERP から「回答ボックス（まとめ・スコア・順位表）」と「オーガニック上位結果」だけを
+    /// 構造抽出する JS。関連検索・画像/動画/ショッピングのカルーセル・フッタ等のノイズは収集しない。
+    /// 結果リンクは Bing の <c>/ck/a?...&u=a1&lt;base64url&gt;</c> リダイレクトを実URLへデコードする
+    /// （デコード不能時は表示用 cite を、それも無ければ素の href を使う）。<c>JSON.stringify</c> で返す。</summary>
+    private const string BingExtractScript = """
+(function(){
+  function clean(t){ return (t||'').replace(/\s+/g,' ').trim(); }
+  function decodeUrl(href, citeText){
+    try{
+      if(!href) return clean(citeText)||'';
+      var u=new URL(href, location.href);
+      if(/(^|\.)bing\.com$/.test(u.hostname) && u.pathname.indexOf('/ck/')===0){
+        var p=u.searchParams.get('u');
+        if(p){
+          var b=p.replace(/^a1/,'').replace(/-/g,'+').replace(/_/g,'/');
+          try{ return decodeURIComponent(escape(atob(b))); }
+          catch(e){ try{ return atob(b); }catch(e2){ return clean(citeText)||href; } }
+        }
+        return clean(citeText)||href;
+      }
+      return u.href;
+    }catch(e){ return clean(citeText)||href||''; }
+  }
+  var out={answer:'', results:[]};
+  // 回答ボックス：本文カラム上部の最初の回答ウィジェット（まとめ・スコア・順位表・ナレッジ等）。
+  var ans=document.querySelector('#b_context li.b_ans, #b_results > li.b_ans, li.b_ans, .b_ans');
+  if(ans){ out.answer=clean(ans.innerText).slice(0,2000); }
+  // オーガニック結果：本文カラムの b_algo を上位から（直下に限らず子孫も拾う）。
+  var items=document.querySelectorAll('#b_results li.b_algo, #b_results .b_algo, li.b_algo');
+  for(var i=0;i<items.length && out.results.length<8;i++){
+    var li=items[i];
+    var h=li.querySelector('h2');
+    var title=clean(h?h.innerText:'');
+    if(!title) continue;
+    var a=li.querySelector('h2 a')||li.querySelector('a');
+    var cite=li.querySelector('cite');
+    var capt=li.querySelector('.b_caption p')||li.querySelector('.b_algoSlug')||li.querySelector('p');
+    out.results.push({
+      title:title,
+      url:decodeUrl(a?a.getAttribute('href'):'', cite?cite.innerText:''),
+      snippet:clean(capt?capt.innerText:'').slice(0,400)
+    });
+  }
+  return JSON.stringify(out);
+})()
+""";
 
     /// <summary>SERP の可視テキスト中、各行と完全一致で除外する明らかなクロム（JP/EN）。
     /// 部分一致にすると結果文を巻き込むため、トリム後の<b>行全体一致</b>のみ削る。</summary>

@@ -19,6 +19,7 @@ public class WebSearchToolTests
     {
         public bool Available = true;
         public string VisibleText = "";
+        public string ScriptResult = "";     // EvaluateScriptAsync の戻り。空なら構造抽出なし＝生テキストへフォールバック。
         public string? NavigatedUrl;
 
         public bool IsAvailable => Available;
@@ -29,6 +30,7 @@ public class WebSearchToolTests
         public Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct)
             => Task.FromResult((IReadOnlyList<BrowserClickable>)Array.Empty<BrowserClickable>());
         public Task<string> GetVisibleTextAsync(CancellationToken ct) => Task.FromResult(VisibleText);
+        public Task<string> EvaluateScriptAsync(string script, CancellationToken ct) => Task.FromResult(ScriptResult);
         public Task ClickAsync(string selector, CancellationToken ct) => Task.CompletedTask;
         public Task TypeAsync(string selector, string text, CancellationToken ct) => Task.CompletedTask;
         public Task<byte[]> CaptureScreenshotAsync(CancellationToken ct) => Task.FromResult(Array.Empty<byte>());
@@ -116,6 +118,59 @@ public class WebSearchToolTests
         Assert.False(result.IsError);
         Assert.Contains("文字で切り詰め", result.Content);
         Assert.DoesNotContain(new string('あ', 5000), result.Content);   // 6000 字フルでは含まれない
+    }
+
+    [Fact]
+    public async Task Structured_extraction_returns_answer_and_numbered_results()
+    {
+        // 構造抽出 JS が返す JSON を差し込む。これがあれば生テキストではなく構造化結果を返す。
+        var json = """
+        {"answer":"まとめ本文です。","results":[
+          {"title":"結果A","url":"https://a.example.com/page","snippet":"スニペットA"},
+          {"title":"結果B","url":"https://b.example.com/","snippet":"スニペットB"}]}
+        """;
+        var browser = new FakeBrowser { ScriptResult = json, VisibleText = "FALLBACK_SHOULD_NOT_APPEAR" };
+        var result = await new WebSearchTool(browser).ExecuteAsync(Args("q"), CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("--- results ---", result.Content);
+        Assert.Contains("[answer]", result.Content);
+        Assert.Contains("まとめ本文です。", result.Content);
+        Assert.Contains("1. 結果A", result.Content);
+        Assert.Contains("https://a.example.com/page", result.Content);
+        Assert.Contains("2. 結果B", result.Content);
+        // 構造抽出が取れたら生テキストのフォールバックは使わない。
+        Assert.DoesNotContain("FALLBACK_SHOULD_NOT_APPEAR", result.Content);
+        Assert.DoesNotContain("--- page text ---", result.Content);
+    }
+
+    [Fact]
+    public void TrimAnswerTail_cuts_at_show_more_and_video_markers()
+    {
+        // 「すべて閲覧」以降（展開カード列）は落とし、本文は残す。
+        Assert.Equal("本文です。", WebSearchTool.TrimAnswerTail("本文です。 すべて閲覧 関連カード1 関連カード2"));
+        // 動画カルーセル（YouTube視聴回数）マーカー以降も落とす。
+        Assert.Equal("回答の本体。", WebSearchTool.TrimAnswerTail("回答の本体。 YouTube視聴回数: 819 回 関連ニュース"));
+        // 複数マーカーがあるときは最初の出現で切る。
+        Assert.Equal("先頭。", WebSearchTool.TrimAnswerTail("先頭。 さらに表示 中間 すべて表示 末尾"));
+        // マーカーが無ければそのまま。
+        Assert.Equal("マーカー無しの回答", WebSearchTool.TrimAnswerTail("マーカー無しの回答"));
+    }
+
+    [Fact]
+    public async Task Falls_back_to_raw_text_when_extraction_empty()
+    {
+        // 抽出が空（results 無し・answer 無し）→ 生テキスト方式へフォールバック。
+        var browser = new FakeBrowser
+        {
+            ScriptResult = """{"answer":"","results":[]}""",
+            VisibleText = "生テキストのまとめ\n結果の本文",
+        };
+        var result = await new WebSearchTool(browser).ExecuteAsync(Args("q"), CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("--- page text ---", result.Content);
+        Assert.Contains("生テキストのまとめ", result.Content);
     }
 
     [Fact]

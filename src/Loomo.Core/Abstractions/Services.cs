@@ -92,6 +92,11 @@ public interface IBrowserService
     /// <summary>現在のページの可視テキスト（document.body.innerText）を抽出する。</summary>
     Task<string> GetVisibleTextAsync(CancellationToken ct);
 
+    /// <summary>現在のページで JavaScript を評価し、戻り値（文字列化済み）を返す。
+    /// スクリプトは <c>JSON.stringify(...)</c> 等で文字列を返す前提で、結果は JSON デコード済みの生文字列。
+    /// ページ固有の構造抽出（例：検索結果ページのまとめ＋上位結果の取り出し）に使う。</summary>
+    Task<string> EvaluateScriptAsync(string script, CancellationToken ct);
+
     /// <summary>CSSセレクタに一致する最初の要素をクリックする。一致が無ければ例外。</summary>
     Task ClickAsync(string selector, CancellationToken ct);
 
