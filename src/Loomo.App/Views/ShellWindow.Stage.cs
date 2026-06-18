@@ -521,8 +521,8 @@ public partial class ShellWindow
     }
 
     /// <summary>レイアウトモードの袖カード：Main 領域サイズへ寄せた非表示ホスト（<see cref="BuildLayoutWingSources"/>）
-    /// をライブ縮小で描画する。クリックでそのペインを Main へ出す（ズーム中なら対象をズーム、そうでなければ
-    /// タイルが隠れていれば再表示してフォーカス）。</summary>
+    /// をライブ縮小で描画する。クリックでそのペインを左上ペインと入れ替える（クリックしたセッションが左上の
+    /// 位置を引き継ぎ、元の左上ペインは袖へ退場）。ズーム中は対象をズームへ昇格。</summary>
     private Border BuildLayoutWingCard(PaneKind kind, Size virtualSize, double width)
     {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
@@ -535,10 +535,38 @@ public partial class ShellWindow
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
                     return;
                 }
-                if (!IsPaneVisible(kind))
-                    SetPaneVisible(kind, true);   // タイル未配置／隠れていれば Main へ出す
-                FocusPane(kind);
+                // ミニチュアのクリックは「追加」ではなく左上ペインとの入れ替え。
+                if (TopLeftPane() is { } topLeft && topLeft != kind)
+                    PlaceWingPane(kind, topLeft, center: true, zone: null);   // 左上の位置を引き継ぎ、元の左上は袖へ
+                else
+                {
+                    // 左上が無い／クリック対象自身が左上のときは従来どおり Main へ出してフォーカス。
+                    if (!IsPaneVisible(kind))
+                        SetPaneVisible(kind, true);
+                    FocusPane(kind);
+                }
             });
+    }
+
+    /// <summary>タイル上で最も左上（上端優先・次に左端）に表示されている可視ペイン。袖クリックの入れ替え先。
+    /// まだレイアウトされておらず矩形が取れないときはツリー順の最初の可視リーフへフォールバックする。</summary>
+    private PaneKind? TopLeftPane()
+    {
+        PaneKind? best = null;
+        Rect bestRect = default;
+        foreach (var leaf in AllLeaves())
+        {
+            if (leaf.Hidden || !TryGetPaneRect(leaf.Kind, out var rect))
+                continue;
+            if (best is null
+                || rect.Y < bestRect.Y - 0.5
+                || (Math.Abs(rect.Y - bestRect.Y) <= 0.5 && rect.X < bestRect.X))
+            {
+                best = leaf.Kind;
+                bestRect = rect;
+            }
+        }
+        return best ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
     }
 
     /// <summary>
