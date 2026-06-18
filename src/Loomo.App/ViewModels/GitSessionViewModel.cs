@@ -44,6 +44,15 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>ブランチ一覧のツリー（3個以上で "/" 区切りのフォルダ表示、未満はフラット）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
 
+    /// <summary>
+    /// コミットグラフに表示するブランチ（ref）。null は全ブランチ（--all）。
+    /// ブランチ一覧のダブルクリックで切り替わり、ヘッダーのチェックアウト（作業ブランチの変更）とは独立。
+    /// </summary>
+    private string? _logBranch;
+
+    /// <summary>特定ブランチに絞っているか（「すべてのブランチを表示」リンクの表示判定）。</summary>
+    [ObservableProperty] private bool _isLogScoped;
+
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
 
     public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff)
@@ -120,8 +129,14 @@ public sealed partial class GitSessionViewModel : ObservableObject
         var branches = await _git.GetBranchesAsync();
         BranchTree = BranchTreeBuilder.Update(BranchTree, branches);
 
+        await ReloadLogAsync();
+    }
+
+    /// <summary>コミットグラフだけを（現在の表示ブランチ範囲で）読み直す。選択は可能なら維持する。</summary>
+    private async Task ReloadLogAsync()
+    {
         var selectedHash = SelectedLogRow?.Hash;
-        var log = await _git.GetLogAsync();
+        var log = await _git.GetLogAsync(_logBranch);
         LogRows.Clear();
         GitLogRow? reselect = null;
         foreach (var row in log)
@@ -133,6 +148,25 @@ public sealed partial class GitSessionViewModel : ObservableObject
         SelectedLogRow = reselect;
         if (reselect is null)
             CommitDetail = "";
+    }
+
+    /// <summary>
+    /// ブランチ一覧のダブルクリック：チェックアウト（作業ブランチの変更）はせず、
+    /// 右側のコミットグラフをそのブランチの内容に切り替えるだけ。
+    /// </summary>
+    public Task ShowBranchLogAsync(GitBranchInfo branch)
+    {
+        _logBranch = branch.Name;
+        IsLogScoped = true;
+        return ReloadLogAsync();
+    }
+
+    /// <summary>コミットグラフを全ブランチ（--all）表示に戻す。</summary>
+    public Task ShowAllBranchesLogAsync()
+    {
+        _logBranch = null;
+        IsLogScoped = false;
+        return ReloadLogAsync();
     }
 
     partial void OnSelectedLogRowChanged(GitLogRow? value)

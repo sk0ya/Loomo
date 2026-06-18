@@ -702,18 +702,54 @@
                                 Tag="Git" Click="OnHidePane" />
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
-                                       Margin="2,0,4,0" />
-                            <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="12" FontWeight="SemiBold"
-                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <!-- ブランチ切替：タイトルバーと同じコントロール。クリックで一覧ポップアップ→選択でチェックアウト -->
+                            <Button x:Name="GitPaneBranchButton" Height="24" Margin="2,0,8,0" Padding="8,0"
+                                    Style="{StaticResource BranchMenuItem}"
+                                    ToolTip="ブランチを切り替え" Click="OnGitPaneBranchClick">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                               Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="12" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" MaxWidth="220"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                                               VerticalAlignment="Center" Margin="5,1,0,0" />
+                                </StackPanel>
+                            </Button>
+                            <Popup x:Name="GitPaneBranchPopup" PlacementTarget="{Binding ElementName=GitPaneBranchButton}"
+                                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="4"
+                                        MinWidth="240" MaxWidth="360" Margin="0,2,8,8">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                    </Border.Effect>
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Bottom">
+                                            <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
+                                            <Button Style="{StaticResource BranchMenuItem}" FontSize="12"
+                                                    Content="＋ 新しいブランチ" Click="OnGitPaneNewBranchClick" />
+                                            <TextBlock x:Name="GitPaneBranchPopupStatus" Margin="10,2,10,4" FontSize="11"
+                                                       Foreground="#FFE57373" TextWrapping="Wrap"
+                                                       MaxHeight="80" Visibility="Collapsed" />
+                                        </StackPanel>
+                                        <TreeView x:Name="GitPaneBranchPopupTree" MaxHeight="360"
+                                                  Background="Transparent" BorderThickness="0"
+                                                  Foreground="{DynamicResource Fg}"
+                                                  ItemsSource="{Binding GitSession.BranchTree}"
+                                                  ItemContainerStyle="{StaticResource BranchTreeItem}"
+                                                  ItemTemplate="{StaticResource BranchNodeTemplate}"
+                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                  PreviewMouseLeftButtonUp="OnGitPaneBranchTreeClick" />
+                                    </DockPanel>
+                                </Border>
+                            </Popup>
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="⭮ フェッチ"
                                     Command="{Binding GitSession.FetchCommand}" />
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇣ プル"
                                     Command="{Binding GitSession.PullCommand}" />
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇡ プッシュ"
                                     Command="{Binding GitSession.PushCommand}" />
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="＋ ブランチ"
-                                    ToolTip="HEAD から新しいブランチを作成" Click="OnGitNewBranch" />
                         </StackPanel>
                     </DockPanel>
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />

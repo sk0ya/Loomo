@@ -44,10 +44,20 @@ public partial class GitSessionView : UserControl
     /// <summary>ツリーで選択中のブランチ。フォルダノード選択中は null（各操作は何もしない）。</summary>
     private GitBranchInfo? SelectedBranch => (BranchList.SelectedItem as BranchTreeNode)?.Branch;
 
+    /// <summary>
+    /// ブランチのダブルクリックはチェックアウトではなく、右側のコミットグラフをそのブランチに切り替える
+    /// （ブランチの切り替え自体はヘッダーのブランチ切替コントロールから行う）。
+    /// </summary>
     private async void OnBranchDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (Vm is { } vm && SelectedBranch is { IsCurrent: false } branch)
-            await vm.CheckoutBranchAsync(branch);
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.ShowBranchLogAsync(branch);
+    }
+
+    private async void OnShowAllBranchesLog(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+            await vm.ShowAllBranchesLogAsync();
     }
 
     private async void OnBranchCheckout(object sender, RoutedEventArgs e)

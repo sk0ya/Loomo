@@ -734,14 +734,6 @@ public partial class ShellWindow
         SetPaneVisible(kind, false);
     }
 
-    /// <summary>Git ペインヘッダーの「＋ブランチ」：名前を聞いて HEAD からブランチを作成する。</summary>
-    private async void OnGitNewBranch(object sender, RoutedEventArgs e)
-    {
-        var name = InputDialog.Prompt(this, "新しいブランチ", "ブランチ名を入力してください");
-        if (!string.IsNullOrWhiteSpace(name))
-            await _vm.GitSession.CreateBranchAsync(name);
-    }
-
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))

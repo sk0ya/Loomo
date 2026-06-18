@@ -99,8 +99,11 @@
 
                 <!-- ブランチ一覧 -->
                 <DockPanel Grid.Column="0">
-                    <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource FgDim}" Text="ブランチ（ダブルクリックでチェックアウト）" TextWrapping="Wrap" />
+                    <!-- 特定ブランチに絞っている間だけ「すべてのブランチ」へ戻すリンクを出す -->
+                    <Button DockPanel.Dock="Top" Margin="8,0,8,2" HorizontalAlignment="Left"
+                            Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
+                            Click="OnShowAllBranchesLog"
+                            Visibility="{Binding IsLogScoped, Converter={StaticResource BoolToVis}}" />
                     <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
                               Foreground="{DynamicResource Fg}"
                               ItemsSource="{Binding BranchTree}"

@@ -163,11 +163,15 @@ public sealed class GitService
         return branches;
     }
 
-    /// <summary>全ブランチ込みのコミットグラフを取得する。空リポジトリは空リスト。</summary>
-    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(int limit = 300)
+    /// <summary>
+    /// コミットグラフを取得する。<paramref name="branchRef"/> 指定時はそのブランチ（ref）のみ、
+    /// null/空のときは全ブランチ込み（--all）。空リポジトリは空リスト。
+    /// </summary>
+    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(string? branchRef = null, int limit = 300)
     {
+        var revArg = string.IsNullOrWhiteSpace(branchRef) ? "--all" : branchRef;
         var result = await RunAsync(
-            "log", "--graph", "--all", $"-n{limit}",
+            "log", "--graph", revArg, $"-n{limit}",
             "--date=format:%Y-%m-%d %H:%M",
             $"--pretty=format:{GitLogParser.PrettyFormat}").ConfigureAwait(false);
         if (!result.Success)
