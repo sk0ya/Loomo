@@ -145,7 +145,6 @@ public partial class ShellWindow
         _vm.Pegboard.LoadItems(workspace.Pegboard);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
         LoadEnabledSessions(workspace.EnabledSessions);
-        _editorSupportUserVisibility = workspace.EditorSupportUserVisible;
         PrepareStageSnapshot(ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         ApplyPaneLayout(workspace.PaneLayout);
@@ -526,7 +525,6 @@ public partial class ShellWindow
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
         snapshot.Mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
         snapshot.EnabledSessions = _enabledSessions.ToList();
-        snapshot.EditorSupportUserVisible = _editorSupportUserVisibility;
         snapshot.Stage = new StageSnapshot
         {
             IsActive = _stageActive,

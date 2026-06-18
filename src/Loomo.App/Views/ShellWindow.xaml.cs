@@ -71,12 +71,8 @@ public partial class ShellWindow : Window
     private readonly HashSet<IEditorSupportVisualProvider> _editorSupportEditSubscribed = new();
     private bool _editorSupportWebEventsAttached;
     private DispatcherTimer? _editorSupportDebounceTimer;
-    /// <summary>EditorSupport ペイン表示へのユーザー指定。null は自動（対応プロバイダの有無で開閉）。</summary>
-    private bool? _editorSupportUserVisibility;
     /// <summary>EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。</summary>
     private bool _editorSupportSourcePinned;
-    /// <summary>自動開閉中の SetPaneVisible をユーザー操作と区別するガード。</summary>
-    private bool _editorSupportAutoToggling;
     /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>
     private string? _editorSupportMappedFolder;
     /// <summary>WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。</summary>

@@ -982,13 +982,9 @@ public partial class ShellWindow
                 _spanSavedRoot = AddLeafAtBottom(savedRoot, NewLeaf(kind));
         }
 
-        // EditorSupport の表示はユーザー操作を最優先で記憶する（自動開閉はガード中なので除外）。
-        if (kind == PaneKind.EditorSupport && !_editorSupportAutoToggling)
-        {
-            _editorSupportUserVisibility = visible;
-            if (visible)
-                _ = UpdateEditorSupportAsync(); // 手動で開いたら現在のエディタ内容を流し込む
-        }
+        // EditorSupport を表示にしたら、現在のエディタ内容でプレビューを流し込む（自動開閉はしない）。
+        if (kind == PaneKind.EditorSupport && visible)
+            _ = UpdateEditorSupportAsync();
 
         _zoomedPane = null; // 表示構成が変わるのでズームは解除する
         _root = Normalize(_root);

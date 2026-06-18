@@ -77,13 +77,6 @@ public sealed class WorkspaceSnapshot
     /// </summary>
     public PaneNodeSnapshot? PaneLayout { get; set; }
 
-    /// <summary>
-    /// EditorSupport ペインを開くかどうかのユーザー意図。true=明示的に開いた／false=明示的に閉じた／
-    /// null=未選択（対応プロバイダがあれば自動で開く）。レイアウトの Hidden とは別物で、
-    /// 「閉じた」意図を再起動跨ぎで保つためここに永続化する（さもなくば起動毎に null へ戻り自動再表示される）。
-    /// </summary>
-    public bool? EditorSupportUserVisible { get; set; }
-
     /// <summary>表示モード（ソロ／レイアウト）。null の旧データは復元時に <see cref="Stage"/> から移行する。</summary>
     public DisplayMode? Mode { get; set; }
 

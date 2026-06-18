@@ -159,6 +159,10 @@ public partial class ShellWindow
             return;
 
         RebuildStage();
+        // 舞台が EditorSupport なら、復元直後に現在のエディタ内容でプレビューを描き直す
+        // （タブ復元経路で描かれない場合の保険。可視意図 false でも onStage で描く）。
+        if (_stagePane == PaneKind.EditorSupport)
+            _ = UpdateEditorSupportAsync();
         // 組み直し直後は舞台の要素がまだレイアウト前（IsVisible=false）で Focus が失敗し得るため、
         // レイアウト確定後（Loaded 優先度）にフォーカスを入れる。
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
@@ -205,6 +209,10 @@ public partial class ShellWindow
         _overviewActive = false;
         _stagePane = kind;
         RebuildStage();
+        // EditorSupport を舞台へ立てた瞬間に、現在のエディタ内容でプレビューを描き直す
+        // （RebuildStage はペイン実体を移すだけで中身は更新しないため、ここで明示的に流し込む）。
+        if (kind == PaneKind.EditorSupport)
+            _ = UpdateEditorSupportAsync();
         MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
         SaveActiveWorkspaceSnapshot();
     }

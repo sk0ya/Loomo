@@ -25,14 +25,21 @@ using Terminal.Settings;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の自動表示・スクロール同期）</summary>
+/// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。
+/// 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。</summary>
 public partial class ShellWindow
 {
-    /// <summary>エディタからの明示プレビュー要求：EditorSupport ペインを手動表示扱いで開き、内容を流し込む。</summary>
+    /// <summary>
+    /// エディタからの明示プレビュー要求：EditorSupport ペインを開いて内容を流し込む。
+    /// タイル表示なら Editor の右隣へ開き、ソロモードなら舞台へ立てる。
+    /// </summary>
     private async Task OpenEditorSupportAsync(EditorTab sourceTab)
     {
-        _editorSupportUserVisibility = true;
         await SwitchEditorSupportSourceAsync(sourceTab, force: true);
+        if (_stageActive)
+            SetStagePane(PaneKind.EditorSupport);   // ソロは舞台へ立てる
+        else
+            ShowEditorSupportPane();                 // タイルは Editor の右隣へ開く
         await UpdateEditorSupportAsync();
     }
 
@@ -100,9 +107,8 @@ public partial class ShellWindow
     }
 
     /// <summary>
-    /// 追従先エディタの内容を EditorSupport ペインへ反映する。ファイルに対応する
-    /// <see cref="IEditorSupportProvider"/> が無ければペインを自動で閉じ、あれば自動で開く
-    /// （ユーザーのトグル操作 <see cref="_editorSupportUserVisibility"/> が最優先）。
+    /// 追従先エディタの内容を EditorSupport ペインへ反映する。ペインの開閉はしない（明示操作のみ）。
+    /// ペインが表示されている（タイルで可視 or ソロで舞台）ときだけ中身を描く。
     /// </summary>
     private async Task UpdateEditorSupportAsync()
     {
@@ -113,9 +119,10 @@ public partial class ShellWindow
         var filePath = source.Control.FilePath;
         var provider = _editorSupports.Resolve(filePath);
 
-        var shouldShow = _editorSupportUserVisibility ?? provider is not null;
-        SetEditorSupportVisibleAuto(shouldShow);
-        if (!shouldShow || !IsPaneVisible(PaneKind.EditorSupport))
+        // 自動表示はしない。ペインが実際に表示されている（タイルで可視 or ソロで舞台）ときだけ描く。
+        // 判定は EditorSupportRenderPolicy に一元化（テスト可能）。
+        var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
+        if (!EditorSupportRenderPolicy.ShouldRender(onStage, IsPaneVisible(PaneKind.EditorSupport)))
             return;
 
         // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。
@@ -289,24 +296,14 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>EditorSupport ペインの自動開閉（ユーザー操作と区別するためガードを立てて呼ぶ）。</summary>
-    private void SetEditorSupportVisibleAuto(bool visible)
+    /// <summary>EditorSupport ペインを（無ければ Editor の右隣へ作って）表示する。明示プレビュー要求用。</summary>
+    private void ShowEditorSupportPane()
     {
-        if (IsPaneVisible(PaneKind.EditorSupport) == visible)
+        if (IsPaneVisible(PaneKind.EditorSupport))
             return;
 
-        if (visible)
-            EnsureEditorSupportLeafBesideEditor();
-
-        _editorSupportAutoToggling = true;
-        try
-        {
-            SetPaneVisible(PaneKind.EditorSupport, visible);
-        }
-        finally
-        {
-            _editorSupportAutoToggling = false;
-        }
+        EnsureEditorSupportLeafBesideEditor();
+        SetPaneVisible(PaneKind.EditorSupport, true);
     }
 
     /// <summary>
