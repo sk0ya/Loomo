@@ -69,8 +69,22 @@ public partial class ShellWindow
         CaptureLayoutSizes();
 
         // 未保存の変更（または現在がスクラッチ）なら、現配置を単一スクラッチへ退避（上書き）。
+        // ただし保存レイアウトと同じ配置なら、退避すると Ctrl+T で同じものが2度出てしまうので
+        // 退避せず、その保存レイアウトを現在位置として巡回を続ける。
         if ((_layoutDirty || _activeLayoutIndex < 0) && _root is not null)
-            _scratchLayout = ToSnapshot(_root);
+        {
+            var current = ToSnapshot(_root);
+            var sameAsSaved = _layouts.FindIndex(l => PaneLayoutTree.SnapshotsEquivalent(l.Tree, current));
+            if (sameAsSaved >= 0)
+            {
+                _activeLayoutIndex = sameAsSaved;
+                _layoutDirty = false;
+            }
+            else
+            {
+                _scratchLayout = current;
+            }
+        }
 
         var next = LayoutCycleLogic.NextIndex(
             _activeLayoutIndex, _layouts.Count, _scratchLayout is not null, direction);

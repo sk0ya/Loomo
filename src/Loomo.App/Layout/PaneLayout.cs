@@ -213,6 +213,28 @@ public static class PaneLayoutTree
         return wrap;
     }
 
+    /// <summary>
+    /// 2つのスナップショットが同じ配置か（ペイン種別・表示/非表示・行列構造が一致するか）を判定する。
+    /// 比率（<see cref="PaneNodeSnapshot.Weight"/>）は配置の同一性に含めない。Ctrl+T 巡回で
+    /// 未保存配置を退避する際、保存レイアウトと同配置なら退避を省く（重複表示防止）ために使う。
+    /// </summary>
+    public static bool SnapshotsEquivalent(PaneNodeSnapshot a, PaneNodeSnapshot b)
+    {
+        var aLeaf = a.Children is not { Count: > 0 };
+        var bLeaf = b.Children is not { Count: > 0 };
+        if (aLeaf != bLeaf)
+            return false;
+        if (aLeaf)
+            return a.Kind == b.Kind && a.Hidden == b.Hidden;
+
+        if (a.Orientation != b.Orientation || a.Children.Count != b.Children.Count)
+            return false;
+        for (var i = 0; i < a.Children.Count; i++)
+            if (!SnapshotsEquivalent(a.Children[i], b.Children[i]))
+                return false;
+        return true;
+    }
+
     /// <summary>ツリーを永続化用スナップショットへ変換する。</summary>
     public static PaneNodeSnapshot ToSnapshot(PaneNode node)
     {

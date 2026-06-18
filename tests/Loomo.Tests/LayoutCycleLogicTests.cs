@@ -1,14 +1,46 @@
 using sk0ya.Loomo.App.Layout;
+using sk0ya.Loomo.App.Services;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
 /// レイアウトモードの巡回（Ctrl+T）純ロジックの検証。スクラッチ枠（-1）の有無・前後巡回・ラップ・
-/// 列外からの復帰を押さえる。
+/// 列外からの復帰を押さえる。配置同一判定（同配置はスクラッチへ退避しない）も併せて検証する。
 /// </summary>
 public class LayoutCycleLogicTests
 {
+    private static PaneNodeSnapshot Leaf(PaneKind kind, bool hidden = false, double weight = 1)
+        => new() { Kind = kind, Hidden = hidden, Weight = weight };
+
+    private static PaneNodeSnapshot Split(string orientation, double weight, params PaneNodeSnapshot[] children)
+        => new() { Orientation = orientation, Weight = weight, Children = children.ToList() };
+
+    [Fact]
+    public void Equivalent_ignores_weight()
+        => Assert.True(PaneLayoutTree.SnapshotsEquivalent(
+            Split("Columns", 1, Leaf(PaneKind.Editor, weight: 2), Leaf(PaneKind.Terminal, weight: 1)),
+            Split("Columns", 3, Leaf(PaneKind.Editor, weight: 1), Leaf(PaneKind.Terminal, weight: 5))));
+
+    [Fact]
+    public void Not_equivalent_when_kind_differs()
+        => Assert.False(PaneLayoutTree.SnapshotsEquivalent(Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal)));
+
+    [Fact]
+    public void Not_equivalent_when_hidden_differs()
+        => Assert.False(PaneLayoutTree.SnapshotsEquivalent(Leaf(PaneKind.Editor), Leaf(PaneKind.Editor, hidden: true)));
+
+    [Fact]
+    public void Not_equivalent_when_orientation_or_structure_differs()
+    {
+        Assert.False(PaneLayoutTree.SnapshotsEquivalent(
+            Split("Columns", 1, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal)),
+            Split("Rows", 1, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal))));
+        Assert.False(PaneLayoutTree.SnapshotsEquivalent(
+            Leaf(PaneKind.Editor),
+            Split("Columns", 1, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal))));
+    }
+
     [Theory]
     // スクラッチ無し・保存3枚：0→1→2→0 と前進、ラップする
     [InlineData(0, 3, false, 1, 1)]
