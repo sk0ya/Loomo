@@ -259,6 +259,12 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await RunOpAsync("破棄", () => _git.DiscardAsync(entries));
     }
 
+    /// <summary>
+    /// コミット。ステージ済みがあればそれだけをコミットし、ステージ済みが無く変更だけがあるときは
+    /// 全ステージ（git add -A）してからコミットする（VS Code 風スマートコミット。「ステージし忘れて
+    /// nothing to commit で失敗」を避ける）。amend は HEAD の付け替え（メッセージ修正だけ等）が成立する
+    /// ため自動ステージしない。
+    /// </summary>
     [RelayCommand]
     private async Task CommitAsync()
     {
@@ -270,7 +276,22 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
         var message = CommitMessage.Trim();
         var amend = Amend;
-        await RunOpAsync(amend ? "コミット（amend）" : "コミット", () => _git.CommitAsync(message, amend));
+        var autoStage = !amend && Staged.Count == 0;
+        if (autoStage && Unstaged.Count == 0)
+        {
+            StatusMessage = "コミットする変更がありません。";
+            StatusIsError = true;
+            return;
+        }
+        await RunOpAsync(amend ? "コミット（amend）" : "コミット", async () =>
+        {
+            if (autoStage)
+            {
+                var stage = await _git.StageAllAsync();
+                if (!stage.Success) return stage;
+            }
+            return await _git.CommitAsync(message, amend);
+        });
         if (!StatusIsError)
         {
             CommitMessage = "";

@@ -252,6 +252,7 @@
                               IsChecked="{Binding Amend}" />
                     <Button Content="✓ コミット" Style="{StaticResource FlatButton}"
                             HorizontalAlignment="Stretch"
+                            ToolTip="ステージ済みがあればそれをコミット。無ければ変更をすべてステージしてからコミットします。"
                             Command="{Binding CommitCommand}"
                             IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                 </DockPanel>
