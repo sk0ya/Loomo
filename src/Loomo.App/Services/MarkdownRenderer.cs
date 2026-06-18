@@ -66,7 +66,7 @@ internal static class MarkdownRenderer
                 continue;
             }
 
-            if (HrRe.IsMatch(line.Trim()) && !UlRe.IsMatch(line))
+            if (HrRe.IsMatch(line.Trim()) && !ListItemRe.IsMatch(line))
             {
                 html.AppendLine("<hr>");
                 i++;
@@ -88,29 +88,9 @@ internal static class MarkdownRenderer
                 continue;
             }
 
-            if (UlRe.IsMatch(line))
+            if (ListItemRe.IsMatch(line))
             {
-                html.AppendLine("<ul>");
-                while (i < lines.Length && UlRe.IsMatch(lines[i]))
-                {
-                    var m = UlRe.Match(lines[i]);
-                    html.AppendLine($"<li>{Inline(m.Groups[1].Value)}</li>");
-                    i++;
-                }
-                html.AppendLine("</ul>");
-                continue;
-            }
-
-            if (OlRe.IsMatch(line))
-            {
-                html.AppendLine("<ol>");
-                while (i < lines.Length && OlRe.IsMatch(lines[i]))
-                {
-                    var m = OlRe.Match(lines[i]);
-                    html.AppendLine($"<li>{Inline(m.Groups[1].Value)}</li>");
-                    i++;
-                }
-                html.AppendLine("</ol>");
+                RenderList(lines, ref i, html);
                 continue;
             }
 
@@ -147,9 +127,8 @@ internal static class MarkdownRenderer
                    && !lines[i].TrimStart().StartsWith("```")
                    && !lines[i].TrimStart().StartsWith("~~~")
                    && !lines[i].StartsWith(">")
-                   && !UlRe.IsMatch(lines[i])
-                   && !OlRe.IsMatch(lines[i])
-                   && !(HrRe.IsMatch(lines[i].Trim()) && !UlRe.IsMatch(lines[i]))
+                   && !ListItemRe.IsMatch(lines[i])
+                   && !(HrRe.IsMatch(lines[i].Trim()) && !ListItemRe.IsMatch(lines[i]))
                    && !(lines[i].Contains('|') && i + 1 < lines.Length
                         && lines[i + 1].Contains('|') && TableSepRe.IsMatch(lines[i + 1])))
             {
@@ -158,8 +137,83 @@ internal static class MarkdownRenderer
             }
 
             if (paraLines.Count > 0)
-                html.AppendLine($"<p>{Inline(string.Join(" ", paraLines))}</p>");
+                html.AppendLine($"<p>{Inline(JoinParagraph(paraLines))}</p>");
         }
+    }
+
+    // 段落内の行を連結する。文末がスペース2つ以上で終わる行はハード改行（<br>）にする
+    // （CommonMark の hard line break）。それ以外は空白で連結して 1 つの段落にまとめる。
+    private static string JoinParagraph(List<string> lines)
+    {
+        var sb = new StringBuilder();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            sb.Append(line.TrimEnd());
+            if (i == lines.Count - 1)
+                break;
+            sb.Append(line.Length - line.TrimEnd(' ').Length >= 2 ? "<br>" : " ");
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 連続するリスト項目を、先頭空白の幅でネストさせて描画する。同じインデント幅の項目は同じ
+    /// &lt;ul&gt;/&lt;ol&gt; に並び、より深い項目は直前の &lt;li&gt; の中の入れ子リストになる。
+    /// 順序付きリストは先頭項目の番号を start 属性に反映する（1 以外始まり／空行分割のルーズリストでも
+    /// 番号が 1 に戻らない）。<paramref name="i"/> はこのリスト領域を消費した位置まで進む。
+    /// </summary>
+    private static void RenderList(string[] lines, ref int i, StringBuilder html)
+    {
+        var first = ListItemRe.Match(lines[i]);
+        var indent = first.Groups[1].Value.Length;
+        var ordered = char.IsDigit(first.Groups[2].Value[0]);
+        if (ordered)
+        {
+            var start = first.Groups[2].Value.TrimEnd('.');
+            html.AppendLine(start == "1" ? "<ol>" : $"<ol start=\"{start}\">");
+        }
+        else
+        {
+            html.AppendLine("<ul>");
+        }
+
+        while (i < lines.Length)
+        {
+            // 空行はルーズリストとして読み飛ばす。次の非空行がリスト項目でなければリスト終了。
+            if (string.IsNullOrWhiteSpace(lines[i]))
+            {
+                var j = i;
+                while (j < lines.Length && string.IsNullOrWhiteSpace(lines[j])) j++;
+                if (j >= lines.Length || !ListItemRe.IsMatch(lines[j])) break;
+                i = j;
+            }
+
+            var m = ListItemRe.Match(lines[i]);
+            if (!m.Success || m.Groups[1].Value.Length < indent)
+                break; // リスト外、または親レベルへ戻った → このリストは終了
+
+            html.Append($"<li>{Inline(m.Groups[3].Value)}");
+            i++;
+
+            // より深いインデントの後続項目は、この <li> 内の入れ子リストにする。
+            while (true)
+            {
+                var j = i;
+                while (j < lines.Length && string.IsNullOrWhiteSpace(lines[j])) j++;
+                if (j < lines.Length && ListItemRe.IsMatch(lines[j])
+                    && ListItemRe.Match(lines[j]).Groups[1].Value.Length > indent)
+                {
+                    i = j;
+                    RenderList(lines, ref i, html);
+                }
+                else break;
+            }
+
+            html.AppendLine("</li>");
+        }
+
+        html.AppendLine(ordered ? "</ol>" : "</ul>");
     }
 
     private static string Inline(string text)
@@ -226,8 +280,8 @@ internal static class MarkdownRenderer
 
     private static readonly Regex HeaderRe = new(@"^(#{1,6})\s+(.+)$", RegexOptions.Compiled);
     private static readonly Regex HrRe = new(@"^(\-{3,}|\*{3,}|_{3,})$", RegexOptions.Compiled);
-    private static readonly Regex UlRe = new(@"^[ \t]*[\-\*\+]\s+(.+)$", RegexOptions.Compiled);
-    private static readonly Regex OlRe = new(@"^\d+\.\s+(.+)$", RegexOptions.Compiled);
+    // 先頭空白(1)・マーカー(2: -/*/+ または "12.")・内容(3)。空白幅でネスト階層を判定する。
+    private static readonly Regex ListItemRe = new(@"^([ \t]*)([\-\*\+]|\d+\.)[ \t]+(.+)$", RegexOptions.Compiled);
     private static readonly Regex TableSepRe = new(@"^\|?[\s\-:\|]+\|?$", RegexOptions.Compiled);
     private static readonly Regex CodeSpanRe = new(@"`([^`]+)`", RegexOptions.Compiled);
     private static readonly Regex ImageRe = new(@"!\[([^\]]*)\]\(([^\)]+)\)", RegexOptions.Compiled);
