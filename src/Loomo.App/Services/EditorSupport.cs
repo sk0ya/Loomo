@@ -34,6 +34,17 @@ public interface IEditorSupportHtmlProvider : IEditorSupportProvider
 }
 
 /// <summary>
+/// ファイルそのものを EditorSupport ペインの WebView2 へ直接ナビゲートして表示する提供者
+/// （PDF・SVG・HTML 等、ブラウザが標準で開けるもの）。エディタ本文ではなくファイルパスを
+/// そのまま開くので、テキストの内容には依存しない（バイナリでもよい）。
+/// </summary>
+public interface IEditorSupportUriProvider : IEditorSupportProvider
+{
+    /// <summary>WebView2 がナビゲートする URI（通常はファイルの <c>file://</c> URI）。</summary>
+    string ResolveNavigationUri(string filePath);
+}
+
+/// <summary>
 /// WPF コントロールをそのまま EditorSupport ペインへ表示する提供者（CSV/TSV グリッド等）。
 /// ビューは提供者側が1つ保持して使い回す（ペインは1枚なので同時表示は常に1つ）。
 /// </summary>
@@ -165,4 +176,30 @@ public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
             _settings.Appearance.MarkdownPreviewTheme,
             // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
             baseHref: MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
+}
+
+/// <summary>
+/// ブラウザ（WebView2/Chromium）が標準で開けるファイル（PDF・SVG・HTML 等）を、ペインの
+/// WebView2 へファイルの <c>file://</c> URI で直接ナビゲートして表示する提供者。レンダリングは
+/// ブラウザ任せなので、専用ビューア無しで「とりあえず開ける」ものをまとめて受け持つ。
+/// </summary>
+public sealed class BrowserEditorSupport : IEditorSupportUriProvider
+{
+    // Chromium が外部プラグイン無しでそのまま描画できる拡張子。画像のラスタ形式は
+    // ImageEditorSupport（ズーム・パン付き）が受け持つので、ここでは扱わない。
+    private static readonly string[] Extensions =
+        [".pdf", ".svg", ".html", ".htm", ".xhtml", ".mht", ".mhtml"];
+
+    public IReadOnlyCollection<string> SupportedExtensions => Extensions;
+
+    public string DescribeTitle(string filePath)
+    {
+        var label = Path.GetExtension(filePath).TrimStart('.').ToUpperInvariant();
+        return label.Length == 0
+            ? $"Browser: {Path.GetFileName(filePath)}"
+            : $"{label}: {Path.GetFileName(filePath)}";
+    }
+
+    public string ResolveNavigationUri(string filePath)
+        => new Uri(Path.GetFullPath(filePath)).AbsoluteUri;
 }

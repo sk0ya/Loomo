@@ -141,6 +141,7 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, MarkdownEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, ImageEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();   // CSV/TSV を VGrid グリッドで表示
+        services.AddSingleton<IEditorSupportProvider, BrowserEditorSupport>(); // PDF/SVG/HTML 等はブラウザ(WebView2)で表示
         services.AddSingleton<EditorSupportRegistry>();
 
         // --- ViewModels / Window ---

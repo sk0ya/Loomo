@@ -30,7 +30,8 @@ public class EditorSupportTests
         {
             CreateSupport(),
             new ImageEditorSupport(),
-            new VGridEditorSupport(new AiSettings())
+            new VGridEditorSupport(new AiSettings()),
+            new BrowserEditorSupport()
         });
     }
 
@@ -66,6 +67,32 @@ public class EditorSupportTests
         var provider = CreateRegistry().Resolve(path);
 
         Assert.IsType<ImageEditorSupport>(provider);
+    }
+
+    [Theory]
+    [InlineData(@"C:\work\manual.pdf")]
+    [InlineData(@"C:\work\diagram.svg")]
+    [InlineData(@"C:\work\page.html")]
+    [InlineData(@"C:\work\page.htm")]
+    [InlineData(@"C:\work\REPORT.PDF")]
+    public void Resolve_ブラウザで開けるファイルにはBrowserプロバイダを返す(string path)
+    {
+        var provider = CreateRegistry().Resolve(path);
+
+        Assert.IsType<BrowserEditorSupport>(provider);
+    }
+
+    [Fact]
+    public void BrowserSupport_URIプロバイダとしてファイルのfileURIを返す()
+    {
+        var support = new BrowserEditorSupport();
+
+        Assert.IsAssignableFrom<IEditorSupportUriProvider>(support);
+        Assert.Equal("PDF: manual.pdf", support.DescribeTitle(@"C:\work\manual.pdf"));
+
+        var uri = support.ResolveNavigationUri(@"C:\work\manual.pdf");
+        Assert.StartsWith("file:///", uri);
+        Assert.EndsWith("manual.pdf", uri);
     }
 
     [Fact]

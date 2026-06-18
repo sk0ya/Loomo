@@ -130,15 +130,22 @@ public partial class ShellWindow
             return;
         }
 
-        // HTML（WebView2）系。直前までビジュアル系を表示していたら退ける。
+        // WebView2 系。直前までビジュアル系を表示していたら退ける。
         HideEditorSupportVisual();
 
         // 描画内容は init を待つ前に確定し、最新の要求として登録する。WebView2 の初回初期化は
         // 起動時だけ数秒かかり、その間に複数の更新が積み重なるため、シーケンス番号で最後の1つへ畳む。
         string title;
-        string html;
+        string? html = null;
+        string? uri = null;
         string? mapFolder = null;
-        if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
+        if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
+        {
+            // PDF・SVG・HTML 等はファイルをそのままブラウザへナビゲートする（本文には依存しない）。
+            title = uriProvider.DescribeTitle(filePath);
+            uri = uriProvider.ResolveNavigationUri(filePath);
+        }
+        else if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
         {
             title = htmlProvider.DescribeTitle(filePath);
             html = htmlProvider.RenderHtml(filePath, source.Control.Text);
@@ -155,6 +162,7 @@ public partial class ShellWindow
         }
 
         _editorSupportPendingHtml = html;
+        _editorSupportPendingUri = uri;
         _editorSupportPendingMapFolder = mapFolder;
         EditorSupportTitle.Text = title;
         var seq = ++_editorSupportRenderSeq;
@@ -168,14 +176,38 @@ public partial class ShellWindow
         if (seq != _editorSupportRenderSeq)
             return;
 
-        RenderPendingEditorSupportHtml(view.CoreWebView2);
+        RenderPendingEditorSupportContent(view.CoreWebView2);
     }
 
-    /// <summary>最新の描画内容（<see cref="_editorSupportPendingHtml"/>）を WebView2 へ反映する。</summary>
-    private void RenderPendingEditorSupportHtml(CoreWebView2 core)
+    /// <summary>
+    /// 最新の描画内容を WebView2 へ反映する。URI プロバイダ（PDF 等）はファイルへ直接ナビゲートし、
+    /// それ以外（Markdown プレビュー等）は HTML 文字列をナビゲートする。
+    /// </summary>
+    private void RenderPendingEditorSupportContent(CoreWebView2 core)
     {
+        if (_editorSupportPendingUri is { } uri)
+        {
+            // 同一ファイルへの再ナビゲート（本文編集のデバウンス等）は PDF のスクロール位置を失うので避ける。
+            if (string.Equals(uri, _editorSupportNavigatedUri, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            try
+            {
+                core.Navigate(uri);
+                _editorSupportNavigatedUri = uri;
+            }
+            catch
+            {
+                // 無効な URI 等で失敗しても落とさない（表示は前回内容のまま）。
+            }
+            return;
+        }
+
         if (_editorSupportPendingHtml is null)
             return;
+
+        // HTML を描いたら、次に同じ URI へ戻ったとき確実に再ナビゲートできるようガードを解除する。
+        _editorSupportNavigatedUri = null;
 
         if (_editorSupportPendingMapFolder is not null)
             UpdateEditorSupportVirtualHost(core, _editorSupportPendingMapFolder);
@@ -373,7 +405,7 @@ public partial class ShellWindow
         if (!_editorSupportFirstRenderHealed && _editorSupportView?.CoreWebView2 is { } core)
         {
             _editorSupportFirstRenderHealed = true;
-            RenderPendingEditorSupportHtml(core);
+            RenderPendingEditorSupportContent(core);
         }
 
         // コンテンツの描画が終わったら、エディタの現在位置までスクロールを合わせ直す。

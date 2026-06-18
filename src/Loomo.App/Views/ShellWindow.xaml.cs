@@ -61,7 +61,8 @@ public partial class ShellWindow : Window
     // ===== EditorSupport ペイン =====
     // アクティブなエディタタブのファイルに対応する IEditorSupportProvider が登録されていれば
     // （Markdown プレビュー等）、その HTML を専用 WebView2 へ自動表示する。
-    // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示する。
+    // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示し、
+    // IEditorSupportUriProvider（PDF/SVG/HTML 等）はファイルを WebView2 へ直接ナビゲートして表示する。
     private EditorTab? _editorSupportSourceTab;
     private WebView2CompositionControl? _editorSupportView;
     /// <summary>現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。</summary>
@@ -84,6 +85,10 @@ public partial class ShellWindow : Window
     private int _editorSupportRenderSeq;
     /// <summary>最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。</summary>
     private string? _editorSupportPendingHtml;
+    /// <summary>最新のナビゲート先 URI（PDF 等の URI プロバイダ。HTML 描画時は null）。</summary>
+    private string? _editorSupportPendingUri;
+    /// <summary>現在 WebView2 が表示中のナビゲート URI（同一 URI への再ナビゲートでスクロール位置を失わないためのガード）。</summary>
+    private string? _editorSupportNavigatedUri;
     /// <summary>最新の描画に対応する仮想ホストのマップ先（プロバイダ無しなら null）。</summary>
     private string? _editorSupportPendingMapFolder;
     /// <summary>起動直後の初回ナビゲーション取りこぼし対策（初回完了時に最新内容を一度だけ描き直す）を実施済みか。</summary>
