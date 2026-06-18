@@ -180,6 +180,9 @@ public partial class ShellWindow : Window
         _editor = editor;
         _browser = browser;
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
+        // OpenFileAsync（ツールの write_file/edit_file、Git/Diff ペインの「エディタで開く」等）は
+        // ここで専用エディタタブを作成・アクティブ化して開く（FolderTree のファイル活性化と同じ流儀）。
+        _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
         _tabIcons = tabIcons;
         _settings = settings;

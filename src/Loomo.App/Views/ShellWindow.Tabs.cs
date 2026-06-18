@@ -129,7 +129,9 @@ public partial class ShellWindow
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
-        await _editor.OpenFileAsync(path);
+        // 活性化済みタブの control へ直接読み込む。ここで _editor.OpenFileAsync を呼ぶと
+        // FileOpenRequested 経由で本メソッドへ再入してしまうため、低レベルの LoadFile を使う。
+        tab.Control.LoadFile(path);
         UpdateEditorTab(tab);
         // タブ活性化の時点では FilePath が未確定だったので、読込後に EditorSupport を同期し直す。
         await UpdateEditorSupportAsync();
@@ -173,7 +175,8 @@ public partial class ShellWindow
         }
 
         ActivateEditorTab(target.Id);
-        await _editor.OpenFileAsync(path);
+        // 活性化済みタブの control へ直接読み込む（_editor.OpenFileAsync は再入を招くため使わない）。
+        target.Control.LoadFile(path);
         // LoadFile 中の BufferChanged が UpdateEditorTab の昇格判定を誤爆させないよう、読込後に印を付ける。
         SetPreviewTab(target);
         UpdateEditorTab(target);

@@ -32,6 +32,15 @@ public sealed class EditorService : IEditorService
     /// </summary>
     public event Action<string>? NewVirtualDocumentTabRequested;
 
+    /// <summary>
+    /// ファイルを「開く」要求。引数は対象のフルパス。ホスト（ShellWindow）が受けて専用のエディタタブを
+    /// 作成・アクティブ化し、そこへファイルを読み込む（既に開いていればそのタブを再利用）。
+    /// かつては <see cref="OpenFileAsync"/> が現在アタッチ中の control へ直接 LoadFile していたため、
+    /// 呼び出し側の意図（=新しいタブで開く）に反して現在のタブの中身を上書きしていた。タブ生成は
+    /// タブ管理を持つホストにしか正しく行えないので、ここでは要求だけを上げてホストへ委ねる。
+    /// </summary>
+    public event Action<string>? FileOpenRequested;
+
     public void Attach(VimEditorControl ctrl)
     {
         if (_ctrl is not null)
@@ -44,7 +53,9 @@ public sealed class EditorService : IEditorService
 
     public Task OpenFileAsync(string path)
     {
-        DispatchVoid(() => _ctrl?.LoadFile(path));
+        // タブの作成・再利用・アクティブ化はホスト側でしか正しく行えないので委ねる。
+        // 購読者（ShellWindow）が居なければ何もしない（best-effort）。
+        DispatchVoid(() => FileOpenRequested?.Invoke(path));
         return Task.CompletedTask;
     }
 
