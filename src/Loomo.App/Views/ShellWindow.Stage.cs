@@ -53,6 +53,10 @@ public partial class ShellWindow
     /// <summary>袖カードの待機時不透明度（暗がりで生きて待っている感を出す）。</summary>
     private const double WingRestOpacity = 0.72;
 
+    /// <summary>袖カードのドラッグ判定（しきい値を超えたらタイルへの配置ドラッグを始める）。</summary>
+    private Point _wingDragStart;
+    private bool _wingDragArmed;
+
     /// <summary>袖・俯瞰での並び順（よく使うものから）。</summary>
     private static readonly PaneKind[] StageOrder =
     [
@@ -628,8 +632,28 @@ public partial class ShellWindow
         };
         card.MouseLeftButtonUp += (_, e) =>
         {
+            _wingDragArmed = false;
             e.Handled = true; // 俯瞰レイヤの背景クリック（＝俯瞰を閉じる）と区別する
             onClick();
+        };
+
+        // レイアウトモードでは、ミニチュアをタイルへドラッグして配置できる（中央=入れ替え／端=分割挿入）。
+        // しきい値を超えたら BeginWingDrag がオーバーレイへ捕捉を移し、このクリック（=onClick）は不発になる。
+        card.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            _wingDragStart = e.GetPosition(this);
+            _wingDragArmed = true;
+        };
+        card.PreviewMouseMove += (_, e) =>
+        {
+            if (_stageActive || _overviewActive || !_wingDragArmed || e.LeftButton != MouseButtonState.Pressed)
+                return;
+            var pos = e.GetPosition(this);
+            if (Math.Abs(pos.X - _wingDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(pos.Y - _wingDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+            _wingDragArmed = false;
+            BeginWingDrag(kind);
         };
         return card;
     }

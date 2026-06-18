@@ -513,13 +513,49 @@ public partial class ShellWindow
         _dragSource = source;
         _dragTarget = null;
         _dragZone = null;
+        _dragFromWing = false;
+        _dragCenter = false;
         _paneDragging = true;
 
         _dragPreview!.Visibility = Visibility.Collapsed;
         _dragTargetOutline!.Visibility = Visibility.Collapsed;
         PaneDragOverlay.Visibility = Visibility.Visible;
+        ShowDragGhost(source);
+        MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
 
         // 表示直後で捕捉に失敗した場合は次の入力タイミングで再試行する。
+        if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    if (_paneDragging)
+                        Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
+                }),
+                System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>袖（ミニチュア）からのドラッグを開始する。ドロップ先のタイル上では既存のゾーン
+    /// プレビューを出し、中央なら入れ替え・端なら分割挿入する（<see cref="PlaceWingPane"/>）。
+    /// レイアウトモード専用（ステージ中はタイルが無いので無効）。</summary>
+    private void BeginWingDrag(PaneKind source)
+    {
+        if (_stageActive || VisibleLeafCount() < 1)
+            return;
+
+        EnsureDragOverlay();
+        _dragSource = source;
+        _dragTarget = null;
+        _dragZone = null;
+        _dragFromWing = true;
+        _dragCenter = false;
+        _paneDragging = true;
+
+        _dragPreview!.Visibility = Visibility.Collapsed;
+        _dragTargetOutline!.Visibility = Visibility.Collapsed;
+        PaneDragOverlay.Visibility = Visibility.Visible;
+        ShowDragGhost(source);
+        MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
+
         if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
             Dispatcher.BeginInvoke(
                 new Action(() =>
@@ -574,6 +610,7 @@ public partial class ShellWindow
             return;
         }
 
+        MoveDragGhost(e.GetPosition(DragGhostLayer));
         UpdateDragPreview(e.GetPosition(PaneHost));
     }
 
@@ -582,22 +619,30 @@ public partial class ShellWindow
         var hit = HitTestCell(pos);
         if (hit is null)
         {
+            // タイル外（袖のミニチュアや余白の上）はドロップ無効＝レイアウトは変わらない。
+            // 変更しそうなプレビューは出さず、カーソルも禁止にして「ここには落とせない」を示す。
             _dragTarget = null;
             _dragZone = null;
+            _dragCenter = false;
             _dragPreview!.Visibility = Visibility.Collapsed;
             _dragTargetOutline!.Visibility = Visibility.Collapsed;
+            Mouse.OverrideCursor = Cursors.No;
             return;
         }
+        Mouse.OverrideCursor = Cursors.Hand;
 
         var (kind, rect) = hit.Value;
         var relX = rect.Width > 0 ? (pos.X - rect.X) / rect.Width : 0.5;
         var relY = rect.Height > 0 ? (pos.Y - rect.Y) / rect.Height : 0.5;
         var zone = NearestZone(relX, relY);
+        // 袖からのドラッグはセル中央に「入れ替え」ゾーンを設ける（端は従来どおり分割挿入）。
+        var center = _dragFromWing && relX is > 0.34 and < 0.66 && relY is > 0.34 and < 0.66;
         _dragTarget = kind;
         _dragZone = zone;
+        _dragCenter = center;
 
         PlaceOverlay(_dragTargetOutline!, rect);
-        PlaceOverlay(_dragPreview!, ZoneRect(rect, zone));
+        PlaceOverlay(_dragPreview!, center ? rect : ZoneRect(rect, zone));
         _dragTargetOutline!.Visibility = Visibility.Visible;
         _dragPreview!.Visibility = Visibility.Visible;
     }
@@ -615,9 +660,15 @@ public partial class ShellWindow
         var source = _dragSource;
         var target = _dragTarget;
         var zone = _dragZone;
+        var center = _dragCenter;
+        var fromWing = _dragFromWing;
         EndPaneDrag();
 
-        if (target is { } t && zone is { } z && t != source)
+        if (target is not { } t || t == source)
+            return;
+        if (fromWing)
+            PlaceWingPane(source, t, center, zone);
+        else if (zone is { } z)
             MovePane(source, t, z);
     }
 
@@ -627,9 +678,55 @@ public partial class ShellWindow
             EndPaneDrag();
     }
 
+    /// <summary>ドラッグ中のゴースト（掴んでいるペイン名のチップ）を出し、カーソル追従させる。
+    /// ドラッグが始まったことを一目で分かるようにするための手応え。</summary>
+    private void ShowDragGhost(PaneKind kind)
+    {
+        if (_dragGhost is null)
+        {
+            _dragGhost = new Border
+            {
+                Background = MakeTranslucent((Brush)FindResource("Accent"), 0.9),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10, 5, 10, 5),
+                IsHitTestVisible = false,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5, Color = Colors.Black
+                },
+                Child = new TextBlock { Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeights.SemiBold }
+            };
+            DragGhostLayer.Children.Add(_dragGhost);
+        }
+        ((TextBlock)_dragGhost.Child).Text = PaneLabel(kind);
+        _dragGhost.Visibility = Visibility.Visible;
+        DragGhostLayer.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.Hand;   // 掴んでいる感じ（タイル外では UpdateDragPreview が No へ）
+    }
+
+    /// <summary>ゴーストをカーソル位置（DragGhostLayer 座標）へ追従させる。少しずらしてポインタを隠さない。</summary>
+    private void MoveDragGhost(Point pos)
+    {
+        if (_dragGhost is null)
+            return;
+        Canvas.SetLeft(_dragGhost, pos.X + 14);
+        Canvas.SetTop(_dragGhost, pos.Y + 16);
+    }
+
+    private void HideDragGhost()
+    {
+        if (_dragGhost is not null)
+            _dragGhost.Visibility = Visibility.Collapsed;
+        DragGhostLayer.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+    }
+
     private void EndPaneDrag()
     {
         _paneDragging = false;
+        _dragFromWing = false;
+        _dragCenter = false;
+        HideDragGhost();
         if (ReferenceEquals(Mouse.Captured, _dragCanvas))
             Mouse.Capture(null);
         PaneDragOverlay.Visibility = Visibility.Collapsed;
@@ -716,6 +813,55 @@ public partial class ShellWindow
     /// <summary>指定ツリー上で <see cref="MovePane"/> と同じ移動を行い、新しいルートを返す。</summary>
     private static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone)
         => PaneLayoutTree.MoveInTree(root, source, target, zone);
+
+    /// <summary>袖（ミニチュア）のペインをタイルへ配置する。<paramref name="center"/> なら入れ替え
+    /// （ターゲットの位置へ据え、元のペインは袖へ退場）、それ以外は <paramref name="zone"/> の辺へ分割挿入する。</summary>
+    private void PlaceWingPane(PaneKind dragged, PaneKind target, bool center, DropZone? zone)
+    {
+        if (dragged == target || FindLeaf(target) is null)
+            return;
+
+        CaptureLayoutSizes();
+        _enabledSessions.Add(dragged);   // タイルに出る＝有効
+
+        _root = PlaceInTree(_root, dragged, target, center, zone);
+        // 跨ぎ最大化中は、解除時に戻す保存レイアウトへも同じ配置を反映する。
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
+            _spanSavedRoot = PlaceInTree(savedRoot, dragged, target, center, zone);
+
+        MarkLayoutDirty();
+        RebuildPaneLayout();
+        FocusPane(dragged);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>ツリーへ <paramref name="dragged"/> を配置した新しいルートを返す。入れ替えなら
+    /// ターゲットの位置へ据えてターゲットをツリーから外し（＝袖へ）、挿入ならターゲットの指定辺へ分割する。</summary>
+    private static PaneNode? PlaceInTree(PaneNode? root, PaneKind dragged, PaneKind target, bool center, DropZone? zone)
+    {
+        if (root is null)
+            return root;
+        var targetLeaf = PaneLayoutTree.FindLeaf(root, target);
+        if (targetLeaf is null)
+            return root;
+
+        // 既にツリーに在る（隠れているなど）なら取り外して、配置先を一意にする。
+        if (PaneLayoutTree.FindLeaf(root, dragged) is { } existing)
+            root = RemoveNode(root, existing);
+
+        if (center)
+        {
+            // 入れ替え：ターゲットの隣へ同じ比率で挿し、ターゲットを外す＝ターゲットの場所を引き継ぐ。
+            var leaf = new PaneLeaf { Kind = dragged, Weight = targetLeaf.Weight };
+            root = InsertRelative(root, leaf, targetLeaf, DropZone.Left);
+            root = RemoveNode(root, targetLeaf);
+        }
+        else
+        {
+            root = InsertRelative(root, new PaneLeaf { Kind = dragged }, targetLeaf, zone ?? DropZone.Right);
+        }
+        return Normalize(root);
+    }
 
     /// <summary>ノードを親スプリットから取り外し、新しいルートを返す（畳み込みは Normalize に任せる）。</summary>
     private static PaneNode? RemoveNode(PaneNode? root, PaneNode node) => PaneLayoutTree.RemoveNode(root, node);

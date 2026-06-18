@@ -125,10 +125,16 @@ public partial class ShellWindow : Window
     private Canvas? _dragCanvas;
     private Border? _dragPreview;       // ドロップ先の半分を塗るプレビュー矩形
     private Border? _dragTargetOutline; // ドロップ先ペイン全体の枠
+    private Border? _dragGhost;         // 掴んでいるペインをカーソル追従で示すチップ
     private bool _paneDragging;
     private PaneKind _dragSource;
     private PaneKind? _dragTarget;
     private DropZone? _dragZone;
+    /// <summary>ドラッグ元が袖（ミニチュア）か。true なら _dragSource はツリー外のペインで、
+    /// ドロップ時は移動でなく配置（入れ替え／分割挿入）になる。</summary>
+    private bool _dragFromWing;
+    /// <summary>ドロップ先セルの中央ゾーン（=入れ替え）にいるか。端なら分割挿入。</summary>
+    private bool _dragCenter;
 
     // ===== ペイン間フォーカス移動（Ctrl+W h/j/k/l） =====
     /// <summary>直近でキーボードフォーカスを得た領域（移動の起点）。ペイン本体またはサイドバー。</summary>
