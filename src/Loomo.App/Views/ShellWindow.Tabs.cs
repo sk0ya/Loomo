@@ -114,6 +114,11 @@ public partial class ShellWindow
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
+        // 同一ファイルの重複タブを防ぐためパスを正規化する。Git ペイン等は Path.Combine(root, "a/b")
+        // で区切り混在の path（C:\root\a/b）を渡すので、正規化しないとエクスプローラ起点のタブと
+        // 文字列一致せず二重に開いてしまう。VimEditorControl は渡した文字列をそのまま FilePath に保持する。
+        path = Path.GetFullPath(path);
+
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -148,6 +153,9 @@ public partial class ShellWindow
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
+
+        // 区切り混在のパス（Git 起点等）でも既存タブと一致させるため正規化する（上記参照）。
+        path = Path.GetFullPath(path);
 
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
