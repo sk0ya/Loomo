@@ -139,17 +139,25 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnSelectedFileChanged(DiffFileItem? value)
     {
         _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
-        _ = LoadDiffAsync(value);
-        // ファイルを開いたら最初の変更へ自動ジャンプ（差分の組み立て完了後に View が実行する）
-        if (value is not null)
-            FileOpenedForJump?.Invoke();
+        _ = LoadAndAutoJumpAsync(value);
     }
 
-    // 表示形式の切替時は同じ選択の差分を組み立て直すだけ（一覧は変わらない）
+    // 表示形式の切替時は同じ選択の差分を組み立て直し、最初の変更へジャンプする（一覧は変わらない）
     partial void OnIsSideBySideChanged(bool value)
     {
         _changeCursor = -1;
-        _ = LoadDiffAsync(SelectedFile);
+        _ = LoadAndAutoJumpAsync(SelectedFile);
+    }
+
+    /// <summary>
+    /// 差分を読み込み、その組み立てが終わってから最初の変更へ自動ジャンプするよう View へ通知する。
+    /// 読込完了後に通知するので、View 側は（再構築が走らないキャッシュ命中時でも）確実にジャンプできる。
+    /// </summary>
+    private async Task LoadAndAutoJumpAsync(DiffFileItem? item)
+    {
+        await LoadDiffAsync(item);
+        if (item is not null)
+            AutoJumpRequested?.Invoke();
     }
 
     /// <summary>
@@ -198,6 +206,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private async Task RefreshAsync()
     {
         _loaded = true;
+        // 一覧やリポジトリ状態が変わるので、古いパッチキャッシュは捨てる（表示形式の切替では走らない）
+        _patchCache.Clear();
         var selectedPath = SelectedFile?.FullPath;
 
         var (items, emptyMessage) = !IsGitMode ? BuildAiItems()
@@ -393,11 +403,25 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// <summary>左右並びの全文表示で使うコンテキスト行数（ファイル全体を含めるための大きな値）。</summary>
     private const int FullFileContext = 1_000_000;
 
-    /// <summary>Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。</summary>
-    private Task<string> GetPatchTextAsync(DiffFileItem item, int contextLines)
-        => item.CommitFile is { } commitFile && _commitRange is { } range
+    /// <summary>
+    /// 取得済み Git パッチのキャッシュ（同一ファイル参照×コンテキスト行数で引く）。表示形式の切替
+    /// （統合↔左右）では git を再実行せずここから返す。一覧やリポジトリ／ジャーナルが変わるたびに
+    /// <see cref="RefreshAsync"/> 冒頭で破棄するので、作業ツリーの変化には追従する。
+    /// </summary>
+    private readonly Dictionary<(DiffFileItem Item, int Context), string> _patchCache = new();
+
+    /// <summary>Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。同じファイルの再取得はキャッシュで省く。</summary>
+    private async Task<string> GetPatchTextAsync(DiffFileItem item, int contextLines)
+    {
+        var key = (item, contextLines);
+        if (_patchCache.TryGetValue(key, out var cached))
+            return cached;
+        var text = await (item.CommitFile is { } commitFile && _commitRange is { } range
             ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines)
-            : _git.GetDiffTextAsync(item.Entry!, item.IsStaged, contextLines);
+            : _git.GetDiffTextAsync(item.Entry!, item.IsStaged, contextLines));
+        _patchCache[key] = text;
+        return text;
+    }
 
     private const string TooLargeMessage = "（ファイルが大きいため全文を保持していません。差分を表示できません）";
     private const string NoDiffMessage = "（差分はありません）";
@@ -473,9 +497,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// <summary>差分本体の指定行（変更ブロックの先頭）までスクロールしてほしいことを View へ伝える。</summary>
     public event Action<int>? ScrollToRowRequested;
 
-    /// <summary>ファイルを開いた（選択した）ことを View へ伝える。View は差分の組み立て完了後に
-    /// <see cref="JumpToFirstChange"/> を呼んで最初の変更へ自動ジャンプする。</summary>
-    public event Action? FileOpenedForJump;
+    /// <summary>ファイルを開いた／表示形式を切り替えたことを View へ伝える。View は差分の組み立てが
+    /// 整ってから <see cref="JumpToFirstChange"/> を呼んで最初の変更へ自動ジャンプする。</summary>
+    public event Action? AutoJumpRequested;
 
     /// <summary>「次/前の変更」の現在位置（<see cref="ChangeAnchors"/> の並びでのインデックス）。</summary>
     private int _changeCursor = -1;

@@ -65,7 +65,7 @@ public partial class DiffSessionView : UserControl
         if (_hooked is not null)
         {
             _hooked.ScrollToRowRequested -= ScrollToRow;
-            _hooked.FileOpenedForJump -= OnFileOpenedForJump;
+            _hooked.AutoJumpRequested -= OnAutoJumpRequested;
             _hooked.DiffRows.CollectionChanged -= OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged -= OnSideRowsChanged;
         }
@@ -73,7 +73,7 @@ public partial class DiffSessionView : UserControl
         if (_hooked is not null)
         {
             _hooked.ScrollToRowRequested += ScrollToRow;
-            _hooked.FileOpenedForJump += OnFileOpenedForJump;
+            _hooked.AutoJumpRequested += OnAutoJumpRequested;
             _hooked.DiffRows.CollectionChanged += OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged += OnSideRowsChanged;
             ScheduleRebuildUnified();
@@ -84,15 +84,30 @@ public partial class DiffSessionView : UserControl
     private void OnDiffRowsChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScheduleRebuildUnified();
     private void OnSideRowsChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScheduleRebuildSide();
 
-    // ファイルを開いたら、その差分が組み上がった直後に最初の変更へ自動ジャンプする
-    private void OnFileOpenedForJump() => _autoJumpPending = true;
-
-    /// <summary>組み立て直後、表示中のビューであれば保留中の自動ジャンプを実行する（レイアウト確定後）。</summary>
-    private void MaybeAutoJump(bool sideView)
+    // ファイルを開く／表示形式を切り替えたら、差分が出来てから最初の変更へ自動ジャンプする
+    private void OnAutoJumpRequested()
     {
-        if (!_autoJumpPending || Vm is null || Vm.IsSideBySide != sideView) return;
-        _autoJumpPending = false;
-        Dispatcher.BeginInvoke(new Action(() => Vm?.JumpToFirstChange()), DispatcherPriority.Loaded);
+        _autoJumpPending = true;
+        ScheduleAutoJump();
+    }
+
+    /// <summary>
+    /// 表示中ビューの組み立て（再構築）が保留中なら、それが終わるまで待ってから最初の変更へジャンプする。
+    /// キャッシュ命中で再構築が走らない切替でも、既存の FlowDocument に対して確実にジャンプできる。
+    /// </summary>
+    private void ScheduleAutoJump()
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_autoJumpPending || Vm is null) return;
+            if (Vm.IsSideBySide ? _sideDirty : _unifiedDirty)
+            {
+                ScheduleAutoJump(); // 該当ビューの組み立て待ち
+                return;
+            }
+            _autoJumpPending = false;
+            Dispatcher.BeginInvoke(new Action(() => Vm?.JumpToFirstChange()), DispatcherPriority.Loaded);
+        }), DispatcherPriority.Background);
     }
 
     // VM 側は更新のたびに Clear＋逐次 Add するので、複数通知を1回の組み直しに畳む
@@ -120,7 +135,6 @@ public partial class DiffSessionView : UserControl
             foreach (var r in Vm.DiffRows)
                 doc.Blocks.Add(TextParagraph(r.Text, r.Kind));
         UnifiedBox.Document = doc;
-        MaybeAutoJump(sideView: false);
     }
 
     private void RebuildSide()
@@ -142,7 +156,6 @@ public partial class DiffSessionView : UserControl
         RightTextBox.Document = right;
         LeftGutter.Document = leftNo;
         RightGutter.Document = rightNo;
-        MaybeAutoJump(sideView: true);
     }
 
     private static FlowDocument NewDocument(bool wide)
