@@ -179,8 +179,12 @@ public sealed class GitService
         return GitLogParser.Parse(result.Output);
     }
 
-    /// <summary>1ファイルの差分テキスト。未追跡ファイルは内容そのものを返す。</summary>
-    public async Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged)
+    /// <summary>
+    /// 1ファイルの差分テキスト（unified patch）。<paramref name="contextLines"/> で前後コンテキスト行数を指定する
+    /// （左右並びの全文表示では大きな値を渡してファイル全体を含める）。未追跡ファイルは全行を追加扱いの
+    /// 合成パッチで返す。
+    /// </summary>
+    public async Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3)
     {
         if (entry.IsUntracked)
         {
@@ -190,7 +194,7 @@ public sealed class GitService
             try
             {
                 var content = File.Exists(full) ? await File.ReadAllTextAsync(full).ConfigureAwait(false) : "";
-                return $"# 未追跡ファイル: {entry.Path}\n{content}";
+                return BuildUntrackedPatch(entry.Path, content);
             }
             catch (Exception ex)
             {
@@ -198,11 +202,29 @@ public sealed class GitService
             }
         }
 
+        var unified = $"--unified={contextLines}";
         var args = staged
-            ? new[] { "diff", "--cached", "--", entry.Path }
-            : new[] { "diff", "--", entry.Path };
+            ? new[] { "diff", "--cached", unified, "--", entry.Path }
+            : new[] { "diff", unified, "--", entry.Path };
         var result = await RunAsync(args).ConfigureAwait(false);
         return result.Success ? result.Output : result.Message;
+    }
+
+    /// <summary>未追跡ファイルを「全行追加」の unified パッチ風テキストに整形する（差分表示で緑＋行番号にする）。</summary>
+    private static string BuildUntrackedPatch(string path, string content)
+    {
+        var sb = new StringBuilder();
+        sb.Append("# 未追跡ファイル: ").Append(path).Append('\n');
+        if (content.Length == 0)
+            return sb.ToString().TrimEnd('\n');
+
+        var lines = content.Replace("\r\n", "\n").Split('\n');
+        var count = lines.Length;
+        if (count > 0 && lines[^1].Length == 0) count--; // 末尾改行ぶんの空要素は1行に数えない
+        sb.Append("@@ -0,0 +1,").Append(count).Append(" @@\n");
+        for (var i = 0; i < count; i++)
+            sb.Append('+').Append(lines[i]).Append('\n');
+        return sb.ToString().TrimEnd('\n');
     }
 
     /// <summary>コミットの概要（メッセージ＋変更ファイル統計）。セッションペインの詳細表示用。</summary>
@@ -249,14 +271,16 @@ public sealed class GitService
     }
 
     /// <summary>コミット範囲（<see cref="GetRangeChangesAsync"/> と同じ規約）の1ファイル差分テキスト。</summary>
-    public async Task<string> GetRangeFileDiffAsync(string? fromHash, string toHash, GitCommitFileChange file)
+    public async Task<string> GetRangeFileDiffAsync(
+        string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3)
     {
+        var unified = $"--unified={contextLines}";
         var args = new List<string>();
         if (fromHash is null)
             args.AddRange(new[]
-                { "diff-tree", "--root", "-p", "-m", "--first-parent", "--no-commit-id", toHash });
+                { "diff-tree", "--root", "-p", unified, "-m", "--first-parent", "--no-commit-id", toHash });
         else
-            args.AddRange(new[] { "diff", fromHash, toHash });
+            args.AddRange(new[] { "diff", unified, fromHash, toHash });
         args.Add("--");
         if (file.OrigPath is not null)
             args.Add(file.OrigPath);

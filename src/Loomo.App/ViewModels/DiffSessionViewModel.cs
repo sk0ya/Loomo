@@ -19,8 +19,11 @@ public sealed record DiffRowVm(string Kind, string Text);
 /// <summary>
 /// 左右並び表示の差分1行。Kind は <see cref="SideCellKind"/> 名。
 /// Gap / Header は左右共通の1行として全幅表示する（テンプレート側で判定）。
+/// LeftLine / RightLine は表示用の行番号文字列（その側に行が無いときは空文字）。
 /// </summary>
-public sealed record DiffSideRowVm(string LeftKind, string LeftText, string RightKind, string RightText);
+public sealed record DiffSideRowVm(
+    string LeftKind, string LeftText, string RightKind, string RightText,
+    string LeftLine, string RightLine);
 
 /// <summary>Diff セッションのファイル1行（AI変更 or Git変更）。</summary>
 public sealed class DiffFileItem
@@ -123,6 +126,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     partial void OnIsGitModeChanged(bool value)
     {
+        _changeCursor = -1;
         // AI変更モードへ切り替えたらコミット範囲は解除（戻ったときは作業ツリーから）
         if (!value)
         {
@@ -132,10 +136,21 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _ = RefreshAsync();
     }
 
-    partial void OnSelectedFileChanged(DiffFileItem? value) => _ = LoadDiffAsync(value);
+    partial void OnSelectedFileChanged(DiffFileItem? value)
+    {
+        _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
+        _ = LoadDiffAsync(value);
+        // ファイルを開いたら最初の変更へ自動ジャンプ（差分の組み立て完了後に View が実行する）
+        if (value is not null)
+            FileOpenedForJump?.Invoke();
+    }
 
     // 表示形式の切替時は同じ選択の差分を組み立て直すだけ（一覧は変わらない）
-    partial void OnIsSideBySideChanged(bool value) => _ = LoadDiffAsync(SelectedFile);
+    partial void OnIsSideBySideChanged(bool value)
+    {
+        _changeCursor = -1;
+        _ = LoadDiffAsync(SelectedFile);
+    }
 
     /// <summary>
     /// Git セッションから：コミット範囲の差分を表示する（from=null は to 1コミットの変更）。
@@ -375,11 +390,14 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             target.Add(row);
     }
 
+    /// <summary>左右並びの全文表示で使うコンテキスト行数（ファイル全体を含めるための大きな値）。</summary>
+    private const int FullFileContext = 1_000_000;
+
     /// <summary>Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。</summary>
-    private Task<string> GetPatchTextAsync(DiffFileItem item)
+    private Task<string> GetPatchTextAsync(DiffFileItem item, int contextLines)
         => item.CommitFile is { } commitFile && _commitRange is { } range
-            ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile)
-            : _git.GetDiffTextAsync(item.Entry!, item.IsStaged);
+            ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines)
+            : _git.GetDiffTextAsync(item.Entry!, item.IsStaged, contextLines);
 
     private const string TooLargeMessage = "（ファイルが大きいため全文を保持していません。差分を表示できません）";
     private const string NoDiffMessage = "（差分はありません）";
@@ -401,7 +419,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             return rows;
         }
 
-        var text = await GetPatchTextAsync(item);
+        var text = await GetPatchTextAsync(item, 3);
         if (text.Length == 0)
         {
             rows.Add(new DiffRowVm("Header", NoDiffMessage));
@@ -424,27 +442,93 @@ public sealed partial class DiffSessionViewModel : ObservableObject
                 rows.Add(SharedRow("Header", TooLargeMessage));
                 return rows;
             }
-            AddSideRows(rows, SideBySideDiff.Build(DiffUtil.Compute(item.OldContent, item.NewContent)));
+            // 左右は実際のファイルのように全文を行番号付きで対比する（ハンク折りたたみなし）
+            AddSideRows(rows, SideBySideDiff.Build(DiffUtil.ComputeFull(item.OldContent, item.NewContent)));
             return rows;
         }
 
-        var text = await GetPatchTextAsync(item);
+        // 全文コンテキストの diff を取り、git ヘッダ・ハンク見出しを隠してファイルそのものに見せる
+        var text = await GetPatchTextAsync(item, FullFileContext);
         if (text.Length == 0)
         {
             rows.Add(SharedRow("Header", NoDiffMessage));
             return rows;
         }
-        AddSideRows(rows, SideBySideDiff.FromUnifiedPatch(text));
+        AddSideRows(rows, SideBySideDiff.FromUnifiedPatch(text, hideChrome: true));
         return rows;
     }
 
-    private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text);
+    private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text, "", "");
 
     private static void AddSideRows(List<DiffSideRowVm> rows, IReadOnlyList<SideBySideRow> source)
     {
         foreach (var row in source)
             rows.Add(new DiffSideRowVm(
-                row.LeftKind.ToString(), row.LeftText, row.RightKind.ToString(), row.RightText));
+                row.LeftKind.ToString(), row.LeftText, row.RightKind.ToString(), row.RightText,
+                row.LeftLine?.ToString() ?? "", row.RightLine?.ToString() ?? ""));
+    }
+
+    // ===== 差分ナビゲーション（次/前の変更へジャンプ） =====
+
+    /// <summary>差分本体の指定行（変更ブロックの先頭）までスクロールしてほしいことを View へ伝える。</summary>
+    public event Action<int>? ScrollToRowRequested;
+
+    /// <summary>ファイルを開いた（選択した）ことを View へ伝える。View は差分の組み立て完了後に
+    /// <see cref="JumpToFirstChange"/> を呼んで最初の変更へ自動ジャンプする。</summary>
+    public event Action? FileOpenedForJump;
+
+    /// <summary>「次/前の変更」の現在位置（<see cref="ChangeAnchors"/> の並びでのインデックス）。</summary>
+    private int _changeCursor = -1;
+
+    [RelayCommand]
+    private void JumpToNextChange() => JumpChange(forward: true);
+
+    [RelayCommand]
+    private void JumpToPrevChange() => JumpChange(forward: false);
+
+    /// <summary>最初の変更ブロックへジャンプする（ファイルを開いた直後の自動ジャンプ用）。</summary>
+    public void JumpToFirstChange()
+    {
+        _changeCursor = -1;
+        JumpChange(forward: true);
+    }
+
+    private void JumpChange(bool forward)
+    {
+        var anchors = ChangeAnchors();
+        if (anchors.Count == 0) return;
+        if (forward)
+            _changeCursor = _changeCursor < 0 ? 0 : Math.Min(_changeCursor + 1, anchors.Count - 1);
+        else
+            _changeCursor = _changeCursor <= 0 ? 0 : _changeCursor - 1;
+        ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
+    }
+
+    /// <summary>変更ブロック（連続する追加/削除/空セルのかたまり）の先頭行インデックス一覧。</summary>
+    private List<int> ChangeAnchors()
+    {
+        var anchors = new List<int>();
+        var inBlock = false;
+        if (IsSideBySide)
+        {
+            for (var i = 0; i < SideRows.Count; i++)
+            {
+                var changed = SideRows[i].LeftKind is "Removed" or "Empty"
+                    || SideRows[i].RightKind is "Added" or "Empty";
+                if (changed && !inBlock) anchors.Add(i);
+                inBlock = changed;
+            }
+        }
+        else
+        {
+            for (var i = 0; i < DiffRows.Count; i++)
+            {
+                var changed = DiffRows[i].Kind is "Added" or "Removed";
+                if (changed && !inBlock) anchors.Add(i);
+                inBlock = changed;
+            }
+        }
+        return anchors;
     }
 
     // ===== 操作 =====

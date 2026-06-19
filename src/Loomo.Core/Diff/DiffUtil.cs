@@ -39,6 +39,13 @@ public static class DiffUtil
     public static IReadOnlyList<DiffLine> Compute(string oldText, string newText, int context = 3)
         => Hunkify(RawDiff(Split(oldText), Split(newText)), context);
 
+    /// <summary>
+    /// 全行を Context/Added/Removed で返す（ハンク化・Gap 省略なし）。左右並びで実際のファイルのように
+    /// 全文を対比するために使う。
+    /// </summary>
+    public static IReadOnlyList<DiffLine> ComputeFull(string oldText, string newText)
+        => RawDiff(Split(oldText), Split(newText));
+
     /// <summary>差分行を +/-/空白/… 接頭辞付きのテキストへ整形する（承認サマリ用）。</summary>
     public static string ToUnifiedText(IReadOnlyList<DiffLine> lines)
     {

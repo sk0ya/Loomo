@@ -28,99 +28,39 @@
             </Setter>
         </Style>
 
-        <!-- 差分1行：Kind で色分け -->
-        <DataTemplate x:Key="DiffRowTemplate">
-            <Border x:Name="rowBg" Background="Transparent">
-                <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                           Foreground="{DynamicResource Fg}" x:Name="rowText" />
-            </Border>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding Kind}" Value="Added">
-                    <Setter TargetName="rowBg" Property="Background" Value="#1F4CAF50" />
-                    <Setter TargetName="rowText" Property="Foreground" Value="#FF81C784" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Kind}" Value="Removed">
-                    <Setter TargetName="rowBg" Property="Background" Value="#1FE57373" />
-                    <Setter TargetName="rowText" Property="Foreground" Value="#FFE57373" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Kind}" Value="Gap">
-                    <Setter TargetName="rowText" Property="Foreground" Value="{DynamicResource Accent}" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Kind}" Value="Header">
-                    <Setter TargetName="rowText" Property="Foreground" Value="{DynamicResource FgDim}" />
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
-
-        <!-- 左右並びの差分1行：左=削除側 / 右=追加側。Gap・Header は全幅1本で表示 -->
-        <DataTemplate x:Key="SideRowTemplate">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Border x:Name="leftBg" Background="Transparent" Padding="6,0">
-                    <TextBlock x:Name="leftText" Text="{Binding LeftText}"
-                               FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                               Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" />
-                </Border>
-                <Border x:Name="divider" Grid.Column="1" Width="1"
-                        Background="{DynamicResource Border}" />
-                <Border x:Name="rightBg" Grid.Column="2" Background="Transparent" Padding="6,0">
-                    <TextBlock x:Name="rightText" Text="{Binding RightText}"
-                               FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                               Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" />
-                </Border>
-            </Grid>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding LeftKind}" Value="Removed">
-                    <Setter TargetName="leftBg" Property="Background" Value="#1FE57373" />
-                    <Setter TargetName="leftText" Property="Foreground" Value="#FFE57373" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding LeftKind}" Value="Empty">
-                    <Setter TargetName="leftBg" Property="Background" Value="#14808080" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding RightKind}" Value="Added">
-                    <Setter TargetName="rightBg" Property="Background" Value="#1F4CAF50" />
-                    <Setter TargetName="rightText" Property="Foreground" Value="#FF81C784" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding RightKind}" Value="Empty">
-                    <Setter TargetName="rightBg" Property="Background" Value="#14808080" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding LeftKind}" Value="Gap">
-                    <Setter TargetName="leftBg" Property="Grid.ColumnSpan" Value="3" />
-                    <Setter TargetName="divider" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="rightBg" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="leftText" Property="Foreground" Value="{DynamicResource Accent}" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding LeftKind}" Value="Header">
-                    <Setter TargetName="leftBg" Property="Grid.ColumnSpan" Value="3" />
-                    <Setter TargetName="divider" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="rightBg" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="leftText" Property="Foreground" Value="{DynamicResource FgDim}" />
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
-
-        <!-- 差分本体の行コンテナ（統合・左右で共用） -->
-        <Style x:Key="DiffBodyItem" TargetType="ListBoxItem">
-            <Setter Property="Padding" Value="6,0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Focusable" Value="False" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="DiffSideBodyItem" TargetType="ListBoxItem" BasedOn="{StaticResource DiffBodyItem}">
+        <!-- 差分本体テキスト（読み取り専用 RichTextBox）：普通のテキストとして文字単位で選択・コピーできる -->
+        <Style x:Key="DiffTextBox" TargetType="RichTextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="IsDocumentEnabled" Value="True" />
+            <Setter Property="IsInactiveSelectionHighlightEnabled" Value="True" />
+            <Setter Property="AutoWordSelection" Value="False" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
         </Style>
+
+        <!-- 行番号ガター：本文とは別のスクロール非対話 RichTextBox（選択・コピーに混ざらない） -->
+        <Style x:Key="DiffGutterBox" TargetType="RichTextBox" BasedOn="{StaticResource DiffTextBox}">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Hidden" />
+        </Style>
+
+        <!-- 本文 RichTextBox 共通のコンテキストメニュー（コピー） -->
+        <ContextMenu x:Key="DiffCopyMenu">
+            <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
+                      CommandTarget="{Binding PlacementTarget,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
     </UserControl.Resources>
 
     <DockPanel>
@@ -194,24 +134,30 @@
             <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                           Background="{DynamicResource Border}" />
 
-            <!-- 差分本体（統合 / 左右並びを IsSideBySide で切替） -->
+            <!-- 差分本体（統合 / 左右並びを IsSideBySide で切替）。中身は code-behind が FlowDocument を組み立てる -->
             <Grid Grid.Column="2">
-                <ListBox ItemsSource="{Binding DiffRows}"
-                         Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}"
-                         Background="{DynamicResource BgAlt}" BorderThickness="0"
-                         ItemTemplate="{StaticResource DiffRowTemplate}"
-                         ItemContainerStyle="{StaticResource DiffBodyItem}"
-                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                         VirtualizingPanel.IsVirtualizing="True"
-                         VirtualizingPanel.VirtualizationMode="Recycling" />
-                <ListBox ItemsSource="{Binding SideRows}"
-                         Visibility="{Binding IsSideBySide, Converter={StaticResource BoolToVis}}"
-                         Background="{DynamicResource BgAlt}" BorderThickness="0"
-                         ItemTemplate="{StaticResource SideRowTemplate}"
-                         ItemContainerStyle="{StaticResource DiffSideBodyItem}"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         VirtualizingPanel.IsVirtualizing="True"
-                         VirtualizingPanel.VirtualizationMode="Recycling" />
+                <RichTextBox x:Name="UnifiedBox" Style="{StaticResource DiffTextBox}"
+                             ContextMenu="{StaticResource DiffCopyMenu}"
+                             Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}" />
+
+                <Grid x:Name="SidePanel"
+                      Visibility="{Binding IsSideBySide, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <RichTextBox x:Name="LeftGutter" Grid.Column="0" Style="{StaticResource DiffGutterBox}" />
+                    <RichTextBox x:Name="LeftTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
+                                 ContextMenu="{StaticResource DiffCopyMenu}"
+                                 VerticalScrollBarVisibility="Hidden" />
+                    <Border Grid.Column="2" Width="1" Background="{DynamicResource Border}" />
+                    <RichTextBox x:Name="RightGutter" Grid.Column="3" Style="{StaticResource DiffGutterBox}" />
+                    <RichTextBox x:Name="RightTextBox" Grid.Column="4" Style="{StaticResource DiffTextBox}"
+                                 ContextMenu="{StaticResource DiffCopyMenu}" />
+                </Grid>
             </Grid>
         </Grid>
     </DockPanel>

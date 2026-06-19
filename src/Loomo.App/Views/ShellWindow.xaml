@@ -808,6 +808,18 @@
                                         ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
                                         Command="{Binding DiffSession.ClearGitTargetCommand}" />
                             </StackPanel>
+                            <!-- 変更ブロック間のジャンプ＋差分コピー -->
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                                    Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="↑ 前の差分"
+                                            ToolTip="前の変更ブロックへジャンプ"
+                                            Command="{Binding DiffSession.JumpToPrevChangeCommand}" />
+                                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="↓ 次の差分"
+                                            ToolTip="次の変更ブロックへジャンプ"
+                                            Command="{Binding DiffSession.JumpToNextChangeCommand}" />
+                                </StackPanel>
+                            </Border>
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="エディタで開く"
                                     Command="{Binding DiffSession.OpenInEditorCommand}" />
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="元に戻す"
