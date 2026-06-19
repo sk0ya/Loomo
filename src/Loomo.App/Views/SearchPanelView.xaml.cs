@@ -11,11 +11,19 @@ public partial class SearchPanelView : UserControl
 
     private SearchPanelViewModel? Vm => DataContext as SearchPanelViewModel;
 
-    /// <summary>一致行を選択したらエディタでプレビューする（単クリック・矢印キー移動）。</summary>
+    /// <summary>一致行（grep）やファイル名ヒットを選択したらエディタでプレビューする（単クリック・矢印キー移動）。
+    /// grep のファイル見出し（一致行を子に持つグループ）は展開用なのでプレビューしない。</summary>
     private void OnResultSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (e.NewValue is SearchMatchItem match)
-            Vm?.Preview(match);
+        switch (e.NewValue)
+        {
+            case SearchMatchItem match:
+                Vm?.Preview(match);
+                break;
+            case SearchFileGroup group when group.Count == 0: // ファイル名ヒット
+                Vm?.Preview(group);
+                break;
+        }
     }
 
     /// <summary>ダブルクリックで通常タブへ昇格（プレビューでなく確定して開く）。</summary>
@@ -26,13 +34,25 @@ public partial class SearchPanelView : UserControl
             Vm?.Activate(match);
             e.Handled = true;
         }
+        else if (ResultTree.SelectedItem is SearchFileGroup group && group.Count == 0)
+        {
+            Vm?.Activate(group);
+            e.Handled = true;
+        }
     }
 
     private void OnResultKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && ResultTree.SelectedItem is SearchMatchItem match)
+        if (e.Key != Key.Enter)
+            return;
+        if (ResultTree.SelectedItem is SearchMatchItem match)
         {
             Vm?.Activate(match);
+            e.Handled = true;
+        }
+        else if (ResultTree.SelectedItem is SearchFileGroup group && group.Count == 0)
+        {
+            Vm?.Activate(group);
             e.Handled = true;
         }
     }

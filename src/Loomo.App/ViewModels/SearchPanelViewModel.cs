@@ -43,12 +43,17 @@ public sealed class SearchFileGroup
     public string RelativePath { get; }
     public ObservableCollection<SearchMatchItem> Matches { get; }
     public int Count => Matches.Count;
-    public string Header => $"{RelativePath}  ({Count})";
+    // ファイル名検索のヒットは一致行を持たない（Count==0）ので、件数の括弧は付けない。
+    public string Header => Count > 0 ? $"{RelativePath}  ({Count})" : RelativePath;
 }
+
+/// <summary>選択／確定で開きたい場所（ファイル＋1始まりの行・列）。grep 一致行とファイル名ヒットの共通ペイロード。</summary>
+public readonly record struct SearchHit(string FullPath, int Line, int Column);
 
 /// <summary>
 /// サイドバー Search パネルの ViewModel。クエリ・オプション（大小区別／正規表現／include・exclude glob）で
-/// <see cref="IWorkspaceSearchService.GrepAsync"/> を走らせ、結果をファイル別にグルーピングして保持する。
+/// <see cref="IWorkspaceSearchService.GrepAsync"/>（内容検索）または <see cref="IWorkspaceSearchService.FindFilesAsync"/>
+/// （ファイル名検索）を走らせ、結果をファイル別にグルーピングして保持する。<see cref="SearchByName"/> でモードを切り替える。
 /// 入力はデバウンスし、直前の検索はキャンセルする。選択／確定はイベントで ShellWindow へ委ねる
 /// （プレビュータブ表示・行ジャンプは View 側の責務）。
 /// </summary>
@@ -58,10 +63,10 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     private CancellationTokenSource? _cts;
 
     /// <summary>1ヒットを「エディタでプレビュー」したい（単クリック・キーボード選択）。</summary>
-    public event EventHandler<SearchMatchItem>? PreviewRequested;
+    public event EventHandler<SearchHit>? PreviewRequested;
 
     /// <summary>1ヒットを通常タブで開きたい（Enter・ダブルクリック）。</summary>
-    public event EventHandler<SearchMatchItem>? ActivateRequested;
+    public event EventHandler<SearchHit>? ActivateRequested;
 
     [ObservableProperty] private string _query = "";
     [ObservableProperty] private bool _caseSensitive;
@@ -70,6 +75,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     [ObservableProperty] private string _excludeGlob = "";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusMessage = "";
+
+    /// <summary>true ＝ ファイル名で検索、false ＝ ファイル内容を grep。</summary>
+    [ObservableProperty] private bool _searchByName;
+
+    /// <summary>クエリ欄のプレースホルダ（モードで文言を変える）。</summary>
+    public string QueryPlaceholder => SearchByName ? "ファイル名で検索" : "検索ワード（ファイル内を grep）";
 
     public ObservableCollection<SearchFileGroup> Results { get; } = new();
 
@@ -80,6 +91,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     partial void OnUseRegexChanged(bool value) => ScheduleSearch();
     partial void OnIncludeGlobChanged(string value) => ScheduleSearch();
     partial void OnExcludeGlobChanged(string value) => ScheduleSearch();
+
+    partial void OnSearchByNameChanged(bool value)
+    {
+        OnPropertyChanged(nameof(QueryPlaceholder));
+        ScheduleSearch();
+    }
 
     /// <summary>入力が変わるたびに直前の検索をキャンセルし、少し待ってから再検索する。</summary>
     private void ScheduleSearch()
@@ -106,30 +123,10 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             await Task.Delay(160, ct); // 連続入力をまとめる
             IsBusy = true;
 
-            var options = new GrepOptions(
-                CaseSensitive: CaseSensitive,
-                UseRegex: UseRegex,
-                IncludeGlob: NullIfBlank(IncludeGlob),
-                ExcludeGlob: NullIfBlank(ExcludeGlob),
-                MaxResults: 1000);
-
-            var hits = await _search.GrepAsync(Query, options, ct);
-            if (ct.IsCancellationRequested)
-                return;
-
-            Results.Clear();
-            var groups = hits
-                .GroupBy(h => h.RelativePath, StringComparer.OrdinalIgnoreCase)
-                .Select(g => new SearchFileGroup(g.First().FullPath, g.Key,
-                    g.Select(h => new SearchMatchItem(h))));
-            foreach (var group in groups)
-                Results.Add(group);
-
-            var fileCount = Results.Count;
-            var matchCount = Results.Sum(r => r.Count);
-            StatusMessage = matchCount == 0
-                ? "一致なし"
-                : $"{matchCount} 件 / {fileCount} ファイル";
+            if (SearchByName)
+                await RunFindFilesAsync(ct);
+            else
+                await RunGrepAsync(ct);
         }
         catch (OperationCanceledException) { /* 新しい入力に置き換わった */ }
         finally
@@ -139,8 +136,61 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         }
     }
 
-    public void Preview(SearchMatchItem match) => PreviewRequested?.Invoke(this, match);
-    public void Activate(SearchMatchItem match) => ActivateRequested?.Invoke(this, match);
+    /// <summary>ファイル内容を grep し、ファイル別にグルーピングして結果へ反映する。</summary>
+    private async Task RunGrepAsync(CancellationToken ct)
+    {
+        var options = new GrepOptions(
+            CaseSensitive: CaseSensitive,
+            UseRegex: UseRegex,
+            IncludeGlob: NullIfBlank(IncludeGlob),
+            ExcludeGlob: NullIfBlank(ExcludeGlob),
+            MaxResults: 1000);
+
+        var hits = await _search.GrepAsync(Query, options, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        Results.Clear();
+        var groups = hits
+            .GroupBy(h => h.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SearchFileGroup(g.First().FullPath, g.Key,
+                g.Select(h => new SearchMatchItem(h))));
+        foreach (var group in groups)
+            Results.Add(group);
+
+        var fileCount = Results.Count;
+        var matchCount = Results.Sum(r => r.Count);
+        StatusMessage = matchCount == 0
+            ? "一致なし"
+            : $"{matchCount} 件 / {fileCount} ファイル";
+    }
+
+    /// <summary>ファイル名を曖昧検索し、1ファイル1行（一致行なし）の結果として反映する。</summary>
+    private async Task RunFindFilesAsync(CancellationToken ct)
+    {
+        var hits = await _search.FindFilesAsync(Query, 500, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        Results.Clear();
+        foreach (var hit in hits)
+            Results.Add(new SearchFileGroup(hit.FullPath, hit.RelativePath, Array.Empty<SearchMatchItem>()));
+
+        StatusMessage = Results.Count == 0 ? "一致なし" : $"{Results.Count} ファイル";
+    }
+
+    public void Preview(SearchMatchItem match)
+        => PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column));
+
+    public void Activate(SearchMatchItem match)
+        => ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column));
+
+    /// <summary>ファイル名ヒット（グループ見出し自体）を開く。先頭（1,1）へジャンプする。</summary>
+    public void Preview(SearchFileGroup group)
+        => PreviewRequested?.Invoke(this, new SearchHit(group.FullPath, 1, 1));
+
+    public void Activate(SearchFileGroup group)
+        => ActivateRequested?.Invoke(this, new SearchHit(group.FullPath, 1, 1));
 
     private static string? NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

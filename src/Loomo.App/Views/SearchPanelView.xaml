@@ -108,29 +108,48 @@
 
         <!-- クエリ＋オプション -->
         <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6">
+            <!-- 検索モード切替（検索ワード欄の上）。テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索。
+                 同じ SearchByName を一方は反転で束ね、2択セグメントとして相互排他に振る舞わせる。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ToggleButton Content="テキスト" Height="22" Padding="10,0" FontSize="11" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="ファイルの中身を grep"
+                              IsChecked="{Binding SearchByName, Converter={StaticResource InverseBool}, Mode=TwoWay}" />
+                <ToggleButton Content="ファイル" Height="22" Padding="10,0" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="ファイル名で曖昧検索"
+                              IsChecked="{Binding SearchByName, Mode=TwoWay}" />
+            </StackPanel>
+
             <Grid>
                 <TextBox x:Name="QueryBox" Padding="6,4" FontSize="13"
                          Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                          BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                          Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="OnQueryKeyDown" />
-                <TextBlock Text="検索ワード（ファイル内を grep）" IsHitTestVisible="False" FontSize="13"
+                <TextBlock Text="{Binding QueryPlaceholder}" IsHitTestVisible="False" FontSize="13"
                            Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
                            Visibility="{Binding Text, ElementName=QueryBox, Converter={StaticResource EmptyToVis}}" />
             </Grid>
 
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                <ToggleButton Content="Aa" Width="30" Height="22" FontSize="11" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="大文字小文字を区別" IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
-                <ToggleButton Content=".*" Width="30" Height="22" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="正規表現として扱う" IsChecked="{Binding UseRegex, Mode=TwoWay}" />
+                <!-- 大小区別／正規表現は内容検索（grep）専用なのでファイル名検索時は隠す。 -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding SearchByName, Converter={StaticResource InverseBoolToVis}}">
+                    <ToggleButton Content="Aa" Width="30" Height="22" FontSize="11" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="大文字小文字を区別" IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
+                    <ToggleButton Content=".*" Width="30" Height="22" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="正規表現として扱う" IsChecked="{Binding UseRegex, Mode=TwoWay}" />
+                </StackPanel>
                 <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="11"
                            VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
-            <Grid Margin="0,4,0,0">
+            <!-- include/exclude glob も grep 専用。ファイル名検索時は隠す。 -->
+            <Grid Margin="0,4,0,0"
+                  Visibility="{Binding SearchByName, Converter={StaticResource InverseBoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />

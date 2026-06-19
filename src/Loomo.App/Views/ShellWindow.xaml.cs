@@ -266,15 +266,15 @@ public partial class ShellWindow : Window
         // FolderTree の HTML を「ブラウザで開く」とアプリ内ブラウザの新規タブで開く。
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         // サイドバー検索：選択ヒットはプレビュータブで該当行へ、確定（Enter/ダブルクリック）は通常タブへ開く。
-        vm.SearchPanel.PreviewRequested += async (_, m) =>
+        vm.SearchPanel.PreviewRequested += async (_, h) =>
         {
-            await OpenFileInPreviewTabAsync(m.FullPath);
-            _activeEditorTab?.Control.NavigateTo(m.Line, m.Column);
+            await OpenFileInPreviewTabAsync(h.FullPath);
+            _activeEditorTab?.Control.NavigateTo(h.Line, h.Column);
         };
-        vm.SearchPanel.ActivateRequested += async (_, m) =>
+        vm.SearchPanel.ActivateRequested += async (_, h) =>
         {
-            await OpenFileInNewEditorTabAsync(m.FullPath);
-            _activeEditorTab?.Control.NavigateTo(m.Line, m.Column);
+            await OpenFileInNewEditorTabAsync(h.FullPath);
+            _activeEditorTab?.Control.NavigateTo(h.Line, h.Column);
         };
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
