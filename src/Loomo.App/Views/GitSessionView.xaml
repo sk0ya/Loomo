@@ -111,6 +111,7 @@
                               ItemTemplate="{StaticResource BranchNodeTemplate}"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                               MouseDoubleClick="OnBranchDoubleClick"
+                              PreviewMouseLeftButtonUp="OnBranchTreeClick"
                               PreviewMouseRightButtonDown="OnListRightClickSelect">
                         <TreeView.ContextMenu>
                             <ContextMenu>

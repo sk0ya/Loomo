@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
@@ -52,6 +53,25 @@ public partial class GitSessionView : UserControl
     {
         if (Vm is { } vm && SelectedBranch is { } branch)
             await vm.ShowBranchLogAsync(branch);
+    }
+
+    /// <summary>
+    /// フォルダ行はクリック一回で開閉する（リーフ＝ブランチ行は選択のまま：ダブルクリックでログ表示）。
+    /// 展開矢印（ToggleButton, ClickMode=Press）上のクリックは既に開閉済みなので二重に反応しない。
+    /// </summary>
+    private void OnBranchTreeClick(object sender, MouseButtonEventArgs e)
+    {
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null and not TreeViewItem)
+        {
+            if (element is ToggleButton)
+                return;
+            element = element is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(element)
+                : LogicalTreeHelper.GetParent(element);
+        }
+        if (element is TreeViewItem { DataContext: BranchTreeNode { IsFolder: true } } item)
+            item.IsExpanded = !item.IsExpanded;
     }
 
     private async void OnShowAllBranchesLog(object sender, RoutedEventArgs e)
