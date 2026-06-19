@@ -33,6 +33,7 @@ public partial class ShellWindow : Window
     private readonly EditorService _editor;
     private readonly BrowserService _browser;
     private readonly IWorkspaceService _workspace;
+    private readonly IWorkspaceSearchService _search;
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
     private readonly EditorSupportRegistry _editorSupports;
@@ -167,6 +168,7 @@ public partial class ShellWindow : Window
         EditorService editor,
         BrowserService browser,
         IWorkspaceService workspace,
+        IWorkspaceSearchService search,
         TabIconService tabIcons,
         AiSettings settings,
         EditorSupportRegistry editorSupports,
@@ -185,6 +187,7 @@ public partial class ShellWindow : Window
         // ここで専用エディタタブを作成・アクティブ化して開く（FolderTree のファイル活性化と同じ流儀）。
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
+        _search = search;
         _tabIcons = tabIcons;
         _settings = settings;
         _editorSupports = editorSupports;
@@ -262,6 +265,17 @@ public partial class ShellWindow : Window
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
         // FolderTree の HTML を「ブラウザで開く」とアプリ内ブラウザの新規タブで開く。
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
+        // サイドバー検索：選択ヒットはプレビュータブで該当行へ、確定（Enter/ダブルクリック）は通常タブへ開く。
+        vm.SearchPanel.PreviewRequested += async (_, m) =>
+        {
+            await OpenFileInPreviewTabAsync(m.FullPath);
+            _activeEditorTab?.Control.NavigateTo(m.Line, m.Column);
+        };
+        vm.SearchPanel.ActivateRequested += async (_, m) =>
+        {
+            await OpenFileInNewEditorTabAsync(m.FullPath);
+            _activeEditorTab?.Control.NavigateTo(m.Line, m.Column);
+        };
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。

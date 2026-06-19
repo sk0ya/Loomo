@@ -12,7 +12,8 @@ public enum SidebarPanel
     Settings,
     Appearance,
     Git,
-    Pegboard
+    Pegboard,
+    Search
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -41,6 +42,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public DiffSessionViewModel DiffSession { get; }
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
+    public SearchPanelViewModel SearchPanel { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -67,7 +69,8 @@ public sealed partial class ShellViewModel : ObservableObject
         GitSessionViewModel gitSession,
         DiffSessionViewModel diffSession,
         TraceSessionViewModel traceSession,
-        PegboardViewModel pegboard)
+        PegboardViewModel pegboard,
+        SearchPanelViewModel searchPanel)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -82,6 +85,7 @@ public sealed partial class ShellViewModel : ObservableObject
         DiffSession = diffSession;
         TraceSession = traceSession;
         Pegboard = pegboard;
+        SearchPanel = searchPanel;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
@@ -145,6 +149,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
     [RelayCommand]
     private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
+
+    /// <summary>ActivityBar の検索アイコン。grep（全文検索）パネルを開く。</summary>
+    [RelayCommand]
+    private void ShowSearch() => Activate(SidebarPanel.Search);
 
     /// <summary>ActivityBar の Git アイコン。表示中は作業ツリーをライブ監視して自動更新する
     /// （実際の開始・停止は <see cref="UpdateGitPanelLive"/> が可視状態の変化に応じて行う）。</summary>

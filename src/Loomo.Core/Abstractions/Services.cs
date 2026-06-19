@@ -68,6 +68,34 @@ public interface IApprovalService
 }
 
 /// <summary>
+/// ワークスペース配下のファイル名検索・全文検索（grep）。コマンドパレットの @／# モードと
+/// サイドバー Search パネルの共有バックエンド。実装は ripgrep を優先し、無ければインプロセス走査へ退避する。
+/// </summary>
+public interface IWorkspaceSearchService
+{
+    /// <summary>ファイルを名前で曖昧検索し、一致度の高い順に最大 <paramref name="max"/> 件返す。
+    /// 空クエリは（列挙順の）先頭から <paramref name="max"/> 件。</summary>
+    Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(string query, int max, CancellationToken ct);
+
+    /// <summary>ファイル内容を grep する。一致行を出現順（ファイル→行）で返す。</summary>
+    Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct);
+}
+
+/// <summary>ファイル名検索の1ヒット。<see cref="Score"/> は小さいほど一致が強い（並べ替え用）。</summary>
+public sealed record FileSearchHit(string FullPath, string RelativePath, int Score);
+
+/// <summary>grep の1ヒット（1行）。<see cref="Line"/>/<see cref="Column"/> は 1 始まり。</summary>
+public sealed record ContentSearchHit(string FullPath, string RelativePath, int Line, int Column, string LineText);
+
+/// <summary>grep のオプション。</summary>
+public sealed record GrepOptions(
+    bool CaseSensitive = false,
+    bool UseRegex = false,
+    string? IncludeGlob = null,
+    string? ExcludeGlob = null,
+    int MaxResults = 500);
+
+/// <summary>
 /// ブラウザ（可視 WebView2 ペインのアクティブタブ）への操作を抽象化。
 /// <see cref="ITerminalService"/> が可視ターミナルへ操作を一本化するのと同様に、
 /// AIのブラウザ操作も人間が見ているブラウザペインへ一本化する（別ウィンドウは起動しない）。

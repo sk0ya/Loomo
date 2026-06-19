@@ -13,6 +13,7 @@ using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using sk0ya.Loomo.Core.Tools.Implementations;
 using sk0ya.Loomo.Services;
+using sk0ya.Loomo.Services.Search;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -73,6 +74,9 @@ public partial class App : Application
         // --- サービス（concrete + interface 同一インスタンス） ---
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<IWorkspaceService>(sp => sp.GetRequiredService<WorkspaceService>());
+
+        services.AddSingleton<WorkspaceSearchService>();
+        services.AddSingleton<IWorkspaceSearchService>(sp => sp.GetRequiredService<WorkspaceSearchService>());
 
         services.AddSingleton<TerminalService>();
         services.AddSingleton<ITerminalService>(sp => sp.GetRequiredService<TerminalService>());
@@ -165,6 +169,7 @@ public partial class App : Application
         services.AddSingleton<DiffSessionViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();
+        services.AddSingleton<SearchPanelViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }

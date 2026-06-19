@@ -7,11 +7,22 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>
 /// コマンドパレット（部屋全体の操作統一）の1コマンド。カテゴリ＋名前で検索され、
 /// 選択されると <see cref="Execute"/> が走る。一覧の構築は ShellWindow が担う。
+/// ファイル名検索（@）・grep（#）モードのヒットもこの型で表現し、<see cref="PreviewPath"/> が
+/// 非 null のとき右側にスニペットプレビューを出す（<see cref="PreviewLine"/> 行を中心に）。
 /// </summary>
 public sealed record PaletteCommand(string Category, string Title, Action Execute, string? Shortcut = null, string? Id = null)
 {
     /// <summary>検索対象のテキスト（カテゴリも含めて引っかける）。</summary>
     public string SearchText => $"{Category} {Title}";
+
+    /// <summary>プレビュー対象ファイルの絶対パス（コマンドは null）。</summary>
+    public string? PreviewPath { get; init; }
+
+    /// <summary>プレビューで強調・スクロールする 1 始まりの行（0 なら先頭）。</summary>
+    public int PreviewLine { get; init; }
+
+    /// <summary>スニペット内で強調する語（grep の検索語）。null ならハイライトなし。</summary>
+    public string? PreviewHighlight { get; init; }
 }
 
 /// <summary>パレットの絞り込み（純ロジック・テスト対象）。</summary>

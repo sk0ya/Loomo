@@ -60,8 +60,12 @@ public class ShellViewModelTests
         var traceSessionVm = new TraceSessionViewModel(
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 
+        var searchVm = new SearchPanelViewModel(
+            new sk0ya.Loomo.Services.Search.WorkspaceSearchService(workspace));
+
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
-            appearanceVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm, new PegboardViewModel());
+            appearanceVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
+            new PegboardViewModel(), searchVm);
     }
 
     [Fact]

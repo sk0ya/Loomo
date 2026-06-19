@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -18,6 +23,12 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow
 {
     private IReadOnlyList<PaletteCommand> _paletteCommands = Array.Empty<PaletteCommand>();
+
+    /// <summary>@／# モードの非同期検索を、入力が変わるたびにキャンセル＆再発行するためのトークン源。</summary>
+    private CancellationTokenSource? _paletteSearchCts;
+
+    /// <summary>パレットの入力モード。先頭の記号で切り替える（VS Code 風）。</summary>
+    private enum PaletteMode { Command, File, Grep }
 
     private bool IsPaletteOpen => CommandPaletteOverlay.Visibility == Visibility.Visible;
 
@@ -36,18 +47,176 @@ public partial class ShellWindow
     {
         if (!IsPaletteOpen)
             return;
+        _paletteSearchCts?.Cancel();
         CommandPaletteOverlay.Visibility = Visibility.Collapsed;
         if (refocus && _focusedRegion?.Pane is { } pane)
             FocusPane(pane);
     }
 
+    /// <summary>先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、無印＝コマンド。</summary>
+    private static (PaletteMode Mode, string Query) ParsePaletteMode(string? text)
+    {
+        text ??= string.Empty;
+        if (text.StartsWith('@')) return (PaletteMode.File, text[1..].Trim());
+        if (text.StartsWith('#')) return (PaletteMode.Grep, text[1..].Trim());
+        return (PaletteMode.Command, text);
+    }
+
     private void RefilterPalette()
     {
-        PaletteList.ItemsSource = PaletteFilter.Filter(_paletteCommands, PaletteInput.Text);
+        var (mode, query) = ParsePaletteMode(PaletteInput.Text);
+
+        // 検索モードはプレビュー枠を開き、パレット自体を広げる。コマンドモードは従来の細い見た目。
+        var search = mode != PaletteMode.Command;
+        PaletteBox.Width = search ? 860 : 560;
+        PalettePreviewColumn.Width = search ? new GridLength(440) : new GridLength(0);
+
+        if (mode == PaletteMode.Command)
+        {
+            _paletteSearchCts?.Cancel();
+            ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, query));
+            return;
+        }
+
+        _ = RefilterSearchAsync(mode, query);
+    }
+
+    /// <summary>@／# モードの検索。直前の検索をキャンセルし、軽くデバウンスしてから走らせる。</summary>
+    private async Task RefilterSearchAsync(PaletteMode mode, string query)
+    {
+        _paletteSearchCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _paletteSearchCts = cts;
+        var ct = cts.Token;
+
+        try
+        {
+            await Task.Delay(120, ct); // 連続入力をまとめる
+
+            IReadOnlyList<PaletteCommand> items;
+            if (mode == PaletteMode.File)
+            {
+                var hits = await _search.FindFilesAsync(query, 50, ct);
+                items = hits.Select(FileEntry).ToList();
+            }
+            else // Grep（空クエリは検索しない）
+            {
+                if (string.IsNullOrEmpty(query))
+                {
+                    ShowPaletteItems(Array.Empty<PaletteCommand>());
+                    return;
+                }
+                var hits = await _search.GrepAsync(query, new GrepOptions(MaxResults: 200), ct);
+                items = hits.Select(h => GrepEntry(h, query)).ToList();
+            }
+
+            if (!ct.IsCancellationRequested)
+                ShowPaletteItems(items);
+        }
+        catch (OperationCanceledException) { /* 新しい入力に置き換わった */ }
+    }
+
+    private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items)
+    {
+        PaletteList.ItemsSource = items;
         if (PaletteList.Items.Count > 0)
         {
             PaletteList.SelectedIndex = 0;
             PaletteList.ScrollIntoView(PaletteList.SelectedItem);
+        }
+        else
+        {
+            UpdatePalettePreview(null);
+        }
+    }
+
+    private PaletteCommand FileEntry(FileSearchHit hit)
+        => new("ファイル", hit.RelativePath, () => _ = OpenAndNavigateAsync(hit.FullPath, 0))
+        { PreviewPath = hit.FullPath };
+
+    private PaletteCommand GrepEntry(ContentSearchHit hit, string query)
+        => new($"{hit.RelativePath}:{hit.Line}", hit.LineText.Trim(),
+            () => _ = OpenAndNavigateAsync(hit.FullPath, hit.Line))
+        { PreviewPath = hit.FullPath, PreviewLine = hit.Line, PreviewHighlight = query };
+
+    /// <summary>ファイルをエディタタブで開き、行が指定されていればそこへジャンプする。</summary>
+    private async Task OpenAndNavigateAsync(string path, int line)
+    {
+        await OpenFileInNewEditorTabAsync(path);
+        if (line > 0 && _activeEditorTab?.Control is { } control)
+            control.NavigateTo(line, 1);
+    }
+
+    private void OnPaletteSelectionChanged(object sender, SelectionChangedEventArgs e)
+        => UpdatePalettePreview(PaletteList.SelectedItem as PaletteCommand);
+
+    /// <summary>選択中ヒットのファイルを、該当行を中心に数行スニペット表示する。一致行は ▶ で印を付け、
+    /// grep モードでは検索語をテーマ色でハイライトする。</summary>
+    private void UpdatePalettePreview(PaletteCommand? command)
+    {
+        PalettePreview.Inlines.Clear();
+        if (command?.PreviewPath is not { } path || !File.Exists(path))
+            return;
+
+        try
+        {
+            var lines = File.ReadAllLines(path);
+            if (lines.Length == 0)
+            {
+                PalettePreview.Inlines.Add(new Run("(空ファイル)"));
+                return;
+            }
+
+            const int radius = 14;
+            var center = command.PreviewLine > 0 ? command.PreviewLine : 1;
+            var start = Math.Max(1, center - radius);
+            var end = Math.Min(lines.Length, center + radius);
+
+            for (var i = start; i <= end; i++)
+            {
+                var gutter = new Run((command.PreviewLine > 0 && i == command.PreviewLine ? "▶" : " ")
+                    + i.ToString().PadLeft(4) + "  ");
+                gutter.SetResourceReference(TextElement.ForegroundProperty, "FgDim");
+                PalettePreview.Inlines.Add(gutter);
+                AppendHighlighted(lines[i - 1], command.PreviewHighlight);
+                if (i < end)
+                    PalettePreview.Inlines.Add(new LineBreak());
+            }
+        }
+        catch
+        {
+            PalettePreview.Inlines.Add(new Run("(プレビューを読み込めません)"));
+        }
+        PalettePreviewScroll.ScrollToTop();
+    }
+
+    /// <summary>1 行を、検索語の出現箇所だけテーマ色（Accent 背景）で強調しつつ追加する。</summary>
+    private void AppendHighlighted(string text, string? highlight)
+    {
+        if (string.IsNullOrEmpty(highlight))
+        {
+            PalettePreview.Inlines.Add(new Run(text));
+            return;
+        }
+
+        var idx = 0;
+        while (true)
+        {
+            var found = text.IndexOf(highlight, idx, StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+            {
+                PalettePreview.Inlines.Add(new Run(text[idx..]));
+                break;
+            }
+            if (found > idx)
+                PalettePreview.Inlines.Add(new Run(text[idx..found]));
+
+            var hit = new Run(text.Substring(found, highlight.Length));
+            hit.SetResourceReference(TextElement.BackgroundProperty, "Accent");
+            hit.SetResourceReference(TextElement.ForegroundProperty, "Bg");
+            PalettePreview.Inlines.Add(hit);
+
+            idx = found + highlight.Length;
         }
     }
 
@@ -164,6 +333,7 @@ public partial class ShellWindow
         // サイドバー
         list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null),
             Sc("sidebar.explorer"), "sidebar.explorer"));
+        list.Add(new("サイドバー", "検索（全文検索 / grep）", () => _vm.ShowSearchCommand.Execute(null)));
         list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null),
             Sc("sidebar.tabs"), "sidebar.tabs"));
         list.Add(new("サイドバー", "AIセッション", () => _vm.ShowSessionsCommand.Execute(null),
