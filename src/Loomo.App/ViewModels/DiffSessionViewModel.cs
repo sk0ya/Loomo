@@ -504,28 +504,92 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// <summary>「次/前の変更」の現在位置（<see cref="ChangeAnchors"/> の並びでのインデックス）。</summary>
     private int _changeCursor = -1;
 
+    /// <summary>ファイル跨ぎで前のファイルへ移ったとき、自動ジャンプ先を「最後の変更」にするフラグ。</summary>
+    private bool _pendingJumpToLast;
+
     [RelayCommand]
     private void JumpToNextChange() => JumpChange(forward: true);
 
     [RelayCommand]
     private void JumpToPrevChange() => JumpChange(forward: false);
 
-    /// <summary>最初の変更ブロックへジャンプする（ファイルを開いた直後の自動ジャンプ用）。</summary>
-    public void JumpToFirstChange()
+    /// <summary>
+    /// ファイルを開いた／表示形式を切り替えた直後の自動ジャンプ先へ飛ぶ。通常は最初の変更、
+    /// ファイル跨ぎで前のファイルへ移った直後（<see cref="_pendingJumpToLast"/>）だけ最後の変更。
+    /// </summary>
+    public void JumpToAutoTarget()
     {
-        _changeCursor = -1;
-        JumpChange(forward: true);
+        if (_pendingJumpToLast)
+        {
+            _pendingJumpToLast = false;
+            JumpToLastChange();
+        }
+        else
+        {
+            JumpToFirstChange();
+        }
     }
 
+    /// <summary>最初の変更ブロックへジャンプする（ファイル跨ぎはしない）。</summary>
+    public void JumpToFirstChange()
+    {
+        var anchors = ChangeAnchors();
+        if (anchors.Count == 0) { _changeCursor = -1; return; }
+        _changeCursor = 0;
+        ScrollToRowRequested?.Invoke(anchors[0]);
+    }
+
+    /// <summary>最後の変更ブロックへジャンプする（前のファイルへ跨いだ直後用。ファイル跨ぎはしない）。</summary>
+    private void JumpToLastChange()
+    {
+        var anchors = ChangeAnchors();
+        if (anchors.Count == 0) { _changeCursor = -1; return; }
+        _changeCursor = anchors.Count - 1;
+        ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
+    }
+
+    /// <summary>
+    /// 次/前の変更へジャンプする。現在ファイルの端を越えるときは隣のファイルへ移り、
+    /// 次方向なら次ファイルの最初の変更、前方向なら前ファイルの最後の変更へ飛ぶ。
+    /// </summary>
     private void JumpChange(bool forward)
     {
         var anchors = ChangeAnchors();
-        if (anchors.Count == 0) return;
         if (forward)
-            _changeCursor = _changeCursor < 0 ? 0 : Math.Min(_changeCursor + 1, anchors.Count - 1);
+        {
+            if (_changeCursor + 1 < anchors.Count)
+            {
+                _changeCursor++;
+                ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
+            }
+            else
+            {
+                MoveToAdjacentFile(forward: true); // 末尾を越える → 次ファイルの最初へ
+            }
+        }
         else
-            _changeCursor = _changeCursor <= 0 ? 0 : _changeCursor - 1;
-        ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
+        {
+            if (_changeCursor > 0)
+            {
+                _changeCursor--;
+                ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
+            }
+            else
+            {
+                MoveToAdjacentFile(forward: false); // 先頭より前 → 前ファイルの最後へ
+            }
+        }
+    }
+
+    /// <summary>隣のファイルを選択し、その差分の最初／最後の変更へ自動ジャンプさせる（端なら何もしない）。</summary>
+    private void MoveToAdjacentFile(bool forward)
+    {
+        if (SelectedFile is null) return;
+        var idx = Files.IndexOf(SelectedFile);
+        var nextIdx = forward ? idx + 1 : idx - 1;
+        if (idx < 0 || nextIdx < 0 || nextIdx >= Files.Count) return;
+        _pendingJumpToLast = !forward; // 前方向は移動先の「最後の変更」から見せる
+        SelectedFile = Files[nextIdx]; // 選択変更→差分読込→自動ジャンプ（JumpToAutoTarget）
     }
 
     /// <summary>変更ブロック（連続する追加/削除/空セルのかたまり）の先頭行インデックス一覧。</summary>

@@ -812,12 +812,12 @@
                             <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
                                     Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="↑ 前の差分"
-                                            ToolTip="前の変更ブロックへジャンプ"
-                                            Command="{Binding DiffSession.JumpToPrevChangeCommand}" />
                                     <Button Style="{StaticResource PaneHeaderToolButton}" Content="↓ 次の差分"
                                             ToolTip="次の変更ブロックへジャンプ"
                                             Command="{Binding DiffSession.JumpToNextChangeCommand}" />
+                                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="↑ 前の差分"
+                                            ToolTip="前の変更ブロックへジャンプ"
+                                            Command="{Binding DiffSession.JumpToPrevChangeCommand}" />
                                 </StackPanel>
                             </Border>
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="エディタで開く"

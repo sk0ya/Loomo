@@ -106,7 +106,7 @@ public partial class DiffSessionView : UserControl
                 return;
             }
             _autoJumpPending = false;
-            Dispatcher.BeginInvoke(new Action(() => Vm?.JumpToFirstChange()), DispatcherPriority.Loaded);
+            Dispatcher.BeginInvoke(new Action(() => Vm?.JumpToAutoTarget()), DispatcherPriority.Loaded);
         }), DispatcherPriority.Background);
     }
 
