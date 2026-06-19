@@ -72,6 +72,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>1ヒットを通常タブで開きたい（Enter・ダブルクリック）。</summary>
     public event EventHandler<SearchHit>? ActivateRequested;
 
+    /// <summary>エディタの検索ハイライトを消したい（クエリを空にした・Esc・ファイル名検索へ切替）。</summary>
+    public event EventHandler? ClearHighlightRequested;
+
     [ObservableProperty] private string _query = "";
     [ObservableProperty] private bool _caseSensitive;
     [ObservableProperty] private bool _useRegex;
@@ -99,8 +102,14 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     partial void OnSearchByNameChanged(bool value)
     {
         OnPropertyChanged(nameof(QueryPlaceholder));
+        // ファイル名検索ではハイライト対象がないので、切替時に残っているハイライトを消す。
+        if (value)
+            ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
         ScheduleSearch();
     }
+
+    /// <summary>検索ワードをクリアする（結果もエディタのハイライトも消える）。Esc 用。</summary>
+    public void ClearQuery() => Query = "";
 
     /// <summary>入力が変わるたびに直前の検索をキャンセルし、少し待ってから再検索する。</summary>
     private void ScheduleSearch()
@@ -112,6 +121,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             Results.Clear();
             StatusMessage = "";
             IsBusy = false;
+            // クエリが空になったらエディタのハイライトも消す。
+            ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
 

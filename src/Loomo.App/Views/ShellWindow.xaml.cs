@@ -281,6 +281,8 @@ public partial class ShellWindow : Window
             _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
             _activeEditorTab?.Control.HighlightSearch(h.Highlight);
         };
+        // 検索ワードを消す／Esc／ファイル名検索へ切替で、エディタの検索ハイライトを消す。
+        vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。

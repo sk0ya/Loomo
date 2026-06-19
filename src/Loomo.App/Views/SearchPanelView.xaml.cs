@@ -57,7 +57,7 @@ public partial class SearchPanelView : UserControl
         }
     }
 
-    /// <summary>クエリ欄で Enter を押したら先頭ファイルへフォーカスを移す（結果を辿りやすく）。</summary>
+    /// <summary>クエリ欄のキー操作。Down で先頭ファイルへ移動、Esc でクエリをクリア（結果とエディタのハイライトも消える）。</summary>
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Down && ResultTree.Items.Count > 0)
@@ -65,6 +65,11 @@ public partial class SearchPanelView : UserControl
             ResultTree.Focus();
             if (ResultTree.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
                 first.IsSelected = true;
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && Vm is { } vm && !string.IsNullOrEmpty(vm.Query))
+        {
+            vm.ClearQuery();
             e.Handled = true;
         }
     }
