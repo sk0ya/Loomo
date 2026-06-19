@@ -144,7 +144,8 @@ public partial class ShellWindow
     {
         await OpenFileInNewEditorTabAsync(path);
         if (line > 0 && _activeEditorTab?.Control is { } control)
-            control.NavigateTo(line, 1);
+            // line は1始まり、NavigateTo は0始まりなので変換する。
+            control.NavigateTo(line - 1, 0);
     }
 
     private void OnPaletteSelectionChanged(object sender, SelectionChangedEventArgs e)

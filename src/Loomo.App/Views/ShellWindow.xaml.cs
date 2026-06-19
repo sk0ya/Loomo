@@ -269,12 +269,14 @@ public partial class ShellWindow : Window
         vm.SearchPanel.PreviewRequested += async (_, h) =>
         {
             await OpenFileInPreviewTabAsync(h.FullPath);
-            _activeEditorTab?.Control.NavigateTo(h.Line, h.Column);
+            // 検索ヒットは1始まり、NavigateTo は0始まりなので変換する。
+            _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
         };
         vm.SearchPanel.ActivateRequested += async (_, h) =>
         {
             await OpenFileInNewEditorTabAsync(h.FullPath);
-            _activeEditorTab?.Control.NavigateTo(h.Line, h.Column);
+            // 検索ヒットは1始まり、NavigateTo は0始まりなので変換する。
+            _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
         };
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;

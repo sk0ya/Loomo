@@ -375,7 +375,8 @@ public partial class ShellWindow
         if (_activeEditorTab is { } tab &&
             string.Equals(tab.Control.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
         {
-            tab.Control.NavigateTo(line, column > 0 ? column : 1);
+            // line/column は1始まり、NavigateTo は0始まりなので変換する。
+            tab.Control.NavigateTo(line - 1, column > 0 ? column - 1 : 0);
         }
     }
 
