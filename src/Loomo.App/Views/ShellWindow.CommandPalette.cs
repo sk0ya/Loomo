@@ -62,14 +62,73 @@ public partial class ShellWindow
         return (PaletteMode.Command, text);
     }
 
+    /// <summary>そのモードの先頭記号（コマンドは無印）。</summary>
+    private static string ModePrefix(PaletteMode mode) => mode switch
+    {
+        PaletteMode.File => "@",
+        PaletteMode.Grep => "#",
+        _ => string.Empty,
+    };
+
+    /// <summary>素のクエリは保ったままモードだけ差し替える（先頭記号を付け替えてキャレットを末尾へ）。
+    /// マウスでのチップ選択・Ctrl+Shift+P 連打の両方から呼ばれる。</summary>
+    private void SetPaletteMode(PaletteMode mode)
+    {
+        var (_, query) = ParsePaletteMode(PaletteInput.Text);
+        PaletteInput.Text = ModePrefix(mode) + query;     // TextChanged が RefilterPalette を呼ぶ
+        PaletteInput.CaretIndex = PaletteInput.Text.Length;
+        PaletteInput.Focus();
+    }
+
+    /// <summary>コマンド → ファイル名 → grep → コマンド… と巡回する（Ctrl+Shift+P 連打）。</summary>
+    private void CyclePaletteMode()
+    {
+        var (mode, _) = ParsePaletteMode(PaletteInput.Text);
+        var next = mode switch
+        {
+            PaletteMode.Command => PaletteMode.File,
+            PaletteMode.File => PaletteMode.Grep,
+            _ => PaletteMode.Command,
+        };
+        SetPaletteMode(next);
+    }
+
+    private void OnPaletteModeClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaletteMode>(tag, out var mode))
+            SetPaletteMode(mode);
+    }
+
+    /// <summary>現在モードのチップを強調する（選択中＝Accent 枠＋通常文字色、他は淡色）。</summary>
+    private void UpdateModeChips(PaletteMode mode)
+    {
+        Highlight(PaletteModeCommand, mode == PaletteMode.Command);
+        Highlight(PaletteModeFile, mode == PaletteMode.File);
+        Highlight(PaletteModeGrep, mode == PaletteMode.Grep);
+
+        static void Highlight(Button chip, bool active)
+        {
+            if (active)
+            {
+                chip.SetResourceReference(Control.BorderBrushProperty, "Accent");
+                chip.SetResourceReference(Control.ForegroundProperty, "Fg");
+            }
+            else
+            {
+                chip.BorderBrush = System.Windows.Media.Brushes.Transparent;
+                chip.SetResourceReference(Control.ForegroundProperty, "FgDim");
+            }
+        }
+    }
+
     private void RefilterPalette()
     {
         var (mode, query) = ParsePaletteMode(PaletteInput.Text);
+        UpdateModeChips(mode);
 
-        // 検索モードはプレビュー枠を開き、パレット自体を広げる。コマンドモードは従来の細い見た目。
+        // 箱の幅は固定（モード切替で左右にズレないように）。検索モードだけ右にプレビュー枠を開く。
         var search = mode != PaletteMode.Command;
-        PaletteBox.Width = search ? 860 : 560;
-        PalettePreviewColumn.Width = search ? new GridLength(440) : new GridLength(0);
+        PalettePreviewColumn.Width = search ? new GridLength(340) : new GridLength(0);
 
         if (mode == PaletteMode.Command)
         {

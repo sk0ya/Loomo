@@ -912,7 +912,8 @@
                      名前で検索して実行する（Ctrl+Shift+P / Ctrl+W p。ShellWindow.CommandPalette.cs）。 -->
                 <Grid x:Name="CommandPaletteOverlay" Grid.ColumnSpan="4" Panel.ZIndex="200" Visibility="Collapsed"
                       Background="#59101010" MouseLeftButtonDown="OnPaletteBackgroundMouseDown">
-                    <Border x:Name="PaletteBox" Width="560" MaxHeight="440" HorizontalAlignment="Center" VerticalAlignment="Top"
+                    <!-- 幅は常に固定（モード切替で左右にズレないように）。検索モードは右にプレビュー枠を開く。 -->
+                    <Border x:Name="PaletteBox" Width="760" MaxHeight="440" HorizontalAlignment="Center" VerticalAlignment="Top"
                             Margin="0,46,0,0" Background="{DynamicResource Panel}"
                             BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="6"
                             MouseLeftButtonDown="OnPaletteBoxMouseDown">
@@ -922,17 +923,47 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <TextBox x:Name="PaletteInput" Grid.Row="0" Margin="4" Padding="6,4" FontSize="13"
+                            <!-- モード切替チップ（クリックで切替＝マウス操作。Ctrl+Shift+P 連打でも巡回）。検索ボックスの上。 -->
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,4">
+                                <StackPanel.Resources>
+                                    <Style x:Key="PaletteModeChip" TargetType="Button">
+                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="BorderThickness" Value="1" />
+                                        <Setter Property="BorderBrush" Value="Transparent" />
+                                        <Setter Property="Padding" Value="8,2" />
+                                        <Setter Property="Margin" Value="0,0,4,0" />
+                                        <Setter Property="FontSize" Value="11" />
+                                        <Setter Property="Cursor" Value="Hand" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="3"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </StackPanel.Resources>
+                                <Button x:Name="PaletteModeCommand" Style="{StaticResource PaletteModeChip}"
+                                        Content="コマンド" Click="OnPaletteModeClick" Tag="Command" />
+                                <Button x:Name="PaletteModeFile" Style="{StaticResource PaletteModeChip}"
+                                        Content="ファイル" Click="OnPaletteModeClick" Tag="File" />
+                                <Button x:Name="PaletteModeGrep" Style="{StaticResource PaletteModeChip}"
+                                        Content="テキスト" Click="OnPaletteModeClick" Tag="Grep" />
+                            </StackPanel>
+                            <TextBox x:Name="PaletteInput" Grid.Row="1" Margin="4,0,4,4" Padding="6,4" FontSize="13"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                                      TextChanged="OnPaletteTextChanged" PreviewKeyDown="OnPaletteInputKeyDown" />
-                            <!-- モードの凡例（@ファイル名 / #grep / 無印コマンド）。 -->
-                            <TextBlock Grid.Row="1" Margin="4,0,4,4" FontSize="10" Foreground="{DynamicResource FgDim}"
-                                       Text="@ ファイル名    # grep    （無印: コマンド）" />
                             <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition x:Name="PalettePreviewColumn" Width="0" />
+                                    <ColumnDefinition x:Name="PalettePreviewColumn" Width="0" MinWidth="0" />
                                 </Grid.ColumnDefinitions>
                                 <ListBox x:Name="PaletteList" Grid.Column="0" Margin="4,0,4,4" BorderThickness="0"
                                          Background="Transparent" Foreground="{DynamicResource Fg}"

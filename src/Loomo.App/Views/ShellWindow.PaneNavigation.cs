@@ -52,11 +52,24 @@ public partial class ShellWindow
                 CloseCommandPalette(refocus: true);
                 e.Handled = true;
             }
+            // 開いたまま「パレットを開く」ジェスチャ（既定 Ctrl+Shift+P）をもう一度押すとモード巡回。
+            else if (MatchesPaletteOpenGesture(e))
+            {
+                CyclePaletteMode();
+                e.Handled = true;
+            }
             return;
         }
 
         _keyboard?.HandlePreviewKeyDown(e);
     }
+
+    /// <summary>このキーイベントが「コマンドパレットを開く」単一ジェスチャ（既定 Ctrl+Shift+P）か。
+    /// 再割り当てに追従する。プレフィックス連鎖（Ctrl+W P）は単発イベントでは判定しない。</summary>
+    private bool MatchesPaletteOpenGesture(KeyEventArgs e)
+        => _keybindings.For("palette.open") is { Count: 1 } seq
+           && sk0ya.Loomo.App.Input.KeyChord.FromEvent(e) is { } chord
+           && chord.Equals(seq.First);
 
     /// <summary>1回のキーリサイズで動かす量（その分割の合計比率に対する割合）。</summary>
     private const double ResizeStepRatio = 0.08;
