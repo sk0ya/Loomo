@@ -127,6 +127,9 @@ public partial class ShellWindow
             if (ReferenceEquals(_previewEditorTab, existing))
                 SetPreviewTab(null);
             ActivateEditorTab(existing.Id);
+            // 既に開いているファイルが外部（AI の write_file/edit_file・git・ターミナル等）で書き換わって
+            // いれば、ここで読み直して本文と EditorSupport を最新化する（下記ヘルパ参照）。
+            await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
 
@@ -162,6 +165,8 @@ public partial class ShellWindow
         if (existing is not null)
         {
             ActivateEditorTab(existing.Id);
+            // 外部変更があれば読み直して本文と EditorSupport を最新化する（下記ヘルパ参照）。
+            await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
 
@@ -191,6 +196,44 @@ public partial class ShellWindow
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
     }
+
+    /// <summary>
+    /// 既に開いているタブを再オープンしたとき、ファイルが外部（AI の write_file/edit_file・git・
+    /// ターミナル等）で書き換わっていれば、未編集に限りディスクから読み直して本文を最新化する。
+    /// エディタ内蔵のファイルウォッチャによる自動リロード（VimEditorControl.ReloadCurrentFile）は
+    /// <c>BufferChanged</c> を発火しないため、それに依存せず明示的に <c>LoadFile</c> して BufferChanged を
+    /// 起こす。さらに EditorSupport の追従元タブなら、同一タブ再活性で
+    /// <see cref="SwitchEditorSupportSourceAsync"/> が早期 return する分を補ってプレビューを即更新する。
+    /// </summary>
+    private async Task ReloadExistingTabIfChangedAsync(EditorTab tab)
+    {
+        var path = tab.Control.FilePath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            return;
+
+        // 未保存編集のあるタブは読み直さない（編集を破棄しない）。リロード判断はエディタ側に委ねる。
+        if (tab.Control.IsModified)
+            return;
+
+        string diskText;
+        try { diskText = await File.ReadAllTextAsync(path); }
+        catch { return; }   // 読めなければ現状維持（best-effort）
+
+        // 改行コードだけの差では読み直さない（無編集ファイルのスクロール位置を無駄に失わない）。
+        if (NormalizeEol(diskText) != NormalizeEol(tab.Control.Text))
+        {
+            // ディスク内容が違う＝外部変更。LoadFile で本文を最新化する（BufferChanged が発火する）。
+            tab.Control.LoadFile(path);
+            UpdateEditorTab(tab);
+        }
+
+        // 本文が既に最新（ウォッチャが先に読み直した等）でも、外部リロードは BufferChanged を上げず
+        // EditorSupport が取り残されるため、追従元タブなら明示的に更新する。
+        if (ReferenceEquals(_editorSupportSourceTab, tab))
+            await UpdateEditorSupportAsync();
+    }
+
+    private static string NormalizeEol(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
     /// <summary>プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。</summary>
     private void SetPreviewTab(EditorTab? tab)
