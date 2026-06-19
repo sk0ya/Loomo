@@ -119,6 +119,9 @@ public partial class ShellWindow
         // 文字列一致せず二重に開いてしまう。VimEditorControl は渡した文字列をそのまま FilePath に保持する。
         path = Path.GetFullPath(path);
 
+        // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
+        EnsureEditorPaneForOpenedFile(path);
+
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -159,6 +162,9 @@ public partial class ShellWindow
 
         // 区切り混在のパス（Git 起点等）でも既存タブと一致させるため正規化する（上記参照）。
         path = Path.GetFullPath(path);
+
+        // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
+        EnsureEditorPaneForOpenedFile(path);
 
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));

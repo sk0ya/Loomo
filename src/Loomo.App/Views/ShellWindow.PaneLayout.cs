@@ -993,6 +993,36 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
+    /// <summary>
+    /// ファイルを開くとき、Editor も EditorSupport もレイアウトに出ていなければ、左上のペインを
+    /// 開く対象（バイナリ＝EditorSupport／テキスト＝Editor）へ差し替えて必ず見えるようにする。
+    /// FolderTree・Diff・Git・検索・ターミナル/エディタのリンクなど、すべての「ファイルを開く」経路の
+    /// 共通前処理として、呼び出し側がタブを活性化する前に呼ぶ。どちらかが既に見えていれば何もしない。
+    /// </summary>
+    private void EnsureEditorPaneForOpenedFile(string path)
+    {
+        var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
+
+        if (_stageActive)
+        {
+            // ソロモード：Editor も EditorSupport も舞台に立っていなければ、対象を舞台へ立てる。
+            if (!OnStage(PaneKind.Editor) && !OnStage(PaneKind.EditorSupport))
+                SetStagePane(target);
+            return;
+        }
+
+        // タイルモード：どちらかが表示中なら現状維持。両方とも非表示のときだけ左上を差し替える。
+        if (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport))
+            return;
+
+        // 左上の可視ペインを対象へ入れ替える（元の左上ペインは袖へ退場）。左上が取れない/対象自身が
+        // 左上のときは、対象を素直に表示する。
+        if (TopLeftPane() is { } topLeft && topLeft != target)
+            PlaceWingPane(target, topLeft, center: true, zone: null);
+        else
+            SetPaneVisible(target, true);
+    }
+
     /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>
     private void AddLeafAtBottom(PaneLeaf leaf) => _root = AddLeafAtBottom(_root, leaf);
 
