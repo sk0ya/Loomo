@@ -47,8 +47,12 @@ public sealed class SearchFileGroup
     public string Header => Count > 0 ? $"{RelativePath}  ({Count})" : RelativePath;
 }
 
-/// <summary>選択／確定で開きたい場所（ファイル＋1始まりの行・列）。grep 一致行とファイル名ヒットの共通ペイロード。</summary>
-public readonly record struct SearchHit(string FullPath, int Line, int Column);
+/// <summary>
+/// 選択／確定で開きたい場所（ファイル＋1始まりの行・列）。grep 一致行とファイル名ヒットの共通ペイロード。
+/// <paramref name="Highlight"/> は grep ヒットのとき検索ワード（エディタで全マッチをハイライトする）、
+/// ファイル名検索のヒットでは空。
+/// </summary>
+public readonly record struct SearchHit(string FullPath, int Line, int Column, string Highlight = "");
 
 /// <summary>
 /// サイドバー Search パネルの ViewModel。クエリ・オプション（大小区別／正規表現／include・exclude glob）で
@@ -179,11 +183,17 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         StatusMessage = Results.Count == 0 ? "一致なし" : $"{Results.Count} ファイル";
     }
 
+    /// <summary>
+    /// エディタで全マッチをハイライトする検索ワード。Editor の <c>HighlightSearch</c> は
+    /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名検索では空）。
+    /// </summary>
+    private string HighlightTerm => !SearchByName && !UseRegex ? Query : "";
+
     public void Preview(SearchMatchItem match)
-        => PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column));
+        => PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
 
     public void Activate(SearchMatchItem match)
-        => ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column));
+        => ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
 
     /// <summary>ファイル名ヒット（グループ見出し自体）を開く。先頭（1,1）へジャンプする。</summary>
     public void Preview(SearchFileGroup group)

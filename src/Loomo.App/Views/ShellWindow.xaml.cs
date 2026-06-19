@@ -271,12 +271,15 @@ public partial class ShellWindow : Window
             await OpenFileInPreviewTabAsync(h.FullPath);
             // 検索ヒットは1始まり、NavigateTo は0始まりなので変換する。
             _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
+            // grep のリテラル検索ワードはエディタで全マッチをハイライトする（ファイル名検索／正規表現は空）。
+            _activeEditorTab?.Control.HighlightSearch(h.Highlight);
         };
         vm.SearchPanel.ActivateRequested += async (_, h) =>
         {
             await OpenFileInNewEditorTabAsync(h.FullPath);
             // 検索ヒットは1始まり、NavigateTo は0始まりなので変換する。
             _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
+            _activeEditorTab?.Control.HighlightSearch(h.Highlight);
         };
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
