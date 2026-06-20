@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
@@ -53,15 +55,44 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>特定ブランチに絞っているか（「すべてのブランチを表示」リンクの表示判定）。</summary>
     [ObservableProperty] private bool _isLogScoped;
 
+    /// <summary>コミット一覧の絞り込み語（メッセージ・作者・ハッシュ・ref を対象に部分一致）。
+    /// 空なら全件。git を再実行せず、読み込み済みの一覧をクライアント側でフィルタする。</summary>
+    [ObservableProperty] private string _logFilter = "";
+
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
+
+    /// <summary>ビューにバインドするフィルタ済みコミット一覧。<see cref="LogFilter"/> で絞り込む。</summary>
+    public ICollectionView LogView { get; }
 
     public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff)
     {
         _git = git;
         _editor = editor;
         _diff = diff;
+        LogView = CollectionViewSource.GetDefaultView(LogRows);
+        LogView.Filter = FilterLogRow;
         _git.RepositoryChanged += OnRepositoryChanged;
     }
+
+    /// <summary>絞り込み語が変わったらビューを更新する。</summary>
+    partial void OnLogFilterChanged(string value) => LogView.Refresh();
+
+    /// <summary>1行がフィルタに合致するか。空語は全件通す。グラフ継続だけの行は絞り込み中は隠す。</summary>
+    private bool FilterLogRow(object item)
+    {
+        var term = LogFilter?.Trim();
+        if (string.IsNullOrEmpty(term)) return true;
+        if (item is not GitLogRow row) return false;
+        if (!row.IsCommit) return false;  // 絞り込み中はグラフ継続行（ハッシュ無し）を隠す
+        return Contains(row.Subject, term)
+            || Contains(row.Author, term)
+            || Contains(row.ShortHash, term)
+            || Contains(row.Hash, term)
+            || Contains(row.Refs, term);
+    }
+
+    private static bool Contains(string? haystack, string term) =>
+        haystack is not null && haystack.Contains(term, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
     public event EventHandler? DiffOpenRequested;

@@ -137,7 +137,7 @@
                     </Grid.RowDefinitions>
 
                     <ListBox x:Name="LogList" Grid.Row="0" Style="{StaticResource GitList}"
-                             ItemsSource="{Binding LogRows}"
+                             ItemsSource="{Binding LogView}"
                              SelectedItem="{Binding SelectedLogRow}"
                              SelectionMode="Extended"
                              MouseDoubleClick="OnCommitShowDiff"
