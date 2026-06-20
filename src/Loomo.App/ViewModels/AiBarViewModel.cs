@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Tools;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -303,7 +305,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                             var text = i == 0
                                 ? ComposeToolCard(m.Text, use.ArgumentsJson, use.RawJson)
                                 : ComposeToolCard(null, use.ArgumentsJson, use.RawJson);
-                            Add(EntryKind.Tool, $"🔧 {use.Name}", text);
+                            Add(EntryKind.Tool, ToolUseHeader(use.Name, use.ArgumentsJson), text);
                         }
                     }
                     else if (!string.IsNullOrWhiteSpace(m.Text))
@@ -452,7 +454,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                         // 進捗状況に「どのツールを何の引数で呼ぶか」を表示する。
                         SetStatus($"🔧 {req.ToolUse.Name} を準備中… {StreamPreview(req.ToolUse.ArgumentsJson)}");
                         AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        Add(EntryKind.Tool, $"🔧 {req.ToolUse.Name}", ComposeToolCard(narration, req.ToolUse.ArgumentsJson, req.ToolUse.RawJson));
+                        Add(EntryKind.Tool, ToolUseHeader(req.ToolUse.Name, req.ToolUse.ArgumentsJson), ComposeToolCard(narration, req.ToolUse.ArgumentsJson, req.ToolUse.RawJson));
                         break;
 
                     case ApprovalRequested approval:
@@ -589,13 +591,64 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     private TranscriptEntry Add(EntryKind kind, string header, string text)
     {
-        var entry = new TranscriptEntry { Kind = kind, Header = header, Text = text };
+        // ツール使用・ツール結果は既定で折りたたむ（ヘッダーの1行要約だけ常時見え、詳細は開いたときだけ）。
+        var entry = new TranscriptEntry { Kind = kind, Header = header, Text = text, IsCollapsed = kind == EntryKind.Tool };
         Transcript.Add(entry);
         return entry;
     }
 
     private static string Truncate(string s, int max = 2000)
         => s.Length <= max ? s : s[..max] + $"\n…(+{s.Length - max} 文字)";
+
+    /// <summary>ツール使用エントリのヘッダー（折りたたんでも常時見える1行）を組み立てる。
+    /// 「🔧 ツール名: 主要引数」の形で、何をしたかが一目で分かるようにする
+    /// （run_powershell=コマンド／write_file・edit_file=パス／web_search=検索語）。</summary>
+    private static string ToolUseHeader(string toolName, string argumentsJson)
+    {
+        var summary = SummarizeToolArgs(toolName, argumentsJson);
+        return string.IsNullOrEmpty(summary) ? $"🔧 {toolName}" : $"🔧 {toolName}: {summary}";
+    }
+
+    /// <summary>ツールの引数JSONから代表引数を1つ抜き出し、1行要約に整える。小モデルが別名キーで
+    /// 送ってきても拾えるよう各 *Contract の別名配列を順に見る。見つからなければ最初の文字列引数で代用。</summary>
+    private static string SummarizeToolArgs(string toolName, string argumentsJson)
+    {
+        if (string.IsNullOrWhiteSpace(argumentsJson)) return "";
+        try
+        {
+            using var doc = JsonDocument.Parse(argumentsJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return "";
+
+            var keys = toolName switch
+            {
+                PwshContract.ToolName => PwshContract.CommandKeys,
+                WriteFileContract.ToolName => WriteFileContract.PathKeys,
+                EditFileContract.ToolName => EditFileContract.PathKeys,
+                WebSearchContract.ToolName => WebSearchContract.QueryKeys,
+                _ => null
+            };
+
+            if (keys is not null)
+                foreach (var k in keys)
+                    if (root.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String)
+                        return OneLine(v.GetString() ?? "");
+
+            // 未知のツール・代表引数が無い場合は最初の文字列引数で代用する。
+            foreach (var p in root.EnumerateObject())
+                if (p.Value.ValueKind == JsonValueKind.String)
+                    return OneLine(p.Value.GetString() ?? "");
+        }
+        catch { /* パース不能なら要約なし（ヘッダーはツール名のみになる） */ }
+        return "";
+    }
+
+    /// <summary>改行・連続空白を畳んで1行にし、長ければ先頭から切って末尾に省略記号を付ける（ヘッダー用）。</summary>
+    private static string OneLine(string text, int max = 80)
+    {
+        var flat = Regex.Replace(text, @"\s+", " ").Trim();
+        return flat.Length <= max ? flat : flat[..max] + "…";
+    }
 
     /// <summary>ツールカードの本文を組み立てる。AIがツール呼び出しと一緒に生成した本文（説明・narration）が
     /// あれば引数JSONの上に併記し、無ければ引数JSONのみを示す。</summary>
