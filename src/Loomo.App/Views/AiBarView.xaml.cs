@@ -151,6 +151,16 @@ public partial class AiBarView : UserControl
     {
         if (DataContext is not AiBarViewModel vm) return;
 
+        // Ctrl+J: 送信せずキャレット位置へ改行を挿入する（Enter は送信に割り当て済み）。
+        if (e.Key == Key.J && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            int caret = InputBox.SelectionStart;
+            InputBox.SelectedText = "\n";
+            InputBox.CaretIndex = caret + 1;
+            e.Handled = true;
+            return;
+        }
+
         if (vm.IsCommandPopupOpen)
         {
             switch (e.Key)

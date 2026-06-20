@@ -412,8 +412,11 @@
             <!-- モデル切替・新規セッションは「/」コマンド（/model・/clear）で行うため、入力欄だけのすっきりした行にする。 -->
             <Grid Grid.Column="0">
                 <!-- ウォームアップ中も入力欄は編集可能にしておく（送信だけ抑止：SendCommand の CanExecute が IsWarmingUp を見る）。 -->
+                <!-- Enter で送信、Ctrl+J で改行（AcceptsReturn で改行を保持・表示）。複数行は最大約6行で内部スクロール。 -->
                 <TextBox x:Name="InputBox" Text="{Binding Input, UpdateSourceTrigger=PropertyChanged}"
-                         VerticalContentAlignment="Center" PreviewKeyDown="OnInputPreviewKeyDown">
+                         VerticalContentAlignment="Top" AcceptsReturn="True" TextWrapping="Wrap"
+                         MaxHeight="140" VerticalScrollBarVisibility="Auto"
+                         PreviewKeyDown="OnInputPreviewKeyDown">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding SendCommand}" />
                     </TextBox.InputBindings>
