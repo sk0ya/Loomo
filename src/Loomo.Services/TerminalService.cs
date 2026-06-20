@@ -134,11 +134,20 @@ public sealed class TerminalService : ITerminalService
     /// <c>[Console]::OutputEncoding</c> はネイティブ出力のデコードと子シェル自身の stdout
     /// エンコードの両方を司り、呼び出し側の <c>StandardOutputEncoding=UTF8</c> と整合する。
     /// <c>$OutputEncoding</c> はネイティブコマンドへパイプ入力する際のエンコード（BOM なし UTF-8）。
+    ///
+    /// <c>$PSDefaultParameterValues['*:Encoding']='utf8'</c> は PowerShell の**ファイル読み書き
+    /// cmdlet**（Get-Content / Select-String / Set-Content / Out-File 等）の既定エンコードを UTF-8 に
+    /// 揃える。これらは <c>[Console]::OutputEncoding</c> とは別系統で、pwsh 7 未導入で Windows
+    /// PowerShell 5.1 にフォールバックすると既定がシステム ANSI（日本語環境では cp932）になり、
+    /// UTF-8 のソースを <c>Get-Content</c> すると文字化けする（pwsh 7 は既定 UTF-8 なので顕在化しない）。
+    /// pwsh 7 では 'utf8' は BOM なし、WinPS 5.1 では BOM 付きになるが、化けるよりは可読性を優先する
+    /// （エージェントのファイル作成は主に write_file/edit_file 経由でこの経路を通らない）。
     /// 設定に失敗してもコマンド実行自体は続行する（try/catch）。
     /// ハーネス（AgentCapabilityHarness）はこの TerminalService をそのまま使うので挙動が揃う。</summary>
     private const string Utf8Preamble =
         "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " +
-        "$OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }; ";
+        "$OutputEncoding = New-Object System.Text.UTF8Encoding $false; " +
+        "$PSDefaultParameterValues['*:Encoding'] = 'utf8' } catch { }; ";
 
     /// <summary>フォールバック実行で使う PowerShell 実行ファイル。
     /// <b>WindowsApps（ストア版パッケージ/実行エイリアス）の pwsh は避ける</b>：

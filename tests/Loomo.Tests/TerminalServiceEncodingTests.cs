@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Services;
@@ -64,5 +66,30 @@ public sealed class TerminalServiceEncodingTests
         Assert.True(result.Success, result.Output);
         Assert.Contains("こんにちは世界", result.Output);
         Assert.Contains("エラー側も日本語", result.Output);
+    }
+
+    /// <summary>UTF-8(BOM なし) ファイルを Get-Content で読んだとき日本語が化けないこと。
+    /// pwsh 7 未導入で Windows PowerShell 5.1 にフォールバックすると、ファイル読み書き cmdlet の
+    /// 既定エンコードがシステム ANSI（cp932）になり「譌･譛ｬ隱�」状に化ける。これは
+    /// <c>[Console]::OutputEncoding</c> とは別系統で、Utf8Preamble の
+    /// <c>$PSDefaultParameterValues['*:Encoding']='utf8'</c> が無いと再現する。
+    /// AI が UTF-8 のソースを Get-Content したときの実敗因の回帰ガード。</summary>
+    [Fact]
+    public async Task Get_content_of_utf8_file_is_not_garbled()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"loomo_jp_{Guid.NewGuid():N}.txt");
+        try
+        {
+            await File.WriteAllTextAsync(tmp, "日本語テキスト行", new UTF8Encoding(false));
+            var svc = new TerminalService();
+            var result = await svc.RunCommandAsync($"Get-Content '{tmp}'", CancellationToken.None);
+
+            Assert.True(result.Success, result.Output);
+            Assert.Contains("日本語テキスト行", result.Output);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { /* 後始末失敗は無視 */ }
+        }
     }
 }
