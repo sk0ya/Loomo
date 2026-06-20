@@ -324,7 +324,8 @@
                                                                Visibility="{Binding HasConflict, Converter={StaticResource BoolToVis}}" />
                                                 </StackPanel>
                                                 <local:KeyCaptureBox Grid.Column="1" VerticalAlignment="Center" />
-                                                <Button Grid.Column="2" Width="28" Margin="6,0,0,0"
+                                                <Button Grid.Column="2" Style="{StaticResource IconButton}"
+                                                        Width="28" Height="28" FontSize="14" Margin="6,0,0,0"
                                                         Content="↺" ToolTip="既定に戻す"
                                                         Command="{Binding ResetCommand}"
                                                         Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
