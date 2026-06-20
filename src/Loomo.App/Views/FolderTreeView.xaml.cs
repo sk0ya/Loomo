@@ -348,6 +348,28 @@ public partial class FolderTreeView : UserControl
             vm.RequestSetInTerminal(node);
     }
 
+    // ノードのコンテキストメニューを開くたびに、末尾の「AI」サブメニュー（と区切り線）の表示可否を決める。
+    // AIの暖機が完了（モデルロード済み）していて、対象が実在ファイルのときだけ出す。
+    private void OnNodeContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu cm)
+            return;
+
+        var node = (cm.PlacementTarget as FrameworkElement)?.DataContext as FileNodeViewModel;
+        var ready = DataContext is FolderTreeViewModel vm && vm.IsAiReady;
+        var show = ready && node is { IsDirectory: false } && File.Exists(node.FullPath);
+
+        foreach (var item in cm.Items)
+            if (item is FrameworkElement { Tag: "AiMenu" } element)
+                element.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnTypoCheckClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: false } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestTypoCheck(node);
+    }
+
     private void OnPinClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)

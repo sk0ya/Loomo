@@ -30,7 +30,7 @@ public sealed class FolderTreePinningTests : IDisposable
     }
 
     private FolderTreeViewModel CreateSut()
-        => new(new FakeWorkspaceService());
+        => new(new FakeWorkspaceService(), new FakeAiWarmup());
 
     [Fact]
     public void LoadRoot_puts_workspace_root_as_first_option()

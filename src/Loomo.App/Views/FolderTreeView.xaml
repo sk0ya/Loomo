@@ -326,7 +326,7 @@
                              行全幅をヒットテスト対象にする（無いと背後の TreeView の空白用メニューが出る）。 -->
                         <DockPanel LastChildFill="True" Background="Transparent">
                             <DockPanel.ContextMenu>
-                                <ContextMenu>
+                                <ContextMenu Opened="OnNodeContextMenuOpened">
                                     <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
                                     <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
                                     <Separator />
@@ -344,6 +344,13 @@
                                               Visibility="{Binding IsPinnable, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="ピン留めを解除" Click="OnUnpinClick"
                                               Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
+                                    <!-- AI 関連（一番下にまとめる）。AIの暖機完了時のみファイルに表示し、
+                                         区切り線・「AI」親メニューとも Opened で出し分ける。
+                                         AI 操作は「AI」の子メニューとして増やしていく想定。 -->
+                                    <Separator Tag="AiMenu" Visibility="Collapsed" />
+                                    <MenuItem Header="AI" Tag="AiMenu" Visibility="Collapsed">
+                                        <MenuItem Header="誤字脱字チェック" Click="OnTypoCheckClick" />
+                                    </MenuItem>
                                 </ContextMenu>
                             </DockPanel.ContextMenu>
                             <TextBlock x:Name="GitBadge" DockPanel.Dock="Right"

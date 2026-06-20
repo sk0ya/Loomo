@@ -13,6 +13,7 @@ namespace sk0ya.Loomo.Tests;
 internal sealed class FakeAiWarmup : IAiWarmup
 {
     public bool IsWarmingUp => false;
+    public bool IsReady => false;
     public DateTimeOffset? WarmupStartedAt => null;
     public string CurrentStatus => "";
     public string StatusDetails => "";

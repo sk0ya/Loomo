@@ -15,6 +15,10 @@ public interface IAiWarmup
     /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けない。</summary>
     bool IsWarmingUp { get; }
 
+    /// <summary>モデルがロード済みで、AI への指示を即座に受け付けられる状態か（暖機完了）。
+    /// FolderTree の「AI-誤字脱字チェック」など、AI が使えるときだけ出すメニューの出し分けに使う。</summary>
+    bool IsReady { get; }
+
     /// <summary>現在のウォームアップが始まった時刻。停止中は null。</summary>
     DateTimeOffset? WarmupStartedAt { get; }
 

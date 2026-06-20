@@ -20,7 +20,7 @@ public class ShellViewModelTests
     private static ShellViewModel CreateSut()
     {
         var workspace = new FakeWorkspaceService();
-        var folderTree = new FolderTreeViewModel(workspace);
+        var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup());
 
         var approval = new UiApprovalService();
         var settings = new AiSettings();

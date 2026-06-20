@@ -285,6 +285,8 @@ public partial class ShellWindow : Window
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
+        // FolderTree の「AI-誤字脱字チェック」：AIバーを /clear して当該ファイルの誤字脱字チェックを実行する。
+        vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         // Git セッションの「DIFF ペインで差分を表示」：Diff ペインを表示してフォーカスする。

@@ -19,6 +19,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class FolderTreeViewModel : ObservableObject
 {
     private readonly IWorkspaceService _workspace;
+    private readonly IAiWarmup _warmup;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -84,14 +85,23 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ShellWindow が処理する：フォルダはそのフォルダへ cd、ファイルはパスをプロンプトへ入力（未実行）。
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
 
+    // FolderTree の「AI-誤字脱字チェック」要求。View（コンテキストメニュー）から発火し、ShellWindow が
+    // AIバーで /clear → 当該ファイルパスを渡して誤字脱字チェックのプロンプトを送信する。
+    public event EventHandler<string>? TypoCheckRequested;
+
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;
 
-    public FolderTreeViewModel(IWorkspaceService workspace)
+    public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup)
     {
         _workspace = workspace;
+        _warmup = warmup;
     }
+
+    /// <summary>AIの暖機が完了してモデルが使える状態か。「AI-誤字脱字チェック」メニューの出し分けに使う
+    /// （暖機中・モデル未ロード時はメニューを出さない）。</summary>
+    public bool IsAiReady => _warmup.IsReady;
 
     /// <summary>
     /// ワークスペースルートを確定（ツールのパス制限・ターミナルの基準はこのルート）し、
@@ -708,6 +718,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     {
         if (node.IsDirectory ? Directory.Exists(node.FullPath) : File.Exists(node.FullPath))
             SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(node.FullPath, node.IsDirectory));
+    }
+
+    /// <summary>指定ファイルの誤字脱字チェックを要求する（ShellWindow が AIバーで処理）。
+    /// AI が使える状態（暖機完了）かつ実在ファイルのときだけ発火する。</summary>
+    public void RequestTypoCheck(FileNodeViewModel node)
+    {
+        if (!node.IsDirectory && IsAiReady && File.Exists(node.FullPath))
+            TypoCheckRequested?.Invoke(this, node.FullPath);
     }
 
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)

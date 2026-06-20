@@ -48,6 +48,9 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けないよう UI で使う。</summary>
     public bool IsWarmingUp => Volatile.Read(ref _activePrimes) > 0;
 
+    /// <summary>モデルがロード済みで AI を即座に使える状態か（暖機完了）。エンジンの実ロード状態を見る。</summary>
+    public bool IsReady => _engine.IsLoaded && !IsWarmingUp;
+
     /// <summary>現在のウォームアップが始まった時刻。停止中は null。</summary>
     public DateTimeOffset? WarmupStartedAt
     {

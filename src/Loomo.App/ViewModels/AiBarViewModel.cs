@@ -248,6 +248,20 @@ public sealed partial class AiBarViewModel : ObservableObject
                 : "新しいセッションを開始しました。");
     }
 
+    /// <summary>FolderTree の「AI-誤字脱字チェック」から呼ばれる。現在のセッションを /clear で閉じて
+    /// 新規開始し、指定ファイルの誤字脱字チェックを依頼するプロンプトを送信する。処理中・暖機中は何もしない。</summary>
+    public void RunTypoCheck(string filePath)
+    {
+        if (IsBusy || IsWarmingUp)
+            return;
+
+        ClearSession();
+        SetInput($"次のファイルの誤字脱字・変換ミス・タイプミスをチェックし、問題箇所を該当行とともに一覧で報告してください。" +
+                 $"修正は加えず指摘のみで構いません。対象ファイル: {filePath}");
+        if (SendCommand.CanExecute(null))
+            SendCommand.Execute(null);
+    }
+
     /// <summary>直前に閉じたセッション（無ければ最新の保存セッション）を復元する（/resume）。</summary>
     public void ResumeLastSession()
     {
