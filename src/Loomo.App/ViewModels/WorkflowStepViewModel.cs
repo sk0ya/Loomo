@@ -16,10 +16,22 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     [ObservableProperty] private string _prompt = "";
     [ObservableProperty] private bool _useTools;
 
+    /// <summary>テキストのみステップか（種別セグメントの「テキスト」側の選択状態）。UseTools の反転。</summary>
+    public bool IsTextMode => !UseTools;
+    partial void OnUseToolsChanged(bool value) => OnPropertyChanged(nameof(IsTextMode));
+
+    /// <summary>種別セグメント（テキスト/エージェント）の選択。XAML から "text"/"agent" を渡す。</summary>
+    [RelayCommand]
+    private void SelectMode(string mode) => UseTools = string.Equals(mode, "agent", System.StringComparison.Ordinal);
+
     // ===== 表示・実行時 =====
 
     /// <summary>1始まりの並び順。親コレクションの変更時に振り直される。</summary>
     [ObservableProperty] private int _index;
+
+    /// <summary>パイプライン表示の接続線を出し分けるための先頭/末尾フラグ（親が振り直す）。</summary>
+    [ObservableProperty] private bool _isFirst;
+    [ObservableProperty] private bool _isLast;
 
     [ObservableProperty] private WorkflowStepStatus _status = WorkflowStepStatus.Idle;
 

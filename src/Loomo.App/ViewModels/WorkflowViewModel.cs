@@ -19,6 +19,9 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// 前段の出力を <c>{{1}}</c> 等のプレースホルダで後段へ渡す。エージェントループを回す代わりに、
 /// テキストのみステップは1回のAI応答（ツール無し）で確定する。ツール使用ステップはツール込みで実行する。
 /// </summary>
+/// <summary>「ステップを追加」パレットのカテゴリ見出し＋その候補群。</summary>
+public sealed record StepCandidateGroup(string Category, IReadOnlyList<WorkflowStepCandidate> Items);
+
 public sealed partial class WorkflowViewModel : ObservableObject
 {
     private static readonly IReadOnlyList<ToolDefinition> NoTools = Array.Empty<ToolDefinition>();
@@ -33,6 +36,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private string? _currentId;                     // 読込済みワークフローのID（保存時に上書き）
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = new();
+
+    /// <summary>「ステップを追加」パレットに出す、カテゴリ別のステップ候補ライブラリ（組み込み・不変）。</summary>
+    public IReadOnlyList<StepCandidateGroup> StepLibrary { get; } = WorkflowStepLibrary.Catalog
+        .GroupBy(c => c.Category)
+        .Select(g => new StepCandidateGroup(g.Key, g.ToList()))
+        .ToList();
 
     /// <summary>読込ドロップダウンに出す保存済みワークフロー一覧。</summary>
     public ObservableCollection<WorkflowSummary> SavedWorkflows { get; } = new();
@@ -94,13 +103,31 @@ public sealed partial class WorkflowViewModel : ObservableObject
         Renumber();
     }
 
+    /// <summary>ライブラリのステップ候補（null なら空ステップ）を末尾に追加する。「ステップを追加」パレットから呼ばれる。</summary>
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private void AddCandidate(WorkflowStepCandidate? candidate)
+    {
+        Steps.Add(candidate is null ? new WorkflowStepViewModel() : new WorkflowStepViewModel(candidate.ToStep()));
+        Renumber();
+    }
+
     private bool CanEdit() => !IsRunning;
+
+    /// <summary>指定ステップの直後（null なら末尾）に空ステップを差し込む。パイプラインの「＋」から呼ばれる。</summary>
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private void InsertStepAfter(WorkflowStepViewModel? step)
+    {
+        var i = step is null ? Steps.Count - 1 : Steps.IndexOf(step);
+        Steps.Insert(i + 1, new WorkflowStepViewModel());
+        Renumber();
+    }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void RemoveStep(WorkflowStepViewModel? step)
     {
         if (step is null) return;
         Steps.Remove(step);
+        if (Steps.Count == 0) AddStep();
         Renumber();
     }
 
@@ -120,11 +147,15 @@ public sealed partial class WorkflowViewModel : ObservableObject
         if (i >= 0 && i < Steps.Count - 1) { Steps.Move(i, i + 1); Renumber(); }
     }
 
-    /// <summary>並び順（Index）と参照トークンを振り直す。</summary>
+    /// <summary>並び順（Index）・参照トークン・パイプラインの先頭/末尾フラグを振り直す。</summary>
     private void Renumber()
     {
         for (var i = 0; i < Steps.Count; i++)
+        {
             Steps[i].Index = i + 1;
+            Steps[i].IsFirst = i == 0;
+            Steps[i].IsLast = i == Steps.Count - 1;
+        }
     }
 
     // ===== 永続化 =====
@@ -365,6 +396,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
     {
         RunCommand.NotifyCanExecuteChanged();
         AddStepCommand.NotifyCanExecuteChanged();
+        AddCandidateCommand.NotifyCanExecuteChanged();
+        InsertStepAfterCommand.NotifyCanExecuteChanged();
         RemoveStepCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
