@@ -28,7 +28,7 @@ public partial class ShellWindow
     private CancellationTokenSource? _paletteSearchCts;
 
     /// <summary>パレットの入力モード。先頭の記号で切り替える（VS Code 風）。</summary>
-    private enum PaletteMode { Command, File, Grep }
+    private enum PaletteMode { Command, File, Grep, Terminal }
 
     private bool IsPaletteOpen => CommandPaletteOverlay.Visibility == Visibility.Visible;
 
@@ -53,12 +53,13 @@ public partial class ShellWindow
             FocusPane(pane);
     }
 
-    /// <summary>先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、無印＝コマンド。</summary>
+    /// <summary>先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、$＝ターミナル内検索、無印＝コマンド。</summary>
     private static (PaletteMode Mode, string Query) ParsePaletteMode(string? text)
     {
         text ??= string.Empty;
         if (text.StartsWith('@')) return (PaletteMode.File, text[1..].Trim());
         if (text.StartsWith('#')) return (PaletteMode.Grep, text[1..].Trim());
+        if (text.StartsWith('$')) return (PaletteMode.Terminal, text[1..].Trim());
         return (PaletteMode.Command, text);
     }
 
@@ -67,6 +68,7 @@ public partial class ShellWindow
     {
         PaletteMode.File => "@",
         PaletteMode.Grep => "#",
+        PaletteMode.Terminal => "$",
         _ => string.Empty,
     };
 
@@ -88,6 +90,7 @@ public partial class ShellWindow
         {
             PaletteMode.Command => PaletteMode.File,
             PaletteMode.File => PaletteMode.Grep,
+            PaletteMode.Grep => PaletteMode.Terminal,
             _ => PaletteMode.Command,
         };
         SetPaletteMode(next);
@@ -105,6 +108,7 @@ public partial class ShellWindow
         Highlight(PaletteModeCommand, mode == PaletteMode.Command);
         Highlight(PaletteModeFile, mode == PaletteMode.File);
         Highlight(PaletteModeGrep, mode == PaletteMode.Grep);
+        Highlight(PaletteModeTerminal, mode == PaletteMode.Terminal);
 
         static void Highlight(Button chip, bool active)
         {
@@ -126,14 +130,22 @@ public partial class ShellWindow
         var (mode, query) = ParsePaletteMode(PaletteInput.Text);
         UpdateModeChips(mode);
 
-        // 箱の幅は固定（モード切替で左右にズレないように）。検索モードだけ右にプレビュー枠を開く。
-        var search = mode != PaletteMode.Command;
-        PalettePreviewColumn.Width = search ? new GridLength(340) : new GridLength(0);
+        // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト検索だけ右にプレビュー枠を開く
+        // （ターミナル検索は実ターミナル側でハイライト＋ジャンプするのでプレビューは持たない）。
+        var showPreview = mode is PaletteMode.File or PaletteMode.Grep;
+        PalettePreviewColumn.Width = showPreview ? new GridLength(340) : new GridLength(0);
 
         if (mode == PaletteMode.Command)
         {
             _paletteSearchCts?.Cancel();
             ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, query));
+            return;
+        }
+
+        if (mode == PaletteMode.Terminal)
+        {
+            _paletteSearchCts?.Cancel();
+            RunTerminalFind(query, forward: true);
             return;
         }
 
@@ -174,6 +186,39 @@ public partial class ShellWindow
         }
         catch (OperationCanceledException) { /* 新しい入力に置き換わった */ }
     }
+
+    /// <summary>
+    /// ターミナル内テキスト検索。アクティブなターミナルタブの組み込み検索（<c>FindInTerminal</c>）を駆動し、
+    /// 一致箇所を実ターミナル上で選択ハイライト＋スクロールでジャンプさせる。リスト側には状態だけ出す
+    /// （ファイル/テキスト検索のような結果一覧やプレビューは持たない）。Enter＝次／Shift+Enter＝前。
+    /// </summary>
+    private void RunTerminalFind(string query, bool forward)
+    {
+        if (_activeTerminalTab?.View is not { } view)
+        {
+            ShowPaletteItems(new[] { TerminalStatus("ターミナルがありません") });
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            ShowPaletteItems(new[] { TerminalStatus("入力してターミナル内を検索（Enter=次 / Shift+Enter=前）") });
+            return;
+        }
+
+        // ハイライトが見えるようにターミナルペインを表示しておく。
+        SetPaneVisible(PaneKind.Terminal, true);
+
+        var found = view.FindInTerminal(query, forward, caseSensitive: false, out var wrapped);
+        var status = found
+            ? (wrapped ? "折り返して一致（Enter=次 / Shift+Enter=前）" : "一致（Enter=次 / Shift+Enter=前）")
+            : "一致なし";
+        ShowPaletteItems(new[] { TerminalStatus(status) });
+    }
+
+    /// <summary>ターミナル検索モードのリストに出す状態行（実行アクションは持たない）。</summary>
+    private static PaletteCommand TerminalStatus(string text)
+        => new("ターミナル検索", text, static () => { });
 
     private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items)
     {
@@ -299,7 +344,11 @@ public partial class ShellWindow
                 e.Handled = true;
                 break;
             case Key.Enter:
-                ExecutePaletteSelection();
+                // ターミナル検索モードは Enter で次の一致へ（Shift+Enter で前へ）進め、パレットは開いたまま。
+                if (ParsePaletteMode(PaletteInput.Text) is { Mode: PaletteMode.Terminal, Query: var tq })
+                    RunTerminalFind(tq, forward: (Keyboard.Modifiers & ModifierKeys.Shift) == 0);
+                else
+                    ExecutePaletteSelection();
                 e.Handled = true;
                 break;
             case Key.Down or Key.Up:

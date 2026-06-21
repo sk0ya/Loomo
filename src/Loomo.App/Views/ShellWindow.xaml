@@ -978,6 +978,8 @@
                                         Content="ファイル" Click="OnPaletteModeClick" Tag="File" />
                                 <Button x:Name="PaletteModeGrep" Style="{StaticResource PaletteModeChip}"
                                         Content="テキスト" Click="OnPaletteModeClick" Tag="Grep" />
+                                <Button x:Name="PaletteModeTerminal" Style="{StaticResource PaletteModeChip}"
+                                        Content="ターミナル" Click="OnPaletteModeClick" Tag="Terminal" />
                             </StackPanel>
                             <TextBox x:Name="PaletteInput" Grid.Row="1" Margin="4,0,4,4" Padding="6,4" FontSize="13"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
