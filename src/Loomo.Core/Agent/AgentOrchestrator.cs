@@ -67,7 +67,7 @@ public sealed class AgentOrchestrator
     /// <param name="sessionId">トレース記録用のセッションID（§20）。null/空ならトレースは "unknown" にまとまる。</param>
     /// <param name="toolDefinitionsOverride">このターンでモデルへ提示するツール定義を差し替える。
     /// 既定（null）は全登録ツール（通常のエージェントループ）。空配列を渡すとツール無し＝モデルは
-    /// テキストしか返せず、1回の応答で即 <see cref="TurnCompleted"/> する（ワークフローのテキストのみステップ用）。</param>
+    /// テキストしか返せず、1回の応答で即 <see cref="TurnCompleted"/> する。</param>
     public async IAsyncEnumerable<AgentEvent> RunTurnAsync(
         Conversation conversation,
         string userInput,

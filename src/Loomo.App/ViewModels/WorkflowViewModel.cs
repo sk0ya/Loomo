@@ -10,22 +10,19 @@ using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
-using sk0ya.Loomo.Core.Tools;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>
 /// ワークフローモードの ViewModel。ユーザーが手で並べた「単発のAI指示」（ステップ）を順に実行し、
-/// 前段の出力を <c>{{1}}</c> 等のプレースホルダで後段へ渡す。エージェントループを回す代わりに、
-/// テキストのみステップは1回のAI応答（ツール無し）で確定する。ツール使用ステップはツール込みで実行する。
+/// 前段の出力を <c>{{1}}</c> 等のプレースホルダで後段へ渡す。チャットとワークフローで
+/// ウォームアップ済みプレフィックスを共有できるよう、モデルへ提示するツール定義は同一に保つ。
 /// </summary>
 /// <summary>「ステップを追加」パレットのカテゴリ見出し＋その候補群。</summary>
 public sealed record StepCandidateGroup(string Category, IReadOnlyList<WorkflowStepCandidate> Items);
 
 public sealed partial class WorkflowViewModel : ObservableObject
 {
-    private static readonly IReadOnlyList<ToolDefinition> NoTools = Array.Empty<ToolDefinition>();
-
     private readonly AgentOrchestrator _orchestrator;
     private readonly UiApprovalService _approval;
     private readonly WorkflowStore _store;
@@ -295,7 +292,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
         var prompt = WorkflowPrompt.Resolve(step.Prompt, outputs);
         var conversation = new Conversation();
         var clock = Stopwatch.StartNew();
-        var toolDefs = step.UseTools ? null : NoTools;
 
         TranscriptEntry? assistant = null;
         TranscriptEntry? thinking = null;
@@ -303,7 +299,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         var ok = true;
 
         await foreach (var ev in _orchestrator.RunTurnAsync(
-                           conversation, prompt, sessionId, ct, toolDefinitionsOverride: toolDefs))
+                           conversation, prompt, sessionId, ct))
         {
             switch (ev)
             {

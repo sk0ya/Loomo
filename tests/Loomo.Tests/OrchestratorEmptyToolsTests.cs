@@ -16,8 +16,8 @@ using Xunit;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// ワークフローのテキストのみステップ：<c>toolDefinitionsOverride</c> に空配列を渡すと、
-/// 登録ツールがあってもモデルへは1件も提示されず（=ツール無し）、1回のAI応答で即終端すること。
+/// <c>toolDefinitionsOverride</c> に空配列を渡すと、登録ツールがあってもモデルへは1件も提示されず、
+/// 1回のAI応答で即終端すること。通常のチャット／ワークフロー実行は override を渡さず登録ツールを使う。
 /// </summary>
 public class OrchestratorEmptyToolsTests
 {

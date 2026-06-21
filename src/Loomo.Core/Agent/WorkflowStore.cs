@@ -130,7 +130,7 @@ public sealed class WorkflowStore
                 UpdatedAt = updatedAt,
             };
             foreach (var s in w.Steps)
-                dto.Steps.Add(new StepDto { Title = s.Title, Prompt = s.Prompt, UseTools = s.UseTools });
+                dto.Steps.Add(new StepDto { Title = s.Title, Prompt = s.Prompt });
             return dto;
         }
 
@@ -142,7 +142,6 @@ public sealed class WorkflowStore
                 {
                     Title = s.Title ?? "",
                     Prompt = s.Prompt ?? "",
-                    UseTools = s.UseTools,
                 });
             return w;
         }
@@ -152,6 +151,5 @@ public sealed class WorkflowStore
     {
         public string? Title { get; set; }
         public string? Prompt { get; set; }
-        public bool UseTools { get; set; }
     }
 }

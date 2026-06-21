@@ -11,21 +11,19 @@ namespace sk0ya.Loomo.Core.Agent;
 /// <param name="Category">パレットでの分類見出し。</param>
 /// <param name="Description">一覧に出す短い説明。</param>
 /// <param name="Prompt">ステップの指示文（対象は末尾に貼り付けてもらう想定）。</param>
-/// <param name="UseTools">true=ツール（コマンド/ファイル/検索）を使うエージェント実行／false=テキストのみ単発。</param>
 public sealed record WorkflowStepCandidate(
     string Name,
     string Category,
     string Description,
-    string Prompt,
-    bool UseTools)
+    string Prompt)
 {
     /// <summary>この候補から実体のワークフローステップを作る。</summary>
-    public WorkflowStep ToStep() => new() { Title = Name, Prompt = Prompt, UseTools = UseTools };
+    public WorkflowStep ToStep() => new() { Title = Name, Prompt = Prompt };
 }
 
 /// <summary>
 /// 組み込みのステップ候補ライブラリ（UI 非依存）。App 側がカテゴリ別に並べて「ステップを追加」パレットに出す。
-/// テキスト単発・ツール使用・前段連結の各種を多数取り揃える。
+/// 文章・コード・開発・前段連結の各種を多数取り揃える。
 /// </summary>
 public static class WorkflowStepLibrary
 {
@@ -35,14 +33,14 @@ public static class WorkflowStepLibrary
     private const string Research = "調査";
     private const string Chain = "前段を使う";
 
-    private static WorkflowStepCandidate Doc(string n, string d, string p) => new(n, Text, d, p, false);
-    private static WorkflowStepCandidate Cod(string n, string d, string p) => new(n, Code, d, p, false);
-    private static WorkflowStepCandidate Agt(string n, string d, string p) => new(n, Dev, d, p, true);
-    private static WorkflowStepCandidate Chn(string n, string d, string p) => new(n, Chain, d, p, false);
+    private static WorkflowStepCandidate Doc(string n, string d, string p) => new(n, Text, d, p);
+    private static WorkflowStepCandidate Cod(string n, string d, string p) => new(n, Code, d, p);
+    private static WorkflowStepCandidate Agt(string n, string d, string p) => new(n, Dev, d, p);
+    private static WorkflowStepCandidate Chn(string n, string d, string p) => new(n, Chain, d, p);
 
     public static IReadOnlyList<WorkflowStepCandidate> Catalog { get; } = new[]
     {
-        // ===== 文章（テキスト単発） =====
+        // ===== 文章 =====
         Doc("3行に要約", "要点を3行にまとめる",
             "次の文章を日本語で3行に要約してください。各行は40字以内、要点のみを箇条書き（- 始まり）で。\n\n対象:\n"),
         Doc("1行に要約", "ひとことで要約",
@@ -70,7 +68,7 @@ public static class WorkflowStepLibrary
         Doc("敬語に直す", "正しい敬語へ",
             "次の文章を正しい敬語に直してください。直した文章だけを出力してください。\n\n対象:\n"),
 
-        // ===== コード（テキスト単発） =====
+        // ===== コード =====
         Cod("コードを説明", "動作を日本語で解説",
             "次のコードが何をするか、日本語で簡潔に説明してください。重要な処理は箇条書きで示してください。\n\n対象:\n"),
         Cod("コメントを付ける", "意図の説明コメントを補う",
@@ -90,7 +88,7 @@ public static class WorkflowStepLibrary
         Cod("コードレビュー", "バグ・可読性・命名",
             "次のコードをレビューし、バグ・可読性・命名の観点で指摘を箇条書きで挙げてください。\n\n対象:\n"),
 
-        // ===== 開発（ツール使用・エージェント） =====
+        // ===== 開発 =====
         Agt("プロジェクト構成を調べる", "トップ階層から概要を把握",
             "このワークスペースのトップ階層のファイル・フォルダ構成を調べ、何のプロジェクトかを日本語で簡潔にまとめてください。"),
         Agt("TODO/FIXMEを集める", "未対応コメントを一覧化",
@@ -116,13 +114,13 @@ public static class WorkflowStepLibrary
 
         // ===== 調査 =====
         new("Webで調べる", Research, "web_search で調べる",
-            "次のトピックについて web_search で調べ、分かったことを箇条書きで示してください。\n\nトピック:\n", true),
+            "次のトピックについて web_search で調べ、分かったことを箇条書きで示してください。\n\nトピック:\n"),
         new("用語を説明", Research, "初心者向けに解説",
-            "次の用語の意味を、初心者にも分かるように日本語で簡潔に説明してください。\n\n用語:\n", false),
+            "次の用語の意味を、初心者にも分かるように日本語で簡潔に説明してください。\n\n用語:\n"),
         new("比較する", Research, "利点・欠点・適する場面",
-            "次の2つを、利点・欠点・向いている場面の観点で比較してください。\n\n対象:\n", false),
+            "次の2つを、利点・欠点・向いている場面の観点で比較してください。\n\n対象:\n"),
         new("手順を作る", Research, "番号付きステップに",
-            "次の目的を達成する手順を、番号付きのステップで示してください。\n\n目的:\n", false),
+            "次の目的を達成する手順を、番号付きのステップで示してください。\n\n目的:\n"),
 
         // ===== 前段を使う（チェーン補助） =====
         Chn("前段を3行に要約", "{{prev}} を3行に",

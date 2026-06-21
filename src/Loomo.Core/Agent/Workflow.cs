@@ -6,8 +6,7 @@ namespace sk0ya.Loomo.Core.Agent;
 
 /// <summary>
 /// ワークフローの1ステップ。ユーザーが手で並べる「単発のAI指示」。
-/// <see cref="UseTools"/> が true ならツール（全登録ツール）を使えるエージェントループで、
-/// false なら単発のテキスト応答で実行される。
+/// ウォームアップ済みプレフィックスを再利用するため、実行時にモデルへ提示するツール定義はチャットと同一に保つ。
 /// </summary>
 public sealed class WorkflowStep
 {
@@ -16,9 +15,6 @@ public sealed class WorkflowStep
 
     /// <summary>AIへの指示文。<c>{{1}}</c> / <c>{{prev}}</c> / <c>{{all}}</c> で前段の出力を差し込める。</summary>
     public string Prompt { get; set; } = "";
-
-    /// <summary>このステップでツールを使う（true=エージェントループ／false=テキストのみ単発）。</summary>
-    public bool UseTools { get; set; }
 }
 
 /// <summary>名前付きワークフロー（ステップの並び）。</summary>

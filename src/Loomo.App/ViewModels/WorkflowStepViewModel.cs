@@ -14,15 +14,6 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     // ===== 編集用（永続化対象） =====
     [ObservableProperty] private string _title = "";
     [ObservableProperty] private string _prompt = "";
-    [ObservableProperty] private bool _useTools;
-
-    /// <summary>テキストのみステップか（種別セグメントの「テキスト」側の選択状態）。UseTools の反転。</summary>
-    public bool IsTextMode => !UseTools;
-    partial void OnUseToolsChanged(bool value) => OnPropertyChanged(nameof(IsTextMode));
-
-    /// <summary>種別セグメント（テキスト/エージェント）の選択。XAML から "text"/"agent" を渡す。</summary>
-    [RelayCommand]
-    private void SelectMode(string mode) => UseTools = string.Equals(mode, "agent", System.StringComparison.Ordinal);
 
     // ===== 表示・実行時 =====
 
@@ -58,11 +49,10 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     {
         _title = step.Title;
         _prompt = step.Prompt;
-        _useTools = step.UseTools;
     }
 
     /// <summary>編集中の内容を永続化用モデルへ写す。</summary>
-    public WorkflowStep ToModel() => new() { Title = Title, Prompt = Prompt, UseTools = UseTools };
+    public WorkflowStep ToModel() => new() { Title = Title, Prompt = Prompt };
 
     partial void OnIndexChanged(int value) => RebuildRefTokens();
 

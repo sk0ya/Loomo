@@ -61,14 +61,41 @@ public class OnnxGenAiClientTests
     }
 
     private static async Task<GenerationRequest> CaptureRequestAsync(bool retryDiversify)
+        => await CaptureRequestAsync(retryDiversify, new AiSettings(), System.Array.Empty<ToolDefinition>(), "やあ");
+
+    private static async Task<GenerationRequest> CaptureRequestAsync(
+        bool retryDiversify,
+        AiSettings settings,
+        IReadOnlyList<ToolDefinition> tools,
+        string userText)
     {
         var engine = new CapturingEngine();
-        var client = new OnnxGenAiClient(engine, new AiSettings(), new FakeWorkspaceService());
+        var client = new OnnxGenAiClient(engine, settings, new FakeWorkspaceService());
         var conv = new Conversation();
-        conv.AddUser("やあ");
-        await foreach (var _ in client.StreamAsync(conv, System.Array.Empty<ToolDefinition>(),
+        conv.AddUser(userText);
+        await foreach (var _ in client.StreamAsync(conv, tools,
                            CancellationToken.None, profile: null, retryDiversify: retryDiversify)) { }
         return engine.Last!;
+    }
+
+    private static ToolDefinition DummyTool() => new(
+        "run_powershell",
+        "run",
+        ToolDefinition.ObjectSchema(("command", "string", "PowerShell command", true)));
+
+    private static string ExtractPhi4SystemText(string prompt)
+    {
+        const string start = "<|system|>";
+        var startIndex = prompt.IndexOf(start, System.StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, "Phi-4 prompt should contain a system turn.");
+        startIndex += start.Length;
+
+        var toolIndex = prompt.IndexOf("<|tool|>", startIndex, System.StringComparison.Ordinal);
+        var endIndex = prompt.IndexOf("<|end|>", startIndex, System.StringComparison.Ordinal);
+        Assert.True(endIndex >= 0, "Phi-4 system turn should be closed.");
+
+        var stopIndex = toolIndex >= 0 && toolIndex < endIndex ? toolIndex : endIndex;
+        return prompt[startIndex..stopIndex];
     }
 
     [Fact]
@@ -84,6 +111,34 @@ public class OnnxGenAiClientTests
         // 通常時はモデル別プロファイルに委ねる（既定 AiSettings=phi4 未指定＝greedy 相当で top_k を上書きしない）。
         var normal = await CaptureRequestAsync(retryDiversify: false);
         Assert.Null(normal.Sampling.TopK);
+    }
+
+    [Fact]
+    public async Task Chat_and_workflow_steps_use_same_phi4_system_prompt()
+    {
+        // チャット初回ターンとワークフローのステップは、同じ会話内容・同じツール定義なら
+        // 完全に同じプロンプトを作る。UIは別でも OnnxGenAiClient -> ChatPrompt.Build の経路を共有する。
+        var tools = new[] { DummyTool() };
+
+        var chat = await CaptureRequestAsync(false, new AiSettings(), tools, "READMEを読んで");
+        var workflow = await CaptureRequestAsync(false, new AiSettings(), tools, "READMEを読んで");
+
+        Assert.Equal(chat.Prompt, workflow.Prompt);
+        Assert.Equal(ExtractPhi4SystemText(chat.Prompt), ExtractPhi4SystemText(workflow.Prompt));
+    }
+
+    [Fact]
+    public async Task Workflow_steps_keep_same_phi4_tool_block_for_warmup_prefix()
+    {
+        // ワークフローでも、ウォームアップ済みプレフィックスを再利用するためチャットと同じツール定義ブロックを保つ。
+        var tools = new[] { DummyTool() };
+        var chat = await CaptureRequestAsync(false, new AiSettings(), tools, "要約して");
+        var workflowTextOnly = await CaptureRequestAsync(
+            false, new AiSettings(), tools, "要約して");
+
+        Assert.Equal(chat.Prompt, workflowTextOnly.Prompt);
+        Assert.Contains("<|tool|>", chat.Prompt);
+        Assert.Contains("<|tool|>", workflowTextOnly.Prompt);
     }
 
     [Fact]

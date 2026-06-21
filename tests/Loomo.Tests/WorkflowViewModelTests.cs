@@ -1,10 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
 using Xunit;
@@ -14,11 +22,14 @@ namespace sk0ya.Loomo.Tests;
 public class WorkflowViewModelTests
 {
     private static WorkflowViewModel CreateSut()
+        => CreateSut(new FakeAiClientFactory(), new ToolRegistry(Enumerable.Empty<IAgentTool>()));
+
+    private static WorkflowViewModel CreateSut(IAiClientFactory aiFactory, ToolRegistry tools)
     {
         var approval = new UiApprovalService();
         var orchestrator = new AgentOrchestrator(
-            new FakeAiClientFactory(),
-            new ToolRegistry(Enumerable.Empty<IAgentTool>()),
+            aiFactory,
+            tools,
             approval,
             new SafetyPolicy(new SafetySettings()),
             NoopContextWindowPolicy.Instance,
@@ -35,6 +46,24 @@ public class WorkflowViewModelTests
         var sut = CreateSut();
 
         Assert.Empty(sut.Steps);
+    }
+
+    [Fact]
+    public async Task Workflow_step_passes_registered_tools_to_keep_warmup_prefix()
+    {
+        var ai = new ToolsRecordingAiClient(new TextDelta("ok"));
+        var tools = new ToolRegistry(new IAgentTool[] { new DummyTool() });
+        var sut = CreateSut(new FixedFactory(ai), tools);
+        sut.Steps.Add(new WorkflowStepViewModel
+        {
+            Prompt = "要約して",
+        });
+
+        await sut.RunCommand.ExecuteAsync(null);
+
+        Assert.NotNull(ai.LastTools);
+        var tool = Assert.Single(ai.LastTools!);
+        Assert.Equal("dummy", tool.Name);
     }
 
     [Fact]
@@ -57,5 +86,46 @@ public class WorkflowViewModelTests
         sut.RemoveStepCommand.Execute(sut.Steps[0]);
 
         Assert.Empty(sut.Steps);
+    }
+
+    private sealed class DummyTool : IAgentTool
+    {
+        public string Name => "dummy";
+        public ToolDefinition Definition => new(Name, "dummy", new JsonObject());
+        public bool RequiresApproval => false;
+        public string DescribeInvocation(JsonElement arguments) => Name;
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken ct)
+            => Task.FromResult(ToolResult.Ok("ran"));
+    }
+
+    private sealed class ToolsRecordingAiClient : IAiClient
+    {
+        private readonly AgentEvent[] _events;
+        public IReadOnlyList<ToolDefinition>? LastTools { get; private set; }
+
+        public ToolsRecordingAiClient(params AgentEvent[] events) => _events = events;
+
+        public AiProvider Provider => AiProvider.Local;
+
+        public async IAsyncEnumerable<AgentEvent> StreamAsync(
+            Conversation conversation, IReadOnlyList<ToolDefinition> tools,
+            [EnumeratorCancellation] CancellationToken ct, AgentProfile? profile = null,
+            bool retryDiversify = false)
+        {
+            LastTools = tools;
+            foreach (var e in _events)
+            {
+                await Task.CompletedTask;
+                yield return e;
+            }
+        }
+    }
+
+    private sealed class FixedFactory : IAiClientFactory
+    {
+        private readonly IAiClient _client;
+        public FixedFactory(IAiClient client) => _client = client;
+        public IAiClient Resolve(AiProvider provider) => _client;
+        public IAiClient ResolveCurrent() => _client;
     }
 }
