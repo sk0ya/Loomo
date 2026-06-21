@@ -231,6 +231,8 @@ public partial class ShellWindow
         // ターミナル本文の URL クリックを Loomo で受け、http/https は内蔵ブラウザへ振り分ける
         // （sk0ya.Terminal.Controls 1.0.10）。
         view.HyperlinkActivated += OnTerminalLinkActivated;
+        // 右クリックメニューへ「AIに聞く」「ブラウザで調べる」を追加する（選択時のみ・sk0ya.Terminal.Controls 1.0.19）。
+        view.ContextMenuBuilding += OnTerminalContextMenuBuilding;
         HookTerminalActivity(tab);
         return tab;
     }
@@ -271,6 +273,8 @@ public partial class ShellWindow
         // OS の既定ブラウザではなく Loomo 内蔵のブラウザペインで開く（Handled=true で既定動作を抑止）。
         control.LinkClicked += OnEditorLinkClicked;
         control.FileLinkClicked += OnEditorFileLinkClicked;
+        // 右クリックメニューへ「AIに聞く」「ブラウザで調べる」を追加する（選択時のみ・sk0ya.Editor.Controls 1.0.19）。
+        control.ContextMenuBuilding += OnEditorContextMenuBuilding;
 
         // エディタ内の Vim ウィンドウ/タブ操作（:vsplit / :split / :tabnew / gt / gT / :tabclose / :close）を、
         // ホスト側の分割・タブ実装へ橋渡しする

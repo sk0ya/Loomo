@@ -262,6 +262,20 @@ public sealed partial class AiBarViewModel : ObservableObject
             SendCommand.Execute(null);
     }
 
+    /// <summary>ターミナル/エディタの「AIに聞く」から呼ばれる。選択テキストについて尋ねるプロンプトを
+    /// 現在のセッションへ即送信する（誤字脱字チェックと違いセッションは閉じない）。処理中・暖機中・
+    /// 空テキストのときは何もしない。</summary>
+    public void AskAbout(string selectedText)
+    {
+        if (IsBusy || IsWarmingUp || string.IsNullOrWhiteSpace(selectedText))
+            return;
+
+        IsExpanded = true;
+        SetInput($"次の内容について教えてください。\n\n{selectedText}");
+        if (SendCommand.CanExecute(null))
+            SendCommand.Execute(null);
+    }
+
     /// <summary>直前に閉じたセッション（無ければ最新の保存セッション）を復元する（/resume）。</summary>
     public void ResumeLastSession()
     {
