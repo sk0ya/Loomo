@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
@@ -32,6 +33,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private WorkflowStepViewModel? _runningStep;   // 承認カードの差し込み先
     private string? _currentId;                     // 読込済みワークフローのID（保存時に上書き）
     private bool _suppressChangeTracking;
+    private readonly DispatcherTimer _warmupTimer;  // ウォームアップ経過秒の表示を更新する
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = new();
 
@@ -84,8 +86,44 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _approval.ApprovalRequested += OnApprovalRequested;
         _store.Changed += () => Dispatch(RefreshSavedWorkflows);
 
+        _warmupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _warmupTimer.Tick += (_, _) => RenderWarmupStatus();
+        _warmup.StateChanged += OnWarmupStateChanged;
+
         // ステップはユーザーが明示的に追加するまで作らない。
     }
+
+    /// <summary>ウォームアップ状態の変化を、実行中ステータスバーへ反映する。ワークフロー実行中の
+    /// 暖機フェーズだけ表示し、待機中は何もしない（チャット側 AI バーと役割を分ける）。</summary>
+    private void OnWarmupStateChanged() => Dispatch(() =>
+    {
+        if (!IsRunning) return;
+        if (_warmup.IsWarmingUp)
+        {
+            if (!_warmupTimer.IsEnabled) _warmupTimer.Start();
+            RenderWarmupStatus();
+        }
+        else
+        {
+            _warmupTimer.Stop();
+        }
+    });
+
+    private void RenderWarmupStatus()
+    {
+        if (!IsRunning || !_warmup.IsWarmingUp || _warmup.WarmupStartedAt is not { } startedAt) return;
+        var elapsed = DateTimeOffset.Now - startedAt;
+        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+        var current = string.IsNullOrWhiteSpace(_warmup.CurrentStatus)
+            ? "モデルとプロンプトを準備しています"
+            : _warmup.CurrentStatus;
+        RunStatus = $"ウォームアップ中… {current}。{FormatWarmupDuration(elapsed)} 経過";
+    }
+
+    private static string FormatWarmupDuration(TimeSpan elapsed) =>
+        elapsed.TotalMinutes < 1
+            ? $"{Math.Floor(elapsed.TotalSeconds):0} 秒"
+            : $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
 
     private static void Dispatch(Action action)
     {
@@ -336,7 +374,15 @@ public sealed partial class WorkflowViewModel : ObservableObject
         // 実行対象は「指示文が空でない」ステップのみ。空ステップは番号の連続性のため出力に空文字を積む。
         try
         {
+            // モデル未ロードなら暖機が走る。完了までステータスバーに進捗（経過秒）を出す。
+            if (!_warmup.IsReady)
+            {
+                _warmupTimer.Start();
+                RenderWarmupStatus();
+                if (string.IsNullOrEmpty(RunStatus)) RunStatus = "ウォームアップ中…";
+            }
             await _warmup.EnsureWarmAsync(_cts.Token);
+            _warmupTimer.Stop();
 
             for (var i = 0; i < Steps.Count; i++)
             {
@@ -381,6 +427,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         }
         finally
         {
+            _warmupTimer.Stop();
             _runningStep = null;
             _cts?.Dispose();
             _cts = null;
