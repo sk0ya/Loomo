@@ -305,6 +305,16 @@ public sealed class AgentCapabilityHarness
             }),
         };
 
+        // 実行モード（HARNESS_PREAMBLE）：チャット／ワークフローそれぞれの追加プロンプト（turnPreamble）を
+        // 載せて精度を測り分ける。none/未指定なら共有プロンプト単体（ベースライン）。
+        var preambleMode = (Environment.GetEnvironmentVariable("HARNESS_PREAMBLE") ?? "none").ToLowerInvariant();
+        string? turnPreamble = preambleMode switch
+        {
+            "chat" => AiSettings.ChatTurnPreamble,
+            "workflow" => AiSettings.WorkflowTurnPreamble,
+            _ => null,
+        };
+
         // 構成タグ（HARNESS_REPORT_SUFFIX）：同一モデルでプロンプト等の構成違いを別レポートに分けて
         // 上書きを防ぐ（例: baseline / candidate）。ヘッダにも記録して後から取り違えないようにする。
         var reportTag = Environment.GetEnvironmentVariable("HARNESS_REPORT_SUFFIX");
@@ -322,6 +332,7 @@ public sealed class AgentCapabilityHarness
         header.AppendLine("# Loomo エージェント能力ハーネス結果");
         header.AppendLine($"- 実行日時: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         header.AppendLine($"- モデル: {settings.Local.Model}");
+        header.AppendLine($"- 追加プロンプト(モード): {preambleMode}");
         if (!string.IsNullOrEmpty(reportTag)) header.AppendLine($"- 構成タグ: {reportTag}");
         header.AppendLine($"- ワークスペース: {ws}");
         header.AppendLine();
@@ -361,7 +372,8 @@ public sealed class AgentCapabilityHarness
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
                 try
                 {
-                    await foreach (var ev in orch.RunTurnAsync(convo, task.Prompt, task.Name, cts.Token))
+                    await foreach (var ev in orch.RunTurnAsync(convo, task.Prompt, task.Name, cts.Token,
+                                       turnPreamble: turnPreamble))
                         rec.Observe(ev);
                 }
                 catch (Exception ex) { rec.Error = "EXCEPTION: " + ex.Message; }
