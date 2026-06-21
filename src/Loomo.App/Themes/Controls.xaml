@@ -14,6 +14,7 @@
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:InverseBoolConverter x:Key="InverseBool" />
     <conv:CountToVisibilityConverter x:Key="CountToVis" />
+    <conv:ActiveTagConverter x:Key="ActiveTagConverter" />
     <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
 
     <!-- ===== Base text ===== -->
@@ -124,6 +125,32 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
                             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===== Mode segment button (ペインヘッダーのチャット/ワークフロー切替) =====
+         Tag="active"（選択中）でアクセント背景に。ヘッダーのドラッグ十字を継承しないよう Cursor=Hand を明示。 -->
+    <Style x:Key="ModeSegButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="10,3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                        </Trigger>
+                        <Trigger Property="Tag" Value="active">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Accent}" />
+                            <Setter Property="Foreground" Value="White" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

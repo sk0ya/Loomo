@@ -137,6 +137,7 @@ public partial class App : Application
         services.AddSingleton<IFileChangeJournal>(sp => sp.GetRequiredService<FileChangeJournal>());
         services.AddSingleton<AgentOrchestrator>();
         services.AddSingleton<ConversationStore>();
+        services.AddSingleton<WorkflowStore>();
 
         // --- トレース読取（AIセッション一覧の所要時間表示などに利用）---
         services.AddSingleton<TraceReader>();
@@ -158,6 +159,7 @@ public partial class App : Application
         services.AddSingleton<Input.KeybindingService>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
+        services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();
         services.AddSingleton<TabsViewModel>();
         services.AddSingleton<SessionsViewModel>();

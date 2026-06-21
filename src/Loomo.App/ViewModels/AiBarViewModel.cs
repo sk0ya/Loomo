@@ -20,6 +20,9 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>AIバーの表示モード。チャット（エージェントループ）とワークフロー（単発指示の連鎖）を切替える。</summary>
+public enum AiBarMode { Chat, Workflow }
+
 /// <summary>入力欄で「/」から呼び出すスラッシュコマンド1件（補完候補に出す）。</summary>
 public sealed record ChatCommand(string Name, string Description);
 
@@ -68,6 +71,15 @@ public sealed partial class AiBarViewModel : ObservableObject
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isBusy;
 
+    /// <summary>現在の表示モード（チャット／ワークフロー）。切替はビューのセグメントボタンから。</summary>
+    [ObservableProperty] private AiBarMode _mode = AiBarMode.Chat;
+
+    public bool IsChatMode => Mode == AiBarMode.Chat;
+    public bool IsWorkflowMode => Mode == AiBarMode.Workflow;
+
+    /// <summary>ワークフローモードの ViewModel（同じAIペイン内でチャットと切替えて表示する）。</summary>
+    public WorkflowViewModel Workflow { get; }
+
     /// <summary>AIウォームアップの実行中か。実行中は AI への指示（送信）を受け付けず、
     /// その旨をバーに表示する。</summary>
     [ObservableProperty] private bool _isWarmingUp;
@@ -98,13 +110,15 @@ public sealed partial class AiBarViewModel : ObservableObject
         SettingsViewModel settingsVm,
         ConversationStore sessions,
         PromptHistoryStore historyStore,
-        IAiWarmup warmup)
+        IAiWarmup warmup,
+        WorkflowViewModel workflow)
     {
         _orchestrator = orchestrator;
         _settings = settings;
         _settingsVm = settingsVm;
         _sessions = sessions;
         _warmup = warmup;
+        Workflow = workflow;
         _inputHistory = new PromptInputHistory(historyStore);   // 前回までの送信履歴を引き継ぐ
         _providerLabel = settings.Provider.ToString();
         approval.ApprovalRequested += OnApprovalRequested;
@@ -352,6 +366,25 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;
+
+    /// <summary>チャットモードに切替える（セグメントボタン）。</summary>
+    [RelayCommand]
+    private void ShowChatMode() => Mode = AiBarMode.Chat;
+
+    /// <summary>ワークフローモードに切替える（セグメントボタン）。保存済み一覧を最新化する。</summary>
+    [RelayCommand]
+    private void ShowWorkflowMode()
+    {
+        Mode = AiBarMode.Workflow;
+        IsExpanded = true;
+        Workflow.RefreshSavedWorkflows();
+    }
+
+    partial void OnModeChanged(AiBarMode value)
+    {
+        OnPropertyChanged(nameof(IsChatMode));
+        OnPropertyChanged(nameof(IsWorkflowMode));
+    }
 
     private bool CanSend() => !IsBusy && !IsWarmingUp && !string.IsNullOrWhiteSpace(Input);
 
@@ -601,6 +634,10 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     private void OnApprovalRequested(ApprovalContext ctx)
     {
+        // チャットのターン実行中だけ処理する。ワークフロー実行中の承認は WorkflowViewModel が
+        // 自分のステップログへ橋渡しするため、ここでは拾わない（同じ singleton イベントの二重処理を防ぐ）。
+        if (!IsBusy) return;
+
         var entry = Add(EntryKind.Approval, $"承認が必要: {ctx.ToolName}", ctx.Summary);
         if (ContainsDiff(ctx.Summary))
             entry.SetDiff(ctx.Summary);   // サマリを色付き差分へ展開

@@ -65,12 +65,16 @@ public sealed class AgentOrchestrator
 
     /// <summary>ユーザー入力を処理してイベントを流す。</summary>
     /// <param name="sessionId">トレース記録用のセッションID（§20）。null/空ならトレースは "unknown" にまとまる。</param>
+    /// <param name="toolDefinitionsOverride">このターンでモデルへ提示するツール定義を差し替える。
+    /// 既定（null）は全登録ツール（通常のエージェントループ）。空配列を渡すとツール無し＝モデルは
+    /// テキストしか返せず、1回の応答で即 <see cref="TurnCompleted"/> する（ワークフローのテキストのみステップ用）。</param>
     public async IAsyncEnumerable<AgentEvent> RunTurnAsync(
         Conversation conversation,
         string userInput,
         string? sessionId = null,
         [EnumeratorCancellation] CancellationToken ct = default,
-        AgentProfile? profile = null)
+        AgentProfile? profile = null,
+        IReadOnlyList<ToolDefinition>? toolDefinitionsOverride = null)
     {
         sessionId ??= "unknown";
         var activeProfile = profile ?? AgentProfiles.Root;
@@ -78,7 +82,7 @@ public sealed class AgentOrchestrator
 
         conversation.AddUser(userInput);
         var ai = _aiFactory.ResolveCurrent();
-        var definitions = _tools.Definitions;
+        var definitions = toolDefinitionsOverride ?? _tools.Definitions;
 
         var turnId = Guid.NewGuid().ToString("N");
         var provider = ai.Provider.ToString();

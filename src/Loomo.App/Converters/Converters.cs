@@ -80,6 +80,17 @@ public sealed class CountToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>真偽を、選択状態を表す Tag 値（true→"active"／false→null）へ変換する。
+/// セグメントボタン等で「選択中なら Tag="active" のトリガで強調表示」に使う。</summary>
+public sealed class ActiveTagConverter : IValueConverter
+{
+    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true ? "active" : null;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>真偽を反転する（IsEnabled の「〜中は無効化」用）。</summary>
 public sealed class InverseBoolConverter : IValueConverter
 {
