@@ -53,6 +53,23 @@ public sealed class AiSettings
 
     public string SystemPrompt => DefaultSystemPrompt;
 
+    /// <summary>チャット（対話）ターンでユーザー発話の直前に差し込む追加プロンプト。共有システムプロンプトは
+    /// モード中立に保ち、対話固有の出力規約（簡潔な日本語の文章で答える）はここに置く。warmup 済みの
+    /// system プレフィックスより後ろ（user ターン）へ入るため KV 共有を壊さない。英語指示・日本語出力の方針に揃える。</summary>
+    public const string ChatTurnPreamble =
+        "[Interactive chat] Reply to the user in concise Japanese prose. " +
+        "Use a tool only when you need workspace data or must change a file; for a greeting or general question, answer directly.";
+
+    /// <summary>ワークフローの単発ステップで指示文の直前に差し込む追加プロンプト。各ステップは自己完結した
+    /// 単発タスク（要約・翻訳・整形など、処理対象は指示文に含まれる）なので、指示が求める出力形式・言語を
+    /// そのまま守らせる（共有システムプロンプトの汎用規約を、その単発タスク向けに具体化する）。</summary>
+    public const string WorkflowTurnPreamble =
+        "[Single task] The instruction below is self-contained and already includes the content to process. " +
+        "Produce exactly what the instruction asks for, following its requested language and format " +
+        "(it may ask for English, a bullet list, a Markdown table, or code). " +
+        "Use a tool only if the instruction needs workspace data or a file change; otherwise answer directly. " +
+        "Output only the result, with no extra preamble or explanation unless asked.";
+
     public string BuildSystemPrompt(AgentProfile? profile = null)
         => (profile ?? AgentProfiles.Root).ApplyTo(SystemPrompt);
 
@@ -94,7 +111,7 @@ public sealed class AiSettings
         "Never state that a file was created, written, edited, or changed unless you actually called write_file or edit_file in this conversation. Reading a file is not changing it.\n" +
         "Use exactly one tool call when steps depend on results. Do not combine read/write/edit in one reply.\n" +
         "PowerShell must be complete and non-interactive; avoid pagers, prompts, editors, and bare cd.\n" +
-        "For final answers, use concise Japanese prose only. No JSON, arrays, Markdown, or code fences.";
+        "A final answer (not a tool call) must contain no JSON array or <|tool_call|> markers; otherwise produce the language and format the task asks for, defaulting to concise Japanese prose.";
 
     /// <summary>Qwen3（ChatML / Hermes 風 tool call）用のシステムプロンプト。
     /// ツール呼び出しの記法は Qwen3 の <c>&lt;tool_call&gt;{…}&lt;/tool_call&gt;</c>
@@ -138,7 +155,7 @@ public sealed class AiSettings
         "- Check every tool result before moving on. An error or unexpected output means the step did not happen: fix the call based on the message, or report the failure honestly. Never describe a failed or skipped step as done.\n" +
         "- Never state that a file was created, changed, or deleted unless the corresponding tool call succeeded in this conversation. Reading a file is not changing it.\n" +
         "- When a request has multiple parts (several files or several changes), complete and verify every part before giving the final answer.\n" +
-        "For final answers, use concise Japanese prose only. No JSON, tool calls, Markdown, or code fences.";
+        "A final answer (not a tool call) must contain no <tool_call> blocks; otherwise produce the language and format the task asks for, defaulting to concise Japanese prose.";
 
     public ProviderConfig ConfigFor(AiProvider provider) => Local;
 }

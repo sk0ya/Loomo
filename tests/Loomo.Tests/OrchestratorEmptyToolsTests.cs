@@ -70,6 +70,42 @@ public class OrchestratorEmptyToolsTests
         Assert.Single(ai.LastTools!);
     }
 
+    [Fact]
+    public async Task Turn_preamble_is_set_on_user_message_render_prefix_without_polluting_text()
+    {
+        var tools = new ToolRegistry(new IAgentTool[] { new DummyTool() });
+        var ai = new ToolsRecordingAiClient(new AgentEvent[] { new TextDelta("ok") });
+
+        var conv = new Conversation();
+        var orch = new AgentOrchestrator(
+            new FixedFactory(ai), tools, new AutoApprove(), new AllowAllSafety(),
+            NoopContextWindowPolicy.Instance, NullLogger<AgentOrchestrator>.Instance);
+
+        await foreach (var _ in orch.RunTurnAsync(conv, "やって", turnPreamble: "MODE-X")) { }
+
+        var user = conv.Messages[0];
+        Assert.Equal(ChatRole.User, user.Role);
+        // 追加プロンプトは RenderPrefix にのみ載り、保存・履歴に残る Text は素のまま。
+        Assert.Equal("MODE-X", user.RenderPrefix);
+        Assert.Equal("やって", user.Text);
+    }
+
+    [Fact]
+    public async Task No_preamble_leaves_render_prefix_null()
+    {
+        var tools = new ToolRegistry(new IAgentTool[] { new DummyTool() });
+        var ai = new ToolsRecordingAiClient(new AgentEvent[] { new TextDelta("ok") });
+
+        var conv = new Conversation();
+        var orch = new AgentOrchestrator(
+            new FixedFactory(ai), tools, new AutoApprove(), new AllowAllSafety(),
+            NoopContextWindowPolicy.Instance, NullLogger<AgentOrchestrator>.Instance);
+
+        await foreach (var _ in orch.RunTurnAsync(conv, "やって")) { }
+
+        Assert.Null(conv.Messages[0].RenderPrefix);
+    }
+
     private sealed class DummyTool : IAgentTool
     {
         public string Name => "dummy";

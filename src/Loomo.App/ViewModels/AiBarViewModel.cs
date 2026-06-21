@@ -443,7 +443,8 @@ public sealed partial class AiBarViewModel : ObservableObject
 
         try
         {
-            await foreach (var ev in _orchestrator.RunTurnAsync(_conversation, text, _currentSessionId, _cts.Token))
+            await foreach (var ev in _orchestrator.RunTurnAsync(_conversation, text, _currentSessionId, _cts.Token,
+                               turnPreamble: AiSettings.ChatTurnPreamble))
             {
                 switch (ev)
                 {

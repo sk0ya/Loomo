@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
@@ -456,7 +457,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         var ok = true;
 
         await foreach (var ev in _orchestrator.RunTurnAsync(
-                           conversation, prompt, sessionId, ct))
+                           conversation, prompt, sessionId, ct, turnPreamble: AiSettings.WorkflowTurnPreamble))
         {
             switch (ev)
             {

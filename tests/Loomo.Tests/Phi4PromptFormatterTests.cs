@@ -120,6 +120,39 @@ public class Phi4PromptFormatterTests
     }
 
     [Fact]
+    public void Render_prefix_is_injected_before_user_text_in_the_user_turn()
+    {
+        var conv = new Conversation();
+        var user = conv.AddUser("次の文章を英語に翻訳してください。\n\n対象:\nこんにちは");
+        user.RenderPrefix = AiSettings.WorkflowTurnPreamble;
+
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+
+        // 追加プロンプトはユーザーターン内（<|user|>…<|end|>）で、本文の前に入る。
+        Assert.Contains("<|user|>" + AiSettings.WorkflowTurnPreamble + "\n\n次の文章を英語に翻訳してください。", prompt);
+    }
+
+    [Fact]
+    public void Render_prefix_lives_after_the_warmup_prefix_so_kv_sharing_holds()
+    {
+        // モード別の追加プロンプトを user ターンへ入れても、暖機する system ブロック（=最長共通接頭辞）は不変。
+        var settings = new AiSettings();
+        var tools = Pwsh();
+        const string root = "C:\\proj";
+
+        var warmup = Phi4PromptFormatter.Build(settings, AgentProfiles.Root, root, new Conversation(), tools);
+        var systemBlock = warmup[..^"<|assistant|>".Length];
+
+        var conv = new Conversation();
+        var user = conv.AddUser("ファイル一覧を出して");
+        user.RenderPrefix = AiSettings.ChatTurnPreamble;
+        var real = Phi4PromptFormatter.Build(settings, AgentProfiles.Root, root, conv, tools);
+
+        // 追加文があっても system ブロックの直後（user ターン）でだけ差分が出る。
+        Assert.StartsWith(systemBlock + "<|user|>" + AiSettings.ChatTurnPreamble, real);
+    }
+
+    [Fact]
     public void Default_system_prompt_is_engine_neutral_and_guides_tool_calling()
     {
         Assert.DoesNotContain("Ollama", AiSettings.DefaultSystemPrompt);

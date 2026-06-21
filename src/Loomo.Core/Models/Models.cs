@@ -57,6 +57,12 @@ public sealed class ChatMessage
     /// 進捗表示を再構築するため永続化する（プロンプト整形系はこのフィールドを読まない）。</summary>
     public string? ProgressLog { get; set; }
 
+    /// <summary>このターン限定でユーザーターンの直前に差し込む追加プロンプト（モード別。チャット／ワークフロー）。
+    /// プロンプト整形時にこのメッセージ本文の前へ連結するためだけに使い、履歴・永続化には残さない
+    /// （<see cref="Conversation"/> 永続化DTOがコピーしない）。ウォームアップ済みの system プレフィックスより
+    /// 後ろ（user ターン）に入るため、KVプレフィックス共有を壊さない。user メッセージにのみ設定する。</summary>
+    public string? RenderPrefix { get; set; }
+
     /// <summary>アシスタントが要求したツール呼び出し（複数可）。</summary>
     public List<ToolUse> ToolUses { get; } = new();
 

@@ -43,7 +43,7 @@ public static class Qwen3PromptFormatter
             switch (m.Role)
             {
                 case ChatRole.User:
-                    sb.Append("<|im_start|>user\n").Append(m.Text ?? "").Append("<|im_end|>\n");
+                    sb.Append("<|im_start|>user\n").Append(PromptShared.UserContent(m)).Append("<|im_end|>\n");
                     break;
                 case ChatRole.Assistant:
                     sb.Append("<|im_start|>assistant\n").Append(AssistantContent(m)).Append("<|im_end|>\n");

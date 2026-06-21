@@ -68,19 +68,25 @@ public sealed class AgentOrchestrator
     /// <param name="toolDefinitionsOverride">このターンでモデルへ提示するツール定義を差し替える。
     /// 既定（null）は全登録ツール（通常のエージェントループ）。空配列を渡すとツール無し＝モデルは
     /// テキストしか返せず、1回の応答で即 <see cref="TurnCompleted"/> する。</param>
+    /// <param name="turnPreamble">このターン限定でユーザー発話の直前に差し込むモード別の追加プロンプト
+    /// （チャット／ワークフロー）。共有 system プロンプト＆ツール定義（ウォームアップ済みプレフィックス）は
+    /// 不変に保ち、追加文は user ターン側に入れることで KVプレフィックス共有を壊さない。履歴・永続化には残さない。</param>
     public async IAsyncEnumerable<AgentEvent> RunTurnAsync(
         Conversation conversation,
         string userInput,
         string? sessionId = null,
         [EnumeratorCancellation] CancellationToken ct = default,
         AgentProfile? profile = null,
-        IReadOnlyList<ToolDefinition>? toolDefinitionsOverride = null)
+        IReadOnlyList<ToolDefinition>? toolDefinitionsOverride = null,
+        string? turnPreamble = null)
     {
         sessionId ??= "unknown";
         var activeProfile = profile ?? AgentProfiles.Root;
         var isNewSession = conversation.Messages.Count == 0;
 
-        conversation.AddUser(userInput);
+        var userMessage = conversation.AddUser(userInput);
+        if (!string.IsNullOrWhiteSpace(turnPreamble))
+            userMessage.RenderPrefix = turnPreamble;
         var ai = _aiFactory.ResolveCurrent();
         var definitions = toolDefinitionsOverride ?? _tools.Definitions;
 

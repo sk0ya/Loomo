@@ -99,6 +99,38 @@ public class Qwen3PromptFormatterTests
     }
 
     [Fact]
+    public void Render_prefix_is_injected_before_user_text_in_the_user_turn()
+    {
+        var conv = new Conversation();
+        var user = conv.AddUser("次の文章を英語に翻訳してください。\n\n対象:\nこんにちは");
+        user.RenderPrefix = AiSettings.WorkflowTurnPreamble;
+
+        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+
+        Assert.Contains("<|im_start|>user\n" + AiSettings.WorkflowTurnPreamble + "\n\n次の文章を英語に翻訳してください。", prompt);
+    }
+
+    [Fact]
+    public void Render_prefix_lives_after_the_warmup_prefix_so_kv_sharing_holds()
+    {
+        var settings = new AiSettings();
+        var tools = Pwsh();
+        const string root = "C:\\proj";
+
+        // 暖機（空会話）の system ブロック＝最長共通接頭辞。Qwen3 は末尾に生成開始＋空 think を付ける。
+        const string genMarker = "<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        var warmup = Qwen3PromptFormatter.Build(settings, AgentProfiles.Root, root, new Conversation(), tools);
+        var systemBlock = warmup[..^genMarker.Length];
+
+        var conv = new Conversation();
+        var user = conv.AddUser("ファイル一覧を出して");
+        user.RenderPrefix = AiSettings.ChatTurnPreamble;
+        var real = Qwen3PromptFormatter.Build(settings, AgentProfiles.Root, root, conv, tools);
+
+        Assert.StartsWith(systemBlock + "<|im_start|>user\n" + AiSettings.ChatTurnPreamble, real);
+    }
+
+    [Fact]
     public void Qwen3_profile_selects_chatml_format_via_dispatcher()
     {
         var profile = ModelProfiles.Resolve("qwen3-1.7b-cpu-int4");

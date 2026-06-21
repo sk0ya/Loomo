@@ -44,7 +44,7 @@ public static class Phi4PromptFormatter
             switch (m.Role)
             {
                 case ChatRole.User:
-                    sb.Append("<|user|>").Append(m.Text ?? "").Append("<|end|>");
+                    sb.Append("<|user|>").Append(PromptShared.UserContent(m)).Append("<|end|>");
                     break;
                 case ChatRole.Assistant:
                     sb.Append("<|assistant|>").Append(AssistantContent(m)).Append("<|end|>");

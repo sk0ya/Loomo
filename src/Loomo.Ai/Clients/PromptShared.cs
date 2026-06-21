@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
 namespace sk0ya.Loomo.Ai.Clients;
@@ -17,6 +18,14 @@ internal static class PromptShared
         => settings.BuildSystemPrompt(profile, format)
            + SearchGuidance(workspaceRoot)
            + WorkspaceContext.Describe(workspaceRoot);
+
+    /// <summary>ユーザーターンの描画本文。<see cref="ChatMessage.RenderPrefix"/>（モード別の追加プロンプト）が
+    /// あれば本文の前へ連結する。共有 system プレフィックスより後ろ（user ターン）に入るため KV 共有を壊さない。</summary>
+    public static string UserContent(ChatMessage m)
+    {
+        var text = m.Text ?? "";
+        return string.IsNullOrEmpty(m.RenderPrefix) ? text : m.RenderPrefix + "\n\n" + text;
+    }
 
     /// <summary>ツール定義の <c>parameters</c>（JSON Schema の properties 部）を取り出す。</summary>
     public static JsonNode ToolParameters(ToolDefinition tool)
