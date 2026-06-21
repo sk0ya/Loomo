@@ -889,6 +889,26 @@
                                         Tag="{Binding AiBar.IsWorkflowMode, Converter={StaticResource ActiveTagConverter}}" />
                             </StackPanel>
                         </Border>
+                        <Button DockPanel.Dock="Left" Content="▶ 実行" Style="{StaticResource PaneHeaderToolButton}"
+                                Margin="8,0,0,0"
+                                Command="{Binding AiBar.Workflow.RunCommand}">
+                            <Button.Visibility>
+                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
+                                    <Binding Path="AiBar.IsWorkflowMode" />
+                                    <Binding Path="AiBar.Workflow.IsRunning" Converter="{StaticResource InverseBool}" />
+                                </MultiBinding>
+                            </Button.Visibility>
+                        </Button>
+                        <Button DockPanel.Dock="Left" Content="停止" Style="{StaticResource PaneHeaderToolButton}"
+                                Margin="8,0,0,0" Background="#FF6E1E1E"
+                                Command="{Binding AiBar.Workflow.CancelCommand}">
+                            <Button.Visibility>
+                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
+                                    <Binding Path="AiBar.IsWorkflowMode" />
+                                    <Binding Path="AiBar.Workflow.IsRunning" />
+                                </MultiBinding>
+                            </Button.Visibility>
+                        </Button>
                     </DockPanel>
                     <views:AiBarView x:Name="AiBarHost" DataContext="{Binding AiBar}" />
                 </DockPanel>

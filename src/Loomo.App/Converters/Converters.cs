@@ -47,6 +47,16 @@ public sealed class EmptyStringToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>文字列が空でないとき Visible。</summary>
+public sealed class NonEmptyStringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => string.IsNullOrEmpty(value as string) ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>列挙値が ConverterParameter（名前）と一致するとき Visible。</summary>
 public sealed class EnumToVisibilityConverter : IValueConverter
 {
@@ -88,6 +98,26 @@ public sealed class ActiveTagConverter : IValueConverter
         => value is true ? "active" : null;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>2つの値が一致するとき "active" を返す。リスト内の現在項目表示に使う。</summary>
+public sealed class EqualityActiveTagConverter : IMultiValueConverter
+{
+    public object? Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        => values.Length >= 2 && Equals(values[0], values[1]) ? "active" : null;
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>すべて true のとき Visible。</summary>
+public sealed class AllTrueToVisibilityConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        => values.Length > 0 && values.All(v => v is true) ? Visibility.Visible : Visibility.Collapsed;
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
 

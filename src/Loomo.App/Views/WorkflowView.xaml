@@ -17,6 +17,10 @@
                             <ContentPresenter VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="active">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
                                 <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
@@ -34,14 +38,12 @@
             <Setter Property="FontSize" Value="12" />
         </Style>
 
-        <!-- ツールバーの控えめなボタン（開く/保存/新規） -->
         <Style x:Key="ToolbarGhostButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-            <Setter Property="Padding" Value="9,4" />
+            <Setter Property="Padding" Value="8,3" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Margin" Value="4,0,0,0" />
+            <Setter Property="Margin" Value="0" />
         </Style>
 
-        <!-- 開くポップアップの保存済みワークフロー行 -->
         <Style x:Key="SavedRowButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -51,12 +53,18 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
+                                BorderBrush="Transparent" BorderThickness="1"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="active">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -67,168 +75,119 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />   <!-- ツールバー -->
-            <RowDefinition Height="Auto" />   <!-- 実行ステータスバー -->
-            <RowDefinition Height="*" />      <!-- ステップのパイプライン -->
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- ===== ツールバー：名前・開く・保存・新規・実行 ===== -->
-        <Border Grid.Row="0" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="176" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                <!-- ワークフロー名：枠なしの見出し風。空のときはプレースホルダを下敷きに出す。 -->
-                <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <TextBlock Text="ワークフロー名" IsHitTestVisible="False" VerticalAlignment="Center"
-                               FontSize="15" Foreground="{DynamicResource FgDim}"
-                               Visibility="{Binding Name, Converter={StaticResource EmptyToVis}}" />
-                    <TextBox x:Name="NameBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                             Background="Transparent" BorderThickness="0" Padding="0"
-                             FontSize="15" FontWeight="SemiBold" VerticalContentAlignment="Center"
-                             Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
-                             ToolTip="ワークフロー名" />
-                </Grid>
+            <Border Grid.Column="0" Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="0,0,1,0" Padding="6">
+                <DockPanel LastChildFill="True">
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,5">
+                        <TextBlock Text="ワークフロー" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                        <Button Content="＋" HorizontalAlignment="Right" Style="{StaticResource StepActionButton}"
+                                Command="{Binding NewWorkflowCommand}" ToolTip="新規" />
+                    </Grid>
+                    <TextBlock Text="なし" FontSize="11" Foreground="{DynamicResource FgDim}" Margin="2,2">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SavedWorkflows.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding SavedWorkflows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid x:Name="WorkflowListItem" Margin="0,0,0,2">
+                                        <Button Style="{StaticResource SavedRowButton}"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding DataContext.LoadWorkflowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Tag>
+                                                <MultiBinding Converter="{StaticResource EqualityActiveTagConverter}">
+                                                    <Binding Path="Id" />
+                                                    <Binding Path="DataContext.CurrentWorkflowId"
+                                                             RelativeSource="{RelativeSource AncestorType=ItemsControl}" />
+                                                </MultiBinding>
+                                            </Button.Tag>
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Fg}"
+                                                       FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="134" />
+                                        </Button>
+                                        <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                ToolTip="このワークフローを削除"
+                                                Command="{Binding DataContext.DeleteWorkflowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource StepActionButton}">
+                                                    <Setter Property="Opacity" Value="0" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMouseOver, ElementName=WorkflowListItem}" Value="True">
+                                                            <Setter Property="Opacity" Value="1" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
 
-                <!-- 開く：保存済みワークフローをポップアップ一覧から選ぶ -->
-                <ToggleButton x:Name="OpenToggle" Grid.Column="1" Content="📂 開く ▾"
-                              Foreground="{DynamicResource Fg}" Background="Transparent"
-                              BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                              Padding="9,4" FontSize="12" Cursor="Hand"
-                              ToolTip="保存済みワークフローを開く">
-                    <ToggleButton.Template>
-                        <ControlTemplate TargetType="ToggleButton">
-                            <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
-                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter VerticalAlignment="Center" />
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                                </Trigger>
-                                <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </ToggleButton.Template>
-                </ToggleButton>
-                <Popup PlacementTarget="{Binding ElementName=OpenToggle}" Placement="Bottom"
-                       StaysOpen="False" AllowsTransparency="True"
-                       IsOpen="{Binding IsChecked, ElementName=OpenToggle}">
-                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                            BorderThickness="1" CornerRadius="6" Padding="4" MinWidth="240" MaxWidth="360"
-                            Margin="0,2,8,8">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
-                        </Border.Effect>
-                        <Grid>
-                            <TextBlock Text="保存済みのワークフローはありません" Margin="8,6" FontSize="12"
-                                       Foreground="{DynamicResource FgDim}" TextWrapping="Wrap">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SavedWorkflows.Count}" Value="0">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <ItemsControl ItemsSource="{Binding SavedWorkflows}" MaxHeight="320">
-                                <ItemsControl.Template>
-                                    <ControlTemplate TargetType="ItemsControl">
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                            <ItemsPresenter />
-                                        </ScrollViewer>
-                                    </ControlTemplate>
-                                </ItemsControl.Template>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Grid.Column="0" Style="{StaticResource SavedRowButton}"
-                                                    Click="OnSavedWorkflowClick"
-                                                    Command="{Binding DataContext.LoadWorkflowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}">
-                                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Fg}"
-                                                           FontSize="12" TextTrimming="CharacterEllipsis" />
-                                            </Button>
-                                            <Button Grid.Column="1" Style="{StaticResource StepActionButton}" Content="🗑"
-                                                    ToolTip="このワークフローを削除"
-                                                    Command="{Binding DataContext.DeleteWorkflowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Grid>
-                    </Border>
-                </Popup>
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                <Button Grid.Column="2" Content="保存" Style="{StaticResource ToolbarGhostButton}"
-                        Command="{Binding SaveCommand}" ToolTip="このワークフローを保存／上書き" />
-                <Button Grid.Column="3" Content="新規" Style="{StaticResource ToolbarGhostButton}"
-                        Command="{Binding NewWorkflowCommand}" ToolTip="新しいワークフローを作る" />
-
-                <Border Grid.Column="4" Width="1" Margin="10,2" Background="{DynamicResource Border}" />
-
-                <!-- 実行／停止：唯一のアクセント主操作 -->
-                <Button Grid.Column="5" Content="▶ 実行" Style="{StaticResource FlatButton}"
-                        Command="{Binding RunCommand}" ToolTip="上から順にステップを実行"
-                        Visibility="{Binding IsRunning, Converter={StaticResource InverseBoolToVis}}" />
-                <Button Grid.Column="5" Content="⏹ 停止" Style="{StaticResource FlatButton}"
-                        Background="#FF6E1E1E" Command="{Binding CancelCommand}"
-                        Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
-            </Grid>
-        </Border>
-
-        <!-- ===== 実行ステータスバー（実行中＝進捗／停止後＝結果メッセージ） ===== -->
-        <Border Grid.Row="1" Background="{DynamicResource BgAlt}" Padding="12,5"
-                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-            <Border.Style>
-                <Style TargetType="Border">
-                    <Setter Property="Visibility" Value="Visible" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding RunStatus}" Value="">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Border.Style>
-            <StackPanel Orientation="Horizontal">
-                <ProgressBar IsIndeterminate="True" Width="80" Height="4"
-                             Foreground="{DynamicResource Accent}" Background="Transparent"
-                             BorderThickness="0" VerticalAlignment="Center"
-                             Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
-                <TextBlock Text="{Binding RunStatus}" VerticalAlignment="Center" FontSize="12"
-                           Margin="0,0,0,0" Foreground="{DynamicResource FgDim}">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
+                <!-- ===== 実行ステータスバー ===== -->
+                <Border Grid.Row="0" Background="{DynamicResource BgAlt}" Padding="8,4"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible" />
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                    <Setter Property="Margin" Value="10,0,0,0" />
+                                <DataTrigger Binding="{Binding RunStatus}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-            </StackPanel>
-        </Border>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <ProgressBar IsIndeterminate="True" Width="80" Height="4"
+                                     Foreground="{DynamicResource Accent}" Background="Transparent"
+                                     BorderThickness="0" VerticalAlignment="Center"
+                                     Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding RunStatus}" VerticalAlignment="Center" FontSize="12"
+                                   Margin="0,0,0,0" Foreground="{DynamicResource FgDim}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                            <Setter Property="Margin" Value="10,0,0,0" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
 
-        <!-- ===== ステップのパイプライン ===== -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="10,8,10,12">
+                <!-- ===== ステップのパイプライン ===== -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="8,8,8,10">
             <StackPanel>
                 <ItemsControl ItemsSource="{Binding Steps}">
                     <ItemsControl.ItemTemplate>
@@ -409,6 +368,21 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </StackPanel>
+
+                                        <!-- 実行前の注意とクイック修正 -->
+                                        <Border Margin="0,8,0,0" CornerRadius="4" Padding="7,5"
+                                                Background="{DynamicResource BgAlt}"
+                                                Visibility="{Binding PromptNotice, Converter={StaticResource NonEmptyToVis}}">
+                                            <DockPanel LastChildFill="True">
+                                                <Button DockPanel.Dock="Right" Content="{}{{prev}} を追加"
+                                                        Style="{StaticResource ToolbarGhostButton}"
+                                                        Command="{Binding AppendPreviousCommand}"
+                                                        Visibility="{Binding CanAppendPrevious, Converter={StaticResource BoolToVis}}" />
+                                                <TextBlock Text="{Binding PromptNotice}" FontSize="11"
+                                                           Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
+                                                           VerticalAlignment="Center" />
+                                            </DockPanel>
+                                        </Border>
 
                                         <!-- 実行ログの開閉（ログがあるときだけ） -->
                                         <Button HorizontalAlignment="Left" Margin="0,8,0,0" Padding="0"
@@ -598,5 +572,7 @@
                 </Grid>
             </StackPanel>
         </ScrollViewer>
+            </Grid>
+        </Grid>
     </Grid>
 </UserControl>

@@ -9,12 +9,15 @@
     <!-- ===== Converters ===== -->
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
     <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVis" />
+    <conv:NonEmptyStringToVisibilityConverter x:Key="NonEmptyToVis" />
     <conv:EnumToVisibilityConverter x:Key="EnumToVis" />
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:InverseBoolConverter x:Key="InverseBool" />
     <conv:CountToVisibilityConverter x:Key="CountToVis" />
     <conv:ActiveTagConverter x:Key="ActiveTagConverter" />
+    <conv:EqualityActiveTagConverter x:Key="EqualityActiveTagConverter" />
+    <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVisibilityConverter" />
     <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
 
     <!-- ===== Base text ===== -->

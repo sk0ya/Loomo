@@ -78,6 +78,44 @@ public class WorkflowViewModelTests
     }
 
     [Fact]
+    public void Step_warns_when_later_prompt_does_not_reference_previous_output()
+    {
+        var first = new WorkflowStepViewModel { Prompt = "調べて" };
+        var second = new WorkflowStepViewModel { Prompt = "要約して" };
+
+        first.Index = 1;
+        second.Index = 2;
+
+        Assert.Equal("", first.PromptNotice);
+        Assert.Contains("自動では渡りません", second.PromptNotice);
+    }
+
+    [Fact]
+    public void Append_previous_adds_prev_placeholder()
+    {
+        var step = new WorkflowStepViewModel { Index = 2, Prompt = "要約して" };
+
+        step.AppendPreviousCommand.Execute(null);
+
+        Assert.Contains("{{prev}}", step.Prompt);
+        Assert.Equal("", step.PromptNotice);
+    }
+
+    [Fact]
+    public void Editing_step_auto_saves_and_updates_workflow_list()
+    {
+        var sut = CreateSut();
+        sut.AddStepCommand.Execute(null);
+
+        sut.Steps[0].Prompt = "要約して";
+
+        Assert.False(sut.HasUnsavedChanges);
+        Assert.Equal("自動保存済み", sut.SaveStatus);
+        Assert.Equal("1 ステップを実行", sut.WorkflowSummaryText);
+        Assert.Single(sut.SavedWorkflows);
+    }
+
+    [Fact]
     public void Removing_last_step_leaves_workflow_empty()
     {
         var sut = CreateSut();

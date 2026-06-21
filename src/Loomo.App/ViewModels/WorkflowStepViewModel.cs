@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Agent;
@@ -11,6 +12,9 @@ public enum WorkflowStepStatus { Idle, Running, Done, Error }
 /// <summary>ワークフロー1ステップのViewModel（編集用フィールド＋実行時の状態・ログ）。</summary>
 public sealed partial class WorkflowStepViewModel : ObservableObject
 {
+    private static readonly Regex RefTokenRegex = new(@"\{\{\s*(\d+|prev|all)\s*\}\}",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // ===== 編集用（永続化対象） =====
     [ObservableProperty] private string _title = "";
     [ObservableProperty] private string _prompt = "";
@@ -43,6 +47,21 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     /// <summary>クリックで指示文へ挿入できる前段参照トークン（{{1}}…{{N-1}}・{{prev}}・{{all}}）。</summary>
     public ObservableCollection<string> RefTokens { get; } = new();
 
+    /// <summary>入力内容から分かる実行前の軽い注意。空なら表示しない。</summary>
+    public string PromptNotice
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Prompt))
+                return "空ステップです。実行時はスキップされます。";
+            if (Index > 1 && !RefTokenRegex.IsMatch(Prompt))
+                return "前段の出力は自動では渡りません。必要なら {{prev}} か {{all}} を追加してください。";
+            return "";
+        }
+    }
+
+    public bool CanAppendPrevious => Index > 1 && !string.IsNullOrWhiteSpace(Prompt);
+
     public WorkflowStepViewModel() { }
 
     public WorkflowStepViewModel(WorkflowStep step)
@@ -54,7 +73,18 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     /// <summary>編集中の内容を永続化用モデルへ写す。</summary>
     public WorkflowStep ToModel() => new() { Title = Title, Prompt = Prompt };
 
-    partial void OnIndexChanged(int value) => RebuildRefTokens();
+    partial void OnIndexChanged(int value)
+    {
+        RebuildRefTokens();
+        OnPropertyChanged(nameof(PromptNotice));
+        OnPropertyChanged(nameof(CanAppendPrevious));
+    }
+
+    partial void OnPromptChanged(string value)
+    {
+        OnPropertyChanged(nameof(PromptNotice));
+        OnPropertyChanged(nameof(CanAppendPrevious));
+    }
 
     /// <summary>自分より前のステップを参照できるトークン一覧を作り直す。</summary>
     private void RebuildRefTokens()
@@ -75,6 +105,12 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(token)) return;
         Prompt = string.IsNullOrEmpty(Prompt) ? token : Prompt + " " + token;
+    }
+
+    [RelayCommand]
+    private void AppendPrevious()
+    {
+        InsertRef("{{prev}}");
     }
 
     [RelayCommand]

@@ -31,6 +31,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private CancellationTokenSource? _cts;
     private WorkflowStepViewModel? _runningStep;   // 承認カードの差し込み先
     private string? _currentId;                     // 読込済みワークフローのID（保存時に上書き）
+    private bool _suppressChangeTracking;
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = new();
 
@@ -48,6 +49,26 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
     /// <summary>実行中の全体状況（「ステップ2/3 を実行中…」等）。</summary>
     [ObservableProperty] private string _runStatus = "";
+    [ObservableProperty] private bool _hasUnsavedChanges;
+
+    public string SaveStatus => HasUnsavedChanges
+        ? "自動保存中..."
+        : _currentId is null ? "未保存" : "自動保存済み";
+
+    public string? CurrentWorkflowId => _currentId;
+
+    public string WorkflowSummaryText
+    {
+        get
+        {
+            var runnable = Steps.Count(s => !string.IsNullOrWhiteSpace(s.Prompt));
+            if (Steps.Count == 0) return "ステップなし";
+            var skipped = Steps.Count - runnable;
+            return skipped == 0
+                ? $"{runnable} ステップを実行"
+                : $"{runnable} ステップを実行、{skipped} 件スキップ";
+        }
+    }
 
     public WorkflowViewModel(
         AgentOrchestrator orchestrator,
@@ -95,16 +116,22 @@ public sealed partial class WorkflowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddStep()
     {
-        Steps.Add(new WorkflowStepViewModel());
+        var step = new WorkflowStepViewModel();
+        AttachStepChangeTracking(step);
+        Steps.Add(step);
         Renumber();
+        MarkDirty();
     }
 
     /// <summary>ライブラリのステップ候補（null なら空ステップ）を末尾に追加する。「ステップを追加」パレットから呼ばれる。</summary>
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddCandidate(WorkflowStepCandidate? candidate)
     {
-        Steps.Add(candidate is null ? new WorkflowStepViewModel() : new WorkflowStepViewModel(candidate.ToStep()));
+        var step = candidate is null ? new WorkflowStepViewModel() : new WorkflowStepViewModel(candidate.ToStep());
+        AttachStepChangeTracking(step);
+        Steps.Add(step);
         Renumber();
+        MarkDirty();
     }
 
     private bool CanEdit() => !IsRunning;
@@ -114,8 +141,11 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private void InsertStepAfter(WorkflowStepViewModel? step)
     {
         var i = step is null ? Steps.Count - 1 : Steps.IndexOf(step);
-        Steps.Insert(i + 1, new WorkflowStepViewModel());
+        var inserted = new WorkflowStepViewModel();
+        AttachStepChangeTracking(inserted);
+        Steps.Insert(i + 1, inserted);
         Renumber();
+        MarkDirty();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -124,6 +154,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         if (step is null) return;
         Steps.Remove(step);
         Renumber();
+        MarkDirty();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -131,7 +162,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     {
         if (step is null) return;
         var i = Steps.IndexOf(step);
-        if (i > 0) { Steps.Move(i, i - 1); Renumber(); }
+        if (i > 0) { Steps.Move(i, i - 1); Renumber(); MarkDirty(); }
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -139,7 +170,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     {
         if (step is null) return;
         var i = Steps.IndexOf(step);
-        if (i >= 0 && i < Steps.Count - 1) { Steps.Move(i, i + 1); Renumber(); }
+        if (i >= 0 && i < Steps.Count - 1) { Steps.Move(i, i + 1); Renumber(); MarkDirty(); }
     }
 
     /// <summary>並び順（Index）・参照トークン・パイプラインの先頭/末尾フラグを振り直す。</summary>
@@ -151,6 +182,40 @@ public sealed partial class WorkflowViewModel : ObservableObject
             Steps[i].IsFirst = i == 0;
             Steps[i].IsLast = i == Steps.Count - 1;
         }
+        OnPropertyChanged(nameof(WorkflowSummaryText));
+    }
+
+    private void AttachStepChangeTracking(WorkflowStepViewModel step)
+    {
+        step.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkflowStepViewModel.Title) or nameof(WorkflowStepViewModel.Prompt))
+                MarkDirty();
+        };
+    }
+
+    private void MarkDirty()
+    {
+        if (_suppressChangeTracking) return;
+
+        OnPropertyChanged(nameof(WorkflowSummaryText));
+        if (!HasPersistableContent())
+        {
+            HasUnsavedChanges = false;
+            OnPropertyChanged(nameof(SaveStatus));
+            return;
+        }
+
+        if (!HasUnsavedChanges) HasUnsavedChanges = true;
+        OnPropertyChanged(nameof(SaveStatus));
+        AutoSave();
+    }
+
+    partial void OnNameChanged(string value) => MarkDirty();
+
+    partial void OnHasUnsavedChangesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(SaveStatus));
     }
 
     // ===== 永続化 =====
@@ -161,8 +226,14 @@ public sealed partial class WorkflowViewModel : ObservableObject
         foreach (var s in _store.List()) SavedWorkflows.Add(s);
     }
 
-    [RelayCommand(CanExecute = nameof(CanEdit))]
-    private void Save()
+    private bool HasPersistableContent()
+    {
+        if (_currentId is not null) return true;
+        if (!string.IsNullOrWhiteSpace(Name) && Name.Trim() != "新しいワークフロー") return true;
+        return Steps.Any(s => !string.IsNullOrWhiteSpace(s.Title) || !string.IsNullOrWhiteSpace(s.Prompt));
+    }
+
+    private void AutoSave()
     {
         var wf = new Workflow
         {
@@ -171,14 +242,30 @@ public sealed partial class WorkflowViewModel : ObservableObject
             Steps = Steps.Select(s => s.ToModel()).ToList(),
         };
         _currentId = _store.Save(wf);
+        OnPropertyChanged(nameof(CurrentWorkflowId));
+        HasUnsavedChanges = false;
+        OnPropertyChanged(nameof(SaveStatus));
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void NewWorkflow()
     {
-        _currentId = null;
-        Name = "新しいワークフロー";
-        Steps.Clear();
+        _suppressChangeTracking = true;
+        try
+        {
+            _currentId = null;
+            OnPropertyChanged(nameof(CurrentWorkflowId));
+            Name = "新しいワークフロー";
+            Steps.Clear();
+            HasUnsavedChanges = false;
+            RunStatus = "";
+        }
+        finally
+        {
+            _suppressChangeTracking = false;
+        }
+        OnPropertyChanged(nameof(SaveStatus));
+        OnPropertyChanged(nameof(WorkflowSummaryText));
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -188,11 +275,29 @@ public sealed partial class WorkflowViewModel : ObservableObject
         var wf = _store.Load(summary.Id);
         if (wf is null) return;
 
-        _currentId = wf.Id;
-        Name = wf.Name;
-        Steps.Clear();
-        foreach (var s in wf.Steps) Steps.Add(new WorkflowStepViewModel(s));
-        Renumber();
+        _suppressChangeTracking = true;
+        try
+        {
+            _currentId = wf.Id;
+            OnPropertyChanged(nameof(CurrentWorkflowId));
+            Name = wf.Name;
+            Steps.Clear();
+            foreach (var s in wf.Steps)
+            {
+                var step = new WorkflowStepViewModel(s);
+                AttachStepChangeTracking(step);
+                Steps.Add(step);
+            }
+            Renumber();
+            HasUnsavedChanges = false;
+            RunStatus = "";
+        }
+        finally
+        {
+            _suppressChangeTracking = false;
+        }
+        OnPropertyChanged(nameof(SaveStatus));
+        OnPropertyChanged(nameof(WorkflowSummaryText));
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -200,7 +305,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
     {
         if (summary is null) return;
         _store.Delete(summary.Id);
-        if (_currentId == summary.Id) _currentId = null;
+        if (_currentId == summary.Id)
+        {
+            _currentId = null;
+            OnPropertyChanged(nameof(CurrentWorkflowId));
+            OnPropertyChanged(nameof(SaveStatus));
+        }
     }
 
     // ===== 実行 =====
@@ -393,7 +503,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
         RemoveStepCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
-        SaveCommand.NotifyCanExecuteChanged();
         NewWorkflowCommand.NotifyCanExecuteChanged();
         LoadWorkflowCommand.NotifyCanExecuteChanged();
         DeleteWorkflowCommand.NotifyCanExecuteChanged();
