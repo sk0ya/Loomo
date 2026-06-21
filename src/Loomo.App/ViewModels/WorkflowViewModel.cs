@@ -66,8 +66,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _approval.ApprovalRequested += OnApprovalRequested;
         _store.Changed += () => Dispatch(RefreshSavedWorkflows);
 
-        // 初期状態として空のステップを1つ用意する。
-        AddStep();
+        // ステップはユーザーが明示的に追加するまで作らない。
     }
 
     private static void Dispatch(Action action)
@@ -127,7 +126,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
     {
         if (step is null) return;
         Steps.Remove(step);
-        if (Steps.Count == 0) AddStep();
         Renumber();
     }
 
@@ -184,7 +182,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _currentId = null;
         Name = "新しいワークフロー";
         Steps.Clear();
-        AddStep();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -198,7 +195,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
         Name = wf.Name;
         Steps.Clear();
         foreach (var s in wf.Steps) Steps.Add(new WorkflowStepViewModel(s));
-        if (Steps.Count == 0) AddStep();
         Renumber();
     }
 
