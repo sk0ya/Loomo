@@ -305,6 +305,86 @@ public sealed class AgentCapabilityHarness
             }),
         };
 
+        // ===== ワークフロー単発ステップのスイート（HARNESS_SUITE=workflow）=====
+        // ワークフローの本質は WorkflowStepLibrary の単発ステップ（要約・翻訳・整形…）で、これらは
+        // 旧共有プロンプトの「日本語の文章のみ／Markdown禁止」と矛盾していた当の対象。実ライブラリの
+        // ステップ文をそのまま使い（UI と同じく対象を末尾へ貼る）、出力の言語・形式をオラクルで判定する。
+        // ファイルには触らないのでオラクルは最終回答（rec.FinalText）だけを見る。
+        string Lib(string name) => WorkflowStepLibrary.Catalog.First(c => c.Name == name).Prompt;
+        bool HasJp(string s) => System.Text.RegularExpressions.Regex.IsMatch(s, "[぀-ヿ一-龯]");
+        int Bullets(string s) => s.Split('\n')
+            .Count(l => System.Text.RegularExpressions.Regex.IsMatch(l.Trim(), "^[-・*]\\s+"));
+        int CharCount(string s, char c) => s.Count(ch => ch == c);
+
+        const string longJa =
+            "Loomo はローカルで動く AI エージェントです。ターミナル・エディタ・フォルダツリーを操作できます。" +
+            "小型のモデルでも動くよう、ツールは4つに絞っています。会話履歴はコンテキスト窓に収まるよう自動で切り詰めます。" +
+            "起動時にモデルを暖機して初回応答を速くしています。";
+        const string techPara =
+            "ONNX Runtime GenAI を使い、Phi-4-mini や Qwen3 のような小型モデルを CPU 上でローカル実行する。" +
+            "ツール呼び出しはモデルが本文に JSON で書き、パーサが復元する。KV プレフィックスの再利用で prefill を節約する。";
+
+        var workflowTasks = new HarnessTask[]
+        {
+            new("wf-translate-en", Lib("英語に翻訳") + "私たちは新しい機能を来週リリースする予定です。", rec =>
+            {
+                var t = rec.FinalText.ToString().Trim();
+                var ok = System.Text.RegularExpressions.Regex.IsMatch(t, "[A-Za-z]") && !HasJp(t);
+                return (ok, ok ? "英語で出力（日本語混入なし）" : "英語化できず: " + Trunc(t.Replace("\n", "\\n"), 80));
+            }),
+
+            new("wf-summary-3", Lib("3行に要約") + longJa, rec =>
+            {
+                var b = Bullets(rec.FinalText.ToString());
+                return (b >= 2, $"箇条書き {b} 行（- 始まり）");
+            }),
+
+            new("wf-bullets", Lib("箇条書きに整理") + longJa, rec =>
+            {
+                var b = Bullets(rec.FinalText.ToString());
+                return (b >= 2, $"箇条書き {b} 行（- 始まり）");
+            }),
+
+            new("wf-keywords", Lib("キーワード抽出") + techPara, rec =>
+            {
+                var t = rec.FinalText.ToString().Trim();
+                var seps = CharCount(t, ',') + CharCount(t, '、');
+                return (seps >= 3, $"カンマ区切り（区切り {seps} 個）");
+            }),
+
+            new("wf-comment-code", Lib("コメントを付ける") + "def add(a, b):\n    return a + b\n", rec =>
+            {
+                var t = rec.FinalText.ToString();
+                var ok = (t.Contains('#') || t.Contains("//")) && t.Contains("add");
+                return (ok, ok ? "コメント付きコードを出力" : "コード/コメントなし");
+            }),
+
+            new("wf-regex", Lib("正規表現を作る") + "メールアドレスにマッチさせたい", rec =>
+            {
+                var t = rec.FinalText.ToString();
+                var hits = new[] { "@", "\\", "[", "+", ".", "*" }.Count(x => t.Contains(x));
+                return (hits >= 2, $"正規表現らしさ {hits}/6");
+            }),
+
+            new("wf-table", WorkflowPrompt.Resolve(Lib("前段を表にする"),
+                new[] { "りんご 120円\nバナナ 80円\nぶどう 300円" }), rec =>
+            {
+                var t = rec.FinalText.ToString();
+                var ok = CharCount(t, '|') >= 3 && t.Contains("---");
+                return (ok, ok ? "Markdown 表を出力" : "表になっていない: " + Trunc(t.Replace("\n", "\\n"), 80));
+            }),
+
+            new("wf-polite", Lib("丁寧に書き換え") + "明日までにこれ送って。", rec =>
+            {
+                var t = rec.FinalText.ToString();
+                var ok = HasJp(t) && (t.Contains("ます") || t.Contains("ください") || t.Contains("です"));
+                return (ok, ok ? "丁寧な日本語へ" : "丁寧体になっていない");
+            }),
+        };
+
+        if ((Environment.GetEnvironmentVariable("HARNESS_SUITE") ?? "agent").ToLowerInvariant() == "workflow")
+            tasks = workflowTasks;
+
         // 実行モード（HARNESS_PREAMBLE）：チャット／ワークフローそれぞれの追加プロンプト（turnPreamble）を
         // 載せて精度を測り分ける。none/未指定なら共有プロンプト単体（ベースライン）。
         var preambleMode = (Environment.GetEnvironmentVariable("HARNESS_PREAMBLE") ?? "none").ToLowerInvariant();
@@ -332,6 +412,7 @@ public sealed class AgentCapabilityHarness
         header.AppendLine("# Loomo エージェント能力ハーネス結果");
         header.AppendLine($"- 実行日時: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         header.AppendLine($"- モデル: {settings.Local.Model}");
+        header.AppendLine($"- スイート: {(Environment.GetEnvironmentVariable("HARNESS_SUITE") ?? "agent")}");
         header.AppendLine($"- 追加プロンプト(モード): {preambleMode}");
         if (!string.IsNullOrEmpty(reportTag)) header.AppendLine($"- 構成タグ: {reportTag}");
         header.AppendLine($"- ワークスペース: {ws}");
