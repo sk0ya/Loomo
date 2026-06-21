@@ -10,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
+using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -145,7 +146,7 @@ public partial class ShellWindow
         if (mode == PaletteMode.Terminal)
         {
             _paletteSearchCts?.Cancel();
-            RunTerminalFind(query, forward: true);
+            ShowPaletteItems(BuildTerminalMatches(query));
             return;
         }
 
@@ -188,33 +189,34 @@ public partial class ShellWindow
     }
 
     /// <summary>
-    /// ターミナル内テキスト検索。アクティブなターミナルタブの組み込み検索（<c>FindInTerminal</c>）を駆動し、
-    /// 一致箇所を実ターミナル上で選択ハイライト＋スクロールでジャンプさせる。リスト側には状態だけ出す
-    /// （ファイル/テキスト検索のような結果一覧やプレビューは持たない）。Enter＝次／Shift+Enter＝前。
+    /// ターミナル内テキスト検索（$）。アクティブなターミナルタブのバッファから一致をすべて拾い、
+    /// @（ファイル）／#（grep）と同じく候補一覧として並べる。選ぶとその箇所をターミナル上で
+    /// 選択ハイライト＋スクロールしてジャンプする。一致が無い・ターミナルが無い場合は状態行だけ出す。
     /// </summary>
-    private void RunTerminalFind(string query, bool forward)
+    private IReadOnlyList<PaletteCommand> BuildTerminalMatches(string query)
     {
         if (_activeTerminalTab?.View is not { } view)
-        {
-            ShowPaletteItems(new[] { TerminalStatus("ターミナルがありません") });
-            return;
-        }
+            return new[] { TerminalStatus("ターミナルがありません") };
 
         if (string.IsNullOrWhiteSpace(query))
-        {
-            ShowPaletteItems(new[] { TerminalStatus("入力してターミナル内を検索（Enter=次 / Shift+Enter=前）") });
-            return;
-        }
+            return new[] { TerminalStatus("入力してターミナル内を検索") };
 
-        // ハイライトが見えるようにターミナルペインを表示しておく。
-        SetPaneVisible(PaneKind.Terminal, true);
+        var matches = view.FindMatches(query, caseSensitive: false);
+        if (matches.Count == 0)
+            return new[] { TerminalStatus("一致なし") };
 
-        var found = view.FindInTerminal(query, forward, caseSensitive: false, out var wrapped);
-        var status = found
-            ? (wrapped ? "折り返して一致（Enter=次 / Shift+Enter=前）" : "一致（Enter=次 / Shift+Enter=前）")
-            : "一致なし";
-        ShowPaletteItems(new[] { TerminalStatus(status) });
+        const int max = 200; // grep と同様に件数を上限で抑える
+        return matches.Take(max).Select(m => TerminalMatchEntry(m, view)).ToList();
     }
+
+    /// <summary>ターミナル一致1件を候補化する。選択で該当箇所へジャンプ（ハイライト＋スクロール）。</summary>
+    private PaletteCommand TerminalMatchEntry(TerminalMatch match, TerminalTabView view)
+        => new($"行 {match.LineIndex + 1}", match.LineText.Trim(), () =>
+        {
+            SetPaneVisible(PaneKind.Terminal, true);
+            view.SelectMatch(match);
+            view.FocusTerminal();
+        });
 
     /// <summary>ターミナル検索モードのリストに出す状態行（実行アクションは持たない）。</summary>
     private static PaletteCommand TerminalStatus(string text)
@@ -344,11 +346,7 @@ public partial class ShellWindow
                 e.Handled = true;
                 break;
             case Key.Enter:
-                // ターミナル検索モードは Enter で次の一致へ（Shift+Enter で前へ）進め、パレットは開いたまま。
-                if (ParsePaletteMode(PaletteInput.Text) is { Mode: PaletteMode.Terminal, Query: var tq })
-                    RunTerminalFind(tq, forward: (Keyboard.Modifiers & ModifierKeys.Shift) == 0);
-                else
-                    ExecutePaletteSelection();
+                ExecutePaletteSelection();
                 e.Handled = true;
                 break;
             case Key.Down or Key.Up:

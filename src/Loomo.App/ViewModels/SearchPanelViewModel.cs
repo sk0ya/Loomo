@@ -9,7 +9,16 @@ using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>grep の1ヒット行（サイドバー Search パネル）。</summary>
+/// <summary>サイドバー Search パネルの検索範囲。テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、
+/// ターミナル＝アクティブなターミナル内テキスト。</summary>
+public enum SearchScope { Text, FileName, Terminal }
+
+/// <summary>ターミナル内一致1件（行インデックス0始まり・行内位置・一致長・行テキスト）。
+/// ジャンプ時に <c>TerminalTabView.SelectMatch</c> へ渡すための情報を持つ。</summary>
+public readonly record struct TerminalSearchHit(int LineIndex, int Column, int Length, string LineText);
+
+/// <summary>grep の1ヒット行（サイドバー Search パネル）。ターミナル一致も同じリスト/テンプレートで表示するため
+/// <see cref="IsTerminal"/> で両対応する。</summary>
 public sealed class SearchMatchItem
 {
     public SearchMatchItem(ContentSearchHit hit)
@@ -21,6 +30,22 @@ public sealed class SearchMatchItem
         LineText = hit.LineText.TrimEnd();
     }
 
+    private SearchMatchItem(TerminalSearchHit hit)
+    {
+        IsTerminal = true;
+        TerminalHit = hit;
+        FullPath = "";
+        RelativePath = "";
+        Line = hit.LineIndex + 1; // 表示は1始まり
+        Column = hit.Column;
+        LineText = hit.LineText.TrimEnd();
+    }
+
+    /// <summary>ターミナル一致から候補を作る。</summary>
+    public static SearchMatchItem ForTerminal(TerminalSearchHit hit) => new(hit);
+
+    public bool IsTerminal { get; }
+    public TerminalSearchHit TerminalHit { get; }
     public string FullPath { get; }
     public string RelativePath { get; }
     public int Line { get; }
@@ -57,7 +82,8 @@ public readonly record struct SearchHit(string FullPath, int Line, int Column, s
 /// <summary>
 /// サイドバー Search パネルの ViewModel。クエリ・オプション（大小区別／正規表現／include・exclude glob）で
 /// <see cref="IWorkspaceSearchService.GrepAsync"/>（内容検索）または <see cref="IWorkspaceSearchService.FindFilesAsync"/>
-/// （ファイル名検索）を走らせ、結果をファイル別にグルーピングして保持する。<see cref="SearchByName"/> でモードを切り替える。
+/// （ファイル名検索）またはアクティブなターミナル内検索を走らせ、結果をファイル別にグルーピングして保持する。
+/// <see cref="Scope"/> でモードを切り替える。
 /// 入力はデバウンスし、直前の検索はキャンセルする。選択／確定はイベントで ShellWindow へ委ねる
 /// （プレビュータブ表示・行ジャンプは View 側の責務）。
 /// </summary>
@@ -72,8 +98,15 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>1ヒットを通常タブで開きたい（Enter・ダブルクリック）。</summary>
     public event EventHandler<SearchHit>? ActivateRequested;
 
-    /// <summary>エディタの検索ハイライトを消したい（クエリを空にした・Esc・ファイル名検索へ切替）。</summary>
+    /// <summary>エディタの検索ハイライトを消したい（クエリを空にした・Esc・ファイル名/ターミナル検索へ切替）。</summary>
     public event EventHandler? ClearHighlightRequested;
+
+    /// <summary>ターミナル一致を選んだ（プレビュー＝単クリック・確定＝Enter/ダブルクリックとも、その箇所へジャンプ）。</summary>
+    public event EventHandler<TerminalSearchHit>? TerminalRevealRequested;
+
+    /// <summary>アクティブなターミナル内テキストを検索する供給口（ShellWindow が実ターミナルを束ねる）。
+    /// 引数＝(クエリ, 大小区別)、戻り＝一致一覧。未設定／ターミナル無しのときは null。</summary>
+    public Func<string, bool, IReadOnlyList<TerminalSearchHit>>? TerminalSearchProvider { get; set; }
 
     [ObservableProperty] private string _query = "";
     [ObservableProperty] private bool _caseSensitive;
@@ -83,11 +116,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusMessage = "";
 
-    /// <summary>true ＝ ファイル名で検索、false ＝ ファイル内容を grep。</summary>
-    [ObservableProperty] private bool _searchByName;
+    /// <summary>検索範囲（テキスト grep / ファイル名 / ターミナル）。</summary>
+    [ObservableProperty] private SearchScope _scope = SearchScope.Text;
 
     /// <summary>クエリ欄のプレースホルダ（モードで文言を変える）。</summary>
-    public string QueryPlaceholder => SearchByName ? "ファイル名で検索" : "検索ワード（ファイル内を grep）";
+    public string QueryPlaceholder => Scope switch
+    {
+        SearchScope.FileName => "ファイル名で検索",
+        SearchScope.Terminal => "ターミナル内を検索",
+        _ => "検索ワード（ファイル内を grep）",
+    };
 
     public ObservableCollection<SearchFileGroup> Results { get; } = new();
 
@@ -99,11 +137,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     partial void OnIncludeGlobChanged(string value) => ScheduleSearch();
     partial void OnExcludeGlobChanged(string value) => ScheduleSearch();
 
-    partial void OnSearchByNameChanged(bool value)
+    partial void OnScopeChanged(SearchScope value)
     {
         OnPropertyChanged(nameof(QueryPlaceholder));
-        // ファイル名検索ではハイライト対象がないので、切替時に残っているハイライトを消す。
-        if (value)
+        // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
+        if (value != SearchScope.Text)
             ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
         ScheduleSearch();
     }
@@ -138,10 +176,18 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             await Task.Delay(160, ct); // 連続入力をまとめる
             IsBusy = true;
 
-            if (SearchByName)
-                await RunFindFilesAsync(ct);
-            else
-                await RunGrepAsync(ct);
+            switch (Scope)
+            {
+                case SearchScope.FileName:
+                    await RunFindFilesAsync(ct);
+                    break;
+                case SearchScope.Terminal:
+                    RunTerminalSearch();
+                    break;
+                default:
+                    await RunGrepAsync(ct);
+                    break;
+            }
         }
         catch (OperationCanceledException) { /* 新しい入力に置き換わった */ }
         finally
@@ -194,17 +240,57 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         StatusMessage = Results.Count == 0 ? "一致なし" : $"{Results.Count} ファイル";
     }
 
+    /// <summary>アクティブなターミナル内テキストを検索し、1グループ「ターミナル」配下に一致を並べる。
+    /// 供給口（<see cref="TerminalSearchProvider"/>）は ShellWindow が実ターミナルへ橋渡しする。</summary>
+    private void RunTerminalSearch()
+    {
+        Results.Clear();
+
+        if (TerminalSearchProvider is not { } provider)
+        {
+            StatusMessage = "ターミナルがありません";
+            return;
+        }
+
+        // 大小区別はターミナル検索では区別しない（コマンドパレットの $ 検索と揃える）。
+        var hits = provider(Query, false);
+        if (hits.Count == 0)
+        {
+            StatusMessage = "一致なし";
+            return;
+        }
+
+        const int max = 1000;
+        var items = hits.Take(max).Select(SearchMatchItem.ForTerminal);
+        Results.Add(new SearchFileGroup("", "ターミナル", items));
+        StatusMessage = hits.Count > max ? $"{max}+ 件" : $"{hits.Count} 件";
+    }
+
     /// <summary>
     /// エディタで全マッチをハイライトする検索ワード。Editor の <c>HighlightSearch</c> は
-    /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名検索では空）。
+    /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名／ターミナルでは空）。
     /// </summary>
-    private string HighlightTerm => !SearchByName && !UseRegex ? Query : "";
+    private string HighlightTerm => Scope == SearchScope.Text && !UseRegex ? Query : "";
 
     public void Preview(SearchMatchItem match)
-        => PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
+    {
+        if (match.IsTerminal)
+        {
+            TerminalRevealRequested?.Invoke(this, match.TerminalHit);
+            return;
+        }
+        PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
+    }
 
     public void Activate(SearchMatchItem match)
-        => ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
+    {
+        if (match.IsTerminal)
+        {
+            TerminalRevealRequested?.Invoke(this, match.TerminalHit);
+            return;
+        }
+        ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
+    }
 
     /// <summary>ファイル名ヒット（グループ見出し自体）を開く。先頭（1,1）へジャンプする。</summary>
     public void Preview(SearchFileGroup group)

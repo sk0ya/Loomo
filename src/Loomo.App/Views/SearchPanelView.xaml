@@ -108,17 +108,22 @@
 
         <!-- クエリ＋オプション -->
         <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6">
-            <!-- 検索モード切替（検索ワード欄の上）。テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索。
-                 同じ SearchByName を一方は反転で束ね、2択セグメントとして相互排他に振る舞わせる。 -->
+            <!-- 検索モード切替（検索ワード欄の上）。テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、
+                 ターミナル＝アクティブなターミナル内テキスト。Scope 列挙を EnumToBool で束ね、3択セグメントとして
+                 相互排他に振る舞わせる（既に選択中のボタンを押しても外れない＝ConvertBack が DoNothing）。 -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <ToggleButton Content="テキスト" Height="22" Padding="10,0" FontSize="11" Cursor="Hand"
                               Style="{StaticResource SearchToggle}"
                               ToolTip="ファイルの中身を grep"
-                              IsChecked="{Binding SearchByName, Converter={StaticResource InverseBool}, Mode=TwoWay}" />
+                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Text, Mode=TwoWay}" />
                 <ToggleButton Content="ファイル" Height="22" Padding="10,0" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
                               Style="{StaticResource SearchToggle}"
                               ToolTip="ファイル名で曖昧検索"
-                              IsChecked="{Binding SearchByName, Mode=TwoWay}" />
+                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=FileName, Mode=TwoWay}" />
+                <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="アクティブなターミナル内を検索"
+                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
             </StackPanel>
 
             <Grid>
@@ -133,9 +138,9 @@
             </Grid>
 
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                <!-- 大小区別／正規表現は内容検索（grep）専用なのでファイル名検索時は隠す。 -->
+                <!-- 大小区別／正規表現は内容検索（grep）専用なのでテキスト検索時のみ表示。 -->
                 <StackPanel Orientation="Horizontal"
-                            Visibility="{Binding SearchByName, Converter={StaticResource InverseBoolToVis}}">
+                            Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}">
                     <ToggleButton Content="Aa" Width="30" Height="22" FontSize="11" Cursor="Hand"
                                   Style="{StaticResource SearchToggle}"
                                   ToolTip="大文字小文字を区別" IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
@@ -147,9 +152,9 @@
                            VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
-            <!-- include/exclude glob も grep 専用。ファイル名検索時は隠す。 -->
+            <!-- include/exclude glob も grep 専用。テキスト検索時のみ表示。 -->
             <Grid Margin="0,4,0,0"
-                  Visibility="{Binding SearchByName, Converter={StaticResource InverseBoolToVis}}">
+                  Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />

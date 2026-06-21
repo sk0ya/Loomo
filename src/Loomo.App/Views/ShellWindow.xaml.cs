@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -283,6 +284,23 @@ public partial class ShellWindow : Window
         };
         // 検索ワードを消す／Esc／ファイル名検索へ切替で、エディタの検索ハイライトを消す。
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
+        // サイドバー検索「ターミナル」モード：アクティブなターミナルの一致を供給し、選択でその箇所へジャンプする。
+        vm.SearchPanel.TerminalSearchProvider = (query, caseSensitive) =>
+        {
+            if (_activeTerminalTab?.View is not { } view || string.IsNullOrWhiteSpace(query))
+                return Array.Empty<TerminalSearchHit>();
+            return view.FindMatches(query, caseSensitive)
+                .Select(m => new TerminalSearchHit(m.LineIndex, m.Column, m.Length, m.LineText))
+                .ToList();
+        };
+        vm.SearchPanel.TerminalRevealRequested += (_, h) =>
+        {
+            if (_activeTerminalTab?.View is not { } view)
+                return;
+            SetPaneVisible(PaneKind.Terminal, true);
+            view.SelectMatch(new TerminalMatch(h.LineIndex, h.Column, h.Length, h.LineText));
+            view.FocusTerminal();
+        };
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
         // FolderTree の「AI-誤字脱字チェック」：AIバーを /clear して当該ファイルの誤字脱字チェックを実行する。
