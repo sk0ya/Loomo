@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Controls;
 using Editor.Controls;
+using sk0ya.Loomo.App.Services;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -38,7 +39,12 @@ public partial class ShellWindow
             // 処理中・暖機中は送信できないので無効化（押しても AskAbout 側で弾かれるが見た目も合わせる）。
             IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
         };
-        ask.Click += (_, _) => _vm.AiBar.AskAbout(selectedText);
+        ask.Click += (_, _) =>
+        {
+            // AIペインがレイアウトに無ければ左上と入れ替えて表示してから送信する。
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
+            _vm.AiBar.AskAbout(selectedText);
+        };
         menu.Items.Add(ask);
 
         var search = new MenuItem { Header = "ブラウザで調べる" };
@@ -52,6 +58,10 @@ public partial class ShellWindow
         var query = BuildSearchQuery(selectedText);
         if (string.IsNullOrWhiteSpace(query))
             return;
+
+        // ブラウザペインがレイアウトに無ければ左上と入れ替えて表示してから開く
+        // （OpenUrlInBrowserAsync 側の表示処理は、ここで可視化済みなら何もしない）。
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
 
         var url = "https://www.bing.com/search?q=" + Uri.EscapeDataString(query);
         await OpenUrlInBrowserAsync(url, $"検索: {query}");

@@ -1023,6 +1023,29 @@ public partial class ShellWindow
             SetPaneVisible(target, true);
     }
 
+    /// <summary>
+    /// 指定ペインがレイアウトに出ていなければ、左上のペインと入れ替えて必ず見えるようにする
+    /// （元の左上ペインは袖へ退場）。ステージモード中は対象を舞台へ立てる。既に見えていれば何もしない。
+    /// 「AIに聞く」「ブラウザで調べる」のように、結果を表示するペインを前面に出す経路で使う。
+    /// </summary>
+    private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target)
+    {
+        if (_stageActive)
+        {
+            if (!OnStage(target))
+                SetStagePane(target);
+            return;
+        }
+
+        if (IsPaneVisible(target))
+            return;
+
+        if (TopLeftPane() is { } topLeft && topLeft != target)
+            PlaceWingPane(target, topLeft, center: true, zone: null);
+        else
+            SetPaneVisible(target, true);
+    }
+
     /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>
     private void AddLeafAtBottom(PaneLeaf leaf) => _root = AddLeafAtBottom(_root, leaf);
 
