@@ -65,3 +65,7 @@ Desktop.ini
 
 # ビルド時に取得する同梱 Web アセット（Loomo.App.csproj の DownloadMermaid ターゲット参照）
 src/Loomo.App/Assets/Web/mermaid.min.js
+
+# 能力ハーネスのスクラッチ出力（中間 partial と試行生ログ）。確定レポート(.md)のみ追跡する。
+docs/reports/*-partial.md
+docs/reports/*-trials.log
