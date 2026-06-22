@@ -123,14 +123,13 @@ public partial class App : Application
         // ワークスペース外の情報を調べるブラウザ検索。可視ブラウザペインのアクティブタブ（IBrowserService）で
         // 検索し、結果ページのテキストを返す（別ウィンドウは起動しない）。
         services.AddSingleton<IAgentTool, WebSearchTool>();
-        // 自己完結したサブタスクを隔離されたサブエージェント（まっさらな会話）へ委譲し、最終結果だけを返す。
-        // 大きな中間出力をメイン会話に積もらせないための層（docs/エージェントループ知見.md §2.1 の狙い）。
-        // 実体は SubAgentRunner（IServiceProvider 経由で AgentOrchestrator/ToolRegistry を遅延解決し DI 循環を回避）。
-        // ★最後に登録すること：サブ実行は delegate_task を除いた集合を使うため、最後尾だと残りがフル集合の
-        //   真の接頭辞になり、ウォームアップ済み [system][tools] プレフィックスをほぼ再利用できる。
-        services.AddSingleton<ISubAgentRunner, SubAgentRunner>();
-        services.AddSingleton<IAgentTool, DelegateTaskTool>();
         services.AddSingleton<ToolRegistry>();
+
+        // 「ツールの実装が内部で AI を活用する」ための基盤（注入用）。エージェントに委譲ツールを提示するのではなく、
+        // 将来 AI を内部利用するツールが ISubAgentRunner を受け取り、隔離された AI サブタスク（要約・分類・整形・調査）を
+        // 回して結果だけ受け取る。現状は消費者なし＝解決もされない（遅延）。実体 SubAgentRunner は IServiceProvider 経由で
+        // AgentOrchestrator を遅延解決し、ツール→実行器→オーケストレータ→ToolRegistry→ツールの DI 循環を回避する。
+        services.AddSingleton<ISubAgentRunner, SubAgentRunner>();
 
         // --- 観測性（§20）：AI操作トレースを JSONL に記録。設定で無効化（オプトアウト）可。 ---
         // ファクトリは設定ロード後（ShellWindow 解決時）に実行されるため EnableTracing を反映できる。

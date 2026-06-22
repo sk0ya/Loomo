@@ -132,27 +132,16 @@ public sealed class AgentCapabilityHarness
         using var engine = new LocalInferenceRouter(new OnnxGenAiEngine(), new LlamaCppEngine());
 
         var factory = new AiClientFactory(engine, settings, workspace);
-        var suite = (Environment.GetEnvironmentVariable("HARNESS_SUITE") ?? "agent").ToLowerInvariant();
-        var safety = new SafetyPolicy(settings.Safety);
-        var approval = new AutoApproval();
-        var context = new SettingsContextWindowPolicy(settings);
-
-        // 委譲スイート（HARNESS_SUITE=delegate）のときだけ delegate_task を足す。他スイートの既存
-        // ベースライン（ツール選択の信頼性）を汚さないため。実行器は AgentOrchestrator/ToolRegistry を
-        // 遅延参照するので、相互参照を後から束ねる（HarnessServiceProvider が Func で解決）。
-        ToolRegistry tools = null!;
-        AgentOrchestrator orch = null!;
-        var toolList = new List<IAgentTool>
+        var tools = new ToolRegistry(new IAgentTool[]
         {
             new PwshTool(terminal),
             new WriteFileTool(workspace, editor),
             new EditFileTool(workspace, editor),
-        };
-        if (suite == "delegate")
-            toolList.Add(new DelegateTaskTool(
-                new SubAgentRunner(new HarnessServiceProvider(() => orch, () => tools))));
-        tools = new ToolRegistry(toolList);
-        orch = new AgentOrchestrator(factory, tools, approval, safety, context,
+        });
+        var safety = new SafetyPolicy(settings.Safety);
+        var approval = new AutoApproval();
+        var context = new SettingsContextWindowPolicy(settings);
+        var orch = new AgentOrchestrator(factory, tools, approval, safety, context,
             NullLogger<AgentOrchestrator>.Instance);
 
         // --- 地上真実オラクル。モデルの自己申告ではなく実ファイル/最終回答で機械判定する。
@@ -412,43 +401,8 @@ public sealed class AgentCapabilityHarness
             }),
         };
 
-        // ===== 委譲スイート（HARNESS_SUITE=delegate）=====
-        // delegate_task の移譲率（モデルが自発的に委譲を選ぶ頻度）と、明示指示時に機構が実際に動くかを測る。
-        // 各タスクのオラクルは最終結果の正しさを見るが、主目的は別途集計する「delegate_task を使った試行数」。
-        bool UsedDelegate(TurnRecord rec) => rec.ToolCalls.Any(t => t.StartsWith("delegate_task"));
-        var delegateTasks = new HarnessTask[]
-        {
-            // (1) 明示指示：機構が end-to-end で動くか（capability）。委譲使用＋回答ありを要求。
-            new("del-explicit", "delegate_task ツールを使って、README.md の内容を1文で要約する作業をサブエージェントに任せて。その結果だけ教えて。", rec =>
-                (UsedDelegate(rec) && rec.FinalText.ToString().Trim().Length > 0,
-                 UsedDelegate(rec) ? "delegate_task 使用・回答あり" : "delegate_task を使わなかった")),
-
-            // (2) 自発・ファンアウト：独立した複数サブタスク。委譲は任意、3ファイルへの言及を要求。
-            new("del-fanout", "README.md・config.json・numbers.txt の3ファイルを、それぞれ1行で説明して。", rec =>
-            {
-                var t = rec.FinalText.ToString();
-                var hits = (Has(t, "README") || Has(t, "Sample") ? 1 : 0)
-                         + (Has(t, "config") || Has(t, "loomo") ? 1 : 0)
-                         + (Has(t, "numbers") || Has(t, "数値") || Has(t, "3") ? 1 : 0);
-                return (hits >= 2, $"3ファイル中 {hits} 件に言及（委譲は任意）");
-            }),
-
-            // (3) 自発・隔離誘因：途中の中身を回答に載せず最終結論だけ、という指示が委譲の動機になる。
-            new("del-isolate-search", "ワークスペースの各ファイルの中身を調べて、「gamma」を含むファイル名だけ最後に教えて。調べた中身そのものは回答に載せないで。", rec =>
-            {
-                var t = rec.FinalText.ToString();
-                return (Has(t, "util") && !Has(t, "config") && !Has(t, "numbers") && Unchanged("src/util.txt"),
-                        "util.txt のみ特定・中身非掲載（委譲は任意）");
-            }),
-
-            // (4) 自発・大きい中間出力：全行読取→件数だけ。読んだ全文を運ばない動機。
-            new("del-count", "todo.md を読んで、TODO で始まる行が何個あるか数えて。数だけ答えて。", rec =>
-                (Has(rec.FinalText.ToString(), "2") && Unchanged("todo.md"),
-                 "TODO 2件・ファイル不変（委譲は任意）")),
-        };
-
-        if (suite == "workflow") tasks = workflowTasks;
-        else if (suite == "delegate") tasks = delegateTasks;
+        if ((Environment.GetEnvironmentVariable("HARNESS_SUITE") ?? "agent").ToLowerInvariant() == "workflow")
+            tasks = workflowTasks;
 
         // 実行モード（HARNESS_PREAMBLE）：チャット／ワークフローそれぞれの追加プロンプト（turnPreamble）を
         // 載せて精度を測り分ける。none/未指定なら共有プロンプト単体（ベースライン）。
@@ -477,7 +431,7 @@ public sealed class AgentCapabilityHarness
         header.AppendLine("# Loomo エージェント能力ハーネス結果");
         header.AppendLine($"- 実行日時: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         header.AppendLine($"- モデル: {settings.Local.Model}");
-        header.AppendLine($"- スイート: {suite}");
+        header.AppendLine($"- スイート: {(Environment.GetEnvironmentVariable("HARNESS_SUITE") ?? "agent")}");
         header.AppendLine($"- 追加プロンプト(モード): {preambleMode}");
         if (!string.IsNullOrEmpty(reportTag)) header.AppendLine($"- 構成タグ: {reportTag}");
         header.AppendLine($"- ワークスペース: {ws}");
@@ -485,8 +439,6 @@ public sealed class AgentCapabilityHarness
 
         var body = new StringBuilder();
         var verdicts = new List<(string Name, int Pass, int Trials, string Detail, long Ms, int Iters)>();
-        // 委譲スイート用：タスクごとに delegate_task を使った試行数を集計（移譲率）。
-        var delegationByTask = new List<(string Name, int Used, int Trials)>();
 
         // タスク後の全ファイル状態を相対パスで列挙（新規ファイルも自動で拾う）。モデルの自己申告に依存しない検証。
         void DumpFiles(StringBuilder sb)
@@ -509,7 +461,6 @@ public sealed class AgentCapabilityHarness
         foreach (var task in tasks)
         {
             var pass = 0;
-            var usedDelegate = 0;
             TurnRecord rec = null!;
             (bool ok, string detail) last = (false, "");
             for (var trial = 0; trial < repeats; trial++)
@@ -533,7 +484,6 @@ public sealed class AgentCapabilityHarness
                 catch (Exception ex) { last = (false, "oracle例外: " + ex.Message); }
                 rec.Verdict = last;
                 if (last.ok) pass++;
-                if (rec.ToolCalls.Any(t => t.StartsWith("delegate_task"))) usedDelegate++;
                 _out.WriteLine($"[{task.Name}] {(repeats > 1 ? $"trial {trial + 1}/{repeats} " : "")}" +
                                $"{(last.ok ? "PASS" : "FAIL")} in {sw.ElapsedMilliseconds}ms, iters={rec.Iterations} — {last.detail}");
                 // 試行ごとの判定を逐次追記する（ITestOutputHelper はクラッシュで失われるため別ファイルに永続化）。
@@ -549,7 +499,6 @@ public sealed class AgentCapabilityHarness
             }
 
             verdicts.Add((task.Name, pass, repeats, last.detail, rec.ElapsedMs, rec.Iterations));
-            delegationByTask.Add((task.Name, usedDelegate, repeats));
             // 本文には最後の試行の詳細（ツール呼び出し列・最終回答・ファイル状態）を残す。
             rec.WriteTo(body);
             DumpFiles(body);
@@ -574,21 +523,6 @@ public sealed class AgentCapabilityHarness
             header.AppendLine($"| {x.Name} | {mark} | {x.Pass}/{x.Trials} | {x.Ms}ms | {x.Iters} | {x.Detail} |");
         }
         header.AppendLine();
-
-        // 委譲スイートは「移譲率（delegate_task を使った試行数 / 全試行）」を別表で可視化する。
-        if (suite == "delegate")
-        {
-            var used = delegationByTask.Sum(x => x.Used);
-            var trials = delegationByTask.Sum(x => x.Trials);
-            header.AppendLine($"## 移譲率: {used}/{trials} 試行で delegate_task を使用"
-                              + (trials > 0 ? $"（{100.0 * used / trials:F0}%）" : ""));
-            header.AppendLine();
-            header.AppendLine("| タスク | 委譲使用 |");
-            header.AppendLine("|---|---:|");
-            foreach (var d in delegationByTask)
-                header.AppendLine($"| {d.Name} | {d.Used}/{d.Trials} |");
-            header.AppendLine();
-        }
 
         var full = header.ToString() + body.ToString();
         // モデルごとにファイルを分け、別モデルのレポートを上書きしないようにする
@@ -722,25 +656,5 @@ public sealed class AgentCapabilityHarness
     private sealed class AutoApproval : IApprovalService
     {
         public Task<bool> RequestApprovalAsync(string toolName, string summary, CancellationToken ct) => Task.FromResult(true);
-    }
-
-    /// <summary>委譲ツールの実行器（<see cref="SubAgentRunner"/>）へ <see cref="AgentOrchestrator"/>／
-    /// <see cref="ToolRegistry"/> を遅延供給する最小プロバイダ。ハーネスは DI コンテナを使わず手組みするため、
-    /// 相互参照（orch ↔ tools ↔ runner）を Func で後束ねする。</summary>
-    private sealed class HarnessServiceProvider : IServiceProvider
-    {
-        private readonly Func<AgentOrchestrator> _orch;
-        private readonly Func<ToolRegistry> _tools;
-        public HarnessServiceProvider(Func<AgentOrchestrator> orch, Func<ToolRegistry> tools)
-        {
-            _orch = orch;
-            _tools = tools;
-        }
-        public object? GetService(Type serviceType)
-        {
-            if (serviceType == typeof(AgentOrchestrator)) return _orch();
-            if (serviceType == typeof(ToolRegistry)) return _tools();
-            return null;
-        }
     }
 }

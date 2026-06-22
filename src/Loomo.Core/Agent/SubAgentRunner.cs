@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using sk0ya.Loomo.Core.Models;
-using sk0ya.Loomo.Core.Tools;
 
 namespace sk0ya.Loomo.Core.Agent;
 
@@ -14,13 +12,14 @@ namespace sk0ya.Loomo.Core.Agent;
 /// <see cref="ISubAgentRunner"/> の実装。<b>まっさらな <see cref="Conversation"/></b> に対して
 /// <see cref="AgentOrchestrator.RunTurnAsync"/> を 1 ターン回し、最終テキストだけを取り出す。
 ///
-/// 依存（<see cref="AgentOrchestrator"/>／<see cref="ToolRegistry"/>）は <see cref="IServiceProvider"/> 経由で
-/// <b>実行時に遅延解決</b>する。委譲ツール → 本実行器 → オーケストレータ → <see cref="ToolRegistry"/> →（委譲ツール）
-/// という DI 構築の循環を断つため。サービスロケーションは合成境界のこの 1 箇所に閉じ込める。
+/// 位置づけは「<b>ツールの実装が内部で AI を活用する</b>」ための基盤。エージェントに委譲ツールを<i>提示</i>して
+/// AI に委譲を選ばせるのではなく、ツール（<see cref="sk0ya.Loomo.Core.Tools.IAgentTool"/>）の <c>ExecuteAsync</c>
+/// が必要に応じてこれを呼び、隔離された AI サブタスク（要約・分類・整形・調査など）を回して結果だけ受け取る。
+/// メイン会話の履歴は運ばないので、大きな中間出力がメイン側に積もらない（狙いは docs/エージェントループ知見.md §2.1）。
 ///
-/// サブエージェントには <c>delegate_task</c> を<b>提示しない</b>（無限委譲の防止）。<c>delegate_task</c> は
-/// レジストリ最後尾に登録されているため、除外後の集合はフル集合の真の接頭辞＝ウォームアップ済み
-/// <c>[system][tools]</c> プレフィックスをほぼ再利用できる（分岐は tools 配列末尾のみ）。
+/// 依存（<see cref="AgentOrchestrator"/>）は <see cref="IServiceProvider"/> 経由で<b>実行時に遅延解決</b>する。
+/// これを注入するツールがレジストリに載ると、ツール → 本実行器 → オーケストレータ → <see cref="sk0ya.Loomo.Core.Tools.ToolRegistry"/>
+/// →（そのツール）という DI 構築の循環が生じうるため、遅延解決で断つ（サービスロケーションはこの 1 箇所に閉じ込める）。
 /// </summary>
 public sealed class SubAgentRunner : ISubAgentRunner
 {
@@ -31,12 +30,6 @@ public sealed class SubAgentRunner : ISubAgentRunner
     public async Task<SubAgentResult> RunAsync(string task, string? context, CancellationToken ct)
     {
         var orchestrator = _provider.GetRequiredService<AgentOrchestrator>();
-        var registry = _provider.GetRequiredService<ToolRegistry>();
-
-        // サブエージェントへ提示するツール = 全ツール − delegate_task（再帰防止＆プレフィックス再利用の両立）。
-        var subDefinitions = registry.Definitions
-            .Where(d => d.Name != DelegateTaskContract.ToolName)
-            .ToList();
 
         var conversation = new Conversation();   // 履歴を運ばない＝隔離された最小コンテキスト
         var prompt = ComposePrompt(task, context);
@@ -46,8 +39,10 @@ public sealed class SubAgentRunner : ISubAgentRunner
         string? errorMessage = null;
         var toolsUsed = new List<string>();
 
-        await foreach (var ev in orchestrator.RunTurnAsync(
-                           conversation, prompt, sessionId, ct, toolDefinitionsOverride: subDefinitions))
+        // ツール集合はオーケストレータ既定（全登録ツール）をそのまま使う。現状 AI を内部利用するツールは
+        // 無いため再帰の恐れはない。将来そうしたツールを登録する場合は、ここで自己参照ツールを除外するか
+        // 深さガードを足すこと（無限のサブエージェント生成を防ぐため）。
+        await foreach (var ev in orchestrator.RunTurnAsync(conversation, prompt, sessionId, ct))
         {
             switch (ev)
             {
