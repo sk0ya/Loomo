@@ -362,6 +362,16 @@ public sealed partial class WorkflowViewModel : ObservableObject
         foreach (var s in _store.List()) SavedWorkflows.Add(s);
     }
 
+    /// <summary>ワークフロー画面を開くときの一覧更新。未選択または選択中IDが消えている場合は先頭を読み込む。</summary>
+    public void RefreshSavedWorkflowsAndSelectFirstIfNeeded()
+    {
+        RefreshSavedWorkflows();
+        if (SavedWorkflows.Count == 0) return;
+        if (_currentId is not null && SavedWorkflows.Any(s => s.Id == _currentId)) return;
+
+        LoadWorkflow(SavedWorkflows[0]);
+    }
+
     private bool HasPersistableContent()
     {
         if (_currentId is not null) return true;

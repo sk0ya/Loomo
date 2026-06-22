@@ -29,6 +29,14 @@ public class WorkflowViewModelTests
         => CreateSut(aiFactory, tools, new FakeAiWarmup());
 
     private static WorkflowViewModel CreateSut(IAiClientFactory aiFactory, ToolRegistry tools, IAiWarmup warmup)
+        => CreateSut(aiFactory, tools, warmup, new WorkflowStore(
+            Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows")));
+
+    private static WorkflowViewModel CreateSut(
+        IAiClientFactory aiFactory,
+        ToolRegistry tools,
+        IAiWarmup warmup,
+        WorkflowStore store)
     {
         var approval = new UiApprovalService();
         var orchestrator = new AgentOrchestrator(
@@ -38,8 +46,6 @@ public class WorkflowViewModelTests
             new SafetyPolicy(new SafetySettings()),
             NoopContextWindowPolicy.Instance,
             NullLogger<AgentOrchestrator>.Instance);
-        var store = new WorkflowStore(
-            Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows"));
 
         return new WorkflowViewModel(orchestrator, approval, store, warmup, new AiSettings());
     }
@@ -193,6 +199,47 @@ public class WorkflowViewModelTests
         sut.RemoveStepCommand.Execute(sut.Steps[0]);
 
         Assert.Empty(sut.Steps);
+    }
+
+    [Fact]
+    public void Opening_workflow_mode_selects_first_saved_workflow_when_none_selected()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "old.json"), """
+        {
+          "id": "old",
+          "name": "古いワークフロー",
+          "createdAt": "2026-06-01T00:00:00",
+          "updatedAt": "2026-06-01T00:00:00",
+          "steps": [
+            { "title": "古いステップ", "prompt": "古い指示" }
+          ]
+        }
+        """);
+        File.WriteAllText(Path.Combine(dir, "new.json"), """
+        {
+          "id": "new",
+          "name": "新しいワークフロー",
+          "createdAt": "2026-06-02T00:00:00",
+          "updatedAt": "2026-06-02T00:00:00",
+          "steps": [
+            { "title": "新しいステップ", "prompt": "新しい指示" }
+          ]
+        }
+        """);
+        var sut = CreateSut(
+            new FakeAiClientFactory(),
+            new ToolRegistry(Enumerable.Empty<IAgentTool>()),
+            new FakeAiWarmup(),
+            new WorkflowStore(dir));
+
+        sut.RefreshSavedWorkflowsAndSelectFirstIfNeeded();
+
+        Assert.Equal("new", sut.CurrentWorkflowId);
+        Assert.Equal("新しいワークフロー", sut.Name);
+        var step = Assert.Single(sut.Steps);
+        Assert.Equal("新しいステップ", step.Title);
     }
 
     private sealed class DummyTool : IAgentTool

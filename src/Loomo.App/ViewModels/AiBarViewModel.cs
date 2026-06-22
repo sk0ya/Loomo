@@ -378,7 +378,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     {
         Mode = AiBarMode.Workflow;
         IsExpanded = true;
-        Workflow.RefreshSavedWorkflows();
+        Workflow.RefreshSavedWorkflowsAndSelectFirstIfNeeded();
     }
 
     partial void OnModeChanged(AiBarMode value)
