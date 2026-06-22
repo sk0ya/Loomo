@@ -47,8 +47,10 @@ public static class WorkflowStepLibrary
             "次の文章を日本語で1行（60字以内）に要約してください。\n\n対象:\n"),
         Doc("箇条書きに整理", "要点を箇条書きへ",
             "次の文章の要点を、重複を除いて箇条書き（- 始まり）に整理してください。\n\n対象:\n"),
+        // 翻訳ステップは指示文を「出力したい言語（英語）」で書く。小型ローカルモデルでは出力言語を
+        // 決める最大の信号が指示文の言語であり、指示も対象も日本語だと訳さず素通しでコピーしてしまう。
         Doc("英語に翻訳", "日本語→英語",
-            "次の日本語を自然な英語に翻訳してください。訳文だけを出力し、説明は付けないでください。\n\n対象:\n"),
+            "Translate the following Japanese text into natural English. Output only the English translation, nothing else.\n\n対象:\n"),
         Doc("日本語に翻訳", "英語→日本語",
             "次の英語を自然な日本語に翻訳してください。訳文だけを出力し、説明は付けないでください。\n\n対象:\n"),
         Doc("誤字脱字チェック", "誤字・脱字・変換ミスを指摘",
@@ -126,7 +128,7 @@ public static class WorkflowStepLibrary
         Chn("前段を3行に要約", "{{prev}} を3行に",
             "前のステップの出力を、日本語で3行に要約してください。\n\n{{prev}}"),
         Chn("前段を英訳", "{{prev}} を英語に",
-            "前のステップの出力を自然な英語に翻訳してください。訳文だけを出力してください。\n\n{{prev}}"),
+            "Translate the previous step's output into natural English. Output only the English translation, nothing else.\n\n{{prev}}"),
         Chn("前段を箇条書きに", "{{prev}} を整理",
             "前のステップの出力の要点を、箇条書き（- 始まり）に整理してください。\n\n{{prev}}"),
         Chn("前段を表にする", "{{prev}} を Markdown 表に",

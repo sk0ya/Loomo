@@ -352,6 +352,28 @@ public sealed class AgentCapabilityHarness
                 return (ok, ok ? "英語で出力（日本語混入なし）" : "英語化できず: " + Trunc(t.Replace("\n", "\\n"), 80));
             }),
 
+            // 連鎖版（{{prev}} に長めの日本語）：指示も対象も日本語＝素通しコピーに倒れやすい当の失敗ケース。
+            new("wf-translate-prev", WorkflowPrompt.Resolve(Lib("前段を英訳"), new[] { longJa }), rec =>
+            {
+                var t = rec.FinalText.ToString().Trim();
+                var ok = System.Text.RegularExpressions.Regex.IsMatch(t, "[A-Za-z]") && !HasJp(t);
+                return (ok, ok ? "英語で出力（日本語混入なし）" : "英語化できず: " + Trunc(t.Replace("\n", "\\n"), 80));
+            }),
+
+            // 単独「英語に翻訳」（ステップ1）に Markdown 表を貼ったケース。構造化された対象だと
+            // セルを訳さず表ごと素通しに倒れやすい当の失敗ケース（報告例）。
+            new("wf-translate-table", Lib("英語に翻訳") +
+                "| カテゴリ | 説明 |\n" +
+                "|---------|------|\n" +
+                "| Loomo | Windows専用の開発ワークスペースで、エディタ・ブラウザ・ターミナルを一室に織り込む。 |\n" +
+                "| ステージモード | 1つのペインを全面に配置し、残りのペインを右端の「袖」で表示する。 |\n" +
+                "| ビルド | .NET 9 SDKが必要で、`dotnet build`や`dotnet run`などのコマンドを実行します。|", rec =>
+            {
+                var t = rec.FinalText.ToString().Trim();
+                var ok = System.Text.RegularExpressions.Regex.IsMatch(t, "[A-Za-z]") && !HasJp(t);
+                return (ok, ok ? "英語で出力（日本語混入なし）" : "英語化できず: " + Trunc(t.Replace("\n", "\\n"), 80));
+            }),
+
             new("wf-summary-3", Lib("3行に要約") + longJa, rec =>
             {
                 var b = Bullets(rec.FinalText.ToString());
@@ -535,6 +557,127 @@ public sealed class AgentCapabilityHarness
         _out.WriteLine($"REPORT: {outPath}  ({passed}/{verdicts.Count} PASS)");
         // docs/reports にもコピー（読みやすいよう）
         try { File.WriteAllText(Path.Combine(ReportDir, fileName), full); } catch { }
+    }
+
+    /// <summary>
+    /// ワークフロー連鎖の実機再現。単発タスクではなく、各ステップの実出力を <c>{{prev}}</c> で次段へ
+    /// 送る本物のチェーン（WorkflowViewModel.RunStepAsync と同じ turnPreamble・解決規則）を回し、
+    /// 各段の「解決後の指示文」と「生出力」を全部レポートに出す。どの段で崩れるかを実データで特定する。
+    /// 既定では Skip。RUN_WORKFLOW_CHAIN=1 で有効化。
+    /// </summary>
+    [Fact]
+    public async Task RunWorkflowChain()
+    {
+        if (Environment.GetEnvironmentVariable("RUN_WORKFLOW_CHAIN") != "1")
+            return; // 重い・モデル必須
+
+        Assert.True(Directory.Exists(ModelPath) || File.Exists(ModelPath), $"model not found: {ModelPath}");
+
+        var ws = Path.Combine(Path.GetTempPath(), "loomo-wfchain-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(ws);
+
+        var settings = new AiSettings();
+        settings.Local.Model = ModelFolderName;
+        settings.Local.ModelPath = ModelPath;
+        settings.Local.MaxTokens = 1024;
+        settings.Safety.AutoApprove = true;
+
+        var workspace = new HeadlessWorkspace(ws);
+        var terminal = new TerminalService();
+        terminal.SetWorkingDirectory(ws);
+        var editor = new HeadlessEditor();
+        using var engine = new LocalInferenceRouter(new OnnxGenAiEngine(), new LlamaCppEngine());
+        var factory = new AiClientFactory(engine, settings, workspace);
+        var tools = new ToolRegistry(new IAgentTool[]
+        {
+            new PwshTool(terminal),
+            new WriteFileTool(workspace, editor),
+            new EditFileTool(workspace, editor),
+        });
+        var safety = new SafetyPolicy(settings.Safety);
+        var approval = new AutoApproval();
+        var context = new SettingsContextWindowPolicy(settings);
+        var orch = new AgentOrchestrator(factory, tools, approval, safety, context,
+            NullLogger<AgentOrchestrator>.Instance);
+
+        // ユーザー報告の対象 README（ステップ1の要約対象）。
+        const string readme = """
+            # Loomo
+
+            **エディタ・ブラウザ・ターミナルを一室に織り込む、Windows 専用の開発ワークスペース。**
+
+            標準は **ステージモード** ── 1 つを全面の「舞台」に立て、残りは右端の「袖」でライブミニチュア表示する。
+
+            ![ステージモード（標準）：エディタが舞台、ターミナル・ブラウザ・Git などが右の袖にミニチュア表示](docs/images/stage-mode.png)
+
+            ### タイル ── 全ペインを 2D に自由配置・分割・リサイズ
+
+            ![タイルレイアウト：エクスプローラ／エディタ／ブラウザ／ターミナルを並べて表示](docs/images/tile-layout.png)
+
+            ## ビルド
+
+            前提: [.NET 9 SDK](https://dotnet.microsoft.com/)（Windows）。
+
+            ## もっと詳しく
+
+            - 設計の正本: [`docs/設計書.md`](docs/設計書.md)（ステージ・袖・素材の流れは §21〜§24）
+            - エージェントループの性能知見: [`docs/エージェントループ知見.md`](docs/エージェントループ知見.md)
+            - 開発ガイド: [`CLAUDE.md`](CLAUDE.md)
+
+            > 名前の由来 = **Loom**（織機＝複数の道具を一枚に織り上げる）× **Room**（作業空間）。
+            """;
+
+        string Lib(string name) => WorkflowStepLibrary.Catalog.First(c => c.Name == name).Prompt;
+
+        var report = new StringBuilder();
+        report.AppendLine($"# ワークフロー連鎖再現 — {ModelFolderName}");
+        report.AppendLine($"- 実行日時: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        report.AppendLine();
+
+        // 1ステップ実行→出力を返す（WorkflowViewModel.RunStepAsync と同じ turnPreamble）。
+        async Task<string> Run(string label, string prompt)
+        {
+            var convo = new Conversation();
+            var rec = new TurnRecord(label, prompt);
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                await foreach (var ev in orch.RunTurnAsync(convo, prompt, "wfchain-" + label, cts.Token,
+                                   turnPreamble: AiSettings.WorkflowTurnPreamble))
+                    rec.Observe(ev);
+            }
+            catch (Exception ex) { rec.Error = "EXCEPTION: " + ex.Message; }
+            sw.Stop();
+            var output = rec.FinalText.ToString();
+            report.AppendLine($"## {label}（{sw.ElapsedMilliseconds}ms, iters={rec.Iterations}）");
+            report.AppendLine("### 指示文（{{prev}} 解決後）");
+            report.AppendLine("~~~");
+            report.AppendLine(prompt);
+            report.AppendLine("~~~");
+            report.AppendLine("### 出力");
+            report.AppendLine("~~~");
+            report.AppendLine(output);
+            report.AppendLine("~~~");
+            if (rec.Error != null) report.AppendLine($"- エラー: {rec.Error}");
+            report.AppendLine();
+            _out.WriteLine($"[{label}] {sw.ElapsedMilliseconds}ms iters={rec.Iterations} outLen={output.Length}");
+            return output;
+        }
+
+        // 報告された流れ: 要約 → 表。ここまでは共通の上流。
+        var s1 = await Run("step1-要約", WorkflowPrompt.Resolve(Lib("3行に要約") + readme, Array.Empty<string>()));
+        var s2 = await Run("step2-表", WorkflowPrompt.Resolve(Lib("前段を表にする"), new[] { s1 }));
+
+        // ステップ3 = 英訳。同じ step2 の表に対し、旧（日本語）指示と新（英語＝現ライブラリ）指示を A/B。
+        const string oldJaTranslate =
+            "前のステップの出力を自然な英語に翻訳してください。訳文だけを出力してください。\n\n{{prev}}";
+        await Run("step3-旧[日本語指示]", WorkflowPrompt.Resolve(oldJaTranslate, new[] { s1, s2 }));
+        await Run("step3-新[英語指示]", WorkflowPrompt.Resolve(Lib("前段を英訳"), new[] { s1, s2 }));
+
+        var outPath = Path.Combine(ReportDir, $"workflow-chain-{ModelFolderName}.md");
+        File.WriteAllText(outPath, report.ToString());
+        _out.WriteLine($"REPORT: {outPath}");
     }
 
     private sealed class TurnRecord
