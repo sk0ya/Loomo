@@ -166,7 +166,7 @@ public enum ActivityKind
     Info, Config, Send, Think, Response, LiveResponse,
     ToolPrepare, ToolRun, ToolDone, ToolError,
     Usage, Approval, Complete, Warn, Cancel, Error,
-    Step
+    Step, StepOutput
 }
 
 /// <summary>進行状況ノードの配色トーン（成否・注意を控えめに色分けする）。</summary>
@@ -178,10 +178,12 @@ public sealed partial class ActivityStep : ObservableObject
 {
     public string Glyph { get; init; } = "•";
     [ObservableProperty] private string _message = "";
+    public string Detail { get; init; } = "";
     public string TimeLabel { get; init; } = "";
     public ActivityTone Tone { get; init; }
     [ObservableProperty] private bool _isLive;
     public bool HasTime => !string.IsNullOrEmpty(TimeLabel);
+    public bool HasDetail => !string.IsNullOrWhiteSpace(Detail);
 
     /// <summary>ステップ境界などの見出し段か（タイムライン上で強調表示する）。</summary>
     public bool IsHeader { get; init; }
@@ -197,6 +199,7 @@ public sealed partial class ActivityStep : ObservableObject
         ("⚠️", ActivityTone.Warn), ("⏹", ActivityTone.Warn),
         ("📊", ActivityTone.Neutral),
         ("▶", ActivityTone.Accent),
+        ("📄", ActivityTone.Neutral),
     };
 
     private static (string Glyph, ActivityTone Tone) ForKind(ActivityKind kind) => kind switch
@@ -217,11 +220,16 @@ public sealed partial class ActivityStep : ObservableObject
         ActivityKind.Cancel => ("⏹", ActivityTone.Warn),
         ActivityKind.Error => ("⛔", ActivityTone.Bad),
         ActivityKind.Step => ("▶", ActivityTone.Accent),
+        ActivityKind.StepOutput => ("📄", ActivityTone.Neutral),
         _ => ("•", ActivityTone.Neutral),
     };
 
     /// <summary>種別と経過時刻・本文から1段を作る。本文が種別アイコンで始まる場合は二重表示を避けて取り除く。</summary>
     public static ActivityStep Create(ActivityKind kind, string time, string message)
+        => Create(kind, time, message, "");
+
+    /// <summary>種別と経過時刻・本文・折りたたみ詳細から1段を作る。</summary>
+    public static ActivityStep Create(ActivityKind kind, string time, string message, string detail)
     {
         var (glyph, tone) = ForKind(kind);
         return new ActivityStep
@@ -230,6 +238,7 @@ public sealed partial class ActivityStep : ObservableObject
             Tone = tone,
             TimeLabel = time,
             Message = StripLeadingGlyph(message, glyph),
+            Detail = detail,
             IsHeader = kind == ActivityKind.Step,
         };
     }

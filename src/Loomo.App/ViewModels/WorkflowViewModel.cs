@@ -94,7 +94,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     /// <summary>ウォームアップ中か。進捗状況エリアの中身を「ウォームアップ表示」と「実行ログ」で出し分ける。</summary>
     [ObservableProperty] private bool _isWarmingUp;
 
-    /// <summary>ワークフロー全体の最終出力（最後に値を出したステップの出力）。実行ログとは別に表示する。</summary>
+    /// <summary>ワークフロー全体の最終出力（最後のステップの出力）。実行ログとは別に表示する。</summary>
     [ObservableProperty] private string _finalOutput = "";
     public bool HasFinalOutput => !string.IsNullOrWhiteSpace(FinalOutput);
     partial void OnFinalOutputChanged(string value) => OnPropertyChanged(nameof(HasFinalOutput));
@@ -514,8 +514,9 @@ public sealed partial class WorkflowViewModel : ObservableObject
                 RunStatus = $"ステップ {i + 1}/{Steps.Count} を実行中…";
                 var (output, ok) = await RunStepAsync(step, outputs, sessionId, _cts.Token);
                 outputs.Add(output);
-                // 最後に値を出したステップの出力＝ワークフローの最終出力（別表示）。
-                if (!string.IsNullOrWhiteSpace(output)) FinalOutput = output;
+                AppendStepOutput(i + 1, output);
+                // ワークフロー出力は途中生成物ではなく、最後のステップの出力だけを別表示する。
+                if (i == Steps.Count - 1) FinalOutput = output;
                 if (!ok)
                 {
                     RunStatus = $"ステップ {i + 1} で停止しました。";
@@ -694,6 +695,21 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
         _runningStep = null;
         return (finalText, ok);
+    }
+
+    private void AppendStepOutput(int stepNumber, string output)
+    {
+        var trimmed = output.Trim();
+        if (trimmed.Length == 0)
+        {
+            _log?.Append(ActivityKind.StepOutput, $"ステップ {stepNumber} の出力: （出力なし）");
+            return;
+        }
+
+        _log?.Append(
+            ActivityKind.StepOutput,
+            $"ステップ {stepNumber} の出力: {TranscriptFormatting.OneLine(trimmed, 96)}",
+            TranscriptFormatting.Truncate(trimmed));
     }
 
     [RelayCommand]

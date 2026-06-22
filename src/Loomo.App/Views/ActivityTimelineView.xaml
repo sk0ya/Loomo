@@ -29,10 +29,29 @@
                         </Border>
                     </Grid>
 
-                    <!-- 本文（控えめ配色：エラー段のみ赤、ライブ段は等幅＋淡色） -->
-                    <TextBlock x:Name="Msg" Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap"
-                               Margin="7,2,8,2" VerticalAlignment="Center" FontSize="12"
-                               Foreground="{DynamicResource Fg}" />
+                    <!-- 本文（詳細がある段だけ折りたたみ、閉じた状態では1行要約だけを見せる） -->
+                    <Grid Grid.Column="1">
+                        <TextBlock x:Name="Msg" Text="{Binding Message}" TextWrapping="Wrap"
+                                   Margin="7,2,8,2" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{DynamicResource Fg}" />
+                        <Expander x:Name="DetailExpander" Visibility="Collapsed" Margin="3,0,8,2"
+                                  IsExpanded="False">
+                            <Expander.Header>
+                                <TextBlock x:Name="DetailHeader" Text="{Binding Message}"
+                                           TextTrimming="CharacterEllipsis" FontSize="12"
+                                           Foreground="{DynamicResource Fg}" />
+                            </Expander.Header>
+                            <Border Margin="22,4,0,4" Padding="8,7" CornerRadius="4"
+                                    Background="{DynamicResource Bg}"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                                <TextBox Text="{Binding Detail}" IsReadOnly="True" TextWrapping="Wrap"
+                                         BorderThickness="0" Padding="0" Background="Transparent"
+                                         IsReadOnlyCaretVisible="False" IsTabStop="False" Cursor="IBeam"
+                                         FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                                         Foreground="{DynamicResource Fg}" />
+                            </Border>
+                        </Expander>
+                    </Grid>
 
                     <!-- 経過時刻（各段に添える・等幅で揃える） -->
                     <TextBlock Grid.Column="2" Text="{Binding TimeLabel}" VerticalAlignment="Top" Margin="0,3,0,0"
@@ -44,7 +63,12 @@
                     <!-- ステップ境界の見出し段：本文を太字・通常色にして、フラットな進捗の中で切れ目が分かるようにする。 -->
                     <DataTrigger Binding="{Binding IsHeader}" Value="True">
                         <Setter TargetName="Msg" Property="FontWeight" Value="SemiBold" />
+                        <Setter TargetName="DetailHeader" Property="FontWeight" Value="SemiBold" />
                         <Setter TargetName="Msg" Property="Margin" Value="7,6,8,2" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding HasDetail}" Value="True">
+                        <Setter TargetName="Msg" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="DetailExpander" Property="Visibility" Value="Visible" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Tone}" Value="Accent">
                         <Setter TargetName="Node" Property="BorderBrush" Value="{DynamicResource Accent}" />
@@ -55,6 +79,7 @@
                     <DataTrigger Binding="{Binding Tone}" Value="Bad">
                         <Setter TargetName="Node" Property="BorderBrush" Value="#FFE05252" />
                         <Setter TargetName="Msg" Property="Foreground" Value="#FFE05252" />
+                        <Setter TargetName="DetailHeader" Property="Foreground" Value="#FFE05252" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Tone}" Value="Warn">
                         <Setter TargetName="Node" Property="BorderBrush" Value="#FFE0A042" />
@@ -63,6 +88,8 @@
                     <DataTrigger Binding="{Binding IsLive}" Value="True">
                         <Setter TargetName="Msg" Property="FontFamily" Value="Cascadia Mono, Consolas" />
                         <Setter TargetName="Msg" Property="Foreground" Value="{DynamicResource FgDim}" />
+                        <Setter TargetName="DetailHeader" Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                        <Setter TargetName="DetailHeader" Property="Foreground" Value="{DynamicResource FgDim}" />
                         <DataTrigger.EnterActions>
                             <BeginStoryboard Name="Pulse">
                                 <Storyboard RepeatBehavior="Forever" AutoReverse="True">

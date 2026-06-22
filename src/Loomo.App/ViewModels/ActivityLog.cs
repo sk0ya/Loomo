@@ -21,12 +21,16 @@ internal sealed class ActivityLog
 
     /// <summary>恒久ログを1件積む（永続化テキスト＋タイムライン段）。直前のライブ段は畳んでから足す。</summary>
     public void Append(ActivityKind kind, string message)
+        => Append(kind, message, "");
+
+    /// <summary>恒久ログを1件積む。detail は表示専用の折りたたみ詳細で、保存テキストには含めない。</summary>
+    public void Append(ActivityKind kind, string message, string detail)
     {
         ClearLive();
         var time = TranscriptFormatting.FormatDuration(_elapsed());
         var prefix = _entry.Text.Length == 0 ? "" : Environment.NewLine;
         _entry.Text += $"{prefix}[{time}] {message}";
-        _entry.Steps.Add(ActivityStep.Create(kind, time, message));
+        _entry.Steps.Add(ActivityStep.Create(kind, time, message, detail));
     }
 
     /// <summary>生成中などの揮発プレビューを末尾のライブ段として見せる（保存しない）。空文字なら消す。</summary>

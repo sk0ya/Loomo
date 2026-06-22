@@ -71,7 +71,7 @@ public class WorkflowViewModelTests
     }
 
     [Fact]
-    public async Task Workflow_activity_uses_chat_progress_style_without_step_headers()
+    public async Task Workflow_activity_uses_chat_progress_style_and_collapsed_step_output()
     {
         var ai = new ToolsRecordingAiClient(
             new RawTextDelta("ok"),
@@ -85,7 +85,28 @@ public class WorkflowViewModelTests
         Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("実行構成:", StringComparison.Ordinal));
         Assert.Contains(sut.Activity.Steps, s => s.Message == "AIに送信しました。応答を待っています。");
         Assert.Contains(sut.Activity.Steps, s => s.Message == "回答本文の生成を開始しました。");
-        Assert.DoesNotContain(sut.Activity.Steps, s => s.Message.StartsWith("ステップ", StringComparison.Ordinal));
+        var output = Assert.Single(sut.Activity.Steps, s => s.Message.StartsWith("ステップ 1 の出力:", StringComparison.Ordinal));
+        Assert.True(output.HasDetail);
+        Assert.Equal("ok", output.Detail);
+    }
+
+    [Fact]
+    public async Task Workflow_final_output_uses_last_step_output_only()
+    {
+        var ai = new ScriptedAiClient(
+            new AgentEvent[] { new TextDelta("first output") },
+            new AgentEvent[] { new TextDelta("last output") });
+        var sut = CreateSut(new FixedFactory(ai), new ToolRegistry(Enumerable.Empty<IAgentTool>()));
+        sut.Steps.Add(new WorkflowStepViewModel { Prompt = "先に生成" });
+        sut.Steps.Add(new WorkflowStepViewModel { Prompt = "最後に生成 {{prev}}" });
+
+        await sut.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal("last output", sut.FinalOutput);
+        Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("ステップ 1 の出力:", StringComparison.Ordinal)
+                                                && s.Detail == "first output");
+        Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("ステップ 2 の出力:", StringComparison.Ordinal)
+                                                && s.Detail == "last output");
     }
 
     [Fact]
@@ -200,6 +221,28 @@ public class WorkflowViewModelTests
         {
             LastTools = tools;
             foreach (var e in _events)
+            {
+                await Task.CompletedTask;
+                yield return e;
+            }
+        }
+    }
+
+    private sealed class ScriptedAiClient : IAiClient
+    {
+        private readonly Queue<AgentEvent[]> _turns;
+
+        public ScriptedAiClient(params AgentEvent[][] turns) => _turns = new Queue<AgentEvent[]>(turns);
+
+        public AiProvider Provider => AiProvider.Local;
+
+        public async IAsyncEnumerable<AgentEvent> StreamAsync(
+            Conversation conversation, IReadOnlyList<ToolDefinition> tools,
+            [EnumeratorCancellation] CancellationToken ct, AgentProfile? profile = null,
+            bool retryDiversify = false)
+        {
+            var events = _turns.Count > 0 ? _turns.Dequeue() : Array.Empty<AgentEvent>();
+            foreach (var e in events)
             {
                 await Task.CompletedTask;
                 yield return e;
