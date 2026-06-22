@@ -89,6 +89,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
     /// <summary>一度でも実行したか（下部の進捗状況／実行ログ領域は実行後にだけ現れる）。</summary>
     [ObservableProperty] private bool _hasRun;
+    public bool IsProgressVisible => HasRun || IsWarmingUp;
 
     /// <summary>ウォームアップ中か。進捗状況エリアの中身を「ウォームアップ表示」と「実行ログ」で出し分ける。</summary>
     [ObservableProperty] private bool _isWarmingUp;
@@ -140,6 +141,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _warmupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _warmupTimer.Tick += (_, _) => RenderWarmupStatus();
         _warmup.StateChanged += OnWarmupStateChanged;
+        IsWarmingUp = _warmup.IsWarmingUp;
+        if (IsWarmingUp)
+        {
+            _warmupTimer.Start();
+            RenderWarmupStatus();
+        }
 
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _statusTimer.Tick += (_, _) => RenderStepStatus();
@@ -150,11 +157,10 @@ public sealed partial class WorkflowViewModel : ObservableObject
         // ステップはユーザーが明示的に追加するまで作らない。
     }
 
-    /// <summary>ウォームアップ状態の変化を、実行中ステータスバーへ反映する。ワークフロー実行中の
-    /// 暖機フェーズだけ表示し、待機中は何もしない（チャット側 AI バーと役割を分ける）。</summary>
+    /// <summary>ウォームアップ状態の変化を、ワークフロー画面の進捗領域へ反映する。</summary>
     private void OnWarmupStateChanged() => Dispatch(() =>
     {
-        if (!IsRunning) return;
+        RunCommand.NotifyCanExecuteChanged();
         IsWarmingUp = _warmup.IsWarmingUp;
         if (_warmup.IsWarmingUp)
         {
@@ -169,7 +175,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
     private void RenderWarmupStatus()
     {
-        if (!IsRunning || !_warmup.IsWarmingUp || _warmup.WarmupStartedAt is not { } startedAt) return;
+        if (!_warmup.IsWarmingUp || _warmup.WarmupStartedAt is not { } startedAt) return;
         var elapsed = DateTimeOffset.Now - startedAt;
         if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
         var current = string.IsNullOrWhiteSpace(_warmup.CurrentStatus)
@@ -182,6 +188,10 @@ public sealed partial class WorkflowViewModel : ObservableObject
         elapsed.TotalMinutes < 1
             ? $"{Math.Floor(elapsed.TotalSeconds):0} 秒"
             : $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
+
+    partial void OnHasRunChanged(bool value) => OnPropertyChanged(nameof(IsProgressVisible));
+
+    partial void OnIsWarmingUpChanged(bool value) => OnPropertyChanged(nameof(IsProgressVisible));
 
     // ===== 実行中ステップの経過秒つきステータス（チャットの SetStatus と同等） =====
 
@@ -445,7 +455,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
     // ===== 実行 =====
 
-    private bool CanRun() => !IsRunning;
+    private bool CanRun() => !IsRunning && !_warmup.IsWarmingUp;
 
     [RelayCommand(CanExecute = nameof(CanRun))]
     private async Task RunAsync()

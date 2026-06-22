@@ -26,6 +26,9 @@ public class WorkflowViewModelTests
         => CreateSut(new FakeAiClientFactory(), new ToolRegistry(Enumerable.Empty<IAgentTool>()));
 
     private static WorkflowViewModel CreateSut(IAiClientFactory aiFactory, ToolRegistry tools)
+        => CreateSut(aiFactory, tools, new FakeAiWarmup());
+
+    private static WorkflowViewModel CreateSut(IAiClientFactory aiFactory, ToolRegistry tools, IAiWarmup warmup)
     {
         var approval = new UiApprovalService();
         var orchestrator = new AgentOrchestrator(
@@ -38,7 +41,7 @@ public class WorkflowViewModelTests
         var store = new WorkflowStore(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows"));
 
-        return new WorkflowViewModel(orchestrator, approval, store, new FakeAiWarmup(), new AiSettings());
+        return new WorkflowViewModel(orchestrator, approval, store, warmup, new AiSettings());
     }
 
     [Fact]
@@ -94,6 +97,32 @@ public class WorkflowViewModelTests
 
         var step = Assert.Single(sut.Steps);
         Assert.Equal(1, step.Index);
+    }
+
+    [Fact]
+    public void Run_command_is_disabled_while_global_warmup_is_running()
+    {
+        var warmup = new ControllableWarmup { IsWarmingUpValue = true };
+        var sut = CreateSut(
+            new FakeAiClientFactory(),
+            new ToolRegistry(Enumerable.Empty<IAgentTool>()),
+            warmup);
+        sut.Steps.Add(new WorkflowStepViewModel { Prompt = "要約して" });
+
+        Assert.False(sut.RunCommand.CanExecute(null));
+        Assert.True(sut.IsWarmingUp);
+        Assert.True(sut.IsProgressVisible);
+        Assert.Contains("ウォームアップ中", sut.RunStatus);
+
+        var canExecuteChanged = 0;
+        sut.RunCommand.CanExecuteChanged += (_, _) => canExecuteChanged++;
+        warmup.IsWarmingUpValue = false;
+        warmup.RaiseStateChanged();
+
+        Assert.True(sut.RunCommand.CanExecute(null));
+        Assert.False(sut.IsWarmingUp);
+        Assert.False(sut.IsProgressVisible);
+        Assert.True(canExecuteChanged > 0);
     }
 
     [Fact]
@@ -184,5 +213,21 @@ public class WorkflowViewModelTests
         public FixedFactory(IAiClient client) => _client = client;
         public IAiClient Resolve(AiProvider provider) => _client;
         public IAiClient ResolveCurrent() => _client;
+    }
+
+    private sealed class ControllableWarmup : IAiWarmup
+    {
+        public bool IsWarmingUpValue { get; set; }
+        public bool IsWarmingUp => IsWarmingUpValue;
+        public bool IsReady => !IsWarmingUpValue;
+        public DateTimeOffset? WarmupStartedAt => IsWarmingUpValue ? DateTimeOffset.Now : null;
+        public string CurrentStatus => "";
+        public string StatusDetails => "";
+        public IReadOnlyList<WarmupStageTiming> StageTimings => Array.Empty<WarmupStageTiming>();
+        public TimeSpan? TotalDuration => null;
+        public event Action? StateChanged;
+        public void RequestWarmup() { }
+        public Task EnsureWarmAsync(CancellationToken ct) => Task.CompletedTask;
+        public void RaiseStateChanged() => StateChanged?.Invoke();
     }
 }
