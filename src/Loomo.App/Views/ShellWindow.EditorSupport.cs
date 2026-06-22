@@ -407,7 +407,7 @@ public partial class ShellWindow
 
         // コンテンツの描画が終わったら、エディタの現在位置までスクロールを合わせ直す。
         if (_editorSupportSourceTab is not null)
-            _ = QueueEditorSupportScrollSyncAsync(_editorSupportSourceTab.Control.VerticalScrollRatio);
+            PostEditorSupportScrollRatio(_editorSupportSourceTab.Control.VerticalScrollRatio);
     }
 
     private void DetachEditorSupportSource()
@@ -417,17 +417,17 @@ public partial class ShellWindow
         _editorSupportSourceTab = null;
     }
 
-    private async void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e)
+    private void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e)
     {
         if (_syncingEditorFromSupport || sender is not VimEditorControl editor)
             return;
 
-        await QueueEditorSupportScrollSyncAsync(editor.VerticalScrollRatio);
+        PostEditorSupportScrollRatio(editor.VerticalScrollRatio);
     }
 
     private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (_syncingSupportFromEditor || _editorSupportSourceTab is null)
+        if (_editorSupportSourceTab is null)
             return;
 
         try
@@ -453,50 +453,26 @@ public partial class ShellWindow
         }
     }
 
-    private async Task QueueEditorSupportScrollSyncAsync(double ratio)
+    /// <summary>
+    /// エディタの縦スクロール位置（比率）をプレビューへ送る。<c>ExecuteScriptAsync</c>（スクリプト文字列の
+    /// 都度コンパイル＋IPC 往復待ち）ではなく <see cref="CoreWebView2.PostWebMessageAsJson"/> を使う
+    /// ＝送りっぱなしで安く、連続スクロールでも待ち行列が詰まらない。間引き（1 フレーム 1 回の scrollTo）は
+    /// ページ側の requestAnimationFrame が担う。エコー抑止もページ側 suppressScrollMessage が担う。
+    /// </summary>
+    private void PostEditorSupportScrollRatio(double ratio)
     {
-        _pendingEditorSupportScrollRatio = Math.Clamp(ratio, 0.0, 1.0);
-        if (_editorSupportScrollSyncQueued)
+        var core = _editorSupportView?.CoreWebView2;
+        if (core is null)
             return;
 
-        _editorSupportScrollSyncQueued = true;
         try
         {
-            while (_editorSupportView is not null)
-            {
-                var nextRatio = _pendingEditorSupportScrollRatio;
-                await ScrollEditorSupportToRatioAsync(nextRatio);
-
-                if (Math.Abs(nextRatio - _pendingEditorSupportScrollRatio) < 0.0001)
-                    break;
-            }
-        }
-        finally
-        {
-            _editorSupportScrollSyncQueued = false;
-        }
-    }
-
-    private async Task ScrollEditorSupportToRatioAsync(double ratio)
-    {
-        var view = _editorSupportView;
-        if (view?.CoreWebView2 is null)
-            return;
-
-        _syncingSupportFromEditor = true;
-        try
-        {
-            var script = FormattableString.Invariant(
-                $"window.setMarkdownPreviewScrollRatio && window.setMarkdownPreviewScrollRatio({Math.Clamp(ratio, 0.0, 1.0):R});");
-            await view.ExecuteScriptAsync(script);
+            core.PostWebMessageAsJson(FormattableString.Invariant(
+                $"{{\"type\":\"setScrollRatio\",\"ratio\":{Math.Clamp(ratio, 0.0, 1.0):R}}}"));
         }
         catch
         {
             // Best effort: the preview can be navigating while the editor scrolls.
-        }
-        finally
-        {
-            _syncingSupportFromEditor = false;
         }
     }
 }

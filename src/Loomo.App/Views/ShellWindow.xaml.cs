@@ -100,10 +100,7 @@ public partial class ShellWindow : Window
     private static readonly string WebViewUserDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "WebView2");
-    private bool _syncingSupportFromEditor;
     private bool _syncingEditorFromSupport;
-    private bool _editorSupportScrollSyncQueued;
-    private double _pendingEditorSupportScrollRatio;
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";

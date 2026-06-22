@@ -312,28 +312,60 @@ internal static class MarkdownRenderer
             <script>
             (() => {
                 let suppressScrollMessage = false;
+                let pendingApplyRatio = null;  // host(editor)→preview の最新要求（未適用）
+                let applyScheduled = false;
+                let reportScheduled = false;
+
+                function scrollMax() {
+                    const doc = document.documentElement;
+                    return Math.max(0, doc.scrollHeight - window.innerHeight);
+                }
 
                 function scrollRatio() {
-                    const doc = document.documentElement;
-                    const max = Math.max(0, doc.scrollHeight - window.innerHeight);
+                    const max = scrollMax();
                     return max <= 0 ? 0 : window.scrollY / max;
                 }
 
-                window.setMarkdownPreviewScrollRatio = ratio => {
-                    const doc = document.documentElement;
-                    const max = Math.max(0, doc.scrollHeight - window.innerHeight);
+                // 1 フレームに 1 回だけ scrollTo する。連続スクロールで殺到する要求は最新値へ畳む。
+                function applyPending() {
+                    applyScheduled = false;
+                    if (pendingApplyRatio === null) return;
+                    const ratio = Math.min(1, Math.max(0, pendingApplyRatio));
+                    pendingApplyRatio = null;
                     suppressScrollMessage = true;
-                    window.scrollTo(0, max * Math.min(1, Math.max(0, Number(ratio) || 0)));
+                    window.scrollTo(0, scrollMax() * ratio);
                     // Re-enable only after the resulting 'scroll' event has been dispatched,
                     // so the echo is suppressed regardless of how slow layout/scroll is.
                     requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
+                }
+
+                window.setMarkdownPreviewScrollRatio = ratio => {
+                    pendingApplyRatio = Number(ratio) || 0;
+                    if (!applyScheduled) {
+                        applyScheduled = true;
+                        requestAnimationFrame(applyPending);
+                    }
                 };
 
+                // host(editor)→preview は ExecuteScript ではなく PostWebMessage で届く（コンパイル不要・往復待ちなし）。
+                if (window.chrome?.webview) {
+                    window.chrome.webview.addEventListener('message', e => {
+                        const d = e.data;
+                        if (d && d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio);
+                    });
+                }
+
+                // preview→host(editor) も 1 フレーム 1 回へ間引いてメッセージの氾濫を防ぐ。
                 window.addEventListener('scroll', () => {
-                    if (suppressScrollMessage || !window.chrome?.webview) return;
-                    window.chrome.webview.postMessage({
-                        type: 'markdownPreviewScroll',
-                        ratio: scrollRatio()
+                    if (suppressScrollMessage || reportScheduled || !window.chrome?.webview) return;
+                    reportScheduled = true;
+                    requestAnimationFrame(() => {
+                        reportScheduled = false;
+                        if (suppressScrollMessage) return;
+                        window.chrome.webview.postMessage({
+                            type: 'markdownPreviewScroll',
+                            ratio: scrollRatio()
+                        });
                     });
                 }, { passive: true });
             })();
