@@ -307,16 +307,17 @@ public partial class ShellWindow : Window
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
-        // Git セッションの「DIFF ペインで差分を表示」：Diff ペインを表示してフォーカスする。
+        // Git セッションの「DIFF ペインで差分を表示」：エディタ/「AIに聞く」等と同じく、出ていなければ
+        // 左上ペインと入れ替えて前面に出す（最下段への新規挿入ではなく入れ替えで一貫させる）。
         vm.GitSession.DiffOpenRequested += (_, _) =>
         {
-            SetPaneVisible(PaneKind.Diff, true);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
         };
-        // サイドバー Git パネルの「差分を開く」も同様に Diff ペインを表示してフォーカスする。
+        // サイドバー Git パネルの「差分を開く」も同様に左上入れ替えで Diff ペインを前面に出す。
         vm.GitPanel.DiffOpenRequested += (_, _) =>
         {
-            SetPaneVisible(PaneKind.Diff, true);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
         };
         // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込し、見えている間だけライブ監視する。

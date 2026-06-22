@@ -631,8 +631,6 @@ public sealed class AgentCapabilityHarness
         public Task OpenFileAsync(string path) { ActiveFilePath = path; return Task.CompletedTask; }
         public Task<string> GetActiveContentAsync() => Task.FromResult("");
         public Task<string> GetSelectedTextAsync() => Task.FromResult("");
-        public Task<string> ShowDiffAsync(string path, string proposedContent) => Task.FromResult("");
-        public Task<bool> ApplyEditAsync(string path, string newContent) => Task.FromResult(true);
         public Task OpenDocumentAsync(EditorDocument document) => Task.CompletedTask;
     }
 

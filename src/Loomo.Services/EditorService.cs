@@ -65,30 +65,6 @@ public sealed class EditorService : IEditorService
     public Task<string> GetSelectedTextAsync()
         => Task.FromResult(Dispatch(() => _ctrl?.SelectedText) ?? string.Empty);
 
-    public Task<string> ShowDiffAsync(string path, string proposedContent)
-    {
-        var current = File.Exists(path) ? File.ReadAllText(path) : "";
-        var oldLines = current.Length == 0 ? 0 : current.Split('\n').Length;
-        var newLines = proposedContent.Split('\n').Length;
-        // v1: エディタに新内容をプレビュー表示（適用は ApplyEdit で確定）
-        DispatchVoid(() => _ctrl?.SetText(proposedContent));
-        return Task.FromResult($"差分プレビュー: {path}（{oldLines} → {newLines} 行）");
-    }
-
-    public async Task<bool> ApplyEditAsync(string path, string newContent)
-    {
-        try
-        {
-            await File.WriteAllTextAsync(path, newContent);
-            DispatchVoid(() => _ctrl?.LoadFile(path));
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     public Task OpenDocumentAsync(EditorDocument document)
     {
         // ファイルを介さない仮想ドキュメントとして開く（ディスクには一切書かない）。

@@ -29,12 +29,6 @@ public interface IEditorService
     Task<string> GetActiveContentAsync();
     Task<string> GetSelectedTextAsync();
 
-    /// <summary>差分を提示する（適用は ApplyEditAsync）。戻り値は差分の概要。</summary>
-    Task<string> ShowDiffAsync(string path, string proposedContent);
-
-    /// <summary>編集を適用して保存。</summary>
-    Task<bool> ApplyEditAsync(string path, string newContent);
-
     /// <summary>編集可能な「仮想ドキュメント」をエディタペインで開く。ユーザーが保存（:w）すると
     /// <see cref="EditorDocument.OnSaved"/> が最新内容で呼ばれる（永続化はコールバック側の責務）。
     /// 設定の長文項目をエディタ領域で編集するために使う。</summary>
