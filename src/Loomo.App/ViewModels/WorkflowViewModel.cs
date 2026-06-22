@@ -51,7 +51,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = new();
 
     /// <summary>実行全体のフラットな進捗タイムライン（チャットの「進行状況」と同じ構造化表示）。
-    /// 各段＝種別アイコン＋本文＋経過時刻。ステップ境界も1段（見出し）として流す。</summary>
+    /// 各段＝種別アイコン＋本文＋経過時刻。</summary>
     public TranscriptEntry Activity { get; } = new() { Kind = EntryKind.Activity };
 
     /// <summary>承認待ちカード（ボタン・差分つき）。タイムラインには「承認待ち」の1段だけ出し、
@@ -466,6 +466,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         Approvals.Clear();
         _runClock.Restart();
         _log = new ActivityLog(Activity, () => _runClock.Elapsed);
+        _log.Append(ActivityKind.Config, TranscriptFormatting.FormatRunConfig(_settings));
 
         IsRunning = true;
         NotifyCommandStates();
@@ -496,13 +497,11 @@ public sealed partial class WorkflowViewModel : ObservableObject
                 {
                     step.ResetRun();
                     step.StatusText = "（空のためスキップ）";
-                    _log!.Append(ActivityKind.Step, $"ステップ {i + 1}/{Steps.Count}「{step.DisplayTitle}」（空のためスキップ）");
                     outputs.Add("");
                     continue;
                 }
 
                 RunStatus = $"ステップ {i + 1}/{Steps.Count} を実行中…";
-                _log!.Append(ActivityKind.Step, $"ステップ {i + 1}/{Steps.Count}「{step.DisplayTitle}」");
                 var (output, ok) = await RunStepAsync(step, outputs, sessionId, _cts.Token);
                 outputs.Add(output);
                 // 最後に値を出したステップの出力＝ワークフローの最終出力（別表示）。
@@ -515,6 +514,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
             }
 
             RunStatus = "完了しました。";
+            _log?.Append(ActivityKind.Complete, $"回答が完了しました。合計 {TranscriptFormatting.FormatDuration(_runClock.Elapsed)} かかりました。");
         }
         catch (OperationCanceledException)
         {
@@ -567,8 +567,11 @@ public sealed partial class WorkflowViewModel : ObservableObject
         var aiCallCount = 0;
         var finalText = "";
         var ok = true;
+        var loggedThinking = false;
+        var loggedResponse = false;
 
         SetStepStatus("実行中…");
+        log.Append(ActivityKind.Send, "AIに送信しました。応答を待っています。");
 
         try
         {
@@ -578,20 +581,34 @@ public sealed partial class WorkflowViewModel : ObservableObject
                 switch (ev)
                 {
                     case ThinkingDelta t:
+                        if (!loggedThinking)
+                        {
+                            log.Append(ActivityKind.Think, "モデルが思考を生成しています。");
+                            loggedThinking = true;
+                        }
                         thinkText.Append(t.Text);
                         var thinkPreview = TranscriptFormatting.StreamPreview(thinkText.ToString());
                         SetStepStatus($"💭 思考中… {thinkPreview}");
-                        log.SetLive(ActivityKind.Think, thinkPreview.Length == 0 ? "" : $"思考中: {thinkPreview}");
                         break;
 
                     case RawTextDelta raw:
+                        if (!loggedResponse)
+                        {
+                            log.Append(ActivityKind.Response, "回答本文の生成を開始しました。");
+                            loggedResponse = true;
+                        }
                         rawStream.Append(raw.Text);
                         var preview = rawStream.ToString().Trim();
                         SetStepStatus($"応答生成中… {TranscriptFormatting.StreamPreview(preview)}");
-                        log.SetLive(ActivityKind.LiveResponse, preview.Length == 0 ? "" : $"生成中: {TranscriptFormatting.StreamPreview(preview)}");
+                        log.SetLive(ActivityKind.LiveResponse, preview.Length == 0 ? "" : $"生成中:{Environment.NewLine}{preview}");
                         break;
 
                     case TextDelta d:
+                        if (!loggedResponse)
+                        {
+                            log.Append(ActivityKind.Response, "回答本文の生成を開始しました。");
+                            loggedResponse = true;
+                        }
                         thinkText.Clear();
                         answer.Append(d.Text);
                         SetStepStatus("応答生成中…");
@@ -604,33 +621,33 @@ public sealed partial class WorkflowViewModel : ObservableObject
                         log.ClearLive();
                         var argsPreview = TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson);
                         SetStepStatus($"🔧 {req.ToolUse.Name} を準備中… {argsPreview}");
-                        log.Append(ActivityKind.ToolPrepare, $"{req.ToolUse.Name}: {argsPreview}");
+                        log.Append(ActivityKind.ToolPrepare, $"{req.ToolUse.Name} の呼び出しを準備しています: {argsPreview}");
                         break;
 
                     case ApprovalRequested ap:
                         SetStepStatus($"⏳ {ap.ToolName} の承認待ち…");
-                        log.Append(ActivityKind.Approval, $"{ap.ToolName} の承認待ち");
+                        log.Append(ActivityKind.Approval, $"{ap.ToolName} の実行承認を待っています。");
                         break;
 
                     case ToolExecutionStarted started:
                         SetStepStatus($"🔧 {started.ToolUse.Name} を実行中… {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
-                        log.Append(ActivityKind.ToolRun, $"{started.ToolUse.Name} を実行: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
+                        log.Append(ActivityKind.ToolRun, $"{started.ToolUse.Name} を実行しています: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
                         break;
 
                     case ToolExecutionCompleted done:
                         SetStepStatus($"考え中…（直前 {done.ToolUse.Name}: {(done.Result.IsError ? "エラー" : "完了")}）");
                         log.Append(done.Result.IsError ? ActivityKind.ToolError : ActivityKind.ToolDone,
-                            $"{done.ToolUse.Name} {(done.Result.IsError ? "エラー" : "完了")}: {TranscriptFormatting.StreamPreview(done.Result.Content)}");
+                            $"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {TranscriptFormatting.StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
                         break;
 
                     case ToolCallParseFailed pf:
                         SetStepStatus("⚠️ ツール呼び出しJSONが不正。AIに再試行させています…");
-                        log.Append(ActivityKind.Warn, $"不正なツール出力。再試行: {TranscriptFormatting.StreamPreview(pf.RawText)}");
+                        log.Append(ActivityKind.Warn, "ツール呼び出しのJSONが不正でした。モデルの生出力を表示し、正しいJSONで出し直させます。");
                         break;
 
-                    case AgentError err:
+                    case AgentError:
                         log.ClearLive();
-                        log.Append(ActivityKind.Error, err.Message);
+                        log.Append(ActivityKind.Error, $"エラーで停止しました。合計 {TranscriptFormatting.FormatDuration(_runClock.Elapsed)} かかりました。");
                         ok = false;
                         break;
 
@@ -658,9 +675,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
         {
             step.Status = WorkflowStepStatus.Done;
             step.StatusText = $"完了 ({TranscriptFormatting.FormatDuration(clock.Elapsed)})";
-            // 各ステップの出力は「要約1段」だけ流す（全文は最終出力＝ワークフローの出力に出す）。
-            if (!string.IsNullOrWhiteSpace(finalText))
-                log.Append(ActivityKind.Response, $"出力: {TranscriptFormatting.StreamPreview(finalText)}");
         }
         else
         {

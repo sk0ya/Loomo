@@ -637,14 +637,14 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- 実行ログ（実行中・実行後）。ウォームアップ中は隠す。 -->
+                        <!-- 進行状況（実行中・実行後）。ウォームアップ中は隠す。 -->
                         <DockPanel LastChildFill="True"
                                    Visibility="{Binding IsWarmingUp, Converter={StaticResource InverseBoolToVis}}">
                             <!-- 見出し＋全体状態（完了／停止など） -->
                             <Border DockPanel.Dock="Top" Padding="9,5"
                                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                 <DockPanel LastChildFill="False">
-                                    <TextBlock DockPanel.Dock="Left" Text="実行ログ" FontSize="11" FontWeight="SemiBold"
+                                    <TextBlock DockPanel.Dock="Left" Text="進行状況" FontSize="11" FontWeight="SemiBold"
                                                VerticalAlignment="Center" Foreground="{DynamicResource FgDim}" />
                                     <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Width="60" Height="4"
                                                  Foreground="{DynamicResource Accent}" Background="Transparent"

@@ -68,6 +68,24 @@ public class WorkflowViewModelTests
     }
 
     [Fact]
+    public async Task Workflow_activity_uses_chat_progress_style_without_step_headers()
+    {
+        var ai = new ToolsRecordingAiClient(
+            new RawTextDelta("ok"),
+            new TextDelta("ok"),
+            new AiUsageReported(10, 2, 0, 100, 20, 120));
+        var sut = CreateSut(new FixedFactory(ai), new ToolRegistry(Enumerable.Empty<IAgentTool>()));
+        sut.Steps.Add(new WorkflowStepViewModel { Prompt = "要約して" });
+
+        await sut.RunCommand.ExecuteAsync(null);
+
+        Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("実行構成:", StringComparison.Ordinal));
+        Assert.Contains(sut.Activity.Steps, s => s.Message == "AIに送信しました。応答を待っています。");
+        Assert.Contains(sut.Activity.Steps, s => s.Message == "回答本文の生成を開始しました。");
+        Assert.DoesNotContain(sut.Activity.Steps, s => s.Message.StartsWith("ステップ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Add_step_creates_step_one()
     {
         var sut = CreateSut();
