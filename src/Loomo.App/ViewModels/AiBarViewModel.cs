@@ -438,7 +438,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         var rawStream = new StringBuilder();   // 現在のAI呼び出しの揮発性ライブ出力（進捗プレビュー専用）
         var volatileTail = "";                 // 「進行状況」末尾に付けている揮発プレビュー文字列（未保存）
 
-        AppendActivity(FormatRunConfig());
+        AppendActivity(TranscriptFormatting.FormatRunConfig(_settings));
         AppendActivity("AIに送信しました。応答を待っています。");
 
         try
@@ -461,7 +461,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                         }
                         thinking.AppendText(think.Text);
                         // 進捗状況に「いま何を考えているか」を逐次プレビュー表示する。
-                        SetStatus($"💭 思考中… {StreamPreview(thinking.Text)}");
+                        SetStatus($"💭 思考中… {TranscriptFormatting.StreamPreview(thinking.Text)}");
                         break;
 
                     case RawTextDelta raw:
@@ -514,8 +514,8 @@ public sealed partial class AiBarViewModel : ObservableObject
                             assistantClock = null;
                         }
                         // 進捗状況に「どのツールを何の引数で呼ぶか」を表示する。
-                        SetStatus($"🔧 {req.ToolUse.Name} を準備中… {StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {StreamPreview(req.ToolUse.ArgumentsJson)}");
+                        SetStatus($"🔧 {req.ToolUse.Name} を準備中… {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
+                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
                         Add(EntryKind.Tool, ToolUseHeader(req.ToolUse.Name, req.ToolUse.ArgumentsJson), ComposeToolCard(narration, req.ToolUse.ArgumentsJson, req.ToolUse.RawJson));
                         break;
 
@@ -526,14 +526,14 @@ public sealed partial class AiBarViewModel : ObservableObject
 
                     case ToolExecutionStarted started:
                         // 進捗状況に「いま実行しているコマンド」を表示する。
-                        SetStatus($"🔧 {started.ToolUse.Name} を実行中… {StreamPreview(started.ToolUse.ArgumentsJson)}");
-                        AppendActivity($"{started.ToolUse.Name} を実行しています: {StreamPreview(started.ToolUse.ArgumentsJson)}");
+                        SetStatus($"🔧 {started.ToolUse.Name} を実行中… {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
+                        AppendActivity($"{started.ToolUse.Name} を実行しています: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
                         break;
 
                     case ToolExecutionCompleted done:
                         // ツール結果を踏まえてAIが再応答する。直前ツールの結果概要も進捗状況に出す。
-                        SetStatus($"考え中…（直前 {done.ToolUse.Name}: {(done.Result.IsError ? "エラー" : "完了")} {StreamPreview(done.Result.Content)}）");
-                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
+                        SetStatus($"考え中…（直前 {done.ToolUse.Name}: {(done.Result.IsError ? "エラー" : "完了")} {TranscriptFormatting.StreamPreview(done.Result.Content)}）");
+                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {TranscriptFormatting.StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
                         Add(EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})", Truncate(done.Result.Content));
                         break;
 
@@ -559,7 +559,7 @@ public sealed partial class AiBarViewModel : ObservableObject
 
                     case AiUsageReported usage:
                         aiCallCount++;
-                        AppendActivity(FormatUsage(usage, aiCallCount));
+                        AppendActivity(TranscriptFormatting.FormatUsage(usage, aiCallCount));
                         rawStream.Clear();   // このAI呼び出しは終了。次の呼び出しの揮発プレビューを新規に始める
                         break;
 
@@ -739,53 +739,6 @@ public sealed partial class AiBarViewModel : ObservableObject
         entry.Header = $"{baseHeader} ({FormatDuration(clock.Elapsed)})";
         clock = null;
     }
-
-    /// <summary>このターンで使うAIの実行構成（モデル・コンテキスト長・実行EP）を進行状況の1行に整形する。
-    /// 何のモデル・設定で動いているのかを毎ターン先頭に出して、遅さ等の原因切り分けに使えるようにする。</summary>
-    private string FormatRunConfig()
-    {
-        var cfg = _settings.Local;
-        var model = string.IsNullOrWhiteSpace(cfg.Model) ? "(未設定)" : cfg.Model;
-        var numCtx = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
-
-        return $"⚙️ 実行構成: モデル {model}｜num_ctx {numCtx}｜EP CPU(ONNX)";
-    }
-
-    /// <summary>AI利用統計を進行状況の1行に整形する。トークン数と、重みロード／prefill／decode の
-    /// 段階別所要を併記して「どの段階で時間を使ったか」をその場で分かるようにする。</summary>
-    private static string FormatUsage(AiUsageReported u, int call)
-    {
-        var parts = new List<string>();
-        if (u.InputTokens is { } it && u.OutputTokens is { } ot)
-            parts.Add($"トークン 入力{it}/出力{ot}");
-        else if (u.OutputTokens is { } o)
-            parts.Add($"出力{o}トークン");
-
-        var stages = new List<string>();
-        if (u.LoadMs is { } load && load >= 1) stages.Add($"ロード{FormatMs(load)}");
-        if (u.PromptEvalMs is { } pe) stages.Add($"prefill{FormatMs(pe)}");
-        if (u.EvalMs is { } ev) stages.Add($"decode{FormatMs(ev)}");
-        if (stages.Count > 0)
-        {
-            var stageText = string.Join("・", stages);
-            if (u.TotalMs is { } total) stageText += $"（計{FormatMs(total)}）";
-            parts.Add(stageText);
-        }
-
-        var body = parts.Count > 0 ? string.Join("｜", parts) : "詳細なし";
-        return $"📊 AI内訳#{call}: {body}";
-    }
-
-    /// <summary>ストリーミング中の本文／思考の「いま出力している内容」を進捗状況の1行プレビューに整形する。
-    /// 改行・連続空白を畳んで末尾の一定文字数だけ見せ、長ければ先頭に省略記号を付ける。</summary>
-    private static string StreamPreview(string text, int max = 48)
-    {
-        var flat = Regex.Replace(text, @"\s+", " ").Trim();
-        if (flat.Length == 0) return "";
-        return flat.Length <= max ? flat : "…" + flat[^max..];
-    }
-
-    private static string FormatMs(double ms) => FormatDuration(TimeSpan.FromMilliseconds(ms));
 
     private static string DisplayWarmupStageName(string status)
     {

@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Ai.Clients;
+using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Tools;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -91,5 +94,51 @@ internal static class TranscriptFormatting
         if (elapsed.TotalMinutes < 1)
             return $"{elapsed.TotalSeconds:0.0} 秒";
         return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
+    }
+
+    public static string FormatMs(double ms) => FormatDuration(TimeSpan.FromMilliseconds(ms));
+
+    /// <summary>ストリーミング中の本文／思考／引数の「いま出力している内容」を進捗の1行プレビューに整える。
+    /// 改行・連続空白を畳んで末尾の一定文字数だけ見せ、長ければ先頭に省略記号を付ける。</summary>
+    public static string StreamPreview(string text, int max = 48)
+    {
+        var flat = Regex.Replace(text, @"\s+", " ").Trim();
+        if (flat.Length == 0) return "";
+        return flat.Length <= max ? flat : "…" + flat[^max..];
+    }
+
+    /// <summary>このターン/ステップで使うAIの実行構成（モデル・コンテキスト長・実行EP）を進行状況の1行に整形する。
+    /// 何のモデル・設定で動いているかを先頭に出して、遅さ等の原因切り分けに使えるようにする。</summary>
+    public static string FormatRunConfig(AiSettings settings)
+    {
+        var cfg = settings.Local;
+        var model = string.IsNullOrWhiteSpace(cfg.Model) ? "(未設定)" : cfg.Model;
+        var numCtx = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
+        return $"⚙️ 実行構成: モデル {model}｜num_ctx {numCtx}｜EP CPU(ONNX)";
+    }
+
+    /// <summary>AI利用統計を進行状況の1行に整形する。トークン数と、重みロード／prefill／decode の
+    /// 段階別所要を併記して「どの段階で時間を使ったか」をその場で分かるようにする。</summary>
+    public static string FormatUsage(AiUsageReported u, int call)
+    {
+        var parts = new List<string>();
+        if (u.InputTokens is { } it && u.OutputTokens is { } ot)
+            parts.Add($"トークン 入力{it}/出力{ot}");
+        else if (u.OutputTokens is { } o)
+            parts.Add($"出力{o}トークン");
+
+        var stages = new List<string>();
+        if (u.LoadMs is { } load && load >= 1) stages.Add($"ロード{FormatMs(load)}");
+        if (u.PromptEvalMs is { } pe) stages.Add($"prefill{FormatMs(pe)}");
+        if (u.EvalMs is { } ev) stages.Add($"decode{FormatMs(ev)}");
+        if (stages.Count > 0)
+        {
+            var stageText = string.Join("・", stages);
+            if (u.TotalMs is { } total) stageText += $"（計{FormatMs(total)}）";
+            parts.Add(stageText);
+        }
+
+        var body = parts.Count > 0 ? string.Join("｜", parts) : "詳細なし";
+        return $"📊 AI内訳#{call}: {body}";
     }
 }

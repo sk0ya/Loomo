@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
+using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
@@ -37,7 +38,7 @@ public class WorkflowViewModelTests
         var store = new WorkflowStore(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows"));
 
-        return new WorkflowViewModel(orchestrator, approval, store, new FakeAiWarmup());
+        return new WorkflowViewModel(orchestrator, approval, store, new FakeAiWarmup(), new AiSettings());
     }
 
     [Fact]
