@@ -315,6 +315,8 @@ internal static class MarkdownRenderer
                 let pendingApplyRatio = null;  // host(editor)→preview の最新要求（未適用）
                 let applyScheduled = false;
                 let reportScheduled = false;
+                let resizeScheduled = false;
+                let lastRatio = 0;  // 最後に意図したスクロール比率（resize 時の貼り直し基準）
 
                 function scrollMax() {
                     const doc = document.documentElement;
@@ -332,6 +334,7 @@ internal static class MarkdownRenderer
                     if (pendingApplyRatio === null) return;
                     const ratio = Math.min(1, Math.max(0, pendingApplyRatio));
                     pendingApplyRatio = null;
+                    lastRatio = ratio;
                     suppressScrollMessage = true;
                     window.scrollTo(0, scrollMax() * ratio);
                     // Re-enable only after the resulting 'scroll' event has been dispatched,
@@ -362,12 +365,27 @@ internal static class MarkdownRenderer
                     requestAnimationFrame(() => {
                         reportScheduled = false;
                         if (suppressScrollMessage) return;
+                        lastRatio = scrollRatio();
                         window.chrome.webview.postMessage({
                             type: 'markdownPreviewScroll',
-                            ratio: scrollRatio()
+                            ratio: lastRatio
                         });
                     });
                 }, { passive: true });
+
+                // 画面サイズ・ペイン幅・表示切替で innerHeight/scrollHeight が変わると、絶対 scrollY を
+                // 保つブラウザの挙動でエディタとの比率がズレる。resize 中は scroll エコーを止めて
+                // （リフロー起因の scroll でエディタが飛ぶのを防ぐ）、最後に意図した比率へ貼り直す。
+                window.addEventListener('resize', () => {
+                    suppressScrollMessage = true;
+                    if (resizeScheduled) return;
+                    resizeScheduled = true;
+                    requestAnimationFrame(() => {
+                        resizeScheduled = false;
+                        window.scrollTo(0, scrollMax() * lastRatio);
+                        requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
+                    });
+                });
             })();
             </script>
             </head>
