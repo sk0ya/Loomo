@@ -14,7 +14,7 @@ public class OnnxGenAiEngineTests
 
         var text = new StringBuilder(block + block + block);
 
-        Assert.True(OnnxGenAiEngine.IsRepeatingTextTail(text));
+        Assert.True(DecodeLoopGuards.IsRepeatingTextTail(text));
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public class OnnxGenAiEngineTests
             "AT114フォルダが見つかりました。更新日時は2026/06/07 16:06です。" +
             "必要であれば、このフォルダ内のファイル一覧も確認できます。");
 
-        Assert.False(OnnxGenAiEngine.IsRepeatingTextTail(text));
+        Assert.False(DecodeLoopGuards.IsRepeatingTextTail(text));
     }
 
     [Fact]
@@ -36,6 +36,6 @@ public class OnnxGenAiEngineTests
 
         var text = new StringBuilder(block + block);
 
-        Assert.False(OnnxGenAiEngine.IsRepeatingTextTail(text));
+        Assert.False(DecodeLoopGuards.IsRepeatingTextTail(text));
     }
 }

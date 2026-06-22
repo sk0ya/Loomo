@@ -35,14 +35,32 @@ public sealed class AgentCapabilityHarness
     public AgentCapabilityHarness(ITestOutputHelper output) => _out = output;
 
     /// <summary>計測対象モデルのフォルダ名。環境変数 HARNESS_MODEL で切り替え可（既定は phi4-mini）。
-    /// 例: <c>$env:HARNESS_MODEL='qwen3-4b-cpu-int4'</c> で Qwen3-4B を測る。</summary>
+    /// ONNX はフォルダ名（例 <c>qwen3-4b-cpu-int4</c>）、llama.cpp も GGUF を収めたフォルダ名
+    /// （例 <c>qwen3-4b-q4_k_m</c>）を渡す。バックエンドは <see cref="LocalInferenceRouter"/> がパスの拡張子で
+    /// 振り分けるため、レポート名にはこのクリーンなトークンをそのまま使う。</summary>
     private static string ModelFolderName =>
         Environment.GetEnvironmentVariable("HARNESS_MODEL") is { Length: > 0 } m
             ? m : "phi-4-mini-instruct-cpu-int4";
 
-    private static string ModelPath =>
+    private static string ModelRoot =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Loomo", "models", ModelFolderName);
+
+    /// <summary>ルータへ渡す実モデルパス。ONNX フォルダ（<c>genai_config.json</c> を含む）はフォルダパス、
+    /// GGUF を収めたフォルダはその <c>.gguf</c> ファイルパスを返す（ルータが拡張子で llama.cpp へ振り分ける）。</summary>
+    private static string ModelPath
+    {
+        get
+        {
+            var root = ModelRoot;
+            if (Directory.Exists(root) && !File.Exists(Path.Combine(root, "genai_config.json")))
+            {
+                var gguf = Directory.EnumerateFiles(root, "*.gguf").OrderBy(p => p).FirstOrDefault();
+                if (gguf is not null) return gguf;
+            }
+            return root;
+        }
+    }
 
     /// <summary>レポート・試行ログの出力先。リポジトリ直下を散らかさないよう docs/reports に集約する。</summary>
     private static string ReportDir
@@ -75,7 +93,7 @@ public sealed class AgentCapabilityHarness
         if (Environment.GetEnvironmentVariable("RUN_AGENT_HARNESS") != "1")
             return; // 通常の dotnet test では走らせない（重い・モデル必須）
 
-        Assert.True(Directory.Exists(ModelPath), $"model not found: {ModelPath}");
+        Assert.True(Directory.Exists(ModelPath) || File.Exists(ModelPath), $"model not found: {ModelPath}");
 
         // --- 一時ワークスペース。タスクごとに同じ初期状態へ再シードし、タスク間でファイル変更が
         //     波及して結果を汚染しないよう隔離する（read タスクの誤編集が次タスクへ漏れない）。 ---
@@ -110,7 +128,8 @@ public sealed class AgentCapabilityHarness
         var terminal = new TerminalService();
         terminal.SetWorkingDirectory(ws);
         var editor = new HeadlessEditor();
-        using var engine = new OnnxGenAiEngine();
+        // バックエンドはルータが modelPath で振り分ける（.gguf → llama.cpp / フォルダ → ONNX）。
+        using var engine = new LocalInferenceRouter(new OnnxGenAiEngine(), new LlamaCppEngine());
 
         var factory = new AiClientFactory(engine, settings, workspace);
         var tools = new ToolRegistry(new IAgentTool[]

@@ -23,7 +23,7 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// 既存履歴）の再 prefill を初回 1 回に抑えるのが最大の効き手。生成結果は <see cref="TextDelta"/>
 /// （逐次本文）＋<see cref="AiUsageReported"/>（自前計測の所要・トークン数）としてチャネルへ流す。
 /// </summary>
-public sealed class OnnxGenAiEngine : ILocalInferenceEngine, IDisposable
+public sealed class OnnxGenAiEngine : ILocalInferenceEngine, ILocalWarmableEngine, IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly OgaHandle _oga = new();
@@ -211,7 +211,7 @@ public sealed class OnnxGenAiEngine : ILocalInferenceEngine, IDisposable
             // repetition collapse 保険。短いトークン周期だけでなく、同じ文章/JSONブロックを何度も
             // 生成する長周期ループも止める（ORT の no_repeat_ngram_size は 0.9.0 CPU で無視された。
             // 0.14.1 でも挙動は未再確認のため、この決定論的ガードを常に効かせて確実に停止させる）。
-            if (IsLoopingTail(generated) || IsRepeatingTextTail(generatedText))
+            if (DecodeLoopGuards.IsLoopingTail(generated) || DecodeLoopGuards.IsRepeatingTextTail(generatedText))
                 break;
         }
 
@@ -220,60 +220,6 @@ public sealed class OnnxGenAiEngine : ILocalInferenceEngine, IDisposable
         sink.TryWrite(new AiUsageReported(
             inputTokens, outputTokens,
             loadMs > 0 ? loadMs : null, prefillMs, evalMs, loadMs + totalGenMs));
-    }
-
-    /// <summary>
-    /// 末尾が短周期の繰り返しループに陥っているか（repetition collapse の検知）。長さ <paramref name="maxUnit"/>
-    /// 以下の繰り返し単位が末尾で <paramref name="minRepeats"/> 回以上連続していれば true。" . " のような
-    /// 1〜数トークンの暴走を捕まえる。エージェント／ツール用途では短周期の多数回反復はまず崩壊なので、
-    /// 正常な短い反復を巻き込まないよう繰り返し回数のしきい値は高めに取る。
-    /// </summary>
-    private static bool IsLoopingTail(List<int> g, int maxUnit = 8, int minRepeats = 10)
-    {
-        for (var unit = 1; unit <= maxUnit; unit++)
-        {
-            var need = unit * minRepeats;
-            if (g.Count < need) continue;
-
-            var looping = true;
-            for (var k = 1; k < minRepeats && looping; k++)
-                for (var j = 0; j < unit; j++)
-                    if (g[g.Count - 1 - j] != g[g.Count - 1 - j - k * unit]) { looping = false; break; }
-
-            if (looping) return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// デコード済みテキスト末尾で、同じ文章ブロックが連続しているかを検出する。
-    /// トークン単位では捕まえにくい、数十〜数百文字の回答ブロック反復を止めるための保険。
-    /// </summary>
-    internal static bool IsRepeatingTextTail(StringBuilder text, int minUnitChars = 24, int maxUnitChars = 600, int minRepeats = 3)
-    {
-        var len = text.Length;
-        if (len < minUnitChars * minRepeats) return false;
-
-        var maxUnit = Math.Min(maxUnitChars, len / minRepeats);
-        for (var unit = minUnitChars; unit <= maxUnit; unit++)
-        {
-            var repeated = true;
-            for (var r = 1; r < minRepeats && repeated; r++)
-            {
-                var a = len - unit;
-                var b = len - unit * (r + 1);
-                for (var i = 0; i < unit; i++)
-                {
-                    if (text[a + i] == text[b + i]) continue;
-                    repeated = false;
-                    break;
-                }
-            }
-
-            if (repeated) return true;
-        }
-
-        return false;
     }
 
     /// <summary>

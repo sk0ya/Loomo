@@ -14,7 +14,8 @@ using sk0ya.Loomo.Core.Tools;
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>
-/// 起動時にローカル推論エンジン（ONNX Runtime GenAI）を暖機し、最初のAIターンの待ち時間を減らす。
+/// 起動時にローカル推論エンジン（modelPath で ONNX / llama.cpp を <see cref="LocalInferenceRouter.WarmableFor"/>
+/// が選択）を暖機し、最初のAIターンの待ち時間を減らす。
 /// 単にモデルをロードするだけでなく、<b>最初の実ターンとバイト単位で一致する安定プレフィックス
 /// （system プロンプト＋ツール定義）</b>を常駐 Generator へ prefill しておく。これにより
 /// (1) 数 GB の重みがページインされ、(2) 初回ターンが KV プレフィックスを再利用して prefill を払い直さない。
@@ -26,7 +27,7 @@ namespace sk0ya.Loomo.App.Services;
 public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
 {
     private readonly AiSettings _settings;
-    private readonly OnnxGenAiEngine _engine;
+    private readonly LocalInferenceRouter _router;
     private readonly IWorkspaceService _workspace;
     private readonly ToolRegistry _tools;
     private readonly CancellationTokenSource _startupCts = new();
@@ -48,8 +49,11 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     /// <summary>いまウォームアップを実行中か。実行中は AI への指示を受け付けないよう UI で使う。</summary>
     public bool IsWarmingUp => Volatile.Read(ref _activePrimes) > 0;
 
+    /// <summary>現在の modelPath に対応する暖機対象エンジン（GGUF→llama.cpp／フォルダ→ONNX）。</summary>
+    private ILocalWarmableEngine CurrentEngine => _router.WarmableFor(_settings.Local.ModelPath ?? "");
+
     /// <summary>モデルがロード済みで AI を即座に使える状態か（暖機完了）。エンジンの実ロード状態を見る。</summary>
-    public bool IsReady => _engine.IsLoaded && !IsWarmingUp;
+    public bool IsReady => CurrentEngine.IsLoaded && !IsWarmingUp;
 
     /// <summary>現在のウォームアップが始まった時刻。停止中は null。</summary>
     public DateTimeOffset? WarmupStartedAt
@@ -98,10 +102,10 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     public event Action? StateChanged;
 
     public LocalLlmWarmupService(
-        AiSettings settings, OnnxGenAiEngine engine, IWorkspaceService workspace, ToolRegistry tools)
+        AiSettings settings, LocalInferenceRouter router, IWorkspaceService workspace, ToolRegistry tools)
     {
         _settings = settings;
-        _engine = engine;
+        _router = router;
         _workspace = workspace;
         _tools = tools;
 
@@ -139,7 +143,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     /// 通常ターンと同じ KV を温めるので、続くターンは prefill を払い直さない。</summary>
     public async Task EnsureWarmAsync(CancellationToken ct)
     {
-        if (_engine.IsLoaded)
+        if (CurrentEngine.IsLoaded)
             return;
         if (string.IsNullOrWhiteSpace(_settings.Local.ModelPath))
             return;
@@ -214,7 +218,8 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
             var sampling = modelProfile.Sampling;
 
             SetStatus("モデル設定を確認しています");
-            await _engine.PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct, SetStatus);
+            // modelPath に応じた暖機対象エンジン（GGUF→llama.cpp／フォルダ→ONNX）を選んで暖機する。
+            await _router.WarmableFor(cfg.ModelPath).PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct, SetStatus);
         }
         catch (OperationCanceledException) { }
         catch { /* 暖機は体感改善用。失敗は通常のAI呼び出し時に改めて顕在化する。 */ }

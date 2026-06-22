@@ -179,7 +179,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ = FetchModelsCoreAsync();
     }
 
-    /// <summary>ローカルに配置済みの ONNX モデルフォルダを列挙し、選択肢に反映する。
+    /// <summary>ローカルに配置済みの GGUF モデルフォルダを列挙し、選択肢に反映する。
     /// 一覧の内容が前回と同じなら <see cref="AvailableModels"/> には触れない。これは編集可能な
     /// ComboBox の Text→Model 双方向バインドが、ItemsSource の Clear で空文字に巻き戻り、
     /// 選択中モデルが先頭候補へすり替わって自動保存・AIクライアント再解決を招くのを防ぐため。
@@ -277,7 +277,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Status = $"モデルフォルダを設定しました: {folder}";
     }
 
-    /// <summary>選択中のモデル（ONNX・CPU int4）を Hugging Face からダウンロードして設定する。</summary>
+    /// <summary>選択中のモデル（GGUF・CPU）を Hugging Face からダウンロードして設定する。</summary>
     [RelayCommand]
     private async Task DownloadModelAsync()
     {

@@ -31,74 +31,30 @@ public sealed record DownloadableModel(
 }
 
 /// <summary>
-/// Hugging Face から ONNX（CPU int4・ORT-GenAI 互換）のモデル一式をローカルへダウンロードする。
-/// 取得先は <c>%APPDATA%/Loomo/models/&lt;FolderName&gt;/</c>。各ファイルをストリーム保存し、
-/// 既に正しいサイズで存在するファイルはスキップする（中断後の再実行で続きから取得できる）。
-/// 取得対象は <see cref="Catalog"/>（phi4-mini / Qwen3-1.7B / Qwen3-4B）から選ぶ。
+/// Hugging Face からモデル一式をローカルへダウンロードする。取得先は
+/// <c>%APPDATA%/Loomo/models/&lt;FolderName&gt;/</c>。各ファイルをストリーム保存し、既に正しいサイズで
+/// 存在するファイルはスキップする（中断後の再実行で続きから取得できる）。取得対象は <see cref="Catalog"/>
+/// （現在は GGUF・llama.cpp 用：Qwen3-4B Q4_K_M の1種）から選ぶ。
 /// </summary>
 public sealed class ModelDownloadService
 {
-    /// <summary>phi4-mini / Qwen3 系で共通の tokenizer・設定ファイル名（最小集合）。</summary>
-    private static readonly string[] PhiFiles =
-    {
-        "added_tokens.json",
-        "config.json",
-        "genai_config.json",
-        "merges.txt",
-        "model.onnx",
-        "model.onnx.data",
-        "special_tokens_map.json",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "vocab.json",
-    };
-
-    /// <summary>Qwen3（lokinfey の CPU int4 ビルド）のルート直置きファイル一式。</summary>
-    private static readonly string[] Qwen3Files =
-    {
-        "added_tokens.json",
-        "chat_template.jinja",
-        "config.json",
-        "genai_config.json",
-        "generation_config.json",
-        "merges.txt",
-        "model.onnx",
-        "model.onnx.data",
-        "special_tokens_map.json",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "vocab.json",
-    };
-
     /// <summary>ダウンロード可能なモデルのカタログ。設定画面の選択肢に出す。
-    /// いずれもルート/バリアント直下に <c>genai_config.json</c> を持つ ORT-GenAI 互換ビルドのみを採用する
-    /// （transformers.js 向けの onnx-community ビルドは genai_config が無いため不可）。</summary>
+    /// 現在はユーザー向けに <b>Qwen3-4B GGUF Q4_K_M（llama.cpp バックエンド）の1種のみ</b>を提示する。
+    /// ONNX は内部的にはなお動くが UI には出さない方針。Q5_K_M は CPU では prefill が約2倍・decode も遅く
+    /// 精度の上積みも無かった（`docs/reports/llamacpp-vs-onnx-qwen3-4b.md`）ため提示しない。単体ファイルを
+    /// <c>models/&lt;FolderName&gt;/</c> へ置き、ルータが <c>.gguf</c> 拡張子で llama.cpp へ振り分ける。</summary>
     public static readonly IReadOnlyList<DownloadableModel> Catalog = new[]
     {
         new DownloadableModel(
-            Id: "phi-4-mini-instruct-cpu-int4",
-            DisplayName: "Phi-4-mini-instruct（CPU int4・約2.2GB）",
-            Repo: "microsoft/Phi-4-mini-instruct-onnx",
-            Subfolder: "cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4",
-            FolderName: "phi-4-mini-instruct-cpu-int4",
-            Files: PhiFiles),
-        new DownloadableModel(
-            Id: "qwen3-1.7b-cpu-int4",
-            DisplayName: "Qwen3-1.7B（CPU int4・約2.3GB・速度優先）",
-            Repo: "lokinfey/Qwen3-1.7B-ONNX-INT4-CPU",
+            Id: "qwen3-4b-q4_k_m",
+            DisplayName: "Qwen3-4B GGUF Q4_K_M（CPU・約2.5GB・推奨）",
+            Repo: "Qwen/Qwen3-4B-GGUF",
             Subfolder: "",
-            FolderName: "qwen3-1.7b-cpu-int4",
-            Files: Qwen3Files),
-        new DownloadableModel(
-            Id: "qwen3-4b-cpu-int4",
-            DisplayName: "Qwen3-4B（CPU int4・約4.1GB・品質優先）",
-            Repo: "lokinfey/Qwen3-4B-ONNX-INT4-CPU",
-            Subfolder: "",
-            FolderName: "qwen3-4b-cpu-int4",
-            Files: Qwen3Files),
+            FolderName: "qwen3-4b-q4_k_m",
+            Files: new[] { "Qwen3-4B-Q4_K_M.gguf" }),
     };
 
-    /// <summary>既定で選択するモデル（phi4-mini）。</summary>
+    /// <summary>既定で選択するモデル（Qwen3-4B GGUF Q4_K_M）。</summary>
     public static DownloadableModel Default => Catalog[0];
 
     private readonly HttpClient _http;

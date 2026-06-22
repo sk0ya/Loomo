@@ -60,8 +60,17 @@ public class OnnxGenAiClientTests
         }
     }
 
+    /// <summary>phi4 固有の挙動（greedy 既定サンプリング・Phi-4 プロンプト書式）を検証するテスト用の設定。
+    /// 既定モデルは GGUF(Qwen3) に変わったため、phi4 を明示する。</summary>
+    private static AiSettings Phi4Settings()
+    {
+        var s = new AiSettings();
+        s.Local.Model = "phi4-mini";
+        return s;
+    }
+
     private static async Task<GenerationRequest> CaptureRequestAsync(bool retryDiversify)
-        => await CaptureRequestAsync(retryDiversify, new AiSettings(), System.Array.Empty<ToolDefinition>(), "やあ");
+        => await CaptureRequestAsync(retryDiversify, Phi4Settings(), System.Array.Empty<ToolDefinition>(), "やあ");
 
     private static async Task<GenerationRequest> CaptureRequestAsync(
         bool retryDiversify,
@@ -120,8 +129,8 @@ public class OnnxGenAiClientTests
         // 完全に同じプロンプトを作る。UIは別でも OnnxGenAiClient -> ChatPrompt.Build の経路を共有する。
         var tools = new[] { DummyTool() };
 
-        var chat = await CaptureRequestAsync(false, new AiSettings(), tools, "READMEを読んで");
-        var workflow = await CaptureRequestAsync(false, new AiSettings(), tools, "READMEを読んで");
+        var chat = await CaptureRequestAsync(false, Phi4Settings(), tools, "READMEを読んで");
+        var workflow = await CaptureRequestAsync(false, Phi4Settings(), tools, "READMEを読んで");
 
         Assert.Equal(chat.Prompt, workflow.Prompt);
         Assert.Equal(ExtractPhi4SystemText(chat.Prompt), ExtractPhi4SystemText(workflow.Prompt));
@@ -132,9 +141,9 @@ public class OnnxGenAiClientTests
     {
         // ワークフローでも、ウォームアップ済みプレフィックスを再利用するためチャットと同じツール定義ブロックを保つ。
         var tools = new[] { DummyTool() };
-        var chat = await CaptureRequestAsync(false, new AiSettings(), tools, "要約して");
+        var chat = await CaptureRequestAsync(false, Phi4Settings(), tools, "要約して");
         var workflowTextOnly = await CaptureRequestAsync(
-            false, new AiSettings(), tools, "要約して");
+            false, Phi4Settings(), tools, "要約して");
 
         Assert.Equal(chat.Prompt, workflowTextOnly.Prompt);
         Assert.Contains("<|tool|>", chat.Prompt);

@@ -9,7 +9,7 @@ namespace sk0ya.Loomo.Ai;
 /// <summary>AIプロバイダ設定。appsettings / ユーザー設定からバインドする。</summary>
 public sealed class AiSettings
 {
-    public const string DefaultLocalModel = "phi4-mini";
+    public const string DefaultLocalModel = "qwen3-4b-q4_k_m";
 
     /// <summary>現在選択中のプロバイダ。</summary>
     public AiProvider Provider { get; set; } = AiProvider.Local;
@@ -44,7 +44,9 @@ public sealed class AiSettings
     /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
     public AppearanceSettings Appearance { get; set; } = new();
 
-    /// <summary>ローカルLLM（ONNX Runtime GenAI・in-process／CPU）。</summary>
+    /// <summary>ローカルLLM（in-process／CPU）。既定は llama.cpp バックエンドの Qwen3-4B GGUF Q4_K_M
+    /// （decode は ONNX と互角・prefill とロードは速い・モデル入手容易）。バックエンドは modelPath で
+    /// 振り分かる（<see cref="Clients.LocalInferenceRouter"/>：<c>.gguf</c>→llama.cpp／フォルダ→ONNX）。</summary>
     public ProviderConfig Local { get; set; } = new()
     {
         Model = DefaultLocalModel,

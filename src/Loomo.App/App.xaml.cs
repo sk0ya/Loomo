@@ -94,9 +94,13 @@ public partial class App : Application
         services.AddSingleton<GitService>();
 
         // --- AI ---
-        // ローカル推論エンジン（ONNX Runtime GenAI・CPU）。モデルを常駐させるためシングルトン。
+        // ローカル推論エンジン（CPU）。モデルを常駐させるためシングルトン。バックエンドは modelPath で振り分ける：
+        //   .gguf ファイル → llama.cpp（LlamaCppEngine）／ genai_config.json を持つフォルダ → ONNX（OnnxGenAiEngine）。
         services.AddSingleton<OnnxGenAiEngine>();
-        services.AddSingleton<ILocalInferenceEngine>(sp => sp.GetRequiredService<OnnxGenAiEngine>());
+        services.AddSingleton<LlamaCppEngine>();
+        // ルータは concrete でも登録（ウォームアップが modelPath で暖機対象エンジンを選ぶのに使う）。
+        services.AddSingleton<LocalInferenceRouter>();
+        services.AddSingleton<ILocalInferenceEngine>(sp => sp.GetRequiredService<LocalInferenceRouter>());
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
         // コンテキスト長管理：現在プロバイダの上限に合わせ送信前に履歴をトリム
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
