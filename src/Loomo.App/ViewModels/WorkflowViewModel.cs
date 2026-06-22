@@ -44,6 +44,23 @@ public sealed partial class WorkflowViewModel : ObservableObject
         .Select(g => new StepCandidateGroup(g.Key, g.ToList()))
         .ToList();
 
+    /// <summary>「ステップを追加」パレット（2ペイン）で左ペインの選択中カテゴリ。右ペインの候補一覧を決める。</summary>
+    [ObservableProperty] private StepCandidateGroup? _selectedStepCategory;
+
+    /// <summary>右ペインに出す、選択中カテゴリの候補。未選択なら空。</summary>
+    public IReadOnlyList<WorkflowStepCandidate> VisibleCandidates =>
+        SelectedStepCategory?.Items ?? System.Array.Empty<WorkflowStepCandidate>();
+
+    partial void OnSelectedStepCategoryChanged(StepCandidateGroup? value) =>
+        OnPropertyChanged(nameof(VisibleCandidates));
+
+    /// <summary>左ペインでカテゴリを選ぶ。右ペインを切り替えるだけ（ステップは追加しない）。</summary>
+    [RelayCommand]
+    private void SelectStepCategory(StepCandidateGroup? group)
+    {
+        if (group is not null) SelectedStepCategory = group;
+    }
+
     /// <summary>読込ドロップダウンに出す保存済みワークフロー一覧。</summary>
     public ObservableCollection<WorkflowSummary> SavedWorkflows { get; } = new();
 
@@ -90,6 +107,9 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _warmupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _warmupTimer.Tick += (_, _) => RenderWarmupStatus();
         _warmup.StateChanged += OnWarmupStateChanged;
+
+        // 「ステップを追加」パレットは先頭カテゴリを開いた状態で出す。
+        _selectedStepCategory = StepLibrary.Count > 0 ? StepLibrary[0] : null;
 
         // ステップはユーザーが明示的に追加するまで作らない。
     }

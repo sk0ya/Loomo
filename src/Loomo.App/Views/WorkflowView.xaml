@@ -516,57 +516,84 @@
                         </ToggleButton.Template>
                     </ToggleButton>
 
-                    <!-- ステップ候補パレット（カテゴリ別）。行クリックで末尾に追加して閉じる。 -->
+                    <!-- ステップ候補パレット（2ペイン）。左で種類を選び、右の候補をクリックで末尾に追加して閉じる。 -->
                     <Popup Grid.Column="1" PlacementTarget="{Binding ElementName=AddPaletteToggle}"
                            Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
                            IsOpen="{Binding IsChecked, ElementName=AddPaletteToggle}">
                         <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="6" Padding="4" Width="300" Margin="0,2,8,8">
+                                BorderThickness="1" CornerRadius="6" Padding="0" Width="360" Margin="0,2,8,8">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
                             </Border.Effect>
-                            <StackPanel>
-                                <Button Style="{StaticResource SavedRowButton}" Click="OnAddCandidateClick"
-                                        HorizontalAlignment="Stretch"
-                                        Command="{Binding DataContext.AddCandidateCommand, ElementName=AddPaletteToggle}"
-                                        ToolTip="空のステップを追加して自分で書く">
-                                    <TextBlock Text="＋ 空のステップ" FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Fg}" />
-                                </Button>
-                                <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
-                                <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding DataContext.StepLibrary, ElementName=AddPaletteToggle}">
+                            <Grid Height="380">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="104" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 左ペイン：種類（カテゴリ）＋空のステップ -->
+                                <DockPanel Grid.Column="0" LastChildFill="True"
+                                           Background="{DynamicResource BgAlt}">
+                                    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}"
+                                            BorderThickness="0,1,0,0" Padding="4">
+                                        <Button Style="{StaticResource SavedRowButton}" Click="OnAddCandidateClick"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding DataContext.AddCandidateCommand, ElementName=AddPaletteToggle}"
+                                                ToolTip="空のステップを追加して自分で書く">
+                                            <TextBlock Text="＋ 空のステップ" FontSize="11.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Fg}" />
+                                        </Button>
+                                    </Border>
+                                    <ItemsControl ItemsSource="{Binding DataContext.StepLibrary, ElementName=AddPaletteToggle}"
+                                                  Margin="4,4,4,0">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:StepCandidateGroup}">
-                                                <StackPanel Margin="0,2,0,4">
-                                                    <TextBlock Text="{Binding Category}" Margin="8,4,0,2"
-                                                               FontSize="10.5" FontWeight="SemiBold"
-                                                               Foreground="{DynamicResource FgDim}" />
-                                                    <ItemsControl ItemsSource="{Binding Items}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <Button Style="{StaticResource SavedRowButton}"
-                                                                        HorizontalAlignment="Stretch" Click="OnAddCandidateClick"
-                                                                        Command="{Binding DataContext.AddCandidateCommand, ElementName=AddPaletteToggle}"
-                                                                        CommandParameter="{Binding}"
-                                                                        ToolTip="{Binding Prompt}">
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="{Binding Name}" FontSize="12"
-                                                                                   FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
-                                                                        <TextBlock Text="{Binding Description}" FontSize="11"
-                                                                                   Foreground="{DynamicResource FgDim}"
-                                                                                   TextTrimming="CharacterEllipsis" />
-                                                                    </StackPanel>
-                                                                </Button>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
+                                                <Button Style="{StaticResource SavedRowButton}" Margin="0,0,0,2"
+                                                        HorizontalAlignment="Stretch"
+                                                        Command="{Binding DataContext.SelectStepCategoryCommand, ElementName=AddPaletteToggle}"
+                                                        CommandParameter="{Binding}">
+                                                    <Button.Tag>
+                                                        <MultiBinding Converter="{StaticResource EqualityActiveTagConverter}">
+                                                            <Binding />
+                                                            <Binding Path="DataContext.SelectedStepCategory"
+                                                                     ElementName="AddPaletteToggle" />
+                                                        </MultiBinding>
+                                                    </Button.Tag>
+                                                    <TextBlock Text="{Binding Category}" FontSize="12"
+                                                               Foreground="{DynamicResource Fg}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </Button>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                </ScrollViewer>
-                            </StackPanel>
+                                </DockPanel>
+
+                                <!-- 右ペイン：選択中カテゴリの候補 -->
+                                <Border Grid.Column="1" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1,0,0,0">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4">
+                                        <ItemsControl ItemsSource="{Binding DataContext.VisibleCandidates, ElementName=AddPaletteToggle}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Style="{StaticResource SavedRowButton}"
+                                                            HorizontalAlignment="Stretch" Click="OnAddCandidateClick"
+                                                            Command="{Binding DataContext.AddCandidateCommand, ElementName=AddPaletteToggle}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip="{Binding Prompt}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontSize="12"
+                                                                       FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
+                                                            <TextBlock Text="{Binding Description}" FontSize="11"
+                                                                       Foreground="{DynamicResource FgDim}"
+                                                                       TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
+                            </Grid>
                         </Border>
                     </Popup>
                 </Grid>
