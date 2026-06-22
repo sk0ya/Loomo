@@ -333,8 +333,9 @@ public sealed partial class AiBarViewModel : ObservableObject
                 case ChatRole.User:
                     Add(EntryKind.User, "あなた", m.Text ?? "");
                     // ライブ表示と同様、user 発言の直後に当該ターンの進行状況を再構築する。
+                    // 保存テキストしか無いので、段階タイムラインを起こし直して表示する。
                     if (!string.IsNullOrEmpty(m.ProgressLog))
-                        Add(EntryKind.Activity, "進行状況", m.ProgressLog);
+                        Add(EntryKind.Activity, "進行状況", m.ProgressLog).HydrateActivitySteps();
                     break;
 
                 case ChatRole.Assistant:
@@ -428,6 +429,7 @@ public sealed partial class AiBarViewModel : ObservableObject
         Add(EntryKind.User, "あなた", text);
         var turnClock = Stopwatch.StartNew();
         var activity = Add(EntryKind.Activity, "進行状況", "");
+        var log = new ActivityLog(activity, () => turnClock.Elapsed);
         TranscriptEntry? assistant = null;
         TranscriptEntry? thinking = null;
         Stopwatch? assistantClock = null;
@@ -436,10 +438,9 @@ public sealed partial class AiBarViewModel : ObservableObject
         var loggedResponse = false;
         var aiCallCount = 0;
         var rawStream = new StringBuilder();   // 現在のAI呼び出しの揮発性ライブ出力（進捗プレビュー専用）
-        var volatileTail = "";                 // 「進行状況」末尾に付けている揮発プレビュー文字列（未保存）
 
-        AppendActivity(TranscriptFormatting.FormatRunConfig(_settings));
-        AppendActivity("AIに送信しました。応答を待っています。");
+        log.Append(ActivityKind.Config, TranscriptFormatting.FormatRunConfig(_settings));
+        log.Append(ActivityKind.Send, "AIに送信しました。応答を待っています。");
 
         try
         {
@@ -451,7 +452,7 @@ public sealed partial class AiBarViewModel : ObservableObject
                     case ThinkingDelta think:
                         if (!loggedThinking)
                         {
-                            AppendActivity("モデルが思考を生成しています。");
+                            log.Append(ActivityKind.Think, "モデルが思考を生成しています。");
                             loggedThinking = true;
                         }
                         if (thinking is null)
@@ -469,20 +470,20 @@ public sealed partial class AiBarViewModel : ObservableObject
                         // 「いま生成中の生テキスト」を逐次プレビューする（確定すると揮発タグごと取り除かれる）。
                         if (!loggedResponse)
                         {
-                            AppendActivity("回答本文の生成を開始しました。");
+                            log.Append(ActivityKind.Response, "回答本文の生成を開始しました。");
                             SetStatus("応答生成中…");
                             loggedResponse = true;
                         }
                         rawStream.Append(raw.Text);
-                        // 末尾だけ流すのではなく、生成済みの全文を改行を保ったまま貯めて見せる（確定時に揮発タグごと消える）。
+                        // 末尾だけ流すのではなく、生成済みの全文を改行を保ったまま貯めてライブ段に見せる（確定で消える）。
                         var preview = rawStream.ToString().Trim();
-                        SetVolatile(preview.Length == 0 ? "" : $"💬 生成中:{Environment.NewLine}{preview}");
+                        log.SetLive(ActivityKind.LiveResponse, preview.Length == 0 ? "" : $"生成中:{Environment.NewLine}{preview}");
                         break;
 
                     case TextDelta delta:
                         if (!loggedResponse)
                         {
-                            AppendActivity("回答本文の生成を開始しました。");
+                            log.Append(ActivityKind.Response, "回答本文の生成を開始しました。");
                             loggedResponse = true;
                         }
                         FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
@@ -499,10 +500,10 @@ public sealed partial class AiBarViewModel : ObservableObject
                     case ToolUseRequested req:
                         FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
                         thinking = null;
-                        // ツールが確定したので、配列の生 JSON を見せていた揮発プレビューは消す
+                        // ツールが確定したので、配列の生 JSON を見せていたライブ段は消す
                         // （以降はツールカードで表示する。複数ツールでも二重表示にならない）。
                         rawStream.Clear();
-                        SetVolatile("");
+                        log.ClearLive();
                         // AIがツール呼び出しと一緒に生成した本文（説明・narration）は、独立した
                         // 「🤖 エージェント」エントリにはせず、ツールカードへ畳んで併記する。
                         // 本文 → 複数ツールの場合は最初のツールにのみ付け、以降はそのまま引数だけ出す。
@@ -515,25 +516,26 @@ public sealed partial class AiBarViewModel : ObservableObject
                         }
                         // 進捗状況に「どのツールを何の引数で呼ぶか」を表示する。
                         SetStatus($"🔧 {req.ToolUse.Name} を準備中… {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
+                        log.Append(ActivityKind.ToolPrepare, $"{req.ToolUse.Name} の呼び出しを準備しています: {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
                         Add(EntryKind.Tool, ToolUseHeader(req.ToolUse.Name, req.ToolUse.ArgumentsJson), ComposeToolCard(narration, req.ToolUse.ArgumentsJson, req.ToolUse.RawJson));
                         break;
 
                     case ApprovalRequested approval:
                         SetStatus($"⏳ {approval.ToolName} の承認待ち…");
-                        AppendActivity($"{approval.ToolName} の実行承認を待っています。");
+                        log.Append(ActivityKind.Approval, $"{approval.ToolName} の実行承認を待っています。");
                         break;
 
                     case ToolExecutionStarted started:
                         // 進捗状況に「いま実行しているコマンド」を表示する。
                         SetStatus($"🔧 {started.ToolUse.Name} を実行中… {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
-                        AppendActivity($"{started.ToolUse.Name} を実行しています: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
+                        log.Append(ActivityKind.ToolRun, $"{started.ToolUse.Name} を実行しています: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
                         break;
 
                     case ToolExecutionCompleted done:
                         // ツール結果を踏まえてAIが再応答する。直前ツールの結果概要も進捗状況に出す。
                         SetStatus($"考え中…（直前 {done.ToolUse.Name}: {(done.Result.IsError ? "エラー" : "完了")} {TranscriptFormatting.StreamPreview(done.Result.Content)}）");
-                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {TranscriptFormatting.StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
+                        log.Append(done.Result.IsError ? ActivityKind.ToolError : ActivityKind.ToolDone,
+                            $"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {TranscriptFormatting.StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
                         Add(EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})", Truncate(done.Result.Content));
                         break;
 
@@ -548,35 +550,35 @@ public sealed partial class AiBarViewModel : ObservableObject
                             assistantClock = null;
                         }
                         SetStatus("⚠️ ツール呼び出しJSONが不正。AIに再試行させています…");
-                        AppendActivity("ツール呼び出しのJSONが不正でした。モデルの生出力を表示し、正しいJSONで出し直させます。");
+                        log.Append(ActivityKind.Warn, "ツール呼び出しのJSONが不正でした。モデルの生出力を表示し、正しいJSONで出し直させます。");
                         Add(EntryKind.Error, "⚠️ 不正なツール出力（再試行）", parseFailed.RawText);
                         break;
 
                     case AgentError err:
-                        AppendActivity($"エラーで停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
+                        log.Append(ActivityKind.Error, $"エラーで停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         Add(EntryKind.Error, "⚠️ エラー", err.Message);
                         break;
 
                     case AiUsageReported usage:
                         aiCallCount++;
-                        AppendActivity(TranscriptFormatting.FormatUsage(usage, aiCallCount));
+                        log.Append(ActivityKind.Usage, TranscriptFormatting.FormatUsage(usage, aiCallCount));
                         rawStream.Clear();   // このAI呼び出しは終了。次の呼び出しの揮発プレビューを新規に始める
                         break;
 
                     case TurnCompleted:
-                        AppendActivity($"回答が完了しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
+                        log.Append(ActivityKind.Complete, $"回答が完了しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         break;
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            AppendActivity($"ユーザー操作で中断しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
+            log.Append(ActivityKind.Cancel, $"ユーザー操作で中断しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
             Add(EntryKind.Error, "⏹ 中断", "ユーザーにより中断されました。");
         }
         catch (Exception ex)
         {
-            AppendActivity($"例外で停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
+            log.Append(ActivityKind.Error, $"例外で停止しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
             Add(EntryKind.Error, "⚠️ 例外", ex.Message);
         }
         finally
@@ -584,7 +586,7 @@ public sealed partial class AiBarViewModel : ObservableObject
             // モデルがロード済みでウォームアップが走らなかった場合などに抑止フラグが次の自発的
             // ウォームアップへ漏れないよう、ターン終了時に必ず戻す（終了遷移で既に消費されていれば no-op）。
             _suppressWarmupCompletion = false;
-            ClearVolatile();   // 揮発プレビューが残ったまま ProgressLog に保存されないよう必ず片付ける
+            log.ClearLive();   // ライブ段が残ったまま ProgressLog に保存されないよう必ず片付ける
             turnClock.Stop();
             activity.Header = $"進行状況 ({FormatDuration(turnClock.Elapsed)})";
             FinishTimedEntry(ref assistant, ref assistantClock, "エージェント");
@@ -602,31 +604,6 @@ public sealed partial class AiBarViewModel : ObservableObject
             // ターン終了時にセッションを自動保存（新規なら採番）
             try { _currentSessionId = _sessions.Save(_currentSessionId, _conversation); }
             catch { /* 保存失敗は会話を妨げない */ }
-        }
-
-        void AppendActivity(string message)
-        {
-            ClearVolatile();   // 揮発プレビューを挟まないよう、恒久ログを足す前に末尾を片付ける
-            var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
-            activity.AppendText($"{prefix}[{FormatDuration(turnClock.Elapsed)}] {message}");
-        }
-
-        // 「進行状況」エントリ末尾に付ける揮発プレビュー（保存対象の ProgressLog には残さない）。
-        // 末尾に現在の揮発タグぶんだけ後付けし、更新時は古いタグを切り落としてから付け直す。
-        void SetVolatile(string preview)
-        {
-            ClearVolatile();
-            if (preview.Length == 0) return;
-            var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
-            volatileTail = prefix + preview;
-            activity.AppendText(volatileTail);
-        }
-
-        void ClearVolatile()
-        {
-            if (volatileTail.Length == 0) return;
-            activity.Text = activity.Text[..^volatileTail.Length];
-            volatileTail = "";
         }
     }
 

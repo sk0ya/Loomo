@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+    xmlns:views="clr-namespace:sk0ya.Loomo.App.Views"
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
@@ -71,6 +72,114 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 実行ログ1エントリ（思考・ツールカード・結果・出力・診断・承認）の見た目。
+             見出しは常に1行で、本文・差分・承認は折りたたみ展開。下部の実行ログでステップ単位に使い回す。 -->
+        <DataTemplate x:Key="LogEntryTemplate" DataType="{x:Type vm:TranscriptEntry}">
+            <Border Margin="0,1" CornerRadius="4" Padding="6,3"
+                    Background="{DynamicResource BgAlt}">
+                <StackPanel>
+                    <!-- 見出し（クリックで開閉。展開できる中身が無ければグリフは出さない） -->
+                    <Button Command="{Binding ToggleCollapseCommand}" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" Cursor="Hand"
+                            Background="Transparent" BorderThickness="0" Padding="0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="hb" Background="Transparent" CornerRadius="3" Padding="2,1">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="hb" Property="Background" Value="{DynamicResource Bg}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding CollapseGlyph}" FontSize="8"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"
+                                       Foreground="{DynamicResource FgDim}"
+                                       Visibility="{Binding HasBody, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="11"
+                                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Kind}" Value="Error">
+                                                <Setter Property="Foreground" Value="#FFE05252" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Kind}" Value="Assistant">
+                                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Button>
+
+                    <!-- 本体（展開時のみ） -->
+                    <StackPanel Margin="13,2,0,1"
+                                Visibility="{Binding IsCollapsed, Converter={StaticResource InverseBoolToVis}}">
+                        <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
+                                 TextWrapping="Wrap" BorderThickness="0" Padding="0"
+                                 Background="Transparent"
+                                 IsReadOnlyCaretVisible="False" IsTabStop="False" Cursor="IBeam"
+                                 Foreground="{DynamicResource Fg}" FontSize="12">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Setter Property="FontFamily" Value="Segoe UI" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Kind}" Value="Tool">
+                                            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Kind}" Value="Thinking">
+                                            <Setter Property="FontStyle" Value="Italic" />
+                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Text}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+
+                        <!-- 差分（編集系ツールの承認カード） -->
+                        <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
+                            <ItemsControl ItemsSource="{Binding DiffLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding Background}">
+                                            <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                       Padding="6,0" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+
+                        <!-- 承認カード -->
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                                    Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">
+                            <Button Content="承認して実行" Style="{StaticResource FlatButton}"
+                                    Command="{Binding ApproveCommand}" Margin="0,0,8,0" />
+                            <Button Content="拒否" Style="{StaticResource FlatButton}"
+                                    Background="#FF6E1E1E" Command="{Binding RejectCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid>
@@ -149,45 +258,14 @@
 
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <!-- 実行ログ領域（進捗帯＋ログ）は一度でも実行したときだけ高さを確保する（未実行時はパイプラインへ譲る） -->
+                    <RowDefinition Height="{Binding HasRun, Converter={StaticResource BoolToStarLength}, ConverterParameter=1.4}" />
                 </Grid.RowDefinitions>
 
-                <!-- ===== 実行ステータスバー ===== -->
-                <Border Grid.Row="0" Background="{DynamicResource BgAlt}" Padding="8,4"
-                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Visibility" Value="Visible" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding RunStatus}" Value="">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <StackPanel Orientation="Horizontal">
-                        <ProgressBar IsIndeterminate="True" Width="80" Height="4"
-                                     Foreground="{DynamicResource Accent}" Background="Transparent"
-                                     BorderThickness="0" VerticalAlignment="Center"
-                                     Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
-                        <TextBlock Text="{Binding RunStatus}" VerticalAlignment="Center" FontSize="12"
-                                   Margin="0,0,0,0" Foreground="{DynamicResource FgDim}">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                            <Setter Property="Margin" Value="10,0,0,0" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                </Border>
-
                 <!-- ===== ステップのパイプライン ===== -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="8,8,8,10">
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="8,8,8,10">
             <StackPanel>
                 <ItemsControl ItemsSource="{Binding Steps}">
                     <ItemsControl.ItemTemplate>
@@ -384,97 +462,6 @@
                                             </DockPanel>
                                         </Border>
 
-                                        <!-- 実行ログの開閉（ログがあるときだけ） -->
-                                        <Button HorizontalAlignment="Left" Margin="0,8,0,0" Padding="0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                Command="{Binding ToggleLogCommand}"
-                                                Visibility="{Binding Log.Count, Converter={StaticResource CountToVis}}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding LogGlyph}" FontSize="9" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource FgDim}" Margin="0,0,5,0" />
-                                                <TextBlock Text="実行ログ" FontSize="11" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource FgDim}" />
-                                            </StackPanel>
-                                        </Button>
-
-                                        <!-- 実行ログ（思考・ツールカード・承認・結果・出力） -->
-                                        <ItemsControl ItemsSource="{Binding Log}" Margin="0,6,0,0"
-                                                      Visibility="{Binding IsLogCollapsed, Converter={StaticResource InverseBoolToVis}}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type vm:TranscriptEntry}">
-                                                    <Border Margin="0,2" CornerRadius="4" Padding="6,4"
-                                                            Background="{DynamicResource BgAlt}">
-                                                        <StackPanel>
-                                                            <TextBlock Text="{Binding Header}" FontSize="11"
-                                                                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
-                                                                <TextBlock.Style>
-                                                                    <Style TargetType="TextBlock">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding Kind}" Value="Error">
-                                                                                <Setter Property="Foreground" Value="#FFE05252" />
-                                                                            </DataTrigger>
-                                                                            <DataTrigger Binding="{Binding Kind}" Value="Assistant">
-                                                                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </TextBlock.Style>
-                                                            </TextBlock>
-                                                            <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True"
-                                                                     TextWrapping="Wrap" BorderThickness="0" Padding="0"
-                                                                     Margin="0,2,0,0" Background="Transparent"
-                                                                     IsReadOnlyCaretVisible="False" IsTabStop="False" Cursor="IBeam"
-                                                                     Foreground="{DynamicResource Fg}" FontSize="12">
-                                                                <TextBox.Style>
-                                                                    <Style TargetType="TextBox">
-                                                                        <Setter Property="FontFamily" Value="Segoe UI" />
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding Kind}" Value="Tool">
-                                                                                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-                                                                            </DataTrigger>
-                                                                            <DataTrigger Binding="{Binding Kind}" Value="Thinking">
-                                                                                <Setter Property="FontStyle" Value="Italic" />
-                                                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                                            </DataTrigger>
-                                                                            <DataTrigger Binding="{Binding Text}" Value="">
-                                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </TextBox.Style>
-                                                            </TextBox>
-
-                                                            <!-- 差分（編集系ツールの承認カード） -->
-                                                            <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
-                                                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                                    CornerRadius="4" Margin="0,4,0,0" Padding="0,2">
-                                                                <ItemsControl ItemsSource="{Binding DiffLines}">
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <Border Background="{Binding Background}">
-                                                                                <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
-                                                                                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                                                                           Padding="6,0" />
-                                                                            </Border>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </Border>
-
-                                                            <!-- 承認カード -->
-                                                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                                                                        Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}">
-                                                                <Button Content="承認して実行" Style="{StaticResource FlatButton}"
-                                                                        Command="{Binding ApproveCommand}" Margin="0,0,8,0" />
-                                                                <Button Content="拒否" Style="{StaticResource FlatButton}"
-                                                                        Background="#FF6E1E1E" Command="{Binding RejectCommand}" />
-                                                            </StackPanel>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -599,6 +586,91 @@
                 </Grid>
             </StackPanel>
         </ScrollViewer>
+
+                <!-- ===== 進捗状況エリア（実行後にだけ現れる） =====
+                     ウォームアップ中はウォームアップ表示。実行中・実行後は「実行ログ」（全ステップ一覧・
+                     診断込み・出力は折りたたみ1行）。最終出力だけは別途ワークフロー出力として下端に固定。
+                     上のパイプラインとの境界はドラッグで高さ調整できる。 -->
+                <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
+                              VerticalAlignment="Center" Background="Transparent"
+                              ResizeBehavior="PreviousAndNext" ResizeDirection="Rows"
+                              Visibility="{Binding HasRun, Converter={StaticResource BoolToVis}}" />
+
+                <Border Grid.Row="2" Background="{DynamicResource BgAlt}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                        Visibility="{Binding HasRun, Converter={StaticResource BoolToVis}}">
+                    <DockPanel LastChildFill="True">
+                        <!-- ワークフローの最終出力（実行ログとは別表示・下端に固定） -->
+                        <Border DockPanel.Dock="Bottom" Padding="9,7"
+                                Background="{DynamicResource Bg}"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                                Visibility="{Binding HasFinalOutput, Converter={StaticResource BoolToVis}}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Top" Text="ワークフローの出力" FontSize="10"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource FgDim}"
+                                           Margin="0,0,0,4" />
+                                <ScrollViewer MaxHeight="170" VerticalScrollBarVisibility="Auto">
+                                    <TextBox Text="{Binding FinalOutput, Mode=OneWay}" IsReadOnly="True"
+                                             TextWrapping="Wrap" BorderThickness="0" Padding="0"
+                                             Background="Transparent" IsReadOnlyCaretVisible="False"
+                                             IsTabStop="False" Cursor="IBeam"
+                                             Foreground="{DynamicResource Fg}" FontSize="12.5" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 進捗状況の中身（DockPanel の充填領域）：ウォームアップ表示と実行ログを切り替える -->
+                        <Grid>
+                        <!-- ウォームアップ表示（ウォームアップ中だけ） -->
+                        <Border Padding="12,11" VerticalAlignment="Top"
+                                Visibility="{Binding IsWarmingUp, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <ProgressBar IsIndeterminate="True" Width="90" Height="4"
+                                                 Foreground="{DynamicResource Accent}" Background="Transparent"
+                                                 BorderThickness="0" VerticalAlignment="Center" />
+                                    <TextBlock Text="ウォームアップ中" Margin="10,0,0,0" VerticalAlignment="Center"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding RunStatus}" TextWrapping="Wrap"
+                                           FontSize="12" Foreground="{DynamicResource FgDim}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 実行ログ（実行中・実行後）。ウォームアップ中は隠す。 -->
+                        <DockPanel LastChildFill="True"
+                                   Visibility="{Binding IsWarmingUp, Converter={StaticResource InverseBoolToVis}}">
+                            <!-- 見出し＋全体状態（完了／停止など） -->
+                            <Border DockPanel.Dock="Top" Padding="9,5"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                <DockPanel LastChildFill="False">
+                                    <TextBlock DockPanel.Dock="Left" Text="実行ログ" FontSize="11" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource FgDim}" />
+                                    <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Width="60" Height="4"
+                                                 Foreground="{DynamicResource Accent}" Background="Transparent"
+                                                 BorderThickness="0" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding RunStatus}" FontSize="11"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               MaxWidth="320" Foreground="{DynamicResource FgDim}" />
+                                </DockPanel>
+                            </Border>
+                            <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto"
+                                          Padding="8,6" ScrollChanged="OnLogScrollChanged">
+                                <StackPanel>
+                                    <!-- 全ステップを1本のフラットな進捗タイムラインで見せる（ステップ単位でまとめない）。
+                                         チャットの「進行状況」と同じ ActivityTimelineView を流用する。 -->
+                                    <views:ActivityTimelineView DataContext="{Binding Activity}" />
+
+                                    <!-- 承認待ちカード（ボタン・差分つき）。タイムライン本体とは別に末尾へ積む。 -->
+                                    <ItemsControl ItemsSource="{Binding Approvals}" Margin="0,6,0,0"
+                                                  ItemTemplate="{StaticResource LogEntryTemplate}" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </DockPanel>
+                        </Grid>
+                    </DockPanel>
+                </Border>
             </Grid>
         </Grid>
     </Grid>

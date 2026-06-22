@@ -6,6 +6,23 @@ using System.Windows.Media;
 
 namespace sk0ya.Loomo.App.Converters;
 
+/// <summary>true のとき指定の星倍率（既定 2*）、false のとき高さ 0 の <see cref="GridLength"/> を返す。
+/// 実行ログ領域のように「あるときだけ行を確保し、無いときは畳んでパイプラインへ高さを譲る」用途に使う。</summary>
+public sealed class BoolToStarLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not true) return new GridLength(0);
+        var factor = 2.0;
+        if (parameter is string s && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var f))
+            factor = f;
+        return new GridLength(factor, GridUnitType.Star);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Git の状態文字（M/A/D/R/?/U…）を一般的な配色のブラシに変換する。
 /// VS Code のソース管理に倣ったセマンティック色（テーマ非依存）。</summary>
 public sealed class GitStatusToBrushConverter : IValueConverter

@@ -230,10 +230,9 @@
                                                                 <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
                                                                 <Setter Property="FontSize" Value="12" />
                                                             </DataTrigger>
+                                                            <!-- 進行状況は等幅テキストではなく構造化タイムライン（下の ActivityTimelineView）で見せるので本文は隠す -->
                                                             <DataTrigger Binding="{Binding Kind}" Value="Activity">
-                                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-                                                                <Setter Property="FontSize" Value="12" />
+                                                                <Setter Property="Visibility" Value="Collapsed" />
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding Kind}" Value="Tool">
                                                                 <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
@@ -247,6 +246,9 @@
                                                     </Style>
                                                 </TextBox.Style>
                                             </TextBox>
+                                            <!-- 進行状況の構造化タイムライン（各段＝種別アイコン＋本文＋経過時刻。Activity のみ表示） -->
+                                            <views:ActivityTimelineView
+                                                Visibility="{Binding Kind, Converter={StaticResource EnumToVis}, ConverterParameter=Activity}" />
                                             <!-- 差分ビュー（propose_edit の承認カード） -->
                                             <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
                                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"

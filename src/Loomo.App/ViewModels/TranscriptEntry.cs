@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -22,6 +24,12 @@ public sealed partial class TranscriptEntry : ObservableObject
     [ObservableProperty] private bool _isCollapsed;
     public string CollapseGlyph => IsCollapsed ? "▶" : "▼";
 
+    /// <summary>展開して見せる中身があるか（本文・差分・承認のいずれか）。
+    /// 無い行（診断の1行など）は折りたたみグリフを出さない。</summary>
+    public bool HasBody => !string.IsNullOrEmpty(Text) || HasDiff || IsPending;
+
+    partial void OnTextChanged(string value) => OnPropertyChanged(nameof(HasBody));
+
     // 承認カード用
     [ObservableProperty] private bool _isPending;
     private TaskCompletionSource<bool>? _completion;
@@ -33,6 +41,23 @@ public sealed partial class TranscriptEntry : ObservableObject
     // /model の一覧（クリックで切替できるモデル候補）
     public ObservableCollection<ModelChoiceVm> ModelChoices { get; } = new();
     public bool HasModelChoices => ModelChoices.Count > 0;
+
+    // 「進行状況」（Activity）の構造化タイムライン。1イベント＝1段（種別アイコン・本文・経過時刻）。
+    // 本文（Text）は永続化用の「[時刻] メッセージ」連なりを保ち、表示はこの Steps を使う。
+    public ObservableCollection<ActivityStep> Steps { get; } = new();
+
+    /// <summary>永続化済みの進行状況本文（[時刻] 行の連なり）から段階タイムラインを復元する。
+    /// セッション復元時に、保存テキストしか無くてもタイムライン表示を組み直せるようにする。</summary>
+    public void HydrateActivitySteps()
+    {
+        Steps.Clear();
+        if (string.IsNullOrEmpty(Text)) return;
+        foreach (var line in Text.Replace("\r\n", "\n").Split('\n'))
+        {
+            if (line.Length == 0) continue;
+            if (ActivityStep.FromLogLine(line) is { } step) Steps.Add(step);
+        }
+    }
 
     /// <summary>クリックで選べるモデル候補を設定する。クリック時は選択行の ● を移してから
     /// <paramref name="onSelect"/>（実際の切替）を呼ぶ。</summary>
@@ -70,6 +95,8 @@ public sealed partial class TranscriptEntry : ObservableObject
 
     partial void OnIsCollapsedChanged(bool value) => OnPropertyChanged(nameof(CollapseGlyph));
 
+    partial void OnIsPendingChanged(bool value) => OnPropertyChanged(nameof(HasBody));
+
     public void BindApproval(TaskCompletionSource<bool> completion)
     {
         _completion = completion;
@@ -100,6 +127,7 @@ public sealed partial class TranscriptEntry : ObservableObject
 
         Text = ""; // 差分表示へ切替えるため生サマリは隠す
         OnPropertyChanged(nameof(HasDiff));
+        OnPropertyChanged(nameof(HasBody));
     }
 
     [RelayCommand]
@@ -130,6 +158,107 @@ public sealed partial class TranscriptEntry : ObservableObject
         _completion?.TrySetResult(false);
         Header = "⛔ 拒否: " + Header;
     }
+}
+
+/// <summary>進行状況タイムラインの1段が表すイベント種別。種別ごとにノードのアイコンと配色（トーン）が決まる。</summary>
+public enum ActivityKind
+{
+    Info, Config, Send, Think, Response, LiveResponse,
+    ToolPrepare, ToolRun, ToolDone, ToolError,
+    Usage, Approval, Complete, Warn, Cancel, Error,
+    Step
+}
+
+/// <summary>進行状況ノードの配色トーン（成否・注意を控えめに色分けする）。</summary>
+public enum ActivityTone { Neutral, Accent, Good, Bad, Warn }
+
+/// <summary>進行状況タイムラインの1段。左レールの状態ノード（アイコン＋トーン色）、本文、経過時刻を持つ。
+/// ライブ段（生成中などの揮発プレビュー）は <see cref="IsLive"/> を立て、点滅＋等幅で「いま動いている」ことを示す。</summary>
+public sealed partial class ActivityStep : ObservableObject
+{
+    public string Glyph { get; init; } = "•";
+    [ObservableProperty] private string _message = "";
+    public string TimeLabel { get; init; } = "";
+    public ActivityTone Tone { get; init; }
+    [ObservableProperty] private bool _isLive;
+    public bool HasTime => !string.IsNullOrEmpty(TimeLabel);
+
+    /// <summary>ステップ境界などの見出し段か（タイムライン上で強調表示する）。</summary>
+    public bool IsHeader { get; init; }
+
+    // 復元時に先頭絵文字から種別を推定するための、既知アイコン→トーン表。
+    private static readonly (string Glyph, ActivityTone Tone)[] Known =
+    {
+        ("⚙️", ActivityTone.Neutral), ("📤", ActivityTone.Neutral), ("💭", ActivityTone.Neutral),
+        ("✍️", ActivityTone.Accent), ("💬", ActivityTone.Accent), ("🔧", ActivityTone.Accent),
+        ("⚡", ActivityTone.Accent), ("⏳", ActivityTone.Accent),
+        ("✅", ActivityTone.Good), ("🏁", ActivityTone.Good),
+        ("❌", ActivityTone.Bad), ("⛔", ActivityTone.Bad),
+        ("⚠️", ActivityTone.Warn), ("⏹", ActivityTone.Warn),
+        ("📊", ActivityTone.Neutral),
+        ("▶", ActivityTone.Accent),
+    };
+
+    private static (string Glyph, ActivityTone Tone) ForKind(ActivityKind kind) => kind switch
+    {
+        ActivityKind.Config => ("⚙️", ActivityTone.Neutral),
+        ActivityKind.Send => ("📤", ActivityTone.Neutral),
+        ActivityKind.Think => ("💭", ActivityTone.Neutral),
+        ActivityKind.Response => ("✍️", ActivityTone.Accent),
+        ActivityKind.LiveResponse => ("💬", ActivityTone.Accent),
+        ActivityKind.ToolPrepare => ("🔧", ActivityTone.Accent),
+        ActivityKind.ToolRun => ("⚡", ActivityTone.Accent),
+        ActivityKind.ToolDone => ("✅", ActivityTone.Good),
+        ActivityKind.ToolError => ("❌", ActivityTone.Bad),
+        ActivityKind.Usage => ("📊", ActivityTone.Neutral),
+        ActivityKind.Approval => ("⏳", ActivityTone.Accent),
+        ActivityKind.Complete => ("🏁", ActivityTone.Good),
+        ActivityKind.Warn => ("⚠️", ActivityTone.Warn),
+        ActivityKind.Cancel => ("⏹", ActivityTone.Warn),
+        ActivityKind.Error => ("⛔", ActivityTone.Bad),
+        ActivityKind.Step => ("▶", ActivityTone.Accent),
+        _ => ("•", ActivityTone.Neutral),
+    };
+
+    /// <summary>種別と経過時刻・本文から1段を作る。本文が種別アイコンで始まる場合は二重表示を避けて取り除く。</summary>
+    public static ActivityStep Create(ActivityKind kind, string time, string message)
+    {
+        var (glyph, tone) = ForKind(kind);
+        return new ActivityStep
+        {
+            Glyph = glyph,
+            Tone = tone,
+            TimeLabel = time,
+            Message = StripLeadingGlyph(message, glyph),
+            IsHeader = kind == ActivityKind.Step,
+        };
+    }
+
+    /// <summary>復元時：永続化された「[時刻] メッセージ」1行から1段を起こす（種別は先頭絵文字から推定）。</summary>
+    public static ActivityStep FromLogLine(string line)
+    {
+        var m = Regex.Match(line, @"^\[(?<t>[^\]]*)\]\s?(?<msg>.*)$", RegexOptions.Singleline);
+        var time = m.Success ? m.Groups["t"].Value : "";
+        var message = m.Success ? m.Groups["msg"].Value : line;
+        if (string.IsNullOrEmpty(message)) message = line;
+
+        var glyph = "•";
+        var tone = ActivityTone.Neutral;
+        foreach (var (g, t) in Known)
+            if (message.StartsWith(g, StringComparison.Ordinal))
+            {
+                glyph = g;
+                tone = t;
+                message = StripLeadingGlyph(message, g);
+                break;
+            }
+        return new ActivityStep { Glyph = glyph, Tone = tone, TimeLabel = time, Message = message };
+    }
+
+    private static string StripLeadingGlyph(string message, string glyph)
+        => glyph.Length > 0 && message.StartsWith(glyph, StringComparison.Ordinal)
+            ? message[glyph.Length..].TrimStart()
+            : message;
 }
 
 /// <summary>/model 一覧の1行（クリックで切替できるモデル候補）。● は現在のモデル。</summary>

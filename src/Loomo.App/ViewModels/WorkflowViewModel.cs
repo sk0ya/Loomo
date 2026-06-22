@@ -33,10 +33,15 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private readonly AiSettings _settings;
 
     private CancellationTokenSource? _cts;
-    private WorkflowStepViewModel? _runningStep;   // 承認カードの差し込み先
+    private WorkflowStepViewModel? _runningStep;   // 経過秒つきステータスの差し込み先（実行中ステップ）
     private string? _currentId;                     // 読込済みワークフローのID（保存時に上書き）
     private bool _suppressChangeTracking;
     private readonly DispatcherTimer _warmupTimer;  // ウォームアップ経過秒の表示を更新する
+
+    // 実行ログはステップ単位でまとめず、全ステップを1本のフラットな進捗タイムラインに流す
+    // （チャットの「進行状況」と同じ ActivityTimelineView で見せる）。
+    private readonly Stopwatch _runClock = new();   // 実行全体の経過時間（各段の時刻に使う）
+    private ActivityLog? _log;                       // 現在の実行のタイムライン書き込み口
 
     // チャットと同じ「動作中だと分かる」経過秒つきステータス（実行中ステップの StatusText を刻む）。
     private readonly DispatcherTimer _statusTimer;   // 経過秒の表示を更新する
@@ -44,6 +49,14 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private string _statusPhase = "";                // 経過秒を除いたフェーズ説明
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = new();
+
+    /// <summary>実行全体のフラットな進捗タイムライン（チャットの「進行状況」と同じ構造化表示）。
+    /// 各段＝種別アイコン＋本文＋経過時刻。ステップ境界も1段（見出し）として流す。</summary>
+    public TranscriptEntry Activity { get; } = new() { Kind = EntryKind.Activity };
+
+    /// <summary>承認待ちカード（ボタン・差分つき）。タイムラインには「承認待ち」の1段だけ出し、
+    /// 操作可能なカードはこちらへ積む（承認/拒否で取り除く）。</summary>
+    public ObservableCollection<TranscriptEntry> Approvals { get; } = new();
 
     /// <summary>「ステップを追加」パレットに出す、カテゴリ別のステップ候補ライブラリ（組み込み・不変）。</summary>
     public IReadOnlyList<StepCandidateGroup> StepLibrary { get; } = WorkflowStepLibrary.Catalog
@@ -73,6 +86,17 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
     [ObservableProperty] private string _name = "新しいワークフロー";
     [ObservableProperty] private bool _isRunning;
+
+    /// <summary>一度でも実行したか（下部の進捗状況／実行ログ領域は実行後にだけ現れる）。</summary>
+    [ObservableProperty] private bool _hasRun;
+
+    /// <summary>ウォームアップ中か。進捗状況エリアの中身を「ウォームアップ表示」と「実行ログ」で出し分ける。</summary>
+    [ObservableProperty] private bool _isWarmingUp;
+
+    /// <summary>ワークフロー全体の最終出力（最後に値を出したステップの出力）。実行ログとは別に表示する。</summary>
+    [ObservableProperty] private string _finalOutput = "";
+    public bool HasFinalOutput => !string.IsNullOrWhiteSpace(FinalOutput);
+    partial void OnFinalOutputChanged(string value) => OnPropertyChanged(nameof(HasFinalOutput));
 
     /// <summary>実行中の全体状況（「ステップ2/3 を実行中…」等）。</summary>
     [ObservableProperty] private string _runStatus = "";
@@ -131,6 +155,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private void OnWarmupStateChanged() => Dispatch(() =>
     {
         if (!IsRunning) return;
+        IsWarmingUp = _warmup.IsWarmingUp;
         if (_warmup.IsWarmingUp)
         {
             if (!_warmupTimer.IsEnabled) _warmupTimer.Start();
@@ -169,7 +194,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
         RenderStepStatus();
     }
 
-    /// <summary>フェーズ文言に経過秒を付けて、実行中ステップの StatusText を更新する。</summary>
+    /// <summary>フェーズ文言に経過秒を付けて、実行中ステップの StatusText を更新する
+    /// （実行ログ内のそのステップ見出しに、ライブの「今どこ」がそのまま出る）。</summary>
     private void RenderStepStatus()
     {
         if (_runningStep is null || string.IsNullOrEmpty(_statusPhase)) return;
@@ -191,11 +217,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
         else app.Dispatcher.BeginInvoke(action);
     }
 
-    /// <summary>承認要求を「いま実行中のステップ」のログへ橋渡しする。ワークフロー実行中以外は
-    /// 何もしない（チャット側 <see cref="AiBarViewModel.OnApprovalRequested"/> と排他にして二重処理を防ぐ）。</summary>
+    /// <summary>承認要求を承認カード一覧へ積む。ワークフロー実行中以外は何もしない
+    /// （チャット側 <see cref="AiBarViewModel.OnApprovalRequested"/> と排他にして二重処理を防ぐ）。
+    /// 承認/拒否が決着したらカードを取り除く（タイムラインには「承認待ち」の1段が残る）。</summary>
     private void OnApprovalRequested(ApprovalContext ctx)
     {
-        if (!IsRunning || _runningStep is null) return;
+        if (!IsRunning) return;
         var entry = new TranscriptEntry
         {
             Kind = EntryKind.Approval,
@@ -205,7 +232,9 @@ public sealed partial class WorkflowViewModel : ObservableObject
         if (TranscriptFormatting.ContainsDiff(ctx.Summary))
             entry.SetDiff(ctx.Summary);
         entry.BindApproval(ctx.Completion);
-        _runningStep.Log.Add(entry);
+        Approvals.Add(entry);
+        ctx.Completion.Task.ContinueWith(_ => Dispatch(() => Approvals.Remove(entry)),
+            TaskScheduler.Default);
     }
 
     // ===== ステップ編集 =====
@@ -355,6 +384,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
             Name = "新しいワークフロー";
             Steps.Clear();
             HasUnsavedChanges = false;
+            HasRun = false;
+            FinalOutput = "";
             RunStatus = "";
         }
         finally
@@ -387,6 +418,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
             }
             Renumber();
             HasUnsavedChanges = false;
+            HasRun = false;
+            FinalOutput = "";
             RunStatus = "";
         }
         finally
@@ -417,12 +450,22 @@ public sealed partial class WorkflowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRun))]
     private async Task RunAsync()
     {
+        HasRun = true;       // 進捗状況／実行ログの領域を出す
+        FinalOutput = "";    // 前回の最終出力を消す
+
         // 実行できる（指示文が空でない）ステップが無ければ何もしない。
         if (!Steps.Any(s => !string.IsNullOrWhiteSpace(s.Prompt)))
         {
             RunStatus = "実行できるステップがありません（指示文を入力してください）。";
             return;
         }
+
+        // 実行ログ（フラットな進捗タイムライン）と承認カードを前回分から作り直す。
+        Activity.Steps.Clear();
+        Activity.Text = "";
+        Approvals.Clear();
+        _runClock.Restart();
+        _log = new ActivityLog(Activity, () => _runClock.Elapsed);
 
         IsRunning = true;
         NotifyCommandStates();
@@ -433,15 +476,17 @@ public sealed partial class WorkflowViewModel : ObservableObject
         // 実行対象は「指示文が空でない」ステップのみ。空ステップは番号の連続性のため出力に空文字を積む。
         try
         {
-            // モデル未ロードなら暖機が走る。完了までステータスバーに進捗（経過秒）を出す。
+            // モデル未ロードなら暖機が走る。完了まで進捗状況エリアにウォームアップ表示を出す。
             if (!_warmup.IsReady)
             {
+                IsWarmingUp = true;
                 _warmupTimer.Start();
                 RenderWarmupStatus();
                 if (string.IsNullOrEmpty(RunStatus)) RunStatus = "ウォームアップ中…";
             }
             await _warmup.EnsureWarmAsync(_cts.Token);
             _warmupTimer.Stop();
+            IsWarmingUp = false;
 
             for (var i = 0; i < Steps.Count; i++)
             {
@@ -451,13 +496,17 @@ public sealed partial class WorkflowViewModel : ObservableObject
                 {
                     step.ResetRun();
                     step.StatusText = "（空のためスキップ）";
+                    _log!.Append(ActivityKind.Step, $"ステップ {i + 1}/{Steps.Count}「{step.DisplayTitle}」（空のためスキップ）");
                     outputs.Add("");
                     continue;
                 }
 
                 RunStatus = $"ステップ {i + 1}/{Steps.Count} を実行中…";
+                _log!.Append(ActivityKind.Step, $"ステップ {i + 1}/{Steps.Count}「{step.DisplayTitle}」");
                 var (output, ok) = await RunStepAsync(step, outputs, sessionId, _cts.Token);
                 outputs.Add(output);
+                // 最後に値を出したステップの出力＝ワークフローの最終出力（別表示）。
+                if (!string.IsNullOrWhiteSpace(output)) FinalOutput = output;
                 if (!ok)
                 {
                     RunStatus = $"ステップ {i + 1} で停止しました。";
@@ -470,6 +519,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             RunStatus = "中断しました。";
+            _log?.Append(ActivityKind.Cancel, "ユーザー操作で中断しました。");
             if (_runningStep is not null)
             {
                 _runningStep.Status = WorkflowStepStatus.Error;
@@ -479,15 +529,15 @@ public sealed partial class WorkflowViewModel : ObservableObject
         catch (Exception ex)
         {
             RunStatus = "エラーで停止しました。";
-            _runningStep?.Log.Add(new TranscriptEntry
-            {
-                Kind = EntryKind.Error, Header = "⚠️ 例外", Text = ex.Message,
-            });
+            _log?.Append(ActivityKind.Error, $"例外で停止しました: {ex.Message}");
         }
         finally
         {
             _warmupTimer.Stop();
+            IsWarmingUp = false;
             ClearStepStatus();
+            _log?.ClearLive();
+            _runClock.Stop();
             _runningStep = null;
             _cts?.Dispose();
             _cts = null;
@@ -496,59 +546,29 @@ public sealed partial class WorkflowViewModel : ObservableObject
         }
     }
 
-    /// <summary>1ステップを実行し、(最終出力, 成功か) を返す。</summary>
+    /// <summary>1ステップを実行し、(最終出力, 成功か) を返す。記録は共有のフラットな進捗タイムライン
+    /// （<see cref="_log"/>）へ、意味のあるアクションを短い1段ずつ流す（ステップ単位でまとめない）。
+    /// 生成中の本文・思考は揮発プレビュー段（保存しない）として見せる。</summary>
     private async Task<(string Output, bool Ok)> RunStepAsync(
         WorkflowStepViewModel step, IReadOnlyList<string> outputs, string sessionId, CancellationToken ct)
     {
+        var log = _log!;
         step.ResetRun();
         step.Status = WorkflowStepStatus.Running;
-        step.IsLogCollapsed = false;   // 実行中は進捗を見せる
         _runningStep = step;
 
         var prompt = WorkflowPrompt.Resolve(step.Prompt, outputs);
         var conversation = new Conversation();
         var clock = Stopwatch.StartNew();
 
-        // チャットと同じく、ステップ先頭に「進行状況」エントリ（タイムスタンプ付きの逐次ログ）を置く。
-        var activity = AddLog(step, EntryKind.Activity, "進行状況", "");
-        var rawStream = new StringBuilder();   // 現在のAI呼び出しの揮発性ライブ出力（進捗プレビュー専用）
-        var volatileTail = "";                 // 「進行状況」末尾に付けている揮発プレビュー文字列（未保存）
+        var rawStream = new StringBuilder();   // 生成中の生テキスト（揮発プレビュー専用）
+        var thinkText = new StringBuilder();   // 生成中の思考（揮発プレビュー専用）
+        var answer = new StringBuilder();      // 確定した本文（＝このステップの出力）
         var aiCallCount = 0;
-        var loggedThinking = false;
-        var loggedResponse = false;
-
-        TranscriptEntry? assistant = null;
-        TranscriptEntry? thinking = null;
         var finalText = "";
         var ok = true;
 
-        // 「進行状況」エントリ末尾に揮発プレビューを挟まないよう、恒久ログを足す前に末尾を片付ける。
-        void AppendActivity(string message)
-        {
-            ClearVolatile();
-            var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
-            activity.AppendText($"{prefix}[{TranscriptFormatting.FormatDuration(clock.Elapsed)}] {message}");
-        }
-
-        void SetVolatile(string preview)
-        {
-            ClearVolatile();
-            if (preview.Length == 0) return;
-            var prefix = activity.Text.Length == 0 ? "" : Environment.NewLine;
-            volatileTail = prefix + preview;
-            activity.AppendText(volatileTail);
-        }
-
-        void ClearVolatile()
-        {
-            if (volatileTail.Length == 0) return;
-            activity.Text = activity.Text[..^volatileTail.Length];
-            volatileTail = "";
-        }
-
         SetStepStatus("実行中…");
-        AppendActivity(TranscriptFormatting.FormatRunConfig(_settings));
-        AppendActivity("AIに送信しました。応答を待っています。");
 
         try
         {
@@ -558,100 +578,89 @@ public sealed partial class WorkflowViewModel : ObservableObject
                 switch (ev)
                 {
                     case ThinkingDelta t:
-                        if (!loggedThinking) { AppendActivity("モデルが思考を生成しています。"); loggedThinking = true; }
-                        thinking ??= AddLog(step, EntryKind.Thinking, "💭 思考", "");
-                        thinking.AppendText(t.Text);
-                        SetStepStatus($"💭 思考中… {TranscriptFormatting.StreamPreview(thinking.Text)}");
+                        thinkText.Append(t.Text);
+                        var thinkPreview = TranscriptFormatting.StreamPreview(thinkText.ToString());
+                        SetStepStatus($"💭 思考中… {thinkPreview}");
+                        log.SetLive(ActivityKind.Think, thinkPreview.Length == 0 ? "" : $"思考中: {thinkPreview}");
                         break;
 
                     case RawTextDelta raw:
-                        // 揮発性のライブ出力：ログには残さず「進行状況」末尾に生成中の生テキストを逐次プレビューする。
-                        if (!loggedResponse) { AppendActivity("回答本文の生成を開始しました。"); SetStepStatus("応答生成中…"); loggedResponse = true; }
                         rawStream.Append(raw.Text);
                         var preview = rawStream.ToString().Trim();
-                        SetVolatile(preview.Length == 0 ? "" : $"💬 生成中:{Environment.NewLine}{preview}");
+                        SetStepStatus($"応答生成中… {TranscriptFormatting.StreamPreview(preview)}");
+                        log.SetLive(ActivityKind.LiveResponse, preview.Length == 0 ? "" : $"生成中: {TranscriptFormatting.StreamPreview(preview)}");
                         break;
 
                     case TextDelta d:
-                        if (!loggedResponse) { AppendActivity("回答本文の生成を開始しました。"); loggedResponse = true; }
-                        thinking = null;
-                        assistant ??= AddLog(step, EntryKind.Assistant, "エージェント", "");
-                        assistant.AppendText(d.Text);
+                        thinkText.Clear();
+                        answer.Append(d.Text);
                         SetStepStatus("応答生成中…");
                         break;
 
                     case ToolUseRequested req:
-                        thinking = null;
+                        thinkText.Clear();
                         rawStream.Clear();
-                        SetVolatile("");   // ツール確定で配列の生JSONを見せていた揮発プレビューは消す
-                        var narration = assistant?.Text;
-                        if (assistant is not null) { step.Log.Remove(assistant); assistant = null; }
-                        SetStepStatus($"🔧 {req.ToolUse.Name} を準備中… {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        AppendActivity($"{req.ToolUse.Name} の呼び出しを準備しています: {TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson)}");
-                        AddLog(step, EntryKind.Tool,
-                            TranscriptFormatting.ToolUseHeader(req.ToolUse.Name, req.ToolUse.ArgumentsJson),
-                            TranscriptFormatting.ComposeToolCard(narration, req.ToolUse.ArgumentsJson, req.ToolUse.RawJson),
-                            collapsed: true);
+                        answer.Clear();   // ツール呼び出しに添えられた本文はタイムラインに残さない
+                        log.ClearLive();
+                        var argsPreview = TranscriptFormatting.StreamPreview(req.ToolUse.ArgumentsJson);
+                        SetStepStatus($"🔧 {req.ToolUse.Name} を準備中… {argsPreview}");
+                        log.Append(ActivityKind.ToolPrepare, $"{req.ToolUse.Name}: {argsPreview}");
                         break;
 
                     case ApprovalRequested ap:
                         SetStepStatus($"⏳ {ap.ToolName} の承認待ち…");
-                        AppendActivity($"{ap.ToolName} の実行承認を待っています。");
+                        log.Append(ActivityKind.Approval, $"{ap.ToolName} の承認待ち");
                         break;
 
                     case ToolExecutionStarted started:
                         SetStepStatus($"🔧 {started.ToolUse.Name} を実行中… {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
-                        AppendActivity($"{started.ToolUse.Name} を実行しています: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
+                        log.Append(ActivityKind.ToolRun, $"{started.ToolUse.Name} を実行: {TranscriptFormatting.StreamPreview(started.ToolUse.ArgumentsJson)}");
                         break;
 
                     case ToolExecutionCompleted done:
                         SetStepStatus($"考え中…（直前 {done.ToolUse.Name}: {(done.Result.IsError ? "エラー" : "完了")}）");
-                        AppendActivity($"{done.ToolUse.Name} が完了しました（{(done.Result.IsError ? "エラー" : "成功")}）: {TranscriptFormatting.StreamPreview(done.Result.Content)}。結果を踏まえて次の応答を待っています。");
-                        AddLog(step, EntryKind.Tool, $"↳ 結果 ({done.ToolUse.Name})",
-                            TranscriptFormatting.Truncate(done.Result.Content), collapsed: true);
+                        log.Append(done.Result.IsError ? ActivityKind.ToolError : ActivityKind.ToolDone,
+                            $"{done.ToolUse.Name} {(done.Result.IsError ? "エラー" : "完了")}: {TranscriptFormatting.StreamPreview(done.Result.Content)}");
                         break;
 
                     case ToolCallParseFailed pf:
-                        if (assistant is not null) { step.Log.Remove(assistant); assistant = null; }
                         SetStepStatus("⚠️ ツール呼び出しJSONが不正。AIに再試行させています…");
-                        AppendActivity("ツール呼び出しのJSONが不正でした。モデルの生出力を表示し、正しいJSONで出し直させます。");
-                        AddLog(step, EntryKind.Error, "⚠️ 不正なツール出力（再試行）", pf.RawText);
+                        log.Append(ActivityKind.Warn, $"不正なツール出力。再試行: {TranscriptFormatting.StreamPreview(pf.RawText)}");
                         break;
 
                     case AgentError err:
-                        AppendActivity("エラーで停止しました。");
-                        AddLog(step, EntryKind.Error, "⚠️ エラー", err.Message);
+                        log.ClearLive();
+                        log.Append(ActivityKind.Error, err.Message);
                         ok = false;
                         break;
 
                     case AiUsageReported usage:
                         aiCallCount++;
-                        AppendActivity(TranscriptFormatting.FormatUsage(usage, aiCallCount));
-                        rawStream.Clear();   // このAI呼び出しは終了。次の呼び出しの揮発プレビューを新規に始める
+                        log.Append(ActivityKind.Usage, TranscriptFormatting.FormatUsage(usage, aiCallCount));
+                        rawStream.Clear();
+                        log.ClearLive();
                         break;
 
                     case TurnCompleted tc:
-                        finalText = tc.FinalText ?? assistant?.Text ?? "";
+                        finalText = tc.FinalText ?? answer.ToString();
                         break;
                 }
             }
         }
         finally
         {
-            ClearVolatile();   // 揮発プレビューが残ったままにならないよう必ず片付ける
+            log.ClearLive();
             ClearStepStatus();
         }
 
         clock.Stop();
-        activity.Header = $"進行状況 ({TranscriptFormatting.FormatDuration(clock.Elapsed)})";
         if (ok)
         {
             step.Status = WorkflowStepStatus.Done;
             step.StatusText = $"完了 ({TranscriptFormatting.FormatDuration(clock.Elapsed)})";
-            step.Output = finalText;
-            // 出力エントリ（後続へ渡る素のテキスト）を見やすく1件残す。
+            // 各ステップの出力は「要約1段」だけ流す（全文は最終出力＝ワークフローの出力に出す）。
             if (!string.IsNullOrWhiteSpace(finalText))
-                AddLog(step, EntryKind.Assistant, "出力", finalText);
+                log.Append(ActivityKind.Response, $"出力: {TranscriptFormatting.StreamPreview(finalText)}");
         }
         else
         {
@@ -661,13 +670,6 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
         _runningStep = null;
         return (finalText, ok);
-    }
-
-    private TranscriptEntry AddLog(WorkflowStepViewModel step, EntryKind kind, string header, string text, bool collapsed = false)
-    {
-        var entry = new TranscriptEntry { Kind = kind, Header = header, Text = text, IsCollapsed = collapsed };
-        step.Log.Add(entry);
-        return entry;
     }
 
     [RelayCommand]

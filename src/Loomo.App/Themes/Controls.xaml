@@ -15,6 +15,7 @@
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:InverseBoolConverter x:Key="InverseBool" />
     <conv:CountToVisibilityConverter x:Key="CountToVis" />
+    <conv:BoolToStarLengthConverter x:Key="BoolToStarLength" />
     <conv:ActiveTagConverter x:Key="ActiveTagConverter" />
     <conv:EqualityActiveTagConverter x:Key="EqualityActiveTagConverter" />
     <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVisibilityConverter" />

@@ -19,6 +19,8 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     [ObservableProperty] private string _title = "";
     [ObservableProperty] private string _prompt = "";
 
+    partial void OnTitleChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
+
     // ===== 表示・実行時 =====
 
     /// <summary>1始まりの並び順。親コレクションの変更時に振り直される。</summary>
@@ -33,16 +35,8 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     /// <summary>状態の1行表示（待機／実行中…／完了 (2.1秒)／失敗）。</summary>
     [ObservableProperty] private string _statusText = "待機";
 
-    /// <summary>このステップの最終出力（後続ステップへ渡される素のテキスト）。</summary>
-    [ObservableProperty] private string _output = "";
-
-    /// <summary>実行ログ（思考・ツールカード・承認カード・結果）。折りたたみ表示。</summary>
-    public ObservableCollection<TranscriptEntry> Log { get; } = new();
-
-    /// <summary>実行ログ/出力を折りたたんでいるか。</summary>
-    [ObservableProperty] private bool _isLogCollapsed = true;
-    public string LogGlyph => IsLogCollapsed ? "▶" : "▼";
-    partial void OnIsLogCollapsedChanged(bool value) => OnPropertyChanged(nameof(LogGlyph));
+    /// <summary>パイプライン上の見出し（タイトル未設定なら「ステップN」）。実行ログのステップ見出しにも使う。</summary>
+    public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? $"ステップ{Index}" : Title;
 
     /// <summary>クリックで指示文へ挿入できる前段参照トークン（{{1}}…{{N-1}}・{{prev}}・{{all}}）。</summary>
     public ObservableCollection<string> RefTokens { get; } = new();
@@ -78,6 +72,7 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
         RebuildRefTokens();
         OnPropertyChanged(nameof(PromptNotice));
         OnPropertyChanged(nameof(CanAppendPrevious));
+        OnPropertyChanged(nameof(DisplayTitle));
     }
 
     partial void OnPromptChanged(string value)
@@ -113,15 +108,10 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
         InsertRef("{{prev}}");
     }
 
-    [RelayCommand]
-    private void ToggleLog() => IsLogCollapsed = !IsLogCollapsed;
-
     /// <summary>実行開始前に前回実行の痕跡を消す。</summary>
     public void ResetRun()
     {
         Status = WorkflowStepStatus.Idle;
         StatusText = "待機";
-        Output = "";
-        Log.Clear();
     }
 }
