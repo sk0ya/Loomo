@@ -191,6 +191,64 @@ public class PaneLayoutTreeTests
         Assert.Equal(new PaneNode[] { editor, ai }, result.Children);
     }
 
+    // ===== ResolveSpanTarget / span 挿入 =====
+
+    [Fact]
+    public void ResolveSpanTarget_climbs_to_perpendicular_ancestor()
+    {
+        // Rows[ Columns[Editor, Browser], Terminal ] で Editor の下端は Columns 全体の下端＝
+        // Editor 単体でなく Columns[Editor,Browser] を返す（左右2ペインの下へフル幅で落とすため）。
+        var editor = Leaf(PaneKind.Editor);
+        var top = Split(SplitKind.Columns, editor, Leaf(PaneKind.Browser));
+        var root = Split(SplitKind.Rows, top, Leaf(PaneKind.Terminal));
+
+        Assert.Same(top, PaneLayoutTree.ResolveSpanTarget(root, editor, DropZone.Below));
+    }
+
+    [Fact]
+    public void ResolveSpanTarget_returns_leaf_when_parent_matches_direction()
+    {
+        // 親が既に望む方向（左右）なら祖先へ遡らず、単体ペインへの挿入と同じ＝リーフ自身を返す。
+        var editor = Leaf(PaneKind.Editor);
+        var root = Split(SplitKind.Columns, editor, Leaf(PaneKind.Browser));
+
+        Assert.Same(editor, PaneLayoutTree.ResolveSpanTarget(root, editor, DropZone.Left));
+    }
+
+    [Fact]
+    public void MoveInTree_span_inserts_full_width_below_both_columns()
+    {
+        // ［Editor | Browser］が並ぶ列の下（スパン）へ Ai を移す＝列全体の下にフル幅で挿入され、
+        // Rows[ Columns[Editor,Browser], Ai ] になる（左右2ペインの下に落とせなかった不具合の回帰）。
+        var root = Split(SplitKind.Columns, Leaf(PaneKind.Editor), Leaf(PaneKind.Browser), Leaf(PaneKind.Ai));
+
+        var result = Assert.IsType<PaneSplit>(
+            PaneLayoutTree.MoveInTree(root, PaneKind.Ai, PaneKind.Editor, DropZone.Below, span: true));
+
+        Assert.Equal(SplitKind.Rows, result.Orientation);
+        var top = Assert.IsType<PaneSplit>(result.Children[0]);
+        Assert.Equal(SplitKind.Columns, top.Orientation);
+        Assert.Equal(new[] { PaneKind.Editor, PaneKind.Browser },
+            top.Children.Cast<PaneLeaf>().Select(l => l.Kind));
+        Assert.Equal(PaneKind.Ai, Assert.IsType<PaneLeaf>(result.Children[1]).Kind);
+    }
+
+    [Fact]
+    public void MoveInTree_without_span_splits_only_target_column()
+    {
+        // スパン無しは従来どおりターゲット列だけを上下分割する（回帰防止）。
+        var root = Split(SplitKind.Columns, Leaf(PaneKind.Editor), Leaf(PaneKind.Browser), Leaf(PaneKind.Ai));
+
+        var result = Assert.IsType<PaneSplit>(
+            PaneLayoutTree.MoveInTree(root, PaneKind.Ai, PaneKind.Editor, DropZone.Below, span: false));
+
+        Assert.Equal(SplitKind.Columns, result.Orientation);
+        var left = Assert.IsType<PaneSplit>(result.Children[0]);
+        Assert.Equal(SplitKind.Rows, left.Orientation);
+        Assert.Equal(new[] { PaneKind.Editor, PaneKind.Ai },
+            left.Children.Cast<PaneLeaf>().Select(l => l.Kind));
+    }
+
     // ===== MoveInTree =====
 
     [Fact]

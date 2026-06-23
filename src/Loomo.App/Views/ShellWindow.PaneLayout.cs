@@ -515,6 +515,7 @@ public partial class ShellWindow
         _dragZone = null;
         _dragFromWing = false;
         _dragCenter = false;
+        _dragSpan = false;
         _paneDragging = true;
 
         _dragPreview!.Visibility = Visibility.Collapsed;
@@ -548,6 +549,7 @@ public partial class ShellWindow
         _dragZone = null;
         _dragFromWing = true;
         _dragCenter = false;
+        _dragSpan = false;
         _paneDragging = true;
 
         _dragPreview!.Visibility = Visibility.Collapsed;
@@ -590,7 +592,8 @@ public partial class ShellWindow
             IsHitTestVisible = false
         };
         // PaneDragOverlay は PaneHost と同セルなので、Canvas 上の座標＝PaneHost 座標になる。
-        _dragCanvas = new Canvas { Background = Brushes.Transparent };
+        // ClipToBounds でタイル領域外（右の袖＝ミニチュア列など）へプレビューがはみ出さないようにする。
+        _dragCanvas = new Canvas { Background = Brushes.Transparent, ClipToBounds = true };
         _dragCanvas.Children.Add(_dragTargetOutline);
         _dragCanvas.Children.Add(_dragPreview);
         _dragCanvas.MouseMove += OnDragCanvasMouseMove;
@@ -624,6 +627,7 @@ public partial class ShellWindow
             _dragTarget = null;
             _dragZone = null;
             _dragCenter = false;
+            _dragSpan = false;
             _dragPreview!.Visibility = Visibility.Collapsed;
             _dragTargetOutline!.Visibility = Visibility.Collapsed;
             Mouse.OverrideCursor = Cursors.No;
@@ -637,15 +641,61 @@ public partial class ShellWindow
         var zone = NearestZone(relX, relY);
         // 袖からのドラッグはセル中央に「入れ替え」ゾーンを設ける（端は従来どおり分割挿入）。
         var center = _dragFromWing && relX is > 0.34 and < 0.66 && relY is > 0.34 and < 0.66;
+
+        // セルの外縁ぎりぎり（当該辺へ寄せきった位置）では、単体ペインではなく直交する祖先スプリット
+        // 全体の辺へ落とす「スパン挿入」を提示する（例：左右2ペインの下端でフル幅プレビュー）。
+        var span = !center && IsNearOuterEdge(relX, relY, zone)
+            && TryGetSpanRect(kind, zone, out var spanRect) && SpanAddsBreadth(spanRect, rect, zone);
+        var outlineRect = span ? spanRect : rect;
+        var previewRect = center ? rect : ZoneRect(span ? spanRect : rect, zone);
+
         _dragTarget = kind;
         _dragZone = zone;
         _dragCenter = center;
+        _dragSpan = span;
 
-        PlaceOverlay(_dragTargetOutline!, rect);
-        PlaceOverlay(_dragPreview!, center ? rect : ZoneRect(rect, zone));
+        PlaceOverlay(_dragTargetOutline!, outlineRect);
+        PlaceOverlay(_dragPreview!, previewRect);
         _dragTargetOutline!.Visibility = Visibility.Visible;
         _dragPreview!.Visibility = Visibility.Visible;
     }
+
+    /// <summary>当該辺に十分寄せきっているか（外縁から内側 20% のバンド）。スパン挿入の発火条件。</summary>
+    private static bool IsNearOuterEdge(double relX, double relY, DropZone zone) => zone switch
+    {
+        DropZone.Left => relX < 0.2,
+        DropZone.Right => relX > 0.8,
+        DropZone.Above => relY < 0.2,
+        _ => relY > 0.8,
+    };
+
+    /// <summary>ターゲットペインを起点に、<paramref name="zone"/> 方向へ伸ばせる祖先スプリットの矩形
+    /// （PaneHost 座標、配下の可視リーフの和）を返す。祖先が無ければ false。</summary>
+    private bool TryGetSpanRect(PaneKind targetKind, DropZone zone, out Rect rect)
+    {
+        rect = default;
+        if (FindLeaf(targetKind) is not { } targetLeaf)
+            return false;
+        var node = PaneLayoutTree.ResolveSpanTarget(_root, targetLeaf, zone);
+        if (ReferenceEquals(node, targetLeaf))
+            return false; // 直交する祖先が無い＝単体ペインへの挿入と同じ
+
+        var any = false;
+        foreach (var leaf in AllLeaves(node))
+        {
+            if (leaf.Hidden || !TryGetPaneRect(leaf.Kind, out var r))
+                continue;
+            rect = any ? Rect.Union(rect, r) : r;
+            any = true;
+        }
+        return any;
+    }
+
+    /// <summary>スパン矩形が単体ペインより当該辺方向に広いか（同寸ならスパンの意味が無いので出さない）。</summary>
+    private static bool SpanAddsBreadth(Rect span, Rect leaf, DropZone zone)
+        => zone is DropZone.Above or DropZone.Below
+            ? span.Width > leaf.Width + 1
+            : span.Height > leaf.Height + 1;
 
     private static void PlaceOverlay(Border border, Rect r)
     {
@@ -661,15 +711,16 @@ public partial class ShellWindow
         var target = _dragTarget;
         var zone = _dragZone;
         var center = _dragCenter;
+        var span = _dragSpan;
         var fromWing = _dragFromWing;
         EndPaneDrag();
 
         if (target is not { } t || t == source)
             return;
         if (fromWing)
-            PlaceWingPane(source, t, center, zone);
+            PlaceWingPane(source, t, center, zone, span);
         else if (zone is { } z)
-            MovePane(source, t, z);
+            MovePane(source, t, z, span);
     }
 
     private void OnDragCanvasLostCapture(object sender, MouseEventArgs e)
@@ -726,6 +777,7 @@ public partial class ShellWindow
         _paneDragging = false;
         _dragFromWing = false;
         _dragCenter = false;
+        _dragSpan = false;
         HideDragGhost();
         if (ReferenceEquals(Mouse.Captured, _dragCanvas))
             Mouse.Capture(null);
@@ -736,11 +788,16 @@ public partial class ShellWindow
             _dragTargetOutline.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>カーソル位置にあるペインのセルとその矩形（PaneHost 座標）を返す。</summary>
+    /// <summary>カーソル位置にあるペインのセルとその矩形（PaneHost 座標）を返す。
+    /// 非表示（袖＝ミニチュア送り）のリーフは除外する。これらの実体は袖の描画元として
+    /// StageSourceArea（PaneHost と同じ列・全面サイズ）に生きており、含めるとタイルの隙間などで
+    /// 全面サイズの矩形にヒットしてしまい、ミニチュア宛ての巨大なプレビューが出てしまう。</summary>
     private (PaneKind Kind, Rect Rect)? HitTestCell(Point pos)
     {
         foreach (var leaf in AllLeaves())
         {
+            if (leaf.Hidden)
+                continue;
             if (TryGetPaneRect(leaf.Kind, out var rect) && rect.Contains(pos))
                 return (leaf.Kind, rect);
         }
@@ -782,7 +839,9 @@ public partial class ShellWindow
         return clone;
     }
 
-    private void MovePane(PaneKind source, PaneKind target, DropZone zone)
+    /// <summary>ペインを移動する。<paramref name="span"/> なら単体ペインでなく、ターゲットの当該辺を
+    /// 端まで占めるスプリット全体の辺へ落とす（例：左右2ペインの下へフル幅で挿入）。</summary>
+    private void MovePane(PaneKind source, PaneKind target, DropZone zone, bool span = false)
     {
         if (source == target)
             return;
@@ -794,15 +853,16 @@ public partial class ShellWindow
 
         CaptureLayoutSizes();
 
-        // 移動元をツリーから外し、ターゲットの指定した辺へ挿入する。
+        // 移動元をツリーから外し、ターゲット（またはスパン対象の祖先）の指定した辺へ挿入する。
         _root = RemoveNode(_root, sourceLeaf);
         sourceLeaf.Weight = 1;
-        _root = InsertRelative(_root, sourceLeaf, targetLeaf, zone);
+        var insertTarget = span ? PaneLayoutTree.ResolveSpanTarget(_root, targetLeaf, zone) : targetLeaf;
+        _root = InsertRelative(_root, sourceLeaf, insertTarget, zone);
 
         // 跨ぎ最大化中の移動は、解除時に戻す保存レイアウトへも同じ論理操作を反映する
         // （解除やスナップショット保存で移動が巻き戻らないように）。
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
-            _spanSavedRoot = MoveInTree(savedRoot, source, target, zone);
+            _spanSavedRoot = MoveInTree(savedRoot, source, target, zone, span);
 
         _root = Normalize(_root);
         MarkLayoutDirty();
@@ -811,12 +871,12 @@ public partial class ShellWindow
     }
 
     /// <summary>指定ツリー上で <see cref="MovePane"/> と同じ移動を行い、新しいルートを返す。</summary>
-    private static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone)
-        => PaneLayoutTree.MoveInTree(root, source, target, zone);
+    private static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone, bool span = false)
+        => PaneLayoutTree.MoveInTree(root, source, target, zone, span);
 
     /// <summary>袖（ミニチュア）のペインをタイルへ配置する。<paramref name="center"/> なら入れ替え
     /// （ターゲットの位置へ据え、元のペインは袖へ退場）、それ以外は <paramref name="zone"/> の辺へ分割挿入する。</summary>
-    private void PlaceWingPane(PaneKind dragged, PaneKind target, bool center, DropZone? zone)
+    private void PlaceWingPane(PaneKind dragged, PaneKind target, bool center, DropZone? zone, bool span = false)
     {
         if (dragged == target || FindLeaf(target) is null)
             return;
@@ -824,10 +884,10 @@ public partial class ShellWindow
         CaptureLayoutSizes();
         _enabledSessions.Add(dragged);   // タイルに出る＝有効
 
-        _root = PlaceInTree(_root, dragged, target, center, zone);
+        _root = PlaceInTree(_root, dragged, target, center, zone, span);
         // 跨ぎ最大化中は、解除時に戻す保存レイアウトへも同じ配置を反映する。
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
-            _spanSavedRoot = PlaceInTree(savedRoot, dragged, target, center, zone);
+            _spanSavedRoot = PlaceInTree(savedRoot, dragged, target, center, zone, span);
 
         MarkLayoutDirty();
         RebuildPaneLayout();
@@ -837,7 +897,7 @@ public partial class ShellWindow
 
     /// <summary>ツリーへ <paramref name="dragged"/> を配置した新しいルートを返す。入れ替えなら
     /// ターゲットの位置へ据えてターゲットをツリーから外し（＝袖へ）、挿入ならターゲットの指定辺へ分割する。</summary>
-    private static PaneNode? PlaceInTree(PaneNode? root, PaneKind dragged, PaneKind target, bool center, DropZone? zone)
+    private static PaneNode? PlaceInTree(PaneNode? root, PaneKind dragged, PaneKind target, bool center, DropZone? zone, bool span = false)
     {
         if (root is null)
             return root;
@@ -858,7 +918,10 @@ public partial class ShellWindow
         }
         else
         {
-            root = InsertRelative(root, new PaneLeaf { Kind = dragged }, targetLeaf, zone ?? DropZone.Right);
+            var z = zone ?? DropZone.Right;
+            // スパン挿入なら単体ペインでなく、当該辺を端まで占める祖先スプリットへ落とす。
+            PaneNode insertTarget = span ? PaneLayoutTree.ResolveSpanTarget(root, targetLeaf, z) : targetLeaf;
+            root = InsertRelative(root, new PaneLeaf { Kind = dragged }, insertTarget, z);
         }
         return Normalize(root);
     }
@@ -870,7 +933,7 @@ public partial class ShellWindow
     /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入し、新しいルートを返す
     /// （実体は <see cref="PaneLayoutTree.InsertRelative"/>）。
     /// </summary>
-    private static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneLeaf target, DropZone zone)
+    private static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneNode target, DropZone zone)
         => PaneLayoutTree.InsertRelative(root, node, target, zone);
 
     private void OnHidePane(object sender, RoutedEventArgs e)

@@ -144,11 +144,30 @@ public static class PaneLayoutTree
     }
 
     /// <summary>
+    /// <paramref name="target"/> を起点に、<paramref name="zone"/> 方向（辺）の外側へ伸ばせる最も外側の
+    /// 祖先ノードを返す。間にある祖先がすべて分割方向と直交していれば（＝ target がその辺を端から端まで
+    /// 占めていれば）その祖先まで遡る。これにより「左右に並んだ2ペインの下」のように、単一ペインではなく
+    /// スプリット全体の辺へ落とせる（フル幅／フル高で挿入）。直交した祖先が無ければ target 自身を返す。
+    /// </summary>
+    public static PaneNode ResolveSpanTarget(PaneNode? root, PaneLeaf target, DropZone zone)
+    {
+        var desired = zone is DropZone.Left or DropZone.Right ? SplitKind.Columns : SplitKind.Rows;
+        PaneNode node = target;
+        // 親が分割方向と直交している間は遡る（target はその親の当該辺を全幅／全高で占めている）。
+        // 親が分割方向と一致＝そこに兄弟として挿せる、または親が無い（ルート）で止める。
+        while (FindParent(root, node) is { } parent && parent.Orientation != desired)
+            node = parent;
+        return node;
+    }
+
+    /// <summary>
     /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入し、新しいルートを返す。
     /// 望む方向が target の親スプリットと一致すれば兄弟として差し込み、
     /// 異なれば target を新しいスプリットで包む（＝列の片方だけを上下分割できる）。
+    /// <paramref name="target"/> はリーフだけでなくスプリットでもよい（<see cref="ResolveSpanTarget"/> が
+    /// 返す祖先スプリットを渡すと、その辺へフル幅／フル高で挿入できる）。
     /// </summary>
-    public static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneLeaf target, DropZone zone)
+    public static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneNode target, DropZone zone)
     {
         var wantColumns = zone is DropZone.Left or DropZone.Right;
         var before = zone is DropZone.Left or DropZone.Above;
@@ -190,6 +209,11 @@ public static class PaneLayoutTree
 
     /// <summary>指定ツリー上でペイン移動（取り外し→指定辺へ挿入→正規化）を行い、新しいルートを返す。</summary>
     public static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone)
+        => MoveInTree(root, source, target, zone, span: false);
+
+    /// <summary>指定ツリー上でペイン移動を行い、新しいルートを返す。<paramref name="span"/> が真なら
+    /// ターゲット単体ではなく、その辺を端まで占めるスプリット全体へ落とす（<see cref="ResolveSpanTarget"/>）。</summary>
+    public static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone, bool span)
     {
         var sourceLeaf = FindLeaf(root, source);
         var targetLeaf = FindLeaf(root, target);
@@ -198,7 +222,8 @@ public static class PaneLayoutTree
 
         var newRoot = RemoveNode(root, sourceLeaf);
         sourceLeaf.Weight = 1;
-        return Normalize(InsertRelative(newRoot, sourceLeaf, targetLeaf, zone));
+        var insertTarget = span ? ResolveSpanTarget(newRoot, targetLeaf, zone) : targetLeaf;
+        return Normalize(InsertRelative(newRoot, sourceLeaf, insertTarget, zone));
     }
 
     /// <summary>指定ツリーの最下段の新しい行としてリーフを追加し、新しいルートを返す。

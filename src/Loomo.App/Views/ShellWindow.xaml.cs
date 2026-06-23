@@ -135,6 +135,9 @@ public partial class ShellWindow : Window
     private bool _dragFromWing;
     /// <summary>ドロップ先セルの中央ゾーン（=入れ替え）にいるか。端なら分割挿入。</summary>
     private bool _dragCenter;
+    /// <summary>セルの外縁ぎりぎりにいて、単体ペインではなく（直交する）祖先スプリット全体の辺へ
+    /// 落とす「スパン挿入」状態か（例：左右2ペインの下にフル幅で挿入）。</summary>
+    private bool _dragSpan;
 
     // ===== ペイン間フォーカス移動（Ctrl+W h/j/k/l） =====
     /// <summary>直近でキーボードフォーカスを得た領域（移動の起点）。ペイン本体またはサイドバー。</summary>
