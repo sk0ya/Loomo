@@ -45,8 +45,10 @@ public partial class ShellWindow
         // 各コンテンツホスト内の分割マネージャ。タブID→コントロールの解決はワークスペース現在のタブ一覧から行う。
         _editorViews = new PaneSplitView(
             EditorContentHost,
+            // ビューポートへ割り当てる時だけ実体化する（resolve は表示対象タブにしか呼ばれない）。
             id => _editorTabs.FirstOrDefault(t => t.Id == id)?.Control,
-            () => _editorTabs.Select(t => (FrameworkElement)t.Control),
+            // parking 退避は実体化済みのコントロールだけを対象にする（未実体化タブは視覚ツリーに無い）。
+            () => _editorTabs.Where(t => t.IsRealized).Select(t => (FrameworkElement)t.Control),
             () => (Brush)FindResource("Border"),
             () => (Brush)FindResource("Accent"),
             el => el.Focus(),

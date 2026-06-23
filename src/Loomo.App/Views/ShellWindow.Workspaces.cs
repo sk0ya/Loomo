@@ -31,9 +31,47 @@ public partial class ShellWindow
     private sealed record TerminalTab(Guid Id, TerminalTabView View);
     /// <summary><see cref="VirtualTitle"/> は仮想ドキュメント（設定の長文項目など）を開いたタブの表示名。
     /// 仮想ドキュメントは FilePath を持たないため、タブ名はこの値から決める（通常ファイルは null）。</summary>
-    private sealed record EditorTab(Guid Id, VimEditorControl Control)
+    /// <summary>エディタタブ。起動を速くするため <see cref="Control"/>（VimEditorControl の生成＋ファイル
+    /// 読込＋Git差分）は<b>初回アクセス時に遅延実体化</b>する。復元直後は <see cref="Pending"/> に保存済み
+    /// スナップショットだけを持ち、アクティブ化や本文取得で初めて実体化する。未実体化のままでもタブ strip・
+    /// 永続化・パス重複判定が壊れないよう、メタ情報は <see cref="PeekFilePath"/> 等で実体化せずに読める。</summary>
+    private sealed record EditorTab(Guid Id)
     {
+        private VimEditorControl? _control;
+
+        /// <summary>未実体化タブの実体化処理（コントロール生成→<see cref="SetControl"/>→Pending から本文復元）。
+        /// <see cref="Control"/> の初回アクセスで呼ばれる。</summary>
+        public Action<EditorTab>? Realizer { get; init; }
+
+        /// <summary>未実体化の間だけ保持する保存済みスナップショット（実体化時に消費して null になる）。</summary>
+        public EditorTabSnapshot? Pending { get; set; }
+
         public string? VirtualTitle { get; set; }
+
+        /// <summary>コントロールが既に実体化済みか（実体化せずに判定）。</summary>
+        public bool IsRealized => _control is not null;
+
+        /// <summary>実体化処理の途中でコントロールを確定する。Pending 復元（LoadFile→BufferChanged で
+        /// <see cref="Control"/> へ再入する）より<b>前</b>に呼ぶことで無限再帰を防ぐ。</summary>
+        public void SetControl(VimEditorControl control) => _control = control;
+
+        /// <summary>コントロール。未実体化なら初回アクセスでここで実体化する。</summary>
+        public VimEditorControl Control
+        {
+            get
+            {
+                if (_control is null)
+                    Realizer!(this);
+                return _control!;
+            }
+        }
+
+        /// <summary>実体化せずに読めるファイルパス（実体化済みなら現値、未実体化なら保存値）。</summary>
+        public string? PeekFilePath => _control?.FilePath ?? Pending?.FilePath;
+        /// <summary>実体化せずに読める変更フラグ。</summary>
+        public bool PeekIsModified => _control?.IsModified ?? Pending?.IsModified ?? false;
+        /// <summary>実体化せずに読める仮想ドキュメント判定（未実体化タブは常に実ファイル＝false）。</summary>
+        public bool PeekIsVirtual => _control?.IsVirtualDocument ?? false;
     }
     private sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
     {
@@ -273,6 +311,43 @@ public partial class ShellWindow
                 DispatcherPriority.Loaded);
     }
 
+    /// <summary>1タブを永続化用スナップショットへ写す。実体化済みならコントロールの現状から、未実体化なら
+    /// 保存済み <see cref="EditorTab.Pending"/> をそのまま返す（まだ開いていない＝内容は不変なので実体化しない）。
+    /// <see cref="EditorTabSnapshot.IsActive"/> だけは現在のアクティブタブで上書きする。</summary>
+    private EditorTabSnapshot CaptureEditorTab(EditorTab tab)
+    {
+        var isActive = tab.Id == _activeEditorTab?.Id;
+        if (!tab.IsRealized && tab.Pending is { } p)
+        {
+            return new EditorTabSnapshot
+            {
+                Id = tab.Id,
+                FilePath = p.FilePath,
+                Text = p.Text,
+                Title = p.Title,
+                IsModified = p.IsModified,
+                IsActive = isActive,
+                CaretLine = p.CaretLine,
+                CaretColumn = p.CaretColumn,
+                ScrollRatio = p.ScrollRatio
+            };
+        }
+
+        var c = tab.Control;
+        return new EditorTabSnapshot
+        {
+            Id = tab.Id,
+            FilePath = c.FilePath,
+            Text = c.Text,
+            Title = EditorTitle(c),
+            IsModified = c.IsModified,
+            IsActive = isActive,
+            CaretLine = c.Caret.Line,
+            CaretColumn = c.Caret.Column,
+            ScrollRatio = c.VerticalScrollRatio
+        };
+    }
+
     private void RestoreTerminalTabs(WorkspaceSnapshot workspace)
     {
         var terminalWorkspace = GetOrCreateTerminalWorkspace(workspace.Id);
@@ -338,10 +413,13 @@ public partial class ShellWindow
             }
             : workspace.EditorTabs.ToArray();
 
+        // タブは未実体化（Pending のみ）で並べる。strip 見出しはスナップショットのメタ情報だけで描けるので
+        // コントロール生成は不要。実際の VimEditorControl 生成＋ファイル読込＋Git差分は、下の
+        // ActivateEditorTab がアクティブタブ 1 枚だけを実体化し、残りは各タブを開いた時に初めて走る
+        // （起動時に全タブ分を作っていたのが重さの主因だった）。
         foreach (var snapshot in snapshots)
         {
-            var tab = CreateEditorTab(snapshot.Id == Guid.Empty ? null : snapshot.Id);
-            RestoreEditor(tab.Control, snapshot);
+            var tab = CreatePendingEditorTab(snapshot);
             _editorTabs.Add(tab);
             _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
         }
@@ -410,8 +488,9 @@ public partial class ShellWindow
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
 
+        // 未実体化タブも strip へ戻す（メタ情報のみで描けるので実体化しない）。
         foreach (var tab in _editorTabs)
-            _vm.Tabs.AddEditorTab(tab.Id, tab.Control.FilePath, tab.Control.IsModified, false);
+            _vm.Tabs.AddEditorTab(tab.Id, tab.PeekFilePath, tab.PeekIsModified, false);
     }
 
     private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace)
@@ -538,27 +617,19 @@ public partial class ShellWindow
 
         // 仮想ドキュメント（システムプロンプト等の編集タブ）は永続化しない。FilePath を持たず、
         // 復元しても設定への保存コールバックが失われた「Untitled」タブになってしまうため。
-        var persistableEditorTabs = _editorTabs.Where(tab => !tab.Control.IsVirtualDocument).ToList();
-        snapshot.EditorTabs = persistableEditorTabs.Select(tab => new EditorTabSnapshot
-        {
-            Id = tab.Id,
-            FilePath = tab.Control.FilePath,
-            Text = tab.Control.Text,
-            Title = EditorTitle(tab.Control),
-            IsModified = tab.Control.IsModified,
-            IsActive = tab.Id == _activeEditorTab?.Id,
-            CaretLine = tab.Control.Caret.Line,
-            CaretColumn = tab.Control.Caret.Column,
-            ScrollRatio = tab.Control.VerticalScrollRatio
-        }).ToList();
+        // PeekIsVirtual で判定（未実体化タブを実体化しない）。未実体化タブは常に実ファイルなので除外されない。
+        var persistableEditorTabs = _editorTabs.Where(tab => !tab.PeekIsVirtual).ToList();
+        snapshot.EditorTabs = persistableEditorTabs.Select(CaptureEditorTab).ToList();
 
-        var activeEditor = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)?.Control
-            ?? persistableEditorTabs.FirstOrDefault()?.Control;
-        if (activeEditor is not null)
+        // 凡例（旧 single-editor）フィールド：アクティブタブの内容を反映する。未実体化なら Pending から。
+        var activeTab = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)
+            ?? persistableEditorTabs.FirstOrDefault();
+        if (activeTab is not null)
         {
-            snapshot.Editor.FilePath = activeEditor.FilePath;
-            snapshot.Editor.Text = activeEditor.Text;
-            snapshot.Editor.IsModified = activeEditor.IsModified;
+            var s = CaptureEditorTab(activeTab);
+            snapshot.Editor.FilePath = s.FilePath;
+            snapshot.Editor.Text = s.Text;
+            snapshot.Editor.IsModified = s.IsModified;
         }
 
         snapshot.BrowserTabs = _browserTabs.Select(tab => new BrowserTabSnapshot

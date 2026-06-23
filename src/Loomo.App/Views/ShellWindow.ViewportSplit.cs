@@ -237,7 +237,35 @@ public partial class ShellWindow
         return tab;
     }
 
-    private EditorTab CreateEditorTab(Guid? requestedId = null)
+    /// <summary>空（または即時使用）のエディタタブを作る。コントロールは <see cref="EditorTab.Control"/> の
+    /// 初回アクセスで実体化されるが、ここで作るタブは生成直後に LoadFile 等で使われるため実質その場で実体化する。</summary>
+    private EditorTab CreateEditorTab(Guid? requestedId = null) =>
+        new(requestedId ?? Guid.NewGuid()) { Realizer = RealizeEditorControl };
+
+    /// <summary>保存済みスナップショットだけを持つ<b>未実体化</b>タブを作る（起動時の遅延復元用）。コントロールは
+    /// アクティブ化・本文取得で初めて生成され、その際 <see cref="EditorTab.Pending"/> から本文が復元される。</summary>
+    private EditorTab CreatePendingEditorTab(EditorTabSnapshot snapshot) =>
+        new(snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id)
+        {
+            Realizer = RealizeEditorControl,
+            Pending = snapshot
+        };
+
+    /// <summary><see cref="EditorTab.Control"/> 初回アクセス時の実体化本体。コントロールを生成・配線し、
+    /// <see cref="EditorTab.SetControl"/> で<b>先に</b>確定してから Pending を復元する（LoadFile→BufferChanged が
+    /// Control へ再入しても無限再帰しない）。</summary>
+    private void RealizeEditorControl(EditorTab tab)
+    {
+        var control = BuildEditorControl(tab);
+        tab.SetControl(control);
+        if (tab.Pending is { } snapshot)
+        {
+            RestoreEditor(control, snapshot);
+            tab.Pending = null;
+        }
+    }
+
+    private VimEditorControl BuildEditorControl(EditorTab tab)
     {
         // GitServiceFactory を渡すと、エディタが行の差分（追加/変更/削除）をガター（行番号脇）に
         // マーク表示し、ステータスバーにブランチ名を出す。読込/保存/編集のたびに自動で再計算される
@@ -254,7 +282,6 @@ public partial class ShellWindow
         // 分割時もステータスバーを1つに集約する（sk0ya.Editor.Controls 1.0.5 の共有ステータスバー機能）。
         // 各コントロールの内蔵バーは隠れ、フォーカス中エディタの状態だけが下端の共有バーへ流れる。
         control.SetSharedStatusBar(EditorSharedStatusBar);
-        var tab = new EditorTab(requestedId ?? Guid.NewGuid(), control);
         control.BufferChanged += (_, _) =>
         {
             UpdateEditorTab(tab);
@@ -288,13 +315,15 @@ public partial class ShellWindow
         control.PrevTabRequested += (_, _) => CycleEditorTab(-1);
         control.CloseTabRequested += (_, _) => CloseActiveEditorTab();
         control.WindowCloseRequested += (_, _) => CloseEditorView();
-        return tab;
+        return control;
     }
 
     private void ApplyVimEnabledToOpenEditorTabs()
     {
+        // 未実体化タブは実体化しない（生成時に現在の Vim 設定が適用されるため不要）。
         foreach (var tab in _editorTabs)
-            tab.Control.VimEnabled = _settings.Vim.Enabled;
+            if (tab.IsRealized)
+                tab.Control.VimEnabled = _settings.Vim.Enabled;
     }
 
     /// <summary>
@@ -419,8 +448,10 @@ public partial class ShellWindow
     /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと EditorSupport ペインへ即時反映する。</summary>
     private void ApplyAppearanceToOpenTabs()
     {
+        // 未実体化タブは実体化しない（生成時に現在の外観が適用されるため不要）。
         foreach (var tab in _editorTabs)
-            ApplyEditorAppearance(tab.Control);
+            if (tab.IsRealized)
+                ApplyEditorAppearance(tab.Control);
         foreach (var tab in _terminalTabs)
             ApplyTerminalAppearance(tab.View);
         if (_editorSupportSourceTab is not null)

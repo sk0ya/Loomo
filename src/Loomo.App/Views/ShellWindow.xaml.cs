@@ -248,7 +248,7 @@ public partial class ShellWindow : Window
 
             var editorTab = CreateEditorTab();
             _editorTabs.Add(editorTab);
-            _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.Control.FilePath, editorTab.Control.IsModified, false);
+            _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.PeekFilePath, editorTab.PeekIsModified, false);
             ActivateEditorTab(editorTab.Id);
             UpdateEditorTab(editorTab);
             StartupProfiler.Mark("初期エディタタブ生成完了");

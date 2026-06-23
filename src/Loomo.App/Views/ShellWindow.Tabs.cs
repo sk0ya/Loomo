@@ -123,7 +123,7 @@ public partial class ShellWindow
         EnsureEditorPaneForOpenedFile(path);
 
         var existing = _editorTabs.FirstOrDefault(t =>
-            string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
+            string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
             // 明示的に開いた（ダブルクリック・Enter 等）ので、プレビュー中なら通常タブへ確定する。
@@ -167,7 +167,7 @@ public partial class ShellWindow
         EnsureEditorPaneForOpenedFile(path);
 
         var existing = _editorTabs.FirstOrDefault(t =>
-            string.Equals(t.Control.FilePath, path, StringComparison.OrdinalIgnoreCase));
+            string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
             ActivateEditorTab(existing.Id);
@@ -178,11 +178,11 @@ public partial class ShellWindow
 
         // 差し替え先：未編集のプレビュータブ、無ければアクティブな空の Untitled タブを転用する。
         var target = _previewEditorTab is { } preview && _editorTabs.Contains(preview)
-                     && !preview.Control.IsModified && !preview.Control.IsVirtualDocument
+                     && !preview.PeekIsModified && !preview.PeekIsVirtual
             ? preview
             : _activeEditorTab is { } active && _editorTabs.Contains(active)
-              && string.IsNullOrEmpty(active.Control.FilePath) && !active.Control.IsModified
-              && !active.Control.IsVirtualDocument && active.VirtualTitle is null
+              && string.IsNullOrEmpty(active.PeekFilePath) && !active.PeekIsModified
+              && !active.PeekIsVirtual && active.VirtualTitle is null
                 ? active
                 : null;
 
@@ -422,7 +422,7 @@ public partial class ShellWindow
 
         // 開いたタブがアクティブになっているので、そのコントロールでキャレットを移動する。
         if (_activeEditorTab is { } tab &&
-            string.Equals(tab.Control.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
+            string.Equals(tab.PeekFilePath, fullPath, StringComparison.OrdinalIgnoreCase))
         {
             // line/column は1始まり、NavigateTo は0始まりなので変換する。
             tab.Control.NavigateTo(line - 1, column > 0 ? column - 1 : 0);
