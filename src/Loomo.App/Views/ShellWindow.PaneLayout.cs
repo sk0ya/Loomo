@@ -568,6 +568,40 @@ public partial class ShellWindow
                 System.Windows.Threading.DispatcherPriority.Input);
     }
 
+    /// <summary>ソロモードのミニチュアからのドラッグを開始する。ドロップ先は舞台1枚で、中央なら
+    /// 舞台のペインを入れ替え（クリックと同じ）、端ならレイアウトモードへ切り替えて舞台のペインの
+    /// 当該辺へ分割挿入する（<see cref="HandleStageDrop"/>）。ソロモード専用。</summary>
+    private void BeginStageDrag(PaneKind source)
+    {
+        if (!_stageActive || _overviewActive)
+            return;
+
+        EnsureDragOverlay();
+        _dragSource = source;
+        _dragTarget = null;
+        _dragZone = null;
+        _dragFromWing = true;
+        _dragCenter = false;
+        _dragSpan = false;
+        _stageDrag = true;
+        _paneDragging = true;
+
+        _dragPreview!.Visibility = Visibility.Collapsed;
+        _dragTargetOutline!.Visibility = Visibility.Collapsed;
+        PaneDragOverlay.Visibility = Visibility.Visible;
+        ShowDragGhost(source);
+        MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
+
+        if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    if (_paneDragging)
+                        Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
+                }),
+                System.Windows.Threading.DispatcherPriority.Input);
+    }
+
     private void EnsureDragOverlay()
     {
         if (_dragCanvas is not null)
@@ -614,7 +648,53 @@ public partial class ShellWindow
         }
 
         MoveDragGhost(e.GetPosition(DragGhostLayer));
-        UpdateDragPreview(e.GetPosition(PaneHost));
+        if (_stageDrag)
+            UpdateStageDragPreview(e.GetPosition(PaneHost));
+        else
+            UpdateDragPreview(e.GetPosition(PaneHost));
+    }
+
+    /// <summary>ソロモードのドラッグ中プレビュー。ドロップ先は舞台1枚（<see cref="StageArea"/>）のみで、
+    /// 中央は入れ替え（舞台全体を枠取り）、端は分割挿入（当該辺の半分をプレビュー）。舞台の外は無効。</summary>
+    private void UpdateStageDragPreview(Point pos)
+    {
+        var rect = StageRectInPaneHost();
+        if (rect.Width <= 0 || rect.Height <= 0 || !rect.Contains(pos))
+        {
+            // 舞台の外＝ドロップ無効。プレビューを消し、カーソルも禁止にする。
+            _dragTarget = null;
+            _dragZone = null;
+            _dragCenter = false;
+            _dragPreview!.Visibility = Visibility.Collapsed;
+            _dragTargetOutline!.Visibility = Visibility.Collapsed;
+            Mouse.OverrideCursor = Cursors.No;
+            return;
+        }
+        Mouse.OverrideCursor = Cursors.Hand;
+
+        var relX = (pos.X - rect.X) / rect.Width;
+        var relY = (pos.Y - rect.Y) / rect.Height;
+        var zone = NearestZone(relX, relY);
+        var center = relX is > 0.34 and < 0.66 && relY is > 0.34 and < 0.66;
+
+        _dragTarget = _stagePane;
+        _dragZone = center ? null : zone;
+        _dragCenter = center;
+
+        PlaceOverlay(_dragTargetOutline!, rect);
+        PlaceOverlay(_dragPreview!, center ? rect : ZoneRect(rect, zone));
+        _dragTargetOutline!.Visibility = Visibility.Visible;
+        _dragPreview!.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>舞台（<see cref="StageArea"/>）の矩形を PaneHost 座標で返す（ドラッグオーバーレイと同じ列）。
+    /// まだレイアウトされていなければ空。</summary>
+    private Rect StageRectInPaneHost()
+    {
+        if (StageArea.ActualWidth <= 0 || StageArea.ActualHeight <= 0)
+            return Rect.Empty;
+        var topLeft = StageArea.TransformToVisual(PaneHost).Transform(new Point(0, 0));
+        return new Rect(topLeft, new Size(StageArea.ActualWidth, StageArea.ActualHeight));
     }
 
     private void UpdateDragPreview(Point pos)
@@ -713,14 +793,65 @@ public partial class ShellWindow
         var center = _dragCenter;
         var span = _dragSpan;
         var fromWing = _dragFromWing;
+        var stageDrag = _stageDrag;
         EndPaneDrag();
 
+        if (stageDrag)
+        {
+            HandleStageDrop(source, target, center, zone);
+            return;
+        }
         if (target is not { } t || t == source)
             return;
         if (fromWing)
             PlaceWingPane(source, t, center, zone, span);
         else if (zone is { } z)
             MovePane(source, t, z, span);
+    }
+
+    /// <summary>ソロモードのミニチュアを舞台へドロップしたときの確定処理。
+    /// 中央＝舞台のペインを <paramref name="source"/> へ入れ替える（クリックと同じ）。
+    /// 端＝レイアウトモードへ切り替え、舞台で見えていた1枚と <paramref name="source"/> だけの2分割を
+    /// 当該辺の向きに作る。舞台の外なら何もしない。</summary>
+    private void HandleStageDrop(PaneKind source, PaneKind? target, bool center, DropZone? zone)
+    {
+        if (target is not { } stage)   // 舞台の外でドロップ＝レイアウトは変えない
+            return;
+
+        if (center)
+        {
+            SetStagePane(source);
+            FocusPane(source);
+            return;
+        }
+
+        if (zone is not { } z || source == stage)
+            return;
+
+        // 以前のタイル配置（ステージ前の未保存レイアウト）を復元するのではなく、舞台に立っていた1枚を
+        // 基準に source を当該辺へ並べた2ペイン構成を新しく組む。残りの有効セッションは袖へ回る。
+        var orientation = z is DropZone.Left or DropZone.Right ? SplitKind.Columns : SplitKind.Rows;
+        var split = new PaneSplit { Orientation = orientation };
+        var stageLeaf = new PaneLeaf { Kind = stage };
+        var draggedLeaf = new PaneLeaf { Kind = source };
+        if (z is DropZone.Left or DropZone.Above)
+        {
+            split.Children.Add(draggedLeaf);
+            split.Children.Add(stageLeaf);
+        }
+        else
+        {
+            split.Children.Add(stageLeaf);
+            split.Children.Add(draggedLeaf);
+        }
+        _enabledSessions.Add(source);
+        _enabledSessions.Add(stage);
+        _root = split;
+
+        ExitStageMode();        // 新しい _root でタイルを組み直す（→ レイアウトモード）
+        MarkLayoutDirty();      // ステージ解除後なので「未保存」印が立つ
+        FocusPane(source);
+        SaveActiveWorkspaceSnapshot();
     }
 
     private void OnDragCanvasLostCapture(object sender, MouseEventArgs e)
@@ -776,6 +907,7 @@ public partial class ShellWindow
     {
         _paneDragging = false;
         _dragFromWing = false;
+        _stageDrag = false;
         _dragCenter = false;
         _dragSpan = false;
         HideDragGhost();

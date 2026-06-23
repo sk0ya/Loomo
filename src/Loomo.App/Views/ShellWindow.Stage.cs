@@ -673,8 +673,11 @@ public partial class ShellWindow
             onClick();
         };
 
-        // レイアウトモードでは、ミニチュアをタイルへドラッグして配置できる（中央=入れ替え／端=分割挿入）。
-        // しきい値を超えたら BeginWingDrag がオーバーレイへ捕捉を移し、このクリック（=onClick）は不発になる。
+        // ミニチュアはドラッグして配置できる。しきい値を超えたら BeginWingDrag／BeginStageDrag が
+        // オーバーレイへ捕捉を移し、このクリック（=onClick）は不発になる。
+        //   レイアウト：タイルへドロップ（中央=入れ替え／端=分割挿入）。
+        //   ソロ：舞台へドロップ（中央=舞台を入れ替え／端=レイアウトモードへ切り替えて分割挿入）。
+        // 俯瞰カードはダイブ専用なのでドラッグしない。
         card.PreviewMouseLeftButtonDown += (_, e) =>
         {
             _wingDragStart = e.GetPosition(this);
@@ -682,14 +685,17 @@ public partial class ShellWindow
         };
         card.PreviewMouseMove += (_, e) =>
         {
-            if (_stageActive || _overviewActive || !_wingDragArmed || e.LeftButton != MouseButtonState.Pressed)
+            if (isOverview || !_wingDragArmed || e.LeftButton != MouseButtonState.Pressed)
                 return;
             var pos = e.GetPosition(this);
             if (Math.Abs(pos.X - _wingDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
                 && Math.Abs(pos.Y - _wingDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
                 return;
             _wingDragArmed = false;
-            BeginWingDrag(kind);
+            if (_stageActive)
+                BeginStageDrag(kind);
+            else
+                BeginWingDrag(kind);
         };
         return card;
     }

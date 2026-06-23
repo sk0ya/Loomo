@@ -133,6 +133,10 @@ public partial class ShellWindow : Window
     /// <summary>ドラッグ元が袖（ミニチュア）か。true なら _dragSource はツリー外のペインで、
     /// ドロップ時は移動でなく配置（入れ替え／分割挿入）になる。</summary>
     private bool _dragFromWing;
+    /// <summary>ソロモードのミニチュアからのドラッグか。true ならドロップ先は舞台1枚で、
+    /// 中央＝舞台のペインを入れ替え・端＝レイアウトモードへ切り替えて分割挿入になる
+    /// （<see cref="HandleStageDrop"/>）。</summary>
+    private bool _stageDrag;
     /// <summary>ドロップ先セルの中央ゾーン（=入れ替え）にいるか。端なら分割挿入。</summary>
     private bool _dragCenter;
     /// <summary>セルの外縁ぎりぎりにいて、単体ペインではなく（直交する）祖先スプリット全体の辺へ
