@@ -141,6 +141,26 @@ public class PaneLayoutTreeTests
     }
 
     [Fact]
+    public void InsertRelative_sibling_splits_target_weight_in_half()
+    {
+        // CaptureLayoutSizes 後は実ピクセル幅が重みに入る想定（例：editor=800, browser=400）。
+        // editor の右へ同方向で挿し込むと、editor の取り分を新ペインと半分ずつ（400/400）に割り、
+        // 隣の browser はそのまま。重み 1 のまま挿すと新ペインが極端に細くなる回帰を防ぐ。
+        var editor = Leaf(PaneKind.Editor, weight: 800);
+        var browser = Leaf(PaneKind.Browser, weight: 400);
+        var root = Split(SplitKind.Columns, editor, browser);
+        var ai = Leaf(PaneKind.Ai, weight: 1);
+
+        var result = PaneLayoutTree.InsertRelative(root, ai, editor, DropZone.Right);
+
+        Assert.Same(root, result);
+        Assert.Equal(new PaneNode[] { editor, ai, browser }, root.Children);
+        Assert.Equal(400, editor.Weight);
+        Assert.Equal(400, ai.Weight);
+        Assert.Equal(400, browser.Weight); // 隣の兄弟は影響を受けない
+    }
+
+    [Fact]
     public void InsertRelative_wraps_target_when_orientation_differs_and_inherits_weight()
     {
         var editor = Leaf(PaneKind.Editor, weight: 2);

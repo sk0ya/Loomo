@@ -157,6 +157,12 @@ public static class PaneLayoutTree
 
         if (parent is not null && parent.Orientation == desired)
         {
+            // ターゲットの取り分（CaptureLayoutSizes 後は実ピクセル幅が入る）を新ペインと半分ずつに
+            // 割る。重み 1 のまま挿し込むと、隣の兄弟の実寸重みに押し負けて極端に細くなる
+            // （＝挿入したペインが片側に寄ってしまう）ため。他の兄弟の比率はそのまま保つ。
+            var half = (target.Weight > 0 ? target.Weight : 1) / 2;
+            target.Weight = half;
+            node.Weight = half;
             var index = parent.Children.IndexOf(target);
             parent.Children.Insert(before ? index : index + 1, node);
             return root;
