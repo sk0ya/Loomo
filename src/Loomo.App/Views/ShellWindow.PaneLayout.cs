@@ -558,14 +558,7 @@ public partial class ShellWindow
         ShowDragGhost(source);
         MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
 
-        if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
-            Dispatcher.BeginInvoke(
-                new Action(() =>
-                {
-                    if (_paneDragging)
-                        Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
-                }),
-                System.Windows.Threading.DispatcherPriority.Input);
+        BeginDragCapture();
     }
 
     /// <summary>ソロモードのミニチュアからのドラッグを開始する。ドロップ先は舞台1枚で、中央なら
@@ -592,15 +585,37 @@ public partial class ShellWindow
         ShowDragGhost(source);
         MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
 
-        if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
-            Dispatcher.BeginInvoke(
-                new Action(() =>
-                {
-                    if (_paneDragging)
-                        Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
-                }),
-                System.Windows.Threading.DispatcherPriority.Input);
+        BeginDragCapture();
     }
+
+    /// <summary>ドラッグ用オーバーレイ（<see cref="_dragCanvas"/>）へマウスキャプチャを移す。
+    /// 直前に <c>PaneDragOverlay</c> を Collapsed→Visible したばかりだと、レイアウトがまだ走っておらず
+    /// <c>_dragCanvas.IsVisible</c> が false のままで <see cref="Mouse.Capture(IInputElement, CaptureMode)"/>
+    /// が失敗する。これがミニチュア（袖＝列3、キャプチャ先の列2の外）からのドラッグが
+    /// 「ときどき不発になる」原因。まず <c>UpdateLayout</c> で可視化を同期確定させてから掴み、
+    /// それでも掴めなければ（HWND エアスペース等）ボタンが押されている間だけ数フレーム再試行する。</summary>
+    private void BeginDragCapture()
+    {
+        // 可視化を即レイアウト確定させてから掴む（IsVisible が false のままだと Mouse.Capture が失敗する）。
+        PaneDragOverlay.UpdateLayout();
+        if (TryCaptureDragCanvas())
+            return;
+
+        var attempts = 0;
+        void Retry()
+        {
+            if (!_paneDragging || Mouse.LeftButton != MouseButtonState.Pressed)
+                return;                                       // ドラッグ終了／ボタンが離れた＝もう不要
+            if (TryCaptureDragCanvas() || ++attempts >= 5)
+                return;
+            Dispatcher.BeginInvoke(new Action(Retry), System.Windows.Threading.DispatcherPriority.Input);
+        }
+        Dispatcher.BeginInvoke(new Action(Retry), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private bool TryCaptureDragCanvas()
+        => ReferenceEquals(Mouse.Captured, _dragCanvas)
+           || Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
 
     private void EnsureDragOverlay()
     {
@@ -856,8 +871,16 @@ public partial class ShellWindow
 
     private void OnDragCanvasLostCapture(object sender, MouseEventArgs e)
     {
-        if (_paneDragging)
-            EndPaneDrag();
+        if (!_paneDragging)
+            return;
+        // ボタンがまだ押されているのに失った＝可視化直後などの「偽の喪失」。ドラッグを諦めず取り直す
+        // （列をまたいだミニチュアからのドラッグで起きやすい）。離されていれば通常どおり確定終了する。
+        if (Mouse.LeftButton == MouseButtonState.Pressed)
+        {
+            Dispatcher.BeginInvoke(new Action(BeginDragCapture), System.Windows.Threading.DispatcherPriority.Input);
+            return;
+        }
+        EndPaneDrag();
     }
 
     /// <summary>ドラッグ中のゴースト（掴んでいるペイン名のチップ）を出し、カーソル追従させる。
