@@ -123,6 +123,58 @@ public partial class ShellWindow
     private async void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
         => await SwitchWorkspaceAsync(workspace, captureCurrent: true);
 
+    /// <summary>ワークスペースが一覧から取り除かれたとき、その Id にひも付くキャッシュ済みタブ実体を破棄する。
+    /// アクティブなものを取り除いた場合は、VM 側が先に別ワークスペースへ切り替えてからこのイベントを上げるため、
+    /// ここに来た時点で対象のタブはデタッチ済み（端末ビューは Reset・ブラウザはホストから除去済み）で安全に破棄できる。</summary>
+    private async void OnWorkspaceRemoved(object? sender, Guid workspaceId)
+    {
+        // 端末は ConPTY プロセスを抱えるので明示的に閉じる。
+        if (_terminalWorkspaces.Remove(workspaceId, out var terminal))
+        {
+            foreach (var tab in terminal.Tabs)
+                await tab.View.CloseAsync();
+        }
+
+        // ブラウザは WebView2 を破棄する。
+        if (_browserWorkspaces.Remove(workspaceId, out var browser))
+        {
+            foreach (var tab in browser.Tabs)
+                tab.View.Dispose();
+        }
+
+        // エディタはマネージドコントロールのみ。参照を落とせば GC に任せられる。
+        _editorWorkspaces.Remove(workspaceId);
+    }
+
+    private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e)
+    {
+        // 右クリックされたコンボボックス項目（＝そのワークスペース）がメニューの DataContext。
+        if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
+            return;
+
+        if (!_vm.Workspaces.RemoveWorkspaceCommand.CanExecute(entry))
+        {
+            MessageBox.Show(
+                this,
+                "最後のワークスペースは削除できません（常に1つは開いている必要があります）。",
+                "ワークスペースの削除",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            $"ワークスペース「{entry.Name}」を一覧から削除しますか？\n" +
+            "フォルダ自体は削除されません（タブ・レイアウトの保存状態は失われます）。",
+            "ワークスペースの削除",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.OK)
+            _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);
+    }
+
     /// <param name="deferHydration">
     /// true なら、レイアウト（ペイン枠）だけ同期で適用し、重いタブ実体化（端末の ConPTY 起動・
     /// エディタコントロール生成＋ファイル読込＋Git差分）は<b>初フレーム描画後</b>に Background 優先度で行う。

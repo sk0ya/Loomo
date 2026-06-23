@@ -37,6 +37,10 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
     public event EventHandler<WorkspaceSnapshot>? WorkspaceActivated;
 
+    /// <summary>ワークスペースを一覧から取り除いた（フォルダ自体は消さない）。引数は取り除いた Id。
+    /// ShellWindow がこの Id のキャッシュ済みタブ実体（端末プロセス・WebView2）を破棄するために使う。</summary>
+    public event EventHandler<Guid>? WorkspaceRemoved;
+
     [ObservableProperty] private WorkspaceEntryViewModel? _selectedWorkspace;
 
     public WorkspaceListViewModel(WorkspaceStateStore store)
@@ -95,6 +99,43 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         ActivateWorkspace(value);
     }
 
+    /// <summary>ワークスペースを一覧から取り除く（フォルダ自体は削除しない）。アクティブなものを取り除くときは、
+    /// 先に最近使った別のワークスペースへ切り替えてから取り除く（切替で現在の内容が退避され、タブ実体が安全に外れる）。</summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveWorkspace))]
+    private void RemoveWorkspace(WorkspaceEntryViewModel? entry)
+    {
+        if (entry is null)
+            return;
+
+        var snapshot = FindSnapshot(entry.Id);
+        if (snapshot is null)
+            return;
+
+        if (_state.ActiveWorkspaceId == entry.Id)
+        {
+            var next = _state.Workspaces
+                .Where(w => w.Id != entry.Id && !string.IsNullOrWhiteSpace(w.RootPath))
+                .OrderByDescending(w => w.LastUsedUtc)
+                .FirstOrDefault();
+
+            // 最後の1つは取り除かない（常にアクティブなワークスペースが要る）。
+            if (next is null)
+                return;
+
+            Activate(next);
+        }
+
+        _state.Workspaces.RemoveAll(w => w.Id == entry.Id);
+        Workspaces.Remove(entry);
+        _store.Save(_state);
+        RemoveWorkspaceCommand.NotifyCanExecuteChanged();
+
+        WorkspaceRemoved?.Invoke(this, entry.Id);
+    }
+
+    private bool CanRemoveWorkspace(WorkspaceEntryViewModel? entry)
+        => entry is not null && Workspaces.Count > 1;
+
     public void ActivateFolder(string path)
     {
         var fullPath = Path.GetFullPath(path);
@@ -112,6 +153,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             };
             _state.Workspaces.Add(snapshot);
             Workspaces.Insert(0, new WorkspaceEntryViewModel(snapshot));
+            RemoveWorkspaceCommand.NotifyCanExecuteChanged();
         }
 
         Activate(snapshot);

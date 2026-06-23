@@ -192,9 +192,20 @@
                     <ComboBox Height="24"
                               ItemsSource="{Binding Workspaces.Workspaces}"
                               SelectedItem="{Binding Workspaces.SelectedWorkspace, Mode=TwoWay}"
-                              DisplayMemberPath="Name"
-                              ToolTip="ワークスペース"
-                              WindowChrome.IsHitTestVisibleInChrome="True" />
+                              ToolTip="ワークスペース（右クリックで削除）"
+                              WindowChrome.IsHitTestVisibleInChrome="True">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}" Background="Transparent">
+                                    <TextBlock.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="ワークスペースを削除" Click="OnDeleteWorkspaceMenuClick" />
+                                        </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                </TextBlock>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <Button Width="30" Height="24" Margin="6,0,0,0"
                             Style="{StaticResource CaptionButton}"
                             ToolTip="ワークスペースを追加"
