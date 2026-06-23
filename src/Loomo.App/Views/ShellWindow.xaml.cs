@@ -383,6 +383,10 @@ public partial class ShellWindow : Window
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
             new Action(() => _vm.GitSession.EnsureLoaded()));
 
+        // ドラッグ用オーバーレイを先に実体化しておく（初回ドラッグで生成・表示と同フレームに掴むと
+        // IsVisible 未確定で Mouse.Capture が失敗し、ミニチュアのドラッグが不発になるため）。
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(EnsureDragOverlay));
+
         StartupProfiler.Mark("OnLoaded 完了");
     }
 

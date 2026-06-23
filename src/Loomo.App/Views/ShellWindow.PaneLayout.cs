@@ -520,19 +520,10 @@ public partial class ShellWindow
 
         _dragPreview!.Visibility = Visibility.Collapsed;
         _dragTargetOutline!.Visibility = Visibility.Collapsed;
-        PaneDragOverlay.Visibility = Visibility.Visible;
         ShowDragGhost(source);
         MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
 
-        // 表示直後で捕捉に失敗した場合は次の入力タイミングで再試行する。
-        if (!Mouse.Capture(_dragCanvas, CaptureMode.SubTree))
-            Dispatcher.BeginInvoke(
-                new Action(() =>
-                {
-                    if (_paneDragging)
-                        Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
-                }),
-                System.Windows.Threading.DispatcherPriority.Input);
+        BeginDragCapture();
     }
 
     /// <summary>袖（ミニチュア）からのドラッグを開始する。ドロップ先のタイル上では既存のゾーン
@@ -554,7 +545,6 @@ public partial class ShellWindow
 
         _dragPreview!.Visibility = Visibility.Collapsed;
         _dragTargetOutline!.Visibility = Visibility.Collapsed;
-        PaneDragOverlay.Visibility = Visibility.Visible;
         ShowDragGhost(source);
         MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
 
@@ -581,23 +571,20 @@ public partial class ShellWindow
 
         _dragPreview!.Visibility = Visibility.Collapsed;
         _dragTargetOutline!.Visibility = Visibility.Collapsed;
-        PaneDragOverlay.Visibility = Visibility.Visible;
         ShowDragGhost(source);
         MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
 
         BeginDragCapture();
     }
 
-    /// <summary>ドラッグ用オーバーレイ（<see cref="_dragCanvas"/>）へマウスキャプチャを移す。
-    /// 直前に <c>PaneDragOverlay</c> を Collapsed→Visible したばかりだと、レイアウトがまだ走っておらず
-    /// <c>_dragCanvas.IsVisible</c> が false のままで <see cref="Mouse.Capture(IInputElement, CaptureMode)"/>
-    /// が失敗する。これがミニチュア（袖＝列3、キャプチャ先の列2の外）からのドラッグが
-    /// 「ときどき不発になる」原因。まず <c>UpdateLayout</c> で可視化を同期確定させてから掴み、
-    /// それでも掴めなければ（HWND エアスペース等）ボタンが押されている間だけ数フレーム再試行する。</summary>
+    /// <summary>ドラッグ用オーバーレイ（<see cref="_dragCanvas"/>）のヒットテストを有効化してから
+    /// マウスキャプチャを移す。オーバーレイは <see cref="EnsureDragOverlay"/> で常時実体化済み
+    /// （IsVisible=true）なので、ここで掴めば「表示直後で IsVisible=false → Mouse.Capture 失敗」という
+    /// 競合（＝ミニチュアからのドラッグが初回／ときどき不発になる原因）は起きない。万一掴み損ねたとき
+    /// （HWND エアスペース等）はボタン押下中だけ数フレーム再試行する。</summary>
     private void BeginDragCapture()
     {
-        // 可視化を即レイアウト確定させてから掴む（IsVisible が false のままだと Mouse.Capture が失敗する）。
-        PaneDragOverlay.UpdateLayout();
+        _dragCanvas!.IsHitTestVisible = true;   // 素通し→掴める状態へ（EndPaneDrag で false へ戻す）
         if (TryCaptureDragCanvas())
             return;
 
@@ -642,13 +629,25 @@ public partial class ShellWindow
         };
         // PaneDragOverlay は PaneHost と同セルなので、Canvas 上の座標＝PaneHost 座標になる。
         // ClipToBounds でタイル領域外（右の袖＝ミニチュア列など）へプレビューがはみ出さないようにする。
-        _dragCanvas = new Canvas { Background = Brushes.Transparent, ClipToBounds = true };
+        // 既定は IsHitTestVisible=false ＝素通し（ペインのクリックを邪魔しない）。ドラッグ中だけ
+        // BeginDragCapture が true にして掴む。オーバーレイ自体は常時 Visible にして「表示直後は
+        // IsVisible=false で Mouse.Capture が失敗する」競合（＝初回ドラッグが不発になる原因）を断つ。
+        _dragCanvas = new Canvas
+        {
+            Background = Brushes.Transparent,
+            ClipToBounds = true,
+            IsHitTestVisible = false,
+        };
         _dragCanvas.Children.Add(_dragTargetOutline);
         _dragCanvas.Children.Add(_dragPreview);
         _dragCanvas.MouseMove += OnDragCanvasMouseMove;
         _dragCanvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
         _dragCanvas.LostMouseCapture += OnDragCanvasLostCapture;
         PaneDragOverlay.Children.Add(_dragCanvas);
+        // 実体化させて IsVisible を確定させておく（初回ドラッグ時にここで初めて生成・追加されると、
+        // 同フレームで掴もうとして失敗するため、生成時点でレイアウトを通しておく）。
+        PaneDragOverlay.Visibility = Visibility.Visible;
+        PaneDragOverlay.UpdateLayout();
     }
 
     private void OnDragCanvasMouseMove(object sender, MouseEventArgs e)
@@ -936,7 +935,10 @@ public partial class ShellWindow
         HideDragGhost();
         if (ReferenceEquals(Mouse.Captured, _dragCanvas))
             Mouse.Capture(null);
-        PaneDragOverlay.Visibility = Visibility.Collapsed;
+        // オーバーレイは実体化したまま素通し（IsHitTestVisible=false）に戻すだけ。Collapse すると
+        // 次のドラッグで再表示直後の Mouse.Capture が競合して不発になるため、Visible は維持する。
+        if (_dragCanvas is not null)
+            _dragCanvas.IsHitTestVisible = false;
         if (_dragPreview is not null)
             _dragPreview.Visibility = Visibility.Collapsed;
         if (_dragTargetOutline is not null)
