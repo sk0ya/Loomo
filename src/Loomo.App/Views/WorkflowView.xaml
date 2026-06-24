@@ -73,6 +73,41 @@
             </Setter>
         </Style>
 
+        <Style x:Key="WorkflowRowSplitter" TargetType="{x:Type GridSplitter}">
+            <Setter Property="Height" Value="12" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="SizeNS" />
+            <Setter Property="ResizeBehavior" Value="PreviousAndNext" />
+            <Setter Property="ResizeDirection" Value="Rows" />
+            <Setter Property="ShowsPreview" Value="False" />
+            <Setter Property="ToolTip" Value="ドラッグして高さを調整" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type GridSplitter}">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Border Height="1" VerticalAlignment="Center"
+                                    Background="{DynamicResource Border}" />
+                            <Border x:Name="Grip" Width="48" Height="5" CornerRadius="2.5"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Background="{DynamicResource FgDim}" Opacity="0.45" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="Grip" Property="Opacity" Value="0.95" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="Grip" Property="Opacity" Value="0.95" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 実行ログ1エントリ（思考・ツールカード・結果・出力・診断・承認）の見た目。
              見出しは常に1行で、本文・差分・承認は折りたたみ展開。下部の実行ログでステップ単位に使い回す。 -->
         <DataTemplate x:Key="LogEntryTemplate" DataType="{x:Type vm:TranscriptEntry}">
@@ -222,7 +257,13 @@
                                         <Button Style="{StaticResource SavedRowButton}"
                                                 HorizontalAlignment="Stretch"
                                                 Command="{Binding DataContext.LoadWorkflowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}">
+                                                CommandParameter="{Binding}"
+                                                MouseDoubleClick="OnWorkflowListItemDoubleClick">
+                                            <Button.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="名前の変更" Click="OnRenameWorkflowClick" />
+                                                </ContextMenu>
+                                            </Button.ContextMenu>
                                             <Button.Tag>
                                                 <MultiBinding Converter="{StaticResource EqualityActiveTagConverter}">
                                                     <Binding Path="Id" />
@@ -261,7 +302,7 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <!-- 実行ログ領域（進捗帯＋ログ）は実行後、またはウォームアップ中に高さを確保する。 -->
-                    <RowDefinition Height="{Binding IsProgressVisible, Converter={StaticResource BoolToStarLength}, ConverterParameter=1.4}" />
+                    <RowDefinition x:Name="ProgressAreaRow" Height="0" />
                 </Grid.RowDefinitions>
 
                 <!-- ===== ステップのパイプライン ===== -->
@@ -269,7 +310,8 @@
 
                 <!-- ワークフロー名（編集可・自動保存）＋保存状態 -->
                 <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
-                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6">
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6"
+                        Visibility="Collapsed">
                     <DockPanel LastChildFill="True">
                         <TextBlock DockPanel.Dock="Right" Text="{Binding SaveStatus}" FontSize="11"
                                    Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
@@ -290,26 +332,31 @@
 
                 <!-- 入力バー（{{input}} / {{input.path}} / {{input.content}} に流し込むワークフロー入力。ファイルからも読込可） -->
                 <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
-                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6">
-                    <DockPanel LastChildFill="True">
-                        <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,4">
-                            <TextBlock DockPanel.Dock="Left" Text="入力（{{input}} / {{input.path}} / {{input.content}}）" FontSize="11"
-                                       FontWeight="SemiBold" Foreground="{DynamicResource FgDim}"
-                                       VerticalAlignment="Center" />
-                            <Button DockPanel.Dock="Right" Content="クリア" Style="{StaticResource ToolbarGhostButton}"
-                                    Padding="8,2" Click="OnClearInputClick"
-                                    Visibility="{Binding RunInput, Converter={StaticResource NonEmptyToVis}}"
-                                    ToolTip="入力を空にする" />
-                            <Button DockPanel.Dock="Right" Content="ファイルから読込" Style="{StaticResource ToolbarGhostButton}"
-                                    Padding="8,2" Margin="0,0,6,0" Click="OnLoadInputFromFileClick"
-                                    ToolTip="テキストファイルを読み込んで入力にする" />
-                        </DockPanel>
-                        <TextBox Text="{Binding RunInput, UpdateSourceTrigger=PropertyChanged}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,5">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="入力" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   ToolTip="{}{{input}} / {{input.path}} / {{input.content}} としてステップへ渡します" />
+                        <TextBox Grid.Column="1" Text="{Binding RunInput, UpdateSourceTrigger=PropertyChanged}"
                                  Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
                                  BorderThickness="1" Padding="6,4" AcceptsReturn="True" TextWrapping="Wrap"
-                                 MinHeight="32" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                 MinHeight="30" MaxHeight="72" VerticalScrollBarVisibility="Auto"
                                  Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}" />
-                    </DockPanel>
+                        <Button Grid.Column="2" Content="読込" Style="{StaticResource ToolbarGhostButton}"
+                                Padding="8,2" Margin="6,0,0,0" Click="OnLoadInputFromFileClick"
+                                ToolTip="テキストファイルを読み込んで入力にする" />
+                        <Button Grid.Column="3" Content="クリア" Style="{StaticResource ToolbarGhostButton}"
+                                Padding="8,2" Margin="6,0,0,0" Click="OnClearInputClick"
+                                Visibility="{Binding RunInput, Converter={StaticResource NonEmptyToVis}}"
+                                ToolTip="入力を空にする" />
+                    </Grid>
                 </Border>
 
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8,8,8,10">
@@ -406,9 +453,9 @@
                                 </Grid>
 
                                 <!-- ステップカード -->
-                                <Border Grid.Column="1" Margin="2,5,2,5" CornerRadius="8" Padding="10"
+                                <Border Grid.Column="1" Margin="2,3,2,3" CornerRadius="4" Padding="8"
                                         Background="{DynamicResource Bg}"
-                                        BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                     <StackPanel>
                                         <!-- 見出し行：開閉・種別・タイトル・状態・操作 -->
                                         <Grid>
@@ -766,9 +813,7 @@
                      ウォームアップ中はウォームアップ表示。実行中・実行後は「実行ログ」（全ステップ一覧・
                      診断込み・出力は折りたたみ1行）。最終出力だけは別途ワークフロー出力として表示する。
                      上のパイプラインとの境界と、進行状況/最終出力の境界はドラッグで高さ調整できる。 -->
-                <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
-                              VerticalAlignment="Center" Background="Transparent"
-                              ResizeBehavior="PreviousAndNext" ResizeDirection="Rows"
+                <GridSplitter Grid.Row="1" Style="{StaticResource WorkflowRowSplitter}"
                               Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVis}}" />
 
                 <Border Grid.Row="2" Background="{DynamicResource BgAlt}"
@@ -776,7 +821,7 @@
                         Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVis}}">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition x:Name="ProgressLogRow" Height="*" MinHeight="72" />
+                            <RowDefinition x:Name="ProgressLogRow" Height="Auto" MinHeight="38" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition x:Name="FinalOutputRow" Height="0" />
                         </Grid.RowDefinitions>
@@ -784,18 +829,18 @@
                         <!-- 進捗状況の中身：ウォームアップ表示と実行ログを切り替える -->
                         <Grid Grid.Row="0">
                         <!-- ウォームアップ表示（ウォームアップ中だけ） -->
-                        <Border Padding="12,11" VerticalAlignment="Top"
+                        <Border Padding="10,8" VerticalAlignment="Top"
                                 Visibility="{Binding IsWarmingUp, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                    <ProgressBar IsIndeterminate="True" Width="90" Height="4"
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <ProgressBar IsIndeterminate="True" Width="64" Height="3"
                                                  Foreground="{DynamicResource Accent}" Background="Transparent"
                                                  BorderThickness="0" VerticalAlignment="Center" />
                                     <TextBlock Text="ウォームアップ中" Margin="10,0,0,0" VerticalAlignment="Center"
-                                               FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
+                                               FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
                                 </StackPanel>
                                 <TextBlock Text="{Binding RunStatus}" TextWrapping="Wrap"
-                                           FontSize="12" Foreground="{DynamicResource FgDim}" />
+                                           FontSize="11.5" Foreground="{DynamicResource FgDim}" />
                             </StackPanel>
                         </Border>
 
@@ -806,6 +851,31 @@
                             <Border DockPanel.Dock="Top" Padding="9,5"
                                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                 <DockPanel LastChildFill="False">
+                                    <ToggleButton DockPanel.Dock="Right"
+                                                  IsChecked="{Binding IsProgressDetailsExpanded, Mode=TwoWay}"
+                                                  Content="詳細" Padding="8,2" Margin="8,0,0,0"
+                                                  FontSize="11" Cursor="Hand"
+                                                  ToolTip="進行状況の詳細ログを表示">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border x:Name="b" Background="Transparent"
+                                                        BorderBrush="{DynamicResource Border}"
+                                                        BorderThickness="1" CornerRadius="4"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                                                        <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
                                     <TextBlock DockPanel.Dock="Left" Text="進行状況" FontSize="11" FontWeight="SemiBold"
                                                VerticalAlignment="Center" Foreground="{DynamicResource FgDim}" />
                                     <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Width="60" Height="4"
@@ -818,7 +888,8 @@
                                 </DockPanel>
                             </Border>
                             <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto"
-                                          Padding="8,6" ScrollChanged="OnLogScrollChanged">
+                                          Padding="8,6" ScrollChanged="OnLogScrollChanged"
+                                          Visibility="{Binding IsProgressDetailsExpanded, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
                                     <!-- 全ステップを1本のフラットな進捗タイムラインで見せる（ステップ単位でまとめない）。
                                          チャットの「進行状況」と同じ ActivityTimelineView を流用する。 -->
@@ -832,13 +903,11 @@
                         </DockPanel>
                         </Grid>
 
-                        <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Center" Background="Transparent"
-                                      ResizeBehavior="PreviousAndNext" ResizeDirection="Rows"
+                        <GridSplitter Grid.Row="1" Style="{StaticResource WorkflowRowSplitter}"
                                       Visibility="{Binding HasFinalOutput, Converter={StaticResource BoolToVis}}" />
 
                         <!-- ワークフローの最終出力（実行ログとは別表示）。進行状況との境界をドラッグで調整できる。 -->
-                        <Border Grid.Row="2" Padding="9,7" MinHeight="56"
+                        <Border Grid.Row="2" Padding="10,8" MinHeight="72"
                                 Background="{DynamicResource Bg}"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
                                 Visibility="{Binding HasFinalOutput, Converter={StaticResource BoolToVis}}">
@@ -848,7 +917,7 @@
                                             Style="{StaticResource ToolbarGhostButton}" Padding="8,2"
                                             Click="OnCopyFinalOutputClick"
                                             ToolTip="ワークフローの出力をコピー" />
-                                    <TextBlock DockPanel.Dock="Left" Text="ワークフローの出力" FontSize="10"
+                                    <TextBlock DockPanel.Dock="Left" Text="出力" FontSize="11"
                                                FontWeight="SemiBold" Foreground="{DynamicResource FgDim}"
                                                VerticalAlignment="Center" />
                                 </DockPanel>

@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -72,6 +74,32 @@ public partial class WorkflowView : UserControl
         if (_workflow is not null) _workflow.RunInput = "";
     }
 
+    private void OnWorkflowListItemDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        PromptRenameWorkflow((sender as FrameworkElement)?.DataContext as WorkflowSummary);
+    }
+
+    private void OnRenameWorkflowClick(object sender, RoutedEventArgs e)
+    {
+        var menu = (sender as FrameworkElement)?.Parent as ContextMenu;
+        PromptRenameWorkflow(menu?.PlacementTarget is FrameworkElement target
+            ? target.DataContext as WorkflowSummary
+            : null);
+    }
+
+    private void PromptRenameWorkflow(WorkflowSummary? summary)
+    {
+        if (_workflow is null || summary is null) return;
+        var name = InputDialog.Prompt(
+            Window.GetWindow(this),
+            "ワークフロー名の変更",
+            "ワークフロー名を入力:",
+            summary.Name);
+        if (name is null) return;
+        _workflow.RenameWorkflow(summary, name);
+    }
+
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (_workflow is not null)
@@ -82,24 +110,43 @@ public partial class WorkflowView : UserControl
         if (_workflow is not null)
         {
             _workflow.PropertyChanged += OnWorkflowPropertyChanged;
-            ResetFinalOutputRow(_workflow.HasFinalOutput);
+            ResetProgressRows();
         }
         else
         {
-            ResetFinalOutputRow(false);
+            ResetProgressRows();
         }
     }
 
     private void OnWorkflowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(WorkflowViewModel.HasFinalOutput))
-            Dispatcher.InvokeAsync(() => ResetFinalOutputRow(_workflow?.HasFinalOutput == true));
+        if (e.PropertyName == nameof(WorkflowViewModel.HasFinalOutput)
+            || e.PropertyName == nameof(WorkflowViewModel.IsProgressDetailsExpanded)
+            || e.PropertyName == nameof(WorkflowViewModel.IsWarmingUp)
+            || e.PropertyName == nameof(WorkflowViewModel.IsProgressVisible))
+            Dispatcher.InvokeAsync(ResetProgressRows);
     }
 
-    private void ResetFinalOutputRow(bool hasFinalOutput)
+    private void ResetProgressRows()
     {
+        var hasFinalOutput = _workflow?.HasFinalOutput == true;
+        var isProgressVisible = _workflow?.IsProgressVisible == true;
+        var isWarmingUp = _workflow?.IsWarmingUp == true;
+        var showProgressDetails = _workflow?.IsProgressDetailsExpanded == true || _workflow?.IsWarmingUp == true;
+
+        ProgressAreaRow.Height = !isProgressVisible
+            ? new GridLength(0)
+            : isWarmingUp && !hasFinalOutput
+                ? GridLength.Auto
+                : new GridLength(1.4, GridUnitType.Star);
+
+        ProgressLogRow.MinHeight = showProgressDetails ? 72 : 38;
+        ProgressLogRow.Height = showProgressDetails
+            ? new GridLength(1, GridUnitType.Star)
+            : GridLength.Auto;
+
         FinalOutputRow.Height = hasFinalOutput
-            ? new GridLength(0.65, GridUnitType.Star)
+            ? new GridLength(showProgressDetails ? 0.7 : 1.0, GridUnitType.Star)
             : new GridLength(0);
     }
 }

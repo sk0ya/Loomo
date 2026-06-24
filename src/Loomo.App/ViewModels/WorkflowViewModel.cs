@@ -94,6 +94,9 @@ public sealed partial class WorkflowViewModel : ObservableObject
     [ObservableProperty] private bool _hasRun;
     public bool IsProgressVisible => HasRun || IsWarmingUp;
 
+    /// <summary>進行状況の詳細タイムラインを開くか。通常は閉じ、実行中だけ自動で開く。</summary>
+    [ObservableProperty] private bool _isProgressDetailsExpanded;
+
     /// <summary>ウォームアップ中か。進捗状況エリアの中身を「ウォームアップ表示」と「実行ログ」で出し分ける。</summary>
     [ObservableProperty] private bool _isWarmingUp;
 
@@ -205,6 +208,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
     partial void OnHasRunChanged(bool value) => OnPropertyChanged(nameof(IsProgressVisible));
 
     partial void OnIsWarmingUpChanged(bool value) => OnPropertyChanged(nameof(IsProgressVisible));
+
+    partial void OnIsRunningChanged(bool value)
+    {
+        if (value)
+            IsProgressDetailsExpanded = true;
+    }
 
     partial void OnRunInputChanged(string value)
     {
@@ -449,6 +458,33 @@ public sealed partial class WorkflowViewModel : ObservableObject
         LoadInto(wf);
     }
 
+    public void RenameWorkflow(WorkflowSummary? summary, string? newName)
+    {
+        if (summary is null || string.IsNullOrWhiteSpace(newName) || IsRunning) return;
+        var trimmed = newName.Trim();
+        if (trimmed == summary.Name) return;
+
+        var wf = _store.Load(summary.Id);
+        if (wf is null) return;
+        wf.Name = trimmed;
+        _store.Save(wf);
+
+        if (_currentId == summary.Id)
+        {
+            _suppressChangeTracking = true;
+            try
+            {
+                Name = trimmed;
+                HasUnsavedChanges = false;
+            }
+            finally
+            {
+                _suppressChangeTracking = false;
+            }
+            OnPropertyChanged(nameof(SaveStatus));
+        }
+    }
+
     private void LoadInto(Workflow wf)
     {
         _suppressChangeTracking = true;
@@ -603,6 +639,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
             RunStatus = "完了しました。";
             _log?.Append(ActivityKind.Complete, $"回答が完了しました。合計 {TranscriptFormatting.FormatDuration(_runClock.Elapsed)} かかりました。");
+            IsProgressDetailsExpanded = false;
         }
         catch (OperationCanceledException)
         {

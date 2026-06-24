@@ -239,6 +239,24 @@ public class WorkflowViewModelTests
     }
 
     [Fact]
+    public void Rename_workflow_updates_store_list_and_current_name()
+    {
+        var sut = CreateSut();
+        sut.Name = "変更前";
+        sut.AddStepCommand.Execute(null);
+        sut.Steps[0].Prompt = "要約して";
+        var summary = Assert.Single(sut.SavedWorkflows);
+
+        sut.RenameWorkflow(summary, "変更後");
+
+        Assert.Equal("変更後", sut.Name);
+        var renamed = Assert.Single(sut.SavedWorkflows);
+        Assert.Equal("変更後", renamed.Name);
+        Assert.Equal(summary.Id, renamed.Id);
+        Assert.Equal("自動保存済み", sut.SaveStatus);
+    }
+
+    [Fact]
     public void Removing_last_step_leaves_workflow_empty()
     {
         var sut = CreateSut();
