@@ -119,10 +119,14 @@ public partial class ShellWindow
         var filePath = source.Control.FilePath;
         var provider = _editorSupports.Resolve(filePath);
 
-        // 自動表示はしない。ペインが実際に表示されている（タイルで可視 or ソロで舞台）ときだけ描く。
+        // 自動表示はしない。ペインが実際に表示されている
+        // （タイルで可視 / ソロで舞台 / 袖・俯瞰ミニチュア）ときだけ描く。
         // 判定は EditorSupportRenderPolicy に一元化（テスト可能）。
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender(onStage, IsPaneVisible(PaneKind.EditorSupport)))
+        if (!EditorSupportRenderPolicy.ShouldRender(
+                onStage,
+                IsPaneVisible(PaneKind.EditorSupport),
+                IsEditorSupportInThumbnail()))
             return;
 
         // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。
@@ -208,6 +212,21 @@ public partial class ShellWindow
             return;
 
         RenderPendingEditorSupportContent(view.CoreWebView2);
+    }
+
+    /// <summary>
+    /// EditorSupport が袖または俯瞰のミニチュアとして表示される状態か。
+    /// Main に自動表示はしないが、VisualBrush の描画元には中身が必要なので描画だけ許可する。
+    /// </summary>
+    private bool IsEditorSupportInThumbnail()
+    {
+        if (!IsSessionEnabled(PaneKind.EditorSupport))
+            return false;
+
+        if (_stageActive)
+            return _overviewActive || _stagePane != PaneKind.EditorSupport;
+
+        return !IsShownInMain(PaneKind.EditorSupport);
     }
 
     /// <summary>
