@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -64,6 +65,11 @@ public sealed class Workflow
     public string Name { get; set; } = "";
 
     public List<WorkflowStep> Steps { get; set; } = new();
+
+    /// <summary>いずれかのステップが <c>{{input}}</c> を使う（＝実行時にワークフロー入力を必要とする）か。
+    /// FolderTree／エディタのコンテキストメニューから「入力ありワークフロー」だけを出すための判定に使う。</summary>
+    public bool UsesInput =>
+        Steps.Any(s => WorkflowPrompt.UsesInput(s.Prompt) || WorkflowPrompt.UsesInput(s.Content));
 }
 
 /// <summary>
@@ -80,6 +86,13 @@ public static class WorkflowPrompt
 {
     private static readonly Regex Token = new(@"\{\{\s*(\d+|prev|all|input)\s*\}\}",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex InputToken = new(@"\{\{\s*input\s*\}\}",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>テキストに <c>{{input}}</c> プレースホルダが含まれるか。</summary>
+    public static bool UsesInput(string? text) =>
+        !string.IsNullOrEmpty(text) && InputToken.IsMatch(text);
 
     public static string Resolve(string prompt, IReadOnlyList<string> previousOutputs, string? input = null)
     {

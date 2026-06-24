@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Agent;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -30,7 +31,8 @@ public sealed class FolderTreePinningTests : IDisposable
     }
 
     private FolderTreeViewModel CreateSut()
-        => new(new FakeWorkspaceService(), new FakeAiWarmup());
+        => new(new FakeWorkspaceService(), new FakeAiWarmup(),
+            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")));
 
     [Fact]
     public void LoadRoot_puts_workspace_root_as_first_option()

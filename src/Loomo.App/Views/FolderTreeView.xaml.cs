@@ -362,6 +362,40 @@ public partial class FolderTreeView : UserControl
         foreach (var item in cm.Items)
             if (item is FrameworkElement { Tag: "AiMenu" } element)
                 element.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        // 「AI」サブメニューを出すときだけ、入力ありワークフローの一覧を流し込む。
+        if (show && DataContext is FolderTreeViewModel treeVm)
+            PopulateWorkflowMenu(cm, treeVm, node!);
+    }
+
+    // 「AI」→「ワークフロー」サブメニューを、入力ありワークフロー一覧で作り直す。
+    // 候補が無ければ区切り線ごと隠す。各項目クリックで当該ノードのパスを {{input}} に実行を要求する。
+    private void PopulateWorkflowMenu(ContextMenu cm, FolderTreeViewModel vm, FileNodeViewModel node)
+    {
+        var aiMenu = cm.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == "AiMenu");
+        if (aiMenu is null)
+            return;
+
+        var submenu = aiMenu.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == "AiWorkflowMenu");
+        var separator = aiMenu.Items.OfType<Separator>().FirstOrDefault(s => (s.Tag as string) == "AiWorkflowSep");
+        if (submenu is null)
+            return;
+
+        var workflows = vm.InputWorkflows();
+        var hasAny = workflows.Count > 0;
+
+        submenu.Visibility = hasAny ? Visibility.Visible : Visibility.Collapsed;
+        if (separator is not null)
+            separator.Visibility = hasAny ? Visibility.Visible : Visibility.Collapsed;
+
+        submenu.Items.Clear();
+        foreach (var wf in workflows)
+        {
+            var id = wf.Id;
+            var item = new MenuItem { Header = wf.Name };
+            item.Click += (_, _) => vm.RequestRunWorkflow(node, id);
+            submenu.Items.Add(item);
+        }
     }
 
     private void OnTypoCheckClick(object sender, RoutedEventArgs e)

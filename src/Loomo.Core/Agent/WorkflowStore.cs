@@ -60,6 +60,30 @@ public sealed class WorkflowStore
         return list.OrderByDescending(s => s.UpdatedAt).ToList();
     }
 
+    /// <summary><c>{{input}}</c> を使う（＝実行時に入力を要する）ワークフローだけを更新日時の新しい順で返す。
+    /// FolderTree／エディタのコンテキストメニューに出す候補に使う。</summary>
+    public IReadOnlyList<WorkflowSummary> ListInputWorkflows()
+    {
+        if (!Directory.Exists(_dir)) return Array.Empty<WorkflowSummary>();
+
+        var list = new List<WorkflowSummary>();
+        foreach (var file in Directory.EnumerateFiles(_dir, "*.json"))
+        {
+            try
+            {
+                var dto = JsonSerializer.Deserialize<WorkflowDto>(File.ReadAllText(file), JsonOpts);
+                if (dto is { Id: not null }
+                    && dto.Steps.Any(s => WorkflowPrompt.UsesInput(s.Prompt) || WorkflowPrompt.UsesInput(s.Content)))
+                    list.Add(new WorkflowSummary(dto.Id, dto.Name ?? "(無題)", dto.UpdatedAt));
+            }
+            catch
+            {
+                // 壊れたファイルは一覧から除外
+            }
+        }
+        return list.OrderByDescending(s => s.UpdatedAt).ToList();
+    }
+
     /// <summary>ワークフローを読み込む。無ければ null。</summary>
     public Workflow? Load(string id)
     {

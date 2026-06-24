@@ -350,6 +350,9 @@
                                     <Separator Tag="AiMenu" Visibility="Collapsed" />
                                     <MenuItem Header="AI" Tag="AiMenu" Visibility="Collapsed">
                                         <MenuItem Header="誤字脱字チェック" Click="OnTypoCheckClick" />
+                                        <!-- 入力ありワークフローを Opened 時に動的に流し込む（候補が無ければ区切り線ごと隠す）。 -->
+                                        <Separator Tag="AiWorkflowSep" />
+                                        <MenuItem Header="ワークフロー" Tag="AiWorkflowMenu" />
                                     </MenuItem>
                                 </ContextMenu>
                             </DockPanel.ContextMenu>

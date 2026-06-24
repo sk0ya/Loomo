@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows.Controls;
 using Editor.Controls;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.ViewModels;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -50,6 +51,41 @@ public partial class ShellWindow
         var search = new MenuItem { Header = "ブラウザで調べる" };
         search.Click += (_, _) => _ = SearchSelectionInBrowserAsync(selectedText);
         menu.Items.Add(search);
+
+        AddWorkflowMenuItems(menu, selectedText);
+    }
+
+    // 選択テキストを {{input}} として実行する「AIワークフロー」サブメニューを足す。
+    // 入力ありワークフローが無ければ何も足さない。処理中・暖機中は無効化する。
+    private void AddWorkflowMenuItems(ContextMenu menu, string input)
+    {
+        var workflows = _vm.AiBar.Workflow.ListInputWorkflows();
+        if (workflows.Count == 0)
+            return;
+
+        var parent = new MenuItem
+        {
+            Header = "AIワークフロー",
+            IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
+        };
+        foreach (var wf in workflows)
+        {
+            var id = wf.Id;
+            var item = new MenuItem { Header = wf.Name };
+            item.Click += (_, _) => RunWorkflowWithInput(id, input);
+            parent.Items.Add(item);
+        }
+        menu.Items.Add(parent);
+    }
+
+    // AIペインをワークフローモードで前面に出し、指定ワークフローを input を {{input}} として実行する。
+    // FolderTree／エディタのコンテキストメニュー双方の合流点。
+    private void RunWorkflowWithInput(string workflowId, string input)
+    {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
+        _vm.AiBar.Mode = AiBarMode.Workflow;
+        _vm.AiBar.IsExpanded = true;
+        _vm.AiBar.Workflow.RunWithInput(workflowId, input);
     }
 
     // 選択テキストを Bing で検索して内蔵ブラウザの新規タブで開く。

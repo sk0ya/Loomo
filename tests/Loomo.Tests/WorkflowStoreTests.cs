@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using sk0ya.Loomo.Core.Agent;
 using Xunit;
@@ -76,6 +77,38 @@ public class WorkflowStoreTests
         Assert.Equal(WorkflowStepKind.WriteFile, loaded.Steps[1].Kind);
         Assert.Equal("out.txt", loaded.Steps[1].Prompt);
         Assert.Equal("{{prev}}", loaded.Steps[1].Content);
+    }
+
+    [Fact]
+    public void ListInputWorkflows_returns_only_workflows_using_input_token()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows");
+        var store = new WorkflowStore(dir);
+
+        // {{input}} を prompt で使う → 対象
+        var promptId = store.Save(new Workflow
+        {
+            Name = "入力をprompt",
+            Steps = { new WorkflowStep { Prompt = "次を翻訳: {{input}}" } },
+        });
+        // {{input}} を content で使う（非AIステップ）→ 対象
+        var contentId = store.Save(new Workflow
+        {
+            Name = "入力をcontent",
+            Steps = { new WorkflowStep { Kind = WorkflowStepKind.WriteFile, Prompt = "out.txt", Content = "{{input}}" } },
+        });
+        // {{input}} を使わない → 除外
+        store.Save(new Workflow
+        {
+            Name = "入力なし",
+            Steps = { new WorkflowStep { Prompt = "{{prev}} を要約" } },
+        });
+
+        var ids = store.ListInputWorkflows().Select(s => s.Id).ToHashSet();
+
+        Assert.Contains(promptId, ids);
+        Assert.Contains(contentId, ids);
+        Assert.Equal(2, ids.Count);
     }
 
     [Fact]

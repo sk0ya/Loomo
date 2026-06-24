@@ -11,6 +11,7 @@ using System.Windows.Media;
 using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Agent;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -20,6 +21,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 {
     private readonly IWorkspaceService _workspace;
     private readonly IAiWarmup _warmup;
+    private readonly WorkflowStore _workflows;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -97,14 +99,19 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // AIバーで /clear → 当該ファイルパスを渡して誤字脱字チェックのプロンプトを送信する。
     public event EventHandler<string>? TypoCheckRequested;
 
+    // FolderTree の「AIワークフロー」要求。View（コンテキストメニュー）から発火し、ShellWindow が
+    // AIバーをワークフローモードへ切替えて、当該ファイルパスを {{input}} として実行する。
+    public event EventHandler<WorkflowRunRequest>? WorkflowRequested;
+
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;
 
-    public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup)
+    public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows)
     {
         _workspace = workspace;
         _warmup = warmup;
+        _workflows = workflows;
     }
 
     /// <summary>AIの暖機が完了してモデルが使える状態か。「AI-誤字脱字チェック」メニューの出し分けに使う
@@ -740,6 +747,18 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             TypoCheckRequested?.Invoke(this, node.FullPath);
     }
 
+    /// <summary>コンテキストメニューに出す「入力ありワークフロー」一覧。</summary>
+    public IReadOnlyList<WorkflowSummary> InputWorkflows() => _workflows.ListInputWorkflows();
+
+    /// <summary>指定ワークフローを、当該ファイルパスを <c>{{input}}</c> として実行するよう要求する
+    /// （ShellWindow が AIバーをワークフローモードへ切替えて処理）。実在ファイルのときだけ発火する。</summary>
+    public void RequestRunWorkflow(FileNodeViewModel? node, string workflowId)
+    {
+        if (node is { IsDirectory: false } && File.Exists(node.FullPath)
+            && !string.IsNullOrEmpty(workflowId))
+            WorkflowRequested?.Invoke(this, new WorkflowRunRequest(workflowId, node.FullPath));
+    }
+
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)
     {
         var fullPath = Path.GetFullPath(path);
@@ -814,6 +833,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
 // 「ターミナルにセット」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
 public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
+
+/// <summary>「AIワークフロー」コンテキストメニューからの実行要求。<see cref="Input"/> は <c>{{input}}</c> に流す値
+/// （FolderTree はファイルパス、エディタは選択テキスト）。</summary>
+public readonly record struct WorkflowRunRequest(string WorkflowId, string Input);
 
 // FolderTree でのリネーム通知。OldPath/NewPath は正規化済みフルパス。IsDirectory ならフォルダの
 // リネーム（配下のファイルパスも OldPath → NewPath で付け替わる）。
