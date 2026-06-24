@@ -228,8 +228,14 @@ public partial class ShellWindow
         DetachEditorTabs();
         DetachBrowserTabs();
         _activeWorkspace = workspace;
-        _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
-        StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
+        // 起動時（deferHydration）はエクスプローラのツリー読込（フォルダ列挙）を初フレーム後へ回す。
+        // ツリーは初フレームに含まれるが、空→直後に流し込みでよく、初フレームを ~120ms 早められる。
+        // 実行中のワークスペース切替では従来どおり即時読込する（体感のため）。
+        if (!deferHydration)
+        {
+            _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
+            StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
+        }
         // コンポーザ本文とペグボードはワークスペース毎（どちらも軽量・同期）。
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
@@ -252,6 +258,9 @@ public partial class ShellWindow
         {
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             StartupProfiler.Mark("  復元:初フレーム後に継続");
+            // 初フレーム後にエクスプローラのツリーを流し込む（上で先送りした分）。
+            _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
+            StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
         }
 
         RestoreTerminalTabs(workspace);

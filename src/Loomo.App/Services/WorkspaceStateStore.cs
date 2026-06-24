@@ -3,8 +3,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace sk0ya.Loomo.App.Services;
+
+/// <summary>workspaces.json（実機で 187KB 規模）の<b>読み込み</b>用 System.Text.Json ソースジェネレータ文脈。
+/// 起動時、ShellViewModel 解決中（初フレーム前）に <see cref="WorkspaceStateStore.Load"/> がこの巨大JSONを
+/// デシリアライズするため、リフレクションのメタデータ生成コストを起動から外す。enum は数値・camelCase で
+/// 既存ファイルと一致する。書き込み（Save）はデータ破損リスクを避けて従来のリフレクション経路のまま残す。</summary>
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(WorkspaceState))]
+internal partial class WorkspaceStateJsonContext : JsonSerializerContext;
 
 public sealed class WorkspaceStateStore
 {
@@ -31,8 +40,9 @@ public sealed class WorkspaceStateStore
 
         try
         {
-            return JsonSerializer.Deserialize<WorkspaceState>(
-                File.ReadAllText(_filePath), JsonOptions) ?? new WorkspaceState();
+            // 読み込みはソースジェネレータ経路（起動高速化）。書き込みは従来のリフレクション経路のまま。
+            return JsonSerializer.Deserialize(
+                File.ReadAllText(_filePath), WorkspaceStateJsonContext.Default.WorkspaceState) ?? new WorkspaceState();
         }
         catch
         {
