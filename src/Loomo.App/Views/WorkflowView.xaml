@@ -410,17 +410,40 @@
                                         Background="{DynamicResource Bg}"
                                         BorderBrush="{DynamicResource Border}" BorderThickness="1">
                                     <StackPanel>
-                                        <!-- 見出し行：種別・タイトル・状態・操作 -->
+                                        <!-- 見出し行：開閉・種別・タイトル・状態・操作 -->
                                         <Grid>
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
+                                            <!-- 開閉トグル（▾展開 / ▸折りたたみ） -->
+                                            <Button Grid.Column="0" Command="{Binding ToggleExpandCommand}"
+                                                    Width="20" Height="24" Margin="0,0,4,0" Cursor="Hand"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Foreground="{DynamicResource FgDim}"
+                                                    ToolTip="ステップの編集欄を開閉">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="cb" Background="Transparent" CornerRadius="3">
+                                                            <TextBlock Text="{Binding CollapseGlyph}" FontSize="10"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                       Foreground="{TemplateBinding Foreground}" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="cb" Property="Background" Value="{DynamicResource BgAlt}" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+
                                             <!-- 種別セレクタ（AI / コマンド / 読込 / 書込 / 変換） -->
-                                            <ComboBox Grid.Column="0" Margin="0,0,8,0" MinWidth="118" FontSize="11.5"
+                                            <ComboBox Grid.Column="1" Margin="0,0,8,0" MinWidth="118" FontSize="11.5"
                                                       VerticalAlignment="Center"
                                                       ItemsSource="{Binding KindOptions}"
                                                       SelectedValuePath="Kind" DisplayMemberPath="Label"
@@ -428,7 +451,7 @@
                                                       ToolTip="ステップ種別を切り替える" />
 
                                             <!-- タイトル（任意・枠なし） -->
-                                            <Grid Grid.Column="1" Margin="0,0,8,0" VerticalAlignment="Center">
+                                            <Grid Grid.Column="2" Margin="0,0,8,0" VerticalAlignment="Center">
                                                 <TextBlock Text="ステップ名（任意）" IsHitTestVisible="False"
                                                            VerticalAlignment="Center" FontSize="12"
                                                            Foreground="{DynamicResource FgDim}"
@@ -441,7 +464,7 @@
                                             </Grid>
 
                                             <!-- 状態テキスト（待機／実行中…／完了 (2.1秒)／失敗） -->
-                                            <TextBlock Grid.Column="2" Text="{Binding StatusText}" VerticalAlignment="Center"
+                                            <TextBlock Grid.Column="3" Text="{Binding StatusText}" VerticalAlignment="Center"
                                                        Margin="0,0,6,0" FontSize="11" TextTrimming="CharacterEllipsis"
                                                        MaxWidth="160">
                                                 <TextBlock.Style>
@@ -463,7 +486,7 @@
                                             </TextBlock>
 
                                             <!-- 操作（ホバーで出現：上へ/下へ/直後に挿入/削除） -->
-                                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Opacity" Value="0" />
@@ -488,6 +511,24 @@
                                                         CommandParameter="{Binding}" />
                                             </StackPanel>
                                         </Grid>
+
+                                        <!-- 折りたたみ時の1行プレビュー（クリックで展開） -->
+                                        <Button Command="{Binding ToggleExpandCommand}" Cursor="Hand"
+                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Background="Transparent" BorderThickness="0" Padding="0" Margin="24,4,0,0"
+                                                Visibility="{Binding IsExpanded, Converter={StaticResource InverseBoolToVis}}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <ContentPresenter />
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                            <TextBlock Text="{Binding PromptPreview}" FontSize="11.5"
+                                                       Foreground="{DynamicResource FgDim}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Button>
+
+                                        <!-- 編集欄（展開時のみ） -->
+                                        <StackPanel Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
 
                                         <!-- 主テキスト（種別でプレースホルダ・等幅が変わる：指示文／コマンド／パス／入力） -->
                                         <Grid Margin="0,8,0,0">
@@ -591,6 +632,9 @@
                                                            VerticalAlignment="Center" />
                                             </DockPanel>
                                         </Border>
+
+                                        </StackPanel>
+                                        <!-- /編集欄 -->
 
                                     </StackPanel>
                                 </Border>

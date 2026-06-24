@@ -116,6 +116,32 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
 
     // ===== 表示・実行時 =====
 
+    /// <summary>カードを展開しているか（編集欄を表示するか）。永続化しない表示状態。
+    /// 既定は展開＝新規作成したステップはすぐ編集できる。保存済みワークフローの読込時は
+    /// <see cref="WorkflowViewModel.LoadInto"/> が折りたたみ（false）に設定する。</summary>
+    [ObservableProperty] private bool _isExpanded = true;
+
+    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(CollapseGlyph));
+
+    /// <summary>見出しの開閉グリフ（▾＝展開 / ▸＝折りたたみ）。</summary>
+    public string CollapseGlyph => IsExpanded ? "▾" : "▸";
+
+    /// <summary>折りたたみ時に見出しへ出す主テキストの1行プレビュー。</summary>
+    public string PromptPreview
+    {
+        get
+        {
+            var text = Prompt?.Trim() ?? "";
+            if (text.Length == 0) return "（未入力）";
+            var firstLine = text.Split('\n')[0].Trim();
+            return firstLine.Length > 80 ? firstLine[..80] + "…" : firstLine;
+        }
+    }
+
+    /// <summary>カードの展開／折りたたみを切り替える（見出しのクリック）。</summary>
+    [RelayCommand]
+    private void ToggleExpand() => IsExpanded = !IsExpanded;
+
     /// <summary>1始まりの並び順。親コレクションの変更時に振り直される。</summary>
     [ObservableProperty] private int _index;
 
@@ -199,6 +225,7 @@ public sealed partial class WorkflowStepViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(PromptNotice));
         OnPropertyChanged(nameof(CanAppendPrevious));
+        OnPropertyChanged(nameof(PromptPreview));
     }
 
     /// <summary>指示文へ挿入できる参照トークン一覧を作り直す。<c>{{input}}</c> は全ステップで使える。</summary>

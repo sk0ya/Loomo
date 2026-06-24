@@ -434,7 +434,11 @@ public sealed partial class WorkflowViewModel : ObservableObject
         if (summary is null) return;
         var wf = _store.Load(summary.Id);
         if (wf is null) return;
+        LoadInto(wf);
+    }
 
+    private void LoadInto(Workflow wf)
+    {
         _suppressChangeTracking = true;
         try
         {
@@ -444,7 +448,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
             Steps.Clear();
             foreach (var s in wf.Steps)
             {
-                var step = new WorkflowStepViewModel(s);
+                // 保存済みワークフローの読込時は既定で折りたたむ（新規作成のみ展開で開く）。
+                var step = new WorkflowStepViewModel(s) { IsExpanded = false };
                 AttachStepChangeTracking(step);
                 Steps.Add(step);
             }
@@ -476,6 +481,23 @@ public sealed partial class WorkflowViewModel : ObservableObject
     }
 
     // ===== 実行 =====
+
+    /// <summary><c>{{input}}</c> を使うワークフロー（FolderTree／エディタのコンテキストメニュー候補）の一覧。</summary>
+    public IReadOnlyList<WorkflowSummary> ListInputWorkflows() => _store.ListInputWorkflows();
+
+    /// <summary>指定IDのワークフローをエディタへ読み込み、<paramref name="input"/> を <c>{{input}}</c> として
+    /// 実行する（FolderTree／エディタのコンテキストメニューから呼ばれる）。実行中なら何もしない。
+    /// 暖機中でも <see cref="RunAsync"/> 内で完了を待ってから走る。</summary>
+    public void RunWithInput(string workflowId, string input)
+    {
+        if (IsRunning) return;
+        var wf = _store.Load(workflowId);
+        if (wf is null) return;
+
+        LoadInto(wf);
+        RunInput = input ?? "";
+        _ = RunAsync();
+    }
 
     private bool CanRun() => !IsRunning && !_warmup.IsWarmingUp;
 
