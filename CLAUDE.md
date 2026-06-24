@@ -122,18 +122,18 @@ guarded by the block list). `SafetySettings` lives on `AiSettings.Safety` and is
 `IAiClient` abstracts the provider; `AiClientFactory.ResolveCurrent()` reads the singleton `AiSettings`
 **every turn**, so settings changes apply immediately. The only implemented client is `OnnxGenAiClient`
 (provider `Local`), which drives an **in-process ONNX Runtime GenAI** engine — there is **no HTTP / no
-external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU) `0.14.1`, pinned in
-`src/Loomo.Ai/Loomo.Ai.csproj`; the native runtime DLLs flow to the App output under
-`runtimes/win-x64/native/`. (Bumped from `0.9.0` to load newer ONNX builds — e.g. `onnx-community/Qwen3-8B-ONNX`
-int4, whose `GatherBlockQuantized` carries a `bits` attribute that `0.9.0`'s native ORT rejects; the decode-loop
-API is unchanged across the bump.)
+external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU), pinned in
+`src/Loomo.Ai/Loomo.Ai.csproj` (see there for the exact version); the native runtime DLLs flow to the App output
+under `runtimes/win-x64/native/`. (It was bumped at one point to load newer ONNX builds — some int4 models'
+`GatherBlockQuantized` carries a `bits` attribute that the older native ORT rejected; the decode-loop API was
+unchanged across the bump.)
 
 **Engine** — `Clients/OnnxGenAiEngine.cs` (DI singleton, `IDisposable`, implements `ILocalInferenceEngine`) owns the
 ORT-GenAI `Model`/`Tokenizer` lifetime. It lazily loads from `ProviderConfig.ModelPath` (a folder containing
-`genai_config.json` + `*.onnx` + tokenizer files, e.g. `microsoft/Phi-4-mini-instruct-onnx` CPU int4) and keeps
+`genai_config.json` + `*.onnx` + tokenizer files, a CPU int4 ONNX model) and keeps
 it resident — model load is the cold cost (tens of seconds on CPU), so it's paid once. Generation is batch-size-1,
 serialized with a `SemaphoreSlim`. The decode loop (`AppendTokens` → `GenerateNextToken` → `TokenizerStream.Decode`,
-no `ComputeLogits` — same API on 0.9.0 and 0.14.1) runs on a background thread and writes `TextDelta` + a final `AiUsageReported`
+no `ComputeLogits` — API stable across the ORT-GenAI bumps) runs on a background thread and writes `TextDelta` + a final `AiUsageReported`
 (token counts + load/prefill/decode `Stopwatch` timings, self-measured) into a `Channel<AgentEvent>`.
 
 **Prompt format** — chosen per model's `ChatFormat` via the `Clients/ChatPrompt.cs` dispatcher (both the real turn
@@ -169,19 +169,18 @@ all parts, exact old_string copy). **The Qwen3 prompt's few-shot examples must n
 (README.md etc.) — that contaminated the capability eval once; `Qwen3PromptFormatterTests` now asserts it.
 `BuildSystemPrompt(profile, format)` chooses.
 
-**Model acquisition** — `ModelDownloadService.Catalog` lists the downloadable ONNX (CPU int4, ORT-GenAI-compatible)
-models: `microsoft/Phi-4-mini-instruct-onnx`, plus `lokinfey/Qwen3-1.7B-ONNX-INT4-CPU` and
-`lokinfey/Qwen3-4B-ONNX-INT4-CPU`. **Only repos whose target folder has `genai_config.json` work** — an
-`onnx-community/Qwen3-*-ONNX` repo's *root*/`onnx/` is transformers.js-targeted (no `genai_config.json`), but its
-`onnxruntime/cpu_and_mobile/<variant>/` subfolder *does* ship a genai-compatible build (e.g.
-`onnx-community/Qwen3-8B-ONNX` → `onnxruntime/cpu_and_mobile/cpu-int4-kld-block-128/` has `genai_config.json`; loads
-under ORT `0.14.1`, but 8B int4 is ~262s/turn on this CPU — non-viable, see `docs` / memory).
-`DownloadAsync(DownloadableModel, …)` streams into `%APPDATA%/Loomo/models/<FolderName>/` (resumable, cancellable);
-the settings panel has a download-model dropdown + download button + folder picker. `ModelCatalogService` enumerates
-local ONNX model folders (those with `genai_config.json`) under that root for the model dropdown — no HTTP.
+**Model acquisition** — `ModelDownloadService.Catalog` is the source of truth for the downloadable ONNX (CPU int4,
+ORT-GenAI-compatible) models (read it for the current list — don't hardcode model names here, they drift).
+**Only repos whose target folder has `genai_config.json` work** — a transformers.js-targeted repo's *root*/`onnx/`
+has no `genai_config.json`, but such repos often ship a genai-compatible build under an
+`onnxruntime/cpu_and_mobile/<variant>/` subfolder instead. Bigger models load but can be non-viable on CPU (an 8B
+int4 measured ~262s/turn here — see `docs` / memory). `DownloadAsync(DownloadableModel, …)` streams into
+`%APPDATA%/Loomo/models/<FolderName>/` (resumable, cancellable); the settings panel has a download-model dropdown +
+download button + folder picker. `ModelCatalogService` enumerates local ONNX model folders (those with
+`genai_config.json`) under that root for the model dropdown — no HTTP.
 
-**Known limitations** (don't assume these exist): thinking/reasoning is not surfaced (phi4-mini-instruct is a
-non-thinking model). Context management is trim-only (no summarization/compaction). The `IBrowserService` /
+**Known limitations** (don't assume these exist): thinking/reasoning is not surfaced (the local models in use are
+run non-thinking). Context management is trim-only (no summarization/compaction). The `IBrowserService` /
 Copilot remnants are unused by the agent.
 
 ### Persistence
@@ -202,21 +201,21 @@ same instance backs both — Views resolve the concrete control adapter, tools r
 
 ## Working with the sk0ya control libraries (important)
 
-Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` (1.0.14) and `sk0ya.Editor.Controls`
-(1.0.7), but their **namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
+Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` and `sk0ya.Editor.Controls`, but their
+**namespaces drop the `sk0ya.` prefix**: `Terminal.Tabs.TerminalTabView`,
 `Editor.Controls.VimEditorControl`. **The agent's command execution does NOT flow to the visible terminal** —
 `TerminalService.RunCommandAsync` always runs the command in an independent non-interactive PowerShell
 `Process` (`RunViaProcessAsync`) so AI output never mixes into the human's terminal; the visible terminal is
 human-only. cwd is tracked via `cd` detection (`TrackChdir`). `SetWorkingDirectory` still drives
 `TerminalTabView.RunCommandAsync` on the UI thread to make the *visible* terminal follow the opened folder.
-The package version
-is pinned in **one place only**: `src/Loomo.Services/Loomo.Services.csproj` (App references transitively).
+The package versions are pinned in **one place only**: `src/Loomo.Services/Loomo.Services.csproj` (App
+references transitively) — check there for the exact versions in use.
 
-Terminal 1.0.7 auto-injects OSC 133 shell integration into interactive pwsh; 1.0.8 exposes the
+Terminal auto-injects OSC 133 shell integration into interactive pwsh, and exposes the
 `TerminalTabView.ShellCommandActivity` public event (command phase + exit code, for human-typed commands
 too) — Loomo's stage-wing activity badges (`ShellWindow.PaneActivity.cs`, 設計書 §24.1) are built on it.
 
-**LSP is enabled** (Editor `1.0.21`+). `BuildEditorControl` (`ShellWindow.ViewportSplit.cs`) passes
+**LSP is enabled.** `BuildEditorControl` (`ShellWindow.ViewportSplit.cs`) passes
 `LspManagerFactory = d => new LspManager(d)` (namespace `Editor.Controls.Lsp`, from `…Defaults`), so the editor
 gets completion / diagnostics / go-to-definition etc. — **only when the matching language server is on `PATH`**.
 The Composer editor (`ShellWindow.Composer.cs`) deliberately stays LSP-less.
