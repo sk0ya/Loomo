@@ -83,6 +83,14 @@ public partial class ShellWindow : Window
     private int _editorSupportRenderSeq;
     /// <summary>最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。</summary>
     private string? _editorSupportPendingHtml;
+    /// <summary>最新の本文差し替え内容（同一ページの編集中のみ。フル HTML 描画時は null）。</summary>
+    private string? _editorSupportPendingBody;
+    /// <summary>最新描画のページ体裁の鍵（インクリメンタル提供者のみ。フル再構築の要否判定に使う）。</summary>
+    private string? _editorSupportPendingPageKey;
+    /// <summary>いま再ナビゲート中のページ体裁の鍵（NavigationCompleted で <see cref="_editorSupportReadyPageKey"/> へ昇格）。</summary>
+    private string? _editorSupportLoadingPageKey;
+    /// <summary>WebView2 が読込完了し本文差し替え（setBody）を受け付けられるページ体裁の鍵。一致する間はフル再ナビゲートしない。</summary>
+    private string? _editorSupportReadyPageKey;
     /// <summary>最新のナビゲート先 URI（PDF 等の URI プロバイダ。HTML 描画時は null）。</summary>
     private string? _editorSupportPendingUri;
     /// <summary>現在 WebView2 が表示中のナビゲート URI（同一 URI への再ナビゲートでスクロール位置を失わないためのガード）。</summary>

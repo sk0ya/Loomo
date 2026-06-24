@@ -488,6 +488,9 @@ public partial class ShellWindow
         // 内容は復元後の ActivateEditorTab → SwitchEditorSupportSourceAsync が作り直す。
         _editorSupportDebounceTimer?.Stop();
         DetachEditorSupportSource();
+        // 別ワークスペースへ持ち越さない：次の描画は確実にフル再構築させる（本文差し替えの取り違え防止）。
+        _editorSupportReadyPageKey = null;
+        _editorSupportLoadingPageKey = null;
         _editorSupportSourcePinned = false;
         UpdateEditorSupportPinToggle();
         CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;

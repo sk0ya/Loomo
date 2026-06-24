@@ -34,6 +34,25 @@ public interface IEditorSupportHtmlProvider : IEditorSupportProvider
 }
 
 /// <summary>
+/// 同一ページ内で本文（&lt;body&gt; の中身）だけを差し替えて更新できる HTML 提供者。
+/// 編集ごとにページをフル再ナビゲートすると WebView2 が真っ白に再構築されて<b>チカチカ</b>するため、
+/// ページの体裁（テーマ・base href 等）が変わらない編集中は本文だけを差し替える。
+/// ShellWindow は <see cref="PageContextKey"/> が前回と同じ間は <see cref="RenderBody"/> の結果を
+/// その場へ流し込み、鍵が変わったとき（別ファイル・テーマ変更等）だけ <see cref="RenderHtml"/> で再構築する。
+/// </summary>
+public interface IEditorSupportIncrementalHtmlProvider : IEditorSupportHtmlProvider
+{
+    /// <summary>その場差し替え用の本文（&lt;body&gt; の中身だけ）。<see cref="RenderHtml"/> と同じ内容を生成する。</summary>
+    string RenderBody(string filePath, string text);
+
+    /// <summary>
+    /// フル再構築が要るかを判定するためのページ体裁の鍵（対象ファイル・テーマ・base href 等）。
+    /// 鍵が同じなら本文差し替えで足り、変われば再ナビゲートする。テキスト本文は鍵に含めない。
+    /// </summary>
+    string PageContextKey(string filePath);
+}
+
+/// <summary>
 /// ファイルそのものを EditorSupport ペインの WebView2 へ直接ナビゲートして表示する提供者
 /// （PDF・SVG・HTML 等、ブラウザが標準で開けるもの）。エディタ本文ではなくファイルパスを
 /// そのまま開くので、テキストの内容には依存しない（バイナリでもよい）。
@@ -153,7 +172,7 @@ public static class MarkdownPreviewPaths
 }
 
 /// <summary>Markdown（.md / .markdown）のライブプレビュー。</summary>
-public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
+public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
     private readonly AiSettings _settings;
     private readonly IWorkspaceService _workspace;
@@ -176,6 +195,17 @@ public sealed class MarkdownEditorSupport : IEditorSupportHtmlProvider
             _settings.Appearance.MarkdownPreviewTheme,
             // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
             baseHref: MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
+
+    public string RenderBody(string filePath, string text) => MarkdownRenderer.RenderToBody(text);
+
+    // ページの体裁が変わる要素（対象ファイル・テーマ・base href）だけを鍵にする。本文の変更は
+    // 含めない＝同じファイルを編集している間は本文差し替えで更新できる。
+    public string PageContextKey(string filePath)
+        => string.Join(
+            "\n",
+            filePath,
+            _settings.Appearance.MarkdownPreviewTheme,
+            MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
 }
 
 /// <summary>

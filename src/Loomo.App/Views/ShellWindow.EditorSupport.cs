@@ -140,12 +140,19 @@ public partial class ShellWindow
         // WebView2 系。直前までビジュアル系を表示していたら退ける。
         HideEditorSupportVisual();
 
-        // 描画内容は init を待つ前に確定し、最新の要求として登録する。WebView2 の初回初期化は
-        // 起動時だけ数秒かかり、その間に複数の更新が積み重なるため、シーケンス番号で最後の1つへ畳む。
+        // 本文スナップショットは UI スレッドで取る（エディタは UI スレッド専有）。重い
+        // Markdown→HTML 変換はこの後バックグラウンドで行うので、ここで一度だけ読む。
+        var text = source.Control.Text;
+
+        // 描画要求のシーケンス番号。init / 変換の await を跨いで最後の要求だけが描くよう畳む。
+        var seq = ++_editorSupportRenderSeq;
+
         string title;
         string? html = null;
+        string? body = null;
         string? uri = null;
         string? mapFolder = null;
+        string? pageKey = null;
         if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
         {
             // PDF・SVG・HTML 等はファイルをそのままブラウザへナビゲートする（本文には依存しない）。
@@ -155,8 +162,24 @@ public partial class ShellWindow
         else if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
         {
             title = htmlProvider.DescribeTitle(filePath);
-            html = htmlProvider.RenderHtml(filePath, source.Control.Text);
             mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
+
+            // 同一ページ（テーマ・base href・対象ファイルが不変）を編集中なら、本文だけ差し替えて
+            // フル再ナビゲート（＝ページ再構築のチカチカ）を避ける。鍵が変わったら従来どおり再構築する。
+            var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
+            pageKey = incremental?.PageContextKey(filePath);
+            var reuseLoadedPage = incremental is not null && pageKey == _editorSupportReadyPageKey;
+
+            // Markdown→HTML 変換は正規表現主体で重く、大きいファイルでは打鍵を固める。バックグラウンド
+            // スレッドで変換し、結果だけを UI スレッドへ戻して反映する（ユーザー操作を妨げない）。
+            if (reuseLoadedPage)
+                body = await Task.Run(() => incremental!.RenderBody(filePath, text));
+            else
+                html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
+
+            // 変換中に新しい要求が来ていれば、そちらが最新を描くのでこのコールは降りる。
+            if (seq != _editorSupportRenderSeq)
+                return;
         }
         else
         {
@@ -169,10 +192,11 @@ public partial class ShellWindow
         }
 
         _editorSupportPendingHtml = html;
+        _editorSupportPendingBody = body;
         _editorSupportPendingUri = uri;
         _editorSupportPendingMapFolder = mapFolder;
+        _editorSupportPendingPageKey = pageKey;
         EditorSupportTitle.Text = title;
-        var seq = ++_editorSupportRenderSeq;
 
         var view = await EnsureEditorSupportViewAsync();
         if (view?.CoreWebView2 is null)
@@ -202,10 +226,31 @@ public partial class ShellWindow
             {
                 core.Navigate(uri);
                 _editorSupportNavigatedUri = uri;
+                _editorSupportReadyPageKey = null; // 別ページへ移った：次の Markdown はフル再構築する
             }
             catch
             {
                 // 無効な URI 等で失敗しても落とさない（表示は前回内容のまま）。
+            }
+            return;
+        }
+
+        // 同一ページの本文だけ差し替える（フル再ナビゲートしない＝チカチカ・スクロール喪失なし）。
+        // ページ側スクリプトが document.body.innerHTML を入れ替え、mermaid を描き直す。
+        if (_editorSupportPendingBody is { } body)
+        {
+            // 同じファイルでも別フォルダへ移った場合に備えて画像のマップ先は更新しておく。
+            if (_editorSupportPendingMapFolder is not null)
+                UpdateEditorSupportVirtualHost(core, _editorSupportPendingMapFolder);
+
+            try
+            {
+                core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(
+                    new { type = "setBody", html = body }));
+            }
+            catch
+            {
+                // 送信失敗（ナビゲーション中等）でも落とさない（次の編集で再送される）。
             }
             return;
         }
@@ -219,6 +264,11 @@ public partial class ShellWindow
         if (_editorSupportPendingMapFolder is not null)
             UpdateEditorSupportVirtualHost(core, _editorSupportPendingMapFolder);
 
+        // 新ページの読込が完了するまで本文差し替えは受け付けられない（ready 鍵を一旦クリアし、
+        // 読込中の鍵を控える）。NavigationCompleted で ready へ昇格させ、そこから setBody を許す。
+        _editorSupportReadyPageKey = null;
+        _editorSupportLoadingPageKey = _editorSupportPendingPageKey;
+
         try
         {
             core.NavigateToString(_editorSupportPendingHtml);
@@ -226,6 +276,7 @@ public partial class ShellWindow
         catch
         {
             // NavigateToString の上限（約2MB）超過などで失敗しても落とさない（プレビューは前回内容のまま）。
+            _editorSupportLoadingPageKey = null;
         }
     }
 
@@ -397,6 +448,12 @@ public partial class ShellWindow
 
     private void OnEditorSupportNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+        // ページ読込が完了した＝ページ側スクリプトの setBody リスナが準備できた。以降この鍵の間は
+        // 本文差し替え（フル再ナビゲートなし）を許す。読込中に新しいフル描画が始まっていれば、その
+        // 鍵は次の完了で昇格するので、ここでは現在の loading 鍵をそのまま採用する。
+        if (e.IsSuccess)
+            _editorSupportReadyPageKey = _editorSupportLoadingPageKey;
+
         // 起動直後だけ、生成直後の WebView2 が初回ナビゲーションを取りこぼすことがある。最初の完了時に
         // 最新内容を一度だけ描き直して自己修復する（描き直しの完了は latch 済みなので再帰しない）。
         if (!_editorSupportFirstRenderHealed && _editorSupportView?.CoreWebView2 is { } core)

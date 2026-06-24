@@ -20,11 +20,19 @@ internal static class MarkdownRenderer
     public const string AssetsVirtualHost = "assets.loomo";
 
     public static string RenderToHtml(string markdown, string? title = null, string styleName = "Dracula", string? baseHref = null)
+        => BuildPage(RenderToBody(markdown), title, styleName, baseHref);
+
+    /// <summary>
+    /// 本文（&lt;body&gt; の中身）だけを生成する。フル再ナビゲートを避けてプレビューを
+    /// その場更新（チカチカ防止）するとき、ページ側がこの文字列で <c>document.body.innerHTML</c>
+    /// を差し替える。<see cref="RenderToHtml"/> も内部でこれを使う。
+    /// </summary>
+    public static string RenderToBody(string markdown)
     {
         var body = new StringBuilder();
         // U+0001 は Inline() のコードスパン退避に使う番兵。原文に紛れ込むと復元が壊れるので除去する。
         ProcessBlocks(markdown.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\u0001", ""), body);
-        return BuildPage(body.ToString(), title, styleName, baseHref);
+        return body.ToString();
     }
 
     private static void ProcessBlocks(string text, StringBuilder html)
@@ -297,7 +305,7 @@ internal static class MarkdownRenderer
         var t = title != null ? Encode(title) : "Preview";
         var css = PreviewCss(styleName);
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{EncodeAttribute(baseHref)}\">";
-        var mermaidScript = body.Contains("class=\"mermaid\"") ? BuildMermaidScript(styleName) : "";
+        var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" ? "default" : "dark";
         return $$"""
             <!DOCTYPE html>
             <html>
@@ -308,7 +316,6 @@ internal static class MarkdownRenderer
             <style>
             {{css}}
             </style>
-            {{mermaidScript}}
             <script>
             (() => {
                 let suppressScrollMessage = false;
@@ -318,6 +325,10 @@ internal static class MarkdownRenderer
                 let resizeScheduled = false;
                 let lastRatio = 0;  // 最後に意図したスクロール比率（resize 時の貼り直し基準）
 
+                const mermaidTheme = '{{mermaidTheme}}';
+                const mermaidSrc = 'https://{{AssetsVirtualHost}}/mermaid.min.js';
+                let mermaidRequested = false;
+
                 function scrollMax() {
                     const doc = document.documentElement;
                     return Math.max(0, doc.scrollHeight - window.innerHeight);
@@ -326,6 +337,36 @@ internal static class MarkdownRenderer
                 function scrollRatio() {
                     const max = scrollMax();
                     return max <= 0 ? 0 : window.scrollY / max;
+                }
+
+                // 本文に mermaid 図があるときだけ mermaid.min.js を遅延ロードして描画する（図の無い
+                // ページはランタイムを読み込まない）。本文差し替え後は data-processed の付かない新しい
+                // 図だけが run() で描かれる。読込失敗・構文エラーは原文テキストのまま残る。
+                function renderMermaid() {
+                    if (!document.querySelector('.mermaid')) return;
+                    if (window.mermaid) { try { window.mermaid.run(); } catch (e) {} return; }
+                    if (mermaidRequested) return;
+                    mermaidRequested = true;
+                    const s = document.createElement('script');
+                    s.src = mermaidSrc;
+                    s.onload = () => {
+                        try {
+                            window.mermaid.initialize({ startOnLoad: false, theme: mermaidTheme, suppressErrorRendering: true });
+                            window.mermaid.run();
+                        } catch (e) {}
+                    };
+                    s.onerror = () => { mermaidRequested = false; };
+                    document.head.appendChild(s);
+                }
+
+                // フル再ナビゲートせず本文だけ差し替える（編集ごとのページ再読込＝チカチカを防ぐ）。
+                // 高さが変わるのでスクロールを最後の比率へ貼り直し、mermaid を描き直す。
+                function applyBody(html) {
+                    suppressScrollMessage = true;
+                    document.body.innerHTML = html;
+                    renderMermaid();
+                    window.scrollTo(0, scrollMax() * lastRatio);
+                    requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
                 }
 
                 // 1 フレームに 1 回だけ scrollTo する。連続スクロールで殺到する要求は最新値へ畳む。
@@ -354,9 +395,17 @@ internal static class MarkdownRenderer
                 if (window.chrome?.webview) {
                     window.chrome.webview.addEventListener('message', e => {
                         const d = e.data;
-                        if (d && d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio);
+                        if (!d) return;
+                        if (d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio);
+                        else if (d.type === 'setBody') applyBody(d.html);
                     });
                 }
+
+                // 初期ページ本文の mermaid を描く（スクリプトは head で走るので body 解析後に呼ぶ）。
+                if (document.readyState === 'loading')
+                    document.addEventListener('DOMContentLoaded', renderMermaid);
+                else
+                    renderMermaid();
 
                 // preview→host(editor) も 1 フレーム 1 回へ間引いてメッセージの氾濫を防ぐ。
                 window.addEventListener('scroll', () => {
@@ -391,23 +440,6 @@ internal static class MarkdownRenderer
             </head>
             <body>{{body}}</body>
             </html>
-            """;
-    }
-
-    /// <summary>
-    /// mermaid フェンスがあるときだけ埋め込む描画スクリプト。アプリ同梱の mermaid.min.js
-    /// （<see cref="AssetsVirtualHost"/> 経由）を読むのでオフラインでも動く。読み込めない場合や
-    /// 編集途中の構文エラー（suppressErrorRendering）は原文テキストのまま残る。
-    /// テーマはプレビューテーマの明暗に合わせる。
-    /// </summary>
-    private static string BuildMermaidScript(string styleName)
-    {
-        var theme = NormalizeStyle(styleName) is "Light" or "GitHub" ? "default" : "dark";
-        return $$"""
-            <script src="https://{{AssetsVirtualHost}}/mermaid.min.js"></script>
-            <script>
-            window.mermaid?.initialize({ startOnLoad: true, theme: '{{theme}}', suppressErrorRendering: true });
-            </script>
             """;
     }
 

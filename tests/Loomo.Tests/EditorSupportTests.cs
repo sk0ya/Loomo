@@ -157,7 +157,7 @@ public class EditorSupportTests
     }
 
     [Fact]
-    public void MarkdownSupport_mermaidフェンスは図用ブロックとスクリプトを出力する()
+    public void MarkdownSupport_mermaidフェンスは図用ブロックとして出力する()
     {
         var support = CreateSupport();
 
@@ -165,20 +165,23 @@ public class EditorSupportTests
 
         Assert.Contains("<pre class=\"mermaid\">", html);
         Assert.Contains("A--&gt;B", html);          // textContent として読まれるので HTML エンコードでよい
+        // ページには mermaid ブートストラップが常駐し、.mermaid 要素があるときだけ遅延ロードする。
         Assert.Contains("https://assets.loomo/mermaid.min.js", html); // 同梱スクリプト（オフライン可）
-        Assert.Contains("mermaid?.initialize", html);
+        Assert.Contains("mermaid.initialize", html);
         Assert.DoesNotContain("language-mermaid", html); // 通常のコードブロックにはしない
     }
 
     [Fact]
-    public void MarkdownSupport_mermaidが無ければスクリプトを埋め込まない()
+    public void MarkdownSupport_mermaidが無ければ図ブロックにしない()
     {
         var support = CreateSupport();
 
         var html = support.RenderHtml(@"C:\work\README.md", "```csharp\nvar x = 1;\n```");
 
-        Assert.DoesNotContain("mermaid.min.js", html);
+        // mermaid ランタイムは .mermaid 要素があるときだけ遅延ロードされる（ブートストラップは常駐するが
+        // ここでは図が無いので run()/load は走らない）。通常のコードブロックとして描く。
         Assert.Contains("language-csharp", html);
+        Assert.DoesNotContain("<pre class=\"mermaid\">", html);
     }
 
     [Fact]
