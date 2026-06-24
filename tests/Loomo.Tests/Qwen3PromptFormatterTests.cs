@@ -61,8 +61,9 @@ public class Qwen3PromptFormatterTests
         Assert.Contains("<tool_call>", p);
         Assert.Contains("List files:", p);
         Assert.Contains("Rename-Item", p);
-        Assert.Contains("old_string exactly", p);
+        Assert.Contains("exact old_string", p);
         Assert.Contains("Japanese", p);
+        Assert.Contains("web_search", p);
         Assert.DoesNotContain("<think>\n", p);   // 例文に think ブロックそのものは含めない
     }
 

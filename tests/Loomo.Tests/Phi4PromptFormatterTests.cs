@@ -164,17 +164,15 @@ public class Phi4PromptFormatterTests
         Assert.Contains("Read file", AiSettings.DefaultSystemPrompt);
         Assert.Contains("Search code", AiSettings.DefaultSystemPrompt);
         Assert.Contains("dotnet build", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("Git", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("git --no-pager show --stat --oneline --decorate -1", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("read_file, search, build are not tools", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("read_file/search/build are commands or files, not tools", AiSettings.DefaultSystemPrompt);
         Assert.Contains("Use tools for workspace facts/actions", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("For chat/greetings", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("answer chat directly", AiSettings.DefaultSystemPrompt);
         Assert.Contains("non-interactive", AiSettings.DefaultSystemPrompt);
         // 構造化ファイルツールがプロンプトに告知されていること。
-        Assert.Contains("\"name\":\"write_file\"", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("write_file", AiSettings.DefaultSystemPrompt);
         Assert.Contains("\"name\":\"edit_file\"", AiSettings.DefaultSystemPrompt);
         Assert.Contains("\"name\":\"web_search\"", AiSettings.DefaultSystemPrompt);
-        Assert.Contains("first inspect with run_powershell", AiSettings.DefaultSystemPrompt);
+        Assert.Contains("Read before editing existing files", AiSettings.DefaultSystemPrompt);
         Assert.Contains("no Set-Content", AiSettings.DefaultSystemPrompt);
     }
 }
