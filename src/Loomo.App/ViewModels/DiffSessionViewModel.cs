@@ -139,6 +139,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnSelectedFileChanged(DiffFileItem? value)
     {
         _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
+        InvalidateWorkingTreePatch(value); // 開き直すたびに作業ツリーの最新内容を読み直す
         _ = LoadAndAutoJumpAsync(value);
     }
 
@@ -409,6 +410,19 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// <see cref="RefreshAsync"/> 冒頭で破棄するので、作業ツリーの変化には追従する。
     /// </summary>
     private readonly Dictionary<(DiffFileItem Item, int Context), string> _patchCache = new();
+
+    /// <summary>
+    /// 作業ツリー git 差分のパッチキャッシュを、その1ファイル分だけ捨てる。ファイルを選択し直すたびに呼び、
+    /// 別ファイルの差分を見てから戻ってきたときに編集後の最新差分を読み直せるようにする（表示形式の
+    /// 切替時は選択が変わらないので走らず、その用途のキャッシュは保たれる）。AI変更は内容が item に
+    /// 閉じ、コミット範囲は不変なので対象外（どちらも <see cref="DiffFileItem.Entry"/> が null）。
+    /// </summary>
+    private void InvalidateWorkingTreePatch(DiffFileItem? item)
+    {
+        if (item?.Entry is null) return;
+        foreach (var key in _patchCache.Keys.Where(k => k.Item == item).ToList())
+            _patchCache.Remove(key);
+    }
 
     /// <summary>Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。同じファイルの再取得はキャッシュで省く。</summary>
     private async Task<string> GetPatchTextAsync(DiffFileItem item, int contextLines)
