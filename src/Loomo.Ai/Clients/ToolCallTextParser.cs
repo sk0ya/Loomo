@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using sk0ya.Loomo.Core.Models;
@@ -19,6 +21,11 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// </summary>
 public static class ToolCallTextParser
 {
+    // 引数JSONを組み直す際、非ASCII（日本語パス・本文）を \uXXXX へ化けさせないため relaxed エンコーダを使う。
+    // 既定エンコーダだと ArgumentsJson が「アイデア」のようになり、トレース/UI の可読性とトークン量が悪化する。
+    private static readonly JsonSerializerOptions JsonOptions =
+        new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     /// <summary>
     /// 本文テキストからツール呼び出しを取り出す。検出できなければ空配列を返す。
     /// 複数要素の配列はその数だけツール呼び出しを返す。
@@ -135,7 +142,7 @@ public static class ToolCallTextParser
             var name = GetStringValue(obj, "name");
             if (!string.IsNullOrEmpty(name) && name != PwshContract.ToolName)
             {
-                var argsJson = ExtractArgsObject(obj).ToJsonString();
+                var argsJson = ExtractArgsObject(obj).ToJsonString(JsonOptions);
                 result.Add(new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson, rawText));
                 continue;
             }
@@ -328,7 +335,7 @@ public static class ToolCallTextParser
 
     private static ToolUse MakeToolUse(string command, string rawText)
     {
-        var argsJson = new JsonObject { [PwshContract.CommandArg] = command }.ToJsonString();
+        var argsJson = new JsonObject { [PwshContract.CommandArg] = command }.ToJsonString(JsonOptions);
         return new ToolUse(Guid.NewGuid().ToString("N"), PwshContract.ToolName, argsJson, rawText);
     }
 

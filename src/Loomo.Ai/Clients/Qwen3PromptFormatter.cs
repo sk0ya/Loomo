@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using sk0ya.Loomo.Core.Agent;
@@ -20,7 +21,10 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// </summary>
 public static class Qwen3PromptFormatter
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
+    // 非ASCII（日本語パス・本文）を \uXXXX へ化けさせないため relaxed エンコーダを使う
+    // （プロンプト用途で HTML 文脈ではないため relaxed で問題ない）。
+    private static readonly JsonSerializerOptions JsonOptions =
+        new() { WriteIndented = false, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static string Build(
         AiSettings settings,

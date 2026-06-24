@@ -246,6 +246,20 @@ public class ToolCallTextParserTests
     }
 
     [Fact]
+    public void Keeps_japanese_unescaped_in_arguments_json()
+    {
+        // 既定エンコーダだと日本語が \uXXXX へ化け、トレース/UI が読めずトークンも肥大する。
+        // relaxed エンコーダで ArgumentsJson に生の日本語が残ること（値のラウンドトリップも保つ）。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "{\"command\":\"Get-Content C:\\\\Projects\\\\Loomo\\\\アイデア.md\"}"));
+        Assert.Contains("アイデア.md", tool.ArgumentsJson);
+        Assert.DoesNotContain("\\u", tool.ArgumentsJson);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("Get-Content C:\\Projects\\Loomo\\アイデア.md",
+            args.RootElement.GetProperty("command").GetString());
+    }
+
+    [Fact]
     public void Routes_mixed_tools_in_one_array()
     {
         var tools = ToolCallTextParser.Parse(
