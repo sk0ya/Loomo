@@ -45,6 +45,33 @@ public partial class WorkflowView : UserControl
             Clipboard.SetText(_workflow.FinalOutput);
     }
 
+    /// <summary>テキストファイルを選んで読み込み、ワークフロー入力（{{input}}）に流し込む。</summary>
+    private void OnLoadInputFromFileClick(object sender, RoutedEventArgs e)
+    {
+        if (_workflow is null) return;
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "入力に読み込むファイル",
+            Filter = "テキスト系ファイル|*.txt;*.md;*.cs;*.json;*.xml;*.log;*.csv;*.yml;*.yaml|すべてのファイル|*.*",
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            _workflow.RunInput = System.IO.File.ReadAllText(dialog.FileName);
+        }
+        catch (System.Exception ex)
+        {
+            MessageBox.Show($"ファイルを読み込めませんでした:\n{ex.Message}", "Loomo",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>ワークフロー入力を空にする。</summary>
+    private void OnClearInputClick(object sender, RoutedEventArgs e)
+    {
+        if (_workflow is not null) _workflow.RunInput = "";
+    }
+
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (_workflow is not null)

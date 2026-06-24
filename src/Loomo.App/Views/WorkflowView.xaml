@@ -265,8 +265,57 @@
                 </Grid.RowDefinitions>
 
                 <!-- ===== ステップのパイプライン ===== -->
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="8,8,8,10">
+                <DockPanel Grid.Row="0" LastChildFill="True">
+
+                <!-- 入力バー（{{input}} に流し込むワークフロー入力。ファイルからも読込可） -->
+                <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6">
+                    <DockPanel LastChildFill="True">
+                        <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,4">
+                            <TextBlock DockPanel.Dock="Left" Text="入力（{{input}} で各ステップへ）" FontSize="11"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource FgDim}"
+                                       VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Right" Content="クリア" Style="{StaticResource ToolbarGhostButton}"
+                                    Padding="8,2" Click="OnClearInputClick"
+                                    Visibility="{Binding RunInput, Converter={StaticResource NonEmptyToVis}}"
+                                    ToolTip="入力を空にする" />
+                            <Button DockPanel.Dock="Right" Content="ファイルから読込" Style="{StaticResource ToolbarGhostButton}"
+                                    Padding="8,2" Margin="0,0,6,0" Click="OnLoadInputFromFileClick"
+                                    ToolTip="テキストファイルを読み込んで入力にする" />
+                        </DockPanel>
+                        <TextBox Text="{Binding RunInput, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                 BorderThickness="1" Padding="6,4" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="32" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                 Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}" />
+                    </DockPanel>
+                </Border>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8,8,8,10">
             <StackPanel>
+                <!-- 空状態のガイド（ステップが1つも無いとき） -->
+                <Border CornerRadius="8" Padding="16,18" Margin="2,6"
+                        Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Steps.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="ステップがありません" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Fg}" HorizontalAlignment="Center" />
+                        <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0" MaxWidth="420"
+                                   Foreground="{DynamicResource FgDim}" TextAlignment="Center"
+                                   Text="下の「＋ ステップを追加」から、AI への指示や、AI を使わないツール（コマンド実行・ファイル読書き・テキスト変換）を並べてワークフローを作れます。前段の出力は {{prev}} / {{1}}、上の入力は {{input}} で後続へ渡せます。" />
+                    </StackPanel>
+                </Border>
+
                 <ItemsControl ItemsSource="{Binding Steps}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:WorkflowStepViewModel}">
@@ -340,16 +389,25 @@
                                         Background="{DynamicResource Bg}"
                                         BorderBrush="{DynamicResource Border}" BorderThickness="1">
                                     <StackPanel>
-                                        <!-- 見出し行：タイトル・状態・操作 -->
+                                        <!-- 見出し行：種別・タイトル・状態・操作 -->
                                         <Grid>
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
+                                            <!-- 種別セレクタ（AI / コマンド / 読込 / 書込 / 変換） -->
+                                            <ComboBox Grid.Column="0" Margin="0,0,8,0" MinWidth="118" FontSize="11.5"
+                                                      VerticalAlignment="Center"
+                                                      ItemsSource="{Binding KindOptions}"
+                                                      SelectedValuePath="Kind" DisplayMemberPath="Label"
+                                                      SelectedValue="{Binding Kind}"
+                                                      ToolTip="ステップ種別を切り替える" />
+
                                             <!-- タイトル（任意・枠なし） -->
-                                            <Grid Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center">
+                                            <Grid Grid.Column="1" Margin="0,0,8,0" VerticalAlignment="Center">
                                                 <TextBlock Text="ステップ名（任意）" IsHitTestVisible="False"
                                                            VerticalAlignment="Center" FontSize="12"
                                                            Foreground="{DynamicResource FgDim}"
@@ -362,7 +420,7 @@
                                             </Grid>
 
                                             <!-- 状態テキスト（待機／実行中…／完了 (2.1秒)／失敗） -->
-                                            <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center"
+                                            <TextBlock Grid.Column="2" Text="{Binding StatusText}" VerticalAlignment="Center"
                                                        Margin="0,0,6,0" FontSize="11" TextTrimming="CharacterEllipsis"
                                                        MaxWidth="160">
                                                 <TextBlock.Style>
@@ -384,7 +442,7 @@
                                             </TextBlock>
 
                                             <!-- 操作（ホバーで出現：上へ/下へ/直後に挿入/削除） -->
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Opacity" Value="0" />
@@ -410,18 +468,69 @@
                                             </StackPanel>
                                         </Grid>
 
-                                        <!-- 指示文（プレースホルダ付き） -->
+                                        <!-- 主テキスト（種別でプレースホルダ・等幅が変わる：指示文／コマンド／パス／入力） -->
                                         <Grid Margin="0,8,0,0">
                                             <TextBlock IsHitTestVisible="False" Margin="6,5" FontSize="12"
                                                        Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
-                                                       Text="AIへの指示を入力…   {{1}} などで前段の出力を差し込めます"
+                                                       Text="{Binding PrimaryPlaceholder}"
                                                        Visibility="{Binding Prompt, Converter={StaticResource EmptyToVis}}" />
                                             <TextBox Text="{Binding Prompt, UpdateSourceTrigger=PropertyChanged}"
                                                      Background="{DynamicResource BgAlt}"
                                                      BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                      Padding="6,5" AcceptsReturn="True" TextWrapping="Wrap"
-                                                     MinHeight="48" MaxHeight="200" VerticalScrollBarVisibility="Auto"
+                                                     MinHeight="44" MaxHeight="200" VerticalScrollBarVisibility="Auto"
+                                                     Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Setter Property="FontFamily" Value="Segoe UI" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PrimaryIsMonospace}" Value="True">
+                                                                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                        </Grid>
+
+                                        <!-- 書込ステップ：書き込む内容 -->
+                                        <Grid Margin="0,6,0,0"
+                                              Visibility="{Binding IsWriteFileStep, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock IsHitTestVisible="False" Margin="6,5" FontSize="12"
+                                                       Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
+                                                       Text="書き込む内容…（{{prev}} / {{input}} を指定できます）"
+                                                       Visibility="{Binding Content, Converter={StaticResource EmptyToVis}}" />
+                                            <TextBox Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                     Background="{DynamicResource BgAlt}" FontFamily="Cascadia Mono, Consolas"
+                                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                     Padding="6,5" AcceptsReturn="True" TextWrapping="Wrap"
+                                                     MinHeight="44" MaxHeight="200" VerticalScrollBarVisibility="Auto"
                                                      Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}" />
+                                        </Grid>
+
+                                        <!-- 変換ステップ：検索／置換後／正規表現 -->
+                                        <Grid Margin="0,6,0,0"
+                                              Visibility="{Binding IsTransformStep, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}"
+                                                     Background="{DynamicResource BgAlt}" FontFamily="Cascadia Mono, Consolas"
+                                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                     Padding="6,4" Margin="0,0,4,0" FontSize="12"
+                                                     Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
+                                                     ToolTip="検索する文字列（正規表現も可）" />
+                                            <TextBox Grid.Column="1" Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                     Background="{DynamicResource BgAlt}" FontFamily="Cascadia Mono, Consolas"
+                                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                     Padding="6,4" Margin="0,0,8,0" FontSize="12"
+                                                     Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
+                                                     ToolTip="置換後の文字列" />
+                                            <CheckBox Grid.Column="2" Content="正規表現" VerticalAlignment="Center"
+                                                      FontSize="11" Foreground="{DynamicResource FgDim}"
+                                                      IsChecked="{Binding IsRegex}" />
                                         </Grid>
 
                                         <!-- 前段参照チップ -->
@@ -586,6 +695,7 @@
                 </Grid>
             </StackPanel>
         </ScrollViewer>
+                </DockPanel>
 
                 <!-- ===== 進捗状況エリア（実行後、またはウォームアップ中に現れる） =====
                      ウォームアップ中はウォームアップ表示。実行中・実行後は「実行ログ」（全ステップ一覧・

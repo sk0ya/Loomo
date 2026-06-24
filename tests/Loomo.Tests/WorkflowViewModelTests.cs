@@ -36,18 +36,25 @@ public class WorkflowViewModelTests
         IAiClientFactory aiFactory,
         ToolRegistry tools,
         IAiWarmup warmup,
-        WorkflowStore store)
+        WorkflowStore store,
+        WorkflowToolRunner? toolRunner = null,
+        AiSettings? settings = null)
     {
         var approval = new UiApprovalService();
+        settings ??= new AiSettings();
+        var safety = new SafetyPolicy(settings.Safety);
         var orchestrator = new AgentOrchestrator(
             aiFactory,
             tools,
             approval,
-            new SafetyPolicy(new SafetySettings()),
+            safety,
             NoopContextWindowPolicy.Instance,
             NullLogger<AgentOrchestrator>.Instance);
 
-        return new WorkflowViewModel(orchestrator, approval, store, warmup, new AiSettings());
+        toolRunner ??= new WorkflowToolRunner(
+            new FakeTerminalService(), new FakeWorkspaceService(), new FakeEditorService(), safety);
+
+        return new WorkflowViewModel(orchestrator, approval, store, warmup, settings, toolRunner);
     }
 
     [Fact]
@@ -113,6 +120,30 @@ public class WorkflowViewModelTests
                                                 && s.Detail == "first output");
         Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("ステップ 2 の出力:", StringComparison.Ordinal)
                                                 && s.Detail == "last output");
+    }
+
+    [Fact]
+    public async Task Tool_step_runs_without_ai_and_feeds_output_to_next_step()
+    {
+        // ステップ1: Transform（AI不要・決定論）で {{input}} を置換 → ステップ2: AI が {{prev}} を受け取る。
+        var ai = new ScriptedAiClient(new AgentEvent[] { new TextDelta("done") });
+        var sut = CreateSut(new FixedFactory(ai), new ToolRegistry(Enumerable.Empty<IAgentTool>()));
+        sut.RunInput = "hello world";
+        sut.Steps.Add(new WorkflowStepViewModel
+        {
+            Kind = WorkflowStepKind.Transform,
+            Prompt = "{{input}}",
+            Pattern = "world",
+            Content = "there",
+        });
+        sut.Steps.Add(new WorkflowStepViewModel { Kind = WorkflowStepKind.Ai, Prompt = "言い直す: {{prev}}" });
+
+        await sut.RunCommand.ExecuteAsync(null);
+
+        // Transform の出力（hello there）がタイムラインに記録され、最終出力は AI ステップの結果。
+        Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("ステップ 1 の出力:", StringComparison.Ordinal)
+                                                && s.Detail == "hello there");
+        Assert.Equal("done", sut.FinalOutput);
     }
 
     [Fact]

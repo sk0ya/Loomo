@@ -10,15 +10,31 @@ namespace sk0ya.Loomo.Core.Agent;
 /// <param name="Name">候補名（追加されるステップのタイトルにもなる）。</param>
 /// <param name="Category">パレットでの分類見出し。</param>
 /// <param name="Description">一覧に出す短い説明。</param>
-/// <param name="Prompt">ステップの指示文（対象は末尾に貼り付けてもらう想定）。</param>
+/// <param name="Prompt">ステップの主テキスト（AI=指示文 / Command=コマンド / ReadFile・WriteFile=パス / Transform=入力）。</param>
+/// <param name="Kind">ステップ種別（既定は AI）。</param>
+/// <param name="Content">WriteFile=内容テンプレート / Transform=置換後。</param>
+/// <param name="Pattern">Transform=検索パターン。</param>
+/// <param name="IsRegex">Transform=正規表現か。</param>
 public sealed record WorkflowStepCandidate(
     string Name,
     string Category,
     string Description,
-    string Prompt)
+    string Prompt,
+    WorkflowStepKind Kind = WorkflowStepKind.Ai,
+    string Content = "",
+    string Pattern = "",
+    bool IsRegex = false)
 {
     /// <summary>この候補から実体のワークフローステップを作る。</summary>
-    public WorkflowStep ToStep() => new() { Title = Name, Prompt = Prompt };
+    public WorkflowStep ToStep() => new()
+    {
+        Title = Name,
+        Kind = Kind,
+        Prompt = Prompt,
+        Content = Content,
+        Pattern = Pattern,
+        IsRegex = IsRegex,
+    };
 }
 
 /// <summary>
@@ -32,6 +48,7 @@ public static class WorkflowStepLibrary
     private const string Dev = "開発";
     private const string Research = "調査";
     private const string Chain = "前段を使う";
+    private const string Tool = "ツール（AI不要）";
 
     private static WorkflowStepCandidate Doc(string n, string d, string p) => new(n, Text, d, p);
     private static WorkflowStepCandidate Cod(string n, string d, string p) => new(n, Code, d, p);
@@ -137,5 +154,19 @@ public static class WorkflowStepLibrary
             "前のステップで得た差分から、日本語のコミットメッセージ（1行の要約＋必要なら箇条書きの本文）を作ってください。\n\n{{prev}}"),
         Chn("全ステップを統合", "{{all}} をまとめる",
             "これまでの全ステップの出力を統合し、最終的なまとめを日本語で作成してください。\n\n{{all}}"),
+
+        // ===== ツール（AI不要・決定論的に実行） =====
+        new("コマンドを実行", Tool, "PowerShell を実行し出力を取得", "git status --short",
+            WorkflowStepKind.Command),
+        new("git diff を取得", Tool, "作業ツリーの差分を取得", "git --no-pager diff",
+            WorkflowStepKind.Command),
+        new("ファイルを読み込む", Tool, "ファイル本文を後段へ渡す", "",
+            WorkflowStepKind.ReadFile),
+        new("入力をファイルへ書き出す", Tool, "{{input}} をファイルへ保存", "output.txt",
+            WorkflowStepKind.WriteFile, Content: "{{input}}"),
+        new("前段をファイルへ書き出す", Tool, "{{prev}} をファイルへ保存", "output.txt",
+            WorkflowStepKind.WriteFile, Content: "{{prev}}"),
+        new("文字列を置換", Tool, "{{prev}} に検索置換を施す", "{{prev}}",
+            WorkflowStepKind.Transform, Content: "", Pattern: ""),
     };
 }

@@ -130,7 +130,15 @@ public sealed class WorkflowStore
                 UpdatedAt = updatedAt,
             };
             foreach (var s in w.Steps)
-                dto.Steps.Add(new StepDto { Title = s.Title, Prompt = s.Prompt });
+                dto.Steps.Add(new StepDto
+                {
+                    Title = s.Title,
+                    Kind = s.Kind,
+                    Prompt = s.Prompt,
+                    Content = s.Content,
+                    Pattern = s.Pattern,
+                    IsRegex = s.IsRegex,
+                });
             return dto;
         }
 
@@ -141,7 +149,12 @@ public sealed class WorkflowStore
                 w.Steps.Add(new WorkflowStep
                 {
                     Title = s.Title ?? "",
+                    // kind 欠落の旧JSONは既定 Ai（StepDto の既定値）で読める。
+                    Kind = s.Kind,
                     Prompt = s.Prompt ?? "",
+                    Content = s.Content ?? "",
+                    Pattern = s.Pattern ?? "",
+                    IsRegex = s.IsRegex,
                 });
             return w;
         }
@@ -150,6 +163,10 @@ public sealed class WorkflowStore
     private sealed class StepDto
     {
         public string? Title { get; set; }
+        public WorkflowStepKind Kind { get; set; } = WorkflowStepKind.Ai;
         public string? Prompt { get; set; }
+        public string? Content { get; set; }
+        public string? Pattern { get; set; }
+        public bool IsRegex { get; set; }
     }
 }

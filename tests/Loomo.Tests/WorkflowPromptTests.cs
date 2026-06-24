@@ -59,4 +59,25 @@ public class WorkflowPromptTests
         var result = WorkflowPrompt.Resolve(token, new[] { "値" });
         Assert.Equal("値", result);
     }
+
+    [Fact]
+    public void Input_placeholder_is_replaced_with_run_input()
+    {
+        var result = WorkflowPrompt.Resolve("対象: {{input}}", System.Array.Empty<string>(), "渡したファイル本文");
+        Assert.Equal("対象: 渡したファイル本文", result);
+    }
+
+    [Fact]
+    public void Input_placeholder_without_input_becomes_empty()
+    {
+        var result = WorkflowPrompt.Resolve("[{{input}}]", System.Array.Empty<string>());
+        Assert.Equal("[]", result);
+    }
+
+    [Fact]
+    public void Input_and_prev_can_be_combined()
+    {
+        var result = WorkflowPrompt.Resolve("{{input}} / {{prev}}", new[] { "前段" }, "入力");
+        Assert.Equal("入力 / 前段", result);
+    }
 }

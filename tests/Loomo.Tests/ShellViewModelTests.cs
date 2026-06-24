@@ -42,7 +42,10 @@ public class ShellViewModelTests
         var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload, new FakeAiWarmup());
         var workflowStore = new WorkflowStore(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows"));
-        var workflowVm = new WorkflowViewModel(orchestrator, approval, workflowStore, new FakeAiWarmup(), settings);
+        var workflowRunner = new WorkflowToolRunner(
+            new FakeTerminalService(), new FakeWorkspaceService(), new FakeEditorService(),
+            new SafetyPolicy(new SafetySettings()));
+        var workflowVm = new WorkflowViewModel(orchestrator, approval, workflowStore, new FakeAiWarmup(), settings, workflowRunner);
         var aiBar = new AiBarViewModel(orchestrator, approval, settings, settingsVm, conversations,
             new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")),
             new FakeAiWarmup(), workflowVm);

@@ -31,6 +31,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private readonly WorkflowStore _store;
     private readonly IAiWarmup _warmup;
     private readonly AiSettings _settings;
+    private readonly WorkflowToolRunner _toolRunner;
 
     private CancellationTokenSource? _cts;
     private WorkflowStepViewModel? _runningStep;   // 経過秒つきステータスの差し込み先（実行中ステップ）
@@ -94,6 +95,10 @@ public sealed partial class WorkflowViewModel : ObservableObject
     /// <summary>ウォームアップ中か。進捗状況エリアの中身を「ウォームアップ表示」と「実行ログ」で出し分ける。</summary>
     [ObservableProperty] private bool _isWarmingUp;
 
+    /// <summary>実行時にステップへ <c>{{input}}</c> で流し込むワークフロー入力。
+    /// 入力バーのテキスト欄／「ファイルから読込」ボタンから設定する。</summary>
+    [ObservableProperty] private string _runInput = "";
+
     /// <summary>ワークフロー全体の最終出力（最後のステップの出力）。実行ログとは別に表示する。</summary>
     [ObservableProperty] private string _finalOutput = "";
     public bool HasFinalOutput => !string.IsNullOrWhiteSpace(FinalOutput);
@@ -127,13 +132,15 @@ public sealed partial class WorkflowViewModel : ObservableObject
         UiApprovalService approval,
         WorkflowStore store,
         IAiWarmup warmup,
-        AiSettings settings)
+        AiSettings settings,
+        WorkflowToolRunner toolRunner)
     {
         _orchestrator = orchestrator;
         _approval = approval;
         _store = store;
         _warmup = warmup;
         _settings = settings;
+        _toolRunner = toolRunner;
 
         _approval.ApprovalRequested += OnApprovalRequested;
         _store.Changed += () => Dispatch(RefreshSavedWorkflows);
@@ -325,7 +332,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
     {
         step.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkflowStepViewModel.Title) or nameof(WorkflowStepViewModel.Prompt))
+            if (e.PropertyName is nameof(WorkflowStepViewModel.Title)
+                or nameof(WorkflowStepViewModel.Prompt)
+                or nameof(WorkflowStepViewModel.Kind)
+                or nameof(WorkflowStepViewModel.Content)
+                or nameof(WorkflowStepViewModel.Pattern)
+                or nameof(WorkflowStepViewModel.IsRegex))
                 MarkDirty();
         };
     }
@@ -567,10 +579,18 @@ public sealed partial class WorkflowViewModel : ObservableObject
         }
     }
 
-    /// <summary>1ステップを実行し、(最終出力, 成功か) を返す。記録は共有のフラットな進捗タイムライン
+    /// <summary>1ステップを実行し、(最終出力, 成功か) を返す。AI ステップはオーケストレータ経由（LLM）、
+    /// それ以外は <see cref="WorkflowToolRunner"/> で決定論実行する。</summary>
+    private Task<(string Output, bool Ok)> RunStepAsync(
+        WorkflowStepViewModel step, IReadOnlyList<string> outputs, string sessionId, CancellationToken ct)
+        => step.Kind == WorkflowStepKind.Ai
+            ? RunAiStepAsync(step, outputs, sessionId, ct)
+            : RunToolStepAsync(step, outputs, ct);
+
+    /// <summary>AI ステップを実行する。記録は共有のフラットな進捗タイムライン
     /// （<see cref="_log"/>）へ、意味のあるアクションを短い1段ずつ流す（ステップ単位でまとめない）。
     /// 生成中の本文・思考は揮発プレビュー段（保存しない）として見せる。</summary>
-    private async Task<(string Output, bool Ok)> RunStepAsync(
+    private async Task<(string Output, bool Ok)> RunAiStepAsync(
         WorkflowStepViewModel step, IReadOnlyList<string> outputs, string sessionId, CancellationToken ct)
     {
         var log = _log!;
@@ -578,7 +598,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         step.Status = WorkflowStepStatus.Running;
         _runningStep = step;
 
-        var prompt = WorkflowPrompt.Resolve(step.Prompt, outputs);
+        var prompt = WorkflowPrompt.Resolve(step.Prompt, outputs, RunInput);
         var conversation = new Conversation();
         var clock = Stopwatch.StartNew();
 
@@ -705,6 +725,69 @@ public sealed partial class WorkflowViewModel : ObservableObject
 
         _runningStep = null;
         return (finalText, ok);
+    }
+
+    /// <summary>非AIのツールステップ（コマンド/ファイル読込/書込/変換）を LLM を使わず実行し、
+    /// (出力, 成功か) を返す。承認が要る種別（Command/WriteFile）は AutoApprove でなければ承認カードを出す。</summary>
+    private async Task<(string Output, bool Ok)> RunToolStepAsync(
+        WorkflowStepViewModel step, IReadOnlyList<string> outputs, CancellationToken ct)
+    {
+        var log = _log!;
+        step.ResetRun();
+        step.Status = WorkflowStepStatus.Running;
+        _runningStep = step;
+
+        var model = step.ToModel();
+        var primary = WorkflowPrompt.Resolve(model.Prompt, outputs, RunInput);
+        var content = WorkflowPrompt.Resolve(model.Content, outputs, RunInput);
+        var toolName = WorkflowToolRunner.ToolNameFor(model.Kind);
+        var clock = Stopwatch.StartNew();
+
+        try
+        {
+            // 副作用のある種別は AI パスと同じ承認フローを通す（拒否なら連鎖を打ち切る）。
+            if (WorkflowToolRunner.RequiresApproval(model.Kind) && !_settings.Safety.AutoApprove)
+            {
+                SetStepStatus($"⏳ {toolName} の承認待ち…");
+                log.Append(ActivityKind.Approval, $"{toolName} の実行承認を待っています。");
+                var summary = _toolRunner.DescribeApproval(model, primary, content);
+                var approved = await _approval.RequestApprovalAsync(toolName, summary, ct);
+                if (!approved)
+                {
+                    clock.Stop();
+                    step.Status = WorkflowStepStatus.Error;
+                    step.StatusText = $"拒否 ({TranscriptFormatting.FormatDuration(clock.Elapsed)})";
+                    log.Append(ActivityKind.Warn, $"{toolName} の実行は拒否されました。");
+                    return ("", false);
+                }
+            }
+
+            SetStepStatus($"🔧 {toolName} を実行中… {TranscriptFormatting.StreamPreview(primary)}");
+            log.Append(ActivityKind.ToolRun,
+                $"{toolName} を実行しています: {TranscriptFormatting.StreamPreview(primary)}");
+
+            var result = await _toolRunner.RunAsync(model, primary, content, ct);
+            clock.Stop();
+
+            if (result.Ok)
+            {
+                step.Status = WorkflowStepStatus.Done;
+                step.StatusText = $"完了 ({TranscriptFormatting.FormatDuration(clock.Elapsed)})";
+                log.Append(ActivityKind.ToolDone, $"{toolName} が完了しました（成功）: {result.Summary}");
+            }
+            else
+            {
+                step.Status = WorkflowStepStatus.Error;
+                step.StatusText = $"失敗 ({TranscriptFormatting.FormatDuration(clock.Elapsed)})";
+                log.Append(ActivityKind.ToolError, $"{toolName} が失敗しました: {result.Summary}");
+            }
+            return (result.Output, result.Ok);
+        }
+        finally
+        {
+            ClearStepStatus();
+            _runningStep = null;
+        }
     }
 
     private void AppendStepOutput(int stepNumber, string output)
