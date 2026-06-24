@@ -31,12 +31,14 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     private readonly IWorkspaceService _workspace;
     private readonly ToolRegistry _tools;
     private readonly CancellationTokenSource _startupCts = new();
+    private readonly SemaphoreSlim _primeGate = new(1, 1);
     private readonly object _requestLock = new();
     private readonly object _statusLock = new();
 
     private long _requestSeq;
     private bool _workerRunning;
     private int _activePrimes;
+    private string? _lastPrimeKey;
     private long _warmupStartedAtUnixMs;
     private string _currentStatus = "";
     private string _statusDetails = "";
@@ -112,8 +114,11 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         // ワークスペースが確定／切り替わるたびに、プレフィックスを実ターンと一致させ直す。
         _workspace.RootChanged += OnRootChanged;
 
-        // 起動直後は root 確定通知が続けて来ることがあるため、短く遅延して連続要求をまとめる。
-        RequestWarmup();
+        // 起動時は保存済みワークスペースの復元で RootChanged がすぐ来る。root 未確定のまま暖機すると、
+        // 直後に root 入りプレフィックスで再暖機になり UI 上「2回走った」ように見えるため、
+        // root が既にある場合だけここで始め、通常は RootChanged まで待つ。
+        if (!string.IsNullOrWhiteSpace(_workspace.RootPath))
+            RequestWarmup();
     }
 
     private void OnRootChanged(object? sender, string? root) => RequestWarmup();
@@ -150,7 +155,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
 
         // WarmupEnabled が無効でも、送信前のこの経路では強制的にロード＋暖機する
         // （ユーザーが今まさに待っているので、進捗を見せるのが目的）。
-        await PrimeAsync(ct, force: true);
+        await PrimeAsync(ct, force: true, skipIfLoadedAfterWaiting: true);
     }
 
     private async Task RunPrimeWorkerAsync(CancellationToken ct)
@@ -191,7 +196,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         }
     }
 
-    private async Task PrimeAsync(CancellationToken ct, bool force = false)
+    private async Task PrimeAsync(CancellationToken ct, bool force = false, bool skipIfLoadedAfterWaiting = false)
     {
         // ウォームアップが無効なら事前ロードしない（最初のAIターンで通常どおりロード／prefill する）。
         // ただし送信直前の EnsureWarmAsync 経由（force）は、設定に依らず実行する。
@@ -201,30 +206,55 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         var cfg = _settings.Local;
         if (string.IsNullOrWhiteSpace(cfg.ModelPath))
             return;
+        var primeKey = BuildPrimeKey(cfg);
 
-        BeginWarmup();
+        await _primeGate.WaitAsync(ct);
         try
         {
-            SetStatus("プロンプトを組み立てています");
+            // 起動時暖機がすでに進行中なら EnsureWarmAsync はここで待つ。
+            // 待ち終えた時点でモデルがロード済みなら、同じ安定プレフィックスの KV 作成を二重に走らせない。
+            if (skipIfLoadedAfterWaiting && CurrentEngine.IsLoaded)
+                return;
+            if (!force && CurrentEngine.IsLoaded && string.Equals(_lastPrimeKey, primeKey, StringComparison.Ordinal))
+                return;
 
-            // 最初の実ターンと同じ経路（モデルの ChatFormat に応じたフォーマッタ）で安定プレフィックスを
-            // 組み立てる。会話は空なので Build は system ブロック＋生成開始マーカを返し、その system ブロックが
-            // 実ターン（同じ system ブロック＋ユーザーターン）との最長共通接頭辞になる。
-            // profile は対話セッション既定の Root（AgentOrchestrator.RunTurnAsync と一致）。
-            var modelProfile = ModelProfiles.Resolve(cfg.Model);
-            var prompt = ChatPrompt.Build(
-                modelProfile.Format, _settings, AgentProfiles.Root, _workspace.RootPath, new Conversation(), _tools.Definitions);
-            var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
-            var sampling = modelProfile.Sampling;
+            BeginWarmup();
+            try
+            {
+                SetStatus("プロンプトを組み立てています");
 
-            SetStatus("モデル設定を確認しています");
-            // modelPath に応じた暖機対象エンジン（GGUF→llama.cpp／フォルダ→ONNX）を選んで暖機する。
-            await _router.WarmableFor(cfg.ModelPath).PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct, SetStatus);
+                // 最初の実ターンと同じ経路（モデルの ChatFormat に応じたフォーマッタ）で安定プレフィックスを
+                // 組み立てる。会話は空なので Build は system ブロック＋生成開始マーカを返し、その system ブロックが
+                // 実ターン（同じ system ブロック＋ユーザーターン）との最長共通接頭辞になる。
+                // profile は対話セッション既定の Root（AgentOrchestrator.RunTurnAsync と一致）。
+                var modelProfile = ModelProfiles.Resolve(cfg.Model);
+                var prompt = ChatPrompt.Build(
+                    modelProfile.Format, _settings, AgentProfiles.Root, _workspace.RootPath, new Conversation(), _tools.Definitions);
+                var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
+                var sampling = modelProfile.Sampling;
+
+                SetStatus("モデル設定を確認しています");
+                // modelPath に応じた暖機対象エンジン（GGUF→llama.cpp／フォルダ→ONNX）を選んで暖機する。
+                await _router.WarmableFor(cfg.ModelPath).PrimeAsync(cfg.ModelPath, prompt, maxLength, sampling, ct, SetStatus);
+                _lastPrimeKey = primeKey;
+            }
+            catch (OperationCanceledException) { }
+            catch { /* 暖機は体感改善用。失敗は通常のAI呼び出し時に改めて顕在化する。 */ }
+            finally { EndWarmup(); }
         }
-        catch (OperationCanceledException) { }
-        catch { /* 暖機は体感改善用。失敗は通常のAI呼び出し時に改めて顕在化する。 */ }
-        finally { EndWarmup(); }
+        finally
+        {
+            _primeGate.Release();
+        }
     }
+
+    private string BuildPrimeKey(ProviderConfig cfg)
+        => string.Join('\u001f',
+            cfg.ModelPath ?? "",
+            cfg.Model ?? "",
+            cfg.NumCtx.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _workspace.RootPath ?? "",
+            string.Join('\u001e', _tools.Definitions.Select(t => t.Name)));
 
     private void SetStatus(string status)
     {
@@ -338,5 +368,6 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         _workspace.RootChanged -= OnRootChanged;
         _startupCts.Cancel();
         _startupCts.Dispose();
+        _primeGate.Dispose();
     }
 }

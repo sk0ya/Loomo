@@ -200,7 +200,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     private void RenderWarmupCompletion()
     {
         WarmupCompletionStages.Clear();
-        foreach (var stage in _warmup.StageTimings.Where(ShouldShowWarmupStage))
+        foreach (var stage in _warmup.StageTimings.Where(stage => stage.Elapsed >= TimeSpan.FromMilliseconds(1)))
             WarmupCompletionStages.Add(new WarmupCompletionStage(DisplayWarmupStageName(stage.Name), FormatDuration(stage.Elapsed)));
 
         WarmupCompletionTotalText = _warmup.TotalDuration is { } total
@@ -370,7 +370,16 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     /// <summary>チャットモードに切替える（セグメントボタン）。</summary>
     [RelayCommand]
-    private void ShowChatMode() => Mode = AiBarMode.Chat;
+    private void ShowChatMode()
+    {
+        Mode = AiBarMode.Chat;
+        IsExpanded = true;
+
+        // ワークフロー表示中にウォームアップが完了した場合、完了カードはチャット面に隠れている。
+        // 戻ってきた時点で処理中でなければ、直近の内訳を再描画して「何が終わったか」を見失わない。
+        if (!IsBusy && !_warmup.IsWarmingUp && _warmup.TotalDuration is not null)
+            RenderWarmupCompletion();
+    }
 
     /// <summary>ワークフローモードに切替える（セグメントボタン）。保存済み一覧を最新化する。</summary>
     [RelayCommand]
@@ -719,8 +728,13 @@ public sealed partial class AiBarViewModel : ObservableObject
 
     private static string DisplayWarmupStageName(string status)
     {
-        var s = Regex.Replace(status, @"（.*?）", "").Trim();
-        return s switch
+        var detail = "";
+        var match = Regex.Match(status, @"（(?<detail>.*?)）");
+        if (match.Success)
+            detail = match.Groups["detail"].Value.Trim();
+
+        var baseName = Regex.Replace(status, @"（.*?）", "").Trim();
+        var label = baseName switch
         {
             "ウォームアップを開始しています" => "開始",
             "プロンプトを組み立てています" => "プロンプト",
@@ -731,20 +745,10 @@ public sealed partial class AiBarViewModel : ObservableObject
             "生成器を準備しています" => "生成器",
             "KVキャッシュを作成しています" => "KVキャッシュ",
             "ウォームアップを完了しています" => "完了処理",
-            _ => s
+            _ => baseName
         };
-    }
 
-    private static bool ShouldShowWarmupStage(WarmupStageTiming stage)
-    {
-        if (stage.Elapsed < TimeSpan.FromMilliseconds(1))
-            return false;
-
-        var s = Regex.Replace(stage.Name, @"（.*?）", "").Trim();
-        return s is not "ウォームアップを開始しています"
-            and not "プロンプトを組み立てています"
-            and not "モデル設定を確認しています"
-            and not "プロンプトをトークン化しています";
+        return string.IsNullOrWhiteSpace(detail) ? label : $"{label}（{detail}）";
     }
 
     private static string FormatWarmupDuration(TimeSpan elapsed)
