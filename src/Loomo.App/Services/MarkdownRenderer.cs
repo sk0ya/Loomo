@@ -468,6 +468,18 @@ internal static class MarkdownRenderer
         _ => BaseCss("#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"),
     };
 
+    // 背景色の明度からネイティブ UI（既定スクロールバー等）の配色モードを決める。
+    private static string ColorScheme(string hexBg)
+    {
+        var hex = hexBg.TrimStart('#');
+        if (hex.Length < 6 || !int.TryParse(hex[..2], System.Globalization.NumberStyles.HexNumber, null, out var r)
+            || !int.TryParse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber, null, out var g)
+            || !int.TryParse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+            return "dark";
+        // 知覚輝度（簡易）。明るければ light。
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 140 ? "light" : "dark";
+    }
+
     private static string BaseCss(
         string bg,
         string fg,
@@ -481,6 +493,19 @@ internal static class MarkdownRenderer
     {
         return $$"""
             * { box-sizing: border-box; margin: 0; padding: 0; }
+            html { color-scheme: {{ColorScheme(bg)}}; scrollbar-color: {{border}} transparent; scrollbar-width: thin; }
+            ::-webkit-scrollbar { width: 12px; height: 12px; }
+            ::-webkit-scrollbar-track { background: transparent; }
+            ::-webkit-scrollbar-thumb {
+                background: {{border}};
+                border-radius: 8px;
+                border: 3px solid {{bg}};
+                background-clip: padding-box;
+            }
+            ::-webkit-scrollbar-thumb:hover { background: {{muted}}; background-clip: padding-box; }
+            ::-webkit-scrollbar-corner { background: transparent; }
+            /* pre 等パネル内の横スクロールバーはパネル背景に馴染ませる */
+            pre::-webkit-scrollbar-thumb { border-color: {{panel}}; }
             body {
                 background: {{bg}};
                 color: {{fg}};
