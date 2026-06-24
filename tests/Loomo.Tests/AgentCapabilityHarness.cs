@@ -23,7 +23,7 @@ using Xunit.Abstractions;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// 実モデル（phi-4-mini ONNX）＋実ツール（run_powershell/write_file/edit_file）で
+/// 実モデル（既定は Qwen3-4B GGUF Q4_K_M）＋実ツール（run_powershell/write_file/edit_file）で
 /// AgentOrchestrator をヘッドレス駆動し、「何をどこまで任せられるか」を実測するハーネス。
 /// GUI を介さず、ターミナルは実 TerminalService（独立 PowerShell プロセス実行）、
 /// ワークスペースは一時フォルダに差し替える。
@@ -34,13 +34,13 @@ public sealed class AgentCapabilityHarness
     private readonly ITestOutputHelper _out;
     public AgentCapabilityHarness(ITestOutputHelper output) => _out = output;
 
-    /// <summary>計測対象モデルのフォルダ名。環境変数 HARNESS_MODEL で切り替え可（既定は phi4-mini）。
+    /// <summary>計測対象モデルのフォルダ名。環境変数 HARNESS_MODEL で切り替え可（既定は <see cref="AiSettings.DefaultLocalModel"/>）。
     /// ONNX はフォルダ名（例 <c>qwen3-4b-cpu-int4</c>）、llama.cpp も GGUF を収めたフォルダ名
     /// （例 <c>qwen3-4b-q4_k_m</c>）を渡す。バックエンドは <see cref="LocalInferenceRouter"/> がパスの拡張子で
     /// 振り分けるため、レポート名にはこのクリーンなトークンをそのまま使う。</summary>
     private static string ModelFolderName =>
         Environment.GetEnvironmentVariable("HARNESS_MODEL") is { Length: > 0 } m
-            ? m : "phi-4-mini-instruct-cpu-int4";
+            ? m : AiSettings.DefaultLocalModel;
 
     private static string ModelRoot =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -86,6 +86,21 @@ public sealed class AgentCapabilityHarness
     };
 
     private sealed record HarnessTask(string Name, string Prompt, Func<TurnRecord, (bool ok, string detail)> Oracle);
+
+    [Fact]
+    public void Default_model_matches_app_default_when_harness_model_is_not_set()
+    {
+        var old = Environment.GetEnvironmentVariable("HARNESS_MODEL");
+        try
+        {
+            Environment.SetEnvironmentVariable("HARNESS_MODEL", null);
+            Assert.Equal(AiSettings.DefaultLocalModel, ModelFolderName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("HARNESS_MODEL", old);
+        }
+    }
 
     [Fact]
     public async Task RunHarness()
@@ -547,9 +562,8 @@ public sealed class AgentCapabilityHarness
         header.AppendLine();
 
         var full = header.ToString() + body.ToString();
-        // モデルごとにファイルを分け、別モデルのレポートを上書きしないようにする
-        // （既定 phi4-mini は従来名のまま、それ以外は -<model> サフィックス）。
-        var suffix = ModelFolderName == "phi-4-mini-instruct-cpu-int4" ? "" : "-" + ModelFolderName;
+        // モデルごとにファイルを分け、別モデルのレポートを上書きしないようにする。
+        var suffix = "-" + ModelFolderName;
         if (!string.IsNullOrEmpty(reportTag)) suffix += "-" + reportTag;
         var fileName = $"harness-report{suffix}.md";
         var outPath = Path.Combine(AppContext.BaseDirectory, fileName);

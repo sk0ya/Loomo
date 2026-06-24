@@ -69,7 +69,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public ObservableCollection<DownloadableModel> DownloadableModels { get; } =
         new(ModelDownloadService.Catalog);
 
-    /// <summary>ダウンロードボタンで取得する対象モデル。既定は phi4-mini。</summary>
+    /// <summary>ダウンロードボタンで取得する対象モデル。既定は Qwen3-4B GGUF Q4_K_M。</summary>
     [ObservableProperty] private DownloadableModel _selectedDownloadModel =
         ModelDownloadService.Default;
 

@@ -34,7 +34,7 @@ public sealed class LocalEngineSpeedBench
             return;
 
         var name = Environment.GetEnvironmentVariable("HARNESS_MODEL") is { Length: > 0 } m
-            ? m : "qwen3-4b-cpu-int4";
+            ? m : AiSettings.DefaultLocalModel;
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Loomo", "models", name);
         // ONNX はフォルダ、GGUF はフォルダ内の .gguf ファイルを指す（ルータが拡張子で振り分ける）。

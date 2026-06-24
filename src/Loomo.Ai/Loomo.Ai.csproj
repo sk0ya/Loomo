@@ -7,9 +7,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
-    <!-- ローカル推論エンジン（ONNX Runtime GenAI・CPU）。phi4-mini を in-process で駆動する。 -->
+    <!-- ローカル推論エンジン（ONNX Runtime GenAI・CPU）。ONNX モデルを in-process で駆動する。 -->
     <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI" Version="0.14.1" />
-    <!-- ローカル推論エンジン（llama.cpp 同梱・CPU）。GGUF モデル（Qwen3-4B 等）を in-process で駆動する。 -->
+    <!-- ローカル推論エンジン（llama.cpp 同梱・CPU）。既定の Qwen3-4B GGUF 等を in-process で駆動する。 -->
     <PackageReference Include="LLamaSharp" Version="0.27.0" />
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
   </ItemGroup>

@@ -26,7 +26,7 @@ public static class ModelProfiles
     };
 
     /// <summary>
-    /// Qwen3 系（lokinfey の CPU int4 ビルド・1.7B/4B）。ChatML テンプレート＋Hermes 風 tool call を使う。
+    /// Qwen3 系（既定の 4B GGUF Q4_K_M、および lokinfey の CPU int4 ビルド）。ChatML テンプレート＋Hermes 風 tool call を使う。
     ///
     /// サンプリング:
     /// Qwen3 公式は<b>greedy デコードを明確に非推奨</b>（繰り返し崩壊・性能低下を招く）としており、
@@ -69,7 +69,7 @@ public static class ModelProfiles
     {
         var id = (model ?? string.Empty).Trim().ToLowerInvariant();
         if (id.Contains("phi4-mini") || id.Contains("phi-4-mini")) return Phi4Mini;
-        // "qwen3" / "qwen-3" / "qwen_3" いずれの表記でも拾う（DLフォルダ名 "qwen3-1.7b-cpu-int4" もここに合致）。
+        // "qwen3" / "qwen-3" / "qwen_3" いずれの表記でも拾う（DLフォルダ名 "qwen3-4b-q4_k_m" もここに合致）。
         if (id.Contains("qwen3") || id.Contains("qwen-3") || id.Contains("qwen_3")) return Qwen3;
         return Default;
     }

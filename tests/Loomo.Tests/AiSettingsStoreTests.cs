@@ -39,7 +39,7 @@ public class AiSettingsStoreTests
     }
 
     [Fact]
-    public void Load_migrates_legacy_default_model_to_phi4_mini()
+    public void Load_migrates_legacy_default_model_to_current_default()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         File.WriteAllText(path, """
