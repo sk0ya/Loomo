@@ -142,13 +142,15 @@ public static class ToolCallTextParser
             var name = GetStringValue(obj, "name");
             if (!string.IsNullOrEmpty(name) && name != PwshContract.ToolName)
             {
-                var argsJson = ExtractArgsObject(obj).ToJsonString(JsonOptions);
+                var argsObj = ExtractArgsObject(obj);
+                RestorePathBackslashes(argsObj);
+                var argsJson = argsObj.ToJsonString(JsonOptions);
                 result.Add(new ToolUse(Guid.NewGuid().ToString("N"), name, argsJson, rawText));
                 continue;
             }
 
             if (ExtractCommandFromJson(obj) is { } command)
-                result.Add(MakeToolUse(command, rawText));
+                result.Add(MakeToolUse(RestoreControlEscapes(command), rawText));
         }
         return result;
     }
@@ -239,6 +241,45 @@ public static class ToolCallTextParser
         }
         return sb?.ToString() ?? s;
     }
+
+    /// <summary>引数オブジェクトの <c>path</c> 値に紛れ込んだ制御文字をバックスラッシュ表記へ戻す
+    /// （<see cref="RestoreControlEscapes"/> 参照）。ファイルパスに生のタブ・改行は入らないため安全。
+    /// <c>content</c>/<c>old_string</c>/<c>new_string</c> は本物の改行・タブを含みうるので触らない。</summary>
+    private static void RestorePathBackslashes(JsonObject args)
+    {
+        if (args["path"] is JsonValue v && v.TryGetValue<string>(out var path))
+        {
+            var restored = RestoreControlEscapes(path);
+            if (!ReferenceEquals(restored, path)) args["path"] = restored;
+        }
+    }
+
+    /// <summary>JSON文字列として解釈された結果に紛れ込んだ制御文字を元のバックスラッシュ表記へ戻す。
+    /// モデルが Windows パス（<c>C:\temp\notes.md</c> 等）を素の単一バックスラッシュで書くと、<c>\t \n \r \b \f</c>
+    /// は<b>有効な</b>JSONエスケープなので <see cref="JsonNode.Parse"/> が「成功」してタブ・改行へ化け、
+    /// <see cref="RepairInvalidEscapes"/>（失敗時のみ走る）では救えない。JSONは文字列中に生の制御文字を許さない
+    /// ＝<c>command</c>/<c>path</c> 値にこれらが現れたらモデルがパス区切りのバックスラッシュを書いた証左なので、
+    /// 安全に <c>\t</c> 等へ戻せる。制御文字が無ければ参照同一の入力をそのまま返す。</summary>
+    private static string RestoreControlEscapes(string s)
+    {
+        if (s.IndexOfAny(ControlEscapeChars) < 0) return s;
+        var sb = new StringBuilder(s.Length + 8);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '\t': sb.Append("\\t"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static readonly char[] ControlEscapeChars = { '\t', '\n', '\r', '\b', '\f' };
 
     private static bool IsHex(string s, int start, int count)
     {

@@ -260,6 +260,53 @@ public class ToolCallTextParserTests
     }
 
     [Fact]
+    public void Restores_windows_path_with_valid_escape_letters_in_command()
+    {
+        // \t \n は「有効な」JSONエスケープなので Parse は成功し、補修が走らないままパスがタブ・改行へ化ける。
+        // command に生の制御文字は入らないので、パス区切りのバックスラッシュとして復元できる。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "{\"command\":\"Get-Content C:\\temp\\notes.md\"}"));
+        Assert.Equal("run_powershell", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("Get-Content C:\\temp\\notes.md",
+            args.RootElement.GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public void Restores_windows_path_with_carriage_return_and_backspace_escapes()
+    {
+        // \r(CR) \b(BS) も有効エスケープ → cd C:eposuild に化けていた。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "{\"command\":\"cd C:\\repos\\build\"}"));
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("cd C:\\repos\\build", args.RootElement.GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public void Restores_mixed_invalid_and_valid_escape_path_in_command()
+    {
+        // \P 無効（補修で二重化）と \t 有効（補修は素通し→タブ化）が混在。後処理で両方とも区切りに戻ること。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "{\"command\":\"Get-Content C:\\Projects\\temp\"}"));
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("Get-Content C:\\Projects\\temp",
+            args.RootElement.GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public void Restores_windows_path_in_write_file_path_argument()
+    {
+        // path も区切りバックスラッシュ。content は対象外（本物の改行を保つ）。
+        var tool = Assert.Single(ToolCallTextParser.Parse(
+            "{\"name\":\"write_file\",\"arguments\":{\"path\":\"docs\\templates\\x.md\",\"content\":\"line1\\nline2\"}}"));
+        Assert.Equal("write_file", tool.Name);
+        using var args = JsonDocument.Parse(tool.ArgumentsJson);
+        Assert.Equal("docs\\templates\\x.md", args.RootElement.GetProperty("path").GetString());
+        // content の \n は本物の改行のまま（復元対象外）。
+        Assert.Equal("line1\nline2", args.RootElement.GetProperty("content").GetString());
+    }
+
+    [Fact]
     public void Routes_mixed_tools_in_one_array()
     {
         var tools = ToolCallTextParser.Parse(
