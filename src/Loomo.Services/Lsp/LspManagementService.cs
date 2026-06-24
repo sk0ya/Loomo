@@ -156,7 +156,11 @@ public sealed class LspManagementService
 }
 
 /// <summary>実行ファイルが PATH（＋PATHEXT）上で解決できるか調べる小さなヘルパー。
-/// npm 等のグローバル導入が <c>.cmd</c> シムになる Windows でも拾えるよう PATHEXT を総当たりする。</summary>
+/// npm 等のグローバル導入が <c>.cmd</c> シムになる Windows でも拾えるよう PATHEXT を総当たりする。
+///
+/// PATH はプロセス起動時のスナップショットだけでなく、**レジストリの最新 Machine/User PATH** も
+/// 読み直して統合する。インストーラ（dotnet tool / npm -g / winget …）が新たに足したディレクトリ
+/// （例: <c>%USERPROFILE%\.dotnet\tools</c>）を、Loomo を再起動せずに「導入済み」と認識できるようにするため。</summary>
 public static class ExecutableResolver
 {
     public static bool IsOnPath(string executable)
@@ -167,15 +171,11 @@ public static class ExecutableResolver
         if (executable.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0)
             return File.Exists(executable);
 
-        var pathDirs = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
         var pathExts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM")
             .Split(';', StringSplitOptions.RemoveEmptyEntries);
 
-        foreach (var raw in pathDirs)
+        foreach (var dir in EnumeratePathDirs())
         {
-            var dir = raw.Trim().Trim('"');
-            if (dir.Length == 0) continue;
             try
             {
                 if (Path.HasExtension(executable) && File.Exists(Path.Combine(dir, executable)))
@@ -190,5 +190,37 @@ public static class ExecutableResolver
             }
         }
         return false;
+    }
+
+    /// <summary>プロセス PATH ＋ レジストリの最新 Machine/User PATH を統合し、重複を除いて返す。
+    /// レジストリ読み（Machine/User）は env ブロックのスナップショットではなく現在値を返すので、
+    /// インストール直後の新規ディレクトリも拾える。</summary>
+    private static IEnumerable<string> EnumeratePathDirs()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var targets = new[]
+        {
+            EnvironmentVariableTarget.Process,
+            EnvironmentVariableTarget.Machine,
+            EnvironmentVariableTarget.User,
+        };
+
+        foreach (var target in targets)
+        {
+            string? raw;
+            try { raw = Environment.GetEnvironmentVariable("PATH", target); }
+            catch { raw = null; }   // レジストリ読込が失敗してもプロセス PATH で続行
+            if (string.IsNullOrEmpty(raw)) continue;
+
+            foreach (var part in raw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var dir = part.Trim().Trim('"');
+                if (dir.Length == 0) continue;
+                // 末尾の区切りを正規化して重複判定の取りこぼしを減らす。
+                var key = dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (seen.Add(key.Length == 0 ? dir : key))
+                    yield return dir;
+            }
+        }
     }
 }

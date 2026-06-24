@@ -55,7 +55,7 @@ public static class LspServerCatalog
             "gem install solargraph", ["stdio"],
             "https://solargraph.org/"),
         new LspServerInfo("marksman", "Markdown (marksman)", [".md", ".markdown"], "markdown",
-            "winget install --id Marksman.Marksman -e", ["server"],
+            "winget install --id Artempyanykh.Marksman -e", ["server"],
             "https://github.com/artempyanykh/marksman"),
     };
 
