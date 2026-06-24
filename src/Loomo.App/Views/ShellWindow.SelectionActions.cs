@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using Editor.Controls;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Agent;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -78,9 +79,12 @@ public partial class ShellWindow
         menu.Items.Add(parent);
     }
 
-    // AIペインをワークフローモードで前面に出し、指定ワークフローを input を {{input}} として実行する。
+    // AIペインをワークフローモードで前面に出し、指定ワークフローを構造化 input で実行する。
     // FolderTree／エディタのコンテキストメニュー双方の合流点。
     private void RunWorkflowWithInput(string workflowId, string input)
+        => RunWorkflowWithInput(workflowId, WorkflowRunInput.FromText(input));
+
+    private void RunWorkflowWithInput(string workflowId, WorkflowRunInput input)
     {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
         _vm.AiBar.Mode = AiBarMode.Workflow;

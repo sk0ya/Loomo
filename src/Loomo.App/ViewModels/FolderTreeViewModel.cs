@@ -100,7 +100,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     public event EventHandler<string>? TypoCheckRequested;
 
     // FolderTree の「AIワークフロー」要求。View（コンテキストメニュー）から発火し、ShellWindow が
-    // AIバーをワークフローモードへ切替えて、当該ファイルパスを {{input}} として実行する。
+    // AIバーをワークフローモードへ切替えて、当該ファイルを構造化 input として実行する。
     public event EventHandler<WorkflowRunRequest>? WorkflowRequested;
 
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
@@ -750,13 +750,19 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// <summary>コンテキストメニューに出す「入力ありワークフロー」一覧。</summary>
     public IReadOnlyList<WorkflowSummary> InputWorkflows() => _workflows.ListInputWorkflows();
 
-    /// <summary>指定ワークフローを、当該ファイルパスを <c>{{input}}</c> として実行するよう要求する
+    /// <summary>指定ワークフローを、当該ファイルを構造化 input として実行するよう要求する
     /// （ShellWindow が AIバーをワークフローモードへ切替えて処理）。実在ファイルのときだけ発火する。</summary>
     public void RequestRunWorkflow(FileNodeViewModel? node, string workflowId)
     {
         if (node is { IsDirectory: false } && File.Exists(node.FullPath)
             && !string.IsNullOrEmpty(workflowId))
-            WorkflowRequested?.Invoke(this, new WorkflowRunRequest(workflowId, node.FullPath));
+        {
+            var relativePath = _workspace.RootPath is null
+                ? null
+                : Path.GetRelativePath(_workspace.RootPath, node.FullPath);
+            WorkflowRequested?.Invoke(this,
+                new WorkflowRunRequest(workflowId, WorkflowRunInput.FromFile(node.FullPath, relativePath)));
+        }
     }
 
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)
@@ -834,9 +840,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 // 「ターミナルにセット」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
 public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
 
-/// <summary>「AIワークフロー」コンテキストメニューからの実行要求。<see cref="Input"/> は <c>{{input}}</c> に流す値
-/// （FolderTree はファイルパス、エディタは選択テキスト）。</summary>
-public readonly record struct WorkflowRunRequest(string WorkflowId, string Input);
+/// <summary>「AIワークフロー」コンテキストメニューからの実行要求。<see cref="Input"/> は構造化された実行入力。</summary>
+public readonly record struct WorkflowRunRequest(string WorkflowId, WorkflowRunInput Input);
 
 // FolderTree でのリネーム通知。OldPath/NewPath は正規化済みフルパス。IsDirectory ならフォルダの
 // リネーム（配下のファイルパスも OldPath → NewPath で付け替わる）。

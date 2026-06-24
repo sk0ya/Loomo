@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.App.Services;
@@ -41,7 +42,8 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
     public Task<IReadOnlyList<FileNode>> ListAsync(string path)
         => Task.FromResult<IReadOnlyList<FileNode>>(Array.Empty<FileNode>());
 
-    public Task<string> ReadFileAsync(string path) => Task.FromResult(string.Empty);
+    public async Task<string> ReadFileAsync(string path)
+        => File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty;
 
     public string ResolvePath(string path) => path;
 

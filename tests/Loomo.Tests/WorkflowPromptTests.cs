@@ -80,4 +80,25 @@ public class WorkflowPromptTests
         var result = WorkflowPrompt.Resolve("{{input}} / {{prev}}", new[] { "前段" }, "入力");
         Assert.Equal("入力 / 前段", result);
     }
+
+    [Fact]
+    public void Structured_file_input_fields_are_replaced()
+    {
+        var input = WorkflowRunInput.FromFile(@"C:\ws\docs\a.md", @"docs\a.md", "本文");
+
+        var result = WorkflowPrompt.Resolve(
+            "{{input}}|{{input.path}}|{{input.relativePath}}|{{input.name}}|{{input.content}}|{{input.kind}}",
+            System.Array.Empty<string>(),
+            input);
+
+        Assert.Equal(@"C:\ws\docs\a.md|C:\ws\docs\a.md|docs\a.md|a.md|本文|File", result);
+    }
+
+    [Fact]
+    public void Uses_input_detects_structured_tokens()
+    {
+        Assert.True(WorkflowPrompt.UsesInput("{{input.content}}"));
+        Assert.True(WorkflowPrompt.UsesInputContent("{{ input.content }}"));
+        Assert.False(WorkflowPrompt.UsesInputContent("{{input.path}}"));
+    }
 }

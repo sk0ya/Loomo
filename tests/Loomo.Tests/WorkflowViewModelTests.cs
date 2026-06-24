@@ -54,7 +54,7 @@ public class WorkflowViewModelTests
         toolRunner ??= new WorkflowToolRunner(
             new FakeTerminalService(), new FakeWorkspaceService(), new FakeEditorService(), safety);
 
-        return new WorkflowViewModel(orchestrator, approval, store, warmup, settings, toolRunner);
+        return new WorkflowViewModel(orchestrator, approval, store, warmup, settings, toolRunner, new FakeWorkspaceService());
     }
 
     [Fact]
@@ -144,6 +144,23 @@ public class WorkflowViewModelTests
         Assert.Contains(sut.Activity.Steps, s => s.Message.StartsWith("ステップ 1 の出力:", StringComparison.Ordinal)
                                                 && s.Detail == "hello there");
         Assert.Equal("done", sut.FinalOutput);
+    }
+
+    [Fact]
+    public async Task File_input_content_is_loaded_only_when_content_token_is_used()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(path, "file body");
+        var ai = new ScriptedAiClient(new AgentEvent[] { new TextDelta("ok") });
+        var sut = CreateSut(new FixedFactory(ai), new ToolRegistry(Enumerable.Empty<IAgentTool>()));
+        sut.SetRunInput(WorkflowRunInput.FromFile(path, "sample.txt"));
+        sut.Steps.Add(new WorkflowStepViewModel { Kind = WorkflowStepKind.Ai, Prompt = "本文: {{input.content}} / パス: {{input.path}}" });
+
+        await sut.RunCommand.ExecuteAsync(null);
+
+        var userText = Assert.Single(ai.LastConversation!.Messages, m => m.Role == ChatRole.User).Text;
+        Assert.Contains("本文: file body", userText);
+        Assert.Contains($"パス: {path}", userText);
     }
 
     [Fact]
@@ -313,12 +330,14 @@ public class WorkflowViewModelTests
         public ScriptedAiClient(params AgentEvent[][] turns) => _turns = new Queue<AgentEvent[]>(turns);
 
         public AiProvider Provider => AiProvider.Local;
+        public Conversation? LastConversation { get; private set; }
 
         public async IAsyncEnumerable<AgentEvent> StreamAsync(
             Conversation conversation, IReadOnlyList<ToolDefinition> tools,
             [EnumeratorCancellation] CancellationToken ct, AgentProfile? profile = null,
             bool retryDiversify = false)
         {
+            LastConversation = conversation;
             var events = _turns.Count > 0 ? _turns.Dequeue() : Array.Empty<AgentEvent>();
             foreach (var e in events)
             {

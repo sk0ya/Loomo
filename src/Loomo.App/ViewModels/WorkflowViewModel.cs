@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Models;
 
@@ -32,6 +33,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private readonly IAiWarmup _warmup;
     private readonly AiSettings _settings;
     private readonly WorkflowToolRunner _toolRunner;
+    private readonly IWorkspaceService _workspace;
 
     private CancellationTokenSource? _cts;
     private WorkflowStepViewModel? _runningStep;   // 経過秒つきステータスの差し込み先（実行中ステップ）
@@ -98,6 +100,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
     /// <summary>実行時にステップへ <c>{{input}}</c> で流し込むワークフロー入力。
     /// 入力バーのテキスト欄／「ファイルから読込」ボタンから設定する。</summary>
     [ObservableProperty] private string _runInput = "";
+    private WorkflowRunInput _runInputValue = WorkflowRunInput.FromText("");
+    private bool _suppressRunInputSync;
 
     /// <summary>ワークフロー全体の最終出力（最後のステップの出力）。実行ログとは別に表示する。</summary>
     [ObservableProperty] private string _finalOutput = "";
@@ -133,7 +137,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
         WorkflowStore store,
         IAiWarmup warmup,
         AiSettings settings,
-        WorkflowToolRunner toolRunner)
+        WorkflowToolRunner toolRunner,
+        IWorkspaceService workspace)
     {
         _orchestrator = orchestrator;
         _approval = approval;
@@ -141,6 +146,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _warmup = warmup;
         _settings = settings;
         _toolRunner = toolRunner;
+        _workspace = workspace;
 
         _approval.ApprovalRequested += OnApprovalRequested;
         _store.Changed += () => Dispatch(RefreshSavedWorkflows);
@@ -199,6 +205,12 @@ public sealed partial class WorkflowViewModel : ObservableObject
     partial void OnHasRunChanged(bool value) => OnPropertyChanged(nameof(IsProgressVisible));
 
     partial void OnIsWarmingUpChanged(bool value) => OnPropertyChanged(nameof(IsProgressVisible));
+
+    partial void OnRunInputChanged(string value)
+    {
+        if (!_suppressRunInputSync)
+            _runInputValue = WorkflowRunInput.FromText(value ?? "");
+    }
 
     // ===== 実行中ステップの経過秒つきステータス（チャットの SetStatus と同等） =====
 
@@ -489,14 +501,33 @@ public sealed partial class WorkflowViewModel : ObservableObject
     /// 実行する（FolderTree／エディタのコンテキストメニューから呼ばれる）。実行中なら何もしない。
     /// 暖機中でも <see cref="RunAsync"/> 内で完了を待ってから走る。</summary>
     public void RunWithInput(string workflowId, string input)
+        => RunWithInput(workflowId, WorkflowRunInput.FromText(input ?? ""));
+
+    public void RunWithInput(string workflowId, WorkflowRunInput input)
     {
         if (IsRunning) return;
         var wf = _store.Load(workflowId);
         if (wf is null) return;
 
         LoadInto(wf);
-        RunInput = input ?? "";
+        SetRunInput(input);
         _ = RunAsync();
+    }
+
+    public void SetRunInput(WorkflowRunInput input)
+    {
+        _runInputValue = input;
+        _suppressRunInputSync = true;
+        try
+        {
+            RunInput = input.Kind == WorkflowRunInputKind.File
+                ? input.Path ?? input.PrimaryText
+                : input.PrimaryText;
+        }
+        finally
+        {
+            _suppressRunInputSync = false;
+        }
     }
 
     private bool CanRun() => !IsRunning && !_warmup.IsWarmingUp;
@@ -531,6 +562,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
         // 実行対象は「指示文が空でない」ステップのみ。空ステップは番号の連続性のため出力に空文字を積む。
         try
         {
+            var runInput = await PrepareRunInputAsync(_runInputValue, _cts.Token);
+
             // モデル未ロードなら暖機が走る。完了まで進捗状況エリアにウォームアップ表示を出す。
             if (!_warmup.IsReady)
             {
@@ -556,7 +589,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
                 }
 
                 RunStatus = $"ステップ {i + 1}/{Steps.Count} を実行中…";
-                var (output, ok) = await RunStepAsync(step, outputs, sessionId, _cts.Token);
+                var (output, ok) = await RunStepAsync(step, outputs, runInput, sessionId, _cts.Token);
                 outputs.Add(output);
                 AppendStepOutput(i + 1, output);
                 // ワークフロー出力は途中生成物ではなく、最後のステップの出力だけを別表示する。
@@ -601,26 +634,45 @@ public sealed partial class WorkflowViewModel : ObservableObject
         }
     }
 
+    private async Task<WorkflowRunInput> PrepareRunInputAsync(WorkflowRunInput input, CancellationToken ct)
+    {
+        if (input.Kind != WorkflowRunInputKind.File || input.Content is not null)
+            return input;
+
+        var needsContent = Steps.Any(s =>
+            WorkflowPrompt.UsesInputContent(s.Prompt) || WorkflowPrompt.UsesInputContent(s.Content));
+        if (!needsContent)
+            return input;
+
+        if (string.IsNullOrWhiteSpace(input.Path))
+            return input.WithContent("");
+
+        ct.ThrowIfCancellationRequested();
+        var content = await _workspace.ReadFileAsync(input.Path);
+        ct.ThrowIfCancellationRequested();
+        return input.WithContent(content);
+    }
+
     /// <summary>1ステップを実行し、(最終出力, 成功か) を返す。AI ステップはオーケストレータ経由（LLM）、
     /// それ以外は <see cref="WorkflowToolRunner"/> で決定論実行する。</summary>
     private Task<(string Output, bool Ok)> RunStepAsync(
-        WorkflowStepViewModel step, IReadOnlyList<string> outputs, string sessionId, CancellationToken ct)
+        WorkflowStepViewModel step, IReadOnlyList<string> outputs, WorkflowRunInput runInput, string sessionId, CancellationToken ct)
         => step.Kind == WorkflowStepKind.Ai
-            ? RunAiStepAsync(step, outputs, sessionId, ct)
-            : RunToolStepAsync(step, outputs, ct);
+            ? RunAiStepAsync(step, outputs, runInput, sessionId, ct)
+            : RunToolStepAsync(step, outputs, runInput, ct);
 
     /// <summary>AI ステップを実行する。記録は共有のフラットな進捗タイムライン
     /// （<see cref="_log"/>）へ、意味のあるアクションを短い1段ずつ流す（ステップ単位でまとめない）。
     /// 生成中の本文・思考は揮発プレビュー段（保存しない）として見せる。</summary>
     private async Task<(string Output, bool Ok)> RunAiStepAsync(
-        WorkflowStepViewModel step, IReadOnlyList<string> outputs, string sessionId, CancellationToken ct)
+        WorkflowStepViewModel step, IReadOnlyList<string> outputs, WorkflowRunInput runInput, string sessionId, CancellationToken ct)
     {
         var log = _log!;
         step.ResetRun();
         step.Status = WorkflowStepStatus.Running;
         _runningStep = step;
 
-        var prompt = WorkflowPrompt.Resolve(step.Prompt, outputs, RunInput);
+        var prompt = WorkflowPrompt.Resolve(step.Prompt, outputs, runInput);
         var conversation = new Conversation();
         var clock = Stopwatch.StartNew();
 
@@ -752,7 +804,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     /// <summary>非AIのツールステップ（コマンド/ファイル読込/書込/変換）を LLM を使わず実行し、
     /// (出力, 成功か) を返す。承認が要る種別（Command/WriteFile）は AutoApprove でなければ承認カードを出す。</summary>
     private async Task<(string Output, bool Ok)> RunToolStepAsync(
-        WorkflowStepViewModel step, IReadOnlyList<string> outputs, CancellationToken ct)
+        WorkflowStepViewModel step, IReadOnlyList<string> outputs, WorkflowRunInput runInput, CancellationToken ct)
     {
         var log = _log!;
         step.ResetRun();
@@ -760,8 +812,8 @@ public sealed partial class WorkflowViewModel : ObservableObject
         _runningStep = step;
 
         var model = step.ToModel();
-        var primary = WorkflowPrompt.Resolve(model.Prompt, outputs, RunInput);
-        var content = WorkflowPrompt.Resolve(model.Content, outputs, RunInput);
+        var primary = WorkflowPrompt.Resolve(model.Prompt, outputs, runInput);
+        var content = WorkflowPrompt.Resolve(model.Content, outputs, runInput);
         var toolName = WorkflowToolRunner.ToolNameFor(model.Kind);
         var clock = Stopwatch.StartNew();
 

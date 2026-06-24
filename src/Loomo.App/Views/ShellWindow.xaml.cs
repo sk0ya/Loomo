@@ -331,7 +331,7 @@ public partial class ShellWindow : Window
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
         // FolderTree の「AI-誤字脱字チェック」：AIバーを /clear して当該ファイルの誤字脱字チェックを実行する。
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
-        // FolderTree の「AIワークフロー」：AIバーをワークフローモードへ切替え、ファイルパスを {{input}} に実行する。
+        // FolderTree の「AIワークフロー」：AIバーをワークフローモードへ切替え、ファイルを構造化 input として実行する。
         vm.FolderTree.WorkflowRequested += (_, req) => RunWorkflowWithInput(req.WorkflowId, req.Input);
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();

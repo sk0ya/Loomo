@@ -288,12 +288,12 @@
                     </DockPanel>
                 </Border>
 
-                <!-- 入力バー（{{input}} に流し込むワークフロー入力。ファイルからも読込可） -->
+                <!-- 入力バー（{{input}} / {{input.path}} / {{input.content}} に流し込むワークフロー入力。ファイルからも読込可） -->
                 <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
                         BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6">
                     <DockPanel LastChildFill="True">
                         <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,4">
-                            <TextBlock DockPanel.Dock="Left" Text="入力（{{input}} で各ステップへ）" FontSize="11"
+                            <TextBlock DockPanel.Dock="Left" Text="入力（{{input}} / {{input.path}} / {{input.content}}）" FontSize="11"
                                        FontWeight="SemiBold" Foreground="{DynamicResource FgDim}"
                                        VerticalAlignment="Center" />
                             <Button DockPanel.Dock="Right" Content="クリア" Style="{StaticResource ToolbarGhostButton}"

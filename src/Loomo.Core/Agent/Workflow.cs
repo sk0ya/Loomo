@@ -75,7 +75,8 @@ public sealed class Workflow
 /// <summary>
 /// ステップ指示文のプレースホルダを前段の出力・ワークフロー入力で置換する純粋関数。
 /// <list type="bullet">
-///   <item><c>{{input}}</c> — 実行時にユーザーが渡したワークフロー入力。</item>
+///   <item><c>{{input}}</c> — 実行時にユーザーが渡したワークフロー入力。ファイル入力ではパス、テキスト入力では本文。</item>
+///   <item><c>{{input.path}}</c> / <c>{{input.content}}</c> / <c>{{input.name}}</c> / <c>{{input.relativePath}}</c> — 構造化入力の各フィールド。</item>
 ///   <item><c>{{1}}</c>…<c>{{N}}</c> — N 番目（1始まり）のステップ出力。</item>
 ///   <item><c>{{prev}}</c> — 直前ステップの出力。</item>
 ///   <item><c>{{all}}</c> — それまでの全ステップ出力を見出し付きで連結。</item>
@@ -84,17 +85,27 @@ public sealed class Workflow
 /// </summary>
 public static class WorkflowPrompt
 {
-    private static readonly Regex Token = new(@"\{\{\s*(\d+|prev|all|input)\s*\}\}",
+    private static readonly Regex Token = new(@"\{\{\s*(\d+|prev|all|input(?:\.(?:path|content|name|relativePath|kind))?)\s*\}\}",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static readonly Regex InputToken = new(@"\{\{\s*input\s*\}\}",
+    private static readonly Regex InputToken = new(@"\{\{\s*input(?:\.(?:path|content|name|relativePath|kind))?\s*\}\}",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex InputContentToken = new(@"\{\{\s*input\.content\s*\}\}",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>テキストに <c>{{input}}</c> プレースホルダが含まれるか。</summary>
     public static bool UsesInput(string? text) =>
         !string.IsNullOrEmpty(text) && InputToken.IsMatch(text);
 
+    /// <summary>テキストに <c>{{input.content}}</c> プレースホルダが含まれるか。</summary>
+    public static bool UsesInputContent(string? text) =>
+        !string.IsNullOrEmpty(text) && InputContentToken.IsMatch(text);
+
     public static string Resolve(string prompt, IReadOnlyList<string> previousOutputs, string? input = null)
+        => Resolve(prompt, previousOutputs, WorkflowRunInput.FromText(input ?? ""));
+
+    public static string Resolve(string prompt, IReadOnlyList<string> previousOutputs, WorkflowRunInput? input)
     {
         if (string.IsNullOrEmpty(prompt)) return prompt ?? "";
 
@@ -102,7 +113,17 @@ public static class WorkflowPrompt
         {
             var key = m.Groups[1].Value.ToLowerInvariant();
             if (key == "input")
-                return input ?? "";
+                return input?.PrimaryText ?? "";
+            if (key == "input.path")
+                return input?.Path ?? "";
+            if (key == "input.content")
+                return input?.Content ?? "";
+            if (key == "input.name")
+                return input?.Name ?? "";
+            if (key == "input.relativepath")
+                return input?.RelativePath ?? "";
+            if (key == "input.kind")
+                return input?.Kind.ToString() ?? "";
             if (key == "prev")
                 return previousOutputs.Count > 0 ? previousOutputs[^1] : "";
             if (key == "all")
@@ -126,4 +147,38 @@ public static class WorkflowPrompt
         }
         return sb.ToString();
     }
+}
+
+public enum WorkflowRunInputKind
+{
+    Text,
+    File,
+}
+
+/// <summary>ワークフロー実行時の構造化入力。<see cref="PrimaryText"/> は旧 <c>{{input}}</c> 互換の値。</summary>
+public sealed record WorkflowRunInput(
+    WorkflowRunInputKind Kind,
+    string PrimaryText,
+    string? Text = null,
+    string? Path = null,
+    string? RelativePath = null,
+    string? Name = null,
+    string? Content = null)
+{
+    public static WorkflowRunInput FromText(string text) =>
+        new(WorkflowRunInputKind.Text, text ?? "", Text: text ?? "", Content: text ?? "");
+
+    public static WorkflowRunInput FromFile(string path, string? relativePath = null, string? content = null)
+    {
+        var normalized = path ?? "";
+        return new(
+            WorkflowRunInputKind.File,
+            normalized,
+            Path: normalized,
+            RelativePath: relativePath,
+            Name: string.IsNullOrEmpty(normalized) ? null : System.IO.Path.GetFileName(normalized),
+            Content: content);
+    }
+
+    public WorkflowRunInput WithContent(string content) => this with { Content = content ?? "" };
 }
