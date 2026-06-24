@@ -662,4 +662,82 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>FolderTree でファイル／フォルダがリネームされたとき、開いているエディタタブのパス・タブ名を
+    /// 新パスへ追従させる。フォルダのリネームでは配下のファイルを開いたタブもまとめて付け替える。</summary>
+    private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e)
+    {
+        foreach (var tab in _editorTabs)
+        {
+            var path = tab.PeekFilePath;
+            if (string.IsNullOrEmpty(path))
+                continue;
+
+            string? newPath = null;
+            if (e.IsDirectory)
+            {
+                if (IsPathUnder(path, e.OldPath))
+                    newPath = Path.GetFullPath(Path.Combine(e.NewPath, Path.GetRelativePath(e.OldPath, path)));
+            }
+            else if (PathsEqual(path, e.OldPath))
+            {
+                newPath = e.NewPath;
+            }
+
+            if (newPath is not null)
+                RebaseEditorTabPath(tab, newPath);
+        }
+    }
+
+    /// <summary>エディタタブのファイルパスを差し替える（本文・Undo・未保存編集を保ったまま追従させる）。
+    /// 未実体化タブは復元用スナップショットのパスだけ書き換え、開くときは新パスから読み込ませる。</summary>
+    private void RebaseEditorTabPath(EditorTab tab, string newPath)
+    {
+        if (tab.IsRealized)
+        {
+            // バッファのパスを差し替えるだけ（LoadFile による再読込はカーソル・Undo・未保存編集を失うため避ける）。
+            tab.Control.Engine.CurrentBuffer.FilePath = newPath;
+            UpdateEditorTab(tab);   // タブ名更新＋スナップショット保存
+        }
+        else if (tab.Pending is { } pending)
+        {
+            pending.FilePath = newPath;
+            pending.Title = Path.GetFileName(newPath);
+            _vm.Tabs.UpdateEditorTab(tab.Id, newPath, pending.IsModified);
+            SaveActiveWorkspaceSnapshot();
+        }
+    }
+
+    /// <summary>FolderTree でファイル／フォルダが削除されたとき、該当（フォルダなら配下）の
+    /// エディタタブを閉じる。</summary>
+    private void OnFolderTreeEntryDeleted(string deletedPath)
+    {
+        var affected = _editorTabs
+            .Where(t => t.PeekFilePath is { Length: > 0 } p
+                && (PathsEqual(p, deletedPath) || IsPathUnder(p, deletedPath)))
+            .Select(t => t.Id)
+            .ToList();
+
+        if (affected.Count == 0)
+            return;
+
+        foreach (var id in affected)
+            CloseEditorTab(id);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private static bool PathsEqual(string a, string b)
+        => string.Equals(
+            Path.GetFullPath(a).TrimEnd('\\', '/'),
+            Path.GetFullPath(b).TrimEnd('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
+
+    // path が directory 配下か（directory 自身は含まない）。
+    private static bool IsPathUnder(string path, string directory)
+    {
+        var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
+        var full = Path.GetFullPath(path);
+        return full.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
 }

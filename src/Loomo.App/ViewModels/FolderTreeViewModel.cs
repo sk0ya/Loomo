@@ -73,6 +73,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     public event EventHandler<string>? FileActivated;
 
+    // ファイル／フォルダのリネーム後（旧フルパス → 新フルパス）。ShellWindow が購読し、開いている
+    // エディタタブのパス・タブ名を新パスへ追従させる。フォルダのリネームでは配下のファイルも対象。
+    public event EventHandler<EntryRenamedEventArgs>? EntryRenamed;
+
+    // ファイル／フォルダの削除後（ゴミ箱送り）。ShellWindow が購読し、該当（フォルダなら配下）の
+    // エディタタブを閉じる。
+    public event EventHandler<string>? EntryDeleted;
+
     // ファイルの単クリックでのプレビュー表示要求。ShellWindow がプレビュータブ
     // （編集するまで確定せず、次のクリックで中身が差し替わる）で開く。
     public event EventHandler<string>? FilePreviewRequested;
@@ -651,6 +659,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         }
 
         RefreshWorkspace();
+        // 開いているエディタタブを新パスへ追従させる（フォルダなら配下のファイルも対象）。
+        EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(oldPath, newPath, node.IsDirectory));
         return newPath;
     }
 
@@ -677,6 +687,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         }
 
         RefreshWorkspace();
+        // 削除したファイル（フォルダなら配下）を開いているエディタタブを閉じる。
+        EntryDeleted?.Invoke(this, path);
     }
 
     private static void ValidateName(string name)
@@ -802,6 +814,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
 // 「ターミナルにセット」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
 public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
+
+// FolderTree でのリネーム通知。OldPath/NewPath は正規化済みフルパス。IsDirectory ならフォルダの
+// リネーム（配下のファイルパスも OldPath → NewPath で付け替わる）。
+public readonly record struct EntryRenamedEventArgs(string OldPath, string NewPath, bool IsDirectory);
 
 /// <summary>ルート切替 ComboBox の 1 候補。先頭はワークスペースルート（IsPinned=false）、
 /// 以降はピン留めフォルダ。Label はルートからの相対パスで同名フォルダを区別する。</summary>

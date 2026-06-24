@@ -289,6 +289,9 @@ public partial class ShellWindow : Window
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
         // FolderTree の HTML を「ブラウザで開く」とアプリ内ブラウザの新規タブで開く。
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
+        // FolderTree でのリネーム／削除を、開いているエディタタブへ反映する（パス追従／タブを閉じる）。
+        vm.FolderTree.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);
+        vm.FolderTree.EntryDeleted += (_, path) => OnFolderTreeEntryDeleted(path);
         // サイドバー検索：選択ヒットはプレビュータブで該当行へ、確定（Enter/ダブルクリック）は通常タブへ開く。
         vm.SearchPanel.PreviewRequested += async (_, h) =>
         {
