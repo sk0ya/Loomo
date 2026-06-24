@@ -180,8 +180,14 @@ public partial class ShellWindow
                 tab.View.Dispose();
         }
 
-        // エディタはマネージドコントロールのみ。参照を落とせば GC に任せられる。
-        _editorWorkspaces.Remove(workspaceId);
+        // エディタは LSP（言語サーバープロセス）とファイル監視を抱えるので、実体化済みのものは
+        // 明示的に Dispose する。これらは Unloaded では解放されない（一時デタッチでも Unloaded が
+        // 発火するため、ライブラリ側で破棄をホスト責務に分離した）。参照を落とすだけだと
+        // 言語サーバーが孤児プロセスとして残る。
+        if (_editorWorkspaces.Remove(workspaceId, out var editor))
+            foreach (var tab in editor.Tabs)
+                if (tab.IsRealized)
+                    tab.Control.Dispose();
     }
 
     private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e)
@@ -683,6 +689,18 @@ public partial class ShellWindow
 
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
+
+    /// <summary>終了時に全ワークスペースの実体化済みエディタを Dispose し、LSP（言語サーバープロセス）と
+    /// ファイル監視を解放する。Unloaded はこれを行わない（一時デタッチでも発火するため破棄をホスト責務へ
+    /// 分離した）ので、明示的に解放しないと言語サーバーが孤児プロセスとして残る。Closed は閉じ確定後に
+    /// 1度だけ発火する（Closing と違いキャンセルされない）ので破棄に安全。</summary>
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        foreach (var workspace in _editorWorkspaces.Values)
+            foreach (var tab in workspace.Tabs)
+                if (tab.IsRealized)
+                    tab.Control.Dispose();
+    }
 
     private static string EditorTitle(VimEditorControl editor)
         => string.IsNullOrWhiteSpace(editor.FilePath) ? "Untitled" : Path.GetFileName(editor.FilePath);

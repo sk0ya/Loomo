@@ -220,6 +220,7 @@ public partial class ShellWindow : Window
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
+        Closed += OnClosed;
         Loaded += OnLoaded;
 
         // Ctrl+W に続けて h/j/k/l でフォーカスを上下左右の隣接ペインへ移す（vim 風）。

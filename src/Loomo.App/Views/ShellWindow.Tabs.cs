@@ -624,7 +624,15 @@ public partial class ShellWindow
             _editorSupportSourcePinned = false;
             UpdateEditorSupportPinToggle();
         }
-        PaneSplitView.Detach(tab.Control);
+        // 実体化済みのときだけ視覚ツリーから外して破棄する（未実体化タブは VimEditorControl を
+        // 持たず、触れると無駄に実体化してしまう）。Dispose は LSP（言語サーバープロセス）と
+        // ファイル監視を解放する。これは Unloaded では行われない（ワークスペース切替の一時的な
+        // デタッチでも Unloaded は発火するため、ライブラリ側で破棄をホスト責務に分離した）。
+        if (tab.IsRealized)
+        {
+            PaneSplitView.Detach(tab.Control);
+            tab.Control.Dispose();
+        }
         if (ReferenceEquals(_previewEditorTab, tab))
             _previewEditorTab = null;
         _editorTabs.RemoveAt(index);
