@@ -19,6 +19,14 @@ internal static class MarkdownRenderer
     /// </summary>
     public const string AssetsVirtualHost = "assets.loomo";
 
+    /// <summary>
+    /// プレビューページ（フル HTML 文書）自体を配信する WebView2 仮想ホスト名。
+    /// <c>NavigateToString</c> は約 2MB が上限で大きな Markdown を取りこぼすため、ShellWindow は
+    /// 生成した HTML を一時ファイルへ書き出し、このホスト経由でナビゲートする（サイズ無制限）。
+    /// 相対パス画像の <c>&lt;base href&gt;</c>（<see cref="PreviewVirtualHost"/>）とは別オリジン。
+    /// </summary>
+    public const string PageVirtualHost = "page.loomo";
+
     public static string RenderToHtml(string markdown, string? title = null, string styleName = "Dracula", string? baseHref = null)
         => BuildPage(RenderToBody(markdown), title, styleName, baseHref);
 

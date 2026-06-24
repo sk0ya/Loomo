@@ -99,6 +99,15 @@ public partial class ShellWindow : Window
     private string? _editorSupportPendingMapFolder;
     /// <summary>起動直後の初回ナビゲーション取りこぼし対策（初回完了時に最新内容を一度だけ描き直す）を実施済みか。</summary>
     private bool _editorSupportFirstRenderHealed;
+    /// <summary>
+    /// プレビューページ（フル HTML）を WebView2 へ配信する一時フォルダ。<c>NavigateToString</c> の
+    /// 約 2MB 上限を避け、大きな Markdown でもページを表示するためファイル経由で配信する。
+    /// </summary>
+    private static readonly string EditorSupportPreviewFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Loomo", "WebView2", "preview-page");
+    /// <summary>プレビューページの配信バージョン（?v= に載せて毎回新 URL にし WebView2 のキャッシュを避ける）。</summary>
+    private int _editorSupportPageVersion;
 
     /// <summary>
     /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。

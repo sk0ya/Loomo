@@ -269,6 +269,24 @@ public partial class ShellWindow
         _editorSupportReadyPageKey = null;
         _editorSupportLoadingPageKey = _editorSupportPendingPageKey;
 
+        // NavigateToString は約 2MB が上限で大きな Markdown を取りこぼし、初回ナビゲーションが完了しない
+        // ために setBody の差分更新も始まらない（＝大きいファイルが一切表示・更新されない）。生成済み HTML を
+        // 一時ファイルへ書き出して page.loomo 経由でナビゲートすればサイズ無制限になる。書き出し失敗時のみ
+        // 従来の NavigateToString へ退避する。
+        if (TryWriteEditorSupportPage(_editorSupportPendingHtml, out var pageUrl))
+        {
+            try
+            {
+                core.Navigate(pageUrl);
+            }
+            catch
+            {
+                // ナビゲート失敗でも落とさない（プレビューは前回内容のまま）。
+                _editorSupportLoadingPageKey = null;
+            }
+            return;
+        }
+
         try
         {
             core.NavigateToString(_editorSupportPendingHtml);
@@ -277,6 +295,28 @@ public partial class ShellWindow
         {
             // NavigateToString の上限（約2MB）超過などで失敗しても落とさない（プレビューは前回内容のまま）。
             _editorSupportLoadingPageKey = null;
+        }
+    }
+
+    /// <summary>
+    /// プレビューページの HTML を一時ファイルへ書き出し、page.loomo 経由のナビゲート URL を返す。
+    /// <c>?v=</c> に毎回違う版番号を載せることで同一ファイルでも新 URL になり、WebView2 のキャッシュで
+    /// 古いプレビューが居座らないようにする。書き出し失敗（権限・IO 等）時は false。
+    /// </summary>
+    private bool TryWriteEditorSupportPage(string html, out string url)
+    {
+        url = "";
+        try
+        {
+            Directory.CreateDirectory(EditorSupportPreviewFolder);
+            File.WriteAllText(
+                Path.Combine(EditorSupportPreviewFolder, "preview.html"), html, System.Text.Encoding.UTF8);
+            url = $"https://{MarkdownRenderer.PageVirtualHost}/preview.html?v={++_editorSupportPageVersion}";
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -438,6 +478,21 @@ public partial class ShellWindow
             catch
             {
                 // マップ失敗時は mermaid 図が原文表示になるだけで、プレビュー自体は動く。
+            }
+
+            // プレビューページ本体（フル HTML）の配信元。NavigateToString の 2MB 上限を避けるため、
+            // 生成した HTML を一時ファイルへ書き出してこのホスト経由でナビゲートする（一度だけマップ）。
+            try
+            {
+                Directory.CreateDirectory(EditorSupportPreviewFolder);
+                view.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    MarkdownRenderer.PageVirtualHost,
+                    EditorSupportPreviewFolder,
+                    CoreWebView2HostResourceAccessKind.DenyCors);
+            }
+            catch
+            {
+                // マップ失敗時は NavigateToString フォールバックで表示する（大きいファイルは出ないことがある）。
             }
 
             _editorSupportWebEventsAttached = true;
