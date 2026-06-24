@@ -149,7 +149,16 @@ public sealed partial class ShellViewModel : ObservableObject
         SettingsCategory = category;
         IsSettingsOverlayOpen = true;
         Settings.EnsureModelsLoaded();
-        if (category == SettingsCategory.Lsp)
+    }
+
+    /// <summary>
+    /// 設定カテゴリが切り替わったときの追従処理。「言語サーバー」へはナビ項目の双方向バインドで
+    /// 直接遷移する経路もある（<see cref="OpenSettingsOverlay"/> を通らない）ため、カテゴリ変化を
+    /// 一元的に捕まえて一覧を取り直す。これをしないと一覧（導入状況）が空のまま「追加」フォームだけが見える。
+    /// </summary>
+    partial void OnSettingsCategoryChanged(SettingsCategory value)
+    {
+        if (value == SettingsCategory.Lsp)
             Lsp.Refresh();
     }
 

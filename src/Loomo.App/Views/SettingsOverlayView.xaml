@@ -277,18 +277,22 @@
                                                                FontSize="11" Foreground="{DynamicResource FgDim}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                                        <Button Content="インストール" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                        <Button Content="インストール" Style="{StaticResource FlatButton}"
+                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding InstallCommand}"
                                                                 ToolTip="インストールコマンドを可視ターミナルで実行します。"
                                                                 Visibility="{Binding CanInstall, Converter={StaticResource BoolToVis}}" />
-                                                        <Button Content="手順" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                        <Button Content="手順" Style="{StaticResource SecondaryButton}"
+                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding OpenDocsCommand}"
                                                                 ToolTip="導入手順のページをブラウザで開きます。"
                                                                 Visibility="{Binding HasDocs, Converter={StaticResource BoolToVis}}" />
-                                                        <Button Content="{Binding RemoveLabel}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                        <Button Content="{Binding RemoveLabel}" Style="{StaticResource SecondaryButton}"
+                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding RemoveCommand}"
                                                                 Visibility="{Binding CanRemove, Converter={StaticResource BoolToVis}}" />
-                                                        <Button Content="{Binding ResetLabel}" FontSize="11" Padding="8,2"
+                                                        <Button Content="{Binding ResetLabel}" Style="{StaticResource SecondaryButton}"
+                                                                FontSize="11" Padding="8,2"
                                                                 Command="{Binding ResetCommand}"
                                                                 Visibility="{Binding CanReset, Converter={StaticResource BoolToVis}}" />
                                                     </StackPanel>
@@ -313,7 +317,8 @@
                                              FontFamily="Cascadia Mono, Consolas" ToolTip="実行ファイル（例 zls）" />
                                     <TextBox Grid.Column="2" Margin="0,0,6,0" Text="{Binding Lsp.NewArgs, UpdateSourceTrigger=PropertyChanged}"
                                              FontFamily="Cascadia Mono, Consolas" ToolTip="引数（空白区切り・任意。例 --stdio）" />
-                                    <Button Grid.Column="3" Content="追加" Padding="10,2" Command="{Binding Lsp.AddServerCommand}" />
+                                    <Button Grid.Column="3" Content="追加" Style="{StaticResource FlatButton}"
+                                            Padding="10,2" Command="{Binding Lsp.AddServerCommand}" />
                                 </Grid>
 
                                 <TextBlock Text="{Binding Lsp.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
