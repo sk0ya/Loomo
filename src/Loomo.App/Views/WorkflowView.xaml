@@ -267,6 +267,27 @@
                 <!-- ===== ステップのパイプライン ===== -->
                 <DockPanel Grid.Row="0" LastChildFill="True">
 
+                <!-- ワークフロー名（編集可・自動保存）＋保存状態 -->
+                <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding SaveStatus}" FontSize="11"
+                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                   Margin="8,0,0,0" />
+                        <Grid VerticalAlignment="Center">
+                            <TextBlock Text="ワークフロー名" IsHitTestVisible="False"
+                                       VerticalAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource FgDim}"
+                                       Visibility="{Binding Name, Converter={StaticResource EmptyToVis}}" />
+                            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     FontSize="13" FontWeight="SemiBold" VerticalContentAlignment="Center"
+                                     Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
+                                     ToolTip="ワークフロー名（自動保存されます）" />
+                        </Grid>
+                    </DockPanel>
+                </Border>
+
                 <!-- 入力バー（{{input}} に流し込むワークフロー入力。ファイルからも読込可） -->
                 <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
                         BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6">
