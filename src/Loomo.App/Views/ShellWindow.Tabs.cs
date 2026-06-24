@@ -558,6 +558,8 @@ public partial class ShellWindow
         _vm.Tabs.ActivateEditorTab(tab.Id);
         QueueEditorTabHeaderIntoView(tab.Id);
         _ = SwitchEditorSupportSourceAsync(tab);
+        // 開いたファイルの拡張子に対応する言語サーバーが未導入/未設定なら、エディタ上端で導入を促す。
+        _vm.LspPrompt.EvaluateForFile(tab.Control.FilePath);
     }
 
     private void QueueEditorTabHeaderIntoView(Guid id)

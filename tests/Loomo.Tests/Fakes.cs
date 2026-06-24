@@ -51,6 +51,20 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
 #pragma warning restore CS0067
 }
 
+/// <summary>VM 構築に必要な最小限のターミナル実装（副作用なし）。</summary>
+internal sealed class FakeTerminalService : ITerminalService
+{
+    public string CurrentDirectory => "C:\\ws";
+    public bool IsExecuting => false;
+    public Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
+        => Task.FromResult(new CommandResult(command, "", 0, CurrentDirectory, true));
+    public void SetWorkingDirectory(string path) { }
+    public bool TryRunInVisibleTerminal(string command) => false;
+#pragma warning disable CS0067 // テストでは発火させないイベント
+    public event EventHandler<CommandResult>? CommandExecuted;
+#pragma warning restore CS0067
+}
+
 /// <summary>AI へは到達しないテスト用ファクトリ（呼ばれたら失敗させる）。</summary>
 internal sealed class FakeAiClientFactory : IAiClientFactory
 {

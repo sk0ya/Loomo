@@ -585,6 +585,32 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
+                    <!-- 言語サーバー(LSP)の促しバー：対応サーバーが未導入/未設定のファイルを開いたとき、
+                         エディタ上端に閉じられる通知を出す。永続化された「今後表示しない」と一致する拡張子では出ない。 -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,6"
+                            Visibility="{Binding LspPrompt.IsVisible, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Fg}" FontSize="12"
+                                       Text="{Binding LspPrompt.Message}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                                <Button Content="インストール" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                        Command="{Binding LspPrompt.InstallCommand}"
+                                        Visibility="{Binding LspPrompt.CanInstall, Converter={StaticResource BoolToVis}}" />
+                                <Button Content="設定を開く" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                        Command="{Binding LspPrompt.OpenSettingsCommand}" />
+                                <Button Content="今後表示しない" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                        Command="{Binding LspPrompt.DismissForeverCommand}" />
+                                <Button Style="{StaticResource CaptionButton}" Width="24" Height="22"
+                                        Content="×" ToolTip="閉じる" Command="{Binding LspPrompt.CloseCommand}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                     <!-- 分割しても下端に1つだけ表示する共有ステータスバー。各エディタは SetSharedStatusBar で
                          自前のバーを隠してここへ状態を流す（フォーカス中のエディタの mode/file/cursor を表示）。 -->
                     <editor:VimStatusBar x:Name="EditorSharedStatusBar" DockPanel.Dock="Bottom" />

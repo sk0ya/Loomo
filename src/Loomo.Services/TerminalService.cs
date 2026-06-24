@@ -51,6 +51,15 @@ public sealed class TerminalService : ITerminalService
                 () => view.RunCommandAsync($"cd \"{path}\"", CancellationToken.None));
     }
 
+    /// <summary>可視ターミナルへコマンドを送って人間と同じ経路で実行する（インストール等、出力を見せたい操作用）。
+    /// 端末が未接続なら false。<see cref="RunCommandAsync"/>（裏の非対話プロセス）とは別経路。</summary>
+    public bool TryRunInVisibleTerminal(string command)
+    {
+        if (_view is not { } view) return false;
+        view.Dispatcher.InvokeAsync(() => view.RunCommandAsync(command, CancellationToken.None));
+        return true;
+    }
+
     public async Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
     {
         IsExecuting = true;

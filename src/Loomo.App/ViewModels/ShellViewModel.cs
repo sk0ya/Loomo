@@ -23,6 +23,7 @@ public enum SettingsCategory
     Editor,
     Terminal,
     Ai,
+    Lsp,
     Keyboard
 }
 
@@ -36,6 +37,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public SessionsViewModel Sessions { get; }
     public SettingsViewModel Settings { get; }
     public AppearanceViewModel Appearance { get; }
+    public LspSettingsViewModel Lsp { get; }
+    public LspPromptViewModel LspPrompt { get; }
     public KeybindingsViewModel Keyboard { get; }
     public GitPanelViewModel GitPanel { get; }
     public GitSessionViewModel GitSession { get; }
@@ -64,6 +67,8 @@ public sealed partial class ShellViewModel : ObservableObject
         SessionsViewModel sessions,
         SettingsViewModel settings,
         AppearanceViewModel appearance,
+        LspSettingsViewModel lsp,
+        LspPromptViewModel lspPrompt,
         KeybindingsViewModel keyboard,
         GitPanelViewModel gitPanel,
         GitSessionViewModel gitSession,
@@ -79,6 +84,10 @@ public sealed partial class ShellViewModel : ObservableObject
         Sessions = sessions;
         Settings = settings;
         Appearance = appearance;
+        Lsp = lsp;
+        LspPrompt = lspPrompt;
+        // 促しバーの「設定を開く」→ LSP 設定オーバーレイを開く。
+        LspPrompt.OpenSettingsRequested += () => OpenSettingsOverlay(SettingsCategory.Lsp);
         Keyboard = keyboard;
         GitPanel = gitPanel;
         GitSession = gitSession;
@@ -140,6 +149,8 @@ public sealed partial class ShellViewModel : ObservableObject
         SettingsCategory = category;
         IsSettingsOverlayOpen = true;
         Settings.EnsureModelsLoaded();
+        if (category == SettingsCategory.Lsp)
+            Lsp.Refresh();
     }
 
     /// <summary>設定オーバーレイを閉じる（Esc・背景クリック・閉じるボタン）。</summary>

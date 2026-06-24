@@ -216,6 +216,28 @@ Terminal 1.0.7 auto-injects OSC 133 shell integration into interactive pwsh; 1.0
 `TerminalTabView.ShellCommandActivity` public event (command phase + exit code, for human-typed commands
 too) — Loomo's stage-wing activity badges (`ShellWindow.PaneActivity.cs`, 設計書 §24.1) are built on it.
 
+**LSP is enabled** (Editor `1.0.21`+). `BuildEditorControl` (`ShellWindow.ViewportSplit.cs`) passes
+`LspManagerFactory = d => new LspManager(d)` (namespace `Editor.Controls.Lsp`, from `…Defaults`), so the editor
+gets completion / diagnostics / go-to-definition etc. — **only when the matching language server is on `PATH`**.
+The Composer editor (`ShellWindow.Composer.cs`) deliberately stays LSP-less.
+
+The extension→server **mapping** is the editor library's `LspServerRegistry` (built-ins + user changes), but Loomo
+redirects its persistence into its own folder via `LspServerRegistry.ConfigureDefault("%APPDATA%/Loomo/lsp-servers.json")`
+in `App.OnStartup` (before any editor control is built). On top of that mapping Loomo owns the **install/management
+UX** (the actual user-facing feature):
+- `Services/Lsp/LspServerCatalog.cs` — known servers with **install commands** (`dotnet tool …`, `npm i -g …`,
+  `winget …`, etc.) and docs URLs. `LspManagementService` detects whether each executable is on `PATH`
+  (`ExecutableResolver`), runs installs in the **visible** terminal (`ITerminalService.TryRunInVisibleTerminal`),
+  and adds/removes/resets registry entries.
+- Settings overlay has a **言語サーバー (LSP)** category (`LspSettingsViewModel`, `SettingsCategory.Lsp`): per-server
+  rows with install status, an Install button, add/remove/reset.
+- Opening a file whose server is missing shows a dismissible **inline prompt bar** above the editor
+  (`LspPromptViewModel`, evaluated in `SetActiveEditorTab`); "今後表示しない" persists to
+  `AiSettings.Lsp.DismissedPromptExtensions` (settings.json).
+
+The editor's own `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` ex commands still work (same registry). See Editor
+`CLAUDE.md` §LSP.
+
 Reflecting over these assemblies via the shell tends to hallucinate — dump API to a file and Grep it, or use
 `MetadataLoadContext`. The Terminal library source is at `C:\Projects\Terminal` (ConPTY, OSC133 shell
 integration; see its `AGENT_API_SPEC.md`).

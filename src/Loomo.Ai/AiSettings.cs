@@ -44,6 +44,11 @@ public sealed class AiSettings
     /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
     public AppearanceSettings Appearance { get; set; } = new();
 
+    /// <summary>言語サーバー（LSP）まわりの Loomo 側設定。拡張子→サーバーの対応そのものはエディタ側
+    /// （<c>LspServerRegistry</c>・%APPDATA%/Loomo/lsp-servers.json）が持ち、ここには「促しバーを今後出さない
+    /// 拡張子」など Loomo の UI 状態だけを置く。</summary>
+    public LspSettings Lsp { get; set; } = new();
+
     /// <summary>ローカルLLM（in-process／CPU）。既定は llama.cpp バックエンドの Qwen3-4B GGUF Q4_K_M
     /// （decode は ONNX と互角・prefill とロードは速い・モデル入手容易）。バックエンドは modelPath で
     /// 振り分かる（<see cref="Clients.LocalInferenceRouter"/>：<c>.gguf</c>→llama.cpp／フォルダ→ONNX）。</summary>
@@ -208,6 +213,15 @@ public sealed class ProviderConfig
     /// そうした環境では 0 にして CPU 実行へ寄せると速い。まともな GPU があるマシンでは負値のままにする。
     /// </summary>
     public int NumGpu { get; set; } = -1;
+}
+
+/// <summary>言語サーバー（LSP）に関する Loomo 側の UI 設定。拡張子→サーバーの対応・カスタムサーバーは
+/// エディタの <c>LspServerRegistry</c> が永続化するため、ここは持たない。ファイルを開いたときの
+/// 「インストールを促すバー」を今後出さない拡張子の一覧だけを保持する。</summary>
+public sealed class LspSettings
+{
+    /// <summary>促しバーで「今後表示しない」を選んだ拡張子（先頭ドット付き・小文字）。</summary>
+    public List<string> DismissedPromptExtensions { get; set; } = new();
 }
 
 public sealed class VimSettings

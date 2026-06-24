@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Ai.Clients;
@@ -40,6 +41,12 @@ public partial class App : Application
         var settings = _services.GetRequiredService<AiSettings>();
         _services.GetRequiredService<AiSettingsStore>().Load(settings);
         StartupProfiler.Mark("設定ロード完了");
+
+        // 言語サーバー（LSP）の対応表＝エディタの LspServerRegistry を、Loomo 配下に永続化させる
+        // （%APPDATA%/Loomo/lsp-servers.json）。エディタコントロールを生成する前に一度だけ向け直す。
+        Editor.Core.Lsp.LspServerRegistry.ConfigureDefault(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Loomo", "lsp-servers.json"));
 
         // 保存済みカラーテーマ・アクセントカラーを適用する
         _services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
@@ -83,6 +90,9 @@ public partial class App : Application
 
         services.AddSingleton<EditorService>();
         services.AddSingleton<IEditorService>(sp => sp.GetRequiredService<EditorService>());
+
+        // 言語サーバー（LSP）管理：導入状況の検出・見えるターミナルでのインストール・追加削除・促し判定。
+        services.AddSingleton<sk0ya.Loomo.Services.Lsp.LspManagementService>();
 
         services.AddSingleton<BrowserService>();
         services.AddSingleton<IBrowserService>(sp => sp.GetRequiredService<BrowserService>());
@@ -175,6 +185,8 @@ public partial class App : Application
         services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();
+        services.AddSingleton<LspSettingsViewModel>();
+        services.AddSingleton<LspPromptViewModel>();
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionViewModel>();

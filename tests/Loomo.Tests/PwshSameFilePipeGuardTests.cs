@@ -131,6 +131,7 @@ public class PwshSameFilePipeGuardTests
             => Task.FromResult(new CommandResult(command, _output, 1, CurrentDirectory, false));
 
         public void SetWorkingDirectory(string path) { }
+        public bool TryRunInVisibleTerminal(string command) => false;
 
 #pragma warning disable CS0067
         public event EventHandler<CommandResult>? CommandExecuted;
@@ -150,6 +151,7 @@ public class PwshSameFilePipeGuardTests
         }
 
         public void SetWorkingDirectory(string path) { }
+        public bool TryRunInVisibleTerminal(string command) => false;
 
 #pragma warning disable CS0067
         public event EventHandler<CommandResult>? CommandExecuted;

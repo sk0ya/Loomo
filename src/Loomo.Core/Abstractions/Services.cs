@@ -15,6 +15,11 @@ public interface ITerminalService
     /// <summary>作業ディレクトリを設定。</summary>
     void SetWorkingDirectory(string path);
 
+    /// <summary>コマンドを**可視ターミナル**へ送って実行する（人間がタイプしたのと同じ経路）。
+    /// 出力がユーザーに見え、対話的な認証等も可能なので、LSP サーバーのインストール等に使う。
+    /// 可視ターミナルが未接続なら false（呼び出し側はフォールバックを案内する）。</summary>
+    bool TryRunInVisibleTerminal(string command);
+
     string CurrentDirectory { get; }
     bool IsExecuting { get; }
 

@@ -20,6 +20,7 @@ using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
 using Editor.Controls.Git;
+using Editor.Controls.Lsp;
 using Editor.Controls.Themes;
 using Terminal.Settings;
 using Terminal.Tabs;
@@ -270,9 +271,13 @@ public partial class ShellWindow
         // GitServiceFactory を渡すと、エディタが行の差分（追加/変更/削除）をガター（行番号脇）に
         // マーク表示し、ステータスバーにブランチ名を出す。読込/保存/編集のたびに自動で再計算される
         // （RefreshGitDiff はコントロール内部で発火）。未指定だと NullEditorGitService となり無効。
+        // LspManagerFactory を渡すと補完・診断・定義ジャンプ等の LSP 機能が有効になる（対象言語の
+        // 言語サーバーが PATH に必要）。拡張子→サーバーの対応はエディタ側 LspServerRegistry が所有・
+        // 永続化し、ユーザーは :LspAdd/:LspRemove/:LspList/:LspReset で追加削除する（Loomo は持たない）。
         var control = new VimEditorControl(new VimEditorControlOptions
         {
-            GitServiceFactory = () => new GitDiffProvider()
+            GitServiceFactory = () => new GitDiffProvider(),
+            LspManagerFactory = dispatcher => new LspManager(dispatcher)
         })
         {
             VimEnabled = _settings.Vim.Enabled,

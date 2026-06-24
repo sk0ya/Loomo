@@ -95,6 +95,7 @@ public class PwshArgNormalizationTests
         }
 
         public void SetWorkingDirectory(string path) { }
+        public bool TryRunInVisibleTerminal(string command) => false;
 
 #pragma warning disable CS0067
         public event EventHandler<CommandResult>? CommandExecuted;
