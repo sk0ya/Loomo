@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
@@ -16,13 +15,37 @@ using Microsoft.Extensions.Logging;
 
 namespace sk0ya.Loomo.Core.Agent;
 
-/// <summary>AgentOrchestrator のツール実行パート：1ツールの解決・引数正規化・冗長上書きガード・
-/// 安全評価・承認・実行・ジャーナル記録と、実行中イベントのチャネル送出。ループ本体は AgentOrchestrator.cs。</summary>
-public sealed partial class AgentOrchestrator
+/// <summary>1ツールの実行を担う（UI非依存）：ツールの解決・引数正規化・冗長上書きガード・安全評価・承認・
+/// 実行・ジャーナル記録と、実行中イベント（承認待ち／実行中／完了）のチャネル送出。ループ本体は
+/// <see cref="AgentOrchestrator"/>。</summary>
+internal sealed class ToolExecutor
 {
+    private readonly ToolRegistry _tools;
+    private readonly IApprovalService _approval;
+    private readonly ISafetyPolicy _safety;
+    private readonly ITraceSink _trace;
+    private readonly IFileChangeJournal? _journal;
+    private readonly ILogger _logger;
+
+    public ToolExecutor(
+        ToolRegistry tools,
+        IApprovalService approval,
+        ISafetyPolicy safety,
+        ITraceSink trace,
+        IFileChangeJournal? journal,
+        ILogger logger)
+    {
+        _tools = tools;
+        _approval = approval;
+        _safety = safety;
+        _trace = trace;
+        _journal = journal;
+        _logger = logger;
+    }
+
     /// <summary><see cref="ExecuteToolAsync"/> を実行し、終了時に必ずイベントチャネルを閉じる。
     /// これにより呼び出し側の読み出しループが確実に終了する。</summary>
-    private async Task<ToolResultMessage> ExecuteToolWithEventsAsync(
+    public async Task<ToolResultMessage> ExecuteToolWithEventsAsync(
         ToolUse use,
         string sessionId,
         string turnId,
@@ -211,4 +234,3 @@ public sealed partial class AgentOrchestrator
         return $"tool {state}: {toolName} (no output)";
     }
 }
-

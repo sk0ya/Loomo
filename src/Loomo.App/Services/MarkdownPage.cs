@@ -4,15 +4,15 @@ using System.Text.RegularExpressions;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>MarkdownRenderer のページ生成パート：フル HTML 文書の組み立て（テーマ別 CSS とスクロール
-/// 同期／mermaid の JS を含む）。Markdown 本体のパースは MarkdownRenderer.cs。</summary>
-internal static partial class MarkdownRenderer
+/// <summary>Markdown プレビューのフル HTML 文書の組み立て（テーマ別 CSS とスクロール同期／mermaid の JS を含む）。
+/// Markdown 本体のパースは <see cref="MarkdownRenderer"/>。</summary>
+internal static class MarkdownPage
 {
-    private static string BuildPage(string body, string? title, string styleName, string? baseHref = null)
+    internal static string BuildPage(string body, string? title, string styleName, string? baseHref = null)
     {
-        var t = title != null ? Encode(title) : "Preview";
+        var t = title != null ? MarkdownRenderer.Encode(title) : "Preview";
         var css = PreviewCss(styleName);
-        var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{EncodeAttribute(baseHref)}\">";
+        var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
         var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" ? "default" : "dark";
         return $$"""
             <!DOCTYPE html>
@@ -34,7 +34,7 @@ internal static partial class MarkdownRenderer
                 let lastRatio = 0;  // 最後に意図したスクロール比率（resize 時の貼り直し基準）
 
                 const mermaidTheme = '{{mermaidTheme}}';
-                const mermaidSrc = 'https://{{AssetsVirtualHost}}/mermaid.min.js';
+                const mermaidSrc = 'https://{{MarkdownRenderer.AssetsVirtualHost}}/mermaid.min.js';
                 let mermaidRequested = false;
 
                 function scrollMax() {

@@ -3,20 +3,16 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using Microsoft.Win32;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>画像ファイル（.png / .ico など）のプレビュー。</summary>
-public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
+/// <summary>画像ファイル（.png / .ico など）のプレビュー。ビュー構築・読み込み・ツールバー・アクション
+/// （コピー／保存）・キャプションを担い、ズーム／パン操作は <see cref="ImageZoomController"/> へ委譲する。</summary>
+public sealed class ImageEditorSupport : IEditorSupportVisualProvider
 {
-    private const double MinZoom = 0.05;
-    private const double MaxZoom = 16.0;
-    private const double ZoomStep = 1.25;
     private static readonly string[] Extensions =
         [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".tif", ".tiff"];
 
@@ -31,15 +27,8 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
     private Button? _copyButton;
     private Button? _saveButton;
     private Button? _copyPathButton;
-    private BitmapSource? _bitmap;
+    private ImageZoomController? _zoom;
     private string? _filePath;
-    private double _zoom = 1.0;
-    private bool _fitToView = true;
-    private bool _updatingSlider;
-    private Point? _panStart;
-    private double _panStartHorizontalOffset;
-    private double _panStartVerticalOffset;
-    private int _fitRequestSeq;
 
     public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
 
@@ -91,26 +80,6 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
             Background = Brushes.Transparent
         };
         _scroll.SetResourceReference(Control.ForegroundProperty, "Fg");
-        _scroll.SizeChanged += (_, _) =>
-        {
-            UpdateSurfaceMinimumSize();
-            if (_fitToView)
-                ApplyFitZoom();
-        };
-        _scroll.ScrollChanged += (_, e) =>
-        {
-            if (_fitToView && (Math.Abs(e.ViewportWidthChange) > 0.001 || Math.Abs(e.ViewportHeightChange) > 0.001))
-                ApplyFitZoom();
-        };
-        _scroll.Loaded += (_, _) =>
-        {
-            if (_fitToView)
-                QueueFitZoom();
-        };
-        _scroll.PreviewMouseWheel += OnPreviewMouseWheel;
-        _scroll.PreviewMouseLeftButtonDown += OnPanStart;
-        _scroll.PreviewMouseLeftButtonUp += OnPanEnd;
-        _scroll.PreviewMouseMove += OnPanMove;
 
         _caption = new TextBlock
         {
@@ -135,6 +104,10 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
         _view.Children.Add(_caption);
         Grid.SetRow(_caption, 2);
 
+        // ズーム／パンのマウス操作・フィット・スライダー連動はコントローラが担う（ツールバー生成後に配線）。
+        _zoom = new ImageZoomController(_scroll, _image, _imageSurface, _zoomLabel!, _zoomSlider!);
+        _zoom.ZoomChanged += UpdateCaptionDetails;
+
         SetActionsEnabled(false);
         SetCaption("未読み込み");
         return _view;
@@ -144,8 +117,6 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
     {
         GetOrCreateView();
         _filePath = filePath;
-        _fitToView = true;
-        _panStart = null;
 
         try
         {
@@ -156,27 +127,23 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
             bitmap.EndInit();
             bitmap.Freeze();
 
-            _bitmap = bitmap;
-            if (_image is not null)
-                _image.Source = bitmap;
+            _zoom!.SetBitmap(bitmap);
             if (_emptyState is not null)
                 _emptyState.Visibility = Visibility.Collapsed;
 
             if (_view?.IsLoaded == true)
             {
                 _view.UpdateLayout();
-                UpdateSurfaceMinimumSize();
-                ApplyFitZoom();
+                _zoom.UpdateSurfaceMinimumSize();
+                _zoom.ApplyFitZoom();
             }
-            QueueFitZoom();
+            _zoom.QueueFitZoom();
             SetActionsEnabled(true);
             UpdateCaptionDetails();
         }
         catch (Exception ex)
         {
-            _bitmap = null;
-            if (_image is not null)
-                _image.Source = null;
+            _zoom?.Clear();
             if (_emptyState is not null)
             {
                 _emptyState.Text = "画像を読み込めませんでした。";
@@ -204,19 +171,13 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
         _zoomSlider = new Slider
         {
             Width = 160,
-            Minimum = MinZoom * 100,
-            Maximum = MaxZoom * 100,
+            Minimum = ImageZoomController.MinZoom * 100,
+            Maximum = ImageZoomController.MaxZoom * 100,
             Value = 100,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 6, 0),
             SmallChange = 5,
             LargeChange = 25
-        };
-        _zoomSlider.ValueChanged += (_, _) =>
-        {
-            if (_updatingSlider)
-                return;
-            SetZoom(_zoomSlider.Value / 100.0, fitToView: false);
         };
 
         var bar = new DockPanel
@@ -226,10 +187,10 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
         };
 
         var left = new StackPanel { Orientation = Orientation.Horizontal };
-        left.Children.Add(MakeButton("−", () => SetZoom(_zoom / ZoomStep, fitToView: false), "縮小 (Ctrl+ホイール)"));
-        left.Children.Add(MakeButton("+", () => SetZoom(_zoom * ZoomStep, fitToView: false), "拡大 (Ctrl+ホイール)"));
-        left.Children.Add(MakeButton("1:1", () => SetZoom(1.0, fitToView: false), "等倍"));
-        left.Children.Add(MakeButton("⛶", () => { _fitToView = true; ApplyFitZoom(); }, "全体表示"));
+        left.Children.Add(MakeButton("−", () => _zoom?.ZoomOut(), "縮小 (Ctrl+ホイール)"));
+        left.Children.Add(MakeButton("+", () => _zoom?.ZoomIn(), "拡大 (Ctrl+ホイール)"));
+        left.Children.Add(MakeButton("1:1", () => _zoom?.ActualSize(), "等倍"));
+        left.Children.Add(MakeButton("⛶", () => _zoom?.FitToWindow(), "全体表示"));
         left.Children.Add(_zoomSlider);
         left.Children.Add(_zoomLabel);
         left.Children.Add(CreateSeparator());
@@ -284,6 +245,108 @@ public sealed partial class ImageEditorSupport : IEditorSupportVisualProvider
         button.SetResourceReference(Control.BorderBrushProperty, "Border");
         button.Click += (_, _) => action();
         return button;
+    }
+
+    private void CopyImage()
+    {
+        var bitmap = _zoom?.Bitmap;
+        if (bitmap is null)
+            return;
+
+        try
+        {
+            Clipboard.SetImage(bitmap);
+            SetCaption($"{Path.GetFileName(_filePath)}\n画像をコピーしました。");
+        }
+        catch
+        {
+            SetCaption($"{Path.GetFileName(_filePath)}\n画像をコピーできませんでした。");
+        }
+    }
+
+    private void CopyPath()
+    {
+        if (string.IsNullOrEmpty(_filePath))
+            return;
+
+        try
+        {
+            Clipboard.SetText(_filePath);
+            SetCaption($"{Path.GetFileName(_filePath)}\nパスをコピーしました。");
+        }
+        catch
+        {
+            SetCaption($"{Path.GetFileName(_filePath)}\nパスをコピーできませんでした。");
+        }
+    }
+
+    private void SaveAs()
+    {
+        if (string.IsNullOrEmpty(_filePath) || !File.Exists(_filePath))
+            return;
+
+        var ext = Path.GetExtension(_filePath);
+        var dialog = new SaveFileDialog
+        {
+            FileName = Path.GetFileName(_filePath),
+            DefaultExt = ext,
+            Filter = $"{ext.TrimStart('.').ToUpperInvariant()} image|*{ext}|All files|*.*",
+            OverwritePrompt = true
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            File.Copy(_filePath, dialog.FileName, overwrite: true);
+            SetCaption($"{Path.GetFileName(_filePath)}\n保存しました: {dialog.FileName}");
+        }
+        catch
+        {
+            SetCaption($"{Path.GetFileName(_filePath)}\n保存できませんでした。");
+        }
+    }
+
+    private void SetActionsEnabled(bool enabled)
+    {
+        if (_copyButton is not null) _copyButton.IsEnabled = enabled;
+        if (_copyPathButton is not null) _copyPathButton.IsEnabled = enabled && !string.IsNullOrEmpty(_filePath);
+        if (_saveButton is not null) _saveButton.IsEnabled = enabled && !string.IsNullOrEmpty(_filePath);
+        if (_zoomSlider is not null) _zoomSlider.IsEnabled = enabled;
+    }
+
+    private void SetCaption(string text)
+    {
+        if (_caption is not null)
+            _caption.Text = text;
+    }
+
+    private void UpdateCaptionDetails()
+    {
+        var bitmap = _zoom?.Bitmap;
+        if (bitmap is null || string.IsNullOrEmpty(_filePath))
+            return;
+
+        SetCaption(
+            $"{Path.GetFileName(_filePath)}  " +
+            $"{bitmap.PixelWidth} x {bitmap.PixelHeight}px  " +
+            $"{FormatBytes(new FileInfo(_filePath).Length)}  " +
+            $"{Math.Round(_zoom!.Zoom * 100):0}%");
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0 ? $"{bytes} B" : $"{value:0.#} {units[unit]}";
     }
 
     private static Brush CreateCheckerBrush()

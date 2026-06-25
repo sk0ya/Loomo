@@ -20,7 +20,7 @@ namespace sk0ya.Loomo.Core.Agent;
 /// エージェントループ本体（UI非依存）。
 /// user入力 → AI → tool_use → (承認) → tool実行 → 結果をAIへ → … → 最終テキスト。
 /// </summary>
-public sealed partial class AgentOrchestrator
+public sealed class AgentOrchestrator
 {
     private readonly IAiClientFactory _aiFactory;
     private readonly ToolRegistry _tools;
@@ -30,6 +30,8 @@ public sealed partial class AgentOrchestrator
     private readonly ITraceSink _trace;
     private readonly IFileChangeJournal? _journal;
     private readonly ILogger<AgentOrchestrator> _logger;
+    // 1ツールの実行（解決・安全評価・承認・実行・記録）はこの collaborator が担う。ループ本体は本クラス。
+    private readonly ToolExecutor _toolExecutor;
 
     private const int MaxIterations = 25;
 
@@ -61,6 +63,7 @@ public sealed partial class AgentOrchestrator
         _logger = logger;
         _trace = trace ?? NullTraceSink.Instance;
         _journal = journal;
+        _toolExecutor = new ToolExecutor(_tools, _approval, _safety, _trace, _journal, _logger);
     }
 
     /// <summary>ユーザー入力を処理してイベントを流す。</summary>
@@ -183,7 +186,7 @@ public sealed partial class AgentOrchestrator
                         // 実行中のイベント（承認待ち・実行中…）を貯め込まず即時に流す。Channel で実行タスクと
                         // 並行に読み出すことで、承認待ちや長い実行の状態がリアルタイムにUIへ届く。
                         var execChannel = Channel.CreateUnbounded<AgentEvent>();
-                        var execTask = ExecuteToolWithEventsAsync(req.ToolUse, sessionId, turnId, execChannel.Writer, editedPaths, ct);
+                        var execTask = _toolExecutor.ExecuteToolWithEventsAsync(req.ToolUse, sessionId, turnId, execChannel.Writer, editedPaths, ct);
                         // ct は渡さない：writer は finally で必ず Complete されるので読み出しは自然に終わり、
                         // キャンセルは execTask の await で観測される（未観測例外を防ぐ）。
                         await foreach (var e in execChannel.Reader.ReadAllAsync())

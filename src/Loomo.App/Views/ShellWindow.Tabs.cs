@@ -133,7 +133,7 @@ public partial class ShellWindow
 
         var wasActive = _activeTerminalTab?.Id == id;
         var tab = _terminalTabs[index];
-        PaneSplitView.Detach(tab.View);
+        ViewportTree.Detach(tab.View);
         await tab.View.CloseAsync();
         _terminalTabs.RemoveAt(index);
         _vm.Tabs.RemoveTerminalTab(id);
@@ -263,7 +263,7 @@ public partial class ShellWindow
         // デタッチでも Unloaded は発火するため、ライブラリ側で破棄をホスト責務に分離した）。
         if (tab.IsRealized)
         {
-            PaneSplitView.Detach(tab.Control);
+            ViewportTree.Detach(tab.Control);
             tab.Control.Dispose();
         }
         if (ReferenceEquals(_previewEditorTab, tab))

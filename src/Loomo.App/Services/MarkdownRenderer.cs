@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace sk0ya.Loomo.App.Services;
 
-internal static partial class MarkdownRenderer
+internal static class MarkdownRenderer
 {
     /// <summary>
     /// プレビュー内の相対パス画像を解決するための WebView2 仮想ホスト名。
@@ -28,7 +28,7 @@ internal static partial class MarkdownRenderer
     public const string PageVirtualHost = "page.loomo";
 
     public static string RenderToHtml(string markdown, string? title = null, string styleName = "Dracula", string? baseHref = null)
-        => BuildPage(RenderToBody(markdown), title, styleName, baseHref);
+        => MarkdownPage.BuildPage(RenderToBody(markdown), title, styleName, baseHref);
 
     /// <summary>
     /// 本文（&lt;body&gt; の中身）だけを生成する。フル再ナビゲートを避けてプレビューを
@@ -266,10 +266,10 @@ internal static partial class MarkdownRenderer
         return s.Split('|').Select(c => c.Trim()).ToArray();
     }
 
-    private static string Encode(string s) =>
+    internal static string Encode(string s) =>
         s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
-    private static string EncodeAttribute(string s) => Encode(s).Replace("'", "&#39;");
+    internal static string EncodeAttribute(string s) => Encode(s).Replace("'", "&#39;");
 
     // 危険な URL スキーム（javascript:, vbscript:, data: のスクリプト等）を弾く。プレビューは
     // NavigateToString で読み込まれるため、未検証のリンクをクリックすると任意スクリプトが走り得る。
