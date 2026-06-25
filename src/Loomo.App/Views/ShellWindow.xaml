@@ -599,12 +599,15 @@
                                        Foreground="{DynamicResource Fg}" FontSize="12"
                                        Text="{Binding LspPrompt.Message}" />
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                <Button Content="インストール" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                <Button Content="インストール" Style="{StaticResource FlatButton}"
+                                        FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                         Command="{Binding LspPrompt.InstallCommand}"
                                         Visibility="{Binding LspPrompt.CanInstall, Converter={StaticResource BoolToVis}}" />
-                                <Button Content="設定を開く" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                <Button Content="設定を開く" Style="{StaticResource SecondaryButton}"
+                                        FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                         Command="{Binding LspPrompt.OpenSettingsCommand}" />
-                                <Button Content="今後表示しない" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                <Button Content="今後表示しない" Style="{StaticResource SecondaryButton}"
+                                        FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                         Command="{Binding LspPrompt.DismissForeverCommand}" />
                                 <Button Style="{StaticResource CaptionButton}" Width="24" Height="22"
                                         Content="×" ToolTip="閉じる" Command="{Binding LspPrompt.CloseCommand}" />
