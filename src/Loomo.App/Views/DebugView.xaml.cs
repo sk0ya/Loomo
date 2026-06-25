@@ -1,7 +1,10 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -33,6 +36,39 @@ public partial class DebugView : UserControl
             _vm = vm;
             _vm.PropertyChanged += OnVmPropertyChanged;
         }
+        RebuildConsole();
+    }
+
+    // Output コレクションを RichTextBox のドキュメントへ写し直す（DataContext 差し替え時）。
+    private void RebuildConsole()
+    {
+        ConsoleBox.Document.Blocks.Clear();
+        if (_vm is null) return;
+        foreach (var line in _vm.Output) AppendConsoleLine(line);
+        ConsoleBox.ScrollToEnd();
+    }
+
+    // 1 行を色分け（Category）した段落として末尾へ追加する。色はテーマ追従（SetResourceReference）。
+    private void AppendConsoleLine(DebugOutputLine line)
+    {
+        var run = new Run(line.Text);
+        switch (line.Category)
+        {
+            case DebugOutputCategory.Stderr:
+                run.SetResourceReference(TextElement.ForegroundProperty, "DebugStderr");
+                break;
+            case DebugOutputCategory.Console:
+                run.SetResourceReference(TextElement.ForegroundProperty, "FgDim");
+                break;
+            case DebugOutputCategory.Important:
+                run.SetResourceReference(TextElement.ForegroundProperty, "Accent");
+                run.FontWeight = FontWeights.SemiBold;
+                break;
+            default:
+                run.SetResourceReference(TextElement.ForegroundProperty, "Fg");
+                break;
+        }
+        ConsoleBox.Document.Blocks.Add(new Paragraph(run) { Margin = new Thickness(0) });
     }
 
     // 停止したら「変数」タブへ、実行を再開／終了したら「出力」タブへ自動で切り替える。
@@ -44,13 +80,58 @@ public partial class DebugView : UserControl
 
     private void OnOutputChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.Action == NotifyCollectionChangedAction.Add)
-            ConsoleScroll.ScrollToEnd();
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                foreach (DebugOutputLine l in e.NewItems!) AppendConsoleLine(l);
+                ConsoleBox.ScrollToEnd();
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                // VM の 2000 行キャップ（先頭から除去）をドキュメントにも反映する。
+                for (var i = 0; i < (e.OldItems?.Count ?? 0); i++)
+                    if (ConsoleBox.Document.Blocks.FirstBlock is { } b)
+                        ConsoleBox.Document.Blocks.Remove(b);
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                ConsoleBox.Document.Blocks.Clear();
+                break;
+        }
     }
 
     private void OnRefreshClick(object sender, System.Windows.RoutedEventArgs e)
     {
         if (DataContext is DebugViewModel vm) vm.Refresh();
+    }
+
+    // コールスタックのダブルクリック：選択フレームのソースへジャンプ（通常タブ＋フォーカス）。
+    private void OnCallStackDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // 余白のダブルクリックでは発火させない（行＝ListBoxItem 上のときだけ）。
+        for (var d = e.OriginalSource as System.Windows.DependencyObject; d is not null;
+             d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+        {
+            if (d is System.Windows.Controls.ListBoxItem)
+            {
+                if (DataContext is DebugViewModel vm)
+                    vm.ActivateFrame(vm.SelectedFrame);
+                return;
+            }
+        }
+    }
+
+    // 右クリックメニュー「コピー」：その項目 1 件だけをテキスト化してクリップボードへ。
+    // ContextMenu は配置先要素の DataContext（＝その項目）を引き継ぐので、それを種別で振り分ける。
+    private void OnCopyItemClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var text = (sender as FrameworkElement)?.DataContext switch
+        {
+            DebugFrameViewModel f => string.IsNullOrEmpty(f.Location) ? f.Name : $"{f.Name}  {f.Location}",
+            DebugVariableViewModel v => string.IsNullOrEmpty(v.Value) ? v.Name : $"{v.Name} = {v.Value}",
+            WatchItemViewModel w => $"{w.Expression} = {w.Value}",
+            _ => null,
+        };
+        if (text is not null)
+            try { System.Windows.Clipboard.SetText(text); } catch { /* 占有中は無視 */ }
     }
 
     private void OnWatchKeyDown(object sender, System.Windows.Input.KeyEventArgs e)

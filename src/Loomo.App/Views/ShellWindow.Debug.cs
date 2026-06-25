@@ -20,6 +20,34 @@ public partial class ShellWindow
     private void InitializeDebugWiring()
     {
         _vm.Debug.ExecutionLineChanged += OnDebugExecutionLineChanged;
+        _vm.Debug.FramePreviewRequested += OnDebugFramePreviewRequested;
+        _vm.Debug.FrameActivated += OnDebugFrameActivated;
+    }
+
+    /// <summary>コールスタックのフレーム選択：そのソース位置をプレビュータブで表示し、その行へスクロールする。
+    /// フォーカスはデバッグペイン側に残す（プレビュー）。</summary>
+    private async void OnDebugFramePreviewRequested(string path, int line0)
+    {
+        await OpenFileInPreviewTabAsync(path);
+        NavigateActiveEditorTo(path, line0);
+    }
+
+    /// <summary>コールスタックのフレームのダブルクリック：通常タブで開いてジャンプし、エディタにフォーカスする。</summary>
+    private async void OnDebugFrameActivated(string path, int line0)
+    {
+        // OpenPathInEditorAsync は 1 始まりの行を受け取り内部で -1 する。
+        await OpenPathInEditorAsync(path, line0 + 1, column: 0);
+        if (_activeEditorTab is { } tab) tab.Control.Focus();
+    }
+
+    /// <summary>アクティブなエディタタブが指定パスを開いていれば、その行（0 始まり）へキャレットを移す。</summary>
+    private void NavigateActiveEditorTo(string path, int line0)
+    {
+        if (line0 < 0) return;
+        var full = Path.GetFullPath(path);
+        if (_activeEditorTab is { } tab && !string.IsNullOrWhiteSpace(tab.PeekFilePath) &&
+            string.Equals(Path.GetFullPath(tab.PeekFilePath), full, StringComparison.OrdinalIgnoreCase))
+            tab.Control.NavigateTo(line0, 0);
     }
 
     /// <summary>新規エディタにブレークポイント列を有効化し、トグル/同期を配線する（BuildEditorControl から呼ぶ）。</summary>

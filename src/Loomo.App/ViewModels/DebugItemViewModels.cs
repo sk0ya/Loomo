@@ -15,12 +15,24 @@ public sealed class DebugFrameViewModel
     {
         Id = frame.Id;
         Name = frame.Name;
+        SourcePath = frame.SourcePath;
+        Line = frame.Line;
         Location = frame.SourcePath is { } p ? $"{Path.GetFileName(p)}:{frame.Line}" : "";
     }
 
     public int Id { get; }
     public string Name { get; }
+
+    /// <summary>ソースの絶対パス（取得できなければ null）。プレビュー/ジャンプの対象。</summary>
+    public string? SourcePath { get; }
+
+    /// <summary>ソース行（1 始まり、DAP 準拠）。</summary>
+    public int Line { get; }
+
     public string Location { get; }
+
+    /// <summary>ソース位置を持ち、エディタへプレビュー/ジャンプできるか。</summary>
+    public bool HasSource => !string.IsNullOrEmpty(SourcePath) && Line > 0;
 }
 
 /// <summary>変数ツリーの 1 ノード。<see cref="VariablesReference"/> が正なら子を遅延展開する。</summary>

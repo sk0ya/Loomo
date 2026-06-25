@@ -8,25 +8,11 @@
     <UserControl.Resources>
         <SolidColorBrush x:Key="DebugStderr" Color="#E06C75" />
 
-        <!-- コンソール 1 行。Category で色分け（既定は Fg）。 -->
-        <Style x:Key="DebugLine" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="Consolas" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Category}" Value="{x:Static dbg:DebugOutputCategory.Stderr}">
-                    <Setter Property="Foreground" Value="{StaticResource DebugStderr}" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Category}" Value="{x:Static dbg:DebugOutputCategory.Console}">
-                    <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Category}" Value="{x:Static dbg:DebugOutputCategory.Important}">
-                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
-                    <Setter Property="FontWeight" Value="SemiBold" />
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+        <!-- 各項目（出力行・フレーム・変数・ウォッチ）を個別にコピーする右クリックメニュー。
+             x:Shared="False" で参照ごとに別インスタンスを作り、項目ごとに独立して付ける。 -->
+        <ContextMenu x:Key="CopyItemMenu" x:Shared="False">
+            <MenuItem Header="コピー" Click="OnCopyItemClick" />
+        </ContextMenu>
 
         <!-- 検査タブ（出力／変数／コールスタック）。下線で選択を示すフラットなタブ。 -->
         <Style x:Key="DebugTabItem" TargetType="TabItem">
@@ -134,20 +120,24 @@
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
                     Margin="6,0,6,6" SelectedIndex="0">
 
-            <!-- 出力 -->
+            <!-- 出力：テキスト選択できる読み取り専用 RichTextBox（行は Category で色分け）。
+                 内容は本文を選択してコンテキストメニュー（コピー／すべて選択）からコピーする。
+                 ドキュメントの構築・追記・末尾スクロールはコードビハインド（Output コレクションを写す）。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="出力">
                 <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
                         BorderThickness="1" Margin="0,4,0,0">
-                    <ScrollViewer x:Name="ConsoleScroll" VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled" Padding="6,4">
-                        <ItemsControl ItemsSource="{Binding Output}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:DebugOutputLine}">
-                                    <TextBlock Style="{StaticResource DebugLine}" Text="{Binding Text}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                    <RichTextBox x:Name="ConsoleBox" IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                                 IsDocumentEnabled="True" Background="Transparent" Padding="6,4"
+                                 Foreground="{DynamicResource Fg}" BorderThickness="0"
+                                 FontFamily="Consolas" FontSize="12"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <RichTextBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="コピー" Command="Copy" />
+                                <MenuItem Header="すべて選択" Command="SelectAll" />
+                            </ContextMenu>
+                        </RichTextBox.ContextMenu>
+                    </RichTextBox>
                 </Border>
             </TabItem>
 
@@ -171,7 +161,7 @@
                         </TreeView.ItemContainerStyle>
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type vm:DebugVariableViewModel}" ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource CopyItemMenu}">
                                     <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas" />
                                     <TextBlock Text="=" FontSize="11" Opacity="0.5" Margin="4,0,4,0"
                                                Visibility="{Binding Value, Converter={StaticResource NonEmptyToVis}}" />
@@ -204,7 +194,7 @@
                         <ItemsControl ItemsSource="{Binding Watches}" Margin="0,4,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:WatchItemViewModel}">
-                                    <Grid Margin="0,1">
+                                    <Grid Margin="0,1" ContextMenu="{StaticResource CopyItemMenu}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
@@ -232,10 +222,12 @@
                     <ListBox ItemsSource="{Binding CallStack}" SelectedItem="{Binding SelectedFrame, Mode=TwoWay}"
                              Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
                              Foreground="{DynamicResource Fg}"
+                             MouseDoubleClick="OnCallStackDoubleClick"
+                             ToolTip="クリックでソースをプレビュー、ダブルクリックでジャンプ"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:DebugFrameViewModel}">
-                                <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource CopyItemMenu}">
                                     <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding Location}" FontSize="11" Opacity="0.6" Margin="8,0,0,0" />

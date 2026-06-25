@@ -65,6 +65,14 @@ public sealed partial class DebugViewModel : ObservableObject
     /// path が null のときは全エディタの実行行を解除する。</summary>
     public event Action<string?, int>? ExecutionLineChanged;
 
+    /// <summary>コールスタックのフレーム選択でソースをプレビュー表示する要求（path, 0始まり行）。
+    /// プレビュータブを使い回し、エディタにフォーカスは奪わない。</summary>
+    public event Action<string, int>? FramePreviewRequested;
+
+    /// <summary>コールスタックのフレームのダブルクリックでソースへジャンプする要求（path, 0始まり行）。
+    /// 通常タブで開き、エディタにフォーカスする。</summary>
+    public event Action<string, int>? FrameActivated;
+
     /// <summary>停止中のコールスタック。</summary>
     public ObservableCollection<DebugFrameViewModel> CallStack { get; } = new();
 
@@ -167,7 +175,19 @@ public sealed partial class DebugViewModel : ObservableObject
     }
 
     partial void OnSelectedFrameChanged(DebugFrameViewModel? value)
-        => _ = LoadFrameInspectionAsync(value);
+    {
+        _ = LoadFrameInspectionAsync(value);
+        // フレームを選んだら、そのソース位置をエディタにプレビュー表示する（フォーカスは奪わない）。
+        if (value is { HasSource: true, SourcePath: { } p })
+            FramePreviewRequested?.Invoke(p, value.Line - 1);  // DAP 1始まり → エディタ 0始まり
+    }
+
+    /// <summary>コールスタックのフレームのダブルクリック：ソースへジャンプする（通常タブ＋フォーカス）。</summary>
+    public void ActivateFrame(DebugFrameViewModel? frame)
+    {
+        if (frame is { HasSource: true, SourcePath: { } p })
+            FrameActivated?.Invoke(p, frame.Line - 1);  // DAP 1始まり → エディタ 0始まり
+    }
 
     /// <summary>選択フレームのスコープ（Locals 等）をトップ階層に並べ、ウォッチも評価し直す。</summary>
     private async Task LoadFrameInspectionAsync(DebugFrameViewModel? frame)
