@@ -7,22 +7,17 @@ using System.Text.Json.Serialization;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>workspaces.json（実機で 187KB 規模）の<b>読み込み</b>用 System.Text.Json ソースジェネレータ文脈。
+/// <summary>workspaces.json（実機で 380KB 規模）の<b>読み書き</b>用 System.Text.Json ソースジェネレータ文脈。
 /// 起動時、ShellViewModel 解決中（初フレーム前）に <see cref="WorkspaceStateStore.Load"/> がこの巨大JSONを
-/// デシリアライズするため、リフレクションのメタデータ生成コストを起動から外す。enum は数値・camelCase で
-/// 既存ファイルと一致する。書き込み（Save）はデータ破損リスクを避けて従来のリフレクション経路のまま残す。</summary>
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+/// デシリアライズし、ワークスペース切替のたびに <see cref="WorkspaceStateStore.Save"/> が同サイズを直列化するため、
+/// リフレクションのメタデータ生成コストを両経路から外す。enum は数値・camelCase・インデント付きで
+/// 既存ファイルとバイト一致する（書込経路をリフレクションから移しても出力フォーマットは変わらない）。</summary>
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(WorkspaceState))]
 internal partial class WorkspaceStateJsonContext : JsonSerializerContext;
 
 public sealed class WorkspaceStateStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly string _filePath;
 
     public WorkspaceStateStore() : this(DefaultPath()) { }
@@ -40,7 +35,7 @@ public sealed class WorkspaceStateStore
 
         try
         {
-            // 読み込みはソースジェネレータ経路（起動高速化）。書き込みは従来のリフレクション経路のまま。
+            // 読み書きともソースジェネレータ経路（リフレクションのメタデータ生成コストを外す）。
             return JsonSerializer.Deserialize(
                 File.ReadAllText(_filePath), WorkspaceStateJsonContext.Default.WorkspaceState) ?? new WorkspaceState();
         }
@@ -50,10 +45,14 @@ public sealed class WorkspaceStateStore
         }
     }
 
+    /// <summary>状態を同期でディスクへ書き出す。書込直後の <see cref="Load"/>（別インスタンス含む）が
+    /// 確実に最新を読めるよう、あえて同期のまま（read-after-write の耐久性契約）。直列化はソース
+    /// ジェネレータ経路でリフレクションコストを外す。呼び出し回数は切替経路側で間引く。</summary>
     public void Save(WorkspaceState state)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-        File.WriteAllText(_filePath, JsonSerializer.Serialize(state, JsonOptions));
+        File.WriteAllText(
+            _filePath, JsonSerializer.Serialize(state, WorkspaceStateJsonContext.Default.WorkspaceState));
     }
 }
 

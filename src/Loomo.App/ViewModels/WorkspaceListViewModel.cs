@@ -189,7 +189,9 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
         snapshot.LastUsedUtc = DateTime.UtcNow;
         _state.ActiveWorkspaceId = snapshot.Id;
-        _store.Save(_state);
+        // ここでは保存しない。購読側（ShellWindow.SwitchWorkspaceAsync）が冒頭で
+        // captureCurrent の即時スナップショット保存を行い、その _store.Save が
+        // 新しい ActiveWorkspaceId を含む _state 全体を永続化する。二重書込を避ける。
         RefreshEntries();
         WorkspaceActivated?.Invoke(this, snapshot);
     }

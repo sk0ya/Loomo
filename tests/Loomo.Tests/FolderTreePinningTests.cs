@@ -75,13 +75,14 @@ public sealed class FolderTreePinningTests : IDisposable
     }
 
     [Fact]
-    public void Selecting_pinned_option_switches_displayed_tree()
+    public async Task Selecting_pinned_option_switches_displayed_tree()
     {
         var sut = CreateSut();
         sut.LoadRoot(_root);
         sut.PinFolder(_nested);
 
         sut.SelectedRootOption = sut.RootOptions.Single(o => o.IsPinned);
+        await sut.WhenTreeLoadedAsync();   // ツリー投入は git 読込の後（バックグラウンド）
 
         Assert.Equal(Path.GetFullPath(_nested), sut.TreeRootOverride);
         Assert.Contains(sut.Nodes, n => n.Name == "inner.txt");
@@ -89,7 +90,7 @@ public sealed class FolderTreePinningTests : IDisposable
     }
 
     [Fact]
-    public void Unpinning_current_root_falls_back_to_workspace_root()
+    public async Task Unpinning_current_root_falls_back_to_workspace_root()
     {
         var sut = CreateSut();
         sut.LoadRoot(_root);
@@ -97,6 +98,7 @@ public sealed class FolderTreePinningTests : IDisposable
         sut.SelectedRootOption = sut.RootOptions.Single(o => o.IsPinned);
 
         sut.UnpinFolder(_nested);
+        await sut.WhenTreeLoadedAsync();   // フォールバック先ルートのツリー投入を待つ
 
         Assert.Null(sut.TreeRootOverride);
         Assert.Same(sut.RootOptions[0], sut.SelectedRootOption);
@@ -105,12 +107,13 @@ public sealed class FolderTreePinningTests : IDisposable
     }
 
     [Fact]
-    public void LoadRoot_restores_pins_and_tree_root_and_drops_missing_pins()
+    public async Task LoadRoot_restores_pins_and_tree_root_and_drops_missing_pins()
     {
         var sut = CreateSut();
         var missing = Path.Combine(_root, "deleted");
 
         sut.LoadRoot(_root, new[] { _nested, missing }, treeRootPath: _nested);
+        await sut.WhenTreeLoadedAsync();   // ツリー投入は git 読込の後（バックグラウンド）
 
         Assert.Single(sut.RootOptions, o => o.IsPinned);   // 消えたピンは捨てる
         Assert.Equal(Path.GetFullPath(_nested), sut.TreeRootOverride);

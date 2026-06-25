@@ -150,8 +150,16 @@ public sealed partial class FolderTreeViewModel
         RootLabel = Path.GetFileName(path.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(RootLabel)) RootLabel = path;
 
-        RefreshGitState();
-        ReloadNodes();
+        // 旧ルートの内容を残さない（git 読込の継続でこのルートのツリーが投入される）。
+        // ignore 非表示・差分マークは git に依存するため、空 git でフル描画して直後に
+        // 訂正するより、git 完了後の 1 回の ReloadNodes でちらつきなく投入する。
+        Nodes.Clear();
+        HasVisibleNodes = false;
+        EmptyMessage = "";
+
+        // git 状態はバックグラウンドで読み、完了後に ReloadNodes でツリーへ反映する。
+        // UI スレッドで git プロセスを同期起動しないので、ワークスペース切替が固まらない。
+        RefreshGitStateAsync();
         StartWatching(_currentRoot);
     }
 

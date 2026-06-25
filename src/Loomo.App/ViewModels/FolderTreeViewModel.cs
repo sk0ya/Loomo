@@ -37,6 +37,15 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private DebouncedFolderWatcher? _watcher;
     // 進行中のフィルタ（デバウンス＋バックグラウンド構築）を、後続の入力で打ち切るためのトークン。
     private CancellationTokenSource? _filterCts;
+    // 進行中の git 状態読込（バックグラウンドの git プロセス起動）を、後続のルート切替・更新で
+    // 打ち切るためのトークン。ワークスペース切替が git の同期起動で固まらないようにする。
+    private CancellationTokenSource? _gitLoadCts;
+    // 直近の git 状態読込タスク（読込→ツリー反映まで）。テストが反映完了を待つための継ぎ目。
+    private Task _gitLoadTask = Task.CompletedTask;
+
+    /// <summary>テスト用：進行中の git 状態読込＋ツリー反映が完了するまで待つ
+    /// （非フィルタ時はこの完了で <see cref="Nodes"/> が投入済みになる）。</summary>
+    internal Task WhenTreeLoadedAsync() => _gitLoadTask;
 
     [ObservableProperty]
     private string _rootLabel = "(フォルダ未選択)";
@@ -203,8 +212,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void RefreshWorkspace()
     {
         if (_currentRoot is null) return;
-        RefreshGitState();
-        ReloadNodes();
+        // git 状態はバックグラウンドで読み、完了後に ReloadNodes でツリーへ反映する
+        // （RefreshGitStateAsync の継続が ReloadNodes を呼ぶ）。
+        RefreshGitStateAsync();
     }
 
     private void ReloadNodes()
@@ -457,23 +467,75 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         return "表示する項目はありません";
     }
 
-    private void RefreshGitState()
+    /// <summary>git 状態（rev-parse / status / check-ignore のためのインデックス）をバックグラウンドで
+    /// 読み込み、完了後に UI スレッドで <see cref="_gitState"/> を差し替えて <see cref="ReloadNodes"/> で
+    /// ツリー（ignore 非表示・差分マーク）へ反映する。git プロセス起動は大きいリポジトリで数百ms〜と
+    /// 重く、これを UI スレッドで同期実行するとワークスペース切替・監視更新が固まるため逃がす。
+    /// 読込中は既存のツリー表示をそのまま残す（呼び出し側が必要なら先に Nodes をクリアする）。</summary>
+    private void RefreshGitStateAsync()
     {
+        _gitLoadCts?.Cancel();
+
         if (_currentRoot is null)
         {
+            _gitLoadCts = null;
             _gitState = GitTreeState.Empty;
             FilterStatus = "";
+            ReloadNodes();
+            _gitLoadTask = Task.CompletedTask;
             return;
         }
 
-        _gitState = GitTreeState.Load(_currentRoot);
+        var root = _currentRoot;
+        var cts = new CancellationTokenSource();
+        _gitLoadCts = cts;
+        _gitLoadTask = LoadGitStateAndReloadAsync(root, cts);
+    }
 
+    private async Task LoadGitStateAndReloadAsync(string root, CancellationTokenSource cts)
+    {
+        var token = cts.Token;
+        try
+        {
+            var state = await Task.Run(() => GitTreeState.Load(root), token);
+            token.ThrowIfCancellationRequested();
+
+            // 切替・別ルート選択・更新で置き換えられていたら、この結果は捨てる
+            // （await 後は UI スレッド。_gitState/Nodes の操作はここで安全に行える）。
+            if (!ReferenceEquals(_gitLoadCts, cts)
+                || _currentRoot is null
+                || !PathsEqual(_currentRoot, root))
+                return;
+
+            _gitState = state;
+            ApplyFilterStatus(state);
+            ReloadNodes();
+        }
+        catch (OperationCanceledException)
+        {
+            // 後続のルート切替・更新に置き換えられた。表示はそのまま。
+        }
+        catch
+        {
+            // git／I-O の想定外例外は握りつぶす（async void なので UI へ伝播させない。
+            // 既存の git 例外防御方針と同じ）。
+        }
+        finally
+        {
+            if (ReferenceEquals(_gitLoadCts, cts))
+                _gitLoadCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private void ApplyFilterStatus(GitTreeState state)
+    {
         var filters = new List<string>();
         if (HideIgnoredFiles) filters.Add("ignore 非表示");
         if (ShowChangedOnly) filters.Add("変更のみ");
 
-        var gitStatus = _gitState.IsGitRepository
-            ? $"{_gitState.ChangedFiles.Count} 件変更"
+        var gitStatus = state.IsGitRepository
+            ? $"{state.ChangedFiles.Count} 件変更"
             : "Git 未検出";
         FilterStatus = filters.Count == 0
             ? gitStatus
