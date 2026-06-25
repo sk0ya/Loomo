@@ -1,0 +1,213 @@
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
+using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Layout;
+using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Services;
+using Editor.Controls;
+using Editor.Controls.Git;
+using Editor.Controls.Themes;
+using Terminal.Settings;
+using Terminal.Tabs;
+
+namespace sk0ya.Loomo.App.Views;
+
+/// <summary>ShellWindow: ペインの表示/非表示トグルと、開いたファイル・結果表示のためのペイン確保
+/// （SetPaneVisible・トグル状態同期・左上入れ替え・最下段追加）。レイアウト構築は ShellWindow.PaneLayout.cs。</summary>
+public partial class ShellWindow
+{
+    private void OnHidePane(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
+            return;
+        SetPaneVisible(kind, false);
+    }
+
+    private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
+            ToggleSessionEnabled(kind);
+
+        // ToggleSessionEnabled が何もしなかった場合（最後の1枚は無効化できない等）も、クリックで
+        // 勝手に反転した IsChecked を実状態へ戻す必要があるためここでも同期する。
+        UpdatePaneToggleStates();
+    }
+
+    /// <summary>
+    /// タイトルバーのペイントグルを実際の有効状態へ同期する（IsChecked＝有効→アクセント色）。
+    /// ツールチップも「有効化／無効化」を状態に合わせて切り替える。
+    /// </summary>
+    private void UpdatePaneToggleStates()
+    {
+        foreach (var child in PaneToggleBar.Children)
+        {
+            if (child is not ToggleButton { Tag: string tag } button || !Enum.TryParse<PaneKind>(tag, out var kind))
+                continue;
+            var enabled = IsSessionEnabled(kind);
+            button.IsChecked = enabled;
+            button.ToolTip = $"{PaneLabel(kind)} を{(enabled ? "無効化" : "有効化")}";
+        }
+    }
+
+    /// <summary>ペインの日本語表示名（ペイントグルのツールチップ用）。</summary>
+    private static string PaneLabel(PaneKind kind) => kind switch
+    {
+        PaneKind.Terminal => "ターミナル",
+        PaneKind.Editor => "エディタ",
+        PaneKind.EditorSupport => "エディタサポート",
+        PaneKind.Browser => "ブラウザ",
+        PaneKind.Ai => "AI",
+        PaneKind.Git => "Git",
+        PaneKind.Diff => "Diff",
+        PaneKind.Trace => "トレース",
+        _ => kind.ToString(),
+    };
+
+    /// <summary>ペインがツリーに在りかつ表示中か。</summary>
+    private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };
+
+    /// <summary>表示中（非 Hidden）のリーフ数。</summary>
+    private int VisibleLeafCount() => AllLeaves().Count(l => !l.Hidden);
+
+    /// <summary>
+    /// ペインの表示／非表示を切り替える。非表示にしてもリーフはツリーに残し
+    /// <see cref="PaneLeaf.Hidden"/> を立てるだけなので、再表示で元の位置・比率に戻る。
+    /// </summary>
+    private void SetPaneVisible(PaneKind kind, bool visible)
+    {
+        var leaf = FindLeaf(kind);
+        var currentlyVisible = leaf is { Hidden: false };
+
+        // Main に出るペインは必ず有効扱いにする（トグル以外の自動表示＝EditorSupport・ターミナル
+        // セット等から呼ばれても「Main に出ている＝無効」という不整合を生まない）。隠す側では
+        // 有効状態は変えない（隠れた有効セッションは袖へ回る）。
+        if (visible)
+            _enabledSessions.Add(kind);
+
+        if (currentlyVisible == visible)
+            return;
+
+        CaptureLayoutSizes();
+
+        if (visible)
+        {
+            if (leaf is null)
+            {
+                // 一度もツリーに置かれていないペイン。跨ぎ最大化中はモニタの継ぎ目を跨ぐ
+                // 全幅の行ではなく、右端の列の最下段へ入れる。
+                var newLeaf = NewLeaf(kind);
+                if (_isSpanMaximized && _root is PaneSplit { Orientation: SplitKind.Columns } columns
+                    && columns.Children.Count > 0)
+                    columns.Children[^1] = AddLeafAtBottom(columns.Children[^1], newLeaf);
+                else
+                    AddLeafAtBottom(newLeaf);
+            }
+            else
+                leaf.Hidden = false;
+        }
+        else
+        {
+            // 最後の1枚は隠さない
+            if (VisibleLeafCount() <= 1)
+                return;
+            leaf!.Hidden = true;
+            if (_focusedRegion?.Pane == kind)
+                _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
+        }
+
+        // 跨ぎ最大化中の表示切替は、解除時に戻す保存レイアウトへも反映する
+        // （跨ぎ解除やスナップショット保存で表示状態が巻き戻らないように）。
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
+        {
+            if (AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == kind) is { } savedLeaf)
+                savedLeaf.Hidden = !visible;
+            else if (visible)
+                _spanSavedRoot = AddLeafAtBottom(savedRoot, NewLeaf(kind));
+        }
+
+        // EditorSupport を表示にしたら、現在のエディタ内容でプレビューを流し込む（自動開閉はしない）。
+        if (kind == PaneKind.EditorSupport && visible)
+            _ = UpdateEditorSupportAsync();
+
+        _zoomedPane = null; // 表示構成が変わるのでズームは解除する
+        _root = Normalize(_root);
+        MarkLayoutDirty();
+        RebuildPaneLayout();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>
+    /// ファイルを開くとき、Editor も EditorSupport もレイアウトに出ていなければ、左上のペインを
+    /// 開く対象（バイナリ＝EditorSupport／テキスト＝Editor）へ差し替えて必ず見えるようにする。
+    /// FolderTree・Diff・Git・検索・ターミナル/エディタのリンクなど、すべての「ファイルを開く」経路の
+    /// 共通前処理として、呼び出し側がタブを活性化する前に呼ぶ。どちらかが既に見えていれば何もしない。
+    /// </summary>
+    private void EnsureEditorPaneForOpenedFile(string path)
+    {
+        var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
+
+        if (_stageActive)
+        {
+            // ソロモード：Editor も EditorSupport も舞台に立っていなければ、対象を舞台へ立てる。
+            if (!OnStage(PaneKind.Editor) && !OnStage(PaneKind.EditorSupport))
+                SetStagePane(target);
+            return;
+        }
+
+        // タイルモード：どちらかが表示中なら現状維持。両方とも非表示のときだけ左上を差し替える。
+        if (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport))
+            return;
+
+        // 左上の可視ペインを対象へ入れ替える（元の左上ペインは袖へ退場）。左上が取れない/対象自身が
+        // 左上のときは、対象を素直に表示する。
+        if (TopLeftPane() is { } topLeft && topLeft != target)
+            PlaceWingPane(target, topLeft, center: true, zone: null);
+        else
+            SetPaneVisible(target, true);
+    }
+
+    /// <summary>
+    /// 指定ペインがレイアウトに出ていなければ、左上のペインと入れ替えて必ず見えるようにする
+    /// （元の左上ペインは袖へ退場）。ステージモード中は対象を舞台へ立てる。既に見えていれば何もしない。
+    /// 「AIに聞く」「ブラウザで調べる」のように、結果を表示するペインを前面に出す経路で使う。
+    /// </summary>
+    private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target)
+    {
+        if (_stageActive)
+        {
+            if (!OnStage(target))
+                SetStagePane(target);
+            return;
+        }
+
+        if (IsPaneVisible(target))
+            return;
+
+        if (TopLeftPane() is { } topLeft && topLeft != target)
+            PlaceWingPane(target, topLeft, center: true, zone: null);
+        else
+            SetPaneVisible(target, true);
+    }
+
+    /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>
+    private void AddLeafAtBottom(PaneLeaf leaf) => _root = AddLeafAtBottom(_root, leaf);
+
+    /// <summary>指定ツリーの最下段の新しい行としてリーフを追加し、新しいルートを返す。
+    /// 既存ノードを行スプリットで包む場合は外側の重み（親スプリット内の比率）を引き継ぐ。</summary>
+    private static PaneNode AddLeafAtBottom(PaneNode? root, PaneLeaf leaf) => PaneLayoutTree.AddLeafAtBottom(root, leaf);
+}
+
