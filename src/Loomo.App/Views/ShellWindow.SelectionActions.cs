@@ -1,6 +1,9 @@
 using System;
+using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Controls;
 using Editor.Controls;
 using sk0ya.Loomo.App.Services;
@@ -22,7 +25,11 @@ public partial class ShellWindow
     private const int MaxSearchQueryLength = 300;
 
     private void OnEditorContextMenuBuilding(object? sender, EditorContextMenuBuildingEventArgs e)
-        => AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
+    {
+        AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
+        // 右クリックされたエディタ（複数分割でもイベント発火元）で開いているスクリプトを実行する項目を足す。
+        AddRunScriptMenuItem(e.Menu, sender as VimEditorControl ?? _activeEditorTab?.Control);
+    }
 
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)
         => AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
@@ -54,6 +61,58 @@ public partial class ShellWindow
         menu.Items.Add(search);
 
         AddWorkflowMenuItems(menu, selectedText);
+    }
+
+    // 実行できるスクリプト拡張子（PowerShell / バッチ）。
+    private static readonly string[] RunnableScriptExtensions = { ".ps1", ".bat", ".cmd" };
+
+    // エディタで開いている .ps1/.bat/.cmd を可視ターミナルで実行する項目を足す。
+    // スクリプト以外・パス無し（未保存の新規バッファ）では何もしない。
+    private void AddRunScriptMenuItem(ContextMenu menu, VimEditorControl? control)
+    {
+        if (control?.FilePath is not { Length: > 0 } path || !IsRunnableScript(path))
+            return;
+
+        menu.Items.Add(new Separator());
+        var run = new MenuItem
+        {
+            Header = $"ターミナルで実行（{Path.GetFileName(path)}）",
+            // ターミナルが無ければ実行先が無いので無効化する。
+            IsEnabled = _activeTerminalTab is not null,
+        };
+        run.Click += (_, _) => RunScriptInTerminal(control, path);
+        menu.Items.Add(run);
+    }
+
+    private static bool IsRunnableScript(string path)
+        => Array.Exists(
+            RunnableScriptExtensions,
+            ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
+
+    // 開いているスクリプトを可視ターミナルで実行する。編集中なら先に保存し、ディスク上の最新内容を走らせる。
+    private void RunScriptInTerminal(VimEditorControl control, string path)
+    {
+        if (control.IsModified)
+        {
+            try
+            {
+                control.Save(path);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"保存に失敗したため実行を中止しました: {ex.Message}",
+                    "ターミナルで実行", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        if (_activeTerminalTab?.View is not { } view)
+            return;
+
+        SetPaneVisible(PaneKind.Terminal, true);
+        // 呼び出し演算子（&）でパスを実行する。空白を含むパスに備えて引用する。
+        _ = view.RunCommandAsync($"& \"{path}\"", CancellationToken.None);
+        FocusPane(PaneKind.Terminal);
     }
 
     // 選択テキストを {{input}} として実行する「AIワークフロー」サブメニューを足す。
