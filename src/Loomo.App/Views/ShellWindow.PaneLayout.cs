@@ -41,6 +41,7 @@ public partial class ShellWindow
         _paneElements[PaneKind.Git] = GitPane;
         _paneElements[PaneKind.Diff] = DiffPane;
         _paneElements[PaneKind.Trace] = TracePane;
+        _paneElements[PaneKind.Debug] = DebugPane;
 
         // 各コンテンツホスト内の分割マネージャ。タブID→コントロールの解決はワークスペース現在のタブ一覧から行う。
         _editorViews = new PaneSplitView(

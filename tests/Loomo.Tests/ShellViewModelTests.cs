@@ -73,9 +73,12 @@ public class ShellViewModelTests
         var searchVm = new SearchPanelViewModel(
             new sk0ya.Loomo.Services.Search.WorkspaceSearchService(workspace));
 
+        var debugVm = new DebugViewModel(
+            new sk0ya.Loomo.Services.Debug.NetcoredbgDebugService(), workspace, new FakeTerminalService());
+
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
-            new PegboardViewModel(), searchVm);
+            new PegboardViewModel(), searchVm, debugVm);
     }
 
     [Fact]

@@ -320,6 +320,8 @@ public partial class ShellWindow
         control.PrevTabRequested += (_, _) => CycleEditorTab(-1);
         control.CloseTabRequested += (_, _) => CloseActiveEditorTab();
         control.WindowCloseRequested += (_, _) => CloseEditorView();
+        // デバッグ：ブレークポイント列を有効化し、トグル/同期/実行行ハイライトを配線する。
+        WireEditorForDebug(control);
         return control;
     }
 

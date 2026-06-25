@@ -3,6 +3,10 @@
 [Oo]bj/
 [Dd]ebug/
 [Rr]elease/
+
+# デバッグ実行機能のソースフォルダは上の [Dd]ebug/（ビルド出力向け）に巻き込まれるため明示的に追跡する
+!src/Loomo.Core/Debug/
+!src/Loomo.Services/Debug/
 x64/
 x86/
 [Ww][Ii][Nn]32/

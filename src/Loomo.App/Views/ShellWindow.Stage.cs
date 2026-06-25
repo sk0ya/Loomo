@@ -61,7 +61,7 @@ public partial class ShellWindow
     private static readonly PaneKind[] StageOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport,
-        PaneKind.Git, PaneKind.Diff, PaneKind.Ai,
+        PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug,
         // AI トレースは通常セッションとしては表示しない。
         // PaneKind.Trace,
     ];

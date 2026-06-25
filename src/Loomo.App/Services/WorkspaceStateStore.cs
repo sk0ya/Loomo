@@ -147,7 +147,8 @@ public enum PaneKind
     EditorSupport,
     Git,
     Diff,
-    Trace
+    Trace,
+    Debug
 }
 
 /// <summary>

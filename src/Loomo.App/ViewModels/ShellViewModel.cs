@@ -46,6 +46,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
     public SearchPanelViewModel SearchPanel { get; }
+    public DebugViewModel Debug { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -75,7 +76,8 @@ public sealed partial class ShellViewModel : ObservableObject
         DiffSessionViewModel diffSession,
         TraceSessionViewModel traceSession,
         PegboardViewModel pegboard,
-        SearchPanelViewModel searchPanel)
+        SearchPanelViewModel searchPanel,
+        DebugViewModel debug)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -95,6 +97,7 @@ public sealed partial class ShellViewModel : ObservableObject
         TraceSession = traceSession;
         Pegboard = pegboard;
         SearchPanel = searchPanel;
+        Debug = debug;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
