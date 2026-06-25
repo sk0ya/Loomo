@@ -237,6 +237,16 @@ UX** (the actual user-facing feature):
 The editor's own `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` ex commands still work (same registry). See Editor
 `CLAUDE.md` §LSP.
 
+**Document formatting (`:Format`) is CLI-backed, not LSP-only.** Many text-LSP servers (e.g. `marksman` for
+Markdown) don't implement `textDocument/formatting`, so the editor also has an extension→CLI-formatter registry
+(`Editor.Core.Formatting.FormatterRegistry`, stdin→stdout). Loomo redirects its persistence into its own folder via
+`FormatterRegistry.ConfigureDefault("%APPDATA%/Loomo/formatters.json")` in `App.OnStartup` (right after the LSP one).
+There are **no built-in default mappings**: a configured CLI formatter wins over LSP; with none configured the editor
+falls back to LSP formatting; and if that's empty too it probes `PATH` for the extension's `KnownFormatters`
+candidates (prettier/dprint/black/…), using and registering the first installed one. Users can also set one explicitly
+via the editor's `:FmtSet <ext> <cmd>` / `:FmtList` / `:FmtRemove` ex commands. A Loomo-side install catalog + settings
+UI (the LSP analog) is **not built yet**.
+
 Reflecting over these assemblies via the shell tends to hallucinate — dump API to a file and Grep it, or use
 `MetadataLoadContext`. The Terminal library source is at `C:\Projects\Terminal` (ConPTY, OSC133 shell
 integration; see its `AGENT_API_SPEC.md`).
