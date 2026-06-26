@@ -4,6 +4,15 @@ using System.Text.RegularExpressions;
 
 namespace sk0ya.Loomo.App.Services;
 
+/// <summary>Markdown プレビューの描画モード。ページ側 JS がこの値で描き分ける。</summary>
+public enum PreviewMode
+{
+    /// <summary>通常のドキュメント表示（縦スクロール）。非 marp 文書は常にこれ。</summary>
+    Document,
+    /// <summary>フロントマター <c>marp: true</c> を marp-core で描画（既定＝縦並び全表示／発表トグルで1枚ずつ）。</summary>
+    Marp,
+}
+
 internal static class MarkdownRenderer
 {
     /// <summary>
@@ -30,16 +39,39 @@ internal static class MarkdownRenderer
     public static string RenderToHtml(string markdown, string? title = null, string styleName = "Dracula", string? baseHref = null)
         => MarkdownPage.BuildPage(RenderToBody(markdown), title, styleName, baseHref);
 
+    /// <summary>フロントマターに <c>marp: true</c> があるか（あれば marp-core で忠実描画する）。</summary>
+    public static bool IsMarpDocument(string markdown)
+    {
+        var m = FrontmatterRe.Match(Normalize(markdown));
+        if (!m.Success)
+            return false;
+        foreach (var line in m.Groups[1].Value.Split('\n'))
+        {
+            var idx = line.IndexOf(':');
+            if (idx <= 0)
+                continue;
+            if (line[..idx].Trim().Equals("marp", StringComparison.OrdinalIgnoreCase)
+                && line[(idx + 1)..].Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static string StripFrontmatter(string normalizedText)
+    {
+        var m = FrontmatterRe.Match(normalizedText);
+        return m.Success ? normalizedText[m.Length..] : normalizedText;
+    }
+
     /// <summary>
-    /// 本文（&lt;body&gt; の中身）だけを生成する。フル再ナビゲートを避けてプレビューを
-    /// その場更新（チカチカ防止）するとき、ページ側がこの文字列で <c>document.body.innerHTML</c>
-    /// を差し替える。<see cref="RenderToHtml"/> も内部でこれを使う。
+    /// ドキュメント本文（&lt;body&gt; の中身）を生成する。フル再ナビゲートを避けてその場更新するとき、
+    /// ページ側がこの文字列で <c>document.body.innerHTML</c> を差し替える。
     /// </summary>
     public static string RenderToBody(string markdown)
     {
         var body = new StringBuilder();
         // U+0001 は Inline() のコードスパン退避に使う番兵。原文に紛れ込むと復元が壊れるので除去する。
-        ProcessBlocks(markdown.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\u0001", ""), body);
+        ProcessBlocks(StripFrontmatter(Normalize(markdown)).Replace("\u0001", ""), body);
         return body.ToString();
     }
 
@@ -294,6 +326,12 @@ internal static class MarkdownRenderer
         return "#";
     }
 
+    // 改行正規化＋コードスパン退避の番兵 U+0001 除去（原文に紛れると復元が壊れる）。
+    private static string Normalize(string s) =>
+        s.Replace("\r\n", "\n").Replace("\r", "\n").Replace(((char)1).ToString(), "");
+    // 先頭の YAML フロントマター（--- … --- / …）。先頭限定・閉じは行頭の --- か …。
+    private static readonly Regex FrontmatterRe =
+        new(@"\A---\n(.*?)\n(?:---|\.\.\.)[ \t]*(?:\n|\z)", RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex HeaderRe = new(@"^(#{1,6})\s+(.+)$", RegexOptions.Compiled);
     private static readonly Regex HrRe = new(@"^(\-{3,}|\*{3,}|_{3,})$", RegexOptions.Compiled);
     // 先頭空白(1)・マーカー(2: -/*/+ または "12.")・内容(3)。空白幅でネスト階層を判定する。

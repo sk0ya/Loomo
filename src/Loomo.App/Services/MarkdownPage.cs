@@ -8,12 +8,29 @@ namespace sk0ya.Loomo.App.Services;
 /// Markdown 本体のパースは <see cref="MarkdownRenderer"/>。</summary>
 internal static class MarkdownPage
 {
-    internal static string BuildPage(string body, string? title, string styleName, string? baseHref = null)
+    internal static string BuildPage(
+        string body, string? title, string styleName, string? baseHref = null,
+        PreviewMode mode = PreviewMode.Document, string? marpMarkdown = null, bool presentation = false)
     {
         var t = title != null ? MarkdownRenderer.Encode(title) : "Preview";
         var css = PreviewCss(styleName);
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
         var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" ? "default" : "dark";
+
+        // 描画モード（ページ側 JS が読む）。marp は本文を空のステージにし、生 Markdown を JS へ渡す。
+        var modeJs = mode == PreviewMode.Marp ? "marp" : "document";
+        // presentation=発表（1枚ずつ・キー送り）／既定は縦並びで全スライド表示（スクロール）。
+        var presentationJs = presentation ? "true" : "false";
+        var bodyClass = presentation ? " class=\"loomo-present\""
+                      : mode == PreviewMode.Marp ? " class=\"loomo-vertical\""
+                      : "";
+        var pageBody = mode == PreviewMode.Marp ? "<div id=\"marp-root\"></div>" : body;
+        // 生 Markdown は <script> 内 JS 文字列として埋め込む。既定エンコーダが <,>,& を \uXXXX 化するので
+        // </script> でタグが閉じる事故が起きない。
+        var marpBootstrap = mode == PreviewMode.Marp && marpMarkdown is not null
+            ? $"<script>window.__marpSrc = {System.Text.Json.JsonSerializer.Serialize(marpMarkdown)};</script>"
+            : "";
+
         return $$"""
             <!DOCTYPE html>
             <html>
@@ -36,6 +53,113 @@ internal static class MarkdownPage
                 const mermaidTheme = '{{mermaidTheme}}';
                 const mermaidSrc = 'https://{{MarkdownRenderer.AssetsVirtualHost}}/mermaid.min.js';
                 let mermaidRequested = false;
+
+                // 描画モード（C# が決めてページに焼き込む）。marp はスライド、document は従来表示。
+                const previewMode = '{{modeJs}}';
+                // presentation=発表（1枚ずつ・キー送り）。false＝縦並びで全スライド表示（スクロール）が既定。
+                const presentation = {{presentationJs}};
+                const isMarp = previewMode === 'marp';
+                const marpSrc = 'https://{{MarkdownRenderer.AssetsVirtualHost}}/marp.min.js';
+
+                let slides = [];
+                let slideIndex = 0;
+                let indicatorEl = null;
+
+                // marp-core（3.6MB）はスライドが marp のときだけ遅延ロードする。
+                let marpLoading = false, marpReady = false, pendingMarp = null, marpInstance = null;
+                function ensureMarp(cb) {
+                    if (marpReady) { cb(); return; }
+                    pendingMarp = cb;
+                    if (marpLoading) return;
+                    marpLoading = true;
+                    const s = document.createElement('script');
+                    s.src = marpSrc;
+                    s.onload = () => { marpReady = true; const c = pendingMarp; pendingMarp = null; if (c) c(); };
+                    s.onerror = () => { marpLoading = false; };
+                    document.head.appendChild(s);
+                }
+
+                function renderMarp(markdown) {
+                    ensureMarp(() => {
+                        try {
+                            marpInstance = marpInstance || new window.Marp({ inlineSVG: false, html: true });
+                            const out = marpInstance.render(markdown);
+                            let style = document.getElementById('marp-style');
+                            if (!style) { style = document.createElement('style'); style.id = 'marp-style'; document.head.appendChild(style); }
+                            style.textContent = out.css;
+                            const root = document.getElementById('marp-root');
+                            if (!root) return;
+                            root.innerHTML = out.html;
+                            layoutAfterBuild(root);
+                        } catch (e) {}
+                    });
+                }
+
+                function collectSlides(scope) {
+                    slides = Array.prototype.slice.call((scope || document).querySelectorAll('section'));
+                    if (slideIndex >= slides.length) slideIndex = Math.max(0, slides.length - 1);
+                }
+
+                // スライド群を組み立てた後の配置。発表＝1枚ずつ、既定＝縦並び全表示。
+                function layoutAfterBuild(scope) {
+                    collectSlides(scope);
+                    if (presentation) showSlide(slideIndex);
+                    else layoutVertical();
+                    renderMermaid();
+                }
+
+                // 縦並び（既定）：全スライドを表示したまま、横幅に合わせて zoom で縮小する（高さも追従＝積み重ね）。
+                function verticalZoomTarget() {
+                    return document.querySelector('#marp-root .marpit');
+                }
+                function applyVerticalZoom() {
+                    const c = verticalZoomTarget();
+                    if (!c) return;
+                    c.style.zoom = Math.min(1, window.innerWidth / 1312);   // 1280 + 余白
+                }
+                function layoutVertical() {
+                    for (let k = 0; k < slides.length; k++) {
+                        const s = slides[k];
+                        s.style.display = '';
+                        s.style.position = '';
+                        s.style.left = s.style.top = s.style.transform = '';
+                    }
+                    applyVerticalZoom();
+                }
+
+                // 発表（1枚ずつ）：固定サイズのスライドを画面中央へ拡大表示する。
+                function layoutSlide() {
+                    const s = slides[slideIndex];
+                    if (!s) return;
+                    const sw = s.offsetWidth || 1280, sh = s.offsetHeight || 720;
+                    const scale = Math.min(window.innerWidth / sw, window.innerHeight / sh);
+                    s.style.position = 'absolute';
+                    s.style.left = '50%';
+                    s.style.top = '50%';
+                    s.style.margin = '0';
+                    s.style.transformOrigin = 'center center';
+                    s.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
+                }
+
+                function showSlide(i) {
+                    if (!slides.length) { updateIndicator(); return; }
+                    slideIndex = Math.min(Math.max(0, i), slides.length - 1);
+                    for (let k = 0; k < slides.length; k++)
+                        slides[k].style.display = k === slideIndex ? 'block' : 'none';
+                    layoutSlide();
+                    updateIndicator();
+                }
+
+                function updateIndicator() {
+                    if (!presentation) return;
+                    if (!indicatorEl) {
+                        indicatorEl = document.createElement('div');
+                        indicatorEl.className = 'loomo-slide-indicator';
+                        document.body.appendChild(indicatorEl);
+                    }
+                    indicatorEl.textContent = slides.length ? (slideIndex + 1) + ' / ' + slides.length : '';
+                    indicatorEl.style.display = slides.length ? 'block' : 'none';
+                }
 
                 function scrollMax() {
                     const doc = document.documentElement;
@@ -92,6 +216,7 @@ internal static class MarkdownPage
                 }
 
                 window.setMarkdownPreviewScrollRatio = ratio => {
+                    if (presentation) return;   // 発表中は縦スクロール同期しない（ページ送りで操作）
                     pendingApplyRatio = Number(ratio) || 0;
                     if (!applyScheduled) {
                         applyScheduled = true;
@@ -105,19 +230,51 @@ internal static class MarkdownPage
                         const d = e.data;
                         if (!d) return;
                         if (d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio);
-                        else if (d.type === 'setBody') applyBody(d.html);
+                        else if (d.type === 'setBody') {
+                            // marp は d.html に生 Markdown が載る。document は本文 HTML を差し替える。
+                            if (previewMode === 'marp') renderMarp(d.html);
+                            else applyBody(d.html);
+                        }
                     });
                 }
 
-                // 初期ページ本文の mermaid を描く（スクリプトは head で走るので body 解析後に呼ぶ）。
+                // 初期化（モード別）。marp は生 Markdown を描画、document は従来どおり mermaid を描く。
+                // スクリプトは head で走るので body 解析後に呼ぶ。
+                function initPreview() {
+                    if (previewMode === 'marp') {
+                        if (typeof window.__marpSrc === 'string') renderMarp(window.__marpSrc);
+                        else updateIndicator();
+                    } else {
+                        renderMermaid();
+                    }
+                }
                 if (document.readyState === 'loading')
-                    document.addEventListener('DOMContentLoaded', renderMermaid);
+                    document.addEventListener('DOMContentLoaded', initPreview);
                 else
-                    renderMermaid();
+                    initPreview();
+
+                // 発表モードのページ送り（キーボード）。f で全画面。
+                if (presentation) {
+                    window.addEventListener('keydown', e => {
+                        if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+                            showSlide(slideIndex + 1); e.preventDefault();
+                        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+                            showSlide(slideIndex - 1); e.preventDefault();
+                        } else if (e.key === 'Home') {
+                            showSlide(0); e.preventDefault();
+                        } else if (e.key === 'End') {
+                            showSlide(slides.length - 1); e.preventDefault();
+                        } else if (e.key === 'f' || e.key === 'F') {
+                            if (document.fullscreenElement) document.exitFullscreen();
+                            else document.documentElement.requestFullscreen();
+                            e.preventDefault();
+                        }
+                    });
+                }
 
                 // preview→host(editor) も 1 フレーム 1 回へ間引いてメッセージの氾濫を防ぐ。
                 window.addEventListener('scroll', () => {
-                    if (suppressScrollMessage || reportScheduled || !window.chrome?.webview) return;
+                    if (presentation || suppressScrollMessage || reportScheduled || !window.chrome?.webview) return;
                     reportScheduled = true;
                     requestAnimationFrame(() => {
                         reportScheduled = false;
@@ -134,6 +291,8 @@ internal static class MarkdownPage
                 // 保つブラウザの挙動でエディタとの比率がズレる。resize 中は scroll エコーを止めて
                 // （リフロー起因の scroll でエディタが飛ぶのを防ぐ）、最後に意図した比率へ貼り直す。
                 window.addEventListener('resize', () => {
+                    if (presentation) { layoutSlide(); return; }   // 発表：現在の1枚を再フィット
+                    if (isMarp) { applyVerticalZoom(); return; }   // marp 縦並び：横幅に合わせ zoom 再計算
                     suppressScrollMessage = true;
                     if (resizeScheduled) return;
                     resizeScheduled = true;
@@ -146,7 +305,7 @@ internal static class MarkdownPage
             })();
             </script>
             </head>
-            <body>{{body}}</body>
+            <body{{bodyClass}}>{{marpBootstrap}}{{pageBody}}</body>
             </html>
             """;
     }
@@ -277,6 +436,21 @@ internal static class MarkdownPage
             th { background: {{panel}}; color: {{fg}}; font-weight: 600; }
             img { max-width: 100%; border-radius: 4px; display: block; margin: 8px 0; }
             hr { border: none; border-top: 1px solid {{border}}; margin: 20px 0; }
+
+            /* --- marp スライド表示（marp:true 文書のみ。非 marp は通常ドキュメント表示） --- */
+            /* 既定＝縦並びで全スライドをスクロール一覧（zoom は JS が横幅に合わせて設定）。 */
+            body.loomo-vertical { padding: 16px 0 40px; background: #000; }
+            body.loomo-vertical #marp-root .marpit { margin: 0 auto; }
+            body.loomo-vertical #marp-root section { margin: 0 auto 24px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
+
+            /* オプション＝発表（1枚ずつ）。JS が transform で 1 枚だけ中央へ拡大する。 */
+            body.loomo-present { padding: 0; overflow: hidden; height: 100vh; background: #000; }
+            body.loomo-present #marp-root { position: fixed; inset: 0; overflow: hidden; }
+            .loomo-slide-indicator {
+                position: fixed; right: 14px; bottom: 12px; z-index: 10;
+                font-size: 12px; color: {{muted}}; background: {{panel}};
+                padding: 3px 10px; border-radius: 12px; opacity: .85; pointer-events: none;
+            }
             """;
     }
 }

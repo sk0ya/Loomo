@@ -641,6 +641,14 @@
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M8,2 L14,8 M10,4 L5,9 L4,13 L8,12 L13,7 M8,12 L4,16" />
                         </ToggleButton>
+                        <!-- 発表モード（marp:true 文書のみ）：1枚ずつ表示。OFF は全スライドを縦並びで表示 -->
+                        <ToggleButton x:Name="EditorSupportSlideToggle" DockPanel.Dock="Right"
+                                      Style="{StaticResource PaneToggle}" Width="30" Height="24"
+                                      ToolTip="発表モード（marp文書のみ／1枚ずつ・←→で送り・f で全画面）。OFF は全スライドを縦並び表示"
+                                      Click="OnToggleEditorSupportSlideMode">
+                            <Path Style="{StaticResource PaneToggleIcon}"
+                                  Data="M2,3 H14 V11 H2 Z M6,13 H10 M8,11 V13" />
+                        </ToggleButton>
                         <TextBlock x:Name="EditorSupportTitle" VerticalAlignment="Center" Margin="4,0,8,0"
                                    FontSize="11" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />

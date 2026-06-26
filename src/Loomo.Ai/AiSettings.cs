@@ -223,6 +223,13 @@ public sealed class AppearanceSettings
     /// <summary>Markdownプレビューの配色テーマ。<c>Dracula / Dark / Light / GitHub</c>。</summary>
     public string MarkdownPreviewTheme { get; set; } = "Dracula";
 
+    /// <summary>
+    /// marp プレビューを発表モード（スライドを1枚ずつ表示・ページ送り）にするか。OFF（既定）は全スライドを
+    /// 縦並びでスクロール表示する。効くのはフロントマターに <c>marp: true</c> がある文書のみで、非 marp の
+    /// 通常 Markdown はこの設定に関わらず常にドキュメント表示になる。
+    /// </summary>
+    public bool MarkdownSlideMode { get; set; }
+
     /// <summary>ターミナルの配色テーマ（背景/文字色のプリセット）。<c>Dark / Light / Dracula / Nord / SolarizedDark</c>。</summary>
     public string TerminalTheme { get; set; } = "Dark";
 

@@ -35,11 +35,31 @@
     <!-- Markdown プレビューの mermaid 図描画用（assets.loomo 仮想ホストから配信、オフラインでも動く）。
          3.2MB あるためリポジトリには入れず、無ければ初回ビルドで固定バージョンを取得する。 -->
     <Content Include="Assets\Web\mermaid.min.js" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Marp スライド描画用（marp:true 文書のみ assets.loomo から遅延ロード、オフラインでも動く）。
+         mermaid と同じくリポジトリには入れず（3.6MB）、無ければ初回ビルドで BundleMarp ターゲットが生成する。
+         marp-core は単一ファイルの CDN 配布が無いため DownloadFile では取れず、esbuild で IIFE バンドルする。
+         要 node/npm（初回のみ・mermaid 取得が要インターネットなのと同様）。 -->
+    <Content Include="Assets\Web\marp.min.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="DownloadMermaid" BeforeTargets="AssignTargetPaths" Condition="!Exists('Assets\Web\mermaid.min.js')">
     <DownloadFile SourceUrl="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"
                   DestinationFolder="Assets\Web" />
+  </Target>
+
+  <!-- marp.min.js を esbuild で生成する（無いときだけ）。obj 配下に固定版を npm install してバンドル。 -->
+  <Target Name="BundleMarp" BeforeTargets="AssignTargetPaths" Condition="!Exists('Assets\Web\marp.min.js')">
+    <PropertyGroup>
+      <MarpWorkDir>$(BaseIntermediateOutputPath)marp</MarpWorkDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(MarpWorkDir);Assets\Web" />
+    <WriteLinesToFile File="$(MarpWorkDir)\package.json" Overwrite="true"
+                      Lines="{ &quot;private&quot;: true, &quot;dependencies&quot;: { &quot;@marp-team/marp-core&quot;: &quot;4.3.0&quot;, &quot;esbuild&quot;: &quot;0.28.1&quot; } }" />
+    <WriteLinesToFile File="$(MarpWorkDir)\entry.js" Overwrite="true"
+                      Lines="import { Marp } from '@marp-team/marp-core';globalThis.Marp = Marp" />
+    <Exec Command="npm install --no-audit --no-fund --loglevel=error" WorkingDirectory="$(MarpWorkDir)" />
+    <Exec Command="npx esbuild entry.js --bundle --minify --format=iife --outfile=&quot;$(MSBuildProjectDirectory)\Assets\Web\marp.min.js&quot;"
+          WorkingDirectory="$(MarpWorkDir)" />
   </Target>
 
 </Project>

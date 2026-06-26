@@ -46,10 +46,11 @@ public interface IEditorSupportIncrementalHtmlProvider : IEditorSupportHtmlProvi
     string RenderBody(string filePath, string text);
 
     /// <summary>
-    /// フル再構築が要るかを判定するためのページ体裁の鍵（対象ファイル・テーマ・base href 等）。
-    /// 鍵が同じなら本文差し替えで足り、変われば再ナビゲートする。テキスト本文は鍵に含めない。
+    /// フル再構築が要るかを判定するためのページ体裁の鍵（対象ファイル・テーマ・base href・描画モード等）。
+    /// 鍵が同じなら本文差し替えで足り、変われば再ナビゲートする。テキスト本文そのものは鍵に含めない
+    /// （描画モードのように本文から導く要素は含めてよい＝モードが切り替わったら再構築させる）。
     /// </summary>
-    string PageContextKey(string filePath);
+    string PageContextKey(string filePath, string text);
 }
 
 /// <summary>
@@ -189,23 +190,38 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
     public string DescribeTitle(string filePath) => $"Preview: {Path.GetFileName(filePath)}";
 
     public string RenderHtml(string filePath, string text)
-        => MarkdownRenderer.RenderToHtml(
-            text,
-            DescribeTitle(filePath),
-            _settings.Appearance.MarkdownPreviewTheme,
-            // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
-            baseHref: MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
+    {
+        var title = DescribeTitle(filePath);
+        var theme = _settings.Appearance.MarkdownPreviewTheme;
+        // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
+        var baseHref = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref;
+        // marp 文書だけスライド表示。生 Markdown をページへ渡して marp-core が描く（本文は空のステージ）。
+        return IsMarp(text)
+            ? MarkdownPage.BuildPage("", title, theme, baseHref, PreviewMode.Marp, marpMarkdown: text, presentation: Presentation)
+            : MarkdownPage.BuildPage(MarkdownRenderer.RenderToBody(text), title, theme, baseHref, PreviewMode.Document);
+    }
 
-    public string RenderBody(string filePath, string text) => MarkdownRenderer.RenderToBody(text);
+    public string RenderBody(string filePath, string text)
+        => IsMarp(text) ? text                                 // ページ側 marp-core が描画する生 Markdown
+                        : MarkdownRenderer.RenderToBody(text);
 
-    // ページの体裁が変わる要素（対象ファイル・テーマ・base href）だけを鍵にする。本文の変更は
-    // 含めない＝同じファイルを編集している間は本文差し替えで更新できる。
-    public string PageContextKey(string filePath)
+    // ページの体裁が変わる要素（対象ファイル・テーマ・base href・描画モード・発表/縦並び）を鍵にする。本文
+    // そのものは含めない＝同じファイルを同じモードで編集している間は本文差し替えで更新できる。モードや
+    // 発表/縦並びが切り替われば鍵が変わってフル再構築する（ページ構造が変わるため）。
+    public string PageContextKey(string filePath, string text)
         => string.Join(
             "\n",
             filePath,
             _settings.Appearance.MarkdownPreviewTheme,
-            MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref);
+            MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref,
+            IsMarp(text) ? "marp" : "document",
+            Presentation);
+
+    // marp 文書か（フロントマターに marp:true）。これだけがスライド表示になる。非 marp は常に通常ドキュメント。
+    private static bool IsMarp(string text) => MarkdownRenderer.IsMarpDocument(text);
+
+    // 発表（1枚ずつ）／縦並び全表示のトグル。marp 文書にのみ効く。
+    private bool Presentation => _settings.Appearance.MarkdownSlideMode;
 }
 
 /// <summary>

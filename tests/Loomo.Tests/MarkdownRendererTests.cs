@@ -116,4 +116,27 @@ public class MarkdownRendererTests
         Assert.DoesNotContain("<br>", html);
         Assert.Contains("line one line two", html);
     }
+
+    [Fact]
+    public void Frontmatter_IsStrippedFromDocumentBody()
+    {
+        // 先頭の YAML フロントマターは本文として描かない（表や hr に化けない）。
+        var html = Render("---\ntitle: hi\nmarp: true\n---\n\n# Heading");
+
+        Assert.Contains("<h1", html);
+        Assert.Contains("Heading", html);
+        Assert.DoesNotContain("title: hi", html);
+        Assert.DoesNotContain("<table", html);
+    }
+
+    [Fact]
+    public void IsMarpDocument_DetectsFrontmatterFlag()
+    {
+        Assert.True(MarkdownRenderer.IsMarpDocument("---\nmarp: true\n---\n# x"));
+        Assert.False(MarkdownRenderer.IsMarpDocument("---\nmarp: false\n---\n# x"));
+        Assert.False(MarkdownRenderer.IsMarpDocument("# no frontmatter"));
+        // marp ディレクティブが本文中にあるだけ（フロントマター外）は marp 扱いにしない。
+        Assert.False(MarkdownRenderer.IsMarpDocument("# x\n\nmarp: true"));
+    }
+
 }

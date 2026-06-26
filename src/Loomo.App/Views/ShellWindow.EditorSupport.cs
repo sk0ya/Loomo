@@ -78,6 +78,17 @@ public partial class ShellWindow
             await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
     }
 
+    /// <summary>
+    /// EditorSupport ヘッダーの発表トグル：プレビューを発表モード（1枚ずつ）／縦並び全表示で切り替える。
+    /// 共有 <see cref="AiSettings"/> の値を更新すると provider が次の描画から反映する。既定（OFF）は全スライド
+    /// の縦並び表示。marp:true 文書は常に marp で描かれ、このトグルで発表⇔縦並びを切り替える。
+    /// </summary>
+    private async void OnToggleEditorSupportSlideMode(object sender, RoutedEventArgs e)
+    {
+        _settings.Appearance.MarkdownSlideMode = EditorSupportSlideToggle.IsChecked == true;
+        await UpdateEditorSupportAsync();
+    }
+
     private void UpdateEditorSupportPinToggle()
     {
         EditorSupportPinToggle.IsChecked = _editorSupportSourcePinned;
@@ -171,7 +182,7 @@ public partial class ShellWindow
             // 同一ページ（テーマ・base href・対象ファイルが不変）を編集中なら、本文だけ差し替えて
             // フル再ナビゲート（＝ページ再構築のチカチカ）を避ける。鍵が変わったら従来どおり再構築する。
             var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
-            pageKey = incremental?.PageContextKey(filePath);
+            pageKey = incremental?.PageContextKey(filePath, text);
             var reuseLoadedPage = incremental is not null && pageKey == _editorSupportReadyPageKey;
 
             // Markdown→HTML 変換は正規表現主体で重く、大きいファイルでは打鍵を固める。バックグラウンド
