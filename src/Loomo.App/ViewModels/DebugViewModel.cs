@@ -398,6 +398,13 @@ public sealed partial class DebugViewModel : ObservableObject
         {
             IsBusy = state is DebugSessionState.Launching or DebugSessionState.Running or DebugSessionState.Stopped;
             IsStopped = state is DebugSessionState.Stopped;
+            // セッション終了（手動停止＝Idle 含む）では Exited イベントが届かないことがあるので、
+            // ここで実行行ハイライトと検査ペインを確実に片付ける。
+            if (state is DebugSessionState.Idle or DebugSessionState.Terminated or DebugSessionState.Failed)
+            {
+                ExecutionLineChanged?.Invoke(null, -1);
+                ClearInspection();
+            }
             ContinueCommand.NotifyCanExecuteChanged();
             StepOverCommand.NotifyCanExecuteChanged();
             StepIntoCommand.NotifyCanExecuteChanged();

@@ -31,6 +31,14 @@ public sealed class NetcoredbgDebugService : IDebugService
     /// <summary>直近に停止したスレッド ID（continue/step の対象）。</summary>
     private int _stoppedThreadId;
 
+    /// <summary>
+    /// launch リクエストを stdin に書き終えたことを示すシグナル。initialized イベント由来の構成フェーズ
+    /// （<see cref="ConfigureAsync"/>）はこれを待ってから configurationDone を送る。netcoredbg は
+    /// launch より先に configurationDone が来ると launch 処理が取りこぼして 15 秒でタイムアウトするため、
+    /// 「launch を書く」→「configurationDone を送る」の順序をスレッド競合に依らず保証する。
+    /// </summary>
+    private TaskCompletionSource? _launchSent;
+
     public DebugSessionState State => _state;
 
     public bool IsAdapterAvailable => ExecutableResolver.IsOnPath(DebugAdapterCatalog.Netcoredbg.Executable);
@@ -87,6 +95,7 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
 
             _client = client;
+            _launchSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             client.EventReceived += OnDapEvent;
             client.Exited += OnAdapterExited;
 
@@ -118,6 +127,10 @@ public sealed class NetcoredbgDebugService : IDebugService
                     console = "internalConsole",   // 出力を output イベントで受け取る
                 }, ct);
 
+                // launch を stdin に書き終えた（SendRequestAsync は WriteMessage 完了後に戻る）。
+                // これで構成フェーズの configurationDone が launch より先行しないことを保証する。
+                _launchSent.TrySetResult();
+
                 Emit(DebugOutputCategory.Important, $"デバッグ起動: {config.Program}");
                 await launchTask;
                 SetState(DebugSessionState.Running);
@@ -138,7 +151,13 @@ public sealed class NetcoredbgDebugService : IDebugService
     public async Task StopAsync()
     {
         await _gate.WaitAsync();
-        try { await StopCoreAsync(); }
+        try
+        {
+            await StopCoreAsync();
+            // 手動停止では terminated イベントが Finish() に届かない（StopCoreAsync が購読解除済み）。
+            // 状態を待機へ戻して StateChanged を発火させないと、IsBusy が true のまま固定され再実行できない。
+            SetState(DebugSessionState.Idle);
+        }
         finally { _gate.Release(); }
     }
 
@@ -146,6 +165,8 @@ public sealed class NetcoredbgDebugService : IDebugService
     private async Task StopCoreAsync()
     {
         var client = _client;
+        // launch 前に終了した場合に構成フェーズの待機を解放する（ぶら下がり防止）。
+        _launchSent?.TrySetResult();
         if (client is null) return;
         _client = null;
         client.EventReceived -= OnDapEvent;
@@ -356,6 +377,16 @@ public sealed class NetcoredbgDebugService : IDebugService
     {
         var client = _client;
         if (client is null) return;
+
+        // launch が stdin に書かれるまで待つ。先に configurationDone を送ると netcoredbg の launch が
+        // タイムアウトする（順序保証。await initialize の戻りと initialized イベントは競合し得る）。
+        var launchSent = _launchSent;
+        if (launchSent is not null)
+        {
+            try { await launchSent.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch { /* タイムアウト/未設定でも configurationDone は送る（従来動作にフォールバック） */ }
+        }
+
         foreach (var (path, lines) in _breakpoints)
         {
             try { await SendBreakpointsAsync(client, path, lines, CancellationToken.None); }
