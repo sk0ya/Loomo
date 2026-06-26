@@ -100,7 +100,52 @@
                         Margin="6,0,0,0" Command="{Binding StopCommand}" />
                 <Button Content="クリア" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
                         Margin="6,0,0,0" Command="{Binding ClearCommand}" />
+                <Button Content="⮌ アタッチ" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
+                        Margin="6,0,0,0" Command="{Binding ToggleAttachCommand}"
+                        ToolTip="実行中の .NET プロセスにアタッチ" />
             </StackPanel>
+
+            <!-- プロセスにアタッチ：実行中プロセスを選んで接続。停止してもそのプロセスは終了しない。 -->
+            <Border Margin="0,6,0,0" Padding="8" Background="{DynamicResource Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    Visibility="{Binding ShowAttach, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Grid Width="170">
+                            <TextBox x:Name="ProcFilterBox" Padding="6,3" FontSize="11"
+                                     Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                     BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                     Text="{Binding ProcessFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="絞り込み（名前/PID）" IsHitTestVisible="False" FontSize="11"
+                                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Visibility="{Binding Text, ElementName=ProcFilterBox, Converter={StaticResource EmptyToVis}}" />
+                        </Grid>
+                        <CheckBox Content=".NET のみ" IsChecked="{Binding DotnetOnly, Mode=TwoWay}"
+                                  Foreground="{DynamicResource Fg}" VerticalAlignment="Center" FontSize="11"
+                                  Margin="8,0,0,0" />
+                        <Button Content="更新" Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0"
+                                Margin="8,0,0,0" Command="{Binding RefreshProcessesCommand}" />
+                    </StackPanel>
+
+                    <ListBox ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                             Height="160" Margin="0,6,0,0" Background="{DynamicResource Bg}"
+                             BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                             MouseDoubleClick="OnProcessDoubleClick"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:DebugProcessViewModel}">
+                                <TextBlock Text="{Binding Display}" FontSize="11" FontFamily="Consolas"
+                                           TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Button Content="⮌ アタッチ" Style="{StaticResource FlatButton}" Height="24" Padding="12,0"
+                            Margin="0,6,0,0" HorizontalAlignment="Left"
+                            Command="{Binding AttachCommand}"
+                            ToolTip="選択したプロセスに接続（ダブルクリックでも可）" />
+                </StackPanel>
+            </Border>
 
             <!-- ステップ操作：停止中のみ表示 -->
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0"

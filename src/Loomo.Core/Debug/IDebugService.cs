@@ -27,6 +27,11 @@ public interface IDebugService
     /// <see cref="Output"/> に理由を流す。</summary>
     Task StartAsync(DebugLaunchConfig config, CancellationToken ct);
 
+    /// <summary>実行中の .NET プロセスにアタッチしてデバッグする。既存セッションがあれば先に停止する。
+    /// アダプタ未導入・接続失敗時は例外を投げず、状態を <see cref="DebugSessionState.Failed"/> にして
+    /// <see cref="Output"/> に理由を流す。停止（disconnect）してもアタッチ先プロセスは終了させない。</summary>
+    Task AttachAsync(DebugAttachConfig config, CancellationToken ct);
+
     /// <summary>実行中のセッションを停止（disconnect/terminate）する。セッションが無ければ何もしない。</summary>
     Task StopAsync();
 

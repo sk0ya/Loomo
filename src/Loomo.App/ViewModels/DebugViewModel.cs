@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -25,6 +26,27 @@ public sealed class DebugOutputLine
 
     public DebugOutputCategory Category { get; }
     public string Text { get; }
+}
+
+/// <summary>アタッチ候補となる実行中プロセスの 1 行。<see cref="IsManaged"/> は coreclr 等のロードを検出できたか
+/// （検出できなければ未管理扱い。アクセス権限不足や 32bit 不一致で判定不能なものも未管理側になる）。</summary>
+public sealed class DebugProcessViewModel
+{
+    public DebugProcessViewModel(int pid, string name, string? title, bool isManaged)
+    {
+        Pid = pid;
+        Name = name;
+        Title = title;
+        IsManaged = isManaged;
+    }
+
+    public int Pid { get; }
+    public string Name { get; }
+    public string? Title { get; }
+    public bool IsManaged { get; }
+
+    /// <summary>リスト表示用（名前 (PID) — ウィンドウタイトル）。</summary>
+    public string Display => string.IsNullOrEmpty(Title) ? $"{Name} ({Pid})" : $"{Name} ({Pid}) — {Title}";
 }
 
 /// <summary>
@@ -93,6 +115,27 @@ public sealed partial class DebugViewModel : ObservableObject
 
     /// <summary>コンソール出力。</summary>
     public ObservableCollection<DebugOutputLine> Output { get; } = new();
+
+    /// <summary>アタッチのプロセス選択パネルを開いているか。</summary>
+    [ObservableProperty] private bool _showAttach;
+
+    /// <summary>プロセス一覧の絞り込み文字列（名前・PID・タイトルに前方一致でなく含むで照合）。</summary>
+    [ObservableProperty] private string _processFilter = "";
+
+    /// <summary>.NET（coreclr 検出）プロセスのみ表示するか。アタッチ可能なのは基本これらのみ。</summary>
+    [ObservableProperty] private bool _dotnetOnly = true;
+
+    /// <summary>プロセス一覧を取得中か（更新ボタンの無効化に使う）。</summary>
+    [ObservableProperty] private bool _isEnumeratingProcesses;
+
+    /// <summary>選択中のアタッチ対象プロセス。</summary>
+    [ObservableProperty] private DebugProcessViewModel? _selectedProcess;
+
+    /// <summary>絞り込み後に表示するプロセス一覧。</summary>
+    public ObservableCollection<DebugProcessViewModel> Processes { get; } = new();
+
+    /// <summary>最後に列挙した全プロセス（絞り込み前）。フィルタ変更時はこれを再フィルタする。</summary>
+    private IReadOnlyList<DebugProcessViewModel> _allProcesses = Array.Empty<DebugProcessViewModel>();
 
     public DebugViewModel(IDebugService debug, IWorkspaceService workspace, ITerminalService terminal)
     {
@@ -288,6 +331,128 @@ public sealed partial class DebugViewModel : ObservableObject
     [RelayCommand]
     private void Clear() => Output.Clear();
 
+    /// <summary>アタッチパネルの開閉。開くときに（未取得なら）プロセス一覧を読み込む。</summary>
+    [RelayCommand]
+    private async Task ToggleAttach()
+    {
+        ShowAttach = !ShowAttach;
+        if (ShowAttach && _allProcesses.Count == 0)
+            await RefreshProcessesAsync();
+    }
+
+    private bool CanAttach() => !IsBusy && SelectedProcess is not null;
+
+    /// <summary>選択中プロセスにアタッチする。停止してもそのプロセスは終了しない（デタッチのみ）。</summary>
+    [RelayCommand(CanExecute = nameof(CanAttach))]
+    private async Task Attach()
+    {
+        var proc = SelectedProcess;
+        if (proc is null) return;
+
+        Refresh();
+        if (IsAdapterMissing)
+        {
+            StatusMessage = "アダプタ未導入";
+            Append(DebugOutputCategory.Important,
+                $"デバッグアダプタ {DebugAdapterCatalog.Netcoredbg.Executable} が見つかりません。下のバーから導入できます。");
+            return;
+        }
+
+        ShowAttach = false;
+        _cts = new CancellationTokenSource();
+        try
+        {
+            await _debug.AttachAsync(new DebugAttachConfig(proc.Pid, proc.Name), _cts.Token);
+        }
+        catch (OperationCanceledException) { /* 停止操作 */ }
+        catch (Exception ex)
+        {
+            Append(DebugOutputCategory.Important, $"アタッチでエラー: {ex.Message}");
+        }
+    }
+
+    private bool CanRefreshProcesses() => !IsEnumeratingProcesses;
+
+    /// <summary>実行中プロセスを列挙し直す。判定（coreclr ロード検出）が重いのでバックグラウンドで実行する。</summary>
+    [RelayCommand(CanExecute = nameof(CanRefreshProcesses))]
+    private async Task RefreshProcesses() => await RefreshProcessesAsync();
+
+    private async Task RefreshProcessesAsync()
+    {
+        IsEnumeratingProcesses = true;
+        try
+        {
+            _allProcesses = await Task.Run(EnumerateProcesses);
+            ApplyProcessFilter();
+        }
+        finally { IsEnumeratingProcesses = false; }
+    }
+
+    /// <summary>全プロセスを列挙し、coreclr 等のロード有無で .NET 判定を付ける。判定不能なものは未管理扱い。</summary>
+    private static List<DebugProcessViewModel> EnumerateProcesses()
+    {
+        var self = Environment.ProcessId;
+        var list = new List<DebugProcessViewModel>();
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                if (p.Id == self || p.Id == 0) continue;  // 自分自身と Idle は除外
+                string? title = null;
+                try { title = string.IsNullOrWhiteSpace(p.MainWindowTitle) ? null : p.MainWindowTitle; }
+                catch { /* タイトル取得不能 */ }
+                list.Add(new DebugProcessViewModel(p.Id, p.ProcessName, title, IsManaged(p)));
+            }
+            catch { /* 列挙中に終了した等。スキップ */ }
+            finally { p.Dispose(); }
+        }
+        return list
+            .OrderByDescending(i => i.IsManaged)
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(i => i.Pid)
+            .ToList();
+    }
+
+    /// <summary>プロセスに coreclr/clr がロードされているかで .NET 実行中かを推定する。
+    /// アクセス権限不足・ビット不一致では例外になり判定不能（false）。netcoredbg でアタッチ可能なのも
+    /// おおむね検査できるプロセスに限られるため、この best-effort で十分。</summary>
+    private static bool IsManaged(Process p)
+    {
+        try
+        {
+            foreach (ProcessModule m in p.Modules)
+            {
+                var n = m.ModuleName;
+                if (n.Equals("coreclr.dll", StringComparison.OrdinalIgnoreCase) ||
+                    n.Equals("clr.dll", StringComparison.OrdinalIgnoreCase) ||
+                    n.Equals("hostpolicy.dll", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch { /* 判定不能 */ }
+        return false;
+    }
+
+    private void ApplyProcessFilter()
+    {
+        IEnumerable<DebugProcessViewModel> q = _allProcesses;
+        if (DotnetOnly) q = q.Where(p => p.IsManaged);
+        var f = ProcessFilter?.Trim();
+        if (!string.IsNullOrEmpty(f))
+            q = q.Where(p =>
+                p.Name.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+                p.Pid.ToString().Contains(f) ||
+                (p.Title?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false));
+
+        Processes.Clear();
+        foreach (var p in q) Processes.Add(p);
+    }
+
+    partial void OnProcessFilterChanged(string value) => ApplyProcessFilter();
+    partial void OnDotnetOnlyChanged(bool value) => ApplyProcessFilter();
+    partial void OnSelectedProcessChanged(DebugProcessViewModel? value) => AttachCommand.NotifyCanExecuteChanged();
+    partial void OnIsEnumeratingProcessesChanged(bool value) => RefreshProcessesCommand.NotifyCanExecuteChanged();
+
     /// <summary>促しバーの「インストール」。導入コマンドを見えるターミナルで実行する。</summary>
     [RelayCommand]
     private void InstallAdapter()
@@ -421,6 +586,7 @@ public sealed partial class DebugViewModel : ObservableObject
             };
             StartCommand.NotifyCanExecuteChanged();
             StopCommand.NotifyCanExecuteChanged();
+            AttachCommand.NotifyCanExecuteChanged();
         });
 
     private void Append(DebugOutputCategory category, string text)

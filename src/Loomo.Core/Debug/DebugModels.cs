@@ -64,3 +64,7 @@ public sealed record DebugLaunchConfig(
     IReadOnlyList<string>? Args = null,
     /// <summary>エントリポイントで停止するか（Phase 2 以降のステップ実行用、Phase 1 では false 運用）。</summary>
     bool StopAtEntry = false);
+
+/// <summary>デバッグアタッチ構成。既に実行中の .NET プロセス（<see cref="ProcessId"/>）に接続する。
+/// <see cref="Name"/> は表示用（出力に出すプロセス名、無くてもよい）。</summary>
+public sealed record DebugAttachConfig(int ProcessId, string? Name = null);

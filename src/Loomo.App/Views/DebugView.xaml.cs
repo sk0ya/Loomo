@@ -134,6 +134,21 @@ public partial class DebugView : UserControl
             try { System.Windows.Clipboard.SetText(text); } catch { /* 占有中は無視 */ }
     }
 
+    // プロセス一覧のダブルクリック：その行のプロセスへ即アタッチ（行＝ListBoxItem 上のときだけ）。
+    private void OnProcessDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        for (var d = e.OriginalSource as System.Windows.DependencyObject; d is not null;
+             d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+        {
+            if (d is System.Windows.Controls.ListBoxItem)
+            {
+                if (DataContext is DebugViewModel vm && vm.AttachCommand.CanExecute(null))
+                    vm.AttachCommand.Execute(null);
+                return;
+            }
+        }
+    }
+
     private void OnWatchKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.Enter && DataContext is DebugViewModel vm

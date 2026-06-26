@@ -31,13 +31,17 @@ public sealed class NetcoredbgDebugService : IDebugService
     /// <summary>直近に停止したスレッド ID（continue/step の対象）。</summary>
     private int _stoppedThreadId;
 
+    /// <summary>アタッチ（launch ではなく attach）でセッションを始めたか。停止時に <c>disconnect</c> へ
+    /// <c>terminateDebuggee</c> を渡す/渡さないの判断に使う（アタッチ先プロセスは終了させない）。</summary>
+    private bool _attached;
+
     /// <summary>
-    /// launch リクエストを stdin に書き終えたことを示すシグナル。initialized イベント由来の構成フェーズ
+    /// launch/attach リクエストを stdin に書き終えたことを示すシグナル。initialized イベント由来の構成フェーズ
     /// （<see cref="ConfigureAsync"/>）はこれを待ってから configurationDone を送る。netcoredbg は
-    /// launch より先に configurationDone が来ると launch 処理が取りこぼして 15 秒でタイムアウトするため、
-    /// 「launch を書く」→「configurationDone を送る」の順序をスレッド競合に依らず保証する。
+    /// launch/attach より先に configurationDone が来ると処理を取りこぼして 15 秒でタイムアウトするため、
+    /// 「launch/attach を書く」→「configurationDone を送る」の順序をスレッド競合に依らず保証する。
     /// </summary>
-    private TaskCompletionSource? _launchSent;
+    private TaskCompletionSource? _requestSent;
 
     public DebugSessionState State => _state;
 
@@ -49,7 +53,69 @@ public sealed class NetcoredbgDebugService : IDebugService
     public event EventHandler? Continued;
     public event EventHandler<DebugExited>? Exited;
 
-    public async Task StartAsync(DebugLaunchConfig config, CancellationToken ct)
+    public Task StartAsync(DebugLaunchConfig config, CancellationToken ct)
+    {
+        var workDir = config.WorkingDirectory
+            ?? Path.GetDirectoryName(config.Program)
+            ?? Environment.CurrentDirectory;
+
+        return BeginSessionAsync(
+            requestCommand: "launch",
+            buildArguments: () => new
+            {
+                name = "Loomo Debug",
+                type = "coreclr",
+                request = "launch",
+                program = config.Program,
+                args = config.Args ?? Array.Empty<string>(),
+                cwd = workDir,
+                stopAtEntry = config.StopAtEntry,
+                justMyCode = false,
+                console = "internalConsole",   // 出力を output イベントで受け取る
+            },
+            workDir: workDir,
+            attaching: false,
+            label: $"デバッグ起動: {config.Program}",
+            failureLabel: "デバッグ起動に失敗しました",
+            precheck: () => File.Exists(config.Program)
+                ? null
+                : $"実行対象が見つかりません: {config.Program}",
+            ct: ct);
+    }
+
+    public Task AttachAsync(DebugAttachConfig config, CancellationToken ct)
+    {
+        var name = string.IsNullOrWhiteSpace(config.Name) ? $"PID {config.ProcessId}" : $"{config.Name} (PID {config.ProcessId})";
+        return BeginSessionAsync(
+            requestCommand: "attach",
+            buildArguments: () => new
+            {
+                name = "Loomo Attach",
+                type = "coreclr",
+                request = "attach",
+                processId = config.ProcessId,
+                justMyCode = false,
+            },
+            workDir: Environment.CurrentDirectory,
+            attaching: true,
+            label: $"アタッチ: {name}",
+            failureLabel: "アタッチに失敗しました",
+            precheck: () => config.ProcessId > 0 ? null : "アタッチ先のプロセス ID が不正です。",
+            ct: ct);
+    }
+
+    /// <summary>launch / attach に共通するセッション開始シーケンス。<paramref name="requestCommand"/> 以外は
+    /// 同一（initialize →（ここで await しない）launch/attach 送信 → 構成フェーズ → response 完了で Running）。
+    /// <paramref name="precheck"/> は構成固有の事前検証（失敗理由を返す。null なら OK）。</summary>
+    private async Task BeginSessionAsync(
+        string requestCommand,
+        Func<object> buildArguments,
+        string workDir,
+        bool attaching,
+        string label,
+        string failureLabel,
+        Func<string?> precheck,
+        CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
@@ -65,19 +131,16 @@ public sealed class NetcoredbgDebugService : IDebugService
                 return;
             }
 
-            if (!File.Exists(config.Program))
+            if (precheck() is { } reason)
             {
-                Emit(DebugOutputCategory.Important, $"実行対象が見つかりません: {config.Program}");
+                Emit(DebugOutputCategory.Important, reason);
                 SetState(DebugSessionState.Failed);
                 return;
             }
 
             _exitCode = null;
+            _attached = attaching;
             SetState(DebugSessionState.Launching);
-
-            var workDir = config.WorkingDirectory
-                ?? Path.GetDirectoryName(config.Program)
-                ?? Environment.CurrentDirectory;
 
             DapProtocolClient client;
             try
@@ -95,7 +158,7 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
 
             _client = client;
-            _launchSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _requestSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             client.EventReceived += OnDapEvent;
             client.Exited += OnAdapterExited;
 
@@ -113,31 +176,20 @@ public sealed class NetcoredbgDebugService : IDebugService
                     supportsRunInTerminalRequest = false,
                 }, ct);
 
-                // launch は configurationDone の後に response が返るため、ここでは await しない。
-                var launchTask = client.SendRequestAsync("launch", new
-                {
-                    name = "Loomo Debug",
-                    type = "coreclr",
-                    request = "launch",
-                    program = config.Program,
-                    args = config.Args ?? Array.Empty<string>(),
-                    cwd = workDir,
-                    stopAtEntry = config.StopAtEntry,
-                    justMyCode = false,
-                    console = "internalConsole",   // 出力を output イベントで受け取る
-                }, ct);
+                // launch/attach は configurationDone の後に response が返るため、ここでは await しない。
+                var requestTask = client.SendRequestAsync(requestCommand, buildArguments(), ct);
 
-                // launch を stdin に書き終えた（SendRequestAsync は WriteMessage 完了後に戻る）。
-                // これで構成フェーズの configurationDone が launch より先行しないことを保証する。
-                _launchSent.TrySetResult();
+                // launch/attach を stdin に書き終えた（SendRequestAsync は WriteMessage 完了後に戻る）。
+                // これで構成フェーズの configurationDone が launch/attach より先行しないことを保証する。
+                _requestSent.TrySetResult();
 
-                Emit(DebugOutputCategory.Important, $"デバッグ起動: {config.Program}");
-                await launchTask;
+                Emit(DebugOutputCategory.Important, label);
+                await requestTask;
                 SetState(DebugSessionState.Running);
             }
             catch (Exception ex)
             {
-                Emit(DebugOutputCategory.Important, $"デバッグ起動に失敗しました: {ex.Message}");
+                Emit(DebugOutputCategory.Important, $"{failureLabel}: {ex.Message}");
                 SetState(DebugSessionState.Failed);
                 await StopCoreAsync();
             }
@@ -165,8 +217,8 @@ public sealed class NetcoredbgDebugService : IDebugService
     private async Task StopCoreAsync()
     {
         var client = _client;
-        // launch 前に終了した場合に構成フェーズの待機を解放する（ぶら下がり防止）。
-        _launchSent?.TrySetResult();
+        // launch/attach 前に終了した場合に構成フェーズの待機を解放する（ぶら下がり防止）。
+        _requestSent?.TrySetResult();
         if (client is null) return;
         _client = null;
         client.EventReceived -= OnDapEvent;
@@ -177,7 +229,8 @@ public sealed class NetcoredbgDebugService : IDebugService
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                await client.SendRequestAsync("disconnect", new { terminateDebuggee = true }, cts.Token);
+                // アタッチ時は対象プロセスを巻き込まない（デタッチのみ）。launch 時は終了させる。
+                await client.SendRequestAsync("disconnect", new { terminateDebuggee = !_attached }, cts.Token);
             }
             catch { /* 既に終了/応答なし。Dispose で確実に殺す */ }
         }
@@ -238,10 +291,34 @@ public sealed class NetcoredbgDebugService : IDebugService
     {
         if (_state is DebugSessionState.Terminated or DebugSessionState.Idle) return;
         var code = _exitCode;
+        var client = _client;
         Emit(DebugOutputCategory.Important,
             $"デバッグ終了{(code is { } v ? $"（終了コード {v}）" : "")}");
         SetState(DebugSessionState.Terminated);
         Exited?.Invoke(this, new DebugExited(code, reason));
+
+        // プログラムが自分で終了（terminated）してもアダプタは生き続ける。netcoredbg は対象の DLL/PDB を
+        // 開いて握るため、残ると終了後に対象を再ビルドできない（「ファイル使用中」）。ここで確実に破棄する。
+        // 対象は既に終了しているので disconnect は不要、破棄（プロセス kill）のみでよい。
+        if (client is not null) _ = TearDownAdapterAsync(client);
+    }
+
+    /// <summary>セッション自然終了後にアダプタプロセスを破棄してファイルハンドルを解放する。
+    /// 破棄中に別セッションへ置き換わっていたらそちらは壊さない（<see cref="ReferenceEquals"/> で判定）。</summary>
+    private async Task TearDownAdapterAsync(DapProtocolClient client)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (ReferenceEquals(_client, client))
+            {
+                _client = null;
+                client.EventReceived -= OnDapEvent;
+                client.Exited -= OnAdapterExited;
+            }
+            client.Dispose();  // Dispose は冪等。既に別セッションでも、この古いクライアントは確実に殺す。
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task SetBreakpointsAsync(string sourcePath, IReadOnlyList<int> lines, CancellationToken ct)
@@ -378,12 +455,12 @@ public sealed class NetcoredbgDebugService : IDebugService
         var client = _client;
         if (client is null) return;
 
-        // launch が stdin に書かれるまで待つ。先に configurationDone を送ると netcoredbg の launch が
-        // タイムアウトする（順序保証。await initialize の戻りと initialized イベントは競合し得る）。
-        var launchSent = _launchSent;
-        if (launchSent is not null)
+        // launch/attach が stdin に書かれるまで待つ。先に configurationDone を送ると netcoredbg の
+        // launch/attach がタイムアウトする（順序保証。await initialize の戻りと initialized イベントは競合し得る）。
+        var requestSent = _requestSent;
+        if (requestSent is not null)
         {
-            try { await launchSent.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+            try { await requestSent.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
             catch { /* タイムアウト/未設定でも configurationDone は送る（従来動作にフォールバック） */ }
         }
 
