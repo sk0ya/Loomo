@@ -328,9 +328,6 @@ public sealed partial class DebugViewModel : ObservableObject
         await _debug.StopAsync();
     }
 
-    [RelayCommand]
-    private void Clear() => Output.Clear();
-
     /// <summary>アタッチパネルの開閉。開くときに（未取得なら）プロセス一覧を読み込む。</summary>
     [RelayCommand]
     private async Task ToggleAttach()

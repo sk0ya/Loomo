@@ -921,6 +921,23 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Debug" Click="OnHidePane" />
+                        <!-- 操作ボタン：開始・アタッチはデバッグ前のみ、停止はデバッグ中のみ表示 -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0"
+                                Margin="0,1,6,1" FontSize="11" Content="■ 停止" ToolTip="デバッグを停止"
+                                Command="{Binding Debug.StopCommand}"
+                                Visibility="{Binding Debug.IsBusy, Converter={StaticResource BoolToVis}}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0"
+                                Margin="0,1,6,1" FontSize="11" Content="⮌ アタッチ" ToolTip="実行中の .NET プロセスにアタッチ"
+                                Command="{Binding Debug.ToggleAttachCommand}"
+                                Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Height="22" Padding="12,0"
+                                Margin="0,1,6,1" FontSize="11" Content="▶ 開始" ToolTip="デバッグを開始"
+                                Command="{Binding Debug.StartCommand}"
+                                Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}" />
+                        <CheckBox DockPanel.Dock="Right" Content="先にビルド" VerticalAlignment="Center"
+                                  Margin="0,0,8,0" FontSize="11" Foreground="{DynamicResource Fg}"
+                                  IsChecked="{Binding Debug.BuildFirst, Mode=TwoWay}"
+                                  Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}" />
                         <TextBlock DockPanel.Dock="Left" Text="{Binding Debug.StatusMessage}" VerticalAlignment="Center"
                                    Margin="10,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />

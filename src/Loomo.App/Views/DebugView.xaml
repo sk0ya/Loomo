@@ -79,30 +79,20 @@
             </StackPanel>
         </Border>
 
-        <!-- ツールバー：対象指定＋ビルド＋開始/停止/クリア -->
+        <!-- ツールバー：対象指定＋ビルド。開始/停止/アタッチの操作ボタンはペインヘッダ側に移設。 -->
         <StackPanel DockPanel.Dock="Top" Margin="8,6,8,6">
-            <Grid>
-                <TextBox x:Name="TargetBox" Padding="6,4" FontSize="12"
-                         Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                         BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                         Text="{Binding TargetProgram, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="デバッグ対象 (.dll/.exe)。空ならワークスペースの .csproj から自動検出" />
-                <TextBlock Text="対象 (.dll/.exe)。空=自動検出" IsHitTestVisible="False" FontSize="12"
-                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
-                           Visibility="{Binding Text, ElementName=TargetBox, Converter={StaticResource EmptyToVis}}" />
-            </Grid>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <CheckBox Content="先にビルド" IsChecked="{Binding BuildFirst, Mode=TwoWay}"
-                          Foreground="{DynamicResource Fg}" VerticalAlignment="Center" FontSize="11" />
-                <Button Content="▶ 開始" Style="{StaticResource FlatButton}" Height="24" Padding="12,0"
-                        Margin="10,0,0,0" Command="{Binding StartCommand}" />
-                <Button Content="■ 停止" Style="{StaticResource SecondaryButton}" Height="24" Padding="12,0"
-                        Margin="6,0,0,0" Command="{Binding StopCommand}" />
-                <Button Content="クリア" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Margin="6,0,0,0" Command="{Binding ClearCommand}" />
-                <Button Content="⮌ アタッチ" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Margin="6,0,0,0" Command="{Binding ToggleAttachCommand}"
-                        ToolTip="実行中の .NET プロセスにアタッチ" />
+            <!-- 対象（.dll/.exe）＋ビルド設定：デバッグ前のみ表示（デバッグ中は隠す）。 -->
+            <StackPanel Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}">
+                <Grid>
+                    <TextBox x:Name="TargetBox" Padding="6,4" FontSize="12"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             Text="{Binding TargetProgram, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="デバッグ対象 (.dll/.exe)。空ならワークスペースの .csproj から自動検出" />
+                    <TextBlock Text="対象 (.dll/.exe)。空=自動検出" IsHitTestVisible="False" FontSize="12"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Text, ElementName=TargetBox, Converter={StaticResource EmptyToVis}}" />
+                </Grid>
             </StackPanel>
 
             <!-- プロセスにアタッチ：実行中プロセスを選んで接続。停止してもそのプロセスは終了しない。 -->
