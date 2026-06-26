@@ -300,8 +300,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             var dir = await _modelDownload.DownloadAsync(model, progress, cts.Token);
             if (cts.IsCancellationRequested) return;
 
-            ModelPath = dir;                          // OnModelPathChanged → Persist
+            // ダウンロードが返すのはフォルダ。ルータは拡張子で振り分ける（.gguf→llama.cpp／フォルダ→ONNX）
+            // ため、ここでフォルダ内の実パス（GGUF なら .gguf ファイル）へ解決してから ModelPath に入れる。
+            // フォルダのまま入れると GGUF が ONNX 行きになり「genai_config.json が見つかりません」になる。
             var name = Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar));
+            var resolved = _modelCatalog.ResolvePath(name);
+            ModelPath = string.IsNullOrEmpty(resolved) ? dir : resolved;   // OnModelPathChanged → Persist
             if (!string.IsNullOrEmpty(name))
             {
                 if (!AvailableModels.Contains(name)) AvailableModels.Add(name);
