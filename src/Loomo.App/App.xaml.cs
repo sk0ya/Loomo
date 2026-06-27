@@ -27,6 +27,12 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         StartupProfiler.Mark("OnStartup 開始");
+
+        // エディタ構築の初回JITコスト（.vimrc 解析パス, 約250ms）をバックグラウンドで先に償却する。
+        // WPF 初期化と並行して走らせ、最初の VimEditorControl 生成がウォーム済みパス（約1ms）に
+        // 当たるようにする。fire-and-forget が想定された使い方（プロセス毎に一度だけ実行・スレッド安全）。
+        _ = Editor.Controls.VimEditorControl.WarmUpAsync();
+
         base.OnStartup(e);
 
         // 汎用ホスト（Host.CreateDefaultBuilder）は appsettings.json 探索・環境変数/コマンドライン構成・

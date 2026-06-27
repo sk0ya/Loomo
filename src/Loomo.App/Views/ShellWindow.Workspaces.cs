@@ -192,10 +192,18 @@ public partial class ShellWindow
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
         }
 
+        // 起動時（deferHydration）は重い復元（ConPTY 起動・エディタ実体化・WebView2）を一気に走らせず、
+        // 各段の間でメッセージループへ戻す。これらは団子で繋がると初フレーム後に 1 回の長い UI スレッド
+        // ブロック（体感「一瞬カクっと重い」）になるため、フレームを跨ぐ小さなチャンクへ分散して
+        // 各段の間に入力/描画を処理させる（実行中のワークスペース切替では従来どおり一括＝体感のため）。
         RestoreTerminalTabs(workspace);
         StartupProfiler.Mark("  復元:RestoreTerminalTabs");
+        if (deferHydration)
+            await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
         RestoreEditorTabs(workspace);
         StartupProfiler.Mark("  復元:RestoreEditorTabs");
+        if (deferHydration)
+            await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
         await RestoreBrowserTabsAsync(workspace);
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
         CompleteStageSnapshotRestore();
