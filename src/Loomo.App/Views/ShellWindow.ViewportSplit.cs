@@ -305,6 +305,9 @@ public partial class ShellWindow
         // OS の既定ブラウザではなく Loomo 内蔵のブラウザペインで開く（Handled=true で既定動作を抑止）。
         control.LinkClicked += OnEditorLinkClicked;
         control.FileLinkClicked += OnEditorFileLinkClicked;
+        // 使用箇所一覧（Find References / gr）：エディタは結果を表示せず FindReferencesResult を
+        // 発火するだけなので、ホストが受けてポップアップに一覧表示する（ShellWindow.References.cs）。
+        control.FindReferencesResult += OnEditorFindReferencesResult;
         // 右クリックメニューへ「AIに聞く」「ブラウザで調べる」を追加する（選択時のみ・sk0ya.Editor.Controls 1.0.19）。
         control.ContextMenuBuilding += OnEditorContextMenuBuilding;
 

@@ -1044,6 +1044,29 @@
                      ウィンドウ内のレイヤとして被せる。 -->
                 <Grid x:Name="PaneDragOverlay" Grid.Column="2" Panel.ZIndex="100" Visibility="Collapsed" />
 
+                <!-- 使用箇所一覧（エディタの Find References / gr）。エディタは結果を表示せず
+                     FindReferencesResult イベントを発火するだけなので、ホスト側でこのポップアップに
+                     一覧表示し、クリックで該当ファイル・行へジャンプする（ShellWindow.References.cs）。
+                     ※「まず配線だけ最小実装」段階。見た目は後で詰める。 -->
+                <Popup x:Name="ReferencesPopup" PlacementTarget="{Binding ElementName=PaneHost}"
+                       Placement="Center" StaysOpen="False" AllowsTransparency="True">
+                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="4" Padding="4"
+                            MinWidth="460" MaxWidth="760">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                        </Border.Effect>
+                        <DockPanel>
+                            <TextBlock x:Name="ReferencesPopupTitle" DockPanel.Dock="Top"
+                                       FontSize="12" FontWeight="SemiBold" Margin="8,4,8,6"
+                                       Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" />
+                            <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="ReferencesPopupList" />
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Popup>
+
                 <!-- 設定の中央オーバーレイ（ActivityBar の ⚙/🎨 で開く）。サイドバーの縦積みを置き換え、
                      左カテゴリ[AI/外観/エディタ/安全]＋右内容の広い設定画面を中央に被せる。
                      起動を軽くするため中身は初回オープン時に遅延生成する（code-behind が Content を差し込む）。 -->
