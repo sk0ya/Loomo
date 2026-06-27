@@ -142,6 +142,7 @@
                              SelectionMode="Extended"
                              MouseDoubleClick="OnCommitShowDiff"
                              PreviewMouseRightButtonDown="OnListRightClickSelect"
+                             ContextMenuOpening="OnCommitContextMenuOpening"
                              FontFamily="Cascadia Mono, Consolas">
                         <ListBox.ContextMenu>
                             <ContextMenu>
@@ -149,6 +150,10 @@
                                 <Separator />
                                 <MenuItem Header="ここから新しいブランチを作成…" Click="OnCommitCreateBranch" />
                                 <MenuItem Header="チェックアウト（detached HEAD）" Click="OnCommitCheckout" />
+                                <!-- スカッシュは2件以上の選択時だけ表示（OnCommitContextMenuOpening で切替） -->
+                                <Separator x:Name="SquashSeparator" />
+                                <MenuItem x:Name="SquashMenuItem"
+                                          Header="選択したコミットをスカッシュ（1つにまとめる）" Click="OnCommitSquash" />
                                 <Separator />
                                 <MenuItem Header="チェリーピック（現在のブランチへ取り込み）" Click="OnCommitCherryPick" />
                                 <MenuItem Header="リバート（打ち消しコミットを作成）" Click="OnCommitRevert" />

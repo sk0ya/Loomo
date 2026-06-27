@@ -377,6 +377,113 @@ public sealed class GitService
     public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) =>
         MutateAsync("reset", $"--{mode.ToString().ToLowerInvariant()}", hash);
 
+    /// <summary>
+    /// 選択した連続するコミット群を1つにまとめる（squash）。<paramref name="hashes"/> は表示順・選択順に
+    /// 依存せず、内部で古い→新しいに整列する。範囲は現在のブランチ上の線形・連続したコミットであること
+    /// （途中に未選択コミットやマージ・分岐があれば失敗を返し、何も書き換えない）。まとめた後のメッセージは
+    /// squash の既定どおり各コミットのメッセージを連結したものになる。実装は非対話の対話的リベース
+    /// （シーケンスエディタを自動差し替え・メッセージは既定で確定）で、上に積まれたコミットは pick で再適用する。
+    /// コンフリクトが出た場合は通常のリベース進行中として続行・中止できる。
+    /// </summary>
+    public async Task<GitCommandResult> SquashAsync(IReadOnlyList<string> hashes)
+    {
+        try
+        {
+            return await SquashCoreAsync(hashes).ConfigureAwait(false);
+        }
+        finally
+        {
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task<GitCommandResult> SquashCoreAsync(IReadOnlyList<string> hashes)
+    {
+        if (hashes.Count < 2)
+            return new GitCommandResult(-1, "", "スカッシュには2件以上のコミットを選択してください。");
+
+        // 選択コミット自身を topo 順（新しい→古い）に並べ、両端（先端＝newest／根＝oldest）を取る。
+        var ordered = await RunAsync(
+            new[] { "rev-list", "--no-walk=sorted", "--topo-order" }.Concat(hashes).ToArray())
+            .ConfigureAwait(false);
+        if (!ordered.Success)
+            return ordered;
+        var sel = ordered.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        if (sel.Count < 2)
+            return new GitCommandResult(-1, "", "スカッシュには2件以上のコミットを選択してください。");
+        var newest = sel[0];
+        var oldest = sel[^1];
+
+        // 先端は現在の HEAD に到達可能（同一含む）でなければならない（別ブランチのコミットは対象外）。
+        var onHead = await RunAsync("merge-base", "--is-ancestor", newest, "HEAD").ConfigureAwait(false);
+        if (!onHead.Success)
+            return new GitCommandResult(-1, "",
+                "現在のブランチに含まれる連続したコミットのみスカッシュできます。");
+
+        // 根に親があるか（最初のコミットを含むなら --root リベース）。
+        var hasParent = (await RunAsync("rev-parse", "--verify", "--quiet", $"{oldest}^").ConfigureAwait(false))
+            .Success;
+
+        // oldest→newest の線形な並びを取り、選択集合と完全一致するか（連続・線形）を検証する。
+        var chainResult = hasParent
+            ? await RunAsync("rev-list", "--reverse", $"{oldest}^..{newest}").ConfigureAwait(false)
+            : await RunAsync("rev-list", "--reverse", newest).ConfigureAwait(false);
+        if (!chainResult.Success)
+            return chainResult;
+        var chain = chainResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        if (chain.Count != sel.Count || !chain.ToHashSet().SetEquals(sel))
+            return new GitCommandResult(-1, "",
+                "連続したコミットを選択してください（範囲の途中に選択していないコミットやマージがあります）。");
+
+        // 先端より上に積まれているコミット（newest..HEAD）。これらは pick で再適用する。
+        var aboveResult = await RunAsync("rev-list", "--reverse", $"{newest}..HEAD").ConfigureAwait(false);
+        if (!aboveResult.Success)
+            return aboveResult;
+        var above = aboveResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+
+        // 対話的リベースの todo を組み立てる（古い順）。根は pick、続きは squash でまとめ、上の積みは pick。
+        var todo = new StringBuilder();
+        todo.Append("pick ").Append(chain[0]).Append('\n');
+        for (var i = 1; i < chain.Count; i++)
+            todo.Append("squash ").Append(chain[i]).Append('\n');
+        foreach (var c in above)
+            todo.Append("pick ").Append(c).Append('\n');
+
+        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        if (gitDir is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+        var todoPath = Path.Combine(gitDir, "loomo-squash-todo.txt");
+        try
+        {
+            await File.WriteAllTextAsync(todoPath, todo.ToString()).ConfigureAwait(false);
+
+            // GIT_SEQUENCE_EDITOR を「todo を我々の内容で上書きする」コマンドに差し替える
+            // （git は値の後ろに todo ファイルのパスを付けて呼ぶ。git-for-windows の cp を使う）。
+            var env = new Dictionary<string, string>
+            {
+                ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
+            };
+            var baseArg = hasParent ? $"{oldest}^" : "--root";
+            return await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(todoPath); } catch { /* 後始末の失敗は無視 */ }
+        }
+    }
+
+    /// <summary>Windows パスを git-for-windows の sh が解釈できる msys 形式へ（例: C:\a → /c/a）。</summary>
+    private static string ToMsysPath(string path)
+    {
+        var p = path.Replace('\\', '/');
+        if (p.Length >= 2 && p[1] == ':')
+            p = "/" + char.ToLowerInvariant(p[0]) + p[2..];
+        return p;
+    }
+
     // ===== 実行基盤 =====
 
     private async Task<GitCommandResult> MutateAsync(params string[] args)
@@ -392,7 +499,14 @@ public sealed class GitService
     }
 
     /// <summary>git を起動し、終了まで待って stdout/stderr を返す。タイムアウト時はプロセスツリーごと kill。</summary>
-    public async Task<GitCommandResult> RunAsync(params string[] args)
+    public Task<GitCommandResult> RunAsync(params string[] args) => RunCoreAsync(null, args);
+
+    /// <summary>
+    /// <see cref="RunAsync"/> の実体。<paramref name="extraEnv"/> を指定すると既定の環境変数
+    /// （GIT_EDITOR / GIT_SEQUENCE_EDITOR 等）を上書きできる（スカッシュの todo 差し替えに使う）。
+    /// </summary>
+    private async Task<GitCommandResult> RunCoreAsync(
+        IReadOnlyDictionary<string, string>? extraEnv, params string[] args)
     {
         var root = RootPath;
         if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
@@ -413,6 +527,9 @@ public sealed class GitService
         psi.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
         psi.EnvironmentVariables["GIT_EDITOR"] = "true";
         psi.EnvironmentVariables["GIT_SEQUENCE_EDITOR"] = "true";
+        if (extraEnv is not null)
+            foreach (var (key, value) in extraEnv)
+                psi.EnvironmentVariables[key] = value;
         // 出力を機械可読に固定（パスの \xxx エスケープと色を無効化）
         psi.ArgumentList.Add("-c");
         psi.ArgumentList.Add("core.quotepath=false");

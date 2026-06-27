@@ -155,6 +155,33 @@ public partial class GitSessionView : UserControl
             await vm.CheckoutCommitAsync(row);
     }
 
+    /// <summary>選択中のコミット件数（グラフ継続行は除く）。</summary>
+    private int SelectedCommitCount =>
+        LogList.SelectedItems.OfType<GitLogRow>().Count(r => r.IsCommit);
+
+    /// <summary>コミット一覧のコンテキストメニューを開く直前：スカッシュは2件以上の選択時だけ見せる。</summary>
+    private void OnCommitContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var visible = SelectedCommitCount >= 2 ? Visibility.Visible : Visibility.Collapsed;
+        SquashMenuItem.Visibility = visible;
+        SquashSeparator.Visibility = visible;
+    }
+
+    /// <summary>選択した複数コミットを1つにまとめる（squash）。履歴を書き換えるので確認を取る。</summary>
+    private async void OnCommitSquash(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+            return;
+        var rows = LogList.SelectedItems.OfType<GitLogRow>().Where(r => r.IsCommit).ToList();
+        if (rows.Count < 2)
+            return;  // メニューは2件以上のときだけ出るが念のため
+        var answer = MessageBox.Show(Window.GetWindow(this)!,
+            $"選択した {rows.Count} 件のコミットを1つにまとめます。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
+            "スカッシュ", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes)
+            await vm.SquashAsync(rows);
+    }
+
     private async void OnCommitCherryPick(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)

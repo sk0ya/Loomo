@@ -255,6 +255,15 @@ public sealed partial class GitSessionViewModel : ObservableObject
         : RunOpAsync($"リセット（{mode.ToString().ToLowerInvariant()}）{row.ShortHash}",
             () => _git.ResetAsync(row.Hash, mode));
 
+    /// <summary>選択した連続コミット群を1つにまとめる（squash）。2件未満なら何もしない。</summary>
+    public Task<GitCommandResult?> SquashAsync(IReadOnlyList<GitLogRow> rows)
+    {
+        var hashes = rows.Where(r => r.Hash is not null).Select(r => r.Hash!).ToList();
+        if (hashes.Count < 2)
+            return Task.FromResult<GitCommandResult?>(null);
+        return RunOpAsync($"スカッシュ（{hashes.Count} 件）", () => _git.SquashAsync(hashes));
+    }
+
     /// <summary>
     /// 選択コミットの差分を Diff セッションで表示する。
     /// 1件ならそのコミットの変更、2件以上なら一覧上の端点（最古と最新）のスナップショット比較。
