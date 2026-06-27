@@ -102,10 +102,15 @@ public partial class ShellWindow
 
         if (center)
         {
-            // 入れ替え：ターゲットの隣へ同じ比率で挿し、ターゲットを外す＝ターゲットの場所を引き継ぐ。
-            var leaf = new PaneLeaf { Kind = dragged, Weight = targetLeaf.Weight };
+            // 入れ替え：ターゲットの位置と比率をそのまま引き継ぎ、ターゲットを外す＝ターゲットの場所を引き継ぐ。
+            var targetWeight = targetLeaf.Weight > 0 ? targetLeaf.Weight : 1;
+            var leaf = new PaneLeaf { Kind = dragged, Weight = targetWeight };
             root = InsertRelative(root, leaf, targetLeaf, DropZone.Left);
             root = RemoveNode(root, targetLeaf);
+            // InsertRelative は分割挿入用に target/node の取り分を半分ずつへ割る。入れ替えでは
+            // ターゲットの取り分を丸ごと引き継ぐので、半割りされた重みを元の比率へ戻す
+            // （これをしないと入れ替えのたびに位置の幅が半分へ寄り、繰り返すとレイアウトがズレる）。
+            leaf.Weight = targetWeight;
         }
         else
         {
