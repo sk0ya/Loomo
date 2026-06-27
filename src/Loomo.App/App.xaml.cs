@@ -186,6 +186,8 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();   // CSV/TSV を VGrid グリッドで表示
         services.AddSingleton<IEditorSupportProvider, BrowserEditorSupport>(); // PDF/SVG/HTML 等はブラウザ(WebView2)で表示
         services.AddSingleton<EditorSupportRegistry>();
+        // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。registry には載せず ShellWindow が直接使う。
+        services.AddSingleton<HexEditorSupport>();
 
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();

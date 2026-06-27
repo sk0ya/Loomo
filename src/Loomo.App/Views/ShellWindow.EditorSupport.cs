@@ -141,7 +141,12 @@ public partial class ShellWindow
             return;
 
         // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。
-        if (provider is IEditorSupportVisualProvider visual && filePath is not null)
+        // 対応プロバイダが無く、かつバイナリのファイルは Hex ダンプへフォールバックする（registry 外）。
+        var visual = provider as IEditorSupportVisualProvider;
+        if (visual is null && provider is null && filePath is not null && BinaryFileDetector.IsBinary(filePath))
+            visual = _hexSupport;
+
+        if (visual is not null && filePath is not null)
         {
             if (_editorSupportEditSubscribed.Add(visual))
                 visual.ContentEdited += EditorSupportVisual_ContentEdited;

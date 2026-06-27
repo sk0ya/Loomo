@@ -38,6 +38,8 @@ public partial class ShellWindow : Window
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
     private readonly EditorSupportRegistry _editorSupports;
+    /// <summary>対応プロバイダの無いバイナリのフォールバック表示（Hex ダンプ）。registry 外。</summary>
+    private readonly HexEditorSupport _hexSupport;
     private readonly KeybindingService _keybindings;
     private readonly ShellViewModel _vm;
     /// <summary>キーボードショートカットのディスパッチャ（実効バインド→コマンド実行）。</summary>
@@ -194,6 +196,7 @@ public partial class ShellWindow : Window
         TabIconService tabIcons,
         AiSettings settings,
         EditorSupportRegistry editorSupports,
+        HexEditorSupport hexSupport,
         KeybindingService keybindings)
     {
         StartupProfiler.Mark("ShellWindow ctor 開始");
@@ -213,6 +216,7 @@ public partial class ShellWindow : Window
         _tabIcons = tabIcons;
         _settings = settings;
         _editorSupports = editorSupports;
+        _hexSupport = hexSupport;
         _keybindings = keybindings;
         _keyboard = BuildKeyboardDispatcher();
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
