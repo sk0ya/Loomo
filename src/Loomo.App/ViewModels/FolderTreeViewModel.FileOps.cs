@@ -168,6 +168,14 @@ public sealed partial class FolderTreeViewModel
             SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(node.FullPath, node.IsDirectory));
     }
 
+    /// <summary>このフォルダーを検索の開始フォルダーにして検索パネルを開くよう要求する（ShellWindow が処理）。
+    /// フォルダかつ実在のときだけ発火する。</summary>
+    public void RequestSearchInFolder(FileNodeViewModel node)
+    {
+        if (node.IsDirectory && Directory.Exists(node.FullPath))
+            SearchInFolderRequested?.Invoke(this, node.FullPath);
+    }
+
     /// <summary>指定ファイルの誤字脱字チェックを要求する（ShellWindow が AIバーで処理）。
     /// AI が使える状態（暖機完了）かつ実在ファイルのときだけ発火する。</summary>
     public void RequestTypoCheck(FileNodeViewModel node)

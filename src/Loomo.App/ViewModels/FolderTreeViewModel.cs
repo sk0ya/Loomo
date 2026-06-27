@@ -104,6 +104,17 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ShellWindow が処理する：フォルダはそのフォルダへ cd、ファイルはパスをプロンプトへ入力（未実行）。
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
 
+    // FolderTree の「このフォルダーで検索」要求（フォルダのみ）。View（コンテキストメニュー）から発火し、
+    // ShellWindow が検索パネルを開いて、そのフォルダを検索の開始フォルダーに設定する。
+    public event EventHandler<string>? SearchInFolderRequested;
+
+    // 表示ルートが変わったとき（フォルダを開いた・ピンルートへ切替えた）。ShellWindow が購読して
+    // 検索パネルの既定の開始フォルダーへ反映する。
+    public event EventHandler<string>? CurrentRootChanged;
+
+    /// <summary>ツリーに現在表示している（ピン留めで切替わり得る）ルート。検索の既定フォルダーに使う。</summary>
+    public string? CurrentRoot => _currentRoot;
+
     // FolderTree の「AI-誤字脱字チェック」要求。View（コンテキストメニュー）から発火し、ShellWindow が
     // AIバーで /clear → 当該ファイルパスを渡して誤字脱字チェックのプロンプトを送信する。
     public event EventHandler<string>? TypoCheckRequested;

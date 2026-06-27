@@ -177,6 +177,13 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowSearch() => Activate(SidebarPanel.Search);
 
+    /// <summary>検索パネルを開く（トグルせず必ず開く）。フォルダーツリーの「このフォルダーで検索」用。</summary>
+    public void RevealSearchPanel()
+    {
+        ActivePanel = SidebarPanel.Search;
+        IsSidebarVisible = true;
+    }
+
     /// <summary>ActivityBar の Git アイコン。表示中は作業ツリーをライブ監視して自動更新する
     /// （実際の開始・停止は <see cref="UpdateGitPanelLive"/> が可視状態の変化に応じて行う）。</summary>
     [RelayCommand]

@@ -73,11 +73,15 @@ public interface IApprovalService
 public interface IWorkspaceSearchService
 {
     /// <summary>ファイルを名前で曖昧検索し、一致度の高い順に最大 <paramref name="max"/> 件返す。
-    /// 空クエリは（列挙順の）先頭から <paramref name="max"/> 件。</summary>
-    Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(string query, int max, CancellationToken ct);
+    /// 空クエリは（列挙順の）先頭から <paramref name="max"/> 件。
+    /// <paramref name="searchRoot"/> を渡すと、その（ワークスペースルート配下の）フォルダだけを検索する
+    /// （null/空＝ワークスペースルート全体。ルート外は無視してルート全体になる）。</summary>
+    Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(string query, int max, CancellationToken ct, string? searchRoot = null);
 
-    /// <summary>ファイル内容を grep する。一致行を出現順（ファイル→行）で返す。</summary>
-    Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct);
+    /// <summary>ファイル内容を grep する。一致行を出現順（ファイル→行）で返す。
+    /// <paramref name="searchRoot"/> を渡すと、その（ワークスペースルート配下の）フォルダだけを検索する
+    /// （null/空＝ワークスペースルート全体。ルート外は無視してルート全体になる）。</summary>
+    Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct, string? searchRoot = null);
 }
 
 /// <summary>ファイル名検索の1ヒット。<see cref="Score"/> は小さいほど一致が強い（並べ替え用）。</summary>

@@ -147,6 +147,68 @@ public class WorkspaceSearchTests
         finally { TryDelete(root); }
     }
 
+    [Fact]
+    public async Task Grep_searchRoot_limits_to_subfolder()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            // src 配下に絞れば needle は見つかる。
+            Assert.NotEmpty(await svc.GrepAsync(
+                "needle", new GrepOptions(), CancellationToken.None, Path.Combine(root, "src")));
+
+            // needle を含まない別フォルダに絞れば 0 件。
+            var docs = Path.Combine(root, "docs");
+            Directory.CreateDirectory(docs);
+            File.WriteAllText(Path.Combine(docs, "guide.md"), "no match here\n");
+            Assert.Empty(await svc.GrepAsync(
+                "needle", new GrepOptions(), CancellationToken.None, docs));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task Grep_searchRoot_accepts_relative_path()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            // 相対パス（ワークスペースルート基準）でも src 配下に絞れる。
+            Assert.NotEmpty(await svc.GrepAsync(
+                "needle", new GrepOptions(), CancellationToken.None, "src"));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task Grep_searchRoot_outside_workspace_falls_back_to_root()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            // ワークスペース外のフォルダを渡してもルート全体へ退避するので needle は見つかる。
+            var hits = await svc.GrepAsync(
+                "needle", new GrepOptions(), CancellationToken.None, Path.GetTempPath());
+            Assert.NotEmpty(hits);
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task FindFiles_searchRoot_limits_to_subfolder()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            // src 配下に絞ると README.md（ルート直下）は出ない。
+            var hits = await svc.FindFilesAsync(
+                "", 50, CancellationToken.None, Path.Combine(root, "src"));
+            Assert.All(hits, h => Assert.DoesNotContain("README", h.RelativePath, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(hits, h => h.RelativePath.EndsWith("app.cs", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { TryDelete(root); }
+    }
+
     private static void TryDelete(string dir)
     {
         try { Directory.Delete(dir, recursive: true); } catch { /* ベストエフォート */ }

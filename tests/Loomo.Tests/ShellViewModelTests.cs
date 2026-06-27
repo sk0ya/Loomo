@@ -71,7 +71,7 @@ public class ShellViewModelTests
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 
         var searchVm = new SearchPanelViewModel(
-            new sk0ya.Loomo.Services.Search.WorkspaceSearchService(workspace));
+            new sk0ya.Loomo.Services.Search.WorkspaceSearchService(workspace), workspace);
 
         var debugVm = new DebugViewModel(
             new sk0ya.Loomo.Services.Debug.NetcoredbgDebugService(), workspace, new FakeTerminalService());

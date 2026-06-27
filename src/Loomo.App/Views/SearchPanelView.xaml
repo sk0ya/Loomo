@@ -30,6 +30,32 @@
             </Setter>
         </Style>
 
+        <!-- 検索フォルダー欄の小ボタン（参照／リセット）。テーマ対応・低主張。 -->
+        <Style x:Key="FolderBarButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{DynamicResource Bg}" CornerRadius="3"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- テーマ対応の TreeViewItem（既定の Windows 配色を使わせない）。ホバー＝Border、選択＝Accent。
              グループは既定で展開（IsExpanded=True）。一致行は子を持たないので矢印は畳む。 -->
         <Style x:Key="SearchTreeItem" TargetType="TreeViewItem">
@@ -125,6 +151,55 @@
                               ToolTip="アクティブなターミナル内を検索"
                               IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
             </StackPanel>
+
+            <!-- 検索の開始フォルダー（編集可・ワークスペースルート相対）。既定は FolderTree の表示ルート。
+                 空＝ワークスペース全体。入力中はサブフォルダの補完候補をポップアップ表示し、↺ で
+                 FolderTree のルートへ戻す。ターミナル検索時は隠す。 -->
+            <Grid Margin="0,0,0,4"
+                  Visibility="{Binding ShowSearchRoot, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Path Grid.Column="0" Width="13" Height="13" Stretch="Uniform"
+                      VerticalAlignment="Center" Margin="0,0,5,0"
+                      Fill="{DynamicResource FgDim}"
+                      Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,12 L1,12 Z" />
+                <Grid Grid.Column="1">
+                    <TextBox x:Name="RootBox" Padding="4,2" FontSize="11"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             VerticalContentAlignment="Center"
+                             ToolTip="検索する開始フォルダー（ワークスペースルート相対・空＝全体）"
+                             Text="{Binding SearchRoot, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             TextChanged="OnRootBoxTextChanged"
+                             PreviewKeyDown="OnRootBoxKeyDown"
+                             LostKeyboardFocus="OnRootBoxLostFocus" />
+                    <TextBlock Text="ワークスペース全体" IsHitTestVisible="False" FontSize="11"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding Text, ElementName=RootBox, Converter={StaticResource EmptyToVis}}" />
+                    <!-- フォルダパス補完（インテリセンス）。候補は RootBox の入力に応じて code-behind が流し込む。 -->
+                    <Popup x:Name="RootSuggestPopup" PlacementTarget="{Binding ElementName=RootBox}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                           Width="{Binding ActualWidth, ElementName=RootBox}">
+                        <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="3" Padding="1">
+                            <ListBox x:Name="RootSuggestList" MaxHeight="180" BorderThickness="0"
+                                     Background="Transparent" Foreground="{DynamicResource Fg}"
+                                     FontSize="11" FontFamily="Consolas"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="OnRootSuggestMouseDown" />
+                        </Border>
+                    </Popup>
+                </Grid>
+                <Button Grid.Column="2" Content="↺" Margin="4,0,0,0" Padding="0"
+                        Width="20"
+                        Style="{StaticResource FolderBarButton}"
+                        ToolTip="FolderTree のルートに戻す"
+                        Visibility="{Binding CanResetSearchRoot, Converter={StaticResource BoolToVis}}"
+                        Command="{Binding ResetSearchRootCommand}" />
+            </Grid>
 
             <Grid>
                 <TextBox x:Name="QueryBox" Padding="6,4" FontSize="13"

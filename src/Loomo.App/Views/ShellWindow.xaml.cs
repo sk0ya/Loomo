@@ -330,6 +330,14 @@ public partial class ShellWindow : Window
         };
         // FolderTree の「ターミナルにセット」：フォルダは cd、ファイルはパスをプロンプトへ入力する。
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
+        // FolderTree の「このフォルダーで検索」：検索パネルを開き、そのフォルダを検索の開始フォルダーにする。
+        vm.FolderTree.SearchInFolderRequested += (_, path) =>
+        {
+            vm.SearchPanel.SetSearchRoot(path);
+            vm.RevealSearchPanel();
+        };
+        // 検索の既定の開始フォルダーを FolderTree の表示ルートに追従させる。
+        vm.FolderTree.CurrentRootChanged += (_, root) => vm.SearchPanel.SetDefaultRoot(root);
         // FolderTree の「AI-誤字脱字チェック」：AIバーを /clear して当該ファイルの誤字脱字チェックを実行する。
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         // FolderTree の「AIワークフロー」：AIバーをワークフローモードへ切替え、ファイルを構造化 input として実行する。

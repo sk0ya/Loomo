@@ -15,8 +15,9 @@ namespace sk0ya.Loomo.Services.Search;
 /// <summary>
 /// ファイル名検索・全文検索（grep）の実装。ripgrep（<c>rg</c>）が PATH 上にあればそれを使い
 /// （<c>--files</c> / <c>--vimgrep</c>、.gitignore 尊重）、無ければインプロセス走査へ退避する。
-/// 検索ルートは <see cref="IWorkspaceService.RootPath"/>。ルート未設定なら空を返す。
-/// プロセスは <c>WorkingDirectory=ルート</c>＋検索対象 <c>.</c> で起動するため、出力パスは常に相対。
+/// 検索ルートは既定で <see cref="IWorkspaceService.RootPath"/>。呼び出し側が searchRoot を渡せば
+/// （ルート配下に限り）そのフォルダへ絞れる（<see cref="ResolveRoot"/>）。ルート未設定なら空を返す。
+/// プロセスは <c>WorkingDirectory=実効ルート</c>＋検索対象 <c>.</c> で起動するため、出力パスは常に相対。
 /// </summary>
 public sealed class WorkspaceSearchService : IWorkspaceSearchService
 {
@@ -32,10 +33,11 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 
     public WorkspaceSearchService(IWorkspaceService workspace) => _workspace = workspace;
 
-    public async Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(string query, int max, CancellationToken ct)
+    public async Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(
+        string query, int max, CancellationToken ct, string? searchRoot = null)
     {
-        var root = _workspace.RootPath;
-        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+        var root = ResolveRoot(searchRoot);
+        if (root is null)
             return Array.Empty<FileSearchHit>();
 
         var relPaths = HasRg.Value
@@ -77,15 +79,44 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             .ToList();
     }
 
-    public async Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct)
+    public async Task<IReadOnlyList<ContentSearchHit>> GrepAsync(
+        string query, GrepOptions options, CancellationToken ct, string? searchRoot = null)
     {
-        var root = _workspace.RootPath;
-        if (string.IsNullOrEmpty(root) || !Directory.Exists(root) || string.IsNullOrEmpty(query))
+        if (string.IsNullOrEmpty(query))
+            return Array.Empty<ContentSearchHit>();
+
+        var root = ResolveRoot(searchRoot);
+        if (root is null)
             return Array.Empty<ContentSearchHit>();
 
         return HasRg.Value
             ? await GrepWithRgAsync(query, options, root, ct)
             : GrepInProcess(query, options, root, ct);
+    }
+
+    /// <summary>検索の実効ルートを決める。<paramref name="searchRoot"/> が空ならワークスペースルート、
+    /// 指定があればワークスペースルート配下に限り採用する（ルート外・不在のフォルダは無視してルート全体へ退避）。
+    /// 出力の相対パスはこの実効ルート基準になる（FullPath は絶対なのでファイルを開く側は影響を受けない）。
+    /// ルート未設定／不在なら null。</summary>
+    private string? ResolveRoot(string? searchRoot)
+    {
+        var root = _workspace.RootPath;
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+            return null;
+
+        if (string.IsNullOrWhiteSpace(searchRoot))
+            return root;
+
+        var rootFull = Path.GetFullPath(root).TrimEnd('\\', '/');
+        // 相対パスはワークスペースルート基準で解決する（絶対パスはそのまま）。
+        var candidate = Path.GetFullPath(searchRoot, rootFull).TrimEnd('\\', '/');
+        if (!Directory.Exists(candidate))
+            return root;
+
+        var withinRoot = candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
+            || candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || candidate.StartsWith(rootFull + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        return withinRoot ? candidate : root;
     }
 
     // ===== ripgrep =====

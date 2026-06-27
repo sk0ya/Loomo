@@ -150,6 +150,9 @@ public sealed partial class FolderTreeViewModel
         RootLabel = Path.GetFileName(path.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(RootLabel)) RootLabel = path;
 
+        // 検索パネルの既定の開始フォルダーを表示ルートへ追従させる。
+        CurrentRootChanged?.Invoke(this, _currentRoot);
+
         // 旧ルートの内容を残さない（git 読込の継続でこのルートのツリーが投入される）。
         // ignore 非表示・差分マークは git に依存するため、空 git でフル描画して直後に
         // 訂正するより、git 完了後の 1 回の ReloadNodes でちらつきなく投入する。

@@ -338,6 +338,9 @@
                                               Visibility="{Binding IsHtml, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="ターミナルにセット" Click="OnSetInTerminalClick" />
+                                    <!-- フォルダのみ：このフォルダーを検索の開始フォルダーにして検索パネルを開く。 -->
+                                    <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="パスをコピー" Click="OnCopyPathClick" />
                                     <!-- フォルダのみ：ピン留めするとヘッダの ComboBox からルートとして表示できる。 -->
                                     <MenuItem Header="ルートにピン留め" Click="OnPinClick"

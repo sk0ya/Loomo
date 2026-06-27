@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -90,6 +91,7 @@ public readonly record struct SearchHit(string FullPath, int Line, int Column, s
 public sealed partial class SearchPanelViewModel : ObservableObject
 {
     private readonly IWorkspaceSearchService _search;
+    private readonly IWorkspaceService _workspace;
     private CancellationTokenSource? _cts;
 
     /// <summary>1ヒットを「エディタでプレビュー」したい（単クリック・キーボード選択）。</summary>
@@ -119,6 +121,25 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索範囲（テキスト grep / ファイル名 / ターミナル）。</summary>
     [ObservableProperty] private SearchScope _scope = SearchScope.Text;
 
+    /// <summary>検索の開始フォルダー。ワークスペースルートからの相対パス（'/' 区切り）で持つ。
+    /// 空＝ワークスペースルート全体。既定は FolderTree の表示ルート（<see cref="SetDefaultRoot"/>）。
+    /// ルート配下のフォルダのみ有効（サービス側でルート外は無視される）。
+    /// テキスト／ファイル名検索でのみ使う（ターミナル検索は対象外）。</summary>
+    [ObservableProperty] private string _searchRoot = "";
+
+    // 既定の開始フォルダー（FolderTree の表示ルート・相対）。リセットの戻り先・追従の基準。
+    private string _defaultRoot = "";
+
+    /// <summary>既定（FolderTree ルート）と違うフォルダーに絞っているか（リセットボタンの表示可否）。</summary>
+    public bool CanResetSearchRoot
+        => !string.Equals(Normalize(SearchRoot), Normalize(_defaultRoot), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>フォルダー欄を表示するか（ターミナル検索では対象外）。</summary>
+    public bool ShowSearchRoot => Scope != SearchScope.Terminal;
+
+    /// <summary>フォルダパス補完（インテリセンス）の基準となるワークスペースルート。</summary>
+    public string? WorkspaceRoot => _workspace.RootPath;
+
     /// <summary>クエリ欄のプレースホルダ（モードで文言を変える）。</summary>
     public string QueryPlaceholder => Scope switch
     {
@@ -129,7 +150,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     public ObservableCollection<SearchFileGroup> Results { get; } = new();
 
-    public SearchPanelViewModel(IWorkspaceSearchService search) => _search = search;
+    public SearchPanelViewModel(IWorkspaceSearchService search, IWorkspaceService workspace)
+    {
+        _search = search;
+        _workspace = workspace;
+    }
 
     partial void OnQueryChanged(string value) => ScheduleSearch();
     partial void OnCaseSensitiveChanged(bool value) => ScheduleSearch();
@@ -137,9 +162,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     partial void OnIncludeGlobChanged(string value) => ScheduleSearch();
     partial void OnExcludeGlobChanged(string value) => ScheduleSearch();
 
+    partial void OnSearchRootChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanResetSearchRoot));
+        ScheduleSearch();
+    }
+
     partial void OnScopeChanged(SearchScope value)
     {
         OnPropertyChanged(nameof(QueryPlaceholder));
+        OnPropertyChanged(nameof(ShowSearchRoot));
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
         if (value != SearchScope.Text)
             ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
@@ -148,6 +180,50 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     /// <summary>検索ワードをクリアする（結果もエディタのハイライトも消える）。Esc 用。</summary>
     public void ClearQuery() => Query = "";
+
+    /// <summary>検索の開始フォルダーを指定する（フォルダーツリーの「このフォルダーで検索」用）。
+    /// フルパスをワークスペースルート相対に直して持つ。</summary>
+    public void SetSearchRoot(string fullPath) => SearchRoot = ToRelative(fullPath);
+
+    /// <summary>検索の既定の開始フォルダー（FolderTree の表示ルート）を設定する。
+    /// ルートが変わったら検索フォルダーもそこへ合わせる（明示的なルート変更なので追従させる）。</summary>
+    public void SetDefaultRoot(string? fullPath)
+    {
+        _defaultRoot = ToRelative(fullPath);
+        SearchRoot = _defaultRoot;             // OnSearchRootChanged 経由で再検索＆ボタン更新
+        OnPropertyChanged(nameof(CanResetSearchRoot)); // 値が同じでも基準が変わったので通知する
+    }
+
+    /// <summary>検索フォルダーを既定（FolderTree のルート）へ戻す。</summary>
+    [RelayCommand]
+    private void ResetSearchRoot() => SearchRoot = _defaultRoot;
+
+    /// <summary>フルパスをワークスペースルートからの相対パス（'/' 区切り）へ。ルート＝空、
+    /// ルート外・ルート未設定はフルパスのまま（サービス側でルート外は無視される）。</summary>
+    private string ToRelative(string? fullPath)
+    {
+        if (string.IsNullOrEmpty(fullPath))
+            return "";
+        var root = _workspace.RootPath;
+        if (string.IsNullOrEmpty(root))
+            return fullPath;
+        try
+        {
+            var rel = System.IO.Path.GetRelativePath(root, fullPath);
+            if (rel == ".")
+                return "";
+            if (rel.StartsWith("..", StringComparison.Ordinal) || System.IO.Path.IsPathRooted(rel))
+                return fullPath;
+            return rel.Replace('\\', '/');
+        }
+        catch
+        {
+            return fullPath;
+        }
+    }
+
+    private static string Normalize(string? path)
+        => (path ?? "").Replace('\\', '/').TrimEnd('/');
 
     /// <summary>入力が変わるたびに直前の検索をキャンセルし、少し待ってから再検索する。</summary>
     private void ScheduleSearch()
@@ -207,7 +283,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             ExcludeGlob: NullIfBlank(ExcludeGlob),
             MaxResults: 1000);
 
-        var hits = await _search.GrepAsync(Query, options, ct);
+        var hits = await _search.GrepAsync(Query, options, ct, NullIfBlank(SearchRoot));
         if (ct.IsCancellationRequested)
             return;
 
@@ -229,7 +305,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>ファイル名を曖昧検索し、1ファイル1行（一致行なし）の結果として反映する。</summary>
     private async Task RunFindFilesAsync(CancellationToken ct)
     {
-        var hits = await _search.FindFilesAsync(Query, 500, ct);
+        var hits = await _search.FindFilesAsync(Query, 500, ct, NullIfBlank(SearchRoot));
         if (ct.IsCancellationRequested)
             return;
 

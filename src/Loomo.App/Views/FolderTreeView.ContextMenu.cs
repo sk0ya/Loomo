@@ -154,6 +154,12 @@ public partial class FolderTreeView
             vm.RequestSetInTerminal(node);
     }
 
+    private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestSearchInFolder(node);
+    }
+
     // ノードのコンテキストメニューを開くたびに、末尾の「AI」サブメニュー（と区切り線）の表示可否を決める。
     // AIの暖機が完了（モデルロード済み）していて、対象が実在ファイルのときだけ出す。
     private void OnNodeContextMenuOpened(object sender, RoutedEventArgs e)
