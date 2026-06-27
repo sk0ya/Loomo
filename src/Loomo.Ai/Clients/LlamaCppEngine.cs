@@ -32,6 +32,7 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
     private readonly SemaphoreSlim _gate = new(1, 1);
     private LLamaWeights? _weights;
     private LLamaContext? _context;
+    private NativeModelPath? _nativeModelPath;
     private string? _loadedPath;
     private int _ctxSize;
     private bool _disposed;
@@ -120,12 +121,30 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
             ValidateModelPath(modelPath);
             ResetContext();
             _weights?.Dispose();
-            _weights = null; _loadedPath = null;
+            _nativeModelPath?.Dispose();
+            _weights = null; _nativeModelPath = null; _loadedPath = null;
 
-            var mp = MakeParams(modelPath, maxLength);
-            _weights = LLamaWeights.LoadFromFile(mp);
+            var nativeModelPath = NativeModelPath.Create(modelPath);
+            LLamaWeights? weights = null;
+            LLamaContext? context = null;
+            try
+            {
+                var mp = MakeParams(nativeModelPath.Path, maxLength);
+                weights = LLamaWeights.LoadFromFile(mp);
+                context = weights.CreateContext(mp);
+            }
+            catch
+            {
+                context?.Dispose();
+                weights?.Dispose();
+                nativeModelPath.Dispose();
+                throw;
+            }
+
+            _nativeModelPath = nativeModelPath;
+            _weights = weights;
             _loadedPath = modelPath;
-            _context = _weights.CreateContext(mp);
+            _context = context;
             _ctxSize = maxLength;
             _fedTokens.Clear();
             return true;
@@ -135,7 +154,7 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
         if (_context is null || _ctxSize < maxLength)
         {
             ResetContext();
-            _context = _weights.CreateContext(MakeParams(modelPath, maxLength));
+            _context = _weights.CreateContext(MakeParams(_nativeModelPath!.Path, maxLength));
             _ctxSize = maxLength;
             _fedTokens.Clear();
         }
@@ -307,6 +326,7 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
         _disposed = true;
         ResetContext();
         _weights?.Dispose();
+        _nativeModelPath?.Dispose();
         _gate.Dispose();
     }
 }

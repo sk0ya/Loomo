@@ -29,6 +29,7 @@ public sealed class OnnxGenAiEngine : ILocalInferenceEngine, ILocalWarmableEngin
     private readonly OgaHandle _oga = new();
     private Model? _model;
     private Tokenizer? _tokenizer;
+    private NativeModelPath? _nativeModelPath;
     private string? _loadedPath;
     private bool _disposed;
 
@@ -142,10 +143,27 @@ public sealed class OnnxGenAiEngine : ILocalInferenceEngine, ILocalWarmableEngin
         ResetGenerator();
         _tokenizer?.Dispose();
         _model?.Dispose();
-        _model = null; _tokenizer = null; _loadedPath = null;
+        _nativeModelPath?.Dispose();
+        _model = null; _tokenizer = null; _nativeModelPath = null; _loadedPath = null;
 
-        var model = new Model(modelPath);
-        _tokenizer = new Tokenizer(model);
+        var nativeModelPath = NativeModelPath.Create(modelPath);
+        Model? model = null;
+        Tokenizer? tokenizer = null;
+        try
+        {
+            model = new Model(nativeModelPath.Path);
+            tokenizer = new Tokenizer(model);
+        }
+        catch
+        {
+            tokenizer?.Dispose();
+            model?.Dispose();
+            nativeModelPath.Dispose();
+            throw;
+        }
+
+        _nativeModelPath = nativeModelPath;
+        _tokenizer = tokenizer;
         _model = model;
         _loadedPath = modelPath;
         return true;
@@ -325,6 +343,7 @@ public sealed class OnnxGenAiEngine : ILocalInferenceEngine, ILocalWarmableEngin
         ResetGenerator();
         _tokenizer?.Dispose();
         _model?.Dispose();
+        _nativeModelPath?.Dispose();
         _oga.Dispose();
         _gate.Dispose();
     }
