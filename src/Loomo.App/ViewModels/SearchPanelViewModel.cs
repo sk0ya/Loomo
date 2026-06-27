@@ -140,6 +140,18 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>フォルダパス補完（インテリセンス）の基準となるワークスペースルート。</summary>
     public string? WorkspaceRoot => _workspace.RootPath;
 
+    /// <summary>検索結果の各行で強調する検索ワード（テキスト／ファイル名／ターミナルとも Query を渡す）。
+    /// 空ならハイライトなし。</summary>
+    public string HighlightQuery => Query;
+
+    /// <summary>結果ハイライトを正規表現として扱うか。テキスト grep で正規表現モードのときだけ。
+    /// （ファイル名・ターミナルは常にリテラル一致でハイライトする。）</summary>
+    public bool HighlightUseRegex => Scope == SearchScope.Text && UseRegex;
+
+    /// <summary>結果ハイライトで大文字小文字を区別するか。テキスト grep の大小区別オンのときだけ
+    /// （ファイル名は曖昧検索・ターミナルは無区別なので区別しない）。</summary>
+    public bool HighlightCaseSensitive => Scope == SearchScope.Text && CaseSensitive;
+
     /// <summary>クエリ欄のプレースホルダ（モードで文言を変える）。</summary>
     public string QueryPlaceholder => Scope switch
     {
@@ -156,9 +168,24 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         _workspace = workspace;
     }
 
-    partial void OnQueryChanged(string value) => ScheduleSearch();
-    partial void OnCaseSensitiveChanged(bool value) => ScheduleSearch();
-    partial void OnUseRegexChanged(bool value) => ScheduleSearch();
+    partial void OnQueryChanged(string value)
+    {
+        OnPropertyChanged(nameof(HighlightQuery));
+        ScheduleSearch();
+    }
+
+    partial void OnCaseSensitiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HighlightCaseSensitive));
+        ScheduleSearch();
+    }
+
+    partial void OnUseRegexChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HighlightUseRegex));
+        ScheduleSearch();
+    }
+
     partial void OnIncludeGlobChanged(string value) => ScheduleSearch();
     partial void OnExcludeGlobChanged(string value) => ScheduleSearch();
 
@@ -172,6 +199,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(QueryPlaceholder));
         OnPropertyChanged(nameof(ShowSearchRoot));
+        OnPropertyChanged(nameof(HighlightUseRegex));
+        OnPropertyChanged(nameof(HighlightCaseSensitive));
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
         if (value != SearchScope.Text)
             ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
