@@ -70,16 +70,21 @@ public static class JsonTreeRenderer
 
         using (doc)
         {
+            // JSONパス → ソース行番号。ツリーの各ノードに data-line として埋め、「↦」で Editor の
+            // 該当行へカーソルを飛ばせるようにする。壊れた JSON はここまで来ない（RenderError 済み）。
+            var lines = BuildLineMap(text);
             var sb = new StringBuilder();
             var budget = MaxNodes;
-            WriteNode(sb, keyHtml: null, doc.RootElement, "$", ref budget);
+            WriteNode(sb, keyHtml: null, doc.RootElement, "$", lines, ref budget);
             if (budget <= 0)
                 sb.Append("<div class=\"trunc\">… ノードが多すぎるため以降を省略しました</div>");
             return sb.ToString();
         }
     }
 
-    private static void WriteNode(StringBuilder sb, string? keyHtml, JsonElement el, string path, ref int budget)
+    private static void WriteNode(
+        StringBuilder sb, string? keyHtml, JsonElement el, string path,
+        IReadOnlyDictionary<string, int> lines, ref int budget)
     {
         if (budget <= 0)
             return;
@@ -88,47 +93,51 @@ public static class JsonTreeRenderer
         switch (el.ValueKind)
         {
             case JsonValueKind.Object:
-                WriteContainer(sb, keyHtml, el, '{', '}', path, ref budget);
+                WriteContainer(sb, keyHtml, el, '{', '}', path, lines, ref budget);
                 break;
             case JsonValueKind.Array:
-                WriteContainer(sb, keyHtml, el, '[', ']', path, ref budget);
+                WriteContainer(sb, keyHtml, el, '[', ']', path, lines, ref budget);
                 break;
             default:
-                sb.Append("<div class=\"line\" data-path=\"").Append(MarkdownRenderer.EncodeAttribute(path)).Append("\">");
+                sb.Append("<div class=\"line\" data-path=\"").Append(MarkdownRenderer.EncodeAttribute(path))
+                  .Append('"').Append(LineAttr(lines, path)).Append('>');
                 AppendKey(sb, keyHtml);
                 AppendLeaf(sb, el);
-                AppendCopy(sb);
+                AppendActions(sb);
                 sb.Append("</div>");
                 break;
         }
     }
 
     private static void WriteContainer(
-        StringBuilder sb, string? keyHtml, JsonElement el, char open, char close, string path, ref int budget)
+        StringBuilder sb, string? keyHtml, JsonElement el, char open, char close, string path,
+        IReadOnlyDictionary<string, int> lines, ref int budget)
     {
         bool isObject = open == '{';
         int count = isObject ? CountObject(el) : el.GetArrayLength();
         var pathAttr = MarkdownRenderer.EncodeAttribute(path);
+        var lineAttr = LineAttr(lines, path);
 
         // 空のコンテナは折りたためないので 1 行（{ } / [ ]）で出す。
         if (count == 0)
         {
-            sb.Append("<div class=\"line\" data-path=\"").Append(pathAttr).Append("\">");
+            sb.Append("<div class=\"line\" data-path=\"").Append(pathAttr).Append('"').Append(lineAttr).Append('>');
             AppendKey(sb, keyHtml);
             sb.Append("<span class=\"p\">").Append(open).Append(' ').Append(close).Append("</span>");
-            AppendCopy(sb);
+            AppendActions(sb);
             sb.Append("</div>");
             return;
         }
 
         var unit = isObject ? "項目" : "要素";
         sb.Append("<div class=\"node\">")
-          .Append("<div class=\"line opening\" data-path=\"").Append(pathAttr).Append("\"><span class=\"caret\"></span>");
+          .Append("<div class=\"line opening\" data-path=\"").Append(pathAttr).Append('"').Append(lineAttr)
+          .Append("><span class=\"caret\"></span>");
         AppendKey(sb, keyHtml);
         sb.Append("<span class=\"p\">").Append(open).Append("</span>")
           .Append("<span class=\"meta\"> ").Append(count).Append(' ').Append(unit).Append("</span>")
           .Append("<span class=\"preview\"> … <span class=\"p\">").Append(close).Append("</span></span>");
-        AppendCopy(sb);
+        AppendActions(sb);
         sb.Append("</div><div class=\"children\">");
 
         if (isObject)
@@ -138,7 +147,7 @@ public static class JsonTreeRenderer
                 if (budget <= 0)
                     break;
                 var k = "<span class=\"k\">\"" + MarkdownRenderer.Encode(prop.Name) + "\"</span><span class=\"c\">: </span>";
-                WriteNode(sb, k, prop.Value, path + Accessor(prop.Name), ref budget);
+                WriteNode(sb, k, prop.Value, path + Accessor(prop.Name), lines, ref budget);
             }
         }
         else
@@ -148,7 +157,7 @@ public static class JsonTreeRenderer
             {
                 if (budget <= 0)
                     break;
-                WriteNode(sb, keyHtml: null, item, path + "[" + i + "]", ref budget);
+                WriteNode(sb, keyHtml: null, item, path + "[" + i + "]", lines, ref budget);
                 i++;
             }
         }
@@ -157,15 +166,19 @@ public static class JsonTreeRenderer
           .Append(close).Append("</span></div></div>");
     }
 
+    private static string LineAttr(IReadOnlyDictionary<string, int> lines, string path)
+        => lines.TryGetValue(path, out var l) ? " data-line=\"" + l + "\"" : "";
+
     private static void AppendKey(StringBuilder sb, string? keyHtml)
     {
         if (keyHtml is not null)
             sb.Append(keyHtml);
     }
 
-    /// <summary>各行の末尾にホバーで現れる「JSONパスをコピー」アイコン。</summary>
-    private static void AppendCopy(StringBuilder sb)
-        => sb.Append("<span class=\"copy\" title=\"JSONパスをコピー\">⧉</span>");
+    /// <summary>各行の末尾にホバーで現れる操作アイコン（パスをコピー／エディタで開く）。</summary>
+    private static void AppendActions(StringBuilder sb)
+        => sb.Append("<span class=\"goto\" title=\"エディタでこの位置を開く\">↦</span>")
+             .Append("<span class=\"copy\" title=\"JSONパスをコピー\">⧉</span>");
 
     private static void AppendLeaf(StringBuilder sb, JsonElement el)
     {
@@ -210,6 +223,93 @@ public static class JsonTreeRenderer
         foreach (var _ in obj.EnumerateObject())
             n++;
         return n;
+    }
+
+    /// <summary>
+    /// JSONパス（<see cref="WriteNode"/> が出すのと同じ表記）→ ソースの 1 始まり行番号。
+    /// JsonDocument は位置を持たないので <see cref="Utf8JsonReader"/> でもう一度なめて
+    /// 各値トークンの開始バイト位置から行を割り出す。重複キーは先勝ち。
+    /// </summary>
+    private static Dictionary<string, int> BuildLineMap(string text)
+    {
+        var map = new Dictionary<string, int>();
+        var bytes = Encoding.UTF8.GetBytes(text);
+
+        // 改行（\n）のバイト位置。位置→行は二分探索で求める。
+        var newlines = new List<int>();
+        for (var i = 0; i < bytes.Length; i++)
+            if (bytes[i] == (byte)'\n')
+                newlines.Add(i);
+
+        int LineAt(long offset)
+        {
+            int lo = 0, hi = newlines.Count;
+            while (lo < hi)
+            {
+                var mid = (lo + hi) / 2;
+                if (newlines[mid] < offset) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo + 1;
+        }
+
+        var stack = new List<Frame>();
+        string PathForValue()
+        {
+            if (stack.Count == 0)
+                return "$";
+            var top = stack[^1];
+            if (top.IsArray)
+                return top.Path + "[" + top.Index++ + "]";
+            return top.PendingProp ?? top.Path;
+        }
+
+        try
+        {
+            var reader = new Utf8JsonReader(bytes, new JsonReaderOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+                MaxDepth = 256
+            });
+
+            while (reader.Read())
+            {
+                switch (reader.TokenType)
+                {
+                    case JsonTokenType.PropertyName:
+                        stack[^1].PendingProp = stack[^1].Path + Accessor(reader.GetString()!);
+                        break;
+                    case JsonTokenType.StartObject:
+                    case JsonTokenType.StartArray:
+                        var p = PathForValue();
+                        map.TryAdd(p, LineAt(reader.TokenStartIndex));
+                        stack.Add(new Frame { IsArray = reader.TokenType == JsonTokenType.StartArray, Path = p });
+                        break;
+                    case JsonTokenType.EndObject:
+                    case JsonTokenType.EndArray:
+                        stack.RemoveAt(stack.Count - 1);
+                        break;
+                    default: // scalar
+                        map.TryAdd(PathForValue(), LineAt(reader.TokenStartIndex));
+                        break;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // 編集途中などで壊れていれば、ここまでに拾えた分だけ返す（行ジャンプは保険なので欠けてよい）。
+        }
+
+        return map;
+    }
+
+    private sealed class Frame
+    {
+        public bool IsArray;
+        public string Path = "";
+        public int Index;
+        public string? PendingProp;
     }
 
     private static string RenderError(string text, JsonException ex)
@@ -276,6 +376,15 @@ internal static class JsonPreviewPage
 
                 // --- クリック委譲（document へ1回だけ＝本文差し替え後も効く） ---
                 document.addEventListener('click', e => {
+                    // 0) エディタで開く（行末アイコン）：対応するソース行へカーソルを飛ばしてフォーカス
+                    const go = e.target.closest('.goto');
+                    if (go) {
+                        e.stopPropagation();
+                        const line = Number(go.closest('[data-line]')?.getAttribute('data-line')) || 0;
+                        if (line && window.chrome?.webview)
+                            window.chrome.webview.postMessage({ type: 'jumpToSource', line: line });
+                        return;
+                    }
                     // 1) パスコピー（行末アイコン）
                     const copy = e.target.closest('.copy');
                     if (copy) {
@@ -432,12 +541,13 @@ internal static class JsonPreviewPage
             #json-root { white-space: nowrap; }
             .line { white-space: pre; }
             .opening { cursor: pointer; }
-            .copy {
+            .copy, .goto {
                 opacity: 0; cursor: pointer; margin-left: 10px;
                 color: {{muted}}; user-select: none; font-size: 0.95em;
             }
-            .line:hover > .copy { opacity: 0.65; }
-            .copy:hover { opacity: 1 !important; color: {{key}}; }
+            .goto { margin-left: 12px; }
+            .line:hover > .copy, .line:hover > .goto { opacity: 0.65; }
+            .copy:hover, .goto:hover { opacity: 1 !important; color: {{key}}; }
             [data-val] { cursor: pointer; }
             .match { background: color-mix(in srgb, {{key}} 22%, transparent); border-radius: 3px; }
             #json-toast {

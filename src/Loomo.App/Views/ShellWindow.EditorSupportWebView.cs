@@ -288,6 +288,7 @@ public partial class ShellWindow
         if (!_editorSupportWebEventsAttached)
         {
             view.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
+            view.CoreWebView2.ContextMenuRequested += EditorSupport_ContextMenuRequested;
 
             // 同梱 Web アセット（mermaid.min.js）の配信元。アプリ出力フォルダ固定なので一度だけマップする。
             try
@@ -368,22 +369,76 @@ public partial class ShellWindow
         {
             using var doc = System.Text.Json.JsonDocument.Parse(e.WebMessageAsJson);
             var root = doc.RootElement;
-            if (!root.TryGetProperty("type", out var type)
-                || type.GetString() != "markdownPreviewScroll"
-                || !root.TryGetProperty("ratio", out var ratioElement)
-                || !ratioElement.TryGetDouble(out var ratio))
+            if (!root.TryGetProperty("type", out var typeElement))
                 return;
 
-            _syncingEditorFromSupport = true;
-            _editorSupportSourceTab.Control.ScrollToVerticalRatio(ratio);
+            switch (typeElement.GetString())
+            {
+                case "markdownPreviewScroll":
+                    if (root.TryGetProperty("ratio", out var ratioElement)
+                        && ratioElement.TryGetDouble(out var ratio))
+                    {
+                        _syncingEditorFromSupport = true;
+                        try { _editorSupportSourceTab.Control.ScrollToVerticalRatio(ratio); }
+                        finally { _syncingEditorFromSupport = false; }
+                    }
+                    break;
+
+                // JSON ツリー等から「↦ エディタで開く」：対応するソース行へカーソルを移してフォーカスを戻す。
+                case "jumpToSource":
+                    var line = root.TryGetProperty("line", out var lineElement)
+                               && lineElement.TryGetInt32(out var l) ? l : 0;
+                    FocusEditorSupportSource(line > 0 ? line : null);
+                    break;
+            }
         }
         catch
         {
             // Ignore malformed messages from preview content.
         }
-        finally
+    }
+
+    /// <summary>
+    /// EditorSupport の追従元エディタへフォーカスを戻す（編集対象を見つけたら本文へ入る導線）。
+    /// 行が指定されればその位置へカーソルを移す（JSON ツリーの「↦」）。指定なしは現在位置のまま
+    /// フォーカスだけ移す（コンテキストメニュー／同期スクロール位置）。
+    /// </summary>
+    private void FocusEditorSupportSource(int? line)
+    {
+        var tab = _editorSupportSourceTab;
+        if (tab is null)
+            return;
+
+        // ソロ（舞台）モードなら Editor を舞台へ立ててから戻す。
+        if (_stageActive && _stagePane != PaneKind.Editor)
+            SetStagePane(PaneKind.Editor);
+
+        SetActiveEditorTab(tab);
+        if (line is int l)
+            tab.Control.NavigateTo(l, 1);
+        tab.Control.Focus();
+        _focusedRegion = FocusTarget.Of(PaneKind.Editor);
+    }
+
+    /// <summary>
+    /// EditorSupport の WebView2 右クリックメニューへ「エディタへフォーカス」を足す。プレビューで
+    /// 編集対象を見つけたら、そのまま追従元エディタへ戻れるようにする（全プレビュー共通の保険）。
+    /// </summary>
+    private void EditorSupport_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
+    {
+        if (_editorSupportSourceTab is null || sender is not CoreWebView2 core)
+            return;
+
+        try
         {
-            _syncingEditorFromSupport = false;
+            var item = core.Environment.CreateContextMenuItem(
+                "エディタへフォーカス", null, CoreWebView2ContextMenuItemKind.Command);
+            item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => FocusEditorSupportSource(null));
+            e.MenuItems.Insert(0, item);
+        }
+        catch
+        {
+            // メニュー項目を作れない環境でも、既定の右クリックメニューはそのまま出る。
         }
     }
 

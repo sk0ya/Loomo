@@ -204,6 +204,21 @@ public class EditorSupportTests
     }
 
     [Fact]
+    public void JsonSupport_各ノードにソース行番号を埋めエディタへ飛べる()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+        // 1行目:{ 2行目:name 3行目:nested{ 4行目:deep 5行目:} 6行目:}
+        var json = "{\n  \"name\": \"x\",\n  \"nested\": {\n    \"deep\": 1\n  }\n}";
+
+        var body = support.RenderBody(@"C:\work\data.json", json);
+
+        Assert.Contains("data-path=\"$.name\" data-line=\"2\"", body);
+        Assert.Contains("data-path=\"$.nested\" data-line=\"3\"", body);
+        Assert.Contains("data-path=\"$.nested.deep\" data-line=\"4\"", body);
+        Assert.Contains("class=\"goto\"", body);   // 「エディタで開く」導線
+    }
+
+    [Fact]
     public void VGridSupport_タイトルはGridプレフィックスとファイル名()
     {
         var support = new VGridEditorSupport(new AiSettings());
