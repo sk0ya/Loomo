@@ -29,6 +29,7 @@ public class EditorSupportTests
         return new(new IEditorSupportProvider[]
         {
             CreateSupport(),
+            new JsonEditorSupport(new AiSettings()),
             new ImageEditorSupport(),
             new VGridEditorSupport(new AiSettings()),
             new BrowserEditorSupport()
@@ -93,6 +94,113 @@ public class EditorSupportTests
         var uri = support.ResolveNavigationUri(@"C:\work\manual.pdf");
         Assert.StartsWith("file:///", uri);
         Assert.EndsWith("manual.pdf", uri);
+    }
+
+    [Theory]
+    [InlineData(@"C:\work\package.json")]
+    [InlineData(@"C:\work\tsconfig.JSON")]
+    [InlineData(@"C:\work\.vscode\settings.jsonc")]
+    public void Resolve_JsonファイルにはJsonプロバイダを返す(string path)
+    {
+        var provider = CreateRegistry().Resolve(path);
+
+        Assert.IsType<JsonEditorSupport>(provider);
+    }
+
+    [Fact]
+    public void JsonSupport_オブジェクトを折りたたみツリーのHTMLにする()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+        const string path = @"C:\work\data.json";
+
+        Assert.Equal("JSON: data.json", support.DescribeTitle(path));
+        Assert.IsAssignableFrom<IEditorSupportIncrementalHtmlProvider>(support);
+
+        var html = support.RenderHtml(path, """{ "name": "loomo", "count": 3, "ok": true }""");
+        Assert.Contains("JSON: data.json", html);       // <title>
+        Assert.Contains("id=\"json-root\"", html);
+        Assert.Contains("\"name\"", html);
+        Assert.Contains("loomo", html);
+        Assert.Contains("class=\"node\"", html);          // 折りたたみ可能なルートオブジェクト
+    }
+
+    [Fact]
+    public void JsonSupport_配列とネストの件数を表示する()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var body = support.RenderBody(@"C:\work\data.json", """{ "items": [1, 2, 3] }""");
+
+        Assert.Contains("3 要素", body);   // 配列の件数
+        Assert.Contains("1 項目", body);   // ルートオブジェクトの件数
+    }
+
+    [Fact]
+    public void JsonSupport_コメントと末尾カンマを許容する()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var body = support.RenderBody(@"C:\work\data.jsonc", "{ // 設定\n  \"a\": 1, }");
+
+        Assert.Contains("\"a\"", body);
+        Assert.DoesNotContain("解析できません", body);
+    }
+
+    [Fact]
+    public void JsonSupport_壊れたJSONはエラーと原文を出す()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var body = support.RenderBody(@"C:\work\data.json", "{ \"a\": ");
+
+        Assert.Contains("解析できません", body);
+        Assert.Contains("class=\"raw\"", body);   // 原文を併記
+    }
+
+    [Fact]
+    public void JsonSupport_HTML特殊文字をエスケープする()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var body = support.RenderBody(@"C:\work\data.json", """{ "html": "<b>&</b>" }""");
+
+        Assert.Contains("&lt;b&gt;&amp;&lt;/b&gt;", body);
+        Assert.DoesNotContain("<b>&</b>", body);
+    }
+
+    [Fact]
+    public void JsonSupport_各ノードにJSONパスとコピー導線を埋め込む()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var body = support.RenderBody(@"C:\work\data.json", """{ "items": [ { "name": "x" } ] }""");
+
+        // ネスト：識別子キーは .key、配列は [i] で連結する
+        Assert.Contains("data-path=\"$.items[0].name\"", body);
+        // 値はクリックでコピーできるよう data-val を持つ
+        Assert.Contains("data-val=\"x\"", body);
+        // 行末にパスコピーのアイコン
+        Assert.Contains("class=\"copy\"", body);
+    }
+
+    [Fact]
+    public void JsonSupport_識別子でないキーはブラケット表記のパスにする()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var body = support.RenderBody(@"C:\work\data.json", """{ "a b": 1 }""");
+
+        Assert.Contains("data-path=\"$[&quot;a b&quot;]\"", body);   // 属性内なので " はエンコードされる
+    }
+
+    [Fact]
+    public void JsonSupport_絞り込み用の検索ボックスをページに出す()
+    {
+        var support = new JsonEditorSupport(new AiSettings());
+
+        var html = support.RenderHtml(@"C:\work\data.json", """{ "a": 1 }""");
+
+        Assert.Contains("id=\"json-filter\"", html);
     }
 
     [Fact]

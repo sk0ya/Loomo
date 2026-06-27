@@ -181,6 +181,7 @@ public partial class App : Application
 
         // --- EditorSupport（アクティブなエディタのファイルに応じた自動表示。拡張子対応はここへ追加登録） ---
         services.AddSingleton<IEditorSupportProvider, MarkdownEditorSupport>();
+        services.AddSingleton<IEditorSupportProvider, JsonEditorSupport>();     // JSON を折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, ImageEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();   // CSV/TSV を VGrid グリッドで表示
         services.AddSingleton<IEditorSupportProvider, BrowserEditorSupport>(); // PDF/SVG/HTML 等はブラウザ(WebView2)で表示
