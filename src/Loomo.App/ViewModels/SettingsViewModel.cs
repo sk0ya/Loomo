@@ -246,8 +246,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>ONNX モデルフォルダを手動で選ぶ（任意の場所に置いたモデル用）。
-    /// 選んだフォルダを ModelPath に設定し、モデル名（プロファイル解決用）にフォルダ名を流用する。</summary>
+    /// <summary>モデルフォルダを手動で選ぶ（任意の場所に置いたモデル用）。ONNX（<c>genai_config.json</c> を含む）
+    /// と GGUF（<c>*.gguf</c> を含む・llama.cpp バックエンド）の両方を受け付ける。GGUF はフォルダ内の
+    /// <c>.gguf</c> ファイルパスを ModelPath に入れる（ルータが拡張子で振り分けるため。フォルダのまま入れると
+    /// GGUF が ONNX 行きになり「genai_config.json が見つかりません」になる）。モデル名にはフォルダ名を流用する。</summary>
     [RelayCommand]
     private void BrowseModel()
     {
@@ -256,19 +258,29 @@ public sealed partial class SettingsViewModel : ObservableObject
             : ModelDownloadService.DefaultModelsRoot;
         var dialog = new OpenFolderDialog
         {
-            Title = "ONNX モデルフォルダを選択（genai_config.json を含むフォルダ）",
+            Title = "モデルフォルダを選択（ONNX: genai_config.json／GGUF: *.gguf を含むフォルダ）",
             InitialDirectory = Directory.Exists(initial) ? initial : null,
         };
         if (dialog.ShowDialog() != true) return;
 
         var folder = dialog.FolderName;
-        if (!File.Exists(Path.Combine(folder, "genai_config.json")))
+        string resolvedPath;
+        if (File.Exists(Path.Combine(folder, "genai_config.json")))
         {
-            Status = "選択したフォルダに genai_config.json がありません（ONNX モデルフォルダではありません）。";
+            resolvedPath = folder;                   // ONNX はフォルダパスを渡す
+        }
+        else if (Directory.EnumerateFiles(folder, "*.gguf")
+                     .OrderBy(p => p, StringComparer.OrdinalIgnoreCase).FirstOrDefault() is { } gguf)
+        {
+            resolvedPath = gguf;                      // GGUF は .gguf ファイルパスを渡す
+        }
+        else
+        {
+            Status = "選択したフォルダに genai_config.json も .gguf もありません（モデルフォルダではありません）。";
             return;
         }
 
-        ModelPath = folder;                          // OnModelPathChanged → Persist
+        ModelPath = resolvedPath;                     // OnModelPathChanged → Persist
         var name = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
         if (!string.IsNullOrEmpty(name) && !AvailableModels.Contains(name))
             AvailableModels.Add(name);
