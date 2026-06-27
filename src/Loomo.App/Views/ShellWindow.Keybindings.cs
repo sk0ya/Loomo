@@ -40,6 +40,7 @@ public partial class ShellWindow
 
             // ペイン：ズーム／閉じる／分割
             ["pane.zoom"] = ToggleZoom,
+            ["pane.fullscreen"] = TogglePaneFullscreen,
             ["pane.close"] = () => { if (!CloseFocusedViewport()) HideFocusedRegion(); },
             ["pane.split.vertical"] = () => HandleViewportSplitKey(Key.V),
             ["pane.split.horizontal"] = () => HandleViewportSplitKey(Key.S),

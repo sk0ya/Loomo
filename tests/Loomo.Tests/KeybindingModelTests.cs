@@ -19,6 +19,7 @@ public class KeybindingModelTests
     [InlineData("Ctrl+W")]
     [InlineData("Ctrl+Enter")]
     [InlineData("Alt+F4")]
+    [InlineData("F11")]
     [InlineData("Shift+H")]
     [InlineData("1")]
     public void KeyChord_round_trips(string text)
@@ -115,6 +116,7 @@ public class KeybindingModelTests
         {
             Assert.Equal(KeySequence.TryParse("Ctrl+W H"), service.For("pane.focus.left"));
             Assert.Equal(KeySequence.TryParse("Ctrl+Shift+P"), service.For("palette.open"));
+            Assert.Equal(KeySequence.TryParse("F11"), service.For("pane.fullscreen"));
             Assert.False(service.IsCustom("pane.focus.left"));
         }
         finally { File.Delete(path); }

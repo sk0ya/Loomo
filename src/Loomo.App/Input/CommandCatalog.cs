@@ -53,6 +53,7 @@ public static class CommandCatalog
         new CommandDescriptor("pane.resize.up", CatPane, "ペインを上へリサイズ", "Ctrl+W Shift+K", ResizeMode),
         new CommandDescriptor("pane.resize.right", CatPane, "ペインを右へリサイズ", "Ctrl+W Shift+L", ResizeMode),
         new CommandDescriptor("pane.zoom", CatPane, "ペインのズーム切替", "Ctrl+W Z"),
+        new CommandDescriptor("pane.fullscreen", CatPane, "現在のペインを画面全体に表示／復元", "F11"),
         new CommandDescriptor("pane.close", CatPane, "ペイン／分割を閉じる", "Ctrl+W X"),
         new CommandDescriptor("pane.split.vertical", CatPane, "ペインを左右に分割", "Ctrl+W V"),
         new CommandDescriptor("pane.split.horizontal", CatPane, "ペインを上下に分割", "Ctrl+W S"),

@@ -148,13 +148,13 @@
     <!-- 最大化は code-behind で制御：通常は WM_GETMINMAXINFO でワーク領域に制限し、
          横並びのマルチモニタへは疑似最大化（SetWindowPos）で跨ぐ。タスクバーは覆わない -->
     <Border x:Name="RootBorder">
-        <Grid>
+        <Grid x:Name="ShellLayout">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48" />  <!-- ActivityBar -->
+                <ColumnDefinition x:Name="ActivityBarColumn" Width="48" />  <!-- ActivityBar -->
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />  <!-- タイトルバー -->
+                <RowDefinition x:Name="TitleBarRow" Height="Auto" />  <!-- タイトルバー -->
                 <RowDefinition Height="*" />     <!-- メイン領域（ペイン＋AI） -->
             </Grid.RowDefinitions>
 
@@ -402,7 +402,7 @@
             </Grid>
 
             <!-- ===== メイン領域 ===== -->
-            <Grid Grid.Row="1" Grid.Column="1">
+            <Grid x:Name="MainArea" Grid.Row="1" Grid.Column="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="SidebarColumn" Width="220" MinWidth="120" />   <!-- Sidebar -->
                     <ColumnDefinition x:Name="SidebarSplitterColumn" Width="6" />    <!-- splitter -->
