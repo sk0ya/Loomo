@@ -178,6 +178,22 @@ public sealed partial class WatchItemViewModel : ObservableObject
     [ObservableProperty] private string _value = "";
 }
 
+/// <summary>イミディエイト（REPL）の 1 行（入力式とその評価結果）。コピー表示用に <c>&gt; 式</c> / 結果を持つ。</summary>
+public sealed class ImmediateEntryViewModel
+{
+    public ImmediateEntryViewModel(string expression, string result)
+    {
+        Expression = expression;
+        Result = result;
+    }
+
+    public string Expression { get; }
+    public string Result { get; }
+
+    /// <summary>入力行の表示（VS のイミディエイト風に <c>&gt;</c> を前置）。</summary>
+    public string Prompt => "> " + Expression;
+}
+
 /// <summary>テスト 1 件の実行状態。</summary>
 public enum TestStatus
 {

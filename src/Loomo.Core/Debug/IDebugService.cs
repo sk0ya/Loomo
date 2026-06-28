@@ -76,6 +76,20 @@ public interface IDebugService
     /// 停止中のみ有効。<paramref name="line"/> は <b>1 始まり</b>。成功可否を返す（失敗理由は <see cref="Output"/>）。</summary>
     Task<bool> SetNextStatementAsync(string sourcePath, int line);
 
+    /// <summary>カーソル行まで実行する（VS の「カーソルまで実行」）。停止中のみ有効。指定位置に一時ブレークポイントを
+    /// 置いて続行し、次に停止したとき（その行に達した／別の永続ブレークポイントに当たった）一時分は自動で撤去する。
+    /// <paramref name="line"/> は <b>1 始まり</b>。</summary>
+    Task RunToCursorAsync(string sourcePath, int line, CancellationToken ct);
+
+    /// <summary>式をイミディエイト（REPL）コンテキストで評価する（<c>evaluate context="repl"</c>＝VS の
+    /// イミディエイトウィンドウ）。<see cref="EvaluateAsync"/> と違い副作用のある式も実行できる。
+    /// 失敗時はエラーメッセージを返す（例外は投げない）。</summary>
+    Task<string> EvaluateReplAsync(string expression, int? frameId);
+
+    /// <summary>ロード済みモジュール（アセンブリ）の一覧を取得する（<c>modules</c>＝VS のモジュールウィンドウ）。
+    /// 取得できなければ空。</summary>
+    Task<IReadOnlyList<DebugModule>> GetModulesAsync();
+
     /// <summary>停止中のセッションを再開する。</summary>
     Task ContinueAsync();
 

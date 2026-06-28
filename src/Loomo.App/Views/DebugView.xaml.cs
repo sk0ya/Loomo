@@ -18,6 +18,7 @@ public partial class DebugView : UserControl
     private const int TestTab = 3;
 
     private INotifyCollectionChanged? _observed;
+    private INotifyCollectionChanged? _observedImmediate;
     private DebugViewModel? _vm;
 
     public DebugView()
@@ -29,11 +30,14 @@ public partial class DebugView : UserControl
     private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
     {
         if (_observed is not null) _observed.CollectionChanged -= OnOutputChanged;
+        if (_observedImmediate is not null) _observedImmediate.CollectionChanged -= OnImmediateLogChanged;
         if (_vm is not null) _vm.PropertyChanged -= OnVmPropertyChanged;
         if (DataContext is DebugViewModel vm)
         {
             _observed = vm.Output;
             _observed.CollectionChanged += OnOutputChanged;
+            _observedImmediate = vm.ImmediateLog;
+            _observedImmediate.CollectionChanged += OnImmediateLogChanged;
             _vm = vm;
             _vm.PropertyChanged += OnVmPropertyChanged;
         }
@@ -99,6 +103,13 @@ public partial class DebugView : UserControl
         }
     }
 
+    // イミディエイト履歴に追加されたら最新行を見せる（評価結果が下に積まれるので末尾へ）。
+    private void OnImmediateLogChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Add && ImmediateList.Items.Count > 0)
+            ImmediateList.ScrollIntoView(ImmediateList.Items[ImmediateList.Items.Count - 1]);
+    }
+
     private void OnRefreshClick(object sender, System.Windows.RoutedEventArgs e)
     {
         if (DataContext is DebugViewModel vm) vm.Refresh();
@@ -161,6 +172,7 @@ public partial class DebugView : UserControl
             DebugFrameViewModel f => string.IsNullOrEmpty(f.Location) ? f.Name : $"{f.Name}  {f.Location}",
             DebugVariableViewModel v => string.IsNullOrEmpty(v.Value) ? v.Name : $"{v.Name} = {v.Value}",
             WatchItemViewModel w => $"{w.Expression} = {w.Value}",
+            ImmediateEntryViewModel im => $"{im.Prompt}\n{im.Result}",
             TestItemViewModel t => string.IsNullOrEmpty(t.Message) ? t.DisplayName : $"{t.DisplayName}  {t.Message}",
             TestGroupViewModel g => $"{g.Name}  {g.CountText}",
             _ => null,
@@ -246,6 +258,17 @@ public partial class DebugView : UserControl
             && vm.AddWatchCommand.CanExecute(null))
         {
             vm.AddWatchCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    // イミディエイト入力欄：Enter で評価（停止中＋入力ありのときだけ実行される）。
+    private void OnImmediateKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter && DataContext is DebugViewModel vm
+            && vm.SubmitImmediateCommand.CanExecute(null))
+        {
+            vm.SubmitImmediateCommand.Execute(null);
             e.Handled = true;
         }
     }

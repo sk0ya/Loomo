@@ -57,6 +57,10 @@ public sealed record DebugVariable(string Name, string Value, string? Type, int 
 /// <summary>実行中スレッド 1 つ（DAP の threads）。<see cref="Id"/> は stackTrace/step の対象。</summary>
 public sealed record DebugThread(int Id, string Name);
 
+/// <summary>ロード済みモジュール（アセンブリ）1 つ（DAP の <c>modules</c>）。<see cref="Path"/>/<see cref="Version"/> は
+/// 取得できなければ null。<see cref="SymbolStatus"/> はシンボル（PDB）の読み込み状況（例「Symbols loaded.」）。</summary>
+public sealed record DebugModule(string Name, string? Path, string? Version, string? SymbolStatus);
+
 /// <summary>例外ブレークの 1 フィルタ（DAP の <c>exceptionBreakpointFilters</c>）。netcoredbg なら
 /// 「すべての例外」「未捕捉例外」等。<see cref="Default"/> は初期 ON 推奨か。</summary>
 public sealed record DebugExceptionFilter(string Id, string Label, bool Default);
@@ -80,6 +84,8 @@ public sealed record DebugLaunchConfig(
     string? WorkingDirectory = null,
     /// <summary>プログラムへ渡す引数。</summary>
     IReadOnlyList<string>? Args = null,
+    /// <summary>環境変数（プロセス起動時に追加・上書きする）。null/空なら親プロセスの環境のまま。</summary>
+    IReadOnlyDictionary<string, string>? Environment = null,
     /// <summary>エントリポイントで停止するか（Phase 2 以降のステップ実行用、Phase 1 では false 運用）。</summary>
     bool StopAtEntry = false,
     /// <summary>マイコードのみをデバッグするか（true なら外部/フレームワークコードへ降りない）。

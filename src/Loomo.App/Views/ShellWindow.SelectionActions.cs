@@ -34,18 +34,48 @@ public partial class ShellWindow
         AddDebugMenuItems(e.Menu, control);
     }
 
-    // 停止中のデバッグ操作（カーソル行ベース）をメニュー末尾へ足す。停止していない／未対応なら何もしない。
+    // カーソル行に対するデバッグ操作をメニュー末尾へ足す。ブレークポイント条件編集は常時、Run to Cursor／
+    // 次のステートメント設定は停止中のみ。対象は右クリックされたエディタの開いているファイル。
     private void AddDebugMenuItems(ContextMenu menu, VimEditorControl? control)
     {
         if (control?.FilePath is not { Length: > 0 } path) return;
         var dbg = _vm.Debug;
-        if (!dbg.IsStopped || !dbg.SupportsSetNextStatement) return;
-
         var line0 = control.Caret.Line;  // 0 始まり
+
         menu.Items.Add(new Separator());
-        var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
-        setNext.Click += (_, _) => _ = dbg.SetNextStatementAsync(path, line0);
-        menu.Items.Add(setNext);
+
+        // ブレークポイントの条件編集（停止中でなくても設定できる）。
+        var editCond = new MenuItem { Header = "ブレークポイントの条件を編集…" };
+        editCond.Click += (_, _) => EditBreakpointCondition(path, line0);
+        menu.Items.Add(editCond);
+
+        // 停止中のみ：カーソル行まで実行／次のステートメントに設定。
+        if (dbg.IsStopped)
+        {
+            var runTo = new MenuItem { Header = "カーソル行まで実行" };
+            runTo.Click += (_, _) => _ = dbg.RunToCursorAsync(path, line0);
+            menu.Items.Add(runTo);
+
+            if (dbg.SupportsSetNextStatement)
+            {
+                var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
+                setNext.Click += (_, _) => _ = dbg.SetNextStatementAsync(path, line0);
+                menu.Items.Add(setNext);
+            }
+        }
+    }
+
+    // カーソル行のブレークポイント条件を編集する。既存条件を初期値にし、空入力で条件を解除する
+    // （その行にブレークポイントが無ければ作成して条件を付ける）。
+    private void EditBreakpointCondition(string path, int line0)
+    {
+        var dbg = _vm.Debug;
+        var current = dbg.FindBreakpoint(path, line0)?.Condition ?? "";
+        var input = InputDialog.Prompt(this, "ブレークポイントの条件",
+            "条件式（真のとき停止。例: i > 5）。空にすると条件を解除します。",
+            current, allowEmpty: true);
+        if (input is null) return;  // キャンセル
+        dbg.EnsureBreakpoint(path, line0).Condition = input.Trim();
     }
 
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)

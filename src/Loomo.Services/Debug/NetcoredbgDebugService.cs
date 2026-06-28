@@ -28,6 +28,10 @@ public sealed class NetcoredbgDebugService : IDebugService
     /// <summary>ソースパス（絶対）→ ブレークポイント（1 始まりの行＋条件）。起動時の構成フェーズで再送する。</summary>
     private readonly Dictionary<string, IReadOnlyList<DebugBreakpoint>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>ソースパス（絶対）→ 一時ブレークポイント行（1 始まり）。Run to Cursor で置き、次の停止で撤去する。
+    /// 永続ブレークポイント（<see cref="_breakpoints"/>）と合わせて setBreakpoints で送る。</summary>
+    private readonly Dictionary<string, HashSet<int>> _tempBreakpoints = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>現在設定中の例外ブレークフィルタ ID。構成フェーズと即時反映で送る。</summary>
     private IReadOnlyList<string> _exceptionFilters = Array.Empty<string>();
 
@@ -77,6 +81,7 @@ public sealed class NetcoredbgDebugService : IDebugService
                 program = config.Program,
                 args = config.Args ?? Array.Empty<string>(),
                 cwd = workDir,
+                env = config.Environment is { Count: > 0 } e ? e : null,
                 stopAtEntry = config.StopAtEntry,
                 justMyCode = config.JustMyCode,
                 console = "internalConsole",   // 出力を output イベントで受け取る
@@ -228,6 +233,8 @@ public sealed class NetcoredbgDebugService : IDebugService
         var client = _client;
         // launch/attach 前に終了した場合に構成フェーズの待機を解放する（ぶら下がり防止）。
         _requestSent?.TrySetResult();
+        // セッション終了。次のセッションへ一時ブレークポイントを持ち越さない（永続分は記憶したまま再送する）。
+        _tempBreakpoints.Clear();
         if (client is null) return;
         _client = null;
         client.EventReceived -= OnDapEvent;
@@ -340,7 +347,7 @@ public sealed class NetcoredbgDebugService : IDebugService
         var client = _client;
         if (client is { IsRunning: true })
         {
-            try { await SendBreakpointsAsync(client, path, breakpoints, ct); }
+            try { await PushSourceBreakpointsAsync(client, path, ct); }
             catch (Exception ex) { Emit(DebugOutputCategory.Console, $"ブレークポイント設定に失敗: {ex.Message}"); }
         }
     }
@@ -554,6 +561,80 @@ public sealed class NetcoredbgDebugService : IDebugService
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"次のステートメント設定に失敗: {ex.Message}"); return false; }
     }
 
+    public async Task RunToCursorAsync(string sourcePath, int line, CancellationToken ct)
+    {
+        var client = _client;
+        if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return;
+        var path = Path.GetFullPath(sourcePath);
+        if (!_tempBreakpoints.TryGetValue(path, out var set))
+            _tempBreakpoints[path] = set = new HashSet<int>();
+        set.Add(line);
+        try
+        {
+            // 一時ブレークポイントを足して送り直してから続行する。次の停止で一時分は撤去される。
+            await PushSourceBreakpointsAsync(client, path, ct);
+            await client.SendRequestAsync("continue", new { threadId = _activeThreadId }, ct);
+            SetState(DebugSessionState.Running);
+            Continued?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) { Emit(DebugOutputCategory.Console, $"カーソル行まで実行に失敗: {ex.Message}"); }
+    }
+
+    public async Task<string> EvaluateReplAsync(string expression, int? frameId)
+    {
+        var client = _client;
+        if (client is not { IsRunning: true }) return "(セッションがありません)";
+        try
+        {
+            var body = await client.SendRequestAsync("evaluate",
+                new { expression, frameId, context = "repl" });
+            if (body is { ValueKind: JsonValueKind.Object } b && b.TryGetProperty("result", out var r))
+                return r.GetString() ?? "";
+            return "";
+        }
+        catch (Exception ex) { return $"(評価エラー: {ex.Message})"; }
+    }
+
+    public async Task<IReadOnlyList<DebugModule>> GetModulesAsync()
+    {
+        var client = _client;
+        if (client is not { IsRunning: true }) return Array.Empty<DebugModule>();
+        try
+        {
+            var body = await client.SendRequestAsync("modules", new { startModule = 0, moduleCount = 0 });
+            var list = new List<DebugModule>();
+            if (body is { ValueKind: JsonValueKind.Object } b &&
+                b.TryGetProperty("modules", out var mods) && mods.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var m in mods.EnumerateArray())
+                {
+                    var name = m.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "";
+                    var mpath = m.TryGetProperty("path", out var pp) ? pp.GetString() : null;
+                    var version = m.TryGetProperty("version", out var vp) ? vp.GetString() : null;
+                    var symbols = m.TryGetProperty("symbolStatus", out var sp) ? sp.GetString() : null;
+                    list.Add(new DebugModule(name, mpath, version, symbols));
+                }
+            }
+            return list;
+        }
+        catch { return Array.Empty<DebugModule>(); }
+    }
+
+    /// <summary>一時ブレークポイント（Run to Cursor 分）をすべて撤去し、影響ソースを送り直す。次の停止時に呼ぶ。</summary>
+    private async Task ClearTempBreakpointsAsync()
+    {
+        if (_tempBreakpoints.Count == 0) return;
+        var paths = _tempBreakpoints.Keys.ToList();
+        _tempBreakpoints.Clear();
+        var client = _client;
+        if (client is not { IsRunning: true }) return;
+        foreach (var p in paths)
+        {
+            try { await PushSourceBreakpointsAsync(client, p, CancellationToken.None); }
+            catch { /* 1 ソースの失敗は他に波及させない */ }
+        }
+    }
+
     /// <summary>initialize 応答から対応機能と例外フィルタを取り出して保持する。</summary>
     private void CaptureCapabilities(JsonElement? caps)
     {
@@ -595,9 +676,9 @@ public sealed class NetcoredbgDebugService : IDebugService
             catch { /* タイムアウト/未設定でも configurationDone は送る（従来動作にフォールバック） */ }
         }
 
-        foreach (var (path, bps) in _breakpoints)
+        foreach (var path in _breakpoints.Keys)
         {
-            try { await SendBreakpointsAsync(client, path, bps, CancellationToken.None); }
+            try { await PushSourceBreakpointsAsync(client, path, CancellationToken.None); }
             catch { /* 1 ソースの失敗は他に波及させない */ }
         }
         try { await SendExceptionBreakpointsAsync(client, CancellationToken.None); }
@@ -606,19 +687,44 @@ public sealed class NetcoredbgDebugService : IDebugService
         catch { /* netcoredbg は configurationDone 不要でも動くことがある */ }
     }
 
-    /// <summary>有効な行だけを condition/hitCondition/logMessage 付きで送る（無効行は除外）。</summary>
-    private static Task SendBreakpointsAsync(DapProtocolClient client, string path, IReadOnlyList<DebugBreakpoint> bps, CancellationToken ct)
-        => client.SendRequestAsync("setBreakpoints", new
+    /// <summary>あるソースの永続ブレークポイント（<see cref="_breakpoints"/>）と一時ブレークポイント
+    /// （<see cref="_tempBreakpoints"/>＝Run to Cursor）を合わせて 1 回の setBreakpoints で送る。</summary>
+    private Task PushSourceBreakpointsAsync(DapProtocolClient client, string path, CancellationToken ct)
+    {
+        var persistent = _breakpoints.TryGetValue(path, out var list)
+            ? list : (IReadOnlyList<DebugBreakpoint>)Array.Empty<DebugBreakpoint>();
+        var temp = _tempBreakpoints.TryGetValue(path, out var set) ? set : null;
+        return SendBreakpointsAsync(client, path, persistent, temp, ct);
+    }
+
+    /// <summary>有効な永続行＋一時行を condition/hitCondition/logMessage 付きで送る（無効行は除外。
+    /// 一時行は条件なし。永続行と重なる一時行は永続を優先して重複させない）。</summary>
+    private static Task SendBreakpointsAsync(
+        DapProtocolClient client, string path, IReadOnlyList<DebugBreakpoint> bps,
+        IReadOnlyCollection<int>? tempLines, CancellationToken ct)
+    {
+        var items = bps.Where(b => b.Enabled).Select(b => new
+        {
+            line = b.Line,
+            condition = string.IsNullOrWhiteSpace(b.Condition) ? null : b.Condition,
+            hitCondition = string.IsNullOrWhiteSpace(b.HitCondition) ? null : b.HitCondition,
+            logMessage = string.IsNullOrWhiteSpace(b.LogMessage) ? null : b.LogMessage,
+        }).ToList();
+
+        if (tempLines is { Count: > 0 })
+        {
+            var have = new HashSet<int>(items.Select(i => i.line));
+            foreach (var l in tempLines)
+                if (have.Add(l))
+                    items.Add(new { line = l, condition = (string?)null, hitCondition = (string?)null, logMessage = (string?)null });
+        }
+
+        return client.SendRequestAsync("setBreakpoints", new
         {
             source = new { path, name = Path.GetFileName(path) },
-            breakpoints = bps.Where(b => b.Enabled).Select(b => new
-            {
-                line = b.Line,
-                condition = string.IsNullOrWhiteSpace(b.Condition) ? null : b.Condition,
-                hitCondition = string.IsNullOrWhiteSpace(b.HitCondition) ? null : b.HitCondition,
-                logMessage = string.IsNullOrWhiteSpace(b.LogMessage) ? null : b.LogMessage,
-            }).ToArray(),
+            breakpoints = items.ToArray(),
         }, ct);
+    }
 
     private Task SendExceptionBreakpointsAsync(DapProtocolClient client, CancellationToken ct)
         => client.SendRequestAsync("setExceptionBreakpoints", new { filters = _exceptionFilters.ToArray() }, ct);
@@ -627,6 +733,8 @@ public sealed class NetcoredbgDebugService : IDebugService
     private async Task HandleStoppedAsync(string reason, int threadId)
     {
         SetState(DebugSessionState.Stopped);
+        // Run to Cursor の一時ブレークポイントは、どの理由で止まっても撤去する（VS と同じ）。
+        await ClearTempBreakpointsAsync();
         string? sourcePath = null;
         int line = 0;
         try

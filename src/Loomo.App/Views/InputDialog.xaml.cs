@@ -11,16 +11,22 @@ public partial class InputDialog : Window
         InitializeComponent();
     }
 
+    /// <summary>空入力（OK）を許すか。条件編集など「空にして解除」を許す用途で true にする。</summary>
+    private bool _allowEmpty;
+
     /// <summary>ダイアログを開き、入力された名前（前後空白を除去）を返す。キャンセル時は null。</summary>
     /// <param name="initial">初期値。</param>
     /// <param name="selectNameOnly">true なら拡張子を除いた部分だけを選択（ファイル名のリネーム向け）。</param>
+    /// <param name="allowEmpty">true なら空入力でも OK を許す（空文字列を返す）。既定は非空必須。</param>
     public static string? Prompt(
-        Window? owner, string title, string prompt, string initial = "", bool selectNameOnly = false)
+        Window? owner, string title, string prompt, string initial = "",
+        bool selectNameOnly = false, bool allowEmpty = false)
     {
         var dialog = new InputDialog
         {
             Owner = owner,
             Title = title,
+            _allowEmpty = allowEmpty,
         };
         dialog.PromptText.Text = prompt;
         dialog.InputBox.Text = initial;
@@ -40,7 +46,7 @@ public partial class InputDialog : Window
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(InputBox.Text))
+        if (!_allowEmpty && string.IsNullOrWhiteSpace(InputBox.Text))
         {
             ErrorText.Text = "名前を入力してください。";
             ErrorText.Visibility = Visibility.Visible;

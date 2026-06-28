@@ -78,6 +78,12 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     /// <summary>起動前に <c>dotnet build</c> を実行するか。</summary>
     [ObservableProperty] private bool _buildFirst = true;
 
+    /// <summary>プログラムへ渡すコマンドライン引数（空白区切り・二重引用符でグループ化）。空なら引数なし。</summary>
+    [ObservableProperty] private string _launchArgs = "";
+
+    /// <summary>起動時に追加する環境変数（1 行 1 件 <c>KEY=VALUE</c>）。空なら親プロセスの環境のまま。</summary>
+    [ObservableProperty] private string _launchEnv = "";
+
     /// <summary>状態の短い説明（ヘッダ脇に表示）。</summary>
     [ObservableProperty] private string _statusMessage = "待機中";
 
@@ -392,6 +398,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             }
             await LoadThreadsAsync();
             await LoadStackAsync();
+            await LoadModulesAsync();
         });
 
     private void OnContinued(object? sender, EventArgs e)
@@ -482,6 +489,8 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         try { Threads.Clear(); SelectedThread = null; }
         finally { _settingThread = false; }
         foreach (var w in Watches) w.Value = "";
+        Modules.Clear();
+        HasModules = false;
     }
 
     private bool CanAddWatch() => !string.IsNullOrWhiteSpace(WatchExpression);
@@ -504,6 +513,55 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
 
     partial void OnWatchExpressionChanged(string value) => AddWatchCommand.NotifyCanExecuteChanged();
 
+    /// <summary>イミディエイト（REPL）の入出力履歴（式とその評価結果）。</summary>
+    public ObservableCollection<ImmediateEntryViewModel> ImmediateLog { get; } = new();
+
+    /// <summary>イミディエイトの入力欄。</summary>
+    [ObservableProperty] private string _immediateInput = "";
+
+    private bool CanSubmitImmediate() => IsStopped && !string.IsNullOrWhiteSpace(ImmediateInput);
+
+    /// <summary>イミディエイト：入力式を REPL コンテキストで評価する（副作用のある式も実行できる）。
+    /// 状態を変える可能性があるので、評価後に変数/ウォッチを読み直す。</summary>
+    [RelayCommand(CanExecute = nameof(CanSubmitImmediate))]
+    private async Task SubmitImmediate()
+    {
+        var expr = ImmediateInput.Trim();
+        ImmediateInput = "";
+        var result = await _debug.EvaluateReplAsync(expr, SelectedFrame?.Id);
+        ImmediateLog.Add(new ImmediateEntryViewModel(expr, result));
+        const int max = 500;
+        if (ImmediateLog.Count > max) ImmediateLog.RemoveAt(0);
+        // 副作用で変数が変わり得るので検査ペインを更新する。
+        if (SelectedFrame is { } f) await LoadFrameInspectionAsync(f);
+    }
+
+    [RelayCommand]
+    private void ClearImmediate() => ImmediateLog.Clear();
+
+    partial void OnImmediateInputChanged(string value) => SubmitImmediateCommand.NotifyCanExecuteChanged();
+
+    /// <summary>ロード済みモジュール（アセンブリ）一覧。停止時に取得し、更新ボタンで読み直せる。</summary>
+    public ObservableCollection<DebugModule> Modules { get; } = new();
+
+    /// <summary>モジュールが 1 件でも取得できているか（空案内の出し分け）。</summary>
+    [ObservableProperty] private bool _hasModules;
+
+    private bool CanRefreshModules() => IsStopped;
+
+    [RelayCommand(CanExecute = nameof(CanRefreshModules))]
+    private async Task RefreshModules() => await LoadModulesAsync();
+
+    /// <summary>モジュール一覧を取得して並べ替える（パス有りを後ろ、名前順）。</summary>
+    private async Task LoadModulesAsync()
+    {
+        var mods = await _debug.GetModulesAsync();
+        Modules.Clear();
+        foreach (var m in mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
+            Modules.Add(m);
+        HasModules = Modules.Count > 0;
+    }
+
     /// <summary>アダプタが「次のステートメントに設定」（gotoTargets/goto）に対応しているか。
     /// エディタ右クリックメニューの出し分けに使う（未対応なら項目を出さない）。</summary>
     public bool SupportsSetNextStatement => _debug.SupportsSetNextStatement;
@@ -519,6 +577,39 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             ExecutionLineChanged?.Invoke(sourcePath, line0);
             await LoadStackAsync();
         }
+    }
+
+    /// <summary>カーソル行（0 始まり）まで実行する（一時ブレークポイントを置いて続行）。停止中のみ有効。</summary>
+    public Task RunToCursorAsync(string sourcePath, int line0)
+        => IsStopped
+            ? _debug.RunToCursorAsync(sourcePath, line0 + 1, CancellationToken.None)  // エディタ0始まり → DAP1始まり
+            : Task.CompletedTask;
+
+    /// <summary>あるファイルのカーソル行（0 始まり）のブレークポイントを返す（無ければ null）。ガターからの条件編集用。</summary>
+    public BreakpointViewModel? FindBreakpoint(string sourcePath, int line0)
+    {
+        var path = Path.GetFullPath(sourcePath);
+        return _breakpoints.TryGetValue(path, out var list) ? list.FirstOrDefault(b => b.Line0 == line0) : null;
+    }
+
+    /// <summary>カーソル行（0 始まり）にブレークポイントを取得（無ければ作成して）返す。ガターから条件を編集する際に、
+    /// その行へまだブレークポイントが無くても置けるようにする。作成時はエディタのガターも同期する。</summary>
+    public BreakpointViewModel EnsureBreakpoint(string sourcePath, int line0)
+    {
+        var path = Path.GetFullPath(sourcePath);
+        if (!_breakpoints.TryGetValue(path, out var list))
+            _breakpoints[path] = list = new List<BreakpointViewModel>();
+        var bp = list.FirstOrDefault(b => b.Line0 == line0);
+        if (bp is null)
+        {
+            bp = NewBreakpoint(path, line0);
+            list.Add(bp);
+            Breakpoints.Add(bp);
+            PushBreakpoints(path);
+            RefreshBreakpointFlags();
+            BreakpointsRefreshed?.Invoke(path);  // エディタのガターへ反映
+        }
+        return bp;
     }
 
     /// <summary>パネルが開かれたときにアダプタ導入状況を取り直す（導入直後でも反映されるように）。</summary>
@@ -546,7 +637,10 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         try
         {
             await _debug.StartAsync(
-                new DebugLaunchConfig(program, Path.GetDirectoryName(program), JustMyCode: JustMyCode),
+                new DebugLaunchConfig(program, Path.GetDirectoryName(program),
+                    Args: DebugLaunchArgs.ParseArgs(LaunchArgs),
+                    Environment: DebugLaunchArgs.ParseEnv(LaunchEnv),
+                    JustMyCode: JustMyCode),
                 _cts.Token);
         }
         catch (OperationCanceledException) { /* 停止操作 */ }
@@ -1270,6 +1364,8 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             StepOutCommand.NotifyCanExecuteChanged();
             PauseCommand.NotifyCanExecuteChanged();
             RestartCommand.NotifyCanExecuteChanged();
+            SubmitImmediateCommand.NotifyCanExecuteChanged();
+            RefreshModulesCommand.NotifyCanExecuteChanged();
             StatusMessage = state switch
             {
                 DebugSessionState.Idle => "待機中",
