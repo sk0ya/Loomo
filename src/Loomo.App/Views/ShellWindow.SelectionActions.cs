@@ -27,8 +27,25 @@ public partial class ShellWindow
     private void OnEditorContextMenuBuilding(object? sender, EditorContextMenuBuildingEventArgs e)
     {
         AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
+        var control = sender as VimEditorControl ?? _activeEditorTab?.Control;
         // 右クリックされたエディタ（複数分割でもイベント発火元）で開いているスクリプトを実行する項目を足す。
-        AddRunScriptMenuItem(e.Menu, sender as VimEditorControl ?? _activeEditorTab?.Control);
+        AddRunScriptMenuItem(e.Menu, control);
+        // デバッグ停止中なら、カーソル行に対するデバッグ操作（次のステートメントに設定）を足す。
+        AddDebugMenuItems(e.Menu, control);
+    }
+
+    // 停止中のデバッグ操作（カーソル行ベース）をメニュー末尾へ足す。停止していない／未対応なら何もしない。
+    private void AddDebugMenuItems(ContextMenu menu, VimEditorControl? control)
+    {
+        if (control?.FilePath is not { Length: > 0 } path) return;
+        var dbg = _vm.Debug;
+        if (!dbg.IsStopped || !dbg.SupportsSetNextStatement) return;
+
+        var line0 = control.Caret.Line;  // 0 始まり
+        menu.Items.Add(new Separator());
+        var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
+        setNext.Click += (_, _) => _ = dbg.SetNextStatementAsync(path, line0);
+        menu.Items.Add(setNext);
     }
 
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)

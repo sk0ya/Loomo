@@ -54,6 +54,24 @@ public sealed record DebugScope(string Name, int VariablesReference, bool Expens
 /// <summary>1 変数。<see cref="VariablesReference"/> が 0 より大きければ子（フィールド/要素）を展開できる。</summary>
 public sealed record DebugVariable(string Name, string Value, string? Type, int VariablesReference);
 
+/// <summary>実行中スレッド 1 つ（DAP の threads）。<see cref="Id"/> は stackTrace/step の対象。</summary>
+public sealed record DebugThread(int Id, string Name);
+
+/// <summary>例外ブレークの 1 フィルタ（DAP の <c>exceptionBreakpointFilters</c>）。netcoredbg なら
+/// 「すべての例外」「未捕捉例外」等。<see cref="Default"/> は初期 ON 推奨か。</summary>
+public sealed record DebugExceptionFilter(string Id, string Label, bool Default);
+
+/// <summary>1 ブレークポイント（行＋任意の条件）。<see cref="Line"/> は <b>1 始まり</b>（DAP 準拠）。
+/// <see cref="Condition"/> は式が真のときだけ停止、<see cref="HitCondition"/> はヒット回数条件
+/// （例 <c>5</c>＝5 回目、<c>&gt;=3</c>）、<see cref="LogMessage"/> は停止せずログ出力するログポイント
+/// （<c>{式}</c> 展開）。<see cref="Enabled"/> が false の行はアダプタへ送らない。</summary>
+public sealed record DebugBreakpoint(
+    int Line,
+    string? Condition = null,
+    string? HitCondition = null,
+    string? LogMessage = null,
+    bool Enabled = true);
+
 /// <summary>デバッグ起動構成（Phase 1：.NET プログラムを起動して実行・出力を観測する）。</summary>
 public sealed record DebugLaunchConfig(
     /// <summary>実行する .NET アセンブリ（<c>*.dll</c>）または実行ファイルの絶対パス。</summary>
@@ -63,7 +81,10 @@ public sealed record DebugLaunchConfig(
     /// <summary>プログラムへ渡す引数。</summary>
     IReadOnlyList<string>? Args = null,
     /// <summary>エントリポイントで停止するか（Phase 2 以降のステップ実行用、Phase 1 では false 運用）。</summary>
-    bool StopAtEntry = false);
+    bool StopAtEntry = false,
+    /// <summary>マイコードのみをデバッグするか（true なら外部/フレームワークコードへ降りない）。
+    /// VS の「マイ コードのみ」。既定 false（全コードをステップ可能）。</summary>
+    bool JustMyCode = false);
 
 /// <summary>デバッグアタッチ構成。既に実行中の .NET プロセス（<see cref="ProcessId"/>）に接続する。
 /// <see cref="Name"/> は表示用（出力に出すプロセス名、無くてもよい）。</summary>

@@ -184,6 +184,62 @@ public partial class DebugView : UserControl
         }
     }
 
+    // 変数の右クリック「値を変更…」：インライン編集を開始する。
+    private void OnEditVariableClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is DebugVariableViewModel v) v.BeginEdit();
+    }
+
+    // 変数のダブルクリック：葉（展開不可）のときだけインライン編集を開始する。展開可能ノードは展開に任せる。
+    private void OnVariableDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        for (var d = e.OriginalSource as System.Windows.DependencyObject; d is not null;
+             d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+        {
+            if (d is System.Windows.Controls.TreeViewItem item)
+            {
+                if (item.DataContext is DebugVariableViewModel { CanEdit: true, HasChildren: false } v)
+                {
+                    v.BeginEdit();
+                    e.Handled = true;
+                }
+                return;
+            }
+        }
+    }
+
+    // 編集 TextBox が出たら即フォーカスして全選択（すぐ打ち替えられるように）。
+    private void OnVariableEditBoxLoaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is TextBox tb)
+        {
+            tb.Focus();
+            tb.SelectAll();
+        }
+    }
+
+    // 編集 TextBox：Enter で確定（setVariable）、Esc で取消。
+    private void OnVariableEditKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: DebugVariableViewModel v }) return;
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            _ = v.CommitEditAsync();
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            v.CancelEdit();
+            e.Handled = true;
+        }
+    }
+
+    // 編集 TextBox からフォーカスが外れたら確定する（Esc 後は IsEditing=false なので no-op）。
+    private void OnVariableEditLostFocus(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: DebugVariableViewModel v }) _ = v.CommitEditAsync();
+    }
+
     private void OnWatchKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.Enter && DataContext is DebugViewModel vm

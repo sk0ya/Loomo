@@ -36,17 +36,27 @@ public sealed class DebugFrameViewModel
     public bool HasSource => !string.IsNullOrEmpty(SourcePath) && Line > 0;
 }
 
-/// <summary>変数ツリーの 1 ノード。<see cref="VariablesReference"/> が正なら子を遅延展開する。</summary>
+/// <summary>変数ツリーの 1 ノード。<see cref="VariablesReference"/> が正なら子を遅延展開する。
+/// アダプタが <c>setVariable</c> 対応なら（＝この変数を含むスコープ/親の参照 <see cref="_containerRef"/> が分かれば）
+/// 値をインラインで書き換えられる。</summary>
 public sealed partial class DebugVariableViewModel : ObservableObject
 {
     private readonly Func<int, Task<IReadOnlyList<DebugVariable>>> _loadChildren;
+    /// <summary>値書き換え（containerRef, name, value → 新値 or null）。未対応なら null。</summary>
+    private readonly Func<int, string, string, Task<string?>>? _setVariable;
+    /// <summary>この変数を保持する側（スコープ or 親変数）の variablesReference。setVariable に渡す。</summary>
+    private readonly int _containerRef;
     private bool _loaded;
 
-    public DebugVariableViewModel(DebugVariable v, Func<int, Task<IReadOnlyList<DebugVariable>>> loadChildren)
+    public DebugVariableViewModel(DebugVariable v, int containerRef,
+        Func<int, Task<IReadOnlyList<DebugVariable>>> loadChildren,
+        Func<int, string, string, Task<string?>>? setVariable)
     {
         _loadChildren = loadChildren;
+        _setVariable = setVariable;
+        _containerRef = containerRef;
         Name = v.Name;
-        Value = v.Value;
+        _value = v.Value;
         Type = v.Type;
         VariablesReference = v.VariablesReference;
         // 展開可能なら、矢印を出すためのプレースホルダ子を先に置く（展開時に実体へ差し替える）。
@@ -54,10 +64,19 @@ public sealed partial class DebugVariableViewModel : ObservableObject
     }
 
     public string Name { get; }
-    public string Value { get; }
+    [ObservableProperty] private string _value;
     public string? Type { get; }
     public int VariablesReference { get; }
     public bool HasChildren => VariablesReference > 0;
+
+    /// <summary>値を書き換えられるか（アダプタ対応＋保持側参照が分かる＝スコープ直下/親持ちの実変数）。</summary>
+    public bool CanEdit => _setVariable is not null && _containerRef > 0;
+
+    /// <summary>インライン編集中か（TextBox の表示切替）。</summary>
+    [ObservableProperty] private bool _isEditing;
+
+    /// <summary>編集中の入力値。</summary>
+    [ObservableProperty] private string _editValue = "";
 
     public ObservableCollection<DebugVariableViewModel> Children { get; } = new();
 
@@ -68,18 +87,86 @@ public sealed partial class DebugVariableViewModel : ObservableObject
         if (value) _ = EnsureChildrenAsync();
     }
 
+    /// <summary>インライン編集を開始する（現在値を入力欄へ）。</summary>
+    public void BeginEdit()
+    {
+        if (!CanEdit) return;
+        EditValue = Value;
+        IsEditing = true;
+    }
+
+    public void CancelEdit() => IsEditing = false;
+
+    /// <summary>入力値で値を書き換える（成功すれば表示値を更新）。</summary>
+    public async Task CommitEditAsync()
+    {
+        if (!IsEditing) return;
+        IsEditing = false;
+        if (_setVariable is null) return;
+        var nv = await _setVariable(_containerRef, Name, EditValue);
+        if (nv is not null) Value = nv;
+    }
+
     private async Task EnsureChildrenAsync()
     {
         if (_loaded) return;
         _loaded = true;
         var children = await _loadChildren(VariablesReference);
         Children.Clear();
+        // 子の「保持側参照」はこのノードの VariablesReference（子はこの変数の中身）。
         foreach (var c in children)
-            Children.Add(new DebugVariableViewModel(c, _loadChildren));
+            Children.Add(new DebugVariableViewModel(c, VariablesReference, _loadChildren, _setVariable));
     }
 
     private DebugVariableViewModel Placeholder
-        => new(new DebugVariable("…", "", null, 0), _loadChildren);
+        => new(new DebugVariable("…", "", null, 0), 0, _loadChildren, _setVariable);
+}
+
+/// <summary>ブレークポイント 1 件（管理パネルの行）。行は表示用に 1 始まり。条件/ヒット数/ログメッセージと
+/// 有効フラグを持ち、変更は <see cref="Changed"/> でデバッグサービスへ再送される。</summary>
+public sealed partial class BreakpointViewModel : ObservableObject
+{
+    public BreakpointViewModel(string path, int line0)
+    {
+        Path = path;
+        Line0 = line0;
+        FileName = System.IO.Path.GetFileName(path);
+    }
+
+    /// <summary>ソースの絶対パス。</summary>
+    public string Path { get; }
+
+    /// <summary>0 始まりの行（エディタのバッファ行と一致）。</summary>
+    public int Line0 { get; }
+
+    public string FileName { get; }
+
+    /// <summary>1 始まりの表示行。</summary>
+    public int DisplayLine => Line0 + 1;
+
+    public string Location => $"{FileName}:{DisplayLine}";
+
+    [ObservableProperty] private bool _enabled = true;
+    [ObservableProperty] private string _condition = "";
+    [ObservableProperty] private string _hitCondition = "";
+    [ObservableProperty] private string _logMessage = "";
+
+    /// <summary>条件パネルを開いているか（行ごとの詳細編集の開閉）。</summary>
+    [ObservableProperty] private bool _isExpanded;
+
+    /// <summary>有効/条件/ログのいずれかが変わったときに発火（VM がアダプタへ再送する）。</summary>
+    public event Action<BreakpointViewModel>? Changed;
+
+    partial void OnEnabledChanged(bool value) => Changed?.Invoke(this);
+    partial void OnConditionChanged(string value) => Changed?.Invoke(this);
+    partial void OnHitConditionChanged(string value) => Changed?.Invoke(this);
+    partial void OnLogMessageChanged(string value) => Changed?.Invoke(this);
+
+    public DebugBreakpoint ToModel() => new(DisplayLine,
+        string.IsNullOrWhiteSpace(Condition) ? null : Condition.Trim(),
+        string.IsNullOrWhiteSpace(HitCondition) ? null : HitCondition.Trim(),
+        string.IsNullOrWhiteSpace(LogMessage) ? null : LogMessage.Trim(),
+        Enabled);
 }
 
 /// <summary>ウォッチ式 1 件（式とその評価結果）。</summary>

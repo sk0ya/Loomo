@@ -22,6 +22,13 @@ public partial class ShellWindow
         _vm.Debug.ExecutionLineChanged += OnDebugExecutionLineChanged;
         _vm.Debug.FramePreviewRequested += OnDebugFramePreviewRequested;
         _vm.Debug.FrameActivated += OnDebugFrameActivated;
+        _vm.Debug.BreakpointsRefreshed += OnDebugBreakpointsRefreshed;
+    }
+
+    /// <summary>ブレークポイント管理パネルでの削除/全削除を、そのパスを開いているエディタのガターへ反映する。</summary>
+    private void OnDebugBreakpointsRefreshed(string path)
+    {
+        if (FindEditorControl(path) is { } control) SyncEditorBreakpoints(control);
     }
 
     /// <summary>コールスタックのフレーム選択：そのソース位置をプレビュータブで表示し、その行へスクロールする。

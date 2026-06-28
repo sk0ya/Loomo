@@ -56,6 +56,12 @@
             <MenuItem Header="コピー" Click="OnCopyItemClick" />
         </ContextMenu>
 
+        <!-- 変数行：コピーに加え、対応アダプタなら値を書き換えられる（CanEdit で活性）。 -->
+        <ContextMenu x:Key="VarItemMenu" x:Shared="False">
+            <MenuItem Header="コピー" Click="OnCopyItemClick" />
+            <MenuItem Header="値を変更…" Click="OnEditVariableClick" IsEnabled="{Binding CanEdit}" />
+        </ContextMenu>
+
         <!-- 検査タブ（出力／変数／コールスタック）。下線で選択を示すフラットなタブ。 -->
         <Style x:Key="DebugTabItem" TargetType="TabItem">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -191,6 +197,29 @@
                 <Button Content="⤴ アウト" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
                         Margin="6,0,0,0" Command="{Binding StepOutCommand}" ToolTip="ステップアウト" />
             </StackPanel>
+
+            <!-- セッション操作（中断/再起動）：デバッグ中のみ表示。中断は実行中のみ有効。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                <Button Content="⏸ 中断" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
+                        Command="{Binding PauseCommand}" ToolTip="すべて中断（一時停止）" />
+                <Button Content="⟳ 再起動" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
+                        Margin="6,0,0,0" Command="{Binding RestartCommand}" ToolTip="同じ対象で再起動" />
+            </StackPanel>
+
+            <!-- 例外で中断 / オプション（常時表示。例外フィルタは実行中でも切り替え可）。 -->
+            <StackPanel Margin="0,8,0,0">
+                <TextBlock Text="例外・オプション" Foreground="{DynamicResource FgDim}" FontSize="11" Margin="2,0,0,3" />
+                <CheckBox Content="スローされたすべての例外で中断" FontSize="11" Foreground="{DynamicResource Fg}"
+                          IsChecked="{Binding BreakOnAllExceptions, Mode=TwoWay}" Margin="0,1"
+                          ToolTip="例外がスローされた瞬間に中断（netcoredbg: all）" />
+                <CheckBox Content="未処理の例外で中断" FontSize="11" Foreground="{DynamicResource Fg}"
+                          IsChecked="{Binding BreakOnUncaughtExceptions, Mode=TwoWay}" Margin="0,1"
+                          ToolTip="ユーザーコード外へ抜ける未処理例外で中断（netcoredbg: user-unhandled）" />
+                <CheckBox Content="マイ コードのみ（次回起動から）" FontSize="11" Foreground="{DynamicResource Fg}"
+                          IsChecked="{Binding JustMyCode, Mode=TwoWay}" Margin="0,1"
+                          ToolTip="外部/フレームワークコードへステップインしない" />
+            </StackPanel>
         </StackPanel>
 
         <!-- 検査タブ：出力（常時）／変数（＋ウォッチ）／コールスタック。残り全域を使う。 -->
@@ -229,6 +258,8 @@
                     <!-- 変数ツリー -->
                     <TreeView Grid.Row="0" ItemsSource="{Binding Variables}" Background="{DynamicResource Bg}"
                               BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                              MouseDoubleClick="OnVariableDoubleClick"
+                              ToolTip="対応アダプタなら葉のダブルクリック／右クリックで値を変更"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <TreeView.ItemContainerStyle>
                             <Style TargetType="TreeViewItem">
@@ -238,12 +269,22 @@
                         </TreeView.ItemContainerStyle>
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type vm:DebugVariableViewModel}" ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource CopyItemMenu}">
+                                <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource VarItemMenu}">
                                     <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas" />
                                     <TextBlock Text="=" FontSize="11" Opacity="0.5" Margin="4,0,4,0"
                                                Visibility="{Binding Value, Converter={StaticResource NonEmptyToVis}}" />
+                                    <!-- 値：通常は読み取り表示、編集中は TextBox（setVariable で反映）。 -->
                                     <TextBlock Text="{Binding Value}" FontSize="11" FontFamily="Consolas"
-                                               Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis" />
+                                               Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVis}}" />
+                                    <TextBox Text="{Binding EditValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             FontSize="11" FontFamily="Consolas" MinWidth="80" Padding="2,0"
+                                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                             BorderBrush="{DynamicResource Accent}" CaretBrush="{DynamicResource Fg}"
+                                             Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
+                                             Loaded="OnVariableEditBoxLoaded"
+                                             PreviewKeyDown="OnVariableEditKeyDown"
+                                             LostKeyboardFocus="OnVariableEditLostFocus" />
                                     <TextBlock Text="{Binding Type}" FontSize="10" Opacity="0.5" Margin="6,1,0,0" />
                                 </StackPanel>
                             </HierarchicalDataTemplate>
@@ -479,6 +520,109 @@
                                TextWrapping="Wrap" Margin="12,0"
                                Visibility="{Binding NoFilterMatch, Converter={StaticResource BoolToVis}}"
                                Text="フィルタに一致するテストがありません" />
+                </Grid>
+            </TabItem>
+
+            <!-- スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="スレッド">
+                <Grid Margin="0,4,0,0">
+                    <ListBox ItemsSource="{Binding Threads}" SelectedItem="{Binding SelectedThread, Mode=TwoWay}"
+                             Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                             Foreground="{DynamicResource Fg}"
+                             ToolTip="選択でそのスレッドのコールスタック・変数に切り替える"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type dbg:DebugThread}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Id}" FontSize="11" FontFamily="Consolas"
+                                               Foreground="{DynamicResource FgDim}" Width="40" />
+                                    <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Text="停止するとスレッドが表示されます" Foreground="{DynamicResource FgDim}"
+                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="{Binding IsStopped, Converter={StaticResource InverseBoolToVis}}" />
+                </Grid>
+            </TabItem>
+
+            <!-- ブレークポイント：全ファイルの一覧。有効/無効・条件・ヒット数・ログポイントの編集と削除。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="ブレークポイント">
+                <Grid Margin="0,4,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,4">
+                        <Button Content="すべて削除" Style="{StaticResource SecondaryButton}" Height="20" Padding="8,0"
+                                Command="{Binding RemoveAllBreakpointsCommand}"
+                                ToolTip="すべてのブレークポイントを削除" />
+                    </StackPanel>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Breakpoints}" Background="{DynamicResource Bg}"
+                             BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:BreakpointViewModel}">
+                                <StackPanel Margin="0,2">
+                                    <!-- 1 行目：有効チェック・位置・条件編集トグル・削除 -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                                  VerticalAlignment="Center" ToolTip="有効/無効" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Location}" FontSize="11" FontFamily="Consolas"
+                                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <ToggleButton Grid.Column="2" Content="条件" FontSize="10" Padding="6,0" Height="18"
+                                                      IsChecked="{Binding IsExpanded, Mode=TwoWay}" Cursor="Hand"
+                                                      Background="Transparent" Foreground="{DynamicResource FgDim}"
+                                                      ToolTip="条件・ヒット数・ログポイントを編集" />
+                                        <Button Grid.Column="3" Content="✕" FontSize="10" Padding="6,0" Cursor="Hand"
+                                                Background="Transparent" BorderThickness="0" Foreground="{DynamicResource FgDim}"
+                                                Command="{Binding DataContext.RemoveBreakpointCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding}" ToolTip="削除" />
+                                    </Grid>
+
+                                    <!-- 2 行目以降：条件編集（トグルで展開）。LostFocus で反映。 -->
+                                    <StackPanel Margin="22,3,0,2"
+                                                Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="条件式（真のとき停止。例: i &gt; 5）" FontSize="10"
+                                                   Foreground="{DynamicResource FgDim}" />
+                                        <TextBox Text="{Binding Condition, Mode=TwoWay}" FontSize="11" FontFamily="Consolas"
+                                                 Padding="4,2" Margin="0,1,0,3"
+                                                 Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                                 BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}" />
+                                        <TextBlock Text="ヒット数（例: 5 / &gt;=3 / %2）" FontSize="10"
+                                                   Foreground="{DynamicResource FgDim}" />
+                                        <TextBox Text="{Binding HitCondition, Mode=TwoWay}" FontSize="11" FontFamily="Consolas"
+                                                 Padding="4,2" Margin="0,1,0,3"
+                                                 Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                                 BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}" />
+                                        <TextBlock Text="ログポイント（停止せず出力。{式} 展開）" FontSize="10"
+                                                   Foreground="{DynamicResource FgDim}" />
+                                        <TextBox Text="{Binding LogMessage, Mode=TwoWay}" FontSize="11" FontFamily="Consolas"
+                                                 Padding="4,2" Margin="0,1,0,0"
+                                                 Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                                 BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock Grid.Row="1" Text="ブレークポイントはありません（エディタの行頭をクリックで設定）"
+                               Foreground="{DynamicResource FgDim}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12,0"
+                               Visibility="{Binding HasBreakpoints, Converter={StaticResource InverseBoolToVis}}" />
                 </Grid>
             </TabItem>
         </TabControl>

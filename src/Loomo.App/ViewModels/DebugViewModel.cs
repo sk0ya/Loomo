@@ -138,8 +138,18 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     /// <summary>クラス単位にまとめたテストツリー（TreeView の表示元）。<see cref="SyncTree"/> で再構築する。</summary>
     public ObservableCollection<TestGroupViewModel> TestTree { get; } = new();
 
-    /// <summary>ソースパス（絶対）→ ブレークポイント行（0 始まり）。エディタ表示と一致させる。</summary>
-    private readonly Dictionary<string, SortedSet<int>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>ソースパス（絶対）→ そのファイルのブレークポイント行（BreakpointViewModel）。
+    /// 行・条件・有効フラグの真実。エディタのガター表示と管理パネルの両方の元データ。</summary>
+    private readonly Dictionary<string, List<BreakpointViewModel>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>全ブレークポイントのフラット一覧（管理パネルの表示元）。</summary>
+    public ObservableCollection<BreakpointViewModel> Breakpoints { get; } = new();
+
+    /// <summary>ブレークポイント一覧が（パネル操作で）変わったので、そのパスのエディタのガターを同期し直す要求。</summary>
+    public event Action<string>? BreakpointsRefreshed;
+
+    /// <summary>ブレークポイントが 1 件でもあるか（パネルの空案内の出し分け）。</summary>
+    [ObservableProperty] private bool _hasBreakpoints;
 
     /// <summary>停止位置をエディタへ反映するための通知（path, 0始まり行）。行が -1 のときは実行行ハイライト解除。
     /// path が null のときは全エディタの実行行を解除する。</summary>
@@ -167,6 +177,36 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
 
     /// <summary>ウォッチ追加欄。</summary>
     [ObservableProperty] private string _watchExpression = "";
+
+    /// <summary>実行中スレッド一覧（停止時に取得）。選択でアクティブスレッドを切り替える。</summary>
+    public ObservableCollection<DebugThread> Threads { get; } = new();
+
+    /// <summary>選択中スレッド（切替で stackTrace/step の対象を変える）。</summary>
+    [ObservableProperty] private DebugThread? _selectedThread;
+
+    /// <summary>スレッド一覧をプログラムから差し替え中（選択変更の再入で再読込しないためのガード）。</summary>
+    private bool _settingThread;
+
+    /// <summary>例外ブレーク：スローされたすべての例外で中断（netcoredbg フィルタ <c>all</c>）。</summary>
+    [ObservableProperty] private bool _breakOnAllExceptions;
+
+    /// <summary>例外ブレーク：未処理（ユーザーコード外へ抜ける）例外で中断（フィルタ <c>user-unhandled</c>）。</summary>
+    [ObservableProperty] private bool _breakOnUncaughtExceptions;
+
+    /// <summary>マイコードのみをデバッグするか（VS の「マイ コードのみ」）。次回起動から反映。</summary>
+    [ObservableProperty] private bool _justMyCode;
+
+    partial void OnBreakOnAllExceptionsChanged(bool value) => _ = ApplyExceptionFiltersAsync();
+    partial void OnBreakOnUncaughtExceptionsChanged(bool value) => _ = ApplyExceptionFiltersAsync();
+
+    /// <summary>例外ブレークのフィルタ選択をアダプタへ反映する（未起動でも記憶され、起動時に送られる）。</summary>
+    private Task ApplyExceptionFiltersAsync()
+    {
+        var ids = new List<string>();
+        if (BreakOnAllExceptions) ids.Add("all");
+        if (BreakOnUncaughtExceptions) ids.Add("user-unhandled");
+        return _debug.SetExceptionBreakpointsAsync(ids, CancellationToken.None);
+    }
 
     /// <summary>netcoredbg の導入コマンド（促しバーのボタン用）。</summary>
     public string AdapterInstallCommand => DebugAdapterCatalog.Netcoredbg.InstallCommand ?? "";
@@ -224,19 +264,83 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     public IReadOnlyList<int> ToggleBreakpoint(string sourcePath, int line0)
     {
         var path = Path.GetFullPath(sourcePath);
-        if (!_breakpoints.TryGetValue(path, out var set))
-            _breakpoints[path] = set = new SortedSet<int>();
-        if (!set.Remove(line0)) set.Add(line0);
-        if (set.Count == 0) _breakpoints.Remove(path);
+        if (!_breakpoints.TryGetValue(path, out var list))
+            _breakpoints[path] = list = new List<BreakpointViewModel>();
 
-        var lines0 = set.ToList();
-        _ = _debug.SetBreakpointsAsync(path, lines0.Select(l => l + 1).ToList(), CancellationToken.None);
-        return lines0;
+        var existing = list.FirstOrDefault(b => b.Line0 == line0);
+        if (existing is not null)
+        {
+            list.Remove(existing);
+            Breakpoints.Remove(existing);
+        }
+        else
+        {
+            var bp = NewBreakpoint(path, line0);
+            list.Add(bp);
+            Breakpoints.Add(bp);
+        }
+        if (list.Count == 0) _breakpoints.Remove(path);
+
+        PushBreakpoints(path);
+        RefreshBreakpointFlags();
+        return BreakpointLines(path);
     }
 
-    /// <summary>あるファイルのブレークポイント行（0 始まり）を返す（エディタ同期用）。</summary>
-    public IReadOnlyList<int> GetBreakpoints(string sourcePath)
-        => _breakpoints.TryGetValue(Path.GetFullPath(sourcePath), out var set) ? set.ToList() : Array.Empty<int>();
+    /// <summary>あるファイルのブレークポイント行（0 始まり）を返す（エディタ同期用）。条件・有効に関わらず全行。</summary>
+    public IReadOnlyList<int> GetBreakpoints(string sourcePath) => BreakpointLines(Path.GetFullPath(sourcePath));
+
+    private IReadOnlyList<int> BreakpointLines(string fullPath)
+        => _breakpoints.TryGetValue(fullPath, out var list)
+            ? list.Select(b => b.Line0).OrderBy(l => l).ToList()
+            : Array.Empty<int>();
+
+    /// <summary>新しいブレークポイント行 VM を作り、条件変更時の再送を配線する。</summary>
+    private BreakpointViewModel NewBreakpoint(string path, int line0)
+    {
+        var bp = new BreakpointViewModel(path, line0);
+        bp.Changed += OnBreakpointChanged;
+        return bp;
+    }
+
+    private void OnBreakpointChanged(BreakpointViewModel bp) => PushBreakpoints(bp.Path);
+
+    /// <summary>そのファイルのブレークポイント（条件込み）をアダプタへ送る。</summary>
+    private void PushBreakpoints(string path)
+    {
+        var models = _breakpoints.TryGetValue(path, out var list)
+            ? list.OrderBy(b => b.Line0).Select(b => b.ToModel()).ToList()
+            : new List<DebugBreakpoint>();
+        _ = _debug.SetBreakpointsAsync(path, models, CancellationToken.None);
+    }
+
+    /// <summary>1 件のブレークポイントを削除する（管理パネルの ✕）。エディタのガターも同期し直す。</summary>
+    [RelayCommand]
+    private void RemoveBreakpoint(BreakpointViewModel? bp)
+    {
+        if (bp is null) return;
+        if (_breakpoints.TryGetValue(bp.Path, out var list))
+        {
+            list.Remove(bp);
+            if (list.Count == 0) _breakpoints.Remove(bp.Path);
+        }
+        Breakpoints.Remove(bp);
+        PushBreakpoints(bp.Path);
+        RefreshBreakpointFlags();
+        BreakpointsRefreshed?.Invoke(bp.Path);
+    }
+
+    /// <summary>すべてのブレークポイントを削除する。</summary>
+    [RelayCommand]
+    private void RemoveAllBreakpoints()
+    {
+        var paths = _breakpoints.Keys.ToList();
+        _breakpoints.Clear();
+        Breakpoints.Clear();
+        foreach (var p in paths) { PushBreakpoints(p); BreakpointsRefreshed?.Invoke(p); }
+        RefreshBreakpointFlags();
+    }
+
+    private void RefreshBreakpointFlags() => HasBreakpoints = Breakpoints.Count > 0;
 
     private bool CanStep() => IsStopped;
 
@@ -252,6 +356,27 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanStep))]
     private async Task StepOut() => await _debug.StepOutAsync();
 
+    /// <summary>実行中（停止していない）ときだけ一時停止できる。</summary>
+    private bool CanPause() => IsBusy && !IsStopped;
+
+    [RelayCommand(CanExecute = nameof(CanPause))]
+    private async Task Pause() => await _debug.PauseAsync();
+
+    private bool CanRestart() => IsBusy;
+
+    /// <summary>セッションを停止して同じ対象で再起動する（直前が launch なら再 launch、attach なら再 attach）。</summary>
+    [RelayCommand(CanExecute = nameof(CanRestart))]
+    private async Task Restart()
+    {
+        var attach = _lastAttachProcess;
+        await StopAsync();
+        if (attach is not null) await AttachToAsync(attach);
+        else await StartAsync();
+    }
+
+    /// <summary>直前のセッションがアタッチだったときの対象プロセス（再起動で再アタッチする）。launch なら null。</summary>
+    private DebugProcessViewModel? _lastAttachProcess;
+
     private void OnStopped(object? sender, DebugStopped e)
         => _dispatcher.InvokeAsync(async () =>
         {
@@ -265,6 +390,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             {
                 Append(DebugOutputCategory.Important, $"停止（{e.Reason}）");
             }
+            await LoadThreadsAsync();
             await LoadStackAsync();
         });
 
@@ -281,6 +407,27 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         CallStack.Clear();
         foreach (var f in frames) CallStack.Add(new DebugFrameViewModel(f));
         SelectedFrame = CallStack.Count > 0 ? CallStack[0] : null;  // → OnSelectedFrameChanged が変数を読む
+    }
+
+    /// <summary>停止時：実行中スレッドを取得し、アクティブスレッドを選択状態にする。</summary>
+    private async Task LoadThreadsAsync()
+    {
+        var threads = await _debug.GetThreadsAsync();
+        _settingThread = true;
+        try
+        {
+            Threads.Clear();
+            foreach (var t in threads) Threads.Add(t);
+            SelectedThread = Threads.FirstOrDefault(t => t.Id == _debug.ActiveThreadId) ?? Threads.FirstOrDefault();
+        }
+        finally { _settingThread = false; }
+    }
+
+    partial void OnSelectedThreadChanged(DebugThread? value)
+    {
+        if (_settingThread || value is null || !IsStopped) return;
+        _debug.SetActiveThread(value.Id);
+        _ = LoadStackAsync();  // 切替先スレッドのコールスタック→変数を読み直す
     }
 
     partial void OnSelectedFrameChanged(DebugFrameViewModel? value)
@@ -305,12 +452,15 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         if (frame is null) return;
 
         var scopes = await _debug.GetScopesAsync(frame.Id);
+        Func<int, string, string, Task<string?>>? setVar =
+            _debug.SupportsSetVariable ? (cr, n, v) => _debug.SetVariableAsync(cr, n, v) : null;
         foreach (var s in scopes)
         {
             // スコープを「展開可能な変数ノード」として扱い、展開時に GetVariablesAsync で中身を読む。
+            // スコープ自身は書き換え対象でないので containerRef=0（直下の子は scope の VR を保持側に持つ）。
             var node = new DebugVariableViewModel(
-                new DebugVariable(s.Name, "", null, s.VariablesReference),
-                vr => _debug.GetVariablesAsync(vr));
+                new DebugVariable(s.Name, "", null, s.VariablesReference), 0,
+                vr => _debug.GetVariablesAsync(vr), setVar);
             Variables.Add(node);
         }
         if (Variables.Count > 0) Variables[0].IsExpanded = true;  // Locals を既定で開く
@@ -328,6 +478,9 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     {
         CallStack.Clear();
         Variables.Clear();
+        _settingThread = true;
+        try { Threads.Clear(); SelectedThread = null; }
+        finally { _settingThread = false; }
         foreach (var w in Watches) w.Value = "";
     }
 
@@ -351,6 +504,23 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
 
     partial void OnWatchExpressionChanged(string value) => AddWatchCommand.NotifyCanExecuteChanged();
 
+    /// <summary>アダプタが「次のステートメントに設定」（gotoTargets/goto）に対応しているか。
+    /// エディタ右クリックメニューの出し分けに使う（未対応なら項目を出さない）。</summary>
+    public bool SupportsSetNextStatement => _debug.SupportsSetNextStatement;
+
+    /// <summary>次に実行する文をエディタのカーソル行（0 始まり）へ移動する。成功したら実行行ハイライトと
+    /// コールスタック/変数を更新する。</summary>
+    public async Task SetNextStatementAsync(string sourcePath, int line0)
+    {
+        if (!IsStopped) return;
+        var ok = await _debug.SetNextStatementAsync(sourcePath, line0 + 1);  // エディタ0始まり → DAP1始まり
+        if (ok)
+        {
+            ExecutionLineChanged?.Invoke(sourcePath, line0);
+            await LoadStackAsync();
+        }
+    }
+
     /// <summary>パネルが開かれたときにアダプタ導入状況を取り直す（導入直後でも反映されるように）。</summary>
     public void Refresh() => IsAdapterMissing = !_debug.IsAdapterAvailable;
 
@@ -371,11 +541,12 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         var program = await ResolveProgramAsync();
         if (program is null) return;
 
+        _lastAttachProcess = null;  // この起動は launch（再起動で再 launch する）
         _cts = new CancellationTokenSource();
         try
         {
             await _debug.StartAsync(
-                new DebugLaunchConfig(program, Path.GetDirectoryName(program)),
+                new DebugLaunchConfig(program, Path.GetDirectoryName(program), JustMyCode: JustMyCode),
                 _cts.Token);
         }
         catch (OperationCanceledException) { /* 停止操作 */ }
@@ -865,9 +1036,12 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanAttach))]
     private async Task Attach()
     {
-        var proc = SelectedProcess;
-        if (proc is null) return;
+        if (SelectedProcess is { } proc) await AttachToAsync(proc);
+    }
 
+    /// <summary>指定プロセスにアタッチする（コマンド本体と再起動の共通処理）。</summary>
+    private async Task AttachToAsync(DebugProcessViewModel proc)
+    {
         Refresh();
         if (IsAdapterMissing)
         {
@@ -878,6 +1052,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         }
 
         ShowAttach = false;
+        _lastAttachProcess = proc;  // 再起動で再アタッチする対象
         _cts = new CancellationTokenSource();
         try
         {
@@ -1093,6 +1268,8 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             StepOverCommand.NotifyCanExecuteChanged();
             StepIntoCommand.NotifyCanExecuteChanged();
             StepOutCommand.NotifyCanExecuteChanged();
+            PauseCommand.NotifyCanExecuteChanged();
+            RestartCommand.NotifyCanExecuteChanged();
             StatusMessage = state switch
             {
                 DebugSessionState.Idle => "待機中",
