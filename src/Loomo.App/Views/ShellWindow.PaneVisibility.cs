@@ -74,7 +74,7 @@ public partial class ShellWindow
         PaneKind.Git => "Git",
         PaneKind.Diff => "Diff",
         PaneKind.Trace => "トレース",
-        PaneKind.Debug => "デバッグ",
+        PaneKind.Debug => "IDE",
         _ => kind.ToString(),
     };
 

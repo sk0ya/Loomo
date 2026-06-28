@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
@@ -79,6 +80,18 @@ public sealed partial class DebugViewModel : ObservableObject
 
     /// <summary>ブレークポイント等で停止中か（ステップ/続行ボタンの表示・可否に使う）。</summary>
     [ObservableProperty] private bool _isStopped;
+
+    /// <summary>ビルド/テストを実行中か（デバッグの <see cref="IsBusy"/> とは別系統。同時実行を防ぐゲート）。</summary>
+    [ObservableProperty] private bool _isTaskRunning;
+
+    /// <summary>直近のテスト実行の集計（成功/失敗/スキップ/合計）。テストタブのヘッダに表示する。</summary>
+    [ObservableProperty] private string _testSummary = "";
+
+    /// <summary>テスト結果が 1 度でも得られたか（テストタブの案内文の出し分けに使う）。</summary>
+    [ObservableProperty] private bool _hasTestResults;
+
+    /// <summary>直近のテストで失敗したテスト一覧（ダブルクリックで該当行へジャンプ）。</summary>
+    public ObservableCollection<TestResultViewModel> TestFailures { get; } = new();
 
     /// <summary>ソースパス（絶対）→ ブレークポイント行（0 始まり）。エディタ表示と一致させる。</summary>
     private readonly Dictionary<string, SortedSet<int>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
@@ -288,7 +301,7 @@ public sealed partial class DebugViewModel : ObservableObject
     /// <summary>パネルが開かれたときにアダプタ導入状況を取り直す（導入直後でも反映されるように）。</summary>
     public void Refresh() => IsAdapterMissing = !_debug.IsAdapterAvailable;
 
-    private bool CanStart() => !IsBusy;
+    private bool CanStart() => !IsBusy && !IsTaskRunning;
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()
@@ -328,6 +341,168 @@ public sealed partial class DebugViewModel : ObservableObject
         await _debug.StopAsync();
     }
 
+    private bool CanRunTask() => !IsBusy && !IsTaskRunning;
+
+    /// <summary>ワークスペースをビルドする（デバッグ起動とは独立した手動ビルド）。
+    /// 対象は .sln 優先、無ければ最初の .csproj。出力はコンソールへ、結果はステータスへ。</summary>
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private async Task BuildTarget()
+    {
+        var target = FindBuildTarget();
+        if (target is null) return;
+
+        IsTaskRunning = true;
+        try
+        {
+            StatusMessage = "ビルド中…";
+            Append(DebugOutputCategory.Important, $"ビルド: {Path.GetFileName(target)}");
+            var result = await _terminal.RunCommandAsync(
+                $"dotnet build \"{target}\" -c Debug --nologo", CancellationToken.None);
+            WriteConsole(result.Output);
+            StatusMessage = result.Success ? "ビルド成功" : $"ビルド失敗（{result.ExitCode}）";
+            Append(DebugOutputCategory.Important,
+                result.Success ? "ビルドに成功しました。" : $"ビルドに失敗しました（終了コード {result.ExitCode}）。");
+        }
+        finally { IsTaskRunning = false; }
+    }
+
+    /// <summary>ワークスペースのテストを実行する（<c>dotnet test</c>）。出力はコンソールへ流し、
+    /// 集計と失敗テストの一覧を「テスト」タブへ反映する。失敗テストはダブルクリックで該当行へジャンプ。</summary>
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private async Task Test()
+    {
+        var target = FindBuildTarget();
+        if (target is null) return;
+
+        IsTaskRunning = true;
+        try
+        {
+            StatusMessage = "テスト実行中…";
+            TestFailures.Clear();
+            TestSummary = "";
+            HasTestResults = false;
+            Append(DebugOutputCategory.Important, $"テスト: {Path.GetFileName(target)}");
+            // 出力の集計行・失敗行を安定して解析するため、CLI 表示言語を英語に固定する。
+            var result = await _terminal.RunCommandAsync(
+                $"$env:DOTNET_CLI_UI_LANGUAGE='en'; dotnet test \"{target}\" --nologo", CancellationToken.None);
+            WriteConsole(result.Output);
+            ParseTestResults(result.Output);
+            StatusMessage = result.Success ? "テスト成功" : "テスト失敗";
+        }
+        finally { IsTaskRunning = false; }
+    }
+
+    partial void OnIsTaskRunningChanged(bool value)
+    {
+        StartCommand.NotifyCanExecuteChanged();
+        AttachCommand.NotifyCanExecuteChanged();
+        BuildTargetCommand.NotifyCanExecuteChanged();
+        TestCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>失敗テストのダブルクリック：スタックトレースから拾った位置へジャンプする（通常タブ＋フォーカス）。</summary>
+    public void NavigateToTestSource(TestResultViewModel? t)
+    {
+        if (t is { HasSource: true, SourcePath: { } p })
+            FrameActivated?.Invoke(p, t.Line - 1);  // 1始まり → エディタ 0始まり
+    }
+
+    /// <summary>ビルド/テスト対象を解決する。ワークスペース直下の .sln を優先し、無ければ最初の .csproj。</summary>
+    private string? FindBuildTarget()
+    {
+        var root = _workspace.RootPath;
+        if (root is null)
+        {
+            Append(DebugOutputCategory.Important, "ワークスペースが開かれていません。");
+            return null;
+        }
+        try
+        {
+            var sln = Directory.GetFiles(root, "*.sln", SearchOption.TopDirectoryOnly);
+            if (sln.Length > 0) return sln[0];
+        }
+        catch { /* 列挙失敗時は csproj へフォールバック */ }
+
+        var csproj = FindProject(root);
+        if (csproj is null)
+            Append(DebugOutputCategory.Important, "ワークスペースに .sln/.csproj が見つかりません。");
+        return csproj;
+    }
+
+    /// <summary><c>dotnet test</c> の出力から集計（成功/失敗/スキップ/合計）と失敗テスト（名前・メッセージ・
+    /// ソース位置）を抽出して <see cref="TestFailures"/>/<see cref="TestSummary"/> へ反映する。
+    /// 複数テストプロジェクトの集計行は合算する。CLI 言語は英語に固定済み（<see cref="Test"/>）。</summary>
+    private void ParseTestResults(string output)
+    {
+        var summaryRe = new Regex(@"Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)");
+        var failedRe = new Regex(@"^\s*Failed\s+(.+?)\s+\[\d");
+        var locRe = new Regex(@"\sin\s+(.+?):line\s+(\d+)");
+
+        int failed = 0, passed = 0, skipped = 0, total = 0;
+        var sawSummary = false;
+
+        string? name = null, msg = null, path = null;
+        var line1 = 0;
+        var grabMsg = false;
+
+        void Flush()
+        {
+            if (name is not null) TestFailures.Add(new TestResultViewModel(name, msg, path, line1));
+            name = null; msg = null; path = null; line1 = 0; grabMsg = false;
+        }
+
+        foreach (var raw in output.Replace("\r", "").Split('\n'))
+        {
+            var sm = summaryRe.Match(raw);
+            if (sm.Success)
+            {
+                failed += int.Parse(sm.Groups[1].Value);
+                passed += int.Parse(sm.Groups[2].Value);
+                skipped += int.Parse(sm.Groups[3].Value);
+                total += int.Parse(sm.Groups[4].Value);
+                sawSummary = true;
+                Flush();
+                continue;
+            }
+
+            var fm = failedRe.Match(raw);
+            if (fm.Success)
+            {
+                Flush();
+                name = fm.Groups[1].Value.Trim();
+                continue;
+            }
+
+            if (name is null) continue;  // 失敗ブロックの中だけ詳細を拾う
+
+            if (path is null)
+            {
+                var lm = locRe.Match(raw);
+                if (lm.Success) { path = lm.Groups[1].Value.Trim(); line1 = int.Parse(lm.Groups[2].Value); }
+            }
+
+            var t = raw.Trim();
+            if (t.StartsWith("Error Message:")) { grabMsg = true; continue; }
+            if (grabMsg && msg is null && t.Length > 0 && !t.StartsWith("Stack Trace:")) { msg = t; grabMsg = false; }
+        }
+        Flush();
+
+        HasTestResults = sawSummary || TestFailures.Count > 0;
+        TestSummary = sawSummary
+            ? $"成功 {passed} / 失敗 {failed} / スキップ {skipped} / 合計 {total}"
+            : TestFailures.Count > 0 ? $"失敗 {TestFailures.Count} 件" : "結果を取得できませんでした";
+    }
+
+    /// <summary>複数行のコマンド出力を 1 行ずつコンソールへ流す（末尾の CR を落とし、空行は捨てる）。</summary>
+    private void WriteConsole(string output)
+    {
+        foreach (var line in output.Split('\n'))
+        {
+            var t = line.TrimEnd('\r');
+            if (t.Length > 0) Append(DebugOutputCategory.Console, t);
+        }
+    }
+
     /// <summary>アタッチパネルの開閉。開くときに（未取得なら）プロセス一覧を読み込む。</summary>
     [RelayCommand]
     private async Task ToggleAttach()
@@ -337,7 +512,7 @@ public sealed partial class DebugViewModel : ObservableObject
             await RefreshProcessesAsync();
     }
 
-    private bool CanAttach() => !IsBusy && SelectedProcess is not null;
+    private bool CanAttach() => !IsBusy && !IsTaskRunning && SelectedProcess is not null;
 
     /// <summary>選択中プロセスにアタッチする。停止してもそのプロセスは終了しない（デタッチのみ）。</summary>
     [RelayCommand(CanExecute = nameof(CanAttach))]

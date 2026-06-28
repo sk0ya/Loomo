@@ -89,3 +89,31 @@ public sealed partial class WatchItemViewModel : ObservableObject
     public string Expression { get; }
     [ObservableProperty] private string _value = "";
 }
+
+/// <summary>失敗したテスト 1 件（<c>dotnet test</c> 出力から抽出）。<see cref="Line"/> はスタックトレースから
+/// 拾ったソース行（1 始まり、不明なら 0）。<see cref="HasSource"/> ならダブルクリックでその位置へジャンプする。</summary>
+public sealed class TestResultViewModel
+{
+    public TestResultViewModel(string name, string? message, string? sourcePath, int line)
+    {
+        Name = name;
+        Message = message;
+        SourcePath = sourcePath;
+        Line = line;
+    }
+
+    public string Name { get; }
+
+    /// <summary>失敗メッセージの先頭行（取得できなければ null）。</summary>
+    public string? Message { get; }
+
+    /// <summary>失敗箇所のソース絶対パス（スタックトレースから抽出、無ければ null）。</summary>
+    public string? SourcePath { get; }
+
+    /// <summary>失敗箇所のソース行（1 始まり、不明なら 0）。</summary>
+    public int Line { get; }
+
+    public bool HasSource => !string.IsNullOrEmpty(SourcePath) && Line > 0;
+
+    public string Location => HasSource ? $"{Path.GetFileName(SourcePath)}:{Line}" : "";
+}

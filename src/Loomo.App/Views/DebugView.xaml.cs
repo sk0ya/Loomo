@@ -119,6 +119,21 @@ public partial class DebugView : UserControl
         }
     }
 
+    // 失敗テストのダブルクリック：スタックトレースから拾った位置へジャンプ（行＝ListBoxItem 上のときだけ）。
+    private void OnTestDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        for (var d = e.OriginalSource as System.Windows.DependencyObject; d is not null;
+             d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+        {
+            if (d is System.Windows.Controls.ListBoxItem item)
+            {
+                if (DataContext is DebugViewModel vm && item.DataContext is TestResultViewModel t)
+                    vm.NavigateToTestSource(t);
+                return;
+            }
+        }
+    }
+
     // 右クリックメニュー「コピー」：その項目 1 件だけをテキスト化してクリップボードへ。
     // ContextMenu は配置先要素の DataContext（＝その項目）を引き継ぐので、それを種別で振り分ける。
     private void OnCopyItemClick(object sender, System.Windows.RoutedEventArgs e)
@@ -128,6 +143,7 @@ public partial class DebugView : UserControl
             DebugFrameViewModel f => string.IsNullOrEmpty(f.Location) ? f.Name : $"{f.Name}  {f.Location}",
             DebugVariableViewModel v => string.IsNullOrEmpty(v.Value) ? v.Name : $"{v.Name} = {v.Value}",
             WatchItemViewModel w => $"{w.Expression} = {w.Value}",
+            TestResultViewModel t => string.IsNullOrEmpty(t.Message) ? t.Name : $"{t.Name}  {t.Message}",
             _ => null,
         };
         if (text is not null)

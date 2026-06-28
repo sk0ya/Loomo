@@ -365,8 +365,9 @@
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z" />
                         </ToggleButton>
-                        <!-- デバッグ：虫（ブレークポイント／DAP） -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Debug" Click="OnTogglePaneVisibility">
+                        <!-- IDE：虫（ビルド・テスト・デバッグ／DAP） -->
+                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Debug" Click="OnTogglePaneVisibility"
+                                      ToolTip="IDE（ビルド・テスト・デバッグ）">
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3" />
                         </ToggleButton>
@@ -925,7 +926,7 @@
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
                                Tag="Debug" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="デバッグ" />
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="IDE" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="13" ToolTip="このペインを隠す"
                                 Tag="Debug" Click="OnHidePane" />
@@ -941,6 +942,14 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Height="22" Padding="12,0"
                                 Margin="0,1,6,1" FontSize="11" Content="▶ 開始" ToolTip="デバッグを開始"
                                 Command="{Binding Debug.StartCommand}"
+                                Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0"
+                                Margin="0,1,6,1" FontSize="11" Content="🧪 テスト" ToolTip="dotnet test を実行（.sln 優先）"
+                                Command="{Binding Debug.TestCommand}"
+                                Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0"
+                                Margin="0,1,6,1" FontSize="11" Content="🔨 ビルド" ToolTip="dotnet build を実行（.sln 優先）"
+                                Command="{Binding Debug.BuildTargetCommand}"
                                 Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}" />
                         <CheckBox DockPanel.Dock="Right" Content="先にビルド" VerticalAlignment="Center"
                                   Margin="0,0,8,0" FontSize="11" Foreground="{DynamicResource Fg}"
