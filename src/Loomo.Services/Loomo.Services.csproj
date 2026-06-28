@@ -16,7 +16,8 @@
 
   <ItemGroup>
     <!-- 1.0.29 で Core/Controls/Defaults の3DLLが sk0ya.Editor.Controls に統合された（単一パッケージ） -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.29" />
+    <!-- 1.0.30: 条件付き/ログポイントBPのガター描き分け＋デバッグ DataTip（ホバー値表示）API を追加 -->
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.30" />
     <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.21" />
   </ItemGroup>
 

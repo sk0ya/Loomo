@@ -161,6 +161,11 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     /// path が null のときは全エディタの実行行を解除する。</summary>
     public event Action<string?, int>? ExecutionLineChanged;
 
+    /// <summary>停止/実行の切り替わり通知（true=停止）。エディタの DataTip（ホバー値表示）の有効化に使う。</summary>
+    public event Action<bool>? StoppedChanged;
+
+    partial void OnIsStoppedChanged(bool value) => StoppedChanged?.Invoke(value);
+
     /// <summary>コールスタックのフレーム選択でソースをプレビュー表示する要求（path, 0始まり行）。
     /// プレビュータブを使い回し、エディタにフォーカスは奪わない。</summary>
     public event Action<string, int>? FramePreviewRequested;
@@ -301,6 +306,19 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
 
     /// <summary>あるファイルのブレークポイント行（0 始まり）を返す（エディタ同期用）。条件・有効に関わらず全行。</summary>
     public IReadOnlyList<int> GetBreakpoints(string sourcePath) => BreakpointLines(Path.GetFullPath(sourcePath));
+
+    /// <summary>あるファイルのブレークポイントを、ガターのグリフ描き分けに必要なメタ（行0・条件付き・ログポイント・有効）で返す。
+    /// 条件付き＝Condition か HitCondition あり、ログポイント＝LogMessage あり（ログポイント優先で描く）。</summary>
+    public IReadOnlyList<BreakpointGlyphInfo> GetBreakpointGlyphs(string sourcePath)
+    {
+        var path = Path.GetFullPath(sourcePath);
+        if (!_breakpoints.TryGetValue(path, out var list)) return Array.Empty<BreakpointGlyphInfo>();
+        return list.Select(b => new BreakpointGlyphInfo(
+            b.Line0,
+            HasCondition: !string.IsNullOrWhiteSpace(b.Condition) || !string.IsNullOrWhiteSpace(b.HitCondition),
+            IsLogpoint: !string.IsNullOrWhiteSpace(b.LogMessage),
+            Enabled: b.Enabled)).ToList();
+    }
 
     private IReadOnlyList<int> BreakpointLines(string fullPath)
         => _breakpoints.TryGetValue(fullPath, out var list)
@@ -526,6 +544,15 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         foreach (var w in Watches) w.Value = "";
         Modules.Clear();
         HasModules = false;
+    }
+
+    /// <summary>DataTip 用：停止中の現在フレームで式を評価し、表示値を返す。停止していない／値として意味のない結果なら null。
+    /// 副作用は避けたいので watch と同じ <c>EvaluateAsync</c>（context=watch）を使う。</summary>
+    public async Task<string?> EvaluateDataTipAsync(string expression)
+    {
+        if (!IsStopped || SelectedFrame is not { } f || string.IsNullOrWhiteSpace(expression)) return null;
+        var value = await _debug.EvaluateAsync(expression, f.Id);
+        return AutosExtractor.LooksLikeValue(value) ? value : null;
     }
 
     private bool CanAddWatch() => !string.IsNullOrWhiteSpace(WatchExpression);

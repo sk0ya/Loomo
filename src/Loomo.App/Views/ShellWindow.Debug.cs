@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Editor.Controls;
+using Editor.Controls.Rendering;
+using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -23,6 +25,15 @@ public partial class ShellWindow
         _vm.Debug.FramePreviewRequested += OnDebugFramePreviewRequested;
         _vm.Debug.FrameActivated += OnDebugFrameActivated;
         _vm.Debug.BreakpointsRefreshed += OnDebugBreakpointsRefreshed;
+        _vm.Debug.StoppedChanged += OnDebugStoppedChanged;
+    }
+
+    /// <summary>停止/再開に合わせて全エディタの DataTip（ホバー値表示）を有効化/無効化する。
+    /// 停止中だけホバー評価を許可し、再開・終了でポップアップを閉じる。</summary>
+    private void OnDebugStoppedChanged(bool stopped)
+    {
+        foreach (var c in RealizedEditorControls())
+            c.SetDataTipsEnabled(stopped);
     }
 
     /// <summary>ブレークポイント管理パネルでの削除/全削除を、そのパスを開いているエディタのガターへ反映する。</summary>
@@ -62,6 +73,9 @@ public partial class ShellWindow
     {
         control.SetBreakpointsEnabled(true);
         control.BreakpointToggled += line => OnEditorBreakpointToggled(control, line);
+        // 停止中はホバーで式を評価して値を表示する（DataTip）。停止していなければ VM 側で null を返す。
+        control.DataTipEvaluator = (req, _) => _vm.Debug.EvaluateDataTipAsync(req.Expression);
+        control.SetDataTipsEnabled(_vm.Debug.IsStopped);
         // ファイル読込・差し替え時に、そのパスのブレークポイントをエディタへ反映する。
         control.BufferChanged += (_, _) => SyncEditorBreakpoints(control);
         SyncEditorBreakpoints(control);
@@ -71,16 +85,26 @@ public partial class ShellWindow
     {
         var path = control.FilePath;
         if (string.IsNullOrWhiteSpace(path)) return;
-        var lines = _vm.Debug.ToggleBreakpoint(path, line0);
-        control.SetBreakpoints(lines);
+        _vm.Debug.ToggleBreakpoint(path, line0);
+        SyncEditorBreakpoints(control);
     }
 
     private void SyncEditorBreakpoints(VimEditorControl control)
     {
         var path = control.FilePath;
         control.SetBreakpoints(string.IsNullOrWhiteSpace(path)
-            ? Array.Empty<int>()
-            : _vm.Debug.GetBreakpoints(path));
+            ? Array.Empty<EditorBreakpoint>()
+            : _vm.Debug.GetBreakpointGlyphs(path).Select(ToEditorBreakpoint).ToList());
+    }
+
+    /// <summary>VM のブレークポイントメタを Editor のガター表示用 <see cref="EditorBreakpoint"/> へ写像する。
+    /// ログポイント（◆）を条件付き（＋）より優先して描く。</summary>
+    private static EditorBreakpoint ToEditorBreakpoint(BreakpointGlyphInfo info)
+    {
+        var glyph = info.IsLogpoint ? BreakpointGlyphKind.Logpoint
+                  : info.HasCondition ? BreakpointGlyphKind.Conditional
+                  : BreakpointGlyphKind.Normal;
+        return new EditorBreakpoint(info.Line0, glyph, info.Enabled);
     }
 
     /// <summary>停止位置をエディタへ反映する。まず全エディタの実行行を解除し、対象パスのエディタを

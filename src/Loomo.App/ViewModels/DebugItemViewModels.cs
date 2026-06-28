@@ -169,6 +169,10 @@ public sealed partial class BreakpointViewModel : ObservableObject
         Enabled);
 }
 
+/// <summary>エディタのガターでブレークポイントを描き分けるためのメタ（UI ライブラリ非依存）。
+/// <paramref name="Line0"/> は 0 始まりのバッファ行。ShellWindow が Editor の EditorBreakpoint に写像する。</summary>
+public readonly record struct BreakpointGlyphInfo(int Line0, bool HasCondition, bool IsLogpoint, bool Enabled);
+
 /// <summary>ウォッチ式 1 件（式とその評価結果）。</summary>
 public sealed partial class WatchItemViewModel : ObservableObject
 {
