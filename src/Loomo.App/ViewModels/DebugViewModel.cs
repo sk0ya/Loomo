@@ -620,6 +620,19 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             ? _debug.RunToCursorAsync(sourcePath, line0 + 1, CancellationToken.None)  // エディタ0始まり → DAP1始まり
             : Task.CompletedTask;
 
+    /// <summary>アダプタが「特定の関数にステップ イン」（stepInTargets）に対応しているか。
+    /// エディタ右クリックメニューの出し分けに使う（未対応なら項目を出さない）。</summary>
+    public bool SupportsStepInTargets => _debug.SupportsStepInTargets;
+
+    /// <summary>停止行のステップ イン候補（先頭フレーム文脈）を取得する。停止していなければ空。</summary>
+    public Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync()
+        => IsStopped && SelectedFrame is { } f
+            ? _debug.GetStepInTargetsAsync(f.Id)
+            : Task.FromResult((IReadOnlyList<DebugStepInTarget>)Array.Empty<DebugStepInTarget>());
+
+    /// <summary>指定の候補へステップ インする。</summary>
+    public Task StepIntoTargetAsync(DebugStepInTarget target) => _debug.StepInTargetAsync(target.Id);
+
     /// <summary>あるファイルのカーソル行（0 始まり）のブレークポイントを返す（無ければ null）。ガターからの条件編集用。</summary>
     public BreakpointViewModel? FindBreakpoint(string sourcePath, int line0)
     {

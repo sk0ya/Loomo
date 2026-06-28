@@ -56,6 +56,7 @@ public sealed class NetcoredbgDebugService : IDebugService
 
     public bool SupportsSetVariable { get; private set; }
     public bool SupportsSetNextStatement { get; private set; }
+    public bool SupportsStepInTargets { get; private set; }
     public IReadOnlyList<DebugExceptionFilter> ExceptionFilters { get; private set; } = Array.Empty<DebugExceptionFilter>();
     public int ActiveThreadId => _activeThreadId;
 
@@ -620,6 +621,43 @@ public sealed class NetcoredbgDebugService : IDebugService
         catch { return Array.Empty<DebugModule>(); }
     }
 
+    public async Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync(int frameId)
+    {
+        var client = _client;
+        if (client is not { IsRunning: true } || !SupportsStepInTargets) return Array.Empty<DebugStepInTarget>();
+        try
+        {
+            var body = await client.SendRequestAsync("stepInTargets", new { frameId });
+            var list = new List<DebugStepInTarget>();
+            if (body is { ValueKind: JsonValueKind.Object } b &&
+                b.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var t in targets.EnumerateArray())
+                {
+                    int id = t.TryGetProperty("id", out var idp) && idp.ValueKind == JsonValueKind.Number ? idp.GetInt32() : -1;
+                    if (id < 0) continue;
+                    var label = t.TryGetProperty("label", out var lp) ? lp.GetString() ?? $"#{id}" : $"#{id}";
+                    list.Add(new DebugStepInTarget(id, label));
+                }
+            }
+            return list;
+        }
+        catch { return Array.Empty<DebugStepInTarget>(); }
+    }
+
+    public async Task StepInTargetAsync(int targetId)
+    {
+        var client = _client;
+        if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return;
+        try
+        {
+            await client.SendRequestAsync("stepIn", new { threadId = _activeThreadId, targetId });
+            SetState(DebugSessionState.Running);
+            Continued?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) { Emit(DebugOutputCategory.Console, $"特定の関数へのステップ インに失敗: {ex.Message}"); }
+    }
+
     /// <summary>一時ブレークポイント（Run to Cursor 分）をすべて撤去し、影響ソースを送り直す。次の停止時に呼ぶ。</summary>
     private async Task ClearTempBreakpointsAsync()
     {
@@ -640,11 +678,13 @@ public sealed class NetcoredbgDebugService : IDebugService
     {
         SupportsSetVariable = false;
         SupportsSetNextStatement = false;
+        SupportsStepInTargets = false;
         ExceptionFilters = Array.Empty<DebugExceptionFilter>();
         if (caps is not { ValueKind: JsonValueKind.Object } c) return;
 
         SupportsSetVariable = c.TryGetProperty("supportsSetVariable", out var sv) && sv.ValueKind == JsonValueKind.True;
         SupportsSetNextStatement = c.TryGetProperty("supportsGotoTargetsRequest", out var gt) && gt.ValueKind == JsonValueKind.True;
+        SupportsStepInTargets = c.TryGetProperty("supportsStepInTargetsRequest", out var st) && st.ValueKind == JsonValueKind.True;
 
         if (c.TryGetProperty("exceptionBreakpointFilters", out var filters) && filters.ValueKind == JsonValueKind.Array)
         {

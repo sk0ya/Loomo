@@ -29,6 +29,9 @@ public interface IDebugService
     /// <summary>アダプタが <c>gotoTargets</c>/<c>goto</c>（次に実行する文の移動）に対応しているか。</summary>
     bool SupportsSetNextStatement { get; }
 
+    /// <summary>アダプタが <c>stepInTargets</c>（特定の関数へのステップ イン）に対応しているか。</summary>
+    bool SupportsStepInTargets { get; }
+
     /// <summary>アダプタが申告した例外ブレークのフィルタ一覧（initialize 応答の
     /// <c>exceptionBreakpointFilters</c>）。空ならアダプタは例外ブレークを申告していない。</summary>
     IReadOnlyList<DebugExceptionFilter> ExceptionFilters { get; }
@@ -89,6 +92,13 @@ public interface IDebugService
     /// <summary>ロード済みモジュール（アセンブリ）の一覧を取得する（<c>modules</c>＝VS のモジュールウィンドウ）。
     /// 取得できなければ空。</summary>
     Task<IReadOnlyList<DebugModule>> GetModulesAsync();
+
+    /// <summary>停止行の「ステップ イン」候補（<c>stepInTargets</c>）を取得する。<see cref="SupportsStepInTargets"/> が
+    /// false／取得不可なら空。<paramref name="frameId"/> は対象フレーム（通常は先頭フレーム）。</summary>
+    Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync(int frameId);
+
+    /// <summary>指定の候補へステップ インする（<c>stepIn</c> に <c>targetId</c> を付ける）。停止中のみ有効。</summary>
+    Task StepInTargetAsync(int targetId);
 
     /// <summary>停止中のセッションを再開する。</summary>
     Task ContinueAsync();

@@ -62,7 +62,35 @@ public partial class ShellWindow
                 setNext.Click += (_, _) => _ = dbg.SetNextStatementAsync(path, line0);
                 menu.Items.Add(setNext);
             }
+
+            // 「特定の関数にステップ イン」：候補は停止行依存なので、サブメニューを開いた時点で取得して並べる。
+            if (dbg.SupportsStepInTargets)
+                menu.Items.Add(BuildStepInTargetsMenu(dbg));
         }
+    }
+
+    // ステップ イン候補を遅延（サブメニュー展開時）に取得して並べる親メニュー項目を作る。
+    private static MenuItem BuildStepInTargetsMenu(ViewModels.DebugViewModel dbg)
+    {
+        var parent = new MenuItem { Header = "特定の関数にステップ イン" };
+        parent.Items.Add(new MenuItem { Header = "(読み込み中…)", IsEnabled = false });
+        parent.SubmenuOpened += async (_, _) =>
+        {
+            var targets = await dbg.GetStepInTargetsAsync();
+            parent.Items.Clear();
+            if (targets.Count == 0)
+            {
+                parent.Items.Add(new MenuItem { Header = "(候補がありません)", IsEnabled = false });
+                return;
+            }
+            foreach (var t in targets)
+            {
+                var item = new MenuItem { Header = t.Label };
+                item.Click += (_, _) => _ = dbg.StepIntoTargetAsync(t);
+                parent.Items.Add(item);
+            }
+        };
+        return parent;
     }
 
     // カーソル行のブレークポイント条件を編集する。既存条件を初期値にし、空入力で条件を解除する

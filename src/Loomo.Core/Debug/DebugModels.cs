@@ -61,6 +61,10 @@ public sealed record DebugThread(int Id, string Name);
 /// 取得できなければ null。<see cref="SymbolStatus"/> はシンボル（PDB）の読み込み状況（例「Symbols loaded.」）。</summary>
 public sealed record DebugModule(string Name, string? Path, string? Version, string? SymbolStatus);
 
+/// <summary>「特定の関数にステップ イン」の候補 1 つ（DAP の <c>stepInTargets</c>）。停止行に複数の呼び出しがあるとき、
+/// どれに踏み込むかを選ぶための <see cref="Id"/>（<c>stepIn</c> に渡す）と表示名 <see cref="Label"/>。</summary>
+public sealed record DebugStepInTarget(int Id, string Label);
+
 /// <summary>例外ブレークの 1 フィルタ（DAP の <c>exceptionBreakpointFilters</c>）。netcoredbg なら
 /// 「すべての例外」「未捕捉例外」等。<see cref="Default"/> は初期 ON 推奨か。</summary>
 public sealed record DebugExceptionFilter(string Id, string Label, bool Default);
