@@ -178,6 +178,13 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     /// <summary>変数ツリー（トップ階層はスコープ＝Locals 等、展開で変数→子フィールド）。</summary>
     public ObservableCollection<DebugVariableViewModel> Variables { get; } = new();
 
+    /// <summary>自動変数（Autos）。停止行とその直前行で使われている変数だけを近似表示する（VS の「自動」）。
+    /// netcoredbg は autos スコープを持たないので、ソースから識別子を拾って評価したベストエフォート。</summary>
+    public ObservableCollection<WatchItemViewModel> Autos { get; } = new();
+
+    /// <summary>自動変数が 1 件でもあるか（空案内の出し分け）。</summary>
+    [ObservableProperty] private bool _hasAutos;
+
     /// <summary>ウォッチ式。</summary>
     public ObservableCollection<WatchItemViewModel> Watches { get; } = new();
 
@@ -472,7 +479,33 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         }
         if (Variables.Count > 0) Variables[0].IsExpanded = true;  // Locals を既定で開く
 
+        await LoadAutosAsync(frame);
         await RefreshWatchesAsync(frame.Id);
+    }
+
+    /// <summary>自動変数を読み直す。停止行とその直前行のソースから識別子を拾い、フレーム文脈で評価し、
+    /// 値が取れたものだけ並べる（VS の「自動」をアダプタ非依存に近似）。</summary>
+    private async Task LoadAutosAsync(DebugFrameViewModel? frame)
+    {
+        Autos.Clear();
+        HasAutos = false;
+        if (frame is not { HasSource: true, SourcePath: { } path }) return;
+
+        string[] lines;
+        try { lines = await File.ReadAllLinesAsync(path); }
+        catch { return; }  // ソースが読めない（生成コード等）なら自動変数は出さない
+
+        var idx = frame.Line - 1;  // DAP 1始まり → 配列 0始まり
+        if (idx < 0 || idx >= lines.Length) return;
+        var prev = idx > 0 ? lines[idx - 1] : null;
+
+        foreach (var expr in AutosExtractor.ExtractCandidates(lines[idx], prev))
+        {
+            var value = await _debug.EvaluateAsync(expr, frame.Id);
+            if (AutosExtractor.LooksLikeValue(value))
+                Autos.Add(new WatchItemViewModel(expr) { Value = value });
+        }
+        HasAutos = Autos.Count > 0;
     }
 
     private async Task RefreshWatchesAsync(int frameId)
@@ -485,6 +518,8 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     {
         CallStack.Clear();
         Variables.Clear();
+        Autos.Clear();
+        HasAutos = false;
         _settingThread = true;
         try { Threads.Clear(); SelectedThread = null; }
         finally { _settingThread = false; }

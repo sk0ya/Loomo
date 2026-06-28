@@ -13,9 +13,10 @@ namespace sk0ya.Loomo.App.Views;
 public partial class DebugView : UserControl
 {
     // タブのインデックス（XAML の並び順と一致させる）。
+    // 並び：出力0 / 変数1 / 自動2 / コールスタック3 / テスト4 / スレッド5 / ブレークポイント6 / イミディエイト7 / モジュール8。
     private const int OutputTab = 0;
     private const int VariablesTab = 1;
-    private const int TestTab = 3;
+    private const int TestTab = 4;
 
     private INotifyCollectionChanged? _observed;
     private INotifyCollectionChanged? _observedImmediate;

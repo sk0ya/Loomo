@@ -360,6 +360,53 @@
                 </Grid>
             </TabItem>
 
+            <!-- 自動（Autos）：停止行とその直前行で使われている変数だけを近似表示する。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="自動">
+                <Grid Margin="0,4,0,0">
+                    <ListBox ItemsSource="{Binding Autos}" Background="{DynamicResource Bg}"
+                             BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                             HorizontalContentAlignment="Stretch"
+                             ToolTip="現在行とその直前行で使われている変数（ベストエフォート）"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:WatchItemViewModel}">
+                                <Grid Margin="0,1" ContextMenu="{StaticResource CopyItemMenu}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Expression}" FontSize="11" FontFamily="Consolas" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="11" FontFamily="Consolas"
+                                               Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock Text="停止すると自動変数が表示されます" Foreground="{DynamicResource FgDim}"
+                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="{Binding IsStopped, Converter={StaticResource InverseBoolToVis}}" />
+                    <TextBlock Text="この行に表示できる変数がありません" Foreground="{DynamicResource FgDim}"
+                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsStopped}" Value="True" />
+                                            <Condition Binding="{Binding HasAutos}" Value="False" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+
             <!-- コールスタック -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="コールスタック">
                 <Grid Margin="0,4,0,0">
