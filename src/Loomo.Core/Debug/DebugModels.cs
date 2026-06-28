@@ -68,3 +68,8 @@ public sealed record DebugLaunchConfig(
 /// <summary>デバッグアタッチ構成。既に実行中の .NET プロセス（<see cref="ProcessId"/>）に接続する。
 /// <see cref="Name"/> は表示用（出力に出すプロセス名、無くてもよい）。</summary>
 public sealed record DebugAttachConfig(int ProcessId, string? Name = null);
+
+/// <summary>ソース走査で見つかった 1 テスト（<c>dotnet test --list-tests</c> のビルドを伴わない高速探索の結果）。
+/// <see cref="FullyQualifiedName"/> は <c>Namespace.Class.Method</c>（テオリでも引数なしのメソッド単位）。
+/// <see cref="IsParameterized"/> は <c>[Theory]</c> 等の複数ケースを持つメソッドか（実行結果はメソッド単位に集約する）。</summary>
+public sealed record DiscoveredTest(string FullyQualifiedName, bool IsParameterized);

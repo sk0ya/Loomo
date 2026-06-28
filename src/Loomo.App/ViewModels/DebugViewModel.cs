@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using System.Xml.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
@@ -55,13 +56,21 @@ public sealed class DebugProcessViewModel
 /// <see cref="IDebugService"/> 経由で netcoredbg 上でデバッグ起動し、標準出力/標準エラー/終了をコンソールに流す。
 /// ブレークポイント・変数・ステップ実行は Phase 2 以降。
 /// </summary>
-public sealed partial class DebugViewModel : ObservableObject
+public sealed partial class DebugViewModel : ObservableObject, IDisposable
 {
     private readonly IDebugService _debug;
     private readonly IWorkspaceService _workspace;
     private readonly ITerminalService _terminal;
+    private readonly ITestDiscoveryService _testDiscovery;
     private readonly Dispatcher _dispatcher;
     private CancellationTokenSource? _cts;
+
+    /// <summary>ソース変更を監視してテストを自動再収集するための監視（ルートごとに張り替える）。</summary>
+    private FileSystemWatcher? _testWatcher;
+    /// <summary>変更通知をまとめる遅延タイマ（編集中の連続通知で何度も走らせない）。</summary>
+    private DispatcherTimer? _discoverDebounce;
+    /// <summary>探索中に来た再収集要求（探索完了後にもう一度走らせる）。</summary>
+    private bool _rediscoverRequested;
 
     /// <summary>デバッグ対象（<c>*.dll</c>/<c>*.exe</c>）の明示指定。空ならワークスペースから自動検出する。</summary>
     [ObservableProperty] private string _targetProgram = "";
@@ -90,8 +99,44 @@ public sealed partial class DebugViewModel : ObservableObject
     /// <summary>テスト結果が 1 度でも得られたか（テストタブの案内文の出し分けに使う）。</summary>
     [ObservableProperty] private bool _hasTestResults;
 
-    /// <summary>直近のテストで失敗したテスト一覧（ダブルクリックで該当行へジャンプ）。</summary>
-    public ObservableCollection<TestResultViewModel> TestFailures { get; } = new();
+    /// <summary>バックグラウンドのテスト収集を実行中か（収集中インジケータと空状態の案内文に使う）。</summary>
+    [ObservableProperty] private bool _isDiscoveringTests;
+
+    /// <summary>テストがまだ無いときの案内文（収集中かどうかで出し分ける）。</summary>
+    public string TestEmptyHint => IsDiscoveringTests
+        ? "テストを収集しています…"
+        : "テストが見つかりませんでした（ソース変更で自動収集します）。";
+
+    /// <summary>絞り込み：成功したテストを表示するか（チェックを外すと隠す）。</summary>
+    [ObservableProperty] private bool _showPassed = true;
+
+    /// <summary>絞り込み：失敗したテストを表示するか。</summary>
+    [ObservableProperty] private bool _showFailed = true;
+
+    /// <summary>絞り込み：未実施（探索だけ／スキップ）のテストを表示するか。</summary>
+    [ObservableProperty] private bool _showNotRun = true;
+
+    /// <summary>テスト名の絞り込み文字列（完全名に含むで照合・大小無視）。</summary>
+    [ObservableProperty] private string _testFilter = "";
+
+    /// <summary>フィルタ適用後に表示できるテストが 1 件でもあるか（ツリー再構築で更新）。</summary>
+    [ObservableProperty] private bool _hasVisibleTests;
+
+    /// <summary>テストはあるがフィルタで全て隠れているか（「該当なし」案内の出し分け）。</summary>
+    public bool NoFilterMatch => HasTestResults && !HasVisibleTests;
+
+    partial void OnShowPassedChanged(bool value) => SyncTree();
+    partial void OnShowFailedChanged(bool value) => SyncTree();
+    partial void OnShowNotRunChanged(bool value) => SyncTree();
+    partial void OnTestFilterChanged(string value) => SyncTree();
+    partial void OnHasVisibleTestsChanged(bool value) => OnPropertyChanged(nameof(NoFilterMatch));
+    partial void OnHasTestResultsChanged(bool value) => OnPropertyChanged(nameof(NoFilterMatch));
+
+    /// <summary>テスト一覧（フラットな全件。突き合わせ・集計の元データ）。表示は <see cref="TestTree"/>。</summary>
+    public ObservableCollection<TestItemViewModel> Tests { get; } = new();
+
+    /// <summary>クラス単位にまとめたテストツリー（TreeView の表示元）。<see cref="SyncTree"/> で再構築する。</summary>
+    public ObservableCollection<TestGroupViewModel> TestTree { get; } = new();
 
     /// <summary>ソースパス（絶対）→ ブレークポイント行（0 始まり）。エディタ表示と一致させる。</summary>
     private readonly Dictionary<string, SortedSet<int>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
@@ -150,11 +195,13 @@ public sealed partial class DebugViewModel : ObservableObject
     /// <summary>最後に列挙した全プロセス（絞り込み前）。フィルタ変更時はこれを再フィルタする。</summary>
     private IReadOnlyList<DebugProcessViewModel> _allProcesses = Array.Empty<DebugProcessViewModel>();
 
-    public DebugViewModel(IDebugService debug, IWorkspaceService workspace, ITerminalService terminal)
+    public DebugViewModel(IDebugService debug, IWorkspaceService workspace, ITerminalService terminal,
+        ITestDiscoveryService testDiscovery)
     {
         _debug = debug;
         _workspace = workspace;
         _terminal = terminal;
+        _testDiscovery = testDiscovery;
         _dispatcher = Dispatcher.CurrentDispatcher;
 
         _debug.Output += OnOutput;
@@ -164,6 +211,12 @@ public sealed partial class DebugViewModel : ObservableObject
         _debug.Exited += OnDebugExited;
 
         IsAdapterMissing = !_debug.IsAdapterAvailable;
+
+        // テストはバックグラウンドで自動収集する（ボタン契機を廃止）。ワークスペースを開いた時点と
+        // ソース変更（監視）を契機に、ビルドを伴わない高速探索で一覧を更新する。
+        _workspace.RootChanged += OnWorkspaceRootChanged;
+        SetupTestWatcher(_workspace.RootPath);
+        if (_workspace.RootPath is not null) _ = DiscoverTestsAsync();
     }
 
     /// <summary>あるファイルのブレークポイントをトグルする（行は 0 始まり）。新しい行集合を返す。
@@ -366,8 +419,133 @@ public sealed partial class DebugViewModel : ObservableObject
         finally { IsTaskRunning = false; }
     }
 
-    /// <summary>ワークスペースのテストを実行する（<c>dotnet test</c>）。出力はコンソールへ流し、
-    /// 集計と失敗テストの一覧を「テスト」タブへ反映する。失敗テストはダブルクリックで該当行へジャンプ。</summary>
+    /// <summary>テストタブが表示されたときの保険的な収集（まだ一覧が無ければバックグラウンド収集を起動する）。
+    /// 通常は <see cref="OnWorkspaceRootChanged"/> とソース監視で自動収集されるため、ここは初期化漏れ対策。</summary>
+    public void EnsureTestsDiscovered()
+    {
+        if (Tests.Count == 0 && !IsDiscoveringTests) _ = DiscoverTestsAsync();
+    }
+
+    /// <summary>ワークスペースが変わったら監視を張り替え、すぐ収集し直す。</summary>
+    private void OnWorkspaceRootChanged(object? sender, string? root)
+        => _dispatcher.InvokeAsync(() => { SetupTestWatcher(root); _ = DiscoverTestsAsync(); });
+
+    /// <summary>ソース走査でテスト一覧を収集する（ビルドを伴わない・バックグラウンド）。探索中に来た要求は
+    /// 1 回にまとめて末尾でもう一度回す（編集中の連続変更で重複起動しない）。</summary>
+    private async Task DiscoverTestsAsync()
+    {
+        var root = _workspace.RootPath;
+        if (root is null) return;
+        if (IsDiscoveringTests) { _rediscoverRequested = true; return; }
+
+        IsDiscoveringTests = true;
+        try
+        {
+            do
+            {
+                _rediscoverRequested = false;
+                IReadOnlyList<DiscoveredTest> found;
+                try { found = await Task.Run(() => _testDiscovery.Discover(root)); }
+                catch { found = Array.Empty<DiscoveredTest>(); }
+                // 走査の resume が UI 以外で来ても、コレクション更新は必ず UI スレッドで行う。
+                await _dispatcher.InvokeAsync(() => ApplyDiscovered(found));
+            } while (_rediscoverRequested);
+        }
+        finally { IsDiscoveringTests = false; }
+    }
+
+    /// <summary>収集結果を既存の一覧へマージする（クリアしない）。新規は追加、消えた未実行テストは除去。
+    /// 既に実行結果を持つ行は探索に出てこなくても残す（パーサが拾えない種別・直前の実行結果を消さない）。</summary>
+    private void ApplyDiscovered(IReadOnlyList<DiscoveredTest> found)
+    {
+        var keep = new HashSet<string>(StringComparer.Ordinal);
+        var existing = new Dictionary<string, TestItemViewModel>(StringComparer.Ordinal);
+        foreach (var t in Tests) existing[t.FullyQualifiedName] = t;
+
+        foreach (var d in found)
+        {
+            keep.Add(d.FullyQualifiedName);
+            if (existing.TryGetValue(d.FullyQualifiedName, out var item))
+                item.IsParameterized = d.IsParameterized;
+            else
+                Tests.Add(new TestItemViewModel(d.FullyQualifiedName) { IsParameterized = d.IsParameterized });
+        }
+
+        // 探索に現れなくなった「未実行」の行だけ掃除する（結果を持つ行は残す）。
+        for (var i = Tests.Count - 1; i >= 0; i--)
+        {
+            var t = Tests[i];
+            if (keep.Contains(t.FullyQualifiedName)) continue;
+            if (t.Status != TestStatus.NotRun) continue;
+            Tests.RemoveAt(i);
+        }
+
+        SyncTree();
+        RecomputeSummary();
+    }
+
+    /// <summary>ソース監視を <paramref name="root"/> に張り替える。<c>*.cs</c> の追加/削除/変更を遅延付きで拾い、
+    /// 自動再収集する。監視できない（権限/パス）場合は自動更新なしで動く（手動契機の <see cref="EnsureTestsDiscovered"/> は残る）。</summary>
+    private void SetupTestWatcher(string? root)
+    {
+        _testWatcher?.Dispose();
+        _testWatcher = null;
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return;
+        try
+        {
+            var w = new FileSystemWatcher(root, "*.cs")
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.DirectoryName,
+            };
+            w.Changed += OnTestSourceChanged;
+            w.Created += OnTestSourceChanged;
+            w.Deleted += OnTestSourceChanged;
+            w.Renamed += OnTestSourceChanged;
+            w.Error += (_, _) => _dispatcher.InvokeAsync(ScheduleRediscover);
+            w.EnableRaisingEvents = true;
+            _testWatcher = w;
+        }
+        catch { /* 監視不可。自動更新なしでも探索自体は動く */ }
+    }
+
+    private void OnTestSourceChanged(object sender, FileSystemEventArgs e)
+    {
+        var sep = Path.DirectorySeparatorChar;
+        var p = e.FullPath;
+        // ビルド成果物配下の .cs（生成物・コピー）はテスト集合に影響しないので無視（ビルド中の連続通知も抑える）。
+        if (p.Contains($"{sep}bin{sep}") || p.Contains($"{sep}obj{sep}") || p.Contains($"{sep}artifacts{sep}"))
+            return;
+        _dispatcher.InvokeAsync(ScheduleRediscover);
+    }
+
+    private void ScheduleRediscover()
+    {
+        _discoverDebounce ??= new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(1200),
+        };
+        if (!_isDebounceWired)
+        {
+            _discoverDebounce.Tick += (_, _) => { _discoverDebounce!.Stop(); _ = DiscoverTestsAsync(); };
+            _isDebounceWired = true;
+        }
+        _discoverDebounce.Stop();
+        _discoverDebounce.Start();
+    }
+
+    private bool _isDebounceWired;
+
+    public void Dispose()
+    {
+        _workspace.RootChanged -= OnWorkspaceRootChanged;
+        _testWatcher?.Dispose();
+        _testWatcher = null;
+        _discoverDebounce?.Stop();
+    }
+
+    /// <summary>ワークスペースの全テストを実行する（<c>dotnet test</c> ＋ TRX ロガー）。結果を各行へ反映する。
+    /// 失敗テストはダブルクリックで該当行へジャンプ、▶ で個別実行できる。</summary>
     [RelayCommand(CanExecute = nameof(CanRunTask))]
     private async Task Test()
     {
@@ -378,16 +556,74 @@ public sealed partial class DebugViewModel : ObservableObject
         try
         {
             StatusMessage = "テスト実行中…";
-            TestFailures.Clear();
-            TestSummary = "";
-            HasTestResults = false;
-            Append(DebugOutputCategory.Important, $"テスト: {Path.GetFileName(target)}");
-            // 出力の集計行・失敗行を安定して解析するため、CLI 表示言語を英語に固定する。
-            var result = await _terminal.RunCommandAsync(
-                $"$env:DOTNET_CLI_UI_LANGUAGE='en'; dotnet test \"{target}\" --nologo", CancellationToken.None);
-            WriteConsole(result.Output);
-            ParseTestResults(result.Output);
-            StatusMessage = result.Success ? "テスト成功" : "テスト失敗";
+            foreach (var t in Tests) t.SetRunning();
+            var trx = await RunDotnetTestAsync(target, null, $"テスト: {Path.GetFileName(target)}");
+            if (trx is not null) ApplyTrx(trx);
+            // 実行されなかった探索済み行（フィルタ外など）は未実行へ戻す。
+            foreach (var t in Tests) if (t.Status == TestStatus.Running) t.ResetStatus();
+            SyncTree();
+            RecomputeSummary();
+
+            var failed = Tests.Count(t => t.Status == TestStatus.Failed);
+            StatusMessage = trx is null ? "テスト結果を取得できませんでした"
+                : failed == 0 ? "テスト成功" : $"テスト失敗（{failed} 件）";
+        }
+        finally { IsTaskRunning = false; }
+    }
+
+    /// <summary>1 件のテストだけ実行する（<c>--filter "FullyQualifiedName=..."</c>）。テオリは同メソッドの全ケースが対象。</summary>
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private async Task RunSingleTest(TestItemViewModel? item)
+    {
+        if (item is null) return;
+        var target = FindBuildTarget();
+        if (target is null) return;
+
+        IsTaskRunning = true;
+        try
+        {
+            StatusMessage = $"テスト実行中… {item.DisplayName}";
+            item.SetRunning();
+            UpdateAggregates();
+            var trx = await RunDotnetTestAsync(target, $"FullyQualifiedName={item.FilterExpression}", $"テスト: {item.DisplayName}");
+            if (trx is not null) ApplyTrx(trx);
+            if (item.Status == TestStatus.Running) item.ResetStatus();  // 何も突き合わなければ戻す
+            SyncTree();
+            RecomputeSummary();
+
+            StatusMessage = item.Status switch
+            {
+                TestStatus.Failed => "テスト失敗",
+                TestStatus.Passed => "テスト成功",
+                _ => trx is null ? "テスト結果を取得できませんでした" : "テスト完了",
+            };
+        }
+        finally { IsTaskRunning = false; }
+    }
+
+    /// <summary>クラスグループ内のテストをまとめて実行する（<c>--filter "FullyQualifiedName~Namespace.Class."</c>）。</summary>
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private async Task RunGroup(TestGroupViewModel? group)
+    {
+        if (group is null) return;
+        var target = FindBuildTarget();
+        if (target is null) return;
+
+        IsTaskRunning = true;
+        try
+        {
+            StatusMessage = $"テスト実行中… {group.Name}";
+            foreach (var t in group.Tests) t.SetRunning();
+            group.RecomputeAggregate();
+            var trx = await RunDotnetTestAsync(target, $"FullyQualifiedName~{group.Key}.", $"テスト: {group.Name}");
+            if (trx is not null) ApplyTrx(trx);
+            foreach (var t in group.Tests) if (t.Status == TestStatus.Running) t.ResetStatus();
+            SyncTree();
+            RecomputeSummary();
+
+            var failed = group.Tests.Count(t => t.Status == TestStatus.Failed);
+            StatusMessage = trx is null ? "テスト結果を取得できませんでした"
+                : failed == 0 ? "テスト成功" : $"テスト失敗（{failed} 件）";
         }
         finally { IsTaskRunning = false; }
     }
@@ -398,10 +634,67 @@ public sealed partial class DebugViewModel : ObservableObject
         AttachCommand.NotifyCanExecuteChanged();
         BuildTargetCommand.NotifyCanExecuteChanged();
         TestCommand.NotifyCanExecuteChanged();
+        RunSingleTestCommand.NotifyCanExecuteChanged();
+        RunGroupCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsDiscoveringTestsChanged(bool value) => OnPropertyChanged(nameof(TestEmptyHint));
+
+    /// <summary>フラットな <see cref="Tests"/> をクラス単位のツリーへ再構築する。展開状態は <see cref="TestGroupViewModel.Key"/>
+    /// で引き継ぐ（葉は同一インスタンスを使い回すのでステータスのバインドは保たれる）。</summary>
+    private void SyncTree()
+    {
+        var expanded = TestTree.ToDictionary(g => g.Key, g => g.IsExpanded);
+        TestTree.Clear();
+
+        // 状態トグルやテキスト検索で絞り込み中は、一致が埋もれないよう全グループを開く。
+        var filtering = !string.IsNullOrEmpty(TestFilter?.Trim())
+            || !(ShowPassed && ShowFailed && ShowNotRun);
+
+        foreach (var g in Tests.GroupBy(t => t.ClassName).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var visible = g.Where(MatchesFilter).OrderBy(t => t.DisplayName, StringComparer.Ordinal).ToList();
+            if (visible.Count == 0) continue;  // フィルタで全部隠れたクラスは出さない
+
+            var name = g.Key.Length == 0 ? "(その他)"
+                : g.Key[(g.Key.LastIndexOf('.') + 1)..];
+            var node = new TestGroupViewModel(g.Key, name);
+            foreach (var t in visible) node.Tests.Add(t);
+            node.IsExpanded = filtering || (expanded.TryGetValue(g.Key, out var e) && e);
+            node.RecomputeAggregate();
+            TestTree.Add(node);
+        }
+
+        HasVisibleTests = TestTree.Count > 0;
+    }
+
+    /// <summary>1 件のテストがフィルタ（状態トグル＋テキスト検索）に合致するか。スキップは「未実施」側、
+    /// 実行中は常に表示する。</summary>
+    private bool MatchesFilter(TestItemViewModel t)
+    {
+        var statusOk = t.Status switch
+        {
+            TestStatus.Passed => ShowPassed,
+            TestStatus.Failed => ShowFailed,
+            TestStatus.NotRun => ShowNotRun,
+            TestStatus.Skipped => ShowNotRun,
+            _ => true,  // Running 等の一時状態は隠さない
+        };
+        if (!statusOk) return false;
+
+        var f = TestFilter?.Trim();
+        return string.IsNullOrEmpty(f)
+            || t.FullyQualifiedName.Contains(f, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>葉のステータスだけ変えたとき（実行開始時など）にグループの集計を更新する。</summary>
+    private void UpdateAggregates()
+    {
+        foreach (var g in TestTree) g.RecomputeAggregate();
     }
 
     /// <summary>失敗テストのダブルクリック：スタックトレースから拾った位置へジャンプする（通常タブ＋フォーカス）。</summary>
-    public void NavigateToTestSource(TestResultViewModel? t)
+    public void NavigateToTestSource(TestItemViewModel? t)
     {
         if (t is { HasSource: true, SourcePath: { } p })
             FrameActivated?.Invoke(p, t.Line - 1);  // 1始まり → エディタ 0始まり
@@ -429,68 +722,122 @@ public sealed partial class DebugViewModel : ObservableObject
         return csproj;
     }
 
-    /// <summary><c>dotnet test</c> の出力から集計（成功/失敗/スキップ/合計）と失敗テスト（名前・メッセージ・
-    /// ソース位置）を抽出して <see cref="TestFailures"/>/<see cref="TestSummary"/> へ反映する。
-    /// 複数テストプロジェクトの集計行は合算する。CLI 言語は英語に固定済み（<see cref="Test"/>）。</summary>
-    private void ParseTestResults(string output)
+    /// <summary>TRX の出力先ディレクトリ（毎回上書き）。<c>%TEMP%/Loomo/test-results</c>。</summary>
+    private static readonly string TestResultsDir =
+        Path.Combine(Path.GetTempPath(), "Loomo", "test-results");
+
+    /// <summary>テストのビルド出力を既定 <c>bin</c> の外（各プロジェクト配下の <c>artifacts/loomo-test</c>）へ逃がす
+    /// MSBuild 引数。<b>起動中の Loomo 自身が既定 bin の .exe/.dll をロックし、<c>dotnet test</c> のビルド（参照する
+    /// App を含む）が失敗する</b>のを防ぐ。<c>BaseOutputPath</c> は相対なのでプロジェクトごとに分かれ衝突しない。
+    /// スラッシュ表記は末尾バックスラッシュによる MSBuild のクォート問題を避けるため。</summary>
+    private const string TestBuildRedirect = "/p:BaseOutputPath=artifacts/loomo-test/";
+
+    /// <summary><c>dotnet test</c> を TRX ロガー付きで実行する。<paramref name="filterExpr"/> が非 null なら
+    /// <c>--filter "&lt;filterExpr&gt;"</c> を付ける（例 <c>FullyQualifiedName=...</c> / <c>FullyQualifiedName~...</c>）。
+    /// 出力はコンソールへ流し、生成された TRX のパスを返す（生成されなければ null）。CLI 言語は英語に固定。</summary>
+    private async Task<string?> RunDotnetTestAsync(string target, string? filterExpr, string label)
     {
-        var summaryRe = new Regex(@"Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)");
-        var failedRe = new Regex(@"^\s*Failed\s+(.+?)\s+\[\d");
+        string trx;
+        try
+        {
+            Directory.CreateDirectory(TestResultsDir);
+            trx = Path.Combine(TestResultsDir, "loomo.trx");
+            if (File.Exists(trx)) File.Delete(trx);  // 前回分を残さない
+        }
+        catch (Exception ex)
+        {
+            Append(DebugOutputCategory.Important, $"テスト結果フォルダを準備できません: {ex.Message}");
+            return null;
+        }
+
+        var filterArg = filterExpr is null ? "" : $" --filter \"{filterExpr}\"";
+        Append(DebugOutputCategory.Important, label);
+        var result = await _terminal.RunCommandAsync(
+            $"$env:DOTNET_CLI_UI_LANGUAGE='en'; dotnet test \"{target}\"{filterArg} --nologo {TestBuildRedirect} " +
+            $"--logger \"trx;LogFileName=loomo.trx\" --results-directory \"{TestResultsDir}\"",
+            CancellationToken.None);
+        WriteConsole(result.Output);
+        return File.Exists(trx) ? trx : null;
+    }
+
+    /// <summary>TRX（VSTest 形式 XML）を読み、各 <c>UnitTestResult</c> を名前で突き合わせて行のステータス・
+    /// 失敗メッセージ・ソース位置（スタックトレースの <c>in &lt;path&gt;:line N</c>）を更新する。
+    /// 一覧に無いテストは追加する（探索せず実行した場合に対応）。</summary>
+    private void ApplyTrx(string trxPath)
+    {
+        XDocument doc;
+        try { doc = XDocument.Load(trxPath); }
+        catch (Exception ex)
+        {
+            Append(DebugOutputCategory.Important, $"テスト結果(TRX)を読めません: {ex.Message}");
+            return;
+        }
+
+        XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
         var locRe = new Regex(@"\sin\s+(.+?):line\s+(\d+)");
 
-        int failed = 0, passed = 0, skipped = 0, total = 0;
-        var sawSummary = false;
-
-        string? name = null, msg = null, path = null;
-        var line1 = 0;
-        var grabMsg = false;
-
-        void Flush()
+        foreach (var r in doc.Descendants(ns + "UnitTestResult"))
         {
-            if (name is not null) TestFailures.Add(new TestResultViewModel(name, msg, path, line1));
-            name = null; msg = null; path = null; line1 = 0; grabMsg = false;
+            var name = (string?)r.Attribute("testName");
+            if (string.IsNullOrEmpty(name)) continue;
+
+            var status = ((string?)r.Attribute("outcome")) switch
+            {
+                "Passed" => TestStatus.Passed,
+                "Failed" => TestStatus.Failed,
+                _ => TestStatus.Skipped,  // NotExecuted など
+            };
+
+            string? msg = null, path = null;
+            var line1 = 0;
+            var err = r.Element(ns + "Output")?.Element(ns + "ErrorInfo");
+            if (err is not null)
+            {
+                msg = ((string?)err.Element(ns + "Message"))?.Trim();
+                if (msg is not null)
+                {
+                    var nl = msg.IndexOf('\n');  // 失敗メッセージは先頭行だけ一覧に出す
+                    if (nl >= 0) msg = msg[..nl].Trim();
+                }
+                var stack = (string?)err.Element(ns + "StackTrace");
+                if (stack is not null)
+                {
+                    var lm = locRe.Match(stack);
+                    if (lm.Success) { path = lm.Groups[1].Value.Trim(); line1 = int.Parse(lm.Groups[2].Value); }
+                }
+            }
+
+            // まず完全名で突き合わせる。テオリ等のケース（"FQN(args)"）は、引数を落とした名前で
+            // メソッド単位の行へ集約する（ソース走査では引数なしのメソッドしか持たないため）。
+            var item = Tests.FirstOrDefault(t => string.Equals(t.FullyQualifiedName, name, StringComparison.Ordinal));
+            var isCase = false;
+            if (item is null)
+            {
+                var paren = name.IndexOf('(');
+                if (paren > 0)
+                {
+                    var baseName = name[..paren];
+                    item = Tests.FirstOrDefault(t => string.Equals(t.FilterExpression, baseName, StringComparison.Ordinal));
+                    isCase = item is not null;
+                }
+            }
+            if (item is null) { item = new TestItemViewModel(name); Tests.Add(item); }
+
+            if (isCase) item.ApplyCaseResult(status, msg, path, line1);
+            else item.Update(status, msg, path, line1);
         }
+    }
 
-        foreach (var raw in output.Replace("\r", "").Split('\n'))
-        {
-            var sm = summaryRe.Match(raw);
-            if (sm.Success)
-            {
-                failed += int.Parse(sm.Groups[1].Value);
-                passed += int.Parse(sm.Groups[2].Value);
-                skipped += int.Parse(sm.Groups[3].Value);
-                total += int.Parse(sm.Groups[4].Value);
-                sawSummary = true;
-                Flush();
-                continue;
-            }
+    /// <summary>一覧の各行ステータスから集計（成功/失敗/スキップ/合計）を作り直し、案内の出し分けも更新する。</summary>
+    private void RecomputeSummary()
+    {
+        HasTestResults = Tests.Count > 0;
+        if (!HasTestResults) { TestSummary = ""; return; }
 
-            var fm = failedRe.Match(raw);
-            if (fm.Success)
-            {
-                Flush();
-                name = fm.Groups[1].Value.Trim();
-                continue;
-            }
-
-            if (name is null) continue;  // 失敗ブロックの中だけ詳細を拾う
-
-            if (path is null)
-            {
-                var lm = locRe.Match(raw);
-                if (lm.Success) { path = lm.Groups[1].Value.Trim(); line1 = int.Parse(lm.Groups[2].Value); }
-            }
-
-            var t = raw.Trim();
-            if (t.StartsWith("Error Message:")) { grabMsg = true; continue; }
-            if (grabMsg && msg is null && t.Length > 0 && !t.StartsWith("Stack Trace:")) { msg = t; grabMsg = false; }
-        }
-        Flush();
-
-        HasTestResults = sawSummary || TestFailures.Count > 0;
-        TestSummary = sawSummary
-            ? $"成功 {passed} / 失敗 {failed} / スキップ {skipped} / 合計 {total}"
-            : TestFailures.Count > 0 ? $"失敗 {TestFailures.Count} 件" : "結果を取得できませんでした";
+        var passed = Tests.Count(t => t.Status == TestStatus.Passed);
+        var failed = Tests.Count(t => t.Status == TestStatus.Failed);
+        var skipped = Tests.Count(t => t.Status == TestStatus.Skipped);
+        TestSummary = $"成功 {passed} / 失敗 {failed} / スキップ {skipped} / 合計 {Tests.Count}";
     }
 
     /// <summary>複数行のコマンド出力を 1 行ずつコンソールへ流す（末尾の CR を落とし、空行は捨てる）。</summary>

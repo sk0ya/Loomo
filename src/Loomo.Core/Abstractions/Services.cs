@@ -60,6 +60,16 @@ public interface IWorkspaceService
     event EventHandler<string?>? RootChanged;
 }
 
+/// <summary>ワークスペースのテストをソース走査で探索する（<c>dotnet test --list-tests</c> のようなビルドを伴わず、
+/// <c>[Fact]</c>/<c>[Theory]</c> 等の属性を持つメソッドを <c>*.cs</c> から拾う高速・無ビルドの探索）。
+/// 実行は別途 <c>dotnet test</c> が担い、ここは一覧の収集のみ。</summary>
+public interface ITestDiscoveryService
+{
+    /// <summary><paramref name="root"/> 配下の <c>*.cs</c>（bin/obj/artifacts 等は除外）を走査してテスト一覧を返す。
+    /// I/O・解析を行うので呼び出し側はバックグラウンドで実行すること。</summary>
+    System.Collections.Generic.IReadOnlyList<sk0ya.Loomo.Core.Debug.DiscoveredTest> Discover(string root);
+}
+
 /// <summary>危険操作（コマンド実行・書込）のユーザー承認。</summary>
 public interface IApprovalService
 {

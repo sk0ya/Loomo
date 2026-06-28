@@ -8,6 +8,48 @@
     <UserControl.Resources>
         <SolidColorBrush x:Key="DebugStderr" Color="#E06C75" />
 
+        <!-- テストツリーの行内 ▶（実行）ボタン。既定ボタンのシステム色ホバーを避け、テーマ追従の
+             透明背景＋ホバーで BgAlt にする（IconButton をコンパクト化）。 -->
+        <Style x:Key="RunGlyphButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="FontSize" Value="10" />
+        </Style>
+
+        <!-- 状態フィルタのトグル。Loomo 流に塗りつぶさず、フラットなアウトラインチップ。
+             OFF はグレー（FgDim＋既定枠）で除外を示し、ON は Tag の色（成功=緑/失敗=赤/未実施=アクセント）の
+             テキスト＋枠線で、ツリーの色分けと揃える。 -->
+        <Style x:Key="FilterToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Padding" Value="9,0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground"
+                                        Value="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" />
+                                <Setter TargetName="b" Property="BorderBrush"
+                                        Value="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 各項目（出力行・フレーム・変数・ウォッチ）を個別にコピーする右クリックメニュー。
              x:Shared="False" で参照ごとに別インスタンスを作り、項目ごとに独立して付ける。 -->
         <ContextMenu x:Key="CopyItemMenu" x:Shared="False">
@@ -153,7 +195,7 @@
 
         <!-- 検査タブ：出力（常時）／変数（＋ウォッチ）／コールスタック。残り全域を使う。 -->
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
-                    Margin="6,0,6,6" SelectedIndex="0">
+                    Margin="6,0,6,6" SelectedIndex="0" SelectionChanged="OnDebugTabChanged">
 
             <!-- 出力：テキスト選択できる読み取り専用 RichTextBox（行は Category で色分け）。
                  内容は本文を選択してコンテキストメニュー（コピー／すべて選択）からコピーする。
@@ -278,47 +320,165 @@
                 </Grid>
             </TabItem>
 
-            <!-- テスト：dotnet test の集計＋失敗テスト一覧（ダブルクリックで該当行へジャンプ）。 -->
+            <!-- テスト：探索で全テストを一覧化し、全実行/個別実行（▶）の結果でステータスを更新する。
+                 失敗テストはダブルクリックで該当行へジャンプ。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="テスト">
                 <Grid Margin="0,4,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
+                    <!-- 操作バー（1 行）：全実行＋テキスト検索＋状態トグル（成功/失敗/未実施）。 -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,4">
+                        <Button Content="▶ 全実行" Style="{StaticResource SecondaryButton}" Height="20" Padding="8,0"
+                                VerticalAlignment="Center" Command="{Binding TestCommand}" ToolTip="すべてのテストを実行" />
+                        <Grid Width="130" Margin="8,0,0,0">
+                            <TextBox x:Name="TestFilterBox" Padding="6,2" FontSize="11"
+                                     Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                     BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                     Text="{Binding TestFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="検索（名前）" IsHitTestVisible="False" FontSize="11"
+                                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Visibility="{Binding Text, ElementName=TestFilterBox, Converter={StaticResource EmptyToVis}}" />
+                        </Grid>
+                        <ToggleButton Content="成功" Style="{StaticResource FilterToggle}" Tag="{DynamicResource Success}"
+                                      VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="成功したテストを表示"
+                                      IsChecked="{Binding ShowPassed, Mode=TwoWay}" />
+                        <ToggleButton Content="失敗" Style="{StaticResource FilterToggle}" Tag="{DynamicResource Error}"
+                                      VerticalAlignment="Center" Margin="4,0,0,0" ToolTip="失敗したテストを表示"
+                                      IsChecked="{Binding ShowFailed, Mode=TwoWay}" />
+                        <ToggleButton Content="未実施" Style="{StaticResource FilterToggle}" Tag="{DynamicResource Accent}"
+                                      VerticalAlignment="Center" Margin="4,0,0,0" ToolTip="未実施・スキップのテストを表示"
+                                      IsChecked="{Binding ShowNotRun, Mode=TwoWay}" />
+                        <TextBlock Text="収集中…" Foreground="{DynamicResource FgDim}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   Visibility="{Binding IsDiscoveringTests, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
                     <!-- 集計行 -->
-                    <TextBlock Grid.Row="0" Text="{Binding TestSummary}" Foreground="{DynamicResource Fg}"
+                    <TextBlock Grid.Row="1" Text="{Binding TestSummary}" Foreground="{DynamicResource Fg}"
                                FontSize="11" Margin="2,0,0,4"
                                Visibility="{Binding HasTestResults, Converter={StaticResource BoolToVis}}" />
 
-                    <!-- 失敗テスト一覧 -->
-                    <ListBox Grid.Row="1" ItemsSource="{Binding TestFailures}" Background="{DynamicResource Bg}"
-                             BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
-                             MouseDoubleClick="OnTestDoubleClick"
-                             ToolTip="失敗テストをダブルクリックで該当行へジャンプ"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:TestResultViewModel}">
-                                <StackPanel Margin="0,2" ContextMenu="{StaticResource CopyItemMenu}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="✗" Foreground="{StaticResource DebugStderr}" FontSize="11" Margin="0,0,6,0" />
-                                        <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Location}" FontSize="11" Opacity="0.6" Margin="8,0,0,0" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Message}" FontSize="10" Opacity="0.7" Margin="17,1,0,0"
-                                               TextTrimming="CharacterEllipsis"
-                                               Visibility="{Binding Message, Converter={StaticResource NonEmptyToVis}}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <!-- テストツリー：クラスでグループ化し、葉がテスト。ダブルクリックでジャンプ、▶ で実行。 -->
+                    <TreeView Grid.Row="2" ItemsSource="{Binding TestTree}" Background="{DynamicResource Bg}"
+                              BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                              MouseDoubleClick="OnTestDoubleClick"
+                              ToolTip="ダブルクリックで該当行へジャンプ、▶ で実行（クラス/テスト）"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                        <TreeView.Resources>
+                            <!-- グリフ色（成功/失敗/実行中）。グループ・葉で共有。 -->
+                            <Style x:Key="TestGlyph" TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                <Setter Property="FontSize" Value="11" />
+                                <Setter Property="Margin" Value="0,0,6,0" />
+                                <Setter Property="VerticalAlignment" Value="Top" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="Passed">
+                                        <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                        <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Running">
+                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
 
-                    <!-- まだ実行していない／全件成功のときの案内 -->
-                    <TextBlock Grid.Row="1" Foreground="{DynamicResource FgDim}" FontSize="11"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                            <!-- テスト名テキスト色（成功=緑/失敗=赤/実行中=アクセント）。グリフと同じ Status 連動。 -->
+                            <Style x:Key="TestText" TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="Passed">
+                                        <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                        <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Running">
+                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+
+                            <!-- グループ（クラス） -->
+                            <HierarchicalDataTemplate DataType="{x:Type vm:TestGroupViewModel}" ItemsSource="{Binding Tests}">
+                                <!-- 行クリックで開閉（Background を敷いて全幅をヒット対象に）。 -->
+                                <Grid Background="Transparent" MouseLeftButtonUp="OnTestGroupClick"
+                                      ContextMenu="{StaticResource CopyItemMenu}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Glyph}" Style="{StaticResource TestGlyph}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                               Style="{StaticResource TestText}"
+                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="10" Opacity="0.6"
+                                               Margin="8,0,0,0" VerticalAlignment="Center" />
+                                    <Button Grid.Column="3" Content="▶" Style="{StaticResource RunGlyphButton}"
+                                            Margin="6,0,0,0" VerticalAlignment="Center"
+                                            ToolTip="このクラスのテストをまとめて実行"
+                                            Command="{Binding DataContext.RunGroupCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </HierarchicalDataTemplate>
+
+                            <!-- 葉（テスト） -->
+                            <DataTemplate DataType="{x:Type vm:TestItemViewModel}">
+                                <Grid ContextMenu="{StaticResource CopyItemMenu}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Glyph}" Style="{StaticResource TestGlyph}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding MethodName}" FontSize="11" FontFamily="Consolas"
+                                                   Style="{StaticResource TestText}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Message}" FontSize="10" Opacity="0.7"
+                                                   Foreground="{DynamicResource Error}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding HasMessage, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding Location}" FontSize="11" Opacity="0.6"
+                                               Margin="8,0,0,0" VerticalAlignment="Top" />
+                                    <Button Grid.Column="3" Content="▶" Style="{StaticResource RunGlyphButton}"
+                                            Margin="6,0,0,0" VerticalAlignment="Top"
+                                            ToolTip="このテストを実行"
+                                            Command="{Binding DataContext.RunSingleTestCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </TreeView.Resources>
+                    </TreeView>
+
+                    <!-- まだテストが無いときの案内（収集中かどうかで文言を変える） -->
+                    <TextBlock Grid.Row="2" Foreground="{DynamicResource FgDim}" FontSize="11"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="12,0"
                                Visibility="{Binding HasTestResults, Converter={StaticResource InverseBoolToVis}}"
-                               Text="「テスト」を実行すると結果が表示されます" />
+                               Text="{Binding TestEmptyHint}" />
+
+                    <!-- テストはあるがフィルタで全て隠れているときの案内 -->
+                    <TextBlock Grid.Row="2" Foreground="{DynamicResource FgDim}" FontSize="11"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="12,0"
+                               Visibility="{Binding NoFilterMatch, Converter={StaticResource BoolToVis}}"
+                               Text="フィルタに一致するテストがありません" />
                 </Grid>
             </TabItem>
         </TabControl>

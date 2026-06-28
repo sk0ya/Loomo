@@ -111,6 +111,10 @@ public partial class App : Application
         services.AddSingleton<sk0ya.Loomo.Core.Debug.IDebugService,
             sk0ya.Loomo.Services.Debug.NetcoredbgDebugService>();
 
+        // テスト探索（ソース走査・無ビルド）。テストエクスプローラのバックグラウンド自動収集に使う。
+        services.AddSingleton<ITestDiscoveryService,
+            sk0ya.Loomo.Services.Debug.TestDiscoveryService>();
+
         services.AddSingleton<BrowserService>();
         services.AddSingleton<IBrowserService>(sp => sp.GetRequiredService<BrowserService>());
 

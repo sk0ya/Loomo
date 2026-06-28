@@ -19,5 +19,8 @@
     <SolidColorBrush x:Key="SearchHighlight" Color="#80FFC400" />
     <!-- リストの選択行背景（はっきり見える青。複数選択はこの帯がつながる） -->
     <SolidColorBrush x:Key="SelectionBg" Color="#FFCCE4F7" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FF1A7F37" />
+    <SolidColorBrush x:Key="Error" Color="#FFCF222E" />
 
 </ResourceDictionary>

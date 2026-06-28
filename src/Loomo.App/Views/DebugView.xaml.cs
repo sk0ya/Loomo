@@ -15,6 +15,7 @@ public partial class DebugView : UserControl
     // タブのインデックス（XAML の並び順と一致させる）。
     private const int OutputTab = 0;
     private const int VariablesTab = 1;
+    private const int TestTab = 3;
 
     private INotifyCollectionChanged? _observed;
     private DebugViewModel? _vm;
@@ -103,6 +104,15 @@ public partial class DebugView : UserControl
         if (DataContext is DebugViewModel vm) vm.Refresh();
     }
 
+    // テストタブを開いたら（まだ一覧が無ければ）バックグラウンド収集を起こす保険。e.Source で内側の
+    // 選択イベント（TreeView/ListBox の SelectionChanged のバブリング）を弾く。
+    private void OnDebugTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, DebugTabs) && DebugTabs.SelectedIndex == TestTab
+            && DataContext is DebugViewModel vm)
+            vm.EnsureTestsDiscovered();
+    }
+
     // コールスタックのダブルクリック：選択フレームのソースへジャンプ（通常タブ＋フォーカス）。
     private void OnCallStackDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -119,19 +129,27 @@ public partial class DebugView : UserControl
         }
     }
 
-    // 失敗テストのダブルクリック：スタックトレースから拾った位置へジャンプ（行＝ListBoxItem 上のときだけ）。
+    // テスト葉のダブルクリック：スタックトレースから拾った位置へジャンプ（葉＝TreeViewItem 上のときだけ。
+    // グループ行は無視）。最内の TreeViewItem を拾うので、葉のときだけ DataContext が TestItemViewModel になる。
     private void OnTestDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         for (var d = e.OriginalSource as System.Windows.DependencyObject; d is not null;
              d = System.Windows.Media.VisualTreeHelper.GetParent(d))
         {
-            if (d is System.Windows.Controls.ListBoxItem item)
+            if (d is System.Windows.Controls.TreeViewItem item)
             {
-                if (DataContext is DebugViewModel vm && item.DataContext is TestResultViewModel t)
+                if (DataContext is DebugViewModel vm && item.DataContext is TestItemViewModel t)
                     vm.NavigateToTestSource(t);
                 return;
             }
         }
+    }
+
+    // テストグループ行のシングルクリック：開閉をトグルする（▶ ボタンのクリックは Button が処理するので来ない）。
+    private void OnTestGroupClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: TestGroupViewModel g })
+            g.IsExpanded = !g.IsExpanded;
     }
 
     // 右クリックメニュー「コピー」：その項目 1 件だけをテキスト化してクリップボードへ。
@@ -143,7 +161,8 @@ public partial class DebugView : UserControl
             DebugFrameViewModel f => string.IsNullOrEmpty(f.Location) ? f.Name : $"{f.Name}  {f.Location}",
             DebugVariableViewModel v => string.IsNullOrEmpty(v.Value) ? v.Name : $"{v.Name} = {v.Value}",
             WatchItemViewModel w => $"{w.Expression} = {w.Value}",
-            TestResultViewModel t => string.IsNullOrEmpty(t.Message) ? t.Name : $"{t.Name}  {t.Message}",
+            TestItemViewModel t => string.IsNullOrEmpty(t.Message) ? t.DisplayName : $"{t.DisplayName}  {t.Message}",
+            TestGroupViewModel g => $"{g.Name}  {g.CountText}",
             _ => null,
         };
         if (text is not null)
