@@ -155,6 +155,23 @@ public partial class GitSessionView : UserControl
             await vm.CheckoutCommitAsync(row);
     }
 
+    private async void OnCommitRewriteMessage(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedCommit is not { } row)
+            return;
+        var current = await vm.GetCommitMessageAsync(row);
+        var message = InputDialog.Prompt(Window.GetWindow(this), "コミットメッセージを修正",
+            $"{row.ShortHash} のコミットメッセージを入力してください。\nこのコミット以降の履歴が書き換わります。",
+            current, multiline: true);
+        if (message is null || string.Equals(message, current, StringComparison.Ordinal))
+            return;
+        var answer = MessageBox.Show(Window.GetWindow(this)!,
+            $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
+            "コミットメッセージを修正", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Yes)
+            await vm.RewriteCommitMessageAsync(row, message);
+    }
+
     /// <summary>選択中のコミット件数（グラフ継続行は除く）。</summary>
     private int SelectedCommitCount =>
         LogList.SelectedItems.OfType<GitLogRow>().Count(r => r.IsCommit);
@@ -175,11 +192,17 @@ public partial class GitSessionView : UserControl
         var rows = LogList.SelectedItems.OfType<GitLogRow>().Where(r => r.IsCommit).ToList();
         if (rows.Count < 2)
             return;  // メニューは2件以上のときだけ出るが念のため
+        var combinedMessage = await vm.GetCombinedCommitMessageAsync(rows);
+        var message = InputDialog.Prompt(Window.GetWindow(this), "スカッシュ後のコミットメッセージ",
+            "スカッシュ後に使用するコミットメッセージを編集してください。",
+            combinedMessage, multiline: true);
+        if (message is null)
+            return;
         var answer = MessageBox.Show(Window.GetWindow(this)!,
             $"選択した {rows.Count} 件のコミットを1つにまとめます。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
             "スカッシュ", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Yes)
-            await vm.SquashAsync(rows);
+            await vm.SquashAsync(rows, message);
     }
 
     private async void OnCommitCherryPick(object sender, RoutedEventArgs e)

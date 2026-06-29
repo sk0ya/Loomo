@@ -363,9 +363,20 @@ public sealed class GitService
     public Task<GitCommandResult> MergeAbortAsync() => MutateAsync("merge", "--abort");
 
     public Task<GitCommandResult> RebaseAsync(string onto) => MutateAsync("rebase", onto);
-    public Task<GitCommandResult> RebaseContinueAsync() => MutateAsync("rebase", "--continue");
+    public async Task<GitCommandResult> RebaseContinueAsync()
+    {
+        var result = await MutateAsync("rebase", "--continue").ConfigureAwait(false);
+        if (result.Success)
+            await DeleteRebaseMessageFileAsync().ConfigureAwait(false);
+        return result;
+    }
     public Task<GitCommandResult> RebaseSkipAsync() => MutateAsync("rebase", "--skip");
-    public Task<GitCommandResult> RebaseAbortAsync() => MutateAsync("rebase", "--abort");
+    public async Task<GitCommandResult> RebaseAbortAsync()
+    {
+        var result = await MutateAsync("rebase", "--abort").ConfigureAwait(false);
+        await DeleteRebaseMessageFileAsync().ConfigureAwait(false);
+        return result;
+    }
 
     public Task<GitCommandResult> CherryPickAsync(string hash) => MutateAsync("cherry-pick", hash);
     public Task<GitCommandResult> CherryPickContinueAsync() => MutateAsync("cherry-pick", "--continue");
@@ -377,19 +388,22 @@ public sealed class GitService
     public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) =>
         MutateAsync("reset", $"--{mode.ToString().ToLowerInvariant()}", hash);
 
+    /// <summary>コミットメッセージ全文を取得する（末尾の改行は除く）。</summary>
+    public async Task<string> GetCommitMessageAsync(string hash)
+    {
+        var result = await RunAsync("show", "-s", "--format=%B", hash).ConfigureAwait(false);
+        return result.Success ? result.Output.TrimEnd('\r', '\n') : "";
+    }
+
     /// <summary>
-    /// 選択した連続するコミット群を1つにまとめる（squash）。<paramref name="hashes"/> は表示順・選択順に
-    /// 依存せず、内部で古い→新しいに整列する。範囲は現在のブランチ上の線形・連続したコミットであること
-    /// （途中に未選択コミットやマージ・分岐があれば失敗を返し、何も書き換えない）。まとめた後のメッセージは
-    /// squash の既定どおり各コミットのメッセージを連結したものになる。実装は非対話の対話的リベース
-    /// （シーケンスエディタを自動差し替え・メッセージは既定で確定）で、上に積まれたコミットは pick で再適用する。
-    /// コンフリクトが出た場合は通常のリベース進行中として続行・中止できる。
+    /// 現在のブランチ上のコミットメッセージを対話的リベースの reword で変更する。
+    /// 対象より後のコミットも再作成される。マージを含む範囲は履歴構造を壊さないため拒否する。
     /// </summary>
-    public async Task<GitCommandResult> SquashAsync(IReadOnlyList<string> hashes)
+    public async Task<GitCommandResult> RewriteCommitMessageAsync(string hash, string message)
     {
         try
         {
-            return await SquashCoreAsync(hashes).ConfigureAwait(false);
+            return await RewriteCommitMessageCoreAsync(hash, message).ConfigureAwait(false);
         }
         finally
         {
@@ -397,10 +411,85 @@ public sealed class GitService
         }
     }
 
-    private async Task<GitCommandResult> SquashCoreAsync(IReadOnlyList<string> hashes)
+    private async Task<GitCommandResult> RewriteCommitMessageCoreAsync(string hash, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return new GitCommandResult(-1, "", "コミットメッセージを入力してください。");
+
+        var onHead = await RunAsync("merge-base", "--is-ancestor", hash, "HEAD").ConfigureAwait(false);
+        if (!onHead.Success)
+            return new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ修正できます。");
+
+        var hasParent = (await RunAsync("rev-parse", "--verify", "--quiet", $"{hash}^").ConfigureAwait(false)).Success;
+        var range = hasParent ? $"{hash}^..HEAD" : "HEAD";
+        var chainResult = await RunAsync("rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
+        if (!chainResult.Success)
+            return chainResult;
+        var chain = SplitLines(chainResult.Output);
+        if (chain.Count == 0 || !string.Equals(chain[0], hash, StringComparison.OrdinalIgnoreCase))
+            return new GitCommandResult(-1, "", "現在のブランチの主系列にあるコミットのみ修正できます。");
+
+        var merges = await RunAsync("rev-list", "--min-parents=2", range).ConfigureAwait(false);
+        if (!merges.Success)
+            return merges;
+        if (SplitLines(merges.Output).Count > 0)
+            return new GitCommandResult(-1, "", "対象から HEAD までにマージコミットがあるため、メッセージを修正できません。");
+
+        var todo = new StringBuilder();
+        todo.Append("reword ").Append(chain[0]).Append('\n');
+        foreach (var commit in chain.Skip(1))
+            todo.Append("pick ").Append(commit).Append('\n');
+
+        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        if (gitDir is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+        var todoPath = Path.Combine(gitDir, "loomo-reword-todo.txt");
+        var messagePath = Path.Combine(gitDir, "loomo-reword-message.txt");
+        try
+        {
+            await File.WriteAllTextAsync(todoPath, todo.ToString()).ConfigureAwait(false);
+            await File.WriteAllTextAsync(messagePath, message.TrimEnd() + Environment.NewLine).ConfigureAwait(false);
+            var env = new Dictionary<string, string>
+            {
+                ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
+                ["GIT_EDITOR"] = $"cp '{ToMsysPath(messagePath)}'",
+            };
+            var baseArg = hasParent ? $"{hash}^" : "--root";
+            return await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(todoPath);
+            TryDelete(messagePath);
+        }
+    }
+
+    /// <summary>
+    /// 選択した連続するコミット群を1つにまとめる（squash）。<paramref name="hashes"/> は表示順・選択順に
+    /// 依存せず、内部で古い→新しいに整列する。範囲は現在のブランチ上の線形・連続したコミットであること
+    /// （途中に未選択コミットやマージ・分岐があれば失敗を返し、何も書き換えない）。<paramref name="commitMessage"/>
+    /// 指定時は todo 内の exec でスカッシュ後のメッセージを確定する。未指定時は squash の既定どおり
+    /// 各コミットのメッセージを連結する。上に積まれたコミットは pick で再適用する。
+    /// コンフリクトが出た場合は通常のリベース進行中として続行・中止できる。
+    /// </summary>
+    public async Task<GitCommandResult> SquashAsync(IReadOnlyList<string> hashes, string? commitMessage = null)
+    {
+        try
+        {
+            return await SquashCoreAsync(hashes, commitMessage).ConfigureAwait(false);
+        }
+        finally
+        {
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task<GitCommandResult> SquashCoreAsync(IReadOnlyList<string> hashes, string? commitMessage)
     {
         if (hashes.Count < 2)
             return new GitCommandResult(-1, "", "スカッシュには2件以上のコミットを選択してください。");
+        if (commitMessage is not null && string.IsNullOrWhiteSpace(commitMessage))
+            return new GitCommandResult(-1, "", "コミットメッセージを入力してください。");
 
         // 選択コミット自身を topo 順（新しい→古い）に並べ、両端（先端＝newest／根＝oldest）を取る。
         var ordered = await RunAsync(
@@ -444,20 +533,27 @@ public sealed class GitService
         var above = aboveResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
 
-        // 対話的リベースの todo を組み立てる（古い順）。根は pick、続きは squash でまとめ、上の積みは pick。
-        var todo = new StringBuilder();
-        todo.Append("pick ").Append(chain[0]).Append('\n');
-        for (var i = 1; i < chain.Count; i++)
-            todo.Append("squash ").Append(chain[i]).Append('\n');
-        foreach (var c in above)
-            todo.Append("pick ").Append(c).Append('\n');
-
         var gitDir = await GetGitDirAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
         var todoPath = Path.Combine(gitDir, "loomo-squash-todo.txt");
+        var messagePath = Path.Combine(gitDir, "loomo-squash-message.txt");
+        // カスタムメッセージ時は fixup で編集画面を出さず、todo の exec で確実に適用する。
+        // exec はコンフリクト解消後の rebase --continue でも残るため、環境変数だけに頼るより堅牢。
+        var todo = new StringBuilder();
+        todo.Append("pick ").Append(chain[0]).Append('\n');
+        for (var i = 1; i < chain.Count; i++)
+            todo.Append(commitMessage is null ? "squash " : "fixup ").Append(chain[i]).Append('\n');
+        if (commitMessage is not null)
+            todo.Append("exec git commit --amend -F '").Append(ToMsysPath(messagePath)).Append("'\n");
+        foreach (var c in above)
+            todo.Append("pick ").Append(c).Append('\n');
+
+        var keepMessageForContinue = false;
         try
         {
+            if (commitMessage is not null)
+                await File.WriteAllTextAsync(messagePath, commitMessage.TrimEnd() + Environment.NewLine).ConfigureAwait(false);
             await File.WriteAllTextAsync(todoPath, todo.ToString()).ConfigureAwait(false);
 
             // GIT_SEQUENCE_EDITOR を「todo を我々の内容で上書きする」コマンドに差し替える
@@ -467,12 +563,38 @@ public sealed class GitService
                 ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
             };
             var baseArg = hasParent ? $"{oldest}^" : "--root";
-            return await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
+            var result = await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
+            keepMessageForContinue = !result.Success && IsRebaseDirectoryPresent(gitDir);
+            return result;
         }
         finally
         {
-            try { File.Delete(todoPath); } catch { /* 後始末の失敗は無視 */ }
+            TryDelete(todoPath);
+            if (!keepMessageForContinue)
+                TryDelete(messagePath);
         }
+    }
+
+    private static bool IsRebaseDirectoryPresent(string gitDir) =>
+        Directory.Exists(Path.Combine(gitDir, "rebase-merge")) ||
+        Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
+
+    private async Task DeleteRebaseMessageFileAsync()
+    {
+        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        if (gitDir is not null)
+            TryDelete(Path.Combine(gitDir, "loomo-squash-message.txt"));
+    }
+
+    private static List<string> SplitLines(string value) => value
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Select(line => line.Trim())
+        .Where(line => line.Length > 0)
+        .ToList();
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch { /* 後始末の失敗は無視 */ }
     }
 
     /// <summary>Windows パスを git-for-windows の sh が解釈できる msys 形式へ（例: C:\a → /c/a）。</summary>

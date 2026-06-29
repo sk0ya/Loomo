@@ -18,9 +18,10 @@ public partial class InputDialog : Window
     /// <param name="initial">初期値。</param>
     /// <param name="selectNameOnly">true なら拡張子を除いた部分だけを選択（ファイル名のリネーム向け）。</param>
     /// <param name="allowEmpty">true なら空入力でも OK を許す（空文字列を返す）。既定は非空必須。</param>
+    /// <param name="multiline">true なら複数行入力欄として表示する。</param>
     public static string? Prompt(
         Window? owner, string title, string prompt, string initial = "",
-        bool selectNameOnly = false, bool allowEmpty = false)
+        bool selectNameOnly = false, bool allowEmpty = false, bool multiline = false)
     {
         var dialog = new InputDialog
         {
@@ -30,6 +31,14 @@ public partial class InputDialog : Window
         };
         dialog.PromptText.Text = prompt;
         dialog.InputBox.Text = initial;
+        if (multiline)
+        {
+            dialog.InputBox.AcceptsReturn = true;
+            dialog.InputBox.AcceptsTab = true;
+            dialog.InputBox.TextWrapping = TextWrapping.Wrap;
+            dialog.InputBox.VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto;
+            dialog.InputBox.MinHeight = 140;
+        }
 
         dialog.Loaded += (_, _) =>
         {

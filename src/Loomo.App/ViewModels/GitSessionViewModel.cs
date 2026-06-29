@@ -255,13 +255,31 @@ public sealed partial class GitSessionViewModel : ObservableObject
         : RunOpAsync($"リセット（{mode.ToString().ToLowerInvariant()}）{row.ShortHash}",
             () => _git.ResetAsync(row.Hash, mode));
 
+    public Task<string> GetCommitMessageAsync(GitLogRow row) => row.Hash is null
+        ? Task.FromResult("")
+        : _git.GetCommitMessageAsync(row.Hash);
+
+    public Task<GitCommandResult?> RewriteCommitMessageAsync(GitLogRow row, string message) => row.Hash is null
+        ? Task.FromResult<GitCommandResult?>(null)
+        : RunOpAsync($"コミットメッセージ修正 {row.ShortHash}",
+            () => _git.RewriteCommitMessageAsync(row.Hash, message));
+
+    public async Task<string> GetCombinedCommitMessageAsync(IReadOnlyList<GitLogRow> rows)
+    {
+        var commits = rows.Where(r => r.Hash is not null)
+            .OrderByDescending(r => LogRows.IndexOf(r)) // 一覧は新しい順なので、古いコミットから連結
+            .ToList();
+        var messages = await Task.WhenAll(commits.Select(c => _git.GetCommitMessageAsync(c.Hash!)));
+        return string.Join("\n\n", messages.Where(m => !string.IsNullOrWhiteSpace(m)));
+    }
+
     /// <summary>選択した連続コミット群を1つにまとめる（squash）。2件未満なら何もしない。</summary>
-    public Task<GitCommandResult?> SquashAsync(IReadOnlyList<GitLogRow> rows)
+    public Task<GitCommandResult?> SquashAsync(IReadOnlyList<GitLogRow> rows, string commitMessage)
     {
         var hashes = rows.Where(r => r.Hash is not null).Select(r => r.Hash!).ToList();
         if (hashes.Count < 2)
             return Task.FromResult<GitCommandResult?>(null);
-        return RunOpAsync($"スカッシュ（{hashes.Count} 件）", () => _git.SquashAsync(hashes));
+        return RunOpAsync($"スカッシュ（{hashes.Count} 件）", () => _git.SquashAsync(hashes, commitMessage));
     }
 
     /// <summary>

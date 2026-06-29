@@ -150,6 +150,7 @@
                                 <Separator />
                                 <MenuItem Header="ここから新しいブランチを作成…" Click="OnCommitCreateBranch" />
                                 <MenuItem Header="チェックアウト（detached HEAD）" Click="OnCommitCheckout" />
+                                <MenuItem Header="コミットメッセージを修正…" Click="OnCommitRewriteMessage" />
                                 <!-- スカッシュは2件以上の選択時だけ表示（OnCommitContextMenuOpening で切替） -->
                                 <Separator x:Name="SquashSeparator" />
                                 <MenuItem x:Name="SquashMenuItem"
