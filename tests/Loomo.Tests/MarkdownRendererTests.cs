@@ -130,6 +130,45 @@ public class MarkdownRendererTests
     }
 
     [Fact]
+    public void Link_WithUnderscoresInTextAndHref_NotParsedAsEmphasis()
+    {
+        // [aa_01_cc.md](aa_01_cc.md) の _01_ が斜体（<em>）に化けず、リンクのまま出る。
+        var html = Render("[aa_01_cc.md](aa_01_cc.md)");
+
+        Assert.Contains("<a href=\"aa_01_cc.md\">aa_01_cc.md</a>", html);
+        Assert.DoesNotContain("<em>", html);
+    }
+
+    [Fact]
+    public void Image_WithUnderscoresInAltAndSrc_NotParsedAsEmphasis()
+    {
+        var html = Render("![my_pic_01](img_01_x.png)");
+
+        Assert.Contains("<img src=\"img_01_x.png\" alt=\"my_pic_01\">", html);
+        Assert.DoesNotContain("<em>", html);
+    }
+
+    [Fact]
+    public void Link_WithAsterisksInText_NotParsedAsEmphasis()
+    {
+        // * も同様にリンク内では強調にしない。
+        var html = Render("[a*b*c](a*b*c.md)");
+
+        Assert.Contains("<a href=\"a*b*c.md\">a*b*c</a>", html);
+        Assert.DoesNotContain("<em>", html);
+    }
+
+    [Fact]
+    public void Emphasis_OutsideLink_StillWorks()
+    {
+        // リンク退避が通常の強調処理を壊していないこと。
+        var html = Render("text _italic_ and [aa_01](aa_01.md)");
+
+        Assert.Contains("<em>italic</em>", html);
+        Assert.Contains("<a href=\"aa_01.md\">aa_01</a>", html);
+    }
+
+    [Fact]
     public void IsMarpDocument_DetectsFrontmatterFlag()
     {
         Assert.True(MarkdownRenderer.IsMarpDocument("---\nmarp: true\n---\n# x"));

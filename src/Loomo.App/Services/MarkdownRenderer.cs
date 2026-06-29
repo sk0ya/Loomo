@@ -266,17 +266,21 @@ internal static class MarkdownRenderer
 
     private static string Inline(string text)
     {
-        var codes = new List<string>();
-        text = CodeSpanRe.Replace(text, m =>
+        // コードスパン・画像・リンクの生成済み HTML は番兵に退避してから強調を処理する。
+        // そうしないと href やリンクテキスト内の _ * ~ が <em>/<strong>/<del> に化ける
+        // （例: [aa_01_cc.md](aa_01_cc.md) の _01_ が斜体になる）。最後に番兵を復元する。
+        var spans = new List<string>();
+        string Stash(string htmlFragment)
         {
-            codes.Add($"<code>{Encode(m.Groups[1].Value)}</code>");
-            return $"\x01{codes.Count - 1}\x01";
-        });
+            spans.Add(htmlFragment);
+            return $"\x01{spans.Count - 1}\x01";
+        }
 
+        text = CodeSpanRe.Replace(text, m => Stash($"<code>{Encode(m.Groups[1].Value)}</code>"));
         text = ImageRe.Replace(text, m =>
-            $"<img src=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value, allowData: true))}\" alt=\"{Encode(m.Groups[1].Value)}\">");
+            Stash($"<img src=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value, allowData: true))}\" alt=\"{Encode(m.Groups[1].Value)}\">"));
         text = LinkRe.Replace(text, m =>
-            $"<a href=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value))}\">{Encode(m.Groups[1].Value)}</a>");
+            Stash($"<a href=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value))}\">{Encode(m.Groups[1].Value)}</a>"));
 
         text = BoldStarRe.Replace(text, "<strong>$1</strong>");
         text = BoldUnderRe.Replace(text, "<strong>$1</strong>");
@@ -284,8 +288,8 @@ internal static class MarkdownRenderer
         text = ItalicUnderRe.Replace(text, "<em>$1</em>");
         text = StrikeRe.Replace(text, "<del>$1</del>");
 
-        for (var i = 0; i < codes.Count; i++)
-            text = text.Replace($"\x01{i}\x01", codes[i]);
+        for (var i = 0; i < spans.Count; i++)
+            text = text.Replace($"\x01{i}\x01", spans[i]);
 
         return text;
     }
