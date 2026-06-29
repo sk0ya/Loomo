@@ -53,24 +53,24 @@ public partial class ShellWindow
         if (dbg.IsStopped)
         {
             var runTo = new MenuItem { Header = "カーソル行まで実行" };
-            runTo.Click += (_, _) => _ = dbg.RunToCursorAsync(path, line0);
+            runTo.Click += (_, _) => _ = dbg.Launch.RunToCursorAsync(path, line0);
             menu.Items.Add(runTo);
 
-            if (dbg.SupportsSetNextStatement)
+            if (dbg.Launch.SupportsSetNextStatement)
             {
                 var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
-                setNext.Click += (_, _) => _ = dbg.SetNextStatementAsync(path, line0);
+                setNext.Click += (_, _) => _ = dbg.Launch.SetNextStatementAsync(path, line0);
                 menu.Items.Add(setNext);
             }
 
             // 「特定の関数にステップ イン」：候補は停止行依存なので、サブメニューを開いた時点で取得して並べる。
-            if (dbg.SupportsStepInTargets)
-                menu.Items.Add(BuildStepInTargetsMenu(dbg));
+            if (dbg.Launch.SupportsStepInTargets)
+                menu.Items.Add(BuildStepInTargetsMenu(dbg.Launch));
         }
     }
 
     // ステップ イン候補を遅延（サブメニュー展開時）に取得して並べる親メニュー項目を作る。
-    private static MenuItem BuildStepInTargetsMenu(ViewModels.DebugViewModel dbg)
+    private static MenuItem BuildStepInTargetsMenu(ViewModels.DebugLaunchViewModel dbg)
     {
         var parent = new MenuItem { Header = "特定の関数にステップ イン" };
         parent.Items.Add(new MenuItem { Header = "(読み込み中…)", IsEnabled = false });
@@ -97,13 +97,13 @@ public partial class ShellWindow
     // （その行にブレークポイントが無ければ作成して条件を付ける）。
     private void EditBreakpointCondition(string path, int line0)
     {
-        var dbg = _vm.Debug;
-        var current = dbg.FindBreakpoint(path, line0)?.Condition ?? "";
+        var bps = _vm.Debug.Breakpoints;
+        var current = bps.FindBreakpoint(path, line0)?.Condition ?? "";
         var input = InputDialog.Prompt(this, "ブレークポイントの条件",
             "条件式（真のとき停止。例: i > 5）。空にすると条件を解除します。",
             current, allowEmpty: true);
         if (input is null) return;  // キャンセル
-        dbg.EnsureBreakpoint(path, line0).Condition = input.Trim();
+        bps.EnsureBreakpoint(path, line0).Condition = input.Trim();
     }
 
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)

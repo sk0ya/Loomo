@@ -939,15 +939,15 @@
                                         Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}">
                                 <Button Style="{StaticResource FlatButton}" Height="22" Padding="12,0" Margin="0,1,6,1"
                                         FontSize="11" Content="▶ 開始" ToolTip="デバッグを開始"
-                                        Command="{Binding Debug.StartCommand}" />
+                                        Command="{Binding Debug.Launch.StartCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
                                         FontSize="11" Content="🔨 ビルド" ToolTip="dotnet build を実行（.sln 優先）"
-                                        Command="{Binding Debug.BuildTargetCommand}" />
+                                        Command="{Binding Debug.Launch.BuildTargetCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
                                         FontSize="11" Content="🧪 テスト" ToolTip="dotnet test を実行（.sln 優先）"
-                                        Command="{Binding Debug.TestCommand}" />
+                                        Command="{Binding Debug.Tests.TestCommand}" />
                                 <CheckBox Content="先にビルド" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="11"
-                                          Foreground="{DynamicResource Fg}" IsChecked="{Binding Debug.BuildFirst, Mode=TwoWay}"
+                                          Foreground="{DynamicResource Fg}" IsChecked="{Binding Debug.Launch.BuildFirst, Mode=TwoWay}"
                                           ToolTip="開始前に dotnet build を実行する" />
                             </StackPanel>
                             <!-- 停止中のみ：続行・ステップ（アイコンで省スペース、ツールチップで説明） -->
@@ -955,29 +955,29 @@
                                         Visibility="{Binding Debug.IsStopped, Converter={StaticResource BoolToVis}}">
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
                                         FontSize="12" Content="▶" ToolTip="続行 (F5)"
-                                        Command="{Binding Debug.ContinueCommand}" />
+                                        Command="{Binding Debug.Launch.ContinueCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
                                         FontSize="12" Content="⤼" ToolTip="ステップオーバー"
-                                        Command="{Binding Debug.StepOverCommand}" />
+                                        Command="{Binding Debug.Launch.StepOverCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
                                         FontSize="12" Content="⤷" ToolTip="ステップイン"
-                                        Command="{Binding Debug.StepIntoCommand}" />
+                                        Command="{Binding Debug.Launch.StepIntoCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,8,1"
                                         FontSize="12" Content="⤴" ToolTip="ステップアウト"
-                                        Command="{Binding Debug.StepOutCommand}" />
+                                        Command="{Binding Debug.Launch.StepOutCommand}" />
                             </StackPanel>
                             <!-- デバッグ中のみ：中断・再起動・停止 -->
                             <StackPanel Orientation="Horizontal"
                                         Visibility="{Binding Debug.IsBusy, Converter={StaticResource BoolToVis}}">
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
                                         FontSize="12" Content="⏸" ToolTip="すべて中断（一時停止）"
-                                        Command="{Binding Debug.PauseCommand}" />
+                                        Command="{Binding Debug.Launch.PauseCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,8,1"
                                         FontSize="12" Content="⟳" ToolTip="同じ対象で再起動"
-                                        Command="{Binding Debug.RestartCommand}" />
+                                        Command="{Binding Debug.Launch.RestartCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
                                         FontSize="11" Content="■ 停止" ToolTip="デバッグを停止"
-                                        Command="{Binding Debug.StopCommand}" />
+                                        Command="{Binding Debug.Launch.StopCommand}" />
                             </StackPanel>
                         </StackPanel>
                         <!-- 状態（ビルド/デバッグの進行・結果）。ラベルの右、ツールバーの左を埋める。 -->

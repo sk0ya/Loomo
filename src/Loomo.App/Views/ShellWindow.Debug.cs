@@ -74,7 +74,7 @@ public partial class ShellWindow
         control.SetBreakpointsEnabled(true);
         control.BreakpointToggled += line => OnEditorBreakpointToggled(control, line);
         // 停止中はホバーで式を評価して値を表示する（DataTip）。停止していなければ VM 側で null を返す。
-        control.DataTipEvaluator = (req, _) => _vm.Debug.EvaluateDataTipAsync(req.Expression);
+        control.DataTipEvaluator = (req, _) => _vm.Debug.Inspection.EvaluateDataTipAsync(req.Expression);
         control.SetDataTipsEnabled(_vm.Debug.IsStopped);
         // ファイル読込・差し替え時に、そのパスのブレークポイントをエディタへ反映する。
         control.BufferChanged += (_, _) => SyncEditorBreakpoints(control);
@@ -85,7 +85,7 @@ public partial class ShellWindow
     {
         var path = control.FilePath;
         if (string.IsNullOrWhiteSpace(path)) return;
-        _vm.Debug.ToggleBreakpoint(path, line0);
+        _vm.Debug.Breakpoints.ToggleBreakpoint(path, line0);
         SyncEditorBreakpoints(control);
     }
 
@@ -94,7 +94,7 @@ public partial class ShellWindow
         var path = control.FilePath;
         control.SetBreakpoints(string.IsNullOrWhiteSpace(path)
             ? Array.Empty<EditorBreakpoint>()
-            : _vm.Debug.GetBreakpointGlyphs(path).Select(ToEditorBreakpoint).ToList());
+            : _vm.Debug.Breakpoints.GetBreakpointGlyphs(path).Select(ToEditorBreakpoint).ToList());
     }
 
     /// <summary>VM のブレークポイントメタを Editor のガター表示用 <see cref="EditorBreakpoint"/> へ写像する。
