@@ -107,6 +107,9 @@ public partial class App : Application
         // 言語サーバー（LSP）管理：導入状況の検出・見えるターミナルでのインストール・追加削除・促し判定。
         services.AddSingleton<sk0ya.Loomo.Services.Lsp.LspManagementService>();
 
+        // 整形フォーマッタ管理：カタログ（導入コマンド）×PATH 検出×拡張子割り当て（:Format 用）。
+        services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();
+
         // デバッグ実行（DAP / netcoredbg）。Phase 1：起動して実行・出力を観測する。
         services.AddSingleton<sk0ya.Loomo.Core.Debug.IDebugService,
             sk0ya.Loomo.Services.Debug.NetcoredbgDebugService>();
@@ -212,6 +215,7 @@ public partial class App : Application
         services.AddSingleton<AppearanceViewModel>();
         services.AddSingleton<LspSettingsViewModel>();
         services.AddSingleton<LspPromptViewModel>();
+        services.AddSingleton<FormatterSettingsViewModel>();
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionViewModel>();

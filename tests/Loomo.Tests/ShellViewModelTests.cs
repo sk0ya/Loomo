@@ -56,6 +56,8 @@ public class ShellViewModelTests
         var lspService = new sk0ya.Loomo.Services.Lsp.LspManagementService(new FakeTerminalService());
         var lspVm = new LspSettingsViewModel(lspService);
         var lspPromptVm = new LspPromptViewModel(lspService, settings, store);
+        var formatterVm = new FormatterSettingsViewModel(
+            new sk0ya.Loomo.Services.Formatting.FormatterManagementService(new FakeTerminalService()));
         var keyboardVm = new KeybindingsViewModel(new sk0ya.Loomo.App.Input.KeybindingService(settings, store));
 
         var workspaceStore = new WorkspaceStateStore(
@@ -78,7 +80,7 @@ public class ShellViewModelTests
             new sk0ya.Loomo.Services.Debug.TestDiscoveryService());
 
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
-            appearanceVm, lspVm, lspPromptVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
+            appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
             new PegboardViewModel(), searchVm, debugVm);
     }
 

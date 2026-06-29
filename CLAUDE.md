@@ -246,8 +246,18 @@ Markdown) don't implement `textDocument/formatting`, so the editor also has an e
 There are **no built-in default mappings**: a configured CLI formatter wins over LSP; with none configured the editor
 falls back to LSP formatting; and if that's empty too it probes `PATH` for the extension's `KnownFormatters`
 candidates (prettier/dprint/black/…), using and registering the first installed one. Users can also set one explicitly
-via the editor's `:FmtSet <ext> <cmd>` / `:FmtList` / `:FmtRemove` ex commands. A Loomo-side install catalog + settings
-UI (the LSP analog) is **not built yet**.
+via the editor's `:FmtSet <ext> <cmd>` / `:FmtList` / `:FmtRemove` ex commands. On top of that, Loomo owns the same
+**install/management UX** as for LSP (the LSP analog, now built):
+- `Services/Formatting/FormatterCatalog.cs` — known CLI formatters with **install commands** (`npm i -g prettier`,
+  `pip install black`, `winget …`, `rustup …`) and docs URLs. Its `Executable`/`Args` are kept identical to the editor's
+  `KnownFormatters` so that "apply" registers the same mapping the editor would auto-probe.
+- `FormatterManagementService` detects whether each executable is on `PATH` (reuses `ExecutableResolver` from the LSP
+  side), runs installs in the **visible** terminal (`ITerminalService.TryRunInVisibleTerminal`), and applies/unapplies a
+  catalog formatter across its extensions or adds/removes a custom `ext→cmd` mapping (since formatters have **no built-in
+  defaults**, the settings list is **catalog-driven** rather than registry-driven — the LSP list shows registry built-ins,
+  this one shows the catalog plus any custom entries).
+- Settings overlay has an **整形 (Formatter)** category (`FormatterSettingsViewModel`, `SettingsCategory.Formatter`):
+  per-formatter rows with install/apply status, Install / 適用 / 手順 / 解除 buttons, and a custom add form.
 
 Reflecting over these assemblies via the shell tends to hallucinate — dump API to a file and Grep it, or use
 `MetadataLoadContext`. The Terminal library source is at `C:\Projects\Terminal` (ConPTY, OSC133 shell
