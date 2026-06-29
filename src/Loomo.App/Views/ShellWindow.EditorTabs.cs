@@ -73,6 +73,7 @@ public partial class ShellWindow
         // で区切り混在の path（C:\root\a/b）を渡すので、正規化しないとエクスプローラ起点のタブと
         // 文字列一致せず二重に開いてしまう。VimEditorControl は渡した文字列をそのまま FilePath に保持する。
         path = Path.GetFullPath(path);
+        RecordRecentFile(path);
 
         // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
         EnsureEditorPaneForOpenedFile(path);
@@ -117,6 +118,7 @@ public partial class ShellWindow
 
         // 区切り混在のパス（Git 起点等）でも既存タブと一致させるため正規化する（上記参照）。
         path = Path.GetFullPath(path);
+        RecordRecentFile(path);
 
         // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
         EnsureEditorPaneForOpenedFile(path);

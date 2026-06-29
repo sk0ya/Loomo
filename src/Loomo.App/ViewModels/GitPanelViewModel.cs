@@ -212,6 +212,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
     /// <summary>「変更」「バージョン管理外」をトップレベルに持つ、コミット対象選択用のツリー。</summary>
     [ObservableProperty] private IReadOnlyList<GitChangeTreeNode> _workingTreeSections = Array.Empty<GitChangeTreeNode>();
 
+    /// <summary>退避中のスタッシュ（新しい＝stash@{0} が先頭）。</summary>
+    public ObservableCollection<GitStashEntry> Stashes { get; } = new();
+
     // ステージ済みリストの選択スナップショット（コードビハインドの SelectionChanged から差し替える）。
     // 一括アンステージはここを対象にするので、コマンド側は引数を取らない。
     private readonly List<GitChangeItem> _stagedSelection = new();
@@ -281,6 +284,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
             Changes.Clear();
             UnversionedFiles.Clear();
             WorkingTreeSections = Array.Empty<GitChangeTreeNode>();
+            Stashes.Clear();
             return;
         }
 
@@ -315,6 +319,46 @@ public sealed partial class GitPanelViewModel : ObservableObject
             sections.Add(GitChangeTreeNode.BuildSection(
                 "バージョン管理外ファイル", UnversionedFiles, wasExpanded.GetValueOrDefault("バージョン管理外ファイル", false)));
         WorkingTreeSections = sections;
+
+        var stashes = await _git.GetStashesAsync();
+        Stashes.Clear();
+        foreach (var stash in stashes)
+            Stashes.Add(stash);
+    }
+
+    /// <summary>現在の変更を退避する（任意のメッセージ付き・未追跡ファイルも含める）。</summary>
+    [RelayCommand]
+    private async Task StashPushAsync()
+    {
+        var message = Views.InputDialog.Prompt(
+            Application.Current?.MainWindow, "スタッシュ", "メッセージ（任意）:", allowEmpty: true);
+        if (message is null) return; // キャンセル
+        await RunOpAsync("スタッシュ", () => _git.StashPushAsync(message, includeUntracked: true));
+    }
+
+    /// <summary>スタッシュを作業ツリーへ復元する（退避は残す）。</summary>
+    [RelayCommand]
+    private Task StashApplyAsync(GitStashEntry? stash) => stash is null
+        ? Task.CompletedTask
+        : RunOpAsync("スタッシュ適用", () => _git.StashApplyAsync(stash.Ref));
+
+    /// <summary>スタッシュを作業ツリーへ復元し、その退避を削除する。</summary>
+    [RelayCommand]
+    private Task StashPopAsync(GitStashEntry? stash) => stash is null
+        ? Task.CompletedTask
+        : RunOpAsync("スタッシュ取り出し", () => _git.StashPopAsync(stash.Ref));
+
+    /// <summary>スタッシュを破棄する（復元しない・確認つき）。</summary>
+    [RelayCommand]
+    private async Task StashDropAsync(GitStashEntry? stash)
+    {
+        if (stash is null) return;
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{stash.Ref} を破棄しますか？\n{stash.Description}\n復元できません。",
+            "スタッシュの破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        await RunOpAsync("スタッシュ破棄", () => _git.StashDropAsync(stash.Ref));
     }
 
     [RelayCommand]

@@ -178,6 +178,7 @@ public partial class ShellWindow
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(id);
         QueueEditorTabHeaderIntoView(id);
+        RecordEditorMru(id);
         _ = SwitchEditorSupportSourceAsync(tab);
         SaveActiveWorkspaceSnapshot();
     }
@@ -190,6 +191,7 @@ public partial class ShellWindow
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(tab.Id);
         QueueEditorTabHeaderIntoView(tab.Id);
+        RecordEditorMru(tab.Id);
         _ = SwitchEditorSupportSourceAsync(tab);
         // 開いたファイルの拡張子に対応する言語サーバーが未導入/未設定なら、エディタ上端で導入を促す。
         _vm.LspPrompt.EvaluateForFile(tab.Control.FilePath);
@@ -271,6 +273,7 @@ public partial class ShellWindow
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);
+        ForgetEditorMru(id);
 
         if (_editorTabs.Count == 0)
         {

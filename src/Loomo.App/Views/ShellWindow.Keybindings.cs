@@ -55,6 +55,7 @@ public partial class ShellWindow
             ["tab.newTerminal"] = () => OnTerminalNewTab(this, new RoutedEventArgs()),
             ["tab.newEditor"] = () => OnEditorNewTab(this, new RoutedEventArgs()),
             ["tab.newBrowser"] = () => OnBrowserNewTab(this, new RoutedEventArgs()),
+            ["tab.recentEditor"] = SwitchToPreviousEditorTab,
 
             // サイドバー（既定未割当）
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null),

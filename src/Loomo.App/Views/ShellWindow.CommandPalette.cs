@@ -423,6 +423,8 @@ public partial class ShellWindow
             Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()),
             Sc("tab.newBrowser"), "tab.newBrowser"));
+        list.Add(new("タブ", "直前に使ったエディタタブへ", SwitchToPreviousEditorTab,
+            Sc("tab.recentEditor"), "tab.recentEditor"));
 
         // コンポーザ（作業台）
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く",
@@ -462,6 +464,9 @@ public partial class ShellWindow
             list.Add(new("ワークスペース", $"切替: {target.Name}",
                 () => _vm.Workspaces.ActivateWorkspaceCommand.Execute(target)));
         }
+
+        // 最近開いたファイル（新しい順・存在するもののみ）
+        AddRecentFileCommands(list);
 
         return list;
     }

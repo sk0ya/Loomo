@@ -256,6 +256,31 @@
                                Visibility="{Binding Text, ElementName=ExcludeBox, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
             </Grid>
+
+            <!-- 一括置換（テキスト grep 専用）。置換文字列＋「すべて置換」。検索結果に出ている全ファイルへ
+                 全一致を置換する（正規表現時は $1 等の置換構文が使える）。破壊的操作なので確定前に確認する。 -->
+            <Grid Margin="0,4,0,0"
+                  Visibility="{Binding ShowReplace, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" Margin="0,0,4,0">
+                    <TextBox x:Name="ReplaceBox" Padding="6,4" FontSize="13"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             ToolTip="置換後の文字列（正規表現時は $1 などの置換構文が使える）"
+                             Text="{Binding Replacement, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PreviewKeyDown="OnReplaceBoxKeyDown" />
+                    <TextBlock Text="置換後の文字列" IsHitTestVisible="False" FontSize="13"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Text, ElementName=ReplaceBox, Converter={StaticResource EmptyToVis}}" />
+                </Grid>
+                <Button Grid.Column="1" Content="すべて置換" Padding="10,0" Height="28" Cursor="Hand"
+                        Style="{StaticResource FolderBarButton}"
+                        ToolTip="検索結果に出ている全ファイルの一致をまとめて置換する"
+                        Click="OnReplaceAllClick" />
+            </Grid>
         </StackPanel>
 
         <!-- 結果：ファイル別グルーピング。選択でプレビュー、Enter/ダブルクリックで通常タブ。 -->

@@ -209,6 +209,49 @@ public partial class SearchPanelView : UserControl
         }
     }
 
+    /// <summary>置換欄で Enter を押したら一括置換を実行する（クリックと同じ）。</summary>
+    private void OnReplaceBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ReplaceBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            _ = RunReplaceAllAsync();
+            e.Handled = true;
+        }
+    }
+
+    private void OnReplaceAllClick(object sender, RoutedEventArgs e) => _ = RunReplaceAllAsync();
+
+    /// <summary>確認のうえ、表示中の検索結果に出ている全ファイルへ一括置換する（破壊的）。</summary>
+    private async System.Threading.Tasks.Task RunReplaceAllAsync()
+    {
+        if (Vm is not { } vm || vm.Scope != SearchScope.Text || string.IsNullOrEmpty(vm.Query))
+            return;
+
+        var fileCount = vm.Results.Count(g => !string.IsNullOrEmpty(g.FullPath));
+        if (fileCount == 0)
+        {
+            vm.StatusMessage = "置換対象がありません";
+            return;
+        }
+
+        var owner = Window.GetWindow(this);
+        var message =
+            $"「{vm.Query}」を「{vm.Replacement}」に置換します。\n" +
+            $"対象: {fileCount} ファイル（検索結果に出ているもの全体）。\n\n" +
+            "この操作は元に戻せません。実行しますか？";
+        var answer = owner is null
+            ? MessageBox.Show(message, "一括置換", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
+            : MessageBox.Show(owner, message, "一括置換", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.OK)
+            return;
+
+        var (files, replacements) = await vm.ReplaceAllAsync();
+        vm.StatusMessage = replacements == 0
+            ? "置換は行われませんでした"
+            : $"{replacements} 件を {files} ファイルで置換しました";
+    }
+
     /// <summary>クエリ欄のキー操作。Down で先頭ファイルへ移動、Esc でクエリをクリア（結果とエディタのハイライトも消える）。</summary>
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {

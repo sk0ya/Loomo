@@ -106,11 +106,15 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>ターミナル一致を選んだ（プレビュー＝単クリック・確定＝Enter/ダブルクリックとも、その箇所へジャンプ）。</summary>
     public event EventHandler<TerminalSearchHit>? TerminalRevealRequested;
 
+    /// <summary>一括置換でファイルを書き換えた（フルパス一覧）。開いているエディタタブの読み直しに使う。</summary>
+    public event EventHandler<IReadOnlyList<string>>? FilesReplaced;
+
     /// <summary>アクティブなターミナル内テキストを検索する供給口（ShellWindow が実ターミナルを束ねる）。
     /// 引数＝(クエリ, 大小区別)、戻り＝一致一覧。未設定／ターミナル無しのときは null。</summary>
     public Func<string, bool, IReadOnlyList<TerminalSearchHit>>? TerminalSearchProvider { get; set; }
 
     [ObservableProperty] private string _query = "";
+    [ObservableProperty] private string _replacement = "";
     [ObservableProperty] private bool _caseSensitive;
     [ObservableProperty] private bool _useRegex;
     [ObservableProperty] private string _includeGlob = "";
@@ -136,6 +140,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     /// <summary>フォルダー欄を表示するか（ターミナル検索では対象外）。</summary>
     public bool ShowSearchRoot => Scope != SearchScope.Terminal;
+
+    /// <summary>置換欄を表示するか（テキスト grep のときだけ）。ファイル名／ターミナル検索では対象外。</summary>
+    public bool ShowReplace => Scope == SearchScope.Text;
 
     /// <summary>フォルダパス補完（インテリセンス）の基準となるワークスペースルート。</summary>
     public string? WorkspaceRoot => _workspace.RootPath;
@@ -199,6 +206,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(QueryPlaceholder));
         OnPropertyChanged(nameof(ShowSearchRoot));
+        OnPropertyChanged(nameof(ShowReplace));
         OnPropertyChanged(nameof(HighlightUseRegex));
         OnPropertyChanged(nameof(HighlightCaseSensitive));
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
@@ -405,4 +413,83 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         => ActivateRequested?.Invoke(this, new SearchHit(group.FullPath, 1, 1));
 
     private static string? NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>バイト列を BOM から判定したエンコーディングで文字列化し、書き戻し用にそのエンコーディングを返す。
+    /// BOM が無ければ BOM 無し UTF-8 とみなす（既定。書き戻しても BOM を付けない）。BOM があれば先頭の
+    /// プリアンブルを除いて復号し、同じ BOM 付きエンコーディングで書き戻せるようにする。</summary>
+    private static (string Text, System.Text.Encoding Encoding) DecodeWithEncoding(byte[] bytes)
+    {
+        // UTF-32 LE は UTF-16 LE と先頭2バイトが同じなので先に判定する。
+        if (bytes.Length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xFE && bytes[2] == 0x00 && bytes[3] == 0x00)
+            return (DecodeSkippingPreamble(bytes, System.Text.Encoding.UTF32), System.Text.Encoding.UTF32);
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            return (DecodeSkippingPreamble(bytes, new System.Text.UTF8Encoding(true)), new System.Text.UTF8Encoding(true));
+        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+            return (DecodeSkippingPreamble(bytes, System.Text.Encoding.Unicode), System.Text.Encoding.Unicode);
+        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            return (DecodeSkippingPreamble(bytes, System.Text.Encoding.BigEndianUnicode), System.Text.Encoding.BigEndianUnicode);
+
+        var noBom = new System.Text.UTF8Encoding(false);
+        return (noBom.GetString(bytes), noBom);
+    }
+
+    /// <summary>先頭の BOM（プリアンブル）を取り除いた本文だけを復号する。</summary>
+    private static string DecodeSkippingPreamble(byte[] bytes, System.Text.Encoding encoding)
+    {
+        var preamble = encoding.GetPreamble().Length;
+        return encoding.GetString(bytes, preamble, bytes.Length - preamble);
+    }
+
+    /// <summary>現在のテキスト検索結果に出ているファイル群に対し、<see cref="Query"/> 一致を
+    /// <see cref="Replacement"/> へ一括置換する（grep と同じ大小区別／正規表現の規約）。各ファイルを
+    /// 全体走査して全一致を置換し、変更があったものだけ書き戻す。戻り値は (変更ファイル数, 置換件数)。
+    /// 書き換えたファイルは <see cref="FilesReplaced"/> で通知し、最後に再検索して結果を更新する。
+    /// テキスト検索以外・空クエリのときは何もしない。</summary>
+    public async Task<(int Files, int Replacements)> ReplaceAllAsync()
+    {
+        if (Scope != SearchScope.Text || string.IsNullOrEmpty(Query))
+            return (0, 0);
+
+        // 表示中の結果に出ているファイル（重複排除）。空 FullPath（ターミナル等）は対象外。
+        var paths = Results
+            .Where(g => !string.IsNullOrEmpty(g.FullPath))
+            .Select(g => g.FullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var changed = new List<string>();
+        var totalReplacements = 0;
+
+        foreach (var path in paths)
+        {
+            string text;
+            System.Text.Encoding encoding;
+            try
+            {
+                var bytes = await System.IO.File.ReadAllBytesAsync(path);
+                (text, encoding) = DecodeWithEncoding(bytes);
+            }
+            catch { continue; } // 読めないファイルは飛ばす（best-effort）
+
+            var (newText, count) = sk0ya.Loomo.Services.Search.ReplaceEngine.Replace(
+                text, Query, Replacement, UseRegex, CaseSensitive);
+            if (count == 0 || string.Equals(newText, text, StringComparison.Ordinal))
+                continue;
+
+            // 元のエンコーディング（BOM の有無含む）を保って書き戻す。一括置換が
+            // 意図せず BOM を剥がす／付与するのを防ぐ。
+            try { await System.IO.File.WriteAllTextAsync(path, newText, encoding); }
+            catch { continue; } // 書けないファイルは飛ばす
+
+            changed.Add(path);
+            totalReplacements += count;
+        }
+
+        if (changed.Count > 0)
+            FilesReplaced?.Invoke(this, changed);
+
+        // 結果を最新化（置換後はもう一致しないので件数が減る）。
+        ScheduleSearch();
+        return (changed.Count, totalReplacements);
+    }
 }

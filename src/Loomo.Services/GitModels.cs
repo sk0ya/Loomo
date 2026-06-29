@@ -90,6 +90,11 @@ public sealed record GitLogRow(
     public bool IsCommit => Hash is not null;
 }
 
+/// <summary>スタッシュ1件（git stash list の1行）。</summary>
+/// <param name="Ref">stash の参照（例: <c>stash@{0}</c>）。apply/pop/drop の対象に使う。</param>
+/// <param name="Description">説明（例: <c>WIP on main: abc1234 件名</c>）。</param>
+public sealed record GitStashEntry(string Ref, string Description);
+
 /// <summary>git reset のモード。</summary>
 public enum GitResetMode
 {

@@ -16,6 +16,14 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>Diff セッションの差分1行。Kind は DiffLineKind 名＋"Header"（git ヘッダ行）。</summary>
 public sealed record DiffRowVm(string Kind, string Text);
 
+/// <summary>作業ツリー差分の1ハンク（ハンク単位ステージ用）。<see cref="Index"/> は分解後の並び順。
+/// <see cref="IsStaged"/> がステージ済み（＝アンステージ対象）かどうかで操作ラベルが変わる。</summary>
+public sealed record DiffHunkVm(int Index, string HeaderLine, string Summary, bool IsStaged)
+{
+    /// <summary>ボタンのラベル（ステージ済みハンクはアンステージ、未ステージはステージ）。</summary>
+    public string ActionLabel => IsStaged ? "アンステージ" : "ステージ";
+}
+
 /// <summary>
 /// 左右並び表示の差分1行。Kind は <see cref="SideCellKind"/> 名。
 /// Gap / Header は左右共通の1行として全幅表示する（テンプレート側で判定）。
@@ -83,6 +91,13 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     public ObservableCollection<DiffFileItem> Files { get; } = new();
     public ObservableCollection<DiffRowVm> DiffRows { get; } = new();
     public ObservableCollection<DiffSideRowVm> SideRows { get; } = new();
+
+    /// <summary>選択中の作業ツリーファイルのハンク一覧（ハンク単位ステージ用）。AI変更・コミット範囲・
+    /// 未追跡ファイルでは空。</summary>
+    public ObservableCollection<DiffHunkVm> Hunks { get; } = new();
+
+    /// <summary>ハンク単位ステージのUIを出せるか（作業ツリーの追跡済みファイルで、ハンクが1つ以上）。</summary>
+    public bool CanStageHunks => Hunks.Count > 0;
 
     public DiffSessionViewModel(
         IFileChangeJournal journal, GitService git, IEditorService editor, IWorkspaceService workspace)

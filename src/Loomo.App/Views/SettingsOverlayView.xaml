@@ -131,6 +131,8 @@
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Formatter}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="⌨  キーボード"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Keyboard}" />
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="💾  バックアップ"
+                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Backup}" />
                     </StackPanel>
                 </DockPanel>
 
@@ -419,6 +421,22 @@
                                 </Grid>
 
                                 <TextBlock Text="{Binding Formatter.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
+                                           Foreground="{DynamicResource FgDim}" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- ===== バックアップ（設定一式の ZIP 保存／復元） ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Backup}">
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="設定のバックアップ" Margin="0,0,0,8" />
+                                <TextBlock Style="{StaticResource FieldHint}"
+                                           Text="設定・キーバインド・LSP/整形の設定・セッション・トレースなどを 1 つの ZIP にまとめて保存／復元します。ダウンロード済みモデルとブラウザのキャッシュは大きいため除外します。" />
+                                <Button Style="{StaticResource WideSecondaryButton}" Content="エクスポート（ZIP に保存）" Margin="0,8,0,0"
+                                        Command="{Binding Settings.ExportSettingsCommand}" />
+                                <Button Style="{StaticResource WideSecondaryButton}" Content="インポート（ZIP から復元）"
+                                        Command="{Binding Settings.ImportSettingsCommand}" />
+                                <TextBlock Style="{StaticResource FieldHint}"
+                                           Text="復元の反映にはアプリの再起動が必要です。" />
+
+                                <TextBlock Text="{Binding Settings.Status}" TextWrapping="Wrap" Margin="0,16,0,0"
                                            Foreground="{DynamicResource FgDim}" FontSize="11" />
                             </StackPanel>
 
