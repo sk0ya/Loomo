@@ -62,7 +62,7 @@
             <MenuItem Header="値を変更…" Click="OnEditVariableClick" IsEnabled="{Binding CanEdit}" />
         </ContextMenu>
 
-        <!-- 検査タブ（出力／変数／コールスタック）。下線で選択を示すフラットなタブ。 -->
+        <!-- 検査タブ（出力／変数／…／構成）。下線で選択を示すフラットなタブ。 -->
         <Style x:Key="DebugTabItem" TargetType="TabItem">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="FontSize" Value="11" />
@@ -97,7 +97,11 @@
                         <DockPanel>
                             <Border DockPanel.Dock="Top" Background="{DynamicResource Panel}"
                                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                                <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,2,4,0" />
+                                <!-- タブが増えても折り返さず横スクロールで送る（タブより上には何も足さない）。 -->
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                              PanningMode="HorizontalOnly">
+                                    <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,2,4,0" />
+                                </ScrollViewer>
                             </Border>
                             <ContentPresenter ContentSource="SelectedContent" />
                         </DockPanel>
@@ -107,150 +111,140 @@
         </Style>
     </UserControl.Resources>
 
+    <!-- ヘッダ（IDE ラベル・状態・デバッグツールバー）はホスト（ペインヘッダ）側が出す。タブより上には
+         何も置かず、操作はヘッダー、構成（起動構成・例外・アタッチ）は末尾の「構成」タブに収める。 -->
     <DockPanel>
-        <!-- ヘッダ／状態はホスト（ペインヘッダ）側が表示する。ここはコンテンツのみ。 -->
-
-        <!-- アダプタ未導入バー -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource Panel}" Padding="8,6" Margin="6,2,6,0"
-                BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                Visibility="{Binding IsAdapterMissing, Converter={StaticResource BoolToVis}}">
-            <StackPanel>
-                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Fg}" FontSize="11"
-                           Text="デバッグには netcoredbg が必要です（PATH 上に未検出）。" />
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button Content="インストール" Style="{StaticResource FlatButton}" Height="24" Padding="10,0"
-                            Command="{Binding InstallAdapterCommand}"
-                            ToolTip="{Binding AdapterInstallCommand}" />
-                    <Button Content="再確認" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                            Margin="6,0,0,0" Click="OnRefreshClick" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <!-- ツールバー：対象指定＋ビルド。開始/停止/アタッチの操作ボタンはペインヘッダ側に移設。 -->
-        <StackPanel DockPanel.Dock="Top" Margin="8,6,8,6">
-            <!-- 対象（.dll/.exe）＋ビルド設定：デバッグ前のみ表示（デバッグ中は隠す）。 -->
-            <StackPanel Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}">
-                <Grid>
-                    <TextBox x:Name="TargetBox" Padding="6,4" FontSize="12"
-                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                             Text="{Binding TargetProgram, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="デバッグ対象 (.dll/.exe)。空ならワークスペースの .csproj から自動検出" />
-                    <TextBlock Text="対象 (.dll/.exe)。空=自動検出" IsHitTestVisible="False" FontSize="12"
-                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
-                               Visibility="{Binding Text, ElementName=TargetBox, Converter={StaticResource EmptyToVis}}" />
-                </Grid>
-
-                <!-- 起動引数（コマンドライン引数）。空白区切り・二重引用符でグループ化。 -->
-                <Grid Margin="0,4,0,0">
-                    <TextBox x:Name="ArgsBox" Padding="6,4" FontSize="12" FontFamily="Consolas"
-                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                             Text="{Binding LaunchArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="プログラムへ渡す引数（空白区切り。空白を含む値は &quot;...&quot; で囲む）" />
-                    <TextBlock Text="起動引数（空白区切り）" IsHitTestVisible="False" FontSize="12"
-                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
-                               Visibility="{Binding Text, ElementName=ArgsBox, Converter={StaticResource EmptyToVis}}" />
-                </Grid>
-
-                <!-- 環境変数。1 行 1 件の KEY=VALUE。 -->
-                <Grid Margin="0,4,0,0">
-                    <TextBox x:Name="EnvBox" Padding="6,4" FontSize="12" FontFamily="Consolas"
-                             AcceptsReturn="True" TextWrapping="NoWrap" MinLines="2" MaxLines="5"
-                             VerticalScrollBarVisibility="Auto"
-                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                             Text="{Binding LaunchEnv, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="環境変数（1 行 1 件 KEY=VALUE）。空なら親プロセスの環境のまま" />
-                    <TextBlock Text="環境変数（1 行 1 件 KEY=VALUE）" IsHitTestVisible="False" FontSize="12"
-                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Top" Margin="8,5,0,0"
-                               Visibility="{Binding Text, ElementName=EnvBox, Converter={StaticResource EmptyToVis}}" />
-                </Grid>
-            </StackPanel>
-
-            <!-- プロセスにアタッチ：実行中プロセスを選んで接続。停止してもそのプロセスは終了しない。 -->
-            <Border Margin="0,6,0,0" Padding="8" Background="{DynamicResource Panel}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                    Visibility="{Binding ShowAttach, Converter={StaticResource BoolToVis}}">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <Grid Width="170">
-                            <TextBox x:Name="ProcFilterBox" Padding="6,3" FontSize="11"
-                                     Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                                     BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                                     Text="{Binding ProcessFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Text="絞り込み（名前/PID）" IsHitTestVisible="False" FontSize="11"
-                                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
-                                       Visibility="{Binding Text, ElementName=ProcFilterBox, Converter={StaticResource EmptyToVis}}" />
-                        </Grid>
-                        <CheckBox Content=".NET のみ" IsChecked="{Binding DotnetOnly, Mode=TwoWay}"
-                                  Foreground="{DynamicResource Fg}" VerticalAlignment="Center" FontSize="11"
-                                  Margin="8,0,0,0" />
-                        <Button Content="更新" Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0"
-                                Margin="8,0,0,0" Command="{Binding RefreshProcessesCommand}" />
-                    </StackPanel>
-
-                    <ListBox ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
-                             Height="160" Margin="0,6,0,0" Background="{DynamicResource Bg}"
-                             BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
-                             MouseDoubleClick="OnProcessDoubleClick"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:DebugProcessViewModel}">
-                                <TextBlock Text="{Binding Display}" FontSize="11" FontFamily="Consolas"
-                                           TextTrimming="CharacterEllipsis" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-
-                    <Button Content="⮌ アタッチ" Style="{StaticResource FlatButton}" Height="24" Padding="12,0"
-                            Margin="0,6,0,0" HorizontalAlignment="Left"
-                            Command="{Binding AttachCommand}"
-                            ToolTip="選択したプロセスに接続（ダブルクリックでも可）" />
-                </StackPanel>
-            </Border>
-
-            <!-- ステップ操作：停止中のみ表示 -->
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                        Visibility="{Binding IsStopped, Converter={StaticResource BoolToVis}}">
-                <Button Content="▶ 続行" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Command="{Binding ContinueCommand}" ToolTip="続行 (F5)" />
-                <Button Content="⤼ オーバー" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Margin="6,0,0,0" Command="{Binding StepOverCommand}" ToolTip="ステップオーバー" />
-                <Button Content="⤷ イン" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Margin="6,0,0,0" Command="{Binding StepIntoCommand}" ToolTip="ステップイン" />
-                <Button Content="⤴ アウト" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Margin="6,0,0,0" Command="{Binding StepOutCommand}" ToolTip="ステップアウト" />
-            </StackPanel>
-
-            <!-- セッション操作（中断/再起動）：デバッグ中のみ表示。中断は実行中のみ有効。 -->
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
-                <Button Content="⏸ 中断" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Command="{Binding PauseCommand}" ToolTip="すべて中断（一時停止）" />
-                <Button Content="⟳ 再起動" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
-                        Margin="6,0,0,0" Command="{Binding RestartCommand}" ToolTip="同じ対象で再起動" />
-            </StackPanel>
-
-            <!-- 例外で中断 / オプション（常時表示。例外フィルタは実行中でも切り替え可）。 -->
-            <StackPanel Margin="0,8,0,0">
-                <TextBlock Text="例外・オプション" Foreground="{DynamicResource FgDim}" FontSize="11" Margin="2,0,0,3" />
-                <CheckBox Content="スローされたすべての例外で中断" FontSize="11" Foreground="{DynamicResource Fg}"
-                          IsChecked="{Binding BreakOnAllExceptions, Mode=TwoWay}" Margin="0,1"
-                          ToolTip="例外がスローされた瞬間に中断（netcoredbg: all）" />
-                <CheckBox Content="未処理の例外で中断" FontSize="11" Foreground="{DynamicResource Fg}"
-                          IsChecked="{Binding BreakOnUncaughtExceptions, Mode=TwoWay}" Margin="0,1"
-                          ToolTip="ユーザーコード外へ抜ける未処理例外で中断（netcoredbg: user-unhandled）" />
-                <CheckBox Content="マイ コードのみ（次回起動から）" FontSize="11" Foreground="{DynamicResource Fg}"
-                          IsChecked="{Binding JustMyCode, Mode=TwoWay}" Margin="0,1"
-                          ToolTip="外部/フレームワークコードへステップインしない" />
-            </StackPanel>
-        </StackPanel>
-
-        <!-- 検査タブ：出力（常時）／変数（＋ウォッチ）／コールスタック。残り全域を使う。 -->
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
                     Margin="6,0,6,6" SelectedIndex="0" SelectionChanged="OnDebugTabChanged">
+
+            <!-- 構成：起動構成（対象/引数/環境変数）・例外オプション・プロセスへのアタッチ・アダプタ未導入の案内。
+                 操作（開始/ビルド/テスト/ステップ/中断・再起動/停止）はペインヘッダのデバッグツールバー側。
+                 開始/ビルド/テスト時は出力タブへ自動で切り替わる（DebugView.xaml.cs）。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="2,6,2,6">
+                        <!-- アダプタ未導入バー -->
+                        <Border Background="{DynamicResource Panel}" Padding="8,6" Margin="0,0,0,8"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                Visibility="{Binding IsAdapterMissing, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Fg}" FontSize="11"
+                                           Text="デバッグには netcoredbg が必要です（PATH 上に未検出）。" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Button Content="インストール" Style="{StaticResource FlatButton}" Height="24" Padding="10,0"
+                                            Command="{Binding InstallAdapterCommand}"
+                                            ToolTip="{Binding AdapterInstallCommand}" />
+                                    <Button Content="再確認" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
+                                            Margin="6,0,0,0" Click="OnRefreshClick" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 対象（.dll/.exe）＋引数/環境変数：デバッグ前のみ表示（デバッグ中は隠す）。 -->
+                        <StackPanel Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}">
+                            <TextBlock Text="起動構成" Foreground="{DynamicResource FgDim}" FontSize="11" Margin="2,0,0,3" />
+                            <Grid>
+                                <TextBox x:Name="TargetBox" Padding="6,4" FontSize="12"
+                                         Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                         BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                         Text="{Binding TargetProgram, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="デバッグ対象 (.dll/.exe)。空ならワークスペースの .csproj から自動検出" />
+                                <TextBlock Text="対象 (.dll/.exe)。空=自動検出" IsHitTestVisible="False" FontSize="12"
+                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                           Visibility="{Binding Text, ElementName=TargetBox, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+
+                            <!-- 起動引数（コマンドライン引数）。空白区切り・二重引用符でグループ化。 -->
+                            <Grid Margin="0,4,0,0">
+                                <TextBox x:Name="ArgsBox" Padding="6,4" FontSize="12" FontFamily="Consolas"
+                                         Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                         BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                         Text="{Binding LaunchArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="プログラムへ渡す引数（空白区切り。空白を含む値は &quot;...&quot; で囲む）" />
+                                <TextBlock Text="起動引数（空白区切り）" IsHitTestVisible="False" FontSize="12"
+                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                           Visibility="{Binding Text, ElementName=ArgsBox, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+
+                            <!-- 環境変数。1 行 1 件の KEY=VALUE。 -->
+                            <Grid Margin="0,4,0,0">
+                                <TextBox x:Name="EnvBox" Padding="6,4" FontSize="12" FontFamily="Consolas"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" MinLines="2" MaxLines="5"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                         BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                         Text="{Binding LaunchEnv, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="環境変数（1 行 1 件 KEY=VALUE）。空なら親プロセスの環境のまま" />
+                                <TextBlock Text="環境変数（1 行 1 件 KEY=VALUE）" IsHitTestVisible="False" FontSize="12"
+                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Top" Margin="8,5,0,0"
+                                           Visibility="{Binding Text, ElementName=EnvBox, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- 例外で中断 / オプション（常時表示。例外フィルタは実行中でも切り替え可）。 -->
+                        <StackPanel Margin="0,10,0,0">
+                            <TextBlock Text="例外・オプション" Foreground="{DynamicResource FgDim}" FontSize="11" Margin="2,0,0,3" />
+                            <CheckBox Content="スローされたすべての例外で中断" FontSize="11" Foreground="{DynamicResource Fg}"
+                                      IsChecked="{Binding BreakOnAllExceptions, Mode=TwoWay}" Margin="0,1"
+                                      ToolTip="例外がスローされた瞬間に中断（netcoredbg: all）" />
+                            <CheckBox Content="未処理の例外で中断" FontSize="11" Foreground="{DynamicResource Fg}"
+                                      IsChecked="{Binding BreakOnUncaughtExceptions, Mode=TwoWay}" Margin="0,1"
+                                      ToolTip="ユーザーコード外へ抜ける未処理例外で中断（netcoredbg: user-unhandled）" />
+                            <CheckBox Content="マイ コードのみ（次回起動から）" FontSize="11" Foreground="{DynamicResource Fg}"
+                                      IsChecked="{Binding JustMyCode, Mode=TwoWay}" Margin="0,1"
+                                      ToolTip="外部/フレームワークコードへステップインしない" />
+                        </StackPanel>
+
+                        <!-- プロセスにアタッチ：トグルで一覧を展開し、選んで接続。停止してもそのプロセスは終了しない。 -->
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}">
+                            <Button Content="⮌ プロセスにアタッチ" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
+                                    HorizontalAlignment="Left" Command="{Binding ToggleAttachCommand}"
+                                    ToolTip="実行中の .NET プロセスにアタッチ（一覧を開閉）" />
+                            <Border Margin="0,6,0,0" Padding="8" Background="{DynamicResource Panel}"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                    Visibility="{Binding ShowAttach, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Grid Width="170">
+                                            <TextBox x:Name="ProcFilterBox" Padding="6,3" FontSize="11"
+                                                     Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                                     BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                                     Text="{Binding ProcessFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Text="絞り込み（名前/PID）" IsHitTestVisible="False" FontSize="11"
+                                                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                       Visibility="{Binding Text, ElementName=ProcFilterBox, Converter={StaticResource EmptyToVis}}" />
+                                        </Grid>
+                                        <CheckBox Content=".NET のみ" IsChecked="{Binding DotnetOnly, Mode=TwoWay}"
+                                                  Foreground="{DynamicResource Fg}" VerticalAlignment="Center" FontSize="11"
+                                                  Margin="8,0,0,0" />
+                                        <Button Content="更新" Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0"
+                                                Margin="8,0,0,0" Command="{Binding RefreshProcessesCommand}" />
+                                    </StackPanel>
+
+                                    <ListBox ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                                             Height="160" Margin="0,6,0,0" Background="{DynamicResource Bg}"
+                                             BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                                             MouseDoubleClick="OnProcessDoubleClick"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:DebugProcessViewModel}">
+                                                <TextBlock Text="{Binding Display}" FontSize="11" FontFamily="Consolas"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+
+                                    <Button Content="⮌ アタッチ" Style="{StaticResource FlatButton}" Height="24" Padding="12,0"
+                                            Margin="0,6,0,0" HorizontalAlignment="Left"
+                                            Command="{Binding AttachCommand}"
+                                            ToolTip="選択したプロセスに接続（ダブルクリックでも可）" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
             <!-- 出力：テキスト選択できる読み取り専用 RichTextBox（行は Category で色分け）。
                  内容は本文を選択してコンテキストメニュー（コピー／すべて選択）からコピーする。

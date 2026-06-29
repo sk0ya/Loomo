@@ -164,6 +164,10 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     /// <summary>停止/実行の切り替わり通知（true=停止）。エディタの DataTip（ホバー値表示）の有効化に使う。</summary>
     public event Action<bool>? StoppedChanged;
 
+    /// <summary>実行系コマンド（開始/アタッチ/ビルド/テスト）を押した瞬間に「出力」タブを見せる要求。
+    /// IsBusy は起動が非同期で立つため遅れる。押下時に同期発火して即座に出力へ切り替える（DebugView 側で購読）。</summary>
+    public event Action? OutputRequested;
+
     partial void OnIsStoppedChanged(bool value) => StoppedChanged?.Invoke(value);
 
     /// <summary>コールスタックのフレーム選択でソースをプレビュー表示する要求（path, 0始まり行）。
@@ -695,6 +699,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()
     {
+        OutputRequested?.Invoke();  // 押下時に即「出力」へ（IsBusy は起動後まで立たない）
         Refresh();
         if (IsAdapterMissing)
         {
@@ -744,6 +749,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         var target = FindBuildTarget();
         if (target is null) return;
 
+        OutputRequested?.Invoke();  // 押下時に即「出力」へ
         IsTaskRunning = true;
         try
         {
@@ -892,6 +898,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
         var target = FindBuildTarget();
         if (target is null) return;
 
+        OutputRequested?.Invoke();  // 押下時に即「出力」へ
         IsTaskRunning = true;
         try
         {
@@ -1220,6 +1227,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDisposable
             return;
         }
 
+        OutputRequested?.Invoke();  // 押下時に即「出力」へ
         ShowAttach = false;
         _lastAttachProcess = proc;  // 再起動で再アタッチする対象
         _cts = new CancellationTokenSource();

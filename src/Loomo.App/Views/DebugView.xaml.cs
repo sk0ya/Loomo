@@ -13,10 +13,11 @@ namespace sk0ya.Loomo.App.Views;
 public partial class DebugView : UserControl
 {
     // タブのインデックス（XAML の並び順と一致させる）。
-    // 並び：出力0 / 変数1 / 自動2 / コールスタック3 / テスト4 / スレッド5 / ブレークポイント6 / イミディエイト7 / モジュール8。
-    private const int OutputTab = 0;
-    private const int VariablesTab = 1;
-    private const int TestTab = 4;
+    // 並び：構成0 / 出力1 / 変数2 / 自動3 / コールスタック4 / テスト5 / スレッド6 /
+    //       ブレークポイント7 / イミディエイト8 / モジュール9。
+    private const int OutputTab = 1;
+    private const int VariablesTab = 2;
+    private const int TestTab = 5;
 
     private INotifyCollectionChanged? _observed;
     private INotifyCollectionChanged? _observedImmediate;
@@ -32,7 +33,11 @@ public partial class DebugView : UserControl
     {
         if (_observed is not null) _observed.CollectionChanged -= OnOutputChanged;
         if (_observedImmediate is not null) _observedImmediate.CollectionChanged -= OnImmediateLogChanged;
-        if (_vm is not null) _vm.PropertyChanged -= OnVmPropertyChanged;
+        if (_vm is not null)
+        {
+            _vm.PropertyChanged -= OnVmPropertyChanged;
+            _vm.OutputRequested -= OnOutputRequested;
+        }
         if (DataContext is DebugViewModel vm)
         {
             _observed = vm.Output;
@@ -41,6 +46,7 @@ public partial class DebugView : UserControl
             _observedImmediate.CollectionChanged += OnImmediateLogChanged;
             _vm = vm;
             _vm.PropertyChanged += OnVmPropertyChanged;
+            _vm.OutputRequested += OnOutputRequested;
         }
         RebuildConsole();
     }
@@ -77,12 +83,16 @@ public partial class DebugView : UserControl
         ConsoleBox.Document.Blocks.Add(new Paragraph(run) { Margin = new Thickness(0) });
     }
 
-    // 停止したら「変数」タブへ、実行を再開／終了したら「出力」タブへ自動で切り替える。
+    // ブレークポイント等で停止したら「変数」へ、続行したら「出力」へ自動で切り替える。
+    // 開始/ビルド/テスト押下時の「出力」表示は OutputRequested（押下と同期）で行う。
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DebugViewModel.IsStopped) && _vm is not null)
             DebugTabs.SelectedIndex = _vm.IsStopped ? VariablesTab : OutputTab;
     }
+
+    // 実行系コマンド（開始/アタッチ/ビルド/テスト）押下で「出力」タブを即表示する。
+    private void OnOutputRequested() => DebugTabs.SelectedIndex = OutputTab;
 
     private void OnOutputChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
