@@ -34,12 +34,16 @@ public partial class ShellWindow
         switch (tab.Kind)
         {
             case TabEntryKind.Terminal:
+                // そのタブのペインがレイアウトに出ていなければ左上と入れ替えて見えるようにする。
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
                 ActivateTerminalTab(tab.Id);
                 break;
             case TabEntryKind.Editor:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
                 ActivateEditorTab(tab.Id);
                 break;
             case TabEntryKind.Browser:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 ActivateBrowserTab(tab.Id);
                 break;
         }
