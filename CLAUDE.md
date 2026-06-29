@@ -10,8 +10,10 @@ An agent answers natural-language prompts by calling **tools** (function calling
 `sk0ya.Loomo.sln`. All root namespaces / assembly names are `sk0ya.Loomo.*`; project folders drop the
 prefix (`Loomo.Core`, `Loomo.Ai`, `Loomo.Services`, `Loomo.App`, `Loomo.Tests`).
 
-The authoritative design doc is `docs/設計書.md` (Japanese). Comments, commit messages, and UI strings
-are in Japanese — match that when editing.
+The authoritative design doc is `docs/設計/` (Japanese; start at `docs/設計/README.md` for the index + §→file
+map). It was split out of the old single `docs/設計書.md` (now a thin redirect), but section numbers (§N) are
+preserved across the split, so existing "§21"/"§25"-style cross-references still resolve via the README map.
+Comments, commit messages, and UI strings are in Japanese — match that when editing.
 
 ## Commands
 
