@@ -25,8 +25,7 @@ public enum SettingsCategory
     Ai,
     Lsp,
     Formatter,
-    Keyboard,
-    Backup
+    Keyboard
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>

@@ -135,43 +135,7 @@
                           Background="{DynamicResource Border}" />
 
             <!-- 差分本体（統合 / 左右並びを IsSideBySide で切替）。中身は code-behind が FlowDocument を組み立てる -->
-            <DockPanel Grid.Column="2">
-
-            <!-- ハンク単位ステージ（作業ツリーの追跡済みファイルのみ）。各ハンクをステージ／アンステージできる。 -->
-            <Border DockPanel.Dock="Top" Margin="0,0,0,2" Padding="4,3"
-                    Background="{DynamicResource Panel}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
-                    Visibility="{Binding CanStageHunks, Converter={StaticResource BoolToVis}}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Left" Text="ハンク" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="4,0,8,0" />
-                    <ItemsControl ItemsSource="{Binding Hunks}" MaxHeight="120">
-                        <ItemsControl.Template>
-                            <ControlTemplate TargetType="ItemsControl">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </ControlTemplate>
-                        </ItemsControl.Template>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="0,1" ToolTip="{Binding HeaderLine}">
-                                    <Button DockPanel.Dock="Right" Content="{Binding ActionLabel}"
-                                            FontSize="11" Padding="8,1" Margin="6,0,0,0" Cursor="Hand"
-                                            Command="{Binding DataContext.ToggleHunkCommand,
-                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <TextBlock Text="{Binding Summary}" FontFamily="Cascadia Mono, Consolas"
-                                               FontSize="11" Foreground="{DynamicResource FgDim}"
-                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </DockPanel>
-            </Border>
-
-            <Grid>
+            <Grid Grid.Column="2">
                 <RichTextBox x:Name="UnifiedBox" Style="{StaticResource DiffTextBox}"
                              ContextMenu="{StaticResource DiffCopyMenu}"
                              Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}" />
@@ -195,7 +159,6 @@
                                  ContextMenu="{StaticResource DiffCopyMenu}" />
                 </Grid>
             </Grid>
-            </DockPanel>
         </Grid>
     </DockPanel>
 </UserControl>

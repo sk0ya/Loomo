@@ -315,18 +315,6 @@ public partial class ShellWindow : Window
         };
         // 検索ワードを消す／Esc／ファイル名検索へ切替で、エディタの検索ハイライトを消す。
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
-        // 一括置換でファイルが書き換わったら、開いているエディタタブを読み直して本文を最新化する。
-        vm.SearchPanel.FilesReplaced += async (_, paths) =>
-        {
-            foreach (var path in paths)
-            {
-                var tab = _editorTabs.FirstOrDefault(t =>
-                    t.PeekFilePath is { Length: > 0 } p
-                    && string.Equals(Path.GetFullPath(p), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase));
-                if (tab is not null)
-                    await ReloadExistingTabIfChangedAsync(tab);
-            }
-        };
         // サイドバー検索「ターミナル」モード：アクティブなターミナルの一致を供給し、選択でその箇所へジャンプする。
         vm.SearchPanel.TerminalSearchProvider = (query, caseSensitive) =>
         {

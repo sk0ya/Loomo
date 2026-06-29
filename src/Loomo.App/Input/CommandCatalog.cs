@@ -79,7 +79,6 @@ public static class CommandCatalog
         new CommandDescriptor("tab.newTerminal", CatTab, "新しいターミナルタブ", null),
         new CommandDescriptor("tab.newEditor", CatTab, "新しいエディタタブ", null),
         new CommandDescriptor("tab.newBrowser", CatTab, "新しいブラウザタブ", null),
-        new CommandDescriptor("tab.recentEditor", CatTab, "直前に使ったエディタタブへ（入れ替え）", "Ctrl+6"),
     };
 
     private static readonly Dictionary<string, CommandDescriptor> ById =

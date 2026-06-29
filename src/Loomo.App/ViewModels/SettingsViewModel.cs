@@ -344,55 +344,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>設定一式（settings.json・キーバインド・LSP/整形設定・セッション等）を ZIP へ書き出す。
-    /// ダウンロード済みモデルと WebView2 キャッシュは巨大なので除外する。</summary>
-    [RelayCommand]
-    private void ExportSettings()
-    {
-        var dialog = new SaveFileDialog
-        {
-            Title = "設定をエクスポート",
-            Filter = "ZIP アーカイブ (*.zip)|*.zip",
-            FileName = $"loomo-settings-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
-        };
-        if (dialog.ShowDialog() != true) return;
-
-        try
-        {
-            var count = new Services.ConfigBackupService().Export(dialog.FileName);
-            Status = $"設定をエクスポートしました（{count} 件）: {dialog.FileName}";
-        }
-        catch (Exception ex)
-        {
-            Status = $"エクスポートに失敗しました: {ex.Message}";
-        }
-    }
-
-    /// <summary>ZIP から設定一式を取り込んで上書きする（確認つき）。反映には再起動が必要。</summary>
-    [RelayCommand]
-    private void ImportSettings()
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "設定をインポート",
-            Filter = "ZIP アーカイブ (*.zip)|*.zip",
-        };
-        if (dialog.ShowDialog() != true) return;
-        if (!Confirm("現在の設定を、選択した ZIP の内容で上書きします。元に戻せません。\n" +
-                     "（反映にはアプリの再起動が必要です。）よろしいですか？"))
-            return;
-
-        try
-        {
-            var count = new Services.ConfigBackupService().Import(dialog.FileName);
-            Status = $"設定をインポートしました（{count} 件）。反映するにはアプリを再起動してください。";
-        }
-        catch (Exception ex)
-        {
-            Status = $"インポートに失敗しました: {ex.Message}";
-        }
-    }
-
     /// <summary>危険コマンドのブロックリストを既定値に戻す（確認のうえ即時反映）。</summary>
     [RelayCommand]
     private void ResetBlockedCommands()
