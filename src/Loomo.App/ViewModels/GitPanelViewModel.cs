@@ -14,9 +14,9 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>サイドバー Git パネルの1変更行。</summary>
-public sealed class GitChangeItem
+public sealed partial class GitChangeItem : ObservableObject
 {
-    public GitChangeItem(GitChangeEntry entry, bool isStaged)
+    public GitChangeItem(GitChangeEntry entry, bool isStaged, bool isChecked = false)
     {
         Entry = entry;
         IsStaged = isStaged;
@@ -25,6 +25,7 @@ public sealed class GitChangeItem
         Status = entry.IsConflicted ? "U"
             : entry.IsUntracked ? "?"
             : (isStaged ? entry.IndexStatus : entry.WorkStatus).ToString();
+        _isChecked = isChecked;
     }
 
     public GitChangeEntry Entry { get; }
@@ -32,10 +33,145 @@ public sealed class GitChangeItem
     public string FileName { get; }
     public string Directory { get; }
     public string Status { get; }
+    /// <summary>作業ツリーのツリー表示でコミット対象に含めるか。ステージ済みには使わない。</summary>
+    [ObservableProperty] private bool _isChecked;
     public bool IsConflicted => Entry.IsConflicted;
     public string ToolTipText => Entry.OrigPath is null
         ? Entry.Path
         : $"{Entry.OrigPath} → {Entry.Path}";
+}
+
+/// <summary>ディレクトリ階層と親子連動チェックを持つGit変更ノード。</summary>
+public sealed class GitChangeTreeNode : ObservableObject
+{
+    private bool? _isChecked;
+    private bool _isExpanded = true;
+
+    private GitChangeTreeNode(string name, GitChangeTreeNode? parent, GitChangeItem? change)
+    {
+        Name = name;
+        Parent = parent;
+        Change = change;
+        _isChecked = change?.IsChecked ?? false;
+    }
+
+    public string Name { get; private set; }
+    public GitChangeTreeNode? Parent { get; private set; }
+    public GitChangeItem? Change { get; }
+    public bool IsDirectory => Change is null;
+    public bool IsSection { get; private set; }
+    public int LeafCount { get; private set; }
+    public ObservableCollection<GitChangeTreeNode> Children { get; } = new();
+
+    /// <summary>展開中か。ディレクトリ／セクション行のツリーアイテムと TwoWay で結ぶ。</summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+
+    public bool? IsChecked
+    {
+        get => _isChecked;
+        set
+        {
+            // 三状態は表示専用。クリック操作は「全選択／全解除」の2状態で循環させる。
+            var requested = value is null && _isChecked.HasValue ? !_isChecked.Value : value;
+            SetChecked(requested, updateChildren: true, updateParent: true);
+        }
+    }
+
+    public static GitChangeTreeNode Build(IEnumerable<GitChangeItem> items)
+    {
+        var root = new GitChangeTreeNode("", null, null);
+        foreach (var item in items.OrderBy(i => i.Entry.Path, StringComparer.OrdinalIgnoreCase))
+            root.Add(item);
+        root.CompactAndSort();
+        root.Recalculate();
+        return root;
+    }
+
+    public static GitChangeTreeNode BuildSection(string name, IEnumerable<GitChangeItem> items, bool expanded = true)
+    {
+        var materialized = items.ToArray();
+        var root = Build(materialized);
+        root.Name = name;
+        root.IsSection = true;
+        root.LeafCount = materialized.Length;
+        root.IsExpanded = expanded;
+        return root;
+    }
+
+    private void Add(GitChangeItem item)
+    {
+        var parts = item.Entry.Path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var current = this;
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            var name = parts[i];
+            var next = current.Children.FirstOrDefault(n => n.IsDirectory
+                && string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (next is null)
+            {
+                next = new GitChangeTreeNode(name, current, null);
+                current.Children.Add(next);
+            }
+            current = next;
+        }
+        current.Children.Add(new GitChangeTreeNode(parts.LastOrDefault() ?? item.FileName, current, item));
+    }
+
+    /// <summary>子がディレクトリ1つだけの階層を src/Loomo.App のようにまとめ、縦長化を防ぐ。</summary>
+    private void CompactAndSort()
+    {
+        foreach (var child in Children.ToArray()) child.CompactAndSort();
+        if (Parent is not null)
+        {
+            while (Children.Count == 1 && Children[0].IsDirectory)
+            {
+                var only = Children[0];
+                Name += "/" + only.Name;
+                Children.Clear();
+                foreach (var grandChild in only.Children)
+                {
+                    grandChild.Parent = this;
+                    Children.Add(grandChild);
+                }
+            }
+        }
+        var ordered = Children.OrderByDescending(n => n.IsDirectory)
+            .ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        Children.Clear();
+        foreach (var child in ordered) Children.Add(child);
+    }
+
+    private void Recalculate()
+    {
+        foreach (var child in Children) child.Recalculate();
+        UpdateFromChildren();
+    }
+
+    private void UpdateFromChildren()
+    {
+        if (Children.Count == 0) return;
+        var first = Children[0].IsChecked;
+        SetChecked(Children.All(c => c.IsChecked == first) ? first : null, false, true);
+    }
+
+    private void SetChecked(bool? value, bool updateChildren, bool updateParent)
+    {
+        // CallerMemberName に頼ると "SetChecked" が通知名になり、IsChecked にバインドした
+        // 子・親のチェックボックスへ届かない（連動が見た目に反映されない）ため明示する。
+        if (!SetProperty(ref _isChecked, value, nameof(IsChecked))) return;
+        if (value.HasValue)
+        {
+            if (Change is not null) Change.IsChecked = value.Value;
+            if (updateChildren)
+                foreach (var child in Children)
+                    child.SetChecked(value, true, false);
+        }
+        if (updateParent) Parent?.UpdateFromChildren();
+    }
 }
 
 /// <summary>
@@ -67,18 +203,21 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _statusIsError;
 
+    /// <summary>ステージ済みの変更。コミット時はこれがそのまま入る（チェックボックスは持たない）。</summary>
     public ObservableCollection<GitChangeItem> Staged { get; } = new();
-    public ObservableCollection<GitChangeItem> Unstaged { get; } = new();
+    /// <summary>追跡済みの未ステージ変更。チェックでコミット対象に含める。</summary>
+    public ObservableCollection<GitChangeItem> Changes { get; } = new();
+    /// <summary>Git の管理対象になっていないファイル。チェックでコミット対象に含める。</summary>
+    public ObservableCollection<GitChangeItem> UnversionedFiles { get; } = new();
+    /// <summary>「変更」「バージョン管理外」をトップレベルに持つ、コミット対象選択用のツリー。</summary>
+    [ObservableProperty] private IReadOnlyList<GitChangeTreeNode> _workingTreeSections = Array.Empty<GitChangeTreeNode>();
 
-    // 各リストの選択スナップショット（コードビハインドの SelectionChanged から差し替える）。
-    // 一括コマンドはここを対象にするので、コマンド側は引数を取らない。
+    // ステージ済みリストの選択スナップショット（コードビハインドの SelectionChanged から差し替える）。
+    // 一括アンステージはここを対象にするので、コマンド側は引数を取らない。
     private readonly List<GitChangeItem> _stagedSelection = new();
-    private readonly List<GitChangeItem> _unstagedSelection = new();
 
     /// <summary>ステージ済みリストで選択中の件数（選択件数バーの表示・有効化に使う）。</summary>
     [ObservableProperty] private int _stagedSelectedCount;
-    /// <summary>変更リストで選択中の件数。</summary>
-    [ObservableProperty] private int _unstagedSelectedCount;
 
     /// <summary>ステージ済みリストの選択をビューから受け取る。</summary>
     public void SetStagedSelection(IList items)
@@ -87,15 +226,6 @@ public sealed partial class GitPanelViewModel : ObservableObject
         foreach (var o in items)
             if (o is GitChangeItem g) _stagedSelection.Add(g);
         StagedSelectedCount = _stagedSelection.Count;
-    }
-
-    /// <summary>変更リストの選択をビューから受け取る。</summary>
-    public void SetUnstagedSelection(IList items)
-    {
-        _unstagedSelection.Clear();
-        foreach (var o in items)
-            if (o is GitChangeItem g) _unstagedSelection.Add(g);
-        UnstagedSelectedCount = _unstagedSelection.Count;
     }
 
     public GitPanelViewModel(
@@ -148,7 +278,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
             Ahead = 0;
             Behind = 0;
             Staged.Clear();
-            Unstaged.Clear();
+            Changes.Clear();
+            UnversionedFiles.Clear();
+            WorkingTreeSections = Array.Empty<GitChangeTreeNode>();
             return;
         }
 
@@ -156,12 +288,33 @@ public sealed partial class GitPanelViewModel : ObservableObject
         Ahead = status.Ahead;
         Behind = status.Behind;
 
+        // ライブ更新でチェックが勝手に戻らないよう、作業ツリー側はパス単位で選択状態を引き継ぐ。
+        var wasChecked = Changes.Concat(UnversionedFiles)
+            .Where(i => i.IsChecked).Select(i => i.Entry.Path)
+            .ToHashSet(StringComparer.Ordinal);
+
         Staged.Clear();
         foreach (var entry in status.Staged)
             Staged.Add(new GitChangeItem(entry, isStaged: true));
-        Unstaged.Clear();
+
+        Changes.Clear();
+        UnversionedFiles.Clear();
         foreach (var entry in status.Unstaged)
-            Unstaged.Add(new GitChangeItem(entry, isStaged: false));
+        {
+            var item = new GitChangeItem(entry, isStaged: false, isChecked: wasChecked.Contains(entry.Path));
+            (entry.IsUntracked ? UnversionedFiles : Changes).Add(item);
+        }
+
+        // セクションの開閉はユーザー操作を更新間で引き継ぐ。「バージョン管理外ファイル」は既定で畳む。
+        var wasExpanded = WorkingTreeSections.ToDictionary(s => s.Name, s => s.IsExpanded, StringComparer.Ordinal);
+        var sections = new List<GitChangeTreeNode>(2);
+        if (Changes.Count > 0)
+            sections.Add(GitChangeTreeNode.BuildSection(
+                "変更", Changes, wasExpanded.GetValueOrDefault("変更", true)));
+        if (UnversionedFiles.Count > 0)
+            sections.Add(GitChangeTreeNode.BuildSection(
+                "バージョン管理外ファイル", UnversionedFiles, wasExpanded.GetValueOrDefault("バージョン管理外ファイル", false)));
+        WorkingTreeSections = sections;
     }
 
     [RelayCommand]
@@ -175,9 +328,6 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     [RelayCommand]
     private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
-
-    [RelayCommand]
-    private Task StageAllAsync() => RunOpAsync("全ステージ", () => _git.StageAllAsync());
 
     [RelayCommand]
     private Task UnstageAllAsync() => RunOpAsync("全アンステージ", () => _git.UnstageAllAsync());
@@ -205,16 +355,6 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await RunOpAsync("破棄", () => _git.DiscardAsync(item.Entry));
     }
 
-    // ===== 選択分の一括操作 =====
-
-    /// <summary>変更リストで選択中のファイルをまとめてステージする。</summary>
-    [RelayCommand]
-    private Task StageSelectedAsync()
-    {
-        var paths = _unstagedSelection.Select(i => i.Entry.Path).ToArray();
-        return paths.Length == 0 ? Task.CompletedTask : RunOpAsync("ステージ", () => _git.StageAsync(paths));
-    }
-
     /// <summary>ステージ済みリストで選択中のファイルをまとめてアンステージする。</summary>
     [RelayCommand]
     private Task UnstageSelectedAsync()
@@ -223,47 +363,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
         return paths.Length == 0 ? Task.CompletedTask : RunOpAsync("アンステージ", () => _git.UnstageAsync(paths));
     }
 
-    /// <summary>変更リストで選択中のファイルをまとめて破棄する。確認は件数・未追跡の有無を1回だけ出す。</summary>
-    [RelayCommand]
-    private async Task DiscardSelectedAsync()
-    {
-        var entries = _unstagedSelection.Select(i => i.Entry).ToArray();
-        if (entries.Length == 0) return;
-        var untrackedCount = entries.Count(e => e.IsUntracked);
-        var detail = untrackedCount > 0
-            ? $"（うち {untrackedCount} 件は未追跡ファイルなので削除されます。）\n"
-            : "";
-        var answer = MessageBox.Show(
-            Application.Current?.MainWindow!,
-            $"{entries.Length} 件の変更を破棄しますか？\n{detail}作業ツリーの変更が失われます。",
-            "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.Yes) return;
-        await RunOpAsync("破棄", () => _git.DiscardAsync(entries));
-    }
-
-    /// <summary>変更（未ステージ）すべてを破棄する。確認を1回出してからまとめて実行する。</summary>
-    [RelayCommand]
-    private async Task DiscardAllAsync()
-    {
-        var entries = Unstaged.Select(i => i.Entry).ToArray();
-        if (entries.Length == 0) return;
-        var untrackedCount = entries.Count(e => e.IsUntracked);
-        var detail = untrackedCount > 0
-            ? $"（うち {untrackedCount} 件は未追跡ファイルなので削除されます。）\n"
-            : "";
-        var answer = MessageBox.Show(
-            Application.Current?.MainWindow!,
-            $"変更 {entries.Length} 件をすべて破棄しますか？\n{detail}作業ツリーの変更が失われます。",
-            "すべての変更を破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.Yes) return;
-        await RunOpAsync("破棄", () => _git.DiscardAsync(entries));
-    }
-
     /// <summary>
-    /// コミット。ステージ済みがあればそれだけをコミットし、ステージ済みが無く変更だけがあるときは
-    /// 全ステージ（git add -A）してからコミットする（VS Code 風スマートコミット。「ステージし忘れて
-    /// nothing to commit で失敗」を避ける）。amend は HEAD の付け替え（メッセージ修正だけ等）が成立する
-    /// ため自動ステージしない。
+    /// コミット。ステージ済みはそのまま、ツリーでチェックした作業ツリーのファイルは
+    /// コミット直前にステージしてから含める。amend はメッセージ修正だけでも成立する。
     /// </summary>
     [RelayCommand]
     private async Task CommitAsync()
@@ -276,18 +378,20 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
         var message = CommitMessage.Trim();
         var amend = Amend;
-        var autoStage = !amend && Staged.Count == 0;
-        if (autoStage && Unstaged.Count == 0)
+        // チェックした作業ツリーのファイルをステージ対象にする。リネームは新旧パスを両方含める。
+        var pathsToStage = Changes.Concat(UnversionedFiles).Where(i => i.IsChecked)
+            .SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToArray();
+        if (!amend && Staged.Count == 0 && pathsToStage.Length == 0)
         {
-            StatusMessage = "コミットする変更がありません。";
+            StatusMessage = "コミットするファイルをチェックしてください。";
             StatusIsError = true;
             return;
         }
         await RunOpAsync(amend ? "コミット（amend）" : "コミット", async () =>
         {
-            if (autoStage)
+            if (pathsToStage.Length > 0)
             {
-                var stage = await _git.StageAllAsync();
+                var stage = await _git.StageAsync(pathsToStage);
                 if (!stage.Success) return stage;
             }
             return await _git.CommitAsync(message, amend);
@@ -346,5 +450,12 @@ public sealed partial class GitPanelViewModel : ObservableObject
     {
         var t = text.Trim();
         return t.Length <= 300 ? t : t[..300] + "…";
+    }
+
+    /// <summary>pathspec 用のパス。リネームは旧パスも含め、旧パスの削除を同じコミットへ入れる。</summary>
+    private static IEnumerable<string> PathsOf(GitChangeEntry entry)
+    {
+        if (entry.OrigPath is not null) yield return entry.OrigPath;
+        yield return entry.Path;
     }
 }

@@ -251,6 +251,11 @@
                                           RecognizesAccessKey="True" />
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- ラベルが無いチェックボックス（ツリー行など）では、ボックス右の
+                             ラベル用余白を消す（テキストとの間に幽霊の隙間を作らない）。 -->
+                        <Trigger Property="HasContent" Value="False">
+                            <Setter TargetName="box" Property="Margin" Value="0,1,0,0" />
+                        </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="box" Property="Background" Value="{DynamicResource Accent}" />
                             <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource Accent}" />

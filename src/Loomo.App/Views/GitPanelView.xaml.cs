@@ -15,15 +15,10 @@ public partial class GitPanelView
 
     private GitPanelViewModel? Vm => DataContext as GitPanelViewModel;
 
-    // 選択をビュー → VM へ渡す（一括コマンドは VM 保持の選択を対象にする）。
+    // ステージ済みリストの選択をビュー → VM へ渡す（一括アンステージは VM 保持の選択を対象にする）。
     private void StagedList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox lb) Vm?.SetStagedSelection(lb.SelectedItems);
-    }
-
-    private void UnstagedList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is ListBox lb) Vm?.SetUnstagedSelection(lb.SelectedItems);
     }
 
     // ダブルクリックでその行のファイルを開く（単クリックは選択のみ）。
@@ -43,9 +38,46 @@ public partial class GitPanelView
         }
     }
 
-    /// <summary>クリックされた要素を含む行（ListBoxItem）の DataContext を取り出す。</summary>
-    private static GitChangeItem? FindItem(object source) =>
-        FindContainer(source)?.DataContext as GitChangeItem;
+    // 行のどこをクリックしても、ディレクトリ／セクションなら開閉をトグルする（矢印だけに頼らない）。
+    // チェックボックスのクリックは選択操作に任せ、トグルしない。
+    private void ChangeTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var d = e.OriginalSource as DependencyObject;
+        while (d is not null and not TreeViewItem)
+        {
+            if (d is CheckBox) return;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        if (e.ClickCount == 1 && d is TreeViewItem { HasItems: true } item)
+            item.IsExpanded = !item.IsExpanded;
+    }
+
+    // TreeView は右クリックだけでは SelectedItem が切り替わらないため、コンテキストメニューが
+    // 以前の選択ファイルへ作用しないよう、クリックされたノードを先に選択する。
+    private void ChangeTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var d = e.OriginalSource as DependencyObject;
+        while (d is not null and not TreeViewItem)
+            d = VisualTreeHelper.GetParent(d);
+        if (d is TreeViewItem item)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
+    }
+
+    /// <summary>クリックされた一覧／ツリー行から変更ファイルを取り出す。</summary>
+    private static GitChangeItem? FindItem(object source)
+    {
+        var d = source as DependencyObject;
+        while (d is not null)
+        {
+            if (d is FrameworkElement { DataContext: GitChangeItem item }) return item;
+            if (d is FrameworkElement { DataContext: GitChangeTreeNode { Change: { } change } }) return change;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return null;
+    }
 
     private static ListBoxItem? FindContainer(object source)
     {
