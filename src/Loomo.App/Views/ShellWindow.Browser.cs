@@ -158,7 +158,6 @@ public partial class ShellWindow
 
         var tab = new BrowserTab(id, view)
         {
-            WorkspaceRoot = _activeWorkspace?.RootPath ?? _workspace.RootPath,
             PendingUrl = NormalizeBrowserAddress(url)
         };
         _browserTabs.Add(tab);
@@ -186,7 +185,7 @@ public partial class ShellWindow
             return;
         }
 
-        ConfigureBrowserCore(tab.View.CoreWebView2!, tab.WorkspaceRoot);
+        ConfigureBrowserCore(tab.View.CoreWebView2!);
         tab.View.CoreWebView2!.FaviconChanged += OnBrowserFaviconChanged;
         if (tab.PendingUrl is { } pending)
         {
@@ -202,13 +201,12 @@ public partial class ShellWindow
     /// サイト権限（フォルダ/ファイルアクセス・通知・位置情報など）の許可/拒否をプロファイルへ保存させる。
     /// 永続化先は <see cref="WebViewUserDataFolder"/>。
     /// </summary>
-    private static void ConfigureBrowserCore(CoreWebView2 core, string? workspaceRoot)
+    private static void ConfigureBrowserCore(CoreWebView2 core)
     {
         var settings = core.Settings;
         settings.IsPasswordAutosaveEnabled = true;   // 既定 false：これが無いと保存プロンプトすら出ない
         settings.IsGeneralAutofillEnabled = true;    // 住所など一般フォームの自動入力
 
-        BrowserFileAccess.RestrictToWorkspace(core, () => workspaceRoot);
         core.PermissionRequested += OnBrowserPermissionRequested;
     }
 
