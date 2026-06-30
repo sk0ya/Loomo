@@ -119,6 +119,20 @@ public partial class ShellWindow : Window
     private static readonly string WebViewUserDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "WebView2");
+
+    /// <summary>
+    /// ワークスペース内の file:// ページから、同じワークスペースに置いた JS・JSON 等を読み込めるようにする。
+    /// Loomo はユーザーが明示的に開いた開発ワークスペースを扱うため、URL を仮想ホストへ変換せず
+    /// Chromium のローカルファイル間アクセスを許可し、既存ページの location.href/file: 判定を保つ。
+    /// </summary>
+    private const string WebViewAdditionalBrowserArguments = "--allow-file-access-from-files";
+
+    private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
+        => new()
+        {
+            UserDataFolder = WebViewUserDataFolder,
+            AdditionalBrowserArguments = WebViewAdditionalBrowserArguments
+        };
     private bool _syncingEditorFromSupport;
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;

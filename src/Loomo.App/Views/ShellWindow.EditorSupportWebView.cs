@@ -252,7 +252,7 @@ public partial class ShellWindow
             _editorSupportView = new WebView2CompositionControl
             {
                 DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
-                CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = WebViewUserDataFolder }
+                CreationProperties = CreateWebViewCreationProperties()
             };
             _editorSupportView.NavigationCompleted += OnEditorSupportNavigationCompleted;
             EditorSupportContentHost.Children.Add(_editorSupportView);
@@ -287,6 +287,11 @@ public partial class ShellWindow
 
         if (!_editorSupportWebEventsAttached)
         {
+            // Browser と同じ WebView2 環境（ローカルファイル間アクセス許可）を共有するため、
+            // EditorSupport からの file:// 要求も現在のワークスペース配下へ制限する。
+            BrowserFileAccess.RestrictToWorkspace(
+                view.CoreWebView2,
+                () => _activeWorkspace?.RootPath ?? _workspace.RootPath);
             view.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
             view.CoreWebView2.ContextMenuRequested += EditorSupport_ContextMenuRequested;
 

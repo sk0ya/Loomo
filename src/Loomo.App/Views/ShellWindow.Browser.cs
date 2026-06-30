@@ -95,7 +95,7 @@ public partial class ShellWindow
 
     private async void NavigateBrowser(string text)
     {
-        var address = MapBrowserAddress(text, _activeBrowserTab?.WorkspaceRoot);
+        var address = NormalizeBrowserAddress(text);
         BrowserAddressBox.Text = address;
 
         if (_activeBrowserTab is not { } tab)
@@ -152,15 +152,14 @@ public partial class ShellWindow
             Visibility = Visibility.Collapsed,
             // 全タブで同じユーザーデータフォルダを共有 → Cookie・保存パスワード・サイト権限が
             // タブ間で共通になり、再ビルド・再起動をまたいで残る。
-            CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = WebViewUserDataFolder }
+            CreationProperties = CreateWebViewCreationProperties()
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
 
-        var workspaceRoot = _activeWorkspace?.RootPath ?? _workspace.RootPath;
         var tab = new BrowserTab(id, view)
         {
-            WorkspaceRoot = workspaceRoot,
-            PendingUrl = MapBrowserAddress(url, workspaceRoot)
+            WorkspaceRoot = _activeWorkspace?.RootPath ?? _workspace.RootPath,
+            PendingUrl = NormalizeBrowserAddress(url)
         };
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
@@ -209,21 +208,9 @@ public partial class ShellWindow
         settings.IsPasswordAutosaveEnabled = true;   // 既定 false：これが無いと保存プロンプトすら出ない
         settings.IsGeneralAutofillEnabled = true;    // 住所など一般フォームの自動入力
 
-        // file:// では ES Modules・fetch/XHR 等が Chromium のオリジン制約で失敗する。
-        // ワークスペースを仮想 HTTPS オリジンとして配信し、通常の Web ページと同じ相対参照を可能にする。
-        if (!string.IsNullOrWhiteSpace(workspaceRoot) && Directory.Exists(workspaceRoot))
-        {
-            core.SetVirtualHostNameToFolderMapping(
-                BrowserLocalContent.VirtualHost,
-                Path.GetFullPath(workspaceRoot),
-                CoreWebView2HostResourceAccessKind.DenyCors);
-        }
-
+        BrowserFileAccess.RestrictToWorkspace(core, () => workspaceRoot);
         core.PermissionRequested += OnBrowserPermissionRequested;
     }
-
-    private static string MapBrowserAddress(string text, string? workspaceRoot)
-        => BrowserLocalContent.MapFileUrl(NormalizeBrowserAddress(text), workspaceRoot);
 
     /// <summary>
     /// サイト権限リクエストの扱い。原則は既定UI（許可/拒否ダイアログ）に任せつつ、ユーザーの選択を
