@@ -23,7 +23,8 @@ public partial class ShellWindow
     /// <summary>袖カードの待機時不透明度（暗がりで生きて待っている感を出す）。</summary>
     private const double WingRestOpacity = 0.72;
     private double _layoutWingSourceWidth;
-    private bool _layoutWingResizeQueued;
+    private bool _layoutWingBuildQueued;
+    private bool _layoutWingBuildPending;
 
     /// <summary>描画元ペインをカードと同じ固定縦横比（<see cref="CardAspect"/>）でレイアウトした非表示ホストを
     /// 作り、StageSourceArea に登録する。ミニチュア（VisualBrush）はこのホストを縮小描画する。両モード共通。
@@ -74,6 +75,16 @@ public partial class ShellWindow
     /// ソロは舞台外の有効セッション、レイアウトはタイル未配置やズーム中の非ズームペインが対象。</summary>
     private void RebuildWings()
     {
+        // レイアウトモードの初回は、描画元の実寸が確定するまで何も作らない。
+        // フォールバック寸法で仮構築して SizeChanged 後に作り直す二段描画を避ける。
+        if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0))
+        {
+            ScheduleLayoutWings();
+            return;
+        }
+        if (!_stageActive)
+            _layoutWingBuildPending = false;
+
         WingStrip.Children.Clear();
         if (_stageActive)
         {
@@ -99,9 +110,7 @@ public partial class ShellWindow
         // PaneHost は袖列までまたぐため、その幅を使うと Grid.Column=2 の StageSourceArea から
         // はみ出した分がクリップされ、VisualBrush に透明な余白として現れる。
         // 描画元を実際に置く StageSourceArea の内寸を使う。
-        var width = StageSourceArea.ActualWidth > 0 ? StageSourceArea.ActualWidth : StageVirtualSize().Width;
-        var height = StageSourceArea.ActualHeight > 0 ? StageSourceArea.ActualHeight : StageVirtualSize().Height;
-        var virtualSize = new Size(Math.Max(width, 1), Math.Max(height, 1));
+        var virtualSize = new Size(StageSourceArea.ActualWidth, StageSourceArea.ActualHeight);
         _layoutWingSourceWidth = virtualSize.Width;
 
         foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
@@ -114,10 +123,34 @@ public partial class ShellWindow
     {
         if (_stageActive)
             return;
+
+        // Auto 列を空のまま測ってからカード追加で広げると、Main が縮んで二度目の
+        // SizeChanged が発生する。描画前に袖の最終幅を予約してレイアウトを一度で確定する。
+        var hasWings = StageOrder.Any(k => IsSessionEnabled(k) && !IsShownInMain(k));
+        WingColumn.Width = hasWings ? new GridLength(WingColumnReserve) : GridLength.Auto;
+        WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasWings)
+        {
+            _layoutWingBuildPending = false;
+            WingStrip.Children.Clear();
+            StageSourceArea.Children.Clear();
+            _stageThumbnailHosts.Clear();
+            return;
+        }
+
+        _layoutWingBuildPending = true;
+        if (_layoutWingBuildQueued)
+            return;
+        _layoutWingBuildQueued = true;
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
-            if (_stageActive)
+            _layoutWingBuildQueued = false;
+            if (_stageActive || !_layoutWingBuildPending)
                 return;
+            // まだ Measure/Arrange 前なら SizeChanged が次の一度を予約する。
+            if (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)
+                return;
+            _layoutWingBuildPending = false;
             RebuildWings();
             UpdateWingHostVisibility();
         }));
@@ -126,20 +159,9 @@ public partial class ShellWindow
     private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (_stageActive || e.NewSize.Width <= 0
-            || Math.Abs(e.NewSize.Width - _layoutWingSourceWidth) <= 1
-            || _layoutWingResizeQueued)
+            || Math.Abs(e.NewSize.Width - _layoutWingSourceWidth) <= 1)
             return;
-
-        _layoutWingResizeQueued = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-        {
-            _layoutWingResizeQueued = false;
-            if (_stageActive || StageSourceArea.ActualWidth <= 0
-                || Math.Abs(StageSourceArea.ActualWidth - _layoutWingSourceWidth) <= 1)
-                return;
-            RebuildWings();
-            UpdateWingHostVisibility();
-        }));
+        ScheduleLayoutWings();
     }
 
     /// <summary>袖の列（WingHost）の表示と、俯瞰ボタン（ソロ専用）の表示を現状へ同期する。</summary>

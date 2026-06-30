@@ -346,8 +346,7 @@ public partial class ShellWindow
             RebuildStage();
         else
         {
-            RebuildWings();
-            UpdateWingHostVisibility();
+            ScheduleLayoutWings();
         }
         SaveActiveWorkspaceSnapshot();
     }
