@@ -388,15 +388,21 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (ct.IsCancellationRequested)
             return;
 
-        var groups = hits
-            .GroupBy(h => h.RelativePath, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new SearchFileGroup(g.First().FullPath, g.Key,
-                g.Select(h => new SearchMatchItem(h))))
-            .ToList();
-        SetResults(groups);
+        // グルーピングと結果ツリーの構築は件数が多いと重い。UI スレッドを空けて入力（クエリ打鍵・
+        // 候補移動）を妨げないよう、バックグラウンドで組み立ててから最後に一括反映する。
+        var (roots, fileCount, matchCount) = await Task.Run(() =>
+        {
+            var groups = hits
+                .GroupBy(h => h.RelativePath, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new SearchFileGroup(g.First().FullPath, g.Key,
+                    g.Select(h => new SearchMatchItem(h))))
+                .ToList();
+            return (BuildResultTree(groups), groups.Count, groups.Sum(g => g.Count));
+        }, ct);
+        if (ct.IsCancellationRequested)
+            return;
 
-        var fileCount = groups.Count;
-        var matchCount = groups.Sum(g => g.Count);
+        ReplaceResults(roots);
         StatusMessage = matchCount == 0
             ? "一致なし"
             : $"{matchCount} 件 / {fileCount} ファイル";
@@ -409,22 +415,28 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (ct.IsCancellationRequested)
             return;
 
-        var groups = hits
-            .Select(h => new SearchFileGroup(h.FullPath, h.RelativePath, Array.Empty<SearchMatchItem>()))
-            .ToList();
-        SetResults(groups);
+        // ツリー構築はバックグラウンドで（RunGrepAsync と同じ理由）。
+        var (roots, count) = await Task.Run(() =>
+        {
+            var groups = hits
+                .Select(h => new SearchFileGroup(h.FullPath, h.RelativePath, Array.Empty<SearchMatchItem>()))
+                .ToList();
+            return (BuildResultTree(groups), groups.Count);
+        }, ct);
+        if (ct.IsCancellationRequested)
+            return;
 
-        StatusMessage = groups.Count == 0 ? "一致なし" : $"{groups.Count} ファイル";
+        ReplaceResults(roots);
+        StatusMessage = count == 0 ? "一致なし" : $"{count} ファイル";
     }
 
     /// <summary>アクティブなターミナル内テキストを検索し、1グループ「ターミナル」配下に一致を並べる。
     /// 供給口（<see cref="TerminalSearchProvider"/>）は ShellWindow が実ターミナルへ橋渡しする。</summary>
     private void RunTerminalSearch()
     {
-        Results.Clear();
-
         if (TerminalSearchProvider is not { } provider)
         {
+            ReplaceResults(Array.Empty<object>());
             StatusMessage = "ターミナルがありません";
             return;
         }
@@ -433,6 +445,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         var hits = provider(Query, false);
         if (hits.Count == 0)
         {
+            ReplaceResults(Array.Empty<object>());
             StatusMessage = "一致なし";
             return;
         }
@@ -440,17 +453,17 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         const int max = 1000;
         var items = hits.Take(max).Select(SearchMatchItem.ForTerminal);
         // ターミナルはフォルダー階層を持たないので、ルート直下の単一グループとして並べる。
-        SetResults(new[] { new SearchFileGroup("", "ターミナル", items) });
+        ReplaceResults(BuildResultTree(new[] { new SearchFileGroup("", "ターミナル", items) }));
         StatusMessage = hits.Count > max ? $"{max}+ 件" : $"{hits.Count} 件";
     }
 
     // ===== 結果をフォルダーツリーへ組み立てる =====
 
-    /// <summary>ファイル別ヒットをフォルダー階層のツリーへ組み直して <see cref="Results"/> に反映する。
-    /// 単一フォルダーだけの連鎖は「a/b/c」と1節点へ圧縮し、フォルダー先・名前順に並べる。</summary>
-    private void SetResults(IReadOnlyList<SearchFileGroup> groups)
+    /// <summary>ファイル別ヒットをフォルダー階層のトップレベル節点リストへ組み直して返す。
+    /// 単一フォルダーだけの連鎖は「a/b/c」と1節点へ圧縮し、フォルダー先・名前順に並べる。
+    /// UI 非依存（節点と子コレクションを生成するだけ）なのでバックグラウンドスレッドから呼べる。</summary>
+    private static List<object> BuildResultTree(IReadOnlyList<SearchFileGroup> groups)
     {
-        Results.Clear();
         var root = new SearchFolderNode("", "");
         var cache = new Dictionary<string, SearchFolderNode>(StringComparer.OrdinalIgnoreCase) { [""] = root };
 
@@ -463,7 +476,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
         SortChildren(root);
 
-        foreach (var child in root.Children)
+        return root.Children.ToList();
+    }
+
+    /// <summary>組み上がった結果ツリーを UI の <see cref="Results"/> へ一括反映する（UI スレッド）。
+    /// 重いツリー構築は <see cref="BuildResultTree"/> で済ませてあるので、ここはトップレベル節点を
+    /// 並べ替え済みで足すだけ（件数が少なく入力をほぼ妨げない）。</summary>
+    private void ReplaceResults(IReadOnlyList<object> roots)
+    {
+        Results.Clear();
+        foreach (var child in roots)
             Results.Add(child);
     }
 

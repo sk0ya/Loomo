@@ -41,7 +41,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             return Array.Empty<FileSearchHit>();
 
         var relPaths = HasRg.Value
-            ? await RunRgAsync(new[] { "--files" }, root, maxLines: 50_000, ct)
+            ? await RunRgAsync(new[] { "--files" }, root, maxLines: 50_000, ct).ConfigureAwait(false)
             : EnumerateRelativeFiles(root).ToList();
 
         var scored = new List<FileSearchHit>();
@@ -90,7 +90,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             return Array.Empty<ContentSearchHit>();
 
         return HasRg.Value
-            ? await GrepWithRgAsync(query, options, root, ct)
+            ? await GrepWithRgAsync(query, options, root, ct).ConfigureAwait(false)
             : GrepInProcess(query, options, root, ct);
     }
 
@@ -142,7 +142,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         args.Add(query);
         args.Add(".");
 
-        var lines = await RunRgAsync(args, root, maxLines: options.MaxResults, ct);
+        var lines = await RunRgAsync(args, root, maxLines: options.MaxResults, ct).ConfigureAwait(false);
         var hits = new List<ContentSearchHit>(lines.Count);
         foreach (var line in lines)
         {
@@ -189,7 +189,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 
         try
         {
-            while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
+            while (await process.StandardOutput.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
             {
                 lines.Add(line);
                 if (lines.Count >= maxLines)
