@@ -31,7 +31,7 @@ namespace sk0ya.Loomo.App.Views;
 /// OSC8 ハイパーリンク）を内蔵ブラウザペインやエディタタブで開く振り分け。</summary>
 public partial class ShellWindow
 {
-    /// <summary>FolderTree の HTML をアプリ内ブラウザの新規タブで開く（file:// URL）。</summary>
+    /// <summary>FolderTree の HTML をアプリ内ブラウザの新規タブで開く。</summary>
     private async Task OpenFileInBrowserAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))

@@ -78,6 +78,9 @@ public partial class ShellWindow
     }
     private sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
     {
+        /// <summary>このタブへ割り当てる仮想ホストの実フォルダ。ワークスペース切替後も混同しないよう作成時に固定する。</summary>
+        public string? WorkspaceRoot { get; init; }
+
         /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
         /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。</summary>
         public string? PendingUrl { get; set; }
