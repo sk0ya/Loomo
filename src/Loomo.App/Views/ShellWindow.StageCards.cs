@@ -203,7 +203,8 @@ public partial class ShellWindow
 
         sourceWidth = Math.Max(sourceWidth, 1);
         sourceHeight = Math.Max(sourceHeight, 1);
-        var height = Math.Round(width * sourceHeight / sourceWidth);
+        // 枠は固定縦横比。描画元ペインの縦横比（サイドバー幅で変わる）には追従させない。
+        var height = Math.Round(width / CardAspect);
 
         var card = new Border
         {
@@ -239,9 +240,10 @@ public partial class ShellWindow
                 Viewbox = new Rect(0, 0, sourceWidth, sourceHeight),
                 ViewportUnits = BrushMappingMode.Absolute,
                 Viewport = new Rect(0, 0, width, height),
-                Stretch = Stretch.Fill,
-                AlignmentX = AlignmentX.Left,
-                AlignmentY = AlignmentY.Top,
+                // 固定枠を歪ませず敷き詰める（余白を出さず、はみ出しはカードの Clip でクロップ）。
+                Stretch = Stretch.UniformToFill,
+                AlignmentX = AlignmentX.Center,
+                AlignmentY = AlignmentY.Center,
             },
         };
         root.Children.Add(thumbnail);

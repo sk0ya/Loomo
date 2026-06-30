@@ -44,8 +44,11 @@ public partial class ShellWindow
     /// 通常はタイルより広い。Main に出ている有効セッションはそのまま Main に、Main に出ていない有効セッションは
     /// 袖（ミニチュア）に出る（＝有効セッションは Main と袖のどちらかに必ず出る）。無効なセッションはどちらにも出さない。</summary>
     private readonly HashSet<PaneKind> _enabledSessions = new();
-    /// <summary>袖カードの幅。高さは舞台の縦横比から導出される。</summary>
+    /// <summary>袖カードの幅。高さは <see cref="CardAspect"/>（固定）から導出される。</summary>
     private const double WingCardWidth = 180;
+    /// <summary>カード枠の固定縦横比（幅÷高さ）。サイドバー幅でペインの縦横比が変わっても枠は揺れない。
+    /// 描画元ペインはこの枠へ Uniform（レターボックス）で歪ませず収める。</summary>
+    private const double CardAspect = 3.0 / 2.0;
     /// <summary>俯瞰カードの幅。</summary>
     private const double OverviewCardWidth = 320;
     /// <summary>袖の列（カード＋余白＋スクロールバー）が占める幅の見積もり。舞台幅の算出に使う。</summary>
