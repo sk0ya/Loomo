@@ -25,7 +25,34 @@ internal static class DebugTargetResolver
                 return true;
         }
         catch { /* 列挙失敗は csproj 探索へフォールバック */ }
-        return FindProject(root) is not null;
+        // この判定は起動時（初フレーム前）に同期実行されるため、FindProject の AllDirectories 全走査は使わない。
+        // 非 C# の大きなフォルダ（node_modules 等）を開いたとき初フレームをブロックしないよう、bin/obj/.git/
+        // node_modules といった肥大ディレクトリを除いた深さ制限スキャンで十分（プロジェクトは通常 src/ 直下までに在る）。
+        return HasProjectWithinDepth(root, maxDepth: 3);
+    }
+
+    /// <summary>起動経路用の軽量 .csproj 判定。<paramref name="maxDepth"/> 段までを、肥大しがちな
+    /// ビルド/依存/VCS ディレクトリを飛ばして探索する。1 つでも見つかれば true。</summary>
+    private static bool HasProjectWithinDepth(string dir, int maxDepth)
+    {
+        try
+        {
+            if (Directory.EnumerateFiles(dir, "*.csproj", SearchOption.TopDirectoryOnly).Any())
+                return true;
+            if (maxDepth <= 0)
+                return false;
+            foreach (var sub in Directory.EnumerateDirectories(dir))
+            {
+                var name = Path.GetFileName(sub);
+                if (name is "bin" or "obj" or "node_modules" or ".git" or ".vs"
+                    || name.StartsWith('.'))
+                    continue;
+                if (HasProjectWithinDepth(sub, maxDepth - 1))
+                    return true;
+            }
+        }
+        catch { /* アクセス不能ディレクトリは無視 */ }
+        return false;
     }
 
     /// <summary>ビルド/テスト対象を解決する。ワークスペース直下の .sln を優先し、無ければ最初の .csproj。</summary>

@@ -108,9 +108,12 @@ public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
             _session.RaiseFrameActivated(p, t.Line - 1);  // 1始まり → エディタ 0始まり
     }
 
-    /// <summary>ワークスペースが変わったら監視を張り替え、すぐ収集し直す。</summary>
+    /// <summary>ワークスペースが変わったら監視を張り替え、収集し直す。起動時はこのイベントが
+    /// 初フレーム後のハイドレート中（エディタ／ブラウザ実体化）に発火するため、Background 優先度で
+    /// 後回しにして復元を割り込まない（テスト一覧は IDE ペインを開くまで見えないので即時性は不要）。</summary>
     private void OnWorkspaceRootChanged(object? sender, string? root)
-        => _dispatcher.InvokeAsync(() => { _watcher.Watch(root); _ = DiscoverTestsAsync(); });
+        => _dispatcher.InvokeAsync(() => { _watcher.Watch(root); _ = DiscoverTestsAsync(); },
+            DispatcherPriority.Background);
 
     /// <summary>ソース走査でテスト一覧を収集する（ビルドを伴わない・バックグラウンド）。探索中に来た要求は
     /// 1 回にまとめて末尾でもう一度回す（編集中の連続変更で重複起動しない）。</summary>
