@@ -88,6 +88,14 @@ public partial class ShellWindow
     /// ペインの表示／非表示を切り替える。非表示にしてもリーフはツリーに残し
     /// <see cref="PaneLeaf.Hidden"/> を立てるだけなので、再表示で元の位置・比率に戻る。
     /// </summary>
+    /// <remarks>
+    /// 表示（<paramref name="visible"/>=true）は「リーフが無ければ最下段の新しい行へ追加／在れば元位置で再表示」
+    /// であり、ステージモードは見ない（タイルツリーだけを操作する）。<b>結果やコンテンツをペインに出して
+    /// 前面化する用途では <see cref="EnsurePaneVisibleOrSwapTopLeft"/>（左上ペインと入れ替え＋ステージ対応）の
+    /// 利用を検討すること。</b>「AIに聞く」「ブラウザで調べる」「差分を開く」等はそちらに統一済み。
+    /// この直接呼び出しが妥当なのは、非表示化（<paramref name="visible"/>=false）・明示トグル・
+    /// セッション有効化のタイル復帰・専用位置への挿入後の表示など、左上入れ替えが不要な経路に限る。
+    /// </remarks>
     private void SetPaneVisible(PaneKind kind, bool visible)
     {
         var leaf = FindLeaf(kind);
