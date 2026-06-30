@@ -86,6 +86,17 @@
             </Setter>
         </Style>
 
+        <!-- ペインの線画アイコン（16x16）。トグルとメインペイン表示ヘッダーで共有する単一ソース。
+             code-behind（UpdatePaneToggleStates）は PaneKind→キー名で引いてヘッダーへ流し込む。 -->
+        <StreamGeometry x:Key="PaneIcon.Terminal">M2.5,4 L7,8 L2.5,12 M9,12.5 H13.5</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Editor">M10.5,2.5 L13.5,5.5 L6.5,12.5 L3,13 L3.5,9.5 Z M9,4 L12,7</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.EditorSupport">M8,4 C6.5,3 4.5,3 2.5,3.8 V11.8 C4.5,11 6.5,11 8,12 C9.5,11 11.5,11 13.5,11.8 V3.8 C11.5,3 9.5,3 8,4 M8,4 V12</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Browser">M8,2.5 A5.5,5.5 0 1 0 8,13.5 A5.5,5.5 0 1 0 8,2.5 M2.5,8 H13.5 M8,2.5 C5.8,5.3 5.8,10.7 8,13.5 M8,2.5 C10.2,5.3 10.2,10.7 8,13.5</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Git">M4.5,3.8 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M4.5,12.2 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M11.5,5.2 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M4.5,5.5 V10.5 M11.5,6.9 C11.5,9.2 4.5,8.3 4.5,10.5</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Diff">M5,2.5 V7.5 M2.5,5 H7.5 M8.5,11.5 H13.5</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Ai">M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Debug">M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3</StreamGeometry>
+
         <!-- タイトルバーのペイン表示トグル：表示中＝アクセント色／非表示＝グレーの線画アイコン。
              IsChecked とツールチップは code-behind の UpdatePaneToggleStates が実状態へ同期する。 -->
         <Style x:Key="PaneToggle" TargetType="ToggleButton">
@@ -267,7 +278,7 @@
                 </StackPanel>
 
                 <!-- ウィンドウ操作ボタン＋ペイン表示トグル（キャプション領域だがクリック可能にする） -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                <StackPanel x:Name="WindowControlsPanel" Orientation="Horizontal" HorizontalAlignment="Right"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <!-- ソロ⇄レイアウト切替（ShellWindow.Stage.cs / Ctrl+Shift+T）。チェック＝ソロ。 -->
                     <ToggleButton x:Name="StageModeToggle" Style="{StaticResource PaneToggle}"
@@ -321,57 +332,72 @@
                         </Border>
                     </Popup>
 
-                    <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
-                    <!-- ペインの表示トグル（隠したペインの再表示にも使う）。アクセント色＝表示中／グレー＝非表示。 -->
-                    <StackPanel x:Name="PaneToggleBar" Orientation="Horizontal">
-                        <!-- ターミナル：プロンプト >_ -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Terminal" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M2.5,4 L7,8 L2.5,12 M9,12.5 H13.5" />
-                        </ToggleButton>
-                        <!-- エディタ：ペン -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Editor" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M10.5,2.5 L13.5,5.5 L6.5,12.5 L3,13 L3.5,9.5 Z M9,4 L12,7" />
-                        </ToggleButton>
-                        <!-- エディタサポート：開いた本（プレビュー） -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="EditorSupport" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M8,4 C6.5,3 4.5,3 2.5,3.8 V11.8 C4.5,11 6.5,11 8,12 C9.5,11 11.5,11 13.5,11.8 V3.8 C11.5,3 9.5,3 8,4 M8,4 V12" />
-                        </ToggleButton>
-                        <!-- ブラウザ：地球儀 -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Browser" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M8,2.5 A5.5,5.5 0 1 0 8,13.5 A5.5,5.5 0 1 0 8,2.5 M2.5,8 H13.5 M8,2.5 C5.8,5.3 5.8,10.7 8,13.5 M8,2.5 C10.2,5.3 10.2,10.7 8,13.5" />
-                        </ToggleButton>
-                        <!-- Git：ブランチ分岐 -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Git" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M4.5,3.8 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M4.5,12.2 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M11.5,5.2 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M4.5,5.5 V10.5 M11.5,6.9 C11.5,9.2 4.5,8.3 4.5,10.5" />
-                        </ToggleButton>
-                        <!-- Diff：＋／− -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Diff" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M5,2.5 V7.5 M2.5,5 H7.5 M8.5,11.5 H13.5" />
-                        </ToggleButton>
-                        <!-- トレース：パルス（タイムライン）。タイトルバーからの表示切替は廃止（§24）。
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Trace" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M1.5,8 H4.5 L6.5,3.5 L9.5,12.5 L11.5,8 H14.5" />
-                        </ToggleButton>
-                        -->
-                        <!-- AI：スパーク -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Ai" Click="OnTogglePaneVisibility">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z" />
-                        </ToggleButton>
-                        <!-- IDE：虫（ビルド・テスト・デバッグ／DAP） -->
-                        <ToggleButton Style="{StaticResource PaneToggle}" Tag="Debug" Click="OnTogglePaneVisibility"
-                                      ToolTip="IDE（ビルド・テスト・デバッグ）">
-                            <Path Style="{StaticResource PaneToggleIcon}"
-                                  Data="M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3" />
-                        </ToggleButton>
-                    </StackPanel>
+                    <!-- 現在のメインペイン（左上／ソロの舞台）を示すヘッダー。ホバーで直下に縦並びの
+                         ペイントグルを出す。アイコン・ツールチップは code-behind の UpdatePaneToggleStates が
+                         現在のメインペインへ同期する。開くのは OnMainPaneMouseEnter、閉じるのは開いている間の
+                         DispatcherTimer 監視（IsMouseNearPaneTogglePopup）。 -->
+                    <Button x:Name="MainPaneButton" Height="36" Padding="6,0"
+                            Style="{StaticResource BranchMenuItem}" Foreground="{DynamicResource Fg}"
+                            MouseEnter="OnMainPaneMouseEnter"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <Path x:Name="MainPaneIcon" Style="{StaticResource PaneToggleIcon}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                                       VerticalAlignment="Center" Margin="4,1,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="PaneTogglePopup" PlacementTarget="{Binding ElementName=MainPaneButton}"
+                           Placement="Bottom" StaysOpen="True" AllowsTransparency="True">
+                        <!-- 開いている間は DispatcherTimer がマウスの画面座標を監視し、ヘッダー（MainPaneButton）と
+                             枠（PaneTogglePopupRoot）の画面矩形を一定スラック分ふくらませた範囲から出たら閉じる
+                             （OpenPaneTogglePopup / IsMouseNearPaneToggle）。透明な当たり判定レイヤーは使わない
+                             （下の UI へのクリックを奪わず、かつスラックを自由に広げられる）。スラック量は
+                             PaneTogglePopupHoverSlackPx。 -->
+                        <Border x:Name="PaneTogglePopupRoot" Background="{DynamicResource Panel}"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
+                                Margin="0,0,8,8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                            </Border.Effect>
+                            <!-- 縦並びのペイン表示トグル。アクセント色＝表示中／グレー＝非表示。 -->
+                            <StackPanel x:Name="PaneToggleBar" Orientation="Vertical">
+                                <!-- ターミナル：プロンプト >_ -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Terminal" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Terminal}" />
+                                </ToggleButton>
+                                <!-- エディタ：ペン -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Editor" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Editor}" />
+                                </ToggleButton>
+                                <!-- エディタサポート：開いた本（プレビュー） -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="EditorSupport" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.EditorSupport}" />
+                                </ToggleButton>
+                                <!-- ブラウザ：地球儀 -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Browser" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Browser}" />
+                                </ToggleButton>
+                                <!-- Git：ブランチ分岐 -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Git" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Git}" />
+                                </ToggleButton>
+                                <!-- Diff：＋／− -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Diff" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Diff}" />
+                                </ToggleButton>
+                                <!-- AI：スパーク -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Ai" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Ai}" />
+                                </ToggleButton>
+                                <!-- IDE：虫（ビルド・テスト・デバッグ／DAP） -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Debug" Click="OnTogglePaneVisibility"
+                                              ToolTip="IDE（ビルド・テスト・デバッグ）">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Debug}" />
+                                </ToggleButton>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                     <Border Width="1" Margin="6,8" Background="{DynamicResource Border}" />
                     <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButton}"
                             ToolTip="最小化" Click="OnMinimize">

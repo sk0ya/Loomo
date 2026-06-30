@@ -37,6 +37,74 @@ public partial class ShellWindow
         SetPaneVisible(kind, false);
     }
 
+    // ── ペイン表示トグルのホバードロップダウン（メインペインヘッダー直下に縦並び） ──
+    // ヘッダーに入ったら開き、開いている間は DispatcherTimer でマウスの画面座標を監視して、
+    // ヘッダーと枠の画面矩形を PaneTogglePopupHoverSlackPx だけふくらませた範囲から出たら閉じる。
+    // 透明な当たり判定レイヤーは AllowsTransparency ポップアップ上でヒットが不安定なので使わない。
+    // この方式ならスラックを画面座標で確実に好きなだけ広げられ、下の UI へのクリックも奪わない。
+
+    /// <summary>当たり判定を見える枠よりどれだけ外側まで広げるか（デバイスピクセル）。</summary>
+    private const double PaneTogglePopupHoverSlackPx = 120;
+
+    private DispatcherTimer? _paneToggleHoverTimer;
+
+    private void OnMainPaneMouseEnter(object sender, MouseEventArgs e)
+    {
+        PaneTogglePopup.IsOpen = true;
+        (_paneToggleHoverTimer ??= CreatePaneToggleHoverTimer()).Start();
+    }
+
+    private DispatcherTimer CreatePaneToggleHoverTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        timer.Tick += (_, _) =>
+        {
+            if (!PaneTogglePopup.IsOpen || !IsMouseNearPaneTogglePopup())
+            {
+                PaneTogglePopup.IsOpen = false;
+                _paneToggleHoverTimer?.Stop();
+            }
+        };
+        return timer;
+    }
+
+    /// <summary>マウスがヘッダー／枠の「ふくらませた」画面矩形のどちらかに入っているか。</summary>
+    private bool IsMouseNearPaneTogglePopup()
+    {
+        if (!GetCursorPos(out var p))
+            return true; // 座標取得に失敗したら閉じない（誤クローズより開きっぱなしの方が安全）
+        var mouse = new Point(p.X, p.Y);
+        return InflatedScreenRect(MainPaneButton).Contains(mouse)
+            || (PaneTogglePopupRoot.IsVisible && InflatedScreenRect(PaneTogglePopupRoot).Contains(mouse));
+    }
+
+    /// <summary>要素の画面矩形（デバイスピクセル）をスラック分ふくらませて返す。</summary>
+    private static Rect InflatedScreenRect(FrameworkElement element)
+    {
+        var topLeft = element.PointToScreen(new Point(0, 0));
+        var bottomRight = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+        var rect = new Rect(topLeft, bottomRight);
+        rect.Inflate(PaneTogglePopupHoverSlackPx, PaneTogglePopupHoverSlackPx);
+        return rect;
+    }
+    // GetCursorPos / POINT は ShellWindow.SpanMaximize.cs に定義済みのものを使う。
+
+    /// <summary>現在のメインペイン（ソロ中は舞台のペイン、タイル時は左上の可視ペイン）。</summary>
+    private PaneKind? CurrentMainPane() => _stageActive ? _stagePane : TopLeftPane();
+
+    /// <summary>ペインの線画アイコンの StreamGeometry リソースキー（XAML 側と単一ソース）。</summary>
+    private static string PaneIconKey(PaneKind kind) => $"PaneIcon.{kind}";
+
+    /// <summary>メインペインヘッダーのアイコンとツールチップを現在のメインペインへ同期する。</summary>
+    private void UpdateMainPaneHeader()
+    {
+        var main = CurrentMainPane();
+        MainPaneIcon.Data = main is { } kind && TryFindResource(PaneIconKey(kind)) is Geometry geo ? geo : null;
+        MainPaneButton.ToolTip = main is { } k
+            ? $"メインペイン：{PaneLabel(k)}（ホバーで表示ペインを切り替え）"
+            : "表示ペインを切り替え（ホバーで一覧）";
+    }
+
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
@@ -61,6 +129,8 @@ public partial class ShellWindow
             button.IsChecked = enabled;
             button.ToolTip = $"{PaneLabel(kind)} を{(enabled ? "無効化" : "有効化")}";
         }
+
+        UpdateMainPaneHeader();
     }
 
     /// <summary>ペインの日本語表示名（ペイントグルのツールチップ用）。</summary>
