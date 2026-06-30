@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,7 +22,11 @@ namespace sk0ya.Loomo.App.Views;
 public partial class DiffSessionView : UserControl
 {
     private const double LineHeight = 16.0;
-    private const double WidePageWidth = 6000.0; // 折り返しを抑え、左右の行ずれを防ぐ
+    private const double PageWidthPadding = 24.0; // 本文右端の余白（横スクロールの行き過ぎ防止）
+    private const double MinContentWidth = 200.0; // 計測不能時の最小ページ幅
+
+    // 本文の最長行を測る等幅タイプフェース（FlowDocument と同じ Cascadia Mono / Consolas）
+    private Typeface? _monoTypeface;
 
     // 差分の色（テーマ非依存の固定色。前景のうち文脈/見出しはテーマ追従させる）
     private static readonly Brush AddedBg = Frozen("#1F4CAF50");
@@ -130,7 +135,9 @@ public partial class DiffSessionView : UserControl
     private void RebuildUnified()
     {
         _currentMarks.Clear(); // 旧段落は破棄されるのでマーカー参照も捨てる
-        var doc = NewDocument(wide: true);
+        // ページ幅を最長行ぴったりに合わせる（折り返さず、横スクロールの可動域も実内容に一致させる）
+        var width = Vm is null ? MinContentWidth : MeasureMaxWidth(Vm.DiffRows.Select(r => r.Text));
+        var doc = NewDocument(width);
         if (Vm is not null)
             foreach (var r in Vm.DiffRows)
                 doc.Blocks.Add(TextParagraph(r.Text, r.Kind));
@@ -140,10 +147,14 @@ public partial class DiffSessionView : UserControl
     private void RebuildSide()
     {
         _currentMarks.Clear(); // 旧段落は破棄されるのでマーカー参照も捨てる
-        var left = NewDocument(wide: true);
-        var right = NewDocument(wide: true);
-        var leftNo = NewDocument(wide: false);
-        var rightNo = NewDocument(wide: false);
+        // 左右で同じページ幅にして、横スクロールの連動が座標としてぴったり揃うようにする
+        var width = Vm is null
+            ? MinContentWidth
+            : MeasureMaxWidth(Vm.SideRows.SelectMany(s => new[] { s.LeftText, s.RightText }));
+        var left = NewDocument(width);
+        var right = NewDocument(width);
+        var leftNo = NewDocument(null);
+        var rightNo = NewDocument(null);
         if (Vm is not null)
             foreach (var s in Vm.SideRows)
             {
@@ -160,7 +171,7 @@ public partial class DiffSessionView : UserControl
         PositionCenterGutter();
     }
 
-    private static FlowDocument NewDocument(bool wide)
+    private static FlowDocument NewDocument(double? pageWidth)
     {
         var doc = new FlowDocument
         {
@@ -168,8 +179,26 @@ public partial class DiffSessionView : UserControl
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             FontSize = 12,
         };
-        if (wide) doc.PageWidth = WidePageWidth;
+        if (pageWidth is double w) doc.PageWidth = w; // 行番号ガター（null）は内容幅に自動フィット
         return doc;
+    }
+
+    /// <summary>最長行の表示幅（px）を測ってページ幅を決める。CJK 全角も正しく測れるよう FormattedText を使う。</summary>
+    private double MeasureMaxWidth(IEnumerable<string> lines)
+    {
+        var typeface = _monoTypeface ??= new Typeface(
+            new FontFamily("Cascadia Mono, Consolas"),
+            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var max = 0.0;
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrEmpty(line)) continue;
+            var ft = new FormattedText(line, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                typeface, 12, Brushes.Black, pixelsPerDip);
+            if (ft.WidthIncludingTrailingWhitespace > max) max = ft.WidthIncludingTrailingWhitespace;
+        }
+        return Math.Max(MinContentWidth, max + PageWidthPadding);
     }
 
     private static Paragraph NewParagraph() => new()
@@ -226,6 +255,26 @@ public partial class DiffSessionView : UserControl
         if (_leftTextSv is not null) _leftTextSv.ScrollChanged += OnSideScrollChanged;
         if (_rightTextSv is not null) _rightTextSv.ScrollChanged += OnSideScrollChanged;
         CenterGutter.SizeChanged += (_, _) => PositionCenterGutter();
+
+        // Shift+ホイールで横スクロール（FlowDocumentScrollViewer は既定で横ホイールを扱わない）
+        UnifiedBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
+        LeftTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
+        RightTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
+    }
+
+    /// <summary>Shift 押下中のホイールを横スクロールに割り当てる。左右本文はスクロール連動で他方も追従する。</summary>
+    private void OnTextPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) == 0) return;
+        var sv = sender switch
+        {
+            var s when ReferenceEquals(s, LeftTextBox) => _leftTextSv,
+            var s when ReferenceEquals(s, RightTextBox) => _rightTextSv,
+            _ => _unifiedSv,
+        };
+        if (sv is null) return;
+        sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta);
+        e.Handled = true;
     }
 
     private static ScrollViewer? InnerScrollViewer(RichTextBox box)
@@ -236,14 +285,31 @@ public partial class DiffSessionView : UserControl
 
     private void OnSideScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (e.VerticalChange != 0 && !_syncing)
+        if (!_syncing && (e.VerticalChange != 0 || e.HorizontalChange != 0))
         {
             _syncing = true;
-            var offset = ((ScrollViewer)sender).VerticalOffset;
-            SetVerticalOffset(_leftTextSv, offset);
-            SetVerticalOffset(_rightTextSv, offset);
-            SetVerticalOffset(_leftGutterSv, offset);
-            SetVerticalOffset(_rightGutterSv, offset);
+            var src = (ScrollViewer)sender;
+            if (e.VerticalChange != 0)
+            {
+                var offset = src.VerticalOffset;
+                SetVerticalOffset(_leftTextSv, offset);
+                SetVerticalOffset(_rightTextSv, offset);
+                SetVerticalOffset(_leftGutterSv, offset);
+                SetVerticalOffset(_rightGutterSv, offset);
+            }
+            if (e.HorizontalChange != 0) // 左右本文の横スクロールを連動（行番号ガターは固定）
+            {
+                // ペイン幅や縦スクロールバーの有無が違うと ScrollableWidth も左右で異なる。
+                // 操作元だけが相手の上限を越えないよう、双方が到達可能な範囲へ揃える。
+                var offset = _leftTextSv is not null && _rightTextSv is not null
+                    ? ClampToSharedHorizontalRange(
+                        src.HorizontalOffset,
+                        _leftTextSv.ScrollableWidth,
+                        _rightTextSv.ScrollableWidth)
+                    : Math.Clamp(src.HorizontalOffset, 0, src.ScrollableWidth);
+                SetHorizontalOffset(_leftTextSv, offset);
+                SetHorizontalOffset(_rightTextSv, offset);
+            }
             _syncing = false;
         }
         PositionCenterGutter(); // スクロール・サイズ変化に追従して中央ゲターを描き直す
@@ -254,6 +320,18 @@ public partial class DiffSessionView : UserControl
         if (sv is not null && Math.Abs(sv.VerticalOffset - offset) > 0.5)
             sv.ScrollToVerticalOffset(offset);
     }
+
+    private static void SetHorizontalOffset(ScrollViewer? sv, double offset)
+    {
+        if (sv is not null && Math.Abs(sv.HorizontalOffset - offset) > 0.5)
+            sv.ScrollToHorizontalOffset(offset);
+    }
+
+    internal static double ClampToSharedHorizontalRange(
+        double requestedOffset,
+        double leftScrollableWidth,
+        double rightScrollableWidth)
+        => Math.Clamp(requestedOffset, 0, Math.Min(leftScrollableWidth, rightScrollableWidth));
 
     // ===== 中央ゲター：変更ブロックの帯＋範囲破棄（Rider 風） =====
 

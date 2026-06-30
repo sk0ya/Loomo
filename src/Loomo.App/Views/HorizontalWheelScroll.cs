@@ -23,10 +23,14 @@ internal static class HorizontalWheelScroll
     {
         // wParam の上位ワードが回転量（120/ノッチ、正＝右）。
         var delta = (short)(((long)wParam >> 16) & 0xFFFF);
+        return Handle(Mouse.DirectlyOver as DependencyObject, delta);
+    }
+
+    /// <summary>指定した入力元を起点に横スクロールする。UI テストからも同じ解決経路を検証できる。</summary>
+    internal static bool Handle(DependencyObject? source, int delta)
+    {
         if (delta == 0)
             return false;
-
-        var source = Mouse.DirectlyOver as DependencyObject;
 
         // エディタは独自キャンバスで描画され ScrollViewer を持たないので専用 API へ委譲する。
         var editor = FindAncestor<VimEditorControl>(source);
@@ -60,8 +64,19 @@ internal static class HorizontalWheelScroll
         {
             if (current is ScrollViewer { ScrollableWidth: > 0 } viewer)
                 return viewer;
+
+            // RichTextBox 自体が DirectlyOver になる場合、スクロールを担う PART_ContentHost は
+            // 祖先ではなくテンプレート内の子なので、通常の祖先探索だけでは到達できない。
+            if (current is RichTextBox box && InnerScrollViewer(box) is { ScrollableWidth: > 0 } inner)
+                return inner;
         }
         return null;
+    }
+
+    private static ScrollViewer? InnerScrollViewer(RichTextBox box)
+    {
+        box.ApplyTemplate();
+        return box.Template?.FindName("PART_ContentHost", box) as ScrollViewer;
     }
 
     private static DependencyObject? GetParent(DependencyObject current)

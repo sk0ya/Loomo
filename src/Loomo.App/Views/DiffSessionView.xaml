@@ -155,24 +155,44 @@
                 <Grid x:Name="SidePanel"
                       Visibility="{Binding IsSideBySide, Converter={StaticResource BoolToVis}}">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="120" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="120" />
                     </Grid.ColumnDefinitions>
-                    <RichTextBox x:Name="LeftGutter" Grid.Column="0" Style="{StaticResource DiffGutterBox}" />
-                    <RichTextBox x:Name="LeftTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
-                                 ContextMenu="{StaticResource DiffCopyMenu}"
-                                 VerticalScrollBarVisibility="Hidden" />
-                    <!-- 中央ゲター：変更ブロックを帯で示し、クリックでその範囲を破棄する（Rider 風） -->
-                    <Grid Grid.Column="2" Width="20" Background="{DynamicResource BgAlt}">
+
+                    <!-- 左側（行番号ガター＋本文） -->
+                    <Grid Grid.Column="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <RichTextBox x:Name="LeftGutter" Grid.Column="0" Style="{StaticResource DiffGutterBox}" />
+                        <RichTextBox x:Name="LeftTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
+                                     ContextMenu="{StaticResource DiffCopyMenu}"
+                                     VerticalScrollBarVisibility="Hidden" />
+                    </Grid>
+
+                    <!-- 中央：左右サイズ変更スプリッタ（左端の帯）＋中央ゲター。
+                         中央ゲターは変更ブロックを帯で示し、クリックでその範囲を破棄する（Rider 風）。
+                         スプリッタは破棄帯と重ならないよう左端の専用ストリップに置く。 -->
+                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Left"
+                                  VerticalAlignment="Stretch" Background="Transparent"
+                                  ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" />
+                    <Grid Grid.Column="1" Width="20" Margin="6,0,0,0" Background="{DynamicResource BgAlt}">
                         <Border Width="1" HorizontalAlignment="Center" Background="{DynamicResource Border}" />
                         <Canvas x:Name="CenterGutter" ClipToBounds="True" Background="Transparent" />
                     </Grid>
-                    <RichTextBox x:Name="RightGutter" Grid.Column="3" Style="{StaticResource DiffGutterBox}" />
-                    <RichTextBox x:Name="RightTextBox" Grid.Column="4" Style="{StaticResource DiffTextBox}"
-                                 ContextMenu="{StaticResource DiffCopyMenu}" />
+
+                    <!-- 右側（行番号ガター＋本文） -->
+                    <Grid Grid.Column="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <RichTextBox x:Name="RightGutter" Grid.Column="0" Style="{StaticResource DiffGutterBox}" />
+                        <RichTextBox x:Name="RightTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
+                                     ContextMenu="{StaticResource DiffCopyMenu}" />
+                    </Grid>
                 </Grid>
             </Grid>
         </Grid>
