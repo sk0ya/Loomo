@@ -66,13 +66,14 @@ public partial class ShellWindow
         switch (item.Type)
         {
             case "url":
-                SetPaneVisible(PaneKind.Browser, true);
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 var tab = await CreateBrowserTabAsync(item.Content);
                 ActivateBrowserTab(tab.Id);
                 break;
 
             case "file" when File.Exists(item.Content):
-                SetPaneVisible(PaneKind.Editor, true);
+                // OpenFileInNewEditorTabAsync が EnsureEditorPaneForOpenedFile で
+                // （バイナリ判定込みで）前面化するので、ここでの明示表示は不要。
                 await OpenFileInNewEditorTabAsync(item.Content);
                 break;
 
@@ -84,7 +85,7 @@ public partial class ShellWindow
 
             default:
                 // テキスト片（や消えたファイルパス）は読み流し用の仮想ドキュメントで開く。
-                SetPaneVisible(PaneKind.Editor, true);
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
                 await _editor.OpenDocumentAsync(new EditorDocument
                 {
                     FileName = $"pegboard-{item.Snapshot.Id.ToString("N")[..8]}.txt",

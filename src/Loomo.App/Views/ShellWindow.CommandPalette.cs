@@ -213,7 +213,7 @@ public partial class ShellWindow
     private PaletteCommand TerminalMatchEntry(TerminalMatch match, TerminalTabView view)
         => new($"行 {match.LineIndex + 1}", match.LineText.Trim(), () =>
         {
-            SetPaneVisible(PaneKind.Terminal, true);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
             view.SelectMatch(match);
             view.FocusTerminal();
         });

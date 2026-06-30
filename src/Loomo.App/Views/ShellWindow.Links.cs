@@ -198,9 +198,9 @@ public partial class ShellWindow
         if (string.IsNullOrWhiteSpace(url))
             return;
 
-        // ブラウザペインが隠れていれば表示してから開く。
-        if (!IsPaneVisible(PaneKind.Browser))
-            SetPaneVisible(PaneKind.Browser, true);
+        // ブラウザペインがレイアウトに無ければ左上と入れ替えて前面に出す（「ブラウザで調べる」等と
+        // 同じ流儀＝最下段への新規挿入ではなく入れ替えで一貫させる。既に見えていれば何もしない）。
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
 
         await CreateBrowserTabAsync(url, requestedTitle: title);
         SaveActiveWorkspaceSnapshot();

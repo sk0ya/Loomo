@@ -342,7 +342,7 @@ public partial class ShellWindow : Window
         {
             if (_activeTerminalTab?.View is not { } view)
                 return;
-            SetPaneVisible(PaneKind.Terminal, true);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
             view.SelectMatch(new TerminalMatch(h.LineIndex, h.Column, h.Length, h.LineText));
             view.FocusTerminal();
         };
