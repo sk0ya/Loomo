@@ -44,17 +44,9 @@ public partial class ShellWindow
     /// 通常はタイルより広い。Main に出ている有効セッションはそのまま Main に、Main に出ていない有効セッションは
     /// 袖（ミニチュア）に出る（＝有効セッションは Main と袖のどちらかに必ず出る）。無効なセッションはどちらにも出さない。</summary>
     private readonly HashSet<PaneKind> _enabledSessions = new();
-    /// <summary>袖カードの幅。高さは <see cref="CardAspect"/>（固定）から導出される。</summary>
-    private const double WingCardWidth = 180;
-    /// <summary>カード枠の固定縦横比（幅÷高さ）。サイドバー幅でペインの縦横比が変わっても枠は揺れない。
-    /// 描画元ペインはこの枠へ Uniform（レターボックス）で歪ませず収める。</summary>
-    private const double CardAspect = 3.0 / 2.0;
-    /// <summary>俯瞰カードの幅。</summary>
-    private const double OverviewCardWidth = 320;
     /// <summary>袖の列（カード＋余白＋スクロールバー）が占める幅の見積もり。舞台幅の算出に使う。</summary>
     private const double WingColumnReserve = 210;
-    /// <summary>袖カードの待機時不透明度（暗がりで生きて待っている感を出す）。</summary>
-    private const double WingRestOpacity = 0.72;
+    // ミニチュア（袖／俯瞰カード）の寸法・見た目の定数は ShellWindow.StageCards.cs に集約。
 
     /// <summary>袖カードのドラッグ判定（しきい値を超えたらタイルへの配置ドラッグを始める）。</summary>
     private Point _wingDragStart;
@@ -384,8 +376,7 @@ public partial class ShellWindow
         {
             OverviewLayer.Visibility = Visibility.Visible;
             foreach (var kind in OverviewKinds())
-                OverviewPanel.Children.Add(BuildSessionCard(
-                    kind, OverviewCardWidth, virtualSize, isOverview: true));
+                OverviewPanel.Children.Add(BuildSessionCard(kind, OverviewCardWidth, isOverview: true));
         }
         else
         {
@@ -398,10 +389,6 @@ public partial class ShellWindow
         UpdatePaneToggleStates();
         UpdateWingHostVisibility();
         ScheduleBrowserRealize(_activeBrowserTab);
-
-        // 一時診断：LOOMO_STAGE_DEBUG=1 でレイアウト確定後の実寸を %TEMP% へ書き出す
-        if (Environment.GetEnvironmentVariable("LOOMO_STAGE_DEBUG") == "1")
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(DumpStageDiagnostics));
     }
 
     private void OnToggleOverview(object sender, RoutedEventArgs e) => ToggleOverview();

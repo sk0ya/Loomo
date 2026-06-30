@@ -13,6 +13,52 @@ namespace sk0ya.Loomo.App.Views;
 /// アレンジ、ライブ縮小カード（VisualBrush）、舞台スロットの生成。モード制御は ShellWindow.Stage.cs。</summary>
 public partial class ShellWindow
 {
+    /// <summary>袖カードの幅。高さは <see cref="CardAspect"/>（固定）から導出される。</summary>
+    private const double WingCardWidth = 180;
+    /// <summary>俯瞰カードの幅。</summary>
+    private const double OverviewCardWidth = 320;
+    /// <summary>カード枠の固定縦横比（幅÷高さ）。サイドバー幅でペインの縦横比が変わっても枠は揺れない。
+    /// 中身は枠へ Uniform で歪ませず・クロップせず収める（描画元の縦横比が変わっても揺れない）。</summary>
+    private const double CardAspect = 3.0 / 2.0;
+    /// <summary>袖カードの待機時不透明度（暗がりで生きて待っている感を出す）。</summary>
+    private const double WingRestOpacity = 0.72;
+    private double _layoutWingSourceWidth;
+    private bool _layoutWingResizeQueued;
+
+    /// <summary>描画元ペインをカードと同じ固定縦横比（<see cref="CardAspect"/>）でレイアウトした非表示ホストを
+    /// 作り、StageSourceArea に登録する。ミニチュア（VisualBrush）はこのホストを縮小描画する。両モード共通。
+    /// 幅は実領域（<paramref name="virtualSize"/>）に合わせて中身の縮尺を保ち、高さだけ枠の比率へ寄せるので、
+    /// カードへ Uniform で収めても余白もはみ出しも出ず、サイドバー幅で揺れない。</summary>
+    private void ArrangeThumbnailSource(PaneKind kind, Size virtualSize)
+    {
+        var element = _paneElements[kind];
+        if (element.Parent is Panel parent)
+            parent.Children.Remove(element);
+        element.Visibility = Visibility.Visible;
+
+        var w = Math.Max(virtualSize.Width, 1);
+        var h = Math.Max(w / CardAspect, 1);
+        var host = new Grid
+        {
+            Width = w,
+            Height = h,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Clip = new RectangleGeometry(new Rect(0, 0, w, h)),
+        };
+        host.Children.Add(element);
+        StageSourceArea.Children.Add(host);
+
+        // WebView2CompositionControl は親を付け替えただけでは composition surface が
+        // 以前のタイル寸法を保持するため、新しい描画元寸法をここで確定させる。
+        var sourceSize = new Size(w, h);
+        host.Measure(sourceSize);
+        host.Arrange(new Rect(sourceSize));
+        host.UpdateLayout();
+
+        _stageThumbnailHosts[kind] = host;
+    }
+
     /// <summary>袖・俯瞰カードの描画元（実体ペイン）を舞台サイズでレイアウトする（ソロモード専用）。</summary>
     private void BuildStageThumbnailSources(Size virtualSize)
     {
@@ -20,20 +66,7 @@ public partial class ShellWindow
             ? OverviewKinds()
             : StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k));
         foreach (var kind in kinds)
-        {
-            var element = _paneElements[kind];
-            element.Visibility = Visibility.Visible;
-
-            var host = new Grid
-            {
-                Width = virtualSize.Width,
-                Height = virtualSize.Height,
-                Clip = new RectangleGeometry(new Rect(0, 0, virtualSize.Width, virtualSize.Height)),
-            };
-            host.Children.Add(element);
-            StageSourceArea.Children.Add(host);
-            _stageThumbnailHosts[kind] = host;
-        }
+            ArrangeThumbnailSource(kind, virtualSize);
     }
 
     /// <summary>袖（ミニチュア）を組み直す。両モードとも「有効だが Main に出ていない」セッションを
@@ -45,46 +78,34 @@ public partial class ShellWindow
         if (_stageActive)
         {
             foreach (var kind in StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k)))
-                WingStrip.Children.Add(BuildSessionCard(kind, WingCardWidth, _stageBuiltSize, isOverview: false));
+                WingStrip.Children.Add(BuildSessionCard(kind, WingCardWidth, isOverview: false));
         }
         else
         {
-            var virtualSize = BuildLayoutWingSources();
+            BuildLayoutWingSources();
             foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
-                WingStrip.Children.Add(BuildLayoutWingCard(kind, virtualSize, WingCardWidth));
+                WingStrip.Children.Add(BuildLayoutWingCard(kind, WingCardWidth));
         }
     }
 
     /// <summary>レイアウトモードの袖カードの描画元を組む：有効だが Main に出ていないペイン
     /// （タイル未配置・ズーム中の非ズームペイン等）を Main 領域サイズの非表示ホスト（StageSourceArea）へ
     /// 寄せてレイアウトする。これらは PaneHost に居ないため、ライブ縮小の描画元として別途アレンジが要る。</summary>
-    private Size BuildLayoutWingSources()
+    private void BuildLayoutWingSources()
     {
         StageSourceArea.Children.Clear();
         _stageThumbnailHosts.Clear();
 
-        var width = PaneHost.ActualWidth > 0 ? PaneHost.ActualWidth : StageVirtualSize().Width;
-        var height = PaneHost.ActualHeight > 0 ? PaneHost.ActualHeight : StageVirtualSize().Height;
+        // PaneHost は袖列までまたぐため、その幅を使うと Grid.Column=2 の StageSourceArea から
+        // はみ出した分がクリップされ、VisualBrush に透明な余白として現れる。
+        // 描画元を実際に置く StageSourceArea の内寸を使う。
+        var width = StageSourceArea.ActualWidth > 0 ? StageSourceArea.ActualWidth : StageVirtualSize().Width;
+        var height = StageSourceArea.ActualHeight > 0 ? StageSourceArea.ActualHeight : StageVirtualSize().Height;
         var virtualSize = new Size(Math.Max(width, 1), Math.Max(height, 1));
+        _layoutWingSourceWidth = virtualSize.Width;
 
         foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
-        {
-            var element = _paneElements[kind];
-            if (element.Parent is Panel parent)
-                parent.Children.Remove(element);
-            element.Visibility = Visibility.Visible;
-
-            var host = new Grid
-            {
-                Width = virtualSize.Width,
-                Height = virtualSize.Height,
-                Clip = new RectangleGeometry(new Rect(0, 0, virtualSize.Width, virtualSize.Height)),
-            };
-            host.Children.Add(element);
-            StageSourceArea.Children.Add(host);
-            _stageThumbnailHosts[kind] = host;
-        }
-        return virtualSize;
+            ArrangeThumbnailSource(kind, virtualSize);
     }
 
     /// <summary>レイアウトモードで袖を組み直す。実体ペインはタイルに在るので、レイアウト確定後（Loaded）に
@@ -93,9 +114,28 @@ public partial class ShellWindow
     {
         if (_stageActive)
             return;
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
             if (_stageActive)
+                return;
+            RebuildWings();
+            UpdateWingHostVisibility();
+        }));
+    }
+
+    private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_stageActive || e.NewSize.Width <= 0
+            || Math.Abs(e.NewSize.Width - _layoutWingSourceWidth) <= 1
+            || _layoutWingResizeQueued)
+            return;
+
+        _layoutWingResizeQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            _layoutWingResizeQueued = false;
+            if (_stageActive || StageSourceArea.ActualWidth <= 0
+                || Math.Abs(StageSourceArea.ActualWidth - _layoutWingSourceWidth) <= 1)
                 return;
             RebuildWings();
             UpdateWingHostVisibility();
@@ -111,42 +151,22 @@ public partial class ShellWindow
         OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>一時診断：袖カードと VisualBrush 描画元の実寸をログする。</summary>
-    private void DumpStageDiagnostics()
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"virtual={_stageBuiltSize.Width:F0}x{_stageBuiltSize.Height:F0} " +
-                      $"StageArea={StageArea.ActualWidth:F0}x{StageArea.ActualHeight:F0} " +
-                      $"StageHost={StageHost.ActualWidth:F0}x{StageHost.ActualHeight:F0} " +
-                      $"PaneHost={PaneHost.ActualWidth:F0}x{PaneHost.ActualHeight:F0}");
-        foreach (var child in WingStrip.Children)
-        {
-            if (child is not Border { Child: Grid root } card || root.Children.Count == 0
-                || root.Children[0] is not Border { Background: VisualBrush { Visual: FrameworkElement pane } })
-                continue;
-            sb.AppendLine($"card={card.ActualWidth:F0}x{card.ActualHeight:F0} " +
-                          $"pane={pane.Name}:{pane.ActualWidth:F0}x{pane.ActualHeight:F0}");
-        }
-        System.IO.File.WriteAllText(
-            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "loomo-stage-diag.txt"), sb.ToString());
-    }
-
     /// <summary>ソロ／俯瞰のカード：舞台サイズにレイアウトした非表示ホスト（StageSourceArea）を縮小描画する。
     /// クリックでそのセッションを舞台へ立てる。</summary>
-    private Border BuildSessionCard(PaneKind kind, double width, Size virtualSize, bool isOverview)
+    private Border BuildSessionCard(PaneKind kind, double width, bool isOverview)
     {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, source, virtualSize.Width, virtualSize.Height, isOverview,
+        return BuildCard(kind, width, source, isOverview,
             () => { SetStagePane(kind); FocusPane(kind); });
     }
 
     /// <summary>レイアウトモードの袖カード：Main 領域サイズへ寄せた非表示ホスト（<see cref="BuildLayoutWingSources"/>）
     /// をライブ縮小で描画する。クリックでそのペインを左上ペインと入れ替える（クリックしたセッションが左上の
     /// 位置を引き継ぎ、元の左上ペインは袖へ退場）。ズーム中は対象をズームへ昇格。</summary>
-    private Border BuildLayoutWingCard(PaneKind kind, Size virtualSize, double width)
+    private Border BuildLayoutWingCard(PaneKind kind, double width)
     {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, source, virtualSize.Width, virtualSize.Height, isOverview: false,
+        return BuildCard(kind, width, source, isOverview: false,
             () =>
             {
                 if (_zoomedPane is not null)
@@ -190,20 +210,16 @@ public partial class ShellWindow
     }
 
     /// <summary>
-    /// セッションカードの共通部分を作る。カード枠は元の縦横比で固定し、VisualBrush で <paramref name="source"/>
-    /// を描く。入りきらない部分はカードの Clip で切る。
+    /// セッションカードの共通部分を作る。カード枠は固定縦横比（<see cref="CardAspect"/>）。描画元ホストも
+    /// 同じ比率（<see cref="ArrangeThumbnailSource"/>）なので、VisualBrush の <paramref name="source"/> を
+    /// Uniform で収めると歪み・余白・クロップなく枠いっぱいに埋まる（縦横比が一致するので揺れない）。
     /// </summary>
-    private Border BuildCard(
-        PaneKind kind, double width, Visual source, double sourceWidth, double sourceHeight,
-        bool isOverview, Action onClick)
+    private Border BuildCard(PaneKind kind, double width, Visual source, bool isOverview, Action onClick)
     {
         var borderBrush = (Brush)FindResource("Border");
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && OnStage(kind);
 
-        sourceWidth = Math.Max(sourceWidth, 1);
-        sourceHeight = Math.Max(sourceHeight, 1);
-        // 枠は固定縦横比。描画元ペインの縦横比（サイドバー幅で変わる）には追従させない。
         var height = Math.Round(width / CardAspect);
 
         var card = new Border
@@ -220,33 +236,33 @@ public partial class ShellWindow
             Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6),
         };
 
-        var root = new Grid
-        {
-            Width = width,
-            Height = height,
-            ClipToBounds = true,
-        };
+        var root = new Grid { ClipToBounds = true };
 
-        var thumbnail = new Border
+        var sourceWidth = source is FrameworkElement sourceElement
+            ? double.IsFinite(sourceElement.Width) && sourceElement.Width > 0
+                ? sourceElement.Width
+                : sourceElement.ActualWidth
+            : width;
+        var sourceHeight = source is FrameworkElement sourceElement2
+            ? double.IsFinite(sourceElement2.Height) && sourceElement2.Height > 0
+                ? sourceElement2.Height
+                : sourceElement2.ActualHeight
+            : height;
+
+        root.Children.Add(new Border
         {
-            Width = width,
-            Height = height,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
             IsHitTestVisible = false,
+            // 自動 Viewbox は透明な非表示ホストの描画境界を使うため、実際のレイアウト範囲より
+            // 狭い領域を拾って余白が生じる。ホスト全体を絶対座標で指定してカードへ収める。
             Background = new VisualBrush(source)
             {
                 ViewboxUnits = BrushMappingMode.Absolute,
-                Viewbox = new Rect(0, 0, sourceWidth, sourceHeight),
-                ViewportUnits = BrushMappingMode.Absolute,
-                Viewport = new Rect(0, 0, width, height),
-                // 固定枠を歪ませず敷き詰める（余白を出さず、はみ出しはカードの Clip でクロップ）。
-                Stretch = Stretch.UniformToFill,
-                AlignmentX = AlignmentX.Center,
-                AlignmentY = AlignmentY.Center,
+                Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)),
+                Stretch = Stretch.Uniform,
+                AlignmentX = AlignmentX.Left,
+                AlignmentY = AlignmentY.Top,
             },
-        };
-        root.Children.Add(thumbnail);
+        });
 
         // 名札（下端のバー）
         root.Children.Add(new Border

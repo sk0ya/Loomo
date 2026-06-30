@@ -1071,6 +1071,7 @@
                      StageHost の表示状態に依らず常にアレンジさせたいので、StageHost の外（列2）に常設する
                      （レイアウトモードで Main に出ていない有効セッションのミニチュアを描くため）。 -->
                 <Grid x:Name="StageSourceArea" Grid.Column="2" Margin="10,8,6,10"
+                      SizeChanged="OnStageSourceAreaSizeChanged"
                       Opacity="0" IsHitTestVisible="False" Panel.ZIndex="-1" />
 
                 <!-- ソロモード：1ペインを「舞台」に全面表示する（構築は ShellWindow.Stage.cs）。
