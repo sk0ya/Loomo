@@ -411,6 +411,52 @@ public sealed class GitService
 
     public Task<GitCommandResult> RevertAsync(string hash) => MutateAsync("revert", "--no-edit", hash);
 
+    // ===== スタッシュ =====
+
+    /// <summary>現在の変更を退避する。<paramref name="includeUntracked"/> で未追跡ファイルも含める
+    /// （-u）。退避するものが無ければ git が「No local changes to save」を返す。</summary>
+    public Task<GitCommandResult> StashPushAsync(string? message, bool includeUntracked)
+    {
+        var args = new List<string> { "stash", "push" };
+        if (includeUntracked)
+            args.Add("-u");
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            args.Add("-m");
+            args.Add(message.Trim());
+        }
+        return MutateAsync(args.ToArray());
+    }
+
+    /// <summary>スタッシュ一覧（新しい＝stash@{0} が先頭）。</summary>
+    public async Task<IReadOnlyList<GitStashEntry>> GetStashesAsync()
+    {
+        // %gd=参照（stash@{n}）, %x09=タブ, %gs=説明。
+        var result = await RunAsync("stash", "list", "--format=%gd%x09%gs").ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<GitStashEntry>();
+
+        var list = new List<GitStashEntry>();
+        foreach (var line in result.Output.Split('\n'))
+        {
+            var l = line.TrimEnd('\r');
+            if (l.Length == 0) continue;
+            var tab = l.IndexOf('\t');
+            if (tab < 0)
+                list.Add(new GitStashEntry(l, ""));
+            else
+                list.Add(new GitStashEntry(l[..tab], l[(tab + 1)..]));
+        }
+        return list;
+    }
+
+    /// <summary>スタッシュを作業ツリーへ復元する（退避は残す）。</summary>
+    public Task<GitCommandResult> StashApplyAsync(string stashRef) => MutateAsync("stash", "apply", stashRef);
+    /// <summary>スタッシュを作業ツリーへ復元し、その退避を削除する。</summary>
+    public Task<GitCommandResult> StashPopAsync(string stashRef) => MutateAsync("stash", "pop", stashRef);
+    /// <summary>スタッシュを削除する（復元しない・破壊的）。</summary>
+    public Task<GitCommandResult> StashDropAsync(string stashRef) => MutateAsync("stash", "drop", stashRef);
+
     // ===== ハンク単位のステージ =====
 
     /// <summary>

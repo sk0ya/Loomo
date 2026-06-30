@@ -446,6 +446,51 @@
                               PreviewMouseLeftButtonDown="ChangeTree_PreviewMouseLeftButtonDown"
                               PreviewMouseRightButtonDown="ChangeTree_PreviewMouseRightButtonDown"
                               ContextMenu="{StaticResource WorkingTreeRowMenu}" />
+
+                    <!-- スタッシュ（退避）。見出しの「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。 -->
+                    <StackPanel Margin="0,8,0,0">
+                        <DockPanel Margin="4,2" Background="Transparent">
+                            <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                                <Button Style="{StaticResource RowActionButton}" Content="⤓"
+                                        ToolTip="現在の変更を退避（スタッシュ）"
+                                        Command="{Binding StashPushCommand}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="スタッシュ" Foreground="{DynamicResource FgDim}"
+                                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Border Style="{StaticResource CountPill}"
+                                        Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
+                                    <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="10"
+                                               Foreground="{DynamicResource Fg}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding Stashes}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Background="Transparent" ToolTip="{Binding Description}" Margin="4,1">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button Style="{StaticResource RowActionButton}" Content="↧"
+                                                    ToolTip="適用（退避は残す）"
+                                                    Command="{Binding DataContext.StashApplyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Style="{StaticResource RowActionButton}" Content="⤇"
+                                                    ToolTip="取り出し（適用して退避を削除）"
+                                                    Command="{Binding DataContext.StashPopCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Style="{StaticResource RowActionButton}" Content="×"
+                                                    ToolTip="破棄（復元しない）"
+                                                    Command="{Binding DataContext.StashDropCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" FontSize="11" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
         </DockPanel>
