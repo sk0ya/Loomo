@@ -61,6 +61,18 @@
                       CommandTarget="{Binding PlacementTarget,
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
+
+        <!-- 統合表示の本文メニュー（コピー＋選択行の破棄）。破棄は Git・作業ツリー・未ステージの追跡ファイルのみ有効 -->
+        <ContextMenu x:Key="DiffUnifiedMenu">
+            <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
+                      CommandTarget="{Binding PlacementTarget,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
+            <MenuItem Header="選択した行を破棄" Click="OnDiscardSelectedLines"
+                      ToolTip="選択した追加・削除行の変更だけを作業ツリーから取り消す"
+                      IsEnabled="{Binding PlacementTarget.DataContext.CanDiscardLines,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
     </UserControl.Resources>
 
     <DockPanel>
@@ -137,7 +149,7 @@
             <!-- 差分本体（統合 / 左右並びを IsSideBySide で切替）。中身は code-behind が FlowDocument を組み立てる -->
             <Grid Grid.Column="2">
                 <RichTextBox x:Name="UnifiedBox" Style="{StaticResource DiffTextBox}"
-                             ContextMenu="{StaticResource DiffCopyMenu}"
+                             ContextMenu="{StaticResource DiffUnifiedMenu}"
                              Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}" />
 
                 <Grid x:Name="SidePanel"
@@ -153,7 +165,11 @@
                     <RichTextBox x:Name="LeftTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
                                  ContextMenu="{StaticResource DiffCopyMenu}"
                                  VerticalScrollBarVisibility="Hidden" />
-                    <Border Grid.Column="2" Width="1" Background="{DynamicResource Border}" />
+                    <!-- 中央ゲター：変更ブロックを帯で示し、クリックでその範囲を破棄する（Rider 風） -->
+                    <Grid Grid.Column="2" Width="20" Background="{DynamicResource BgAlt}">
+                        <Border Width="1" HorizontalAlignment="Center" Background="{DynamicResource Border}" />
+                        <Canvas x:Name="CenterGutter" ClipToBounds="True" Background="Transparent" />
+                    </Grid>
                     <RichTextBox x:Name="RightGutter" Grid.Column="3" Style="{StaticResource DiffGutterBox}" />
                     <RichTextBox x:Name="RightTextBox" Grid.Column="4" Style="{StaticResource DiffTextBox}"
                                  ContextMenu="{StaticResource DiffCopyMenu}" />

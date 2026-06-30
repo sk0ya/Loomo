@@ -79,6 +79,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     [ObservableProperty] private string _emptyMessage = "";
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _statusIsError;
+    /// <summary>選択中ファイルを破棄できるか（Git の作業ツリー差分のときだけ。コミット範囲・AI変更では不可）。</summary>
+    [ObservableProperty] private bool _canDiscardSelected;
+    /// <summary>選択中ファイルで行単位の破棄ができるか（Git・作業ツリー・未ステージの追跡ファイルのときだけ）。</summary>
+    [ObservableProperty] private bool _canDiscardLines;
 
     public ObservableCollection<DiffFileItem> Files { get; } = new();
     public ObservableCollection<DiffRowVm> DiffRows { get; } = new();
@@ -133,14 +137,27 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             _commitRange = null;
             GitTargetLabel = "";
         }
+        UpdateCanDiscard();
         _ = RefreshAsync();
     }
 
     partial void OnSelectedFileChanged(DiffFileItem? value)
     {
         _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
+        UpdateCanDiscard();
         InvalidateWorkingTreePatch(value); // 開き直すたびに作業ツリーの最新内容を読み直す
         _ = LoadAndAutoJumpAsync(value);
+    }
+
+    /// <summary>「変更を破棄」「選択した行を破棄」の可否を更新する。どちらも Git の作業ツリー差分が前提。</summary>
+    private void UpdateCanDiscard()
+    {
+        var workingTree = IsGitMode && _commitRange is null;
+        CanDiscardSelected = workingTree && SelectedFile?.Entry is not null;
+        // 行単位は逆適用パッチで実装するため、追跡済み・未ステージのファイルに限る
+        // （未追跡は git のファイルヘッダが無く apply できない。ステージ済みは作業ツリーが対象外）。
+        CanDiscardLines = workingTree
+            && SelectedFile is { IsStaged: false, Entry: { IsUntracked: false } };
     }
 
     // 表示形式の切替時は同じ選択の差分を組み立て直し、最初の変更へジャンプする（一覧は変わらない）
@@ -170,6 +187,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _loaded = true;
         _commitRange = (fromHash, toHash);
         GitTargetLabel = label;
+        UpdateCanDiscard();
         if (!IsGitMode)
             IsGitMode = true;  // OnIsGitModeChanged 経由で更新が走る
         else
@@ -201,6 +219,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         if (_commitRange is null) return;
         _commitRange = null;
         GitTargetLabel = "";
+        UpdateCanDiscard();
         _ = RefreshAsync();
     }
 
@@ -400,6 +419,95 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         {
             SetStatus($"巻き戻しに失敗しました: {ex.Message}", isError: true);
         }
+    }
+
+    /// <summary>
+    /// Git 作業ツリー（Current）の変更を破棄する：追跡済みは作業ツリーを復元、未追跡は削除。破壊的。
+    /// コミット範囲・AI変更モードでは呼べない（<see cref="CanDiscardSelected"/> で抑止）。
+    /// </summary>
+    [RelayCommand]
+    private async Task DiscardAsync(DiffFileItem? item)
+    {
+        item ??= SelectedFile;
+        if (item?.Entry is not { } entry || _commitRange is not null) return;
+
+        var detail = entry.IsUntracked ? "未追跡ファイルなので削除されます。" : "作業ツリーの変更が失われます。";
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{item.DisplayPath} の変更を破棄しますか？\n{detail}",
+            "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        // 破棄が成功すると GitService が RepositoryChanged を発火し、一覧は自動で読み直される。
+        var result = await _git.DiscardAsync(entry);
+        if (result.Success)
+            SetStatus($"{item.DisplayPath} の変更を破棄しました。", isError: false);
+        else
+            SetStatus($"破棄に失敗しました: {Truncate(result.Message)}", isError: true);
+    }
+
+    private static string Truncate(string text)
+    {
+        var t = text.Trim();
+        return t.Length <= 300 ? t : t[..300] + "…";
+    }
+
+    /// <summary>
+    /// 統合表示で選択した差分行（<paramref name="selectedRowIndices"/> は <see cref="DiffRows"/> の添字）の変更だけを
+    /// 破棄する。選んだ <c>+</c>/<c>-</c> 行を縮約パッチにして <c>git apply --reverse --recount</c> で逆適用する。
+    /// </summary>
+    public async Task DiscardSelectedLinesAsync(IReadOnlySet<int> selectedRowIndices)
+    {
+        if (!CanDiscardLines || SelectedFile is not { Entry: not null } item) return;
+        if (selectedRowIndices.Count == 0) return;
+
+        // DiffRows は GetPatchTextAsync(item, 3) を改行分割したものと1対1。同じパッチから縮約する。
+        var patch = await GetPatchTextAsync(item, 3);
+        var reduced = UnifiedPatchEditor.BuildReverseDiscardPatch(patch, selectedRowIndices);
+        if (reduced.IsEmpty)
+        {
+            SetStatus("破棄する変更行が選択されていません（追加・削除行を選んでください）。", isError: false);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{item.DisplayPath} の選択した {reduced.DiscardedLineCount} 行ぶんの変更を破棄しますか？\n作業ツリーのその変更が失われます。",
+            "選択行の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        // 適用が成功すると GitService が RepositoryChanged を発火し、一覧・差分は自動で読み直される。
+        var result = await _git.ApplyReverseDiscardPatchAsync(reduced.Patch);
+        if (result.Success)
+            SetStatus($"{item.DisplayPath} の選択した {reduced.DiscardedLineCount} 行を破棄しました。", isError: false);
+        else
+            SetStatus($"選択行の破棄に失敗しました: {Truncate(result.Message)}", isError: true);
+    }
+
+    /// <summary>
+    /// 左右並び表示で、変更ブロック（範囲）の旧/新行番号を指定してその範囲の変更だけを破棄する。
+    /// <paramref name="oldLines"/> は復活させる削除行の旧行番号、<paramref name="newLines"/> は取り消す追加行の新行番号。
+    /// </summary>
+    public async Task DiscardSideLinesAsync(IReadOnlySet<int> oldLines, IReadOnlySet<int> newLines)
+    {
+        if (!CanDiscardLines || SelectedFile is not { Entry: not null } item) return;
+        if (oldLines.Count == 0 && newLines.Count == 0) return;
+
+        var patch = await GetPatchTextAsync(item, 3);
+        var reduced = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(patch, oldLines, newLines);
+        if (reduced.IsEmpty) return;
+
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{item.DisplayPath} のこの範囲（{reduced.DiscardedLineCount} 行）の変更を破棄しますか？\n作業ツリーのその変更が失われます。",
+            "範囲の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        var result = await _git.ApplyReverseDiscardPatchAsync(reduced.Patch);
+        if (result.Success)
+            SetStatus($"{item.DisplayPath} のこの範囲（{reduced.DiscardedLineCount} 行）を破棄しました。", isError: false);
+        else
+            SetStatus($"範囲の破棄に失敗しました: {Truncate(result.Message)}", isError: true);
     }
 
     /// <summary>AI変更の記録をすべて消す（ファイル自体は変更しない）。</summary>

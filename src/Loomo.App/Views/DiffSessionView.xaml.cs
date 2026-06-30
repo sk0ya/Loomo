@@ -156,6 +156,8 @@ public partial class DiffSessionView : UserControl
         RightTextBox.Document = right;
         LeftGutter.Document = leftNo;
         RightGutter.Document = rightNo;
+        RecomputeSideBlocks();
+        PositionCenterGutter();
     }
 
     private static FlowDocument NewDocument(bool wide)
@@ -223,6 +225,7 @@ public partial class DiffSessionView : UserControl
         _rightTextSv = InnerScrollViewer(RightTextBox);
         if (_leftTextSv is not null) _leftTextSv.ScrollChanged += OnSideScrollChanged;
         if (_rightTextSv is not null) _rightTextSv.ScrollChanged += OnSideScrollChanged;
+        CenterGutter.SizeChanged += (_, _) => PositionCenterGutter();
     }
 
     private static ScrollViewer? InnerScrollViewer(RichTextBox box)
@@ -233,20 +236,134 @@ public partial class DiffSessionView : UserControl
 
     private void OnSideScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (_syncing || e.VerticalChange == 0) return;
-        _syncing = true;
-        var offset = ((ScrollViewer)sender).VerticalOffset;
-        SetVerticalOffset(_leftTextSv, offset);
-        SetVerticalOffset(_rightTextSv, offset);
-        SetVerticalOffset(_leftGutterSv, offset);
-        SetVerticalOffset(_rightGutterSv, offset);
-        _syncing = false;
+        if (e.VerticalChange != 0 && !_syncing)
+        {
+            _syncing = true;
+            var offset = ((ScrollViewer)sender).VerticalOffset;
+            SetVerticalOffset(_leftTextSv, offset);
+            SetVerticalOffset(_rightTextSv, offset);
+            SetVerticalOffset(_leftGutterSv, offset);
+            SetVerticalOffset(_rightGutterSv, offset);
+            _syncing = false;
+        }
+        PositionCenterGutter(); // スクロール・サイズ変化に追従して中央ゲターを描き直す
     }
 
     private static void SetVerticalOffset(ScrollViewer? sv, double offset)
     {
         if (sv is not null && Math.Abs(sv.VerticalOffset - offset) > 0.5)
             sv.ScrollToVerticalOffset(offset);
+    }
+
+    // ===== 中央ゲター：変更ブロックの帯＋範囲破棄（Rider 風） =====
+
+    /// <summary>左右並びの変更ブロック（連続する変更行の範囲）。Start/End は SideRows の添字（両端含む）。</summary>
+    private readonly record struct SideBlock(int Start, int End, bool HasAdd, bool HasRemove);
+
+    private readonly List<SideBlock> _sideBlocks = new();
+
+    // 帯の色（差分色を薄くしたもの）。modified=アンバー / added=緑 / removed=赤。Hover で濃くする。
+    private static readonly Brush BlockModified = Frozen("#33FFB74D");
+    private static readonly Brush BlockAdded = Frozen("#3366BB6A");
+    private static readonly Brush BlockRemoved = Frozen("#33E57373");
+    private static readonly Brush BlockHover = Frozen("#80FFC107");
+
+    /// <summary>SideRows から変更ブロック（連続する非文脈行の範囲）を求めて <see cref="_sideBlocks"/> に貯める。</summary>
+    private void RecomputeSideBlocks()
+    {
+        _sideBlocks.Clear();
+        if (Vm is null) return;
+        var rows = Vm.SideRows;
+        var i = 0;
+        while (i < rows.Count)
+        {
+            if (!IsChangeRow(rows[i])) { i++; continue; }
+            var start = i;
+            var hasAdd = false;
+            var hasRemove = false;
+            while (i < rows.Count && IsChangeRow(rows[i]))
+            {
+                if (rows[i].RightKind == "Added") hasAdd = true;
+                if (rows[i].LeftKind == "Removed") hasRemove = true;
+                i++;
+            }
+            _sideBlocks.Add(new SideBlock(start, i - 1, hasAdd, hasRemove));
+        }
+    }
+
+    /// <summary>変更行か（文脈行・ヘッダ・省略マーカーは変更ブロックに含めない）。</summary>
+    private static bool IsChangeRow(DiffSideRowVm row)
+        => row.LeftKind is "Added" or "Removed" or "Empty"
+           || row.RightKind is "Added" or "Removed" or "Empty";
+
+    /// <summary>中央ゲターに、各変更ブロックの帯と「範囲を戻す」シェブロンを行に合わせて描く。</summary>
+    private void PositionCenterGutter()
+    {
+        CenterGutter.Children.Clear();
+        if (_sideBlocks.Count == 0) return;
+
+        var offset = _leftTextSv?.VerticalOffset ?? 0;
+        var viewport = CenterGutter.ActualHeight;
+        if (viewport <= 0) viewport = _leftTextSv?.ViewportHeight ?? 0;
+        var width = CenterGutter.ActualWidth > 0 ? CenterGutter.ActualWidth : 20;
+        var canDiscard = Vm?.CanDiscardLines == true;
+
+        foreach (var block in _sideBlocks)
+        {
+            var top = block.Start * LineHeight - offset;
+            var height = (block.End - block.Start + 1) * LineHeight;
+            if (top + height < 0 || top > viewport) continue; // 画面外は描かない
+
+            var band = new Border
+            {
+                Width = width,
+                Height = height,
+                Background = BandBrush(block),
+                Tag = block,
+                ToolTip = canDiscard ? "この範囲の変更を破棄（作業ツリーを元に戻す）" : null,
+                Cursor = canDiscard ? Cursors.Hand : null,
+            };
+            // 「»」で左（元）→右（作業ツリー）へ戻すことを示す。破棄できないソースでは帯だけ（情報表示）。
+            if (canDiscard)
+            {
+                band.Child = new TextBlock
+                {
+                    Text = "»",
+                    FontSize = 13,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = Brushes.White,
+                    IsHitTestVisible = false,
+                };
+                band.MouseEnter += (_, _) => band.Background = BlockHover;
+                band.MouseLeave += (_, _) => band.Background = BandBrush(block);
+                band.MouseLeftButtonUp += OnCenterBandClicked;
+            }
+            Canvas.SetLeft(band, 0);
+            Canvas.SetTop(band, top);
+            CenterGutter.Children.Add(band);
+        }
+    }
+
+    private static Brush BandBrush(SideBlock block)
+        => block is { HasAdd: true, HasRemove: true } ? BlockModified
+            : block.HasAdd ? BlockAdded
+            : BlockRemoved;
+
+    /// <summary>中央ゲターの帯クリック：そのブロックが覆う旧/新行番号を集めて範囲破棄する。</summary>
+    private async void OnCenterBandClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not Border { Tag: SideBlock block }) return;
+        var rows = vm.SideRows;
+        var oldLines = new HashSet<int>();
+        var newLines = new HashSet<int>();
+        for (var i = block.Start; i <= block.End && i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.LeftKind == "Removed" && int.TryParse(row.LeftLine, out var ol)) oldLines.Add(ol);
+            if (row.RightKind == "Added" && int.TryParse(row.RightLine, out var nl)) newLines.Add(nl);
+        }
+        await vm.DiscardSideLinesAsync(oldLines, newLines);
     }
 
     // ===== 次/前の変更へジャンプ =====
@@ -318,5 +435,44 @@ public partial class DiffSessionView : UserControl
     {
         if (Vm is { SelectedFile: { } file } vm)
             vm.OpenInEditorCommand.Execute(file);
+    }
+
+    // ===== 選択行の破棄（統合表示） =====
+
+    /// <summary>統合表示で選択している行の変更だけを破棄する。段落の並びは <see cref="DiffSessionViewModel.DiffRows"/> と1対1。</summary>
+    private async void OnDiscardSelectedLines(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var rows = SelectedUnifiedRowIndices();
+        if (rows.Count == 0) return;
+        await vm.DiscardSelectedLinesAsync(rows);
+    }
+
+    /// <summary>本文の選択範囲が覆う段落（＝差分行）の添字集合を返す。キャレットだけのときはその1行。</summary>
+    private IReadOnlySet<int> SelectedUnifiedRowIndices()
+    {
+        var set = new HashSet<int>();
+        var doc = UnifiedBox.Document;
+        var startPara = UnifiedBox.Selection.Start.Paragraph;
+        if (startPara is null) return set;
+        var endPara = UnifiedBox.Selection.End.Paragraph ?? startPara;
+
+        var startIdx = IndexOfBlock(doc, startPara);
+        var endIdx = IndexOfBlock(doc, endPara);
+        if (startIdx < 0 || endIdx < 0) return set;
+        if (endIdx < startIdx) (startIdx, endIdx) = (endIdx, startIdx);
+        for (var i = startIdx; i <= endIdx; i++) set.Add(i);
+        return set;
+    }
+
+    private static int IndexOfBlock(FlowDocument doc, Block target)
+    {
+        var i = 0;
+        foreach (var block in doc.Blocks)
+        {
+            if (ReferenceEquals(block, target)) return i;
+            i++;
+        }
+        return -1;
     }
 }

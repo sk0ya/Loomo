@@ -327,6 +327,32 @@ public sealed class GitService
         return last ?? new GitCommandResult(0, "", "");
     }
 
+    /// <summary>
+    /// 縮約パッチを作業ツリーへ逆適用して、選んだ行の変更だけを破棄する（<c>git apply --reverse --recount</c>）。
+    /// パッチは一時ファイルへ LF・UTF-8(BOMなし) で書き出して渡す。<paramref name="patch"/> は
+    /// <see cref="sk0ya.Loomo.Core.Diff.UnifiedPatchEditor.BuildReverseDiscardPatch"/> が組み立てたもの。破壊的。
+    /// </summary>
+    public async Task<GitCommandResult> ApplyReverseDiscardPatchAsync(string patch)
+    {
+        var root = RootPath;
+        if (string.IsNullOrEmpty(root))
+            return new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。");
+
+        var temp = Path.Combine(Path.GetTempPath(), $"loomo-discard-{Guid.NewGuid():N}.patch");
+        try
+        {
+            await File.WriteAllTextAsync(temp, patch.Replace("\r\n", "\n"), new UTF8Encoding(false))
+                .ConfigureAwait(false);
+            return await RunAsync("apply", "--reverse", "--recount", "--whitespace=nowarn", temp)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(temp); } catch { /* 一時ファイルの後始末は失敗しても無視 */ }
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public Task<GitCommandResult> CommitAsync(string message, bool amend = false) => amend
         ? MutateAsync("commit", "--amend", "-m", message)
         : MutateAsync("commit", "-m", message);

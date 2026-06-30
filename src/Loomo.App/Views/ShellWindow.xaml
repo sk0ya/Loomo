@@ -887,6 +887,10 @@
                             </Border>
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="エディタで開く"
                                     Command="{Binding DiffSession.OpenInEditorCommand}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="変更を破棄"
+                                    ToolTip="選択中ファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
+                                    Command="{Binding DiffSession.DiscardCommand}"
+                                    Visibility="{Binding DiffSession.CanDiscardSelected, Converter={StaticResource BoolToVis}}" />
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="元に戻す"
                                     ToolTip="選択中ファイルの AI 変更を巻き戻す（新規作成なら削除）"
                                     Command="{Binding DiffSession.RevertCommand}"
