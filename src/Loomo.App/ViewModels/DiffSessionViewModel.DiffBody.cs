@@ -30,6 +30,7 @@ public sealed partial class DiffSessionViewModel
     private async Task LoadDiffAsync(DiffFileItem? item)
     {
         var version = ++_diffLoadVersion;
+        await LoadHunksAsync(item, version);
         if (IsSideBySide)
         {
             var rows = await BuildSideRowsAsync(item);
@@ -149,6 +150,78 @@ public sealed partial class DiffSessionViewModel
         }
         AddSideRows(rows, SideBySideDiff.FromUnifiedPatch(text, hideChrome: true));
         return rows;
+    }
+
+    // ===== ハンク単位ステージ =====
+
+    /// <summary>
+    /// ハンク単位ステージ／アンステージの対象となるファイルか。作業ツリーの追跡済みファイル
+    /// （AI変更・コミット範囲・未追跡・コンフリクトは対象外。これらは部分ステージできない／意味がない）。
+    /// </summary>
+    private static bool SupportsHunkStaging(DiffFileItem? item)
+        => item is { IsAi: false, CommitFile: null, Entry: { IsUntracked: false, IsConflicted: false } };
+
+    /// <summary>選択ファイルのハンク一覧を組み立てる（対象外なら空にする）。コンテキスト3のパッチを使う。
+    /// <paramref name="version"/> は <see cref="LoadDiffAsync"/> の読込世代。await の間に新しい読込が
+    /// 始まっていたら（version 不一致）Hunks には触れず、別ファイルのハンクで上書きしないようにする。</summary>
+    private async Task LoadHunksAsync(DiffFileItem? item, int version)
+    {
+        if (item is null || _commitRange is not null || !SupportsHunkStaging(item))
+        {
+            if (version != _diffLoadVersion) return; // より新しい読込が Hunks を所有している
+            Hunks.Clear();
+            OnPropertyChanged(nameof(CanStageHunks));
+            return;
+        }
+
+        var text = await GetPatchTextAsync(item, 3);
+        if (version != _diffLoadVersion)
+            return; // より新しい読込が始まっている（Hunks は触らない）
+
+        var split = GitPatchSplitter.Split(text);
+        Hunks.Clear();
+        for (var i = 0; i < split.Hunks.Count; i++)
+            Hunks.Add(new DiffHunkVm(i, split.Hunks[i].HeaderLine,
+                SummarizeHunk(split.Hunks[i]), item.IsStaged));
+        OnPropertyChanged(nameof(CanStageHunks));
+    }
+
+    /// <summary>ハンクの簡易サマリ（@@ 行＋増減行数）。</summary>
+    private static string SummarizeHunk(GitPatchSplitter.Hunk hunk)
+    {
+        int added = 0, removed = 0;
+        foreach (var line in hunk.Text.Split('\n'))
+        {
+            if (line.StartsWith("+") && !line.StartsWith("+++")) added++;
+            else if (line.StartsWith("-") && !line.StartsWith("---")) removed++;
+        }
+        return $"{hunk.HeaderLine}   +{added} −{removed}";
+    }
+
+    /// <summary>ハンク単位でステージ／アンステージする。ステージ済みハンクは逆適用（アンステージ）になる。</summary>
+    [RelayCommand]
+    private async Task ToggleHunkAsync(DiffHunkVm? hunk)
+    {
+        if (hunk is null || SelectedFile is not { } item || !SupportsHunkStaging(item))
+            return;
+
+        // 最新のパッチを取り直してから対象ハンクを切り出す（表示後に作業ツリーが変わっていても整合させる）。
+        var text = await GetPatchTextAsync(item, 3);
+        var split = GitPatchSplitter.Split(text);
+        if (hunk.Index < 0 || hunk.Index >= split.Hunks.Count)
+        {
+            SetStatus("ハンクが変化したため適用できませんでした。差分を開き直してください。", isError: true);
+            return;
+        }
+
+        var patch = GitPatchSplitter.BuildSingleHunkPatch(split.Header, split.Hunks[hunk.Index]);
+        // ステージ済みファイルのハンク＝逆適用でアンステージ、未ステージ＝順適用でステージ。
+        var result = await _git.ApplyCachedPatchAsync(patch, reverse: item.IsStaged);
+        if (result.Success)
+            SetStatus(item.IsStaged ? "ハンクをアンステージしました。" : "ハンクをステージしました。", isError: false);
+        else
+            SetStatus($"ハンクの適用に失敗しました: {result.Message}", isError: true);
+        // RepositoryChanged が RefreshAsync を呼び、一覧・差分・ハンクが更新される。
     }
 
     private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text, "", "");

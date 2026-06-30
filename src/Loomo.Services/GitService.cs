@@ -411,6 +411,40 @@ public sealed class GitService
 
     public Task<GitCommandResult> RevertAsync(string hash) => MutateAsync("revert", "--no-edit", hash);
 
+    // ===== ハンク単位のステージ =====
+
+    /// <summary>
+    /// パッチ（最小ハンクパッチ）をインデックスへ適用する。<paramref name="reverse"/> が true なら逆適用
+    /// （ステージ済みからのアンステージ）。git は末尾改行に厳しいので LF 固定＋末尾改行を保証して渡す。
+    /// パッチは git ディレクトリ内の一時ファイル経由で渡す。
+    /// </summary>
+    public async Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse)
+    {
+        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        if (gitDir is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+
+        var patchPath = Path.Combine(gitDir, "loomo-hunk.patch");
+        try
+        {
+            var normalized = patch.Replace("\r\n", "\n");
+            if (!normalized.EndsWith('\n'))
+                normalized += "\n";
+            // BOM 無し UTF-8・LF で書く（git apply はパッチ書式に厳密）。
+            await File.WriteAllTextAsync(patchPath, normalized, new UTF8Encoding(false)).ConfigureAwait(false);
+
+            var args = new List<string> { "apply", "--cached", "--whitespace=nowarn" };
+            if (reverse)
+                args.Add("-R");
+            args.Add(patchPath);
+            return await MutateAsync(args.ToArray()).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(patchPath);
+        }
+    }
+
     public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) =>
         MutateAsync("reset", $"--{mode.ToString().ToLowerInvariant()}", hash);
 
