@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Threading;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -16,9 +17,79 @@ public partial class SearchPanelView : UserControl
     // AcceptSuggest が RootBox.Text を書き換えたときに TextChanged で候補を再表示しないためのガード。
     private bool _suppressRootSuggest;
 
-    public SearchPanelView() => InitializeComponent();
+    public SearchPanelView()
+    {
+        InitializeComponent();
+        // パネルが開いた瞬間にクエリ欄へフォーカスして即入力できるようにする（VS Code 流）。
+        IsVisibleChanged += OnIsVisibleChanged;
+    }
 
     private SearchPanelViewModel? Vm => DataContext as SearchPanelViewModel;
+
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true)
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new System.Action(() =>
+            {
+                QueryBox.Focus();
+                QueryBox.SelectAll();
+            }));
+    }
+
+    /// <summary>フォルダー節点と（一致行を持つ）ファイル見出しは、行のどこをクリックしても開閉する
+    /// （小さな矢印を狙わせない＝フォルダーを畳めば配下のファイルを一気に閉じられる）。
+    /// ファイル名検索のヒット（子を持たない）は選択＝プレビューに任せ、ここでは何もしない。</summary>
+    private void OnRowClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement fe)
+            return;
+        var canToggle = fe.DataContext switch
+        {
+            SearchFolderNode => true,
+            SearchFileGroup group => group.Count > 0,
+            _ => false,
+        };
+        if (canToggle && FindContainer(fe) is { } container)
+            container.IsExpanded = !container.IsExpanded;
+    }
+
+    private static TreeViewItem? FindContainer(DependencyObject node)
+    {
+        for (var cur = node; cur is not null; cur = System.Windows.Media.VisualTreeHelper.GetParent(cur))
+            if (cur is TreeViewItem tvi)
+                return tvi;
+        return null;
+    }
+
+    // ===== すべて展開／すべて閉じる =====
+
+    private void OnExpandAll(object sender, RoutedEventArgs e) => SetAllExpanded(true);
+    private void OnCollapseAll(object sender, RoutedEventArgs e) => SetAllExpanded(false);
+
+    /// <summary>結果ツリーの全フォルダー／ファイル節点の展開状態を一括で揃える
+    /// （IsExpanded は TreeViewItem と双方向バインドなので、未生成のコンテナにも確実に効く）。</summary>
+    private void SetAllExpanded(bool expanded)
+    {
+        if (Vm is null)
+            return;
+        foreach (var node in Vm.Results)
+            SetExpandedRecursive(node, expanded);
+    }
+
+    private static void SetExpandedRecursive(object node, bool expanded)
+    {
+        switch (node)
+        {
+            case SearchFolderNode folder:
+                folder.IsExpanded = expanded;
+                foreach (var child in folder.Children)
+                    SetExpandedRecursive(child, expanded);
+                break;
+            case SearchFileGroup group:
+                group.IsExpanded = expanded;
+                break;
+        }
+    }
 
     // ===== 検索フォルダー欄（ワークスペースルート相対・フォルダパス補完） =====
 

@@ -60,7 +60,7 @@
         <!-- テーマ対応の TreeViewItem（既定の Windows 配色を使わせない）。ホバー＝Border、選択＝Accent。
              グループは既定で展開（IsExpanded=True）。一致行は子を持たないので矢印は畳む。 -->
         <Style x:Key="SearchTreeItem" TargetType="TreeViewItem">
-            <Setter Property="IsExpanded" Value="True" />
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="4,2" />
@@ -131,7 +131,25 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="検索" />
+        <!-- 見出し＋ツールバー（すべて展開／すべて閉じる）。 -->
+        <Grid DockPanel.Dock="Top">
+            <TextBlock Style="{StaticResource PanelHeader}" Text="検索" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                        VerticalAlignment="Center" Margin="0,0,6,0">
+                <Button Width="24" Padding="0" Margin="0" Style="{StaticResource FolderBarButton}"
+                        ToolTip="すべて展開" Click="OnExpandAll">
+                    <Path Width="11" Height="11" Stretch="Uniform"
+                          Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                          Data="M1,2 L5,5.5 L9,2 M1,6 L5,9.5 L9,6" />
+                </Button>
+                <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
+                        ToolTip="すべて閉じる" Click="OnCollapseAll">
+                    <Path Width="11" Height="11" Stretch="Uniform"
+                          Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                          Data="M1,5.5 L5,2 L9,5.5 M1,9.5 L5,6 L9,9.5" />
+                </Button>
+            </StackPanel>
+        </Grid>
 
         <!-- クエリ＋オプション -->
         <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6">
@@ -268,11 +286,54 @@
                   PreviewKeyDown="OnResultKeyDown">
             <TreeView.Resources>
                 <!-- Foreground は明示せず TreeViewItem から継承させる（選択時に AccentFg へ切り替わる）。 -->
+                <!-- 件数バッジ（右端・VS Code 流のピル）。フォルダー／ファイル共通で使う。 -->
+                <DataTemplate x:Key="CountBadge">
+                    <Border Margin="6,0,2,0" Padding="5,0" MinWidth="18" Height="15"
+                            CornerRadius="7" VerticalAlignment="Center"
+                            Background="{DynamicResource Border}"
+                            Visibility="{Binding ShowCount, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding Count}" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Fg}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                </DataTemplate>
+
+                <!-- フォルダー節点：フォルダーアイコン＋名前（圧縮で a/b）＋配下の総件数。
+                     行のどこをクリックしても配下を一気に開閉する（OnRowClick）。 -->
+                <HierarchicalDataTemplate DataType="{x:Type vm:SearchFolderNode}" ItemsSource="{Binding Children}">
+                    <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
+                          MouseLeftButtonUp="OnRowClick">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0" Width="13" Height="13" Stretch="Uniform"
+                              VerticalAlignment="Center" Margin="0,0,5,0"
+                              Fill="{DynamicResource FgDim}"
+                              Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,12 L1,12 Z" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <ContentPresenter Grid.Column="2" Content="{Binding}"
+                                          ContentTemplate="{StaticResource CountBadge}" />
+                    </Grid>
+                </HierarchicalDataTemplate>
+
+                <!-- ファイル見出し：ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。 -->
                 <HierarchicalDataTemplate DataType="{x:Type vm:SearchFileGroup}" ItemsSource="{Binding Matches}">
-                    <TextBlock FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativePath}"
-                               views:SearchHighlightBehavior.Text="{Binding Header}"
-                               views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                               views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                    <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
+                          MouseLeftButtonUp="OnRowClick">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   views:SearchHighlightBehavior.Text="{Binding FileName}"
+                                   views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                        <ContentPresenter Grid.Column="1" Content="{Binding}"
+                                          ContentTemplate="{StaticResource CountBadge}" />
+                    </Grid>
                 </HierarchicalDataTemplate>
                 <DataTemplate DataType="{x:Type vm:SearchMatchItem}">
                     <StackPanel Orientation="Horizontal">

@@ -440,7 +440,8 @@ public partial class ShellWindow
         // サイドバー
         list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null),
             Sc("sidebar.explorer"), "sidebar.explorer"));
-        list.Add(new("サイドバー", "検索（全文検索 / grep）", () => _vm.ShowSearchCommand.Execute(null)));
+        list.Add(new("サイドバー", "検索（全文検索 / grep）", () => _vm.ShowSearchCommand.Execute(null),
+            Sc("sidebar.search"), "sidebar.search"));
         list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null),
             Sc("sidebar.tabs"), "sidebar.tabs"));
         list.Add(new("サイドバー", "AIセッション", () => _vm.ShowSessionsCommand.Execute(null),

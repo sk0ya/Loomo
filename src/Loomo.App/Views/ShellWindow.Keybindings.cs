@@ -58,6 +58,7 @@ public partial class ShellWindow
 
             // サイドバー（既定未割当）
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null),
+            ["sidebar.search"] = () => _vm.ShowSearchCommand.Execute(null),
             ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null),
             ["sidebar.sessions"] = () => _vm.ShowSessionsCommand.Execute(null),
             ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null),

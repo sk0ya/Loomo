@@ -53,10 +53,14 @@ public sealed class SearchMatchItem
     public int Column { get; }
     public string LineText { get; }
     public string Preview => LineText.TrimStart();
+
+    /// <summary>一致行は葉なので展開状態を持たないが、結果ツリー共通の TreeViewItem スタイルが
+    /// IsExpanded をバインドするため、束縛先として用意する（常に未展開・変化しない）。</summary>
+    public bool IsExpanded { get; set; }
 }
 
 /// <summary>1ファイル分のヒットをまとめたグループ（ファイル名見出し＋一致行）。</summary>
-public sealed class SearchFileGroup
+public sealed partial class SearchFileGroup : ObservableObject
 {
     public SearchFileGroup(string fullPath, string relativePath, IEnumerable<SearchMatchItem> matches)
     {
@@ -65,12 +69,78 @@ public sealed class SearchFileGroup
         Matches = new ObservableCollection<SearchMatchItem>(matches);
     }
 
+    /// <summary>結果ツリーでの展開状態（既定で展開）。TreeViewItem と双方向バインドし、
+    /// 「すべて展開／すべて閉じる」やクリック開閉の対象になる。</summary>
+    [ObservableProperty] private bool _isExpanded = true;
+
     public string FullPath { get; }
     public string RelativePath { get; }
     public ObservableCollection<SearchMatchItem> Matches { get; }
     public int Count => Matches.Count;
-    // ファイル名検索のヒットは一致行を持たない（Count==0）ので、件数の括弧は付けない。
-    public string Header => Count > 0 ? $"{RelativePath}  ({Count})" : RelativePath;
+
+    /// <summary>見出しに大きく出すファイル名（パスの末尾要素）。</summary>
+    public string FileName
+    {
+        get
+        {
+            var i = RelativePath.LastIndexOf('/');
+            return i >= 0 ? RelativePath[(i + 1)..] : RelativePath;
+        }
+    }
+
+    /// <summary>ファイル名の右へ淡色で添えるフォルダー（パスの先頭部分・無ければ空）。VS Code 流。</summary>
+    public string FolderPath
+    {
+        get
+        {
+            var i = RelativePath.LastIndexOf('/');
+            return i >= 0 ? RelativePath[..i] : "";
+        }
+    }
+
+    /// <summary>件数バッジ（右端）を出すか。grep/ターミナルは一致行を持つ（Count>0）、
+    /// ファイル名検索のヒットは一致行が無い（Count==0）ので出さない。</summary>
+    public bool ShowCount => Count > 0;
+}
+
+/// <summary>結果ツリーのフォルダー節点。配下にサブフォルダー（<see cref="SearchFolderNode"/>）と
+/// ファイル（<see cref="SearchFileGroup"/>）を持ち、折りたたみで配下のファイルを一気に開閉できる。
+/// VS Code のように、子が単一フォルダーだけの連鎖は「a/b/c」と1節点に圧縮して見せる。</summary>
+public sealed partial class SearchFolderNode : ObservableObject
+{
+    public SearchFolderNode(string name, string relativePath)
+    {
+        Name = name;
+        RelativePath = relativePath;
+    }
+
+    /// <summary>結果ツリーでの展開状態（既定で展開）。畳めば配下のファイルを一気に閉じられる。</summary>
+    [ObservableProperty] private bool _isExpanded = true;
+
+    /// <summary>表示名。圧縮された連鎖では「a/b」のように連結される。</summary>
+    public string Name { get; private set; }
+
+    /// <summary>ワークスペースルートからの相対パス（このフォルダーの実体）。</summary>
+    public string RelativePath { get; private set; }
+
+    public ObservableCollection<object> Children { get; } = new();
+
+    /// <summary>配下の総一致数（バッジ用）。フォルダーは再帰、ファイルはその一致数。</summary>
+    public int Count => Children.Sum(c => c switch
+    {
+        SearchFolderNode f => f.Count,
+        SearchFileGroup g => g.Count,
+        _ => 0,
+    });
+
+    public bool ShowCount => Count > 0;
+
+    /// <summary>親フォルダーへ畳むとき、自分の表示名の前へ親の名前を継ぎ足す（実体パスは深い側を保つ）。</summary>
+    internal void PrependName(string parentSegment)
+    {
+        if (!string.IsNullOrEmpty(parentSegment))
+            Name = parentSegment + "/" + Name;
+    }
 }
 
 /// <summary>
@@ -160,7 +230,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         _ => "検索ワード（ファイル内を grep）",
     };
 
-    public ObservableCollection<SearchFileGroup> Results { get; } = new();
+    /// <summary>結果ツリー。トップレベルは <see cref="SearchFolderNode"/>（フォルダー）か、
+    /// ルート直下のファイル（<see cref="SearchFileGroup"/>）。</summary>
+    public ObservableCollection<object> Results { get; } = new();
 
     public SearchPanelViewModel(IWorkspaceSearchService search, IWorkspaceService workspace)
     {
@@ -316,16 +388,15 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (ct.IsCancellationRequested)
             return;
 
-        Results.Clear();
         var groups = hits
             .GroupBy(h => h.RelativePath, StringComparer.OrdinalIgnoreCase)
             .Select(g => new SearchFileGroup(g.First().FullPath, g.Key,
-                g.Select(h => new SearchMatchItem(h))));
-        foreach (var group in groups)
-            Results.Add(group);
+                g.Select(h => new SearchMatchItem(h))))
+            .ToList();
+        SetResults(groups);
 
-        var fileCount = Results.Count;
-        var matchCount = Results.Sum(r => r.Count);
+        var fileCount = groups.Count;
+        var matchCount = groups.Sum(g => g.Count);
         StatusMessage = matchCount == 0
             ? "一致なし"
             : $"{matchCount} 件 / {fileCount} ファイル";
@@ -338,11 +409,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (ct.IsCancellationRequested)
             return;
 
-        Results.Clear();
-        foreach (var hit in hits)
-            Results.Add(new SearchFileGroup(hit.FullPath, hit.RelativePath, Array.Empty<SearchMatchItem>()));
+        var groups = hits
+            .Select(h => new SearchFileGroup(h.FullPath, h.RelativePath, Array.Empty<SearchMatchItem>()))
+            .ToList();
+        SetResults(groups);
 
-        StatusMessage = Results.Count == 0 ? "一致なし" : $"{Results.Count} ファイル";
+        StatusMessage = groups.Count == 0 ? "一致なし" : $"{groups.Count} ファイル";
     }
 
     /// <summary>アクティブなターミナル内テキストを検索し、1グループ「ターミナル」配下に一致を並べる。
@@ -367,8 +439,87 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
         const int max = 1000;
         var items = hits.Take(max).Select(SearchMatchItem.ForTerminal);
-        Results.Add(new SearchFileGroup("", "ターミナル", items));
+        // ターミナルはフォルダー階層を持たないので、ルート直下の単一グループとして並べる。
+        SetResults(new[] { new SearchFileGroup("", "ターミナル", items) });
         StatusMessage = hits.Count > max ? $"{max}+ 件" : $"{hits.Count} 件";
+    }
+
+    // ===== 結果をフォルダーツリーへ組み立てる =====
+
+    /// <summary>ファイル別ヒットをフォルダー階層のツリーへ組み直して <see cref="Results"/> に反映する。
+    /// 単一フォルダーだけの連鎖は「a/b/c」と1節点へ圧縮し、フォルダー先・名前順に並べる。</summary>
+    private void SetResults(IReadOnlyList<SearchFileGroup> groups)
+    {
+        Results.Clear();
+        var root = new SearchFolderNode("", "");
+        var cache = new Dictionary<string, SearchFolderNode>(StringComparer.OrdinalIgnoreCase) { [""] = root };
+
+        foreach (var group in groups)
+            EnsureFolder(group.FolderPath, cache, root).Children.Add(group);
+
+        for (var i = 0; i < root.Children.Count; i++)
+            if (root.Children[i] is SearchFolderNode folder)
+                root.Children[i] = CompactFolder(folder);
+
+        SortChildren(root);
+
+        foreach (var child in root.Children)
+            Results.Add(child);
+    }
+
+    /// <summary>相対フォルダーパスに対応する節点を（無ければ親ごと作りながら）返す。空＝ルート。</summary>
+    private static SearchFolderNode EnsureFolder(
+        string folderPath, Dictionary<string, SearchFolderNode> cache, SearchFolderNode root)
+    {
+        if (string.IsNullOrEmpty(folderPath))
+            return root;
+        if (cache.TryGetValue(folderPath, out var existing))
+            return existing;
+
+        var slash = folderPath.LastIndexOf('/');
+        var parentPath = slash >= 0 ? folderPath[..slash] : "";
+        var name = slash >= 0 ? folderPath[(slash + 1)..] : folderPath;
+        var parent = EnsureFolder(parentPath, cache, root);
+
+        var node = new SearchFolderNode(name, folderPath);
+        parent.Children.Add(node);
+        cache[folderPath] = node;
+        return node;
+    }
+
+    /// <summary>子フォルダーを再帰的に圧縮し、自分が「単一フォルダー」だけを子に持つならその子へ畳む。</summary>
+    private static SearchFolderNode CompactFolder(SearchFolderNode node)
+    {
+        for (var i = 0; i < node.Children.Count; i++)
+            if (node.Children[i] is SearchFolderNode child)
+                node.Children[i] = CompactFolder(child);
+
+        if (node.Children.Count == 1 && node.Children[0] is SearchFolderNode only)
+        {
+            only.PrependName(node.Name);
+            return only;
+        }
+        return node;
+    }
+
+    /// <summary>各フォルダーの子をフォルダー先・名前順（大文字小文字無視）に並べ替える。</summary>
+    private static void SortChildren(SearchFolderNode node)
+    {
+        var ordered = node.Children
+            .OrderBy(c => c is SearchFileGroup) // フォルダー(false)が先
+            .ThenBy(c => c switch
+            {
+                SearchFolderNode f => f.Name,
+                SearchFileGroup g => g.FileName,
+                _ => "",
+            }, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        node.Children.Clear();
+        foreach (var c in ordered)
+            node.Children.Add(c);
+        foreach (var f in node.Children.OfType<SearchFolderNode>())
+            SortChildren(f);
     }
 
     /// <summary>
