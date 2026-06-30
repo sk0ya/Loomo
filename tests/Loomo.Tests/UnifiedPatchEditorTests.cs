@@ -111,7 +111,7 @@ public class UnifiedPatchEditorTests
 
         Assert.Equal(2, result.DiscardedLineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
-        Assert.Single(lines.Where(l => l.StartsWith("@@")));
+        Assert.Single(lines, l => l.StartsWith("@@"));
         Assert.Contains("@@ -10,2 +10,2 @@", lines);
         Assert.DoesNotContain("-b", lines);
         Assert.DoesNotContain("+B", lines);
