@@ -173,6 +173,8 @@ public partial class ShellWindow
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
+        // 有効セッション・ステージ・タイル復元より前に IDE ペインの適用可否を確定する。
+        ApplyIdePaneApplicability(workspace.RootPath);
         LoadEnabledSessions(workspace.EnabledSessions);
         PrepareStageSnapshot(ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");

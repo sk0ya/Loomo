@@ -390,8 +390,9 @@
                                 <ToggleButton Style="{StaticResource PaneToggle}" Tag="Ai" Click="OnTogglePaneVisibility">
                                     <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Ai}" />
                                 </ToggleButton>
-                                <!-- IDE：虫（ビルド・テスト・デバッグ／DAP） -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Debug" Click="OnTogglePaneVisibility"
+                                <!-- IDE：虫（ビルド・テスト・デバッグ／DAP）。C# プロジェクトが無いワークスペースでは隠す。 -->
+                                <ToggleButton x:Name="DebugPaneToggle" Style="{StaticResource PaneToggle}" Tag="Debug"
+                                              Click="OnTogglePaneVisibility"
                                               ToolTip="IDE（ビルド・テスト・デバッグ）">
                                     <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Debug}" />
                                 </ToggleButton>

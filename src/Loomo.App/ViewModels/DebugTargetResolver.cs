@@ -12,6 +12,22 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// メッセージ出力・状態文言は <see cref="IDebugSession"/> 経由でコンソール/ヘッダへ流す。</summary>
 internal static class DebugTargetResolver
 {
+    /// <summary>ワークスペースが C#/.NET プロジェクト（.sln/.csproj）を含むか。
+    /// IDE（ビルド・テスト・デバッグ）ペインの表示要否判定に使う。root が null/空、または
+    /// ビルド対象が 1 つも無ければ false。</summary>
+    public static bool HasCSharpProject(string? root)
+    {
+        if (string.IsNullOrEmpty(root))
+            return false;
+        try
+        {
+            if (Directory.EnumerateFiles(root, "*.sln", SearchOption.TopDirectoryOnly).Any())
+                return true;
+        }
+        catch { /* 列挙失敗は csproj 探索へフォールバック */ }
+        return FindProject(root) is not null;
+    }
+
     /// <summary>ビルド/テスト対象を解決する。ワークスペース直下の .sln を優先し、無ければ最初の .csproj。</summary>
     public static string? FindBuildTarget(IWorkspaceService workspace, IDebugSession session)
     {

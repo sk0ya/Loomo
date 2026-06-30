@@ -393,6 +393,9 @@ public partial class ShellWindow
         if (built is not null && AllLeaves(built).Any())
         {
             _root = built;
+            // C# プロジェクトの無いワークスペースでは、保存レイアウトに残る IDE タイルも出さない。
+            if (!_idePaneApplicable && FindLeaf(PaneKind.Debug) is { Hidden: false } dbg)
+                dbg.Hidden = true;
             RebuildPaneLayout();
         }
         else

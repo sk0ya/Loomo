@@ -416,6 +416,7 @@ public partial class ShellWindow : Window
             else
             {
                 LoadLayouts(System.Array.Empty<SavedLayout>(), scratch: null, activeIndex: -1, dirty: false);
+                ApplyIdePaneApplicability(root: null);
                 PrepareStageSnapshot(solo: true, StageSnapshot.Default());
                 ApplyDefaultLayout();
                 BrowserAddressBox.Text = DefaultBrowserUrl;

@@ -44,6 +44,12 @@ public partial class ShellWindow
     /// 通常はタイルより広い。Main に出ている有効セッションはそのまま Main に、Main に出ていない有効セッションは
     /// 袖（ミニチュア）に出る（＝有効セッションは Main と袖のどちらかに必ず出る）。無効なセッションはどちらにも出さない。</summary>
     private readonly HashSet<PaneKind> _enabledSessions = new();
+
+    /// <summary>現在のワークスペースで IDE（デバッグ）ペインが適用対象か（C# プロジェクトを含むか）。
+    /// false のときは IDE ペインを有効セッションから外し、タイトルバーのトグルも隠す。
+    /// ワークスペース切替時に <see cref="ApplyIdePaneApplicability"/> で更新する（既定は表示）。</summary>
+    private bool _idePaneApplicable = true;
+
     /// <summary>袖の列（カード＋余白＋スクロールバー）が占める幅の見積もり。舞台幅の算出に使う。</summary>
     private const double WingColumnReserve = 210;
     // ミニチュア（袖／俯瞰カード）の寸法・見た目の定数は ShellWindow.StageCards.cs に集約。
@@ -138,6 +144,7 @@ public partial class ShellWindow
         _overviewActive = snapshot.Overview;   // 俯瞰を開いたまま離れたら俯瞰のまま戻る
         _zoomedPane = null;
         _stagePane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
+            && (requested != PaneKind.Debug || _idePaneApplicable)
             ? requested
             : PaneKind.Editor;
         PaneHost.Opacity = 0;
@@ -306,6 +313,17 @@ public partial class ShellWindow
         if (_enabledSessions.Count == 0)
             foreach (var kind in StageOrder)
                 _enabledSessions.Add(kind);
+        // C# プロジェクトの無いワークスペースでは IDE ペインを出さない（保存値・既定どちらでも）。
+        if (!_idePaneApplicable)
+            _enabledSessions.Remove(PaneKind.Debug);
+    }
+
+    /// <summary>ワークスペースのルートを見て IDE（デバッグ）ペインの適用可否を決め、トグルの表示を同期する。
+    /// ワークスペース切替時、有効セッション・レイアウト復元より前に呼ぶ（後続の復元が結果を参照する）。</summary>
+    private void ApplyIdePaneApplicability(string? root)
+    {
+        _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(root);
+        DebugPaneToggle.Visibility = _idePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>タイトルバーのトグルでセッションの有効／無効を切り替える。
