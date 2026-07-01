@@ -196,7 +196,10 @@ internal static class MarkdownPage
                 function applyBody(html) {
                     suppressScrollMessage = true;
                     document.body.innerHTML = html;
-                    lightboxEl = null;  // 差し替え前の要素は detach 済み。次のクリックで作り直す。
+                    // 差し替え前の要素は detach 済み。開いたままだと overflow ロックが残るので解除して作り直す。
+                    lightboxEl = null;
+                    lightboxImg = null;
+                    document.documentElement.style.overflow = '';
                     renderMermaid();
                     window.scrollTo(0, scrollMax() * lastRatio);
                     requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
@@ -318,26 +321,74 @@ internal static class MarkdownPage
                 });
 
                 // --- 画像クリックで拡大表示（ライトボックス）。marp スライドでは行わない。 ---
-                let lightboxEl = null;
+                // 開いている間は documentElement を overflow:hidden にして背景（プレビュー本体）の
+                // スクロールを止め、ホイールは拡大縮小、ドラッグは表示位置の移動に使う。
+                let lightboxEl = null, lightboxImg = null;
+                let lbScale = 1, lbTx = 0, lbTy = 0;
+                let lbDragging = false, lbDragStartX = 0, lbDragStartY = 0, lbStartTx = 0, lbStartTy = 0;
+
+                function applyLightboxTransform() {
+                    if (lightboxImg) lightboxImg.style.transform = 'translate(' + lbTx + 'px,' + lbTy + 'px) scale(' + lbScale + ')';
+                }
+                function resetLightboxTransform() {
+                    lbScale = 1; lbTx = 0; lbTy = 0;
+                    applyLightboxTransform();
+                }
                 function closeLightbox() {
-                    if (lightboxEl) lightboxEl.classList.remove('open');
+                    if (!lightboxEl) return;
+                    lightboxEl.classList.remove('open');
+                    document.documentElement.style.overflow = '';
+                }
+                function ensureLightbox() {
+                    if (lightboxEl) return;
+                    lightboxEl = document.createElement('div');
+                    lightboxEl.className = 'loomo-lightbox';
+                    // 背景（自分自身）のクリックだけ閉じる。画像上のクリックはドラッグ操作に使うため閉じない。
+                    lightboxEl.addEventListener('click', ev => {
+                        if (ev.target === lightboxEl) closeLightbox();
+                    });
+                    // ホイールは背景スクロールへ流さず拡大縮小に使う。
+                    lightboxEl.addEventListener('wheel', ev => {
+                        ev.preventDefault();
+                        const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
+                        lbScale = Math.min(8, Math.max(0.2, lbScale * factor));
+                        applyLightboxTransform();
+                    }, { passive: false });
+                    lightboxImg = document.createElement('img');
+                    lightboxImg.addEventListener('mousedown', ev => {
+                        ev.preventDefault();
+                        lbDragging = true;
+                        lbDragStartX = ev.clientX; lbDragStartY = ev.clientY;
+                        lbStartTx = lbTx; lbStartTy = lbTy;
+                        lightboxImg.style.cursor = 'grabbing';
+                    });
+                    lightboxImg.addEventListener('dblclick', () => resetLightboxTransform());
+                    window.addEventListener('mousemove', ev => {
+                        if (!lbDragging) return;
+                        lbTx = lbStartTx + (ev.clientX - lbDragStartX);
+                        lbTy = lbStartTy + (ev.clientY - lbDragStartY);
+                        applyLightboxTransform();
+                    });
+                    window.addEventListener('mouseup', () => {
+                        if (!lbDragging) return;
+                        lbDragging = false;
+                        if (lightboxImg) lightboxImg.style.cursor = 'grab';
+                    });
+                    lightboxEl.appendChild(lightboxImg);
+                    document.body.appendChild(lightboxEl);
                 }
                 document.addEventListener('click', e => {
                     if (isMarp) return;
                     const img = e.target.closest && e.target.closest('img');
                     if (!img || (img.closest && img.closest('a'))) return;
-                    if (!lightboxEl) {
-                        lightboxEl = document.createElement('div');
-                        lightboxEl.className = 'loomo-lightbox';
-                        lightboxEl.addEventListener('click', closeLightbox);
-                        document.body.appendChild(lightboxEl);
-                    }
-                    lightboxEl.innerHTML = '';
-                    const big = document.createElement('img');
-                    big.src = img.currentSrc || img.src;
-                    big.alt = img.alt || '';
-                    lightboxEl.appendChild(big);
+                    if (img === lightboxImg) return;  // ライトボックス内の画像自体のクリック（ドラッグ後の click 含む）は無視
+                    ensureLightbox();
+                    lightboxImg.src = img.currentSrc || img.src;
+                    lightboxImg.alt = img.alt || '';
+                    resetLightboxTransform();
+                    lightboxImg.style.cursor = 'grab';
                     lightboxEl.classList.add('open');
+                    document.documentElement.style.overflow = 'hidden';
                 });
                 window.addEventListener('keydown', e => {
                     if (e.key === 'Escape') closeLightbox();
@@ -576,16 +627,18 @@ internal static class MarkdownPage
             nav.toc a { color: {{fg}}; }
             nav.toc a:hover { color: {{link}}; }
 
-            /* 画像クリックのライトボックス（拡大表示） */
+            /* 画像クリックのライトボックス（拡大表示・ホイールで拡大縮小・ドラッグで移動） */
             .loomo-lightbox {
                 position: fixed; inset: 0; background: rgba(0,0,0,.85);
                 display: none; align-items: center; justify-content: center;
                 z-index: 1000; cursor: zoom-out; padding: 24px;
+                overflow: hidden; user-select: none; touch-action: none;
             }
             .loomo-lightbox.open { display: flex; }
             .loomo-lightbox img {
                 max-width: 100%; max-height: 100%; margin: 0;
-                border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,.6); cursor: zoom-out;
+                border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,.6);
+                cursor: grab; transform-origin: center center;
             }
 
             /* コードブロックのシンタックスハイライト（Loomo エディタと同じ字句解析器のトークン種別） */
