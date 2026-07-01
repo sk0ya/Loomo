@@ -456,6 +456,11 @@ internal static class MarkdownPage
             "dark" => "Dark",
             "light" => "Light",
             "github" => "GitHub",
+            "nord" => "Nord",
+            "tokyonight" => "TokyoNight",
+            "onedark" => "OneDark",
+            "solarizeddark" => "SolarizedDark",
+            "monokai" => "Monokai",
             _ => "Dracula",
         };
 
@@ -464,6 +469,11 @@ internal static class MarkdownPage
         "Light" => BaseCss("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#8250DF", "#953800", "#57606A", "#116329"),
         "GitHub" => BaseCss("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#24292F", "#CF222E", "#57606A", "#0550AE"),
         "Dark" => BaseCss("#1E1E1E", "#D4D4D4", "#252526", "#3C3C3C", "#4FC1FF", "#DCDCAA", "#CE9178", "#9CDCFE", "#B5CEA8"),
+        "Nord" => BaseCss("#2E3440", "#D8DEE9", "#3B4252", "#4C566A", "#88C0D0", "#81A1C1", "#D08770", "#616E88", "#A3BE8C"),
+        "TokyoNight" => BaseCss("#1A1B26", "#C0CAF5", "#24283B", "#414868", "#7AA2F7", "#BB9AF7", "#E0AF68", "#565F89", "#9ECE6A"),
+        "OneDark" => BaseCss("#282C34", "#ABB2BF", "#21252B", "#3E4451", "#61AFEF", "#C678DD", "#E5C07B", "#5C6370", "#98C379"),
+        "SolarizedDark" => BaseCss("#002B36", "#93A1A1", "#073642", "#586E75", "#268BD2", "#2AA198", "#CB4B16", "#586E75", "#859900"),
+        "Monokai" => BaseCss("#272822", "#F8F8F2", "#3E3D32", "#49483E", "#66D9EF", "#F92672", "#FD971F", "#75715E", "#A6E22E"),
         _ => BaseCss("#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"),
     };
 

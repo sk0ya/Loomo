@@ -99,10 +99,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
 
         PreviewThemes = new[]
         {
-            new PresetSwatch("Dracula", "Dracula", "#282A36", "#8BE9FD", "#F8F8F2"),
-            new PresetSwatch("Dark",    "Dark",    "#1E1E1E", "#4FC1FF", "#D4D4D4"),
-            new PresetSwatch("Light",   "Light",   "#FFFFFF", "#0969DA", "#24292F"),
-            new PresetSwatch("GitHub",  "GitHub",  "#FFFFFF", "#CF222E", "#24292F"),
+            new PresetSwatch("Dracula",      "Dracula",      "#282A36", "#8BE9FD", "#F8F8F2"),
+            new PresetSwatch("Dark",         "Dark",         "#1E1E1E", "#4FC1FF", "#D4D4D4"),
+            new PresetSwatch("Light",        "Light",        "#FFFFFF", "#0969DA", "#24292F"),
+            new PresetSwatch("GitHub",       "GitHub",       "#FFFFFF", "#CF222E", "#24292F"),
+            new PresetSwatch("Nord",         "Nord",         "#2E3440", "#88C0D0", "#D8DEE9"),
+            new PresetSwatch("TokyoNight",   "TokyoNight",   "#1A1B26", "#7AA2F7", "#C0CAF5"),
+            new PresetSwatch("OneDark",      "OneDark",      "#282C34", "#61AFEF", "#ABB2BF"),
+            new PresetSwatch("SolarizedDark","Solarized",    "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch("Monokai",      "Monokai",      "#272822", "#66D9EF", "#F8F8F2"),
         };
 
         TerminalThemes = new[]
