@@ -238,4 +238,8 @@ public sealed class AppearanceSettings
 
     /// <summary>ターミナルのフォントサイズ。0 以下ならコントロール既定。</summary>
     public double TerminalFontSize { get; set; }
+
+    /// <summary>ターミナルで OpenType のプログラミングフォント合字（<c>=&gt;</c> / <c>!=</c> / <c>-&gt;</c> 等）を
+    /// 有効にするか。既定 OFF。フォントが合字を持つ場合のみ描画に反映される。</summary>
+    public bool TerminalFontLigatures { get; set; }
 }

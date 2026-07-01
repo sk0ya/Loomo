@@ -477,6 +477,12 @@
                                 <TextBox Text="{Binding Appearance.TerminalFontSize, UpdateSourceTrigger=LostFocus}"
                                          FontFamily="Cascadia Mono, Consolas" />
 
+                                <CheckBox Margin="0,12,0,0"
+                                          IsChecked="{Binding Appearance.TerminalFontLigatures}"
+                                          ToolTip="フォントが合字を持つ場合のみ反映されます（例: Cascadia Code, Fira Code, JetBrains Mono）。">
+                                    <TextBlock Text="プログラミング合字を有効にする（=&gt; != -&gt; 等）" TextWrapping="Wrap" />
+                                </CheckBox>
+
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
                             </StackPanel>

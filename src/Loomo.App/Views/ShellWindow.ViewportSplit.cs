@@ -396,6 +396,7 @@ public partial class ShellWindow
             : ap.TerminalFontFamily;
         var size = ap.TerminalFontSize > 0 ? ap.TerminalFontSize : view.TerminalFontSize;
         view.SetFont(family, size);
+        view.SetFontLigaturesEnabled(ap.TerminalFontLigatures);
     }
 
     /// <summary>ターミナル配色プリセット名 → <see cref="TerminalColorTheme"/>（背景/文字色/16色ANSIパレット）。

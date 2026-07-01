@@ -50,6 +50,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     [ObservableProperty] private string _editorFontSize = "";
     [ObservableProperty] private string _terminalFontFamily = "";
     [ObservableProperty] private string _terminalFontSize = "";
+    [ObservableProperty] private bool _terminalFontLigatures;
 
     /// <summary>アクセント上書きを反映中の再入を防ぐフラグ（コンボ選択 ⇄ AccentColor の往復ループ回避）。</summary>
     private bool _syncingAccent;
@@ -126,6 +127,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _editorFontSize = ap.EditorFontSize > 0 ? ap.EditorFontSize.ToString("0.#") : "";
         _terminalFontFamily = ap.TerminalFontFamily ?? "";
         _terminalFontSize = ap.TerminalFontSize > 0 ? ap.TerminalFontSize.ToString("0.#") : "";
+        _terminalFontLigatures = ap.TerminalFontLigatures;
     }
 
     /// <summary>Key が保存値と一致する選択肢を返す。無ければ <paramref name="fallbackIndex"/> 番目（既定）。</summary>
@@ -228,6 +230,13 @@ public sealed partial class AppearanceViewModel : ObservableObject
         ApplyFontSize(value, v => _settings.Appearance.TerminalFontSize = v,
             () => _settings.Appearance.TerminalFontSize, () => _terminalFontSize,
             v => _terminalFontSize = v, nameof(TerminalFontSize), "ターミナルのフォントサイズを変更しました");
+
+    partial void OnTerminalFontLigaturesChanged(bool value)
+    {
+        if (_settings.Appearance.TerminalFontLigatures == value) return;
+        _settings.Appearance.TerminalFontLigatures = value;
+        PersistAppearance(value ? "ターミナルの合字を有効にしました" : "ターミナルの合字を無効にしました");
+    }
 
     /// <summary>フォントサイズ入力を検証して設定へ反映する。空なら既定(0)へ、数値なら適用、
     /// 不正値は直前値へ戻す（<see cref="OnAccentColorChanged"/> と同じ戻し方）。</summary>
