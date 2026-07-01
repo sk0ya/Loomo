@@ -59,6 +59,28 @@
             </Style.Triggers>
         </Style>
 
+        <!-- ブランチ一覧（タイトルバー／Git ペインの両ポップアップで共用）の右クリックメニュー。
+             右クリックした行（PreviewMouseRightButtonDown → OnBranchTreeRightClickSelect が選択状態にする）
+             が対象。フェッチ／プル／プッシュは選択行に関係なく現在ブランチに対して働く（PlacementTarget は
+             ContextMenu を開いた側の TreeView に動的に解決されるので、共用インスタンスのままでよい）。 -->
+        <ContextMenu x:Key="BranchTreeContextMenu">
+            <MenuItem Header="チェックアウト" Click="OnBranchMenuCheckout" />
+            <MenuItem Header="現在のブランチへマージ" Click="OnBranchMenuMerge" />
+            <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchMenuRebase" />
+            <Separator />
+            <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchMenuCreateFrom" />
+            <MenuItem Header="ブランチ名をコピー" Click="OnBranchMenuCopyName" />
+            <Separator />
+            <MenuItem Header="削除" Click="OnBranchMenuDelete" />
+            <Separator />
+            <MenuItem Header="⭮ フェッチ"
+                      Command="{Binding PlacementTarget.DataContext.GitSession.FetchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="⇣ プル"
+                      Command="{Binding PlacementTarget.DataContext.GitSession.PullCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="⇡ プッシュ"
+                      Command="{Binding PlacementTarget.DataContext.GitSession.PushCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
+
         <!-- Diff のソース切替（AI変更 / Git）のセグメントボタン -->
         <Style x:Key="SourceToggle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -308,7 +330,9 @@
                                           ItemContainerStyle="{StaticResource BranchTreeItem}"
                                           ItemTemplate="{StaticResource BranchNodeTemplate}"
                                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                          PreviewMouseLeftButtonUp="OnTitleBarBranchTreeClick" />
+                                          PreviewMouseLeftButtonUp="OnTitleBarBranchTreeClick"
+                                          PreviewMouseRightButtonDown="OnBranchTreeRightClickSelect"
+                                          ContextMenu="{StaticResource BranchTreeContextMenu}" />
                             </DockPanel>
                         </Border>
                     </Popup>
@@ -870,7 +894,9 @@
                                                   ItemContainerStyle="{StaticResource BranchTreeItem}"
                                                   ItemTemplate="{StaticResource BranchNodeTemplate}"
                                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                  PreviewMouseLeftButtonUp="OnGitPaneBranchTreeClick" />
+                                                  PreviewMouseLeftButtonUp="OnGitPaneBranchTreeClick"
+                                                  PreviewMouseRightButtonDown="OnBranchTreeRightClickSelect"
+                                                  ContextMenu="{StaticResource BranchTreeContextMenu}" />
                                     </DockPanel>
                                 </Border>
                             </Popup>

@@ -119,7 +119,17 @@
                                 <MenuItem Header="現在のブランチへマージ" Click="OnBranchMerge" />
                                 <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
                                 <Separator />
+                                <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
+                                <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
+                                <Separator />
                                 <MenuItem Header="削除" Click="OnBranchDelete" />
+                                <Separator />
+                                <MenuItem Header="⭮ フェッチ"
+                                          Command="{Binding PlacementTarget.DataContext.FetchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <MenuItem Header="⇣ プル"
+                                          Command="{Binding PlacementTarget.DataContext.PullCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <MenuItem Header="⇡ プッシュ"
+                                          Command="{Binding PlacementTarget.DataContext.PushCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                             </ContextMenu>
                         </TreeView.ContextMenu>
                     </TreeView>

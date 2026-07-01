@@ -103,6 +103,24 @@ public partial class GitSessionView : UserControl
             await vm.RebaseAsync(branch);
     }
 
+    private async void OnBranchCreateFrom(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedBranch is not { } branch)
+            return;
+        var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ",
+            $"{branch.Name} から作成するブランチ名を入力してください");
+        if (!string.IsNullOrWhiteSpace(name))
+            await vm.CreateBranchAsync(name, branch.Name);
+    }
+
+    private void OnBranchCopyName(object sender, RoutedEventArgs e)
+    {
+        if (SelectedBranch is { } branch)
+        {
+            try { Clipboard.SetText(branch.Name); } catch { /* クリップボード占有中は無視 */ }
+        }
+    }
+
     private async void OnBranchDelete(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm || SelectedBranch is not { } branch)
