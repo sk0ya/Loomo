@@ -117,6 +117,15 @@ public partial class ShellWindow
                     tab.Control.Dispose();
     }
 
+    private void OnCopyWorkspacePathMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
+            return;
+
+        try { Clipboard.SetText(entry.RootPath); }
+        catch { /* クリップボードのロック等は無視 */ }
+    }
+
     private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e)
     {
         // 右クリックされたコンボボックス項目（＝そのワークスペース）がメニューの DataContext。
