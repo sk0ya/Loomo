@@ -375,6 +375,12 @@ public partial class ShellWindow : Window
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
         };
+        // Git の状態変化（チェックアウト・pull・外部変更検出等）を受けて、開いているエディタタブと
+        // EditorSupport プレビューをディスクの最新内容へ追従させる（ブランチ切り替えでファイルが
+        // 書き換わる/消える/元に戻るケースで古い内容のまま取り残されるのを防ぐ）。UI スレッドとは
+        // 限らないイベントなので Dispatcher へ積む。
+        vm.GitSession.RepositoryChanged += (_, _) =>
+            Dispatcher.BeginInvoke(new Action(() => _ = RefreshOpenEditorTabsFromDiskAsync()));
         // Git ペインが（レイアウト復元等で）表示されたら状態を遅延読込し、見えている間だけライブ監視する。
         GitPane.IsVisibleChanged += (_, e) =>
         {

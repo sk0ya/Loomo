@@ -194,6 +194,25 @@ public partial class ShellWindow
             await UpdateEditorSupportAsync();
     }
 
+    /// <summary>
+    /// 開いている全エディタタブを、必要なら（未編集かつディスク内容が違えば）ディスクから読み直す。
+    /// <see cref="ShellWindow.xaml.cs"/> が <c>GitSession.RepositoryChanged</c>（チェックアウト・pull・
+    /// 外部変更検出等）を受けて呼ぶ。<see cref="ReloadExistingTabIfChangedAsync"/>
+    /// はユーザーがファイルツリーから同じファイルを再オープンしたときにしか働かないため、git の
+    /// ブランチ切り替え等でアクティブタブのファイルが（ユーザー操作を介さず）書き換わる／消える／
+    /// 元に戻るケースだと EditorSupport プレビューが古い内容のまま取り残される。実体化済みタブだけを
+    /// 対象にする（未実体化タブは次にアクティブ化されたとき <see cref="RestoreEditor"/> がディスクから
+    /// 読むので、ここで先回りして実体化させる必要はない）。
+    /// </summary>
+    private async Task RefreshOpenEditorTabsFromDiskAsync()
+    {
+        foreach (var tab in _editorTabs.ToArray())
+        {
+            if (tab.IsRealized)
+                await ReloadExistingTabIfChangedAsync(tab);
+        }
+    }
+
     private static string NormalizeEol(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
     /// <summary>プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。</summary>

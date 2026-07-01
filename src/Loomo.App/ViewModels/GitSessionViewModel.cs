@@ -97,6 +97,18 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
     public event EventHandler? DiffOpenRequested;
 
+    /// <summary>
+    /// リポジトリ状態が変わった可能性がある（<see cref="GitService.RepositoryChanged"/> をそのまま中継）。
+    /// ShellWindow はこれで開いているエディタタブをディスクの最新内容へ追従させる（チェックアウト等で
+    /// ファイルが書き換わる／消える／元に戻るケースの取りこぼし対策）。UI スレッドとは限らないので
+    /// 購読側でディスパッチすること。
+    /// </summary>
+    public event EventHandler? RepositoryChanged
+    {
+        add => _git.RepositoryChanged += value;
+        remove => _git.RepositoryChanged -= value;
+    }
+
     private IDisposable? _live;
 
     /// <summary>Git ペインが初めて表示されたときに読み込む（以降は RepositoryChanged で追従）。</summary>
