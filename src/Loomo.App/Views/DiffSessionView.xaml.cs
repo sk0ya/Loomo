@@ -71,6 +71,7 @@ public partial class DiffSessionView : UserControl
         {
             _hooked.ScrollToRowRequested -= ScrollToRow;
             _hooked.AutoJumpRequested -= OnAutoJumpRequested;
+            _hooked.ScrollToConflictRequested -= OnScrollToConflictRequested;
             _hooked.DiffRows.CollectionChanged -= OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged -= OnSideRowsChanged;
         }
@@ -79,11 +80,27 @@ public partial class DiffSessionView : UserControl
         {
             _hooked.ScrollToRowRequested += ScrollToRow;
             _hooked.AutoJumpRequested += OnAutoJumpRequested;
+            _hooked.ScrollToConflictRequested += OnScrollToConflictRequested;
             _hooked.DiffRows.CollectionChanged += OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged += OnSideRowsChanged;
             ScheduleRebuildUnified();
             ScheduleRebuildSide();
         }
+    }
+
+    /// <summary>コンフリクトのナビゲーション（前へ/次へ・自動フォーカス）：対象の <see cref="ConflictRegionVm"/> の
+    /// コンテナを見えるところまでスクロールする。ConflictBlocks はまとめて Add されるため、コンテナ生成が
+    /// 完了するレイアウトパス後まで待つ（AutoJump と同じ理由）。</summary>
+    private void OnScrollToConflictRequested(int regionIndex)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (Vm is null) return;
+            var region = Vm.ConflictBlocks.OfType<ConflictRegionVm>().FirstOrDefault(r => r.Index == regionIndex);
+            if (region is null) return;
+            if (ConflictItemsControl.ItemContainerGenerator.ContainerFromItem(region) is FrameworkElement fe)
+                fe.BringIntoView();
+        }), DispatcherPriority.ContextIdle);
     }
 
     private void OnDiffRowsChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScheduleRebuildUnified();
@@ -504,6 +521,14 @@ public partial class DiffSessionView : UserControl
         var blocks = box.Document.Blocks;
         if (index < 0 || index >= blocks.Count) return null;
         return blocks.ElementAt(index) as Paragraph;
+    }
+
+    /// <summary>コンフリクトの Result 欄をクリック/フォーカスしたら、そのコンフリクトを「現在地」にする
+    /// （ツールバーの Ours/両方/Theirs/適用 ボタンの対象を合わせる）。</summary>
+    private void OnConflictResultGotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ConflictRegionVm region } && Vm is not null)
+            Vm.FocusConflictRegion(region);
     }
 
     // ===== ファイル一覧 =====

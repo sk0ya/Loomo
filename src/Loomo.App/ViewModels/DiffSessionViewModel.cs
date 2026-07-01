@@ -188,7 +188,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// </summary>
     private async Task LoadAndAutoJumpAsync(DiffFileItem? item)
     {
-        await LoadDiffAsync(item);
+        await LoadSelectedContentAsync(item);
         if (item is not null)
             AutoJumpRequested?.Invoke();
     }
@@ -256,7 +256,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         {
             EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
             if (IsGitMode && _commitRange is null)
-                await LoadDiffAsync(SelectedFile);
+                await LoadSelectedContentAsync(SelectedFile);
             return;
         }
 

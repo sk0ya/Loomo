@@ -1,6 +1,7 @@
 <UserControl x:Class="sk0ya.Loomo.App.Views.DiffSessionView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
     Background="{DynamicResource Panel}" Focusable="True">
 
     <UserControl.Resources>
@@ -54,6 +55,143 @@
             <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
             <Setter Property="HorizontalScrollBarVisibility" Value="Hidden" />
         </Style>
+
+        <!-- ハンク／コンフリクト解消の小さめアクションボタン（GitSessionView の ToolbarButton と同じ意図：
+             既定の Button はテーマの DynamicResource を継承しない生の Win32 クロームになり、暗いテーマでは
+             文字が見えなくなるため、必ず FlatButton ベースの明示スタイルを当てる）。 -->
+        <Style x:Key="DiffActionButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style x:Key="DiffSecondaryButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+
+        <!-- コンフリクトの Ours→Result / Theirs→Result 取り込みボタン（«/» のみ。Rider の merge gutter と同じ最小限の見た目）。 -->
+        <Style x:Key="ConflictGutterButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+        </Style>
+
+        <!-- コンフリクトの Ours/Theirs 列（読み取り専用・複数行）。Result 列と横に並べ、Rider の3ペインに近づける。 -->
+        <Style x:Key="ConflictSideTextBox" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+        </Style>
+
+        <!-- Result 列（自由編集可）。枠と背景を分けて「ここは手で書き換えられる」ことを示す。 -->
+        <Style x:Key="ConflictResultTextBox" TargetType="TextBox" BasedOn="{StaticResource ConflictSideTextBox}">
+            <Setter Property="IsReadOnly" Value="False" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="True" />
+            <Setter Property="Background" Value="{DynamicResource Panel}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        </Style>
+
+        <!-- 通常行のまとまり（両者で共通の内容、クリック不可）。Ours/Result/Theirs の3列すべてに同じ内容を
+             流し、コンフリクト部分の5列グリッドと幅を揃える（SharedSizeGroup）ことで、3ペインが
+             ファイル全体を通してそのまま続いているように見せる（Rider の3-way merge と同じ考え方）。 -->
+        <DataTemplate DataType="{x:Type vm:ConflictOrdinaryBlockVm}">
+            <ItemsControl ItemsSource="{Binding Lines}" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictOurs" />
+                                <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterL" />
+                                <ColumnDefinition Width="*" MinWidth="160" SharedSizeGroup="ConflictResult" />
+                                <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterR" />
+                                <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
+                            </Grid.ColumnDefinitions>
+                            <DockPanel Grid.Column="0" LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
+                                           Text="{Binding LineNumber}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                           Foreground="{DynamicResource FgDim}" />
+                                <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                           Foreground="{DynamicResource Fg}" TextWrapping="NoWrap" />
+                            </DockPanel>
+                            <TextBlock Grid.Column="2" Margin="6,0,0,0" Text="{Binding Text}"
+                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                       Foreground="{DynamicResource Fg}" TextWrapping="NoWrap" />
+                            <TextBlock Grid.Column="4" Margin="6,0,0,0" Text="{Binding Text}"
+                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                       Foreground="{DynamicResource Fg}" TextWrapping="NoWrap" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </DataTemplate>
+
+        <!-- コンフリクト1件：Ours（読み取り専用）/ Result（自由編集・既定は空）/ Theirs（読み取り専用）の
+             3ペイン構成（Rider の3-way merge と同じ考え方）。« / » でその場で Ours・Theirs を Result へ
+             取り込めるほか、Result 欄へ直接書いて「適用」してもよい。ナビゲーションの現在地は枠で強調する。 -->
+        <DataTemplate DataType="{x:Type vm:ConflictRegionVm}">
+            <Border Margin="0,4" Background="#14FFC107" BorderThickness="1">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="BorderThickness" Value="2" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid Margin="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictOurs" />
+                        <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterL" />
+                        <ColumnDefinition Width="*" MinWidth="160" SharedSizeGroup="ConflictResult" />
+                        <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterR" />
+                        <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Ours（読み取り専用） -->
+                    <TextBox Grid.Column="0" Style="{StaticResource ConflictSideTextBox}"
+                             Text="{Binding OursText, Mode=OneTime}" />
+
+                    <!-- Ours → Result -->
+                    <Button Grid.Column="1" Content="»" ToolTip="Ours を採用して Result に入れる"
+                            VerticalAlignment="Top" Margin="0,6,0,0"
+                            Style="{StaticResource ConflictGutterButton}"
+                            Command="{Binding DataContext.AcceptOursCommand,
+                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}" />
+
+                    <!-- Result（自由編集）。フォーカスすると、上部ツールバーの「現在地のコンフリクトを解決」
+                         操作の対象がこのコンフリクトになる（DiffSessionView.xaml.cs 側でナビゲーション位置と同期）。 -->
+                    <TextBox Grid.Column="2" Style="{StaticResource ConflictResultTextBox}"
+                             Text="{Binding ResultText, UpdateSourceTrigger=PropertyChanged}"
+                             GotFocus="OnConflictResultGotFocus" />
+
+                    <!-- Theirs → Result -->
+                    <Button Grid.Column="3" Content="«" ToolTip="Theirs を採用して Result に入れる"
+                            VerticalAlignment="Top" Margin="0,6,0,0"
+                            Style="{StaticResource ConflictGutterButton}"
+                            Command="{Binding DataContext.AcceptTheirsCommand,
+                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}" />
+
+                    <!-- Theirs（読み取り専用） -->
+                    <TextBox Grid.Column="4" Style="{StaticResource ConflictSideTextBox}"
+                             Text="{Binding TheirsText, Mode=OneTime}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
 
         <!-- 本文 RichTextBox 共通のコンテキストメニュー（コピー） -->
         <ContextMenu x:Key="DiffCopyMenu">
@@ -169,7 +307,7 @@
                             <DataTemplate>
                                 <DockPanel Margin="0,1" ToolTip="{Binding HeaderLine}">
                                     <Button DockPanel.Dock="Right" Content="{Binding ActionLabel}"
-                                            FontSize="11" Padding="8,1" Margin="6,0,0,0" Cursor="Hand"
+                                            Style="{StaticResource DiffSecondaryButton}" Margin="6,0,0,0"
                                             Command="{Binding DataContext.ToggleHunkCommand,
                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding}" />
@@ -184,6 +322,8 @@
             </Border>
 
             <Grid>
+                <!-- 通常の差分表示（統合／左右）。コンフリクト解消表示中はまとめて隠す。 -->
+                <Grid Visibility="{Binding IsConflictMode, Converter={StaticResource InverseBoolToVis}}">
                 <RichTextBox x:Name="UnifiedBox" Style="{StaticResource DiffTextBox}"
                              ContextMenu="{StaticResource DiffUnifiedMenu}"
                              Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}" />
@@ -230,6 +370,105 @@
                                      ContextMenu="{StaticResource DiffCopyMenu}" />
                     </Grid>
                 </Grid>
+                </Grid>
+
+                <!-- コンフリクト解消表示（Rider 風3ペイン：Ours / Result / Theirs）。マーカー無し
+                     （削除/変更の衝突等）はファイル全体で ours/theirs/削除 から選ばせる。 -->
+                <DockPanel Background="{DynamicResource BgAlt}" Grid.IsSharedSizeScope="True"
+                           Visibility="{Binding IsConflictMode, Converter={StaticResource BoolToVis}}">
+                    <Border DockPanel.Dock="Top" Padding="8,6"
+                            Background="{DynamicResource Panel}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                        <StackPanel>
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,12,0"
+                                            Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
+                                    <Button Content="▲ 前へ" ToolTip="前のコンフリクトへ"
+                                            Style="{StaticResource DiffSecondaryButton}" Margin="0,0,4,0"
+                                            Command="{Binding PreviousConflictCommand}" />
+                                    <Button Content="次へ ▼" ToolTip="次のコンフリクトへ"
+                                            Style="{StaticResource DiffSecondaryButton}" Margin="0,0,8,0"
+                                            Command="{Binding NextConflictCommand}" />
+                                    <TextBlock Text="{Binding ConflictPositionText}" FontSize="11"
+                                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Button DockPanel.Dock="Left" Content="解決済みにする"
+                                        Style="{StaticResource DiffActionButton}" Margin="0,0,8,0"
+                                        Command="{Binding MarkResolvedCommand}" IsEnabled="{Binding CanMarkResolved}"
+                                        Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}" />
+                                <Button DockPanel.Dock="Left" Content="エディタで開く"
+                                        Style="{StaticResource DiffSecondaryButton}" Margin="0,0,8,0"
+                                        Command="{Binding OpenInEditorCommand}" />
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding ConflictProgressText}"
+                                           FontSize="11" Foreground="{DynamicResource FgDim}"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <!-- 現在地（前へ/次へ、またはクリックした Result 欄）のコンフリクトを解決する操作。
+                                 ボタンをコンフリクト行の中に混ぜず、ここにまとめる。 -->
+                            <DockPanel LastChildFill="False" Margin="0,6,0,0"
+                                       Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
+                                <TextBlock DockPanel.Dock="Left" Text="現在地のコンフリクトを解決：" FontSize="11"
+                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Button DockPanel.Dock="Left" Content="Ours 採用 »" ToolTip="現在地に Ours を採用する"
+                                        Style="{StaticResource DiffSecondaryButton}" Margin="0,0,4,0"
+                                        Command="{Binding AcceptCurrentOursCommand}" />
+                                <Button DockPanel.Dock="Left" Content="両方採用" ToolTip="現在地に Ours と Theirs を両方入れる"
+                                        Style="{StaticResource DiffSecondaryButton}" Margin="0,0,4,0"
+                                        Command="{Binding AcceptCurrentBothCommand}" />
+                                <Button DockPanel.Dock="Left" Content="« Theirs 採用" ToolTip="現在地に Theirs を採用する"
+                                        Style="{StaticResource DiffSecondaryButton}" Margin="0,0,8,0"
+                                        Command="{Binding AcceptCurrentTheirsCommand}" />
+                                <Button DockPanel.Dock="Left" Content="Result を適用" ToolTip="Result 欄の内容で現在地のコンフリクトを解決する"
+                                        Style="{StaticResource DiffActionButton}"
+                                        Command="{Binding ApplyCurrentResultCommand}" />
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- マーカー無し（削除/変更の衝突・リネーム等）：ファイル全体から選ぶ -->
+                    <StackPanel DockPanel.Dock="Top" Margin="12,10"
+                                Visibility="{Binding IsWholeFileConflict, Converter={StaticResource BoolToVis}}">
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" Margin="0,0,0,10"
+                                   Text="このファイルはマーカーの無い衝突です（削除/変更の衝突・リネーム等）。ours/theirs のどちらかを採用するか、削除して解決してください。" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Ours を採用" Style="{StaticResource DiffActionButton}" Margin="0,0,8,0"
+                                    Command="{Binding AcceptWholeFileOursCommand}" />
+                            <Button Content="Theirs を採用" Style="{StaticResource DiffActionButton}" Margin="0,0,8,0"
+                                    Command="{Binding AcceptWholeFileTheirsCommand}" />
+                            <Button Content="削除して解決" Style="{StaticResource DiffSecondaryButton}"
+                                    Command="{Binding DeleteFileConflictCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Ours/Result/Theirs 列見出し：1ファイル内の全コンフリクトで共通なので、ここで1回だけ出す
+                         （各コンフリクトの中では繰り返さない）。下のコンフリクト行の5列グリッドと幅を揃える
+                         （SharedSizeGroup、親 DockPanel の Grid.IsSharedSizeScope で連動）。 -->
+                    <Grid DockPanel.Dock="Top" Margin="4,4,4,0"
+                          Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictOurs" />
+                            <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterL" />
+                            <ColumnDefinition Width="*" MinWidth="160" SharedSizeGroup="ConflictResult" />
+                            <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterR" />
+                            <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding ConflictOursHeader}" FontSize="11"
+                                   FontWeight="SemiBold" Foreground="#FF81C784" Margin="6,0,0,4" />
+                        <TextBlock Grid.Column="2" Text="Result（マージ結果・編集可）" FontSize="11"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource Accent}" Margin="6,0,0,4" />
+                        <TextBlock Grid.Column="4" Text="{Binding ConflictTheirsHeader}" FontSize="11"
+                                   FontWeight="SemiBold" Foreground="#FFE57373" Margin="6,0,0,4" />
+                    </Grid>
+
+                    <!-- マーカー方式：ファイル全体を通常行とコンフリクトが実際に現れる順のまま1本の流れで表示する
+                         （読んでいる場所でそのままコンフリクトを解決できる。別ペインへ視線を移す必要はない）。 -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
+                        <ItemsControl x:Name="ConflictItemsControl" ItemsSource="{Binding ConflictBlocks}"
+                                      Margin="4,6" Focusable="False" />
+                    </ScrollViewer>
+                </DockPanel>
             </Grid>
             </DockPanel>
         </Grid>
