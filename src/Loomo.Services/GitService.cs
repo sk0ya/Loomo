@@ -191,6 +191,18 @@ public sealed class GitService
     }
 
     /// <summary>
+    /// サブモジュール一覧（<c>git submodule status</c>）。<c>.gitmodules</c> が無い／サブモジュールが
+    /// 無いリポジトリでは空リストを返す（エラーではない）。
+    /// </summary>
+    public async Task<IReadOnlyList<GitSubmoduleInfo>> GetSubmodulesAsync()
+    {
+        var result = await RunAsync("submodule", "status").ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<GitSubmoduleInfo>();
+        return GitSubmoduleParser.Parse(result.Output);
+    }
+
+    /// <summary>
     /// コミットグラフを取得する。<paramref name="branchRef"/> 指定時はそのブランチ（ref）のみ、
     /// null/空のときは全ブランチ込み（--all）。空リポジトリは空リスト。
     /// </summary>
@@ -468,6 +480,38 @@ public sealed class GitService
     public Task<GitCommandResult> DeleteTagAsync(string name) => MutateAsync("tag", "-d", name);
     public Task<GitCommandResult> PushTagAsync(string name) => MutateAsync("push", "origin", name);
     public Task<GitCommandResult> PushAllTagsAsync() => MutateAsync("push", "--tags");
+
+    // ===== サブモジュール =====
+
+    /// <summary>サブモジュールを初期化する（<c>git submodule init</c>）。<paramref name="path"/> 省略時は全件。</summary>
+    public Task<GitCommandResult> SubmoduleInitAsync(string? path = null) => string.IsNullOrEmpty(path)
+        ? MutateAsync("submodule", "init")
+        : MutateAsync("submodule", "init", "--", path);
+
+    /// <summary>
+    /// サブモジュールを取得・更新する。既定は <c>git submodule update --init --recursive</c>
+    /// （未初期化のものも一緒に初期化し、ネストしたサブモジュールも辿る）。
+    /// <paramref name="path"/> 省略時は全サブモジュールが対象。
+    /// </summary>
+    public Task<GitCommandResult> SubmoduleUpdateAsync(string? path = null, bool init = true, bool recursive = true)
+    {
+        var args = new List<string> { "submodule", "update" };
+        if (init) args.Add("--init");
+        if (recursive) args.Add("--recursive");
+        if (!string.IsNullOrEmpty(path))
+        {
+            args.Add("--");
+            args.Add(path);
+        }
+        return MutateAsync(args.ToArray());
+    }
+
+    /// <summary>
+    /// サブモジュールの登録 URL の変更を作業ツリーの <c>.git/config</c> へ反映する
+    /// （<c>git submodule sync --recursive</c>）。URL 変更後に <see cref="SubmoduleUpdateAsync"/> と
+    /// セットで使う。
+    /// </summary>
+    public Task<GitCommandResult> SubmoduleSyncAsync() => MutateAsync("submodule", "sync", "--recursive");
 
     /// <summary>
     /// ブランチをマージする。<paramref name="strategy"/> で戦略を切り替える

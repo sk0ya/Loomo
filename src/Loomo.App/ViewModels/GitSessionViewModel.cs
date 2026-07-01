@@ -49,6 +49,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>タグ一覧（作成日の新しい順、フラット表示）。</summary>
     [ObservableProperty] private IReadOnlyList<GitTagInfo> _tags = Array.Empty<GitTagInfo>();
 
+    /// <summary>サブモジュール一覧（0件ならビュー側でセクションごと隠す）。</summary>
+    [ObservableProperty] private IReadOnlyList<GitSubmoduleInfo> _submodules = Array.Empty<GitSubmoduleInfo>();
+
     /// <summary>
     /// コミットグラフに表示するブランチ（ref）。null は全ブランチ（--all）。
     /// ブランチ一覧のダブルクリックで切り替わり、ヘッダーのチェックアウト（作業ブランチの変更）とは独立。
@@ -151,6 +154,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             BranchLabel = "";
             BranchTree = Array.Empty<BranchTreeNode>();
             Tags = Array.Empty<GitTagInfo>();
+            Submodules = Array.Empty<GitSubmoduleInfo>();
             LogRows.Clear();
             CommitDetail = "";
             OperationInProgress = false;
@@ -176,6 +180,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         var branches = await _git.GetBranchesAsync();
         BranchTree = BranchTreeBuilder.Update(BranchTree, branches);
         Tags = await _git.GetTagsAsync();
+        Submodules = await _git.GetSubmodulesAsync();
 
         await ReloadLogAsync();
     }
@@ -294,6 +299,17 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     public Task<GitCommandResult?> CheckoutTagAsync(GitTagInfo tag) =>
         RunOpAsync($"チェックアウト {tag.Name}", () => _git.CheckoutCommitAsync(tag.Name));
+
+    // ===== サブモジュール操作（対象はビューから引数で渡す） =====
+
+    public Task<GitCommandResult?> InitSubmoduleAsync(GitSubmoduleInfo submodule) =>
+        RunOpAsync($"サブモジュール初期化 {submodule.Path}", () => _git.SubmoduleInitAsync(submodule.Path));
+
+    public Task<GitCommandResult?> UpdateSubmoduleAsync(GitSubmoduleInfo submodule) =>
+        RunOpAsync($"サブモジュール更新 {submodule.Path}", () => _git.SubmoduleUpdateAsync(submodule.Path));
+
+    public Task<GitCommandResult?> SyncSubmodulesAsync() =>
+        RunOpAsync("サブモジュール同期", () => _git.SubmoduleSyncAsync());
 
     // ===== コミット操作 =====
 

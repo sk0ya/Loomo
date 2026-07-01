@@ -83,6 +83,34 @@ public sealed record GitBranchInfo(string Name, bool IsCurrent, bool IsRemote, s
 public sealed record GitTagInfo(string Name, string TargetShortHash, string? Subject, bool IsAnnotated, string? Date);
 
 /// <summary>
+/// サブモジュール1件（<c>git submodule status</c> の1行）。先頭1文字の状態フラグを
+/// <see cref="IsUninitialized"/>／<see cref="HasDivergedCommit"/>／<see cref="HasMergeConflict"/> に分解する。
+/// </summary>
+/// <param name="Path">リポジトリルートからの相対パス。</param>
+/// <param name="Hash">登録されているコミットのフルハッシュ。</param>
+/// <param name="Describe">括弧内の説明（例: <c>heads/main</c>）。取得できなければ null。</param>
+/// <param name="IsUninitialized">未初期化（先頭が '-'。<c>submodule init</c>/<c>update</c> 未実行）か。</param>
+/// <param name="HasDivergedCommit">チェックアウト済みコミットが親リポジトリの登録コミットと異なる（先頭が '+'）か。</param>
+/// <param name="HasMergeConflict">マージ未解決（先頭が 'U'）か。</param>
+public sealed record GitSubmoduleInfo(
+    string Path,
+    string Hash,
+    string? Describe,
+    bool IsUninitialized,
+    bool HasDivergedCommit,
+    bool HasMergeConflict)
+{
+    /// <summary>短縮ハッシュ（表示用）。</summary>
+    public string ShortHash => Hash.Length > 7 ? Hash[..7] : Hash;
+
+    /// <summary>UI 表示用の状態ラベル。正常（変更なし）なら null。</summary>
+    public string? StatusLabel => IsUninitialized ? "未初期化"
+        : HasMergeConflict ? "コンフリクト"
+        : HasDivergedCommit ? "差分あり"
+        : null;
+}
+
+/// <summary>
 /// git log --graph の1行。コミット行はメタ情報を持ち、枝の継続だけの行（"| /" 等）は
 /// <see cref="Hash"/> が null になる。
 /// </summary>

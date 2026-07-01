@@ -232,6 +232,36 @@ public partial class GitSessionView : UserControl
         await vm.CreateTagAsync(name, target, string.IsNullOrWhiteSpace(message) ? null : message);
     }
 
+    // ===== サブモジュール操作 =====
+
+    private GitSubmoduleInfo? SelectedSubmodule => SubmoduleList.SelectedItem as GitSubmoduleInfo;
+
+    private async void OnSubmoduleInit(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedSubmodule is { } submodule)
+            await vm.InitSubmoduleAsync(submodule);
+    }
+
+    private async void OnSubmoduleUpdate(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedSubmodule is { } submodule)
+            await vm.UpdateSubmoduleAsync(submodule);
+    }
+
+    private async void OnSubmodulesSync(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+            await vm.SyncSubmodulesAsync();
+    }
+
+    private void OnSubmoduleCopyPath(object sender, RoutedEventArgs e)
+    {
+        if (SelectedSubmodule is { } submodule)
+        {
+            try { Clipboard.SetText(submodule.Path); } catch { /* クリップボード占有中は無視 */ }
+        }
+    }
+
     // ===== コミット操作 =====
 
     private GitLogRow? SelectedCommit =>

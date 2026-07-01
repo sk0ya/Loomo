@@ -150,39 +150,81 @@
                     <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- タグ一覧 -->
-                    <DockPanel Grid.Row="2">
-                        <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
-                            <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
-                                    Content="＋ タグを作成…" Click="OnTagCreate" />
-                            <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
-                                    Content="すべてプッシュ" Click="OnTagsPushAll" />
+                    <!-- タグ一覧＋サブモジュール一覧 -->
+                    <Grid Grid.Row="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" MinHeight="40" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <DockPanel Grid.Row="0">
+                            <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
+                                <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
+                                        Content="＋ タグを作成…" Click="OnTagCreate" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
+                                        Content="すべてプッシュ" Click="OnTagsPushAll" />
+                            </DockPanel>
+                            <ListBox x:Name="TagList" Style="{StaticResource GitList}"
+                                     ItemsSource="{Binding Tags}"
+                                     MouseDoubleClick="OnTagDoubleClick"
+                                     PreviewMouseRightButtonDown="OnListRightClickSelect">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="チェックアウト（detached）" Click="OnTagCheckout" />
+                                        <MenuItem Header="プッシュ" Click="OnTagPush" />
+                                        <MenuItem Header="タグ名をコピー" Click="OnTagCopyName" />
+                                        <Separator />
+                                        <MenuItem Header="削除" Click="OnTagDelete" />
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True" ToolTip="{Binding Subject}">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding TargetShortHash}" FontSize="11"
+                                                       Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                                       FontFamily="Cascadia Mono, Consolas" />
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
-                        <ListBox x:Name="TagList" Style="{StaticResource GitList}"
-                                 ItemsSource="{Binding Tags}"
-                                 MouseDoubleClick="OnTagDoubleClick"
-                                 PreviewMouseRightButtonDown="OnListRightClickSelect">
-                            <ListBox.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="チェックアウト（detached）" Click="OnTagCheckout" />
-                                    <MenuItem Header="プッシュ" Click="OnTagPush" />
-                                    <MenuItem Header="タグ名をコピー" Click="OnTagCopyName" />
-                                    <Separator />
-                                    <MenuItem Header="削除" Click="OnTagDelete" />
-                                </ContextMenu>
-                            </ListBox.ContextMenu>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel LastChildFill="True" ToolTip="{Binding Subject}">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding TargetShortHash}" FontSize="11"
-                                                   Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
-                                                   FontFamily="Cascadia Mono, Consolas" />
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </DockPanel>
+
+                        <!-- サブモジュール一覧（サブモジュールが無いワークスペースではセクションごと隠す） -->
+                        <DockPanel Grid.Row="1" Margin="0,6,0,0"
+                                   Visibility="{Binding Submodules.Count, Converter={StaticResource CountToVis}}">
+                            <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
+                                <TextBlock DockPanel.Dock="Left" Text="サブモジュール" VerticalAlignment="Center"
+                                           FontSize="11" Foreground="{DynamicResource FgDim}" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
+                                        Content="同期" Click="OnSubmodulesSync" />
+                            </DockPanel>
+                            <ListBox x:Name="SubmoduleList" Style="{StaticResource GitList}"
+                                     ItemsSource="{Binding Submodules}" MaxHeight="160"
+                                     PreviewMouseRightButtonDown="OnListRightClickSelect">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="初期化" Click="OnSubmoduleInit" />
+                                        <MenuItem Header="更新" Click="OnSubmoduleUpdate" />
+                                        <Separator />
+                                        <MenuItem Header="パスをコピー" Click="OnSubmoduleCopyPath" />
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True" ToolTip="{Binding Describe}">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding StatusLabel}" FontSize="11"
+                                                       Foreground="#FFE5A23B" Margin="8,0,0,0" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ShortHash}" FontSize="11"
+                                                       Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                                       FontFamily="Cascadia Mono, Consolas" />
+                                            <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Grid>
                 </Grid>
 
                 <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
