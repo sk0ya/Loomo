@@ -244,6 +244,28 @@ public partial class ShellWindow : Window
         SidebarSplitter.MouseEnter += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Accent");
         SidebarSplitter.MouseLeave += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Border");
         SidebarSplitter.MouseDoubleClick += (_, _) => SidebarColumn.Width = new GridLength(220);
+        // ドラッグ中は袖（ミニチュア）の組み直しを止める（RebuildWings の強制 UpdateLayout が
+        // GridSplitter のドラッグ中キャプチャを奪い、ドラッグが何度も分断されて離した瞬間の幅が
+        // 実質ランダムになる＝「リサイズしても元に戻る」不具合の実体だった）。
+        SidebarSplitter.DragStarted += (_, _) => _paneSplitterDragging = true;
+        SidebarSplitter.DragCompleted += (_, _) =>
+        {
+            _paneSplitterDragging = false;
+            PaneLayoutDebugLog.Log($"SidebarSplitter DragCompleted -> SidebarColumn.Width={SidebarColumn.Width}");
+            ScheduleLayoutWings();
+        };
+
+        // 診断用：誰が（どの経路で）SidebarColumn / WingColumn の幅を書き換えているかを追跡する
+        // （LOOMO_PANE_DEBUG=1 のときだけ %APPDATA%/Loomo/panelayout-debug.log へ記録）。
+        if (PaneLayoutDebugLog.Enabled)
+        {
+            DependencyPropertyDescriptor.FromProperty(ColumnDefinition.WidthProperty, typeof(ColumnDefinition))
+                ?.AddValueChanged(SidebarColumn, (_, _) =>
+                    PaneLayoutDebugLog.Log($"SidebarColumn.Width -> {SidebarColumn.Width}", withCaller: true));
+            DependencyPropertyDescriptor.FromProperty(ColumnDefinition.WidthProperty, typeof(ColumnDefinition))
+                ?.AddValueChanged(WingColumn, (_, _) =>
+                    PaneLayoutDebugLog.Log($"WingColumn.Width -> {WingColumn.Width}", withCaller: true));
+        }
 
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;

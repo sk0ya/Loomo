@@ -75,6 +75,7 @@ public partial class ShellWindow
     /// ソロは舞台外の有効セッション、レイアウトはタイル未配置やズーム中の非ズームペインが対象。</summary>
     private void RebuildWings()
     {
+        PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
         // レイアウトモードの初回は、描画元の実寸が確定するまで何も作らない。
         // フォールバック寸法で仮構築して SizeChanged 後に作り直す二段描画を避ける。
         if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0))
@@ -123,10 +124,19 @@ public partial class ShellWindow
     {
         if (_stageActive)
             return;
+        // ドラッグ中は組み直さない：RebuildWings の強制 UpdateLayout がドラッグ中の GridSplitter の
+        // マウスキャプチャを奪い、ドラッグが分断されて離した瞬間の幅が実質ランダムになってしまう
+        // （DragCompleted 側で改めて ScheduleLayoutWings を呼ぶので、ここで取りこぼしても後で追いつく）。
+        if (_paneSplitterDragging)
+        {
+            PaneLayoutDebugLog.Log("ScheduleLayoutWings skipped: splitter drag in progress");
+            return;
+        }
 
         // Auto 列を空のまま測ってからカード追加で広げると、Main が縮んで二度目の
         // SizeChanged が発生する。描画前に袖の最終幅を予約してレイアウトを一度で確定する。
         var hasWings = StageOrder.Any(k => IsSessionEnabled(k) && !IsShownInMain(k));
+        PaneLayoutDebugLog.Log($"ScheduleLayoutWings hasWings={hasWings} prevWingColumnWidth={WingColumn.Width}", withCaller: true);
         WingColumn.Width = hasWings ? new GridLength(WingColumnReserve) : GridLength.Auto;
         WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
         if (!hasWings)
@@ -151,6 +161,7 @@ public partial class ShellWindow
             if (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)
                 return;
             _layoutWingBuildPending = false;
+            PaneLayoutDebugLog.Log("ScheduleLayoutWings deferred callback -> RebuildWings()");
             RebuildWings();
             UpdateWingHostVisibility();
         }));
@@ -161,6 +172,7 @@ public partial class ShellWindow
         if (_stageActive || e.NewSize.Width <= 0
             || Math.Abs(e.NewSize.Width - _layoutWingSourceWidth) <= 1)
             return;
+        PaneLayoutDebugLog.Log($"OnStageSourceAreaSizeChanged {_layoutWingSourceWidth:0.#} -> {e.NewSize.Width:0.#}");
         ScheduleLayoutWings();
     }
 

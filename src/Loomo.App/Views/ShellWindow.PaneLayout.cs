@@ -30,6 +30,11 @@ public partial class ShellWindow
 {
     // ===== ペインレイアウト（2D並べ替え・リサイズ・表示切替） =====
 
+    /// <summary>いずれかのペイン／サイドバーの GridSplitter をドラッグ中か。ドラッグ中は袖（ミニチュア）の
+    /// 組み直し（RebuildWings の強制 UpdateLayout）を止める — さもないと GridSplitter のドラッグ中
+    /// マウスキャプチャが奪われ、ドラッグが分断されて離した瞬間の幅が実質ランダムになる。</summary>
+    private bool _paneSplitterDragging;
+
 
     private void InitializePanes()
     {
@@ -102,6 +107,8 @@ public partial class ShellWindow
     /// </summary>
     private void RebuildPaneLayout()
     {
+        PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);
+
         // ステージモード中はタイルを組まずステージ側を組み直す（SetPaneVisible 等の
         // 既存フローがそのまま流れてきても表示が壊れないように）。ツリーへの変更は
         // 反映済みなので、ステージ解除時の再構築で通常レイアウトにも現れる。
@@ -110,6 +117,11 @@ public partial class ShellWindow
             RebuildStage();
             return;
         }
+
+        // 壊す前に現在の実寸を Weight へ取り込む（ドラッグ直後の DragCompleted 側の捕捉に
+        // 加えて、袖／ミニチュアの組み直しなど他経路からの RebuildPaneLayout 呼び出しでも
+        // 古い Weight で再構築されてリサイズが消えないようにする最終防波堤）。
+        CaptureLayoutSizes();
 
         // すべてのペインを現在の親から外してからホストを作り直す
         foreach (var element in _paneElements.Values)
@@ -253,7 +265,20 @@ public partial class ShellWindow
         // ホバーでアクセント色に光らせ、「ここを掴める」ことを明示する。
         splitter.MouseEnter += (_, _) => splitter.Background = accent;
         splitter.MouseLeave += (_, _) => splitter.Background = border;
-        splitter.DragCompleted += (_, _) => { MarkLayoutDirty(); SaveActiveWorkspaceSnapshot(); };
+        // ドラッグ直後に Weight へ取り込んでおく（SaveActiveWorkspaceSnapshot の実際の捕捉は
+        // ApplicationIdle まで遅延するため、それより前に他要因で RebuildPaneLayout が走ると
+        // 古い Weight でグリッドが再構築され、リサイズが直後に元へ戻って見える）。
+        splitter.DragStarted += (_, _) => _paneSplitterDragging = true;
+        splitter.DragCompleted += (_, _) =>
+        {
+            _paneSplitterDragging = false;
+            PaneLayoutDebugLog.Log($"tile splitter DragCompleted cols={cols} splitWeights=[{string.Join(",", split.Children.Select(c => c.Weight.ToString("0.#")))}]");
+            CaptureLayoutSizes();
+            PaneLayoutDebugLog.Log($"  after CaptureLayoutSizes splitWeights=[{string.Join(",", split.Children.Select(c => c.Weight.ToString("0.#")))}]");
+            MarkLayoutDirty();
+            SaveActiveWorkspaceSnapshot();
+            ScheduleLayoutWings();
+        };
         splitter.MouseDoubleClick += (_, e) => { EqualizeSiblings(split); e.Handled = true; };
         return splitter;
     }
@@ -355,6 +380,7 @@ public partial class ShellWindow
                 var index = child.TrackIndex;
                 if (index < 0)
                     continue;
+                var oldWeight = child.Weight;
                 if (cols)
                 {
                     if (index < grid.ColumnDefinitions.Count)
@@ -374,6 +400,11 @@ public partial class ShellWindow
                             ? definition.ActualHeight
                             : PositiveGridLengthValue(definition.Height, child.Weight);
                     }
+                }
+                if (PaneLayoutDebugLog.Enabled && Math.Abs(oldWeight - child.Weight) > 0.5)
+                {
+                    var label = child is PaneLeaf leaf ? leaf.Kind.ToString() : "split";
+                    PaneLayoutDebugLog.Log($"    CaptureNode: {label}[{index}] weight {oldWeight:0.#} -> {child.Weight:0.#}");
                 }
             }
         }
