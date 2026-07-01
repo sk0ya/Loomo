@@ -328,10 +328,18 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
         if (bitmap is null || string.IsNullOrEmpty(_filePath))
             return;
 
+        // ビットマップは読み込み時にメモリへ複製済み（CacheOption.OnLoad）なので、以降に元ファイルが
+        // git のブランチ切り替え等で消えても表示自体は保てる。ただしファイルサイズはその場で
+        // 都度読み直すため、消えていれば FileNotFoundException 等を投げうる。ここはズーム変更のたびに
+        // 呼ばれる（リサイズ含む）ので、失敗してもキャプションからサイズを落とすだけで落とさない。
+        long? size;
+        try { size = new FileInfo(_filePath).Length; }
+        catch { size = null; }
+
         SetCaption(
             $"{Path.GetFileName(_filePath)}  " +
             $"{bitmap.PixelWidth} x {bitmap.PixelHeight}px  " +
-            $"{FormatBytes(new FileInfo(_filePath).Length)}  " +
+            (size is { } s ? $"{FormatBytes(s)}  " : "") +
             $"{Math.Round(_zoom!.Zoom * 100):0}%");
     }
 
