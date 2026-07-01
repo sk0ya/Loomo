@@ -201,5 +201,15 @@ public sealed partial class FolderTreeViewModel
                 new WorkflowRunRequest(workflowId, WorkflowRunInput.FromFile(node.FullPath, relativePath)));
         }
     }
+
+    /// <summary>指定ファイルの Git Blame（行単位の変更履歴）を要求する（ShellWindow が Diff ペインで開く）。
+    /// 実在ファイルで、かつワークスペースルート配下にあるときだけ発火する（blame にはリポジトリ相対パスが必要）。</summary>
+    public void RequestGitBlame(FileNodeViewModel node)
+    {
+        if (node.IsDirectory || !File.Exists(node.FullPath) || _workspace.RootPath is null)
+            return;
+        var relativePath = Path.GetRelativePath(_workspace.RootPath, node.FullPath).Replace('\\', '/');
+        GitBlameRequested?.Invoke(this, relativePath);
+    }
 }
 

@@ -127,3 +127,22 @@ public sealed record RebasePlanEntry(string Hash, string ShortHash, string Subje
 {
     public RebasePlanEntry WithAction(RebaseAction action) => this with { Action = action };
 }
+
+/// <summary>
+/// git blame の1行（<c>git blame --line-porcelain</c> の1エントリ）。
+/// </summary>
+/// <param name="Hash">その行を最後に変更したコミットのフルハッシュ。</param>
+/// <param name="ShortHash">短縮ハッシュ（表示用）。</param>
+/// <param name="Author">著者名。</param>
+/// <param name="AuthorDate">著者日時（著者のタイムゾーンでの <c>yyyy-MM-dd HH:mm</c>）。</param>
+/// <param name="OriginalLineNumber">そのコミット時点（元ファイル）での行番号。</param>
+/// <param name="FinalLineNumber">現在のファイルでの行番号（1始まり）。</param>
+/// <param name="Content">行の内容。</param>
+public sealed record GitBlameLine(
+    string Hash,
+    string ShortHash,
+    string Author,
+    string AuthorDate,
+    int OriginalLineNumber,
+    int FinalLineNumber,
+    string Content);

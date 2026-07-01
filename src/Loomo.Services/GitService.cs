@@ -334,6 +334,19 @@ public sealed class GitService
         return (baseContent, ours, theirs);
     }
 
+    /// <summary>
+    /// 1ファイルの行単位の変更履歴（git blame）を取得する。<paramref name="path"/> はリポジトリルートからの
+    /// 相対パス。リポジトリ外・コミット履歴の無い新規ファイル等は <c>Lines</c> が空、<c>Error</c> に理由が入る
+    /// （例外は投げない）。作業ツリーの未コミット変更行は git 標準どおり全ゼロのハッシュで返る。
+    /// </summary>
+    public async Task<(IReadOnlyList<GitBlameLine> Lines, string? Error)> GetBlameAsync(string path)
+    {
+        var result = await RunAsync("blame", "--line-porcelain", "--", path).ConfigureAwait(false);
+        if (!result.Success)
+            return (Array.Empty<GitBlameLine>(), result.Message);
+        return (GitBlameParser.Parse(result.Output), null);
+    }
+
     // ===== 更新系（実行後は RepositoryChanged を発火） =====
 
     public Task<GitCommandResult> InitAsync() => MutateAsync("init");

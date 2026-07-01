@@ -208,9 +208,18 @@ public sealed partial class DiffSessionViewModel
     [RelayCommand]
     private Task ApplyCurrentResultAsync() => ApplyResultTextAsync(CurrentConflictRegion());
 
-    /// <summary>選択ファイルの表示内容を、コンフリクトかどうかで振り分けて読み込む。</summary>
+    /// <summary>選択ファイルの表示内容を、Blame／コンフリクトかどうかで振り分けて読み込む。</summary>
     private async Task LoadSelectedContentAsync(DiffFileItem? item)
     {
+        if (item?.BlamePath is not null)
+        {
+            IsConflictMode = false;
+            ResetConflictState();
+            await LoadBlameAsync(item);
+            return;
+        }
+        IsBlameMode = false;
+
         if (item?.Entry?.IsConflicted == true)
         {
             IsConflictMode = true;
@@ -219,19 +228,27 @@ public sealed partial class DiffSessionViewModel
         else
         {
             IsConflictMode = false;
-            IsWholeFileConflict = false;
-            CanMarkResolved = false;
-            ConflictProgressText = "";
-            ConflictPositionText = "";
-            _conflictCursor = -1;
-            ConflictOursHeader = "";
-            ConflictTheirsHeader = "";
-            _conflictTotalCount = 0;
-            _conflictParsed = null;
-            ConflictBlocks.Clear();
+            ResetConflictState();
             await LoadDiffAsync(item);
         }
     }
+
+    /// <summary>コンフリクト解消表示の状態を非コンフリクト向けに初期化する（Blame・通常差分の両方で使う）。</summary>
+    private void ResetConflictState()
+    {
+        IsWholeFileConflict = false;
+        CanMarkResolved = false;
+        ConflictProgressText = "";
+        ConflictPositionText = "";
+        _conflictCursor = -1;
+        ConflictOursHeader = "";
+        ConflictTheirsHeader = "";
+        _conflictTotalCount = 0;
+        _conflictParsed = null;
+        ConflictBlocks.Clear();
+    }
+
+    partial void OnIsConflictModeChanged(bool value) => OnPropertyChanged(nameof(ShowDiffBody));
 
     private async Task LoadConflictAsync(DiffFileItem item)
     {

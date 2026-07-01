@@ -123,6 +123,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // AIバーをワークフローモードへ切替えて、当該ファイルを構造化 input として実行する。
     public event EventHandler<WorkflowRunRequest>? WorkflowRequested;
 
+    // FolderTree の「Git Blame」要求（ファイルのみ）。View（コンテキストメニュー）から発火し、
+    // ShellWindow が Diff ペインを Blame 表示モードで開く。引数はリポジトリルートからの相対パス。
+    public event EventHandler<string>? GitBlameRequested;
+
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;

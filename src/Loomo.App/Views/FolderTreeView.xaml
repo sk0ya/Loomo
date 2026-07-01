@@ -338,6 +338,9 @@
                                               Visibility="{Binding IsHtml, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="ターミナルにセット" Click="OnSetInTerminalClick" />
+                                    <!-- ファイルのみ：行単位の変更履歴（git blame）を Diff ペインで表示する。 -->
+                                    <MenuItem Header="Git Blame" Click="OnGitBlameClick"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource InverseBoolToVis}}" />
                                     <!-- フォルダのみ：このフォルダーを検索の開始フォルダーにして検索パネルを開く。 -->
                                     <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"
                                               Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />

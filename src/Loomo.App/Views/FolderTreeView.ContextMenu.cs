@@ -154,6 +154,12 @@ public partial class FolderTreeView
             vm.RequestSetInTerminal(node);
     }
 
+    private void OnGitBlameClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: false } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestGitBlame(node);
+    }
+
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)

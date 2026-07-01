@@ -382,6 +382,14 @@ public partial class ShellWindow : Window
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         // FolderTree の「AIワークフロー」：AIバーをワークフローモードへ切替え、ファイルを構造化 input として実行する。
         vm.FolderTree.WorkflowRequested += (_, req) => RunWorkflowWithInput(req.WorkflowId, req.Input);
+        // FolderTree の「Git Blame」：Diff ペインを Blame 表示モードで開く（コミット範囲表示・
+        // 「差分を開く」と同じく、出ていなければ左上ペインと入れ替えて前面に出す）。
+        vm.FolderTree.GitBlameRequested += (_, relativePath) =>
+        {
+            _ = vm.DiffSession.ShowBlameAsync(relativePath);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
+            FocusPane(PaneKind.Diff);
+        };
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         // Git セッションの「DIFF ペインで差分を表示」：エディタ/「AIに聞く」等と同じく、出ていなければ
