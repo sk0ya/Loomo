@@ -313,4 +313,74 @@ public class MarkdownRendererTests
         Assert.Contains("My Heading</h2>", html);
     }
 
+    [Fact]
+    public void CodeFence_WrapsWithCopyButton()
+    {
+        var body = MarkdownRenderer.RenderToBody("```csharp\nclass Foo { }\n```");
+
+        Assert.Contains("<div class=\"code-block\">", body);
+        Assert.Contains("class=\"code-copy-btn\"", body);
+    }
+
+    [Fact]
+    public void CodeFence_Mermaid_IsNotWrappedWithCopyButton()
+    {
+        var body = MarkdownRenderer.RenderToBody("```mermaid\ngraph TD;\nA-->B;\n```");
+
+        Assert.DoesNotContain("code-copy-btn", body);
+    }
+
+    [Fact]
+    public void CodeFence_Diff_HighlightsAddedAndRemovedLines()
+    {
+        var body = MarkdownRenderer.RenderToBody("```diff\n+++ b/file\n--- a/file\n@@ -1 +1 @@\n+added\n-removed\n unchanged\n```");
+
+        Assert.Contains("<span class=\"diff-meta\">+++ b/file</span>", body);
+        Assert.Contains("<span class=\"diff-meta\">--- a/file</span>", body);
+        Assert.Contains("<span class=\"diff-hunk\">@@ -1 +1 @@</span>", body);
+        Assert.Contains("<span class=\"diff-add\">+added</span>", body);
+        Assert.Contains("<span class=\"diff-del\">-removed</span>", body);
+        Assert.Contains(" unchanged", body);
+    }
+
+    [Fact]
+    public void Footnote_ReferenceAndDefinition_RenderWithBackref()
+    {
+        var body = MarkdownRenderer.RenderToBody("Some text.[^note]\n\n[^note]: The footnote body.");
+
+        Assert.Contains("<sup id=\"fnref-1\"><a href=\"#fn-1\" class=\"footnote-ref\">1</a></sup>", body);
+        Assert.Contains("<section class=\"footnotes\">", body);
+        Assert.Contains("<li id=\"fn-1\">The footnote body.", body);
+        Assert.Contains("<a href=\"#fnref-1\" class=\"footnote-backref\"", body);
+    }
+
+    [Fact]
+    public void Footnote_UndefinedReference_IsLeftAsPlainText()
+    {
+        var body = MarkdownRenderer.RenderToBody("Some text.[^missing]");
+
+        Assert.Contains("[^missing]", body);
+        Assert.DoesNotContain("footnote-ref", body);
+        Assert.DoesNotContain("class=\"footnotes\"", body);
+    }
+
+    [Fact]
+    public void Toc_Marker_GeneratesNavFromHeadings()
+    {
+        var body = MarkdownRenderer.RenderToBody("[[toc]]\n\n# Intro\n\n## Details");
+
+        Assert.Contains("<nav class=\"toc\">", body);
+        Assert.Contains("<a href=\"#intro\">Intro</a>", body);
+        Assert.Contains("<a href=\"#details\">Details</a>", body);
+    }
+
+    [Fact]
+    public void Toc_Marker_IgnoresHeadingsInsideCodeFences()
+    {
+        var body = MarkdownRenderer.RenderToBody("[[toc]]\n\n```\n# Not a heading\n```\n\n# Real Heading");
+
+        Assert.DoesNotContain("Not a heading</a>", body);
+        Assert.Contains("<a href=\"#real-heading\">Real Heading</a>", body);
+    }
+
 }

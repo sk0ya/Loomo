@@ -196,6 +196,7 @@ internal static class MarkdownPage
                 function applyBody(html) {
                     suppressScrollMessage = true;
                     document.body.innerHTML = html;
+                    lightboxEl = null;  // 差し替え前の要素は detach 済み。次のクリックで作り直す。
                     renderMermaid();
                     window.scrollTo(0, scrollMax() * lastRatio);
                     requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
@@ -302,6 +303,45 @@ internal static class MarkdownPage
                     try { document.execCommand('copy'); } catch (e) {}
                     document.body.removeChild(ta);
                 }
+
+                // --- コードブロックのコピーボタン ---
+                // コードは <pre><code> の textContent から取る（表示中の HTML エンティティは
+                // ブラウザが復元してくれるので、C# 側に生テキストを二重に埋め込む必要が無い）。
+                document.addEventListener('click', e => {
+                    const btn = e.target.closest && e.target.closest('.code-copy-btn');
+                    if (!btn) return;
+                    const codeEl = btn.parentElement && btn.parentElement.querySelector('pre > code');
+                    if (!codeEl) return;
+                    copyText(codeEl.textContent);
+                    btn.classList.add('copied');
+                    setTimeout(() => btn.classList.remove('copied'), 700);
+                });
+
+                // --- 画像クリックで拡大表示（ライトボックス）。marp スライドでは行わない。 ---
+                let lightboxEl = null;
+                function closeLightbox() {
+                    if (lightboxEl) lightboxEl.classList.remove('open');
+                }
+                document.addEventListener('click', e => {
+                    if (isMarp) return;
+                    const img = e.target.closest && e.target.closest('img');
+                    if (!img || (img.closest && img.closest('a'))) return;
+                    if (!lightboxEl) {
+                        lightboxEl = document.createElement('div');
+                        lightboxEl.className = 'loomo-lightbox';
+                        lightboxEl.addEventListener('click', closeLightbox);
+                        document.body.appendChild(lightboxEl);
+                    }
+                    lightboxEl.innerHTML = '';
+                    const big = document.createElement('img');
+                    big.src = img.currentSrc || img.src;
+                    big.alt = img.alt || '';
+                    lightboxEl.appendChild(big);
+                    lightboxEl.classList.add('open');
+                });
+                window.addEventListener('keydown', e => {
+                    if (e.key === 'Escape') closeLightbox();
+                });
 
                 // GFM タスクリストのチェックボックスはプレビュー上で操作可能（disabled にしていない）。
                 // トグルしたら対応するソース行（data-line）をホストへ伝え、エディタ側の実ファイルを書き換える。
@@ -483,7 +523,7 @@ internal static class MarkdownPage
             table { border-collapse: collapse; width: 100%; margin: 14px 0; }
             th, td { border: 1px solid {{border}}; padding: 7px 12px; text-align: left; }
             th { background: {{panel}}; color: {{fg}}; font-weight: 600; }
-            img { max-width: 100%; border-radius: 4px; display: block; margin: 8px 0; }
+            img { max-width: 100%; border-radius: 4px; display: block; margin: 8px 0; cursor: zoom-in; }
             hr { border: none; border-top: 1px solid {{border}}; margin: 20px 0; }
 
             /* GFM タスクリスト（- [ ] / - [x]）：箇条書きマーカーを消してチェックボックスに差し替える */
@@ -499,6 +539,54 @@ internal static class MarkdownPage
             h1:hover .heading-anchor, h2:hover .heading-anchor, h3:hover .heading-anchor,
             h4:hover .heading-anchor, h5:hover .heading-anchor, h6:hover .heading-anchor { opacity: 1; }
             .heading-anchor.copied { opacity: 1; color: {{link}}; }
+
+            /* コードブロックのコピーボタン（ホバーで表示） */
+            .code-block { position: relative; }
+            .code-block pre { margin: 14px 0; }
+            .code-copy-btn {
+                position: absolute; top: 8px; right: 8px; opacity: 0;
+                background: {{bg}}; color: {{muted}}; border: 1px solid {{border}};
+                border-radius: 4px; padding: 2px 7px; font-size: 12px; cursor: pointer;
+                transition: opacity .1s;
+            }
+            .code-block:hover .code-copy-btn { opacity: .85; }
+            .code-copy-btn:hover { color: {{fg}}; }
+            .code-copy-btn.copied { opacity: 1; color: {{link}}; border-color: {{link}}; }
+
+            /* diff / patch フェンス：行頭記号による追加・削除・ハンクの色分け */
+            .diff-add { display: block; background: rgba(46, 160, 67, .15); }
+            .diff-del { display: block; background: rgba(248, 81, 73, .15); }
+            .diff-hunk { display: block; color: {{link}}; }
+            .diff-meta { display: block; color: {{muted}}; }
+
+            /* 脚注（[^id] / [^id]: 説明） */
+            .footnotes { margin-top: 28px; font-size: .9em; color: {{muted}}; }
+            .footnotes hr { margin: 0 0 12px; }
+            .footnotes ol { padding-left: 20px; }
+            .footnote-ref, .footnote-backref { color: {{link}}; text-decoration: none; }
+            .footnote-ref { padding: 0 2px; }
+
+            /* 目次（[[toc]] / [toc]） */
+            nav.toc {
+                background: {{panel}}; border: 1px solid {{border}}; border-radius: 6px;
+                padding: 10px 16px; margin: 14px 0;
+            }
+            nav.toc ul { list-style: none; padding-left: 0; margin: 0; }
+            nav.toc li { margin: 2px 0; }
+            nav.toc a { color: {{fg}}; }
+            nav.toc a:hover { color: {{link}}; }
+
+            /* 画像クリックのライトボックス（拡大表示） */
+            .loomo-lightbox {
+                position: fixed; inset: 0; background: rgba(0,0,0,.85);
+                display: none; align-items: center; justify-content: center;
+                z-index: 1000; cursor: zoom-out; padding: 24px;
+            }
+            .loomo-lightbox.open { display: flex; }
+            .loomo-lightbox img {
+                max-width: 100%; max-height: 100%; margin: 0;
+                border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,.6); cursor: zoom-out;
+            }
 
             /* コードブロックのシンタックスハイライト（Loomo エディタと同じ字句解析器のトークン種別） */
             .tok-kw { color: {{strong}}; }
