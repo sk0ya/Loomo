@@ -46,6 +46,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>ブランチ一覧のツリー（3個以上で "/" 区切りのフォルダ表示、未満はフラット）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
 
+    /// <summary>タグ一覧（作成日の新しい順、フラット表示）。</summary>
+    [ObservableProperty] private IReadOnlyList<GitTagInfo> _tags = Array.Empty<GitTagInfo>();
+
     /// <summary>
     /// コミットグラフに表示するブランチ（ref）。null は全ブランチ（--all）。
     /// ブランチ一覧のダブルクリックで切り替わり、ヘッダーのチェックアウト（作業ブランチの変更）とは独立。
@@ -147,6 +150,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         {
             BranchLabel = "";
             BranchTree = Array.Empty<BranchTreeNode>();
+            Tags = Array.Empty<GitTagInfo>();
             LogRows.Clear();
             CommitDetail = "";
             OperationInProgress = false;
@@ -171,6 +175,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         // 構成が変わらなければ同一インスタンスが返り、ビュー（開閉・選択）はそのまま保たれる
         var branches = await _git.GetBranchesAsync();
         BranchTree = BranchTreeBuilder.Update(BranchTree, branches);
+        Tags = await _git.GetTagsAsync();
 
         await ReloadLogAsync();
     }
@@ -247,6 +252,34 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     public Task<GitCommandResult?> RebaseAsync(GitBranchInfo branch) =>
         RunOpAsync($"{branch.Name} へリベース", () => _git.RebaseAsync(branch.Name));
+
+    // ===== インタラクティブリベース =====
+
+    public Task<(IReadOnlyList<RebasePlanEntry> Entries, string? Error)> GetRebaseCandidatesAsync(GitLogRow row) =>
+        row.Hash is null
+            ? Task.FromResult<(IReadOnlyList<RebasePlanEntry>, string?)>((Array.Empty<RebasePlanEntry>(), null))
+            : _git.GetRebaseCandidatesAsync(row.Hash);
+
+    public Task<GitCommandResult?> InteractiveRebaseAsync(
+        string fromHash, IReadOnlyList<RebasePlanEntry> plan, IReadOnlyDictionary<string, string> messages) =>
+        RunOpAsync("インタラクティブリベース", () => _git.InteractiveRebaseAsync(fromHash, plan, messages));
+
+    // ===== タグ操作（対象はビューから引数で渡す） =====
+
+    public Task<GitCommandResult?> CreateTagAsync(string name, string? target, string? message) =>
+        RunOpAsync($"タグ作成 {name}", () => _git.CreateTagAsync(name, target, message));
+
+    public Task<GitCommandResult?> DeleteTagAsync(GitTagInfo tag) =>
+        RunOpAsync($"タグ削除 {tag.Name}", () => _git.DeleteTagAsync(tag.Name));
+
+    public Task<GitCommandResult?> PushTagAsync(GitTagInfo tag) =>
+        RunOpAsync($"タグ {tag.Name} をプッシュ", () => _git.PushTagAsync(tag.Name));
+
+    public Task<GitCommandResult?> PushAllTagsAsync() =>
+        RunOpAsync("すべてのタグをプッシュ", () => _git.PushAllTagsAsync());
+
+    public Task<GitCommandResult?> CheckoutTagAsync(GitTagInfo tag) =>
+        RunOpAsync($"チェックアウト {tag.Name}", () => _git.CheckoutCommitAsync(tag.Name));
 
     // ===== コミット操作 =====
 

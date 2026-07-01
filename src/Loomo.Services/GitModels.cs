@@ -74,6 +74,14 @@ public sealed record GitStatusSnapshot
 /// <param name="Name">短縮名（ローカル: main、リモート: origin/main）。</param>
 public sealed record GitBranchInfo(string Name, bool IsCurrent, bool IsRemote, string? Upstream);
 
+/// <summary>タグ1件（git for-each-ref refs/tags の1行）。</summary>
+/// <param name="Name">タグ名。</param>
+/// <param name="TargetShortHash">タグが指す先のコミット（注釈付きタグは参照解決後）の短縮ハッシュ。</param>
+/// <param name="Subject">注釈付きタグならタグメッセージの1行目、軽量タグなら指す先コミットの件名。</param>
+/// <param name="IsAnnotated">注釈付きタグ（git tag -a）か。</param>
+/// <param name="Date">作成日時（注釈付きはタグ作成日、軽量は指す先コミット日）。</param>
+public sealed record GitTagInfo(string Name, string TargetShortHash, string? Subject, bool IsAnnotated, string? Date);
+
 /// <summary>
 /// git log --graph の1行。コミット行はメタ情報を持ち、枝の継続だけの行（"| /" 等）は
 /// <see cref="Hash"/> が null になる。
@@ -101,4 +109,21 @@ public enum GitResetMode
     Soft,
     Mixed,
     Hard
+}
+
+/// <summary>インタラクティブリベースの todo アクション（git のリベースコマンドと同じ意味）。</summary>
+public enum RebaseAction
+{
+    Pick,
+    Reword,
+    Edit,
+    Squash,
+    Fixup,
+    Drop
+}
+
+/// <summary>インタラクティブリベース計画の1コミット。</summary>
+public sealed record RebasePlanEntry(string Hash, string ShortHash, string Subject, RebaseAction Action)
+{
+    public RebasePlanEntry WithAction(RebaseAction action) => this with { Action = action };
 }

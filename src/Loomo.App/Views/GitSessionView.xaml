@@ -97,43 +97,88 @@
                     <ColumnDefinition Width="*" MinWidth="200" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ブランチ一覧 -->
-                <DockPanel Grid.Column="0">
-                    <!-- 特定ブランチに絞っている間だけ「すべてのブランチ」へ戻すリンクを出す -->
-                    <Button DockPanel.Dock="Top" Margin="8,0,8,2" HorizontalAlignment="Left"
-                            Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
-                            Click="OnShowAllBranchesLog"
-                            Visibility="{Binding IsLogScoped, Converter={StaticResource BoolToVis}}" />
-                    <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
-                              Foreground="{DynamicResource Fg}"
-                              ItemsSource="{Binding BranchTree}"
-                              ItemContainerStyle="{StaticResource BranchTreeItem}"
-                              ItemTemplate="{StaticResource BranchNodeTemplate}"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                              MouseDoubleClick="OnBranchDoubleClick"
-                              PreviewMouseLeftButtonUp="OnBranchTreeClick"
-                              PreviewMouseRightButtonDown="OnListRightClickSelect">
-                        <TreeView.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="チェックアウト" Click="OnBranchCheckout" />
-                                <MenuItem Header="現在のブランチへマージ" Click="OnBranchMerge" />
-                                <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
-                                <Separator />
-                                <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
-                                <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
-                                <Separator />
-                                <MenuItem Header="削除" Click="OnBranchDelete" />
-                                <Separator />
-                                <MenuItem Header="⭮ フェッチ"
-                                          Command="{Binding PlacementTarget.DataContext.FetchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                <MenuItem Header="⇣ プル"
-                                          Command="{Binding PlacementTarget.DataContext.PullCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                <MenuItem Header="⇡ プッシュ"
-                                          Command="{Binding PlacementTarget.DataContext.PushCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                            </ContextMenu>
-                        </TreeView.ContextMenu>
-                    </TreeView>
-                </DockPanel>
+                <!-- ブランチ一覧＋タグ一覧 -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="2*" MinHeight="80" />
+                        <RowDefinition Height="6" />
+                        <RowDefinition Height="1*" MinHeight="60" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0">
+                        <!-- 特定ブランチに絞っている間だけ「すべてのブランチ」へ戻すリンクを出す -->
+                        <Button DockPanel.Dock="Top" Margin="8,0,8,2" HorizontalAlignment="Left"
+                                Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
+                                Click="OnShowAllBranchesLog"
+                                Visibility="{Binding IsLogScoped, Converter={StaticResource BoolToVis}}" />
+                        <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
+                                  Foreground="{DynamicResource Fg}"
+                                  ItemsSource="{Binding BranchTree}"
+                                  ItemContainerStyle="{StaticResource BranchTreeItem}"
+                                  ItemTemplate="{StaticResource BranchNodeTemplate}"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  MouseDoubleClick="OnBranchDoubleClick"
+                                  PreviewMouseLeftButtonUp="OnBranchTreeClick"
+                                  PreviewMouseRightButtonDown="OnListRightClickSelect">
+                            <TreeView.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="チェックアウト" Click="OnBranchCheckout" />
+                                    <MenuItem Header="現在のブランチへマージ" Click="OnBranchMerge" />
+                                    <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
+                                    <Separator />
+                                    <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
+                                    <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
+                                    <Separator />
+                                    <MenuItem Header="削除" Click="OnBranchDelete" />
+                                    <Separator />
+                                    <MenuItem Header="⭮ フェッチ"
+                                              Command="{Binding PlacementTarget.DataContext.FetchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="⇣ プル"
+                                              Command="{Binding PlacementTarget.DataContext.PullCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="⇡ プッシュ"
+                                              Command="{Binding PlacementTarget.DataContext.PushCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                </ContextMenu>
+                            </TreeView.ContextMenu>
+                        </TreeView>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
+                                  Background="{DynamicResource Border}" />
+
+                    <!-- タグ一覧 -->
+                    <DockPanel Grid.Row="2">
+                        <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
+                            <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
+                                    Content="＋ タグを作成…" Click="OnTagCreate" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
+                                    Content="すべてプッシュ" Click="OnTagsPushAll" />
+                        </DockPanel>
+                        <ListBox x:Name="TagList" Style="{StaticResource GitList}"
+                                 ItemsSource="{Binding Tags}"
+                                 MouseDoubleClick="OnTagDoubleClick"
+                                 PreviewMouseRightButtonDown="OnListRightClickSelect">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="チェックアウト（detached）" Click="OnTagCheckout" />
+                                    <MenuItem Header="プッシュ" Click="OnTagPush" />
+                                    <MenuItem Header="タグ名をコピー" Click="OnTagCopyName" />
+                                    <Separator />
+                                    <MenuItem Header="削除" Click="OnTagDelete" />
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel LastChildFill="True" ToolTip="{Binding Subject}">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding TargetShortHash}" FontSize="11"
+                                                   Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                                   FontFamily="Cascadia Mono, Consolas" />
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Grid>
 
                 <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" />
@@ -159,8 +204,11 @@
                                 <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff" />
                                 <Separator />
                                 <MenuItem Header="ここから新しいブランチを作成…" Click="OnCommitCreateBranch" />
+                                <MenuItem Header="タグを作成…" Click="OnCommitCreateTag" />
                                 <MenuItem Header="チェックアウト（detached HEAD）" Click="OnCommitCheckout" />
                                 <MenuItem Header="コミットメッセージを修正…" Click="OnCommitRewriteMessage" />
+                                <MenuItem x:Name="InteractiveRebaseMenuItem"
+                                          Header="ここからインタラクティブリベース…" Click="OnCommitInteractiveRebase" />
                                 <!-- スカッシュは2件以上の選択時だけ表示（OnCommitContextMenuOpening で切替） -->
                                 <Separator x:Name="SquashSeparator" />
                                 <MenuItem x:Name="SquashMenuItem"

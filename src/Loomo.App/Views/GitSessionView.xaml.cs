@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -143,6 +144,76 @@ public partial class GitSessionView : UserControl
         }
     }
 
+    // ===== タグ操作 =====
+
+    private GitTagInfo? SelectedTag => TagList.SelectedItem as GitTagInfo;
+
+    private async void OnTagDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (Vm is { } vm && SelectedTag is { } tag)
+            await vm.CheckoutTagAsync(tag);
+    }
+
+    private async void OnTagCheckout(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedTag is { } tag)
+            await vm.CheckoutTagAsync(tag);
+    }
+
+    private async void OnTagPush(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedTag is { } tag)
+            await vm.PushTagAsync(tag);
+    }
+
+    private void OnTagCopyName(object sender, RoutedEventArgs e)
+    {
+        if (SelectedTag is { } tag)
+        {
+            try { Clipboard.SetText(tag.Name); } catch { /* クリップボード占有中は無視 */ }
+        }
+    }
+
+    private async void OnTagDelete(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedTag is not { } tag)
+            return;
+        var answer = MessageBox.Show(Window.GetWindow(this)!,
+            $"タグ {tag.Name} を削除しますか？",
+            "タグ削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Yes)
+            await vm.DeleteTagAsync(tag);
+    }
+
+    private async void OnTagCreate(object sender, RoutedEventArgs e) => await CreateTagAsync(target: null);
+
+    private async void OnCommitCreateTag(object sender, RoutedEventArgs e)
+    {
+        if (SelectedCommit is { } row)
+            await CreateTagAsync(row.Hash);
+    }
+
+    private async void OnTagsPushAll(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+            await vm.PushAllTagsAsync();
+    }
+
+    /// <summary>タグ名（必須）→メッセージ（任意）の順に入力を取り、作成する。</summary>
+    private async Task CreateTagAsync(string? target)
+    {
+        if (Vm is not { } vm)
+            return;
+        var name = InputDialog.Prompt(Window.GetWindow(this), "タグを作成", "タグ名を入力してください");
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+        var message = InputDialog.Prompt(Window.GetWindow(this), "タグを作成",
+            "注釈メッセージ（空なら軽量タグ）:", allowEmpty: true);
+        if (message is null)
+            return; // メッセージ入力でキャンセル
+        await vm.CreateTagAsync(name, target, string.IsNullOrWhiteSpace(message) ? null : message);
+    }
+
     // ===== コミット操作 =====
 
     private GitLogRow? SelectedCommit =>
@@ -194,12 +265,41 @@ public partial class GitSessionView : UserControl
     private int SelectedCommitCount =>
         LogList.SelectedItems.OfType<GitLogRow>().Count(r => r.IsCommit);
 
-    /// <summary>コミット一覧のコンテキストメニューを開く直前：スカッシュは2件以上の選択時だけ見せる。</summary>
+    /// <summary>
+    /// コミット一覧のコンテキストメニューを開く直前：スカッシュは2件以上、インタラクティブリベースは
+    /// 単一選択時だけ見せる。
+    /// </summary>
     private void OnCommitContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         var visible = SelectedCommitCount >= 2 ? Visibility.Visible : Visibility.Collapsed;
         SquashMenuItem.Visibility = visible;
         SquashSeparator.Visibility = visible;
+        InteractiveRebaseMenuItem.Visibility = SelectedCommitCount == 1 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 選択コミットからHEADまでをインタラクティブリベースする。候補取得→確認→ダイアログ→実行の順。
+    /// </summary>
+    private async void OnCommitInteractiveRebase(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedCommit is not { } row)
+            return;
+        var (entries, error) = await vm.GetRebaseCandidatesAsync(row);
+        if (error is not null)
+        {
+            MessageBox.Show(Window.GetWindow(this)!, error, "インタラクティブリベース",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var answer = MessageBox.Show(Window.GetWindow(this)!,
+            $"{row.ShortHash} から HEAD までの履歴が書き換わります。実行しますか？",
+            "インタラクティブリベース", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+            return;
+        var plan = InteractiveRebaseDialog.Show(Window.GetWindow(this), entries);
+        if (plan is null)
+            return;
+        await vm.InteractiveRebaseAsync(row.Hash!, plan.Value.Plan, plan.Value.Messages);
     }
 
     /// <summary>選択した複数コミットを1つにまとめる（squash）。履歴を書き換えるので確認を取る。</summary>

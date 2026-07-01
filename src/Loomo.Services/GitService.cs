@@ -163,6 +163,33 @@ public sealed class GitService
         return branches;
     }
 
+    /// <summary>タグ一覧（作成日の新しい順）。</summary>
+    public async Task<IReadOnlyList<GitTagInfo>> GetTagsAsync()
+    {
+        var result = await RunAsync("for-each-ref", "refs/tags", "--sort=-creatordate",
+            "--format=%(refname:short)\t%(objecttype)\t%(objectname:short)\t%(*objectname:short)\t%(subject)\t%(creatordate:format:%Y-%m-%d %H:%M)")
+            .ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<GitTagInfo>();
+
+        var tags = new List<GitTagInfo>();
+        foreach (var line in result.Output.Split('\n'))
+        {
+            var l = line.TrimEnd('\r');
+            if (l.Length == 0) continue;
+            var parts = l.Split('\t');
+            if (parts.Length < 6) continue;
+
+            var isAnnotated = parts[1] == "tag";
+            // 注釈付きタグは参照解決後（*objectname）のコミットハッシュを対象にする
+            var target = isAnnotated && parts[3].Length > 0 ? parts[3] : parts[2];
+            var subject = parts[4].Length > 0 ? parts[4] : null;
+            var date = parts[5].Length > 0 ? parts[5] : null;
+            tags.Add(new GitTagInfo(parts[0], target, subject, isAnnotated, date));
+        }
+        return tags;
+    }
+
     /// <summary>
     /// コミットグラフを取得する。<paramref name="branchRef"/> 指定時はそのブランチ（ref）のみ、
     /// null/空のときは全ブランチ込み（--all）。空リポジトリは空リスト。
@@ -289,6 +316,24 @@ public sealed class GitService
         return result.Success ? result.Output : result.Message;
     }
 
+    /// <summary>コンフリクト中の1ステージ（1=共通祖先, 2=ours, 3=theirs）の内容。そのステージが無い
+    /// （追加/削除の片方など）場合は null。</summary>
+    public async Task<string?> GetConflictStageContentAsync(string path, int stage)
+    {
+        var result = await RunAsync("show", $":{stage}:{path}").ConfigureAwait(false);
+        return result.Success ? result.Output : null;
+    }
+
+    /// <summary>コンフリクトの base/ours/theirs をまとめて取得する。作業ツリーにマーカーが書かれない
+    /// コンフリクト種別（削除/変更の衝突・リネーム等）でファイル全体の解決を選ばせるためのフォールバック用。</summary>
+    public async Task<(string? Base, string? Ours, string? Theirs)> GetConflictSidesAsync(string path)
+    {
+        var baseContent = await GetConflictStageContentAsync(path, 1).ConfigureAwait(false);
+        var ours = await GetConflictStageContentAsync(path, 2).ConfigureAwait(false);
+        var theirs = await GetConflictStageContentAsync(path, 3).ConfigureAwait(false);
+        return (baseContent, ours, theirs);
+    }
+
     // ===== 更新系（実行後は RepositoryChanged を発火） =====
 
     public Task<GitCommandResult> InitAsync() => MutateAsync("init");
@@ -384,6 +429,33 @@ public sealed class GitService
     public Task<GitCommandResult> DeleteBranchAsync(string name, bool force = false) =>
         MutateAsync("branch", force ? "-D" : "-d", name);
 
+    // ===== タグ =====
+
+    /// <summary>タグを作成する。<paramref name="message"/> があれば注釈付き（-a -m）、無ければ軽量タグ。
+    /// <paramref name="target"/> 省略時は HEAD。</summary>
+    public Task<GitCommandResult> CreateTagAsync(string name, string? target = null, string? message = null)
+    {
+        var args = new List<string> { "tag" };
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            args.Add("-a");
+            args.Add(name);
+            args.Add("-m");
+            args.Add(message.Trim());
+        }
+        else
+        {
+            args.Add(name);
+        }
+        if (target is not null)
+            args.Add(target);
+        return MutateAsync(args.ToArray());
+    }
+
+    public Task<GitCommandResult> DeleteTagAsync(string name) => MutateAsync("tag", "-d", name);
+    public Task<GitCommandResult> PushTagAsync(string name) => MutateAsync("push", "origin", name);
+    public Task<GitCommandResult> PushAllTagsAsync() => MutateAsync("push", "--tags");
+
     public Task<GitCommandResult> MergeAsync(string branch) => MutateAsync("merge", "--no-edit", branch);
     public Task<GitCommandResult> MergeContinueAsync() => MutateAsync("merge", "--continue");
     public Task<GitCommandResult> MergeAbortAsync() => MutateAsync("merge", "--abort");
@@ -393,14 +465,14 @@ public sealed class GitService
     {
         var result = await MutateAsync("rebase", "--continue").ConfigureAwait(false);
         if (result.Success)
-            await DeleteRebaseMessageFileAsync().ConfigureAwait(false);
+            await DeleteScriptedRebaseArtifactsAsync().ConfigureAwait(false);
         return result;
     }
     public Task<GitCommandResult> RebaseSkipAsync() => MutateAsync("rebase", "--skip");
     public async Task<GitCommandResult> RebaseAbortAsync()
     {
         var result = await MutateAsync("rebase", "--abort").ConfigureAwait(false);
-        await DeleteRebaseMessageFileAsync().ConfigureAwait(false);
+        await DeleteScriptedRebaseArtifactsAsync().ConfigureAwait(false);
         return result;
     }
 
@@ -642,8 +714,8 @@ public sealed class GitService
         var gitDir = await GetGitDirAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
-        var todoPath = Path.Combine(gitDir, "loomo-squash-todo.txt");
         var messagePath = Path.Combine(gitDir, "loomo-squash-message.txt");
+
         // カスタムメッセージ時は fixup で編集画面を出さず、todo の exec で確実に適用する。
         // exec はコンフリクト解消後の rebase --continue でも残るため、環境変数だけに頼るより堅牢。
         var todo = new StringBuilder();
@@ -655,12 +727,42 @@ public sealed class GitService
         foreach (var c in above)
             todo.Append("pick ").Append(c).Append('\n');
 
-        var keepMessageForContinue = false;
+        var baseArg = hasParent ? $"{oldest}^" : "--root";
+        var extraFiles = commitMessage is null
+            ? null
+            : new[] { ("loomo-squash-message.txt", commitMessage.TrimEnd() + Environment.NewLine) };
+        return await RunScriptedRebaseAsync("loomo-squash-todo.txt", todo.ToString(), baseArg, extraFiles)
+            .ConfigureAwait(false);
+    }
+
+    private static bool IsRebaseDirectoryPresent(string gitDir) =>
+        Directory.Exists(Path.Combine(gitDir, "rebase-merge")) ||
+        Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
+
+    /// <summary>
+    /// todo（＋任意の追加ファイル。squash/reword の確定メッセージなど）を git ディレクトリへ書き、
+    /// GIT_SEQUENCE_EDITOR をそれへ差し替えてから <c>git rebase -i baseArg</c> を実行する共通処理。
+    /// 失敗時にリベースが一時停止中（コンフリクト等）なら追加ファイルは残す
+    /// （未実行の exec がのちの rebase --continue でも必要なため）。
+    /// </summary>
+    private async Task<GitCommandResult> RunScriptedRebaseAsync(
+        string todoFileName, string todoText, string baseArg,
+        IReadOnlyList<(string FileName, string Content)>? extraFiles = null)
+    {
+        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        if (gitDir is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+
+        var todoPath = Path.Combine(gitDir, todoFileName);
+        var extraPaths = (extraFiles ?? Array.Empty<(string FileName, string Content)>())
+            .Select(f => (Path: Path.Combine(gitDir, f.FileName), f.Content)).ToList();
+
+        var keepExtraFiles = false;
         try
         {
-            if (commitMessage is not null)
-                await File.WriteAllTextAsync(messagePath, commitMessage.TrimEnd() + Environment.NewLine).ConfigureAwait(false);
-            await File.WriteAllTextAsync(todoPath, todo.ToString()).ConfigureAwait(false);
+            await File.WriteAllTextAsync(todoPath, todoText).ConfigureAwait(false);
+            foreach (var (path, content) in extraPaths)
+                await File.WriteAllTextAsync(path, content).ConfigureAwait(false);
 
             // GIT_SEQUENCE_EDITOR を「todo を我々の内容で上書きする」コマンドに差し替える
             // （git は値の後ろに todo ファイルのパスを付けて呼ぶ。git-for-windows の cp を使う）。
@@ -668,28 +770,179 @@ public sealed class GitService
             {
                 ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
             };
-            var baseArg = hasParent ? $"{oldest}^" : "--root";
             var result = await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
-            keepMessageForContinue = !result.Success && IsRebaseDirectoryPresent(gitDir);
+            keepExtraFiles = !result.Success && IsRebaseDirectoryPresent(gitDir);
             return result;
         }
         finally
         {
             TryDelete(todoPath);
-            if (!keepMessageForContinue)
-                TryDelete(messagePath);
+            if (!keepExtraFiles)
+                foreach (var (path, _) in extraPaths)
+                    TryDelete(path);
         }
     }
 
-    private static bool IsRebaseDirectoryPresent(string gitDir) =>
-        Directory.Exists(Path.Combine(gitDir, "rebase-merge")) ||
-        Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
-
-    private async Task DeleteRebaseMessageFileAsync()
+    private async Task DeleteScriptedRebaseArtifactsAsync()
     {
         var gitDir = await GetGitDirAsync().ConfigureAwait(false);
-        if (gitDir is not null)
-            TryDelete(Path.Combine(gitDir, "loomo-squash-message.txt"));
+        if (gitDir is null)
+            return;
+        TryDelete(Path.Combine(gitDir, "loomo-squash-message.txt"));
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(gitDir, "loomo-rebase-msg-*.txt"))
+                TryDelete(file);
+        }
+        catch { /* 列挙失敗（ディレクトリ消失等）は無視 */ }
+    }
+
+    // ===== インタラクティブリベース =====
+
+    /// <summary>
+    /// <paramref name="fromHash"/>..HEAD を対話的リベースの編集対象候補として返す（実行順＝古い→新しい、
+    /// 既定アクションはすべて Pick）。現在のブランチの主系列でない、あるいはマージを含む範囲は
+    /// <c>Entries</c> を空にし <c>Error</c> へ理由を入れて返す（<see cref="RewriteCommitMessageCoreAsync"/>
+    /// と同じ検証）。
+    /// </summary>
+    public async Task<(IReadOnlyList<RebasePlanEntry> Entries, string? Error)> GetRebaseCandidatesAsync(string fromHash)
+    {
+        var onHead = await RunAsync("merge-base", "--is-ancestor", fromHash, "HEAD").ConfigureAwait(false);
+        if (!onHead.Success)
+            return (Array.Empty<RebasePlanEntry>(), "現在のブランチに含まれるコミットのみ対象にできます。");
+
+        var hasParent = (await RunAsync("rev-parse", "--verify", "--quiet", $"{fromHash}^").ConfigureAwait(false)).Success;
+        var range = hasParent ? $"{fromHash}^..HEAD" : "HEAD";
+
+        var chainResult = await RunAsync("rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
+        if (!chainResult.Success)
+            return (Array.Empty<RebasePlanEntry>(), chainResult.Message);
+        var chain = SplitLines(chainResult.Output);
+        if (chain.Count == 0 || !string.Equals(chain[0], fromHash, StringComparison.OrdinalIgnoreCase))
+            return (Array.Empty<RebasePlanEntry>(), "現在のブランチの主系列にあるコミットのみ対象にできます。");
+
+        var merges = await RunAsync("rev-list", "--min-parents=2", range).ConfigureAwait(false);
+        if (!merges.Success)
+            return (Array.Empty<RebasePlanEntry>(), merges.Message);
+        if (SplitLines(merges.Output).Count > 0)
+            return (Array.Empty<RebasePlanEntry>(),
+                "対象から HEAD までにマージコミットがあるため、インタラクティブリベースできません。");
+
+        var detail = await RunAsync("log", "--reverse", "--first-parent",
+            "--pretty=format:%H%x1f%h%x1f%s", range).ConfigureAwait(false);
+        if (!detail.Success)
+            return (Array.Empty<RebasePlanEntry>(), detail.Message);
+
+        var entries = new List<RebasePlanEntry>();
+        foreach (var line in detail.Output.Split('\n'))
+        {
+            var l = line.TrimEnd('\r');
+            if (l.Length == 0) continue;
+            var parts = l.Split('\x1f');
+            if (parts.Length < 3) continue;
+            entries.Add(new RebasePlanEntry(parts[0], parts[1], parts[2], RebaseAction.Pick));
+        }
+        return (entries, null);
+    }
+
+    /// <summary>
+    /// <paramref name="plan"/>（順序・アクション）でスクリプト化した対話的リベースを実行する。
+    /// <paramref name="newMessages"/> は Reword エントリの新しいメッセージ（ハッシュ→本文）。
+    /// reword は git の native reword（都度停止）ではなく、各コミットを pick したうえで
+    /// <c>exec git commit --amend -F &lt;専用ファイル&gt;</c> を差し込むことで実現する
+    /// （GIT_EDITOR は常に固定値のため、複数の reword を区別できない）。
+    /// コンフリクトは通常のリベース進行中として続行・スキップ・中止できる。
+    /// </summary>
+    public async Task<GitCommandResult> InteractiveRebaseAsync(
+        string fromHash, IReadOnlyList<RebasePlanEntry> plan, IReadOnlyDictionary<string, string> newMessages)
+    {
+        try
+        {
+            return await InteractiveRebaseCoreAsync(fromHash, plan, newMessages).ConfigureAwait(false);
+        }
+        finally
+        {
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task<GitCommandResult> InteractiveRebaseCoreAsync(
+        string fromHash, IReadOnlyList<RebasePlanEntry> plan, IReadOnlyDictionary<string, string> newMessages)
+    {
+        if (plan.Count == 0)
+            return new GitCommandResult(-1, "", "リベース対象がありません。");
+
+        // ダイアログ表示後にリポジトリ状態が変わっていないか再検証する。
+        var onHead = await RunAsync("merge-base", "--is-ancestor", fromHash, "HEAD").ConfigureAwait(false);
+        if (!onHead.Success)
+            return new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ対象にできます。");
+
+        var hasParent = (await RunAsync("rev-parse", "--verify", "--quiet", $"{fromHash}^").ConfigureAwait(false)).Success;
+        var range = hasParent ? $"{fromHash}^..HEAD" : "HEAD";
+        var chainResult = await RunAsync("rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
+        if (!chainResult.Success)
+            return chainResult;
+        var chain = SplitLines(chainResult.Output);
+        var planHashes = plan.Select(p => p.Hash).ToList();
+        if (chain.Count != planHashes.Count || !chain.ToHashSet().SetEquals(planHashes))
+            return new GitCommandResult(-1, "",
+                "対象のコミット構成が変わったため実行できません。一覧を開き直してください。");
+
+        var merges = await RunAsync("rev-list", "--min-parents=2", range).ConfigureAwait(false);
+        if (!merges.Success)
+            return merges;
+        if (SplitLines(merges.Output).Count > 0)
+            return new GitCommandResult(-1, "",
+                "対象から HEAD までにマージコミットがあるため、インタラクティブリベースできません。");
+
+        var firstNonDrop = plan.FirstOrDefault(p => p.Action != RebaseAction.Drop);
+        if (firstNonDrop is null)
+            return new GitCommandResult(-1, "", "少なくとも1件は pick / reword / edit にしてください。");
+        if (firstNonDrop.Action is RebaseAction.Squash or RebaseAction.Fixup)
+            return new GitCommandResult(-1, "", "先頭のコミットは pick / reword / edit のいずれかにしてください。");
+
+        foreach (var entry in plan)
+            if (entry.Action == RebaseAction.Reword && !newMessages.ContainsKey(entry.Hash))
+                return new GitCommandResult(-1, "", $"{entry.ShortHash} の新しいメッセージが入力されていません。");
+
+        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        if (gitDir is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+
+        var extraFiles = new List<(string FileName, string Content)>();
+        var todo = new StringBuilder();
+        foreach (var entry in plan)
+        {
+            switch (entry.Action)
+            {
+                case RebaseAction.Drop:
+                    todo.Append("drop ").Append(entry.Hash).Append('\n');
+                    break;
+                case RebaseAction.Squash:
+                    todo.Append("squash ").Append(entry.Hash).Append('\n');
+                    break;
+                case RebaseAction.Fixup:
+                    todo.Append("fixup ").Append(entry.Hash).Append('\n');
+                    break;
+                case RebaseAction.Edit:
+                    todo.Append("edit ").Append(entry.Hash).Append('\n');
+                    break;
+                case RebaseAction.Reword:
+                    var fileName = $"loomo-rebase-msg-{entry.Hash}.txt";
+                    todo.Append("pick ").Append(entry.Hash).Append('\n');
+                    todo.Append("exec git commit --amend -F '")
+                        .Append(ToMsysPath(Path.Combine(gitDir, fileName))).Append("'\n");
+                    extraFiles.Add((fileName, newMessages[entry.Hash].TrimEnd() + Environment.NewLine));
+                    break;
+                default:
+                    todo.Append("pick ").Append(entry.Hash).Append('\n');
+                    break;
+            }
+        }
+
+        var baseArg = hasParent ? $"{fromHash}^" : "--root";
+        return await RunScriptedRebaseAsync("loomo-rebase-todo.txt", todo.ToString(), baseArg, extraFiles)
+            .ConfigureAwait(false);
     }
 
     private static List<string> SplitLines(string value) => value
