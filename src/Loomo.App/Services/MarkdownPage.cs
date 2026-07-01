@@ -287,9 +287,47 @@ internal static class MarkdownPage
                     });
                 }, { passive: true });
 
+                // --- クリップボードへコピー（https://page.loomo は secure context なので Clipboard API 可。失敗時は退避） ---
+                function copyText(text) {
+                    if (navigator.clipboard?.writeText) {
+                        navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+                    } else {
+                        fallbackCopy(text);
+                    }
+                }
+                function fallbackCopy(text) {
+                    const ta = document.createElement('textarea');
+                    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.select();
+                    try { document.execCommand('copy'); } catch (e) {}
+                    document.body.removeChild(ta);
+                }
+
+                // GFM タスクリストのチェックボックスはプレビュー上で操作可能（disabled にしていない）。
+                // トグルしたら対応するソース行（data-line）をホストへ伝え、エディタ側の実ファイルを書き換える。
+                // 新しいチェック状態はソース側で計算し直す（ここでは行番号だけ伝える＝表示と実体が食い違わない）。
+                document.addEventListener('change', e => {
+                    const cb = e.target.closest && e.target.closest('.task-list-item input[type="checkbox"]');
+                    if (!cb || !window.chrome?.webview) return;
+                    const line = Number(cb.getAttribute('data-line'));
+                    if (Number.isFinite(line))
+                        window.chrome.webview.postMessage({ type: 'toggleTaskCheckbox', line });
+                });
+
                 // 本文中のリンク（<a href>）クリックはページ内遷移させず、ホスト（Loomo）へ振り分ける。
-                // 同一ページ内アンカー（#見出し 等）だけは既定のスクロール動作に任せる。
+                // 同一ページ内アンカー（#見出し 等）だけは既定のスクロール動作に任せる。見出しのパーマリンク
+                // （.heading-anchor）はさらに「#見出しid」をクリップボードへコピーする。
                 document.addEventListener('click', e => {
+                    const anchor = e.target.closest && e.target.closest('a.heading-anchor');
+                    if (anchor) {
+                        const href = anchor.getAttribute('href') || '';
+                        if (href.startsWith('#')) {
+                            copyText(href);
+                            anchor.classList.add('copied');
+                            setTimeout(() => anchor.classList.remove('copied'), 700);
+                        }
+                        return; // href="#..." は既定のページ内スクロールへ任せる
+                    }
                     const a = e.target.closest && e.target.closest('a[href]');
                     if (!a || !window.chrome?.webview) return;
                     const href = a.getAttribute('href');
@@ -447,6 +485,30 @@ internal static class MarkdownPage
             th { background: {{panel}}; color: {{fg}}; font-weight: 600; }
             img { max-width: 100%; border-radius: 4px; display: block; margin: 8px 0; }
             hr { border: none; border-top: 1px solid {{border}}; margin: 20px 0; }
+
+            /* GFM タスクリスト（- [ ] / - [x]）：箇条書きマーカーを消してチェックボックスに差し替える */
+            li.task-list-item { list-style: none; margin-left: -20px; }
+            li.task-list-item input[type="checkbox"] { margin-right: 6px; vertical-align: middle; cursor: pointer; }
+
+            /* 見出しのパーマリンク（ホバーで # が出て、クリックでアンカーをコピー） */
+            h1, h2, h3, h4, h5, h6 { position: relative; }
+            .heading-anchor {
+                position: absolute; left: -1.1em; color: {{muted}}; opacity: 0;
+                text-decoration: none; font-weight: 400; transition: opacity .1s;
+            }
+            h1:hover .heading-anchor, h2:hover .heading-anchor, h3:hover .heading-anchor,
+            h4:hover .heading-anchor, h5:hover .heading-anchor, h6:hover .heading-anchor { opacity: 1; }
+            .heading-anchor.copied { opacity: 1; color: {{link}}; }
+
+            /* コードブロックのシンタックスハイライト（Loomo エディタと同じ字句解析器のトークン種別） */
+            .tok-kw { color: {{strong}}; }
+            .tok-ty { color: {{heading}}; }
+            .tok-str { color: {{code}}; }
+            .tok-cm { color: {{muted}}; font-style: italic; }
+            .tok-num { color: {{link}}; }
+            .tok-pp { color: {{strong}}; }
+            .tok-at { color: {{heading}}; }
+            .tok-fn { color: {{heading}}; }
 
             /* --- marp スライド表示（marp:true 文書のみ。非 marp は通常ドキュメント表示） --- */
             /* 既定＝縦並びで全スライドをスクロール一覧（zoom は JS が横幅に合わせて設定）。 */

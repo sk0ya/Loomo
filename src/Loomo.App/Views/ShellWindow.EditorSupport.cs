@@ -231,6 +231,35 @@ public partial class ShellWindow
     }
 
     /// <summary>
+    /// Markdown プレビューでタスクリストのチェックボックスをクリックしたときの反映。
+    /// 対応するソース行（0始まり、プレビュー生成時にフロントマター分ずらして埋め込んだもの）の
+    /// <c>[ ]</c>/<c>[x]</c> を反転してエディタの本文を書き換える。Vim のモード（挿入中など）に依存
+    /// せず安全に書き換えられるよう、キー入力を経由しない <see cref="VimEditorControl.SetText"/> を使う
+    /// （プレビュー側のクリックはエディタの現在モードと無関係に届くため、ex コマンド経由だと挿入モード中に
+    /// コロンがそのまま入力されてしまう）。
+    /// </summary>
+    private void ToggleMarkdownTaskCheckbox(int lineIndex)
+    {
+        var source = _editorSupportSourceTab;
+        if (source is null)
+            return;
+
+        var text = source.Control.Text;
+        var eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        if (lineIndex < 0 || lineIndex >= lines.Length)
+            return;
+
+        var toggled = MarkdownRenderer.ToggleTaskListLine(lines[lineIndex]);
+        if (toggled is null)
+            return;
+
+        lines[lineIndex] = toggled;
+        source.Control.SetText(string.Join(eol, lines));
+        ScheduleEditorSupportUpdate();
+    }
+
+    /// <summary>
     /// EditorSupport が袖または俯瞰のミニチュアとして表示される状態か。
     /// Main に自動表示はしないが、VisualBrush の描画元には中身が必要なので描画だけ許可する。
     /// </summary>

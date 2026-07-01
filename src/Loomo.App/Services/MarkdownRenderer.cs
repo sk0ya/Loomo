@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using Editor.Core.Syntax;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -57,10 +60,36 @@ internal static class MarkdownRenderer
         return false;
     }
 
-    private static string StripFrontmatter(string normalizedText)
+    /// <summary>
+    /// ソース上の1行（例 <c>"- [ ] foo"</c>）が GFM タスクリスト項目なら、チェック状態を反転した行を
+    /// 返す。タスク項目でなければ <c>null</c>。プレビューでチェックボックスをクリックしたとき、ホストが
+    /// 対応するソース行（<c>data-line</c>）にこれを適用してエディタの内容を書き換える。
+    /// </summary>
+    public static string? ToggleTaskListLine(string line)
+    {
+        var m = ListItemRe.Match(line);
+        if (!m.Success)
+            return null;
+        var task = TaskItemRe.Match(m.Groups[3].Value);
+        if (!task.Success)
+            return null;
+        var newMark = task.Groups[1].Value.Equals(" ", StringComparison.Ordinal) ? "x" : " ";
+        return $"{m.Groups[1].Value}{m.Groups[2].Value} [{newMark}] {task.Groups[2].Value}";
+    }
+
+    // フロントマターを取り除き、取り除いた行数（lineOffset）も返す。タスクリストのチェックボックスは
+    // ソースファイル上の行番号（data-line）を埋め込む必要があり、フロントマター分だけ本文の行番号と
+    // ずれるため、その差分を呼び出し元（ProcessBlocks）へ伝える。
+    private static string StripFrontmatter(string normalizedText, out int lineOffset)
     {
         var m = FrontmatterRe.Match(normalizedText);
-        return m.Success ? normalizedText[m.Length..] : normalizedText;
+        if (!m.Success)
+        {
+            lineOffset = 0;
+            return normalizedText;
+        }
+        lineOffset = normalizedText.AsSpan(0, m.Length).Count('\n');
+        return normalizedText[m.Length..];
     }
 
     /// <summary>
@@ -70,12 +99,13 @@ internal static class MarkdownRenderer
     public static string RenderToBody(string markdown)
     {
         var body = new StringBuilder();
-        // U+0001 は Inline() のコードスパン退避に使う番兵。原文に紛れ込むと復元が壊れるので除去する。
-        ProcessBlocks(StripFrontmatter(Normalize(markdown)).Replace("\u0001", ""), body);
+        // Normalize() が Inline() のコードスパン退避番兵（U+0001）を先に除去済みなので、ここでの再除去は不要。
+        var stripped = StripFrontmatter(Normalize(markdown), out var lineOffset);
+        ProcessBlocks(stripped, body, lineOffset);
         return body.ToString();
     }
 
-    private static void ProcessBlocks(string text, StringBuilder html)
+    private static void ProcessBlocks(string text, StringBuilder html, int lineOffset)
     {
         var lines = text.Split('\n');
         var i = 0;
@@ -87,19 +117,25 @@ internal static class MarkdownRenderer
             {
                 var fence = line.TrimStart();
                 var fenceChar = fence[0];
-                var lang = fence.Length > 3 ? Encode(fence[3..].Trim()) : "";
+                var rawLang = fence.Length > 3 ? fence[3..].Trim() : "";
                 // mermaid フェンスは <pre class="mermaid"> として出力し、ページ側の mermaid.js が
                 // 図へ変換する（テキストは textContent として読まれるので HTML エンコードでよい）。
-                var isMermaid = lang.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
-                var cls = lang.Length > 0 ? $" class=\"language-{lang}\"" : "";
+                var isMermaid = rawLang.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
+                var cls = rawLang.Length > 0 ? $" class=\"language-{Encode(rawLang)}\"" : "";
                 html.Append(isMermaid ? "<pre class=\"mermaid\">" : $"<pre><code{cls}>");
                 i++;
+                var codeLines = new List<string>();
                 while (i < lines.Length && !lines[i].TrimStart().StartsWith(fenceChar.ToString() + fenceChar + fenceChar))
                 {
-                    html.Append(Encode(lines[i])).Append('\n');
+                    codeLines.Add(lines[i]);
                     i++;
                 }
                 i++;
+                if (isMermaid)
+                    foreach (var codeLine in codeLines)
+                        html.Append(Encode(codeLine)).Append('\n');
+                else
+                    AppendHighlightedCode(html, rawLang, codeLines);
                 html.AppendLine(isMermaid ? "</pre>" : "</code></pre>");
                 continue;
             }
@@ -108,8 +144,11 @@ internal static class MarkdownRenderer
             if (hm.Success)
             {
                 var level = hm.Groups[1].Length;
-                var id = hm.Groups[2].Value.Trim().ToLowerInvariant().Replace(' ', '-');
-                html.AppendLine($"<h{level} id=\"{Encode(id)}\">{Inline(hm.Groups[2].Value.Trim())}</h{level}>");
+                var id = Encode(hm.Groups[2].Value.Trim().ToLowerInvariant().Replace(' ', '-'));
+                html.AppendLine(
+                    $"<h{level} id=\"{id}\">" +
+                    $"<a class=\"heading-anchor\" href=\"#{id}\" aria-label=\"見出しへのリンクをコピー\">#</a>" +
+                    $"{Inline(hm.Groups[2].Value.Trim())}</h{level}>");
                 i++;
                 continue;
             }
@@ -123,6 +162,7 @@ internal static class MarkdownRenderer
 
             if (line.StartsWith(">"))
             {
+                var quoteStartLine = i;
                 var qLines = new List<string>();
                 while (i < lines.Length && lines[i].StartsWith(">"))
                 {
@@ -131,30 +171,36 @@ internal static class MarkdownRenderer
                     i++;
                 }
                 var inner = new StringBuilder();
-                ProcessBlocks(string.Join("\n", qLines), inner);
+                ProcessBlocks(string.Join("\n", qLines), inner, lineOffset + quoteStartLine);
                 html.Append("<blockquote>").Append(inner).AppendLine("</blockquote>");
                 continue;
             }
 
             if (ListItemRe.IsMatch(line))
             {
-                RenderList(lines, ref i, html);
+                RenderList(lines, ref i, html, lineOffset);
                 continue;
             }
 
             if (i + 1 < lines.Length && line.Contains('|')
                 && lines[i + 1].Contains('|') && TableSepRe.IsMatch(lines[i + 1]))
             {
+                var aligns = SplitRow(lines[i + 1]).Select(ColumnAlign).ToArray();
+                string AlignAttr(int col) =>
+                    col < aligns.Length && aligns[col] is { } a ? $" style=\"text-align:{a}\"" : "";
+
                 html.AppendLine("<table><thead><tr>");
-                foreach (var cell in SplitRow(line))
-                    html.AppendLine($"<th>{Inline(cell)}</th>");
+                var headerCells = SplitRow(line);
+                for (var col = 0; col < headerCells.Length; col++)
+                    html.AppendLine($"<th{AlignAttr(col)}>{Inline(headerCells[col])}</th>");
                 html.AppendLine("</tr></thead><tbody>");
                 i += 2;
                 while (i < lines.Length && lines[i].Contains('|'))
                 {
                     html.AppendLine("<tr>");
-                    foreach (var cell in SplitRow(lines[i]))
-                        html.AppendLine($"<td>{Inline(cell)}</td>");
+                    var cells = SplitRow(lines[i]);
+                    for (var col = 0; col < cells.Length; col++)
+                        html.AppendLine($"<td{AlignAttr(col)}>{Inline(cells[col])}</td>");
                     html.AppendLine("</tr>");
                     i++;
                 }
@@ -211,7 +257,7 @@ internal static class MarkdownRenderer
     /// 順序付きリストは先頭項目の番号を start 属性に反映する（1 以外始まり／空行分割のルーズリストでも
     /// 番号が 1 に戻らない）。<paramref name="i"/> はこのリスト領域を消費した位置まで進む。
     /// </summary>
-    private static void RenderList(string[] lines, ref int i, StringBuilder html)
+    private static void RenderList(string[] lines, ref int i, StringBuilder html, int lineOffset)
     {
         var first = ListItemRe.Match(lines[i]);
         var indent = first.Groups[1].Value.Length;
@@ -241,7 +287,22 @@ internal static class MarkdownRenderer
             if (!m.Success || m.Groups[1].Value.Length < indent)
                 break; // リスト外、または親レベルへ戻った → このリストは終了
 
-            html.Append($"<li>{Inline(m.Groups[3].Value)}");
+            var content = m.Groups[3].Value;
+            var task = TaskItemRe.Match(content);
+            if (task.Success)
+            {
+                var isChecked = !task.Groups[1].Value.Equals(" ", StringComparison.Ordinal);
+                var checkedAttr = isChecked ? " checked" : "";
+                // disabled は付けない：プレビュー上でクリックしてチェック状態を切り替えられる
+                // （クリックは JS 側からホストへ postMessage され、ソースの行を書き換える）。
+                html.Append(
+                    $"<li class=\"task-list-item\"><input type=\"checkbox\" data-line=\"{lineOffset + i}\"{checkedAttr}>" +
+                    $"{Inline(task.Groups[2].Value)}");
+            }
+            else
+            {
+                html.Append($"<li>{Inline(content)}");
+            }
             i++;
 
             // より深いインデントの後続項目は、この <li> 内の入れ子リストにする。
@@ -253,7 +314,7 @@ internal static class MarkdownRenderer
                     && ListItemRe.Match(lines[j]).Groups[1].Value.Length > indent)
                 {
                     i = j;
-                    RenderList(lines, ref i, html);
+                    RenderList(lines, ref i, html, lineOffset);
                 }
                 else break;
             }
@@ -328,6 +389,105 @@ internal static class MarkdownRenderer
         return s.Split('|').Select(c => c.Trim()).ToArray();
     }
 
+    // テーブル区切り行の1セル（例 ":---", "---:", ":---:", "---"）から列揃えを読む。
+    // 明示指定が無ければ null（既定の左揃えは CSS 側の text-align: left に任せる）。
+    private static string? ColumnAlign(string sepCell)
+    {
+        var c = sepCell.Trim();
+        var left = c.StartsWith(":");
+        var right = c.EndsWith(":");
+        return (left, right) switch
+        {
+            (true, true) => "center",
+            (false, true) => "right",
+            (true, false) => "left",
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// コードフェンスの言語識別子（```csharp 等）を <see cref="SyntaxEngine"/> の言語判定に使う
+    /// 拡張子へマッピングする。Loomo のエディタと同じ字句解析器を使い回すことで、プレビューの
+    /// コードブロックにもエディタと同じシンタックスハイライトを適用する。
+    /// </summary>
+    private static readonly Dictionary<string, string> LanguageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["csharp"] = ".cs", ["cs"] = ".cs", ["c#"] = ".cs",
+        ["javascript"] = ".js", ["js"] = ".js", ["jsx"] = ".jsx",
+        ["typescript"] = ".ts", ["ts"] = ".ts", ["tsx"] = ".tsx",
+        ["python"] = ".py", ["py"] = ".py",
+        ["json"] = ".json", ["jsonc"] = ".json",
+        ["yaml"] = ".yaml", ["yml"] = ".yaml",
+        ["toml"] = ".toml",
+        ["xml"] = ".xml", ["html"] = ".html", ["htm"] = ".html", ["svg"] = ".svg", ["xaml"] = ".xaml",
+        ["css"] = ".css", ["scss"] = ".scss", ["less"] = ".less",
+        ["sql"] = ".sql",
+        ["c"] = ".c", ["cpp"] = ".cpp", ["c++"] = ".cpp", ["h"] = ".h", ["hpp"] = ".hpp",
+        ["go"] = ".go", ["golang"] = ".go",
+        ["rust"] = ".rs", ["rs"] = ".rs",
+        ["sh"] = ".sh", ["bash"] = ".sh", ["shell"] = ".sh", ["zsh"] = ".sh",
+        ["powershell"] = ".ps1", ["ps1"] = ".ps1", ["pwsh"] = ".ps1",
+        ["batch"] = ".bat", ["bat"] = ".bat", ["cmd"] = ".bat",
+        ["markdown"] = ".md", ["md"] = ".md",
+    };
+
+    private static readonly Dictionary<TokenKind, string> TokenClasses = new()
+    {
+        [TokenKind.Keyword] = "kw",
+        [TokenKind.Type] = "ty",
+        [TokenKind.String] = "str",
+        [TokenKind.Comment] = "cm",
+        [TokenKind.Number] = "num",
+        [TokenKind.Preprocessor] = "pp",
+        [TokenKind.Attribute] = "at",
+        [TokenKind.Function] = "fn",
+        // Text / Operator / Identifier は既定の前景色のまま（装飾なし）。
+    };
+
+    /// <summary>コードフェンスの本文を、言語が判れば <see cref="SyntaxEngine"/> でトークン化して
+    /// <c>&lt;span class="tok-*"&gt;</c> 付きで、判らなければプレーンにエンコードして出力する。</summary>
+    private static void AppendHighlightedCode(StringBuilder html, string rawLang, List<string> codeLines)
+    {
+        LineTokens[] tokenLines = [];
+        if (!string.IsNullOrWhiteSpace(rawLang) && LanguageExtensions.TryGetValue(rawLang.Trim(), out var ext))
+        {
+            var engine = new SyntaxEngine();
+            engine.DetectLanguage("code" + ext);
+            tokenLines = engine.Tokenize(codeLines.ToArray());
+        }
+        var tokensByLine = tokenLines.ToDictionary(t => t.Line, t => t.Tokens);
+
+        for (var idx = 0; idx < codeLines.Count; idx++)
+        {
+            var codeLine = codeLines[idx];
+            if (tokensByLine.TryGetValue(idx, out var tokens) && tokens.Length > 0)
+                AppendHighlightedLine(html, codeLine, tokens);
+            else
+                html.Append(Encode(codeLine));
+            html.Append('\n');
+        }
+    }
+
+    private static void AppendHighlightedLine(StringBuilder html, string codeLine, SyntaxToken[] tokens)
+    {
+        var pos = 0;
+        foreach (var tok in tokens.OrderBy(t => t.StartColumn))
+        {
+            if (tok.StartColumn < pos || tok.StartColumn > codeLine.Length)
+                continue; // 重なり・範囲外は無視して安全側に倒す
+            if (tok.StartColumn > pos)
+                html.Append(Encode(codeLine[pos..tok.StartColumn]));
+            var end = Math.Min(tok.StartColumn + tok.Length, codeLine.Length);
+            var text = codeLine[tok.StartColumn..end];
+            html.Append(TokenClasses.TryGetValue(tok.Kind, out var cls)
+                ? $"<span class=\"tok-{cls}\">{Encode(text)}</span>"
+                : Encode(text));
+            pos = end;
+        }
+        if (pos < codeLine.Length)
+            html.Append(Encode(codeLine[pos..]));
+    }
+
     internal static string Encode(string s) =>
         s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
@@ -366,6 +526,8 @@ internal static class MarkdownRenderer
     private static readonly Regex HrRe = new(@"^(\-{3,}|\*{3,}|_{3,})$", RegexOptions.Compiled);
     // 先頭空白(1)・マーカー(2: -/*/+ または "12.")・内容(3)。空白幅でネスト階層を判定する。
     private static readonly Regex ListItemRe = new(@"^([ \t]*)([\-\*\+]|\d+\.)[ \t]+(.+)$", RegexOptions.Compiled);
+    // GFM タスクリスト: リスト項目本文の先頭が "[ ] " / "[x] " / "[X] "。
+    private static readonly Regex TaskItemRe = new(@"^\[([ xX])\][ \t]+(.*)$", RegexOptions.Compiled);
     private static readonly Regex TableSepRe = new(@"^\|?[\s\-:\|]+\|?$", RegexOptions.Compiled);
     private static readonly Regex CodeSpanRe = new(@"`([^`]+)`", RegexOptions.Compiled);
     private static readonly Regex ImageRe = new(@"!\[([^\]]*)\]\(([^\)]+)\)", RegexOptions.Compiled);

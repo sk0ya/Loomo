@@ -221,4 +221,96 @@ public class MarkdownRendererTests
         Assert.False(MarkdownRenderer.IsMarpDocument("# x\n\nmarp: true"));
     }
 
+    [Fact]
+    public void TaskList_UncheckedAndChecked_RenderAsClickableCheckboxesWithSourceLine()
+    {
+        var html = Render("- [ ] todo\n- [x] done\n- [X] also done\n- not a task");
+
+        // disabled は付けない：プレビュー上でクリックしてチェック状態を切り替えられる。
+        Assert.Contains("<li class=\"task-list-item\"><input type=\"checkbox\" data-line=\"0\">todo</li>", Collapse(html));
+        Assert.Contains("<li class=\"task-list-item\"><input type=\"checkbox\" data-line=\"1\" checked>done</li>", Collapse(html));
+        Assert.Contains("<li class=\"task-list-item\"><input type=\"checkbox\" data-line=\"2\" checked>also done</li>", Collapse(html));
+        Assert.Contains("<li>not a task</li>", html);
+    }
+
+    [Fact]
+    public void TaskList_DataLine_AccountsForFrontmatterOffset()
+    {
+        // フロントマター分だけソースの行番号がずれるので、data-line はそのオフセットを反映する必要がある
+        // （クリック時にホストが正しいソース行を書き換えられるように）。
+        var html = Render("---\ntitle: hi\n---\n\n- [ ] todo");
+
+        Assert.Contains("data-line=\"4\"", html);
+    }
+
+    [Theory]
+    [InlineData("- [ ] todo", "- [x] todo")]
+    [InlineData("- [x] done", "- [ ] done")]
+    [InlineData("- [X] done", "- [ ] done")]
+    [InlineData("  - [ ] nested", "  - [x] nested")]
+    [InlineData("1. [ ] numbered", "1. [x] numbered")]
+    public void ToggleTaskListLine_FlipsCheckState(string before, string after)
+    {
+        Assert.Equal(after, MarkdownRenderer.ToggleTaskListLine(before));
+    }
+
+    [Fact]
+    public void ToggleTaskListLine_NonTaskLine_ReturnsNull()
+    {
+        Assert.Null(MarkdownRenderer.ToggleTaskListLine("- not a task"));
+        Assert.Null(MarkdownRenderer.ToggleTaskListLine("plain paragraph"));
+    }
+
+    [Fact]
+    public void Table_ColumnAlignment_AppliesTextAlignStyle()
+    {
+        var html = Render("|L|C|R|D|\n|:--|:--:|--:|--|\n|a|b|c|d|");
+
+        Assert.Contains("<th style=\"text-align:left\">L</th>", html);
+        Assert.Contains("<th style=\"text-align:center\">C</th>", html);
+        Assert.Contains("<th style=\"text-align:right\">R</th>", html);
+        Assert.Contains("<th>D</th>", html);
+        Assert.Contains("<td style=\"text-align:left\">a</td>", html);
+        Assert.Contains("<td style=\"text-align:center\">b</td>", html);
+        Assert.Contains("<td style=\"text-align:right\">c</td>", html);
+        Assert.Contains("<td>d</td>", html);
+    }
+
+    [Fact]
+    public void CodeFence_KnownLanguage_EmitsSyntaxHighlightSpans()
+    {
+        var body = MarkdownRenderer.RenderToBody("```csharp\nclass Foo { }\n```");
+
+        Assert.Contains("<span class=\"tok-kw\">class</span>", body);
+        Assert.Contains("class=\"language-csharp\"", body);
+    }
+
+    [Fact]
+    public void CodeFence_UnknownLanguage_FallsBackToPlainEncodedText()
+    {
+        var body = MarkdownRenderer.RenderToBody("```notalanguage\nclass Foo { }\n```");
+
+        Assert.DoesNotContain("<span class=\"tok-", body);
+        Assert.Contains("class Foo { }", body);
+    }
+
+    [Fact]
+    public void CodeFence_Mermaid_IsNotSyntaxHighlighted()
+    {
+        var body = MarkdownRenderer.RenderToBody("```mermaid\ngraph TD;\nA-->B;\n```");
+
+        Assert.Contains("<pre class=\"mermaid\">", body);
+        Assert.DoesNotContain("<span class=\"tok-", body);
+    }
+
+    [Fact]
+    public void Heading_GetsAnchorLinkForPermalink()
+    {
+        var html = Render("## My Heading");
+
+        Assert.Contains("<h2 id=\"my-heading\">", html);
+        Assert.Contains("<a class=\"heading-anchor\" href=\"#my-heading\"", html);
+        Assert.Contains("My Heading</h2>", html);
+    }
+
 }

@@ -396,6 +396,12 @@ public partial class ShellWindow
                     if (root.TryGetProperty("href", out var hrefElement) && hrefElement.GetString() is { } href)
                         _ = HandleEditorSupportLinkClickedAsync(href);
                     break;
+
+                // タスクリストのチェックボックスをプレビュー上でクリック：対応するソース行をエディタで書き換える。
+                case "toggleTaskCheckbox":
+                    if (root.TryGetProperty("line", out var taskLineElement) && taskLineElement.TryGetInt32(out var taskLine))
+                        ToggleMarkdownTaskCheckbox(taskLine);
+                    break;
             }
         }
         catch
