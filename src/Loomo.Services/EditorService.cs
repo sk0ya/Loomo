@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
+using Microsoft.Win32;
 using sk0ya.Loomo.Core.Abstractions;
 using Editor.Controls;
 
@@ -18,7 +19,13 @@ namespace sk0ya.Loomo.Services;
 /// </summary>
 public sealed class EditorService : IEditorService
 {
+    private readonly IWorkspaceService _workspace;
     private VimEditorControl? _ctrl;
+
+    public EditorService(IWorkspaceService workspace)
+    {
+        _workspace = workspace;
+    }
 
     /// <summary>仮想ドキュメントの DocumentId → 保存コールバックの対応表。</summary>
     private readonly Dictionary<string, Action<string>> _docCallbacks =
@@ -112,8 +119,25 @@ public sealed class EditorService : IEditorService
 
         // 通常ファイル: エディタにディスク保存を委譲（modified 解除・ウォッチャ抑制も内部で処理）。
         var path = e.FilePath ?? ctrl.FilePath;
-        if (string.IsNullOrEmpty(path)) return;
+        if (string.IsNullOrEmpty(path))
+        {
+            // Untitled（パス未確定）タブの保存：保存先が無いのでファイル保存ダイアログで確定させる。
+            path = PromptSaveAsPath();
+            if (string.IsNullOrEmpty(path)) return;   // キャンセル：未保存のまま維持
+        }
         ctrl.Save(path);
+    }
+
+    /// <summary>Untitled タブの保存時に表示するファイル保存ダイアログ。キャンセルなら null。</summary>
+    private string? PromptSaveAsPath()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "すべてのファイル (*.*)|*.*",
+            InitialDirectory = _workspace.RootPath,
+            FileName = "Untitled.txt",
+        };
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
     private static string? SyntaxFromName(string fileName) =>
