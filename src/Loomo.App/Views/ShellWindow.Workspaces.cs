@@ -384,13 +384,18 @@ public partial class ShellWindow
             snapshot.Editor.IsModified = s.IsModified;
         }
 
-        snapshot.BrowserTabs = _browserTabs.Select(tab => new BrowserTabSnapshot
-        {
-            Id = tab.Id,
-            Url = tab.View.Source?.ToString(),
-            Title = tab.View.CoreWebView2?.DocumentTitle,
-            IsActive = tab.Id == _activeBrowserTab?.Id
-        }).ToList();
+        // EditorSupport の「ブラウザで開く」が出す一時プレビュー（page.loomo 仮想ホスト）は永続化しない。
+        // 書き出し先は一時フォルダで、マップ先の仮想ホストもそのタブの CoreWebView2 限り（再起動後には
+        // 張られていない）なので、そのまま復元すると「存在しないファイル」を指す壊れたタブになる。
+        snapshot.BrowserTabs = _browserTabs
+            .Where(tab => !IsEditorSupportPreviewUrl(tab.View.Source?.ToString()))
+            .Select(tab => new BrowserTabSnapshot
+            {
+                Id = tab.Id,
+                Url = tab.View.Source?.ToString(),
+                Title = tab.View.CoreWebView2?.DocumentTitle,
+                IsActive = tab.Id == _activeBrowserTab?.Id
+            }).ToList();
 
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;

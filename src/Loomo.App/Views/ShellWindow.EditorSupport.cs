@@ -89,6 +89,37 @@ public partial class ShellWindow
         await UpdateEditorSupportAsync();
     }
 
+    /// <summary>
+    /// EditorSupport ヘッダーの「ブラウザで開く」：現在のプレビューを Loomo 内蔵ブラウザの新規タブへ
+    /// スナップショットとして開く（以降の編集には追従しない一回きりの表示）。URI 提供者（PDF 等）は
+    /// そのファイルを直接開き、HTML 提供者（Markdown/JSON プレビュー等）は現在の本文から HTML を
+    /// 再生成し、画像・アセット用の仮想ホストをそのタブの CoreWebView2 にも張ってから開く
+    /// （EditorSupport ペイン自身のマップはそのペインの CoreWebView2 専用で、他のタブへは及ばないため）。
+    /// </summary>
+    private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e)
+    {
+        var source = _editorSupportSourceTab;
+        var filePath = source?.Control.FilePath;
+        if (source is null || filePath is null)
+            return;
+
+        var provider = _editorSupports.Resolve(filePath);
+        if (provider is IEditorSupportUriProvider uriProvider)
+        {
+            await OpenUrlInBrowserAsync(uriProvider.ResolveNavigationUri(filePath), uriProvider.DescribeTitle(filePath));
+            return;
+        }
+
+        if (provider is not IEditorSupportHtmlProvider htmlProvider)
+            return; // ビジュアル提供者（CSV/TSV グリッド等）や対応の無いファイルは開ける HTML が無い。
+
+        var title = htmlProvider.DescribeTitle(filePath);
+        var mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
+        var html = await Task.Run(() => htmlProvider.RenderHtml(filePath, source.Control.Text));
+
+        await OpenEditorSupportSnapshotInBrowserAsync(html, mapFolder, title);
+    }
+
     private void UpdateEditorSupportPinToggle()
     {
         EditorSupportPinToggle.IsChecked = _editorSupportSourcePinned;

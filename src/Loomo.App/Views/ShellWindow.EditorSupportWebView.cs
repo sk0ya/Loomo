@@ -142,6 +142,80 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>
+    /// URL が EditorSupport の「ブラウザで開く」が書き出した一時プレビューページ（<see cref="MarkdownRenderer.PageVirtualHost"/>）
+    /// を指しているか。ワークスペース保存時にこの手のタブを除外する判定に使う。
+    /// </summary>
+    private static bool IsEditorSupportPreviewUrl(string? url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri)
+           && string.Equals(uri.Host, MarkdownRenderer.PageVirtualHost, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// プレビュー HTML を一時ファイルへ書き出し、新規ブラウザタブでその仮想ホストを張ってから開く
+    /// （<see cref="OnOpenEditorSupportInBrowser"/> から呼ばれる）。
+    /// </summary>
+    private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title)
+    {
+        if (!TryWriteEditorSupportPage(html, out var pageUrl))
+            return;
+
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
+        var tab = CreateBrowserTab("about:blank", requestedTitle: title);
+        await EnsureBrowserRealizedAsync(tab);
+        if (tab.View.CoreWebView2 is not { } core)
+            return;
+
+        ConfigureEditorSupportVirtualHosts(core, mapFolder);
+        core.Navigate(pageUrl);
+        UpdateBrowserTab(tab);
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>
+    /// Markdown/JSON プレビュー用の仮想ホスト（アセット・画像・ページ本体）を任意の CoreWebView2 へ張る。
+    /// マップは CoreWebView2 インスタンスごとなので、EditorSupport ペイン本体
+    /// （<see cref="InitializeEditorSupportCoreAsync"/>）とは別に、ブラウザタブ側の CoreWebView2 にも
+    /// 同じマップ先を複製する必要がある。
+    /// </summary>
+    private static void ConfigureEditorSupportVirtualHosts(CoreWebView2 core, string? mapFolder)
+    {
+        try
+        {
+            core.SetVirtualHostNameToFolderMapping(
+                MarkdownRenderer.AssetsVirtualHost,
+                Path.Combine(AppContext.BaseDirectory, "Assets", "Web"),
+                CoreWebView2HostResourceAccessKind.DenyCors);
+        }
+        catch
+        {
+            // マップ失敗時は mermaid/marp 図が原文表示になるだけで、プレビュー自体は動く。
+        }
+
+        if (!string.IsNullOrEmpty(mapFolder))
+        {
+            try
+            {
+                core.SetVirtualHostNameToFolderMapping(
+                    MarkdownRenderer.PreviewVirtualHost, mapFolder, CoreWebView2HostResourceAccessKind.DenyCors);
+            }
+            catch
+            {
+                // マップ失敗時は画像だけ出ない。
+            }
+        }
+
+        try
+        {
+            Directory.CreateDirectory(EditorSupportPreviewFolder);
+            core.SetVirtualHostNameToFolderMapping(
+                MarkdownRenderer.PageVirtualHost, EditorSupportPreviewFolder, CoreWebView2HostResourceAccessKind.DenyCors);
+        }
+        catch
+        {
+            // ここが失敗すると書き出したページ自体が開けない（稀: 権限等）。
+        }
+    }
+
     /// <summary>ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。</summary>
     private void ShowEditorSupportVisual(FrameworkElement view)
     {
