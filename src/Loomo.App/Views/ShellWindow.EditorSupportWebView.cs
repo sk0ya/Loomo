@@ -390,6 +390,12 @@ public partial class ShellWindow
                                && lineElement.TryGetInt32(out var l) ? l : 0;
                     FocusEditorSupportSource(line > 0 ? line : null);
                     break;
+
+                // Markdown 本文中のリンククリック：http/https は内蔵ブラウザ、ファイルパスはエディタで開く。
+                case "linkClicked":
+                    if (root.TryGetProperty("href", out var hrefElement) && hrefElement.GetString() is { } href)
+                        _ = HandleEditorSupportLinkClickedAsync(href);
+                    break;
             }
         }
         catch

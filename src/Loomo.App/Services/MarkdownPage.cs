@@ -287,6 +287,17 @@ internal static class MarkdownPage
                     });
                 }, { passive: true });
 
+                // 本文中のリンク（<a href>）クリックはページ内遷移させず、ホスト（Loomo）へ振り分ける。
+                // 同一ページ内アンカー（#見出し 等）だけは既定のスクロール動作に任せる。
+                document.addEventListener('click', e => {
+                    const a = e.target.closest && e.target.closest('a[href]');
+                    if (!a || !window.chrome?.webview) return;
+                    const href = a.getAttribute('href');
+                    if (!href || href.startsWith('#')) return;
+                    e.preventDefault();
+                    window.chrome.webview.postMessage({ type: 'linkClicked', href });
+                });
+
                 // 画面サイズ・ペイン幅・表示切替で innerHeight/scrollHeight が変わると、絶対 scrollY を
                 // 保つブラウザの挙動でエディタとの比率がズレる。resize 中は scroll エコーを止めて
                 // （リフロー起因の scroll でエディタが飛ぶのを防ぐ）、最後に意図した比率へ貼り直す。

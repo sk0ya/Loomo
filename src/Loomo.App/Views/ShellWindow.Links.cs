@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -190,6 +191,49 @@ public partial class ShellWindow
             // line/column は1始まり、NavigateTo は0始まりなので変換する。
             tab.Control.NavigateTo(line - 1, column > 0 ? column - 1 : 0);
         }
+    }
+
+    /// <summary>
+    /// Markdown プレビュー本文のリンククリック（&lt;a href&gt;）を振り分ける。http/https は内蔵ブラウザペイン、
+    /// ファイルパス（相対はプレビュー元ファイルのフォルダ→ワークスペース根の順で解決、:行[:列] も許容）は
+    /// エディタタブで開く。それ以外（mailto: 等）は OS 既定の外部起動に委ねる。解決できないリンクは何もしない。
+    /// </summary>
+    private async Task HandleEditorSupportLinkClickedAsync(string href)
+    {
+        if (string.IsNullOrWhiteSpace(href))
+            return;
+
+        if (Uri.TryCreate(href, UriKind.Absolute, out var uri))
+        {
+            if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            {
+                await OpenUrlInBrowserAsync(uri.AbsoluteUri, null);
+                return;
+            }
+
+            if (uri.IsFile)
+            {
+                await OpenPathInEditorAsync(uri.LocalPath, line: 0, column: 0);
+                return;
+            }
+
+            try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }
+            catch { /* 開けるハンドラが無い等でも落とさない。 */ }
+            return;
+        }
+
+        var currentPath = _editorSupportSourceTab?.Control.FilePath;
+        if (!EditorFileLinkResolver.TryResolve(
+                href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
+            return;
+
+        if (isDirectory)
+        {
+            _workspace.SelectedPath = fullPath;
+            return;
+        }
+
+        await OpenPathInEditorAsync(fullPath, line, column);
     }
 
     /// <summary>任意の URL をアプリ内ブラウザの新規タブで開く（必要ならブラウザペインを表示する）。</summary>
