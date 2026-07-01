@@ -247,8 +247,22 @@ public sealed partial class GitSessionViewModel : ObservableObject
     public Task<GitCommandResult?> DeleteBranchAsync(GitBranchInfo branch, bool force) =>
         RunOpAsync($"ブランチ削除 {branch.Name}", () => _git.DeleteBranchAsync(branch.Name, force));
 
-    public Task<GitCommandResult?> MergeAsync(GitBranchInfo branch) =>
-        RunOpAsync($"{branch.Name} をマージ", () => _git.MergeAsync(branch.Name));
+    public async Task<GitCommandResult?> MergeAsync(GitBranchInfo branch, GitMergeStrategy strategy = GitMergeStrategy.Default)
+    {
+        var label = strategy switch
+        {
+            GitMergeStrategy.FastForwardOnly => $"{branch.Name} をFast-forwardのみでマージ",
+            GitMergeStrategy.NoFastForward => $"{branch.Name} をマージコミットを作成してマージ",
+            GitMergeStrategy.Squash => $"{branch.Name} をスカッシュマージ",
+            _ => $"{branch.Name} をマージ"
+        };
+        var result = await RunOpAsync(label, () => _git.MergeAsync(branch.Name, strategy));
+        // スカッシュは git merge --squash の挙動どおりステージするだけでコミットは作らない。
+        // 自動コミットはせず、既存のコミットUI（ステージ済み変更のコミット操作）へ誘導する。
+        if (result is { Success: true } && strategy == GitMergeStrategy.Squash)
+            StatusMessage = $"{label}してステージしました。内容を確認してコミットしてください。";
+        return result;
+    }
 
     public Task<GitCommandResult?> RebaseAsync(GitBranchInfo branch) =>
         RunOpAsync($"{branch.Name} へリベース", () => _git.RebaseAsync(branch.Name));

@@ -124,6 +124,11 @@
                                 <ContextMenu>
                                     <MenuItem Header="チェックアウト" Click="OnBranchCheckout" />
                                     <MenuItem Header="現在のブランチへマージ" Click="OnBranchMerge" />
+                                    <MenuItem Header="現在のブランチへマージ（戦略を選択）">
+                                        <MenuItem Header="Fast-forwardのみでマージ" Click="OnBranchMergeFastForwardOnly" />
+                                        <MenuItem Header="マージコミットを作成してマージ" Click="OnBranchMergeNoFastForward" />
+                                        <MenuItem Header="スカッシュマージ（コミットは別途実行）" Click="OnBranchMergeSquash" />
+                                    </MenuItem>
                                     <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
                                     <Separator />
                                     <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />

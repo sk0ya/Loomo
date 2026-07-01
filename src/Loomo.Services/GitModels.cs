@@ -111,6 +111,26 @@ public enum GitResetMode
     Hard
 }
 
+/// <summary>
+/// git merge の戦略。<see cref="Default"/> は現状動作（fast-forward 可能ならそのまま、
+/// 不可能ならマージコミットを作成／未指定時のコミットメッセージ編集は省略）。
+/// </summary>
+public enum GitMergeStrategy
+{
+    /// <summary>--no-edit のみ（fast-forward できればそのまま進める、既定の git 挙動）。</summary>
+    Default,
+
+    /// <summary>--ff-only。fast-forward できないときは失敗させる（マージコミットを作らない）。</summary>
+    FastForwardOnly,
+
+    /// <summary>--no-ff --no-edit。fast-forward可能でも必ずマージコミットを作る。</summary>
+    NoFastForward,
+
+    /// <summary>--squash。作業ツリー・インデックスへ変更を取り込むだけでコミットはしない
+    /// （呼び出し側で別途コミットする必要がある）。</summary>
+    Squash
+}
+
 /// <summary>インタラクティブリベースの todo アクション（git のリベースコマンドと同じ意味）。</summary>
 public enum RebaseAction
 {

@@ -93,6 +93,24 @@ public partial class GitSessionView : UserControl
             await vm.MergeAsync(branch);
     }
 
+    private async void OnBranchMergeFastForwardOnly(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.MergeAsync(branch, GitMergeStrategy.FastForwardOnly);
+    }
+
+    private async void OnBranchMergeNoFastForward(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.MergeAsync(branch, GitMergeStrategy.NoFastForward);
+    }
+
+    private async void OnBranchMergeSquash(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.MergeAsync(branch, GitMergeStrategy.Squash);
+    }
+
     private async void OnBranchRebase(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm || SelectedBranch is not { } branch)

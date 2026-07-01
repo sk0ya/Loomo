@@ -469,7 +469,21 @@ public sealed class GitService
     public Task<GitCommandResult> PushTagAsync(string name) => MutateAsync("push", "origin", name);
     public Task<GitCommandResult> PushAllTagsAsync() => MutateAsync("push", "--tags");
 
-    public Task<GitCommandResult> MergeAsync(string branch) => MutateAsync("merge", "--no-edit", branch);
+    /// <summary>
+    /// ブランチをマージする。<paramref name="strategy"/> で戦略を切り替える
+    /// （<see cref="GitMergeStrategy.Squash"/> はステージするだけでコミットはしない。呼び出し側で
+    /// 別途 <see cref="CommitAsync"/> を呼ぶこと）。コンフリクト時の扱いは戦略によらず同じで、
+    /// 既存の <c>MergeInProgress</c> 検出・解決 UI がそのまま機能する。
+    /// </summary>
+    public Task<GitCommandResult> MergeAsync(string branch, GitMergeStrategy strategy = GitMergeStrategy.Default) =>
+        strategy switch
+        {
+            GitMergeStrategy.FastForwardOnly => MutateAsync("merge", "--ff-only", branch),
+            GitMergeStrategy.NoFastForward => MutateAsync("merge", "--no-ff", "--no-edit", branch),
+            GitMergeStrategy.Squash => MutateAsync("merge", "--squash", branch),
+            _ => MutateAsync("merge", "--no-edit", branch)
+        };
+
     public Task<GitCommandResult> MergeContinueAsync() => MutateAsync("merge", "--continue");
     public Task<GitCommandResult> MergeAbortAsync() => MutateAsync("merge", "--abort");
 
