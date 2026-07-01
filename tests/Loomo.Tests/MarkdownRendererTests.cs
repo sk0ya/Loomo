@@ -212,6 +212,17 @@ public class MarkdownRendererTests
     }
 
     [Fact]
+    public void LinkText_ContainingCodeSpan_RendersWithoutStrayControlChars()
+    {
+        // コードスパンはリンクより先にスタッシュされるため、番兵の入れ子が正しく復元されないと
+        // 生の \x01 がそのまま残ってしまう（[`docs/設計書.md`](docs/設計書.md) のような形）。
+        var body = MarkdownRenderer.RenderToBody("[`docs/design.md`](docs/design.md)");
+
+        Assert.Equal($"<p><a href=\"docs/design.md\"><code>docs/design.md</code></a></p>{Environment.NewLine}", body);
+        Assert.DoesNotContain('\x01', body);
+    }
+
+    [Fact]
     public void IsMarpDocument_DetectsFrontmatterFlag()
     {
         Assert.True(MarkdownRenderer.IsMarpDocument("---\nmarp: true\n---\n# x"));

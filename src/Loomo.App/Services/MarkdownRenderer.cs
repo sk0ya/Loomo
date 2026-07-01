@@ -480,7 +480,12 @@ internal static class MarkdownRenderer
         text = ItalicUnderRe.Replace(text, "<em>$1</em>");
         text = StrikeRe.Replace(text, "<del>$1</del>");
 
-        for (var i = 0; i < spans.Count; i++)
+        // 逆順で復元する：コードスパンはリンク／画像より先にスタッシュされるため、リンクテキストに
+        // コードスパンを含む場合（例: [`a.md`](a.md)）はコードの番兵がリンクの番兵の中に入れ子になる。
+        // 昇順で復元すると入れ子の番兵を展開する前にリンクへ書き戻してしまい、番兵が生の \x01 のまま
+        // 残ってしまう。降順なら外側（リンク）を先に展開して中の番兵を text 上に露出させ、続く
+        // イテレーションでそれを解決できる。
+        for (var i = spans.Count - 1; i >= 0; i--)
             text = text.Replace($"\x01{i}\x01", spans[i]);
 
         return text;
