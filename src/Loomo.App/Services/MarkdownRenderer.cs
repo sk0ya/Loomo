@@ -281,6 +281,7 @@ internal static class MarkdownRenderer
             Stash($"<img src=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value, allowData: true))}\" alt=\"{Encode(m.Groups[1].Value)}\">"));
         text = LinkRe.Replace(text, m =>
             Stash($"<a href=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value))}\">{Encode(m.Groups[1].Value)}</a>"));
+        text = AutolinkRe.Replace(text, m => Stash(AutolinkHtml(m.Value)));
 
         text = BoldStarRe.Replace(text, "<strong>$1</strong>");
         text = BoldUnderRe.Replace(text, "<strong>$1</strong>");
@@ -292,6 +293,31 @@ internal static class MarkdownRenderer
             text = text.Replace($"\x01{i}\x01", spans[i]);
 
         return text;
+    }
+
+    // 地の文に裸で書かれた http(s) URL をリンク化する（GFM の autolink 相当）。すでに [text](url) や
+    // 画像として書かれた URL はこの時点で Stash 済みプレースホルダに置き換わっているため対象外。
+    // 末尾の句読点・閉じ括弧はリンクに含めない（"見て https://a.b/c 。" の句点まで href に入らないように）。
+    private static string AutolinkHtml(string match)
+    {
+        var url = match;
+        var trail = "";
+        while (url.Length > 0)
+        {
+            var c = url[^1];
+            if (c == ')')
+            {
+                if (url.Count(ch => ch == ')') <= url.Count(ch => ch == '('))
+                    break; // 開き括弧と対応していれば URL の一部として残す
+            }
+            else if (")]}>.,;:!?、。」』’”\"'".IndexOf(c) < 0)
+            {
+                break;
+            }
+            trail = c + trail;
+            url = url[..^1];
+        }
+        return $"<a href=\"{EncodeAttribute(SanitizeUrl(url))}\">{Encode(url)}</a>{trail}";
     }
 
     private static string[] SplitRow(string line)
@@ -344,6 +370,7 @@ internal static class MarkdownRenderer
     private static readonly Regex CodeSpanRe = new(@"`([^`]+)`", RegexOptions.Compiled);
     private static readonly Regex ImageRe = new(@"!\[([^\]]*)\]\(([^\)]+)\)", RegexOptions.Compiled);
     private static readonly Regex LinkRe = new(@"\[([^\]]+)\]\(([^\)]+)\)", RegexOptions.Compiled);
+    private static readonly Regex AutolinkRe = new(@"https?://[^\s<>""'　]+", RegexOptions.Compiled);
     private static readonly Regex BoldStarRe = new(@"\*\*(.+?)\*\*", RegexOptions.Compiled);
     private static readonly Regex BoldUnderRe = new(@"__(.+?)__", RegexOptions.Compiled);
     private static readonly Regex ItalicStarRe = new(@"\*([^\s\*].*?[^\s\*]?)\*(?!\*)", RegexOptions.Compiled);

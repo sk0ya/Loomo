@@ -169,6 +169,49 @@ public class MarkdownRendererTests
     }
 
     [Fact]
+    public void BareUrl_InParagraph_IsAutolinked()
+    {
+        var html = Render("see https://example.com/path for details");
+
+        Assert.Contains("<a href=\"https://example.com/path\">https://example.com/path</a>", html);
+    }
+
+    [Fact]
+    public void BareUrl_TrailingPunctuation_IsExcludedFromLink()
+    {
+        var html = Render("visit https://example.com/a, then https://example.com/b.");
+
+        Assert.Contains("<a href=\"https://example.com/a\">https://example.com/a</a>,", html);
+        Assert.Contains("<a href=\"https://example.com/b\">https://example.com/b</a>.", html);
+    }
+
+    [Fact]
+    public void BareUrl_WithBalancedParens_KeepsParensInLink()
+    {
+        var html = Render("see https://en.wikipedia.org/wiki/Foo_(bar) here");
+
+        Assert.Contains("<a href=\"https://en.wikipedia.org/wiki/Foo_(bar)\">https://en.wikipedia.org/wiki/Foo_(bar)</a>", html);
+    }
+
+    [Fact]
+    public void BareUrl_InsideCodeSpan_IsNotAutolinked()
+    {
+        var body = MarkdownRenderer.RenderToBody("`https://example.com`");
+
+        Assert.DoesNotContain("<a href", body);
+        Assert.Contains("<code>https://example.com</code>", body);
+    }
+
+    [Fact]
+    public void MarkdownLink_IsNotDoubleAutolinked()
+    {
+        var body = MarkdownRenderer.RenderToBody("[text](https://example.com)");
+
+        Assert.Equal(1, Count(body, "<a href"));
+        Assert.Contains("<a href=\"https://example.com\">text</a>", body);
+    }
+
+    [Fact]
     public void IsMarpDocument_DetectsFrontmatterFlag()
     {
         Assert.True(MarkdownRenderer.IsMarpDocument("---\nmarp: true\n---\n# x"));
