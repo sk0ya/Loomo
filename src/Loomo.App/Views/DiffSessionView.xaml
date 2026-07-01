@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+    xmlns:local="clr-namespace:sk0ya.Loomo.App.Views"
     Background="{DynamicResource Panel}" Focusable="True">
 
     <UserControl.Resources>
@@ -101,6 +102,15 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
         </Style>
 
+        <!-- 本文 RichTextBox 共通のコンテキストメニュー（コピー）。以下の DataTemplate 内で参照するため、
+             StaticResource の前方参照制約（同じ ResourceDictionary 内では宣言順より後ろを参照できない）
+             を満たすようここに置く。 -->
+        <ContextMenu x:Key="DiffCopyMenu">
+            <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
+                      CommandTarget="{Binding PlacementTarget,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
+
         <!-- 通常行のまとまり（両者で共通の内容、クリック不可）。Ours/Result/Theirs の3列すべてに同じ内容を
              流し、コンフリクト部分の5列グリッドと幅を揃える（SharedSizeGroup）ことで、3ペインが
              ファイル全体を通してそのまま続いているように見せる（Rider の3-way merge と同じ考え方）。 -->
@@ -137,9 +147,12 @@
 
         <!-- コンフリクト1件：Ours（読み取り専用）/ Result（自由編集・既定は空）/ Theirs（読み取り専用）の
              3ペイン構成（Rider の3-way merge と同じ考え方）。« / » でその場で Ours・Theirs を Result へ
-             取り込めるほか、Result 欄へ直接書いて「適用」してもよい。ナビゲーションの現在地は枠で強調する。 -->
+             取り込めるほか、Result 欄へ直接書いて「適用」してもよい。ナビゲーションの現在地は枠で強調する
+             （既定は素の Panel 背景。全ブロック常時ハイライトだと「今どこか」が埋もれるため、現在地だけを
+             目立たせる）。Ours/Theirs は行番号ガター＋差分ハイライト付きの読み取り専用 RichTextBox
+             （通常差分の左右並び表示と同じ DiffTextBox/DiffGutterBox）にして、文字選択・コピーもできる。 -->
         <DataTemplate DataType="{x:Type vm:ConflictRegionVm}">
-            <Border Margin="0,4" Background="#14FFC107" BorderThickness="1">
+            <Border Margin="0,4" Background="{DynamicResource Panel}" BorderThickness="1">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
@@ -160,9 +173,23 @@
                         <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Ours（読み取り専用） -->
-                    <TextBox Grid.Column="0" Style="{StaticResource ConflictSideTextBox}"
-                             Text="{Binding OursText, Mode=OneTime}" />
+                    <!-- Ours（読み取り専用・行番号＋差分ハイライト付き）。左端の緑帯はスクロールしても
+                         「どちら側か」が分かるようにする常設マーカー（見出しの緑と同色）。 -->
+                    <Grid Grid.Column="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="#FF81C784" />
+                        <RichTextBox Grid.Column="1" Style="{StaticResource DiffGutterBox}" Width="30"
+                                     local:ConflictSideDocumentBehavior.Mode="Gutter"
+                                     local:ConflictSideDocumentBehavior.Lines="{Binding OursDisplayLines}" />
+                        <RichTextBox Grid.Column="2" Style="{StaticResource DiffTextBox}"
+                                     ContextMenu="{StaticResource DiffCopyMenu}"
+                                     local:ConflictSideDocumentBehavior.Mode="Ours"
+                                     local:ConflictSideDocumentBehavior.Lines="{Binding OursDisplayLines}" />
+                    </Grid>
 
                     <!-- Ours → Result -->
                     <Button Grid.Column="1" Content="»" ToolTip="Ours を採用して Result に入れる"
@@ -173,10 +200,25 @@
                             CommandParameter="{Binding}" />
 
                     <!-- Result（自由編集）。フォーカスすると、上部ツールバーの「現在地のコンフリクトを解決」
-                         操作の対象がこのコンフリクトになる（DiffSessionView.xaml.cs 側でナビゲーション位置と同期）。 -->
-                    <TextBox Grid.Column="2" Style="{StaticResource ConflictResultTextBox}"
-                             Text="{Binding ResultText, UpdateSourceTrigger=PropertyChanged}"
-                             GotFocus="OnConflictResultGotFocus" />
+                         操作の対象がこのコンフリクトになる（DiffSessionView.xaml.cs 側でナビゲーション位置と同期）。
+                         行番号は編集のたびに再計算される ResultLineNumberText（"1\n2\n3" 形式）をそのまま
+                         TextBlock にバインドする（WPF の TextBlock.Text は埋め込み改行をそのまま描画する）。
+                         VerticalAlignment=Top：既定の Stretch のままだと、Ours/Theirs 側が複数行で背が高い
+                         コンフリクトのとき、中身が短い（既定は空）Result の TextBox まで同じ高さに引き伸ばされ、
+                         下に不自然な空白ができる。中身の高さぴったりに留めて、余りはブロックの背景に任せる。 -->
+                    <Grid Grid.Column="2" VerticalAlignment="Top">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Width="24" TextAlignment="Right" Margin="0,4,4,4"
+                                   Text="{Binding ResultLineNumberText}"
+                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                   Foreground="{DynamicResource FgDim}" />
+                        <TextBox Grid.Column="1" Style="{StaticResource ConflictResultTextBox}"
+                                 Text="{Binding ResultText, UpdateSourceTrigger=PropertyChanged}"
+                                 GotFocus="OnConflictResultGotFocus" />
+                    </Grid>
 
                     <!-- Theirs → Result -->
                     <Button Grid.Column="3" Content="«" ToolTip="Theirs を採用して Result に入れる"
@@ -186,19 +228,25 @@
                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                             CommandParameter="{Binding}" />
 
-                    <!-- Theirs（読み取り専用） -->
-                    <TextBox Grid.Column="4" Style="{StaticResource ConflictSideTextBox}"
-                             Text="{Binding TheirsText, Mode=OneTime}" />
+                    <!-- Theirs（読み取り専用・行番号＋差分ハイライト付き）。右端の赤帯は見出しの赤と同色。 -->
+                    <Grid Grid.Column="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="3" />
+                        </Grid.ColumnDefinitions>
+                        <RichTextBox Grid.Column="0" Style="{StaticResource DiffGutterBox}" Width="30"
+                                     local:ConflictSideDocumentBehavior.Mode="Gutter"
+                                     local:ConflictSideDocumentBehavior.Lines="{Binding TheirsDisplayLines}" />
+                        <RichTextBox Grid.Column="1" Style="{StaticResource DiffTextBox}"
+                                     ContextMenu="{StaticResource DiffCopyMenu}"
+                                     local:ConflictSideDocumentBehavior.Mode="Theirs"
+                                     local:ConflictSideDocumentBehavior.Lines="{Binding TheirsDisplayLines}" />
+                        <Border Grid.Column="2" Background="#FFE57373" />
+                    </Grid>
                 </Grid>
             </Border>
         </DataTemplate>
-
-        <!-- 本文 RichTextBox 共通のコンテキストメニュー（コピー） -->
-        <ContextMenu x:Key="DiffCopyMenu">
-            <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
-                      CommandTarget="{Binding PlacementTarget,
-                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-        </ContextMenu>
 
         <!-- 統合表示の本文メニュー（コピー＋選択行の破棄）。破棄は Git・作業ツリー・未ステージの追跡ファイルのみ有効 -->
         <ContextMenu x:Key="DiffUnifiedMenu">

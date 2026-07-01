@@ -16,6 +16,11 @@ public sealed record ConflictOrdinaryLineVm(int LineNumber, string Text);
 /// <summary>通常行のまとまり（コンフリクトとコンフリクトの間の地の文）。</summary>
 public sealed record ConflictOrdinaryBlockVm(IReadOnlyList<ConflictOrdinaryLineVm> Lines);
 
+/// <summary>コンフリクトの Ours/Theirs ペイン内の1行。<see cref="Kind"/> は <c>"Context"</c>
+/// （もう一方の側にも同じ内容の行がある＝共通）か <c>"Distinct"</c>（この側にしかない＝差分）。
+/// <see cref="LineNumber"/> はそのコンフリクト内でのローカルな1始まり番号（ファイル全体の行番号ではない）。</summary>
+public sealed record ConflictSideLineVm(int LineNumber, string Text, string Kind);
+
 /// <summary>
 /// コンフリクト1件（採用操作の対象）。Rider の3-way マージ画面と同じ考え方で、Ours（読み取り専用）/
 /// Result（自由編集）/ Theirs（読み取り専用）の3ペインとして表示する。«/» で Ours・Theirs を Result へ
@@ -30,19 +35,48 @@ public sealed partial class ConflictRegionVm : ObservableObject
         Index = index;
         OursLabel = oursLabel;
         TheirsLabel = theirsLabel;
-        OursText = string.Join('\n', oursLines);
-        TheirsText = string.Join('\n', theirsLines);
+
+        // Ours→Theirs の行diffを、Ours にしか無い行／Theirs にしか無い行のハイライトに使う
+        // （通常の新旧diffではなく「この側だけの内容か」という身元の意味で Distinct を付ける）。
+        var diff = DiffUtil.ComputeFull(string.Join('\n', oursLines), string.Join('\n', theirsLines));
+        OursDisplayLines = BuildSideLines(diff, skip: DiffLineKind.Added);
+        TheirsDisplayLines = BuildSideLines(diff, skip: DiffLineKind.Removed);
+    }
+
+    private static IReadOnlyList<ConflictSideLineVm> BuildSideLines(IReadOnlyList<DiffLine> diff, DiffLineKind skip)
+    {
+        var result = new List<ConflictSideLineVm>();
+        var n = 0;
+        foreach (var line in diff)
+        {
+            if (line.Kind == skip) continue;
+            n++;
+            result.Add(new ConflictSideLineVm(n, line.Text, line.Kind == DiffLineKind.Context ? "Context" : "Distinct"));
+        }
+        return result;
     }
 
     /// <summary><see cref="ParsedConflictFile.Regions"/> 内での位置（解決 API 呼び出し・ナビゲーションの識別子）。</summary>
     public int Index { get; }
     public string OursLabel { get; }
     public string TheirsLabel { get; }
-    public string OursText { get; }
-    public string TheirsText { get; }
+
+    /// <summary>Ours ペインの表示行（そのコンフリクト内でのみの相対行番号＋差分ハイライト種別）。</summary>
+    public IReadOnlyList<ConflictSideLineVm> OursDisplayLines { get; }
+    /// <summary>Theirs ペインの表示行。</summary>
+    public IReadOnlyList<ConflictSideLineVm> TheirsDisplayLines { get; }
 
     /// <summary>中央（Result）ペインの編集中テキスト。既定は空＝未解決。</summary>
     [ObservableProperty] private string _resultText = "";
+
+    /// <summary>Result ペインの行番号ガター（"1\n2\n3" 形式。TextBlock にそのままバインドすれば改行として描画される）。</summary>
+    [ObservableProperty] private string _resultLineNumberText = "1";
+
+    partial void OnResultTextChanged(string value)
+    {
+        var count = value.Length == 0 ? 1 : value.Replace("\r\n", "\n").Split('\n').Length;
+        ResultLineNumberText = string.Join('\n', Enumerable.Range(1, count));
+    }
 
     /// <summary>前へ/次へナビゲーションの現在地か（枠を強調表示する）。</summary>
     [ObservableProperty] private bool _isCurrent;
