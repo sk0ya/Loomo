@@ -325,7 +325,18 @@ public partial class ShellWindow
             case PaneKind.Trace:
                 TraceSessionHost.Focus();
                 break;
+            case PaneKind.Debug:
+                FocusFirstFocusable(DebugPane);
+                break;
         }
+
+        // ペインへの切替はここで記録する。マウスでペインへクリックした場合は
+        // OnWindowPreviewGotKeyboardFocus が拾うが、プログラム的な切替（hjkl・ステージ・
+        // コマンドパレット等）や、内部コントロールがキーボードフォーカスを取らないペイン
+        // （IDE・WebView プレビュー等）はフォーカスイベントが飛ばず取りこぼす。FocusPane は
+        // すべてのプログラム的なペイン切替の choke point なので、ここで確実に記録する
+        // （デデュープ＋1秒デバウンスにより GotKeyboardFocus 側と二重にはならない）。
+        RecordTrailPane(kind);
     }
 }
 

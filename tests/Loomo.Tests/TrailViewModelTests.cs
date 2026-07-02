@@ -82,6 +82,30 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Record_generic_layout_kind_appends_persists_and_dedups_by_target()
+    {
+        var sut = CreateSut();
+        const string layoutA = """{"Orientation":"Columns","Children":[{"Kind":1},{"Kind":0}]}""";
+        const string layoutB = """{"Orientation":"Rows","Children":[{"Kind":1},{"Kind":4}]}""";
+
+        // 配置ドット（target＝配置スナップショットの JSON、label＝ペインの並び）。
+        sut.Record(TrailEntryKind.Layout, layoutA, "エディタ · ターミナル");
+        // 同一 target の再記録はドットを増やさずラベル・時刻だけ更新する。
+        sut.Record(TrailEntryKind.Layout, layoutA, "エディタ · ターミナル");
+        sut.Record(TrailEntryKind.Layout, layoutB, "エディタ · IDE");
+
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(TrailEntryKind.Layout, sut.Entries[0].Kind);
+        Assert.Equal(layoutA, sut.Entries[0].Target);   // JSON がそのまま戻り先として保持される
+
+        // 再起動相当：JSON ターゲットも含めて復元される（戻ると配置を組み直せる）。
+        var reloaded = new TrailViewModel(new TrailStore(_dbPath));
+        reloaded.EnsureLoaded();
+        Assert.Equal(2, reloaded.Entries.Count);
+        Assert.Equal(layoutB, reloaded.Entries[1].Target);
+    }
+
+    [Fact]
     public void RecordBrowser_uses_title_or_host_and_updates_latest_label()
     {
         var sut = CreateSut();

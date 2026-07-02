@@ -17,7 +17,10 @@ public enum TrailEntryKind
     /// <summary>メイン領域のペイン切替（フォーカス移動）。</summary>
     Pane,
     /// <summary>サイドバーのパネル切替。</summary>
-    Panel
+    Panel,
+    /// <summary>メイン領域のペイン配置（タイルレイアウト）。target は配置スナップショットの JSON で、
+    /// 戻ると複数ペインの配置ごと復元する。</summary>
+    Layout
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -67,6 +70,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Browser => "🌐",
         TrailEntryKind.Pane => "▦",
         TrailEntryKind.Panel => "◫",
+        TrailEntryKind.Layout => "⊞",
         _ => "📄"
     };
 
@@ -178,6 +182,12 @@ public sealed partial class TrailViewModel : ObservableObject
     }
 
     // ===== 記録（常に「今日」へ積む） =====
+    //
+    // 記録は種別（TrailEntryKind）を問わず、この Record 一本に集約する。新しい軌跡ソースを
+    // 足すときは「enum 値を1つ追加 → 記録したい場所で Record(kind, target, label, …) を呼ぶ」
+    // だけでよい（デデュープ・永続化・現在地更新・過去日表示の扱いは共通で効く）。以下の
+    // RecordFile/RecordBrowser/RecordPane/RecordPanel は target/label の作り方が決まっている
+    // 既存ソース向けの薄い糖衣で、内部はすべて Record に流れる。
 
     /// <summary>ファイル地点を記録する。直前と同じファイルなら追記せず位置・時刻だけ更新する
     /// （タブ切替の往復やフォーカス移動でドットが増殖しないように）。</summary>
@@ -185,8 +195,7 @@ public sealed partial class TrailViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(path))
             return;
-        Record(TrailEntryKind.File, path, Path.GetFileName(path), line, column,
-            sameTarget: t => string.Equals(t, path, StringComparison.OrdinalIgnoreCase));
+        Record(TrailEntryKind.File, path, Path.GetFileName(path), line, column);
     }
 
     /// <summary>ブラウザ地点を記録する。直前と同じ URL ならタイトル・時刻だけ更新する
@@ -196,27 +205,33 @@ public sealed partial class TrailViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(url))
             return;
         var label = string.IsNullOrWhiteSpace(title) ? HostOf(url) : title.Trim();
-        Record(TrailEntryKind.Browser, url, label, -1, -1,
-            sameTarget: t => string.Equals(t, url, StringComparison.Ordinal));
+        Record(TrailEntryKind.Browser, url, label);
     }
 
     /// <summary>ペイン切替（フォーカス移動）を記録する。target は PaneKind の enum 名。</summary>
     public void RecordPane(string paneKindName, string label)
-        => Record(TrailEntryKind.Pane, paneKindName, label, -1, -1,
-            sameTarget: t => string.Equals(t, paneKindName, StringComparison.Ordinal));
+        => Record(TrailEntryKind.Pane, paneKindName, label);
 
     /// <summary>サイドバーのパネル切替を記録する。target は SidebarPanel の enum 名。</summary>
     public void RecordPanel(string panelName, string label)
-        => Record(TrailEntryKind.Panel, panelName, label, -1, -1,
-            sameTarget: t => string.Equals(t, panelName, StringComparison.Ordinal));
+        => Record(TrailEntryKind.Panel, panelName, label);
 
-    private void Record(TrailEntryKind kind, string target, string label, int line, int column,
-        Func<string, bool> sameTarget)
+    /// <summary>あらゆる軌跡ソース共通の記録入口。直前と同一地点（同一 kind かつ同一 target）の
+    /// 再通過はドットを増やさず時刻・ラベル・位置だけ上書きし、それ以外は新しい点を積む。
+    /// target の同一判定はファイルだけ大文字小文字を無視（Windows のパス）、他は完全一致。</summary>
+    public void Record(TrailEntryKind kind, string target, string label, int line = -1, int column = -1)
     {
+        if (string.IsNullOrWhiteSpace(target))
+            return;
+
         var now = DateTime.Now;
+        var comparison = kind == TrailEntryKind.File
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
         // 直前と同一地点の再通過はドットを増やさず、その行の時刻・ラベル・位置を上書きする。
-        if (_todayLatest is { } last && last.Kind == kind && sameTarget(last.Target))
+        if (_todayLatest is { } last && last.Kind == kind
+            && string.Equals(last.Target, target, comparison))
         {
             last.Label = label;
             last.Timestamp = now;

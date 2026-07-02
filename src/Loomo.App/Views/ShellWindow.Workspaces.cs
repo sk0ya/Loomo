@@ -171,6 +171,8 @@ public partial class ShellWindow
             _vm.Trail.SetWorkspace(workspace.Id.ToString());
             _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
             await SwitchWorkspaceCoreAsync(workspace, captureCurrent, deferHydration);
+            // 復元直後の配置を基準に（遅延保存が復元配置をドット化しないように）。
+            SeedTrailLayoutBaseline();
         }
         finally { _trailSuppressed = trailSaved; }
     }
@@ -356,6 +358,7 @@ public partial class ShellWindow
 
         CaptureInto(_activeWorkspace);
         _vm.Workspaces.SaveSnapshot(_activeWorkspace);
+        RecordTrailLayout();   // 配置が構造的に変わっていたら軌跡へ（複数ペイン表示時のみ・リサイズは無視）
     }
 
     private void CaptureInto(WorkspaceSnapshot snapshot)
