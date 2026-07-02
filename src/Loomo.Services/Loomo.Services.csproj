@@ -22,7 +22,8 @@
     <!-- 1.0.35: BOMなし日本語ファイルのエンコーディング自動判定を追加 -->
     <!-- 1.0.36: IME候補ウィンドウの内蔵IMEへのデグレ修正、フォーマット時のカーソル位置飛び修正、単語モーション/テキストオブジェクトの文字クラス判定修正、vimrcマップRHS消失/ブラックホールレジスタ未対応の修正、Markdown表の列整列 -->
     <!-- 1.0.37: 末尾オーバースクロール許可でzz中央表示に対応、SetTextでカーソル位置を保持するよう修正 -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.37" />
+    <!-- 1.0.38: ExecuteCommandをキー合成からex直接実行へ変更（挿入モード/Vim無効時に「:Gblame」等が本文へ挿入される不具合の修正） -->
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.38" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.24" />
   </ItemGroup>

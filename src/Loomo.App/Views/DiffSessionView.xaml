@@ -370,7 +370,7 @@
             </Border>
 
             <Grid>
-                <!-- 通常の差分表示（統合／左右）。コンフリクト解消・Blame 表示中はまとめて隠す。 -->
+                <!-- 通常の差分表示（統合／左右）。コンフリクト解消表示中はまとめて隠す。 -->
                 <Grid Visibility="{Binding ShowDiffBody, Converter={StaticResource BoolToVis}}">
                 <RichTextBox x:Name="UnifiedBox" Style="{StaticResource DiffTextBox}"
                              ContextMenu="{StaticResource DiffUnifiedMenu}"
@@ -515,40 +515,6 @@
                                   Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
                         <ItemsControl x:Name="ConflictItemsControl" ItemsSource="{Binding ConflictBlocks}"
                                       Margin="4,6" Focusable="False" />
-                    </ScrollViewer>
-                </DockPanel>
-
-                <!-- Blame 表示（行単位の変更履歴）：行ごとに短縮ハッシュ・著者・日付の注釈を左のガター相当の
-                     列に出し、右に本文を並べる。読み取り専用・単純な一覧表示（差分の破棄操作等は無い）。 -->
-                <DockPanel Background="{DynamicResource BgAlt}"
-                           Visibility="{Binding IsBlameMode, Converter={StaticResource BoolToVis}}">
-                    <Border DockPanel.Dock="Top" Padding="8,6"
-                            Background="{DynamicResource Panel}"
-                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                        <TextBlock Text="行ごとの変更履歴（git blame）" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource FgDim}" />
-                    </Border>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding BlameLines}" Margin="4,6" Focusable="False">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel LastChildFill="True" Margin="0,0,0,1"
-                                               ToolTip="{Binding Annotation}">
-                                        <TextBlock DockPanel.Dock="Left" Width="230" Text="{Binding Annotation}"
-                                                   FontFamily="Cascadia Mono, Consolas" FontSize="11"
-                                                   Foreground="{DynamicResource FgDim}"
-                                                   TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
-                                        <TextBlock DockPanel.Dock="Left" Width="36" TextAlignment="Right"
-                                                   Margin="0,0,8,0" Text="{Binding LineNumber}"
-                                                   FontFamily="Cascadia Mono, Consolas" FontSize="11"
-                                                   Foreground="{DynamicResource FgDim}" />
-                                        <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas"
-                                                   FontSize="12" Foreground="{DynamicResource Fg}"
-                                                   TextWrapping="NoWrap" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
                     </ScrollViewer>
                 </DockPanel>
             </Grid>

@@ -59,10 +59,6 @@ public sealed class DiffFileItem
 
     // --- Gitコミット範囲のとき ---
     public GitCommitFileChange? CommitFile { get; init; }
-
-    // --- Git Blame（行単位の変更履歴）のとき ---
-    /// <summary>非nullなら Blame 表示対象（リポジトリルートからの相対パス）。</summary>
-    public string? BlamePath { get; init; }
 }
 
 /// <summary>
@@ -150,11 +146,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnIsGitModeChanged(bool value)
     {
         _changeCursor = -1;
-        // AI変更モードへ切り替えたらコミット範囲・Blame対象は解除（戻ったときは作業ツリーから）
+        // AI変更モードへ切り替えたらコミット範囲は解除（戻ったときは作業ツリーから）
         if (!value)
         {
             _commitRange = null;
-            _blameTarget = null;
             GitTargetLabel = "";
         }
         UpdateCanDiscard();
@@ -206,7 +201,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     {
         _loaded = true;
         _commitRange = (fromHash, toHash);
-        _blameTarget = null;
         GitTargetLabel = label;
         UpdateCanDiscard();
         if (!IsGitMode)
@@ -224,7 +218,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     {
         _loaded = true;
         _commitRange = null;
-        _blameTarget = null;
         GitTargetLabel = "";
         IsGitMode = true;
         await RefreshAsync();
@@ -234,13 +227,12 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             ?? SelectedFile;
     }
 
-    /// <summary>コミット範囲・Blame の表示を解除して作業ツリー差分へ戻る。</summary>
+    /// <summary>コミット範囲の表示を解除して作業ツリー差分へ戻る。</summary>
     [RelayCommand]
     private void ClearGitTarget()
     {
-        if (_commitRange is null && _blameTarget is null) return;
+        if (_commitRange is null) return;
         _commitRange = null;
-        _blameTarget = null;
         GitTargetLabel = "";
         UpdateCanDiscard();
         _ = RefreshAsync();
@@ -254,17 +246,16 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         var selectedPath = SelectedFile?.FullPath;
 
         var (items, emptyMessage) = !IsGitMode ? BuildAiItems()
-            : _blameTarget is { } blamePath ? BuildBlameItems(blamePath)
             : _commitRange is { } range ? await BuildCommitItemsAsync(range)
             : await BuildGitItemsAsync();
 
         // 一覧に変化がなければ作り直さない（自動更新のたびに選択・スクロールが飛ぶチラつきの防止）。
-        // AI変更は差分内容も item に閉じ、コミット範囲・Blame は不変なのでこれで完結。Git 作業ツリーだけは
+        // AI変更は差分内容も item に閉じ、コミット範囲は不変なのでこれで完結。Git 作業ツリーだけは
         // 同じ一覧のままファイル内容が変わりうるので、差分本体を静かに読み直す（同一なら再描画しない）。
         if (SameAsCurrentFiles(items))
         {
             EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
-            if (IsGitMode && _commitRange is null && _blameTarget is null)
+            if (IsGitMode && _commitRange is null)
                 await LoadSelectedContentAsync(SelectedFile);
             return;
         }
@@ -308,8 +299,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
                 || a.OldContent != b.OldContent
                 || a.NewContent != b.NewContent
                 || !Equals(a.Entry, b.Entry)
-                || !Equals(a.CommitFile, b.CommitFile)
-                || a.BlamePath != b.BlamePath)
+                || !Equals(a.CommitFile, b.CommitFile))
                 return false;
         }
         return true;

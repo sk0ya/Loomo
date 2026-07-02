@@ -32,6 +32,14 @@ public sealed partial class FileNodeViewModel : ObservableObject
     // git の差分マーク。XAML 側の DataTrigger が種別ごとに表示文字・色を割り当てる。
     [ObservableProperty] private GitChangeKind _gitStatus;
 
+    // 現在のツリーが Git リポジトリ配下か（「Git」コンテキストメニューの出し分け用）。
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanGitBlame))]
+    private bool _isGitRepository;
+
+    /// <summary>「Git」メニュー（Git Blame 等）を出すか（ファイルかつ Git リポジトリ配下）。</summary>
+    public bool CanGitBlame => !IsDirectory && IsGitRepository;
+
     // ピン留め済みか（コンテキストメニューの「ピン留め／解除」の出し分け）。
     // ピン状態の変更時は owner（RefreshPinMarks）が読込済みノードへ反映する。
     [ObservableProperty]
@@ -48,6 +56,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         Name = Path.GetFileName(fullPath);
         _owner = owner;
         GitStatus = owner.GitStatusFor(fullPath, isDirectory);
+        IsGitRepository = owner.IsGitRepository;
         if (isDirectory)
             _isPinned = owner.IsPinnedPath(fullPath);
 
@@ -60,7 +69,11 @@ public sealed partial class FileNodeViewModel : ObservableObject
 
     // 監視更新で git 状態が変わったとき、既存ノード（差分更新で再利用されるインスタンス）の
     // マークを最新へ更新する。
-    public void RefreshGitStatus() => GitStatus = _owner.GitStatusFor(FullPath, IsDirectory);
+    public void RefreshGitStatus()
+    {
+        GitStatus = _owner.GitStatusFor(FullPath, IsDirectory);
+        IsGitRepository = _owner.IsGitRepository;
+    }
 
     private static readonly FileNodeViewModel Placeholder = new();
     private FileNodeViewModel()

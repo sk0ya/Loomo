@@ -202,14 +202,13 @@ public sealed partial class FolderTreeViewModel
         }
     }
 
-    /// <summary>指定ファイルの Git Blame（行単位の変更履歴）を要求する（ShellWindow が Diff ペインで開く）。
-    /// 実在ファイルで、かつワークスペースルート配下にあるときだけ発火する（blame にはリポジトリ相対パスが必要）。</summary>
+    /// <summary>指定ファイルの Git Blame 表示を要求する（ShellWindow がエディタペインでファイルを開き、
+    /// VimEditorControl のネイティブ Git Blame 表示（:Gblame）をトリガーする）。実在ファイルのときだけ発火する。</summary>
     public void RequestGitBlame(FileNodeViewModel node)
     {
-        if (node.IsDirectory || !File.Exists(node.FullPath) || _workspace.RootPath is null)
+        if (node.IsDirectory || !File.Exists(node.FullPath))
             return;
-        var relativePath = Path.GetRelativePath(_workspace.RootPath, node.FullPath).Replace('\\', '/');
-        GitBlameRequested?.Invoke(this, relativePath);
+        GitBlameRequested?.Invoke(this, node.FullPath);
     }
 
     /// <summary>選択ノードのワークスペースルート相対パスを、ルート直下の .gitignore に1行追加する

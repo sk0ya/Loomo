@@ -382,13 +382,18 @@ public partial class ShellWindow : Window
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         // FolderTree の「AIワークフロー」：AIバーをワークフローモードへ切替え、ファイルを構造化 input として実行する。
         vm.FolderTree.WorkflowRequested += (_, req) => RunWorkflowWithInput(req.WorkflowId, req.Input);
-        // FolderTree の「Git Blame」：Diff ペインを Blame 表示モードで開く（コミット範囲表示・
-        // 「差分を開く」と同じく、出ていなければ左上ペインと入れ替えて前面に出す）。
-        vm.FolderTree.GitBlameRequested += (_, relativePath) =>
+        // FolderTree の「Git」>「Git Blame」：エディタペインでファイルを開き、VimEditorControl
+        // のネイティブ Git Blame 表示（:Gblame。行ごとの短縮ハッシュ・著者・日付をインライン表示する
+        // トグル。GitServiceFactory で渡している GitDiffProvider が実処理を持つので、ここではファイルを
+        // 開いて ExecuteCommand で ex コマンドを流すだけでよい）をトリガーする。
+        vm.FolderTree.GitBlameRequested += async (_, fullPath) =>
         {
-            _ = vm.DiffSession.ShowBlameAsync(relativePath);
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
-            FocusPane(PaneKind.Diff);
+            fullPath = Path.GetFullPath(fullPath);
+            await OpenFileInNewEditorTabAsync(fullPath);
+            FocusPane(PaneKind.Editor);
+            var tab = _editorTabs.FirstOrDefault(t =>
+                string.Equals(t.PeekFilePath, fullPath, StringComparison.OrdinalIgnoreCase));
+            tab?.Control.ExecuteCommand("Gblame");
         };
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();

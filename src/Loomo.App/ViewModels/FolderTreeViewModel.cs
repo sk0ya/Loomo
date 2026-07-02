@@ -123,8 +123,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // AIバーをワークフローモードへ切替えて、当該ファイルを構造化 input として実行する。
     public event EventHandler<WorkflowRunRequest>? WorkflowRequested;
 
-    // FolderTree の「Git Blame」要求（ファイルのみ）。View（コンテキストメニュー）から発火し、
-    // ShellWindow が Diff ペインを Blame 表示モードで開く。引数はリポジトリルートからの相対パス。
+    // FolderTree の「Git」>「Git Blame」要求（ファイルのみ）。View（コンテキストメニュー）から発火し、
+    // ShellWindow がエディタペインでファイルを開いて VimEditorControl のネイティブ Git Blame を
+    // トリガーする。引数はファイルのフルパス。
     public event EventHandler<string>? GitBlameRequested;
 
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
@@ -464,6 +465,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
                 : GitChangeKind.None;
         return _gitState.GetFileStatus(fullPath);
     }
+
+    /// <summary>現在のツリーが Git リポジトリ配下か。FileNodeViewModel の「Git」メニュー出し分けと、
+    /// エディタの右クリックメニューの Git 系項目出し分けに使う。</summary>
+    internal bool IsGitRepository => _gitState.IsGitRepository;
 
     private string CreateEmptyMessage()
     {

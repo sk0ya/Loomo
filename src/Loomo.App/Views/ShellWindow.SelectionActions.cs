@@ -30,8 +30,29 @@ public partial class ShellWindow
         var control = sender as VimEditorControl ?? _activeEditorTab?.Control;
         // 右クリックされたエディタ（複数分割でもイベント発火元）で開いているスクリプトを実行する項目を足す。
         AddRunScriptMenuItem(e.Menu, control);
+        // Git リポジトリ配下で開いているファイルなら「Git」>「Git Blame」を足す。
+        AddGitMenuItems(e.Menu, control);
         // デバッグ停止中なら、カーソル行に対するデバッグ操作（次のステートメントに設定）を足す。
         AddDebugMenuItems(e.Menu, control);
+    }
+
+    // カーソル位置のファイルに対する Git 操作をメニュー末尾へ足す（今のところ Git Blame のみ、
+    // 今後 Git Status/Diff/Log 等も同じ「Git」親メニューへ増やす想定）。ファイルが開かれていて、
+    // かつ現在のワークスペースが Git リポジトリのときだけ出す（FolderTree と同じ判定基準を使う）。
+    // Blame の実処理はエディタ側（VimEditorControl の :Gblame。GitServiceFactory で渡している
+    // GitDiffProvider が git blame を実行しインライン注釈を出す）にすべて任せ、ここでは
+    // ExecuteCommand でトリガーするだけでよい。
+    private void AddGitMenuItems(ContextMenu menu, VimEditorControl? control)
+    {
+        if (control?.FilePath is not { Length: > 0 } || !_vm.FolderTree.IsGitRepository)
+            return;
+
+        menu.Items.Add(new Separator());
+        var git = new MenuItem { Header = "Git" };
+        var blame = new MenuItem { Header = "Git Blame" };
+        blame.Click += (_, _) => control.ExecuteCommand("Gblame");
+        git.Items.Add(blame);
+        menu.Items.Add(git);
     }
 
     // カーソル行に対するデバッグ操作をメニュー末尾へ足す。ブレークポイント条件編集は常時、Run to Cursor／

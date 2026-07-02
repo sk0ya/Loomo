@@ -94,6 +94,9 @@ public sealed partial class DiffSessionViewModel
     /// <see cref="ConflictBlocks"/> または <see cref="IsWholeFileConflict"/> 側を表示する）。</summary>
     [ObservableProperty] private bool _isConflictMode;
 
+    /// <summary>通常の差分本体（統合／左右）を表示するか。コンフリクト解消表示ではないとき。</summary>
+    public bool ShowDiffBody => !IsConflictMode;
+
     /// <summary>作業ツリーにマーカーが書かれないコンフリクト（削除/変更の衝突・リネーム等）か。
     /// true のときはリージョンではなくファイル全体の ours/theirs から選ばせる。</summary>
     [ObservableProperty] private bool _isWholeFileConflict;
@@ -208,18 +211,9 @@ public sealed partial class DiffSessionViewModel
     [RelayCommand]
     private Task ApplyCurrentResultAsync() => ApplyResultTextAsync(CurrentConflictRegion());
 
-    /// <summary>選択ファイルの表示内容を、Blame／コンフリクトかどうかで振り分けて読み込む。</summary>
+    /// <summary>選択ファイルの表示内容を、コンフリクトかどうかで振り分けて読み込む。</summary>
     private async Task LoadSelectedContentAsync(DiffFileItem? item)
     {
-        if (item?.BlamePath is not null)
-        {
-            IsConflictMode = false;
-            ResetConflictState();
-            await LoadBlameAsync(item);
-            return;
-        }
-        IsBlameMode = false;
-
         if (item?.Entry?.IsConflicted == true)
         {
             IsConflictMode = true;
@@ -233,7 +227,7 @@ public sealed partial class DiffSessionViewModel
         }
     }
 
-    /// <summary>コンフリクト解消表示の状態を非コンフリクト向けに初期化する（Blame・通常差分の両方で使う）。</summary>
+    /// <summary>コンフリクト解消表示の状態を非コンフリクト向けに初期化する。</summary>
     private void ResetConflictState()
     {
         IsWholeFileConflict = false;
