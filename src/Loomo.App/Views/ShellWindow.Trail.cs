@@ -173,7 +173,7 @@ public partial class ShellWindow
 
     // ===== レイアウト（複数ペインのタイル配置） =====
 
-    /// <summary>最後に保存時に観測したレイアウト配置。リサイズ等の非構造変化でドットを増やさないための基準
+    /// <summary>最後に保存時に観測したレイアウト配置。構造変更時には「いま離れた配置」として記録する基準
     /// （<see cref="PaneLayoutTree.SnapshotsEquivalent"/> は Weight を無視して構造だけを比べる）。
     /// ワークスペース復元・ジャンプ直後はここへ現配置を入れておき、直後の保存で重複ドットを積まない。</summary>
     private PaneNodeSnapshot? _lastRecordedLayout;
@@ -182,27 +182,35 @@ public partial class ShellWindow
 
     /// <summary>メイン領域のペイン配置が構造的に変わったら軌跡へ記録する。<see cref="SaveActiveWorkspaceSnapshotNow"/>
     /// （レイアウト変更・タブ操作・リサイズ等あらゆる保存の choke point）から呼ぶ。複数ペイン表示のときだけ
-    /// 記録し（単一ペインはファイル／ペインのドットが代表する）、前回と同じ構造なら積まない。</summary>
+    /// 記録する。変更後ではなく変更前の配置を積むことで、その四角から実際に元の配置へ戻れる。
+    /// 単一ペインはファイル／ペインのドットが代表し、前回と同じ構造なら積まない。</summary>
     private void RecordTrailLayout()
     {
         if (_trailSuppressed || _stageActive || _root is null)
             return;
 
-        var snapshot = ToSnapshot(_root);
-        if (VisibleLeafCount() < 2)
+        var current = ToSnapshot(_root);
+        if (_lastRecordedLayout is not { } previous)
         {
-            // 単一ペイン自体は記録しないが、構造変更として基準には反映する。
-            // これがないと「複数 A → 単一 → 複数 A」を A の再表示として記録できない。
-            _lastRecordedLayout = snapshot;
-            return;   // 「複数ペインを表示しているとき」の配置だけを対象にする
+            _lastRecordedLayout = current;
+            return;
         }
 
-        if (_lastRecordedLayout is { } prev && PaneLayoutTree.SnapshotsEquivalent(prev, snapshot))
-            return;   // 構造が前回と同じ（リサイズだけ等）＝ドットを増やさない
-        _lastRecordedLayout = snapshot;
+        if (PaneLayoutTree.SnapshotsEquivalent(previous, current))
+        {
+            // 構造が同じ（リサイズだけ等）ならドットは増やさない。ただし、次に構造が変わった際に
+            // 直前の比率へ戻せるよう、復元用スナップショット自体は最新状態へ更新する。
+            _lastRecordedLayout = current;
+            return;
+        }
 
-        var target = JsonSerializer.Serialize(snapshot, TrailLayoutJson);
-        var label = DescribeLayout(snapshot);
+        // 比較基準は先に現在配置へ進める。Record が別の保存処理を誘発しても重複させない。
+        _lastRecordedLayout = current;
+        if (VisibleLeafKinds(previous).Take(2).Count() < 2)
+            return;   // 離れた配置が単一ペインなら、配置ドットの対象外
+
+        var target = JsonSerializer.Serialize(previous, TrailLayoutJson);
+        var label = DescribeLayout(previous);
         RecordTrail(() => _vm.Trail.Record(TrailEntryKind.Layout, target, label));
     }
 
