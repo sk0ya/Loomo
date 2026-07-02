@@ -32,6 +32,11 @@ public sealed partial class DiffSessionViewModel
     /// <summary>ファイル跨ぎで前のファイルへ移ったとき、自動ジャンプ先を「最後の変更」にするフラグ。</summary>
     private bool _pendingJumpToLast;
 
+    /// <summary>blame クリック等からの「このファイルの新側この行へ」の保留ジャンプ（1始まり・-1 は無し）。
+    /// 対象ファイル（<see cref="_pendingJumpFile"/>）の差分が組み上がった自動ジャンプ時に消費する。</summary>
+    private int _pendingJumpNewLine = -1;
+    private DiffFileItem? _pendingJumpFile;
+
     [RelayCommand]
     private void JumpToNextChange() => JumpChange(forward: true);
 
@@ -44,6 +49,17 @@ public sealed partial class DiffSessionViewModel
     /// </summary>
     public void JumpToAutoTarget()
     {
+        // blame からのピンポイントジャンプ：対象ファイルが選択されたままなら該当行へ。
+        // 行が見つからないとき（コンテキスト外など）は消費せず通常の自動ジャンプへ落とす
+        // （別ファイル読込の古い通知で走った場合も、対象ファイルの読込完了時にやり直せる）。
+        if (_pendingJumpNewLine > 0 && ReferenceEquals(SelectedFile, _pendingJumpFile)
+            && JumpToNewSideLine(_pendingJumpNewLine))
+        {
+            _pendingJumpNewLine = -1;
+            _pendingJumpFile = null;
+            return;
+        }
+
         if (_pendingJumpToLast)
         {
             _pendingJumpToLast = false;
@@ -115,6 +131,50 @@ public sealed partial class DiffSessionViewModel
         if (idx < 0 || nextIdx < 0 || nextIdx >= Files.Count) return;
         _pendingJumpToLast = !forward; // 前方向は移動先の「最後の変更」から見せる
         SelectedFile = Files[nextIdx]; // 選択変更→差分読込→自動ジャンプ（JumpToAutoTarget）
+    }
+
+    /// <summary>
+    /// 差分本体の「新側の行番号」が <paramref name="newLine"/> の行までスクロールする。
+    /// 完全一致が無ければ手前で最も近い行へ。新側に一度も現れない（統合表示のコンテキスト外など）
+    /// ときは false を返す。
+    /// </summary>
+    private bool JumpToNewSideLine(int newLine)
+    {
+        int best = -1;
+        int bestLine = int.MinValue;
+        if (IsSideBySide)
+        {
+            // 左右表示は各行が新側行番号（RightLine）を直接持っている
+            for (var i = 0; i < SideRows.Count; i++)
+            {
+                if (!int.TryParse(SideRows[i].RightLine, out var rl) || rl > newLine) continue;
+                if (rl == newLine) { best = i; break; }
+                if (rl > bestLine) { bestLine = rl; best = i; }
+            }
+        }
+        else
+        {
+            // 統合表示は @@ ハンク見出しから新側の行番号を数える（Added/Context が新側の1行を消費）
+            int counter = -1;
+            for (var i = 0; i < DiffRows.Count; i++)
+            {
+                var row = DiffRows[i];
+                if (row.Kind == "Gap")
+                {
+                    if (SideBySideDiff.TryParseHunkStarts(row.Text, out _, out var newStart))
+                        counter = newStart;
+                    continue;
+                }
+                if (counter < 0 || row.Kind is not ("Added" or "Context")) continue;
+                if (counter == newLine) { best = i; break; }
+                if (counter < newLine && counter > bestLine) { bestLine = counter; best = i; }
+                counter++;
+            }
+        }
+        if (best < 0) return false;
+        _changeCursor = -1; // 次/前の変更ジャンプは先頭からやり直す
+        ScrollToRowRequested?.Invoke(best);
+        return true;
     }
 
     /// <summary>変更ブロック（連続する追加/削除/空セルのかたまり）の先頭行インデックス一覧。</summary>

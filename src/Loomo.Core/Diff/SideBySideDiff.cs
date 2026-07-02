@@ -108,7 +108,7 @@ public static class SideBySideDiff
     }
 
     /// <summary>ハンク見出し <c>@@ -a,b +c,d @@</c> から左右の開始行番号（a, c）を取り出す。</summary>
-    private static bool TryParseHunkStarts(string line, out int oldStart, out int newStart)
+    public static bool TryParseHunkStarts(string line, out int oldStart, out int newStart)
     {
         oldStart = newStart = 0;
         var m = System.Text.RegularExpressions.Regex.Match(

@@ -159,6 +159,12 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnSelectedFileChanged(DiffFileItem? value)
     {
         _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
+        // blame からのピンポイントジャンプ待ちがあっても、別ファイルへ移ったら破棄する
+        if (_pendingJumpFile is not null && !ReferenceEquals(value, _pendingJumpFile))
+        {
+            _pendingJumpFile = null;
+            _pendingJumpNewLine = -1;
+        }
         UpdateCanDiscard();
         InvalidateWorkingTreePatch(value); // 開き直すたびに作業ツリーの最新内容を読み直す
         _ = LoadAndAutoJumpAsync(value);
@@ -207,6 +213,42 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             IsGitMode = true;  // OnIsGitModeChanged 経由で更新が走る
         else
             _ = RefreshAsync();
+    }
+
+    /// <summary>
+    /// エディタの blame クリックから：1コミットの差分を表示し、そのファイルを選択して、
+    /// コミット時点の行番号 <paramref name="lineInCommit"/>（新側・1始まり）の行へスクロールする。
+    /// ファイルが一致しない（リネーム等）ときは既定の選択、行が差分に見つからないときは
+    /// 通常の「最初の変更へ」の自動ジャンプにフォールバックする。
+    /// ペインの表示は呼び出し側（ShellWindow）が行う。
+    /// </summary>
+    public async Task ShowCommitFileAsync(string hash, string label, string? filePath, int lineInCommit)
+    {
+        _loaded = true;
+        _commitRange = (null, hash);
+        GitTargetLabel = label;
+        UpdateCanDiscard();
+        if (!IsGitMode)
+        {
+            // 生成された setter を通すと OnIsGitModeChanged が RefreshAsync を fire-and-forget で
+            // 走らせて下の await と競合するため、フィールドを直接更新して通知だけ出す。
+            _changeCursor = -1;
+            _isGitMode = true;
+            OnPropertyChanged(nameof(IsGitMode));
+        }
+        await RefreshAsync();
+
+        var display = ToDisplayPath(filePath ?? "");
+        var target = Files.FirstOrDefault(f =>
+            string.Equals(f.DisplayPath, display, StringComparison.OrdinalIgnoreCase));
+        if (target is null) return;
+
+        _pendingJumpNewLine = lineInCommit;
+        _pendingJumpFile = target;
+        if (!ReferenceEquals(SelectedFile, target))
+            SelectedFile = target;              // OnSelectedFileChanged → 読込 → 自動ジャンプで消費
+        else
+            await LoadAndAutoJumpAsync(target); // 既に選択済みでも読み直してジャンプさせる
     }
 
     /// <summary>
