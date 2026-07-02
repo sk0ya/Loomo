@@ -20,7 +20,9 @@ public enum TrailEntryKind
     Panel,
     /// <summary>メイン領域のペイン配置（タイルレイアウト）。target は配置スナップショットの JSON で、
     /// 戻ると複数ペインの配置ごと復元する。</summary>
-    Layout
+    Layout,
+    /// <summary>アクティブにしたターミナルタブ。target はワークスペース内で永続化されるタブ ID。</summary>
+    Terminal
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -71,6 +73,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Pane => "▦",
         TrailEntryKind.Panel => "◫",
         TrailEntryKind.Layout => "⊞",
+        TrailEntryKind.Terminal => ">_",
         _ => "📄"
     };
 
@@ -215,6 +218,10 @@ public sealed partial class TrailViewModel : ObservableObject
     /// <summary>サイドバーのパネル切替を記録する。target は SidebarPanel の enum 名。</summary>
     public void RecordPanel(string panelName, string label)
         => Record(TrailEntryKind.Panel, panelName, label);
+
+    /// <summary>ターミナルタブの活性化を記録する。target は再起動後も維持されるタブ ID。</summary>
+    public void RecordTerminal(Guid tabId, string label)
+        => Record(TrailEntryKind.Terminal, tabId.ToString("D"), label);
 
     /// <summary>あらゆる軌跡ソース共通の記録入口。直前と同一地点（同一 kind かつ同一 target）の
     /// 再通過はドットを増やさず時刻・ラベル・位置だけ上書きし、それ以外は新しい点を積む。

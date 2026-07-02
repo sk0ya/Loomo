@@ -73,12 +73,15 @@ public class TrailViewModelTests : IDisposable
         sut.RecordFile(@"C:\work\a.cs");
         sut.RecordPanel("Search", "検索");
         sut.RecordBrowser("https://example.com/", null);
+        sut.RecordTerminal(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Terminal 1");
 
-        Assert.Equal(4, sut.Entries.Count);
+        Assert.Equal(5, sut.Entries.Count);
         Assert.Equal(TrailEntryKind.Pane, sut.Entries[0].Kind);
         Assert.Equal(TrailEntryKind.File, sut.Entries[1].Kind);
         Assert.Equal(TrailEntryKind.Panel, sut.Entries[2].Kind);
         Assert.Equal(TrailEntryKind.Browser, sut.Entries[3].Kind);
+        Assert.Equal(TrailEntryKind.Terminal, sut.Entries[4].Kind);
+        Assert.Equal("11111111-1111-1111-1111-111111111111", sut.Entries[4].Target);
     }
 
     [Fact]

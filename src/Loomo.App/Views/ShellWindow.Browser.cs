@@ -295,6 +295,10 @@ public partial class ShellWindow
         _vm.Tabs.ActivateBrowserTab(id);
         // 未実体化のタブは Source が null なので、保留中の遷移先 URL を表示する。
         BrowserAddressBox.Text = tab.View.Source?.ToString() ?? tab.PendingUrl ?? string.Empty;
+        // 読込済みタブへの切替では NavigationCompleted が発生しないため、活性化時にも現在地を記録する。
+        RecordTrailBrowser(
+            tab.View.Source?.ToString() ?? tab.PendingUrl,
+            tab.View.CoreWebView2?.DocumentTitle);
         tab.View.Focus();
         // Browser ペインが見えていれば、このタブの WebView2 を背景で実体化する。
         ScheduleBrowserRealize(tab);

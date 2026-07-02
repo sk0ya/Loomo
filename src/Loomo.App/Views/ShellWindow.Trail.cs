@@ -120,6 +120,15 @@ public partial class ShellWindow
         RecordTrail(() => _vm.Trail.RecordBrowser(url, title));
     }
 
+    /// <summary>ターミナルタブの活性化を、再起動後も同じタブへ戻れる ID 付きで記録する。</summary>
+    private void RecordTrailTerminalTab(TerminalTab tab)
+    {
+        var label = _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tab.Id)?.Title;
+        if (string.IsNullOrWhiteSpace(label))
+            label = string.IsNullOrWhiteSpace(tab.View.HeaderTitle) ? "ターミナル" : tab.View.HeaderTitle;
+        RecordTrail(() => _vm.Trail.RecordTerminal(tab.Id, label));
+    }
+
     /// <summary>フォーカスが別ペインへ移ったことを軌跡へ記録する（同一ペイン内の移動は対象外）。
     /// WebView2 の実体化やプレビュー更新はフォーカスを奪い合って Editor⇄Browser⇄プレビューの
     /// 往復イベントを大量に起こすため、即時には記録せず「同じペインに一定時間とどまった」ときだけ
@@ -160,6 +169,11 @@ public partial class ShellWindow
                 && !string.IsNullOrWhiteSpace(et.PeekFilePath) && !et.PeekIsVirtual)
             {
                 RecordTrailEditorTab(et);
+                return;
+            }
+            if (kind == PaneKind.Terminal && _activeTerminalTab is { } tt)
+            {
+                RecordTrailTerminalTab(tt);
                 return;
             }
             RecordTrail(() => _vm.Trail.RecordPane(kind.ToString(), PaneDisplayName(kind)));
@@ -274,6 +288,7 @@ public partial class ShellWindow
         _trailJumps[TrailEntryKind.Pane] = entry => { JumpToPane(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Panel] = entry => { JumpToPanel(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Layout] = entry => { JumpToLayout(entry); return Task.CompletedTask; };
+        _trailJumps[TrailEntryKind.Terminal] = entry => { JumpToTerminal(entry); return Task.CompletedTask; };
     }
 
     private async void JumpToTrailEntry(TrailEntryViewModel entry)
@@ -327,6 +342,15 @@ public partial class ShellWindow
             return;
         _vm.ActivePanel = panel;
         _vm.IsSidebarVisible = true;
+    }
+
+    private void JumpToTerminal(TrailEntryViewModel entry)
+    {
+        if (!Guid.TryParse(entry.Target, out var id) || _terminalTabs.All(t => t.Id != id))
+            return;   // 閉じられたタブは復元不能なので何もしない
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
+        ActivateTerminalTab(id);
+        FocusPane(PaneKind.Terminal);
     }
 
     /// <summary>配置ドット：複数ペインのタイル配置ごと復元する。ソロ（ステージ）表示中なら

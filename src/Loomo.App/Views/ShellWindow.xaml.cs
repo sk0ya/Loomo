@@ -488,7 +488,12 @@ public partial class ShellWindow : Window
     {
         if (sender is not ShellViewModel vm) return;
         if (e.PropertyName == nameof(ShellViewModel.IsSidebarVisible))
+        {
             ApplySidebarVisibility(vm.IsSidebarVisible);
+            // 同じパネルを閉じて再表示した場合は ActivePanel が変化しないため、表示側でも記録する。
+            if (vm.IsSidebarVisible)
+                RecordTrailPanel(vm.ActivePanel);
+        }
         else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen) && vm.IsSettingsOverlayOpen)
             EnsureSettingsOverlayCreated();
         else if (e.PropertyName == nameof(ShellViewModel.ActivePanel))

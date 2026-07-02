@@ -111,6 +111,7 @@ public partial class ShellWindow
         if (Directory.Exists(tab.View.WorkingDirectory))
             _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
         _vm.Tabs.ActivateTerminalTab(id);
+        RecordTrailTerminalTab(tab);
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -123,6 +124,7 @@ public partial class ShellWindow
         if (Directory.Exists(tab.View.WorkingDirectory))
             _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
         _vm.Tabs.ActivateTerminalTab(tab.Id);
+        RecordTrailTerminalTab(tab);
     }
 
     private async Task CloseTerminalTabAsync(Guid id)
