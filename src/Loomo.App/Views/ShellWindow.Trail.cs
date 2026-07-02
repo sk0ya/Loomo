@@ -36,10 +36,16 @@ public partial class ShellWindow
         // 追記・現在地移動でドットが見える位置へ追従スクロールする。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
+        // 日付クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
+        // すると Click が届く前に外側クリックとして閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
+        TrailCalendarPopup.Closed += (_, _) => _trailCalendarClosedAt = DateTime.UtcNow;
         // 起動のクリティカルパスを避けて、今日の軌跡を SQLite から遅延読込する。
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
             new Action(() => _vm.Trail.EnsureLoaded()));
     }
+
+    /// <summary>カレンダーポップアップが最後に閉じた時刻（日付クリックのトグル判定）。</summary>
+    private DateTime _trailCalendarClosedAt;
 
     // ===== 記録 =====
 
@@ -274,6 +280,13 @@ public partial class ShellWindow
 
     private void OnTrailDateClick(object sender, RoutedEventArgs e)
     {
+        // トグル：開いた状態でのボタン再クリックは、直前の外側クリックで閉じた分を「閉じる操作」とみなす。
+        if (TrailCalendarPopup.IsOpen
+            || (DateTime.UtcNow - _trailCalendarClosedAt).TotalMilliseconds < 250)
+        {
+            TrailCalendarPopup.IsOpen = false;
+            return;
+        }
         TrailCalendar.SelectedDate = _vm.Trail.DisplayDate.ToDateTime(TimeOnly.MinValue);
         TrailCalendar.DisplayDate = TrailCalendar.SelectedDate.Value;
         TrailCalendar.DisplayDateEnd = DateTime.Today;   // 未来は選べない
