@@ -162,6 +162,15 @@ public partial class ShellWindow
     /// </param>
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false)
     {
+        // 復元による機械的なタブ活性化・ナビゲートを軌跡（操作ログ）へ記録しない。
+        var trailSaved = _trailSuppressed;
+        _trailSuppressed = true;
+        try { await SwitchWorkspaceCoreAsync(workspace, captureCurrent, deferHydration); }
+        finally { _trailSuppressed = trailSaved; }
+    }
+
+    private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration)
+    {
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);
 

@@ -49,6 +49,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public PegboardViewModel Pegboard { get; }
     public SearchPanelViewModel SearchPanel { get; }
     public DebugViewModel Debug { get; }
+    /// <summary>ウィンドウ最下部の軌跡（操作ログ）バー。クリックで通過した地点へ戻る。</summary>
+    public TrailViewModel Trail { get; }
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -80,7 +82,8 @@ public sealed partial class ShellViewModel : ObservableObject
         TraceSessionViewModel traceSession,
         PegboardViewModel pegboard,
         SearchPanelViewModel searchPanel,
-        DebugViewModel debug)
+        DebugViewModel debug,
+        TrailViewModel trail)
     {
         FolderTree = folderTree;
         Workspaces = workspaces;
@@ -102,6 +105,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Pegboard = pegboard;
         SearchPanel = searchPanel;
         Debug = debug;
+        Trail = trail;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;

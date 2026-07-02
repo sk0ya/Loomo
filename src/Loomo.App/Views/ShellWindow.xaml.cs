@@ -444,6 +444,7 @@ public partial class ShellWindow : Window
                 _vm.TraceSession.EnsureLoaded();
         };
         InitializePegboard();
+        InitializeTrail();
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
 

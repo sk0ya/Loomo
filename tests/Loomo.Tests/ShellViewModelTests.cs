@@ -81,7 +81,7 @@ public class ShellViewModelTests
 
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
-            new PegboardViewModel(), searchVm, debugVm);
+            new PegboardViewModel(), searchVm, debugVm, new TrailViewModel());
     }
 
     [Fact]

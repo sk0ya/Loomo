@@ -99,6 +99,8 @@ public partial class ShellWindow
         // FileOpenRequested 経由で本メソッドへ再入してしまうため、低レベルの LoadFile を使う。
         tab.Control.LoadFile(path);
         UpdateEditorTab(tab);
+        // タブ活性化の時点では FilePath が未確定（＝軌跡へ記録されない）ので、読込後に記録する。
+        RecordTrailEditorTab(tab);
         // タブ活性化の時点では FilePath が未確定だったので、読込後に EditorSupport を同期し直す。
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
@@ -148,12 +150,18 @@ public partial class ShellWindow
             _vm.Tabs.AddEditorTab(target.Id, path, false, false);
         }
 
-        ActivateEditorTab(target.Id);
+        // プレビュータブの使い回しでは、活性化の時点ではまだ差し替え前のファイルが載っているため、
+        // ここでの活性化は軌跡へ記録せず、読込後に新しいパスで記録する。
+        var trailSaved = _trailSuppressed;
+        _trailSuppressed = true;
+        try { ActivateEditorTab(target.Id); }
+        finally { _trailSuppressed = trailSaved; }
         // 活性化済みタブの control へ直接読み込む（_editor.OpenFileAsync は再入を招くため使わない）。
         target.Control.LoadFile(path);
         // LoadFile 中の BufferChanged が UpdateEditorTab の昇格判定を誤爆させないよう、読込後に印を付ける。
         SetPreviewTab(target);
         UpdateEditorTab(target);
+        RecordTrailEditorTab(target);
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
     }

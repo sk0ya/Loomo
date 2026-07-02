@@ -226,6 +226,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="TitleBarRow" Height="Auto" />  <!-- タイトルバー -->
                 <RowDefinition Height="*" />     <!-- メイン領域（ペイン＋AI） -->
+                <RowDefinition Height="Auto" />  <!-- 軌跡（操作ログ）バー：空なら高さ0 -->
             </Grid.RowDefinitions>
 
             <!-- ActivityBar : ウィンドウ下端まで伸ばす。空き領域のドラッグでウィンドウを移動できる。 -->
@@ -1311,9 +1312,57 @@
                 </Grid>
             </Grid>
 
+            <!-- 軌跡（操作ログ）バー：エディタで開いたファイル・ブラウザの遷移を時系列のチップで並べ、
+                 クリックでその地点へ戻る（Semantic Depth 構想の Thread Rail の種、MVP）。
+                 記録・ジャンプの配線は ShellWindow.Trail.cs、データは TrailViewModel。空なら非表示で高さを取らない。 -->
+            <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                    Background="{DynamicResource ActivityBarBg}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                    Visibility="{Binding Trail.HasEntries, Converter={StaticResource BoolToVis}}">
+                <DockPanel LastChildFill="True" Height="24">
+                    <TextBlock DockPanel.Dock="Left" Text="軌跡" FontSize="11"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="10,0,2,0"
+                               ToolTip="通過した地点（ファイル・ページ）の記録。チップをクリックでその地点へ戻る" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="22"
+                            Content="×" FontSize="11" ToolTip="軌跡をクリア"
+                            Command="{Binding Trail.ClearCommand}" />
+                    <ScrollViewer x:Name="TrailScroll" HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
+                                  PreviewMouseWheel="OnTabStripMouseWheel">
+                        <ItemsControl ItemsSource="{Binding Trail.Entries}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="›" FontSize="11" Foreground="{DynamicResource FgDim}"
+                                                   VerticalAlignment="Center" Margin="4,0" />
+                                        <Button Style="{StaticResource FlatButton}" Padding="5,1" FontSize="11"
+                                                VerticalAlignment="Center"
+                                                ToolTip="{Binding Tooltip}"
+                                                Command="{Binding DataContext.Trail.JumpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Glyph}" FontSize="10" Margin="0,0,4,0"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Display}" MaxWidth="180"
+                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
             <!-- ドラッグ中のゴースト：掴んでいるペインをカーソル追従のチップで示す。
                  全面・最前面・ヒットテスト無効（構築は ShellWindow.PaneLayout.cs）。 -->
-            <Canvas x:Name="DragGhostLayer" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+            <Canvas x:Name="DragGhostLayer" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="3"
                     Panel.ZIndex="200" IsHitTestVisible="False" Visibility="Collapsed" />
         </Grid>
     </Border>

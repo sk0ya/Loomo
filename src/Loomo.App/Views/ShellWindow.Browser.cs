@@ -90,7 +90,12 @@ public partial class ShellWindow
         UpdateBrowserTab(tab);
         _ = RefreshBrowserTabIconAsync(tab);
         if (ReferenceEquals(_activeBrowserTab, tab))
+        {
             BrowserAddressBox.Text = view.Source?.ToString() ?? string.Empty;
+            // 見えているタブの遷移だけを軌跡（操作ログ）へ記録する（背景タブの読込は対象外）。
+            if (e.IsSuccess)
+                RecordTrailBrowser(view.Source?.ToString(), view.CoreWebView2?.DocumentTitle);
+        }
     }
 
     private async void NavigateBrowser(string text)

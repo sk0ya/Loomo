@@ -224,6 +224,7 @@ public partial class App : Application
         services.AddSingleton<PegboardViewModel>();
         services.AddSingleton<SearchPanelViewModel>();
         services.AddSingleton<DebugViewModel>();
+        services.AddSingleton<TrailViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
     }
