@@ -111,38 +111,43 @@
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
 
-        <!-- 通常行のまとまり（両者で共通の内容、クリック不可）。Ours/Result/Theirs の3列すべてに同じ内容を
-             流し、コンフリクト部分の5列グリッドと幅を揃える（SharedSizeGroup）ことで、3ペインが
-             ファイル全体を通してそのまま続いているように見せる（Rider の3-way merge と同じ考え方）。 -->
+        <!-- 通常行のまとまり（両者で共通の内容、クリック不可）。Ours/Result/Theirs の3列すべてに同じ内容を流す。
+             列は素の Star 指定：外側の ScrollViewer が横方向を Disabled で拘束するため、どの行の Grid も
+             同じ幅を受け取り、SharedSizeGroup なしで全ブロックの桁が揃う。（以前は SharedSizeGroup で
+             揃えていたが、WPF は SharedSizeGroup 参加列の Star を Auto 扱いにするため、3つの本文列が
+             内容の最長行の幅まで広がり、Result/Theirs ペインが画面外へ押し出されていた。）
+             本文は行を改行で結合した1つの TextBlock（行数分の要素を作らない）。あふれる長い行は
+             CharacterEllipsis で列内に収める。LineHeight=16 はコンフリクト側 RichTextBox の段組と合わせる。 -->
         <DataTemplate DataType="{x:Type vm:ConflictOrdinaryBlockVm}">
-            <ItemsControl ItemsSource="{Binding Lines}" Focusable="False">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictOurs" />
-                                <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterL" />
-                                <ColumnDefinition Width="*" MinWidth="160" SharedSizeGroup="ConflictResult" />
-                                <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterR" />
-                                <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
-                            </Grid.ColumnDefinitions>
-                            <DockPanel Grid.Column="0" LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
-                                           Text="{Binding LineNumber}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
-                                           Foreground="{DynamicResource FgDim}" />
-                                <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                           Foreground="{DynamicResource Fg}" TextWrapping="NoWrap" />
-                            </DockPanel>
-                            <TextBlock Grid.Column="2" Margin="6,0,0,0" Text="{Binding Text}"
-                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                       Foreground="{DynamicResource Fg}" TextWrapping="NoWrap" />
-                            <TextBlock Grid.Column="4" Margin="6,0,0,0" Text="{Binding Text}"
-                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                       Foreground="{DynamicResource Fg}" TextWrapping="NoWrap" />
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="120" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" MinWidth="160" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" MinWidth="120" />
+                </Grid.ColumnDefinitions>
+                <DockPanel Grid.Column="0" LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
+                               Text="{Binding GutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource FgDim}" />
+                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                               LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <TextBlock Grid.Column="2" Margin="6,0,0,0" Text="{Binding BodyText}"
+                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                           LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="4" Margin="6,0,0,0" Text="{Binding BodyText}"
+                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                           LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis" />
+            </Grid>
         </DataTemplate>
 
         <!-- コンフリクト1件：Ours（読み取り専用）/ Result（自由編集・既定は空）/ Theirs（読み取り専用）の
@@ -166,11 +171,11 @@
                 </Border.Style>
                 <Grid Margin="1">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictOurs" />
-                        <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterL" />
-                        <ColumnDefinition Width="*" MinWidth="160" SharedSizeGroup="ConflictResult" />
-                        <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterR" />
-                        <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
+                        <ColumnDefinition Width="*" MinWidth="120" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="*" MinWidth="160" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="*" MinWidth="120" />
                     </Grid.ColumnDefinitions>
 
                     <!-- Ours（読み取り専用・行番号＋差分ハイライト付き）。左端の緑帯はスクロールしても
@@ -422,7 +427,7 @@
 
                 <!-- コンフリクト解消表示（Rider 風3ペイン：Ours / Result / Theirs）。マーカー無し
                      （削除/変更の衝突等）はファイル全体で ours/theirs/削除 から選ばせる。 -->
-                <DockPanel Background="{DynamicResource BgAlt}" Grid.IsSharedSizeScope="True"
+                <DockPanel Background="{DynamicResource BgAlt}"
                            Visibility="{Binding IsConflictMode, Converter={StaticResource BoolToVis}}">
                     <Border DockPanel.Dock="Top" Padding="8,6"
                             Background="{DynamicResource Panel}"
@@ -490,16 +495,18 @@
                     </StackPanel>
 
                     <!-- Ours/Result/Theirs 列見出し：1ファイル内の全コンフリクトで共通なので、ここで1回だけ出す
-                         （各コンフリクトの中では繰り返さない）。下のコンフリクト行の5列グリッドと幅を揃える
-                         （SharedSizeGroup、親 DockPanel の Grid.IsSharedSizeScope で連動）。 -->
+                         （各コンフリクトの中では繰り返さない）。下のコンフリクト行と同じ Star 列定義＋
+                         右端に縦スクロールバー分（17px）のスペーサー列を置いて幅を揃える
+                         （下の ScrollViewer は VerticalScrollBarVisibility=Visible で常時バー分が引かれる）。 -->
                     <Grid DockPanel.Dock="Top" Margin="4,4,4,0"
                           Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictOurs" />
-                            <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterL" />
-                            <ColumnDefinition Width="*" MinWidth="160" SharedSizeGroup="ConflictResult" />
-                            <ColumnDefinition Width="24" SharedSizeGroup="ConflictGutterR" />
-                            <ColumnDefinition Width="*" MinWidth="120" SharedSizeGroup="ConflictTheirs" />
+                            <ColumnDefinition Width="*" MinWidth="120" />
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition Width="*" MinWidth="160" />
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition Width="*" MinWidth="120" />
+                            <ColumnDefinition Width="17" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{Binding ConflictOursHeader}" FontSize="11"
                                    FontWeight="SemiBold" Foreground="#FF81C784" Margin="6,0,0,4" />
@@ -510,8 +517,11 @@
                     </Grid>
 
                     <!-- マーカー方式：ファイル全体を通常行とコンフリクトが実際に現れる順のまま1本の流れで表示する
-                         （読んでいる場所でそのままコンフリクトを解決できる。別ペインへ視線を移す必要はない）。 -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                         （読んでいる場所でそのままコンフリクトを解決できる。別ペインへ視線を移す必要はない）。
+                         横方向は Disabled で拘束：各ブロックの Grid が常にビューポート幅を受け取り、
+                         素の Star 列だけで全ブロック・見出しの桁が揃う（3ペインが必ず画面内に収まる）。
+                         長い行は Ours/Theirs は各ペイン内の横スクロール、通常行は省略記号で収める。 -->
+                    <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled"
                                   Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
                         <ItemsControl x:Name="ConflictItemsControl" ItemsSource="{Binding ConflictBlocks}"
                                       Margin="4,6" Focusable="False" />

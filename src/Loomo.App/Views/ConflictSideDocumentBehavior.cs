@@ -59,9 +59,12 @@ public static class ConflictSideDocumentBehavior
             box.Document = BuildGutterDocument(lines);
             return;
         }
-        // 本文側は Star 列の RichTextBox。FlowDocument に明示の PageWidth を与えないと、初回計測時に
+        // 本文側は Star 列の RichTextBox。FlowDocument に明示の最小ページ幅を与えないと、初回計測時に
         // 極端に狭い幅で確定してしまい、長い行が1文字ずつ折り返される（通常差分の左右並び表示と同じ理由で
         // MeasureMaxWidth 相当の実測値を明示する。DiffSessionView.xaml.cs の MeasureMaxWidth と同じ考え方）。
+        // PageWidth（固定）ではなく MinPageWidth にする：ペインが内容より広いときは PageWidth=NaN の
+        // 既定でページがペイン幅まで広がり左寄せのまま（固定だとページがビューア中央に置かれ、短い内容が
+        // 中央に浮いて見える）。内容が広いときは最小幅が効いて横スクロールになる。
         var pageWidth = MeasureMaxWidth(lines?.Select(l => l.Text) ?? Enumerable.Empty<string>());
         box.Document = BuildContentDocument(lines, isTheirs: mode == "Theirs", pageWidth);
     }
@@ -87,7 +90,7 @@ public static class ConflictSideDocumentBehavior
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             FontSize = FontSizePx,
         };
-        if (pageWidth is double w) doc.PageWidth = w;
+        if (pageWidth is double w) doc.MinPageWidth = w;
         return doc;
     }
 

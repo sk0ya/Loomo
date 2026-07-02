@@ -13,8 +13,17 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>通常行1行（コンフリクトの外側、両者で共通の内容）。クリック不可。</summary>
 public sealed record ConflictOrdinaryLineVm(int LineNumber, string Text);
 
-/// <summary>通常行のまとまり（コンフリクトとコンフリクトの間の地の文）。</summary>
-public sealed record ConflictOrdinaryBlockVm(IReadOnlyList<ConflictOrdinaryLineVm> Lines);
+/// <summary>通常行のまとまり（コンフリクトとコンフリクトの間の地の文）。View は1行ずつ要素を作らず、
+/// 改行で結合した <see cref="GutterText"/>/<see cref="BodyText"/> を TextBlock にそのまま流す
+/// （大きいファイルでも要素数が行数に比例しない）。</summary>
+public sealed record ConflictOrdinaryBlockVm(IReadOnlyList<ConflictOrdinaryLineVm> Lines)
+{
+    /// <summary>行番号ガター（"12\n13\n14" 形式）。</summary>
+    public string GutterText { get; } = string.Join('\n', Lines.Select(l => l.LineNumber));
+
+    /// <summary>本文（各行を改行で結合。TextBlock は埋め込み改行をそのまま描画する）。</summary>
+    public string BodyText { get; } = string.Join('\n', Lines.Select(l => l.Text));
+}
 
 /// <summary>コンフリクトの Ours/Theirs ペイン内の1行。<see cref="Kind"/> は <c>"Context"</c>
 /// （もう一方の側にも同じ内容の行がある＝共通）か <c>"Distinct"</c>（この側にしかない＝差分）。
