@@ -129,7 +129,7 @@
                 </Grid.ColumnDefinitions>
                 <DockPanel Grid.Column="0" LastChildFill="True">
                     <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
-                               Text="{Binding GutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               Text="{Binding OursGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource FgDim}" />
                     <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
@@ -137,16 +137,26 @@
                                Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" />
                 </DockPanel>
-                <TextBlock Grid.Column="2" Margin="6,0,0,0" Text="{Binding BodyText}"
-                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                           LineHeight="16" LineStackingStrategy="BlockLineHeight"
-                           Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Grid.Column="4" Margin="6,0,0,0" Text="{Binding BodyText}"
-                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                           LineHeight="16" LineStackingStrategy="BlockLineHeight"
-                           Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis" />
+                <DockPanel Grid.Column="2" LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
+                               Text="{Binding ResultGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource FgDim}" />
+                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                               LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <DockPanel Grid.Column="4" LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
+                               Text="{Binding TheirsGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource FgDim}" />
+                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                               LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                </DockPanel>
             </Grid>
         </DataTemplate>
 
@@ -187,7 +197,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Border Grid.Column="0" Background="#FF81C784" />
-                        <RichTextBox Grid.Column="1" Style="{StaticResource DiffGutterBox}" Width="30"
+                        <RichTextBox Grid.Column="1" Style="{StaticResource DiffGutterBox}" Width="40"
                                      local:ConflictSideDocumentBehavior.Mode="Gutter"
                                      local:ConflictSideDocumentBehavior.Lines="{Binding OursDisplayLines}" />
                         <RichTextBox Grid.Column="2" Style="{StaticResource DiffTextBox}"
@@ -216,7 +226,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Width="24" TextAlignment="Right" Margin="0,4,4,4"
+                        <TextBlock Grid.Column="0" Width="34" TextAlignment="Right" Margin="4,4,8,4"
                                    Text="{Binding ResultLineNumberText}"
                                    FontFamily="Cascadia Mono, Consolas" FontSize="12"
                                    Foreground="{DynamicResource FgDim}" />
@@ -240,7 +250,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="3" />
                         </Grid.ColumnDefinitions>
-                        <RichTextBox Grid.Column="0" Style="{StaticResource DiffGutterBox}" Width="30"
+                        <RichTextBox Grid.Column="0" Style="{StaticResource DiffGutterBox}" Width="40"
                                      local:ConflictSideDocumentBehavior.Mode="Gutter"
                                      local:ConflictSideDocumentBehavior.Lines="{Binding TheirsDisplayLines}" />
                         <RichTextBox Grid.Column="1" Style="{StaticResource DiffTextBox}"
@@ -445,6 +455,11 @@
                                     <TextBlock Text="{Binding ConflictPositionText}" FontSize="11"
                                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
                                 </StackPanel>
+                                <Button DockPanel.Dock="Left" Content="元に戻す"
+                                        ToolTip="直前の解決操作を取り消してコンフリクトを復元する"
+                                        Style="{StaticResource DiffSecondaryButton}" Margin="0,0,8,0"
+                                        Command="{Binding UndoResolveCommand}" IsEnabled="{Binding CanUndoResolve}"
+                                        Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}" />
                                 <Button DockPanel.Dock="Left" Content="解決済みにする"
                                         Style="{StaticResource DiffActionButton}" Margin="0,0,8,0"
                                         Command="{Binding MarkResolvedCommand}" IsEnabled="{Binding CanMarkResolved}"

@@ -10,16 +10,23 @@ using sk0ya.Loomo.Core.Diff;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>通常行1行（コンフリクトの外側、両者で共通の内容）。クリック不可。</summary>
-public sealed record ConflictOrdinaryLineVm(int LineNumber, string Text);
+/// <summary>通常行1行（コンフリクトの外側、両者で共通の内容）。クリック不可。行番号は3列それぞれの
+/// 「その側の版のファイルにおける絶対行番号」（マーカー行は数えない。Ours版/解決結果/Theirs 版で
+/// コンフリクトの行数が違うと、同じ内容の行でも列ごとに番号がずれる — Rider の3-way merge と同じ）。</summary>
+public sealed record ConflictOrdinaryLineVm(int OursNumber, int ResultNumber, int TheirsNumber, string Text);
 
 /// <summary>通常行のまとまり（コンフリクトとコンフリクトの間の地の文）。View は1行ずつ要素を作らず、
-/// 改行で結合した <see cref="GutterText"/>/<see cref="BodyText"/> を TextBlock にそのまま流す
-/// （大きいファイルでも要素数が行数に比例しない）。</summary>
+/// 改行で結合したガター/本文文字列を TextBlock にそのまま流す（大きいファイルでも要素数が行数に比例しない）。</summary>
 public sealed record ConflictOrdinaryBlockVm(IReadOnlyList<ConflictOrdinaryLineVm> Lines)
 {
-    /// <summary>行番号ガター（"12\n13\n14" 形式）。</summary>
-    public string GutterText { get; } = string.Join('\n', Lines.Select(l => l.LineNumber));
+    /// <summary>Ours 列の行番号ガター（"12\n13\n14" 形式）。</summary>
+    public string OursGutterText { get; } = string.Join('\n', Lines.Select(l => l.OursNumber));
+
+    /// <summary>Result 列の行番号ガター。未解決コンフリクトは0行と数えるので、解決が進むと振り直される。</summary>
+    public string ResultGutterText { get; } = string.Join('\n', Lines.Select(l => l.ResultNumber));
+
+    /// <summary>Theirs 列の行番号ガター。</summary>
+    public string TheirsGutterText { get; } = string.Join('\n', Lines.Select(l => l.TheirsNumber));
 
     /// <summary>本文（各行を改行で結合。TextBlock は埋め込み改行をそのまま描画する）。</summary>
     public string BodyText { get; } = string.Join('\n', Lines.Select(l => l.Text));
@@ -27,7 +34,7 @@ public sealed record ConflictOrdinaryBlockVm(IReadOnlyList<ConflictOrdinaryLineV
 
 /// <summary>コンフリクトの Ours/Theirs ペイン内の1行。<see cref="Kind"/> は <c>"Context"</c>
 /// （もう一方の側にも同じ内容の行がある＝共通）か <c>"Distinct"</c>（この側にしかない＝差分）。
-/// <see cref="LineNumber"/> はそのコンフリクト内でのローカルな1始まり番号（ファイル全体の行番号ではない）。</summary>
+/// <see cref="LineNumber"/> はその側の版のファイルにおける絶対行番号（通常行と同じ数え方の続き）。</summary>
 public sealed record ConflictSideLineVm(int LineNumber, string Text, string Kind);
 
 /// <summary>
@@ -39,28 +46,32 @@ public sealed partial class ConflictRegionVm : ObservableObject
 {
     public ConflictRegionVm(
         int index, string oursLabel, string theirsLabel,
-        IReadOnlyList<string> oursLines, IReadOnlyList<string> theirsLines)
+        IReadOnlyList<string> oursLines, IReadOnlyList<string> theirsLines,
+        int oursStartLine, int resultStartLine, int theirsStartLine)
     {
         Index = index;
         OursLabel = oursLabel;
         TheirsLabel = theirsLabel;
+        ResultStartLine = resultStartLine;
+        _resultLineNumberText = resultStartLine.ToString();
 
         // Ours→Theirs の行diffを、Ours にしか無い行／Theirs にしか無い行のハイライトに使う
         // （通常の新旧diffではなく「この側だけの内容か」という身元の意味で Distinct を付ける）。
         var diff = DiffUtil.ComputeFull(string.Join('\n', oursLines), string.Join('\n', theirsLines));
-        OursDisplayLines = BuildSideLines(diff, skip: DiffLineKind.Added);
-        TheirsDisplayLines = BuildSideLines(diff, skip: DiffLineKind.Removed);
+        OursDisplayLines = BuildSideLines(diff, skip: DiffLineKind.Added, start: oursStartLine);
+        TheirsDisplayLines = BuildSideLines(diff, skip: DiffLineKind.Removed, start: theirsStartLine);
     }
 
-    private static IReadOnlyList<ConflictSideLineVm> BuildSideLines(IReadOnlyList<DiffLine> diff, DiffLineKind skip)
+    private static IReadOnlyList<ConflictSideLineVm> BuildSideLines(
+        IReadOnlyList<DiffLine> diff, DiffLineKind skip, int start)
     {
         var result = new List<ConflictSideLineVm>();
-        var n = 0;
+        var n = start;
         foreach (var line in diff)
         {
             if (line.Kind == skip) continue;
-            n++;
             result.Add(new ConflictSideLineVm(n, line.Text, line.Kind == DiffLineKind.Context ? "Context" : "Distinct"));
+            n++;
         }
         return result;
     }
@@ -75,16 +86,20 @@ public sealed partial class ConflictRegionVm : ObservableObject
     /// <summary>Theirs ペインの表示行。</summary>
     public IReadOnlyList<ConflictSideLineVm> TheirsDisplayLines { get; }
 
+    /// <summary>Result 欄先頭行の絶対行番号（解決結果のファイルでこのコンフリクトが始まる位置）。</summary>
+    public int ResultStartLine { get; }
+
     /// <summary>中央（Result）ペインの編集中テキスト。既定は空＝未解決。</summary>
     [ObservableProperty] private string _resultText = "";
 
-    /// <summary>Result ペインの行番号ガター（"1\n2\n3" 形式。TextBlock にそのままバインドすれば改行として描画される）。</summary>
-    [ObservableProperty] private string _resultLineNumberText = "1";
+    /// <summary>Result ペインの行番号ガター（"5\n6\n7" 形式・<see cref="ResultStartLine"/> 始まりの絶対番号。
+    /// TextBlock にそのままバインドすれば改行として描画される）。</summary>
+    [ObservableProperty] private string _resultLineNumberText;
 
     partial void OnResultTextChanged(string value)
     {
         var count = value.Length == 0 ? 1 : value.Replace("\r\n", "\n").Split('\n').Length;
-        ResultLineNumberText = string.Join('\n', Enumerable.Range(1, count));
+        ResultLineNumberText = string.Join('\n', Enumerable.Range(ResultStartLine, count));
     }
 
     /// <summary>前へ/次へナビゲーションの現在地か（枠を強調表示する）。</summary>
@@ -140,6 +155,19 @@ public sealed partial class DiffSessionViewModel
 
     /// <summary>マーカー方式のときの解析結果（コンフリクト解決のたびに読み直す）。</summary>
     private ParsedConflictFile? _conflictParsed;
+
+    /// <summary>解決操作の取り消し履歴：書き込み直前のファイル全文と、そのとき解決したリージョン番号。
+    /// ファイルを切り替えたり、こちらが書いた内容と違うもの（外部編集）を読み込んだら無効化する。</summary>
+    private readonly Stack<(string Raw, int RegionIndex)> _conflictUndoStack = new();
+
+    /// <summary>アンドゥ履歴が有効なファイル（null なら履歴なし）。</summary>
+    private string? _conflictUndoPath;
+
+    /// <summary>最後に読み込んだ／書き込んだファイル全文（外部編集の検出用）。</summary>
+    private string? _conflictRawText;
+
+    /// <summary>「元に戻す」を押せるか（このファイルでの解決操作の履歴があるとき）。</summary>
+    [ObservableProperty] private bool _canUndoResolve;
 
     /// <summary>次のコンフリクトへ（無ければ先頭へ循環）。View 側が対応する枠までスクロールする。</summary>
     [RelayCommand]
@@ -248,6 +276,10 @@ public sealed partial class DiffSessionViewModel
         ConflictTheirsHeader = "";
         _conflictTotalCount = 0;
         _conflictParsed = null;
+        _conflictUndoStack.Clear();
+        _conflictUndoPath = null;
+        _conflictRawText = null;
+        CanUndoResolve = false;
         ConflictBlocks.Clear();
     }
 
@@ -274,6 +306,18 @@ public sealed partial class DiffSessionViewModel
             return;
         }
 
+        // アンドゥ履歴は「このファイルで、こちらが最後に読み書きした内容のまま」のときだけ引き継ぐ
+        // （ファイル切替や外部編集で古いスナップショットへ巻き戻さないため）。自分の書き込みが
+        // リポジトリ監視経由の静かな再読込を起こしたときは raw が一致するので履歴は生きる。
+        if (!string.Equals(item.FullPath, _conflictUndoPath, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(raw, _conflictRawText, StringComparison.Ordinal))
+        {
+            _conflictUndoStack.Clear();
+        }
+        _conflictUndoPath = item.FullPath;
+        _conflictRawText = raw;
+        CanUndoResolve = _conflictUndoStack.Count > 0;
+
         var parsed = ConflictMarkerParser.Parse(raw);
         if (parsed.HasConflicts)
         {
@@ -298,10 +342,16 @@ public sealed partial class DiffSessionViewModel
     /// <summary>
     /// ファイル全体を通常行のまとまりとコンフリクトが実際に現れる順のまま並べ直す。
     /// 通常行は両者で共通の内容そのもの（クリック不可）、コンフリクトは Ours/Result/Theirs の3ペインになる。
+    /// 行番号は3列とも「その側の版のファイルにおける絶対番号」を数え直す（マーカー行は数えない。
+    /// 通常行は3側すべてを進め、コンフリクトは Ours/Theirs をその側の行数だけ進める。Result は未解決を
+    /// 0行と数えるので、解決のたびにこの再構築で以降の番号が振り直される）。
     /// </summary>
     private void RebuildConflictDisplay(ParsedConflictFile parsed)
     {
         ConflictBlocks.Clear();
+        var oursNo = 1;
+        var resultNo = 1;
+        var theirsNo = 1;
         for (var i = 0; i < parsed.Regions.Count; i++)
         {
             var region = parsed.Regions[i];
@@ -310,14 +360,20 @@ public sealed partial class DiffSessionViewModel
                 if (region.Lines.Count == 0) continue;
                 var lines = new List<ConflictOrdinaryLineVm>(region.Lines.Count);
                 for (var k = 0; k < region.Lines.Count; k++)
-                    lines.Add(new ConflictOrdinaryLineVm(region.StartLine + k, region.Lines[k]));
+                    lines.Add(new ConflictOrdinaryLineVm(oursNo + k, resultNo + k, theirsNo + k, region.Lines[k]));
                 ConflictBlocks.Add(new ConflictOrdinaryBlockVm(lines));
+                oursNo += region.Lines.Count;
+                resultNo += region.Lines.Count;
+                theirsNo += region.Lines.Count;
             }
             else
             {
                 ConflictBlocks.Add(new ConflictRegionVm(
                     i, region.OursLabel ?? "Ours", region.TheirsLabel ?? "Theirs",
-                    region.OursLines, region.TheirsLines));
+                    region.OursLines, region.TheirsLines,
+                    oursStartLine: oursNo, resultStartLine: resultNo, theirsStartLine: theirsNo));
+                oursNo += region.OursLines.Count;
+                theirsNo += region.TheirsLines.Count;
             }
         }
 
@@ -385,6 +441,7 @@ public sealed partial class DiffSessionViewModel
 
     private async Task WriteResolvedAsync(DiffFileItem item, string resolved, int resolvedRegionIndex)
     {
+        var previous = _conflictRawText;
         try
         {
             await File.WriteAllTextAsync(item.FullPath, resolved);
@@ -395,10 +452,55 @@ public sealed partial class DiffSessionViewModel
             return;
         }
 
+        // 書き込み前の全文を取り消し履歴へ（「元に戻す」でこのコンフリクトを復元できる）
+        if (previous is not null)
+        {
+            _conflictUndoStack.Push((previous, resolvedRegionIndex));
+            CanUndoResolve = true;
+        }
+        _conflictUndoPath = item.FullPath;
+        _conflictRawText = resolved;
+
         var reparsed = ConflictMarkerParser.Parse(resolved);
         _conflictParsed = reparsed;
         RebuildConflictDisplay(reparsed);
         FocusConflictNear(resolvedRegionIndex);
+    }
+
+    /// <summary>直前の解決操作を取り消し、そのコンフリクトをマーカーごと復元して現在地にする。</summary>
+    [RelayCommand]
+    private async Task UndoResolveAsync()
+    {
+        if (_conflictUndoStack.Count == 0) return;
+        if (SelectedFile is not { Entry: not null } item) return;
+        if (!string.Equals(item.FullPath, _conflictUndoPath, StringComparison.OrdinalIgnoreCase)) return;
+
+        var (raw, regionIndex) = _conflictUndoStack.Peek();
+        try
+        {
+            await File.WriteAllTextAsync(item.FullPath, raw);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"書き込みに失敗しました: {ex.Message}", isError: true);
+            return;
+        }
+        _conflictUndoStack.Pop();
+        CanUndoResolve = _conflictUndoStack.Count > 0;
+        _conflictRawText = raw;
+
+        var reparsed = ConflictMarkerParser.Parse(raw);
+        _conflictParsed = reparsed;
+        RebuildConflictDisplay(reparsed);
+
+        // 復元したコンフリクトへ注目する（同じ全文を書き戻すのでリージョン構成は解決前と一致する）
+        var regions = ConflictBlocks.OfType<ConflictRegionVm>().ToList();
+        var cursor = regions.FindIndex(r => r.Index == regionIndex);
+        if (regions.Count > 0)
+        {
+            _conflictCursor = cursor >= 0 ? cursor : 0;
+            SetCurrentConflict(regions, _conflictCursor);
+        }
     }
 
     /// <summary>マーカー方式：すべてのコンフリクトが解決済みのときだけ、その内容を git add してコンフリクトを終える。</summary>
