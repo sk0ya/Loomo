@@ -199,6 +199,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [ObservableProperty] private int _behind;
     [ObservableProperty] private string _commitMessage = "";
     [ObservableProperty] private bool _amend;
+    /// <summary>true なら次のコミットに <c>-S</c>（GPG署名）を付ける。署名鍵未設定・gpg 未インストール等の
+    /// 失敗は通常の失敗時と同じく RunOpAsync が git のエラー出力をそのまま表示する。</summary>
+    [ObservableProperty] private bool _sign;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _statusIsError;
@@ -422,6 +425,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
         var message = CommitMessage.Trim();
         var amend = Amend;
+        var sign = Sign;
         // チェックした作業ツリーのファイルをステージ対象にする。リネームは新旧パスを両方含める。
         var pathsToStage = Changes.Concat(UnversionedFiles).Where(i => i.IsChecked)
             .SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToArray();
@@ -438,12 +442,13 @@ public sealed partial class GitPanelViewModel : ObservableObject
                 var stage = await _git.StageAsync(pathsToStage);
                 if (!stage.Success) return stage;
             }
-            return await _git.CommitAsync(message, amend);
+            return await _git.CommitAsync(message, amend, sign);
         });
         if (!StatusIsError)
         {
             CommitMessage = "";
             Amend = false;
+            Sign = false;
         }
     }
 

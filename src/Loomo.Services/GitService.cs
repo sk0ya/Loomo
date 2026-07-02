@@ -423,9 +423,18 @@ public sealed class GitService
         }
     }
 
-    public Task<GitCommandResult> CommitAsync(string message, bool amend = false) => amend
-        ? MutateAsync("commit", "--amend", "-m", message)
-        : MutateAsync("commit", "-m", message);
+    /// <summary><paramref name="sign"/> が true なら <c>-S</c>（GPG署名）を付けてコミットする。
+    /// 署名鍵未設定・gpg 未インストール等の失敗は git のエラー出力として <see cref="GitCommandResult"/>
+    /// に返るだけで、ここでは特別扱いしない（呼び出し側が result.Message を表示する既存方針のまま）。</summary>
+    public Task<GitCommandResult> CommitAsync(string message, bool amend = false, bool sign = false)
+    {
+        var args = new List<string> { "commit" };
+        if (amend) args.Add("--amend");
+        if (sign) args.Add("-S");
+        args.Add("-m");
+        args.Add(message);
+        return MutateAsync(args.ToArray());
+    }
 
     public Task<GitCommandResult> FetchAsync() => MutateAsync("fetch", "--all", "--prune");
     public Task<GitCommandResult> PullAsync() => MutateAsync("pull");

@@ -353,6 +353,10 @@
                     <CheckBox DockPanel.Dock="Right" Content="amend" VerticalAlignment="Center"
                               Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                               IsChecked="{Binding Amend}" />
+                    <CheckBox DockPanel.Dock="Right" Content="GPG署名" VerticalAlignment="Center"
+                              Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                              ToolTip="commit -S で GPG 署名を付けます（署名鍵未設定・gpg 未インストール時は失敗メッセージが出ます）。"
+                              IsChecked="{Binding Sign}" />
                     <Button Content="✓ コミット" Style="{StaticResource FlatButton}"
                             HorizontalAlignment="Stretch"
                             ToolTip="チェックしたファイルだけをコミットします。"
