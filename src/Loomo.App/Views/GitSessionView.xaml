@@ -160,9 +160,9 @@
                         <DockPanel Grid.Row="0">
                             <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
                                 <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
-                                        Content="＋ タグを作成…" Click="OnTagCreate" />
+                                        Content="＋ タグ" ToolTip="タグを作成…" Click="OnTagCreate" />
                                 <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
-                                        Content="すべてプッシュ" Click="OnTagsPushAll" />
+                                        Content="⇡ 全て" ToolTip="すべてのタグをプッシュ" Click="OnTagsPushAll" />
                             </DockPanel>
                             <ListBox x:Name="TagList" Style="{StaticResource GitList}"
                                      ItemsSource="{Binding Tags}"
