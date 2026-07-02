@@ -15,8 +15,9 @@ public sealed record TrailRecord(
     int Line,
     int Column);
 
-/// <summary>軌跡（操作ログ）の SQLite 永続化。1日ごと（ローカル日付の day 列）に記録し、
-/// 過去の日付の軌跡も遡って読める。上限なし。既定の保存先は %APPDATA%/Loomo/trail.db。
+/// <summary>軌跡（操作ログ）の SQLite 永続化。ワークスペース（workspace 列＝WorkspaceSnapshot.Id、
+/// 未オープンのスクラッチは空文字）×1日ごと（ローカル日付の day 列）に記録し、過去の日付の軌跡も
+/// 遡って読める。上限なし。既定の保存先は %APPDATA%/Loomo/trail.db。
 /// すべて UI スレッドからの小さな読み書き想定（WAL・接続は開きっぱなし）。失敗時は
 /// 呼び出し側（TrailViewModel）が握りつぶしてメモリ内動作へ縮退する。</summary>
 public sealed class TrailStore : IDisposable
@@ -51,6 +52,7 @@ public sealed class TrailStore : IDisposable
                     PRAGMA journal_mode=WAL;
                     CREATE TABLE IF NOT EXISTS trail_entries (
                         id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workspace TEXT    NOT NULL DEFAULT '',
                         day       TEXT    NOT NULL,
                         timestamp TEXT    NOT NULL,
                         kind      INTEGER NOT NULL,
@@ -59,9 +61,25 @@ public sealed class TrailStore : IDisposable
                         line      INTEGER NOT NULL DEFAULT -1,
                         col       INTEGER NOT NULL DEFAULT -1
                     );
-                    CREATE INDEX IF NOT EXISTS idx_trail_day ON trail_entries(day, id);
                     """;
                 cmd.ExecuteNonQuery();
+                // workspace 列が無い旧テーブル（v2 初期）へのマイグレーション。旧行は '' のまま
+                // （＝どのワークスペースにも属さない。スクラッチ表示でのみ見える）。
+                using (var probe = _connection.CreateCommand())
+                {
+                    probe.CommandText = "SELECT COUNT(*) FROM pragma_table_info('trail_entries') WHERE name = 'workspace';";
+                    if (Convert.ToInt64(probe.ExecuteScalar()) == 0)
+                    {
+                        using var alter = _connection.CreateCommand();
+                        alter.CommandText = "ALTER TABLE trail_entries ADD COLUMN workspace TEXT NOT NULL DEFAULT '';";
+                        alter.ExecuteNonQuery();
+                    }
+                }
+                using (var index = _connection.CreateCommand())
+                {
+                    index.CommandText = "CREATE INDEX IF NOT EXISTS idx_trail_ws_day ON trail_entries(workspace, day, id);";
+                    index.ExecuteNonQuery();
+                }
             }
             return _connection;
         }
@@ -69,16 +87,17 @@ public sealed class TrailStore : IDisposable
 
     private const string TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff";
 
-    public long Append(DateTime timestamp, int kind, string target, string label, int line, int column)
+    public long Append(string workspace, DateTime timestamp, int kind, string target, string label, int line, int column)
     {
         lock (_gate)
         {
             using var cmd = Connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO trail_entries(day, timestamp, kind, target, label, line, col)
-                VALUES ($day, $ts, $kind, $target, $label, $line, $col);
+                INSERT INTO trail_entries(workspace, day, timestamp, kind, target, label, line, col)
+                VALUES ($ws, $day, $ts, $kind, $target, $label, $line, $col);
                 SELECT last_insert_rowid();
                 """;
+            cmd.Parameters.AddWithValue("$ws", workspace);
             cmd.Parameters.AddWithValue("$day", timestamp.ToString("yyyy-MM-dd"));
             cmd.Parameters.AddWithValue("$ts", timestamp.ToString(TimestampFormat));
             cmd.Parameters.AddWithValue("$kind", kind);
@@ -124,8 +143,8 @@ public sealed class TrailStore : IDisposable
         }
     }
 
-    /// <summary>指定日（ローカル日付）の軌跡を古い順に読む。</summary>
-    public IReadOnlyList<TrailRecord> LoadDay(DateOnly day)
+    /// <summary>指定ワークスペース×指定日（ローカル日付）の軌跡を古い順に読む。</summary>
+    public IReadOnlyList<TrailRecord> LoadDay(string workspace, DateOnly day)
     {
         lock (_gate)
         {
@@ -133,8 +152,9 @@ public sealed class TrailStore : IDisposable
             using var cmd = Connection.CreateCommand();
             cmd.CommandText = """
                 SELECT id, timestamp, kind, target, label, line, col
-                FROM trail_entries WHERE day = $day ORDER BY id;
+                FROM trail_entries WHERE workspace = $ws AND day = $day ORDER BY id;
                 """;
+            cmd.Parameters.AddWithValue("$ws", workspace);
             cmd.Parameters.AddWithValue("$day", day.ToString("yyyy-MM-dd"));
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -152,25 +172,27 @@ public sealed class TrailStore : IDisposable
         }
     }
 
-    /// <summary>記録が1件でもあるか（バーの表示判定）。</summary>
-    public bool HasAny()
+    /// <summary>そのワークスペースに記録が1件でもあるか（バーの表示判定）。</summary>
+    public bool HasAny(string workspace)
     {
         lock (_gate)
         {
             using var cmd = Connection.CreateCommand();
-            cmd.CommandText = "SELECT EXISTS(SELECT 1 FROM trail_entries);";
+            cmd.CommandText = "SELECT EXISTS(SELECT 1 FROM trail_entries WHERE workspace = $ws);";
+            cmd.Parameters.AddWithValue("$ws", workspace);
             return Convert.ToInt64(cmd.ExecuteScalar()) != 0;
         }
     }
 
-    /// <summary>記録のある日付一覧（新しい順）。カレンダーの参考・テスト用。</summary>
-    public IReadOnlyList<DateOnly> ListDays()
+    /// <summary>そのワークスペースで記録のある日付一覧（新しい順）。カレンダーの参考・テスト用。</summary>
+    public IReadOnlyList<DateOnly> ListDays(string workspace)
     {
         lock (_gate)
         {
             var list = new List<DateOnly>();
             using var cmd = Connection.CreateCommand();
-            cmd.CommandText = "SELECT DISTINCT day FROM trail_entries ORDER BY day DESC;";
+            cmd.CommandText = "SELECT DISTINCT day FROM trail_entries WHERE workspace = $ws ORDER BY day DESC;";
+            cmd.Parameters.AddWithValue("$ws", workspace);
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
                 list.Add(DateOnly.ParseExact(reader.GetString(0), "yyyy-MM-dd"));

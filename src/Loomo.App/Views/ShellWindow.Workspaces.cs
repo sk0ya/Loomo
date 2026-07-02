@@ -165,7 +165,13 @@ public partial class ShellWindow
         // 復元による機械的なタブ活性化・ナビゲートを軌跡（操作ログ）へ記録しない。
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
-        try { await SwitchWorkspaceCoreAsync(workspace, captureCurrent, deferHydration); }
+        try
+        {
+            // 軌跡はワークスペース毎（混ざると別ワークスペースのファイルへ飛べて破綻する）。
+            _vm.Trail.SetWorkspace(workspace.Id.ToString());
+            _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
+            await SwitchWorkspaceCoreAsync(workspace, captureCurrent, deferHydration);
+        }
         finally { _trailSuppressed = trailSaved; }
     }
 

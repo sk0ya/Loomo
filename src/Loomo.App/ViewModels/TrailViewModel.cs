@@ -99,6 +99,11 @@ public sealed partial class TrailViewModel : ObservableObject
     private readonly TrailStore _store;
     private bool _loaded;
 
+    /// <summary>現在のワークスペースのキー（WorkspaceSnapshot.Id 文字列。未オープンのスクラッチは空文字）。
+    /// 記録・表示ともこのワークスペースの軌跡だけを扱う（混ざると別ワークスペースのファイルへ
+    /// 飛べてしまい破綻する）。</summary>
+    private string _workspaceKey = "";
+
     /// <summary>今日の最新エントリ（デデュープと離脱位置上書きの対象）。過去日を表示中でも
     /// 記録は常に今日へ積むため、表示リストとは別に保持する。</summary>
     private TrailEntryViewModel? _todayLatest;
@@ -143,11 +148,28 @@ public sealed partial class TrailViewModel : ObservableObject
         if (_loaded)
             return;
         _loaded = true;
+        ReloadForWorkspace();
+    }
+
+    /// <summary>ワークスペース切替に追従する。表示を今日へ戻し、そのワークスペースの軌跡だけを出す。
+    /// 読込前（起動中）はキーの記憶だけで済ませ、EnsureLoaded が読む。</summary>
+    public void SetWorkspace(string workspaceKey)
+    {
+        if (string.Equals(_workspaceKey, workspaceKey, StringComparison.Ordinal))
+            return;
+        _workspaceKey = workspaceKey;
+        _todayLatest = null;
+        if (_loaded)
+            ReloadForWorkspace();
+    }
+
+    private void ReloadForWorkspace()
+    {
         try
         {
             LoadInto(Today);
             _todayLatest = Entries.Count > 0 ? Entries[^1] : null;
-            HasEntries = Entries.Count > 0 || _store.HasAny();
+            HasEntries = Entries.Count > 0 || _store.HasAny(_workspaceKey);
         }
         catch
         {
@@ -211,7 +233,7 @@ public sealed partial class TrailViewModel : ObservableObject
         }
 
         long id = -1;
-        Try(() => id = _store.Append(now, (int)kind, target, label, line, column));
+        Try(() => id = _store.Append(_workspaceKey, now, (int)kind, target, label, line, column));
 
         var entry = new TrailEntryViewModel(id, kind, target, label, now) { Line = line, Column = column };
         _todayLatest = entry;
@@ -292,7 +314,7 @@ public sealed partial class TrailViewModel : ObservableObject
 
     private void LoadInto(DateOnly day)
     {
-        var records = _store.LoadDay(day);
+        var records = _store.LoadDay(_workspaceKey, day);
         SetCurrent(-1);
         Entries.Clear();
         foreach (var r in records)

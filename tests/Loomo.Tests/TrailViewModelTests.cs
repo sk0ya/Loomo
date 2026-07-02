@@ -151,9 +151,9 @@ public class TrailViewModelTests : IDisposable
     [Fact]
     public void ShowDate_switches_to_past_day_and_back_to_today()
     {
-        // 過去日のレコードを直接 DB へ用意する。
+        // 過去日のレコードを直接 DB へ用意する（VM 既定のスクラッチワークスペース=""）。
         var yesterday = DateTime.Now.AddDays(-1);
-        _store.Append(yesterday, (int)TrailEntryKind.File, @"C:\old\z.cs", "z.cs", 7, 0);
+        _store.Append("", yesterday, (int)TrailEntryKind.File, @"C:\old\z.cs", "z.cs", 7, 0);
 
         var sut = CreateSut();
         sut.RecordFile(@"C:\work\a.cs");
@@ -173,6 +173,27 @@ public class TrailViewModelTests : IDisposable
         Assert.False(sut.IsViewingPast);
         Assert.Equal(2, sut.Entries.Count);
         Assert.Equal("b.cs", sut.Entries[1].Label);
+    }
+
+    [Fact]
+    public void SetWorkspace_separates_trails_per_workspace()
+    {
+        var sut = CreateSut();
+        sut.SetWorkspace("ws-a");
+        sut.RecordFile(@"C:\a\a.cs");
+        sut.RecordFile(@"C:\a\a2.cs");
+
+        // 別ワークスペースへ切替：a の軌跡は見えない。
+        sut.SetWorkspace("ws-b");
+        Assert.Empty(sut.Entries);
+        sut.RecordFile(@"C:\b\b.cs");
+        Assert.Single(sut.Entries);
+
+        // 戻ると a の軌跡が丸ごと復元される（b の分は混ざらない）。
+        sut.SetWorkspace("ws-a");
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal("a2.cs", sut.Entries[1].Label);
+        Assert.True(sut.HasEntries);
     }
 
     [Fact]
@@ -226,28 +247,42 @@ public class TrailStoreTests : IDisposable
     {
         var today = DateTime.Now;
         var yesterday = today.AddDays(-1);
-        _store.Append(yesterday, 0, @"C:\old.cs", "old.cs", 1, 0);
-        _store.Append(today, 0, @"C:\new.cs", "new.cs", 2, 0);
+        _store.Append("ws", yesterday, 0, @"C:\old.cs", "old.cs", 1, 0);
+        _store.Append("ws", today, 0, @"C:\new.cs", "new.cs", 2, 0);
 
-        var todayList = _store.LoadDay(DateOnly.FromDateTime(today));
-        var yesterdayList = _store.LoadDay(DateOnly.FromDateTime(yesterday));
+        var todayList = _store.LoadDay("ws", DateOnly.FromDateTime(today));
+        var yesterdayList = _store.LoadDay("ws", DateOnly.FromDateTime(yesterday));
 
         Assert.Equal("new.cs", Assert.Single(todayList).Label);
         Assert.Equal("old.cs", Assert.Single(yesterdayList).Label);
-        Assert.Equal(2, _store.ListDays().Count);
-        Assert.True(_store.HasAny());
+        Assert.Equal(2, _store.ListDays("ws").Count);
+        Assert.True(_store.HasAny("ws"));
+    }
+
+    [Fact]
+    public void LoadDay_filters_by_workspace()
+    {
+        var now = DateTime.Now;
+        _store.Append("ws-a", now, 0, @"C:\a.cs", "a.cs", -1, -1);
+        _store.Append("ws-b", now, 0, @"C:\b.cs", "b.cs", -1, -1);
+
+        var day = DateOnly.FromDateTime(now);
+        Assert.Equal("a.cs", Assert.Single(_store.LoadDay("ws-a", day)).Label);
+        Assert.Equal("b.cs", Assert.Single(_store.LoadDay("ws-b", day)).Label);
+        Assert.Empty(_store.LoadDay("ws-c", day));
+        Assert.False(_store.HasAny("ws-c"));
     }
 
     [Fact]
     public void Update_overwrites_label_position_and_timestamp()
     {
         var t1 = DateTime.Now.AddMinutes(-5);
-        var id = _store.Append(t1, 1, "https://example.com/", "example.com", -1, -1);
+        var id = _store.Append("ws", t1, 1, "https://example.com/", "example.com", -1, -1);
 
         var t2 = DateTime.Now;
         _store.Update(id, t2, "Example Site", -1, -1);
 
-        var record = Assert.Single(_store.LoadDay(DateOnly.FromDateTime(t2)));
+        var record = Assert.Single(_store.LoadDay("ws", DateOnly.FromDateTime(t2)));
         Assert.Equal("Example Site", record.Label);
         Assert.Equal(t2.ToString("HH:mm:ss"), record.Timestamp.ToString("HH:mm:ss"));
     }
@@ -256,11 +291,11 @@ public class TrailStoreTests : IDisposable
     public void UpdatePosition_only_changes_line_and_column()
     {
         var now = DateTime.Now;
-        var id = _store.Append(now, 0, @"C:\a.cs", "a.cs", 1, 0);
+        var id = _store.Append("ws", now, 0, @"C:\a.cs", "a.cs", 1, 0);
 
         _store.UpdatePosition(id, 42, 7);
 
-        var record = Assert.Single(_store.LoadDay(DateOnly.FromDateTime(now)));
+        var record = Assert.Single(_store.LoadDay("ws", DateOnly.FromDateTime(now)));
         Assert.Equal(42, record.Line);
         Assert.Equal(7, record.Column);
         Assert.Equal("a.cs", record.Label);
