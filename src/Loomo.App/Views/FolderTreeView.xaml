@@ -345,6 +345,8 @@
                                     <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"
                                               Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="パスをコピー" Click="OnCopyPathClick" />
+                                    <!-- .gitignore ルート直下に相対パスを1行追加する（Git リポジトリでなければ何もしない）。 -->
+                                    <MenuItem Header=".gitignore に追加" Click="OnAddToGitignoreClick" />
                                     <!-- フォルダのみ：ピン留めするとヘッダの ComboBox からルートとして表示できる。 -->
                                     <MenuItem Header="ルートにピン留め" Click="OnPinClick"
                                               Visibility="{Binding IsPinnable, Converter={StaticResource BoolToVis}}" />

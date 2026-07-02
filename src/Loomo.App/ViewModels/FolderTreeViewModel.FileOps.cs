@@ -211,5 +211,40 @@ public sealed partial class FolderTreeViewModel
         var relativePath = Path.GetRelativePath(_workspace.RootPath, node.FullPath).Replace('\\', '/');
         GitBlameRequested?.Invoke(this, relativePath);
     }
+
+    /// <summary>選択ノードのワークスペースルート相対パスを、ルート直下の .gitignore に1行追加する
+    /// （フォルダは末尾に "/" を付ける）。.gitignore が無ければ新規作成し、同じ行が既にあれば追加しない
+    /// （重複防止）。Git リポジトリではない・ルート未オープンなら何もしない（例外は投げない）。
+    /// 書き込み後は git status に変化が出るので、Git ペインが見えていれば既存の
+    /// <see cref="sk0ya.Loomo.Services.GitService.RepositoryChanged"/> 監視（ShellWindow が購読し、
+    /// 開いているエディタタブをディスクから読み直す）が自然に追従する。</summary>
+    public void AddToGitignore(FileNodeViewModel node)
+    {
+        if (_workspace.RootPath is null || !_gitState.IsGitRepository)
+            return;
+
+        var relativePath = Path.GetRelativePath(_workspace.RootPath, node.FullPath).Replace('\\', '/');
+        if (node.IsDirectory)
+            relativePath += "/";
+
+        var gitignorePath = Path.Combine(_workspace.RootPath, ".gitignore");
+        var existingText = File.Exists(gitignorePath) ? File.ReadAllText(gitignorePath) : "";
+        if (existingText.Split('\n').Any(line => line.Trim() == relativePath))
+            return;   // 既に同じ行があれば何もしない
+
+        try
+        {
+            // 既存の末尾に改行が無ければ先に補い、行を分ける（末尾が空/既に改行済みならそのまま追記）。
+            var needsLeadingNewline = existingText.Length > 0 && existingText[^1] is not ('\n' or '\r');
+            File.AppendAllText(
+                gitignorePath, (needsLeadingNewline ? "\n" : "") + relativePath + "\n", Encoding.UTF8);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($".gitignore への追加に失敗しました: {ex.Message}", ex);
+        }
+
+        RefreshWorkspace();
+    }
 }
 

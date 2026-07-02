@@ -243,6 +243,21 @@ public partial class FolderTreeView
         }
     }
 
+    private void OnAddToGitignoreClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is not { } node || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        try
+        {
+            vm.AddToGitignore(node);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
     private static void ShowError(string message)
         => MessageBox.Show(message, "Loomo", MessageBoxButton.OK, MessageBoxImage.Warning);
 }
