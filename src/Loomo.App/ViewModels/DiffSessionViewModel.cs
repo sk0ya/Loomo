@@ -79,6 +79,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private (string? From, string To)? _commitRange;
 
     [ObservableProperty] private bool _isGitMode = true;
+    private bool _suppressModeChangeRefresh;
     /// <summary>差分本体を左右並び（side-by-side）で表示するか。false は統合（unified）表示。</summary>
     [ObservableProperty] private bool _isSideBySide;
     /// <summary>コミット範囲を表示中のヘッダーラベル（空なら作業ツリー表示）。</summary>
@@ -153,7 +154,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             GitTargetLabel = "";
         }
         UpdateCanDiscard();
-        _ = RefreshAsync();
+        if (!_suppressModeChangeRefresh)
+            _ = RefreshAsync();
     }
 
     partial void OnSelectedFileChanged(DiffFileItem? value)
@@ -231,10 +233,16 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         if (!IsGitMode)
         {
             // 生成された setter を通すと OnIsGitModeChanged が RefreshAsync を fire-and-forget で
-            // 走らせて下の await と競合するため、フィールドを直接更新して通知だけ出す。
-            _changeCursor = -1;
-            _isGitMode = true;
-            OnPropertyChanged(nameof(IsGitMode));
+            // 走らせて下の await と競合するため、この変更での自動更新だけ抑止する。
+            _suppressModeChangeRefresh = true;
+            try
+            {
+                IsGitMode = true;
+            }
+            finally
+            {
+                _suppressModeChangeRefresh = false;
+            }
         }
         await RefreshAsync();
 
