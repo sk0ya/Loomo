@@ -310,6 +310,15 @@ public partial class ShellWindow
         control.FindReferencesResult += OnEditorFindReferencesResult;
         // 右クリックメニューへ「AIに聞く」「ブラウザで調べる」を追加する（選択時のみ・sk0ya.Editor.Controls 1.0.19）。
         control.ContextMenuBuilding += OnEditorContextMenuBuilding;
+        // blame 左カラム（:Gblame 表示中）の行クリック：該当コミットの差分を Diff ペインで表示する
+        // （sk0ya.Editor.Controls 1.0.39。ハッシュを解析できない注釈＝カスタム形式では何もしない）。
+        control.BlameCommitClicked += (_, e) =>
+        {
+            if (e.CommitHash is not { Length: > 0 } hash) return;
+            _vm.DiffSession.ShowCommitRange(null, hash, $"コミット {hash}");
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
+            FocusPane(PaneKind.Diff);
+        };
 
         // エディタ内の Vim ウィンドウ/タブ操作（:vsplit / :split / :tabnew / gt / gT / :tabclose / :close）を、
         // ホスト側の分割・タブ実装へ橋渡しする
