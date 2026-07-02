@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- 軌跡（操作ログ）の日別永続化（%APPDATA%/Loomo/trail.db、Services/TrailStore.cs） -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
     <!-- CSV/TSV の EditorSupport 表示（Vim キーバインド付きグリッド）。名前空間は VGrid.*

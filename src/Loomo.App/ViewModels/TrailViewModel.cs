@@ -3,178 +3,334 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>軌跡（操作ログ）エントリの種別。</summary>
+/// <summary>軌跡（操作ログ）エントリの種別。値は SQLite へ int で永続化されるため末尾追加のみ可。</summary>
 public enum TrailEntryKind
 {
     /// <summary>エディタで開いた（アクティブにした）ファイル。</summary>
     File,
     /// <summary>ブラウザで表示したページ。</summary>
-    Browser
+    Browser,
+    /// <summary>メイン領域のペイン切替（フォーカス移動）。</summary>
+    Pane,
+    /// <summary>サイドバーのパネル切替。</summary>
+    Panel
 }
 
-/// <summary>軌跡の1エントリ＝一度通過した地点。チップとして表示し、クリックでその地点へ戻る。</summary>
+/// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
+/// ホバーで詳細（種別・対象・日時）、クリック／ホイールでその地点へ戻る。</summary>
 public sealed partial class TrailEntryViewModel : ObservableObject
 {
-    public TrailEntryViewModel(TrailEntryKind kind, string target, string label)
+    public TrailEntryViewModel(long id, TrailEntryKind kind, string target, string label, DateTime timestamp)
     {
+        Id = id;
         Kind = kind;
         Target = target;
         _label = label;
-        Timestamp = DateTime.Now;
+        _timestamp = timestamp;
     }
+
+    /// <summary>SQLite の行 id（永続化に失敗したメモリ内エントリは -1）。</summary>
+    public long Id { get; }
 
     public TrailEntryKind Kind { get; }
 
-    /// <summary>戻り先の実体（ファイルはフルパス、ブラウザは URL）。</summary>
+    /// <summary>戻り先の実体（ファイル＝フルパス、ブラウザ＝URL、ペイン／パネル＝enum 名）。</summary>
     public string Target { get; }
 
-    /// <summary>チップに出す短い名前（ファイル名／ページタイトル）。</summary>
+    /// <summary>ホバー詳細に出す短い名前（ファイル名／ページタイトル／ペイン名）。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Display))]
     [NotifyPropertyChangedFor(nameof(Tooltip))]
     private string _label;
 
     /// <summary>記録時のカーソル行（0始まり。位置情報が無ければ -1）。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Display))]
     [NotifyPropertyChangedFor(nameof(Tooltip))]
     private int _line = -1;
 
     /// <summary>記録時のカーソル桁（0始まり。位置情報が無ければ -1）。</summary>
     [ObservableProperty] private int _column = -1;
 
-    /// <summary>最後にこの地点を通過した時刻。</summary>
-    public DateTime Timestamp { get; private set; }
+    /// <summary>最後にこの地点を通過した日時。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Tooltip))]
+    private DateTime _timestamp;
 
-    /// <summary>同じ地点を再通過したとき、時刻だけ現在へ更新する。</summary>
-    public void Touch()
+    /// <summary>軌跡上の現在地か（ドットを強調表示する）。</summary>
+    [ObservableProperty] private bool _isCurrent;
+
+    public string Glyph => Kind switch
     {
-        Timestamp = DateTime.Now;
-        OnPropertyChanged(nameof(Tooltip));
-    }
+        TrailEntryKind.Browser => "🌐",
+        TrailEntryKind.Pane => "▦",
+        TrailEntryKind.Panel => "◫",
+        _ => "📄"
+    };
 
-    /// <summary>チップ先頭の種別アイコン。</summary>
-    public string Glyph => Kind == TrailEntryKind.Browser ? "🌐" : "📄";
-
-    /// <summary>チップの表示文字列。ファイルは「名前:行」（行は1始まりで表示）、ブラウザはタイトル。</summary>
-    public string Display => Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}:{Line + 1}" : Label;
-
+    /// <summary>ホバーで出す詳細。1行目＝種別と名前、2行目＝対象の実体、3行目＝日時。</summary>
     public string Tooltip
     {
         get
         {
-            var location = Kind == TrailEntryKind.File && Line >= 0
-                ? $"{Target}:{Line + 1}"
-                : Target;
-            return $"{location}\n{Timestamp:HH:mm:ss} に通過。クリックでこの地点へ戻る";
+            var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}:{Line + 1}" : Label;
+            var location = Kind switch
+            {
+                TrailEntryKind.File when Line >= 0 => $"{Target}:{Line + 1}",
+                TrailEntryKind.File or TrailEntryKind.Browser => Target,
+                _ => null
+            };
+            var body = location is null ? $"{Glyph} {name}" : $"{Glyph} {name}\n{location}";
+            return $"{body}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
         }
     }
 }
 
-/// <summary>ウィンドウ最下部の「軌跡」バー（操作ログ）。エディタで開いたファイルとブラウザの遷移を
-/// 時系列に記録し、チップのクリックでその地点へ戻る。アイデア.md「Semantic Depth」構想の
-/// 最初の一歩（Thread Rail の種＝出自付きジャンプ履歴）の MVP で、記録はセッション限り（永続化しない）。
-/// 実際の遷移（タブ活性化・NavigateTo・ブラウザナビゲート）は <see cref="JumpRequested"/> を受けた
-/// ShellWindow（ShellWindow.Trail.cs）が行う。</summary>
+/// <summary>ウィンドウ最下部の「軌跡」バー。エディタ・ブラウザ・ペイン／パネル切替の遷移を
+/// 時系列の点（ドット）で並べ、ホバーで詳細、クリック／バー上のホイールでその地点へ戻る。
+/// 記録は SQLite（<see cref="TrailStore"/>）へ日別・無制限に永続化し、バー左端の日付クリック
+/// →カレンダーで過去の日の軌跡も遡れる（×で今日へ戻る）。
+/// アイデア.md「Semantic Depth」構想の Thread Rail の種。実際の遷移（タブ活性化・NavigateTo・
+/// ペインフォーカス等）は <see cref="JumpRequested"/> を受けた ShellWindow（ShellWindow.Trail.cs）が行う。</summary>
 public sealed partial class TrailViewModel : ObservableObject
 {
-    /// <summary>保持する最大エントリ数。超えたら古い順に捨てる。</summary>
-    public const int MaxEntries = 60;
+    private readonly TrailStore _store;
+    private bool _loaded;
 
+    /// <summary>今日の最新エントリ（デデュープと離脱位置上書きの対象）。過去日を表示中でも
+    /// 記録は常に今日へ積むため、表示リストとは別に保持する。</summary>
+    private TrailEntryViewModel? _todayLatest;
+
+    public TrailViewModel(TrailStore store)
+    {
+        _store = store;
+        _displayDate = Today;
+    }
+
+    /// <summary>表示中の日のエントリ（過去日表示中は読み取り専用の履歴）。</summary>
     public ObservableCollection<TrailEntryViewModel> Entries { get; } = new();
 
-    /// <summary>チップがクリックされ、その地点へ戻りたい。</summary>
+    /// <summary>ドットのクリック／ホイール移動で、その地点へ戻りたい。</summary>
     public event EventHandler<TrailEntryViewModel>? JumpRequested;
 
-    /// <summary>バー自体の表示切替（1件も無ければバーごと隠して高さを取らない）。</summary>
+    /// <summary>バー自体の表示切替（記録が何も無ければバーごと隠して高さを取らない）。</summary>
     [ObservableProperty] private bool _hasEntries;
 
-    public TrailEntryViewModel? LatestEntry => Entries.Count > 0 ? Entries[^1] : null;
+    /// <summary>表示中の日（記録は常に今日へ積まれる）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DateLabel))]
+    [NotifyPropertyChangedFor(nameof(IsViewingPast))]
+    private DateOnly _displayDate;
+
+    /// <summary>軌跡上の現在地（表示中エントリのインデックス。-1 は無し）。</summary>
+    [ObservableProperty] private int _currentIndex = -1;
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    public bool IsViewingPast => DisplayDate != Today;
+
+    /// <summary>バー左端の日付表示。クリックでカレンダーを開く。</summary>
+    public string DateLabel => DisplayDate.ToString("M/d (ddd)");
+
+    public TrailEntryViewModel? CurrentEntry =>
+        CurrentIndex >= 0 && CurrentIndex < Entries.Count ? Entries[CurrentIndex] : null;
+
+    /// <summary>今日の軌跡を SQLite から読み込む（起動クリティカルパスを避けるため遅延で呼ぶ）。</summary>
+    public void EnsureLoaded()
+    {
+        if (_loaded)
+            return;
+        _loaded = true;
+        try
+        {
+            LoadInto(Today);
+            _todayLatest = Entries.Count > 0 ? Entries[^1] : null;
+            HasEntries = Entries.Count > 0 || _store.HasAny();
+        }
+        catch
+        {
+            // DB が読めなくてもメモリ内動作で続行する（以後の記録も best-effort）。
+        }
+    }
+
+    // ===== 記録（常に「今日」へ積む） =====
 
     /// <summary>ファイル地点を記録する。直前と同じファイルなら追記せず位置・時刻だけ更新する
-    /// （タブ切替の往復やフォーカス移動で同じチップが増殖しないように）。</summary>
+    /// （タブ切替の往復やフォーカス移動でドットが増殖しないように）。</summary>
     public void RecordFile(string path, int line = -1, int column = -1)
     {
         if (string.IsNullOrWhiteSpace(path))
             return;
+        Record(TrailEntryKind.File, path, Path.GetFileName(path), line, column,
+            sameTarget: t => string.Equals(t, path, StringComparison.OrdinalIgnoreCase));
+    }
 
-        if (LatestEntry is { Kind: TrailEntryKind.File } last
-            && string.Equals(last.Target, path, StringComparison.OrdinalIgnoreCase))
+    /// <summary>ブラウザ地点を記録する。直前と同じ URL ならタイトル・時刻だけ更新する
+    /// （NavigationCompleted 時点ではタイトル未確定のことがあるため、後追いで整う）。</summary>
+    public void RecordBrowser(string url, string? title)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+        var label = string.IsNullOrWhiteSpace(title) ? HostOf(url) : title.Trim();
+        Record(TrailEntryKind.Browser, url, label, -1, -1,
+            sameTarget: t => string.Equals(t, url, StringComparison.Ordinal));
+    }
+
+    /// <summary>ペイン切替（フォーカス移動）を記録する。target は PaneKind の enum 名。</summary>
+    public void RecordPane(string paneKindName, string label)
+        => Record(TrailEntryKind.Pane, paneKindName, label, -1, -1,
+            sameTarget: t => string.Equals(t, paneKindName, StringComparison.Ordinal));
+
+    /// <summary>サイドバーのパネル切替を記録する。target は SidebarPanel の enum 名。</summary>
+    public void RecordPanel(string panelName, string label)
+        => Record(TrailEntryKind.Panel, panelName, label, -1, -1,
+            sameTarget: t => string.Equals(t, panelName, StringComparison.Ordinal));
+
+    private void Record(TrailEntryKind kind, string target, string label, int line, int column,
+        Func<string, bool> sameTarget)
+    {
+        var now = DateTime.Now;
+
+        // 直前と同一地点の再通過はドットを増やさず、その行の時刻・ラベル・位置を上書きする。
+        if (_todayLatest is { } last && last.Kind == kind && sameTarget(last.Target))
         {
+            last.Label = label;
+            last.Timestamp = now;
             if (line >= 0)
             {
                 last.Line = line;
                 last.Column = column;
             }
-            last.Touch();
+            if (last.Id >= 0)
+                Try(() => _store.Update(last.Id, now, last.Label, last.Line, last.Column));
+            if (IsShowingToday())
+                SetCurrent(Entries.IndexOf(last));
             return;
         }
 
-        Append(new TrailEntryViewModel(TrailEntryKind.File, path, Path.GetFileName(path))
-        {
-            Line = line,
-            Column = column
-        });
-    }
+        long id = -1;
+        Try(() => id = _store.Append(now, (int)kind, target, label, line, column));
 
-    /// <summary>ブラウザ地点を記録する。直前と同じ URL ならタイトル・時刻だけ更新する
-    /// （NavigationCompleted 時点ではタイトルが未確定のことがあるため、後追いで整う）。</summary>
-    public void RecordBrowser(string url, string? title)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-            return;
-
-        var label = string.IsNullOrWhiteSpace(title) ? HostOf(url) : title.Trim();
-        if (LatestEntry is { Kind: TrailEntryKind.Browser } last
-            && string.Equals(last.Target, url, StringComparison.Ordinal))
-        {
-            last.Label = label;
-            last.Touch();
-            return;
-        }
-
-        Append(new TrailEntryViewModel(TrailEntryKind.Browser, url, label));
-    }
-
-    /// <summary>エントリのカーソル位置を上書きする。新しい地点を記録する直前に、離れるファイルの
-    /// 現在カーソルで最新エントリを更新するのに使う（「戻る」を到着時でなく離脱時の場所にする）。</summary>
-    public void UpdateFilePosition(TrailEntryViewModel entry, int line, int column)
-    {
-        if (entry.Kind != TrailEntryKind.File || line < 0)
-            return;
-        entry.Line = line;
-        entry.Column = column;
-    }
-
-    private void Append(TrailEntryViewModel entry)
-    {
-        Entries.Add(entry);
-        while (Entries.Count > MaxEntries)
-            Entries.RemoveAt(0);
+        var entry = new TrailEntryViewModel(id, kind, target, label, now) { Line = line, Column = column };
+        _todayLatest = entry;
         HasEntries = true;
+
+        if (IsShowingToday())
+        {
+            Entries.Add(entry);
+            SetCurrent(Entries.Count - 1);
+        }
     }
+
+    /// <summary>今日の最新エントリがこのファイルなら、離脱時のカーソル位置で上書きする
+    /// （新しい地点を積む直前に呼ぶ。「戻る」が到着時でなく離れた時の場所になる）。</summary>
+    public void UpdateLatestFilePosition(string path, int line, int column)
+    {
+        if (line < 0
+            || _todayLatest is not { Kind: TrailEntryKind.File } latest
+            || !string.Equals(latest.Target, path, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        latest.Line = line;
+        latest.Column = column;
+        if (latest.Id >= 0)
+            Try(() => _store.UpdatePosition(latest.Id, line, column));
+    }
+
+    /// <summary>今日の最新エントリがファイルならそのフルパス（離脱位置の上書き対象の特定用）。</summary>
+    public string? LatestFileTarget =>
+        _todayLatest is { Kind: TrailEntryKind.File } latest ? latest.Target : null;
+
+    // ===== 現在地の移動（バー上のホイール＝スクラブ） =====
+
+    /// <summary>現在地を前後に動かし、移動後のエントリを返す（端で止まる）。
+    /// 実際のジャンプは呼び出し側（ShellWindow）が少し遅らせて行う（連続ホイールを1回に畳む）。</summary>
+    public TrailEntryViewModel? MoveCurrent(int delta)
+    {
+        if (Entries.Count == 0)
+            return null;
+        var next = Math.Clamp((CurrentIndex < 0 ? Entries.Count - 1 : CurrentIndex) + delta, 0, Entries.Count - 1);
+        if (next == CurrentIndex)
+            return null;   // 端で止まった＝移動なし（余計な再ジャンプをしない）
+        SetCurrent(next);
+        return Entries[next];
+    }
+
+    private void SetCurrent(int index)
+    {
+        if (CurrentIndex == index)
+            return;
+        if (CurrentEntry is { } old)
+            old.IsCurrent = false;
+        CurrentIndex = index;
+        if (CurrentEntry is { } entry)
+            entry.IsCurrent = true;
+    }
+
+    // ===== 日付の切替（過去の軌跡を追う） =====
+
+    /// <summary>カレンダーで選んだ日の軌跡を表示する（記録は引き続き今日へ積まれる）。</summary>
+    public void ShowDate(DateOnly day)
+    {
+        if (day == DisplayDate)
+            return;
+        try
+        {
+            LoadInto(day);
+        }
+        catch
+        {
+            // 読めなければ表示を変えない
+        }
+    }
+
+    /// <summary>×ボタン：今日の軌跡へ戻る。</summary>
+    [RelayCommand]
+    private void BackToToday() => ShowDate(Today);
+
+    private void LoadInto(DateOnly day)
+    {
+        var records = _store.LoadDay(day);
+        SetCurrent(-1);
+        Entries.Clear();
+        foreach (var r in records)
+        {
+            Entries.Add(new TrailEntryViewModel(r.Id, (TrailEntryKind)r.Kind, r.Target, r.Label, r.Timestamp)
+            {
+                Line = r.Line,
+                Column = r.Column
+            });
+        }
+        DisplayDate = day;
+        if (Entries.Count > 0)
+            SetCurrent(Entries.Count - 1);
+        // 今日に戻ったら、以後の記録が表示へも反映されるようデデュープ対象を差し替える。
+        if (IsShowingToday())
+            _todayLatest = Entries.Count > 0 ? Entries[^1] : null;
+    }
+
+    private bool IsShowingToday() => DisplayDate == Today;
 
     private static string HostOf(string url)
-    {
-        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
             ? uri.Host
             : url;
+
+    /// <summary>永続化は best-effort（DB 破損等でも軌跡バー自体は動き続ける）。</summary>
+    private static void Try(Action action)
+    {
+        try { action(); }
+        catch { }
     }
 
     [RelayCommand]
     private void Jump(TrailEntryViewModel? entry)
     {
-        if (entry is not null)
-            JumpRequested?.Invoke(this, entry);
-    }
-
-    [RelayCommand]
-    private void Clear()
-    {
-        Entries.Clear();
-        HasEntries = false;
+        if (entry is null)
+            return;
+        SetCurrent(Entries.IndexOf(entry));
+        JumpRequested?.Invoke(this, entry);
     }
 }

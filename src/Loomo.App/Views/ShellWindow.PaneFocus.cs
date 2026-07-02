@@ -49,6 +49,8 @@ public partial class ShellWindow
                 _focusedRegion = FocusTarget.Viewport(kind, viewId);
             else
                 _focusedRegion = FocusTarget.Of(kind);
+            // 別ペインへのフォーカス移動を軌跡（操作ログ）へ記録する（同一ペイン内は増やさない）。
+            RecordTrailPane(kind);
         }
         else if (IsWithin(d, SidebarContainer))
             _focusedRegion = FocusTarget.Sidebar;

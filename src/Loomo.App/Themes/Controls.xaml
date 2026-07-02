@@ -777,4 +777,193 @@
         </Setter>
     </Style>
 
+    <!-- ===== テーマ追従カレンダー（軌跡バーの日付選択で使用） =====
+         WPF 標準の Calendar は白背景がテンプレートに焼き込まれているため、
+         CalendarItem / 日ボタン / 月・年ボタンを差し替えてパレットの DynamicResource に追従させる。 -->
+
+    <!-- ヘッダーの「2026年7月」と前後移動ボタン -->
+    <Style x:Key="ThemedCalendarHeaderButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 月表示の日ボタン -->
+    <Style x:Key="ThemedCalendarDayButton" TargetType="CalendarDayButton">
+        <Setter Property="MinWidth" Value="30" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarDayButton">
+                    <Border x:Name="Bg" Background="Transparent" BorderBrush="Transparent"
+                            BorderThickness="1" CornerRadius="3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="4,2" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource BgAlt}" />
+                        </Trigger>
+                        <!-- 今日：アクセント色の枠 -->
+                        <Trigger Property="IsToday" Value="True">
+                            <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                        <!-- 選択日：選択行と同じ背景 -->
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                        </Trigger>
+                        <!-- 前後の月の日 -->
+                        <Trigger Property="IsInactive" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                            <Setter Property="Opacity" Value="0.55" />
+                        </Trigger>
+                        <!-- 選択不可（DisplayDateEnd より未来など） -->
+                        <Trigger Property="IsBlackedOut" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                            <Setter Property="Opacity" Value="0.3" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 年・十年表示の月／年ボタン -->
+    <Style x:Key="ThemedCalendarButton" TargetType="CalendarButton">
+        <Setter Property="MinWidth" Value="48" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarButton">
+                    <Border x:Name="Bg" Background="Transparent" CornerRadius="3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="6,4" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource BgAlt}" />
+                        </Trigger>
+                        <Trigger Property="HasSelectedDays" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                        </Trigger>
+                        <Trigger Property="IsInactive" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                            <Setter Property="Opacity" Value="0.55" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 本体（ヘッダー＋月／年グリッド）。PART_* の名前と DayTitleTemplate のリソースキーは
+         CalendarItem.OnApplyTemplate が探す規約なので変えないこと。 -->
+    <Style x:Key="ThemedCalendarItem" TargetType="CalendarItem">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarItem">
+                    <ControlTemplate.Resources>
+                        <!-- 曜日ヘッダー（日 月 火 …） -->
+                        <DataTemplate x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type CalendarItem}, ResourceId=DayTitleTemplate}">
+                            <TextBlock Text="{Binding}" FontSize="10" Foreground="{DynamicResource FgDim}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4" />
+                        </DataTemplate>
+                    </ControlTemplate.Resources>
+                    <Grid x:Name="PART_Root" Background="{DynamicResource Panel}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="2,2,2,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="PART_PreviousButton" Grid.Column="0" Width="26" Height="24"
+                                    Style="{StaticResource ThemedCalendarHeaderButton}">
+                                <Path Data="M9,3.5 L4.5,8 L9,12.5" StrokeThickness="1.4" Stretch="None"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
+                            <Button x:Name="PART_HeaderButton" Grid.Column="1" Height="24"
+                                    Style="{StaticResource ThemedCalendarHeaderButton}" FontWeight="SemiBold" />
+                            <Button x:Name="PART_NextButton" Grid.Column="2" Width="26" Height="24"
+                                    Style="{StaticResource ThemedCalendarHeaderButton}">
+                                <Path Data="M7,3.5 L11.5,8 L7,12.5" StrokeThickness="1.4" Stretch="None"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
+                        </Grid>
+                        <!-- 月表示（7列×曜日行＋6週）。ボタンはコントロールがコードで配置する -->
+                        <Grid x:Name="PART_MonthView" Grid.Row="1" Visibility="Visible" Margin="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+                                <ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                <RowDefinition /><RowDefinition /><RowDefinition />
+                            </Grid.RowDefinitions>
+                        </Grid>
+                        <!-- 年表示（月選択）／十年表示（年選択）：4列×3行 -->
+                        <Grid x:Name="PART_YearView" Grid.Row="1" Visibility="Hidden" Margin="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition /><RowDefinition /><RowDefinition />
+                            </Grid.RowDefinitions>
+                        </Grid>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding DisplayMode, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Calendar}}}" Value="Year">
+                            <Setter TargetName="PART_MonthView" Property="Visibility" Value="Hidden" />
+                            <Setter TargetName="PART_YearView" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding DisplayMode, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Calendar}}}" Value="Decade">
+                            <Setter TargetName="PART_MonthView" Property="Visibility" Value="Hidden" />
+                            <Setter TargetName="PART_YearView" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ThemedCalendar" TargetType="Calendar">
+        <Setter Property="Background" Value="{DynamicResource Panel}" />
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CalendarItemStyle" Value="{StaticResource ThemedCalendarItem}" />
+        <Setter Property="CalendarDayButtonStyle" Value="{StaticResource ThemedCalendarDayButton}" />
+        <Setter Property="CalendarButtonStyle" Value="{StaticResource ThemedCalendarButton}" />
+    </Style>
+
 </ResourceDictionary>

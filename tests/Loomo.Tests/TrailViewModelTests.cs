@@ -1,17 +1,42 @@
+using System.IO;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
 /// 軌跡（操作ログ）バーの記録ロジック（TrailViewModel）の検証。
-/// 遷移の記録・直前と同一地点の非増殖・離脱位置の上書き・上限・クリア・ジャンプ要求。
+/// 遷移の記録・直前と同一地点の非増殖・離脱位置の上書き・現在地の移動（スクラブ）・
+/// 日付切替・SQLite 永続化との連携。
 /// </summary>
-public class TrailViewModelTests
+public class TrailViewModelTests : IDisposable
 {
-    [Fact]
-    public void RecordFile_appends_entries_in_order()
+    private readonly string _dbPath =
+        Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db");
+    private readonly TrailStore _store;
+
+    public TrailViewModelTests()
     {
-        var sut = new TrailViewModel();
+        _store = new TrailStore(_dbPath);
+    }
+
+    public void Dispose()
+    {
+        _store.Dispose();
+        try { File.Delete(_dbPath); } catch { }
+    }
+
+    private TrailViewModel CreateSut()
+    {
+        var sut = new TrailViewModel(_store);
+        sut.EnsureLoaded();
+        return sut;
+    }
+
+    [Fact]
+    public void RecordFile_appends_entries_in_order_and_sets_current_to_latest()
+    {
+        var sut = CreateSut();
 
         sut.RecordFile(@"C:\work\a.cs", 10, 2);
         sut.RecordFile(@"C:\work\b.cs", 5, 0);
@@ -20,14 +45,15 @@ public class TrailViewModelTests
         Assert.True(sut.HasEntries);
         Assert.Equal(@"C:\work\a.cs", sut.Entries[0].Target);
         Assert.Equal("a.cs", sut.Entries[0].Label);
-        Assert.Equal("b.cs", sut.Entries[1].Label);
-        Assert.Equal(TrailEntryKind.File, sut.Entries[0].Kind);
+        Assert.Equal(1, sut.CurrentIndex);
+        Assert.True(sut.Entries[1].IsCurrent);
+        Assert.False(sut.Entries[0].IsCurrent);
     }
 
     [Fact]
     public void RecordFile_same_as_latest_updates_instead_of_appending()
     {
-        var sut = new TrailViewModel();
+        var sut = CreateSut();
 
         sut.RecordFile(@"C:\work\a.cs", 10, 2);
         // タブ切替やフォーカス移動で同じファイルが再記録されても増殖しない（大文字小文字も同一視）。
@@ -39,37 +65,26 @@ public class TrailViewModelTests
     }
 
     [Fact]
-    public void RecordFile_without_position_keeps_previous_position()
+    public void Record_kinds_interleave_as_separate_entries()
     {
-        var sut = new TrailViewModel();
+        var sut = CreateSut();
 
-        sut.RecordFile(@"C:\work\a.cs", 10, 2);
-        // 未実体化タブの再活性化など、位置情報なし（-1）の再記録では既知の位置を消さない。
+        sut.RecordPane("Terminal", "ターミナル");
         sut.RecordFile(@"C:\work\a.cs");
+        sut.RecordPanel("Search", "検索");
+        sut.RecordBrowser("https://example.com/", null);
 
-        var entry = Assert.Single(sut.Entries);
-        Assert.Equal(10, entry.Line);
-        Assert.Equal(2, entry.Column);
-    }
-
-    [Fact]
-    public void RecordFile_revisit_after_other_file_appends_new_entry()
-    {
-        var sut = new TrailViewModel();
-
-        sut.RecordFile(@"C:\work\a.cs");
-        sut.RecordFile(@"C:\work\b.cs");
-        sut.RecordFile(@"C:\work\a.cs");
-
-        // 別ファイルを挟んだ再訪は新しい通過として時系列に残る。
-        Assert.Equal(3, sut.Entries.Count);
-        Assert.Equal("a.cs", sut.Entries[2].Label);
+        Assert.Equal(4, sut.Entries.Count);
+        Assert.Equal(TrailEntryKind.Pane, sut.Entries[0].Kind);
+        Assert.Equal(TrailEntryKind.File, sut.Entries[1].Kind);
+        Assert.Equal(TrailEntryKind.Panel, sut.Entries[2].Kind);
+        Assert.Equal(TrailEntryKind.Browser, sut.Entries[3].Kind);
     }
 
     [Fact]
     public void RecordBrowser_uses_title_or_host_and_updates_latest_label()
     {
-        var sut = new TrailViewModel();
+        var sut = CreateSut();
 
         // NavigationCompleted 直後はタイトル未確定のことがある → ホスト名で仮表示。
         sut.RecordBrowser("https://example.com/docs", null);
@@ -79,58 +94,175 @@ public class TrailViewModelTests
         sut.RecordBrowser("https://example.com/docs", "Example Docs");
         var entry = Assert.Single(sut.Entries);
         Assert.Equal("Example Docs", entry.Label);
-        Assert.Equal(TrailEntryKind.Browser, entry.Kind);
     }
 
     [Fact]
-    public void UpdateFilePosition_overwrites_position()
+    public void UpdateLatestFilePosition_overwrites_position_of_latest_file_entry()
     {
-        var sut = new TrailViewModel();
+        var sut = CreateSut();
         sut.RecordFile(@"C:\work\a.cs", 0, 0);
-        var entry = sut.Entries[0];
 
         // 離脱時のカーソル位置で上書き → 「戻る」が離れた場所になる。
-        sut.UpdateFilePosition(entry, 120, 8);
+        sut.UpdateLatestFilePosition(@"C:\work\a.cs", 120, 8);
 
-        Assert.Equal(120, entry.Line);
-        Assert.Equal(8, entry.Column);
-        Assert.Equal("a.cs:121", entry.Display);   // 表示は1始まり
+        Assert.Equal(120, sut.Entries[0].Line);
+        Assert.Equal(8, sut.Entries[0].Column);
+        Assert.Contains(":121", sut.Entries[0].Tooltip);   // 表示は1始まり
     }
 
     [Fact]
-    public void Entries_are_capped_dropping_oldest()
+    public void MoveCurrent_scrubs_within_bounds()
     {
-        var sut = new TrailViewModel();
-
-        for (var i = 0; i < TrailViewModel.MaxEntries + 5; i++)
-            sut.RecordFile($@"C:\work\f{i}.cs");
-
-        Assert.Equal(TrailViewModel.MaxEntries, sut.Entries.Count);
-        Assert.Equal("f5.cs", sut.Entries[0].Label);   // 古い5件が落ちる
-    }
-
-    [Fact]
-    public void Clear_removes_all_and_hides_bar()
-    {
-        var sut = new TrailViewModel();
+        var sut = CreateSut();
         sut.RecordFile(@"C:\work\a.cs");
+        sut.RecordFile(@"C:\work\b.cs");
+        sut.RecordFile(@"C:\work\c.cs");
 
-        sut.ClearCommand.Execute(null);
+        var back = sut.MoveCurrent(-1);
+        Assert.Equal("b.cs", back!.Label);
+        Assert.Equal(1, sut.CurrentIndex);
 
-        Assert.Empty(sut.Entries);
-        Assert.False(sut.HasEntries);
+        // 端で止まる（下限を超えない・移動なしは null）
+        Assert.NotNull(sut.MoveCurrent(-1));
+        Assert.Null(sut.MoveCurrent(-1));
+        Assert.Equal(0, sut.CurrentIndex);
+
+        var fwd = sut.MoveCurrent(+1);
+        Assert.Equal("b.cs", fwd!.Label);
     }
 
     [Fact]
-    public void Jump_raises_request_with_entry()
+    public void Entries_persist_and_reload_from_store()
     {
-        var sut = new TrailViewModel();
+        var sut = CreateSut();
         sut.RecordFile(@"C:\work\a.cs", 3, 1);
+        sut.RecordBrowser("https://example.com/", "Example");
+
+        // 再起動相当：同じ DB から新しい VM を作ると今日の軌跡が復元される。
+        var reloaded = new TrailViewModel(new TrailStore(_dbPath));
+        reloaded.EnsureLoaded();
+
+        Assert.Equal(2, reloaded.Entries.Count);
+        Assert.Equal(@"C:\work\a.cs", reloaded.Entries[0].Target);
+        Assert.Equal(3, reloaded.Entries[0].Line);
+        Assert.Equal(TrailEntryKind.Browser, reloaded.Entries[1].Kind);
+    }
+
+    [Fact]
+    public void ShowDate_switches_to_past_day_and_back_to_today()
+    {
+        // 過去日のレコードを直接 DB へ用意する。
+        var yesterday = DateTime.Now.AddDays(-1);
+        _store.Append(yesterday, (int)TrailEntryKind.File, @"C:\old\z.cs", "z.cs", 7, 0);
+
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs");
+        Assert.False(sut.IsViewingPast);
+
+        sut.ShowDate(DateOnly.FromDateTime(yesterday));
+        Assert.True(sut.IsViewingPast);
+        var old = Assert.Single(sut.Entries);
+        Assert.Equal("z.cs", old.Label);
+
+        // 過去日を表示中の記録は表示へ出ない（今日へ積まれる）。
+        sut.RecordFile(@"C:\work\b.cs");
+        Assert.Single(sut.Entries);
+
+        // × で今日へ戻ると、いま記録した分も含めて今日の軌跡が見える。
+        sut.BackToTodayCommand.Execute(null);
+        Assert.False(sut.IsViewingPast);
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal("b.cs", sut.Entries[1].Label);
+    }
+
+    [Fact]
+    public void Jump_raises_request_and_moves_current()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", 3, 1);
+        sut.RecordFile(@"C:\work\b.cs");
         TrailEntryViewModel? requested = null;
         sut.JumpRequested += (_, e) => requested = e;
 
         sut.JumpCommand.Execute(sut.Entries[0]);
 
         Assert.Same(sut.Entries[0], requested);
+        Assert.Equal(0, sut.CurrentIndex);
+        Assert.True(sut.Entries[0].IsCurrent);
+    }
+
+    [Fact]
+    public void Tooltip_contains_datetime_and_target()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", 3, 1);
+
+        var tooltip = sut.Entries[0].Tooltip;
+        Assert.Contains(@"C:\work\a.cs:4", tooltip);
+        Assert.Contains(DateTime.Now.ToString("yyyy-MM-dd"), tooltip);
+    }
+}
+
+/// <summary>軌跡の SQLite 永続化（TrailStore）の検証。日別の読み出しと上書き更新。</summary>
+public class TrailStoreTests : IDisposable
+{
+    private readonly string _dbPath =
+        Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trailstore.db");
+    private readonly TrailStore _store;
+
+    public TrailStoreTests()
+    {
+        _store = new TrailStore(_dbPath);
+    }
+
+    public void Dispose()
+    {
+        _store.Dispose();
+        try { File.Delete(_dbPath); } catch { }
+    }
+
+    [Fact]
+    public void Append_and_LoadDay_split_by_local_date()
+    {
+        var today = DateTime.Now;
+        var yesterday = today.AddDays(-1);
+        _store.Append(yesterday, 0, @"C:\old.cs", "old.cs", 1, 0);
+        _store.Append(today, 0, @"C:\new.cs", "new.cs", 2, 0);
+
+        var todayList = _store.LoadDay(DateOnly.FromDateTime(today));
+        var yesterdayList = _store.LoadDay(DateOnly.FromDateTime(yesterday));
+
+        Assert.Equal("new.cs", Assert.Single(todayList).Label);
+        Assert.Equal("old.cs", Assert.Single(yesterdayList).Label);
+        Assert.Equal(2, _store.ListDays().Count);
+        Assert.True(_store.HasAny());
+    }
+
+    [Fact]
+    public void Update_overwrites_label_position_and_timestamp()
+    {
+        var t1 = DateTime.Now.AddMinutes(-5);
+        var id = _store.Append(t1, 1, "https://example.com/", "example.com", -1, -1);
+
+        var t2 = DateTime.Now;
+        _store.Update(id, t2, "Example Site", -1, -1);
+
+        var record = Assert.Single(_store.LoadDay(DateOnly.FromDateTime(t2)));
+        Assert.Equal("Example Site", record.Label);
+        Assert.Equal(t2.ToString("HH:mm:ss"), record.Timestamp.ToString("HH:mm:ss"));
+    }
+
+    [Fact]
+    public void UpdatePosition_only_changes_line_and_column()
+    {
+        var now = DateTime.Now;
+        var id = _store.Append(now, 0, @"C:\a.cs", "a.cs", 1, 0);
+
+        _store.UpdatePosition(id, 42, 7);
+
+        var record = Assert.Single(_store.LoadDay(DateOnly.FromDateTime(now)));
+        Assert.Equal(42, record.Line);
+        Assert.Equal(7, record.Column);
+        Assert.Equal("a.cs", record.Label);
     }
 }

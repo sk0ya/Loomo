@@ -491,6 +491,8 @@ public partial class ShellWindow : Window
             ApplySidebarVisibility(vm.IsSidebarVisible);
         else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen) && vm.IsSettingsOverlayOpen)
             EnsureSettingsOverlayCreated();
+        else if (e.PropertyName == nameof(ShellViewModel.ActivePanel))
+            RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
     }
 
     /// <summary>設定オーバーレイの中身は初回オープン時にだけ生成する（起動コストを払わない）。

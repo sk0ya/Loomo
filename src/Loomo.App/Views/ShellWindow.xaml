@@ -1312,23 +1312,43 @@
                 </Grid>
             </Grid>
 
-            <!-- 軌跡（操作ログ）バー：エディタで開いたファイル・ブラウザの遷移を時系列のチップで並べ、
-                 クリックでその地点へ戻る（Semantic Depth 構想の Thread Rail の種、MVP）。
-                 記録・ジャンプの配線は ShellWindow.Trail.cs、データは TrailViewModel。空なら非表示で高さを取らない。 -->
+            <!-- 軌跡（操作ログ）バー：通過した地点（ファイル・ページ・ペイン／パネル切替）を時系列の
+                 点（ドット）で並べる（Semantic Depth 構想の Thread Rail の種）。ホバーで詳細、クリックで
+                 その地点へ戻り、バー上のホイールで現在地を前後に移動する。左端の日付クリック→カレンダーで
+                 過去の日の軌跡を表示（×で今日へ戻る）。記録は SQLite（TrailStore）へ日別・無制限に永続化。
+                 配線は ShellWindow.Trail.cs、データは TrailViewModel。記録が無ければ非表示で高さを取らない。 -->
             <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                     Background="{DynamicResource ActivityBarBg}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
                     Visibility="{Binding Trail.HasEntries, Converter={StaticResource BoolToVis}}">
                 <DockPanel LastChildFill="True" Height="24">
-                    <TextBlock DockPanel.Dock="Left" Text="軌跡" FontSize="11"
-                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="10,0,2,0"
-                               ToolTip="通過した地点（ファイル・ページ）の記録。チップをクリックでその地点へ戻る" />
+                    <!-- 日付：クリックでカレンダーを開き、選んだ日の軌跡を表示する -->
+                    <Button x:Name="TrailDateButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
+                            Padding="8,1" FontSize="11" VerticalAlignment="Center"
+                            Foreground="{DynamicResource FgDim}"
+                            Content="{Binding Trail.DateLabel}"
+                            ToolTip="クリックで日付を選んで、その日の軌跡を表示"
+                            Click="OnTrailDateClick" />
+                    <Popup x:Name="TrailCalendarPopup" PlacementTarget="{Binding ElementName=TrailDateButton}"
+                           Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="4" Padding="4" Margin="8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                            </Border.Effect>
+                            <Calendar x:Name="TrailCalendar" Style="{StaticResource ThemedCalendar}"
+                                      SelectedDatesChanged="OnTrailCalendarSelected" />
+                        </Border>
+                    </Popup>
+                    <!-- ×：過去の日を表示中のみ出す（今日の軌跡へ戻る） -->
                     <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="22"
-                            Content="×" FontSize="11" ToolTip="軌跡をクリア"
-                            Command="{Binding Trail.ClearCommand}" />
+                            Content="×" FontSize="11" ToolTip="今日の軌跡へ戻る"
+                            Visibility="{Binding Trail.IsViewingPast, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding Trail.BackToTodayCommand}" />
+                    <!-- ドット列：ホイール＝現在地の前後移動（OnTrailWheel）。スクロールは追従制御 -->
                     <ScrollViewer x:Name="TrailScroll" HorizontalScrollBarVisibility="Hidden"
                                   VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
-                                  PreviewMouseWheel="OnTabStripMouseWheel">
+                                  PreviewMouseWheel="OnTrailWheel">
                         <ItemsControl ItemsSource="{Binding Trail.Entries}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -1337,22 +1357,54 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="›" FontSize="11" Foreground="{DynamicResource FgDim}"
-                                                   VerticalAlignment="Center" Margin="4,0" />
-                                        <Button Style="{StaticResource FlatButton}" Padding="5,1" FontSize="11"
-                                                VerticalAlignment="Center"
-                                                ToolTip="{Binding Tooltip}"
-                                                Command="{Binding DataContext.Trail.JumpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Glyph}" FontSize="10" Margin="0,0,4,0"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding Display}" MaxWidth="180"
-                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                            </StackPanel>
-                                        </Button>
-                                    </StackPanel>
+                                    <!-- 幅14は ShellWindow.Trail.cs の ScrollTrailCurrentIntoView と揃える -->
+                                    <Button Width="14" Height="24" Cursor="Hand"
+                                            ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="150"
+                                            Command="{Binding DataContext.Trail.JumpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Grid Background="Transparent">
+                                                    <Ellipse x:Name="Dot" Opacity="0.75">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Width" Value="8" />
+                                                                <Setter Property="Height" Value="8" />
+                                                                <Setter Property="Fill" Value="{DynamicResource Fg}" />
+                                                                <Style.Triggers>
+                                                                    <!-- 種別で色分け：ファイル=Fg／ブラウザ=Success／ペイン=FgDim／パネル=アンバー -->
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Browser">
+                                                                        <Setter Property="Fill" Value="{DynamicResource Success}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Pane">
+                                                                        <Setter Property="Fill" Value="{DynamicResource FgDim}" />
+                                                                        <Setter Property="Width" Value="6" />
+                                                                        <Setter Property="Height" Value="6" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Panel">
+                                                                        <Setter Property="Fill" Value="{DynamicResource SearchHighlight}" />
+                                                                        <Setter Property="Width" Value="6" />
+                                                                        <Setter Property="Height" Value="6" />
+                                                                    </DataTrigger>
+                                                                    <!-- 現在地：アクセント色で大きく -->
+                                                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                                        <Setter Property="Fill" Value="{DynamicResource AccentHover}" />
+                                                                        <Setter Property="Width" Value="11" />
+                                                                        <Setter Property="Height" Value="11" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                </Grid>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Dot" Property="Opacity" Value="1.0" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
