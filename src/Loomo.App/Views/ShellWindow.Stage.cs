@@ -73,6 +73,7 @@ public partial class ShellWindow
     /// <summary>ソロ⇄レイアウトを切り替える。</summary>
     private void ToggleDisplayMode()
     {
+        BeginTrailLayoutChange();
         if (_stageActive)
             ExitStageMode();   // → レイアウトモード
         else
@@ -208,6 +209,7 @@ public partial class ShellWindow
     {
         if (!_stageActive)
             return;
+        BeginTrailLayoutChange();
         var changed = _stagePane != kind;
         _overviewActive = false;
         _stagePane = kind;

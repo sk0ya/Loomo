@@ -98,6 +98,7 @@ public partial class ShellWindow
     /// <summary>巡回位置のレイアウトを <c>_root</c> へ立てる（-1＝スクラッチ）。</summary>
     private void LoadLayoutAt(int index)
     {
+        BeginTrailLayoutChange();
         var snapshot = index < 0
             ? _scratchLayout
             : index < _layouts.Count ? _layouts[index].Tree : null;

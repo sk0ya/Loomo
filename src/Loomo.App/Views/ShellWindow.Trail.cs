@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -48,6 +50,8 @@ public partial class ShellWindow
     private TrailEntryViewModel? _trailScrubTarget;
     private TrailEntryViewModel? _trailPendingJumpEntry;
     private bool _trailJumpRunning;
+    private string? _trailLastLayoutKey;
+    private bool _trailLayoutTrackingReady;
 
     private void InitializeTrail()
     {
@@ -75,7 +79,7 @@ public partial class ShellWindow
     /// <paramref name="record"/> で実際の <see cref="TrailViewModel"/> 呼び出しを渡す。</summary>
     private void RecordTrail(Action<DisplayMode, PaneKind?, string?> record)
     {
-        if (_trailSuppressed)
+        if (!_trailLayoutTrackingReady || _trailSuppressed)
             return;
         RefreshLatestTrailFilePosition();
         var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
@@ -92,6 +96,49 @@ public partial class ShellWindow
             return;
         var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
         _vm.Trail.UpdateLatestPaneLayout(paneLayout);
+    }
+
+    /// <summary>保存要求のたびに表示状態を比較し、実際に変わったレイアウトだけを独立した軌跡へ積む。
+    /// 復元中も基準値は同期し、復元操作そのものは新しい点にしない。</summary>
+    private void RecordTrailLayoutIfChanged()
+    {
+        var (layoutKey, mode, stagePane, paneLayout) = CurrentTrailLayoutState();
+        // 最初の観測値は起動・ワークスペース復元後の基準。ユーザー操作ではない。
+        if (_trailLastLayoutKey is null)
+        {
+            _trailLastLayoutKey = layoutKey;
+            return;
+        }
+        if (string.Equals(_trailLastLayoutKey, layoutKey, StringComparison.Ordinal))
+            return;
+
+        _trailLastLayoutKey = layoutKey;
+        if (_trailSuppressed)
+            return;
+
+        var label = mode == DisplayMode.Solo
+            ? $"ソロ · {PaneDisplayName(stagePane ?? PaneKind.Editor)}"
+            : "レイアウト変更";
+        RecordTrail((recordMode, recordStagePane, layout) =>
+            _vm.Trail.RecordLayout(layoutKey, label, recordMode, recordStagePane, layout));
+    }
+
+    /// <summary>ユーザーのレイアウト操作を始める直前の状態を基準値にする。
+    /// 起動復元の非同期処理が完全に収束する時刻には依存しない。</summary>
+    private void BeginTrailLayoutChange()
+    {
+        _trailLastLayoutKey = CurrentTrailLayoutState().Key;
+        _trailLayoutTrackingReady = true;
+    }
+
+    private (string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout) CurrentTrailLayoutState()
+    {
+        var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
+        var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
+        var state = $"{(int)mode}|{stagePane?.ToString() ?? "-"}|{paneLayout ?? "-"}";
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(state)));
+        return (key, mode, stagePane, paneLayout);
     }
 
     /// <summary>エディタタブの活性化を軌跡へ記録する（無題・仮想ドキュメントは対象外）。</summary>
@@ -251,6 +298,7 @@ public partial class ShellWindow
         _trailJumps[TrailEntryKind.Pane] = entry => { JumpToPane(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Panel] = entry => { JumpToPanel(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Terminal] = entry => { JumpToTerminal(entry); return Task.CompletedTask; };
+        _trailJumps[TrailEntryKind.Layout] = _ => Task.CompletedTask;
     }
 
     private void JumpToTrailEntry(TrailEntryViewModel entry)
@@ -309,6 +357,7 @@ public partial class ShellWindow
             TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(entry.Target, out _),
             TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
                                        && _terminalTabs.Any(t => t.Id == id),
+            TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout),
             _ => false
         };
     }

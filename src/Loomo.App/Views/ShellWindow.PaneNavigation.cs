@@ -84,6 +84,8 @@ public partial class ShellWindow
         if (_zoomedPane is not null || _focusedRegion is not { } region)
             return;
 
+        BeginTrailLayoutChange();
+
         var horizontal = direction is DropZone.Left or DropZone.Right;
         var grow = direction is DropZone.Right or DropZone.Below;
 

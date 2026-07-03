@@ -32,11 +32,15 @@ public sealed class TrailStore : IDisposable
     private readonly object _gate = new();
 
     public TrailStore()
-        : this(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Loomo", "trail.db"))
+        : this(DefaultPath())
     {
     }
+
+    private static string DefaultPath()
+        => Environment.GetEnvironmentVariable("LOOMO_TRAIL_DB") is { Length: > 0 } overridePath
+            ? overridePath
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Loomo", "trail.db");
 
     public TrailStore(string dbPath)
     {

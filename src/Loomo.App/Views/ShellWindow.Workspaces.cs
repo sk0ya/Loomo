@@ -162,6 +162,12 @@ public partial class ShellWindow
     /// </param>
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false)
     {
+        // 切替元の配置は、Trail のワークスペースキーを切り替える前に確定する。
+        // 先に SetWorkspace すると、下の復元抑制中は RefreshLatestTrailPaneLayout が働かず、
+        // 切替元の「離れる瞬間」の配置だけ軌跡へ残らない。
+        if (captureCurrent)
+            SaveActiveWorkspaceSnapshot(immediate: true);
+
         // 復元による機械的なタブ活性化・ナビゲートを軌跡（操作ログ）へ記録しない。
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
@@ -174,16 +180,16 @@ public partial class ShellWindow
             _vm.Trail.EnsureLoaded();
             _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
             _trailLastPaneMode = null;
-            await SwitchWorkspaceCoreAsync(workspace, captureCurrent, deferHydration);
+            await SwitchWorkspaceCoreAsync(workspace, deferHydration);
         }
-        finally { _trailSuppressed = trailSaved; }
+        finally
+        {
+            _trailSuppressed = trailSaved;
+        }
     }
 
-    private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration)
+    private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool deferHydration)
     {
-        if (captureCurrent)
-            SaveActiveWorkspaceSnapshot(immediate: true);
-
         ClearStageModeForWorkspaceSwitch();
         DetachTerminalTabs();
         DetachEditorTabs();
@@ -332,6 +338,10 @@ public partial class ShellWindow
     {
         if (_activeWorkspace is null)
             return;
+
+        // タブや本文の保存もこの入口を通るため、直前値との比較でレイアウトが変わった時だけ記録する。
+        // 遅延保存より前に呼び、変更直後に別操作が続いても中間配置を落とさない。
+        RecordTrailLayoutIfChanged();
 
         if (immediate)
         {

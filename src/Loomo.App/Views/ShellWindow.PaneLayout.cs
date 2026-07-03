@@ -268,7 +268,11 @@ public partial class ShellWindow
         // ドラッグ直後に Weight へ取り込んでおく（SaveActiveWorkspaceSnapshot の実際の捕捉は
         // ApplicationIdle まで遅延するため、それより前に他要因で RebuildPaneLayout が走ると
         // 古い Weight でグリッドが再構築され、リサイズが直後に元へ戻って見える）。
-        splitter.DragStarted += (_, _) => _paneSplitterDragging = true;
+        splitter.DragStarted += (_, _) =>
+        {
+            BeginTrailLayoutChange();
+            _paneSplitterDragging = true;
+        };
         splitter.DragCompleted += (_, _) =>
         {
             _paneSplitterDragging = false;
@@ -286,6 +290,7 @@ public partial class ShellWindow
     /// <summary>スプリッターのダブルクリックで、その分割直下の可視ペインの比率を均等に戻す。</summary>
     private void EqualizeSiblings(PaneSplit split)
     {
+        BeginTrailLayoutChange();
         foreach (var child in split.Children)
             child.Weight = 1;
         MarkLayoutDirty();

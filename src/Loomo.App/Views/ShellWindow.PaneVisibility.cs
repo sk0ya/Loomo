@@ -34,6 +34,7 @@ public partial class ShellWindow
     {
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
+        BeginTrailLayoutChange();
         SetPaneVisible(kind, false);
     }
 
@@ -107,6 +108,7 @@ public partial class ShellWindow
 
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
     {
+        BeginTrailLayoutChange();
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
             ToggleSessionEnabled(kind);
 

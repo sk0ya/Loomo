@@ -19,7 +19,9 @@ public enum TrailEntryKind
     /// <summary>サイドバーのパネル切替。</summary>
     Panel,
     /// <summary>アクティブにしたターミナルタブ。target はワークスペース内で永続化されるタブ ID。</summary>
-    Terminal
+    Terminal,
+    /// <summary>ペイン配置、表示モード、またはソロで舞台に立つペインの変更。</summary>
+    Layout
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -88,6 +90,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Pane => "▦",
         TrailEntryKind.Panel => "◫",
         TrailEntryKind.Terminal => ">_",
+        TrailEntryKind.Layout => "▦",
         _ => "📄"
     };
 
@@ -103,6 +106,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 TrailEntryKind.Pane => "ペイン",
                 TrailEntryKind.Panel => "パネル",
                 TrailEntryKind.Terminal => "ターミナル",
+                TrailEntryKind.Layout => "レイアウト",
                 _ => "地点"
             };
             var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}、{Line + 1}行" : Label;
@@ -267,6 +271,12 @@ public sealed partial class TrailViewModel : ObservableObject
     public void RecordTerminal(Guid tabId, string label,
         DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
         => Record(TrailEntryKind.Terminal, tabId.ToString("D"), label,
+            displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
+
+    /// <summary>表示レイアウトの変更を、それ自体が戻り先になる独立した地点として記録する。</summary>
+    public void RecordLayout(string layoutKey, string label,
+        DisplayMode displayMode, PaneKind? stagePane, string? paneLayout)
+        => Record(TrailEntryKind.Layout, layoutKey, label,
             displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
 
     /// <summary>あらゆる軌跡ソース共通の記録入口。直前と同一地点（同一 kind かつ同一 target）の

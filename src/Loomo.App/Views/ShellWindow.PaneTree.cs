@@ -42,6 +42,8 @@ public partial class ShellWindow
         if (sourceLeaf is null || targetLeaf is null)
             return;
 
+        BeginTrailLayoutChange();
+
         CaptureLayoutSizes();
 
         // 移動元をツリーから外し、ターゲット（またはスパン対象の祖先）の指定した辺へ挿入する。
@@ -71,6 +73,8 @@ public partial class ShellWindow
     {
         if (dragged == target || FindLeaf(target) is null)
             return;
+
+        BeginTrailLayoutChange();
 
         CaptureLayoutSizes();
         _enabledSessions.Add(dragged);   // タイルに出る＝有効

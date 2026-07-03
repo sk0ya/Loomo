@@ -154,6 +154,127 @@ public class TrailViewModelTests : IDisposable
             Assert.Single(reloaded.LoadDay("", DateOnly.FromDateTime(DateTime.Now))).PaneLayout);
     }
 
+    public static TheoryData<TrailEntryKind> AllTrailKinds => new()
+    {
+        TrailEntryKind.File,
+        TrailEntryKind.Browser,
+        TrailEntryKind.Pane,
+        TrailEntryKind.Panel,
+        TrailEntryKind.Terminal,
+        TrailEntryKind.Layout
+    };
+
+    [Theory]
+    [MemberData(nameof(AllTrailKinds))]
+    public void Latest_layout_update_covers_every_trail_kind_and_persists(TrailEntryKind kind)
+    {
+        var sut = CreateSut();
+        sut.Record(kind, $"target-{kind}", $"label-{kind}", paneLayout: "before");
+
+        sut.UpdateLatestPaneLayout("after");
+
+        Assert.Equal("after", Assert.Single(sut.Entries).PaneLayout);
+        using var reloaded = new TrailStore(_dbPath);
+        Assert.Equal("after",
+            Assert.Single(reloaded.LoadDay("", DateOnly.FromDateTime(DateTime.Now))).PaneLayout);
+    }
+
+    [Fact]
+    public void Layout_change_is_an_independent_trail_point_and_persists()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", paneLayout: "layout-a");
+
+        sut.RecordLayout("layout-key-b", "レイアウト変更", DisplayMode.Layout, null, "layout-b");
+
+        Assert.Equal(2, sut.Entries.Count);
+        var layout = sut.Entries[1];
+        Assert.Equal(TrailEntryKind.Layout, layout.Kind);
+        Assert.Equal("layout-b", layout.PaneLayout);
+        var reloaded = new TrailViewModel(new TrailStore(_dbPath));
+        reloaded.EnsureLoaded();
+        Assert.Equal(TrailEntryKind.Layout, reloaded.Entries[1].Kind);
+        Assert.Equal("layout-b", reloaded.Entries[1].PaneLayout);
+    }
+
+    [Fact]
+    public void Repeated_same_layout_is_deduped_but_returning_to_it_after_another_layout_is_preserved()
+    {
+        var sut = CreateSut();
+
+        sut.RecordLayout("a", "A", DisplayMode.Layout, null, "layout-a");
+        sut.RecordLayout("a", "A", DisplayMode.Layout, null, "layout-a");
+        sut.RecordLayout("b", "B", DisplayMode.Layout, null, "layout-b");
+        sut.RecordLayout("a", "A", DisplayMode.Layout, null, "layout-a");
+
+        Assert.Equal(new[] { "a", "b", "a" }, sut.Entries.Select(e => e.Target));
+    }
+
+    [Fact]
+    public void Workspace_switch_must_commit_outgoing_layout_before_changing_trail_workspace()
+    {
+        var sut = CreateSut();
+        sut.SetWorkspace("ws-a");
+        sut.RecordFile(@"C:\a.cs", paneLayout: "a-before-leaving");
+        sut.SetWorkspace("ws-b");
+        sut.RecordFile(@"C:\b.cs", paneLayout: "b-layout");
+
+        // ShellWindow.SwitchWorkspaceAsync の必須順序を再現する。
+        sut.SetWorkspace("ws-a");
+        sut.UpdateLatestPaneLayout("a-at-switch");
+        sut.SetWorkspace("ws-b");
+
+        Assert.Equal("b-layout", Assert.Single(sut.Entries).PaneLayout);
+        using var verify = new TrailStore(_dbPath);
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        Assert.Equal("a-at-switch", Assert.Single(verify.LoadDay("ws-a", today)).PaneLayout);
+        Assert.Equal("b-layout", Assert.Single(verify.LoadDay("ws-b", today)).PaneLayout);
+    }
+
+    [Fact]
+    public void Updating_layout_while_viewing_past_updates_todays_latest_point_only()
+    {
+        var yesterday = DateTime.Now.AddDays(-1);
+        _store.Append("", yesterday, (int)TrailEntryKind.File, @"C:\old.cs", "old.cs", -1, -1,
+            paneLayout: "old-layout");
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\today.cs", paneLayout: "today-before");
+        sut.ShowDate(DateOnly.FromDateTime(yesterday));
+
+        sut.UpdateLatestPaneLayout("today-after");
+
+        Assert.Equal("old-layout", Assert.Single(sut.Entries).PaneLayout);
+        sut.BackToTodayCommand.Execute(null);
+        Assert.Equal("today-after", Assert.Single(sut.Entries).PaneLayout);
+    }
+
+    [Fact]
+    public void Updating_layout_with_no_point_is_a_no_op()
+    {
+        var sut = CreateSut();
+
+        sut.UpdateLatestPaneLayout("layout");
+
+        Assert.Empty(sut.Entries);
+        Assert.Empty(_store.LoadDay("", DateOnly.FromDateTime(DateTime.Now)));
+    }
+
+    [Fact]
+    public void Latest_layout_can_be_cleared_and_old_snapshot_is_cleaned_up()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\a.cs", paneLayout: "layout");
+
+        sut.UpdateLatestPaneLayout(null);
+
+        Assert.Null(Assert.Single(sut.Entries).PaneLayout);
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM trail_layouts;";
+        Assert.Equal(0L, (long)count.ExecuteScalar()!);
+    }
+
     [Fact]
     public void RecordBrowser_uses_title_or_host_and_updates_latest_label()
     {
