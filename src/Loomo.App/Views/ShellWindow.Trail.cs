@@ -43,6 +43,11 @@ public partial class ShellWindow
     private DispatcherTimer? _trailPaneCommitTimer;
     private PaneKind? _trailPendingPane;
 
+    /// <summary>現在地を表示領域の<b>左端</b>へ寄せている（時間帯選択・「今」へのダブルクリック）間 true。
+    /// この間に軌跡の登録が入っても中央寄せへ戻さず左寄せを保ち、左端の地点が右へ動かないようにする。
+    /// 中央寄せ（<see cref="ScrollTrailCurrentIntoView"/>）を通ると false へ戻る。</summary>
+    private bool _trailSnapLeft;
+
     /// <summary>ホイールでの現在地移動を1回のジャンプへ畳むデバウンス。</summary>
     private DispatcherTimer? _trailScrubTimer;
     private TrailEntryViewModel? _trailScrubTarget;
@@ -56,9 +61,9 @@ public partial class ShellWindow
         _vm.Trail.JumpRequested += (_, entry) => JumpToTrailEntry(entry);
         // AI セッションのアクティブ化（復元・新規確定）を軌跡へ地点として記録する。
         _vm.AiBar.SessionActivated += (_, e) => RecordTrailSession(e.Id, e.Title);
-        // 追記・現在地移動でドットが見える位置へ追従スクロールする。
+        // 追記・現在地移動でドットが見える位置へ追従スクロールする。左端へ寄せている間は左寄せを保つ。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
-            Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
+            Dispatcher.BeginInvoke(new Action(ScrollTrailAfterEntriesChanged), DispatcherPriority.Loaded);
         // 日付・時刻クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
         // すると Click が届く前に外側クリックとして閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
         TrailCalendarPopup.Closed += (_, _) => _trailCalendarClosedAt = DateTime.UtcNow;
@@ -556,8 +561,19 @@ public partial class ShellWindow
     /// <summary>現在地のドットが見えるよう水平スクロールを追従させる（無ければ右端＝最新へ）。
     /// ライブ追従・スクラブ・ジャンプ共通の中央寄せ。末尾余白は要らないので畳んで、最新ドットが
     /// 右端に張り付く既定挙動へ戻す（時間帯選択の左寄せ <see cref="ScrollTrailHourToLeft"/> とは別経路）。</summary>
+    /// <summary>エントリの追加・削除での追従スクロール。左端へ寄せている最中（<see cref="_trailSnapLeft"/>）は
+    /// スクロール位置に一切触れない：新しいドットは末尾余白の中を右へどんどん積まれてよく、左端に見えている
+    /// 地点だけが右へ動かなければよい。それ以外は現在地を中央へ寄せる既定挙動。</summary>
+    private void ScrollTrailAfterEntriesChanged()
+    {
+        if (_trailSnapLeft)
+            return;
+        ScrollTrailCurrentIntoView();
+    }
+
     private void ScrollTrailCurrentIntoView()
     {
+        _trailSnapLeft = false;           // 中央寄せへ戻る：以後の登録は既定の中央追従に任せる
         TrailTrailingSpacer.Width = 0;   // 左寄せ用の末尾余白を畳む（既定は最新を右端へ）
         var index = _vm.Trail.CurrentIndex;
         if (index < 0)
@@ -583,6 +599,7 @@ public partial class ShellWindow
             ScrollTrailCurrentIntoView();
             return;
         }
+        _trailSnapLeft = true;   // 以後の登録でも左寄せを保つ（登録で左端の地点が右へ動かない）
         var x = TrailSlotOffset(index);
         var contentWidth = TrailSlotOffset(_vm.Trail.Entries.Count);
         var viewport = TrailScroll.ViewportWidth;
