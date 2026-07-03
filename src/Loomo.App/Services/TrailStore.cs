@@ -25,7 +25,7 @@ public sealed record TrailRecord(
 /// 呼び出し側（TrailViewModel）が握りつぶしてメモリ内動作へ縮退する。</summary>
 public sealed class TrailStore : IDisposable
 {
-    // 開発中の初回正式スキーマ。user_version=0 の試作DBはデータごと作り直す。
+    // スキーマ更新時も軌跡は破棄せず、下の EnsureSchema で加算的に移行する。
     private const int SchemaVersion = 1;
     private readonly string _dbPath;
     private SqliteConnection? _connection;
@@ -57,43 +57,77 @@ public sealed class TrailStore : IDisposable
                     journal.CommandText = "PRAGMA journal_mode=WAL;";
                     journal.ExecuteNonQuery();
                 }
-                using (var version = _connection.CreateCommand())
-                {
-                    version.CommandText = "PRAGMA user_version;";
-                    if (Convert.ToInt32(version.ExecuteScalar()) != SchemaVersion)
-                    {
-                        using var reset = _connection.CreateCommand();
-                        reset.CommandText = "DROP TABLE IF EXISTS trail_entries; DROP TABLE IF EXISTS trail_layouts;";
-                        reset.ExecuteNonQuery();
-                    }
-                }
-                using var schema = _connection.CreateCommand();
-                schema.CommandText = $"""
-                    CREATE TABLE IF NOT EXISTS trail_layouts (
-                        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                        snapshot TEXT NOT NULL UNIQUE
-                    );
-                    CREATE TABLE IF NOT EXISTS trail_entries (
-                        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                        workspace TEXT    NOT NULL DEFAULT '',
-                        day       TEXT    NOT NULL,
-                        timestamp TEXT    NOT NULL,
-                        kind      INTEGER NOT NULL,
-                        target    TEXT    NOT NULL,
-                        label     TEXT    NOT NULL,
-                        line      INTEGER NOT NULL DEFAULT -1,
-                        col       INTEGER NOT NULL DEFAULT -1,
-                        display_mode INTEGER NOT NULL,
-                        stage_pane   INTEGER NULL,
-                        layout_id    INTEGER NULL REFERENCES trail_layouts(id)
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_trail_ws_day ON trail_entries(workspace, day, id);
-                    PRAGMA user_version = {SchemaVersion};
-                    """;
-                schema.ExecuteNonQuery();
+                EnsureSchema(_connection);
             }
             return _connection;
         }
+    }
+
+    private static void EnsureSchema(SqliteConnection connection)
+    {
+        using (var version = connection.CreateCommand())
+        {
+            version.CommandText = "PRAGMA user_version;";
+            var current = Convert.ToInt32(version.ExecuteScalar());
+            if (current > SchemaVersion)
+                throw new InvalidOperationException(
+                    $"trail.db のスキーマ {current} は、このバージョン（{SchemaVersion}）より新しいため開けません。");
+        }
+
+        using (var schema = connection.CreateCommand())
+        {
+            // user_version=0 の旧DBにもまず不足列を既定値付きで追加する。既存行は
+            // レイアウト表示・舞台指定なし・配置なしとして読み込めるため、履歴を失わない。
+            schema.CommandText = """
+                CREATE TABLE IF NOT EXISTS trail_layouts (
+                    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    snapshot TEXT NOT NULL UNIQUE
+                );
+                CREATE TABLE IF NOT EXISTS trail_entries (
+                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace TEXT    NOT NULL DEFAULT '',
+                    day       TEXT    NOT NULL,
+                    timestamp TEXT    NOT NULL,
+                    kind      INTEGER NOT NULL,
+                    target    TEXT    NOT NULL,
+                    label     TEXT    NOT NULL,
+                    line      INTEGER NOT NULL DEFAULT -1,
+                    col       INTEGER NOT NULL DEFAULT -1,
+                    display_mode INTEGER NOT NULL DEFAULT 1,
+                    stage_pane   INTEGER NULL,
+                    layout_id    INTEGER NULL REFERENCES trail_layouts(id)
+                );
+                """;
+            schema.ExecuteNonQuery();
+        }
+
+        AddColumnIfMissing(connection, "workspace", "TEXT NOT NULL DEFAULT ''");
+        AddColumnIfMissing(connection, "display_mode", "INTEGER NOT NULL DEFAULT 1");
+        AddColumnIfMissing(connection, "stage_pane", "INTEGER NULL");
+        AddColumnIfMissing(connection, "layout_id", "INTEGER NULL REFERENCES trail_layouts(id)");
+
+        using (var finish = connection.CreateCommand())
+        {
+            finish.CommandText = $"""
+                CREATE INDEX IF NOT EXISTS idx_trail_ws_day ON trail_entries(workspace, day, id);
+                PRAGMA user_version = {SchemaVersion};
+                """;
+            finish.ExecuteNonQuery();
+        }
+    }
+
+    private static void AddColumnIfMissing(SqliteConnection connection, string name, string definition)
+    {
+        using var probe = connection.CreateCommand();
+        probe.CommandText = "SELECT COUNT(*) FROM pragma_table_info('trail_entries') WHERE name = $name;";
+        probe.Parameters.AddWithValue("$name", name);
+        if (Convert.ToInt64(probe.ExecuteScalar()) != 0)
+            return;
+
+        // name/definition は上の固定呼び出しだけから渡す（SQLite は列定義をパラメーター化できない）。
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE trail_entries ADD COLUMN {name} {definition};";
+        alter.ExecuteNonQuery();
     }
 
     private const string TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff";
@@ -155,18 +189,7 @@ public sealed class TrailStore : IDisposable
             cmd.ExecuteNonQuery();
 
             // 同一点のデデュープ更新で参照先が変わった場合、誰からも参照されない旧配置を回収する。
-            if (previousLayoutId is { } oldId && oldId != layoutId)
-            {
-                using var cleanup = Connection.CreateCommand();
-                cleanup.CommandText = """
-                    DELETE FROM trail_layouts
-                    WHERE id = $id AND NOT EXISTS (
-                        SELECT 1 FROM trail_entries WHERE layout_id = $id
-                    );
-                    """;
-                cleanup.Parameters.AddWithValue("$id", oldId);
-                cleanup.ExecuteNonQuery();
-            }
+            CleanupLayoutIfUnreferenced(previousLayoutId, layoutId);
         }
     }
 
@@ -181,6 +204,33 @@ public sealed class TrailStore : IDisposable
             cmd.Parameters.AddWithValue("$col", column);
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>最新地点の表示配置だけを更新する。時刻・対象・カーソル位置は変えない。</summary>
+    public void UpdatePaneLayout(long id, string? paneLayout)
+    {
+        lock (_gate)
+        {
+            var layoutId = GetOrCreateLayoutId(paneLayout);
+            long? previousLayoutId;
+            using (var previous = Connection.CreateCommand())
+            {
+                previous.CommandText = "SELECT layout_id FROM trail_entries WHERE id = $id;";
+                previous.Parameters.AddWithValue("$id", id);
+                var value = previous.ExecuteScalar();
+                previousLayoutId = value is null or DBNull ? null : Convert.ToInt64(value);
+            }
+
+            using (var update = Connection.CreateCommand())
+            {
+                update.CommandText = "UPDATE trail_entries SET layout_id = $layoutId WHERE id = $id;";
+                update.Parameters.AddWithValue("$layoutId", layoutId is { } layout ? layout : DBNull.Value);
+                update.Parameters.AddWithValue("$id", id);
+                update.ExecuteNonQuery();
+            }
+
+            CleanupLayoutIfUnreferenced(previousLayoutId, layoutId);
         }
     }
 
@@ -234,6 +284,21 @@ public sealed class TrailStore : IDisposable
         select.CommandText = "SELECT id FROM trail_layouts WHERE snapshot = $snapshot;";
         select.Parameters.AddWithValue("$snapshot", paneLayout);
         return (long)select.ExecuteScalar()!;
+    }
+
+    private void CleanupLayoutIfUnreferenced(long? previousLayoutId, long? currentLayoutId)
+    {
+        if (previousLayoutId is not { } oldId || oldId == currentLayoutId)
+            return;
+        using var cleanup = Connection.CreateCommand();
+        cleanup.CommandText = """
+            DELETE FROM trail_layouts
+            WHERE id = $id AND NOT EXISTS (
+                SELECT 1 FROM trail_entries WHERE layout_id = $id
+            );
+            """;
+        cleanup.Parameters.AddWithValue("$id", oldId);
+        cleanup.ExecuteNonQuery();
     }
 
     /// <summary>そのワークスペースに記録が1件でもあるか（バーの表示判定）。</summary>

@@ -80,7 +80,18 @@ public partial class ShellWindow
         RefreshLatestTrailFilePosition();
         var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
         var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
+        // 遅延ワークスペース保存より先に別地点へ移動しても、離れた地点へ現在の配置を残す。
+        _vm.Trail.UpdateLatestPaneLayout(paneLayout);
         record(mode, _stageActive ? _stagePane : null, paneLayout);
+    }
+
+    /// <summary>レイアウト変更後に同じ地点へ留まるケース用。ワークスペース保存の共通入口から呼ぶ。</summary>
+    private void RefreshLatestTrailPaneLayout()
+    {
+        if (_trailSuppressed)
+            return;
+        var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
+        _vm.Trail.UpdateLatestPaneLayout(paneLayout);
     }
 
     /// <summary>エディタタブの活性化を軌跡へ記録する（無題・仮想ドキュメントは対象外）。</summary>

@@ -59,11 +59,13 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     /// <summary>ホバー詳細に出す短い名前（ファイル名／ページタイトル／ペイン名）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Tooltip))]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private string _label;
 
     /// <summary>記録時のカーソル行（0始まり。位置情報が無ければ -1）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Tooltip))]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private int _line = -1;
 
     /// <summary>記録時のカーソル桁（0始まり。位置情報が無ければ -1）。</summary>
@@ -72,10 +74,13 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     /// <summary>最後にこの地点を通過した日時。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Tooltip))]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private DateTime _timestamp;
 
     /// <summary>軌跡上の現在地か（ドットを強調表示する）。</summary>
-    [ObservableProperty] private bool _isCurrent;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    private bool _isCurrent;
 
     public string Glyph => Kind switch
     {
@@ -85,6 +90,26 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Terminal => ">_",
         _ => "📄"
     };
+
+    /// <summary>スクリーンリーダー／UI Automation がドットの内容と状態を識別するための名前。</summary>
+    public string AccessibleName
+    {
+        get
+        {
+            var kind = Kind switch
+            {
+                TrailEntryKind.File => "ファイル",
+                TrailEntryKind.Browser => "ブラウザ",
+                TrailEntryKind.Pane => "ペイン",
+                TrailEntryKind.Panel => "パネル",
+                TrailEntryKind.Terminal => "ターミナル",
+                _ => "地点"
+            };
+            var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}、{Line + 1}行" : Label;
+            var current = IsCurrent ? "、現在地" : string.Empty;
+            return $"軌跡、{kind}、{name}、{Timestamp:HH:mm:ss}{current}";
+        }
+    }
 
     /// <summary>ホバーで出す詳細。1行目＝種別と名前、2行目＝対象の実体、3行目＝日時。</summary>
     public string Tooltip
@@ -307,6 +332,19 @@ public sealed partial class TrailViewModel : ObservableObject
         latest.Column = column;
         if (latest.Id >= 0)
             Try(() => _store.UpdatePosition(latest.Id, line, column));
+    }
+
+    /// <summary>現在地点から離れる前、またはワークスペース状態の保存時に、最新地点のペイン配置を
+    /// 現在値へ同期する。配置変更後にタブ等を切り替えなくても、戻り先が古い配置のまま残らない。</summary>
+    public void UpdateLatestPaneLayout(string? paneLayout)
+    {
+        if (_todayLatest is not { } latest
+            || string.Equals(latest.PaneLayout, paneLayout, StringComparison.Ordinal))
+            return;
+
+        latest.PaneLayout = paneLayout;
+        if (latest.Id >= 0)
+            Try(() => _store.UpdatePaneLayout(latest.Id, paneLayout));
     }
 
     /// <summary>今日の最新エントリがファイルならそのフルパス（離脱位置の上書き対象の特定用）。</summary>

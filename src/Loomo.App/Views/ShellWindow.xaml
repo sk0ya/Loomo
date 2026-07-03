@@ -1367,6 +1367,8 @@
                                     <!-- 幅14は ShellWindow.Trail.cs の ScrollTrailCurrentIntoView と揃える -->
                                     <Button Width="14" Height="24" Cursor="Hand"
                                             ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="150"
+                                            AutomationProperties.Name="{Binding AccessibleName}"
+                                            AutomationProperties.HelpText="{Binding Tooltip}"
                                             Command="{Binding DataContext.Trail.JumpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding}">
                                         <Button.Template>

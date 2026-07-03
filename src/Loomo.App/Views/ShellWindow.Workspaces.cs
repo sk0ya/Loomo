@@ -169,6 +169,9 @@ public partial class ShellWindow
         {
             // 軌跡はワークスペース毎（混ざると別ワークスペースのファイルへ飛べて破綻する）。
             _vm.Trail.SetWorkspace(workspace.Id.ToString());
+            // ApplicationIdle だけに任せると、起動時のタブ／WebView2 復元が続く間は軌跡バーが
+            // 長時間空のままになる。ID が確定したここで読み、以降の復元失敗にも影響されないようにする。
+            _vm.Trail.EnsureLoaded();
             _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
             _trailLastPaneMode = null;
             await SwitchWorkspaceCoreAsync(workspace, captureCurrent, deferHydration);
@@ -357,6 +360,9 @@ public partial class ShellWindow
 
         CaptureInto(_activeWorkspace);
         _vm.Workspaces.SaveSnapshot(_activeWorkspace);
+        // ペイン移動・表示切替・リサイズ・保存レイアウト切替・内部ビューポート分割など、
+        // SaveActiveWorkspaceSnapshot を通る全経路で最新の軌跡地点へ配置を反映する。
+        RefreshLatestTrailPaneLayout();
     }
 
     private void CaptureInto(WorkspaceSnapshot snapshot)

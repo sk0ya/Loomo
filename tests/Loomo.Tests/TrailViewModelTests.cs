@@ -138,6 +138,23 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Latest_point_layout_can_be_updated_without_revisiting_or_changing_timestamp()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", paneLayout: "layout-a");
+        var timestamp = sut.Entries[0].Timestamp;
+
+        sut.UpdateLatestPaneLayout("layout-after-resize-or-move");
+
+        var entry = Assert.Single(sut.Entries);
+        Assert.Equal(timestamp, entry.Timestamp);
+        Assert.Equal("layout-after-resize-or-move", entry.PaneLayout);
+        using var reloaded = new TrailStore(_dbPath);
+        Assert.Equal("layout-after-resize-or-move",
+            Assert.Single(reloaded.LoadDay("", DateOnly.FromDateTime(DateTime.Now))).PaneLayout);
+    }
+
+    [Fact]
     public void RecordBrowser_uses_title_or_host_and_updates_latest_label()
     {
         var sut = CreateSut();
@@ -278,6 +295,21 @@ public class TrailViewModelTests : IDisposable
         Assert.Contains(@"C:\work\a.cs:4", tooltip);
         Assert.Contains(DateTime.Now.ToString("yyyy-MM-dd"), tooltip);
     }
+
+    [Fact]
+    public void AccessibleName_identifies_entry_and_current_state()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", 3, 1);
+
+        var name = sut.Entries[0].AccessibleName;
+        Assert.Contains("軌跡、ファイル、a.cs、4行", name);
+        Assert.Contains("現在地", name);
+
+        sut.RecordPanel("Search", "検索");
+        Assert.DoesNotContain("現在地", sut.Entries[0].AccessibleName);
+        Assert.Contains("軌跡、パネル、検索", sut.Entries[1].AccessibleName);
+    }
 }
 
 /// <summary>軌跡の SQLite 永続化（TrailStore）の検証。日別の読み出しと上書き更新。</summary>
@@ -296,6 +328,42 @@ public class TrailStoreTests : IDisposable
     {
         _store.Dispose();
         try { File.Delete(_dbPath); } catch { }
+    }
+
+    [Fact]
+    public void Version_zero_database_is_migrated_without_losing_entries()
+    {
+        _store.Dispose();
+        using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            connection.Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE trail_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace TEXT NOT NULL DEFAULT '', day TEXT NOT NULL, timestamp TEXT NOT NULL,
+                    kind INTEGER NOT NULL, target TEXT NOT NULL, label TEXT NOT NULL,
+                    line INTEGER NOT NULL DEFAULT -1, col INTEGER NOT NULL DEFAULT -1
+                );
+                INSERT INTO trail_entries(workspace, day, timestamp, kind, target, label, line, col)
+                VALUES ('ws', $day, $timestamp, 0, 'C:\old.cs', 'old.cs', 12, 3);
+                """;
+            var now = DateTime.Now;
+            cmd.Parameters.AddWithValue("$day", now.ToString("yyyy-MM-dd"));
+            cmd.Parameters.AddWithValue("$timestamp", now.ToString("yyyy-MM-dd HH:mm:ss.fff"));
+            cmd.ExecuteNonQuery();
+        }
+
+        using var migrated = new TrailStore(_dbPath);
+        var entry = Assert.Single(migrated.LoadDay("ws", DateOnly.FromDateTime(DateTime.Now)));
+        Assert.Equal("old.cs", entry.Label);
+        Assert.Equal(DisplayMode.Layout, entry.DisplayMode);
+
+        using var verify = new SqliteConnection($"Data Source={_dbPath}");
+        verify.Open();
+        using var version = verify.CreateCommand();
+        version.CommandText = "PRAGMA user_version;";
+        Assert.Equal(1L, (long)version.ExecuteScalar()!);
     }
 
     [Fact]
@@ -386,5 +454,24 @@ public class TrailStoreTests : IDisposable
         Assert.Equal(42, record.Line);
         Assert.Equal(7, record.Column);
         Assert.Equal("a.cs", record.Label);
+    }
+
+    [Fact]
+    public void UpdatePaneLayout_only_changes_layout_and_cleans_old_snapshot()
+    {
+        var now = DateTime.Now;
+        var id = _store.Append("ws", now, 0, "a", "a", 4, 2, paneLayout: "layout-a");
+
+        _store.UpdatePaneLayout(id, "layout-b");
+
+        var record = Assert.Single(_store.LoadDay("ws", DateOnly.FromDateTime(now)));
+        Assert.Equal("layout-b", record.PaneLayout);
+        Assert.Equal(4, record.Line);
+        Assert.Equal(now.ToString("HH:mm:ss"), record.Timestamp.ToString("HH:mm:ss"));
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM trail_layouts;";
+        Assert.Equal(1L, (long)count.ExecuteScalar()!);
     }
 }
