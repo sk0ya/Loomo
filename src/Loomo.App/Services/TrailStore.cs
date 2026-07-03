@@ -13,7 +13,10 @@ public sealed record TrailRecord(
     string Target,
     string Label,
     int Line,
-    int Column);
+    int Column,
+    DisplayMode DisplayMode,
+    PaneKind? StagePane,
+    string? PaneLayout);
 
 /// <summary>軌跡（操作ログ）の SQLite 永続化。ワークスペース（workspace 列＝WorkspaceSnapshot.Id、
 /// 未オープンのスクラッチは空文字）×1日ごと（ローカル日付の day 列）に記録し、過去の日付の軌跡も
@@ -22,6 +25,8 @@ public sealed record TrailRecord(
 /// 呼び出し側（TrailViewModel）が握りつぶしてメモリ内動作へ縮退する。</summary>
 public sealed class TrailStore : IDisposable
 {
+    // 開発中の初回正式スキーマ。user_version=0 の試作DBはデータごと作り直す。
+    private const int SchemaVersion = 1;
     private readonly string _dbPath;
     private SqliteConnection? _connection;
     private readonly object _gate = new();
@@ -47,9 +52,27 @@ public sealed class TrailStore : IDisposable
                 Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
                 _connection = new SqliteConnection($"Data Source={_dbPath}");
                 _connection.Open();
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = """
-                    PRAGMA journal_mode=WAL;
+                using (var journal = _connection.CreateCommand())
+                {
+                    journal.CommandText = "PRAGMA journal_mode=WAL;";
+                    journal.ExecuteNonQuery();
+                }
+                using (var version = _connection.CreateCommand())
+                {
+                    version.CommandText = "PRAGMA user_version;";
+                    if (Convert.ToInt32(version.ExecuteScalar()) != SchemaVersion)
+                    {
+                        using var reset = _connection.CreateCommand();
+                        reset.CommandText = "DROP TABLE IF EXISTS trail_entries; DROP TABLE IF EXISTS trail_layouts;";
+                        reset.ExecuteNonQuery();
+                    }
+                }
+                using var schema = _connection.CreateCommand();
+                schema.CommandText = $"""
+                    CREATE TABLE IF NOT EXISTS trail_layouts (
+                        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                        snapshot TEXT NOT NULL UNIQUE
+                    );
                     CREATE TABLE IF NOT EXISTS trail_entries (
                         id        INTEGER PRIMARY KEY AUTOINCREMENT,
                         workspace TEXT    NOT NULL DEFAULT '',
@@ -59,27 +82,15 @@ public sealed class TrailStore : IDisposable
                         target    TEXT    NOT NULL,
                         label     TEXT    NOT NULL,
                         line      INTEGER NOT NULL DEFAULT -1,
-                        col       INTEGER NOT NULL DEFAULT -1
+                        col       INTEGER NOT NULL DEFAULT -1,
+                        display_mode INTEGER NOT NULL,
+                        stage_pane   INTEGER NULL,
+                        layout_id    INTEGER NULL REFERENCES trail_layouts(id)
                     );
+                    CREATE INDEX IF NOT EXISTS idx_trail_ws_day ON trail_entries(workspace, day, id);
+                    PRAGMA user_version = {SchemaVersion};
                     """;
-                cmd.ExecuteNonQuery();
-                // workspace 列が無い旧テーブル（v2 初期）へのマイグレーション。旧行は '' のまま
-                // （＝どのワークスペースにも属さない。スクラッチ表示でのみ見える）。
-                using (var probe = _connection.CreateCommand())
-                {
-                    probe.CommandText = "SELECT COUNT(*) FROM pragma_table_info('trail_entries') WHERE name = 'workspace';";
-                    if (Convert.ToInt64(probe.ExecuteScalar()) == 0)
-                    {
-                        using var alter = _connection.CreateCommand();
-                        alter.CommandText = "ALTER TABLE trail_entries ADD COLUMN workspace TEXT NOT NULL DEFAULT '';";
-                        alter.ExecuteNonQuery();
-                    }
-                }
-                using (var index = _connection.CreateCommand())
-                {
-                    index.CommandText = "CREATE INDEX IF NOT EXISTS idx_trail_ws_day ON trail_entries(workspace, day, id);";
-                    index.ExecuteNonQuery();
-                }
+                schema.ExecuteNonQuery();
             }
             return _connection;
         }
@@ -87,14 +98,17 @@ public sealed class TrailStore : IDisposable
 
     private const string TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff";
 
-    public long Append(string workspace, DateTime timestamp, int kind, string target, string label, int line, int column)
+    public long Append(string workspace, DateTime timestamp, int kind, string target, string label, int line, int column,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
     {
         lock (_gate)
         {
+            var layoutId = GetOrCreateLayoutId(paneLayout);
             using var cmd = Connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO trail_entries(workspace, day, timestamp, kind, target, label, line, col)
-                VALUES ($ws, $day, $ts, $kind, $target, $label, $line, $col);
+                INSERT INTO trail_entries(workspace, day, timestamp, kind, target, label, line, col,
+                                          display_mode, stage_pane, layout_id)
+                VALUES ($ws, $day, $ts, $kind, $target, $label, $line, $col, $mode, $stagePane, $layoutId);
                 SELECT last_insert_rowid();
                 """;
             cmd.Parameters.AddWithValue("$ws", workspace);
@@ -105,27 +119,54 @@ public sealed class TrailStore : IDisposable
             cmd.Parameters.AddWithValue("$label", label);
             cmd.Parameters.AddWithValue("$line", line);
             cmd.Parameters.AddWithValue("$col", column);
+            cmd.Parameters.AddWithValue("$mode", (int)displayMode);
+            cmd.Parameters.AddWithValue("$stagePane", stagePane is { } pane ? (int)pane : DBNull.Value);
+            cmd.Parameters.AddWithValue("$layoutId", layoutId is { } id ? id : DBNull.Value);
             return (long)cmd.ExecuteScalar()!;
         }
     }
 
     /// <summary>直前と同一地点の再通過（デデュープ）で、既存行の時刻・ラベル・位置を上書きする。</summary>
-    public void Update(long id, DateTime timestamp, string label, int line, int column)
+    public void Update(long id, DateTime timestamp, string label, int line, int column, string? paneLayout)
     {
         lock (_gate)
         {
+            var layoutId = GetOrCreateLayoutId(paneLayout);
+            long? previousLayoutId;
+            using (var previous = Connection.CreateCommand())
+            {
+                previous.CommandText = "SELECT layout_id FROM trail_entries WHERE id = $id;";
+                previous.Parameters.AddWithValue("$id", id);
+                var value = previous.ExecuteScalar();
+                previousLayoutId = value is null or DBNull ? null : Convert.ToInt64(value);
+            }
             using var cmd = Connection.CreateCommand();
             cmd.CommandText = """
                 UPDATE trail_entries
-                SET timestamp = $ts, label = $label, line = $line, col = $col
+                SET timestamp = $ts, label = $label, line = $line, col = $col, layout_id = $layoutId
                 WHERE id = $id;
                 """;
             cmd.Parameters.AddWithValue("$ts", timestamp.ToString(TimestampFormat));
             cmd.Parameters.AddWithValue("$label", label);
             cmd.Parameters.AddWithValue("$line", line);
             cmd.Parameters.AddWithValue("$col", column);
+            cmd.Parameters.AddWithValue("$layoutId", layoutId is { } layout ? layout : DBNull.Value);
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
+
+            // 同一点のデデュープ更新で参照先が変わった場合、誰からも参照されない旧配置を回収する。
+            if (previousLayoutId is { } oldId && oldId != layoutId)
+            {
+                using var cleanup = Connection.CreateCommand();
+                cleanup.CommandText = """
+                    DELETE FROM trail_layouts
+                    WHERE id = $id AND NOT EXISTS (
+                        SELECT 1 FROM trail_entries WHERE layout_id = $id
+                    );
+                    """;
+                cleanup.Parameters.AddWithValue("$id", oldId);
+                cleanup.ExecuteNonQuery();
+            }
         }
     }
 
@@ -151,8 +192,11 @@ public sealed class TrailStore : IDisposable
             var list = new List<TrailRecord>();
             using var cmd = Connection.CreateCommand();
             cmd.CommandText = """
-                SELECT id, timestamp, kind, target, label, line, col
-                FROM trail_entries WHERE workspace = $ws AND day = $day ORDER BY id;
+                SELECT e.id, e.timestamp, e.kind, e.target, e.label, e.line, e.col,
+                       e.display_mode, e.stage_pane, l.snapshot
+                FROM trail_entries e
+                LEFT JOIN trail_layouts l ON l.id = e.layout_id
+                WHERE e.workspace = $ws AND e.day = $day ORDER BY e.id;
                 """;
             cmd.Parameters.AddWithValue("$ws", workspace);
             cmd.Parameters.AddWithValue("$day", day.ToString("yyyy-MM-dd"));
@@ -166,10 +210,30 @@ public sealed class TrailStore : IDisposable
                     reader.GetString(3),
                     reader.GetString(4),
                     reader.GetInt32(5),
-                    reader.GetInt32(6)));
+                    reader.GetInt32(6),
+                    (DisplayMode)reader.GetInt32(7),
+                    reader.IsDBNull(8) ? null : (PaneKind)reader.GetInt32(8),
+                    reader.IsDBNull(9) ? null : reader.GetString(9)));
             }
             return list;
         }
+    }
+
+    /// <summary>同じ配置JSONは1行だけ保持し、各軌跡行からID参照する。</summary>
+    private long? GetOrCreateLayoutId(string? paneLayout)
+    {
+        if (string.IsNullOrWhiteSpace(paneLayout))
+            return null;
+        using (var insert = Connection.CreateCommand())
+        {
+            insert.CommandText = "INSERT OR IGNORE INTO trail_layouts(snapshot) VALUES ($snapshot);";
+            insert.Parameters.AddWithValue("$snapshot", paneLayout);
+            insert.ExecuteNonQuery();
+        }
+        using var select = Connection.CreateCommand();
+        select.CommandText = "SELECT id FROM trail_layouts WHERE snapshot = $snapshot;";
+        select.Parameters.AddWithValue("$snapshot", paneLayout);
+        return (long)select.ExecuteScalar()!;
     }
 
     /// <summary>そのワークスペースに記録が1件でもあるか（バーの表示判定）。</summary>

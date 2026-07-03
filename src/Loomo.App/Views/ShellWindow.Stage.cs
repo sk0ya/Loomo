@@ -208,6 +208,7 @@ public partial class ShellWindow
     {
         if (!_stageActive)
             return;
+        var changed = _stagePane != kind;
         _overviewActive = false;
         _stagePane = kind;
         RebuildStage();
@@ -216,6 +217,10 @@ public partial class ShellWindow
         if (kind == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
         MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
+        // SetStagePane 単独で舞台を切り替える経路もあるため、ここをステージ軌跡の choke point にする。
+        // FocusPane も続けて呼ばれる経路は RecordTrailPane 側の保留・デデュープで1点に畳まれる。
+        if (changed)
+            RecordTrailPane(kind);
         SaveActiveWorkspaceSnapshot();
     }
 

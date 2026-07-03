@@ -37,6 +37,7 @@ public partial class ShellWindow
 
     /// <summary>直近に記録したペイン（同じペイン内のフォーカス移動でドットを増やさない）。</summary>
     private PaneKind? _trailLastPane;
+    private DisplayMode? _trailLastPaneMode;
 
     /// <summary>ペイン切替の確定待ち（フォーカス奪い合いノイズを1個に畳むデバウンス）。</summary>
     private DispatcherTimer? _trailPaneCommitTimer;
@@ -45,6 +46,8 @@ public partial class ShellWindow
     /// <summary>ホイールでの現在地移動を1回のジャンプへ畳むデバウンス。</summary>
     private DispatcherTimer? _trailScrubTimer;
     private TrailEntryViewModel? _trailScrubTarget;
+    private TrailEntryViewModel? _trailPendingJumpEntry;
+    private bool _trailJumpRunning;
 
     private void InitializeTrail()
     {
@@ -70,12 +73,14 @@ public partial class ShellWindow
     /// 新しい地点を積む前に「いま離れるファイル」のカーソルを離脱位置へ上書きする処理を
     /// ここへ一本化する。各ソースは対象の抽出（ファイルパス・URL 等）だけを行い、
     /// <paramref name="record"/> で実際の <see cref="TrailViewModel"/> 呼び出しを渡す。</summary>
-    private void RecordTrail(Action record)
+    private void RecordTrail(Action<DisplayMode, PaneKind?, string?> record)
     {
         if (_trailSuppressed)
             return;
         RefreshLatestTrailFilePosition();
-        record();
+        var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
+        record(mode, _stageActive ? _stagePane : null, paneLayout);
     }
 
     /// <summary>エディタタブの活性化を軌跡へ記録する（無題・仮想ドキュメントは対象外）。</summary>
@@ -92,7 +97,8 @@ public partial class ShellWindow
             line = tab.Control.Caret.Line;
             column = tab.Control.Caret.Column;
         }
-        RecordTrail(() => _vm.Trail.RecordFile(path, line, column));
+        RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordFile(path, line, column, mode, stagePane, layout));
     }
 
     /// <summary>新しい地点を積む直前に、最新エントリ（＝いま離れるファイル）のカーソル位置を
@@ -117,7 +123,8 @@ public partial class ShellWindow
             || string.Equals(url, DefaultBrowserUrl, StringComparison.OrdinalIgnoreCase))
             return;
 
-        RecordTrail(() => _vm.Trail.RecordBrowser(url, title));
+        RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordBrowser(url, title, mode, stagePane, layout));
     }
 
     /// <summary>ターミナルタブの活性化を、再起動後も同じタブへ戻れる ID 付きで記録する。</summary>
@@ -126,7 +133,8 @@ public partial class ShellWindow
         var label = _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tab.Id)?.Title;
         if (string.IsNullOrWhiteSpace(label))
             label = string.IsNullOrWhiteSpace(tab.View.HeaderTitle) ? "ターミナル" : tab.View.HeaderTitle;
-        RecordTrail(() => _vm.Trail.RecordTerminal(tab.Id, label));
+        RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordTerminal(tab.Id, label, mode, stagePane, layout));
     }
 
     /// <summary>フォーカスが別ペインへ移ったことを軌跡へ記録する（同一ペイン内の移動は対象外）。
@@ -137,7 +145,8 @@ public partial class ShellWindow
     {
         if (_trailSuppressed)
             return;
-        if (_trailLastPane == kind)
+        var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        if (_trailLastPane == kind && _trailLastPaneMode == mode)
         {
             // 元のペインへすぐ戻った＝行き来ノイズ。保留中の別ペイン記録も取り消す。
             _trailPendingPane = null;
@@ -159,10 +168,16 @@ public partial class ShellWindow
             if (_trailPendingPane is not { } kind)
                 return;
             _trailPendingPane = null;
-            // 確定時点でまだそのペインにフォーカスがあるときだけ記録する（奪い合いの残骸を捨てる）。
-            if (_trailSuppressed || _trailLastPane == kind || _focusedRegion?.Pane != kind)
+            // タイルでは実フォーカス、ステージでは実際に舞台へ立っているペインを確定条件にする。
+            // SetStagePane 単独経路はキーボードフォーカスを移さないため、タイルと同じ条件では欠落する。
+            var stillCurrent = _stageActive ? _stagePane == kind : _focusedRegion?.Pane == kind;
+            var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+            if (_trailSuppressed
+                || (_trailLastPane == kind && _trailLastPaneMode == mode)
+                || !stillCurrent)
                 return;
             _trailLastPane = kind;
+            _trailLastPaneMode = mode;
             // ファイルを開いているエディタへの切替は、タブ活性化のファイルドットが代表する
             // （「エディタ」ペインのドットを重ねて2個積まない）。デデュープで増殖はしない。
             if (kind == PaneKind.Editor && _activeEditorTab is { } et
@@ -176,81 +191,18 @@ public partial class ShellWindow
                 RecordTrailTerminalTab(tt);
                 return;
             }
-            RecordTrail(() => _vm.Trail.RecordPane(kind.ToString(), PaneDisplayName(kind)));
+            RecordTrail((mode, stagePane, layout) =>
+                _vm.Trail.RecordPane(kind.ToString(), PaneDisplayName(kind), mode, stagePane, layout));
         };
         return timer;
     }
 
     /// <summary>サイドバーのパネル切替を軌跡へ記録する。</summary>
     private void RecordTrailPanel(SidebarPanel panel)
-        => RecordTrail(() => _vm.Trail.RecordPanel(panel.ToString(), PanelDisplayName(panel)));
-
-    // ===== レイアウト（複数ペインのタイル配置） =====
-
-    /// <summary>最後に保存時に観測したレイアウト配置。構造変更時には「いま離れた配置」として記録する基準
-    /// （<see cref="PaneLayoutTree.SnapshotsEquivalent"/> は Weight を無視して構造だけを比べる）。
-    /// ワークスペース復元・ジャンプ直後はここへ現配置を入れておき、直後の保存で重複ドットを積まない。</summary>
-    private PaneNodeSnapshot? _lastRecordedLayout;
+        => RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordPanel(panel.ToString(), PanelDisplayName(panel), mode, stagePane, layout));
 
     private static readonly JsonSerializerOptions TrailLayoutJson = new();
-
-    /// <summary>メイン領域のペイン配置が構造的に変わったら軌跡へ記録する。<see cref="SaveActiveWorkspaceSnapshotNow"/>
-    /// （レイアウト変更・タブ操作・リサイズ等あらゆる保存の choke point）から呼ぶ。複数ペイン表示のときだけ
-    /// 記録する。変更後ではなく変更前の配置を積むことで、その四角から実際に元の配置へ戻れる。
-    /// 単一ペインはファイル／ペインのドットが代表し、前回と同じ構造なら積まない。</summary>
-    private void RecordTrailLayout()
-    {
-        if (_trailSuppressed || _stageActive || _root is null)
-            return;
-
-        var current = ToSnapshot(_root);
-        if (_lastRecordedLayout is not { } previous)
-        {
-            _lastRecordedLayout = current;
-            return;
-        }
-
-        if (PaneLayoutTree.SnapshotsEquivalent(previous, current))
-        {
-            // 構造が同じ（リサイズだけ等）ならドットは増やさない。ただし、次に構造が変わった際に
-            // 直前の比率へ戻せるよう、復元用スナップショット自体は最新状態へ更新する。
-            _lastRecordedLayout = current;
-            return;
-        }
-
-        // 比較基準は先に現在配置へ進める。Record が別の保存処理を誘発しても重複させない。
-        _lastRecordedLayout = current;
-        if (VisibleLeafKinds(previous).Take(2).Count() < 2)
-            return;   // 離れた配置が単一ペインなら、配置ドットの対象外
-
-        var target = JsonSerializer.Serialize(previous, TrailLayoutJson);
-        var label = DescribeLayout(previous);
-        RecordTrail(() => _vm.Trail.Record(TrailEntryKind.Layout, target, label));
-    }
-
-    /// <summary>復元・ジャンプ直後に、現配置を「記録済みの基準」として覚える（ドットは積まない）。
-    /// 直後の遅延保存が同じ配置でドットを積むのを防ぐ。</summary>
-    private void SeedTrailLayoutBaseline()
-        => _lastRecordedLayout = _root is null ? null : ToSnapshot(_root);
-
-    /// <summary>配置ドットのラベル＝表示中ペインの並び（例「エディタ · ターミナル · ブラウザ」）。</summary>
-    private static string DescribeLayout(PaneNodeSnapshot root)
-        => string.Join(" · ", VisibleLeafKinds(root).Select(PaneLabel));
-
-    private static IEnumerable<PaneKind> VisibleLeafKinds(PaneNodeSnapshot node)
-    {
-        if (node.Kind is { } kind)
-        {
-            if (!node.Hidden)
-                yield return kind;
-            yield break;
-        }
-        if (node.Children is null)
-            yield break;
-        foreach (var child in node.Children)
-            foreach (var k in VisibleLeafKinds(child))
-                yield return k;
-    }
 
     private static string PaneDisplayName(PaneKind kind) => kind switch
     {
@@ -287,27 +239,90 @@ public partial class ShellWindow
         _trailJumps[TrailEntryKind.Browser] = entry => { JumpToBrowser(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Pane] = entry => { JumpToPane(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Panel] = entry => { JumpToPanel(entry); return Task.CompletedTask; };
-        _trailJumps[TrailEntryKind.Layout] = entry => { JumpToLayout(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Terminal] = entry => { JumpToTerminal(entry); return Task.CompletedTask; };
     }
 
-    private async void JumpToTrailEntry(TrailEntryViewModel entry)
+    private void JumpToTrailEntry(TrailEntryViewModel entry)
     {
-        if (!_trailJumps.TryGetValue(entry.Kind, out var jump))
+        _trailPendingJumpEntry = entry; // 実行中なら中間要求を捨て、最後の要求だけ残す
+        if (!_trailJumpRunning)
+            ProcessTrailJumpsAsync();
+    }
+
+    private async void ProcessTrailJumpsAsync()
+    {
+        if (_trailJumpRunning)
             return;
 
-        // 戻る操作で辿った活性化・フォーカス移動は新しい地点として記録しない。
+        _trailJumpRunning = true;
         var saved = _trailSuppressed;
         _trailSuppressed = true;
         try
         {
-            await jump(entry);
+            while (_trailPendingJumpEntry is { } entry)
+            {
+                _trailPendingJumpEntry = null;
+                if (!_trailJumps.TryGetValue(entry.Kind, out var jump) || !CanJumpToTrailEntry(entry))
+                    continue;
+                RestoreTrailDisplayContext(entry);
+                await jump(entry);
+            }
         }
         finally
         {
             _trailSuppressed = saved;
+            _trailJumpRunning = false;
         }
         ScrollTrailCurrentIntoView();
+    }
+
+    /// <summary>対象と表示コンテキストを先に検証し、失敗時に画面構成だけ変わることを防ぐ。</summary>
+    private bool CanJumpToTrailEntry(TrailEntryViewModel entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.PaneLayout))
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<PaneNodeSnapshot>(entry.PaneLayout, TrailLayoutJson) is null)
+                    return false;
+            }
+            catch { return false; }
+        }
+
+        return entry.Kind switch
+        {
+            TrailEntryKind.File => File.Exists(entry.Target),
+            TrailEntryKind.Browser => !string.IsNullOrWhiteSpace(entry.Target),
+            TrailEntryKind.Pane => Enum.TryParse<PaneKind>(entry.Target, out var pane)
+                                   && _paneElements.ContainsKey(pane),
+            TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(entry.Target, out _),
+            TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
+                                       && _terminalTabs.Any(t => t.Id == id),
+            _ => false
+        };
+    }
+
+    /// <summary>地点固有の対象へ移動する前に、記録時のレイアウト／ソロ表示を復元する。</summary>
+    private void RestoreTrailDisplayContext(TrailEntryViewModel entry)
+    {
+        if (_stageActive)
+            ExitStageMode();
+
+        if (!string.IsNullOrWhiteSpace(entry.PaneLayout))
+        {
+            try
+            {
+                var snapshot = JsonSerializer.Deserialize<PaneNodeSnapshot>(entry.PaneLayout, TrailLayoutJson);
+                if (snapshot is not null)
+                    ApplyPaneLayout(snapshot);
+            }
+            catch { /* 壊れた1件だけ配置復元を省略し、対象へのジャンプは続ける */ }
+        }
+
+        if (entry.Mode == DisplayMode.Solo)
+        {
+            EnterStageMode(entry.StagePane);
+        }
     }
 
     private async Task JumpToFileAsync(TrailEntryViewModel entry)
@@ -334,6 +349,7 @@ public partial class ShellWindow
         EnsurePaneVisibleOrSwapTopLeft(pane);
         FocusPane(pane);
         _trailLastPane = pane;   // 戻った先を「直近のペイン」として同期する
+        _trailLastPaneMode = entry.Mode;
     }
 
     private void JumpToPanel(TrailEntryViewModel entry)
@@ -351,25 +367,6 @@ public partial class ShellWindow
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
         ActivateTerminalTab(id);
         FocusPane(PaneKind.Terminal);
-    }
-
-    /// <summary>配置ドット：複数ペインのタイル配置ごと復元する。ソロ（ステージ）表示中なら
-    /// 先にレイアウトモードへ戻してからタイルを組み直す。</summary>
-    private void JumpToLayout(TrailEntryViewModel entry)
-    {
-        PaneNodeSnapshot? snapshot;
-        try { snapshot = JsonSerializer.Deserialize<PaneNodeSnapshot>(entry.Target, TrailLayoutJson); }
-        catch { return; }
-        if (snapshot is null)
-            return;
-
-        if (_stageActive)
-            ExitStageMode();
-        ApplyPaneLayout(snapshot);
-        SeedTrailLayoutBaseline();   // 復元した配置を基準に（直後の保存で重複ドットを積まない）
-        if (AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind is { } first)
-            FocusPane(first);
-        SaveActiveWorkspaceSnapshot();
     }
 
     // ===== バー上のホイール＝現在地の前後移動（スクラブ） =====

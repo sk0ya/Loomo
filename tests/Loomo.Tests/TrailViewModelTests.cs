@@ -1,4 +1,5 @@
 using System.IO;
+using Microsoft.Data.Sqlite;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
@@ -65,6 +66,24 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Same_target_in_different_display_modes_is_preserved_and_reloaded()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", displayMode: DisplayMode.Layout);
+        sut.RecordFile(@"C:\work\a.cs", displayMode: DisplayMode.Solo, stagePane: PaneKind.Editor);
+
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(DisplayMode.Layout, sut.Entries[0].Mode);
+        Assert.Equal(DisplayMode.Solo, sut.Entries[1].Mode);
+        Assert.Equal(PaneKind.Editor, sut.Entries[1].StagePane);
+
+        var reloaded = new TrailViewModel(new TrailStore(_dbPath));
+        reloaded.EnsureLoaded();
+        Assert.Equal(DisplayMode.Solo, reloaded.Entries[1].Mode);
+        Assert.Equal(PaneKind.Editor, reloaded.Entries[1].StagePane);
+    }
+
+    [Fact]
     public void Record_kinds_interleave_as_separate_entries()
     {
         var sut = CreateSut();
@@ -85,27 +104,37 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
-    public void Record_generic_layout_kind_appends_persists_and_dedups_by_target()
+    public void Pane_layout_is_part_of_each_log_entry_and_persists()
     {
         var sut = CreateSut();
         const string layoutA = """{"Orientation":"Columns","Children":[{"Kind":1},{"Kind":0}]}""";
         const string layoutB = """{"Orientation":"Rows","Children":[{"Kind":1},{"Kind":4}]}""";
 
-        // 配置ドット（target＝配置スナップショットの JSON、label＝ペインの並び）。
-        sut.Record(TrailEntryKind.Layout, layoutA, "エディタ · ターミナル");
-        // 同一 target の再記録はドットを増やさずラベル・時刻だけ更新する。
-        sut.Record(TrailEntryKind.Layout, layoutA, "エディタ · ターミナル");
-        sut.Record(TrailEntryKind.Layout, layoutB, "エディタ · IDE");
+        sut.RecordFile(@"C:\work\a.cs", paneLayout: layoutA);
+        sut.RecordBrowser("https://example.com/", "Example", paneLayout: layoutB);
 
         Assert.Equal(2, sut.Entries.Count);
-        Assert.Equal(TrailEntryKind.Layout, sut.Entries[0].Kind);
-        Assert.Equal(layoutA, sut.Entries[0].Target);   // JSON がそのまま戻り先として保持される
+        Assert.Equal(layoutA, sut.Entries[0].PaneLayout);
 
-        // 再起動相当：JSON ターゲットも含めて復元される（戻ると配置を組み直せる）。
+        // 再起動相当：各地点と一体の配置参照も復元される。
         var reloaded = new TrailViewModel(new TrailStore(_dbPath));
         reloaded.EnsureLoaded();
         Assert.Equal(2, reloaded.Entries.Count);
-        Assert.Equal(layoutB, reloaded.Entries[1].Target);
+        Assert.Equal(layoutB, reloaded.Entries[1].PaneLayout);
+    }
+
+    [Fact]
+    public void Deduped_point_updates_its_layout_context_without_adding_a_log()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs", paneLayout: "layout-a");
+        sut.RecordFile(@"C:\work\a.cs", paneLayout: "layout-b");
+
+        var entry = Assert.Single(sut.Entries);
+        Assert.Equal("layout-b", entry.PaneLayout);
+        var reloaded = new TrailViewModel(new TrailStore(_dbPath));
+        reloaded.EnsureLoaded();
+        Assert.Equal("layout-b", Assert.Single(reloaded.Entries).PaneLayout);
     }
 
     [Fact]
@@ -270,6 +299,37 @@ public class TrailStoreTests : IDisposable
     }
 
     [Fact]
+    public void Duplicate_layout_snapshots_are_normalized_to_one_row()
+    {
+        var now = DateTime.Now;
+        const string layout = """{"Orientation":"Columns","Children":[{"Kind":1},{"Kind":0}]}""";
+        _store.Append("ws", now, 0, "a", "a", -1, -1, paneLayout: layout);
+        _store.Append("ws", now, 0, "b", "b", -1, -1, paneLayout: layout);
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM trail_layouts;";
+        Assert.Equal(1L, (long)cmd.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void Updating_entry_removes_unreferenced_previous_layout()
+    {
+        var now = DateTime.Now;
+        var id = _store.Append("ws", now, 0, "a", "a", -1, -1, paneLayout: "layout-a");
+        _store.Update(id, now, "a", -1, -1, paneLayout: "layout-b");
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT snapshot FROM trail_layouts ORDER BY id;";
+        Assert.Equal("layout-b", (string)cmd.ExecuteScalar()!);
+        cmd.CommandText = "SELECT COUNT(*) FROM trail_layouts;";
+        Assert.Equal(1L, (long)cmd.ExecuteScalar()!);
+    }
+
+    [Fact]
     public void Append_and_LoadDay_split_by_local_date()
     {
         var today = DateTime.Now;
@@ -307,7 +367,7 @@ public class TrailStoreTests : IDisposable
         var id = _store.Append("ws", t1, 1, "https://example.com/", "example.com", -1, -1);
 
         var t2 = DateTime.Now;
-        _store.Update(id, t2, "Example Site", -1, -1);
+        _store.Update(id, t2, "Example Site", -1, -1, paneLayout: null);
 
         var record = Assert.Single(_store.LoadDay("ws", DateOnly.FromDateTime(t2)));
         Assert.Equal("Example Site", record.Label);

@@ -1403,29 +1403,10 @@
                                                             </Style>
                                                         </Ellipse.Style>
                                                     </Ellipse>
-                                                    <!-- 配置スナップショットは通常の地点（丸）と区別できる中空の四角。 -->
-                                                    <Border x:Name="LayoutDot" Width="9" Height="9"
-                                                            Visibility="Collapsed" Opacity="0.75"
-                                                            BorderBrush="{DynamicResource Fg}"
-                                                            BorderThickness="1.5" CornerRadius="1" />
                                                 </Grid>
                                                 <ControlTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding Kind}" Value="Layout">
-                                                        <Setter TargetName="Dot" Property="Visibility" Value="Collapsed" />
-                                                        <Setter TargetName="LayoutDot" Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                    <MultiDataTrigger>
-                                                        <MultiDataTrigger.Conditions>
-                                                            <Condition Binding="{Binding Kind}" Value="Layout" />
-                                                            <Condition Binding="{Binding IsCurrent}" Value="True" />
-                                                        </MultiDataTrigger.Conditions>
-                                                        <Setter TargetName="LayoutDot" Property="Width" Value="11" />
-                                                        <Setter TargetName="LayoutDot" Property="Height" Value="11" />
-                                                        <Setter TargetName="LayoutDot" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
-                                                    </MultiDataTrigger>
                                                     <Trigger Property="IsMouseOver" Value="True">
                                                         <Setter TargetName="Dot" Property="Opacity" Value="1.0" />
-                                                        <Setter TargetName="LayoutDot" Property="Opacity" Value="1.0" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>

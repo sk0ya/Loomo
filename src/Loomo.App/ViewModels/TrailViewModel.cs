@@ -18,9 +18,6 @@ public enum TrailEntryKind
     Pane,
     /// <summary>サイドバーのパネル切替。</summary>
     Panel,
-    /// <summary>メイン領域のペイン配置（タイルレイアウト）。target は配置スナップショットの JSON で、
-    /// 戻ると複数ペインの配置ごと復元する。</summary>
-    Layout,
     /// <summary>アクティブにしたターミナルタブ。target はワークスペース内で永続化されるタブ ID。</summary>
     Terminal
 }
@@ -29,19 +26,32 @@ public enum TrailEntryKind
 /// ホバーで詳細（種別・対象・日時）、クリック／ホイールでその地点へ戻る。</summary>
 public sealed partial class TrailEntryViewModel : ObservableObject
 {
-    public TrailEntryViewModel(long id, TrailEntryKind kind, string target, string label, DateTime timestamp)
+    public TrailEntryViewModel(long id, TrailEntryKind kind, string target, string label, DateTime timestamp,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
     {
         Id = id;
         Kind = kind;
         Target = target;
         _label = label;
         _timestamp = timestamp;
+        Mode = displayMode;
+        StagePane = stagePane;
+        PaneLayout = paneLayout;
     }
 
     /// <summary>SQLite の行 id（永続化に失敗したメモリ内エントリは -1）。</summary>
     public long Id { get; }
 
     public TrailEntryKind Kind { get; }
+
+    /// <summary>この地点を記録した表示モード。ジャンプ時に対象より先に復元する。</summary>
+    public DisplayMode Mode { get; }
+
+    /// <summary>ソロモードで舞台に立っていたペイン。レイアウトモードでは null。</summary>
+    public PaneKind? StagePane { get; }
+
+    /// <summary>この地点でのペイン配置JSON。モード・対象と同じ1件のログに含める。</summary>
+    public string? PaneLayout { get; internal set; }
 
     /// <summary>戻り先の実体（ファイル＝フルパス、ブラウザ＝URL、ペイン／パネル＝enum 名）。</summary>
     public string Target { get; }
@@ -72,7 +82,6 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Browser => "🌐",
         TrailEntryKind.Pane => "▦",
         TrailEntryKind.Panel => "◫",
-        TrailEntryKind.Layout => "⊞",
         TrailEntryKind.Terminal => ">_",
         _ => "📄"
     };
@@ -90,7 +99,10 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 _ => null
             };
             var body = location is null ? $"{Glyph} {name}" : $"{Glyph} {name}\n{location}";
-            return $"{body}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
+            var mode = Mode == DisplayMode.Solo
+                ? $"ソロ · {StagePane?.ToString() ?? "不明"}"
+                : "レイアウト";
+            return $"{body}\n{mode}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
         }
     }
 }
@@ -194,39 +206,49 @@ public sealed partial class TrailViewModel : ObservableObject
 
     /// <summary>ファイル地点を記録する。直前と同じファイルなら追記せず位置・時刻だけ更新する
     /// （タブ切替の往復やフォーカス移動でドットが増殖しないように）。</summary>
-    public void RecordFile(string path, int line = -1, int column = -1)
+    public void RecordFile(string path, int line = -1, int column = -1,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
     {
         if (string.IsNullOrWhiteSpace(path))
             return;
-        Record(TrailEntryKind.File, path, Path.GetFileName(path), line, column);
+        Record(TrailEntryKind.File, path, Path.GetFileName(path), line, column, displayMode, stagePane, paneLayout);
     }
 
     /// <summary>ブラウザ地点を記録する。直前と同じ URL ならタイトル・時刻だけ更新する
     /// （NavigationCompleted 時点ではタイトル未確定のことがあるため、後追いで整う）。</summary>
-    public void RecordBrowser(string url, string? title)
+    public void RecordBrowser(string url, string? title,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
     {
         if (string.IsNullOrWhiteSpace(url))
             return;
         var label = string.IsNullOrWhiteSpace(title) ? HostOf(url) : title.Trim();
-        Record(TrailEntryKind.Browser, url, label);
+        Record(TrailEntryKind.Browser, url, label, displayMode: displayMode, stagePane: stagePane,
+            paneLayout: paneLayout);
     }
 
     /// <summary>ペイン切替（フォーカス移動）を記録する。target は PaneKind の enum 名。</summary>
-    public void RecordPane(string paneKindName, string label)
-        => Record(TrailEntryKind.Pane, paneKindName, label);
+    public void RecordPane(string paneKindName, string label,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+        => Record(TrailEntryKind.Pane, paneKindName, label, displayMode: displayMode, stagePane: stagePane,
+            paneLayout: paneLayout);
 
     /// <summary>サイドバーのパネル切替を記録する。target は SidebarPanel の enum 名。</summary>
-    public void RecordPanel(string panelName, string label)
-        => Record(TrailEntryKind.Panel, panelName, label);
+    public void RecordPanel(string panelName, string label,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+        => Record(TrailEntryKind.Panel, panelName, label, displayMode: displayMode, stagePane: stagePane,
+            paneLayout: paneLayout);
 
     /// <summary>ターミナルタブの活性化を記録する。target は再起動後も維持されるタブ ID。</summary>
-    public void RecordTerminal(Guid tabId, string label)
-        => Record(TrailEntryKind.Terminal, tabId.ToString("D"), label);
+    public void RecordTerminal(Guid tabId, string label,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+        => Record(TrailEntryKind.Terminal, tabId.ToString("D"), label,
+            displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
 
     /// <summary>あらゆる軌跡ソース共通の記録入口。直前と同一地点（同一 kind かつ同一 target）の
     /// 再通過はドットを増やさず時刻・ラベル・位置だけ上書きし、それ以外は新しい点を積む。
     /// target の同一判定はファイルだけ大文字小文字を無視（Windows のパス）、他は完全一致。</summary>
-    public void Record(TrailEntryKind kind, string target, string label, int line = -1, int column = -1)
+    public void Record(TrailEntryKind kind, string target, string label, int line = -1, int column = -1,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
     {
         if (string.IsNullOrWhiteSpace(target))
             return;
@@ -238,26 +260,30 @@ public sealed partial class TrailViewModel : ObservableObject
 
         // 直前と同一地点の再通過はドットを増やさず、その行の時刻・ラベル・位置を上書きする。
         if (_todayLatest is { } last && last.Kind == kind
-            && string.Equals(last.Target, target, comparison))
+            && string.Equals(last.Target, target, comparison)
+            && last.Mode == displayMode && last.StagePane == stagePane)
         {
             last.Label = label;
             last.Timestamp = now;
+            last.PaneLayout = paneLayout;
             if (line >= 0)
             {
                 last.Line = line;
                 last.Column = column;
             }
             if (last.Id >= 0)
-                Try(() => _store.Update(last.Id, now, last.Label, last.Line, last.Column));
+                Try(() => _store.Update(last.Id, now, last.Label, last.Line, last.Column, paneLayout));
             if (IsShowingToday())
                 SetCurrent(Entries.IndexOf(last));
             return;
         }
 
         long id = -1;
-        Try(() => id = _store.Append(_workspaceKey, now, (int)kind, target, label, line, column));
+        Try(() => id = _store.Append(_workspaceKey, now, (int)kind, target, label, line, column,
+            displayMode, stagePane, paneLayout));
 
-        var entry = new TrailEntryViewModel(id, kind, target, label, now) { Line = line, Column = column };
+        var entry = new TrailEntryViewModel(id, kind, target, label, now, displayMode, stagePane, paneLayout)
+            { Line = line, Column = column };
         _todayLatest = entry;
         HasEntries = true;
 
@@ -341,7 +367,8 @@ public sealed partial class TrailViewModel : ObservableObject
         Entries.Clear();
         foreach (var r in records)
         {
-            Entries.Add(new TrailEntryViewModel(r.Id, (TrailEntryKind)r.Kind, r.Target, r.Label, r.Timestamp)
+            Entries.Add(new TrailEntryViewModel(r.Id, (TrailEntryKind)r.Kind, r.Target, r.Label, r.Timestamp,
+                r.DisplayMode, r.StagePane, r.PaneLayout)
             {
                 Line = r.Line,
                 Column = r.Column
