@@ -34,6 +34,56 @@ public partial class ShellWindow
         AddGitMenuItems(e.Menu, control);
         // デバッグ停止中なら、カーソル行に対するデバッグ操作（次のステートメントに設定）を足す。
         AddDebugMenuItems(e.Menu, control);
+        // .md でカーソルが Markdown テーブル内にあるなら「テーブルを VGrid で編集」を足す。
+        AddMarkdownTableMenuItem(e.Menu, control);
+    }
+
+    private static readonly string[] MarkdownExtensions = { ".md", ".markdown" };
+
+    // カーソルが Markdown テーブル内にあるとき、そのテーブルを VGrid グリッドのウィンドウで編集する項目を足す。
+    // .md/.markdown 以外・パス無し（未保存の新規バッファ）・テーブル外では何もしない。
+    private void AddMarkdownTableMenuItem(ContextMenu menu, VimEditorControl? control)
+    {
+        if (control?.FilePath is not { Length: > 0 } path || !IsMarkdownFile(path))
+            return;
+
+        var lines = control.Text.Replace("\r\n", "\n").Split('\n');
+        if (!MarkdownTableSync.TryFindTableAt(lines, control.Caret.Line, out _))
+            return;
+
+        menu.Items.Add(new Separator());
+        var edit = new MenuItem { Header = "テーブルを VGrid で編集…" };
+        edit.Click += (_, _) => EditMarkdownTable(control);
+        menu.Items.Add(edit);
+    }
+
+    private static bool IsMarkdownFile(string path)
+        => Array.Exists(
+            MarkdownExtensions,
+            ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
+
+    // カーソル位置の Markdown テーブルをグリッドウィンドウで編集し、閉じたら本文の該当行を再生成テーブルへ差し替える。
+    // クリック時点の本文で再検出する（メニュー表示後に本文が変わっていても取りこぼさない）。
+    private void EditMarkdownTable(VimEditorControl control)
+    {
+        var newline = control.Text.Contains("\r\n") ? "\r\n" : "\n";
+        var lines = control.Text.Replace("\r\n", "\n").Split('\n');
+        if (!MarkdownTableSync.TryFindTableAt(lines, control.Caret.Line, out var region))
+            return;
+
+        var edited = MarkdownTableGridWindow.Edit(this, region, _settings.Theme);
+        if (edited is null)
+            return;   // キャンセル
+
+        var table = MarkdownTableSync.SerializeTable(edited, region.Alignments);
+
+        var result = new System.Collections.Generic.List<string>(lines.Length);
+        result.AddRange(lines[..region.StartLine]);
+        if (table.Length > 0)
+            result.AddRange(table.Split('\n'));
+        result.AddRange(lines[(region.EndLine + 1)..]);
+
+        control.SetText(string.Join(newline, result));
     }
 
     // カーソル位置のファイルに対する Git 操作をメニュー末尾へ足す（今のところ Git Blame のみ、
