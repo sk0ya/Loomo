@@ -518,6 +518,16 @@ public sealed partial class TrailViewModel : ObservableObject
         return Entries[next];
     }
 
+    /// <summary>現在地を軌跡の最新地点（＝ライブでは「今」）へ動かし、その地点を返す（無ければ null）。
+    /// 時刻表示のダブルクリックで、スクラブや時間帯選択で過去へ動いた現在地を素早く「今」へ戻す。</summary>
+    public TrailEntryViewModel? MoveToLatest()
+    {
+        if (Entries.Count == 0)
+            return null;
+        SetCurrent(Entries.Count - 1);
+        return CurrentEntry;
+    }
+
     private void SetCurrent(int index)
     {
         if (CurrentIndex == index)

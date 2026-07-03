@@ -541,11 +541,24 @@ public partial class ShellWindow
     /// <summary>時間帯の先頭ドットに前置する時刻ラベル枠の幅。XAML の HourTick Border の幅と揃える。</summary>
     private const double TrailHourLabelWidth = 32;
 
+    /// <summary>ドット列の左端から index 番目のスロットの左端までの累積幅。時間帯の先頭ドットは
+    /// 左に時刻ラベル枠（幅 <see cref="TrailHourLabelWidth"/>）が前置されてスロットが広くなるため、
+    /// 単純な等間隔ではなく各ドットの実効幅を積む。index==Entries.Count で全体の内容幅になる。</summary>
+    private double TrailSlotOffset(int index)
+    {
+        var entries = _vm.Trail.Entries;
+        double x = 0;
+        for (var i = 0; i < index && i < entries.Count; i++)
+            x += TrailDotWidth + (entries[i].StartsNewHour ? TrailHourLabelWidth : 0);
+        return x;
+    }
+
     /// <summary>現在地のドットが見えるよう水平スクロールを追従させる（無ければ右端＝最新へ）。
-    /// 時間帯の先頭ドットは左に時刻ラベル枠（幅 <see cref="TrailHourLabelWidth"/>）が前置されて
-    /// スロットが広くなるため、単純な等間隔ではなく各ドットの実効幅を積んで中心位置を求める。</summary>
+    /// ライブ追従・スクラブ・ジャンプ共通の中央寄せ。末尾余白は要らないので畳んで、最新ドットが
+    /// 右端に張り付く既定挙動へ戻す（時間帯選択の左寄せ <see cref="ScrollTrailHourToLeft"/> とは別経路）。</summary>
     private void ScrollTrailCurrentIntoView()
     {
+        TrailTrailingSpacer.Width = 0;   // 左寄せ用の末尾余白を畳む（既定は最新を右端へ）
         var index = _vm.Trail.CurrentIndex;
         if (index < 0)
         {
@@ -553,12 +566,31 @@ public partial class ShellWindow
             return;
         }
         var entries = _vm.Trail.Entries;
-        double x = 0;
-        for (var i = 0; i < index && i < entries.Count; i++)
-            x += TrailDotWidth + (entries[i].StartsNewHour ? TrailHourLabelWidth : 0);
+        var x = TrailSlotOffset(index);
         var leading = index < entries.Count && entries[index].StartsNewHour ? TrailHourLabelWidth : 0;
         var center = x + leading + TrailDotWidth / 2;
         TrailScroll.ScrollToHorizontalOffset(Math.Max(0, center - TrailScroll.ViewportWidth / 2));
+    }
+
+    /// <summary>時間帯選択（<see cref="OnTrailHourSelected"/>）用：現在地スロットの<b>左端</b>（時間帯の
+    /// 先頭なら時刻ラベル枠の先頭）を表示領域の左端へピタッと寄せる。末尾側の時間帯でも左寄せできるよう、
+    /// 右に足りない分だけ末尾余白（<see cref="TrailTrailingSpacer"/>）を伸ばして表示領域を広げてから寄せる。</summary>
+    private void ScrollTrailHourToLeft()
+    {
+        var index = _vm.Trail.CurrentIndex;
+        if (index < 0)
+        {
+            ScrollTrailCurrentIntoView();
+            return;
+        }
+        var x = TrailSlotOffset(index);
+        var contentWidth = TrailSlotOffset(_vm.Trail.Entries.Count);
+        var viewport = TrailScroll.ViewportWidth;
+        // 左端に x を置くには内容の右端が x+viewport まで必要。足りなければ末尾余白で補う。
+        TrailTrailingSpacer.Width = Math.Max(0, x + viewport - contentWidth);
+        // 余白反映後の再レイアウトを待ってから寄せる（伸ばした直後は ScrollableWidth がまだ古い）。
+        Dispatcher.BeginInvoke(new Action(() => TrailScroll.ScrollToHorizontalOffset(x)),
+            DispatcherPriority.Loaded);
     }
 
     // ===== 日付（カレンダーで過去の軌跡へ） =====
@@ -591,10 +623,32 @@ public partial class ShellWindow
 
     // ===== 時刻（時間帯へ移動） =====
 
-    /// <summary>時刻ボタン：その日に記録のある時間帯（HH:00）を縦に並べたポップアップをトグルする。</summary>
-    private void OnTrailHourClick(object sender, RoutedEventArgs e)
+    /// <summary>シングルクリックの時間帯ポップアップ開を、ダブルクリック判定の猶予ぶんだけ遅らせて
+    /// 確定するタイマ。押下時に張り、システムのダブルクリック時間内に2打目が来たら取り消す。</summary>
+    private DispatcherTimer? _trailHourClickTimer;
+
+    /// <summary>時刻ボタンの押下を一元処理する。シングルクリックは時間帯ポップアップをトグルし、
+    /// ダブルクリックは軌跡の現在地を最新地点（＝ライブでは「今」）へ選択し直して表示領域の左端へ寄せる。
+    /// <para>ポップアップ（<c>StaysOpen=False</c>）は開くとマウスキャプチャを奪い、2打目の押下が
+    /// ボタンへ届かず <see cref="MouseButtonEventArgs.ClickCount"/>==2 を取り逃す。そこで Button.Click は
+    /// 使わず（<c>e.Handled</c> で抑止）、シングルクリックのポップアップ開はダブルクリック時間ぶん遅らせて、
+    /// その猶予内に2打目が来たら開かずに「今」へ寄せる方を採る。閉じる側は日付ボタンと同じく、
+    /// 直前の外側クリックで閉じた分を <see cref="_trailHourPopupClosedAt"/> で汲む。</para></summary>
+    private void OnTrailHourPreviewDown(object sender, MouseButtonEventArgs e)
     {
-        // トグル：日付ボタンと同じく、開いた状態での再クリックは直前の外側クリックで閉じた分を汲む。
+        e.Handled = true;   // 押下はここで一元管理し、Button.Click（＝ポップアップ即時開）へ落とさない
+
+        if (e.ClickCount >= 2)
+        {
+            _trailHourClickTimer?.Stop();   // 保留中のシングルクリック（ポップアップ開）を取り消す
+            TrailHourPopup.IsOpen = false;
+            if (_vm.Trail.MoveToLatest() is not null)
+                // 時間帯選択と同じく「今」の地点を表示領域の左端へピタッと寄せる（末尾側でも余白で広げて左寄せ）。
+                Dispatcher.BeginInvoke(new Action(ScrollTrailHourToLeft), DispatcherPriority.Loaded);
+            return;
+        }
+
+        // 開いている（または直前に外側クリックで閉じた）なら、シングルクリックは閉じるだけ。
         if (TrailHourPopup.IsOpen
             || (DateTime.UtcNow - _trailHourPopupClosedAt).TotalMilliseconds < 250)
         {
@@ -603,7 +657,27 @@ public partial class ShellWindow
         }
         if (_vm.Trail.Hours.Count == 0)
             return;
-        TrailHourPopup.IsOpen = true;
+
+        _trailHourClickTimer ??= CreateTrailHourClickTimer();
+        _trailHourClickTimer.Stop();
+        _trailHourClickTimer.Start();
+    }
+
+    /// <summary>2打目が来なければシングルクリック確定として時間帯ポップアップを開く。間隔はユーザーの
+    /// システム設定（<c>GetDoubleClickTime</c>）に合わせ、猶予より速いダブルクリックは確実に拾う。</summary>
+    private DispatcherTimer CreateTrailHourClickTimer()
+    {
+        var timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(Math.Max(200u, GetDoubleClickTime()))
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_vm.Trail.Hours.Count > 0)
+                TrailHourPopup.IsOpen = true;
+        };
+        return timer;
     }
 
     /// <summary>ポップアップで時間帯を選ぶ：その時間帯の先頭ドットを現在地にしてスクロールする
@@ -615,6 +689,7 @@ public partial class ShellWindow
         TrailHourPopup.IsOpen = false;
         Mouse.Capture(null);
         _vm.Trail.SelectHour(hour);
-        Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
+        // 選んだ時間帯の時刻ラベルを表示領域の左端へピタッと寄せる（末尾側でも余白で表示領域を広げて左寄せ）。
+        Dispatcher.BeginInvoke(new Action(ScrollTrailHourToLeft), DispatcherPriority.Loaded);
     }
 }

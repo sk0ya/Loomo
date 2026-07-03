@@ -1348,13 +1348,14 @@
                         </Border>
                     </Popup>
                     <!-- 時刻：日付の右。ライブ地点なら現在時刻 HH:mm、過去地点へスクラブ中はその時間帯 HH:00。
-                         クリックで時間帯（HH:00）を縦に並べたポップアップ→選ぶとその時間帯の先頭ドットへ移動 -->
+                         クリックで時間帯（HH:00）を縦に並べたポップアップ→選ぶとその時間帯の先頭ドットへ移動。
+                         ダブルクリックで軌跡の現在地（＝いまの「今」＝最新地点）へ選択を戻す -->
                     <Button x:Name="TrailHourButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
                             Padding="6,1" FontSize="11" VerticalAlignment="Center"
                             Foreground="{DynamicResource FgDim}"
                             Content="{Binding Trail.HourLabel}"
-                            ToolTip="クリックで時間帯を選んで、その時間の軌跡へ移動（再クリックで閉じる）"
-                            Click="OnTrailHourClick" />
+                            ToolTip="クリックで時間帯を選んで、その時間の軌跡へ移動（再クリックで閉じる）。ダブルクリックで今の地点へ"
+                            PreviewMouseLeftButtonDown="OnTrailHourPreviewDown" />
                     <Popup x:Name="TrailHourPopup" PlacementTarget="{Binding ElementName=TrailHourButton}"
                            Placement="Top" StaysOpen="False" AllowsTransparency="True">
                         <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
@@ -1390,6 +1391,7 @@
                     <ScrollViewer x:Name="TrailScroll" HorizontalScrollBarVisibility="Hidden"
                                   VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
                                   PreviewMouseWheel="OnTrailWheel">
+                        <StackPanel Orientation="Horizontal">
                         <ItemsControl ItemsSource="{Binding Trail.Entries}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -1474,6 +1476,11 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        <!-- 末尾余白：時間帯選択（OnTrailHourSelected）で末尾側の時刻ラベルも表示領域の左端へ
+                             ピタッと寄せられるよう、必要なときだけ ShellWindow.Trail.cs が幅を持たせる余白。
+                             通常（ライブ追従）は幅ゼロで最新ドットが右端に張り付く（§27.7.2）。 -->
+                        <Border x:Name="TrailTrailingSpacer" Width="0" Height="24" />
+                        </StackPanel>
                     </ScrollViewer>
                 </DockPanel>
             </Border>

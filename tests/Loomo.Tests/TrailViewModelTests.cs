@@ -387,6 +387,22 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void MoveToLatest_selects_the_newest_point()
+    {
+        var sut = CreateSut();
+        sut.RecordFile(@"C:\work\a.cs");
+        sut.RecordFile(@"C:\work\b.cs");
+        sut.RecordFile(@"C:\work\c.cs");
+        sut.MoveCurrent(-2);                 // 過去（a.cs）へスクラブ
+        Assert.Equal(0, sut.CurrentIndex);
+
+        var latest = sut.MoveToLatest();     // 「今」へ戻す
+        Assert.Equal("c.cs", latest!.Label);
+        Assert.Equal(2, sut.CurrentIndex);
+        Assert.True(latest.IsCurrent);
+    }
+
+    [Fact]
     public void Entries_persist_and_reload_from_store()
     {
         var sut = CreateSut();
