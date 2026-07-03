@@ -34,6 +34,9 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
+    // 画像はファイルパスから直接読む。エディタ本文（巨大バイナリの文字列化）は不要。
+    public bool UsesEditorText => false;
+
     public string DescribeTitle(string filePath) => $"Image: {Path.GetFileName(filePath)}";
 
     public FrameworkElement GetOrCreateView()

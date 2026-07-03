@@ -32,6 +32,8 @@ public class EditorSupportTests
             new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator()),
             new ImageEditorSupport(),
             new VGridEditorSupport(new AiSettings()),
+            new ExcelEditorSupport(new AiSettings()),
+            new WordEditorSupport(new AiSettings()),
             new BrowserEditorSupport()
         });
     }

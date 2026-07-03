@@ -38,6 +38,9 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
     // 拡張子では解決させない（フォールバック専用）。registry には登録しない。
     public IReadOnlyCollection<string> SupportedExtensions => Array.Empty<string>();
 
+    // Hex ダンプはファイルパスから直接読む。エディタ本文は不要。
+    public bool UsesEditorText => false;
+
     public string DescribeTitle(string filePath) => $"Hex: {Path.GetFileName(filePath)}";
 
     public FrameworkElement GetOrCreateView()

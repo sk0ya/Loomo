@@ -24,6 +24,15 @@ public interface IEditorSupportProvider
 
     /// <summary>ペインのヘッダーへ出す表示名（例: "Preview: README.md"）。</summary>
     string DescribeTitle(string filePath);
+
+    /// <summary>
+    /// この provider がエディタ本文（<c>text</c>）を使うか。既定は <c>true</c>（Markdown/JSON/CSV の
+    /// ように編集中のテキストへ追従する提供者）。<c>false</c> の提供者は <see cref="DescribeTitle"/> と
+    /// 同じくファイルパスだけから内容を組み立てる（画像・Hex・Office のようなバイナリのファイル直読み系）。
+    /// このとき ShellWindow はエディタからの本文取得（巨大バイナリでは無駄になる <c>Control.Text</c>）を
+    /// 省き、空文字を渡す。
+    /// </summary>
+    bool UsesEditorText => true;
 }
 
 /// <summary>HTML を生成して EditorSupport ペインの WebView2 へ表示する提供者（Markdown プレビュー等）。</summary>
@@ -237,6 +246,9 @@ public sealed class BrowserEditorSupport : IEditorSupportUriProvider
         [".pdf", ".svg", ".html", ".htm", ".xhtml", ".mht", ".mhtml"];
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
+
+    // ファイルの file:// URI を直接ナビゲートする。エディタ本文は使わない。
+    public bool UsesEditorText => false;
 
     public string DescribeTitle(string filePath)
     {

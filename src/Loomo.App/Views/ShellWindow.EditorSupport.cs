@@ -118,7 +118,8 @@ public partial class ShellWindow
 
         var title = htmlProvider.DescribeTitle(filePath);
         var mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
-        var html = await Task.Run(() => htmlProvider.RenderHtml(filePath, source.Control.Text));
+        var htmlText = htmlProvider.UsesEditorText ? source.Control.Text : string.Empty;
+        var html = await Task.Run(() => htmlProvider.RenderHtml(filePath, htmlText));
 
         await OpenEditorSupportSnapshotInBrowserAsync(html, mapFolder, title);
     }
@@ -187,7 +188,9 @@ public partial class ShellWindow
 
             ShowEditorSupportVisual(visual.GetOrCreateView());
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
-            await visual.UpdateAsync(filePath, source.Control.Text);
+            // ファイル直読み系（Image/Hex/Office 等）はエディタ本文を使わない。巨大バイナリを文字列化して
+            // 渡す無駄を避け、UsesEditorText の提供者にだけ Control.Text を渡す。
+            await visual.UpdateAsync(filePath, visual.UsesEditorText ? source.Control.Text : string.Empty);
             return;
         }
 
@@ -196,7 +199,8 @@ public partial class ShellWindow
 
         // 本文スナップショットは UI スレッドで取る（エディタは UI スレッド専有）。重い
         // Markdown→HTML 変換はこの後バックグラウンドで行うので、ここで一度だけ読む。
-        var text = source.Control.Text;
+        // ファイル直読み系（Office 等 UsesEditorText=false）は本文を使わないので取得しない。
+        var text = (provider?.UsesEditorText ?? true) ? source.Control.Text : string.Empty;
 
         // 描画要求のシーケンス番号。init / 変換の await を跨いで最後の要求だけが描くよう畳む。
         var seq = ++_editorSupportRenderSeq;
