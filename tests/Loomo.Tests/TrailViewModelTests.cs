@@ -162,7 +162,8 @@ public class TrailViewModelTests : IDisposable
         TrailEntryKind.Pane,
         TrailEntryKind.Panel,
         TrailEntryKind.Terminal,
-        TrailEntryKind.Layout
+        TrailEntryKind.Layout,
+        TrailEntryKind.Preview
     };
 
     [Theory]
@@ -289,6 +290,42 @@ public class TrailViewModelTests : IDisposable
         sut.RecordBrowser("https://example.com/docs", "Example Docs");
         var entry = Assert.Single(sut.Entries);
         Assert.Equal("Example Docs", entry.Label);
+    }
+
+    [Fact]
+    public void RecordPreview_records_source_file_as_target_and_dedupes_case_insensitively()
+    {
+        var sut = CreateSut();
+
+        // プレビュー地点は「ペイン」ではなく映していたファイルを戻り先にする。
+        sut.RecordPreview(@"C:\work\readme.md");
+        var entry = Assert.Single(sut.Entries);
+        Assert.Equal(TrailEntryKind.Preview, entry.Kind);
+        Assert.Equal(@"C:\work\readme.md", entry.Target);
+        Assert.Equal("readme.md", entry.Label);
+        Assert.Contains(@"C:\work\readme.md", entry.Tooltip);
+
+        // 同じファイルのプレビューへ戻っても（大文字小文字違いでも）増殖しない。
+        sut.RecordPreview(@"C:\work\README.MD");
+        Assert.Single(sut.Entries);
+
+        // 別ファイルのプレビューは別の地点。
+        sut.RecordPreview(@"C:\work\notes.md");
+        Assert.Equal(2, sut.Entries.Count);
+    }
+
+    [Fact]
+    public void Preview_and_file_of_the_same_path_are_distinct_points()
+    {
+        var sut = CreateSut();
+
+        // 同じファイルでも「エディタで開いた地点」と「プレビューを見に行った地点」は別物として残る。
+        sut.RecordFile(@"C:\work\a.md");
+        sut.RecordPreview(@"C:\work\a.md");
+
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(TrailEntryKind.File, sut.Entries[0].Kind);
+        Assert.Equal(TrailEntryKind.Preview, sut.Entries[1].Kind);
     }
 
     [Fact]

@@ -41,6 +41,9 @@ public partial class ShellWindow
         else
             ShowEditorSupportPane();                 // タイルは Editor の右隣へ開く
         await UpdateEditorSupportAsync();
+        // 明示的なプレビュー要求＝「このファイルのプレビューを見に来た」地点。ペインフォーカスの
+        // デバウンス経路とは同一ファイルでデデュープされるので二重ドットにはならない。
+        RecordTrailPreview(sourceTab);
     }
 
     /// <summary>EditorSupport の追従先エディタタブを切り替えて内容を更新する（同一タブなら何もしない）。</summary>

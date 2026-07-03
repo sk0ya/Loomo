@@ -186,6 +186,19 @@ public partial class ShellWindow
             _vm.Trail.UpdateLatestFilePosition(target, tab.Control.Caret.Line, tab.Control.Caret.Column);
     }
 
+    /// <summary>EditorSupport（プレビュー）で表示中のファイルを軌跡へ記録する。ペインではなく
+    /// プレビュー対象のファイルを target にするので、戻ると同じファイルのプレビューが開き直す
+    /// （generic な Pane(EditorSupport) ドットと違い「どのファイルを見ていたか」まで復元できる）。
+    /// 無題・仮想ドキュメント・追従先未確定のときは記録しない。</summary>
+    private void RecordTrailPreview(EditorTab? sourceTab)
+    {
+        var path = sourceTab?.PeekFilePath;
+        if (string.IsNullOrWhiteSpace(path) || sourceTab!.PeekIsVirtual)
+            return;
+        RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordPreview(path, mode, stagePane, layout));
+    }
+
     /// <summary>ブラウザ遷移を軌跡へ記録する。既定ページ（新規タブの初期表示）と about: は対象外。</summary>
     private void RecordTrailBrowser(string? url, string? title)
     {
@@ -265,6 +278,14 @@ public partial class ShellWindow
                 RecordTrailTerminalTab(tt);
                 return;
             }
+            // プレビューペインへの切替は、いま映しているファイルの Preview ドットが代表する
+            // （どのファイルを見ていたかまで戻れる）。追従先が無ければ通常の Pane ドットへ落ちる。
+            if (kind == PaneKind.EditorSupport && _editorSupportSourceTab is { } est
+                && !string.IsNullOrWhiteSpace(est.PeekFilePath) && !est.PeekIsVirtual)
+            {
+                RecordTrailPreview(est);
+                return;
+            }
             RecordTrail((mode, stagePane, layout) =>
                 _vm.Trail.RecordPane(kind.ToString(), PaneDisplayName(kind), mode, stagePane, layout));
         };
@@ -314,6 +335,7 @@ public partial class ShellWindow
         _trailJumps[TrailEntryKind.Pane] = entry => { JumpToPane(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Panel] = entry => { JumpToPanel(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Terminal] = entry => { JumpToTerminal(entry); return Task.CompletedTask; };
+        _trailJumps[TrailEntryKind.Preview] = JumpToPreviewAsync;
         _trailJumps[TrailEntryKind.Layout] = _ => Task.CompletedTask;
     }
 
@@ -373,6 +395,7 @@ public partial class ShellWindow
             TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(entry.Target, out _),
             TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
                                        && _terminalTabs.Any(t => t.Id == id),
+            TrailEntryKind.Preview => File.Exists(entry.Target),
             TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout),
             _ => false
         };
@@ -409,6 +432,16 @@ public partial class ShellWindow
         FocusPane(PaneKind.Editor);
         if (entry.Line >= 0)
             _activeEditorTab?.Control.NavigateTo(entry.Line, Math.Max(0, entry.Column));
+    }
+
+    private async Task JumpToPreviewAsync(TrailEntryViewModel entry)
+    {
+        if (!File.Exists(entry.Target))
+            return;   // 消えたファイルはそっと何もしない（ブランチ切替等で戻ることもある）
+        // プレビュー元のファイルをエディタで開き直してから、その内容で EditorSupport ペインを開く。
+        await OpenFileInNewEditorTabAsync(entry.Target);
+        if (_activeEditorTab is { } tab)
+            await OpenEditorSupportAsync(tab);
     }
 
     private void JumpToBrowser(TrailEntryViewModel entry)

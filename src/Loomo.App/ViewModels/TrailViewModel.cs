@@ -22,7 +22,10 @@ public enum TrailEntryKind
     /// <summary>アクティブにしたターミナルタブ。target はワークスペース内で永続化されるタブ ID。</summary>
     Terminal,
     /// <summary>ペイン配置、表示モード、またはソロで舞台に立つペインの変更。</summary>
-    Layout
+    Layout,
+    /// <summary>EditorSupport（プレビュー）ペインで表示したファイル。target はプレビュー元ファイルのフルパス
+    /// （ペインではなくプレビュー対象を戻り先にするので、戻ると同じファイルのプレビューが開き直す）。</summary>
+    Preview
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -103,6 +106,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Panel => "◫",
         TrailEntryKind.Terminal => "❯",
         TrailEntryKind.Layout => "⊞",
+        TrailEntryKind.Preview => "◈",
         _ => "◆"   // File
     };
 
@@ -119,6 +123,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 TrailEntryKind.Panel => "パネル",
                 TrailEntryKind.Terminal => "ターミナル",
                 TrailEntryKind.Layout => "レイアウト",
+                TrailEntryKind.Preview => "プレビュー",
                 _ => "地点"
             };
             var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}、{Line + 1}行" : Label;
@@ -136,7 +141,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
             var location = Kind switch
             {
                 TrailEntryKind.File when Line >= 0 => $"{Target}:{Line + 1}",
-                TrailEntryKind.File or TrailEntryKind.Browser => Target,
+                TrailEntryKind.File or TrailEntryKind.Browser or TrailEntryKind.Preview => Target,
                 _ => null
             };
             var body = location is null ? $"{Glyph} {name}" : $"{Glyph} {name}\n{location}";
@@ -331,6 +336,17 @@ public sealed partial class TrailViewModel : ObservableObject
         => Record(TrailEntryKind.Terminal, tabId.ToString("D"), label,
             displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
 
+    /// <summary>プレビュー（EditorSupport）地点を記録する。target はプレビュー元ファイルのフルパスで、
+    /// 戻ると同じファイルのプレビューを開き直す。ファイル地点と同じく大文字小文字を無視してデデュープする。</summary>
+    public void RecordPreview(string path,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        Record(TrailEntryKind.Preview, path, Path.GetFileName(path),
+            displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
+    }
+
     /// <summary>表示レイアウトの変更を、それ自体が戻り先になる独立した地点として記録する。</summary>
     public void RecordLayout(string layoutKey, string label,
         DisplayMode displayMode, PaneKind? stagePane, string? paneLayout)
@@ -348,7 +364,8 @@ public sealed partial class TrailViewModel : ObservableObject
 
         var now = _now();
         RollLiveDayIfNeeded(DateOnly.FromDateTime(now));
-        var comparison = kind == TrailEntryKind.File
+        // File と Preview は Windows のファイルパスなので大文字小文字を無視して同一判定する。
+        var comparison = kind is TrailEntryKind.File or TrailEntryKind.Preview
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
