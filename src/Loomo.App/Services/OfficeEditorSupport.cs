@@ -1,7 +1,10 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using sk0ya.Loomo.Ai;
 
@@ -85,9 +88,9 @@ public sealed class ExcelEditorSupport : IEditorSupportHtmlProvider
     private static string RenderBody(string filePath)
     {
         // ファイルパスを直接渡すとブックが開いている間ファイルをロックし、失敗時はハンドルが
-        // 残りうる。プレビューはユーザーのファイルをロックすべきでないので、自分で開いたストリーム
-        // 経由で読む（using で確実に閉じ、パース失敗でもロックを残さない）。
-        using var stream = File.OpenRead(filePath);
+        // 残りうる。プレビューはユーザーのファイルをロックすべきでないので、いったんメモリへ読み、
+        // ついでにふりがな（rPh）を除去してから ClosedXML へ渡す（下記参照）。
+        using var stream = OpenSanitized(filePath);
         using var workbook = new XLWorkbook(stream);
         var sb = new StringBuilder();
         sb.Append(OfficePreview.BodyStyle);
@@ -102,6 +105,68 @@ public sealed class ExcelEditorSupport : IEditorSupportHtmlProvider
             sb.Append("<p class=\"office-empty\">ワークシートがありません。</p>");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// ファイルをメモリへ読み、ふりがな（<c>rPh</c> 要素）を取り除いた xlsx ストリームを返す。
+    /// 日本語 Excel はセルにふりがなを持つことがあり、その run が重複／非昇順だと ClosedXML が
+    /// 「Phonetic runs must be in ascending order and can't overlap.」で読み込みに失敗する。ふりがなは
+    /// 表示に不要なので、shared strings / インライン文字列（<c>xl/*.xml</c>）から <c>rPh</c> を除去する。
+    /// 除去対象が無ければ元のバイト列をそのまま返す。
+    /// </summary>
+    private static MemoryStream OpenSanitized(string filePath)
+    {
+        var ms = new MemoryStream();
+        using (var fs = File.OpenRead(filePath))
+            fs.CopyTo(ms);
+        ms.Position = 0;
+
+        try
+        {
+            using var zip = new ZipArchive(ms, ZipArchiveMode.Update, leaveOpen: true);
+            // xl 配下の XML パート（sharedStrings・worksheets 等）で rPh を含むものだけ書き換える。
+            var targets = zip.Entries
+                .Where(e => e.FullName.StartsWith("xl/", StringComparison.OrdinalIgnoreCase)
+                            && e.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var entry in targets)
+            {
+                string content;
+                using (var reader = new StreamReader(entry.Open()))
+                    content = reader.ReadToEnd();
+
+                if (!content.Contains("rPh", StringComparison.Ordinal))
+                    continue;
+
+                var cleaned = StripPhonetics(content);
+                if (cleaned == content)
+                    continue;
+
+                // Update モードでは既存内容を切り詰めてから書き直す。
+                using var write = entry.Open();
+                write.SetLength(0);
+                var bytes = Encoding.UTF8.GetBytes(cleaned);
+                write.Write(bytes, 0, bytes.Length);
+            }
+        }
+        catch
+        {
+            // 除去に失敗しても元のバイト列で読み込みを試す（rPh が無い健全なファイルは影響なし）。
+        }
+
+        ms.Position = 0;
+        return ms;
+    }
+
+    // <rPh …>…</rPh>（名前空間プレフィックスの有無を問わず）と自己完結形をまるごと消す。XML 宣言や
+    // 名前空間宣言はそのまま残したいので、XDocument での再シリアライズ（宣言の encoding が書き換わる）は
+    // 使わず、生成物である OOXML に対して要素単位で切り取る。rPh の中身は <t> のみでネストしないため安全。
+    private static readonly Regex PhoneticRe = new(
+        @"<(?:\w+:)?rPh\b[^>]*?(?:/>|>.*?</(?:\w+:)?rPh>)",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>XML 文字列から、名前空間を問わず <c>rPh</c>（ふりがなの run）要素をすべて取り除く。</summary>
+    private static string StripPhonetics(string xml) => PhoneticRe.Replace(xml, string.Empty);
 
     private static void AppendSheet(StringBuilder sb, IXLWorksheet sheet)
     {
