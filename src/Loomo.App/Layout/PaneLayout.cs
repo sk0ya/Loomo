@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Windows.Controls;
 using sk0ya.Loomo.App.Services;
 
@@ -264,6 +265,38 @@ public static class PaneLayoutTree
             if (!SnapshotsEquivalent(a.Children[i], b.Children[i]))
                 return false;
         return true;
+    }
+
+    /// <summary>配置の<b>構造だけ</b>を表す正規化文字列。比率（<see cref="PaneNodeSnapshot.Weight"/>）は
+    /// 含めず、ペイン種別・表示/非表示・行列構造のみを畳み込む。2つのスナップショットの署名が一致することは
+    /// <see cref="SnapshotsEquivalent"/> が真であることと同値。軌跡のレイアウト変更検出で、リサイズ
+    /// （重みだけの変化）やソロ⇄レイアウト切替を新しい地点にしないために使う。</summary>
+    public static string StructureSignature(PaneNodeSnapshot snap)
+    {
+        var sb = new StringBuilder();
+        Append(snap, sb);
+        return sb.ToString();
+
+        static void Append(PaneNodeSnapshot n, StringBuilder sb)
+        {
+            if (n.Children is { Count: > 0 })
+            {
+                sb.Append('(').Append(n.Orientation ?? "?");
+                foreach (var child in n.Children)
+                {
+                    sb.Append(' ');
+                    Append(child, sb);
+                }
+                sb.Append(')');
+            }
+            else
+            {
+                sb.Append('[').Append(n.Kind is { } kind ? (int)kind : -1);
+                if (n.Hidden)
+                    sb.Append('H');
+                sb.Append(']');
+            }
+        }
     }
 
     /// <summary>ツリーを永続化用スナップショットへ変換する。</summary>

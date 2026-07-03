@@ -84,14 +84,16 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private bool _isCurrent;
 
+    /// <summary>バー上とツールチップに出す種別記号。すべて単色の幾何記号（絵文字は使わない）で、
+    /// 前景色を継承できるためテーマ追従と現在地の色強調が効く。種別ごとに一意（§27.11-D）。</summary>
     public string Glyph => Kind switch
     {
-        TrailEntryKind.Browser => "🌐",
+        TrailEntryKind.Browser => "◉",
         TrailEntryKind.Pane => "▦",
         TrailEntryKind.Panel => "◫",
-        TrailEntryKind.Terminal => ">_",
-        TrailEntryKind.Layout => "▦",
-        _ => "📄"
+        TrailEntryKind.Terminal => "❯",
+        TrailEntryKind.Layout => "⊞",
+        _ => "◆"   // File
     };
 
     /// <summary>スクリーンリーダー／UI Automation がドットの内容と状態を識別するための名前。</summary>
@@ -145,7 +147,17 @@ public sealed partial class TrailEntryViewModel : ObservableObject
 public sealed partial class TrailViewModel : ObservableObject
 {
     private readonly TrailStore _store;
+    private readonly Func<DateTime> _now;
     private bool _loaded;
+
+    /// <summary>表示が「今日（ライブ）」を追従しているか。過去日をカレンダーで選ぶと false、
+    /// 今日へ戻すと true。日跨ぎ判定に <see cref="DisplayDate"/> と <c>Today</c> の一致は使わない
+    /// （深夜0時を越えると一致が崩れ、追従中なのに過去表示扱いになってしまうため）。</summary>
+    private bool _followingToday = true;
+
+    /// <summary>いま記録が積まれている論理的な「今日」。<see cref="_todayLatest"/> はこの日に属する。
+    /// 実行したまま日付を跨いだら、次の記録でこの日を新しい今日へ繰り上げてデデュープを仕切り直す。</summary>
+    private DateOnly _liveDay;
 
     /// <summary>現在のワークスペースのキー（WorkspaceSnapshot.Id 文字列。未オープンのスクラッチは空文字）。
     /// 記録・表示ともこのワークスペースの軌跡だけを扱う（混ざると別ワークスペースのファイルへ
@@ -156,10 +168,12 @@ public sealed partial class TrailViewModel : ObservableObject
     /// 記録は常に今日へ積むため、表示リストとは別に保持する。</summary>
     private TrailEntryViewModel? _todayLatest;
 
-    public TrailViewModel(TrailStore store)
+    public TrailViewModel(TrailStore store, Func<DateTime>? clock = null)
     {
         _store = store;
+        _now = clock ?? (() => DateTime.Now);
         _displayDate = Today;
+        _liveDay = Today;
     }
 
     /// <summary>表示中の日のエントリ（過去日表示中は読み取り専用の履歴）。</summary>
@@ -171,18 +185,18 @@ public sealed partial class TrailViewModel : ObservableObject
     /// <summary>バー自体の表示切替（記録が何も無ければバーごと隠して高さを取らない）。</summary>
     [ObservableProperty] private bool _hasEntries;
 
-    /// <summary>表示中の日（記録は常に今日へ積まれる）。</summary>
+    /// <summary>表示中の日（記録は常に今日へ積まれる）。IsViewingPast は追従状態
+    /// （<see cref="_followingToday"/>）で決まるため、ここからは通知しない。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DateLabel))]
-    [NotifyPropertyChangedFor(nameof(IsViewingPast))]
     private DateOnly _displayDate;
 
     /// <summary>軌跡上の現在地（表示中エントリのインデックス。-1 は無し）。</summary>
     [ObservableProperty] private int _currentIndex = -1;
 
-    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly Today => DateOnly.FromDateTime(_now());
 
-    public bool IsViewingPast => DisplayDate != Today;
+    public bool IsViewingPast => !_followingToday;
 
     /// <summary>バー左端の日付表示。クリックでカレンダーを開く。</summary>
     public string DateLabel => DisplayDate.ToString("M/d (ddd)");
@@ -288,7 +302,8 @@ public sealed partial class TrailViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(target))
             return;
 
-        var now = DateTime.Now;
+        var now = _now();
+        RollLiveDayIfNeeded(DateOnly.FromDateTime(now));
         var comparison = kind == TrailEntryKind.File
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
@@ -423,14 +438,45 @@ public sealed partial class TrailViewModel : ObservableObject
             });
         }
         DisplayDate = day;
+        var today = Today;
+        SetFollowingToday(day == today);
         if (Entries.Count > 0)
             SetCurrent(Entries.Count - 1);
         // 今日に戻ったら、以後の記録が表示へも反映されるようデデュープ対象を差し替える。
-        if (IsShowingToday())
+        if (_followingToday)
+        {
+            _liveDay = today;
             _todayLatest = Entries.Count > 0 ? Entries[^1] : null;
+        }
     }
 
-    private bool IsShowingToday() => DisplayDate == Today;
+    /// <summary>表示が今日（ライブ）を追従しているか。過去日表示中は false。</summary>
+    private bool IsShowingToday() => _followingToday;
+
+    private void SetFollowingToday(bool value)
+    {
+        if (_followingToday == value)
+            return;
+        _followingToday = value;
+        OnPropertyChanged(nameof(IsViewingPast));
+    }
+
+    /// <summary>実行したまま日付を跨いだら、論理的な「今日」を繰り上げる。追従中なら表示も新しい
+    /// 空の今日へ切り替え、デデュープ対象（<see cref="_todayLatest"/>）を仕切り直す。過去日を
+    /// 表示中なら表示は触らない（記録は新しい日として DB へ積まれる）。</summary>
+    private void RollLiveDayIfNeeded(DateOnly today)
+    {
+        if (today == _liveDay)
+            return;
+        _liveDay = today;
+        _todayLatest = null;   // 新しい日：昨日の最新地点とはデデュープしない
+        if (_followingToday && DisplayDate != today)
+        {
+            SetCurrent(-1);
+            Entries.Clear();
+            DisplayDate = today;
+        }
+    }
 
     private static string HostOf(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)

@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
@@ -430,6 +431,123 @@ public class TrailViewModelTests : IDisposable
         sut.RecordPanel("Search", "検索");
         Assert.DoesNotContain("現在地", sut.Entries[0].AccessibleName);
         Assert.Contains("軌跡、パネル、検索", sut.Entries[1].AccessibleName);
+    }
+
+    [Fact]
+    public void Every_kind_has_a_distinct_glyph()
+    {
+        // §27.11-D：Pane と Layout が同じ記号だと、バー上で種別を見分けられない。
+        var sut = CreateSut();
+        var glyphs = new List<string>();
+        foreach (var kind in Enum.GetValues<TrailEntryKind>())
+        {
+            sut.Record(kind, $"target-{kind}", $"label-{kind}");
+            glyphs.Add(sut.Entries[^1].Glyph);
+        }
+
+        Assert.Equal(glyphs.Count, glyphs.Distinct().Count());
+    }
+
+    [Fact]
+    public void Crossing_midnight_while_following_rolls_display_to_the_new_day()
+    {
+        // §27.11-C：実行したまま日付を跨ぐと、表示が前日に張り付いて新しい記録が見えなくなっていた。
+        var clock = new DateTime(2026, 7, 3, 23, 59, 0);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+        sut.RecordFile(@"C:\work\day1.cs");
+        Assert.Single(sut.Entries);
+
+        clock = new DateTime(2026, 7, 4, 0, 1, 0);   // 日付を跨ぐ
+        sut.RecordFile(@"C:\work\day2.cs");
+
+        // 表示は新しい今日へ繰り上がり、前日分は混ざらず、過去表示扱いにもならない。
+        var entry = Assert.Single(sut.Entries);
+        Assert.Equal("day2.cs", entry.Label);
+        Assert.False(sut.IsViewingPast);
+
+        // 前日・当日はそれぞれ別の日として永続化されている。
+        Assert.Equal("day1.cs",
+            Assert.Single(_store.LoadDay("", new DateOnly(2026, 7, 3))).Label);
+        Assert.Equal("day2.cs",
+            Assert.Single(_store.LoadDay("", new DateOnly(2026, 7, 4))).Label);
+    }
+
+    [Fact]
+    public void Crossing_midnight_while_viewing_past_does_not_disturb_the_past_view()
+    {
+        var clock = new DateTime(2026, 7, 3, 23, 59, 0);
+        _store.Append("", new DateTime(2026, 7, 1, 10, 0, 0),
+            (int)TrailEntryKind.File, @"C:\old.cs", "old.cs", -1, -1);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+        sut.RecordFile(@"C:\work\day1.cs");
+
+        sut.ShowDate(new DateOnly(2026, 7, 1));
+        Assert.True(sut.IsViewingPast);
+        Assert.Equal("old.cs", Assert.Single(sut.Entries).Label);
+
+        clock = new DateTime(2026, 7, 4, 0, 1, 0);   // 過去日を見ている最中に日付を跨ぐ
+        sut.RecordFile(@"C:\work\day2.cs");
+
+        // 過去表示は乱れない。
+        Assert.True(sut.IsViewingPast);
+        Assert.Equal("old.cs", Assert.Single(sut.Entries).Label);
+
+        // 今日へ戻ると、新しい今日（7/4）に day2 だけが見える（day1 は前日 7/3）。
+        sut.BackToTodayCommand.Execute(null);
+        Assert.False(sut.IsViewingPast);
+        Assert.Equal("day2.cs", Assert.Single(sut.Entries).Label);
+    }
+}
+
+/// <summary>ペイン配置の構造署名（<see cref="PaneLayoutTree.StructureSignature"/>）の検証。
+/// 軌跡のレイアウト変更検出で、リサイズ（比率だけの変化）を新しい地点にしないための土台。</summary>
+public class PaneLayoutStructureSignatureTests
+{
+    private static PaneNodeSnapshot Leaf(PaneKind kind, double weight, bool hidden = false)
+        => new() { Kind = kind, Weight = weight, Hidden = hidden };
+
+    private static PaneNodeSnapshot Split(string orientation, params PaneNodeSnapshot[] children)
+        => new() { Orientation = orientation, Children = children.ToList() };
+
+    [Fact]
+    public void Signature_ignores_weight_but_reflects_structure()
+    {
+        var layout = Split("Columns", Leaf(PaneKind.Editor, 0.3), Leaf(PaneKind.Terminal, 0.7));
+        var resized = Split("Columns", Leaf(PaneKind.Editor, 0.8), Leaf(PaneKind.Terminal, 0.2));
+        var restructured = Split("Rows", Leaf(PaneKind.Editor, 0.5), Leaf(PaneKind.Terminal, 0.5));
+
+        // §27.11-B：リサイズ（比率だけの差）は同じ署名＝レイアウトドットを増やさない。
+        Assert.Equal(PaneLayoutTree.StructureSignature(layout),
+            PaneLayoutTree.StructureSignature(resized));
+        // 行列の向きが変われば別構造。
+        Assert.NotEqual(PaneLayoutTree.StructureSignature(layout),
+            PaneLayoutTree.StructureSignature(restructured));
+    }
+
+    [Fact]
+    public void Signature_distinguishes_hidden_and_pane_kind()
+    {
+        var visible = Split("Columns", Leaf(PaneKind.Editor, 1), Leaf(PaneKind.Terminal, 1));
+        var hidden = Split("Columns", Leaf(PaneKind.Editor, 1), Leaf(PaneKind.Terminal, 1, hidden: true));
+        var otherPane = Split("Columns", Leaf(PaneKind.Editor, 1), Leaf(PaneKind.Browser, 1));
+
+        Assert.NotEqual(PaneLayoutTree.StructureSignature(visible),
+            PaneLayoutTree.StructureSignature(hidden));
+        Assert.NotEqual(PaneLayoutTree.StructureSignature(visible),
+            PaneLayoutTree.StructureSignature(otherPane));
+    }
+
+    [Fact]
+    public void Signature_matches_snapshots_equivalence()
+    {
+        var a = Split("Columns", Leaf(PaneKind.Editor, 0.4), Leaf(PaneKind.Terminal, 0.6));
+        var b = Split("Columns", Leaf(PaneKind.Editor, 0.9), Leaf(PaneKind.Terminal, 0.1));
+
+        // 署名一致 ⇔ SnapshotsEquivalent（比率無視の同一性）と整合する。
+        Assert.True(PaneLayoutTree.SnapshotsEquivalent(a, b));
+        Assert.Equal(PaneLayoutTree.StructureSignature(a), PaneLayoutTree.StructureSignature(b));
     }
 }
 

@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -51,7 +49,6 @@ public partial class ShellWindow
     private TrailEntryViewModel? _trailPendingJumpEntry;
     private bool _trailJumpRunning;
     private string? _trailLastLayoutKey;
-    private bool _trailLayoutTrackingReady;
 
     private void InitializeTrail()
     {
@@ -79,7 +76,7 @@ public partial class ShellWindow
     /// <paramref name="record"/> で実際の <see cref="TrailViewModel"/> 呼び出しを渡す。</summary>
     private void RecordTrail(Action<DisplayMode, PaneKind?, string?> record)
     {
-        if (!_trailLayoutTrackingReady || _trailSuppressed)
+        if (_trailSuppressed)
             return;
         RefreshLatestTrailFilePosition();
         var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
@@ -128,16 +125,22 @@ public partial class ShellWindow
     private void BeginTrailLayoutChange()
     {
         _trailLastLayoutKey = CurrentTrailLayoutState().Key;
-        _trailLayoutTrackingReady = true;
     }
 
+    /// <summary>Layout ドットの変更検出キー。表示モード・舞台ペイン・ペイン<b>構造</b>から作る。
+    /// 比率（Weight）は <see cref="PaneLayoutTree.StructureSignature"/> で除外するのでリサイズでは増えない。
+    /// モード（ソロ⇄レイアウト）と舞台ペインは含めるので、ソロモードで舞台のペインを切り替えると
+    /// 独立した Layout ドットになる（<c>Mode</c>／<c>StagePane</c> を載せて戻り先の表示を復元する）。
+    /// ステージ中のペイン切替は Pane ドットではなくこの Layout ドットが代表する（<see cref="RecordTrailPane"/>
+    /// はステージ中は記録しない）。この保存 choke point 経由の判定はデバウンス・フォーカス競合が無く確実。</summary>
     private (string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout) CurrentTrailLayoutState()
     {
         var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
         var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
-        var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
-        var state = $"{(int)mode}|{stagePane?.ToString() ?? "-"}|{paneLayout ?? "-"}";
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(state)));
+        var snapshot = _root is null ? null : ToSnapshot(_root);
+        var paneLayout = snapshot is null ? null : JsonSerializer.Serialize(snapshot, TrailLayoutJson);
+        var structure = snapshot is null ? "-" : PaneLayoutTree.StructureSignature(snapshot);
+        var key = $"{(int)mode}|{stagePane?.ToString() ?? "-"}|{structure}";
         return (key, mode, stagePane, paneLayout);
     }
 
@@ -198,12 +201,14 @@ public partial class ShellWindow
     /// <summary>フォーカスが別ペインへ移ったことを軌跡へ記録する（同一ペイン内の移動は対象外）。
     /// WebView2 の実体化やプレビュー更新はフォーカスを奪い合って Editor⇄Browser⇄プレビューの
     /// 往復イベントを大量に起こすため、即時には記録せず「同じペインに一定時間とどまった」ときだけ
-    /// 1個のドットとして確定する（<see cref="_trailPaneCommitTimer"/>）。</summary>
+    /// 1個のドットとして確定する（<see cref="_trailPaneCommitTimer"/>）。
+    /// ステージ中は舞台に立つのは常に1ペインで、その切替は <see cref="RecordTrailLayoutIfChanged"/> の
+    /// Layout ドットが確実に代表するため、ここ（デバウンス・フォーカス競合のある経路）では記録しない。</summary>
     private void RecordTrailPane(PaneKind kind)
     {
-        if (_trailSuppressed)
+        if (_trailSuppressed || _stageActive)
             return;
-        var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        var mode = DisplayMode.Layout;
         if (_trailLastPane == kind && _trailLastPaneMode == mode)
         {
             // 元のペインへすぐ戻った＝行き来ノイズ。保留中の別ペイン記録も取り消す。
@@ -226,13 +231,13 @@ public partial class ShellWindow
             if (_trailPendingPane is not { } kind)
                 return;
             _trailPendingPane = null;
-            // タイルでは実フォーカス、ステージでは実際に舞台へ立っているペインを確定条件にする。
-            // SetStagePane 単独経路はキーボードフォーカスを移さないため、タイルと同じ条件では欠落する。
-            var stillCurrent = _stageActive ? _stagePane == kind : _focusedRegion?.Pane == kind;
-            var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+            // Pane ドットはタイル（レイアウト）モード専用。確定までの間にステージへ入ったら、その切替は
+            // Layout ドットが代表するのでここでは積まない。確定条件は実フォーカスがまだそのペインにあること。
+            var mode = DisplayMode.Layout;
             if (_trailSuppressed
+                || _stageActive
                 || (_trailLastPane == kind && _trailLastPaneMode == mode)
-                || !stillCurrent)
+                || _focusedRegion?.Pane != kind)
                 return;
             _trailLastPane = kind;
             _trailLastPaneMode = mode;

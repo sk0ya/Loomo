@@ -1374,41 +1374,42 @@
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
                                                 <Grid Background="Transparent">
-                                                    <Ellipse x:Name="Dot" Opacity="0.75">
-                                                        <Ellipse.Style>
-                                                            <Style TargetType="Ellipse">
-                                                                <Setter Property="Width" Value="8" />
-                                                                <Setter Property="Height" Value="8" />
-                                                                <Setter Property="Fill" Value="{DynamicResource Fg}" />
+                                                    <!-- 種別記号（Glyph）を描く。色分けはファイル=Fg／ブラウザ=Success／
+                                                         ペイン・ターミナル=FgDim／パネル=アンバー／レイアウト=Fg。
+                                                         現在地はアクセント色で大きく強調（§27.10）。 -->
+                                                    <TextBlock x:Name="Mark" Text="{Binding Glyph}" Opacity="0.7"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               FontSize="9" TextOptions.TextFormattingMode="Ideal">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                                                                 <Style.Triggers>
-                                                                    <!-- 種別で色分け：ファイル=Fg／ブラウザ=Success／ペイン=FgDim／パネル=アンバー -->
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Browser">
-                                                                        <Setter Property="Fill" Value="{DynamicResource Success}" />
+                                                                        <Setter Property="Foreground" Value="{DynamicResource Success}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Pane">
-                                                                        <Setter Property="Fill" Value="{DynamicResource FgDim}" />
-                                                                        <Setter Property="Width" Value="6" />
-                                                                        <Setter Property="Height" Value="6" />
+                                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Terminal">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Panel">
-                                                                        <Setter Property="Fill" Value="{DynamicResource SearchHighlight}" />
-                                                                        <Setter Property="Width" Value="6" />
-                                                                        <Setter Property="Height" Value="6" />
+                                                                        <Setter Property="Foreground" Value="{DynamicResource SearchHighlight}" />
                                                                     </DataTrigger>
-                                                                    <!-- 現在地：アクセント色で大きく -->
                                                                     <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                                        <Setter Property="Fill" Value="{DynamicResource AccentHover}" />
-                                                                        <Setter Property="Width" Value="11" />
-                                                                        <Setter Property="Height" Value="11" />
+                                                                        <Setter Property="Foreground" Value="{DynamicResource AccentHover}" />
+                                                                        <Setter Property="FontSize" Value="12" />
+                                                                        <Setter Property="FontWeight" Value="Bold" />
+                                                                        <Setter Property="Opacity" Value="1.0" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
-                                                        </Ellipse.Style>
-                                                    </Ellipse>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
                                                 </Grid>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Dot" Property="Opacity" Value="1.0" />
+                                                        <Setter TargetName="Mark" Property="Opacity" Value="1.0" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>

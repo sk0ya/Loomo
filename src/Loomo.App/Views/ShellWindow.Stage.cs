@@ -210,7 +210,6 @@ public partial class ShellWindow
         if (!_stageActive)
             return;
         BeginTrailLayoutChange();
-        var changed = _stagePane != kind;
         _overviewActive = false;
         _stagePane = kind;
         RebuildStage();
@@ -219,10 +218,8 @@ public partial class ShellWindow
         if (kind == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
         MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
-        // SetStagePane 単独で舞台を切り替える経路もあるため、ここをステージ軌跡の choke point にする。
-        // FocusPane も続けて呼ばれる経路は RecordTrailPane 側の保留・デデュープで1点に畳まれる。
-        if (changed)
-            RecordTrailPane(kind);
+        // 舞台ペインの切替は、下の保存が呼ぶ RecordTrailLayoutIfChanged が Layout ドットとして確実に記録する
+        // （キーに Mode／StagePane を含むため）。デバウンスやフォーカス競合のある Pane 経路では記録しない。
         SaveActiveWorkspaceSnapshot();
     }
 
