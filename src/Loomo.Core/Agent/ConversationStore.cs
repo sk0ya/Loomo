@@ -63,6 +63,10 @@ public sealed class ConversationStore
         return list.OrderByDescending(s => s.UpdatedAt).ToList();
     }
 
+    /// <summary>指定 ID のセッションファイルが存在するか（軌跡ジャンプ前の生存確認用に、
+    /// フル読込せず存在だけを見る）。</summary>
+    public bool Exists(string id) => File.Exists(PathFor(id));
+
     /// <summary>セッションを読み込み会話を復元する。無ければ null。</summary>
     public LoadedSession? Load(string id)
     {
@@ -115,7 +119,8 @@ public sealed class ConversationStore
         return Path.Combine(_dir, safe + ".json");
     }
 
-    private static string DeriveTitle(Conversation conversation)
+    /// <summary>会話の最初のユーザー発言からセッションのタイトルを導出する（一覧・軌跡ラベル共通）。</summary>
+    public static string DeriveTitle(Conversation conversation)
     {
         var firstUser = conversation.Messages
             .FirstOrDefault(m => m.Role == ChatRole.User && !string.IsNullOrWhiteSpace(m.Text));

@@ -239,7 +239,13 @@ public sealed partial class AiBarViewModel
             if (turnUser is not null) turnUser.ProgressLog = activity.Text;
 
             // ターン終了時にセッションを自動保存（新規なら採番）
-            try { _currentSessionId = _sessions.Save(_currentSessionId, _conversation); }
+            try
+            {
+                _currentSessionId = _sessions.Save(_currentSessionId, _conversation);
+                // 新しいセッションが初めて永続化された時だけ軌跡へ地点を積む（毎ターンの保存では出さない）。
+                if (_currentSessionId != _lastAnnouncedSessionId)
+                    RaiseSessionActivated(_currentSessionId, ConversationStore.DeriveTitle(_conversation));
+            }
             catch { /* 保存失敗は会話を妨げない */ }
         }
     }

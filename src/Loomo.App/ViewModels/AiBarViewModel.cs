@@ -28,6 +28,10 @@ public sealed record ChatCommand(string Name, string Description);
 
 public sealed record WarmupCompletionStage(string Name, string Duration);
 
+/// <summary>AI 会話セッションがアクティブになった（復元された、または新規セッションが確定した）通知。
+/// 軌跡バーがこれを地点として記録する。</summary>
+public sealed record SessionActivatedEventArgs(string Id, string Title);
+
 /// <summary>下部AIバー（全幅・展開式）の ViewModel。エージェントループを駆動する。</summary>
 public sealed partial class AiBarViewModel : ObservableObject
 {
@@ -40,6 +44,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     private Conversation _conversation = new();
     private string? _currentSessionId;
     private string? _lastClosedSessionId;   // /resume で復元する直前に閉じたセッション
+    private string? _lastAnnouncedSessionId;   // 軌跡へ地点として記録済みのセッション（重複記録を避ける）
     private bool _suppressSuggestions;       // プログラムからの Input 書換時に補完を抑止
     private bool _suppressWarmupCompletion;   // 送信に伴うウォームアップは完了内訳を出さない（直後にターンが始まるため）
     private bool _wasWarmingUp;                // 直前に「ウォームアップ中」だったか（中→完了の遷移を一度だけ拾う）
@@ -49,6 +54,10 @@ public sealed partial class AiBarViewModel : ObservableObject
     private readonly PromptInputHistory _inputHistory;
 
     public ObservableCollection<TranscriptEntry> Transcript { get; } = new();
+
+    /// <summary>AI セッションがアクティブになったとき発火（復元・新規セッションの初回確定）。
+    /// 軌跡バー（ShellWindow.Trail.cs）がこれを購読して地点を記録する。UI スレッドで発火する。</summary>
+    public event EventHandler<SessionActivatedEventArgs>? SessionActivated;
 
     /// <summary>利用可能なスラッシュコマンド一覧。</summary>
     public static IReadOnlyList<ChatCommand> AllCommands { get; } = new[]
@@ -320,6 +329,32 @@ public sealed partial class AiBarViewModel : ObservableObject
         _currentSessionId = session.Id;
         RebuildTranscript();
         IsExpanded = true;
+        // セッションを開いた＝軌跡上の1地点。ジャンプ復帰中は購読側（RecordTrail）が抑止する。
+        RaiseSessionActivated(session.Id, session.Title);
+    }
+
+    /// <summary>指定 ID の保存済みセッションを復元する（軌跡からの「戻る」用）。
+    /// 削除済みなどで存在しなければ false。</summary>
+    public bool RestoreSessionById(string id)
+    {
+        var session = _sessions.Load(id);
+        if (session is null)
+            return false;
+        RestoreSession(session);
+        return true;
+    }
+
+    /// <summary>指定 ID のセッションが存在するか（軌跡ジャンプ前の生存確認用）。</summary>
+    public bool SessionExists(string id) => _sessions.Exists(id);
+
+    /// <summary>セッションのアクティブ化を購読側（軌跡バー）へ通知する。同じ ID を続けて通知しても
+    /// 軌跡側でデデュープされるが、記録済み ID を覚えて自動保存ごとの重複発火は抑える。</summary>
+    private void RaiseSessionActivated(string id, string title)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return;
+        _lastAnnouncedSessionId = id;
+        SessionActivated?.Invoke(this, new SessionActivatedEventArgs(id, title));
     }
 
     /// <summary>会話メッセージからトランスクリプト表示を組み直す（承認カード等の動的要素は除く）。</summary>

@@ -163,7 +163,8 @@ public class TrailViewModelTests : IDisposable
         TrailEntryKind.Panel,
         TrailEntryKind.Terminal,
         TrailEntryKind.Layout,
-        TrailEntryKind.Preview
+        TrailEntryKind.Preview,
+        TrailEntryKind.Session
     };
 
     [Theory]
@@ -326,6 +327,28 @@ public class TrailViewModelTests : IDisposable
         Assert.Equal(2, sut.Entries.Count);
         Assert.Equal(TrailEntryKind.File, sut.Entries[0].Kind);
         Assert.Equal(TrailEntryKind.Preview, sut.Entries[1].Kind);
+    }
+
+    [Fact]
+    public void RecordSession_records_id_as_target_and_dedupes_by_id()
+    {
+        var sut = CreateSut();
+
+        // AI セッションは ID を戻り先にし、タイトルをラベルにする。
+        sut.RecordSession("session-1", "起動不具合の調査");
+        var entry = Assert.Single(sut.Entries);
+        Assert.Equal(TrailEntryKind.Session, entry.Kind);
+        Assert.Equal("session-1", entry.Target);
+        Assert.Equal("起動不具合の調査", entry.Label);
+
+        // 同じセッションの再アクティブ化はタイトルだけ後追い更新（増殖しない）。
+        sut.RecordSession("session-1", "起動不具合の調査（続き）");
+        Assert.Equal("起動不具合の調査（続き）", Assert.Single(sut.Entries).Label);
+
+        // 別のセッションは別の地点。タイトル未確定なら既定ラベル。
+        sut.RecordSession("session-2", "");
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal("セッション", sut.Entries[1].Label);
     }
 
     [Fact]

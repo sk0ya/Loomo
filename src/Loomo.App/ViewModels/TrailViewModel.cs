@@ -25,7 +25,10 @@ public enum TrailEntryKind
     Layout,
     /// <summary>EditorSupport（プレビュー）ペインで表示したファイル。target はプレビュー元ファイルのフルパス
     /// （ペインではなくプレビュー対象を戻り先にするので、戻ると同じファイルのプレビューが開き直す）。</summary>
-    Preview
+    Preview,
+    /// <summary>アクティブにした AI 会話セッション。target は保存済みセッションの ID で、
+    /// 戻るとそのセッションを復元して AI ペインを開き直す。</summary>
+    Session
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -107,6 +110,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Terminal => "❯",
         TrailEntryKind.Layout => "⊞",
         TrailEntryKind.Preview => "◈",
+        TrailEntryKind.Session => "✦",
         _ => "◆"   // File
     };
 
@@ -124,6 +128,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 TrailEntryKind.Terminal => "ターミナル",
                 TrailEntryKind.Layout => "レイアウト",
                 TrailEntryKind.Preview => "プレビュー",
+                TrailEntryKind.Session => "セッション",
                 _ => "地点"
             };
             var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}、{Line + 1}行" : Label;
@@ -344,6 +349,17 @@ public sealed partial class TrailViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(path))
             return;
         Record(TrailEntryKind.Preview, path, Path.GetFileName(path),
+            displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
+    }
+
+    /// <summary>AI 会話セッションのアクティブ化（復元・新規セッションの確定）を記録する。
+    /// target は保存済みセッションの ID。戻るとそのセッションを復元する。</summary>
+    public void RecordSession(string id, string title,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return;
+        Record(TrailEntryKind.Session, id, string.IsNullOrWhiteSpace(title) ? "セッション" : title,
             displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
     }
 

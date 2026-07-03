@@ -1424,7 +1424,7 @@
                                             <ControlTemplate TargetType="Button">
                                                 <Grid Background="Transparent">
                                                     <!-- 種別記号（Glyph）を描く。色分けはファイル=Fg／ブラウザ=Success／
-                                                         ペイン・ターミナル=FgDim／パネル=アンバー／レイアウト=Fg／プレビュー=Accent。
+                                                         ペイン・ターミナル=FgDim／パネル=アンバー／レイアウト=Fg／プレビュー・セッション=Accent。
                                                          現在地はアクセント色で大きく強調（§27.10）。 -->
                                                     <TextBlock x:Name="Mark" Text="{Binding Glyph}" Opacity="0.7"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -1446,6 +1446,9 @@
                                                                         <Setter Property="Foreground" Value="{DynamicResource SearchHighlight}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Preview">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Session">
                                                                         <Setter Property="Foreground" Value="{DynamicResource Accent}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsCurrent}" Value="True">

@@ -54,6 +54,8 @@ public partial class ShellWindow
     {
         RegisterTrailJumps();
         _vm.Trail.JumpRequested += (_, entry) => JumpToTrailEntry(entry);
+        // AI セッションのアクティブ化（復元・新規確定）を軌跡へ地点として記録する。
+        _vm.AiBar.SessionActivated += (_, e) => RecordTrailSession(e.Id, e.Title);
         // 追記・現在地移動でドットが見える位置へ追従スクロールする。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
@@ -292,6 +294,16 @@ public partial class ShellWindow
         return timer;
     }
 
+    /// <summary>AI セッションのアクティブ化を軌跡へ記録する。target は保存済みセッションの ID で、
+    /// 戻るとそのセッションを復元して AI ペインを開き直す。ジャンプ復帰中は <see cref="RecordTrail"/> が抑止する。</summary>
+    private void RecordTrailSession(string id, string title)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return;
+        RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordSession(id, title, mode, stagePane, layout));
+    }
+
     /// <summary>サイドバーのパネル切替を軌跡へ記録する。</summary>
     private void RecordTrailPanel(SidebarPanel panel)
         => RecordTrail((mode, stagePane, layout) =>
@@ -336,6 +348,7 @@ public partial class ShellWindow
         _trailJumps[TrailEntryKind.Panel] = entry => { JumpToPanel(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Terminal] = entry => { JumpToTerminal(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Preview] = JumpToPreviewAsync;
+        _trailJumps[TrailEntryKind.Session] = entry => { JumpToSession(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Layout] = _ => Task.CompletedTask;
     }
 
@@ -396,6 +409,7 @@ public partial class ShellWindow
             TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
                                        && _terminalTabs.Any(t => t.Id == id),
             TrailEntryKind.Preview => File.Exists(entry.Target),
+            TrailEntryKind.Session => _vm.AiBar.SessionExists(entry.Target),
             TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout),
             _ => false
         };
@@ -467,6 +481,16 @@ public partial class ShellWindow
             return;
         _vm.ActivePanel = panel;
         _vm.IsSidebarVisible = true;
+    }
+
+    /// <summary>AI セッション地点へ戻る：保存済みセッションを復元し、AI ペインを前面に出してフォーカスする。
+    /// 削除済みで復元できないときは画面構成を変えずに何もしない。</summary>
+    private void JumpToSession(TrailEntryViewModel entry)
+    {
+        if (!_vm.AiBar.RestoreSessionById(entry.Target))
+            return;   // 削除済みセッションは復元不能なので何もしない
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
+        FocusPane(PaneKind.Ai);
     }
 
     private void JumpToTerminal(TrailEntryViewModel entry)
