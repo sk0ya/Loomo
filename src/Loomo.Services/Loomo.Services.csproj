@@ -29,7 +29,9 @@
          EditorBlameLine.OriginalLine（コミット時点の行番号。Diffペインの該当行ジャンプに使用） -->
     <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.40" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.24" />
+    <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
+         BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.25" />
   </ItemGroup>
 
 </Project>
