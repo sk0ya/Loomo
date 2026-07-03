@@ -29,7 +29,7 @@ public class EditorSupportTests
         return new(new IEditorSupportProvider[]
         {
             CreateSupport(),
-            new JsonEditorSupport(new AiSettings()),
+            new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator()),
             new ImageEditorSupport(),
             new VGridEditorSupport(new AiSettings()),
             new BrowserEditorSupport()
@@ -110,7 +110,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_オブジェクトを折りたたみツリーのHTMLにする()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
         const string path = @"C:\work\data.json";
 
         Assert.Equal("JSON: data.json", support.DescribeTitle(path));
@@ -127,7 +127,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_配列とネストの件数を表示する()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "items": [1, 2, 3] }""");
 
@@ -138,7 +138,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_コメントと末尾カンマを許容する()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.jsonc", "{ // 設定\n  \"a\": 1, }");
 
@@ -149,7 +149,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_壊れたJSONはエラーと原文を出す()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", "{ \"a\": ");
 
@@ -160,7 +160,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_HTML特殊文字をエスケープする()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "html": "<b>&</b>" }""");
 
@@ -171,7 +171,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_各ノードにJSONパスとコピー導線を埋め込む()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "items": [ { "name": "x" } ] }""");
 
@@ -186,7 +186,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_識別子でないキーはブラケット表記のパスにする()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "a b": 1 }""");
 
@@ -196,7 +196,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_絞り込み用の検索ボックスをページに出す()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
 
         var html = support.RenderHtml(@"C:\work\data.json", """{ "a": 1 }""");
 
@@ -206,7 +206,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_各ノードにソース行番号を埋めエディタへ飛べる()
     {
-        var support = new JsonEditorSupport(new AiSettings());
+        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
         // 1行目:{ 2行目:name 3行目:nested{ 4行目:deep 5行目:} 6行目:}
         var json = "{\n  \"name\": \"x\",\n  \"nested\": {\n    \"deep\": 1\n  }\n}";
 

@@ -187,6 +187,7 @@ public partial class App : Application
         services.AddSingleton<TraceReader>();
 
         // --- EditorSupport（アクティブなエディタのファイルに応じた自動表示。拡張子対応はここへ追加登録） ---
+        services.AddSingleton<JsonSchemaValidator>();                          // JSON プレビューのスキーマ検証
         services.AddSingleton<IEditorSupportProvider, MarkdownEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, JsonEditorSupport>();     // JSON を折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, ImageEditorSupport>();

@@ -16,19 +16,32 @@ namespace sk0ya.Loomo.App.Services;
 public sealed class JsonEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
     private readonly AiSettings _settings;
+    private readonly JsonSchemaValidator _validator;
     private static readonly string[] Extensions = [".json", ".jsonc"];
 
-    public JsonEditorSupport(AiSettings settings) => _settings = settings;
+    public JsonEditorSupport(AiSettings settings, JsonSchemaValidator validator)
+    {
+        _settings = settings;
+        _validator = validator;
+    }
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
     public string DescribeTitle(string filePath) => $"JSON: {Path.GetFileName(filePath)}";
 
     public string RenderHtml(string filePath, string text)
-        => JsonPreviewPage.BuildPage(JsonTreeRenderer.RenderTree(text), DescribeTitle(filePath),
-            _settings.Appearance.MarkdownPreviewTheme);
+        => JsonPreviewPage.BuildPage(JsonTreeRenderer.RenderTree(text, Validate(filePath, text)),
+            DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
 
-    public string RenderBody(string filePath, string text) => JsonTreeRenderer.RenderTree(text);
+    public string RenderBody(string filePath, string text)
+        => JsonTreeRenderer.RenderTree(text, Validate(filePath, text));
+
+    // 検証は保険的機能なので、失敗しても本文表示は続ける（違反バッジが出ないだけ）。
+    private JsonValidationResult Validate(string filePath, string text)
+    {
+        try { return _validator.Validate(filePath, text); }
+        catch { return JsonValidationResult.None; }
+    }
 
     // ページの体裁（対象ファイル・テーマ）だけを鍵にする。本文そのものは含めない＝同じファイルを
     // 同じテーマで編集している間は #json-root の差し替えだけで更新できる。
@@ -53,7 +66,7 @@ public static class JsonTreeRenderer
         MaxDepth = 256
     };
 
-    public static string RenderTree(string text)
+    public static string RenderTree(string text, JsonValidationResult? validation = null)
     {
         if (string.IsNullOrWhiteSpace(text))
             return "<div class=\"empty\">（空のファイル）</div>";
@@ -73,18 +86,58 @@ public static class JsonTreeRenderer
             // JSONパス → ソース行番号。ツリーの各ノードに data-line として埋め、「↦」で Editor の
             // 該当行へカーソルを飛ばせるようにする。壊れた JSON はここまで来ない（RenderError 済み）。
             var lines = BuildLineMap(text);
+            // スキーマ違反（パス → メッセージ）。該当ノードに印を付け、先頭にサマリを出す。
+            var errors = BuildErrorMap(validation);
             var sb = new StringBuilder();
+            AppendSchemaBanner(sb, validation, errors, lines);
             var budget = MaxNodes;
-            WriteNode(sb, keyHtml: null, doc.RootElement, "$", lines, ref budget);
+            WriteNode(sb, keyHtml: null, doc.RootElement, "$", lines, errors, ref budget);
             if (budget <= 0)
                 sb.Append("<div class=\"trunc\">… ノードが多すぎるため以降を省略しました</div>");
             return sb.ToString();
         }
     }
 
+    private static Dictionary<string, string>? BuildErrorMap(JsonValidationResult? validation)
+    {
+        if (validation is not { HasErrors: true })
+            return null;
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var e in validation.Errors)
+            map[e.Path] = map.TryGetValue(e.Path, out var prev) ? prev + " / " + e.Message : e.Message;
+        return map;
+    }
+
+    /// <summary>先頭のスキーマ検証サマリ。違反があれば赤い一覧（各行クリックで該当行へジャンプ）、
+    /// 違反ゼロ（スキーマ適用済み）なら緑の準拠バッジ。スキーマ未解決なら何も出さない。</summary>
+    private static void AppendSchemaBanner(
+        StringBuilder sb, JsonValidationResult? validation,
+        IReadOnlyDictionary<string, string>? errors, IReadOnlyDictionary<string, int> lines)
+    {
+        if (validation is not { SchemaFound: true })
+            return;
+
+        if (errors is null || errors.Count == 0)
+        {
+            sb.Append("<div class=\"schema-ok\">✓ スキーマに準拠</div>");
+            return;
+        }
+
+        sb.Append("<div class=\"schema-errors\"><div class=\"schema-errors-head\">⚠ ")
+          .Append(errors.Count).Append(" 件のスキーマ違反</div><ul>");
+        foreach (var (path, msg) in errors)
+        {
+            sb.Append("<li data-path=\"").Append(MarkdownRenderer.EncodeAttribute(path)).Append('"')
+              .Append(LineAttr(lines, path)).Append("><span class=\"se-msg\">")
+              .Append(MarkdownRenderer.Encode(msg)).Append("</span> <span class=\"se-loc\">")
+              .Append(MarkdownRenderer.Encode(path)).Append("</span></li>");
+        }
+        sb.Append("</ul></div>");
+    }
+
     private static void WriteNode(
         StringBuilder sb, string? keyHtml, JsonElement el, string path,
-        IReadOnlyDictionary<string, int> lines, ref int budget)
+        IReadOnlyDictionary<string, int> lines, IReadOnlyDictionary<string, string>? errors, ref int budget)
     {
         if (budget <= 0)
             return;
@@ -93,14 +146,15 @@ public static class JsonTreeRenderer
         switch (el.ValueKind)
         {
             case JsonValueKind.Object:
-                WriteContainer(sb, keyHtml, el, '{', '}', path, lines, ref budget);
+                WriteContainer(sb, keyHtml, el, '{', '}', path, lines, errors, ref budget);
                 break;
             case JsonValueKind.Array:
-                WriteContainer(sb, keyHtml, el, '[', ']', path, lines, ref budget);
+                WriteContainer(sb, keyHtml, el, '[', ']', path, lines, errors, ref budget);
                 break;
             default:
-                sb.Append("<div class=\"line\" data-path=\"").Append(MarkdownRenderer.EncodeAttribute(path))
-                  .Append('"').Append(LineAttr(lines, path)).Append('>');
+                sb.Append("<div class=\"line").Append(InvalidClass(errors, path)).Append("\" data-path=\"")
+                  .Append(MarkdownRenderer.EncodeAttribute(path)).Append('"')
+                  .Append(LineAttr(lines, path)).Append(InvalidTitle(errors, path)).Append('>');
                 AppendKey(sb, keyHtml);
                 AppendLeaf(sb, el);
                 AppendActions(sb);
@@ -111,17 +165,20 @@ public static class JsonTreeRenderer
 
     private static void WriteContainer(
         StringBuilder sb, string? keyHtml, JsonElement el, char open, char close, string path,
-        IReadOnlyDictionary<string, int> lines, ref int budget)
+        IReadOnlyDictionary<string, int> lines, IReadOnlyDictionary<string, string>? errors, ref int budget)
     {
         bool isObject = open == '{';
         int count = isObject ? CountObject(el) : el.GetArrayLength();
         var pathAttr = MarkdownRenderer.EncodeAttribute(path);
         var lineAttr = LineAttr(lines, path);
+        var invalidClass = InvalidClass(errors, path);
+        var invalidTitle = InvalidTitle(errors, path);
 
         // 空のコンテナは折りたためないので 1 行（{ } / [ ]）で出す。
         if (count == 0)
         {
-            sb.Append("<div class=\"line\" data-path=\"").Append(pathAttr).Append('"').Append(lineAttr).Append('>');
+            sb.Append("<div class=\"line").Append(invalidClass).Append("\" data-path=\"").Append(pathAttr)
+              .Append('"').Append(lineAttr).Append(invalidTitle).Append('>');
             AppendKey(sb, keyHtml);
             sb.Append("<span class=\"p\">").Append(open).Append(' ').Append(close).Append("</span>");
             AppendActions(sb);
@@ -131,7 +188,8 @@ public static class JsonTreeRenderer
 
         var unit = isObject ? "項目" : "要素";
         sb.Append("<div class=\"node\">")
-          .Append("<div class=\"line opening\" data-path=\"").Append(pathAttr).Append('"').Append(lineAttr)
+          .Append("<div class=\"line opening").Append(invalidClass).Append("\" data-path=\"").Append(pathAttr)
+          .Append('"').Append(lineAttr).Append(invalidTitle)
           .Append("><span class=\"caret\"></span>");
         AppendKey(sb, keyHtml);
         sb.Append("<span class=\"p\">").Append(open).Append("</span>")
@@ -147,7 +205,7 @@ public static class JsonTreeRenderer
                 if (budget <= 0)
                     break;
                 var k = "<span class=\"k\">\"" + MarkdownRenderer.Encode(prop.Name) + "\"</span><span class=\"c\">: </span>";
-                WriteNode(sb, k, prop.Value, path + Accessor(prop.Name), lines, ref budget);
+                WriteNode(sb, k, prop.Value, path + Accessor(prop.Name), lines, errors, ref budget);
             }
         }
         else
@@ -157,7 +215,7 @@ public static class JsonTreeRenderer
             {
                 if (budget <= 0)
                     break;
-                WriteNode(sb, keyHtml: null, item, path + "[" + i + "]", lines, ref budget);
+                WriteNode(sb, keyHtml: null, item, path + "[" + i + "]", lines, errors, ref budget);
                 i++;
             }
         }
@@ -165,6 +223,14 @@ public static class JsonTreeRenderer
         sb.Append("</div><div class=\"line closing\"><span class=\"p\">")
           .Append(close).Append("</span></div></div>");
     }
+
+    private static string InvalidClass(IReadOnlyDictionary<string, string>? errors, string path)
+        => errors is not null && errors.ContainsKey(path) ? " invalid" : "";
+
+    private static string InvalidTitle(IReadOnlyDictionary<string, string>? errors, string path)
+        => errors is not null && errors.TryGetValue(path, out var msg)
+            ? " title=\"" + MarkdownRenderer.EncodeAttribute(msg) + "\""
+            : "";
 
     private static string LineAttr(IReadOnlyDictionary<string, int> lines, string path)
         => lines.TryGetValue(path, out var l) ? " data-line=\"" + l + "\"" : "";
@@ -212,7 +278,7 @@ public static class JsonTreeRenderer
         new("^[A-Za-z_$][A-Za-z0-9_$]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>JSONパスのアクセサ表記。識別子キーは <c>.key</c>、それ以外は <c>["key"]</c>（エスケープ）。</summary>
-    private static string Accessor(string name)
+    internal static string Accessor(string name)
         => IdentifierKey.IsMatch(name)
             ? "." + name
             : "[\"" + name.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"]";
@@ -376,7 +442,15 @@ internal static class JsonPreviewPage
 
                 // --- クリック委譲（document へ1回だけ＝本文差し替え後も効く） ---
                 document.addEventListener('click', e => {
-                    // 0) エディタで開く（行末アイコン）：対応するソース行へカーソルを飛ばしてフォーカス
+                    // 0) スキーマ違反サマリの行：対応するソース行へジャンプ
+                    const se = e.target.closest('.schema-errors li[data-line]');
+                    if (se) {
+                        const line = Number(se.getAttribute('data-line')) || 0;
+                        if (line && window.chrome?.webview)
+                            window.chrome.webview.postMessage({ type: 'jumpToSource', line: line });
+                        return;
+                    }
+                    // 1) エディタで開く（行末アイコン）：対応するソース行へカーソルを飛ばしてフォーカス
                     const go = e.target.closest('.goto');
                     if (go) {
                         e.stopPropagation();
@@ -587,6 +661,26 @@ internal static class JsonPreviewPage
             .b, .z { color: {{kw}}; }
             .meta { color: {{muted}}; font-size: 0.85em; }
             .empty { color: {{muted}}; padding: 12px; }
+
+            /* スキーマ検証：違反ノードは波線、先頭にサマリ（違反一覧／準拠バッジ） */
+            .invalid { text-decoration: underline wavy #F85149; text-underline-offset: 3px; }
+            .schema-ok {
+                color: #3FB950; font-size: 12px; margin: 0 0 8px; padding: 2px 8px;
+                border-left: 3px solid #3FB950; background: color-mix(in srgb, #3FB950 12%, transparent);
+                border-radius: 3px; white-space: normal;
+            }
+            .schema-errors {
+                margin: 0 0 10px; padding: 6px 10px; border-radius: 4px; white-space: normal;
+                border: 1px solid color-mix(in srgb, #F85149 55%, {{border}});
+                background: color-mix(in srgb, #F85149 10%, transparent);
+            }
+            .schema-errors-head { color: #F85149; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+            .schema-errors ul { list-style: none; margin: 0; padding: 0; }
+            .schema-errors li { padding: 2px 4px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+            .schema-errors li:hover { background: color-mix(in srgb, #F85149 16%, transparent); }
+            .schema-errors .se-msg { color: {{fg}}; }
+            .schema-errors .se-loc { color: {{muted}}; margin-left: 6px; font-size: 0.9em; }
+
             .err { padding: 4px; }
             .err-head {
                 color: {{kw}}; background: {{panel}};

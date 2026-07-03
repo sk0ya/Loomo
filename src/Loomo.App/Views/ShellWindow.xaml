@@ -747,6 +747,20 @@
                             <Path Style="{StaticResource PaneActionIcon}"
                                   Data="M4,7 V12 H11 V9 M6,10 L12,4 M8,4 H12 V8" />
                         </Button>
+                        <!-- エクスポート：現在のプレビューを HTML（単体で開ける）／PDF（見たまま）で保存 -->
+                        <Button x:Name="EditorSupportExportButton" DockPanel.Dock="Right"
+                                Style="{StaticResource PaneActionButton}" Width="30" Height="24"
+                                ToolTip="プレビューをファイルへエクスポート（HTML / PDF）"
+                                Click="OnExportEditorSupportClick">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="HTMLとして保存…" Click="OnExportEditorSupportHtml" />
+                                    <MenuItem Header="PDFとして保存…" Click="OnExportEditorSupportPdf" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                            <Path Style="{StaticResource PaneActionIcon}"
+                                  Data="M8,2 V9 M5,6 L8,9 L11,6 M3,12 H13" />
+                        </Button>
                         <TextBlock x:Name="EditorSupportTitle" VerticalAlignment="Center" Margin="4,0,8,0"
                                    FontSize="11" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />
