@@ -57,9 +57,14 @@ public partial class ShellWindow
         // 追記・現在地移動でドットが見える位置へ追従スクロールする。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
-        // 日付クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
+        // 日付・時刻クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
         // すると Click が届く前に外側クリックとして閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
         TrailCalendarPopup.Closed += (_, _) => _trailCalendarClosedAt = DateTime.UtcNow;
+        TrailHourPopup.Closed += (_, _) => _trailHourPopupClosedAt = DateTime.UtcNow;
+        // ライブの時刻ラベル（HH:mm）を時計の進みに合わせて更新する。過去地点表示中は HH:00 固定なので無害。
+        _trailHourTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _trailHourTicker.Tick += (_, _) => _vm.Trail.RefreshHourLabel();
+        _trailHourTicker.Start();
         // 起動のクリティカルパスを避けて、今日の軌跡を SQLite から遅延読込する。
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
             new Action(() => _vm.Trail.EnsureLoaded()));
@@ -67,6 +72,12 @@ public partial class ShellWindow
 
     /// <summary>カレンダーポップアップが最後に閉じた時刻（日付クリックのトグル判定）。</summary>
     private DateTime _trailCalendarClosedAt;
+
+    /// <summary>時刻ポップアップが最後に閉じた時刻（時刻クリックのトグル判定）。</summary>
+    private DateTime _trailHourPopupClosedAt;
+
+    /// <summary>ライブの時刻ラベルを定期更新するタイマ。</summary>
+    private DispatcherTimer? _trailHourTicker;
 
     // ===== 記録 =====
 
@@ -467,7 +478,15 @@ public partial class ShellWindow
         return timer;
     }
 
-    /// <summary>現在地のドットが見えるよう水平スクロールを追従させる（無ければ右端＝最新へ）。</summary>
+    /// <summary>ドット1個のスロット幅。XAML のドット Button の幅と揃える。</summary>
+    private const double TrailDotWidth = 14;
+
+    /// <summary>時間帯の先頭ドットに前置する時刻ラベル枠の幅。XAML の HourTick Border の幅と揃える。</summary>
+    private const double TrailHourLabelWidth = 32;
+
+    /// <summary>現在地のドットが見えるよう水平スクロールを追従させる（無ければ右端＝最新へ）。
+    /// 時間帯の先頭ドットは左に時刻ラベル枠（幅 <see cref="TrailHourLabelWidth"/>）が前置されて
+    /// スロットが広くなるため、単純な等間隔ではなく各ドットの実効幅を積んで中心位置を求める。</summary>
     private void ScrollTrailCurrentIntoView()
     {
         var index = _vm.Trail.CurrentIndex;
@@ -476,10 +495,13 @@ public partial class ShellWindow
             TrailScroll.ScrollToRightEnd();
             return;
         }
-        // ドット1個の実効幅（TrailDotButton の幅）。中央に寄せる。
-        const double dotWidth = 14;
-        var target = index * dotWidth - TrailScroll.ViewportWidth / 2 + dotWidth / 2;
-        TrailScroll.ScrollToHorizontalOffset(Math.Max(0, target));
+        var entries = _vm.Trail.Entries;
+        double x = 0;
+        for (var i = 0; i < index && i < entries.Count; i++)
+            x += TrailDotWidth + (entries[i].StartsNewHour ? TrailHourLabelWidth : 0);
+        var leading = index < entries.Count && entries[index].StartsNewHour ? TrailHourLabelWidth : 0;
+        var center = x + leading + TrailDotWidth / 2;
+        TrailScroll.ScrollToHorizontalOffset(Math.Max(0, center - TrailScroll.ViewportWidth / 2));
     }
 
     // ===== 日付（カレンダーで過去の軌跡へ） =====
@@ -507,6 +529,35 @@ public partial class ShellWindow
         // Calendar はクリック後もマウスキャプチャを持ち続け、直後のクリックを1回飲み込むため解放する。
         Mouse.Capture(null);
         _vm.Trail.ShowDate(DateOnly.FromDateTime(picked));
+        Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
+    }
+
+    // ===== 時刻（時間帯へ移動） =====
+
+    /// <summary>時刻ボタン：その日に記録のある時間帯（HH:00）を縦に並べたポップアップをトグルする。</summary>
+    private void OnTrailHourClick(object sender, RoutedEventArgs e)
+    {
+        // トグル：日付ボタンと同じく、開いた状態での再クリックは直前の外側クリックで閉じた分を汲む。
+        if (TrailHourPopup.IsOpen
+            || (DateTime.UtcNow - _trailHourPopupClosedAt).TotalMilliseconds < 250)
+        {
+            TrailHourPopup.IsOpen = false;
+            return;
+        }
+        if (_vm.Trail.Hours.Count == 0)
+            return;
+        TrailHourPopup.IsOpen = true;
+    }
+
+    /// <summary>ポップアップで時間帯を選ぶ：その時間帯の先頭ドットを現在地にしてスクロールする
+    /// （画面復元はしない＝バー内のナビゲーション。ドット列はそのまま並ぶ）。</summary>
+    private void OnTrailHourSelected(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: TrailHourViewModel hour })
+            return;
+        TrailHourPopup.IsOpen = false;
+        Mouse.Capture(null);
+        _vm.Trail.SelectHour(hour);
         Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
@@ -77,12 +78,21 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Tooltip))]
     [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    [NotifyPropertyChangedFor(nameof(HourBandLabel))]
     private DateTime _timestamp;
+
+    /// <summary>この地点が属する時間帯の開始時刻（HH:00）。バーでは時間帯の先頭ドット
+    /// （<see cref="StartsNewHour"/>）の区切りに、区切り線と一緒に出す（§27.7.3）。</summary>
+    public string HourBandLabel => $"{Timestamp.Hour:D2}:00";
 
     /// <summary>軌跡上の現在地か（ドットを強調表示する）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private bool _isCurrent;
+
+    /// <summary>この地点が直前の地点と別の「時間帯（時）」に入る先頭か。バーでは時間帯の
+    /// 境目に細い区切り（|）を1本入れるために使う（§27.7.3）。先頭エントリは常に false。</summary>
+    [ObservableProperty] private bool _startsNewHour;
 
     /// <summary>バー上とツールチップに出す種別記号。すべて単色の幾何記号（絵文字は使わない）で、
     /// 前景色を継承できるためテーマ追従と現在地の色強調が効く。種別ごとに一意（§27.11-D）。</summary>
@@ -136,6 +146,19 @@ public sealed partial class TrailEntryViewModel : ObservableObject
             return $"{body}\n{mode}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
         }
     }
+}
+
+/// <summary>時刻ポップアップの1項目＝その日に記録のある「時間帯（時）」。ラベルは常に HH:00
+/// （09:00 は 09:00〜09:59 を表す）。クリックでその時間帯の先頭ドットへ現在地を移す（§27.7.2）。</summary>
+public sealed class TrailHourViewModel
+{
+    public TrailHourViewModel(int hour) => Hour = hour;
+
+    /// <summary>0〜23 の時。</summary>
+    public int Hour { get; }
+
+    /// <summary>ポップアップに縦並びで出す表示（HH:00）。</summary>
+    public string Label => $"{Hour:D2}:00";
 }
 
 /// <summary>ウィンドウ最下部の「軌跡」バー。エディタ・ブラウザ・ペイン／パネル切替の遷移を
@@ -192,7 +215,12 @@ public sealed partial class TrailViewModel : ObservableObject
     private DateOnly _displayDate;
 
     /// <summary>軌跡上の現在地（表示中エントリのインデックス。-1 は無し）。</summary>
-    [ObservableProperty] private int _currentIndex = -1;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HourLabel))]
+    private int _currentIndex = -1;
+
+    /// <summary>時刻ポップアップに縦並びで出す「その日に記録のある時間帯」（HH:00、昇順）。</summary>
+    public ObservableCollection<TrailHourViewModel> Hours { get; } = new();
 
     private DateOnly Today => DateOnly.FromDateTime(_now());
 
@@ -200,6 +228,22 @@ public sealed partial class TrailViewModel : ObservableObject
 
     /// <summary>バー左端の日付表示。クリックでカレンダーを開く。</summary>
     public string DateLabel => DisplayDate.ToString("M/d (ddd)");
+
+    /// <summary>日付ボタンの右に出す時刻インジケータ。軌跡の最新地点（＝ライブの「今」）にいるときは
+    /// 現在時刻を <c>HH:mm</c>（時計に追従）で、過去の地点へスクラブ中はその地点の時間帯を
+    /// <c>HH:00</c>（＝HH:00〜HH:59 を表す）で示す（§27.7.2）。クリックで時間帯ポップアップを開く。</summary>
+    public string HourLabel
+    {
+        get
+        {
+            // ライブ（今日を追従していて、かつ軌跡の最新地点＝「今」にいる）なら現在時刻を出す。
+            if (_followingToday && CurrentIndex >= Entries.Count - 1)
+                return _now().ToString("HH:mm");
+            // 過去の地点へスクラブ中、または過去日表示中：その地点の時間帯を HH:00 で表す。
+            var band = CurrentEntry?.Timestamp ?? _now();
+            return $"{band.Hour:D2}:00";
+        }
+    }
 
     public TrailEntryViewModel? CurrentEntry =>
         CurrentIndex >= 0 && CurrentIndex < Entries.Count ? Entries[CurrentIndex] : null;
@@ -324,7 +368,10 @@ public sealed partial class TrailViewModel : ObservableObject
             if (last.Id >= 0)
                 Try(() => _store.Update(last.Id, now, last.Label, last.Line, last.Column, paneLayout));
             if (IsShowingToday())
+            {
                 SetCurrent(Entries.IndexOf(last));
+                OnEntriesChanged();   // 時刻が動くと時間帯ラベル・境界が変わりうる
+            }
             return;
         }
 
@@ -341,6 +388,53 @@ public sealed partial class TrailViewModel : ObservableObject
         {
             Entries.Add(entry);
             SetCurrent(Entries.Count - 1);
+            OnEntriesChanged();
+        }
+    }
+
+    /// <summary>表示中エントリの並びが変わったら、時間帯の境界フラグ（<see cref="TrailEntryViewModel.StartsNewHour"/>）と
+    /// 時刻ポップアップの時間帯一覧を作り直し、時刻ラベルの再評価を促す。追加・削除・読込・
+    /// デデュープ更新（時刻が動く）で呼ぶ。</summary>
+    private void OnEntriesChanged()
+    {
+        RecomputeHourBands();
+        RebuildHours();
+        OnPropertyChanged(nameof(HourLabel));
+    }
+
+    /// <summary>隣り合う地点で「時（Hour）」が変わる先頭に印を付ける。バーはここへ区切り（|）を1本出す。</summary>
+    private void RecomputeHourBands()
+    {
+        for (var i = 0; i < Entries.Count; i++)
+            Entries[i].StartsNewHour = i > 0 && Entries[i].Timestamp.Hour != Entries[i - 1].Timestamp.Hour;
+    }
+
+    /// <summary>表示中の日に記録のある時間帯（時）を昇順・重複なしで一覧化する（時刻ポップアップ用）。</summary>
+    private void RebuildHours()
+    {
+        var hours = Entries.Select(e => e.Timestamp.Hour).Distinct().OrderBy(h => h).ToList();
+        Hours.Clear();
+        foreach (var hour in hours)
+            Hours.Add(new TrailHourViewModel(hour));
+    }
+
+    /// <summary>時計の進行に合わせてライブの時刻ラベルを更新する（View のタイマから定期的に呼ぶ）。</summary>
+    public void RefreshHourLabel() => OnPropertyChanged(nameof(HourLabel));
+
+    /// <summary>時刻ポップアップで選んだ時間帯の先頭ドットを現在地にする。画面復元（ジャンプ）はせず、
+    /// バー内のナビゲーションに留める（日付ポップアップが「その日を出す」だけなのと同じ位置づけ）。
+    /// スクロール追従は呼び出し側（View）が行う。</summary>
+    public void SelectHour(TrailHourViewModel? hour)
+    {
+        if (hour is null)
+            return;
+        for (var i = 0; i < Entries.Count; i++)
+        {
+            if (Entries[i].Timestamp.Hour == hour.Hour)
+            {
+                SetCurrent(i);
+                return;
+            }
         }
     }
 
@@ -440,6 +534,7 @@ public sealed partial class TrailViewModel : ObservableObject
         DisplayDate = day;
         var today = Today;
         SetFollowingToday(day == today);
+        OnEntriesChanged();
         if (Entries.Count > 0)
             SetCurrent(Entries.Count - 1);
         // 今日に戻ったら、以後の記録が表示へも反映されるようデデュープ対象を差し替える。
@@ -475,6 +570,7 @@ public sealed partial class TrailViewModel : ObservableObject
             SetCurrent(-1);
             Entries.Clear();
             DisplayDate = today;
+            OnEntriesChanged();
         }
     }
 

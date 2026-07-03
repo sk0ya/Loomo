@@ -449,6 +449,107 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void HourLabel_shows_live_clock_at_latest_point_and_band_when_scrubbed_back()
+    {
+        // §27.7.2：ライブ地点（軌跡の最新＝「今」）では現在時刻 HH:mm、過去地点へ戻ると HH:00。
+        var clock = new DateTime(2026, 7, 3, 9, 15, 0);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+
+        sut.RecordFile(@"C:\work\a.cs");            // 09:15
+        Assert.Equal("09:15", sut.HourLabel);
+
+        clock = new DateTime(2026, 7, 3, 10, 40, 0);
+        sut.RecordFile(@"C:\work\b.cs");            // 10:40（最新＝ライブ）
+        Assert.Equal("10:40", sut.HourLabel);
+
+        // 時計だけ進めてもライブ地点なら現在時刻に追従する（新しい記録は無い）。
+        clock = new DateTime(2026, 7, 3, 10, 52, 0);
+        sut.RefreshHourLabel();
+        Assert.Equal("10:52", sut.HourLabel);
+
+        // 過去のドットへスクラブすると、その地点の時間帯を HH:00（＝HH:00〜HH:59）で表す。
+        sut.MoveCurrent(-1);                        // 09:15 の地点へ
+        Assert.Equal("09:00", sut.HourLabel);
+    }
+
+    [Fact]
+    public void HourLabel_shows_band_when_viewing_a_past_day()
+    {
+        var clock = new DateTime(2026, 7, 3, 9, 15, 0);
+        _store.Append("", new DateTime(2026, 7, 1, 14, 30, 0),
+            (int)TrailEntryKind.File, @"C:\old.cs", "old.cs", -1, -1);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+        sut.RecordFile(@"C:\work\a.cs");
+
+        sut.ShowDate(new DateOnly(2026, 7, 1));
+
+        // 過去日表示はライブではない：最後の地点の時間帯を HH:00 で出す。
+        Assert.True(sut.IsViewingPast);
+        Assert.Equal("14:00", sut.HourLabel);
+    }
+
+    [Fact]
+    public void Hours_lists_distinct_bands_ascending_for_the_displayed_day()
+    {
+        var clock = new DateTime(2026, 7, 3, 9, 5, 0);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+
+        sut.RecordFile(@"C:\work\a.cs");                        // 09
+        clock = new DateTime(2026, 7, 3, 9, 40, 0);
+        sut.RecordFile(@"C:\work\b.cs");                        // 09（同じ時間帯）
+        clock = new DateTime(2026, 7, 3, 11, 10, 0);
+        sut.RecordFile(@"C:\work\c.cs");                        // 11
+
+        Assert.Equal(new[] { 9, 11 }, sut.Hours.Select(h => h.Hour));
+        Assert.Equal(new[] { "09:00", "11:00" }, sut.Hours.Select(h => h.Label));
+    }
+
+    [Fact]
+    public void SelectHour_moves_current_to_the_first_dot_of_that_band_without_jumping()
+    {
+        var clock = new DateTime(2026, 7, 3, 9, 5, 0);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+        sut.RecordFile(@"C:\work\a.cs");                        // 0: 09
+        clock = new DateTime(2026, 7, 3, 11, 10, 0);
+        sut.RecordFile(@"C:\work\c.cs");                        // 1: 11
+        clock = new DateTime(2026, 7, 3, 11, 45, 0);
+        sut.RecordFile(@"C:\work\d.cs");                        // 2: 11
+
+        var jumped = false;
+        sut.JumpRequested += (_, _) => jumped = true;
+        sut.SelectHour(sut.Hours.Single(h => h.Hour == 11));
+
+        Assert.Equal(1, sut.CurrentIndex);                     // その時間帯の先頭ドット
+        Assert.False(jumped);                                  // バー内ナビゲーションのみ（画面復元はしない）
+    }
+
+    [Fact]
+    public void StartsNewHour_marks_the_first_dot_of_each_band()
+    {
+        // ドット列の時間帯境界に区切り（|）を出すためのフラグ（§27.7.3）。
+        var clock = new DateTime(2026, 7, 3, 9, 5, 0);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+        sut.RecordFile(@"C:\work\a.cs");                        // 09
+        clock = new DateTime(2026, 7, 3, 9, 40, 0);
+        sut.RecordFile(@"C:\work\b.cs");                        // 09（同帯）
+        clock = new DateTime(2026, 7, 3, 10, 2, 0);
+        sut.RecordFile(@"C:\work\c.cs");                        // 10（新帯）
+
+        Assert.False(sut.Entries[0].StartsNewHour);            // 先頭は常に false
+        Assert.False(sut.Entries[1].StartsNewHour);            // 同じ時間帯 → 区切りなし
+        Assert.True(sut.Entries[2].StartsNewHour);             // 時間帯が変わる → 区切りあり
+
+        // 区切りには時間帯の開始時刻ラベル（HH:00）を一緒に出す（線だけだと見えないため）。
+        Assert.Equal("10:00", sut.Entries[2].HourBandLabel);
+        Assert.Equal("09:00", sut.Entries[0].HourBandLabel);
+    }
+
+    [Fact]
     public void Crossing_midnight_while_following_rolls_display_to_the_new_day()
     {
         // §27.11-C：実行したまま日付を跨ぐと、表示が前日に張り付いて新しい記録が見えなくなっていた。

@@ -1347,6 +1347,40 @@
                                       SelectedDatesChanged="OnTrailCalendarSelected" />
                         </Border>
                     </Popup>
+                    <!-- 時刻：日付の右。ライブ地点なら現在時刻 HH:mm、過去地点へスクラブ中はその時間帯 HH:00。
+                         クリックで時間帯（HH:00）を縦に並べたポップアップ→選ぶとその時間帯の先頭ドットへ移動 -->
+                    <Button x:Name="TrailHourButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
+                            Padding="6,1" FontSize="11" VerticalAlignment="Center"
+                            Foreground="{DynamicResource FgDim}"
+                            Content="{Binding Trail.HourLabel}"
+                            ToolTip="クリックで時間帯を選んで、その時間の軌跡へ移動（再クリックで閉じる）"
+                            Click="OnTrailHourClick" />
+                    <Popup x:Name="TrailHourPopup" PlacementTarget="{Binding ElementName=TrailHourButton}"
+                           Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="4" Padding="2" Margin="8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                            </Border.Effect>
+                            <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Trail.Hours}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Vertical" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource FlatButton}" MinWidth="64"
+                                                    Padding="10,3" FontSize="12"
+                                                    HorizontalContentAlignment="Left"
+                                                    Content="{Binding Label}" Click="OnTrailHourSelected" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                    </Popup>
                     <!-- ×：過去の日を表示中のみ出す（今日の軌跡へ戻る） -->
                     <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="22"
                             Content="×" FontSize="11" ToolTip="今日の軌跡へ戻る"
@@ -1364,6 +1398,21 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                    <!-- 時間帯の先頭ドットにだけ、左に区切り（|）＋時刻ラベル（HH:00）を前置する。
+                                         非境界では Collapsed で幅ゼロ。幅32は ShellWindow.Trail.cs の
+                                         ScrollTrailCurrentIntoView の HourLabelWidth と揃える（§27.7.3）。 -->
+                                    <Border Width="32" Height="24"
+                                            Visibility="{Binding StartsNewHour, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Rectangle Width="1" Margin="0,4" VerticalAlignment="Stretch"
+                                                       Fill="{DynamicResource Border}" />
+                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="9" Opacity="0.75"
+                                                       Foreground="{DynamicResource FgDim}"
+                                                       VerticalAlignment="Center" Margin="3,0,0,0"
+                                                       TextOptions.TextFormattingMode="Ideal" />
+                                        </StackPanel>
+                                    </Border>
                                     <!-- 幅14は ShellWindow.Trail.cs の ScrollTrailCurrentIntoView と揃える -->
                                     <Button Width="14" Height="24" Cursor="Hand"
                                             ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="150"
@@ -1415,6 +1464,7 @@
                                             </ControlTemplate>
                                         </Button.Template>
                                     </Button>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
