@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using ClosedXML.Excel;
 using DocumentFormat.OpenXml.Packaging;
@@ -11,26 +13,47 @@ using sk0ya.Loomo.App.Services;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// Office（Excel/Word）の読み取り専用プレビュー提供者の検証。実ファイル（.xlsx/.docx）を一時生成して
-/// HTML へ変換し、セル値・見出し・段落テキストが出力へ載ることを確かめる。どちらもエディタ本文を使わず
+/// Office の読み取り専用プレビューの検証。Excel は <see cref="ExcelSheetReader"/> が各ワークシートを
+/// 文字列セルへ読めること（UI 側はそれを VGrid のタブへ載せる）、Word は Mammoth が段落を HTML へ
+/// 変換できることを、実ファイル（.xlsx/.docx）を一時生成して確かめる。どちらもエディタ本文を使わず
 /// ファイルパスから読むので、<see cref="IEditorSupportProvider.UsesEditorText"/> が false であることも確認する。
 /// </summary>
 public class OfficeEditorSupportTests
 {
     [Fact]
-    public void Excel_各シートのセル値と見出しをHTMLへ出す()
+    public void Excel_ワークシートのセル値を読む()
     {
         var path = CreateXlsx();
         try
         {
-            var html = new ExcelEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+            var sheet = Assert.Single(ExcelSheetReader.Read(path));
+            Assert.Equal("データ", sheet.Name);
 
-            Assert.StartsWith("<!DOCTYPE html>", html);       // フル HTML 文書
-            Assert.Contains("データ", html);                    // シート名（見出し）
-            Assert.Contains("名前", html);                      // ヘッダーセル
-            Assert.Contains("太郎", html);                      // 文字セル
-            Assert.Contains("30", html);                        // 数値セル
-            Assert.Contains("office-grid", html);               // テーブルとして描画
+            var cells = Flatten(sheet);
+            Assert.Contains("名前", cells);   // 文字セル
+            Assert.Contains("太郎", cells);
+            Assert.Contains("30", cells);      // 数値セルは書式化文字列
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Excel_複数シートを名前つきで読む()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".xlsx");
+        using (var wb = new XLWorkbook())
+        {
+            wb.AddWorksheet("一枚目").Cell(1, 1).Value = "A";
+            wb.AddWorksheet("二枚目").Cell(1, 1).Value = "B";
+            wb.SaveAs(path);
+        }
+        try
+        {
+            var sheets = ExcelSheetReader.Read(path);
+            Assert.Equal(2, sheets.Count);
+            Assert.Equal(new[] { "一枚目", "二枚目" }, sheets.Select(s => s.Name).ToArray());
+            Assert.Contains("A", Flatten(sheets[0]));
+            Assert.Contains("B", Flatten(sheets[1]));
         }
         finally { File.Delete(path); }
     }
@@ -38,7 +61,7 @@ public class OfficeEditorSupportTests
     [Fact]
     public void Excel_UsesEditorTextはfalse_本文非依存()
     {
-        // 本文（text）に依存しない：空文字を渡してもファイルから読めている。
+        // 本文（text）に依存しない：ファイルパスから直接読む。
         Assert.False(new ExcelEditorSupport(new AiSettings()).UsesEditorText);
     }
 
@@ -63,15 +86,14 @@ public class OfficeEditorSupportTests
     }
 
     [Fact]
-    public void 壊れたファイルでも例外を投げずエラーページを返す()
+    public void 壊れたファイルはExcelReaderが例外を投げる_UI側で握る()
     {
+        // Reader は素直に例外を投げ、UI 側（ExcelEditorSupport.UpdateAsync）が握って案内を出す。
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".xlsx");
         File.WriteAllText(path, "これは Excel ではありません");
         try
         {
-            var html = new ExcelEditorSupport(new AiSettings()).RenderHtml(path, text: "");
-            Assert.StartsWith("<!DOCTYPE html>", html);
-            Assert.Contains("表示できませんでした", html);
+            Assert.ThrowsAny<Exception>(() => ExcelSheetReader.Read(path));
         }
         finally { File.Delete(path); }
     }
@@ -86,15 +108,14 @@ public class OfficeEditorSupportTests
         InjectOverlappingPhonetics(path, cellText: "名前");
         try
         {
-            var html = new ExcelEditorSupport(new AiSettings()).RenderHtml(path, text: "");
-
-            Assert.StartsWith("<!DOCTYPE html>", html);
-            Assert.DoesNotContain("表示できませんでした", html);  // エラーページに落ちていない
-            Assert.Contains("office-grid", html);              // テーブルとして描画された
-            Assert.Contains("名前", html);                      // セル値は保たれる
+            var sheet = Assert.Single(ExcelSheetReader.Read(path));   // 例外を投げない
+            Assert.Contains("名前", Flatten(sheet));                   // セル値は保たれる
         }
         finally { File.Delete(path); }
     }
+
+    private static List<string> Flatten(ExcelSheet sheet)
+        => sheet.Rows.SelectMany(r => r).ToList();
 
     /// <summary>指定セル値の共有文字列 <c>&lt;si&gt;</c> へ、範囲が重複する rPh を2つ差し込む。</summary>
     private static void InjectOverlappingPhonetics(string xlsxPath, string cellText)
