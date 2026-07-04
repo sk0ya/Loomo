@@ -42,6 +42,8 @@ public partial class ShellWindow : Window
     private readonly HexEditorSupport _hexSupport;
     /// <summary>専用プロバイダの無いコードファイルのフォールバック表示（LSP 構造アウトライン）。registry 外。</summary>
     private readonly CodeEditorSupport _codeSupport;
+    /// <summary>コード案内ページの「インストール」導線に使う LSP 管理サービス（判定＋可視ターミナル実行）。</summary>
+    private readonly sk0ya.Loomo.Services.Lsp.LspManagementService _lspManagement;
     private readonly KeybindingService _keybindings;
     private readonly ShellViewModel _vm;
     /// <summary>キーボードショートカットのディスパッチャ（実効バインド→コマンド実行）。</summary>
@@ -222,6 +224,7 @@ public partial class ShellWindow : Window
         EditorSupportRegistry editorSupports,
         HexEditorSupport hexSupport,
         CodeEditorSupport codeSupport,
+        sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement,
         KeybindingService keybindings)
     {
         StartupProfiler.Mark("ShellWindow ctor 開始");
@@ -243,6 +246,7 @@ public partial class ShellWindow : Window
         _editorSupports = editorSupports;
         _hexSupport = hexSupport;
         _codeSupport = codeSupport;
+        _lspManagement = lspManagement;
         _keybindings = keybindings;
         _keyboard = BuildKeyboardDispatcher();
         _terminalTabs = _scratchTerminalWorkspace.Tabs;

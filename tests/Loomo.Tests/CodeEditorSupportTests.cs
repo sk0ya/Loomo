@@ -1,6 +1,9 @@
+using System.Linq;
+using System.Text.RegularExpressions;
 using Editor.Core.Lsp;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -308,5 +311,103 @@ public class CodeEditorSupportTests
         Assert.Equal(20, node.EndLine0);    // Range.End.Line
         Assert.Equal(11, node.NameLine0);   // SelectionRange.Start.Line（②の問い合わせ行）
         Assert.Equal(8, node.NameCol0);     // SelectionRange.Start.Character（②の問い合わせ列）
+    }
+
+    // ---- 呼び出し/参照の件数上限（タスク3）----
+
+    [Fact]
+    public void RenderPanels_上限超過は切り詰めて他N件を出す()
+    {
+        var many = Enumerable.Range(0, CallPanelRenderer.MaxRows + 5)
+            .Select(i => new CallReference("R" + i, "file:///C:/work/F.cs", i))
+            .ToArray();
+
+        var html = CallPanelRenderer.RenderPanels(MakePanels(references: many));
+
+        var rows = Regex.Matches(html, "class=\"call-row\"").Count;
+        Assert.Equal(CallPanelRenderer.MaxRows, rows);   // 表示は上限まで
+        Assert.Contains("他 5 件", html);                // 残数
+        Assert.Contains("class=\"call-more\"", html);    // 切り詰めの行（CSS 定義ではなく実要素）
+    }
+
+    [Fact]
+    public void RenderPanels_ちょうど上限なら他N件を出さない()
+    {
+        var exactly = Enumerable.Range(0, CallPanelRenderer.MaxRows)
+            .Select(i => new CallReference("R" + i, "file:///C:/work/F.cs", i))
+            .ToArray();
+
+        var html = CallPanelRenderer.RenderPanels(MakePanels(references: exactly));
+
+        Assert.DoesNotContain("class=\"call-more\"", html);  // 切り詰め行は出ない（CSS 定義文字列は無視）
+        Assert.Equal(CallPanelRenderer.MaxRows, Regex.Matches(html, "class=\"call-row\"").Count);
+    }
+
+    [Fact]
+    public void RenderPanelsInner_styleを含まずcallPanelsのdivだけ返す()
+    {
+        var inner = CallPanelRenderer.RenderPanelsInner(CallPanels.Empty);
+
+        Assert.StartsWith("<div class=\"call-panels\">", inner);
+        Assert.DoesNotContain("<style>", inner);   // 部分更新用は CSS を含まない
+    }
+
+    // ---- 案内ページ（LspNoticeRenderer / タスク1）----
+
+    [Fact]
+    public void Notice_未導入_サーバー名とコマンドとインストールボタンを出す()
+    {
+        var info = new LspPromptInfo(
+            ".rs", LspPromptKind.NotInstalled,
+            "「.rs」の言語サーバー rust-analyzer が見つかりません。",
+            "rustup component add rust-analyzer", "rust-analyzer", "https://example/docs");
+
+        var html = LspNoticeRenderer.RenderBody(@"C:\work\a.rs", info);
+
+        Assert.Contains("rust-analyzer", html);                       // 対応サーバー名
+        Assert.Contains("rustup component add rust-analyzer", html);  // インストールコマンド
+        Assert.Contains("class=\"lsp-install-btn\"", html);
+        Assert.Contains("data-ext=\".rs\"", html);
+        Assert.Contains("class=\"lsp-settings-btn\"", html);          // 設定を開くは常に
+        Assert.DoesNotContain("lsp-docs-btn", html);                 // コマンドがあるので手順ボタンは出さない
+    }
+
+    [Fact]
+    public void Notice_コマンド無しでDocsのみ_導入手順ボタンを出す()
+    {
+        var info = new LspPromptInfo(
+            ".foo", LspPromptKind.NotInstalled,
+            "「.foo」の言語サーバー Foo が未設定です。", null, "Foo", "https://example/foo");
+
+        var html = LspNoticeRenderer.RenderBody(@"C:\work\a.foo", info);
+
+        Assert.DoesNotContain("lsp-install-btn", html);
+        Assert.Contains("class=\"lsp-docs-btn\"", html);
+        Assert.Contains("data-url=\"https://example/foo\"", html);
+        Assert.Contains("class=\"lsp-settings-btn\"", html);
+    }
+
+    [Fact]
+    public void Notice_未設定は設定ボタンのみ()
+    {
+        var info = new LspPromptInfo(
+            ".zzz", LspPromptKind.NotConfigured,
+            "「.zzz」に対応する言語サーバーが設定されていません。", null, null, null);
+
+        var html = LspNoticeRenderer.RenderBody(@"C:\work\a.zzz", info);
+
+        Assert.DoesNotContain("lsp-install-btn", html);
+        Assert.DoesNotContain("lsp-docs-btn", html);
+        Assert.Contains("class=\"lsp-settings-btn\"", html);
+    }
+
+    [Fact]
+    public void Notice_null_接続待ち文言でボタンを出さない()
+    {
+        var html = LspNoticeRenderer.RenderBody(@"C:\work\a.cs", prompt: null);
+
+        Assert.Contains("接続待ち", html);
+        Assert.DoesNotContain("lsp-install-btn", html);
+        Assert.DoesNotContain("lsp-settings-btn", html);
     }
 }

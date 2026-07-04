@@ -481,6 +481,24 @@ public partial class ShellWindow
                     }
                     break;
 
+                // コード案内ページの「インストール」：現在ファイルの拡張子から対応サーバーを再判定し、
+                // 可視ターミナルでインストールコマンドを実行する（LspManagementService 経由）。
+                case "lspInstall":
+                    InstallLspForEditorSupportSource();
+                    break;
+
+                // コード案内ページの「LSP 設定を開く」：既存の LSP 設定オーバーレイ導線を再利用する。
+                case "openLspSettings":
+                    _vm.LspPrompt.OpenSettingsCommand.Execute(null);
+                    break;
+
+                // コード案内ページの「導入手順を開く」：DocsURL を内蔵ブラウザで開く。
+                case "lspDocs":
+                    if (root.TryGetProperty("url", out var docsUrlElement)
+                        && docsUrlElement.GetString() is { Length: > 0 } docsUrl)
+                        _ = OpenUrlInBrowserAsync(docsUrl, null);
+                    break;
+
                 // Markdown 本文中のリンククリック：http/https は内蔵ブラウザ、ファイルパスはエディタで開く。
                 case "linkClicked":
                     if (root.TryGetProperty("href", out var hrefElement) && hrefElement.GetString() is { } href)

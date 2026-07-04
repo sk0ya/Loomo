@@ -307,10 +307,14 @@ public partial class ShellWindow
         // 旧値を残し、次のキャレットイベントで再評価・再試行させる）。ここでは候補をローカルに控えるだけ。
         IReadOnlyList<OutlineNode>? newRoots = null;
         OutlineNode? newMember = null;
+        // ページ体裁の鍵（ファイル＋テーマ）。ready なコードページのみ設定し、部分更新（②差し替え）の
+        // 可否判定（NavigationCompleted 後に _editorSupportReadyPageKey へ昇格）に使う。案内ページは null。
+        string? pageKey = null;
 
         if (!ready)
         {
-            html = _codeSupport.RenderNoticePage(filePath);
+            // 未 ready の理由に応じた案内（未導入なら対応サーバー名＋インストール導線、導入済みなら接続待ち）。
+            html = _codeSupport.RenderNoticePage(filePath, _lspManagement.EvaluateForFile(filePath));
         }
         else
         {
@@ -346,6 +350,7 @@ public partial class ShellWindow
 
             newRoots = roots;
             newMember = member;
+            pageKey = CodePageKey(filePath);
             html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
         }
 
@@ -353,7 +358,7 @@ public partial class ShellWindow
         _editorSupportPendingBody = null;
         _editorSupportPendingUri = null;
         _editorSupportPendingMapFolder = null;
-        _editorSupportPendingPageKey = null;
+        _editorSupportPendingPageKey = pageKey;
         EditorSupportTitle.Text = title;
 
         var view = await EnsureEditorSupportViewAsync();
@@ -485,13 +490,25 @@ public partial class ShellWindow
         if (seq != _editorSupportRenderSeq)
             return;
 
-        // アウトラインはキャッシュを再利用（current だけ新しいキャレットで付け直す）。
+        var currentLine = member is null ? 0 : member.Line0 + 1; // current を付け替える data-line（1 始まり）
+        var codeKey = CodePageKey(filePath);
+
+        // 同一ページ（ファイル・テーマ不変）が読込完了済みなら、フル再ナビゲートせず「current の付け替え＋
+        // .call-panels の差し替え」だけの部分更新にする（アウトラインの折りたたみ状態・縦スクロールを保ち、
+        // 白フラッシュも出さない）。同期成功なので差分基準はここで確定してよい。
+        if (TryPostCodeCallPanels(codeKey, panels, currentLine))
+        {
+            _codeCurrentMember = member;
+            return;
+        }
+
+        // フォールバック：別ファイル・テーマ変更・未 ready（読込中）等はフル navigate（初回描画と同じ経路）。
         var html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
         _editorSupportPendingHtml = html;
         _editorSupportPendingBody = null;
         _editorSupportPendingUri = null;
         _editorSupportPendingMapFolder = null;
-        _editorSupportPendingPageKey = null;
+        _editorSupportPendingPageKey = codeKey;
 
         var view = await EnsureEditorSupportViewAsync();
         if (view?.CoreWebView2 is null)
@@ -502,6 +519,57 @@ public partial class ShellWindow
         // 差分基準は実描画の直前に確定する（await 後に降りたら旧値のまま次イベントで再試行される）。
         _codeCurrentMember = member;
         RenderPendingEditorSupportContent(view.CoreWebView2);
+    }
+
+    /// <summary>コードページの体裁の鍵（ファイル＋プレビューテーマ）。メンバー変更では不変なので部分更新できる。</summary>
+    private string CodePageKey(string filePath)
+        => "code\n" + filePath + "\n" + _settings.Appearance.MarkdownPreviewTheme;
+
+    /// <summary>
+    /// ②パネルだけをページ側 JS へ部分反映する（<c>setCallPanels</c> メッセージ）。現在ページが同一体裁
+    /// （<paramref name="codeKey"/>）で読込完了済み（<see cref="_editorSupportReadyPageKey"/> 一致）のときだけ成功。
+    /// 送るのは <c>.call-panels</c> の本体 HTML と、current を付け替える対象行（<paramref name="currentLine"/>、
+    /// 0 は「どのメンバー外」＝current なし）。フル navigate しないので折りたたみ状態を保つ。
+    /// </summary>
+    private bool TryPostCodeCallPanels(string codeKey, CallPanels panels, int currentLine)
+    {
+        var core = _editorSupportView?.CoreWebView2;
+        if (core is null)
+            return false;
+        // 読込中／別ページ／別テーマなら部分更新できない（フル navigate へ委ねる）。
+        if (_editorSupportReadyPageKey is null || _editorSupportReadyPageKey != codeKey)
+            return false;
+
+        try
+        {
+            var inner = CallPanelRenderer.RenderPanelsInner(panels);
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(
+                new { type = "setCallPanels", html = inner, currentLine }));
+            return true;
+        }
+        catch
+        {
+            return false; // 送信失敗（ナビゲーション中等）はフル navigate へフォールバック
+        }
+    }
+
+    /// <summary>
+    /// コード案内ページの「インストール」導線。現在の追従元ファイルの拡張子から対応サーバーを再判定し、
+    /// 可視ターミナルでインストールコマンドを実行する（端末未接続や導入済みなら何もしない）。
+    /// </summary>
+    private void InstallLspForEditorSupportSource()
+    {
+        var filePath = _editorSupportSourceTab?.Control.FilePath;
+        if (string.IsNullOrEmpty(filePath))
+            return;
+
+        var info = _lspManagement.EvaluateForFile(filePath);
+        if (info is null)
+            return; // 既に導入済み等（案内ボタンが古い）：何もしない
+
+        // 実行結果（可視ターミナルの有無）に関わらず、案内ページ自体はそのまま（LSP 接続後の
+        // 再オープン／再描画で自然にアウトラインへ切り替わる）。
+        _lspManagement.InstallForPrompt(info);
     }
 
     /// <summary>キャレット追従（②再取得）を 150ms デバウンスする。コードページ未描画のときは無視。</summary>
