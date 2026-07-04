@@ -1,0 +1,22 @@
+# 改行コードの正規化ポリシー。
+# core.autocrlf=true 環境でも、テキストは作業ツリー・リポジトリともに LF に統一する。
+# これにより git add 時の「LF will be replaced by CRLF」警告が出なくなる
+# （リポジトリ内は元々 LF 正規化済みなので、blob の内容は変わらない）。
+* text=auto eol=lf
+
+# Visual Studio が CRLF を要求するものだけ CRLF のまま扱う。
+*.sln text eol=crlf
+
+# バイナリ（改行変換・テキスト差分をしない）。
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.dll  binary
+*.exe  binary
+*.xlsx binary
+*.xlsm binary
+*.docx binary
+*.pptx binary
