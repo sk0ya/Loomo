@@ -192,6 +192,7 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, JsonEditorSupport>();     // JSON を折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, YamlEditorSupport>();     // YAML を JSON 化して折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, TomlEditorSupport>();     // TOML を JSON 化して折りたたみツリーで表示
+        services.AddSingleton<IEditorSupportProvider, XmlEditorSupport>();      // XML/XAML を折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, MermaidEditorSupport>();  // .mmd/.mermaid を図としてプレビュー
         services.AddSingleton<IEditorSupportProvider, ImageEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();   // CSV/TSV を VGrid グリッドで表示
