@@ -422,7 +422,10 @@ public partial class ShellWindow
     private void DetachEditorSupportSource()
     {
         if (_editorSupportSourceTab is not null)
+        {
             _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+            _editorSupportSourceTab.Control.CaretMoved -= EditorSupportSource_CaretMoved;
+        }
         _editorSupportSourceTab = null;
     }
 
@@ -465,6 +468,19 @@ public partial class ShellWindow
                     FocusEditorSupportSource(line > 0 ? line : null);
                     break;
 
+                // コード呼び出し解析パネルの行：別ファイル（または同一ファイル）の該当行をエディタで開く。
+                // path は LSP 由来のローカルパス、line は 1 始まり。既存のファイルオープン導線を再利用する
+                // （OpenPathInEditorAsync は既存タブなら活性化、無ければ開き、1 始まり→0 始まりへ変換して移動）。
+                case "openFileAt":
+                    if (root.TryGetProperty("path", out var openPathElement)
+                        && openPathElement.GetString() is { Length: > 0 } openPath)
+                    {
+                        var openLine = root.TryGetProperty("line", out var openLineElement)
+                                       && openLineElement.TryGetInt32(out var ol) ? ol : 0;
+                        _ = OpenPathInEditorAsync(openPath, openLine, column: 0);
+                    }
+                    break;
+
                 // Markdown 本文中のリンククリック：http/https は内蔵ブラウザ、ファイルパスはエディタで開く。
                 case "linkClicked":
                     if (root.TryGetProperty("href", out var hrefElement) && hrefElement.GetString() is { } href)
@@ -501,7 +517,10 @@ public partial class ShellWindow
 
         SetActiveEditorTab(tab);
         if (line is int l)
-            tab.Control.NavigateTo(l, 1);
+            // line は data-line（1 始まり）、NavigateTo は 0 始まりなので変換する
+            // （Links.cs/CommandPalette.cs 等の他呼び出しと同じ規約。以前は 1 始まりのまま渡して
+            // アウトライン・JSON/XML ツリーの ↦ ジャンプが 1 行下へずれていた）。
+            tab.Control.NavigateTo(l - 1, 0);
         tab.Control.Focus();
         _focusedRegion = FocusTarget.Of(PaneKind.Editor);
     }

@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -266,8 +267,28 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>
+    /// エディタコントロールごとに、その LSP マネージャ（<see cref="LspManagerFactoryRetain"/> で
+    /// 遅延生成されたもの）を保持する。EditorSupport のコード構造／呼び出し解析
+    /// （<see cref="UpdateCodeEditorSupportAsync"/>）から参照する。コントロールが GC されれば
+    /// エントリも自動で消えるよう <see cref="ConditionalWeakTable{TKey,TValue}"/> を使う。値は
+    /// factory がファイル初回オープン時に遅延実行されるまで <c>null</c>（<see cref="StrongBox{T}"/> で共有）。
+    /// </summary>
+    private readonly ConditionalWeakTable<VimEditorControl, StrongBox<IEditorLspManager?>> _editorLspManagers = new();
+
+    /// <summary>指定タブのエディタコントロールに紐づく LSP マネージャを返す（未実体化／未オープンなら null）。</summary>
+    private IEditorLspManager? GetLspManager(EditorTab tab)
+    {
+        if (!tab.IsRealized)
+            return null; // コントロール未実体化＝LSP はまだ存在しない
+        return _editorLspManagers.TryGetValue(tab.Control, out var box) ? box.Value : null;
+    }
+
     private VimEditorControl BuildEditorControl(EditorTab tab)
     {
+        // LSP マネージャは factory がファイル初回オープン時に遅延生成する。生成物をこの箱経由で受け取り、
+        // コントロール単位で retain する（EditorSupport のコード構造解析が参照するため）。
+        var lspBox = new StrongBox<IEditorLspManager?>(null);
         // GitServiceFactory を渡すと、エディタが行の差分（追加/変更/削除）をガター（行番号脇）に
         // マーク表示し、ステータスバーにブランチ名を出す。読込/保存/編集のたびに自動で再計算される
         // （RefreshGitDiff はコントロール内部で発火）。未指定だと NullEditorGitService となり無効。
@@ -277,7 +298,12 @@ public partial class ShellWindow
         var control = new VimEditorControl(new VimEditorControlOptions
         {
             GitServiceFactory = () => new GitDiffProvider(),
-            LspManagerFactory = dispatcher => new LspManager(dispatcher)
+            LspManagerFactory = dispatcher =>
+            {
+                var manager = new LspManager(dispatcher);
+                lspBox.Value = manager;
+                return manager;
+            }
         })
         {
             VimEnabled = _settings.Vim.Enabled,
@@ -336,6 +362,8 @@ public partial class ShellWindow
         control.WindowCloseRequested += (_, _) => CloseEditorView();
         // デバッグ：ブレークポイント列を有効化し、トグル/同期/実行行ハイライトを配線する。
         WireEditorForDebug(control);
+        // LSP マネージャ（遅延生成）を保持する箱をこのコントロールに紐づける（GetLspManager から引く）。
+        _editorLspManagers.AddOrUpdate(control, lspBox);
         return control;
     }
 

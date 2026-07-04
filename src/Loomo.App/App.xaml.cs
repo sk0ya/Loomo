@@ -208,6 +208,9 @@ public partial class App : Application
         services.AddSingleton<EditorSupportRegistry>();
         // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。registry には載せず ShellWindow が直接使う。
         services.AddSingleton<HexEditorSupport>();
+        // 専用プロバイダを持たないコードファイルのフォールバック（LSP ベースの構造アウトライン）。
+        // registry には載せず ShellWindow が直接使う（Hex と同じ形）。
+        services.AddSingleton<CodeEditorSupport>();
 
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();

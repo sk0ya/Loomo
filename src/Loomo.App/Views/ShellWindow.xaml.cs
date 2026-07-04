@@ -40,6 +40,8 @@ public partial class ShellWindow : Window
     private readonly EditorSupportRegistry _editorSupports;
     /// <summary>対応プロバイダの無いバイナリのフォールバック表示（Hex ダンプ）。registry 外。</summary>
     private readonly HexEditorSupport _hexSupport;
+    /// <summary>専用プロバイダの無いコードファイルのフォールバック表示（LSP 構造アウトライン）。registry 外。</summary>
+    private readonly CodeEditorSupport _codeSupport;
     private readonly KeybindingService _keybindings;
     private readonly ShellViewModel _vm;
     /// <summary>キーボードショートカットのディスパッチャ（実効バインド→コマンド実行）。</summary>
@@ -75,6 +77,14 @@ public partial class ShellWindow : Window
     private readonly HashSet<IEditorSupportVisualProvider> _editorSupportEditSubscribed = new();
     private bool _editorSupportWebEventsAttached;
     private DispatcherTimer? _editorSupportDebounceTimer;
+    /// <summary>コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。</summary>
+    private DispatcherTimer? _codeCaretTimer;
+    /// <summary>直近に描いたコードアウトラインのノード（キャレット追従で②を再取得する差分判定に使う。null＝未描画）。</summary>
+    private System.Collections.Generic.IReadOnlyList<Services.OutlineNode>? _codeOutlineRoots;
+    /// <summary><see cref="_codeOutlineRoots"/> の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。</summary>
+    private EditorTab? _codeOutlineSource;
+    /// <summary>直近にキャレットを含んでいたメンバー（同一メンバー内の移動では②を再取得しないための基準）。</summary>
+    private Services.OutlineNode? _codeCurrentMember;
     /// <summary>EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。</summary>
     private bool _editorSupportSourcePinned;
     /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>
@@ -211,6 +221,7 @@ public partial class ShellWindow : Window
         AiSettings settings,
         EditorSupportRegistry editorSupports,
         HexEditorSupport hexSupport,
+        CodeEditorSupport codeSupport,
         KeybindingService keybindings)
     {
         StartupProfiler.Mark("ShellWindow ctor 開始");
@@ -231,6 +242,7 @@ public partial class ShellWindow : Window
         _settings = settings;
         _editorSupports = editorSupports;
         _hexSupport = hexSupport;
+        _codeSupport = codeSupport;
         _keybindings = keybindings;
         _keyboard = BuildKeyboardDispatcher();
         _terminalTabs = _scratchTerminalWorkspace.Tabs;

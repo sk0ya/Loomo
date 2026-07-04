@@ -20,7 +20,9 @@ using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
 using Editor.Controls.Git;
+using Editor.Controls.Lsp;
 using Editor.Controls.Themes;
+using Editor.Core.Lsp;
 using Terminal.Settings;
 using Terminal.Tabs;
 
@@ -55,10 +57,15 @@ public partial class ShellWindow
             return;
 
         if (_editorSupportSourceTab is not null)
+        {
             _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+            _editorSupportSourceTab.Control.CaretMoved -= EditorSupportSource_CaretMoved;
+        }
 
         _editorSupportSourceTab = sourceTab;
         sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
+        // コード解析（②）のキャレット追従。非コードや案内表示中は Schedule 側で無視される。
+        sourceTab.Control.CaretMoved += EditorSupportSource_CaretMoved;
         UpdateEditorSupportPinToggle();
 
         await UpdateEditorSupportAsync();
@@ -175,6 +182,14 @@ public partial class ShellWindow
                 IsEditorSupportInThumbnail()))
             return;
 
+        // 専用プロバイダの無いコードファイルは、LSP ベースの構造アウトラインへフォールバックする
+        // （registry 外・Hex と同じ形）。専用 provider 解決の後・ビジュアル/Hex 判定より前で拾う。
+        if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath))
+        {
+            await UpdateCodeEditorSupportAsync(source, filePath);
+            return;
+        }
+
         // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。
         // 対応プロバイダが無く、かつバイナリのファイルは Hex ダンプへフォールバックする（registry 外）。
         var visual = provider as IEditorSupportVisualProvider;
@@ -267,6 +282,252 @@ public partial class ShellWindow
 
         RenderPendingEditorSupportContent(view.CoreWebView2);
     }
+
+    /// <summary>
+    /// 専用プロバイダの無いコードファイルに対し、LSP のドキュメントシンボルから構造アウトラインを
+    /// EditorSupport ペインへ描く（フォールバック）。言語サーバー未接続／未対応なら案内 HTML を出す。
+    /// 描画は既存の pending 機構＋シーケンス畳み込み（<see cref="_editorSupportRenderSeq"/>）を再利用する。
+    /// </summary>
+    private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath)
+    {
+        // 直前までビジュアル系（CSV/Hex 等）を表示していたら退けて WebView2 表示へ戻す。
+        HideEditorSupportVisual();
+
+        // 描画要求のシーケンス番号。LSP 呼び出しや init の await を跨いで最後の要求だけが描くよう畳む。
+        var seq = ++_editorSupportRenderSeq;
+        var title = _codeSupport.DescribeTitle(filePath);
+        var lsp = GetLspManager(source);
+
+        // 接続済み・ドキュメント準備済みに加え、LSP の現在ドキュメントが対象ファイルと一致することも
+        // 条件に含める（別ファイルのアウトラインを誤って描かないため）。
+        var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
+
+        string html;
+        // 追従キャッシュは実描画の直前に確定する（await 後に seq 不一致・ビュー未準備で降りたときは
+        // 旧値を残し、次のキャレットイベントで再評価・再試行させる）。ここでは候補をローカルに控えるだけ。
+        IReadOnlyList<OutlineNode>? newRoots = null;
+        OutlineNode? newMember = null;
+
+        if (!ready)
+        {
+            html = _codeSupport.RenderNoticePage(filePath);
+        }
+        else
+        {
+            IReadOnlyList<DocumentSymbol> symbols;
+            try
+            {
+                symbols = await lsp!.RequestDocumentSymbolsAsync();
+            }
+            catch
+            {
+                // シンボル取得に失敗しても落とさない（空アウトライン＋空パネルで描く）。
+                symbols = Array.Empty<DocumentSymbol>();
+            }
+
+            // 取得の await を跨いで新しい要求が来ていれば、そちらが描くのでこのコールは降りる。
+            if (seq != _editorSupportRenderSeq)
+                return;
+
+            // Caret.Line/Column は 0 始まり（Editor 実測：ShellWindow.SelectionActions の line0 コメント）。
+            // LSP の DocumentSymbol も 0 始まりなので、current 判定はキャレット位置のまま。UI/ジャンプの
+            // data-line だけレンダラ側で +1 して 1 始まりにする。
+            var caret = source.Control.Caret;
+            var roots = CodeEditorSupport.ToOutline(symbols);
+            var member = LspOutlineRenderer.FindEnclosing(roots, caret.Line, caret.Column);
+
+            // ②（呼び出し元/先・使用箇所）は「キャレット直下トークン」ではなく特定した<b>メンバーの名前位置</b>で
+            // 問い合わせる（メンバー内でキャレットを動かしても結果がぶれない）。メンバー外なら LSP を叩かず空。
+            var panels = member is null
+                ? CallPanels.Empty
+                : await FetchCallPanelsAsync(lsp!, member.NameLine0, member.NameCol0);
+            if (seq != _editorSupportRenderSeq)
+                return;
+
+            newRoots = roots;
+            newMember = member;
+            html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
+        }
+
+        _editorSupportPendingHtml = html;
+        _editorSupportPendingBody = null;
+        _editorSupportPendingUri = null;
+        _editorSupportPendingMapFolder = null;
+        _editorSupportPendingPageKey = null;
+        EditorSupportTitle.Text = title;
+
+        var view = await EnsureEditorSupportViewAsync();
+        if (view?.CoreWebView2 is null)
+            return;
+
+        // init を待っている間に新しい描画要求が来ていれば、そちらが描くのでこのコールは降りる。
+        if (seq != _editorSupportRenderSeq)
+            return;
+
+        // 実描画の直前に追従キャッシュを確定する（未 ready のときは null＝キャッシュ破棄）。
+        _codeOutlineRoots = newRoots;
+        _codeOutlineSource = newRoots is null ? null : source;
+        _codeCurrentMember = newMember;
+
+        RenderPendingEditorSupportContent(view.CoreWebView2);
+    }
+
+    /// <summary>
+    /// LSP の現在ドキュメント（<see cref="IEditorLspManager.CurrentUri"/>・file:// URI）が対象
+    /// <paramref name="filePath"/> と同一ファイルを指しているか。file URI をローカルパス化して大小無視で比較する。
+    /// </summary>
+    private static bool LspMatchesFile(IEditorLspManager lsp, string filePath)
+    {
+        var current = CodeEditorSupport.TryUriToLocalPath(lsp.CurrentUri);
+        if (string.IsNullOrEmpty(current))
+            return false;
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(current), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false; // 無効なパス等は不一致扱い（案内ページへ）
+        }
+    }
+
+    /// <summary>
+    /// ②呼び出し解析を LSP から取得する。<c>PrepareCallHierarchyAsync</c> → 呼び出し元/先、
+    /// <c>RequestReferencesAsync</c> → 使用箇所。callHierarchy 非対応サーバーやシンボル外の位置でも
+    /// 例外を投げず、取れた分だけ（無ければ空で）返す。line/col は 0 始まりで渡す（LSP 基準）。
+    /// </summary>
+    private static async Task<CallPanels> FetchCallPanelsAsync(IEditorLspManager lsp, int line0, int col0)
+    {
+        var incoming = new System.Collections.Generic.List<CallReference>();
+        var outgoing = new System.Collections.Generic.List<CallReference>();
+        var references = new System.Collections.Generic.List<CallReference>();
+
+        try
+        {
+            var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
+            if (item is not null)
+            {
+                try
+                {
+                    foreach (var c in await lsp.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
+                        if (c?.From is { } f)
+                            incoming.Add(new CallReference(f.Name ?? "", f.Uri ?? "", f.SelectionRange?.Start?.Line ?? 0));
+                }
+                catch { /* incoming 非対応でも他は出す */ }
+
+                try
+                {
+                    foreach (var c in await lsp.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
+                        if (c?.To is { } t)
+                            outgoing.Add(new CallReference(t.Name ?? "", t.Uri ?? "", t.SelectionRange?.Start?.Line ?? 0));
+                }
+                catch { /* outgoing 非対応でも他は出す */ }
+            }
+        }
+        catch { /* callHierarchy 非対応サーバー：呼び出し元/先は空のまま */ }
+
+        try
+        {
+            foreach (var r in await lsp.RequestReferencesAsync(line0, col0) ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
+                if (r is not null)
+                    // 使用箇所はシンボル名を持たない（位置のみ）。行は Range.Start（SelectionRange は無い）。
+                    references.Add(new CallReference("", r.Uri ?? "", r.Range?.Start?.Line ?? 0));
+        }
+        catch { /* references 非対応：使用箇所は空のまま */ }
+
+        return new CallPanels(incoming, outgoing, references);
+    }
+
+    /// <summary>
+    /// キャレット追従（②の再取得）。<see cref="ScheduleCodeCallPanelsRefresh"/> のデバウンス満了で呼ばれる。
+    /// 直近に描いたアウトライン（<see cref="_codeOutlineRoots"/>）を使ってキャレットの包含メンバーを求め、
+    /// <b>前回とメンバーが変わった時だけ</b> ②を再取得して描き直す（同一メンバー内の移動では LSP を叩かない）。
+    /// アウトライン（＝ドキュメントシンボル）は取り直さない（構造は編集でしか変わらない）。
+    /// </summary>
+    private async Task RefreshCodeCallPanelsAsync()
+    {
+        var source = _editorSupportSourceTab;
+        if (source is null)
+            return;
+
+        // コードページを描いていない／別タブへ移った＝追従対象外。
+        var roots = _codeOutlineRoots;
+        if (roots is null || !ReferenceEquals(_codeOutlineSource, source))
+            return;
+
+        // ペインが見えていなければ描かない（通常更新と同じゲート）。
+        var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
+        if (!EditorSupportRenderPolicy.ShouldRender(
+                onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
+            return;
+
+        var caret = source.Control.Caret;
+        var member = LspOutlineRenderer.FindEnclosing(roots, caret.Line, caret.Column);
+
+        // 同一メンバー内（または「どのメンバー外」のまま）のキャレット移動では②を再取得しない。
+        // ※ _codeCurrentMember の更新は実描画の直前まで遅延する（await 後に降りたら旧値を残して再試行）。
+        if (ReferenceEquals(member, _codeCurrentMember))
+            return;
+
+        var filePath = source.Control.FilePath;
+        if (filePath is null)
+            return;
+        var lsp = GetLspManager(source);
+        if (lsp is null || !lsp.IsConnected || !lsp.IsDocumentReady || !LspMatchesFile(lsp, filePath))
+            return;
+
+        var seq = ++_editorSupportRenderSeq;
+        // ②はメンバーの名前位置で問い合わせる（メンバー外なら LSP を叩かず空パネル）。
+        var panels = member is null
+            ? CallPanels.Empty
+            : await FetchCallPanelsAsync(lsp, member.NameLine0, member.NameCol0);
+        if (seq != _editorSupportRenderSeq)
+            return;
+
+        // アウトラインはキャッシュを再利用（current だけ新しいキャレットで付け直す）。
+        var html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
+        _editorSupportPendingHtml = html;
+        _editorSupportPendingBody = null;
+        _editorSupportPendingUri = null;
+        _editorSupportPendingMapFolder = null;
+        _editorSupportPendingPageKey = null;
+
+        var view = await EnsureEditorSupportViewAsync();
+        if (view?.CoreWebView2 is null)
+            return;
+        if (seq != _editorSupportRenderSeq)
+            return;
+
+        // 差分基準は実描画の直前に確定する（await 後に降りたら旧値のまま次イベントで再試行される）。
+        _codeCurrentMember = member;
+        RenderPendingEditorSupportContent(view.CoreWebView2);
+    }
+
+    /// <summary>キャレット追従（②再取得）を 150ms デバウンスする。コードページ未描画のときは無視。</summary>
+    private void ScheduleCodeCallPanelsRefresh()
+    {
+        // コードページを描いていなければ追従不要（非コードファイル・案内表示中など）。
+        if (_codeOutlineRoots is null)
+            return;
+
+        if (_codeCaretTimer is null)
+        {
+            _codeCaretTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _codeCaretTimer.Tick += async (s, _) =>
+            {
+                ((DispatcherTimer)s!).Stop();
+                await RefreshCodeCallPanelsAsync();
+            };
+        }
+
+        _codeCaretTimer.Stop();
+        _codeCaretTimer.Start();
+    }
+
+    /// <summary>追従元エディタのキャレット移動：コード解析（②）をデバウンスして追従する。</summary>
+    private void EditorSupportSource_CaretMoved(object? sender, CaretInfo e)
+        => ScheduleCodeCallPanelsRefresh();
 
     /// <summary>
     /// Markdown プレビューでタスクリストのチェックボックスをクリックしたときの反映。

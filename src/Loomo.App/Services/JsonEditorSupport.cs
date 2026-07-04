@@ -459,6 +459,16 @@ internal static class JsonPreviewPage
                             window.chrome.webview.postMessage({ type: 'jumpToSource', line: line });
                         return;
                     }
+                    // 1b) コード呼び出し解析パネルの行：別ファイル（または同一ファイル）の該当行を開く
+                    const cr = e.target.closest('.call-row[data-path]');
+                    if (cr) {
+                        e.stopPropagation();
+                        const path = cr.getAttribute('data-path') || '';
+                        const line = Number(cr.getAttribute('data-line')) || 0;
+                        if (path && window.chrome?.webview)
+                            window.chrome.webview.postMessage({ type: 'openFileAt', path: path, line: line });
+                        return;
+                    }
                     // 1) パスコピー（行末アイコン）
                     const copy = e.target.closest('.copy');
                     if (copy) {
