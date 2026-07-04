@@ -203,6 +203,7 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, ParquetEditorSupport>(); // .parquet を HTML テーブルで表示（読み取り専用）
         services.AddSingleton<IEditorSupportProvider, BrowserEditorSupport>(); // PDF/SVG/HTML 等はブラウザ(WebView2)で表示
         services.AddSingleton<IEditorSupportProvider, MediaEditorSupport>();    // 音声/動画はブラウザ(WebView2)の内蔵プレーヤーで再生
+        services.AddSingleton<IEditorSupportProvider, FontEditorSupport>();     // .ttf/.otf/.woff/.woff2 を字形サンプルで表示（data URI 埋め込み）
         services.AddSingleton<EditorSupportRegistry>();
         // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。registry には載せず ShellWindow が直接使う。
         services.AddSingleton<HexEditorSupport>();
