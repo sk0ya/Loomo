@@ -190,6 +190,7 @@ public partial class App : Application
         services.AddSingleton<JsonSchemaValidator>();                          // JSON プレビューのスキーマ検証
         services.AddSingleton<IEditorSupportProvider, MarkdownEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, JsonEditorSupport>();     // JSON を折りたたみツリーで表示
+        services.AddSingleton<IEditorSupportProvider, NdjsonEditorSupport>();   // NDJSON/JSONL を 1行1レコードの折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, YamlEditorSupport>();     // YAML を JSON 化して折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, TomlEditorSupport>();     // TOML を JSON 化して折りたたみツリーで表示
         services.AddSingleton<IEditorSupportProvider, XmlEditorSupport>();      // XML/XAML を折りたたみツリーで表示
