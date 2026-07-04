@@ -190,6 +190,7 @@ public partial class App : Application
         services.AddSingleton<JsonSchemaValidator>();                          // JSON プレビューのスキーマ検証
         services.AddSingleton<IEditorSupportProvider, MarkdownEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, JsonEditorSupport>();     // JSON を折りたたみツリーで表示
+        services.AddSingleton<IEditorSupportProvider, MermaidEditorSupport>();  // .mmd/.mermaid を図としてプレビュー
         services.AddSingleton<IEditorSupportProvider, ImageEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();   // CSV/TSV を VGrid グリッドで表示
         services.AddSingleton<IEditorSupportProvider, ExcelEditorSupport>();   // .xlsx/.xlsm を HTML テーブルで表示（読み取り専用）
