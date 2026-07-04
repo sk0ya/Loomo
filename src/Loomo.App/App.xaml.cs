@@ -199,6 +199,8 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();   // CSV/TSV を VGrid グリッドで表示
         services.AddSingleton<IEditorSupportProvider, ExcelEditorSupport>();   // .xlsx/.xlsm を HTML テーブルで表示（読み取り専用）
         services.AddSingleton<IEditorSupportProvider, WordEditorSupport>();    // .docx を HTML へ変換して表示（読み取り専用）
+        services.AddSingleton<IEditorSupportProvider, SqliteEditorSupport>();  // .db/.sqlite/.sqlite3 を HTML テーブルで表示（読み取り専用）
+        services.AddSingleton<IEditorSupportProvider, ParquetEditorSupport>(); // .parquet を HTML テーブルで表示（読み取り専用）
         services.AddSingleton<IEditorSupportProvider, BrowserEditorSupport>(); // PDF/SVG/HTML 等はブラウザ(WebView2)で表示
         services.AddSingleton<EditorSupportRegistry>();
         // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。registry には載せず ShellWindow が直接使う。

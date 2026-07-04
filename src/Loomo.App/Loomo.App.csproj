@@ -29,6 +29,9 @@
                      このオブジェクトグラフ→JSON 変換には 0.17.0 系（最後の ToModel を持つ安定版）を使う。 -->
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
     <PackageReference Include="Tomlyn" Version="0.17.0" />
+    <!-- Parquet（.parquet）の読み取り専用プレビュー（先頭行を HTML テーブルへ、Services/DatabaseEditorSupport.cs）。
+         Parquet.Net: フルマネージドの Apache Parquet 実装（列指向）。net8/net10 ターゲットで net9 でも復元可。MIT。 -->
+    <PackageReference Include="Parquet.Net" Version="6.0.3" />
   </ItemGroup>
 
   <PropertyGroup>
