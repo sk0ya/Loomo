@@ -22,6 +22,13 @@
          Mammoth:   .docx を意味的な HTML へ変換（Services/WordEditorSupport.cs）。 -->
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Mammoth" Version="1.11.0" />
+    <!-- YAML/TOML の EditorSupport 表示（パース結果を JSON 化して JSON ツリーで表示、Services/DataFormatEditorSupport.cs）。
+         YamlDotNet: .yaml/.yml を読んで JSON 互換文字列へ（JsonCompatible シリアライザ）。MIT。
+         Tomlyn:     .toml を Toml.Parse(...).ToModel() で TomlTable にしてから JSON へ。BSD-2-Clause。
+                     2.x はモデル API（ToModel）を廃し STJ 風ソースジェネレータ方式へ全面刷新したため、
+                     このオブジェクトグラフ→JSON 変換には 0.17.0 系（最後の ToModel を持つ安定版）を使う。 -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <PackageReference Include="Tomlyn" Version="0.17.0" />
   </ItemGroup>
 
   <PropertyGroup>
