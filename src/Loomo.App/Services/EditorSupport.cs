@@ -261,3 +261,40 @@ public sealed class BrowserEditorSupport : IEditorSupportUriProvider
     public string ResolveNavigationUri(string filePath)
         => new Uri(Path.GetFullPath(filePath)).AbsoluteUri;
 }
+
+/// <summary>
+/// 音声・動画ファイルを、ペインの WebView2（Chromium）へファイルの <c>file://</c> URI で直接
+/// ナビゲートして表示する提供者。Chromium はメディアファイルへ直接ナビゲートすると再生コントロール
+/// 付きの内蔵メディアプレーヤーで開くので、専用ビューア無しでそのまま再生できる。対応するのは
+/// Chromium が標準コーデックで再生できる web フレンドリーな形式のみ（.mov/.mkv/.avi のように
+/// コーデック非対応が多いものは含めない）。<see cref="BrowserEditorSupport"/> と同じ file:// 直開き。
+/// </summary>
+public sealed class MediaEditorSupport : IEditorSupportUriProvider
+{
+    // Chromium/Edge WebView2 が標準コーデックで再生できる web フレンドリーな音声形式。
+    private static readonly string[] AudioExtensions =
+        [".mp3", ".wav", ".ogg", ".oga", ".m4a", ".flac", ".opus", ".aac"];
+
+    // 同・動画形式（.mov/.mkv/.avi はコーデック非対応が多いので含めない）。
+    private static readonly string[] VideoExtensions =
+        [".mp4", ".webm", ".m4v", ".ogv"];
+
+    private static readonly HashSet<string> AudioSet =
+        new(AudioExtensions, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] AllExtensions = [.. AudioExtensions, .. VideoExtensions];
+
+    public IReadOnlyCollection<string> SupportedExtensions => AllExtensions;
+
+    // ファイルの file:// URI を直接ナビゲートする。エディタ本文は使わない。
+    public bool UsesEditorText => false;
+
+    public string DescribeTitle(string filePath)
+    {
+        var kind = AudioSet.Contains(Path.GetExtension(filePath)) ? "Audio" : "Video";
+        return $"{kind}: {Path.GetFileName(filePath)}";
+    }
+
+    public string ResolveNavigationUri(string filePath)
+        => new Uri(Path.GetFullPath(filePath)).AbsoluteUri;
+}
