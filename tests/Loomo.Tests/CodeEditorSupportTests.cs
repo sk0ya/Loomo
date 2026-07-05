@@ -140,6 +140,60 @@ public class CodeEditorSupportTests
         Assert.DoesNotContain("op<T>", body);
     }
 
+    // ---- ★2 種別バッジ／名前クリック（nav）----
+
+    [Fact]
+    public void RenderBody_種別ごとの色付きバッジとツールチップを出す()
+    {
+        var roots = new[]
+        {
+            Node("Foo", SymbolKind.Class, 0, 10,
+                Leaf("Bar", SymbolKind.Method, 2, 5),
+                Leaf("Baz", SymbolKind.Property, 6, 6)),
+        };
+
+        var body = LspOutlineRenderer.RenderBody(roots, caret: null);
+
+        Assert.Contains("class=\"sym s-type\" title=\"class\"", body);      // class バッジ
+        Assert.Contains("class=\"sym s-method\" title=\"method\"", body);   // method バッジ
+        Assert.Contains("class=\"sym s-prop\" title=\"property\"", body);    // property バッジ
+    }
+
+    [Fact]
+    public void RenderBody_名前はクリックでジャンプできるようnavクラスを持つ()
+    {
+        var roots = new[] { Leaf("Bar", SymbolKind.Method, 2, 5) };
+
+        var body = LspOutlineRenderer.RenderBody(roots, caret: null);
+
+        Assert.Contains("<span class=\"k nav\">Bar</span>", body);
+    }
+
+    [Fact]
+    public void RenderBody_Detailがあれば名前の後ろにsigとして出す()
+    {
+        var roots = new[]
+        {
+            new OutlineNode("Bar", SymbolKind.Method, 2, 5, 2, 0,
+                System.Array.Empty<OutlineNode>(), Detail: "(int x): Task<int>"),
+        };
+
+        var body = LspOutlineRenderer.RenderBody(roots, caret: null);
+
+        Assert.Contains("class=\"sig\"", body);
+        Assert.Contains("(int x): Task&lt;int&gt;", body);   // HTML エスケープ込み
+    }
+
+    [Fact]
+    public void RenderBody_Detailが空ならsigを出さない()
+    {
+        var roots = new[] { Leaf("Bar", SymbolKind.Method, 2, 5) };
+
+        var body = LspOutlineRenderer.RenderBody(roots, caret: null);
+
+        Assert.DoesNotContain("class=\"sig\"", body);
+    }
+
     // ---- FindEnclosing（包含判定）----
 
     [Fact]
@@ -311,6 +365,63 @@ public class CodeEditorSupportTests
         Assert.Equal(20, node.EndLine0);    // Range.End.Line
         Assert.Equal(11, node.NameLine0);   // SelectionRange.Start.Line（シンボル名の行）
         Assert.Equal(8, node.NameCol0);     // SelectionRange.Start.Character（シンボル名の列）
+        Assert.Equal("", node.Detail);      // 本文未指定なら Detail は空
+    }
+
+    [Fact]
+    public void ToOutline_本文の宣言行からシグネチャをDetailに入れる()
+    {
+        // 宣言行（0 始まり 1 行目）で "Foo" は 12 列目から始まる。
+        var lines = new[] { "// header", "public Task Foo(int x, string s)" };
+        var sym = new DocumentSymbol(
+            "Foo", SymbolKind.Method,
+            new LspRange(new LspPosition(1, 0), new LspPosition(3, 1)),
+            new LspRange(new LspPosition(1, 12), new LspPosition(1, 15)),  // "Foo" の位置
+            System.Array.Empty<DocumentSymbol>());
+
+        var node = Assert.Single(CodeEditorSupport.ToOutline(new[] { sym }, lines));
+
+        Assert.Equal("(int x, string s)", node.Detail);   // 名前の直後〜本体手前
+    }
+
+    // ---- ★1 シグネチャ抽出（SignatureExtractor）----
+
+    [Theory]
+    [InlineData("public Task Foo(int x)", 12, "Foo", "(int x)")]                 // メソッド引数
+    [InlineData("    void Bar() {", 9, "Bar", "")]                                // 引数なし＋本体 → 空
+    [InlineData("def greet(name: str) -> str:", 4, "greet", "(name: str) -> str")] // Python 後置戻り型（":"末尾は残す）
+    [InlineData("private readonly int _count;", 21, "_count", "")]                // フィールド（記号のみ）→ 空
+    [InlineData("int Sum => a + b;", 4, "Sum", "")]                               // 式本体 "=>" で切る → 空
+    public void SignatureExtractor_宣言行から名前の直後を切り出す(
+        string line, int nameCol0, string name, string expected)
+    {
+        Assert.Equal(expected, SignatureExtractor.Extract(new[] { line }, 0, nameCol0, name));
+    }
+
+    [Fact]
+    public void SignatureExtractor_列がズレていても行内検索でフォールバック()
+    {
+        // SelectionRange の列が名前と一致しない場合でも、行内から名前を探して直後を取る。
+        Assert.Equal("(x)", SignatureExtractor.Extract(new[] { "fn foo(x)" }, 0, 99, "foo"));
+    }
+
+    [Fact]
+    public void SignatureExtractor_本文なし_行外_空名は空を返す()
+    {
+        Assert.Equal("", SignatureExtractor.Extract(null, 0, 0, "Foo"));
+        Assert.Equal("", SignatureExtractor.Extract(new[] { "x" }, 5, 0, "Foo"));   // 行 index 範囲外
+        Assert.Equal("", SignatureExtractor.Extract(new[] { "" }, 0, 0, ""));
+    }
+
+    [Fact]
+    public void SignatureExtractor_長すぎるシグネチャは丸める()
+    {
+        var longArgs = "(" + string.Join(", ", Enumerable.Range(0, 40).Select(i => "int a" + i)) + ")";
+        var line = "void M" + longArgs;
+        var sig = SignatureExtractor.Extract(new[] { line }, 0, 5, "M");
+
+        Assert.True(sig.Length <= SignatureExtractor.MaxLength + 1); // +1 は「…」
+        Assert.EndsWith("…", sig);
     }
 
     // ---- 呼び出し/参照の件数上限（タスク3）----
@@ -341,6 +452,41 @@ public class CodeEditorSupportTests
 
         Assert.DoesNotContain("class=\"call-more\"", html);  // 切り詰め行は出ない（CSS 定義文字列は無視）
         Assert.Equal(CallPanelRenderer.MaxRows, Regex.Matches(html, "class=\"call-row\"").Count);
+    }
+
+    // ---- ★3 ②パネルの対象シンボル見出し ----
+
+    [Fact]
+    public void RenderPanels_Target指定で対象シンボルの見出しを出す()
+    {
+        var panels = new CallPanels(
+            System.Array.Empty<CallReference>(), System.Array.Empty<CallReference>(),
+            System.Array.Empty<CallReference>(), Target: "Foo");
+
+        var html = CallPanelRenderer.RenderPanels(panels);
+
+        Assert.Contains("class=\"call-title\"", html);
+        Assert.Contains("<span class=\"k\">Foo</span> の呼び出し関係", html);
+    }
+
+    [Fact]
+    public void RenderPanels_Target未指定なら見出しを出さない()
+    {
+        var html = CallPanelRenderer.RenderPanels(CallPanels.Empty);
+
+        Assert.DoesNotContain("class=\"call-title\"", html);
+    }
+
+    [Fact]
+    public void RenderPanels_Targetをエスケープする()
+    {
+        var panels = new CallPanels(
+            System.Array.Empty<CallReference>(), System.Array.Empty<CallReference>(),
+            System.Array.Empty<CallReference>(), Target: "op<T>");
+
+        var html = CallPanelRenderer.RenderPanels(panels);
+
+        Assert.Contains("op&lt;T&gt;", html);
     }
 
     [Fact]

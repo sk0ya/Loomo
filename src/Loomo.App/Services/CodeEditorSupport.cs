@@ -66,8 +66,16 @@ public sealed class CodeEditorSupport
     /// LSP の <see cref="DocumentSymbol"/>（0 始まり line/character）を、コントロール／LSP のシール型に
     /// 依存しない内部モデル <see cref="OutlineNode"/> へ写す。<c>Range.Start.Line</c>＝Line0、
     /// <c>Range.End.Line</c>＝EndLine0、<c>SelectionRange.Start.Line</c>＝NameLine0。
+    /// <para>
+    /// このパッケージの <see cref="DocumentSymbol"/> は LSP の <c>detail</c>（シグネチャ）を保持しない
+    /// （Name/Kind/Range/SelectionRange/Children のみ）ため、シグネチャ（引数・戻り型など）は
+    /// <paramref name="sourceLines"/>（エディタ本文を行分割したもの）の<b>宣言行</b>から
+    /// <see cref="SignatureExtractor.Extract"/> で取り出して <see cref="OutlineNode.Detail"/> へ入れる。
+    /// 本文が無ければ Detail は空（従来どおり名前だけ）。
+    /// </para>
     /// </summary>
-    internal static IReadOnlyList<OutlineNode> ToOutline(IReadOnlyList<DocumentSymbol>? symbols)
+    internal static IReadOnlyList<OutlineNode> ToOutline(
+        IReadOnlyList<DocumentSymbol>? symbols, IReadOnlyList<string>? sourceLines = null)
     {
         if (symbols is null || symbols.Count == 0)
             return Array.Empty<OutlineNode>();
@@ -79,7 +87,10 @@ public sealed class CodeEditorSupport
             var endLine0 = s.Range?.End?.Line ?? line0;
             var nameLine0 = s.SelectionRange?.Start?.Line ?? line0;
             var nameCol0 = s.SelectionRange?.Start?.Character ?? 0;
-            list.Add(new OutlineNode(s.Name ?? "", s.Kind, line0, endLine0, nameLine0, nameCol0, ToOutline(s.Children)));
+            var name = s.Name ?? "";
+            var detail = SignatureExtractor.Extract(sourceLines, nameLine0, nameCol0, name);
+            list.Add(new OutlineNode(
+                name, s.Kind, line0, endLine0, nameLine0, nameCol0, ToOutline(s.Children, sourceLines), detail));
         }
         return list;
     }
@@ -122,10 +133,15 @@ internal sealed record CallReference(string Symbol, string Uri, int Line0);
 /// <param name="Incoming">呼び出し元（このメンバーを呼ぶ側）。</param>
 /// <param name="Outgoing">呼び出し先（このメンバーが呼ぶ側）。</param>
 /// <param name="References">使用箇所（参照）。</param>
+/// <param name="Target">
+/// 解析対象のシンボル名（callHierarchy が解決した名前）。パネル見出しに「◯◯ の呼び出し関係」と出して、
+/// キャレット直下のどのメンバーの結果かを明示する。解決できなければ null（見出しは出さない）。
+/// </param>
 internal sealed record CallPanels(
     IReadOnlyList<CallReference> Incoming,
     IReadOnlyList<CallReference> Outgoing,
-    IReadOnlyList<CallReference> References)
+    IReadOnlyList<CallReference> References,
+    string? Target = null)
 {
     public static CallPanels Empty { get; } = new(
         Array.Empty<CallReference>(), Array.Empty<CallReference>(), Array.Empty<CallReference>());
@@ -153,6 +169,11 @@ internal static class CallPanelRenderer
     {
         var sb = new StringBuilder();
         sb.Append("<div class=\"call-panels\">");
+        // 見出し：どのシンボルの呼び出し関係か（キャレット直下）を明示。解決できたときだけ。
+        if (!string.IsNullOrEmpty(panels.Target))
+            sb.Append("<div class=\"call-title\"><span class=\"k\">")
+              .Append(MarkdownRenderer.Encode(panels.Target!))
+              .Append("</span> の呼び出し関係</div>");
         AppendSection(sb, "呼び出し元", panels.Incoming);
         AppendSection(sb, "呼び出し先", panels.Outgoing);
         AppendSection(sb, "使用箇所", panels.References);
@@ -163,9 +184,10 @@ internal static class CallPanelRenderer
     private static string Style()
         // 共有 CSS（JsonPreviewPage）に無いクラスだけ補う。色は .k/.meta（テーマ済み）を流用。
         => "<style>"
-           + ".call-panels{margin-top:14px;padding-top:8px;white-space:normal;"
+           + ".call-panels{margin-top:12px;padding-top:8px;white-space:normal;"
            + "border-top:1px solid color-mix(in srgb,currentColor 22%,transparent);}"
-           + ".call-section{margin-bottom:10px;}"
+           + ".call-title{font-weight:600;margin-bottom:8px;opacity:.95;}"
+           + ".call-section{margin-bottom:8px;}"
            + ".call-head{font-weight:600;opacity:.85;margin-bottom:2px;}"
            + ".call-row{cursor:pointer;padding:1px 4px;border-radius:3px;}"
            + ".call-row[data-path]:hover{background:color-mix(in srgb,currentColor 12%,transparent);}"
@@ -226,6 +248,11 @@ internal static class CallPanelRenderer
 /// <param name="NameLine0">名前の行（0 始まり／<c>SelectionRange.Start.Line</c>）。シンボル名の位置。</param>
 /// <param name="NameCol0">名前の列（0 始まり／<c>SelectionRange.Start.Character</c>）。シンボル名の位置。</param>
 /// <param name="Children">子シンボル。</param>
+/// <param name="Detail">
+/// シグネチャ等の補足（引数・戻り型など）。このパッケージの <see cref="DocumentSymbol"/> は LSP の
+/// <c>detail</c> を保持しないため、<see cref="SignatureExtractor.Extract"/> がソースの宣言行から切り出す。
+/// 取れなければ空文字（従来どおり名前だけ表示）。
+/// </param>
 internal sealed record OutlineNode(
     string Name,
     SymbolKind Kind,
@@ -233,7 +260,98 @@ internal sealed record OutlineNode(
     int EndLine0,
     int NameLine0,
     int NameCol0,
-    IReadOnlyList<OutlineNode> Children);
+    IReadOnlyList<OutlineNode> Children,
+    string Detail = "");
+
+/// <summary>
+/// LSP の <c>detail</c> が使えない（このパッケージの <see cref="DocumentSymbol"/> は保持しない）ため、
+/// エディタ本文の<b>宣言行</b>からメンバーのシグネチャ（引数・戻り型など）を切り出す純ロジック。
+/// <see cref="OutlineNode.NameCol0"/>（名前の開始列）を使い、宣言行の<b>名前の直後</b>から本体の開始
+/// （<c>{</c>）手前までを取る。C# のように戻り型が名前の前にある言語では戻り型は落ちるが、引数列と
+/// （TS/Go/Rust/Python 等の後置戻り型）は拾える。言語非依存で軽い（1 行の文字列処理のみ）。
+/// </summary>
+internal static class SignatureExtractor
+{
+    /// <summary>切り出したシグネチャの最大長（超過は「…」で丸める。アウトラインを1行に収める）。</summary>
+    internal const int MaxLength = 80;
+
+    /// <summary>
+    /// <paramref name="sourceLines"/>（0 始まり行配列）の <paramref name="nameLine0"/> 行から、名前
+    /// <paramref name="name"/>（<paramref name="nameCol0"/> 列開始）の直後〜本体開始手前をシグネチャとして返す。
+    /// 本文が無い／行外／中身が実質空（<c>;</c> や <c>{</c> のみ）なら空文字。
+    /// </summary>
+    public static string Extract(
+        IReadOnlyList<string>? sourceLines, int nameLine0, int nameCol0, string name)
+    {
+        if (sourceLines is null || nameLine0 < 0 || nameLine0 >= sourceLines.Count)
+            return "";
+        var line = sourceLines[nameLine0];
+        if (string.IsNullOrEmpty(line))
+            return "";
+
+        // 名前の直後の位置を決める。SelectionRange の列が信用できる（その位置に名前がある）ならそれを使い、
+        // ズレていれば行内を検索してフォールバックする（サーバー差の保険）。
+        var start = -1;
+        if (nameCol0 >= 0 && nameCol0 + name.Length <= line.Length
+            && !string.IsNullOrEmpty(name)
+            && string.CompareOrdinal(line, nameCol0, name, 0, name.Length) == 0)
+        {
+            start = nameCol0 + name.Length;
+        }
+        else if (!string.IsNullOrEmpty(name))
+        {
+            var idx = line.IndexOf(name, StringComparison.Ordinal);
+            if (idx >= 0)
+                start = idx + name.Length;
+        }
+        if (start < 0 || start > line.Length)
+            return "";
+
+        var tail = line[start..];
+
+        // 本体（ブロック / 式本体 / 行コメント）は落とす。宣言部だけ残す。
+        tail = CutAt(tail, "{");
+        tail = CutAt(tail, "=>");
+        tail = CutAt(tail, "//");
+        // 代入（フィールド初期化子など）は落とすが、引数リスト "(...)" 内の "=" は既定値なので切らない。
+        if (!tail.Contains('('))
+            tail = CutAt(tail, " =");
+
+        // 空白を畳んで両端と装飾記号（宣言末尾の ; , : ）を落とす。
+        tail = CollapseWhitespace(tail).Trim().TrimEnd(';', ',', ':', ' ');
+
+        // 引数も戻り型注釈も無いただの記号だけなら情報ゼロ＝出さない。
+        if (tail.Length == 0 || tail == "()")
+            return "";
+
+        if (tail.Length > MaxLength)
+            tail = tail[..MaxLength].TrimEnd() + "…";
+        return tail;
+    }
+
+    private static string CutAt(string s, string marker)
+    {
+        var i = s.IndexOf(marker, StringComparison.Ordinal);
+        return i >= 0 ? s[..i] : s;
+    }
+
+    private static string CollapseWhitespace(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        var prevWs = false;
+        foreach (var ch in s)
+        {
+            var ws = ch is ' ' or '\t' or '\r' or '\n';
+            if (ws)
+            {
+                if (!prevWs) sb.Append(' ');
+            }
+            else sb.Append(ch);
+            prevWs = ws;
+        }
+        return sb.ToString();
+    }
+}
 
 /// <summary>
 /// <see cref="OutlineNode"/> ツリーを、JSON/XML プレビューと同じ折りたたみ HTML（<c>#json-root</c> の中身）へ
@@ -256,11 +374,7 @@ internal static class LspOutlineRenderer
         var current = caret is { } c ? FindEnclosing(roots, c.line0, c.col0) : null;
 
         var sb = new StringBuilder();
-        // 共有 CSS（JsonPreviewPage）には .current / .lead が無いので、ここで最小限だけ補う。
-        sb.Append("<style>")
-          .Append(".current{background:color-mix(in srgb,currentColor 12%,transparent);border-radius:3px;}")
-          .Append(".lead{display:inline-block;width:1em;}")
-          .Append("</style>");
+        sb.Append(OutlineStyle);
 
         foreach (var node in roots)
             WriteNode(sb, node, current);
@@ -268,23 +382,62 @@ internal static class LspOutlineRenderer
         return sb.ToString();
     }
 
+    /// <summary>
+    /// コードページ専用の補助 CSS（この <c>&lt;style&gt;</c> はコードページにしか出ないので、共有 CSS を
+    /// 上書きして<b>高密度化</b>してよい）。種別バッジ（<c>.sym</c>＋色分け）・シグネチャ（<c>.sig</c>）・
+    /// クリック可能な名前（<c>.nav</c>）・現在メンバー（<c>.current</c>）・インデント/行間の詰めを補う。
+    /// </summary>
+    private const string OutlineStyle =
+        "<style>"
+        // 詰める：行間・子インデント・ジャンプアイコン余白（共有 CSS を上書き）。
+        + "#json-root{line-height:1.34;}"
+        + ".children{padding-left:0.95em;margin-left:0.2em;}"
+        + ".line,.opening{white-space:pre;}"
+        + ".goto{margin-left:6px;}"
+        + ".lead{display:inline-block;width:1em;}"
+        + ".caret{width:0.9em;}"
+        // 現在メンバー：左に色バー＋淡い背景で明示。
+        + ".current{background:color-mix(in srgb,currentColor 10%,transparent);border-radius:3px;"
+        + "box-shadow:inset 2px 0 0 color-mix(in srgb,currentColor 55%,transparent);}"
+        // 種別バッジ：等幅の1文字アイコン。色は種別ごと（下の s-* クラス）。
+        + ".sym{display:inline-block;min-width:1.15em;text-align:center;font-weight:700;"
+        + "font-size:0.78em;margin-right:0.28em;opacity:0.95;user-select:none;}"
+        + ".s-ns{color:#9AA4B2;}.s-type{color:#4EC9B0;}.s-iface{color:#4FC1FF;}"
+        + ".s-enum{color:#E5C07B;}.s-method{color:#C586C0;}.s-prop{color:#9CDCFE;}"
+        + ".s-field{color:#79C0FF;}.s-func{color:#C586C0;}.s-event{color:#E5C07B;}"
+        + ".s-const{color:#56D4C6;}.s-var{color:#9CDCFE;}.s-def{color:#9AA4B2;}"
+        // シグネチャ：淡色で名前の後ろに添える。
+        + ".sig{opacity:0.5;margin-left:0.4em;font-size:0.9em;}"
+        // 名前はクリックでソースへジャンプ（キャレット追従で②も更新）。
+        + ".nav{cursor:pointer;}"
+        + ".line:hover>.k.nav,.opening:hover>.k.nav{text-decoration:underline;}"
+        + "</style>";
+
     private static void WriteNode(StringBuilder sb, OutlineNode node, OutlineNode? current)
     {
         var isCurrent = ReferenceEquals(node, current);
         var dataLine = node.Line0 + 1; // 0 始まり(LSP) → 1 始まり(UI/ジャンプ)
         var name = MarkdownRenderer.Encode(node.Name);
-        var kind = KindLabel(node.Kind);
+        var (glyph, cls, title) = KindBadge(node.Kind);
+
+        void AppendBadgeAndName()
+        {
+            sb.Append("<span class=\"sym ").Append(cls).Append("\" title=\"").Append(title).Append("\">")
+              .Append(glyph).Append("</span>")
+              .Append("<span class=\"k nav\">").Append(name).Append("</span>");
+            if (node.Detail.Length > 0)
+                sb.Append("<span class=\"sig\">").Append(MarkdownRenderer.Encode(node.Detail)).Append("</span>");
+            sb.Append("<span class=\"goto\" title=\"エディタで開く\">↦</span>");
+        }
 
         if (node.Children.Count > 0)
         {
             sb.Append("<div class=\"node\"><div class=\"line opening")
               .Append(isCurrent ? " current" : "")
               .Append("\" data-line=\"").Append(dataLine).Append("\">")
-              .Append("<span class=\"caret\"></span>")
-              .Append("<span class=\"meta\">").Append(kind).Append("</span> ")
-              .Append("<span class=\"k\">").Append(name).Append("</span>")
-              .Append("<span class=\"goto\" title=\"エディタで開く\">↦</span>")
-              .Append("</div><div class=\"children\">");
+              .Append("<span class=\"caret\"></span>");
+            AppendBadgeAndName();
+            sb.Append("</div><div class=\"children\">");
 
             foreach (var child in node.Children)
                 WriteNode(sb, child, current);
@@ -296,11 +449,9 @@ internal static class LspOutlineRenderer
             sb.Append("<div class=\"line")
               .Append(isCurrent ? " current" : "")
               .Append("\" data-line=\"").Append(dataLine).Append("\">")
-              .Append("<span class=\"lead\"></span>")
-              .Append("<span class=\"meta\">").Append(kind).Append("</span> ")
-              .Append("<span class=\"k\">").Append(name).Append("</span>")
-              .Append("<span class=\"goto\" title=\"エディタで開く\">↦</span>")
-              .Append("</div>");
+              .Append("<span class=\"lead\"></span>");
+            AppendBadgeAndName();
+            sb.Append("</div>");
         }
     }
 
@@ -324,26 +475,29 @@ internal static class LspOutlineRenderer
         return null;
     }
 
-    /// <summary>シンボル種別の短い表示ラベル（メタ表示用）。未知種別は enum 名の小文字にフォールバック。</summary>
-    private static string KindLabel(SymbolKind kind) => kind switch
+    /// <summary>
+    /// シンボル種別 → 表示バッジ（1 文字グリフ・色クラス <c>s-*</c>・ツールチップ）。文字ラベルを
+    /// やめて等幅の色付きアイコンにし、走査性を上げつつ横幅を詰める（<c>title</c> に正式名を出す）。
+    /// </summary>
+    private static (string Glyph, string Cls, string Title) KindBadge(SymbolKind kind) => kind switch
     {
-        SymbolKind.Class => "class",
-        SymbolKind.Interface => "interface",
-        SymbolKind.Struct => "struct",
-        SymbolKind.Enum => "enum",
-        SymbolKind.EnumMember => "enum member",
-        SymbolKind.Method => "method",
-        SymbolKind.Constructor => "ctor",
-        SymbolKind.Property => "prop",
-        SymbolKind.Field => "field",
-        SymbolKind.Function => "func",
-        SymbolKind.Namespace => "namespace",
-        SymbolKind.Module => "module",
-        SymbolKind.Package => "package",
-        SymbolKind.Event => "event",
-        SymbolKind.Constant => "const",
-        SymbolKind.Variable => "var",
-        _ => kind.ToString().ToLowerInvariant(),
+        SymbolKind.Namespace => ("N", "s-ns", "namespace"),
+        SymbolKind.Module => ("N", "s-ns", "module"),
+        SymbolKind.Package => ("N", "s-ns", "package"),
+        SymbolKind.Class => ("C", "s-type", "class"),
+        SymbolKind.Struct => ("S", "s-type", "struct"),
+        SymbolKind.Interface => ("I", "s-iface", "interface"),
+        SymbolKind.Enum => ("E", "s-enum", "enum"),
+        SymbolKind.EnumMember => ("e", "s-enum", "enum member"),
+        SymbolKind.Method => ("M", "s-method", "method"),
+        SymbolKind.Constructor => ("c", "s-method", "constructor"),
+        SymbolKind.Function => ("ƒ", "s-func", "function"),
+        SymbolKind.Property => ("P", "s-prop", "property"),
+        SymbolKind.Field => ("F", "s-field", "field"),
+        SymbolKind.Event => ("⚡", "s-event", "event"),
+        SymbolKind.Constant => ("K", "s-const", "constant"),
+        SymbolKind.Variable => ("V", "s-var", "variable"),
+        _ => ("•", "s-def", kind.ToString().ToLowerInvariant()),
     };
 }
 

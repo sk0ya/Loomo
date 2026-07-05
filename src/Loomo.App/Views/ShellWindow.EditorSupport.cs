@@ -347,7 +347,10 @@ public partial class ShellWindow
             // LSP の DocumentSymbol も 0 始まりなので、current 判定はキャレット位置のまま。UI/ジャンプの
             // data-line だけレンダラ側で +1 して 1 始まりにする。
             var caret = source.Control.Caret;
-            var roots = CodeEditorSupport.ToOutline(symbols);
+            // シグネチャ（②の Detail）は本文の宣言行から切り出すので、ここで一度だけ行分割して渡す
+            // （エディタは UI スレッド専有。以降の LSP await を跨がないよう先に取る）。
+            var sourceLines = SplitLines(source.Control.Text);
+            var roots = CodeEditorSupport.ToOutline(symbols, sourceLines);
 
             // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。
             // 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。
@@ -422,6 +425,7 @@ public partial class ShellWindow
         var references = new System.Collections.Generic.List<CallReference>();
         LspRange? symbolRange = null;
 
+        string? target = null;
         try
         {
             var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
@@ -429,6 +433,7 @@ public partial class ShellWindow
             {
                 // 解決したシンボルの名前範囲＝キャレット追従の差分基準（この範囲内の移動では再取得しない）。
                 symbolRange = item.SelectionRange;
+                target = item.Name; // パネル見出し用（②がどのシンボルの結果か明示）
 
                 try
                 {
@@ -458,8 +463,14 @@ public partial class ShellWindow
         }
         catch { /* references 非対応：使用箇所は空のまま */ }
 
-        return (new CallPanels(incoming, outgoing, references), symbolRange);
+        return (new CallPanels(incoming, outgoing, references, target), symbolRange);
     }
+
+    /// <summary>本文をシグネチャ抽出用に行分割する（改行種別を吸収。0 始まり index が LSP の line と一致）。</summary>
+    private static IReadOnlyList<string> SplitLines(string? text)
+        => string.IsNullOrEmpty(text)
+            ? Array.Empty<string>()
+            : text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
     /// <summary>
     /// キャレット（0 始まり line/col）が LSP 範囲 <paramref name="range"/>（0 始まり・両端含む）の内側か。
