@@ -242,6 +242,7 @@ public partial class ShellWindow : Window
         HexEditorSupport hexSupport,
         CodeEditorSupport codeSupport,
         sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement,
+        sk0ya.Loomo.Services.GitService git,
         KeybindingService keybindings)
     {
         StartupProfiler.Mark("ShellWindow ctor 開始");
@@ -264,6 +265,7 @@ public partial class ShellWindow : Window
         _hexSupport = hexSupport;
         _codeSupport = codeSupport;
         _lspManagement = lspManagement;
+        _git = git;
         _keybindings = keybindings;
         _keyboard = BuildKeyboardDispatcher();
         _terminalTabs = _scratchTerminalWorkspace.Tabs;

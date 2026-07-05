@@ -3,6 +3,11 @@ using System.Collections.Generic;
 
 namespace sk0ya.Loomo.Services;
 
+/// <summary>変更系 git コマンド実行の通知（<see cref="GitService.OperationExecuted"/> の引数）。
+/// <paramref name="Command"/> は git のサブコマンド行（例: "commit -m ..."、"push"、"switch -c foo"）、
+/// <paramref name="Success"/> は終了コードが 0 か。軌跡（操作ログ）がこれを操作種別・表示ラベルへ変換する。</summary>
+public sealed record GitOperationEventArgs(string Command, bool Success);
+
 /// <summary>git コマンド1回の実行結果。</summary>
 public sealed record GitCommandResult(int ExitCode, string Output, string Error)
 {

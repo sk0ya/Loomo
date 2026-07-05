@@ -164,7 +164,9 @@ public class TrailViewModelTests : IDisposable
         TrailEntryKind.Terminal,
         TrailEntryKind.Layout,
         TrailEntryKind.Preview,
-        TrailEntryKind.Session
+        TrailEntryKind.Session,
+        TrailEntryKind.Edit,
+        TrailEntryKind.Git
     };
 
     [Theory]
@@ -349,6 +351,58 @@ public class TrailViewModelTests : IDisposable
         sut.RecordSession("session-2", "");
         Assert.Equal(2, sut.Entries.Count);
         Assert.Equal("セッション", sut.Entries[1].Label);
+    }
+
+    [Fact]
+    public void RecordEdit_stacks_per_line_dedupes_same_line_and_is_distinct_from_file()
+    {
+        var sut = CreateSut();
+
+        // エディタで開いた地点（File）と編集した地点（Edit）は別物として残る。
+        sut.RecordFile(@"C:\work\a.cs", 3, 1);
+        sut.RecordEdit(@"C:\work\a.cs", 10, 2);
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(TrailEntryKind.Edit, sut.Entries[1].Kind);
+        Assert.Equal(@"C:\work\a.cs", sut.Entries[1].Target);
+        Assert.Equal("a.cs", sut.Entries[1].Label);
+        Assert.Equal(10, sut.Entries[1].Line);
+        Assert.Contains(@"C:\work\a.cs:11", sut.Entries[1].Tooltip);   // 表示は1始まり
+
+        // 同じ行を編集し続ける間は増やさない（大文字小文字も同一視・列違いは無視）。
+        sut.RecordEdit(@"C:\work\A.CS", 10, 8);
+        Assert.Equal(2, sut.Entries.Count);
+
+        // 同じファイルでも別の行を編集したら新しい点を積む（要件）。
+        sut.RecordEdit(@"C:\work\a.cs", 25, 0);
+        Assert.Equal(3, sut.Entries.Count);
+        Assert.Equal(25, sut.Entries[2].Line);
+
+        // 別ファイルの編集も別の地点。
+        sut.RecordEdit(@"C:\work\b.cs", 1, 0);
+        Assert.Equal(4, sut.Entries.Count);
+        Assert.Contains("軌跡、編集、b.cs、2行", sut.Entries[3].AccessibleName);
+    }
+
+    [Fact]
+    public void RecordGit_logs_operation_with_key_target_and_dedupes_consecutive_same_key()
+    {
+        var sut = CreateSut();
+
+        sut.RecordGit("commit", "コミット");
+        var entry = Assert.Single(sut.Entries);
+        Assert.Equal(TrailEntryKind.Git, entry.Kind);
+        Assert.Equal("commit", entry.Target);
+        Assert.Equal("コミット", entry.Label);
+        Assert.Null(entry.PaneLayout);   // ログ専用：復元しないので配置は載せない
+
+        // 連続する同種操作（多段の破棄＝clean+restore を1点にまとめる等）はデデュープで畳む。
+        sut.RecordGit("commit", "コミット（amend）");
+        Assert.Equal("コミット（amend）", Assert.Single(sut.Entries).Label);
+
+        // 別種の操作は別の地点。
+        sut.RecordGit("push", "プッシュ");
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Contains("軌跡、Git、プッシュ", sut.Entries[1].AccessibleName);
     }
 
     [Fact]

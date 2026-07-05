@@ -49,6 +49,14 @@ public sealed class GitService
     public event EventHandler? RepositoryChanged;
 
     /// <summary>
+    /// 変更系 git コマンド（コミット・ステージ・プッシュ・ブランチ切替など、<see cref="MutateAsync"/>
+    /// 経由の実行）が走ったときに発火する。照会系（status/log/diff）では発火しない。軌跡（操作ログ）が
+    /// これを購読して Git 操作を記録する。成功・失敗どちらでも発火する（<see cref="GitOperationEventArgs.Success"/>
+    /// で判別）。UI スレッドとは限らないので購読側でディスパッチすること。
+    /// </summary>
+    public event EventHandler<GitOperationEventArgs>? OperationExecuted;
+
+    /// <summary>
     /// ライブ監視を開始する（戻り値を Dispose すると解除）。git ビュー（サイドバー Git パネル・
     /// Git/Diff ペイン）が画面に出ている間だけ呼び、その間 <see cref="PollIntervalMs"/> ごとに
     /// 作業ツリーの状態を軽くチェックして、変化したときだけ <see cref="RepositoryChanged"/> を発火する。
@@ -1036,13 +1044,17 @@ public sealed class GitService
 
     private async Task<GitCommandResult> MutateAsync(params string[] args)
     {
+        GitCommandResult? result = null;
         try
         {
-            return await RunAsync(args).ConfigureAwait(false);
+            result = await RunAsync(args).ConfigureAwait(false);
+            return result;
         }
         finally
         {
             RepositoryChanged?.Invoke(this, EventArgs.Empty);
+            OperationExecuted?.Invoke(this,
+                new GitOperationEventArgs(string.Join(' ', args), result?.Success ?? false));
         }
     }
 

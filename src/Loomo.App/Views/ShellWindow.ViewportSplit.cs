@@ -316,6 +316,7 @@ public partial class ShellWindow
         control.BufferChanged += (_, _) =>
         {
             UpdateEditorTab(tab);
+            RecordTrailEdit(tab);
             if (ReferenceEquals(_editorSupportSourceTab, tab))
                 ScheduleEditorSupportUpdate();
         };

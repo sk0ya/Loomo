@@ -31,6 +31,9 @@ public partial class ShellWindow
     /// <see cref="JumpToTrailEntry"/> がここを引いて呼ぶ（記録抑制の with を共通で被せる）。</summary>
     private readonly Dictionary<TrailEntryKind, Func<TrailEntryViewModel, Task>> _trailJumps = new();
 
+    /// <summary>Git 操作を軌跡へログ記録するために購読する Git サービス（コンストラクタで注入）。</summary>
+    private readonly sk0ya.Loomo.Services.GitService _git;
+
     /// <summary>true の間は軌跡へ記録しない。ワークスペース切替・復元による機械的なタブ活性化と、
     /// 軌跡からの「戻る」自体（戻った先を新しい地点として積まない）で立てる。</summary>
     private bool _trailSuppressed;
@@ -42,6 +45,10 @@ public partial class ShellWindow
     /// <summary>ペイン切替の確定待ち（フォーカス奪い合いノイズを1個に畳むデバウンス）。</summary>
     private DispatcherTimer? _trailPaneCommitTimer;
     private PaneKind? _trailPendingPane;
+
+    /// <summary>編集地点の確定待ち（1打鍵ごとに点を積まないよう、編集が一段落してから1個に畳むデバウンス）。</summary>
+    private DispatcherTimer? _trailEditCommitTimer;
+    private EditorTab? _trailPendingEditTab;
 
     /// <summary>現在地を表示領域の<b>左端</b>へ寄せている（時間帯選択・「今」へのダブルクリック）間 true。
     /// この間に軌跡の登録が入っても中央寄せへ戻さず左寄せを保ち、左端の地点が右へ動かないようにする。
@@ -61,6 +68,10 @@ public partial class ShellWindow
         _vm.Trail.JumpRequested += (_, entry) => JumpToTrailEntry(entry);
         // AI セッションのアクティブ化（復元・新規確定）を軌跡へ地点として記録する。
         _vm.AiBar.SessionActivated += (_, e) => RecordTrailSession(e.Id, e.Title);
+        // Git の変更系操作（コミット・プッシュ・ブランチ切替など）をログとして記録する。
+        // MutateAsync はバックグラウンドスレッドで走るので UI スレッドへ回してから記録する。
+        _git.OperationExecuted += (_, e) =>
+            Dispatcher.BeginInvoke(new Action(() => RecordTrailGit(e.Command, e.Success)));
         // 追記・現在地移動でドットが見える位置へ追従スクロールする。左端へ寄せている間は左寄せを保つ。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(ScrollTrailAfterEntriesChanged), DispatcherPriority.Loaded);
@@ -191,6 +202,118 @@ public partial class ShellWindow
             && string.Equals(t.PeekFilePath, target, StringComparison.OrdinalIgnoreCase));
         if (tab is not null)
             _vm.Trail.UpdateLatestFilePosition(target, tab.Control.Caret.Line, tab.Control.Caret.Column);
+    }
+
+    /// <summary>エディタでの編集（バッファ変更）を軌跡へ記録する。BufferChanged は1打鍵ごとに飛ぶので
+    /// 即記録はせず、編集が一段落するまで待って（<see cref="_trailEditCommitTimer"/>）最新の編集行で1点に畳む。
+    /// 未変更（ファイル読込直後など）・無題・仮想ドキュメントは対象外。別ファイルの編集へ移ったときは
+    /// 前のファイルの編集を先に確定してから新しい待ちを張る（編集が取りこぼされないように）。</summary>
+    private void RecordTrailEdit(EditorTab tab)
+    {
+        if (_trailSuppressed || !tab.IsRealized || !tab.Control.IsModified)
+            return;
+        var path = tab.PeekFilePath;
+        if (string.IsNullOrWhiteSpace(path) || tab.PeekIsVirtual)
+            return;
+
+        if (_trailPendingEditTab is { } pending && !ReferenceEquals(pending, tab))
+            CommitTrailEdit();
+
+        _trailPendingEditTab = tab;
+        _trailEditCommitTimer ??= CreateTrailEditCommitTimer();
+        _trailEditCommitTimer.Stop();
+        _trailEditCommitTimer.Start();
+    }
+
+    private DispatcherTimer CreateTrailEditCommitTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            CommitTrailEdit();
+        };
+        return timer;
+    }
+
+    /// <summary>保留中の編集地点を、そのタブの現在のカーソル位置で確定する。編集が取り消されて
+    /// 未変更に戻った・タブが破棄された等で対象が無ければ何もしない。</summary>
+    private void CommitTrailEdit()
+    {
+        _trailEditCommitTimer?.Stop();
+        if (_trailPendingEditTab is not { } tab)
+            return;
+        _trailPendingEditTab = null;
+        if (_trailSuppressed || !tab.IsRealized || !tab.Control.IsModified)
+            return;
+        var path = tab.PeekFilePath;
+        if (string.IsNullOrWhiteSpace(path) || tab.PeekIsVirtual)
+            return;
+        var line = tab.Control.Caret.Line;
+        var column = tab.Control.Caret.Column;
+        RecordTrail((mode, stagePane, layout) =>
+            _vm.Trail.RecordEdit(path, line, column, mode, stagePane, layout));
+    }
+
+    /// <summary>Git 操作（変更系コマンド）を軌跡へログとして記録する。成功した操作だけを記録し
+    /// （失敗→再試行の二重や、内部で失敗した多段操作の断片を避ける）、連続する同種操作はデデュープで
+    /// 1点に畳む。復元は行わないので配置は載せない（<see cref="RecordTrailGit"/> はバックグラウンド
+    /// スレッドの <see cref="sk0ya.Loomo.Services.GitService.OperationExecuted"/> から UI スレッドへ回して呼ぶ）。</summary>
+    private void RecordTrailGit(string command, bool success)
+    {
+        if (!success)
+            return;
+        var (key, label) = DescribeGitOperation(command);
+        if (string.IsNullOrEmpty(key))
+            return;
+        RecordTrail((mode, stagePane, _) =>
+            _vm.Trail.RecordGit(key, label, mode, stagePane));
+    }
+
+    /// <summary>git のサブコマンド行（<see cref="sk0ya.Loomo.Services.GitOperationEventArgs.Command"/>）を、デデュープ用の
+    /// 種別キーと表示ラベルへ変換する。キーが同じ連続操作は1点に畳まれる（多段の破棄＝clean+restore を
+    /// 1点にまとめる等）。未知のサブコマンドはそのまま <c>git &lt;sub&gt;</c> と表示する。</summary>
+    private static (string Key, string Label) DescribeGitOperation(string command)
+    {
+        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return ("", "");
+        var sub = parts[0];
+        bool Has(string flag) => Array.IndexOf(parts, flag) >= 0;
+        var lastRef = parts.Length > 1 ? parts[^1] : "";
+        return sub switch
+        {
+            "commit" => ("commit", Has("--amend") ? "コミット（amend）" : "コミット"),
+            "add" => ("stage", "ステージ"),
+            "restore" when Has("--staged") => ("unstage", "アンステージ"),
+            "restore" => ("discard", "変更を破棄"),
+            "clean" => ("discard", "変更を破棄"),
+            "apply" => ("discard", "変更を破棄"),
+            "push" => ("push", "プッシュ"),
+            "pull" => ("pull", "プル"),
+            "fetch" => ("fetch", "フェッチ"),
+            "switch" when Has("-c") => ("branch-create", $"ブランチ作成: {lastRef}"),
+            "switch" => ("checkout", $"ブランチ切替: {lastRef}"),
+            "checkout" when Has("--detach") => ("checkout-detach", "コミットをチェックアウト"),
+            "checkout" => ("checkout", $"ブランチ切替: {lastRef}"),
+            "branch" when Has("-d") || Has("-D") => ("branch-delete", $"ブランチ削除: {lastRef}"),
+            "branch" => ("branch", "ブランチ操作"),
+            "merge" when Has("--continue") => ("merge", "マージ続行"),
+            "merge" when Has("--abort") => ("merge", "マージ中止"),
+            "merge" => ("merge", $"マージ: {lastRef}"),
+            "rebase" when Has("--continue") => ("rebase", "リベース続行"),
+            "rebase" when Has("--abort") => ("rebase", "リベース中止"),
+            "rebase" when Has("--skip") => ("rebase", "リベーススキップ"),
+            "rebase" => ("rebase", "リベース"),
+            "cherry-pick" => ("cherry-pick", "チェリーピック"),
+            "revert" => ("revert", "リバート"),
+            "reset" => ("reset", "リセット"),
+            "stash" => ("stash", "スタッシュ"),
+            "tag" => ("tag", "タグ"),
+            "submodule" => ("submodule", "サブモジュール"),
+            "init" => ("init", "リポジトリ初期化"),
+            _ => (sub, $"git {sub}")
+        };
     }
 
     /// <summary>EditorSupport（プレビュー）で表示中のファイルを軌跡へ記録する。ペインではなく
@@ -355,6 +478,10 @@ public partial class ShellWindow
         _trailJumps[TrailEntryKind.Preview] = JumpToPreviewAsync;
         _trailJumps[TrailEntryKind.Session] = entry => { JumpToSession(entry); return Task.CompletedTask; };
         _trailJumps[TrailEntryKind.Layout] = _ => Task.CompletedTask;
+        // 編集地点はファイルと同じく file:line を開き直す（内容の復元はしない）。
+        _trailJumps[TrailEntryKind.Edit] = JumpToFileAsync;
+        // Git 操作はログ専用で戻り先を持たない（CanJumpToTrailEntry で弾かれるため実際には呼ばれない）。
+        _trailJumps[TrailEntryKind.Git] = _ => Task.CompletedTask;
     }
 
     private void JumpToTrailEntry(TrailEntryViewModel entry)
@@ -416,6 +543,8 @@ public partial class ShellWindow
             TrailEntryKind.Preview => File.Exists(entry.Target),
             TrailEntryKind.Session => _vm.AiBar.SessionExists(entry.Target),
             TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout),
+            TrailEntryKind.Edit => File.Exists(entry.Target),
+            TrailEntryKind.Git => false,   // ログ専用：クリックしても復元しない
             _ => false
         };
     }

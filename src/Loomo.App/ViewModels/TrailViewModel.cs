@@ -28,7 +28,13 @@ public enum TrailEntryKind
     Preview,
     /// <summary>アクティブにした AI 会話セッション。target は保存済みセッションの ID で、
     /// 戻るとそのセッションを復元して AI ペインを開き直す。</summary>
-    Session
+    Session,
+    /// <summary>エディタでファイルを編集した地点。target は編集したファイルのフルパス、line は
+    /// 編集時のカーソル行。内容は復元せず、戻ると同じ file:line を開き直すだけ（ファイル地点と同じ扱い）。</summary>
+    Edit,
+    /// <summary>Git 操作（コミット・プッシュ・ブランチ切替など）。target は操作の種別キー、label は
+    /// 表示名。ログ専用で戻り先を持たない（クリックしても復元しない）。</summary>
+    Git
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -111,6 +117,8 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Layout => "⊞",
         TrailEntryKind.Preview => "◈",
         TrailEntryKind.Session => "✦",
+        TrailEntryKind.Edit => "◇",
+        TrailEntryKind.Git => "❖",
         _ => "◆"   // File
     };
 
@@ -129,9 +137,13 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 TrailEntryKind.Layout => "レイアウト",
                 TrailEntryKind.Preview => "プレビュー",
                 TrailEntryKind.Session => "セッション",
+                TrailEntryKind.Edit => "編集",
+                TrailEntryKind.Git => "Git",
                 _ => "地点"
             };
-            var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}、{Line + 1}行" : Label;
+            var name = Kind is TrailEntryKind.File or TrailEntryKind.Edit && Line >= 0
+                ? $"{Label}、{Line + 1}行"
+                : Label;
             var current = IsCurrent ? "、現在地" : string.Empty;
             return $"軌跡、{kind}、{name}、{Timestamp:HH:mm:ss}{current}";
         }
@@ -142,11 +154,13 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     {
         get
         {
-            var name = Kind == TrailEntryKind.File && Line >= 0 ? $"{Label}:{Line + 1}" : Label;
+            var name = Kind is TrailEntryKind.File or TrailEntryKind.Edit && Line >= 0
+                ? $"{Label}:{Line + 1}"
+                : Label;
             var location = Kind switch
             {
-                TrailEntryKind.File when Line >= 0 => $"{Target}:{Line + 1}",
-                TrailEntryKind.File or TrailEntryKind.Browser or TrailEntryKind.Preview => Target,
+                TrailEntryKind.File or TrailEntryKind.Edit when Line >= 0 => $"{Target}:{Line + 1}",
+                TrailEntryKind.File or TrailEntryKind.Edit or TrailEntryKind.Browser or TrailEntryKind.Preview => Target,
                 _ => null
             };
             var body = location is null ? $"{Glyph} {name}" : $"{Glyph} {name}\n{location}";
@@ -311,6 +325,28 @@ public sealed partial class TrailViewModel : ObservableObject
         Record(TrailEntryKind.File, path, Path.GetFileName(path), line, column, displayMode, stagePane, paneLayout);
     }
 
+    /// <summary>エディタでの編集地点を記録する。target は編集したファイルのフルパス、line は編集時の
+    /// カーソル行。パスの大文字小文字は無視し、<b>行ごとに1点</b>：同じ行を編集し続ける間は点を増やさず
+    /// 時刻だけ更新し、同じファイルでも別の行を編集したら新しい点を積む（列は無視／内容は復元しない）。</summary>
+    public void RecordEdit(string path, int line = -1, int column = -1,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        Record(TrailEntryKind.Edit, path, Path.GetFileName(path), line, column, displayMode, stagePane, paneLayout);
+    }
+
+    /// <summary>Git 操作をログとして記録する。target は操作種別キー（例: commit / push / checkout）で、
+    /// 連続する同種の操作はデデュープで1点に畳む。復元は行わないので配置（paneLayout）は載せない。</summary>
+    public void RecordGit(string operationKey, string label,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null)
+    {
+        if (string.IsNullOrWhiteSpace(operationKey))
+            return;
+        Record(TrailEntryKind.Git, operationKey, string.IsNullOrWhiteSpace(label) ? "Git" : label,
+            displayMode: displayMode, stagePane: stagePane, paneLayout: null);
+    }
+
     /// <summary>ブラウザ地点を記録する。直前と同じ URL ならタイトル・時刻だけ更新する
     /// （NavigationCompleted 時点ではタイトル未確定のことがあるため、後追いで整う）。</summary>
     public void RecordBrowser(string url, string? title,
@@ -371,7 +407,9 @@ public sealed partial class TrailViewModel : ObservableObject
 
     /// <summary>あらゆる軌跡ソース共通の記録入口。直前と同一地点（同一 kind かつ同一 target）の
     /// 再通過はドットを増やさず時刻・ラベル・位置だけ上書きし、それ以外は新しい点を積む。
-    /// target の同一判定はファイルだけ大文字小文字を無視（Windows のパス）、他は完全一致。</summary>
+    /// target の同一判定はファイルだけ大文字小文字を無視（Windows のパス）、他は完全一致。
+    /// <b>Edit だけは行も同一判定に含める</b>：同じファイルでも別の行を編集したら新しい点を積み、
+    /// 同じ行の連続編集の間だけ畳む（列は無視）。</summary>
     public void Record(TrailEntryKind kind, string target, string label, int line = -1, int column = -1,
         DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
     {
@@ -380,15 +418,17 @@ public sealed partial class TrailViewModel : ObservableObject
 
         var now = _now();
         RollLiveDayIfNeeded(DateOnly.FromDateTime(now));
-        // File と Preview は Windows のファイルパスなので大文字小文字を無視して同一判定する。
-        var comparison = kind is TrailEntryKind.File or TrailEntryKind.Preview
+        // File・Edit・Preview は Windows のファイルパスなので大文字小文字を無視して同一判定する。
+        var comparison = kind is TrailEntryKind.File or TrailEntryKind.Edit or TrailEntryKind.Preview
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
         // 直前と同一地点の再通過はドットを増やさず、その行の時刻・ラベル・位置を上書きする。
+        // Edit は「同じ行の連続編集」だけを畳む（行が変われば別の点）ので、行も一致条件に含める。
         if (_todayLatest is { } last && last.Kind == kind
             && string.Equals(last.Target, target, comparison)
-            && last.Mode == displayMode && last.StagePane == stagePane)
+            && last.Mode == displayMode && last.StagePane == stagePane
+            && (kind is not TrailEntryKind.Edit || last.Line == line))
         {
             last.Label = label;
             last.Timestamp = now;
