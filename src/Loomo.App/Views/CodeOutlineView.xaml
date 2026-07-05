@@ -83,6 +83,7 @@
                 <TreeView ItemsSource="{Binding Roots}" BorderThickness="0" Background="Transparent"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          PreviewMouseWheel="Tree_PreviewMouseWheel"
                           Foreground="{DynamicResource Fg}">
                     <TreeView.ItemContainerStyle>
                         <Style TargetType="TreeViewItem">

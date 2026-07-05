@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
@@ -54,6 +55,26 @@ public partial class CodeOutlineView : UserControl
     /// <summary>言語サーバー未接続／未導入の案内を表示する。</summary>
     internal void ShowNotice(LspNoticeModel.Notice notice)
         => _vm.ShowNotice(notice);
+
+    /// <summary>
+    /// TreeView 内部の ScrollViewer（スクロールバー Disabled でもホイールは握って Handled にする）が
+    /// 外側 ScrollViewer へホイールを渡さず、ツリー上でマウススクロールが効かない問題への対処。
+    /// 未処理のホイールを親へ再送し、外側 ScrollViewer に届ける。
+    /// </summary>
+    private void Tree_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Handled || sender is not DependencyObject d)
+            return;
+
+        e.Handled = true;
+        var forwarded = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = MouseWheelEvent,
+            Source = sender,
+        };
+        if (VisualTreeHelper.GetParent(d) is UIElement parent)
+            parent.RaiseEvent(forwarded);
+    }
 
     private void OutlineRow_Click(object sender, MouseButtonEventArgs e)
     {
