@@ -20,7 +20,8 @@ namespace sk0ya.Loomo.App.Views;
 /// 過去の日の軌跡も表示できる。アイデア.md「Semantic Depth」構想の Thread Rail の種。
 ///
 /// <para><b>新しい軌跡ソースの足し方（登録側はこれだけ）</b>：
-/// ①<see cref="TrailEntryKind"/> に enum 値を1つ追加し <c>Glyph</c> を1行足す。
+/// ①<see cref="TrailEntryKind"/> に enum 値を1つ追加し <c>Glyph</c>（ツールチップ・一意性テスト用）と
+/// <c>IconGeometry</c>（バーに描く絵姿）を対で1本ずつ足す。
 /// ②<see cref="RegisterTrailJumps"/> にその種別の「戻る」処理を1行登録する。
 /// ③記録したい場所（イベントハンドラ等）で <see cref="RecordTrail"/> を呼ぶ。
 /// 記録の抑制（復元・ジャンプ中）と離脱位置の上書きは <see cref="RecordTrail"/> が共通で面倒を見るので、
@@ -701,7 +702,7 @@ public partial class ShellWindow
     }
 
     /// <summary>ドット1個のスロット幅。XAML のドット Button の幅と揃える。</summary>
-    private const double TrailDotWidth = 14;
+    private const double TrailDotWidth = 20;
 
     /// <summary>時間帯の先頭ドットに前置する時刻ラベル枠の幅。XAML の HourTick Border の幅と揃える。</summary>
     private const double TrailHourLabelWidth = 32;

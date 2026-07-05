@@ -579,6 +579,23 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Every_kind_has_a_distinct_icon_geometry()
+    {
+        // §27.11-D：バーの絵姿（IconGeometry）も種別ごとに一意でなければ見分けられない。
+        var sut = CreateSut();
+        var icons = new List<string>();
+        foreach (var kind in Enum.GetValues<TrailEntryKind>())
+        {
+            sut.Record(kind, $"target-{kind}", $"label-{kind}");
+            var geometry = sut.Entries[^1].IconGeometry;
+            Assert.False(string.IsNullOrWhiteSpace(geometry));
+            icons.Add(geometry);
+        }
+
+        Assert.Equal(icons.Count, icons.Distinct().Count());
+    }
+
+    [Fact]
     public void HourLabel_shows_live_clock_at_latest_point_and_band_when_scrubbed_back()
     {
         // §27.7.2：ライブ地点（軌跡の最新＝「今」）では現在時刻 HH:mm、過去地点へ戻ると HH:00。

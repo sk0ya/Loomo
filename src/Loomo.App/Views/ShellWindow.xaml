@@ -1335,7 +1335,7 @@
                     Background="{DynamicResource ActivityBarBg}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
                     Visibility="{Binding Trail.HasEntries, Converter={StaticResource BoolToVis}}">
-                <DockPanel LastChildFill="True" Height="24">
+                <DockPanel LastChildFill="True" Height="26">
                     <!-- 日付：クリックでカレンダーをトグルし、選んだ日の軌跡を表示する。右クリックで今日へ -->
                     <Button x:Name="TrailDateButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
                             Padding="8,1" FontSize="11" VerticalAlignment="Center"
@@ -1418,7 +1418,7 @@
                                     <!-- 時間帯の先頭ドットにだけ、左に区切り（|）＋時刻ラベル（HH:00）を前置する。
                                          非境界では Collapsed で幅ゼロ。幅32は ShellWindow.Trail.cs の
                                          ScrollTrailCurrentIntoView の HourLabelWidth と揃える（§27.7.3）。 -->
-                                    <Border Width="32" Height="24"
+                                    <Border Width="32" Height="26"
                                             Visibility="{Binding StartsNewHour, Converter={StaticResource BoolToVis}}">
                                         <StackPanel Orientation="Horizontal">
                                             <Rectangle Width="1" Margin="0,4" VerticalAlignment="Stretch"
@@ -1429,8 +1429,8 @@
                                                        TextOptions.TextFormattingMode="Ideal" />
                                         </StackPanel>
                                     </Border>
-                                    <!-- 幅14は ShellWindow.Trail.cs の ScrollTrailCurrentIntoView と揃える -->
-                                    <Button Width="14" Height="24" Cursor="Hand"
+                                    <!-- 幅20は ShellWindow.Trail.cs の TrailDotWidth と揃える -->
+                                    <Button Width="20" Height="26" Cursor="Hand"
                                             ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="150"
                                             AutomationProperties.Name="{Binding AccessibleName}"
                                             AutomationProperties.HelpText="{Binding Tooltip}"
@@ -1439,50 +1439,52 @@
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
                                                 <Grid Background="Transparent">
-                                                    <!-- 種別記号（Glyph）を描く。色分けはファイル=Fg／ブラウザ・編集=Success／
-                                                         ペイン・ターミナル=FgDim／パネル・Git=アンバー／レイアウト=Fg／プレビュー・セッション=Accent。
-                                                         現在地はアクセント色で大きく強調（§27.10）。 -->
-                                                    <TextBlock x:Name="Mark" Text="{Binding Glyph}" Opacity="0.7"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                               FontSize="9" TextOptions.TextFormattingMode="Ideal">
-                                                        <TextBlock.Style>
-                                                            <Style TargetType="TextBlock">
-                                                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                                    <!-- 種別を単色ベクターの絵姿（書類・地球儀・鉛筆・ブランチ…）で描く。
+                                                         色は4カテゴリ＝内容(File/Browser/Terminal/Preview)=Fg／
+                                                         変更(Edit/Git)=Success／構造(Pane/Panel/Layout)=FgDim／AI(Session)=Accent。
+                                                         現在地はアクセント色＋やや太く・拡大して強調（§27.10-11）。 -->
+                                                    <Path x:Name="Mark" Data="{Binding IconGeometry}" Stretch="None"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          StrokeThickness="1.3" StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" Opacity="0.85"
+                                                          RenderTransformOrigin="0.5,0.5"
+                                                          SnapsToDevicePixels="True">
+                                                        <Path.Style>
+                                                            <Style TargetType="Path">
+                                                                <Setter Property="Stroke" Value="{DynamicResource Fg}" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding Kind}" Value="Browser">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource Success}" />
-                                                                    </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Pane">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding Kind}" Value="Terminal">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                                        <Setter Property="Stroke" Value="{DynamicResource FgDim}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Panel">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource SearchHighlight}" />
+                                                                        <Setter Property="Stroke" Value="{DynamicResource FgDim}" />
                                                                     </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding Kind}" Value="Preview">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding Kind}" Value="Session">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Layout">
+                                                                        <Setter Property="Stroke" Value="{DynamicResource FgDim}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Edit">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                                                        <Setter Property="Stroke" Value="{DynamicResource Success}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Kind}" Value="Git">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource SearchHighlight}" />
+                                                                        <Setter Property="Stroke" Value="{DynamicResource Success}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Kind}" Value="Session">
+                                                                        <Setter Property="Stroke" Value="{DynamicResource Accent}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                                        <Setter Property="Foreground" Value="{DynamicResource AccentHover}" />
-                                                                        <Setter Property="FontSize" Value="12" />
-                                                                        <Setter Property="FontWeight" Value="Bold" />
+                                                                        <Setter Property="Stroke" Value="{DynamicResource AccentHover}" />
+                                                                        <Setter Property="StrokeThickness" Value="1.6" />
                                                                         <Setter Property="Opacity" Value="1.0" />
+                                                                        <Setter Property="RenderTransform">
+                                                                            <Setter.Value>
+                                                                                <ScaleTransform ScaleX="1.18" ScaleY="1.18" />
+                                                                            </Setter.Value>
+                                                                        </Setter>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
-                                                        </TextBlock.Style>
-                                                    </TextBlock>
+                                                        </Path.Style>
+                                                    </Path>
                                                 </Grid>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="True">
@@ -1499,7 +1501,7 @@
                         <!-- 末尾余白：時間帯選択（OnTrailHourSelected）で末尾側の時刻ラベルも表示領域の左端へ
                              ピタッと寄せられるよう、必要なときだけ ShellWindow.Trail.cs が幅を持たせる余白。
                              通常（ライブ追従）は幅ゼロで最新ドットが右端に張り付く（§27.7.2）。 -->
-                        <Border x:Name="TrailTrailingSpacer" Width="0" Height="24" />
+                        <Border x:Name="TrailTrailingSpacer" Width="0" Height="26" />
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>
