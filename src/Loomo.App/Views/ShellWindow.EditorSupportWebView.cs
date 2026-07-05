@@ -533,37 +533,6 @@ public partial class ShellWindow
                     FocusEditorSupportSource(line > 0 ? line : null);
                     break;
 
-                // コード呼び出し解析パネルの行：別ファイル（または同一ファイル）の該当行をエディタで開く。
-                // path は LSP 由来のローカルパス、line は 1 始まり。既存のファイルオープン導線を再利用する
-                // （OpenPathInEditorAsync は既存タブなら活性化、無ければ開き、1 始まり→0 始まりへ変換して移動）。
-                case "openFileAt":
-                    if (root.TryGetProperty("path", out var openPathElement)
-                        && openPathElement.GetString() is { Length: > 0 } openPath)
-                    {
-                        var openLine = root.TryGetProperty("line", out var openLineElement)
-                                       && openLineElement.TryGetInt32(out var ol) ? ol : 0;
-                        _ = OpenPathInEditorAsync(openPath, openLine, column: 0);
-                    }
-                    break;
-
-                // コード案内ページの「インストール」：現在ファイルの拡張子から対応サーバーを再判定し、
-                // 可視ターミナルでインストールコマンドを実行する（LspManagementService 経由）。
-                case "lspInstall":
-                    InstallLspForEditorSupportSource();
-                    break;
-
-                // コード案内ページの「LSP 設定を開く」：既存の LSP 設定オーバーレイ導線を再利用する。
-                case "openLspSettings":
-                    _vm.LspPrompt.OpenSettingsCommand.Execute(null);
-                    break;
-
-                // コード案内ページの「導入手順を開く」：DocsURL を内蔵ブラウザで開く。
-                case "lspDocs":
-                    if (root.TryGetProperty("url", out var docsUrlElement)
-                        && docsUrlElement.GetString() is { Length: > 0 } docsUrl)
-                        _ = OpenUrlInBrowserAsync(docsUrl, null);
-                    break;
-
                 // Markdown 本文中のリンククリック：http/https は内蔵ブラウザ、ファイルパスはエディタで開く。
                 case "linkClicked":
                     if (root.TryGetProperty("href", out var hrefElement) && hrefElement.GetString() is { } href)

@@ -286,107 +286,105 @@ public partial class ShellWindow
     }
 
     /// <summary>
-    /// 専用プロバイダの無いコードファイルに対し、LSP のドキュメントシンボルから構造アウトラインを
-    /// EditorSupport ペインへ描く（フォールバック）。言語サーバー未接続／未対応なら案内 HTML を出す。
-    /// 描画は既存の pending 機構＋シーケンス畳み込み（<see cref="_editorSupportRenderSeq"/>）を再利用する。
+    /// 専用プロバイダの無いコードファイルに対し、LSP のドキュメントシンボルから構造アウトラインと
+    /// ②呼び出し解析を EditorSupport ペインへ描く（フォールバック）。表示はネイティブ WPF
+    /// （<see cref="CodeOutlineView"/>）で、WebView2 は経由しない（初回コールドスタート・白フラッシュ回避）。
+    /// 言語サーバー未接続／未対応なら同ビューの案内状態を出す。await を跨ぐ古い要求は
+    /// <see cref="_editorSupportRenderSeq"/> で畳む。
     /// </summary>
     private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath)
     {
-        // 直前までビジュアル系（CSV/Hex 等）を表示していたら退けて WebView2 表示へ戻す。
-        HideEditorSupportVisual();
-
-        // 描画要求のシーケンス番号。LSP 呼び出しや init の await を跨いで最後の要求だけが描くよう畳む。
+        // 描画要求のシーケンス番号。LSP 呼び出しの await を跨いで最後の要求だけが描くよう畳む。
         var seq = ++_editorSupportRenderSeq;
-        var title = _codeSupport.DescribeTitle(filePath);
         var lsp = GetLspManager(source);
 
         // 接続済み・ドキュメント準備済みに加え、LSP の現在ドキュメントが対象ファイルと一致することも
         // 条件に含める（別ファイルのアウトラインを誤って描かないため）。
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
 
-        string html;
-        // 追従キャッシュは実描画の直前に確定する（await 後に seq 不一致・ビュー未準備で降りたときは
-        // 旧値を残し、次のキャレットイベントで再評価・再試行させる）。ここでは候補をローカルに控えるだけ。
-        IReadOnlyList<OutlineNode>? newRoots = null;
-        LspRange? newSymbolRange = null;
-        (int Line, int Col)? newCaret = null;
-        // ページ体裁の鍵（ファイル＋テーマ）。ready なコードページのみ設定し、部分更新（②差し替え）の
-        // 可否判定（NavigationCompleted 後に _editorSupportReadyPageKey へ昇格）に使う。案内ページは null。
-        string? pageKey = null;
+        // コードビューをペインへ載せる（直前まで CSV/Hex/WebView を出していても即差し替え＝コールドスタート無し）。
+        var view = EnsureCodeOutlineView();
+        ShowEditorSupportVisual(view);
+        EditorSupportTitle.Text = _codeSupport.DescribeTitle(filePath);
 
         if (!ready)
         {
-            // 未 ready の理由に応じた案内（未導入なら対応サーバー名＋インストール導線、導入済みなら接続待ち）。
-            html = _codeSupport.RenderNoticePage(filePath, _lspManagement.EvaluateForFile(filePath));
-            // 言語サーバーは起動に時間がかかる（C# は数秒〜数十秒）。案内を出したまま ready へ遷移しても
-            // 再描画する契機が無い（キャレット追従も _codeOutlineRoots==null で止まる）と「接続待ち」で
-            // 固まるため、ready になるまで軽くポーリングして本描画へ差し替える（案内は描き直さない）。
+            // 追従キャッシュは破棄（キャレット追従を止める）。案内を出したまま ready へ遷移しても再描画
+            // 契機が無いので、ready になるまで軽くポーリングして本描画へ差し替える（案内は描き直さない）。
+            _codeOutlineRoots = null;
+            _codeOutlineSource = null;
+            _codeCurrentSymbolRange = null;
+            _codeCurrentCaret = null;
+            view.ShowNotice(LspNoticeModel.Build(_lspManagement.EvaluateForFile(filePath)));
             ScheduleCodeReadyRetry();
-        }
-        else
-        {
-            // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める。
-            StopCodeReadyRetry();
-
-            IReadOnlyList<DocumentSymbol> symbols;
-            try
-            {
-                symbols = await lsp!.RequestDocumentSymbolsAsync();
-            }
-            catch
-            {
-                // シンボル取得に失敗しても落とさない（空アウトライン＋空パネルで描く）。
-                symbols = Array.Empty<DocumentSymbol>();
-            }
-
-            // 取得の await を跨いで新しい要求が来ていれば、そちらが描くのでこのコールは降りる。
-            if (seq != _editorSupportRenderSeq)
-                return;
-
-            // Caret.Line/Column は 0 始まり（Editor 実測：ShellWindow.SelectionActions の line0 コメント）。
-            // LSP の DocumentSymbol も 0 始まりなので、current 判定はキャレット位置のまま。UI/ジャンプの
-            // data-line だけレンダラ側で +1 して 1 始まりにする。
-            var caret = source.Control.Caret;
-            // シグネチャ（②の Detail）は本文の宣言行から切り出すので、ここで一度だけ行分割して渡す
-            // （エディタは UI スレッド専有。以降の LSP await を跨がないよう先に取る）。
-            var sourceLines = SplitLines(source.Control.Text);
-            var roots = CodeEditorSupport.ToOutline(symbols, sourceLines);
-
-            // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。
-            // 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。
-            var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
-            if (seq != _editorSupportRenderSeq)
-                return;
-
-            newRoots = roots;
-            newSymbolRange = symbolRange;
-            newCaret = (caret.Line, caret.Column);
-            pageKey = CodePageKey(filePath);
-            html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
-        }
-
-        _editorSupportPendingHtml = html;
-        _editorSupportPendingBody = null;
-        _editorSupportPendingUri = null;
-        _editorSupportPendingMapFolder = null;
-        _editorSupportPendingPageKey = pageKey;
-        EditorSupportTitle.Text = title;
-
-        var view = await EnsureEditorSupportViewAsync();
-        if (view?.CoreWebView2 is null)
             return;
+        }
 
-        // init を待っている間に新しい描画要求が来ていれば、そちらが描くのでこのコールは降りる。
+        // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める。
+        StopCodeReadyRetry();
+
+        IReadOnlyList<DocumentSymbol> symbols;
+        try
+        {
+            symbols = await lsp!.RequestDocumentSymbolsAsync();
+        }
+        catch
+        {
+            // シンボル取得に失敗しても落とさない（空アウトライン＋空パネルで描く）。
+            symbols = Array.Empty<DocumentSymbol>();
+        }
+
+        // 取得の await を跨いで新しい要求が来ていれば、そちらが描くのでこのコールは降りる。
         if (seq != _editorSupportRenderSeq)
             return;
 
-        // 実描画の直前に追従キャッシュを確定する（未 ready のときは null＝キャッシュ破棄）。
-        _codeOutlineRoots = newRoots;
-        _codeOutlineSource = newRoots is null ? null : source;
-        _codeCurrentSymbolRange = newSymbolRange;
-        _codeCurrentCaret = newCaret;
+        // Caret.Line/Column は 0 始まり。LSP の DocumentSymbol も 0 始まりなので current 判定はそのまま、
+        // 表示・ジャンプ用の行だけ +1 して 1 始まりにする（ビュー側 DataLine1）。
+        var caret = source.Control.Caret;
+        // シグネチャ（Detail）は本文の宣言行から切り出すので、ここで一度だけ行分割して渡す
+        // （エディタは UI スレッド専有。以降の LSP await を跨がないよう先に取る）。
+        var sourceLines = SplitLines(source.Control.Text);
+        var roots = CodeEditorSupport.ToOutline(symbols, sourceLines);
 
-        RenderPendingEditorSupportContent(view.CoreWebView2);
+        // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。
+        // 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。
+        var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
+        if (seq != _editorSupportRenderSeq)
+            return;
+
+        // アウトラインの current ハイライトはキャレットを含む最深メンバーへ付ける。
+        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
+        var currentLine1 = member is null ? 0 : member.Line0 + 1;
+
+        _codeOutlineRoots = roots;
+        _codeOutlineSource = source;
+        _codeCurrentSymbolRange = symbolRange;
+        _codeCurrentCaret = (caret.Line, caret.Column);
+
+        view.ShowOutline(roots, currentLine1, panels);
+    }
+
+    /// <summary>
+    /// コード構造アウトラインの WPF ビューを（無ければ作って）返す。初回にジャンプ／インストール等の
+    /// 操作イベントを既存導線へ配線する（以降は使い回すので一度だけ）。
+    /// </summary>
+    private CodeOutlineView EnsureCodeOutlineView()
+    {
+        if (_codeOutlineView is not null)
+            return _codeOutlineView;
+
+        var view = new CodeOutlineView();
+        // アウトラインのメンバー名クリック → ソース行（1 始まり）へジャンプしてフォーカスを戻す。
+        view.SourceLineActivated += (_, line1) => FocusEditorSupportSource(line1 > 0 ? line1 : null);
+        // ②パネルの行クリック → 別ファイル（または同一ファイル）の該当行を開く（1 始まり→内部で 0 始まりへ）。
+        view.FileLocationActivated += (_, e) => _ = OpenPathInEditorAsync(e.Path, e.Line1, column: 0);
+        // 案内ページのボタン → 既存導線を再利用する。
+        view.InstallRequested += (_, _) => InstallLspForEditorSupportSource();
+        view.OpenLspSettingsRequested += (_, _) => _vm.LspPrompt.OpenSettingsCommand.Execute(null);
+        view.OpenDocsRequested += (_, url) => _ = OpenUrlInBrowserAsync(url, null);
+
+        _codeOutlineView = view;
+        return view;
     }
 
     /// <summary>
@@ -416,16 +414,37 @@ public partial class ShellWindow
     /// 例外を投げず、取れた分だけ（無ければ空で）返す。あわせて解決できたシンボルの名前範囲
     /// （callHierarchy の <c>SelectionRange</c>）を返し、呼び出し側のキャレット追従の差分基準に使う
     /// （このシンボル上を動く間は再取得しない）。解決できなければ範囲は null。
+    /// <para>
+    /// LSP 往復は互いに独立なものを<b>並列化</b>して初回結果の到達を縮める：使用箇所（references）は
+    /// callHierarchy に依存しないので即開始し、呼び出し元/先（incoming/outgoing）は prepare 解決後に
+    /// 2 本同時に投げる（各サーバーは複数リクエストを多重化できる）。
+    /// </para>
     /// </summary>
     private static async Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
         IEditorLspManager lsp, int line0, int col0)
     {
-        var incoming = new System.Collections.Generic.List<CallReference>();
-        var outgoing = new System.Collections.Generic.List<CallReference>();
-        var references = new System.Collections.Generic.List<CallReference>();
-        LspRange? symbolRange = null;
+        // 使用箇所は prepareCallHierarchy に依存しない → 先に走らせて呼び出し元/先と並列にする。
+        async Task<List<CallReference>> FetchReferencesAsync()
+        {
+            var list = new List<CallReference>();
+            try
+            {
+                foreach (var r in await lsp.RequestReferencesAsync(line0, col0) ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
+                    if (r is not null)
+                        // 使用箇所はシンボル名を持たない（位置のみ）。行は Range.Start（SelectionRange は無い）。
+                        list.Add(new CallReference("", r.Uri ?? "", r.Range?.Start?.Line ?? 0));
+            }
+            catch { /* references 非対応：使用箇所は空のまま */ }
+            return list;
+        }
 
+        var referencesTask = FetchReferencesAsync();
+
+        var incoming = new List<CallReference>();
+        var outgoing = new List<CallReference>();
+        LspRange? symbolRange = null;
         string? target = null;
+
         try
         {
             var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
@@ -435,34 +454,43 @@ public partial class ShellWindow
                 symbolRange = item.SelectionRange;
                 target = item.Name; // パネル見出し用（②がどのシンボルの結果か明示）
 
-                try
+                async Task<List<CallReference>> FetchIncomingAsync()
                 {
-                    foreach (var c in await lsp.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
-                        if (c?.From is { } f)
-                            incoming.Add(new CallReference(f.Name ?? "", f.Uri ?? "", f.SelectionRange?.Start?.Line ?? 0));
+                    var list = new List<CallReference>();
+                    try
+                    {
+                        foreach (var c in await lsp.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
+                            if (c?.From is { } f)
+                                list.Add(new CallReference(f.Name ?? "", f.Uri ?? "", f.SelectionRange?.Start?.Line ?? 0));
+                    }
+                    catch { /* incoming 非対応でも他は出す */ }
+                    return list;
                 }
-                catch { /* incoming 非対応でも他は出す */ }
 
-                try
+                async Task<List<CallReference>> FetchOutgoingAsync()
                 {
-                    foreach (var c in await lsp.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
-                        if (c?.To is { } t)
-                            outgoing.Add(new CallReference(t.Name ?? "", t.Uri ?? "", t.SelectionRange?.Start?.Line ?? 0));
+                    var list = new List<CallReference>();
+                    try
+                    {
+                        foreach (var c in await lsp.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
+                            if (c?.To is { } t)
+                                list.Add(new CallReference(t.Name ?? "", t.Uri ?? "", t.SelectionRange?.Start?.Line ?? 0));
+                    }
+                    catch { /* outgoing 非対応でも他は出す */ }
+                    return list;
                 }
-                catch { /* outgoing 非対応でも他は出す */ }
+
+                // 呼び出し元/先は互いに独立 → 同時に投げて両方揃うのを待つ。
+                var incomingTask = FetchIncomingAsync();
+                var outgoingTask = FetchOutgoingAsync();
+                await Task.WhenAll(incomingTask, outgoingTask);
+                incoming = incomingTask.Result;
+                outgoing = outgoingTask.Result;
             }
         }
         catch { /* callHierarchy 非対応サーバー：呼び出し元/先は空のまま */ }
 
-        try
-        {
-            foreach (var r in await lsp.RequestReferencesAsync(line0, col0) ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
-                if (r is not null)
-                    // 使用箇所はシンボル名を持たない（位置のみ）。行は Range.Start（SelectionRange は無い）。
-                    references.Add(new CallReference("", r.Uri ?? "", r.Range?.Start?.Line ?? 0));
-        }
-        catch { /* references 非対応：使用箇所は空のまま */ }
-
+        var references = await referencesTask;
         return (new CallPanels(incoming, outgoing, references, target), symbolRange);
     }
 
@@ -538,71 +566,14 @@ public partial class ShellWindow
         if (seq != _editorSupportRenderSeq)
             return;
 
-        // アウトラインの current ハイライトは（シンボルでなく）キャレットを含む最深メンバーへ付ける。
-        var member = LspOutlineRenderer.FindEnclosing(roots, caret.Line, caret.Column);
-        var currentLine = member is null ? 0 : member.Line0 + 1; // current を付け替える data-line（1 始まり）
-        var codeKey = CodePageKey(filePath);
+        // アウトラインの current ハイライトはキャレットを含む最深メンバーへ付ける。
+        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
+        var currentLine1 = member is null ? 0 : member.Line0 + 1; // current を付け替える行（1 始まり）
 
-        // 同一ページ（ファイル・テーマ不変）が読込完了済みなら、フル再ナビゲートせず「current の付け替え＋
-        // .call-panels の差し替え」だけの部分更新にする（アウトラインの折りたたみ状態・縦スクロールを保ち、
-        // 白フラッシュも出さない）。同期成功なので差分基準はここで確定してよい。
-        if (TryPostCodeCallPanels(codeKey, panels, currentLine))
-        {
-            _codeCurrentSymbolRange = symbolRange;
-            _codeCurrentCaret = (caret.Line, caret.Column);
-            return;
-        }
-
-        // フォールバック：別ファイル・テーマ変更・未 ready（読込中）等はフル navigate（初回描画と同じ経路）。
-        var html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
-        _editorSupportPendingHtml = html;
-        _editorSupportPendingBody = null;
-        _editorSupportPendingUri = null;
-        _editorSupportPendingMapFolder = null;
-        _editorSupportPendingPageKey = codeKey;
-
-        var view = await EnsureEditorSupportViewAsync();
-        if (view?.CoreWebView2 is null)
-            return;
-        if (seq != _editorSupportRenderSeq)
-            return;
-
-        // 差分基準は実描画の直前に確定する（await 後に降りたら旧値のまま次イベントで再試行される）。
+        // ツリーは作り直さず current 付替え＋②パネル差し替えだけ（折りたたみ状態・スクロールを保つ）。
         _codeCurrentSymbolRange = symbolRange;
         _codeCurrentCaret = (caret.Line, caret.Column);
-        RenderPendingEditorSupportContent(view.CoreWebView2);
-    }
-
-    /// <summary>コードページの体裁の鍵（ファイル＋プレビューテーマ）。メンバー変更では不変なので部分更新できる。</summary>
-    private string CodePageKey(string filePath)
-        => "code\n" + filePath + "\n" + _settings.Appearance.MarkdownPreviewTheme;
-
-    /// <summary>
-    /// ②パネルだけをページ側 JS へ部分反映する（<c>setCallPanels</c> メッセージ）。現在ページが同一体裁
-    /// （<paramref name="codeKey"/>）で読込完了済み（<see cref="_editorSupportReadyPageKey"/> 一致）のときだけ成功。
-    /// 送るのは <c>.call-panels</c> の本体 HTML と、current を付け替える対象行（<paramref name="currentLine"/>、
-    /// 0 は「どのメンバー外」＝current なし）。フル navigate しないので折りたたみ状態を保つ。
-    /// </summary>
-    private bool TryPostCodeCallPanels(string codeKey, CallPanels panels, int currentLine)
-    {
-        var core = _editorSupportView?.CoreWebView2;
-        if (core is null)
-            return false;
-        // 読込中／別ページ／別テーマなら部分更新できない（フル navigate へ委ねる）。
-        if (_editorSupportReadyPageKey is null || _editorSupportReadyPageKey != codeKey)
-            return false;
-
-        try
-        {
-            var inner = CallPanelRenderer.RenderPanelsInner(panels);
-            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(
-                new { type = "setCallPanels", html = inner, currentLine }));
-            return true;
-        }
-        catch
-        {
-            return false; // 送信失敗（ナビゲーション中等）はフル navigate へフォールバック
-        }
+        _codeOutlineView?.SetCurrentAndPanels(currentLine1, panels);
     }
 
     /// <summary>
@@ -624,19 +595,25 @@ public partial class ShellWindow
         _lspManagement.InstallForPrompt(info);
     }
 
-    /// <summary>案内表示中に ready を待つポーリングの最大試行回数（1 秒間隔＝約 25 秒で打ち切り）。</summary>
-    private const int CodeReadyMaxRetries = 25;
+    /// <summary>案内表示中に ready を待つポーリングの間隔。短くして「ファイル切替→結果表示」の待ちを詰める。</summary>
+    private static readonly TimeSpan CodeReadyRetryInterval = TimeSpan.FromMilliseconds(200);
 
     /// <summary>
-    /// 案内（言語サーバー接続待ち）を出したあと、ready へ遷移したかを 1 秒間隔で確認するポーリングを開始する。
-    /// 既に動いていれば何もしない。ready でない間は<b>案内を描き直さない</b>（チカチカ防止）＝ready になった tick
-    /// でだけ本描画（<see cref="UpdateCodeEditorSupportAsync"/> の ready 分岐）へ差し替える。
+    /// ready を待つポーリングの最大試行回数（<see cref="CodeReadyRetryInterval"/> 間隔で約 25 秒に相当）。
+    /// サーバーが永久に来ないケースの保険。
+    /// </summary>
+    private const int CodeReadyMaxRetries = 125;
+
+    /// <summary>
+    /// 案内（言語サーバー接続待ち）を出したあと、ready へ遷移したかを <see cref="CodeReadyRetryInterval"/> 間隔で
+    /// 確認するポーリングを開始する。既に動いていれば何もしない。ready でない間は<b>案内を描き直さない</b>
+    /// （チカチカ防止）＝ready になった tick でだけ本描画（<see cref="UpdateCodeEditorSupportAsync"/> の ready 分岐）へ差し替える。
     /// </summary>
     private void ScheduleCodeReadyRetry()
     {
         if (_codeReadyRetryTimer is null)
         {
-            _codeReadyRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _codeReadyRetryTimer = new DispatcherTimer { Interval = CodeReadyRetryInterval };
             _codeReadyRetryTimer.Tick += CodeReadyRetry_Tick;
         }
 

@@ -89,6 +89,8 @@ public partial class ShellWindow : Window
     private System.Collections.Generic.IReadOnlyList<Services.OutlineNode>? _codeOutlineRoots;
     /// <summary><see cref="_codeOutlineRoots"/> の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。</summary>
     private EditorTab? _codeOutlineSource;
+    /// <summary>コード構造アウトライン＋②呼び出し解析のネイティブ WPF ビュー（コードのフォールバック表示）。遅延生成・使い回し。</summary>
+    private CodeOutlineView? _codeOutlineView;
     /// <summary>
     /// 直近に②（呼び出し解析）を問い合わせた「キャレット直下シンボル」の名前範囲（LSP callHierarchy の
     /// SelectionRange・0 始まり）。キャレットがこの範囲内に留まる間は同じシンボル＝再取得しない差分基準。

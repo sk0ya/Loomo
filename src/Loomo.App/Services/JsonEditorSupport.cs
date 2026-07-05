@@ -459,49 +459,6 @@ internal static class JsonPreviewPage
                             window.chrome.webview.postMessage({ type: 'jumpToSource', line: line });
                         return;
                     }
-                    // 1a) コードアウトラインの名前クリック：ソース行へジャンプ（親ノードでも折りたたみでなく
-                    //     ジャンプ＝キャレットが動くので②呼び出し解析もそのメンバーへ追従更新される）。
-                    const nav = e.target.closest('.nav');
-                    if (nav) {
-                        e.stopPropagation();
-                        const line = Number(nav.closest('[data-line]')?.getAttribute('data-line')) || 0;
-                        if (line && window.chrome?.webview)
-                            window.chrome.webview.postMessage({ type: 'jumpToSource', line: line });
-                        return;
-                    }
-                    // 1b) コード呼び出し解析パネルの行：別ファイル（または同一ファイル）の該当行を開く
-                    const cr = e.target.closest('.call-row[data-path]');
-                    if (cr) {
-                        e.stopPropagation();
-                        const path = cr.getAttribute('data-path') || '';
-                        const line = Number(cr.getAttribute('data-line')) || 0;
-                        if (path && window.chrome?.webview)
-                            window.chrome.webview.postMessage({ type: 'openFileAt', path: path, line: line });
-                        return;
-                    }
-                    // 1c) コード案内ページのボタン（インストール／LSP 設定／導入手順）
-                    const li = e.target.closest('.lsp-install-btn');
-                    if (li) {
-                        e.stopPropagation();
-                        if (window.chrome?.webview)
-                            window.chrome.webview.postMessage({ type: 'lspInstall', ext: li.getAttribute('data-ext') || '' });
-                        return;
-                    }
-                    const ls = e.target.closest('.lsp-settings-btn');
-                    if (ls) {
-                        e.stopPropagation();
-                        if (window.chrome?.webview)
-                            window.chrome.webview.postMessage({ type: 'openLspSettings' });
-                        return;
-                    }
-                    const ld = e.target.closest('.lsp-docs-btn');
-                    if (ld) {
-                        e.stopPropagation();
-                        const url = ld.getAttribute('data-url') || '';
-                        if (url && window.chrome?.webview)
-                            window.chrome.webview.postMessage({ type: 'lspDocs', url: url });
-                        return;
-                    }
                     // 1) パスコピー（行末アイコン）
                     const copy = e.target.closest('.copy');
                     if (copy) {
@@ -584,21 +541,6 @@ internal static class JsonPreviewPage
                         if (d && d.type === 'setBody') {
                             const r = root();
                             if (r) { r.innerHTML = d.html; applyFilter(); }
-                        }
-                        // コード解析の部分更新：アウトラインは触らず（折りたたみ状態を保つ）、
-                        // current クラスを対象行へ付け替え、.call-panels の中身だけ差し替える。
-                        else if (d && d.type === 'setCallPanels') {
-                            const r = root();
-                            if (!r) return;
-                            r.querySelectorAll('.current').forEach(el => el.classList.remove('current'));
-                            if (d.currentLine > 0) {
-                                // アウトライン行（.call-row ではなく .line）に限定して current を付ける。
-                                const t = r.querySelector('.line[data-line="' + d.currentLine + '"]');
-                                if (t) t.classList.add('current');
-                            }
-                            const cp = r.querySelector('.call-panels');
-                            if (cp) cp.outerHTML = d.html;
-                            else r.insertAdjacentHTML('beforeend', d.html);
                         }
                     });
                 }

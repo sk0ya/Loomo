@@ -1,0 +1,167 @@
+<UserControl x:Class="sk0ya.Loomo.App.Views.CodeOutlineView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             d:DesignHeight="400" d:DesignWidth="320"
+             Background="{DynamicResource Panel}"
+             TextElement.Foreground="{DynamicResource Fg}"
+             FontFamily="Consolas, Cascadia Mono, Consolas" FontSize="12">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVis" />
+
+        <!-- ②呼び出し解析の 1 行（クリックでジャンプ）。 -->
+        <DataTemplate DataType="{x:Type vm:CodeCallRow}">
+            <Border Padding="4,1" Margin="0" Background="Transparent"
+                    MouseLeftButtonUp="CallRow_Click" ToolTip="{Binding Path}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Cursor" Value="Arrow" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding CanJump}" Value="True">
+                                <Setter Property="Cursor" Value="Hand" />
+                            </DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Symbol}" Foreground="{DynamicResource Accent}"
+                               Margin="0,0,4,0"
+                               Visibility="{Binding HasSymbol, Converter={StaticResource BoolVis}}" />
+                    <TextBlock Text="{Binding Location}" Foreground="{DynamicResource FgDim}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- ②呼び出し解析の 1 セクション（見出し＋件数＋行＋超過数）。 -->
+        <DataTemplate DataType="{x:Type vm:CodeCallSection}">
+            <StackPanel Margin="0,0,0,8">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding TotalCount}" Foreground="{DynamicResource FgDim}"
+                               Margin="4,0,0,0" />
+                </StackPanel>
+                <TextBlock Text="（なし）" Foreground="{DynamicResource FgDim}" Padding="4,1">
+                    <TextBlock.Style>
+                        <!-- HasRows==false のときだけ「（なし）」を出す（BoolVis の反転を Style で表現）。 -->
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasRows}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <ItemsControl ItemsSource="{Binding Rows}" />
+                <TextBlock Text="{Binding OverflowText}" Foreground="{DynamicResource FgDim}"
+                           FontSize="11" Padding="4,1"
+                           Visibility="{Binding HasOverflow, Converter={StaticResource BoolVis}}" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- アウトライン＋②パネル（!IsNotice） -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                      Padding="6,6,6,10"
+                      Visibility="{Binding IsOutline, Converter={StaticResource BoolVis}}">
+            <StackPanel>
+                <!-- 空プレースホルダ -->
+                <TextBlock Text="（コード構造がありません）" Foreground="{DynamicResource FgDim}"
+                           Margin="2,4"
+                           Visibility="{Binding IsOutlineEmpty, Converter={StaticResource BoolVis}}" />
+
+                <!-- 構造アウトライン（折りたたみツリー） -->
+                <TreeView ItemsSource="{Binding Roots}" BorderThickness="0" Background="Transparent"
+                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          Foreground="{DynamicResource Fg}">
+                    <TreeView.ItemContainerStyle>
+                        <Style TargetType="TreeViewItem">
+                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0" />
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type vm:CodeOutlineItem}"
+                                                  ItemsSource="{Binding Children}">
+                            <Border MouseLeftButtonUp="OutlineRow_Click" Padding="2,1" Cursor="Hand"
+                                    Background="Transparent" BorderBrush="{DynamicResource Accent}"
+                                    ToolTip="{Binding KindTitle}">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderThickness" Value="0" />
+                                        <Style.Triggers>
+                                            <!-- 現在メンバー：左に色バー＋淡い背景。 -->
+                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                                                <Setter Property="BorderThickness" Value="2,0,0,0" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Glyph}" Foreground="{Binding GlyphBrush}"
+                                               FontWeight="Bold" FontSize="10" MinWidth="14"
+                                               TextAlignment="Center" Margin="0,0,4,0"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Signature}" Foreground="{DynamicResource FgDim}"
+                                               FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding HasSignature, Converter={StaticResource BoolVis}}" />
+                                    <TextBlock Text="↦" Foreground="{DynamicResource FgDim}" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" ToolTip="エディタで開く" />
+                                </StackPanel>
+                            </Border>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+
+                <!-- ②呼び出し解析パネル（見出し＋区切り線は対象シンボル解決時のみ） -->
+                <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                        Margin="0,10,0,0" Padding="0,8,0,0"
+                        Visibility="{Binding HasCallTitle, Converter={StaticResource BoolVis}}">
+                    <TextBlock Text="{Binding CallTitle}" FontWeight="SemiBold" />
+                </Border>
+                <ItemsControl ItemsSource="{Binding Sections}" Margin="0,8,0,0" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 案内（未接続／未導入・IsNotice） -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10,8"
+                      Visibility="{Binding IsNotice, Converter={StaticResource BoolVis}}">
+            <StackPanel MaxWidth="560" HorizontalAlignment="Left">
+                <TextBlock Text="コード構造" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                <TextBlock Text="{Binding NoticeMessage}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                <TextBlock Text="{Binding ServerLine}" Foreground="{DynamicResource FgDim}" Margin="0,0,0,8"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasServerLine, Converter={StaticResource BoolVis}}" />
+                <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="8,6" Margin="0,0,0,10"
+                        Visibility="{Binding HasCommandText, Converter={StaticResource BoolVis}}">
+                    <TextBlock Text="{Binding CommandText}" FontFamily="Consolas" TextWrapping="Wrap" />
+                </Border>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="インストール" Padding="12,4" Margin="0,0,8,0"
+                            Click="Install_Click"
+                            Visibility="{Binding ShowInstall, Converter={StaticResource BoolVis}}" />
+                    <Button Content="導入手順を開く" Padding="12,4" Margin="0,0,8,0"
+                            Click="Docs_Click"
+                            Visibility="{Binding ShowDocs, Converter={StaticResource BoolVis}}" />
+                    <Button Content="LSP 設定を開く" Padding="12,4"
+                            Click="Settings_Click"
+                            Visibility="{Binding ShowSettings, Converter={StaticResource BoolVis}}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
