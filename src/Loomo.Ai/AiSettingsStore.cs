@@ -100,6 +100,9 @@ public sealed class AiSettingsStore
         /// <summary>AIウォームアップの有効/無効。null=旧設定（未指定）→ 既定（有効）を維持。</summary>
         public bool? WarmupEnabled { get; set; }
 
+        /// <summary>軌跡バーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
+        public bool? TrailVisible { get; set; }
+
         public PersistedProvider Local { get; set; } = new();
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
@@ -112,6 +115,7 @@ public sealed class AiSettingsStore
             Theme = s.Theme,
             AccentColor = s.AccentColor,
             WarmupEnabled = s.WarmupEnabled,
+            TrailVisible = s.TrailVisible,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
@@ -126,6 +130,7 @@ public sealed class AiSettingsStore
             s.Theme = Theme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
             if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
+            if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持

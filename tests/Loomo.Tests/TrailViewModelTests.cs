@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
@@ -746,6 +747,59 @@ public class TrailViewModelTests : IDisposable
         sut.BackToTodayCommand.Execute(null);
         Assert.False(sut.IsViewingPast);
         Assert.Equal("day2.cs", Assert.Single(sut.Entries).Label);
+    }
+
+    [Fact]
+    public void BarVisible_requires_both_entries_and_visible()
+    {
+        var sut = new TrailViewModel(_store);
+        sut.EnsureLoaded();
+
+        // 記録なし → 表示 ON でも非表示。
+        Assert.True(sut.Visible);
+        Assert.False(sut.HasEntries);
+        Assert.False(sut.BarVisible);
+
+        // 記録あり → 表示 ON なら表示。
+        sut.RecordFile(@"C:\work\a.cs");
+        Assert.True(sut.BarVisible);
+
+        // 記録あり・表示 OFF → 非表示（記録は残る）。
+        sut.Visible = false;
+        Assert.False(sut.BarVisible);
+        Assert.True(sut.HasEntries);
+    }
+
+    [Fact]
+    public void Visible_initializes_from_settings_and_defaults_true()
+    {
+        Assert.True(new TrailViewModel(_store).Visible);   // 設定なし → 既定 true
+        Assert.False(new TrailViewModel(_store, null, new AiSettings { TrailVisible = false }).Visible);
+    }
+
+    [Fact]
+    public void Hide_turns_off_and_persists_to_settings_store()
+    {
+        var settings = new AiSettings { TrailVisible = true };
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-settings.json");
+        var store = new AiSettingsStore(path);
+        try
+        {
+            var sut = new TrailViewModel(_store, null, settings, store);
+
+            sut.HideCommand.Execute(null);
+
+            Assert.False(sut.Visible);
+            Assert.False(settings.TrailVisible);
+            // ファイルへ永続化され、読み直しても OFF が残る。
+            var reloaded = new AiSettings();
+            store.Load(reloaded);
+            Assert.False(reloaded.TrailVisible);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch { }
+        }
     }
 }
 

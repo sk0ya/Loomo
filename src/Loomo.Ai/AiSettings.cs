@@ -28,6 +28,11 @@ public sealed class AiSettings
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 
+    /// <summary>ウィンドウ最下部の軌跡（操作ログ）バーを表示するか。既定は表示。OFF にすると記録が
+    /// あってもバーごと隠す（記録自体は続くので、再表示すればそれまでの軌跡も見える）。バーの
+    /// コンテキストメニュー「軌跡を非表示にする」や設定の「外観」トグルからここへ書き戻される。</summary>
+    public bool TrailVisible { get; set; } = true;
+
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
 

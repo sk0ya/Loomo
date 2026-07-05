@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -233,6 +234,8 @@ public sealed partial class TrailViewModel : ObservableObject
 {
     private readonly TrailStore _store;
     private readonly Func<DateTime> _now;
+    private readonly AiSettings? _settings;
+    private readonly AiSettingsStore? _settingsStore;
     private bool _loaded;
 
     /// <summary>表示が「今日（ライブ）」を追従しているか。過去日をカレンダーで選ぶと false、
@@ -253,12 +256,17 @@ public sealed partial class TrailViewModel : ObservableObject
     /// 記録は常に今日へ積むため、表示リストとは別に保持する。</summary>
     private TrailEntryViewModel? _todayLatest;
 
-    public TrailViewModel(TrailStore store, Func<DateTime>? clock = null)
+    public TrailViewModel(TrailStore store, Func<DateTime>? clock = null,
+        AiSettings? settings = null, AiSettingsStore? settingsStore = null)
     {
         _store = store;
+        _settings = settings;
+        _settingsStore = settingsStore;
         _now = clock ?? (() => DateTime.Now);
         _displayDate = Today;
         _liveDay = Today;
+        // 設定に保存された表示状態を初期反映する（field 直接代入なので OnVisibleChanged＝永続化は走らない）。
+        _visible = settings?.TrailVisible ?? true;
     }
 
     /// <summary>表示中の日のエントリ（過去日表示中は読み取り専用の履歴）。</summary>
@@ -267,8 +275,37 @@ public sealed partial class TrailViewModel : ObservableObject
     /// <summary>ドットのクリック／ホイール移動で、その地点へ戻りたい。</summary>
     public event EventHandler<TrailEntryViewModel>? JumpRequested;
 
-    /// <summary>バー自体の表示切替（記録が何も無ければバーごと隠して高さを取らない）。</summary>
-    [ObservableProperty] private bool _hasEntries;
+    /// <summary>記録が1件でもあるか（記録が何も無ければバーごと隠して高さを取らない）。
+    /// 実際のバー表示可否はこれと <see cref="Visible"/> の両方（<see cref="BarVisible"/>）で決まる。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BarVisible))]
+    private bool _hasEntries;
+
+    /// <summary>ユーザー設定による軌跡バーの表示ON/OFF（設定「外観」トグル、またはバーの
+    /// コンテキストメニュー「軌跡を非表示にする」から切り替える）。値は <see cref="AiSettings.TrailVisible"/>
+    /// へ永続化する。記録自体はOFFでも続くので、再表示すればそれまでの軌跡も見える。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BarVisible))]
+    private bool _visible = true;
+
+    /// <summary>バーを実際に表示するか＝記録があり（<see cref="HasEntries"/>）かつユーザーが
+    /// 表示を有効にしている（<see cref="Visible"/>）とき。XAML のバー Visibility はこれにバインドする。</summary>
+    public bool BarVisible => Visible && HasEntries;
+
+    /// <summary>表示ON/OFFの変更を設定ファイルへ永続化する（初期化時は field 直接代入なので呼ばれない）。</summary>
+    partial void OnVisibleChanged(bool value)
+    {
+        if (_settings is null)
+            return;
+        _settings.TrailVisible = value;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化失敗でも表示切替自体は効かせる */ }
+    }
+
+    /// <summary>バーのコンテキストメニュー「軌跡を非表示にする」：バーを隠す（設定へ永続化される）。
+    /// 再表示は設定「外観」の軌跡トグルから行う。</summary>
+    [RelayCommand]
+    private void Hide() => Visible = false;
 
     /// <summary>表示中の日（記録は常に今日へ積まれる）。IsViewingPast は追従状態
     /// （<see cref="_followingToday"/>）で決まるため、ここからは通知しない。</summary>

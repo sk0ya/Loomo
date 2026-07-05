@@ -448,6 +448,12 @@
                                 <ComboBox ItemsSource="{Binding Appearance.PreviewThemes}" SelectedItem="{Binding Appearance.SelectedPreviewTheme}"
                                           ItemTemplate="{StaticResource PresetItemTemplate}" />
 
+                                <Separator Margin="0,16,0,8" />
+                                <CheckBox IsChecked="{Binding Trail.Visible}"
+                                          ToolTip="ウィンドウ下部の軌跡（操作ログ）バーの表示/非表示を切り替えます。バーを右クリックしても非表示にできます。">
+                                    <TextBlock Text="軌跡バーを表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
                             </StackPanel>

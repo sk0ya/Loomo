@@ -1334,7 +1334,15 @@
             <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                     Background="{DynamicResource ActivityBarBg}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
-                    Visibility="{Binding Trail.HasEntries, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding Trail.BarVisible, Converter={StaticResource BoolToVis}}">
+                <!-- バーを右クリック→軌跡を非表示（設定「外観」の軌跡トグルから再表示できる）。
+                     日付ボタンなど独自メニューを持つ子は自分のメニューを出す。 -->
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="軌跡を非表示にする"
+                                  Command="{Binding PlacementTarget.DataContext.Trail.HideCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <DockPanel LastChildFill="True" Height="26">
                     <!-- 日付：クリックでカレンダーをトグルし、選んだ日の軌跡を表示する。右クリックで今日へ -->
                     <Button x:Name="TrailDateButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
