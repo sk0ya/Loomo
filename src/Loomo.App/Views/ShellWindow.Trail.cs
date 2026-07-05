@@ -786,6 +786,17 @@ public partial class ShellWindow
         TrailScroll.ScrollToHorizontalOffset(TrailSlotOffset(index));
     }
 
+    /// <summary>バー共通の右クリックメニュー「最新に戻る」。過去日を見ていれば今日へ戻し、現在地を
+    /// 軌跡の最新地点（＝ライブの「今」）へ動かして右端へ寄せる。日付ボタンの「今日へ」と時刻ダブルクリックの
+    /// 「今の地点へ」を1操作に束ねたもので、どちらの状態からも1回で最新のライブ追従へ戻す。</summary>
+    private void OnTrailBackToLatest(object sender, RoutedEventArgs e)
+    {
+        _vm.Trail.BackToTodayCommand.Execute(null);   // 過去日表示中なら今日へ（今日表示中は無害）
+        _vm.Trail.MoveToLatest();                     // 過去地点へスクラブ中なら最新へ
+        _trailBrowsingPast = false;                   // ライブ追従を再開（最新が右端に収まる）
+        Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
+    }
+
     // ===== 日付（カレンダーで過去の軌跡へ） =====
 
     private void OnTrailDateClick(object sender, RoutedEventArgs e)

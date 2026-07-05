@@ -1335,29 +1335,27 @@
                     Background="{DynamicResource ActivityBarBg}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
                     Visibility="{Binding Trail.BarVisible, Converter={StaticResource BoolToVis}}">
-                <!-- バーを右クリック→軌跡を非表示（設定「外観」の軌跡トグルから再表示できる）。
-                     日付ボタンなど独自メニューを持つ子は自分のメニューを出す。 -->
+                <!-- バー全体（日付・時刻ボタンを含む）で共通の右クリックメニュー。日付／時刻で分けず、
+                     どこを右クリックしても「最新に戻る」（過去日・過去地点から今日の最新へ）と
+                     「軌跡を非表示にする」（設定「外観」の軌跡トグルから再表示）を出す。子ボタンは自前の
+                     メニューを持たないので ContextMenuService がこの Border のメニューへ遡って解決する。 -->
                 <Border.ContextMenu>
                     <ContextMenu>
+                        <MenuItem Header="最新に戻る" Click="OnTrailBackToLatest" />
+                        <Separator />
                         <MenuItem Header="軌跡を非表示にする"
                                   Command="{Binding PlacementTarget.DataContext.Trail.HideCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     </ContextMenu>
                 </Border.ContextMenu>
                 <DockPanel LastChildFill="True" Height="26">
-                    <!-- 日付：クリックでカレンダーをトグルし、選んだ日の軌跡を表示する。右クリックで今日へ -->
+                    <!-- 日付：クリックでカレンダーをトグルし、選んだ日の軌跡を表示する。右クリックは
+                         バー共通メニュー（Border 側）へ遡る。 -->
                     <Button x:Name="TrailDateButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
                             Padding="8,1" FontSize="11" VerticalAlignment="Center"
                             Foreground="{DynamicResource FgDim}"
                             Content="{Binding Trail.DateLabel}"
                             ToolTip="クリックで日付を選んで、その日の軌跡を表示（再クリックで閉じる）"
-                            Click="OnTrailDateClick">
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="今日の軌跡へ戻る"
-                                          Command="{Binding PlacementTarget.DataContext.Trail.BackToTodayCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
+                            Click="OnTrailDateClick" />
                     <Popup x:Name="TrailCalendarPopup" PlacementTarget="{Binding ElementName=TrailDateButton}"
                            Placement="Top" StaysOpen="False" AllowsTransparency="True">
                         <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
