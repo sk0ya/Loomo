@@ -311,11 +311,13 @@ public sealed partial class TrailViewModel : ObservableObject
     /// （<see cref="_followingToday"/>）で決まるため、ここからは通知しない。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DateLabel))]
+    [NotifyPropertyChangedFor(nameof(DateTimeLabel))]
     private DateOnly _displayDate;
 
     /// <summary>軌跡上の現在地（表示中エントリのインデックス。-1 は無し）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HourLabel))]
+    [NotifyPropertyChangedFor(nameof(DateTimeLabel))]
     private int _currentIndex = -1;
 
     /// <summary>時刻ポップアップに縦並びで出す「その日に記録のある時間帯」（HH:00、昇順）。</summary>
@@ -327,6 +329,14 @@ public sealed partial class TrailViewModel : ObservableObject
 
     /// <summary>バー左端の日付表示。クリックでカレンダーを開く。</summary>
     public string DateLabel => DisplayDate.ToString("M/d (ddd)");
+
+    /// <summary>日付と時刻を1つにまとめたバー左端の表示（旧・日付ボタン＋時刻ボタンを統合）。
+    /// クリックで日付（カレンダー）と時間帯（HH:00）を1つのポップアップから選ぶ。選択は
+    /// リアルタイムでバーへ反映し、ポップアップはフォーカスを失うと閉じる（§27.7.2）。</summary>
+    public string DateTimeLabel => $"{DateLabel}  {HourLabel}";
+
+    /// <summary>その日に記録のある時間帯が1つでもあるか（時刻選択リストを出すかの判定）。</summary>
+    public bool HasHours => Hours.Count > 0;
 
     /// <summary>日付ボタンの右に出す時刻インジケータ。軌跡の最新地点（＝ライブの「今」）にいるときは
     /// 現在時刻を <c>HH:mm</c>（時計に追従）で、過去の地点へスクラブ中はその地点の時間帯を
@@ -548,6 +558,8 @@ public sealed partial class TrailViewModel : ObservableObject
         RecomputeHourBands();
         RebuildHours();
         OnPropertyChanged(nameof(HourLabel));
+        OnPropertyChanged(nameof(DateTimeLabel));
+        OnPropertyChanged(nameof(HasHours));
     }
 
     /// <summary>隣り合う地点で「時（Hour）」が変わる先頭に印を付ける。バーはここへ区切り（|）を1本出す。</summary>
@@ -567,7 +579,11 @@ public sealed partial class TrailViewModel : ObservableObject
     }
 
     /// <summary>時計の進行に合わせてライブの時刻ラベルを更新する（View のタイマから定期的に呼ぶ）。</summary>
-    public void RefreshHourLabel() => OnPropertyChanged(nameof(HourLabel));
+    public void RefreshHourLabel()
+    {
+        OnPropertyChanged(nameof(HourLabel));
+        OnPropertyChanged(nameof(DateTimeLabel));
+    }
 
     /// <summary>時刻ポップアップで選んだ時間帯の先頭ドットを現在地にする。画面復元（ジャンプ）はせず、
     /// バー内のナビゲーションに留める（日付ポップアップが「その日を出す」だけなのと同じ位置づけ）。

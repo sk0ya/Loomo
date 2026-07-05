@@ -1348,58 +1348,56 @@
                     </ContextMenu>
                 </Border.ContextMenu>
                 <DockPanel LastChildFill="True" Height="26">
-                    <!-- 日付：クリックでカレンダーをトグルし、選んだ日の軌跡を表示する。右クリックは
-                         バー共通メニュー（Border 側）へ遡る。 -->
-                    <Button x:Name="TrailDateButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
+                    <!-- 日付＋時刻を1つにまとめたボタン：ライブ地点なら「M/d (ddd) HH:mm」、過去地点へ
+                         スクラブ中／過去日表示中はその時間帯を HH:00 で表す。クリックで日付（カレンダー）と
+                         時間帯（HH:00）を1つのポップアップから即トグルして選ぶ。選択はリアルタイムでバーへ
+                         反映し、フォーカスを外すと閉じる。最新地点へは右クリックメニュー「最新に戻る」。 -->
+                    <Button x:Name="TrailDateTimeButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
                             Padding="8,1" FontSize="11" VerticalAlignment="Center"
                             Foreground="{DynamicResource FgDim}"
-                            Content="{Binding Trail.DateLabel}"
-                            ToolTip="クリックで日付を選んで、その日の軌跡を表示（再クリックで閉じる）"
-                            Click="OnTrailDateClick" />
-                    <Popup x:Name="TrailCalendarPopup" PlacementTarget="{Binding ElementName=TrailDateButton}"
+                            Content="{Binding Trail.DateTimeLabel}"
+                            ToolTip="クリックで日付と時間帯を選んでその軌跡へ移動（選択はすぐ反映・フォーカスを外すと閉じる）"
+                            Click="OnTrailDateTimeClick" />
+                    <Popup x:Name="TrailDateTimePopup" PlacementTarget="{Binding ElementName=TrailDateTimeButton}"
                            Placement="Top" StaysOpen="False" AllowsTransparency="True">
-                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="4" Padding="4" Margin="8">
+                        <!-- Focusable な枠に開いたときフォーカスを移し、フォーカスがポップアップの外へ
+                             出たら閉じる（OnTrailDateTimeLostFocus）。ウィンドウ非アクティブ化での
+                             クローズは ShellWindow.Trail.cs の Deactivated 購読が担う。 -->
+                        <Border x:Name="TrailDateTimePopupRoot" Focusable="True"
+                                Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="4" Padding="4" Margin="8"
+                                LostKeyboardFocus="OnTrailDateTimeLostFocus">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
                             </Border.Effect>
-                            <Calendar x:Name="TrailCalendar" Style="{StaticResource ThemedCalendar}"
-                                      SelectedDatesChanged="OnTrailCalendarSelected" />
-                        </Border>
-                    </Popup>
-                    <!-- 時刻：日付の右。ライブ地点なら現在時刻 HH:mm、過去地点へスクラブ中はその時間帯 HH:00。
-                         クリックで時間帯（HH:00）を縦に並べたポップアップ→選ぶとその時間帯の先頭ドットへ移動。
-                         ダブルクリックで軌跡の現在地（＝いまの「今」＝最新地点）へ選択を戻す -->
-                    <Button x:Name="TrailHourButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
-                            Padding="6,1" FontSize="11" VerticalAlignment="Center"
-                            Foreground="{DynamicResource FgDim}"
-                            Content="{Binding Trail.HourLabel}"
-                            ToolTip="クリックで時間帯を選んで、その時間の軌跡へ移動（再クリックで閉じる）。ダブルクリックで今の地点へ"
-                            PreviewMouseLeftButtonDown="OnTrailHourPreviewDown" />
-                    <Popup x:Name="TrailHourPopup" PlacementTarget="{Binding ElementName=TrailHourButton}"
-                           Placement="Top" StaysOpen="False" AllowsTransparency="True">
-                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="4" Padding="2" Margin="8">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
-                            </Border.Effect>
-                            <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding Trail.Hours}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Vertical" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Style="{StaticResource FlatButton}" MinWidth="64"
-                                                    Padding="10,3" FontSize="12"
-                                                    HorizontalContentAlignment="Left"
-                                                    Content="{Binding Label}" Click="OnTrailHourSelected" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
+                            <StackPanel Orientation="Horizontal">
+                                <!-- 日付：カレンダーで選ぶとその日の軌跡を即バーへ反映（ポップアップは開いたまま）。 -->
+                                <Calendar x:Name="TrailCalendar" Style="{StaticResource ThemedCalendar}"
+                                          SelectedDatesChanged="OnTrailCalendarSelected" />
+                                <!-- 時間帯：その日に記録のある時間（HH:00）を縦に並べ、選ぶとその時間帯の
+                                     先頭ドットへ即移動する。記録のある時間が無ければ列ごと畳む。 -->
+                                <StackPanel Orientation="Horizontal"
+                                            Visibility="{Binding Trail.HasHours, Converter={StaticResource BoolToVis}}">
+                                    <Border Width="1" Margin="4,4" Background="{DynamicResource Border}" />
+                                    <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="2,0,0,0">
+                                        <ItemsControl ItemsSource="{Binding Trail.Hours}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Vertical" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Style="{StaticResource FlatButton}" MinWidth="64"
+                                                            Padding="10,3" FontSize="12"
+                                                            HorizontalContentAlignment="Left"
+                                                            Content="{Binding Label}" Click="OnTrailHourSelected" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </StackPanel>
                         </Border>
                     </Popup>
                     <!-- ×：過去の日を表示中のみ出す（今日の軌跡へ戻る） -->

@@ -95,8 +95,10 @@ public partial class ShellWindow
         TrailScroll.SizeChanged += (_, _) => UpdateTrailTrailingMargin();
         // 日付・時刻クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
         // すると Click が届く前に外側クリックとして閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
-        TrailCalendarPopup.Closed += (_, _) => _trailCalendarClosedAt = DateTime.UtcNow;
-        TrailHourPopup.Closed += (_, _) => _trailHourPopupClosedAt = DateTime.UtcNow;
+        TrailDateTimePopup.Closed += (_, _) => _trailDateTimePopupClosedAt = DateTime.UtcNow;
+        // ウィンドウがフォーカスを失ったら日付・時刻ポップアップも閉じる（ロストフォーカスで閉じる）。
+        // ポップアップ内クリックはウィンドウをアクティブに保つので、真に外部へ移ったときだけ閉じる。
+        Deactivated += (_, _) => { if (TrailDateTimePopup.IsOpen) TrailDateTimePopup.IsOpen = false; };
         // ライブの時刻ラベル（HH:mm）を時計の進みに合わせて更新する。過去地点表示中は HH:00 固定なので無害。
         _trailHourTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _trailHourTicker.Tick += (_, _) => _vm.Trail.RefreshHourLabel();
@@ -106,11 +108,8 @@ public partial class ShellWindow
             new Action(() => _vm.Trail.EnsureLoaded()));
     }
 
-    /// <summary>カレンダーポップアップが最後に閉じた時刻（日付クリックのトグル判定）。</summary>
-    private DateTime _trailCalendarClosedAt;
-
-    /// <summary>時刻ポップアップが最後に閉じた時刻（時刻クリックのトグル判定）。</summary>
-    private DateTime _trailHourPopupClosedAt;
+    /// <summary>日付・時刻ポップアップが最後に閉じた時刻（ボタン再クリックでのトグル判定）。</summary>
+    private DateTime _trailDateTimePopupClosedAt;
 
     /// <summary>ライブの時刻ラベルを定期更新するタイマ。</summary>
     private DispatcherTimer? _trailHourTicker;
@@ -805,8 +804,8 @@ public partial class ShellWindow
     }
 
     /// <summary>バー共通の右クリックメニュー「最新に戻る」。過去日を見ていれば今日へ戻し、現在地を
-    /// 軌跡の最新地点（＝ライブの「今」）へ動かして左端へ寄せる。日付ボタンの「今日へ」と時刻ダブルクリックの
-    /// 「今の地点へ」を1操作に束ねたもので、どちらの状態からも1回で最新のライブ追従へ戻す。</summary>
+    /// 軌跡の最新地点（＝ライブの「今」）へ動かして左端へ寄せる。過去日表示・過去地点へのスクラブ、
+    /// どちらの状態からも1回で最新のライブ追従へ戻す（唯一の「今へ戻る」導線）。</summary>
     private void OnTrailBackToLatest(object sender, RoutedEventArgs e)
     {
         _vm.Trail.BackToTodayCommand.Execute(null);   // 過去日表示中なら今日へ（今日表示中は無害）
@@ -815,28 +814,44 @@ public partial class ShellWindow
         Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
     }
 
-    // ===== 日付（カレンダーで過去の軌跡へ） =====
+    // ===== 日付＋時刻（1つのポップアップで過去の軌跡へ） =====
 
-    private void OnTrailDateClick(object sender, RoutedEventArgs e)
+    /// <summary>日付＋時刻ボタンのクリックで日付・時刻ポップアップをトグルする（最新地点への復帰は
+    /// バー共通の右クリックメニュー「最新に戻る」で行う）。
+    /// <para><c>StaysOpen=False</c> のポップアップは<b>マウス押下（down）</b>で開くと、直後のクリック処理を
+    /// 外側クリックと見て即閉じてしまうため、開くのは <c>Button.Click</c>（＝マウスアップ）で行う。開いたまま
+    /// ボタンを再クリックすると、押下時に外側クリックとして先に閉じる（<c>Closed</c> が
+    /// <see cref="_trailDateTimePopupClosedAt"/> を記録）→ その直後の Click はこのガードで閉じたまま＝トグル成立。</para></summary>
+    private void OnTrailDateTimeClick(object sender, RoutedEventArgs e)
     {
-        // トグル：開いた状態でのボタン再クリックは、直前の外側クリックで閉じた分を「閉じる操作」とみなす。
-        if (TrailCalendarPopup.IsOpen
-            || (DateTime.UtcNow - _trailCalendarClosedAt).TotalMilliseconds < 250)
+        // 開いている（または直前に外側クリックで閉じた）なら、クリックは閉じるだけ。
+        if (TrailDateTimePopup.IsOpen
+            || (DateTime.UtcNow - _trailDateTimePopupClosedAt).TotalMilliseconds < 250)
         {
-            TrailCalendarPopup.IsOpen = false;
+            TrailDateTimePopup.IsOpen = false;
             return;
         }
+
+        OpenTrailDateTimePopup();
+    }
+
+    /// <summary>日付・時刻ポップアップを開き、現在の表示日をカレンダーへ反映してから枠へフォーカスを移す
+    /// （フォーカスがポップアップ外へ出たら閉じる仕掛け＝<see cref="OnTrailDateTimeLostFocus"/> を効かせるため）。</summary>
+    private void OpenTrailDateTimePopup()
+    {
         TrailCalendar.SelectedDate = _vm.Trail.DisplayDate.ToDateTime(TimeOnly.MinValue);
         TrailCalendar.DisplayDate = TrailCalendar.SelectedDate.Value;
         TrailCalendar.DisplayDateEnd = DateTime.Today;   // 未来は選べない
-        TrailCalendarPopup.IsOpen = true;
+        TrailDateTimePopup.IsOpen = true;
+        Dispatcher.BeginInvoke(new Action(() => TrailDateTimePopupRoot.Focus()), DispatcherPriority.Input);
     }
 
+    /// <summary>カレンダーで日を選ぶ：その日の軌跡を即バーへ反映する（ポップアップは開いたまま＝
+    /// リアルタイム反映。時間帯リストも新しい日の記録へ自動で更新される）。</summary>
     private void OnTrailCalendarSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (!TrailCalendarPopup.IsOpen || TrailCalendar.SelectedDate is not { } picked)
+        if (!TrailDateTimePopup.IsOpen || TrailCalendar.SelectedDate is not { } picked)
             return;
-        TrailCalendarPopup.IsOpen = false;
         // Calendar はクリック後もマウスキャプチャを持ち続け、直後のクリックを1回飲み込むため解放する。
         Mouse.Capture(null);
         _vm.Trail.ShowDate(DateOnly.FromDateTime(picked));
@@ -844,78 +859,26 @@ public partial class ShellWindow
         Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
     }
 
-    // ===== 時刻（時間帯へ移動） =====
-
-    /// <summary>シングルクリックの時間帯ポップアップ開を、ダブルクリック判定の猶予ぶんだけ遅らせて
-    /// 確定するタイマ。押下時に張り、システムのダブルクリック時間内に2打目が来たら取り消す。</summary>
-    private DispatcherTimer? _trailHourClickTimer;
-
-    /// <summary>時刻ボタンの押下を一元処理する。シングルクリックは時間帯ポップアップをトグルし、
-    /// ダブルクリックは軌跡の現在地を最新地点（＝ライブでは「今」）へ選択し直して表示領域の左端へ寄せる。
-    /// <para>ポップアップ（<c>StaysOpen=False</c>）は開くとマウスキャプチャを奪い、2打目の押下が
-    /// ボタンへ届かず <see cref="MouseButtonEventArgs.ClickCount"/>==2 を取り逃す。そこで Button.Click は
-    /// 使わず（<c>e.Handled</c> で抑止）、シングルクリックのポップアップ開はダブルクリック時間ぶん遅らせて、
-    /// その猶予内に2打目が来たら開かずに「今」へ寄せる方を採る。閉じる側は日付ボタンと同じく、
-    /// 直前の外側クリックで閉じた分を <see cref="_trailHourPopupClosedAt"/> で汲む。</para></summary>
-    private void OnTrailHourPreviewDown(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;   // 押下はここで一元管理し、Button.Click（＝ポップアップ即時開）へ落とさない
-
-        if (e.ClickCount >= 2)
-        {
-            _trailHourClickTimer?.Stop();   // 保留中のシングルクリック（ポップアップ開）を取り消す
-            TrailHourPopup.IsOpen = false;
-            if (_vm.Trail.MoveToLatest() is not null)
-            {
-                _trailBrowsingPast = false;   // 「今」へ戻る＝ライブ追従を再開（最新は左端＋右余白に収まる）
-                Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
-            }
-            return;
-        }
-
-        // 開いている（または直前に外側クリックで閉じた）なら、シングルクリックは閉じるだけ。
-        if (TrailHourPopup.IsOpen
-            || (DateTime.UtcNow - _trailHourPopupClosedAt).TotalMilliseconds < 250)
-        {
-            TrailHourPopup.IsOpen = false;
-            return;
-        }
-        if (_vm.Trail.Hours.Count == 0)
-            return;
-
-        _trailHourClickTimer ??= CreateTrailHourClickTimer();
-        _trailHourClickTimer.Stop();
-        _trailHourClickTimer.Start();
-    }
-
-    /// <summary>2打目が来なければシングルクリック確定として時間帯ポップアップを開く。間隔はユーザーの
-    /// システム設定（<c>GetDoubleClickTime</c>）に合わせ、猶予より速いダブルクリックは確実に拾う。</summary>
-    private DispatcherTimer CreateTrailHourClickTimer()
-    {
-        var timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(Math.Max(200u, GetDoubleClickTime()))
-        };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            if (_vm.Trail.Hours.Count > 0)
-                TrailHourPopup.IsOpen = true;
-        };
-        return timer;
-    }
-
     /// <summary>ポップアップで時間帯を選ぶ：その時間帯の先頭ドットを現在地にしてスクロールする
-    /// （画面復元はしない＝バー内のナビゲーション。ドット列はそのまま並ぶ）。</summary>
+    /// （ポップアップは開いたまま＝リアルタイム反映。画面復元はせずバー内のナビゲーションに留める）。</summary>
     private void OnTrailHourSelected(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: TrailHourViewModel hour })
             return;
-        TrailHourPopup.IsOpen = false;
         Mouse.Capture(null);
         _vm.Trail.SelectHour(hour);
         // 選んだ時間帯の先頭ドットを表示領域の左端へ寄せる（末尾余白で最新の帯も左端に届く＝ライブへ復帰）。
         _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
         Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
+    }
+
+    /// <summary>日付・時刻ポップアップの枠がキーボードフォーカスを失ったとき、移り先がポップアップの外なら
+    /// 閉じる（ロストフォーカスで閉じる）。カレンダー・時間帯ボタンなどポップアップ内へのフォーカス移動
+    /// （日付・時間帯の選択）では閉じないので、選択はポップアップを開いたまま連続して行える。</summary>
+    private void OnTrailDateTimeLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (e.NewFocus is DependencyObject next && IsWithin(next, TrailDateTimePopupRoot))
+            return;
+        TrailDateTimePopup.IsOpen = false;
     }
 }
