@@ -1409,7 +1409,7 @@
                             Content="×" FontSize="11" ToolTip="今日の軌跡へ戻る"
                             Visibility="{Binding Trail.IsViewingPast, Converter={StaticResource BoolToVis}}"
                             Command="{Binding Trail.BackToTodayCommand}" />
-                    <!-- ドット列：ホイール＝現在地の前後移動（OnTrailWheel）。スクロールは追従制御 -->
+                    <!-- ドット列：素のホイール＝バーの水平スクロール／Shift+ホイール＝現在地の前後移動（OnTrailWheel）。スクロールは追従制御 -->
                     <ScrollViewer x:Name="TrailScroll" HorizontalScrollBarVisibility="Hidden"
                                   VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
                                   PreviewMouseWheel="OnTrailWheel">

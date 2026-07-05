@@ -692,14 +692,32 @@ public partial class ShellWindow
         FocusPane(PaneKind.Terminal);
     }
 
-    // ===== バー上のホイール＝現在地の前後移動（スクラブ） =====
+    // ===== バー上のホイール：素＝水平スクロール／Shift＝現在地の前後移動（スクラブ） =====
 
-    /// <summary>バー上のホイール：上＝過去（左）へ、下＝未来（右）へ現在地を動かす。
-    /// 実ジャンプは少し遅らせ、連続ホイールを最後の1回に畳む。</summary>
+    /// <summary>バー上のホイール。<b>素のホイール</b>はバーを水平にスクロールするだけ（現在地・画面表示は
+    /// 動かさない＝ドット列を眺めるナビゲーション）。<b>Shift+ホイール</b>は従来どおり現在地を前後へ動かして
+    /// その地点の表示を復元する（上＝過去（左）へ、下＝未来（右）へ／実ジャンプは少し遅らせて連続ホイールを
+    /// 最後の1回に畳む）。</summary>
     private void OnTrailWheel(object sender, MouseWheelEventArgs e)
     {
         e.Handled = true;
-        var entry = _vm.Trail.MoveCurrent(e.Delta > 0 ? -1 : +1);
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            ScrubTrailByWheel(e.Delta);
+            return;
+        }
+        // 素のホイール：バーを水平にスクロールするだけ。手動スクロール中は追加エントリで
+        // 中央へ引き戻さない（_trailSnapLeft を立てて ScrollTrailAfterEntriesChanged を素通りさせる）。
+        _trailSnapLeft = true;
+        var step = (e.Delta > 0 ? -1 : +1) * (TrailDotWidth * 3);
+        TrailScroll.ScrollToHorizontalOffset(TrailScroll.HorizontalOffset + step);
+    }
+
+    /// <summary>Shift+ホイールでの現在地移動。移動先を中央へ寄せて見せ、実ジャンプは
+    /// <see cref="_trailScrubTimer"/> で遅らせて連続ホイールを1回に畳む。</summary>
+    private void ScrubTrailByWheel(int delta)
+    {
+        var entry = _vm.Trail.MoveCurrent(delta > 0 ? -1 : +1);
         ScrollTrailCurrentIntoView();
         if (entry is null)
             return;
