@@ -292,7 +292,7 @@ public partial class ShellWindow
     /// 言語サーバー未接続／未対応なら同ビューの案内状態を出す。await を跨ぐ古い要求は
     /// <see cref="_editorSupportRenderSeq"/> で畳む。
     /// </summary>
-    private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath)
+    private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath, bool fromReadyRetry = false)
     {
         // 描画要求のシーケンス番号。LSP 呼び出しの await を跨いで最後の要求だけが描くよう畳む。
         var seq = ++_editorSupportRenderSeq;
@@ -302,10 +302,27 @@ public partial class ShellWindow
         // 条件に含める（別ファイルのアウトラインを誤って描かないため）。
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
 
-        // コードビューをペインへ載せる（直前まで CSV/Hex/WebView を出していても即差し替え＝コールドスタート無し）。
+        // 診断：コード表示要求の入口。ready 待ちのポーリング tick からの再入（fromReadyRetry）では計り直さず、
+        // 新規要求（ファイル切替・オープン・編集）のときだけ「ユーザーが待ち始めた」起点として計り直す。
+        if (CodeSupportDiag.IsEnabled)
+        {
+            if (!fromReadyRetry)
+                _codeSupportDiagStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            CodeSupportDiag.Log(
+                $"enter file={Path.GetFileName(filePath)} ready={ready} " +
+                $"lsp={(lsp is null ? "null" : "ok")} connected={lsp?.IsConnected} docReady={lsp?.IsDocumentReady} " +
+                $"match={(lsp is not null && LspMatchesFile(lsp, filePath))} " +
+                $"elapsed={_codeSupportDiagStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_codeReadyRetryAttempts}");
+        }
+
+        // コードビュー（無ければ生成）。ペインへの差し替え自体は「実際に何か描くとき」まで遅延する
+        // （↓の grace 参照）。差し替え＋タイトル更新をまとめる小ヘルパ。
         var view = EnsureCodeOutlineView();
-        ShowEditorSupportVisual(view);
-        EditorSupportTitle.Text = _codeSupport.DescribeTitle(filePath);
+        void ShowCodeView()
+        {
+            ShowEditorSupportVisual(view);
+            EditorSupportTitle.Text = _codeSupport.DescribeTitle(filePath);
+        }
 
         if (!ready)
         {
@@ -315,24 +332,34 @@ public partial class ShellWindow
             _codeOutlineSource = null;
             _codeCurrentSymbolRange = null;
             _codeCurrentCaret = null;
-            view.ShowNotice(LspNoticeModel.Build(_lspManagement.EvaluateForFile(filePath)));
+
+            // ファイル切替直後、サーバーが ready になるまでの短い待ち（warm でも約1秒）に「接続待ち」案内を
+            // 毎回フラッシュさせるとうるさい、というフィードバックへの対応。導入済みで接続待ちのとき
+            // （EvaluateForFile==null）は grace 経過まで案内もペイン差し替えもせず、前の表示を保つ＝
+            // ready が grace 内に来れば案内は一切出ずに構造へ直行する。サーバー未導入（!=null）は actionable
+            // かつ永続的なので従来どおり即出す（フラッシュ対象ではない）。
+            var prompt = _lspManagement.EvaluateForFile(filePath);
+            if (prompt is not null || _codeReadyRetryAttempts >= CodeConnectingNoticeGraceTicks)
+            {
+                ShowCodeView();
+                view.ShowNotice(LspNoticeModel.Build(prompt));
+            }
             ScheduleCodeReadyRetry();
             return;
         }
 
-        // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める。
-        StopCodeReadyRetry();
+        // ready＝これから構造を描く。ここでペインをコードビューへ差し替える（grace 中は差し替えていない）。
+        ShowCodeView();
 
-        IReadOnlyList<DocumentSymbol> symbols;
-        try
-        {
-            symbols = await lsp!.RequestDocumentSymbolsAsync();
-        }
-        catch
-        {
-            // シンボル取得に失敗しても落とさない（空アウトライン＋空パネルで描く）。
-            symbols = Array.Empty<DocumentSymbol>();
-        }
+        // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める（以降のコールド構造
+        // リトライはこのメソッド内のループで面倒を見る）。
+        StopCodeReadyRetry();
+        // 診断：ready 待ちの合計（＝この地点までの経過）。ここから先は LSP 往復のコスト。
+        CodeSupportDiag.Log($"ready reached after {_codeSupportDiagStopwatch?.ElapsedMilliseconds ?? 0}ms");
+
+        var symbolsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
+        var symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
+        CodeSupportDiag.Log($"documentSymbols {symbolsSw?.ElapsedMilliseconds ?? 0}ms count={symbols.Count}");
 
         // 取得の await を跨いで新しい要求が来ていれば、そちらが描くのでこのコールは降りる。
         if (seq != _editorSupportRenderSeq)
@@ -343,25 +370,104 @@ public partial class ShellWindow
         var caret = source.Control.Caret;
         // シグネチャ（Detail）は本文の宣言行から切り出すので、ここで一度だけ行分割して渡す
         // （エディタは UI スレッド専有。以降の LSP await を跨がないよう先に取る）。
-        var sourceLines = SplitLines(source.Control.Text);
-        var roots = CodeEditorSupport.ToOutline(symbols, sourceLines);
+        var roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
+
+        // ★構造アウトラインを②（呼び出し解析）から切り離す。②の LSP 往復（特に prepareCallHierarchy は
+        //   コールド初回でプロジェクトのロード待ちに数秒かかる）に構造描画を引きずらせない＝
+        //   documentSymbols が返った時点で構造を先に描き、②はこの後バックグラウンドで後埋めする。
+        //   ただし構造が空（コールド初回はプロジェクト未ロードで documentSymbols が空を返す）のときは
+        //   誤った空アウトラインを確定させず、案内のまま②往復でサーバーを温めてから構造を取り直す（下記）。
+        if (roots.Count > 0)
+        {
+            var currentLine1 = CurrentMemberLine1(roots, caret);
+            _codeOutlineRoots = roots;
+            _codeOutlineSource = source;
+            _codeCurrentSymbolRange = null;                       // ②は未取得（この後 SetCurrentAndPanels で埋める）
+            _codeCurrentCaret = (caret.Line, caret.Column);
+            view.ShowOutline(roots, currentLine1, CallPanels.Empty);   // 構造だけ先に（②は待たない）
+            LogOutlineShown("structure");
+        }
+        else
+        {
+            // コールド初回：プロジェクト未ロードで構造が空。②往復でサーバーを温める数秒間、誤解を招く
+            //「（コード構造がありません）」プレースホルダではなく接続待ち案内を出しておく（真に数秒かかる
+            // 待ちなので案内が適切。warm の一瞬の待ちは grace 側で既に抑制済み）。
+            view.ShowNotice(LspNoticeModel.Build(null));
+        }
 
         // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。
         // 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。
+        // コールド初回はここでサーバーが温まる（副作用）。
+        var panelsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
+        CodeSupportDiag.Log(
+            $"callPanels {panelsSw?.ElapsedMilliseconds ?? 0}ms " +
+            $"in={panels.Incoming.Count} out={panels.Outgoing.Count} refs={panels.References.Count}");
         if (seq != _editorSupportRenderSeq)
             return;
 
-        // アウトラインの current ハイライトはキャレットを含む最深メンバーへ付ける。
-        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
-        var currentLine1 = member is null ? 0 : member.Line0 + 1;
+        if (roots.Count > 0)
+        {
+            // 構造は既に描画済み → ②パネルだけ後埋め（ツリー非再構築＝折りたたみ・スクロール保持）。
+            var currentLine1 = CurrentMemberLine1(roots, caret);
+            _codeCurrentSymbolRange = symbolRange;
+            _codeCurrentCaret = (caret.Line, caret.Column);
+            view.SetCurrentAndPanels(currentLine1, panels);
+            LogOutlineShown("panels");
+            return;
+        }
 
+        // ここに来る＝構造が空だった（コールド初回のプロジェクト未ロードが濃厚）。②往復でサーバーが
+        // 温まったはずなので、構造を短くリトライして取り直す（②は再取得しない）。取れたら確定描画、
+        // 上限まで空のまま（＝本当に空のファイル等）なら空アウトライン＋取れた②で確定する。
+        for (var attempt = 0; attempt < CodeColdStructureRetries; attempt++)
+        {
+            symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
+            if (seq != _editorSupportRenderSeq)
+                return;
+            roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
+            if (roots.Count > 0)
+                break;
+            await Task.Delay(CodeColdStructureRetryDelay);
+            if (seq != _editorSupportRenderSeq)
+                return;
+        }
+        CodeSupportDiag.Log($"cold structure refetch count={roots.Count}");
+
+        var current = CurrentMemberLine1(roots, caret);
         _codeOutlineRoots = roots;
         _codeOutlineSource = source;
         _codeCurrentSymbolRange = symbolRange;
         _codeCurrentCaret = (caret.Line, caret.Column);
+        view.ShowOutline(roots, current, panels);
+        LogOutlineShown(roots.Count > 0 ? "cold-structure+panels" : "empty");
+    }
 
-        view.ShowOutline(roots, currentLine1, panels);
+    /// <summary>コールド初回（プロジェクト未ロードで空）のとき、②往復後に構造を取り直すリトライ回数。</summary>
+    private const int CodeColdStructureRetries = 6;
+
+    /// <summary>コールド構造リトライの間隔（②往復でサーバーは温まっている前提の軽いリトライ）。</summary>
+    private static readonly TimeSpan CodeColdStructureRetryDelay = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>ドキュメントシンボルを取得する（失敗しても落とさず空で返す）。</summary>
+    private static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(IEditorLspManager lsp)
+    {
+        try { return await lsp.RequestDocumentSymbolsAsync(); }
+        catch { return Array.Empty<DocumentSymbol>(); }
+    }
+
+    /// <summary>アウトラインの current ハイライト行（1 始まり・0＝無し）：キャレットを含む最深メンバー。</summary>
+    private static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
+    {
+        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
+        return member is null ? 0 : member.Line0 + 1;
+    }
+
+    /// <summary>診断：入口（ユーザーが待ち始めた地点）から結果が見えるまでの合計を記録する（構造描画時／②後埋め時）。</summary>
+    private void LogOutlineShown(string phase)
+    {
+        if (_codeSupportDiagStopwatch is not null)
+            CodeSupportDiag.Log($"shown[{phase}], TOTAL {_codeSupportDiagStopwatch.ElapsedMilliseconds}ms");
     }
 
     /// <summary>
@@ -445,9 +551,11 @@ public partial class ShellWindow
         LspRange? symbolRange = null;
         string? target = null;
 
+        var prepareSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         try
         {
             var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
+            CodeSupportDiag.Log($"  prepareCallHierarchy {prepareSw?.ElapsedMilliseconds ?? 0}ms item={(item is null ? "null" : item.Name)}");
             if (item is not null)
             {
                 // 解決したシンボルの名前範囲＝キャレット追従の差分基準（この範囲内の移動では再取得しない）。
@@ -481,16 +589,20 @@ public partial class ShellWindow
                 }
 
                 // 呼び出し元/先は互いに独立 → 同時に投げて両方揃うのを待つ。
+                var callsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
                 var incomingTask = FetchIncomingAsync();
                 var outgoingTask = FetchOutgoingAsync();
                 await Task.WhenAll(incomingTask, outgoingTask);
                 incoming = incomingTask.Result;
                 outgoing = outgoingTask.Result;
+                CodeSupportDiag.Log($"  incoming+outgoing {callsSw?.ElapsedMilliseconds ?? 0}ms");
             }
         }
         catch { /* callHierarchy 非対応サーバー：呼び出し元/先は空のまま */ }
 
+        var refsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var references = await referencesTask;
+        CodeSupportDiag.Log($"  references(await) {refsSw?.ElapsedMilliseconds ?? 0}ms count={references.Count}");
         return (new CallPanels(incoming, outgoing, references, target), symbolRange);
     }
 
@@ -605,6 +717,14 @@ public partial class ShellWindow
     private const int CodeReadyMaxRetries = 125;
 
     /// <summary>
+    /// 「接続待ち」案内（導入済みサーバーの ready 待ち）を出すまでの grace（<see cref="CodeReadyRetryInterval"/>
+    /// 間隔の tick 数≒1.6 秒）。ファイル切替直後の warm な ready 待ち（実測 ~0.8-1.1 秒）にいちいち案内を
+    /// フラッシュさせないための猶予。この間に ready へ遷移すれば案内は一切出ず構造へ直行する。
+    /// 未導入サーバー（actionable な案内）は grace 対象外で即出す。
+    /// </summary>
+    private const int CodeConnectingNoticeGraceTicks = 8;
+
+    /// <summary>
     /// 案内（言語サーバー接続待ち）を出したあと、ready へ遷移したかを <see cref="CodeReadyRetryInterval"/> 間隔で
     /// 確認するポーリングを開始する。既に動いていれば何もしない。ready でない間は<b>案内を描き直さない</b>
     /// （チカチカ防止）＝ready になった tick でだけ本描画（<see cref="UpdateCodeEditorSupportAsync"/> の ready 分岐）へ差し替える。
@@ -658,10 +778,18 @@ public partial class ShellWindow
         var lsp = GetLspManager(source);
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
         if (!ready)
-            return; // まだ：既存の案内のまま、次 tick で再確認（案内を描き直さない）。
+        {
+            // grace を過ぎてもまだ ready でない＝一瞬で消える待ちではなくサーバーが遅い/来ない。ここで初めて
+            // 「接続待ち」案内へ差し替える（本メソッドの not-ready 分岐が attempts>=grace で案内を出す）。
+            // ちょうど grace 到達の tick でのみ一度呼ぶ（以降の tick は案内を描き直さずポーリングだけ）。
+            if (_codeReadyRetryAttempts == CodeConnectingNoticeGraceTicks)
+                await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
+            return;
+        }
 
         // ready 到達：本描画へ差し替える（ready 分岐が StopCodeReadyRetry する）。
-        await UpdateCodeEditorSupportAsync(source, filePath);
+        // fromReadyRetry=true＝ポーリング中の再入。診断ストップウォッチを計り直さない（待ちの起点を保つ）。
+        await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
     }
 
     /// <summary>キャレット追従（②再取得）を 150ms デバウンスする。コードページ未描画のときは無視。</summary>

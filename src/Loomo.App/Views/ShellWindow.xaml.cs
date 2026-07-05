@@ -85,6 +85,8 @@ public partial class ShellWindow : Window
     private DispatcherTimer? _codeReadyRetryTimer;
     /// <summary><see cref="_codeReadyRetryTimer"/> の試行回数（上限で打ち切り。サーバーが永久に来ないケースの保険）。</summary>
     private int _codeReadyRetryAttempts;
+    /// <summary>診断用（<see cref="Services.CodeSupportDiag"/>）：コード表示要求からアウトライン描画完了までの経過を計るストップウォッチ。</summary>
+    private System.Diagnostics.Stopwatch? _codeSupportDiagStopwatch;
     /// <summary>直近に描いたコードアウトラインのノード（キャレット追従で②を再取得する差分判定に使う。null＝未描画）。</summary>
     private System.Collections.Generic.IReadOnlyList<Services.OutlineNode>? _codeOutlineRoots;
     /// <summary><see cref="_codeOutlineRoots"/> の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。</summary>
