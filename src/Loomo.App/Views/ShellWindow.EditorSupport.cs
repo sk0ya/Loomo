@@ -61,6 +61,8 @@ public partial class ShellWindow
             _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
             _editorSupportSourceTab.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
+        // 追従先が変わる＝前ファイルの接続待ちポーリングは無効（新ファイルで作り直す）。
+        StopCodeReadyRetry();
 
         _editorSupportSourceTab = sourceTab;
         sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
@@ -306,7 +308,8 @@ public partial class ShellWindow
         // 追従キャッシュは実描画の直前に確定する（await 後に seq 不一致・ビュー未準備で降りたときは
         // 旧値を残し、次のキャレットイベントで再評価・再試行させる）。ここでは候補をローカルに控えるだけ。
         IReadOnlyList<OutlineNode>? newRoots = null;
-        OutlineNode? newMember = null;
+        LspRange? newSymbolRange = null;
+        (int Line, int Col)? newCaret = null;
         // ページ体裁の鍵（ファイル＋テーマ）。ready なコードページのみ設定し、部分更新（②差し替え）の
         // 可否判定（NavigationCompleted 後に _editorSupportReadyPageKey へ昇格）に使う。案内ページは null。
         string? pageKey = null;
@@ -315,9 +318,16 @@ public partial class ShellWindow
         {
             // 未 ready の理由に応じた案内（未導入なら対応サーバー名＋インストール導線、導入済みなら接続待ち）。
             html = _codeSupport.RenderNoticePage(filePath, _lspManagement.EvaluateForFile(filePath));
+            // 言語サーバーは起動に時間がかかる（C# は数秒〜数十秒）。案内を出したまま ready へ遷移しても
+            // 再描画する契機が無い（キャレット追従も _codeOutlineRoots==null で止まる）と「接続待ち」で
+            // 固まるため、ready になるまで軽くポーリングして本描画へ差し替える（案内は描き直さない）。
+            ScheduleCodeReadyRetry();
         }
         else
         {
+            // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める。
+            StopCodeReadyRetry();
+
             IReadOnlyList<DocumentSymbol> symbols;
             try
             {
@@ -338,18 +348,16 @@ public partial class ShellWindow
             // data-line だけレンダラ側で +1 して 1 始まりにする。
             var caret = source.Control.Caret;
             var roots = CodeEditorSupport.ToOutline(symbols);
-            var member = LspOutlineRenderer.FindEnclosing(roots, caret.Line, caret.Column);
 
-            // ②（呼び出し元/先・使用箇所）は「キャレット直下トークン」ではなく特定した<b>メンバーの名前位置</b>で
-            // 問い合わせる（メンバー内でキャレットを動かしても結果がぶれない）。メンバー外なら LSP を叩かず空。
-            var panels = member is null
-                ? CallPanels.Empty
-                : await FetchCallPanelsAsync(lsp!, member.NameLine0, member.NameCol0);
+            // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。
+            // 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。
+            var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
             if (seq != _editorSupportRenderSeq)
                 return;
 
             newRoots = roots;
-            newMember = member;
+            newSymbolRange = symbolRange;
+            newCaret = (caret.Line, caret.Column);
             pageKey = CodePageKey(filePath);
             html = _codeSupport.RenderCodePage(filePath, roots, (caret.Line, caret.Column), panels);
         }
@@ -372,7 +380,8 @@ public partial class ShellWindow
         // 実描画の直前に追従キャッシュを確定する（未 ready のときは null＝キャッシュ破棄）。
         _codeOutlineRoots = newRoots;
         _codeOutlineSource = newRoots is null ? null : source;
-        _codeCurrentMember = newMember;
+        _codeCurrentSymbolRange = newSymbolRange;
+        _codeCurrentCaret = newCaret;
 
         RenderPendingEditorSupportContent(view.CoreWebView2);
     }
@@ -399,20 +408,28 @@ public partial class ShellWindow
 
     /// <summary>
     /// ②呼び出し解析を LSP から取得する。<c>PrepareCallHierarchyAsync</c> → 呼び出し元/先、
-    /// <c>RequestReferencesAsync</c> → 使用箇所。callHierarchy 非対応サーバーやシンボル外の位置でも
-    /// 例外を投げず、取れた分だけ（無ければ空で）返す。line/col は 0 始まりで渡す（LSP 基準）。
+    /// <c>RequestReferencesAsync</c> → 使用箇所。<b>キャレット直下のシンボル</b>（<paramref name="line0"/>/<paramref name="col0"/>、
+    /// 0 始まり）で問い合わせる＝IDE の「参照を検索」相当。callHierarchy 非対応サーバーやシンボル外の位置でも
+    /// 例外を投げず、取れた分だけ（無ければ空で）返す。あわせて解決できたシンボルの名前範囲
+    /// （callHierarchy の <c>SelectionRange</c>）を返し、呼び出し側のキャレット追従の差分基準に使う
+    /// （このシンボル上を動く間は再取得しない）。解決できなければ範囲は null。
     /// </summary>
-    private static async Task<CallPanels> FetchCallPanelsAsync(IEditorLspManager lsp, int line0, int col0)
+    private static async Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
+        IEditorLspManager lsp, int line0, int col0)
     {
         var incoming = new System.Collections.Generic.List<CallReference>();
         var outgoing = new System.Collections.Generic.List<CallReference>();
         var references = new System.Collections.Generic.List<CallReference>();
+        LspRange? symbolRange = null;
 
         try
         {
             var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
             if (item is not null)
             {
+                // 解決したシンボルの名前範囲＝キャレット追従の差分基準（この範囲内の移動では再取得しない）。
+                symbolRange = item.SelectionRange;
+
                 try
                 {
                     foreach (var c in await lsp.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
@@ -441,13 +458,33 @@ public partial class ShellWindow
         }
         catch { /* references 非対応：使用箇所は空のまま */ }
 
-        return new CallPanels(incoming, outgoing, references);
+        return (new CallPanels(incoming, outgoing, references), symbolRange);
+    }
+
+    /// <summary>
+    /// キャレット（0 始まり line/col）が LSP 範囲 <paramref name="range"/>（0 始まり・両端含む）の内側か。
+    /// ②の差分基準：直近に解決したシンボルの名前範囲にキャレットが留まる間は同じシンボル＝再取得しない。
+    /// </summary>
+    private static bool CaretInRange(LspRange range, int line0, int col0)
+    {
+        var start = range.Start;
+        var end = range.End;
+        if (start is null || end is null)
+            return false;
+        if (line0 < start.Line || line0 > end.Line)
+            return false;
+        if (line0 == start.Line && col0 < start.Character)
+            return false;
+        if (line0 == end.Line && col0 > end.Character)
+            return false;
+        return true;
     }
 
     /// <summary>
     /// キャレット追従（②の再取得）。<see cref="ScheduleCodeCallPanelsRefresh"/> のデバウンス満了で呼ばれる。
-    /// 直近に描いたアウトライン（<see cref="_codeOutlineRoots"/>）を使ってキャレットの包含メンバーを求め、
-    /// <b>前回とメンバーが変わった時だけ</b> ②を再取得して描き直す（同一メンバー内の移動では LSP を叩かない）。
+    /// ②は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。直近に解決したシンボルの
+    /// 名前範囲（<see cref="_codeCurrentSymbolRange"/>）にキャレットが留まる間は同じシンボル＝再取得しない。
+    /// 範囲が取れなかった（変数・空白上等）ときはキャレット位置（<see cref="_codeCurrentCaret"/>）で差分を取る。
     /// アウトライン（＝ドキュメントシンボル）は取り直さない（構造は編集でしか変わらない）。
     /// </summary>
     private async Task RefreshCodeCallPanelsAsync()
@@ -468,11 +505,13 @@ public partial class ShellWindow
             return;
 
         var caret = source.Control.Caret;
-        var member = LspOutlineRenderer.FindEnclosing(roots, caret.Line, caret.Column);
 
-        // 同一メンバー内（または「どのメンバー外」のまま）のキャレット移動では②を再取得しない。
-        // ※ _codeCurrentMember の更新は実描画の直前まで遅延する（await 後に降りたら旧値を残して再試行）。
-        if (ReferenceEquals(member, _codeCurrentMember))
+        // 同じシンボル上（前回解決した名前範囲の内側）の移動、または範囲が取れなかった前回と同一キャレット位置の
+        // ままなら②を再取得しない。※キャッシュ更新は実描画の直前まで遅延する（await 後に降りたら旧値で再試行）。
+        if (_codeCurrentSymbolRange is { } range && CaretInRange(range, caret.Line, caret.Column))
+            return;
+        if (_codeCurrentSymbolRange is null && _codeCurrentCaret is { } prev
+            && prev.Line == caret.Line && prev.Col == caret.Column)
             return;
 
         var filePath = source.Control.FilePath;
@@ -483,13 +522,13 @@ public partial class ShellWindow
             return;
 
         var seq = ++_editorSupportRenderSeq;
-        // ②はメンバーの名前位置で問い合わせる（メンバー外なら LSP を叩かず空パネル）。
-        var panels = member is null
-            ? CallPanels.Empty
-            : await FetchCallPanelsAsync(lsp, member.NameLine0, member.NameCol0);
+        // ②はキャレット直下のシンボルで問い合わせる（解決できなければ空パネル＋範囲 null）。
+        var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column);
         if (seq != _editorSupportRenderSeq)
             return;
 
+        // アウトラインの current ハイライトは（シンボルでなく）キャレットを含む最深メンバーへ付ける。
+        var member = LspOutlineRenderer.FindEnclosing(roots, caret.Line, caret.Column);
         var currentLine = member is null ? 0 : member.Line0 + 1; // current を付け替える data-line（1 始まり）
         var codeKey = CodePageKey(filePath);
 
@@ -498,7 +537,8 @@ public partial class ShellWindow
         // 白フラッシュも出さない）。同期成功なので差分基準はここで確定してよい。
         if (TryPostCodeCallPanels(codeKey, panels, currentLine))
         {
-            _codeCurrentMember = member;
+            _codeCurrentSymbolRange = symbolRange;
+            _codeCurrentCaret = (caret.Line, caret.Column);
             return;
         }
 
@@ -517,7 +557,8 @@ public partial class ShellWindow
             return;
 
         // 差分基準は実描画の直前に確定する（await 後に降りたら旧値のまま次イベントで再試行される）。
-        _codeCurrentMember = member;
+        _codeCurrentSymbolRange = symbolRange;
+        _codeCurrentCaret = (caret.Line, caret.Column);
         RenderPendingEditorSupportContent(view.CoreWebView2);
     }
 
@@ -570,6 +611,69 @@ public partial class ShellWindow
         // 実行結果（可視ターミナルの有無）に関わらず、案内ページ自体はそのまま（LSP 接続後の
         // 再オープン／再描画で自然にアウトラインへ切り替わる）。
         _lspManagement.InstallForPrompt(info);
+    }
+
+    /// <summary>案内表示中に ready を待つポーリングの最大試行回数（1 秒間隔＝約 25 秒で打ち切り）。</summary>
+    private const int CodeReadyMaxRetries = 25;
+
+    /// <summary>
+    /// 案内（言語サーバー接続待ち）を出したあと、ready へ遷移したかを 1 秒間隔で確認するポーリングを開始する。
+    /// 既に動いていれば何もしない。ready でない間は<b>案内を描き直さない</b>（チカチカ防止）＝ready になった tick
+    /// でだけ本描画（<see cref="UpdateCodeEditorSupportAsync"/> の ready 分岐）へ差し替える。
+    /// </summary>
+    private void ScheduleCodeReadyRetry()
+    {
+        if (_codeReadyRetryTimer is null)
+        {
+            _codeReadyRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _codeReadyRetryTimer.Tick += CodeReadyRetry_Tick;
+        }
+
+        if (!_codeReadyRetryTimer.IsEnabled)
+        {
+            _codeReadyRetryAttempts = 0;
+            _codeReadyRetryTimer.Start();
+        }
+    }
+
+    /// <summary>接続待ちポーリングを止める（ready 到達・対象変更・上限で呼ぶ）。</summary>
+    private void StopCodeReadyRetry()
+    {
+        _codeReadyRetryTimer?.Stop();
+        _codeReadyRetryAttempts = 0;
+    }
+
+    private async void CodeReadyRetry_Tick(object? sender, EventArgs e)
+    {
+        var source = _editorSupportSourceTab;
+        var filePath = source?.Control.FilePath;
+
+        // 対象が変わった／コード外／既にアウトライン描画済み → 停止。
+        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _codeOutlineRoots is not null)
+        {
+            StopCodeReadyRetry();
+            return;
+        }
+
+        if (++_codeReadyRetryAttempts > CodeReadyMaxRetries)
+        {
+            StopCodeReadyRetry(); // サーバーが来ない：案内のまま諦める（ペイン再オープンで再試行される）
+            return;
+        }
+
+        // 非表示中は描かない（が、次 tick で再確認する＝ポーリングは継続）。
+        var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
+        if (!EditorSupportRenderPolicy.ShouldRender(
+                onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
+            return;
+
+        var lsp = GetLspManager(source);
+        var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
+        if (!ready)
+            return; // まだ：既存の案内のまま、次 tick で再確認（案内を描き直さない）。
+
+        // ready 到達：本描画へ差し替える（ready 分岐が StopCodeReadyRetry する）。
+        await UpdateCodeEditorSupportAsync(source, filePath);
     }
 
     /// <summary>キャレット追従（②再取得）を 150ms デバウンスする。コードページ未描画のときは無視。</summary>

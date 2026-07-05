@@ -81,12 +81,25 @@ public partial class ShellWindow : Window
     private DispatcherTimer? _editorSupportDebounceTimer;
     /// <summary>コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。</summary>
     private DispatcherTimer? _codeCaretTimer;
+    /// <summary>案内（言語サーバー接続待ち）を出している間、ready へ遷移したら本描画へ差し替えるためのポーリング。</summary>
+    private DispatcherTimer? _codeReadyRetryTimer;
+    /// <summary><see cref="_codeReadyRetryTimer"/> の試行回数（上限で打ち切り。サーバーが永久に来ないケースの保険）。</summary>
+    private int _codeReadyRetryAttempts;
     /// <summary>直近に描いたコードアウトラインのノード（キャレット追従で②を再取得する差分判定に使う。null＝未描画）。</summary>
     private System.Collections.Generic.IReadOnlyList<Services.OutlineNode>? _codeOutlineRoots;
     /// <summary><see cref="_codeOutlineRoots"/> の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。</summary>
     private EditorTab? _codeOutlineSource;
-    /// <summary>直近にキャレットを含んでいたメンバー（同一メンバー内の移動では②を再取得しないための基準）。</summary>
-    private Services.OutlineNode? _codeCurrentMember;
+    /// <summary>
+    /// 直近に②（呼び出し解析）を問い合わせた「キャレット直下シンボル」の名前範囲（LSP callHierarchy の
+    /// SelectionRange・0 始まり）。キャレットがこの範囲内に留まる間は同じシンボル＝再取得しない差分基準。
+    /// シンボルが解決できなかった（callHierarchy 非対応・変数・空白上）ときは null。
+    /// </summary>
+    private Editor.Core.Lsp.LspRange? _codeCurrentSymbolRange;
+    /// <summary>
+    /// 直近に②を問い合わせたキャレット位置（0 始まり line/col）。<see cref="_codeCurrentSymbolRange"/> が
+    /// null（シンボル未解決）のときの差分基準＝この位置から動いたら再取得する。
+    /// </summary>
+    private (int Line, int Col)? _codeCurrentCaret;
     /// <summary>EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。</summary>
     private bool _editorSupportSourcePinned;
     /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>

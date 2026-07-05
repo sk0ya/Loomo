@@ -309,8 +309,8 @@ public class CodeEditorSupportTests
 
         Assert.Equal(10, node.Line0);       // Range.Start.Line
         Assert.Equal(20, node.EndLine0);    // Range.End.Line
-        Assert.Equal(11, node.NameLine0);   // SelectionRange.Start.Line（②の問い合わせ行）
-        Assert.Equal(8, node.NameCol0);     // SelectionRange.Start.Character（②の問い合わせ列）
+        Assert.Equal(11, node.NameLine0);   // SelectionRange.Start.Line（シンボル名の行）
+        Assert.Equal(8, node.NameCol0);     // SelectionRange.Start.Character（シンボル名の列）
     }
 
     // ---- 呼び出し/参照の件数上限（タスク3）----

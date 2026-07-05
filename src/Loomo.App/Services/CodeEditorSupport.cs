@@ -223,8 +223,8 @@ internal static class CallPanelRenderer
 /// <param name="Kind">シンボル種別（LSP の <see cref="SymbolKind"/> を流用）。</param>
 /// <param name="Line0">シンボル範囲の開始行（0 始まり／<c>Range.Start.Line</c>）。</param>
 /// <param name="EndLine0">シンボル範囲の終了行（0 始まり／<c>Range.End.Line</c>）。</param>
-/// <param name="NameLine0">名前の行（0 始まり／<c>SelectionRange.Start.Line</c>）。②の問い合わせ位置に使う。</param>
-/// <param name="NameCol0">名前の列（0 始まり／<c>SelectionRange.Start.Character</c>）。②の問い合わせ位置に使う。</param>
+/// <param name="NameLine0">名前の行（0 始まり／<c>SelectionRange.Start.Line</c>）。シンボル名の位置。</param>
+/// <param name="NameCol0">名前の列（0 始まり／<c>SelectionRange.Start.Character</c>）。シンボル名の位置。</param>
 /// <param name="Children">子シンボル。</param>
 internal sealed record OutlineNode(
     string Name,

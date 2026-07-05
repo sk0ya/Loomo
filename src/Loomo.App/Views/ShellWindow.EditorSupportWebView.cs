@@ -426,6 +426,7 @@ public partial class ShellWindow
             _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
             _editorSupportSourceTab.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
+        StopCodeReadyRetry();
         _editorSupportSourceTab = null;
     }
 
