@@ -392,10 +392,74 @@ public partial class ShellWindow
                 // マップ失敗時は NavigateToString フォールバックで表示する（大きいファイルは出ないことがある）。
             }
 
+            // 横チルトホイール（WM_MOUSEHWHEEL）は WebView2CompositionControl が web コンテンツへ
+            // 転送しない（縦の WM_MOUSEWHEEL は転送される）ため、WPF 側の WndProc フックから "hscroll"
+            // メッセージを送り、ページ側でポインタ直下の横あふれ要素をスクロールする。全ページ共通なので
+            // ページ体裁（Markdown/JSON/コード/ログ）ごとの JS ではなく document-created で一度だけ注入する。
+            try
+            {
+                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(HorizontalScrollScript);
+            }
+            catch
+            {
+                // 注入に失敗しても縦スクロール・本文表示は動く（横スクロールだけ効かない）。
+            }
+
             _editorSupportWebEventsAttached = true;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// EditorSupport の全 WebView ページへ注入する横スクロール補助スクリプト。ポインタ位置を追い、
+    /// <c>hscroll</c> メッセージ（WPF の WM_MOUSEHWHEEL フック由来）で、ポインタ直下から辿った
+    /// 最寄りの横スクロール可能要素（無ければドキュメント）を <c>dx</c> だけ横スクロールする。
+    /// </summary>
+    private const string HorizontalScrollScript = """
+        (() => {
+            let mx = 0, my = 0;
+            addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; }, true);
+            function scrollableX(el) {
+                for (; el && el.nodeType === 1; el = el.parentElement) {
+                    if (el.scrollWidth > el.clientWidth) {
+                        const ox = getComputedStyle(el).overflowX;
+                        if (ox === 'auto' || ox === 'scroll') return el;
+                    }
+                }
+                return document.scrollingElement || document.documentElement;
+            }
+            window.chrome?.webview?.addEventListener('message', e => {
+                const d = e.data;
+                if (d && d.type === 'hscroll') {
+                    const el = scrollableX(document.elementFromPoint(mx, my));
+                    if (el) el.scrollLeft += d.dx;
+                }
+            });
+        })();
+        """;
+
+    /// <summary>
+    /// 横チルトホイールを EditorSupport の WebView コンテンツへ転送する（ポインタが WebView 上にある場合のみ）。
+    /// WPF 側に横スクロール対象が無いとき（<see cref="HorizontalWheelScroll.Handle"/> が false）のフォールバック。
+    /// </summary>
+    internal bool TryHorizontalScrollEditorSupportWebView(int delta)
+    {
+        if (delta == 0
+            || _editorSupportView is not { Visibility: Visibility.Visible, IsMouseOver: true } view
+            || view.CoreWebView2 is not { } core)
+            return false;
+
+        try
+        {
+            core.PostWebMessageAsJson(FormattableString.Invariant($"{{\"type\":\"hscroll\",\"dx\":{delta}}}"));
+            return true;
+        }
+        catch
+        {
+            // ナビゲーション中などで送れなくても落とさない（次のホイールで再送される）。
+            return false;
+        }
     }
 
     private void OnEditorSupportNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)

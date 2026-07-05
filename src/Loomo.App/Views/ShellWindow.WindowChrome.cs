@@ -140,7 +140,10 @@ public partial class ShellWindow
     {
         if (msg == HorizontalWheelScroll.WM_MOUSEHWHEEL)
         {
-            if (HorizontalWheelScroll.Handle(wParam))
+            // wParam の上位ワードが回転量（120/ノッチ、正＝右）。WPF に横スクロール対象が無いときは
+            // EditorSupport の WebView（コンポジション版は WM_MOUSEHWHEEL を web へ転送しない）へ転送する。
+            var delta = (short)(((long)wParam >> 16) & 0xFFFF);
+            if (HorizontalWheelScroll.Handle(wParam) || TryHorizontalScrollEditorSupportWebView(delta))
             {
                 handled = true;
                 // WM_MOUSEHWHEEL は処理したら TRUE を返す（WM_MOUSEWHEEL と逆の慣習）。
