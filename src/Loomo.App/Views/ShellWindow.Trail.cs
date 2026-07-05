@@ -60,6 +60,14 @@ public partial class ShellWindow
     private TrailEntryViewModel? _trailScrubTarget;
     private TrailEntryViewModel? _trailPendingJumpEntry;
     private bool _trailJumpRunning;
+
+    /// <summary>ジャンプ完了後、抑制を戻すまでの余韻（settle）を計るタイマ。ジャンプが誘発する
+    /// 非同期イベント（フォーカス確定・ブラウザ遷移完了など）を抑制内に収めるために張る。</summary>
+    private DispatcherTimer? _trailJumpSettleTimer;
+
+    /// <summary>settle 後に <see cref="_trailSuppressed"/> を戻す先（ジャンプ開始前の抑制状態）。
+    /// 連続ジャンプで settle を張り直す間は最初に捕まえた値を保つ（外側の抑制を壊さない）。</summary>
+    private bool _trailJumpBaseSuppressed;
     private string? _trailLastLayoutKey;
 
     private void InitializeTrail()
@@ -497,7 +505,11 @@ public partial class ShellWindow
             return;
 
         _trailJumpRunning = true;
-        var saved = _trailSuppressed;
+        // settle 待ちが無ければ、いまの抑制状態を戻し先として捕まえる（連続ジャンプの張り直しでは
+        // 最初に捕まえた値を保つ＝外側の抑制を壊さない）。前回の settle は一旦止めてこのジャンプ後に張り直す。
+        if (_trailJumpSettleTimer is not { IsEnabled: true })
+            _trailJumpBaseSuppressed = _trailSuppressed;
+        _trailJumpSettleTimer?.Stop();
         _trailSuppressed = true;
         try
         {
@@ -512,10 +524,29 @@ public partial class ShellWindow
         }
         finally
         {
-            _trailSuppressed = saved;
             _trailJumpRunning = false;
         }
         ScrollTrailCurrentIntoView();
+        // ジャンプの誘発する非同期イベント（フォーカス確定・ブラウザ遷移完了など）は、抑制を戻した
+        // 直後に飛んでくる。それらを新しい地点として積んで現在地が最新へ飛ぶのを防ぐため、少し余韻を
+        // 置いてから抑制を戻す（連続ジャンプは張り直しで畳む）。
+        _trailJumpSettleTimer ??= CreateTrailJumpSettleTimer();
+        _trailJumpSettleTimer.Stop();
+        _trailJumpSettleTimer.Start();
+    }
+
+    /// <summary>ジャンプ完了後、誘発される非同期イベントを抑制内に収めるための余韻タイマ。
+    /// 満了で抑制をジャンプ前の状態へ戻す（<see cref="_trailJumpBaseSuppressed"/>）。</summary>
+    private DispatcherTimer CreateTrailJumpSettleTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!_trailJumpRunning)   // 次のジャンプが走り出していれば、そちらの settle に任せる
+                _trailSuppressed = _trailJumpBaseSuppressed;
+        };
+        return timer;
     }
 
     /// <summary>対象と表示コンテキストを先に検証し、失敗時に画面構成だけ変わることを防ぐ。</summary>
