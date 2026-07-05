@@ -557,7 +557,7 @@ public partial class ShellWindow
     /// 行が指定されればその位置へカーソルを移す（JSON ツリーの「↦」）。指定なしは現在位置のまま
     /// フォーカスだけ移す（コンテキストメニュー／同期スクロール位置）。
     /// </summary>
-    private void FocusEditorSupportSource(int? line)
+    private void FocusEditorSupportSource(int? line, bool alignTop = false)
     {
         var tab = _editorSupportSourceTab;
         if (tab is null)
@@ -569,10 +569,15 @@ public partial class ShellWindow
 
         SetActiveEditorTab(tab);
         if (line is int l)
+        {
             // line は data-line（1 始まり）、NavigateTo は 0 始まりなので変換する
             // （Links.cs/CommandPalette.cs 等の他呼び出しと同じ規約。以前は 1 始まりのまま渡して
             // アウトライン・JSON/XML ツリーの ↦ ジャンプが 1 行下へずれていた）。
             tab.Control.NavigateTo(l - 1, 0);
+            // コード構造アウトラインからのジャンプは、対象行を vim の zt 相当でビュー最上段へ寄せる。
+            if (alignTop)
+                tab.Control.ScrollCursorToTop();
+        }
         tab.Control.Focus();
         _focusedRegion = FocusTarget.Of(PaneKind.Editor);
     }

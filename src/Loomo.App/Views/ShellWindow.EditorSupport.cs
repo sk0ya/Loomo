@@ -481,9 +481,10 @@ public partial class ShellWindow
 
         var view = new CodeOutlineView();
         // アウトラインのメンバー名クリック → ソース行（1 始まり）へジャンプしてフォーカスを戻す。
-        view.SourceLineActivated += (_, line1) => FocusEditorSupportSource(line1 > 0 ? line1 : null);
+        // コードジャンプは対象行を vim の zt 相当でビュー最上段へ寄せる（alignTop: true）。
+        view.SourceLineActivated += (_, line1) => FocusEditorSupportSource(line1 > 0 ? line1 : null, alignTop: true);
         // ②パネルの行クリック → 別ファイル（または同一ファイル）の該当行を開く（1 始まり→内部で 0 始まりへ）。
-        view.FileLocationActivated += (_, e) => _ = OpenPathInEditorAsync(e.Path, e.Line1, column: 0);
+        view.FileLocationActivated += (_, e) => _ = OpenPathInEditorAsync(e.Path, e.Line1, column: 0, alignTop: true);
         // 案内ページのボタン → 既存導線を再利用する。
         view.InstallRequested += (_, _) => InstallLspForEditorSupportSource();
         view.OpenLspSettingsRequested += (_, _) => _vm.LspPrompt.OpenSettingsCommand.Execute(null);

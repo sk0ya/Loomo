@@ -177,7 +177,7 @@ public partial class ShellWindow
     }
 
     /// <summary>ファイルをエディタの新規タブで開き、行・列が指定されていればそこへキャレットを移動する。</summary>
-    private async Task OpenPathInEditorAsync(string fullPath, int line, int column)
+    private async Task OpenPathInEditorAsync(string fullPath, int line, int column, bool alignTop = false)
     {
         await OpenFileInNewEditorTabAsync(fullPath);
 
@@ -190,6 +190,9 @@ public partial class ShellWindow
         {
             // line/column は1始まり、NavigateTo は0始まりなので変換する。
             tab.Control.NavigateTo(line - 1, column > 0 ? column - 1 : 0);
+            // コード構造の②パネルからのジャンプは、対象行を vim の zt 相当でビュー最上段へ寄せる。
+            if (alignTop)
+                tab.Control.ScrollCursorToTop();
         }
     }
 
