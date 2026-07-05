@@ -351,6 +351,20 @@ public partial class ShellWindow
             _vm.Trail.RecordBrowser(url, title, mode, stagePane, layout));
     }
 
+    /// <summary>ペイン切替でブラウザのページを軌跡へ代表させるための、アクティブなブラウザタブの
+    /// 記録対象 URL（実体化前は保留中の遷移先で代用）。<see cref="RecordTrailBrowser"/> と同じ除外
+    /// （既定ページ・about:・空）を満たす URL が無ければ null を返し、呼び出し側は generic な Pane
+    /// ドットへ落とす（＝この「表示」を Browser ドットにはしない）。</summary>
+    private string? CurrentBrowserTrailUrl()
+    {
+        var url = _activeBrowserTab?.View.Source?.ToString() ?? _activeBrowserTab?.PendingUrl;
+        if (string.IsNullOrWhiteSpace(url)
+            || url.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(url, DefaultBrowserUrl, StringComparison.OrdinalIgnoreCase))
+            return null;
+        return url;
+    }
+
     /// <summary>ターミナルタブの活性化を、再起動後も同じタブへ戻れる ID 付きで記録する。</summary>
     private void RecordTrailTerminalTab(TerminalTab tab)
     {
@@ -423,6 +437,16 @@ public partial class ShellWindow
                 && !string.IsNullOrWhiteSpace(est.PeekFilePath) && !est.PeekIsVirtual)
             {
                 RecordTrailPreview(est);
+                return;
+            }
+            // ブラウザペインへの切替は、いま表示しているページの Browser ドットが代表する
+            // （generic な Pane(Browser) ドットではなく URL／タイトルまで戻れる）。ブラウザは
+            // ナビゲートが起きない限り NavigationCompleted が飛ばないので、既に読み込み済みのページを
+            // 見に来ただけの「表示」がここで記録されないと軌跡へ残らない。記録すべき URL が無い
+            // （既定ページ・about:・未確定）ときだけ通常の Pane ドットへ落ちる。
+            if (kind == PaneKind.Browser && CurrentBrowserTrailUrl() is { } browserUrl)
+            {
+                RecordTrailBrowser(browserUrl, _activeBrowserTab?.View.CoreWebView2?.DocumentTitle);
                 return;
             }
             RecordTrail((mode, stagePane, layout) =>
