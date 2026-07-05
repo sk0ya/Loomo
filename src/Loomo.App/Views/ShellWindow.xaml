@@ -1411,7 +1411,9 @@
                     <ScrollViewer x:Name="TrailScroll" HorizontalScrollBarVisibility="Hidden"
                                   VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
                                   PreviewMouseWheel="OnTrailWheel">
-                        <ItemsControl ItemsSource="{Binding Trail.Entries}">
+                        <!-- Padding 右端は ShellWindow.Trail.cs の UpdateTrailTrailingMargin がビュー幅ぶんに保つ
+                             （末尾付近のドットも左端へ寄せられるようにする末尾余白）。 -->
+                        <ItemsControl x:Name="TrailDots" ItemsSource="{Binding Trail.Entries}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal" />

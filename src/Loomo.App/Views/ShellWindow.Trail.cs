@@ -83,13 +83,16 @@ public partial class ShellWindow
         _git.OperationExecuted += (_, e) =>
             Dispatcher.BeginInvoke(new Action(() => RecordTrailGit(e.Command, e.Success)));
         // 追記でのスクロール追従：過去を見ている間は動かさず、ライブ（最新を追っている）ときだけ
-        // 現在地＝最新（右端）へ寄せる。
+        // 現在地を左端へ寄せる（末尾の余白ぶん、最新は左端＋右に余白で収まる）。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (!_trailBrowsingPast)
                     ScrollTrailToCurrent();
             }), DispatcherPriority.Loaded);
+        // 末尾余白（ビュー幅ぶん）をバーの幅に追従させる。これが無いと ScrollViewer のクランプで
+        // 末尾付近のドットを左端まで寄せられない（選んだ時間帯が左端に届かない）。
+        TrailScroll.SizeChanged += (_, _) => UpdateTrailTrailingMargin();
         // 日付・時刻クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
         // すると Click が届く前に外側クリックとして閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
         TrailCalendarPopup.Closed += (_, _) => _trailCalendarClosedAt = DateTime.UtcNow;
@@ -771,10 +774,10 @@ public partial class ShellWindow
     }
 
     /// <summary>唯一のスクロール追従。現在地のドットのスロット左端を表示領域の左端へ寄せる
-    /// （時間帯の先頭なら時刻ラベル枠の先頭）。最新地点なら <see cref="ScrollViewer"/> のクランプで
-    /// そのまま右端に収まる＝ライブの「最新を右端に張り付ける」挙動も、途中地点の「その地点を左端に置いて
-    /// 以後の並びを右に見せる」挙動も同じ計算で表せる。現在地が無ければ右端（最新）へ。
-    /// 追記追従・スクラブ・ジャンプ・時間帯選択の共通経路。</summary>
+    /// （時間帯の先頭なら時刻ラベル枠の先頭）。末尾にビュー幅ぶんの余白（<see cref="UpdateTrailTrailingMargin"/>）が
+    /// あるので、最新を含むどの地点も左端まで寄せられる（最新地点は左端＋右に余白で収まる）。
+    /// ライブ追従も途中地点の「その地点を左端に置いて以後の並びを右に見せる」挙動も同じ計算で表せる。
+    /// 現在地が無ければ末尾（＝最新の並び）へ。追記追従・スクラブ・ジャンプ・時間帯選択の共通経路。</summary>
     private void ScrollTrailToCurrent()
     {
         var index = _vm.Trail.CurrentIndex;
@@ -786,14 +789,29 @@ public partial class ShellWindow
         TrailScroll.ScrollToHorizontalOffset(TrailSlotOffset(index));
     }
 
+    /// <summary>ドット列の末尾に「ビュー幅ぶん（末尾1ドットを左端に置ける最小＝
+    /// <see cref="TrailScroll"/> の表示幅 − <see cref="TrailDotWidth"/>）」の余白を確保する。
+    /// これが無いと <see cref="ScrollViewer"/> のクランプ（オフセットは <c>ScrollableWidth</c> で頭打ち）で
+    /// 末尾付近のドットを左端まで寄せられず、選んだ時間帯が左端に届かない。バーの幅が変わるたびに追従させ、
+    /// ライブ追従中は余白変更後の現在地を貼り直す。</summary>
+    private void UpdateTrailTrailingMargin()
+    {
+        var trailing = Math.Max(0, TrailScroll.ViewportWidth - TrailDotWidth);
+        if (Math.Abs(TrailDots.Padding.Right - trailing) < 0.5)
+            return;
+        TrailDots.Padding = new Thickness(0, 0, trailing, 0);
+        if (!_trailBrowsingPast)
+            Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
+    }
+
     /// <summary>バー共通の右クリックメニュー「最新に戻る」。過去日を見ていれば今日へ戻し、現在地を
-    /// 軌跡の最新地点（＝ライブの「今」）へ動かして右端へ寄せる。日付ボタンの「今日へ」と時刻ダブルクリックの
+    /// 軌跡の最新地点（＝ライブの「今」）へ動かして左端へ寄せる。日付ボタンの「今日へ」と時刻ダブルクリックの
     /// 「今の地点へ」を1操作に束ねたもので、どちらの状態からも1回で最新のライブ追従へ戻す。</summary>
     private void OnTrailBackToLatest(object sender, RoutedEventArgs e)
     {
         _vm.Trail.BackToTodayCommand.Execute(null);   // 過去日表示中なら今日へ（今日表示中は無害）
         _vm.Trail.MoveToLatest();                     // 過去地点へスクラブ中なら最新へ
-        _trailBrowsingPast = false;                   // ライブ追従を再開（最新が右端に収まる）
+        _trailBrowsingPast = false;                   // ライブ追従を再開（最新は左端＋右余白に収まる）
         Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
     }
 
@@ -849,7 +867,7 @@ public partial class ShellWindow
             TrailHourPopup.IsOpen = false;
             if (_vm.Trail.MoveToLatest() is not null)
             {
-                _trailBrowsingPast = false;   // 「今」へ戻る＝ライブ追従を再開（最新が右端に収まる）
+                _trailBrowsingPast = false;   // 「今」へ戻る＝ライブ追従を再開（最新は左端＋右余白に収まる）
                 Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
             }
             return;
@@ -896,7 +914,7 @@ public partial class ShellWindow
         TrailHourPopup.IsOpen = false;
         Mouse.Capture(null);
         _vm.Trail.SelectHour(hour);
-        // 選んだ時間帯の先頭ドットを表示領域の左端へ寄せる。最新の帯なら右端に収まる＝ライブへ復帰。
+        // 選んだ時間帯の先頭ドットを表示領域の左端へ寄せる（末尾余白で最新の帯も左端に届く＝ライブへ復帰）。
         _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
         Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
     }
