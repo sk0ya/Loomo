@@ -676,6 +676,26 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Selected_hour_band_is_highlighted_in_the_hour_list()
+    {
+        // 現在地が属する時間帯だけが IsSelected＝true（ポップアップで「どこを選んでいるか」を示す）。
+        var clock = new DateTime(2026, 7, 3, 9, 5, 0);
+        var sut = new TrailViewModel(_store, () => clock);
+        sut.EnsureLoaded();
+        sut.RecordFile(@"C:\work\a.cs");                        // 09
+        clock = new DateTime(2026, 7, 3, 11, 10, 0);
+        sut.RecordFile(@"C:\work\c.cs");                        // 11 ← 記録直後は最新（11）が選択
+
+        Assert.False(sut.Hours.Single(h => h.Hour == 9).IsSelected);
+        Assert.True(sut.Hours.Single(h => h.Hour == 11).IsSelected);
+
+        sut.SelectHour(sut.Hours.Single(h => h.Hour == 9));    // 過去の時間帯へ移すと選択も移る
+
+        Assert.True(sut.Hours.Single(h => h.Hour == 9).IsSelected);
+        Assert.False(sut.Hours.Single(h => h.Hour == 11).IsSelected);
+    }
+
+    [Fact]
     public void StartsNewHour_marks_the_first_dot_of_each_band()
     {
         // ドット列の時間帯境界に区切り（|）を出すためのフラグ（§27.7.3）。

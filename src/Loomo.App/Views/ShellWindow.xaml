@@ -1359,10 +1359,13 @@
                             ToolTip="クリックで日付と時間帯を選んでその軌跡へ移動（選択はすぐ反映・フォーカスを外すと閉じる）"
                             Click="OnTrailDateTimeClick" />
                     <Popup x:Name="TrailDateTimePopup" PlacementTarget="{Binding ElementName=TrailDateTimeButton}"
-                           Placement="Top" StaysOpen="False" AllowsTransparency="True">
-                        <!-- Focusable な枠に開いたときフォーカスを移し、フォーカスがポップアップの外へ
-                             出たら閉じる（OnTrailDateTimeLostFocus）。ウィンドウ非アクティブ化での
-                             クローズは ShellWindow.Trail.cs の Deactivated 購読が担う。 -->
+                           Placement="Top" StaysOpen="True" AllowsTransparency="True">
+                        <!-- StaysOpen=True：内部クリック（日付・時間帯の選択）ではポップアップを閉じない。
+                             閉じるのは「フォーカスがポップアップの外へ出たら」（OnTrailDateTimeLostFocus）、
+                             ウィンドウ非アクティブ化（ShellWindow.Trail.cs の Deactivated 購読）、日付・時刻
+                             ボタンの再クリック（OnTrailDateTimeClick のトグル）、「⟳ 最新に戻る」ボタンのみ。
+                             StaysOpen=False にすると、選択時のマウスキャプチャ解放（Calendar のクリック飲み込み
+                             回避に必要）でポップアップが閉じてしまうため True にしている。 -->
                         <Border x:Name="TrailDateTimePopupRoot" Focusable="True"
                                 Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
                                 BorderThickness="1" CornerRadius="4" Padding="4" Margin="8"
@@ -1374,13 +1377,62 @@
                                 <!-- 日付：カレンダーで選ぶとその日の軌跡を即バーへ反映（ポップアップは開いたまま）。 -->
                                 <Calendar x:Name="TrailCalendar" Style="{StaticResource ThemedCalendar}"
                                           SelectedDatesChanged="OnTrailCalendarSelected" />
-                                <!-- 時間帯：その日に記録のある時間（HH:00）を縦に並べ、選ぶとその時間帯の
-                                     先頭ドットへ即移動する。記録のある時間が無ければ列ごと畳む。 -->
-                                <StackPanel Orientation="Horizontal"
-                                            Visibility="{Binding Trail.HasHours, Converter={StaticResource BoolToVis}}">
-                                    <Border Width="1" Margin="4,4" Background="{DynamicResource Border}" />
-                                    <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="2,0,0,0">
+                                <Border Width="1" Margin="4,4" Background="{DynamicResource Border}" />
+                                <!-- 右列：最新へ戻るボタン＋時間帯リスト。高さはカレンダーへ固定するので
+                                     時間帯の記録数でポップアップの縦幅が伸び縮みしない（多い日はリスト内でスクロール）。 -->
+                                <DockPanel MinWidth="84" Margin="2,0,0,0"
+                                           Height="{Binding ActualHeight, ElementName=TrailCalendar}">
+                                    <!-- 最新（今）へ戻る：過去日表示・過去地点へのスクラブどちらからも
+                                         ライブの最新地点へ1回で戻す。押したらポップアップを閉じる。 -->
+                                    <Button DockPanel.Dock="Top" Style="{StaticResource FlatButton}"
+                                            Padding="10,4" FontSize="12" HorizontalContentAlignment="Left"
+                                            Content="⟳ 最新に戻る" ToolTip="ライブの最新地点（今）へ戻る"
+                                            Click="OnTrailBackToLatestFromPopup" />
+                                    <Border DockPanel.Dock="Top" Height="1" Margin="4,3"
+                                            Background="{DynamicResource Border}" />
+                                    <!-- 時間帯：その日に記録のある時間（HH:00）を縦に並べ、選ぶとその時間帯の
+                                         先頭ドットへ即移動する。記録のある時間が無ければリストだけ畳む
+                                         （最新へ戻るボタンは残す）。長ければこの固定枠内でスクロールする。 -->
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  Visibility="{Binding Trail.HasHours, Converter={StaticResource BoolToVis}}">
                                         <ItemsControl ItemsSource="{Binding Trail.Hours}">
+                                            <ItemsControl.Resources>
+                                                <!-- 時間帯ボタン：素はゴースト（透明）、現在地の属する時間帯（IsSelected）だけ
+                                                     アクセント塗りで強調して「どこを選択しているか」を示す（§27.7.2）。 -->
+                                                <Style x:Key="TrailHourButton" TargetType="Button">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Setter Property="Cursor" Value="Hand" />
+                                                    <Setter Property="MinWidth" Value="64" />
+                                                    <Setter Property="Padding" Value="10,3" />
+                                                    <Setter Property="FontSize" Value="12" />
+                                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="b" Background="{TemplateBinding Background}"
+                                                                        CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Left"
+                                                                                      VerticalAlignment="Center" />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="b" Property="Background"
+                                                                                Value="{DynamicResource BgAlt}" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource SelectionBg}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ItemsControl.Resources>
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <StackPanel Orientation="Vertical" />
@@ -1388,15 +1440,13 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Button Style="{StaticResource FlatButton}" MinWidth="64"
-                                                            Padding="10,3" FontSize="12"
-                                                            HorizontalContentAlignment="Left"
+                                                    <Button Style="{StaticResource TrailHourButton}"
                                                             Content="{Binding Label}" Click="OnTrailHourSelected" />
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                     </ScrollViewer>
-                                </StackPanel>
+                                </DockPanel>
                             </StackPanel>
                         </Border>
                     </Popup>

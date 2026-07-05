@@ -213,7 +213,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
 
 /// <summary>時刻ポップアップの1項目＝その日に記録のある「時間帯（時）」。ラベルは常に HH:00
 /// （09:00 は 09:00〜09:59 を表す）。クリックでその時間帯の先頭ドットへ現在地を移す（§27.7.2）。</summary>
-public sealed class TrailHourViewModel
+public sealed partial class TrailHourViewModel : ObservableObject
 {
     public TrailHourViewModel(int hour) => Hour = hour;
 
@@ -222,6 +222,10 @@ public sealed class TrailHourViewModel
 
     /// <summary>ポップアップに縦並びで出す表示（HH:00）。</summary>
     public string Label => $"{Hour:D2}:00";
+
+    /// <summary>いま現在地が属する時間帯か（ポップアップのリストでこの項目を選択状態に強調する）。
+    /// <see cref="TrailViewModel"/> が現在地の変化に合わせて更新する（§27.7.2）。</summary>
+    [ObservableProperty] private bool _isSelected;
 }
 
 /// <summary>ウィンドウ最下部の「軌跡」バー。エディタ・ブラウザ・ペイン／パネル切替の遷移を
@@ -576,6 +580,7 @@ public sealed partial class TrailViewModel : ObservableObject
         Hours.Clear();
         foreach (var hour in hours)
             Hours.Add(new TrailHourViewModel(hour));
+        UpdateHourSelection();   // 作り直した項目へ現在地の選択を貼り直す
     }
 
     /// <summary>時計の進行に合わせてライブの時刻ラベルを更新する（View のタイマから定期的に呼ぶ）。</summary>
@@ -668,6 +673,16 @@ public sealed partial class TrailViewModel : ObservableObject
         CurrentIndex = index;
         if (CurrentEntry is { } entry)
             entry.IsCurrent = true;
+        UpdateHourSelection();
+    }
+
+    /// <summary>時刻ポップアップのリストで、現在地が属する時間帯の項目だけを選択状態にする
+    /// （どの時間帯を見ているのかをリスト上で示す、§27.7.2）。現在地の変化・時間帯一覧の再構築で呼ぶ。</summary>
+    private void UpdateHourSelection()
+    {
+        var hour = CurrentEntry?.Timestamp.Hour;
+        foreach (var h in Hours)
+            h.IsSelected = hour.HasValue && h.Hour == hour.Value;
     }
 
     // ===== 日付の切替（過去の軌跡を追う） =====
