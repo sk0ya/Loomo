@@ -62,10 +62,10 @@ public class CodeEditorSupportTests
     [InlineData(SymbolKind.Interface, "I", "interface")]
     public void KindBadge_種別ごとのグリフとツールチップ(SymbolKind kind, string glyph, string title)
     {
-        var (g, colorHex, t) = CodeOutline.KindBadge(kind);
+        var (g, brushKey, t) = CodeOutline.KindBadge(kind);
         Assert.Equal(glyph, g);
         Assert.Equal(title, t);
-        Assert.StartsWith("#", colorHex);   // 色は #RRGGBB
+        Assert.StartsWith("Sym", brushKey);   // 色はテーマ追従のパレットリソースキー（Sym*）
     }
 
     // ---- FindEnclosing（包含判定）----

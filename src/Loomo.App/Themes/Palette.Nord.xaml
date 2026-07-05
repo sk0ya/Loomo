@@ -21,5 +21,14 @@
     <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
     <SolidColorBrush x:Key="Success" Color="#FFA3BE8C" />
     <SolidColorBrush x:Key="Error" Color="#FFBF616A" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。Nord の frost/aurora 配色。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF8A93A5" />
+    <SolidColorBrush x:Key="SymType" Color="#FF8FBCBB" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF88C0D0" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFEBCB8B" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FFB48EAD" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF81A1C1" />
+    <SolidColorBrush x:Key="SymField" Color="#FF88C0D0" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FF8FBCBB" />
 
 </ResourceDictionary>

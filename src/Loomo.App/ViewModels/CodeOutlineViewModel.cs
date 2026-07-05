@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using sk0ya.Loomo.App.Services;
 
@@ -122,34 +121,21 @@ public sealed partial class CodeOutlineViewModel : ObservableObject
 
     private CodeOutlineItem BuildItem(OutlineNode node)
     {
-        var (glyph, colorHex, title) = CodeOutline.KindBadge(node.Kind);
+        var (glyph, brushKey, title) = CodeOutline.KindBadge(node.Kind);
         var item = new CodeOutlineItem
         {
             Glyph = glyph,
-            GlyphBrush = BrushFromHex(colorHex),
+            GlyphBrushKey = brushKey, // パレットの Sym* キー。ビューが SetResourceReference で張る（テーマ追従）。
             KindTitle = title,
             Name = node.Name,
             Signature = node.Detail,
-            DataLine1 = node.Line0 + 1, // 0 始まり(LSP) → 1 始まり(表示・ジャンプ)
+            DataLine1 = node.Line0 + 1,      // Range.Start（0 始まり）→ 1 始まり。current ハイライトの一致キー。
+            JumpLine1 = node.NameLine0 + 1,  // SelectionRange.Start（名前の行）→ ジャンプ先（宣言行に着地）。
         };
         foreach (var child in node.Children)
             item.Children.Add(BuildItem(child));
         _allItems.Add(item);
         return item;
-    }
-
-    private static Brush BrushFromHex(string hex)
-    {
-        try
-        {
-            var brush = (Brush)new BrushConverter().ConvertFromString(hex)!;
-            brush.Freeze();
-            return brush;
-        }
-        catch
-        {
-            return Brushes.Gray;
-        }
     }
 }
 
@@ -157,14 +143,18 @@ public sealed partial class CodeOutlineViewModel : ObservableObject
 public sealed partial class CodeOutlineItem : ObservableObject
 {
     public string Glyph { get; init; } = "";
-    public Brush GlyphBrush { get; init; } = Brushes.Gray;
+    /// <summary>グリフ色のパレットリソースキー（<c>Sym*</c>）。ビューが SetResourceReference でテーマ追従させる。</summary>
+    public string GlyphBrushKey { get; init; } = "SymNamespace";
     public string KindTitle { get; init; } = "";
     public string Name { get; init; } = "";
     public string Signature { get; init; } = "";
     public bool HasSignature => Signature.Length > 0;
 
-    /// <summary>ジャンプ先の行（1 始まり）。</summary>
+    /// <summary>current ハイライトの一致キー（1 始まり・<c>Range.Start</c> 由来）。<see cref="ApplyCurrent"/> で使う。</summary>
     public int DataLine1 { get; init; }
+
+    /// <summary>クリックでジャンプする行（1 始まり・<c>SelectionRange.Start</c>＝名前の行。宣言に着地する）。</summary>
+    public int JumpLine1 { get; init; }
 
     public ObservableCollection<CodeOutlineItem> Children { get; } = new();
     public bool HasChildren => Children.Count > 0;

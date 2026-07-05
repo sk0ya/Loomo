@@ -21,5 +21,14 @@
     <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
     <SolidColorBrush x:Key="Success" Color="#FF859900" />
     <SolidColorBrush x:Key="Error" Color="#FFDC322F" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。Solarized のアクセント配色。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF839496" />
+    <SolidColorBrush x:Key="SymType" Color="#FF2AA198" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF268BD2" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFB58900" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FF6C71C4" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF268BD2" />
+    <SolidColorBrush x:Key="SymField" Color="#FF2AA198" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FF859900" />
 
 </ResourceDictionary>

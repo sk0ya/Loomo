@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+             xmlns:v="clr-namespace:sk0ya.Loomo.App.Views"
              mc:Ignorable="d"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -11,6 +12,89 @@
              FontFamily="Consolas, Cascadia Mono, Consolas" FontSize="12">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolVis" />
+
+        <!-- 構造ツリーの項目テンプレート。BranchTreeItem と同じ作り（矢印＋全幅ホバー＋子の左ガイド線）だが、
+             コンテナの選択ハイライトは<b>出さない</b>：行の状態（現在メンバーの左バー＋淡背景・ジャンプ）は
+             ItemTemplate 側の Border が描くので、既定テンプレートのシステム選択色／フォーカスを外した後の
+             灰色の選択帯がテーマから浮くのを避ける。ビュー内に閉じて持つ（唯一の利用者・StaticResource 依存も無く
+             単体表示テストでも読める）。 -->
+        <Style x:Key="OutlineTreeItem" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+
+                            <!-- ヘッダ行（矢印＋行内容）。Bd は子を含まないので子ホバーで親は光らない -->
+                            <Border x:Name="Bd" Grid.Row="0" Background="Transparent" CornerRadius="3">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <ToggleButton x:Name="Expander" Grid.Column="0"
+                                                  ClickMode="Press" Focusable="False"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" Width="13" Height="14">
+                                                    <Path x:Name="Arrow" Width="8" Height="8" Stretch="Uniform"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Arrow" Property="RenderTransform">
+                                                            <Setter.Value>
+                                                                <RotateTransform Angle="90" CenterX="4" CenterY="4" />
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+
+                                    <ContentPresenter x:Name="PART_Header" Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      Margin="{TemplateBinding Padding}"
+                                                      HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+
+                            <!-- 子要素：矢印列ぶんだけインデントし、左に淡いガイド線 -->
+                            <Border Grid.Row="1" Margin="11,0,0,0"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
+                                <ItemsPresenter x:Name="ItemsHost" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <!-- IsSelected は意図的に無視（選択ハイライトは出さない）。 -->
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!-- ②呼び出し解析の 1 行（クリックでジャンプ）。 -->
         <DataTemplate DataType="{x:Type vm:CodeCallRow}">
@@ -86,11 +170,9 @@
                           PreviewMouseWheel="Tree_PreviewMouseWheel"
                           Foreground="{DynamicResource Fg}">
                     <TreeView.ItemContainerStyle>
-                        <Style TargetType="TreeViewItem">
-                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0" />
-                        </Style>
+                        <!-- 選択ハイライト無しのツリー項目（上の Resources 参照）。既定テンプレートの選択帯が
+                             テーマから浮く問題への対処。行の状態（current/ホバー）は ItemTemplate 側が描く。 -->
+                        <Style TargetType="TreeViewItem" BasedOn="{StaticResource OutlineTreeItem}" />
                     </TreeView.ItemContainerStyle>
                     <TreeView.ItemTemplate>
                         <HierarchicalDataTemplate DataType="{x:Type vm:CodeOutlineItem}"
@@ -111,7 +193,7 @@
                                     </Style>
                                 </Border.Style>
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Glyph}" Foreground="{Binding GlyphBrush}"
+                                    <TextBlock Text="{Binding Glyph}" v:ThemeBrush.ForegroundKey="{Binding GlyphBrushKey}"
                                                FontWeight="Bold" FontSize="10" MinWidth="14"
                                                TextAlignment="Center" Margin="0,0,4,0"
                                                VerticalAlignment="Center" />

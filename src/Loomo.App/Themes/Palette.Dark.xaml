@@ -23,5 +23,15 @@
     <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
     <SolidColorBrush x:Key="Success" Color="#FF73C991" />
     <SolidColorBrush x:Key="Error" Color="#FFE57373" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。VS Code dark 系のセマンティック配色。
+         背景が変わるテーマ（Light/HighContrast 等）では読めるよう各パレットで差し替える。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF9AA4B2" />
+    <SolidColorBrush x:Key="SymType" Color="#FF4EC9B0" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF4FC1FF" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFE5C07B" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FFC586C0" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF9CDCFE" />
+    <SolidColorBrush x:Key="SymField" Color="#FF79C0FF" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FF56D4C6" />
 
 </ResourceDictionary>

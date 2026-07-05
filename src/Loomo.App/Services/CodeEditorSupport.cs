@@ -268,29 +268,31 @@ internal static class CodeOutline
     }
 
     /// <summary>
-    /// シンボル種別 → 表示バッジ（1 文字グリフ・色コード <c>#RRGGBB</c>・ツールチップ）。等幅の色付き
-    /// アイコンで走査性を上げつつ横幅を詰める（<c>Title</c> に正式名）。色は VS 系のセマンティック配色で
-    /// テーマ非依存（ビューがそのままブラシ化する）。
+    /// シンボル種別 → 表示バッジ（1 文字グリフ・テーマ追従の色リソースキー・ツールチップ）。等幅の色付き
+    /// アイコンで走査性を上げつつ横幅を詰める（<c>Title</c> に正式名）。<c>BrushKey</c> はパレット
+    /// （<c>Palette.*.xaml</c>）の <c>Sym*</c> ブラシキーで、ビューが <c>SetResourceReference</c> で張るため
+    /// テーマ切替（Light/HighContrast 等の背景差）に追従する（以前は <c>#RRGGBB</c> のテーマ非依存固定色で、
+    /// 白背景テーマでバッジが読めなかった）。
     /// </summary>
-    public static (string Glyph, string ColorHex, string Title) KindBadge(SymbolKind kind) => kind switch
+    public static (string Glyph, string BrushKey, string Title) KindBadge(SymbolKind kind) => kind switch
     {
-        SymbolKind.Namespace => ("N", "#9AA4B2", "namespace"),
-        SymbolKind.Module => ("N", "#9AA4B2", "module"),
-        SymbolKind.Package => ("N", "#9AA4B2", "package"),
-        SymbolKind.Class => ("C", "#4EC9B0", "class"),
-        SymbolKind.Struct => ("S", "#4EC9B0", "struct"),
-        SymbolKind.Interface => ("I", "#4FC1FF", "interface"),
-        SymbolKind.Enum => ("E", "#E5C07B", "enum"),
-        SymbolKind.EnumMember => ("e", "#E5C07B", "enum member"),
-        SymbolKind.Method => ("M", "#C586C0", "method"),
-        SymbolKind.Constructor => ("c", "#C586C0", "constructor"),
-        SymbolKind.Function => ("ƒ", "#C586C0", "function"),
-        SymbolKind.Property => ("P", "#9CDCFE", "property"),
-        SymbolKind.Field => ("F", "#79C0FF", "field"),
-        SymbolKind.Event => ("⚡", "#E5C07B", "event"),
-        SymbolKind.Constant => ("K", "#56D4C6", "constant"),
-        SymbolKind.Variable => ("V", "#9CDCFE", "variable"),
-        _ => ("•", "#9AA4B2", kind.ToString().ToLowerInvariant()),
+        SymbolKind.Namespace => ("N", "SymNamespace", "namespace"),
+        SymbolKind.Module => ("N", "SymNamespace", "module"),
+        SymbolKind.Package => ("N", "SymNamespace", "package"),
+        SymbolKind.Class => ("C", "SymType", "class"),
+        SymbolKind.Struct => ("S", "SymType", "struct"),
+        SymbolKind.Interface => ("I", "SymInterface", "interface"),
+        SymbolKind.Enum => ("E", "SymEnum", "enum"),
+        SymbolKind.EnumMember => ("e", "SymEnum", "enum member"),
+        SymbolKind.Method => ("M", "SymMethod", "method"),
+        SymbolKind.Constructor => ("c", "SymMethod", "constructor"),
+        SymbolKind.Function => ("ƒ", "SymMethod", "function"),
+        SymbolKind.Property => ("P", "SymProperty", "property"),
+        SymbolKind.Field => ("F", "SymField", "field"),
+        SymbolKind.Event => ("⚡", "SymEnum", "event"),
+        SymbolKind.Constant => ("K", "SymConstant", "constant"),
+        SymbolKind.Variable => ("V", "SymProperty", "variable"),
+        _ => ("•", "SymNamespace", kind.ToString().ToLowerInvariant()),
     };
 }
 

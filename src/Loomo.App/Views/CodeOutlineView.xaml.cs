@@ -78,8 +78,10 @@ public partial class CodeOutlineView : UserControl
 
     private void OutlineRow_Click(object sender, MouseButtonEventArgs e)
     {
+        // ジャンプは SelectionRange（名前の行）へ。Range.Start（DataLine1）だと C# の doc コメント／属性を
+        // 含む先頭行に着地して数行ずれるため、宣言行に着く JumpLine1 を使う。
         if (sender is FrameworkElement { DataContext: CodeOutlineItem item })
-            SourceLineActivated?.Invoke(this, item.DataLine1);
+            SourceLineActivated?.Invoke(this, item.JumpLine1);
     }
 
     private void CallRow_Click(object sender, MouseButtonEventArgs e)
