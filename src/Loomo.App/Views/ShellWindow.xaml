@@ -1413,7 +1413,6 @@
                     <ScrollViewer x:Name="TrailScroll" HorizontalScrollBarVisibility="Hidden"
                                   VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
                                   PreviewMouseWheel="OnTrailWheel">
-                        <StackPanel Orientation="Horizontal">
                         <ItemsControl ItemsSource="{Binding Trail.Entries}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -1425,7 +1424,7 @@
                                     <StackPanel Orientation="Horizontal">
                                     <!-- 時間帯の先頭ドットにだけ、左に区切り（|）＋時刻ラベル（HH:00）を前置する。
                                          非境界では Collapsed で幅ゼロ。幅32は ShellWindow.Trail.cs の
-                                         ScrollTrailCurrentIntoView の HourLabelWidth と揃える（§27.7.3）。 -->
+                                         TrailHourLabelWidth（TrailSlotOffset が積む実効幅）と揃える（§27.7.3）。 -->
                                     <Border Width="32" Height="26"
                                             Visibility="{Binding StartsNewHour, Converter={StaticResource BoolToVis}}">
                                         <StackPanel Orientation="Horizontal">
@@ -1506,11 +1505,6 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <!-- 末尾余白：時間帯選択（OnTrailHourSelected）で末尾側の時刻ラベルも表示領域の左端へ
-                             ピタッと寄せられるよう、必要なときだけ ShellWindow.Trail.cs が幅を持たせる余白。
-                             通常（ライブ追従）は幅ゼロで最新ドットが右端に張り付く（§27.7.2）。 -->
-                        <Border x:Name="TrailTrailingSpacer" Width="0" Height="26" />
-                        </StackPanel>
                     </ScrollViewer>
                 </DockPanel>
             </Border>

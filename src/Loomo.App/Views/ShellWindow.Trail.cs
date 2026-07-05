@@ -16,7 +16,8 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: 軌跡（操作ログ）バーの配線。エディタのファイル活性化・ブラウザ遷移・
 /// ペイン／パネル切替を <see cref="TrailViewModel"/> へ記録し、ドットのクリックや
-/// バー上のホイール（現在地の前後移動）でその地点へ戻る。バー左端の日付クリック→カレンダーで
+/// バー上の Shift+ホイール（現在地の前後移動）でその地点へ戻る（素のホイールはバーの水平スクロール）。
+/// バー左端の日付クリック→カレンダーで
 /// 過去の日の軌跡も表示できる。アイデア.md「Semantic Depth」構想の Thread Rail の種。
 ///
 /// <para><b>新しい軌跡ソースの足し方（登録側はこれだけ）</b>：
@@ -51,10 +52,10 @@ public partial class ShellWindow
     private DispatcherTimer? _trailEditCommitTimer;
     private EditorTab? _trailPendingEditTab;
 
-    /// <summary>現在地を表示領域の<b>左端</b>へ寄せている（時間帯選択・「今」へのダブルクリック）間 true。
-    /// この間に軌跡の登録が入っても中央寄せへ戻さず左寄せを保ち、左端の地点が右へ動かないようにする。
-    /// 中央寄せ（<see cref="ScrollTrailCurrentIntoView"/>）を通ると false へ戻る。</summary>
-    private bool _trailSnapLeft;
+    /// <summary>ユーザーが過去の地点を見ている（＝最新を追っていない）間 true。バーへ新しい地点が
+    /// 積まれても左端を動かさず、見ている位置を保つ（レイアウト変更などで最新へ引っ張らない）。
+    /// 「今」へ戻す操作・最新への移動・ホイールで右端まで戻したら false（＝ライブ追従）へ戻す。</summary>
+    private bool _trailBrowsingPast;
 
     /// <summary>ホイールでの現在地移動を1回のジャンプへ畳むデバウンス。</summary>
     private DispatcherTimer? _trailScrubTimer;
@@ -81,9 +82,14 @@ public partial class ShellWindow
         // MutateAsync はバックグラウンドスレッドで走るので UI スレッドへ回してから記録する。
         _git.OperationExecuted += (_, e) =>
             Dispatcher.BeginInvoke(new Action(() => RecordTrailGit(e.Command, e.Success)));
-        // 追記・現在地移動でドットが見える位置へ追従スクロールする。左端へ寄せている間は左寄せを保つ。
+        // 追記でのスクロール追従：過去を見ている間は動かさず、ライブ（最新を追っている）ときだけ
+        // 現在地＝最新（右端）へ寄せる。
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
-            Dispatcher.BeginInvoke(new Action(ScrollTrailAfterEntriesChanged), DispatcherPriority.Loaded);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!_trailBrowsingPast)
+                    ScrollTrailToCurrent();
+            }), DispatcherPriority.Loaded);
         // 日付・時刻クリックのトグル判定用：StaysOpen=False のポップアップは「開いたままボタンを再クリック」
         // すると Click が届く前に外側クリックとして閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
         TrailCalendarPopup.Closed += (_, _) => _trailCalendarClosedAt = DateTime.UtcNow;
@@ -551,7 +557,9 @@ public partial class ShellWindow
         {
             _trailJumpRunning = false;
         }
-        ScrollTrailCurrentIntoView();
+        // ジャンプ自体はバーをスクロールしない（クリックした地点はすでに見えており勝手に動かさない。
+        // スクラブは ScrubTrailByWheel が別途スクロールする）。過去地点へ戻ったら以後の追記でも追従しない。
+        _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
         // ジャンプの誘発する非同期イベント（フォーカス確定・ブラウザ遷移完了など）は、抑制を戻した
         // 直後に飛んでくる。それらを新しい地点として積んで現在地が最新へ飛ぶのを防ぐため、少し余韻を
         // 置いてから抑制を戻す（連続ジャンプは張り直しで畳む）。
@@ -706,19 +714,20 @@ public partial class ShellWindow
             ScrubTrailByWheel(e.Delta);
             return;
         }
-        // 素のホイール：バーを水平にスクロールするだけ。手動スクロール中は追加エントリで
-        // 中央へ引き戻さない（_trailSnapLeft を立てて ScrollTrailAfterEntriesChanged を素通りさせる）。
-        _trailSnapLeft = true;
-        var step = (e.Delta > 0 ? -1 : +1) * (TrailDotWidth * 3);
-        TrailScroll.ScrollToHorizontalOffset(TrailScroll.HorizontalOffset + step);
+        // 素のホイール：バーを水平にスクロールするだけ。右端（ライブ端）から離れたら追従を止め、
+        // 右端まで戻したらライブ追従を再開する。
+        var target = TrailScroll.HorizontalOffset + (e.Delta > 0 ? -1 : +1) * (TrailDotWidth * 3);
+        TrailScroll.ScrollToHorizontalOffset(target);
+        _trailBrowsingPast = target < TrailScroll.ScrollableWidth - 1;
     }
 
-    /// <summary>Shift+ホイールでの現在地移動。移動先を中央へ寄せて見せ、実ジャンプは
+    /// <summary>Shift+ホイールでの現在地移動。移動先を左端へ寄せて見せ、実ジャンプは
     /// <see cref="_trailScrubTimer"/> で遅らせて連続ホイールを1回に畳む。</summary>
     private void ScrubTrailByWheel(int delta)
     {
         var entry = _vm.Trail.MoveCurrent(delta > 0 ? -1 : +1);
-        ScrollTrailCurrentIntoView();
+        _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
+        ScrollTrailToCurrent();
         if (entry is null)
             return;
 
@@ -761,56 +770,20 @@ public partial class ShellWindow
         return x;
     }
 
-    /// <summary>現在地のドットが見えるよう水平スクロールを追従させる（無ければ右端＝最新へ）。
-    /// ライブ追従・スクラブ・ジャンプ共通の中央寄せ。末尾余白は要らないので畳んで、最新ドットが
-    /// 右端に張り付く既定挙動へ戻す（時間帯選択の左寄せ <see cref="ScrollTrailHourToLeft"/> とは別経路）。</summary>
-    /// <summary>エントリの追加・削除での追従スクロール。左端へ寄せている最中（<see cref="_trailSnapLeft"/>）は
-    /// スクロール位置に一切触れない：新しいドットは末尾余白の中を右へどんどん積まれてよく、左端に見えている
-    /// 地点だけが右へ動かなければよい。それ以外は現在地を中央へ寄せる既定挙動。</summary>
-    private void ScrollTrailAfterEntriesChanged()
+    /// <summary>唯一のスクロール追従。現在地のドットのスロット左端を表示領域の左端へ寄せる
+    /// （時間帯の先頭なら時刻ラベル枠の先頭）。最新地点なら <see cref="ScrollViewer"/> のクランプで
+    /// そのまま右端に収まる＝ライブの「最新を右端に張り付ける」挙動も、途中地点の「その地点を左端に置いて
+    /// 以後の並びを右に見せる」挙動も同じ計算で表せる。現在地が無ければ右端（最新）へ。
+    /// 追記追従・スクラブ・ジャンプ・時間帯選択の共通経路。</summary>
+    private void ScrollTrailToCurrent()
     {
-        if (_trailSnapLeft)
-            return;
-        ScrollTrailCurrentIntoView();
-    }
-
-    private void ScrollTrailCurrentIntoView()
-    {
-        _trailSnapLeft = false;           // 中央寄せへ戻る：以後の登録は既定の中央追従に任せる
-        TrailTrailingSpacer.Width = 0;   // 左寄せ用の末尾余白を畳む（既定は最新を右端へ）
         var index = _vm.Trail.CurrentIndex;
         if (index < 0)
         {
             TrailScroll.ScrollToRightEnd();
             return;
         }
-        var entries = _vm.Trail.Entries;
-        var x = TrailSlotOffset(index);
-        var leading = index < entries.Count && entries[index].StartsNewHour ? TrailHourLabelWidth : 0;
-        var center = x + leading + TrailDotWidth / 2;
-        TrailScroll.ScrollToHorizontalOffset(Math.Max(0, center - TrailScroll.ViewportWidth / 2));
-    }
-
-    /// <summary>時間帯選択（<see cref="OnTrailHourSelected"/>）用：現在地スロットの<b>左端</b>（時間帯の
-    /// 先頭なら時刻ラベル枠の先頭）を表示領域の左端へピタッと寄せる。末尾側の時間帯でも左寄せできるよう、
-    /// 右に足りない分だけ末尾余白（<see cref="TrailTrailingSpacer"/>）を伸ばして表示領域を広げてから寄せる。</summary>
-    private void ScrollTrailHourToLeft()
-    {
-        var index = _vm.Trail.CurrentIndex;
-        if (index < 0)
-        {
-            ScrollTrailCurrentIntoView();
-            return;
-        }
-        _trailSnapLeft = true;   // 以後の登録でも左寄せを保つ（登録で左端の地点が右へ動かない）
-        var x = TrailSlotOffset(index);
-        var contentWidth = TrailSlotOffset(_vm.Trail.Entries.Count);
-        var viewport = TrailScroll.ViewportWidth;
-        // 左端に x を置くには内容の右端が x+viewport まで必要。足りなければ末尾余白で補う。
-        TrailTrailingSpacer.Width = Math.Max(0, x + viewport - contentWidth);
-        // 余白反映後の再レイアウトを待ってから寄せる（伸ばした直後は ScrollableWidth がまだ古い）。
-        Dispatcher.BeginInvoke(new Action(() => TrailScroll.ScrollToHorizontalOffset(x)),
-            DispatcherPriority.Loaded);
+        TrailScroll.ScrollToHorizontalOffset(TrailSlotOffset(index));
     }
 
     // ===== 日付（カレンダーで過去の軌跡へ） =====
@@ -838,7 +811,8 @@ public partial class ShellWindow
         // Calendar はクリック後もマウスキャプチャを持ち続け、直後のクリックを1回飲み込むため解放する。
         Mouse.Capture(null);
         _vm.Trail.ShowDate(DateOnly.FromDateTime(picked));
-        Dispatcher.BeginInvoke(new Action(ScrollTrailCurrentIntoView), DispatcherPriority.Loaded);
+        _trailBrowsingPast = false;   // 日を切り替えたらその日の最新（右端）から見る
+        Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
     }
 
     // ===== 時刻（時間帯へ移動） =====
@@ -863,8 +837,10 @@ public partial class ShellWindow
             _trailHourClickTimer?.Stop();   // 保留中のシングルクリック（ポップアップ開）を取り消す
             TrailHourPopup.IsOpen = false;
             if (_vm.Trail.MoveToLatest() is not null)
-                // 時間帯選択と同じく「今」の地点を表示領域の左端へピタッと寄せる（末尾側でも余白で広げて左寄せ）。
-                Dispatcher.BeginInvoke(new Action(ScrollTrailHourToLeft), DispatcherPriority.Loaded);
+            {
+                _trailBrowsingPast = false;   // 「今」へ戻る＝ライブ追従を再開（最新が右端に収まる）
+                Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
+            }
             return;
         }
 
@@ -909,7 +885,8 @@ public partial class ShellWindow
         TrailHourPopup.IsOpen = false;
         Mouse.Capture(null);
         _vm.Trail.SelectHour(hour);
-        // 選んだ時間帯の時刻ラベルを表示領域の左端へピタッと寄せる（末尾側でも余白で表示領域を広げて左寄せ）。
-        Dispatcher.BeginInvoke(new Action(ScrollTrailHourToLeft), DispatcherPriority.Loaded);
+        // 選んだ時間帯の先頭ドットを表示領域の左端へ寄せる。最新の帯なら右端に収まる＝ライブへ復帰。
+        _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
+        Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
     }
 }
