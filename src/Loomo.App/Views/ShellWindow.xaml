@@ -1429,10 +1429,10 @@
                                     <Border Width="32" Height="26"
                                             Visibility="{Binding StartsNewHour, Converter={StaticResource BoolToVis}}">
                                         <StackPanel Orientation="Horizontal">
-                                            <Rectangle Width="1" Margin="0,4" VerticalAlignment="Stretch"
-                                                       Fill="{DynamicResource Border}" />
-                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="9" Opacity="0.75"
-                                                       Foreground="{DynamicResource FgDim}"
+                                            <Rectangle Width="1" Margin="0,3" VerticalAlignment="Stretch"
+                                                       Fill="{DynamicResource FgDim}" />
+                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Fg}"
                                                        VerticalAlignment="Center" Margin="3,0,0,0"
                                                        TextOptions.TextFormattingMode="Ideal" />
                                         </StackPanel>
