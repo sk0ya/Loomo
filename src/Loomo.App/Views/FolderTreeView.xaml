@@ -92,7 +92,6 @@
                     <Button DockPanel.Dock="Right"
                             Style="{StaticResource ExplorerIconButton}"
                             Width="22" Height="22"
-                            Margin="2,0,0,0"
                             Command="{Binding UnpinCurrentRootCommand}"
                             Visibility="{Binding SelectedRootOption.IsPinned, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
                             ToolTip="このフォルダのピン留めを解除">
@@ -133,7 +132,6 @@
             </Button>
 
             <Button Grid.Column="2" Style="{StaticResource ExplorerIconButton}"
-                    Margin="2,0,0,0"
                     Command="{Binding CollapseAllCommand}"
                     IsEnabled="{Binding HasVisibleNodes}"
                     ToolTip="すべて折りたたみ">
@@ -147,7 +145,6 @@
             </Button>
 
             <ToggleButton Grid.Column="3" Style="{StaticResource ExplorerToggleButton}"
-                          Margin="2,0,0,0"
                           IsChecked="{Binding HideIgnoredFiles}"
                           ToolTip="ignore を非表示">
                 <Path Width="13" Height="13" Stretch="Uniform"
@@ -157,7 +154,6 @@
             </ToggleButton>
 
             <ToggleButton Grid.Column="4" Style="{StaticResource ExplorerToggleButton}"
-                          Margin="2,0,0,0"
                           IsChecked="{Binding ShowChangedOnly}"
                           ToolTip="変更のみ表示">
                 <TextBlock Text="Δ" FontSize="{DynamicResource Fs13}" FontWeight="SemiBold"
@@ -165,7 +161,6 @@
             </ToggleButton>
 
             <Button Grid.Column="5" Style="{StaticResource ExplorerIconButton}"
-                    Margin="2,0,0,0"
                     Command="{Binding RevealCurrentFileCommand}"
                     ToolTip="エディタの現在のファイルを選択（同期）">
                 <!-- 十字照準（現在地を指し示す） -->
