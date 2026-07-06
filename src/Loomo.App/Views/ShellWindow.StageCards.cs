@@ -209,16 +209,11 @@ public partial class ShellWindow
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
                     return;
                 }
-                // ミニチュアのクリックは「追加」ではなく左上ペインとの入れ替え。
-                if (TopLeftPane() is { } topLeft && topLeft != kind)
-                    PlaceWingPane(kind, topLeft, center: true, zone: null);   // 左上の位置を引き継ぎ、元の左上は袖へ
-                else
-                {
-                    // 左上が無い／クリック対象自身が左上のときは従来どおり Main へ出してフォーカス。
-                    if (!IsPaneVisible(kind))
-                        SetPaneVisible(kind, true);
-                    FocusPane(kind);
-                }
+                // ミニチュアのクリックも設定 PaneOpenBehavior に従う（main＝左上と入れ替え〔従来〕／
+                // sub＝右上と入れ替え／loop＝サブ表示・サブ起点ならメインへ繰り上げ）。可視時に位置を保つ
+                // main の早期リターンは付けない（袖クリックは「そのペインを前面へ」＝常に組み替える意図）。
+                PlacePaneByBehavior(kind);
+                FocusPane(kind);
             });
     }
 
@@ -242,6 +237,19 @@ public partial class ShellWindow
         }
         return best ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
     }
+
+    /// <summary>タイル上段（最上端の行）で最も右にある可視ペイン。サブ（右上）ペインの入れ替え先。
+    /// 上段が横1枚ならメイン（左上）と一致する。ジオメトリ（矩形）に依存すると、レイアウト直後で
+    /// 矩形が未確定のとき下段のペインを誤って返し得るため、ツリー構造から決定的に求める
+    /// （<see cref="PaneLayoutTree.TopRow"/>＋<see cref="PaneLayoutTree.RightmostVisibleLeaf"/>）。</summary>
+    private PaneKind? TopRightPane()
+        => PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind
+            ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+
+    /// <summary>タイル上段（最上端の行）で最も左にある可視ペイン＝サブ判定でのメイン（左上）。
+    /// <see cref="TopRightPane"/> と対で、どちらも上段ノードから構造的に求めるので判定がぶれない。</summary>
+    private PaneKind? TopRowLeftPane()
+        => PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind;
 
     /// <summary>
     /// セッションカードの共通部分を作る。カード枠は固定縦横比（<see cref="CardAspect"/>）。描画元ホストも

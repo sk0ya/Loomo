@@ -34,6 +34,19 @@ public enum AppTheme
     HighContrast
 }
 
+/// <summary>「機能をペインに前面表示する」ときの配置の振る舞い（「AIに聞く」「ブラウザで調べる」「差分を開く」
+/// など、結果やコンテンツを表示するペインを出す共通経路で使う）。</summary>
+public enum PaneOpenBehavior
+{
+    /// <summary>左上（メイン）ペインと入れ替える（従来の既定動作）。</summary>
+    Main,
+    /// <summary>右上（サブ）ペインと入れ替える。上段が横1枚しかなければ、その右へ新しく追加する。</summary>
+    Sub,
+    /// <summary>基本は <see cref="Sub"/> と同じ。ただし操作の起点が現在のサブ（右上）ペインだった場合は、
+    /// 今サブにある内容をメイン（左上）へ繰り上げてから、対象を空いたサブへ出す（ベルトコンベア）。</summary>
+    Loop
+}
+
 /// <summary>会話のロール。</summary>
 public enum ChatRole
 {

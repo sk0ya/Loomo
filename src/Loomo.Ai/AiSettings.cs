@@ -28,6 +28,10 @@ public sealed class AiSettings
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 
+    /// <summary>「機能をペインに前面表示する」ときの配置の振る舞い（「AIに聞く」「ブラウザで調べる」
+    /// 「差分を開く」等の共通経路）。既定は <see cref="PaneOpenBehavior.Main"/>（左上と入れ替え＝従来動作）。</summary>
+    public PaneOpenBehavior PaneOpenBehavior { get; set; } = PaneOpenBehavior.Main;
+
     /// <summary>ウィンドウ最下部の軌跡（操作ログ）バーを表示するか。既定は表示。OFF にすると記録が
     /// あってもバーごと隠す（記録自体は続くので、再表示すればそれまでの軌跡も見える）。バーの
     /// コンテキストメニュー「軌跡を非表示にする」や設定の「外観」トグルからここへ書き戻される。</summary>

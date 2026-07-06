@@ -88,6 +88,39 @@ public static class PaneLayoutTree
         _ => false
     };
 
+    /// <summary>上段（ルートが Rows ならその最初の可視の行、そうでなければ全体）のノードを返す。
+    /// 「サブ＝右上」の判定用に、ジオメトリではなくツリー構造から上段を決める。</summary>
+    public static PaneNode? TopRow(PaneNode? root)
+    {
+        if (root is PaneSplit { Orientation: SplitKind.Rows } rows)
+            return rows.Children.FirstOrDefault(IsNodeVisible);
+        return root;
+    }
+
+    /// <summary>ノード配下で最も右（Columns スプリットの末尾側から辿る）にある可視リーフ。無ければ null。</summary>
+    public static PaneLeaf? RightmostVisibleLeaf(PaneNode? node)
+    {
+        if (node is PaneLeaf leaf)
+            return leaf.Hidden ? null : leaf;
+        if (node is PaneSplit split)
+            for (var i = split.Children.Count - 1; i >= 0; i--)
+                if (RightmostVisibleLeaf(split.Children[i]) is { } found)
+                    return found;
+        return null;
+    }
+
+    /// <summary>ノード配下で最も左（Columns スプリットの先頭側から辿る）にある可視リーフ。無ければ null。</summary>
+    public static PaneLeaf? LeftmostVisibleLeaf(PaneNode? node)
+    {
+        if (node is PaneLeaf leaf)
+            return leaf.Hidden ? null : leaf;
+        if (node is PaneSplit split)
+            foreach (var child in split.Children)
+                if (LeftmostVisibleLeaf(child) is { } found)
+                    return found;
+        return null;
+    }
+
     /// <summary>
     /// ツリーを正規化する：空スプリットを除去し、子が1つのスプリットを畳み、
     /// 同方向に入れ子になったスプリットをフラット化する。

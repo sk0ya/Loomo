@@ -307,6 +307,86 @@ public class PaneLayoutTreeTests
         Assert.Same(git, PaneLayoutTree.AddLeafAtBottom(null, git));
     }
 
+    // ===== TopRow / Rightmost / Leftmost（サブ＝右上 判定の土台） =====
+
+    [Fact]
+    public void TopRow_returns_first_visible_row_and_ignores_lower_rows()
+    {
+        // 既定相当：Rows[ Columns[Editor,Browser], Terminal, Ai ] の上段は Columns[Editor,Browser]。
+        var top = Split(SplitKind.Columns, Leaf(PaneKind.Editor), Leaf(PaneKind.Browser));
+        var root = Split(SplitKind.Rows, top, Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
+
+        Assert.Same(top, PaneLayoutTree.TopRow(root));
+    }
+
+    [Fact]
+    public void Rightmost_and_Leftmost_pick_top_row_edges_skipping_hidden()
+    {
+        // 上段 Columns[Editor, EditorSupport(hidden), Browser]：左端=Editor、右端=Browser（非表示は飛ばす）。
+        var top = Split(SplitKind.Columns,
+            Leaf(PaneKind.Editor),
+            Leaf(PaneKind.EditorSupport, hidden: true),
+            Leaf(PaneKind.Browser));
+        var root = Split(SplitKind.Rows, top, Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
+
+        var topRow = PaneLayoutTree.TopRow(root);
+        Assert.Equal(PaneKind.Browser, PaneLayoutTree.RightmostVisibleLeaf(topRow)!.Kind);
+        Assert.Equal(PaneKind.Editor, PaneLayoutTree.LeftmostVisibleLeaf(topRow)!.Kind);
+    }
+
+    [Fact]
+    public void Rightmost_never_returns_a_lower_row_pane()
+    {
+        // 回帰：矩形フォールバックが下段（Ai）を「右上」と誤認していた不具合の防止。
+        // 上段が単一 Editor でも、右端は Ai/Terminal ではなく Editor（＝上段の中だけを見る）。
+        var root = Split(SplitKind.Rows, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
+        var topRow = PaneLayoutTree.TopRow(root);
+
+        Assert.Equal(PaneKind.Editor, PaneLayoutTree.RightmostVisibleLeaf(topRow)!.Kind);
+        Assert.Equal(PaneKind.Editor, PaneLayoutTree.LeftmostVisibleLeaf(topRow)!.Kind);
+    }
+
+    [Fact]
+    public void Sub_swap_places_target_at_top_right_replacing_the_right_pane()
+    {
+        // sub モードの「右上と入れ替え」を PlaceInTree(center) と同じ手順で再現：
+        // 右上リーフの左へ対象を挿し、右上リーフを外す＝対象が右上の位置を引き継ぐ。
+        var root = DefaultishTree(); // Rows[ Columns[Editor,Browser], Terminal, Ai ]
+        var sub = PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(root))!; // Browser
+        Assert.Equal(PaneKind.Browser, sub.Kind);
+
+        var diff = Leaf(PaneKind.Diff);
+        var after = PaneLayoutTree.InsertRelative(root, diff, sub, DropZone.Left);
+        after = PaneLayoutTree.RemoveNode(after, sub);
+        after = PaneLayoutTree.Normalize(after);
+
+        // 上段は [Editor, Diff]、Diff が右上、Browser は消える。
+        var topRow = Assert.IsType<PaneSplit>(PaneLayoutTree.TopRow(after));
+        Assert.Equal(SplitKind.Columns, topRow.Orientation);
+        Assert.Equal(new[] { PaneKind.Editor, PaneKind.Diff },
+            topRow.Children.Cast<PaneLeaf>().Select(l => l.Kind));
+        Assert.Equal(PaneKind.Diff, PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(after))!.Kind);
+    }
+
+    [Fact]
+    public void Sub_insert_adds_target_to_the_right_when_top_row_is_single_pane()
+    {
+        // 上段が横1枚（Editor のみ）＝メイン＝サブ。sub モードは右へ追加してサブを作る。
+        var root = Split(SplitKind.Rows, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal));
+        var main = PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(root))!; // Editor
+        Assert.Same(PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(root)), main); // 単一なので左右一致
+
+        var diff = Leaf(PaneKind.Diff);
+        var after = PaneLayoutTree.Normalize(PaneLayoutTree.InsertRelative(root, diff, main, DropZone.Right));
+
+        // 上段は [Editor | Diff]、Diff が右上。
+        var topRow = Assert.IsType<PaneSplit>(PaneLayoutTree.TopRow(after));
+        Assert.Equal(SplitKind.Columns, topRow.Orientation);
+        Assert.Equal(new[] { PaneKind.Editor, PaneKind.Diff },
+            topRow.Children.Cast<PaneLeaf>().Select(l => l.Kind));
+        Assert.Equal(PaneKind.Diff, PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(after))!.Kind);
+    }
+
     // ===== ToSnapshot / BuildFromSnapshot =====
 
     [Fact]

@@ -17,6 +17,7 @@ using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Services;
 using Editor.Controls;
 using Editor.Controls.Git;
@@ -249,22 +250,20 @@ public partial class ShellWindow
             return;
         }
 
-        // タイルモード：どちらかが表示中なら現状維持。両方とも非表示のときだけ左上を差し替える。
-        if (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport))
+        // タイルモード：配置は設定 PaneOpenBehavior に従う（結果表示の EnsurePaneVisibleOrSwapTopLeft と同じ）。
+        // main（現行）はエディタ系（Editor/EditorSupport）がどちらか可視ならその位置を保つ。
+        if (_settings.PaneOpenBehavior == PaneOpenBehavior.Main
+            && (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport)))
             return;
-
-        // 左上の可視ペインを対象へ入れ替える（元の左上ペインは袖へ退場）。左上が取れない/対象自身が
-        // 左上のときは、対象を素直に表示する。
-        if (TopLeftPane() is { } topLeft && topLeft != target)
-            PlaceWingPane(target, topLeft, center: true, zone: null);
-        else
-            SetPaneVisible(target, true);
+        PlacePaneByBehavior(target);
     }
 
     /// <summary>
-    /// 指定ペインがレイアウトに出ていなければ、左上のペインと入れ替えて必ず見えるようにする
-    /// （元の左上ペインは袖へ退場）。ステージモード中は対象を舞台へ立てる。既に見えていれば何もしない。
-    /// 「AIに聞く」「ブラウザで調べる」のように、結果を表示するペインを前面に出す経路で使う。
+    /// 指定ペインがレイアウトに出ていなければ、必ず見えるように前面へ出す。ステージモード中は対象を舞台へ立てる。
+    /// 既に見えていれば何もしない。「AIに聞く」「ブラウザで調べる」「差分を開く」のように、結果を表示するペインを
+    /// 前面に出す経路で使う。タイルモードでの具体的な配置は設定 <see cref="AiSettings.PaneOpenBehavior"/> で切り替わる
+    /// （<see cref="PaneOpenBehavior.Main"/>＝左上と入れ替え〔従来〕／<see cref="PaneOpenBehavior.Sub"/>＝右上と入れ替え／
+    /// <see cref="PaneOpenBehavior.Loop"/>＝サブ表示・サブ起点ならメインへ繰り上げ）。
     /// </summary>
     private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target)
     {
@@ -275,13 +274,83 @@ public partial class ShellWindow
             return;
         }
 
-        if (IsPaneVisible(target))
+        // main（現行）は既に可視ならその位置を保つ。sub/loop は「対象を右上（サブ）へ」なので、既定で可視な
+        // Ai/Browser/Terminal 相手でも位置を組み替える（組み替え不要な場合は各ヘルパ内で早期リターン）。
+        if (_settings.PaneOpenBehavior == PaneOpenBehavior.Main && IsPaneVisible(target))
             return;
+        PlacePaneByBehavior(target);
+    }
 
+    /// <summary>タイルモードで対象ペインを設定 <see cref="AiSettings.PaneOpenBehavior"/> に従って前面へ配置する。
+    /// 「AIに聞く」等の結果表示・ファイルを開く・袖ミニチュアのクリックの共通配置ロジック（可視時にその位置を
+    /// 保つかどうかの main 判定だけは呼び出し側が事前に行う）。</summary>
+    private void PlacePaneByBehavior(PaneKind target)
+    {
+        switch (_settings.PaneOpenBehavior)
+        {
+            case PaneOpenBehavior.Sub:
+                PlaceIntoSubPane(target);
+                break;
+            case PaneOpenBehavior.Loop:
+                PlaceIntoLoopPane(target);
+                break;
+            default:
+                SwapIntoTopLeft(target);
+                break;
+        }
+    }
+
+    /// <summary>対象を左上（メイン）ペインと入れ替える（<see cref="PaneOpenBehavior.Main"/>＝従来の既定動作）。
+    /// 左上が取れない／対象自身が左上のときは素直に表示する。</summary>
+    private void SwapIntoTopLeft(PaneKind target)
+    {
         if (TopLeftPane() is { } topLeft && topLeft != target)
             PlaceWingPane(target, topLeft, center: true, zone: null);
         else
             SetPaneVisible(target, true);
+    }
+
+    /// <summary>対象を右上（サブ）ペインと入れ替える（<see cref="PaneOpenBehavior.Sub"/>）。上段が横1枚しか
+    /// なければ、左上ペインの右へ新しく追加してサブを作る。上段の左右判定はどちらも上段ノードから構造的に
+    /// 求める（<see cref="TopRowLeftPane"/>／<see cref="TopRightPane"/>）ので、矩形未確定でも右へ入る。</summary>
+    private void PlaceIntoSubPane(PaneKind target)
+    {
+        var main = TopRowLeftPane();
+        var sub = TopRightPane();
+
+        // 既に右上（サブ）に居るなら何もしない（＝上段の最右が対象。単一ペインで対象自身のときも含む）。
+        if (sub == target)
+            return;
+
+        if (sub is { } s && s != main)
+            PlaceWingPane(target, s, center: true, zone: null);                // 右上と入れ替え
+        else if (main is { } m && m != target)
+            PlaceWingPane(target, m, center: false, zone: DropZone.Right);     // 横1枚 → 右に追加
+        else
+            SetPaneVisible(target, true);
+    }
+
+    /// <summary><see cref="PaneOpenBehavior.Loop"/>：基本はサブ（右上）へ出す。ただし操作の起点が現在の
+    /// サブペインだった場合は、今サブにある内容をメイン（左上）へ繰り上げてから、対象を空いたサブへ出す
+    /// （サブでの作業がメインへ繰り上がり、新しい結果はサブに来るベルトコンベア）。</summary>
+    private void PlaceIntoLoopPane(PaneKind target)
+    {
+        var main = TopRowLeftPane();
+        var sub = TopRightPane();
+        var originFromSub = _focusedRegion?.Pane is { } origin
+            && sub is { } s && s != main && origin == s;
+
+        if (originFromSub && main is { } m && sub is { } current && current != target)
+        {
+            // 現在のサブをメインの位置へ昇格（元のメインは袖へ退場）。上段は昇格した1枚だけになる。
+            PlaceWingPane(current, m, center: true, zone: null);
+            // その右へ対象を追加＝新しいサブにする。
+            PlaceWingPane(target, current, center: false, zone: DropZone.Right);
+        }
+        else
+        {
+            PlaceIntoSubPane(target);
+        }
     }
 
     /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>

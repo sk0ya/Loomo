@@ -97,6 +97,9 @@ public sealed class AiSettingsStore
         public AppTheme Theme { get; set; }
         public string? AccentColor { get; set; }
 
+        /// <summary>機能をペインに前面表示するときの配置の振る舞い。null=旧設定（未指定）→ 既定（Main）を維持。</summary>
+        public PaneOpenBehavior? PaneOpenBehavior { get; set; }
+
         /// <summary>AIウォームアップの有効/無効。null=旧設定（未指定）→ 既定（有効）を維持。</summary>
         public bool? WarmupEnabled { get; set; }
 
@@ -114,6 +117,7 @@ public sealed class AiSettingsStore
         {
             Theme = s.Theme,
             AccentColor = s.AccentColor,
+            PaneOpenBehavior = s.PaneOpenBehavior,
             WarmupEnabled = s.WarmupEnabled,
             TrailVisible = s.TrailVisible,
             Local = PersistedProvider.From(s.Local),
@@ -129,6 +133,7 @@ public sealed class AiSettingsStore
             s.Provider = AiProvider.Local;
             s.Theme = Theme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
+            if (PaneOpenBehavior is { } pob) s.PaneOpenBehavior = pob; // 旧設定（null）は既定（Main）を維持
             if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
             Local.ApplyTo(s.Local);

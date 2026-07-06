@@ -34,12 +34,21 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// <summary>ターミナルの配色テーマの選択肢（背景／文字色／カーソル色）。</summary>
     public IReadOnlyList<PresetSwatch> TerminalThemes { get; }
 
+    /// <summary>「機能をペインに前面表示する」ときの配置の振る舞いの選択肢（メイン／サブ／ループ）。</summary>
+    public IReadOnlyList<PaneOpenBehaviorChoice> PaneOpenBehaviors { get; } = new[]
+    {
+        new PaneOpenBehaviorChoice(PaneOpenBehavior.Main, "メイン（左上と入れ替え・従来）"),
+        new PaneOpenBehaviorChoice(PaneOpenBehavior.Sub,  "サブ（右上と入れ替え・横1枚なら右へ追加）"),
+        new PaneOpenBehaviorChoice(PaneOpenBehavior.Loop, "ループ（サブに表示・サブ起点ならメインへ繰り上げ）"),
+    };
+
     /// <summary>コンボボックスで選択中の各項目。<c>SelectedItem</c> に双方向バインドする。</summary>
     [ObservableProperty] private PresetSwatch _selectedTheme;
     [ObservableProperty] private AccentSwatch? _selectedAccent;
     [ObservableProperty] private PresetSwatch _selectedEditorTheme;
     [ObservableProperty] private PresetSwatch _selectedPreviewTheme;
     [ObservableProperty] private PresetSwatch _selectedTerminalTheme;
+    [ObservableProperty] private PaneOpenBehaviorChoice _selectedPaneOpenBehavior;
 
     /// <summary>アクセントカラーの上書き（"#RRGGBB"）。空ならテーマ既定。コンボボックスと任意指定の入力欄で共有する。</summary>
     [ObservableProperty] private string _accentColor = "";
@@ -127,6 +136,8 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _selectedEditorTheme = Match(EditorThemes, ap.EditorTheme, 0);
         _selectedPreviewTheme = Match(PreviewThemes, ap.MarkdownPreviewTheme, 0);
         _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
+        _selectedPaneOpenBehavior = PaneOpenBehaviors.FirstOrDefault(c => c.Value == settings.PaneOpenBehavior)
+            ?? PaneOpenBehaviors[0];
 
         _editorFontFamily = ap.EditorFontFamily ?? "";
         _editorFontSize = ap.EditorFontSize > 0 ? ap.EditorFontSize.ToString("0.#") : "";
@@ -212,6 +223,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _syncingAccent = true;
         SelectedAccent = Accents.FirstOrDefault(a => string.Equals(a.Hex, hex, StringComparison.OrdinalIgnoreCase));
         _syncingAccent = false;
+    }
+
+    /// <summary>ペイン前面表示の配置の振る舞い：選択を即時反映＆永続化する（<see cref="AppearanceChanged"/> は不要
+    /// ＝次回の前面化から効くので、開いているタブの再描画は起こさない）。</summary>
+    partial void OnSelectedPaneOpenBehaviorChanged(PaneOpenBehaviorChoice value)
+    {
+        if (value is null || _settings.PaneOpenBehavior == value.Value) return;
+        _settings.PaneOpenBehavior = value.Value;
+        Persist("ペインの表示方法を変更しました");
     }
 
     partial void OnEditorFontFamilyChanged(string value)
@@ -301,6 +321,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         {
             Key = key; Name = name; Bg = bg; Accent = accent; Fg = fg;
         }
+    }
+
+    /// <summary>ペイン前面表示の配置の振る舞いの選択肢1つ（コンボボックス用）。<see cref="Value"/> が永続化値。</summary>
+    public sealed class PaneOpenBehaviorChoice
+    {
+        public PaneOpenBehavior Value { get; }
+        public string Name { get; }
+
+        public PaneOpenBehaviorChoice(PaneOpenBehavior value, string name) { Value = value; Name = name; }
     }
 
     /// <summary>アクセントのプリセット1つ。Hex が空文字なら「テーマ既定」。</summary>
