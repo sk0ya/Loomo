@@ -234,6 +234,25 @@ public sealed partial class GitSessionViewModel : ObservableObject
         CommitDetail = await _git.GetCommitSummaryAsync(hash);
     }
 
+    /// <summary>
+    /// コミット詳細（変更ファイル一覧）でクリックされた相対パスを、リポジトリルート基準で解決し
+    /// エディタで開く。現在の作業ツリーに存在しない（削除済み・過去の名前）場合はメッセージのみ。
+    /// </summary>
+    public async Task OpenChangedFileAsync(string relativePath)
+    {
+        var root = _git.RootPath;
+        if (string.IsNullOrEmpty(root)) return;
+
+        var full = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, relativePath));
+        if (!System.IO.File.Exists(full))
+        {
+            StatusIsError = true;
+            StatusMessage = $"ファイルが見つかりません: {relativePath}";
+            return;
+        }
+        await _editor.OpenFileAsync(full);
+    }
+
     // ===== 同期 =====
 
     [RelayCommand] private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());

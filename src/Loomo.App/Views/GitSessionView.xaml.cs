@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
@@ -19,12 +21,100 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class GitSessionView : UserControl
 {
+    private GitSessionViewModel? _subscribed;
+
     public GitSessionView()
     {
         InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
     }
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
+
+    // ===== コミット詳細（変更ファイル一覧）のリンク描画 =====
+
+    /// <summary>DataContext（VM）の差し替えに追従し、CommitDetail の変化を購読し直す。</summary>
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_subscribed is not null)
+            _subscribed.PropertyChanged -= OnVmPropertyChanged;
+        _subscribed = Vm;
+        if (_subscribed is not null)
+            _subscribed.PropertyChanged += OnVmPropertyChanged;
+        RenderCommitDetail();
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GitSessionViewModel.CommitDetail))
+            RenderCommitDetail();
+    }
+
+    /// <summary>
+    /// CommitDetail（<c>git show --stat</c> の生テキスト）を RichTextBox へ整形描画する。
+    /// 変更ファイル一覧の統計行はファイルパス部分だけを Hyperlink 化し、その他の行は素のまま流す。
+    /// 折り返しは避け（等幅グラフの桁を保つ）、最長行に合わせて横幅を確保する。
+    /// </summary>
+    private void RenderCommitDetail()
+    {
+        var text = Vm?.CommitDetail ?? "";
+        var paragraph = new Paragraph { Margin = new Thickness(0) };
+        var accent = TryFindResource("Accent") as Brush ?? Brushes.SteelBlue;
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var maxLen = 0;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            maxLen = Math.Max(maxLen, line.Length);
+            AppendLine(paragraph, line, accent);
+            if (i < lines.Length - 1)
+                paragraph.Inlines.Add(new LineBreak());
+        }
+
+        var doc = new FlowDocument(paragraph)
+        {
+            FontFamily = CommitDetailBox.FontFamily,
+            FontSize = CommitDetailBox.FontSize,
+            PagePadding = new Thickness(6, 4, 6, 4),
+            // 等幅の目安 ≈ FontSize*0.62px/桁。折り返さないよう最長行ぶんの幅を確保する。
+            PageWidth = Math.Max(200, maxLen * CommitDetailBox.FontSize * 0.62 + 24),
+        };
+        CommitDetailBox.Document = doc;
+    }
+
+    /// <summary>1 行を Inline 群として追加。統計行ならパス部分を Hyperlink にする。</summary>
+    private void AppendLine(Paragraph paragraph, string line, Brush accent)
+    {
+        if (CommitStatLinks.TryParse(line) is { } stat)
+        {
+            var before = line[..stat.PathIndex];
+            var pathText = line.Substring(stat.PathIndex, stat.PathLength);
+            var after = line[(stat.PathIndex + stat.PathLength)..];
+
+            if (before.Length > 0) paragraph.Inlines.Add(new Run(before));
+            var link = new Hyperlink(new Run(pathText))
+            {
+                Foreground = accent,
+                Cursor = Cursors.Hand,
+                ToolTip = $"{stat.NavigatePath} をエディタで開く",
+                Tag = stat.NavigatePath,
+            };
+            link.Click += OnChangedFileClick;
+            paragraph.Inlines.Add(link);
+            if (after.Length > 0) paragraph.Inlines.Add(new Run(after));
+        }
+        else
+        {
+            paragraph.Inlines.Add(new Run(line));
+        }
+    }
+
+    private async void OnChangedFileClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Hyperlink { Tag: string path })
+            await vm.OpenChangedFileAsync(path);
+    }
 
     /// <summary>右クリックでも対象行を選択状態にする（コンテキストメニューの対象を確定させる）。</summary>
     private void OnListRightClickSelect(object sender, MouseButtonEventArgs e)

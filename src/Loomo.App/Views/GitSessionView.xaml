@@ -294,12 +294,13 @@
                     <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- 選択コミットの詳細（git show の統計表示） -->
-                    <TextBox Grid.Row="2" IsReadOnly="True" TextWrapping="NoWrap"
-                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                             FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                             BorderThickness="0" Background="{DynamicResource BgAlt}"
-                             Text="{Binding CommitDetail, Mode=OneWay}" />
+                    <!-- 選択コミットの詳細（git show の統計表示）。変更ファイル一覧のパスは
+                         リンク化してクリックでエディタで開く（描画・パース判定は code-behind）。 -->
+                    <RichTextBox x:Name="CommitDetailBox" Grid.Row="2" IsReadOnly="True" IsDocumentEnabled="True"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                 Foreground="{DynamicResource Fg}"
+                                 BorderThickness="0" Background="{DynamicResource BgAlt}" />
                 </Grid>
             </Grid>
         </DockPanel>
