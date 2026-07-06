@@ -262,7 +262,7 @@ public partial class ShellWindow
                 {
                     BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5, Color = Colors.Black
                 },
-                Child = new TextBlock { Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeights.SemiBold }
+                Child = new TextBlock { Foreground = Brushes.White, FontSize = UiFontManager.Scaled(12), FontWeight = FontWeights.SemiBold }
             };
             DragGhostLayer.Children.Add(_dragGhost);
         }

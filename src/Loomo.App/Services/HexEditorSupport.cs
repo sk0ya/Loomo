@@ -52,7 +52,7 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
         {
             SelectionMode = SelectionMode.Extended,
             FontFamily = new FontFamily("Consolas, Cascadia Mono, monospace"),
-            FontSize = 12,
+            FontSize = UiFontManager.Scaled(12),
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             BorderThickness = new Thickness(0)
         };
@@ -85,7 +85,7 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
         {
             Margin = new Thickness(10, 6, 10, 8),
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 12
+            FontSize = UiFontManager.Scaled(12)
         };
         _caption.SetResourceReference(TextBlock.ForegroundProperty, "FgDim");
 
@@ -182,7 +182,7 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
             Height = 26,
             Margin = new Thickness(2, 0, 2, 0),
             Padding = new Thickness(8, 0, 8, 0),
-            FontSize = 12
+            FontSize = UiFontManager.Scaled(12)
         };
         button.SetResourceReference(Control.ForegroundProperty, "Fg");
         button.SetResourceReference(Control.BackgroundProperty, "BgAlt");

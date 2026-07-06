@@ -1,0 +1,25 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- ===== フォントサイズ・トークン =====
+         アプリ UI のフォントサイズは、生の数値ではなくこのトークン（Fs<基準px>）を
+         DynamicResource で参照する。ここに置くのは等倍（基準サイズ 13px）のときの各値で、
+         実行時は UiFontManager が Application.Resources に同じキーでユーザー指定サイズに合わせた値を
+         上書きする（トップレベルのキーがマージ辞書より優先されるため即時反映される）。
+         このシード値は、デザイナ表示や UiFontManager 未適用時のフォールバック。
+         キー名の数字＝等倍時の px。値を足すときはトークンも足すこと（XAML 側の生値を残さない）。 -->
+    <sys:Double x:Key="Fs8">8</sys:Double>
+    <sys:Double x:Key="Fs9">9</sys:Double>
+    <sys:Double x:Key="Fs10">10</sys:Double>
+    <sys:Double x:Key="Fs11">11</sys:Double>
+    <sys:Double x:Key="Fs11_5">11.5</sys:Double>
+    <sys:Double x:Key="Fs12">12</sys:Double>
+    <sys:Double x:Key="Fs12_5">12.5</sys:Double>
+    <sys:Double x:Key="Fs13">13</sys:Double>
+    <sys:Double x:Key="Fs14">14</sys:Double>
+    <sys:Double x:Key="Fs15">15</sys:Double>
+    <sys:Double x:Key="Fs20">20</sys:Double>
+
+</ResourceDictionary>

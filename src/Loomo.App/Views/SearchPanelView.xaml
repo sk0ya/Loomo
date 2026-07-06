@@ -37,7 +37,7 @@
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Height" Value="20" />
             <Setter Property="Padding" Value="6,0" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -157,15 +157,15 @@
                  ターミナル＝アクティブなターミナル内テキスト。Scope 列挙を EnumToBool で束ね、3択セグメントとして
                  相互排他に振る舞わせる（既に選択中のボタンを押しても外れない＝ConvertBack が DoNothing）。 -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <ToggleButton Content="テキスト" Height="22" Padding="10,0" FontSize="11" Cursor="Hand"
+                <ToggleButton Content="テキスト" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
                               Style="{StaticResource SearchToggle}"
                               ToolTip="ファイルの中身を grep"
                               IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Text, Mode=TwoWay}" />
-                <ToggleButton Content="ファイル" Height="22" Padding="10,0" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                <ToggleButton Content="ファイル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
                               Style="{StaticResource SearchToggle}"
                               ToolTip="ファイル名で曖昧検索"
                               IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=FileName, Mode=TwoWay}" />
-                <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
                               Style="{StaticResource SearchToggle}"
                               ToolTip="アクティブなターミナル内を検索"
                               IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
@@ -186,7 +186,7 @@
                       Fill="{DynamicResource FgDim}"
                       Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,12 L1,12 Z" />
                 <Grid Grid.Column="1">
-                    <TextBox x:Name="RootBox" Padding="4,2" FontSize="11"
+                    <TextBox x:Name="RootBox" Padding="4,2" FontSize="{DynamicResource Fs11}"
                              Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                              BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                              VerticalContentAlignment="Center"
@@ -195,7 +195,7 @@
                              TextChanged="OnRootBoxTextChanged"
                              PreviewKeyDown="OnRootBoxKeyDown"
                              LostKeyboardFocus="OnRootBoxLostFocus" />
-                    <TextBlock Text="ワークスペース全体" IsHitTestVisible="False" FontSize="11"
+                    <TextBlock Text="ワークスペース全体" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
                                Visibility="{Binding Text, ElementName=RootBox, Converter={StaticResource EmptyToVis}}" />
                     <!-- フォルダパス補完（インテリセンス）。候補は RootBox の入力に応じて code-behind が流し込む。 -->
@@ -206,7 +206,7 @@
                                 BorderThickness="1" CornerRadius="3" Padding="1">
                             <ListBox x:Name="RootSuggestList" MaxHeight="180" BorderThickness="0"
                                      Background="Transparent" Foreground="{DynamicResource Fg}"
-                                     FontSize="11" FontFamily="Consolas"
+                                     FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      PreviewMouseLeftButtonDown="OnRootSuggestMouseDown" />
                         </Border>
@@ -221,12 +221,12 @@
             </Grid>
 
             <Grid>
-                <TextBox x:Name="QueryBox" Padding="6,4" FontSize="13"
+                <TextBox x:Name="QueryBox" Padding="6,4" FontSize="{DynamicResource Fs13}"
                          Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                          BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                          Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="OnQueryKeyDown" />
-                <TextBlock Text="{Binding QueryPlaceholder}" IsHitTestVisible="False" FontSize="13"
+                <TextBlock Text="{Binding QueryPlaceholder}" IsHitTestVisible="False" FontSize="{DynamicResource Fs13}"
                            Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
                            Visibility="{Binding Text, ElementName=QueryBox, Converter={StaticResource EmptyToVis}}" />
             </Grid>
@@ -235,14 +235,14 @@
                 <!-- 大小区別／正規表現は内容検索（grep）専用なのでテキスト検索時のみ表示。 -->
                 <StackPanel Orientation="Horizontal"
                             Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}">
-                    <ToggleButton Content="Aa" Width="30" Height="22" FontSize="11" Cursor="Hand"
+                    <ToggleButton Content="Aa" Width="30" Height="22" FontSize="{DynamicResource Fs11}" Cursor="Hand"
                                   Style="{StaticResource SearchToggle}"
                                   ToolTip="大文字小文字を区別" IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
-                    <ToggleButton Content=".*" Width="30" Height="22" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                    <ToggleButton Content=".*" Width="30" Height="22" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
                                   Style="{StaticResource SearchToggle}"
                                   ToolTip="正規表現として扱う" IsChecked="{Binding UseRegex, Mode=TwoWay}" />
                 </StackPanel>
-                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="11"
+                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                            VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
@@ -254,22 +254,22 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0" Margin="0,0,2,0">
-                    <TextBox x:Name="IncludeBox" Padding="4,3" FontSize="11"
+                    <TextBox x:Name="IncludeBox" Padding="4,3" FontSize="{DynamicResource Fs11}"
                              Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                              BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                              ToolTip="この glob に一致するファイルだけを検索（例: *.cs, src/**）"
                              Text="{Binding IncludeGlob, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Text="含める 例:*.cs" IsHitTestVisible="False" FontSize="11"
+                    <TextBlock Text="含める 例:*.cs" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
                                Visibility="{Binding Text, ElementName=IncludeBox, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
                 <Grid Grid.Column="1" Margin="2,0,0,0">
-                    <TextBox x:Name="ExcludeBox" Padding="4,3" FontSize="11"
+                    <TextBox x:Name="ExcludeBox" Padding="4,3" FontSize="{DynamicResource Fs11}"
                              Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                              BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                              ToolTip="この glob に一致するファイルを検索から除外（例: *.min.js, bin/**）"
                              Text="{Binding ExcludeGlob, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Text="除外 例:*.min.js" IsHitTestVisible="False" FontSize="11"
+                    <TextBlock Text="除外 例:*.min.js" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
                                Visibility="{Binding Text, ElementName=ExcludeBox, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
@@ -292,7 +292,7 @@
                             CornerRadius="7" VerticalAlignment="Center"
                             Background="{DynamicResource Border}"
                             Visibility="{Binding ShowCount, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{Binding Count}" FontSize="10" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding Count}" FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Fg}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -312,7 +312,7 @@
                               VerticalAlignment="Center" Margin="0,0,5,0"
                               Fill="{DynamicResource FgDim}"
                               Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,12 L1,12 Z" />
-                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12"
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <ContentPresenter Grid.Column="2" Content="{Binding}"
                                           ContentTemplate="{StaticResource CountBadge}" />
@@ -327,7 +327,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" FontSize="12" TextTrimming="CharacterEllipsis"
+                        <TextBlock Grid.Column="0" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
                                    views:SearchHighlightBehavior.Text="{Binding FileName}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
@@ -337,8 +337,8 @@
                 </HierarchicalDataTemplate>
                 <DataTemplate DataType="{x:Type vm:SearchMatchItem}">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Line}" FontSize="11" MinWidth="34" Opacity="0.6" />
-                        <TextBlock FontSize="11" FontFamily="Consolas" TextTrimming="CharacterEllipsis"
+                        <TextBlock Text="{Binding Line}" FontSize="{DynamicResource Fs11}" MinWidth="34" Opacity="0.6" />
+                        <TextBlock FontSize="{DynamicResource Fs11}" FontFamily="Consolas" TextTrimming="CharacterEllipsis"
                                    views:SearchHighlightBehavior.Text="{Binding Preview}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.UseRegex="{Binding DataContext.HighlightUseRegex, RelativeSource={RelativeSource AncestorType=UserControl}}"

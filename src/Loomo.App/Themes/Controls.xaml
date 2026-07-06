@@ -25,7 +25,7 @@
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="FontFamily" Value="Segoe UI" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
     </Style>
 
     <Style TargetType="ToolTip">
@@ -34,7 +34,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,5" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToolTip">
@@ -117,7 +117,7 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Width" Value="48" />
         <Setter Property="Height" Value="48" />
-        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs20}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -141,7 +141,7 @@
     <Style x:Key="ModeSegButton" TargetType="Button">
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -172,7 +172,7 @@
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="36" />
         <Setter Property="FontFamily" Value="Segoe UI Symbol" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -217,7 +217,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,6" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
     </Style>
 
     <!-- ===== CheckBox =====
@@ -227,7 +227,7 @@
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="Background" Value="{DynamicResource BgAlt}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -308,7 +308,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,3" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="Template">
@@ -459,7 +459,7 @@
                             <TextBlock x:Name="gesture" Grid.Column="1"
                                        Text="{TemplateBinding InputGestureText}"
                                        Foreground="{DynamicResource FgDim}"
-                                       FontSize="11"
+                                       FontSize="{DynamicResource Fs11}"
                                        VerticalAlignment="Center"
                                        Margin="18,0,0,0" />
                             <Path x:Name="arrow" Grid.Column="1"
@@ -526,7 +526,7 @@
     <!-- ===== Header label ===== -->
     <Style x:Key="PanelHeader" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Padding" Value="10,3" />
     </Style>
@@ -534,7 +534,7 @@
     <!-- ===== Field label（設定フォーム用） ===== -->
     <Style x:Key="FieldLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,10,0,3" />
     </Style>
@@ -543,7 +543,7 @@
     <!-- 狭いサイドバー幅を食わないよう、枠（カード）ではなく見出し＋区切り線でグループ化する。 -->
     <Style x:Key="SectionTitle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,0,0,2" />
     </Style>
@@ -551,7 +551,7 @@
     <!-- ===== 設定: 補足テキスト（小さな説明・折り返し） ===== -->
     <Style x:Key="FieldHint" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,4,0,0" />
     </Style>
@@ -659,7 +659,7 @@
          リモートとフォルダは淡色 -->
     <HierarchicalDataTemplate x:Key="BranchNodeTemplate" ItemsSource="{Binding Children}">
         <StackPanel Orientation="Horizontal" ToolTip="{Binding ToolTip}">
-            <TextBlock Text="✓ " Foreground="{DynamicResource Accent}" FontSize="12">
+            <TextBlock Text="✓ " Foreground="{DynamicResource Accent}" FontSize="{DynamicResource Fs12}">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
                         <Setter Property="Visibility" Value="Collapsed" />
@@ -671,7 +671,7 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-            <TextBlock Text="{Binding Label}" FontSize="12" TextTrimming="CharacterEllipsis">
+            <TextBlock Text="{Binding Label}" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
                         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
@@ -787,7 +787,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -809,7 +809,7 @@
     <Style x:Key="ThemedCalendarDayButton" TargetType="CalendarDayButton">
         <Setter Property="MinWidth" Value="30" />
         <Setter Property="MinHeight" Value="24" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -854,7 +854,7 @@
     <Style x:Key="ThemedCalendarButton" TargetType="CalendarButton">
         <Setter Property="MinWidth" Value="48" />
         <Setter Property="MinHeight" Value="34" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -891,7 +891,7 @@
                     <ControlTemplate.Resources>
                         <!-- 曜日ヘッダー（日 月 火 …） -->
                         <DataTemplate x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type CalendarItem}, ResourceId=DayTitleTemplate}">
-                            <TextBlock Text="{Binding}" FontSize="10" Foreground="{DynamicResource FgDim}"
+                            <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4" />
                         </DataTemplate>
                     </ControlTemplate.Resources>

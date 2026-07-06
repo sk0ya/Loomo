@@ -36,12 +36,12 @@
         <Style x:Key="StepActionButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
             <Setter Property="Width" Value="24" />
             <Setter Property="Height" Value="24" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         </Style>
 
         <Style x:Key="ToolbarGhostButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
             <Setter Property="Padding" Value="8,3" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="Margin" Value="0" />
         </Style>
 
@@ -135,11 +135,11 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding CollapseGlyph}" FontSize="8"
+                            <TextBlock Grid.Column="0" Text="{Binding CollapseGlyph}" FontSize="{DynamicResource Fs8}"
                                        VerticalAlignment="Center" Margin="0,0,5,0"
                                        Foreground="{DynamicResource FgDim}"
                                        Visibility="{Binding HasBody, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="11"
+                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="{DynamicResource Fs11}"
                                        FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                        VerticalAlignment="Center">
                                 <TextBlock.Style>
@@ -166,7 +166,7 @@
                                  TextWrapping="Wrap" BorderThickness="0" Padding="0"
                                  Background="Transparent"
                                  IsReadOnlyCaretVisible="False" IsTabStop="False" Cursor="IBeam"
-                                 Foreground="{DynamicResource Fg}" FontSize="12">
+                                 Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}">
                             <TextBox.Style>
                                 <Style TargetType="TextBox">
                                     <Setter Property="FontFamily" Value="Segoe UI" />
@@ -195,7 +195,7 @@
                                     <DataTemplate>
                                         <Border Background="{Binding Background}">
                                             <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
-                                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                       FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                                        Padding="6,0" />
                                         </Border>
                                     </DataTemplate>
@@ -232,12 +232,12 @@
                     BorderThickness="0,0,1,0" Padding="6">
                 <DockPanel LastChildFill="True">
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,5">
-                        <TextBlock Text="ワークフロー" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Text="ワークフロー" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
                         <Button Content="＋" HorizontalAlignment="Right" Style="{StaticResource StepActionButton}"
                                 Command="{Binding NewWorkflowCommand}" ToolTip="新規" />
                     </Grid>
-                    <TextBlock Text="なし" FontSize="11" Foreground="{DynamicResource FgDim}" Margin="2,2">
+                    <TextBlock Text="なし" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" Margin="2,2">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -272,7 +272,7 @@
                                                 </MultiBinding>
                                             </Button.Tag>
                                             <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Fg}"
-                                                       FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="134" />
+                                                       FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" MaxWidth="134" />
                                         </Button>
                                         <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                 ToolTip="このワークフローを削除"
@@ -313,17 +313,17 @@
                         BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6"
                         Visibility="Collapsed">
                     <DockPanel LastChildFill="True">
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding SaveStatus}" FontSize="11"
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding SaveStatus}" FontSize="{DynamicResource Fs11}"
                                    Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                    Margin="8,0,0,0" />
                         <Grid VerticalAlignment="Center">
                             <TextBlock Text="ワークフロー名" IsHitTestVisible="False"
-                                       VerticalAlignment="Center" FontSize="13"
+                                       VerticalAlignment="Center" FontSize="{DynamicResource Fs13}"
                                        Foreground="{DynamicResource FgDim}"
                                        Visibility="{Binding Name, Converter={StaticResource EmptyToVis}}" />
                             <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                      Background="Transparent" BorderThickness="0" Padding="0"
-                                     FontSize="13" FontWeight="SemiBold" VerticalContentAlignment="Center"
+                                     FontSize="{DynamicResource Fs13}" FontWeight="SemiBold" VerticalContentAlignment="Center"
                                      Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
                                      ToolTip="ワークフロー名（自動保存されます）" />
                         </Grid>
@@ -340,7 +340,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="入力" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="0" Text="入力" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                    Margin="0,0,8,0"
                                    ToolTip="{}{{input}} / {{input.path}} / {{input.content}} としてステップへ渡します" />
@@ -376,9 +376,9 @@
                         </Style>
                     </Border.Style>
                     <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="ステップがありません" FontSize="13" FontWeight="SemiBold"
+                        <TextBlock Text="ステップがありません" FontSize="{DynamicResource Fs13}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Fg}" HorizontalAlignment="Center" />
-                        <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0" MaxWidth="420"
+                        <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource Fs12}" Margin="0,6,0,0" MaxWidth="420"
                                    Foreground="{DynamicResource FgDim}" TextAlignment="Center"
                                    Text="下の「＋ ステップを追加」から、AI への指示や、AI を使わないツール（コマンド実行・ファイル読書き・テキスト変換）を並べてワークフローを作れます。前段の出力は {{prev}} / {{1}}、上の入力は {{input}} で後続へ渡せます。" />
                     </StackPanel>
@@ -427,7 +427,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
-                                        <TextBlock Text="{Binding Index}" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding Index}" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
@@ -476,7 +476,7 @@
                                                 <Button.Template>
                                                     <ControlTemplate TargetType="Button">
                                                         <Border x:Name="cb" Background="Transparent" CornerRadius="3">
-                                                            <TextBlock Text="{Binding CollapseGlyph}" FontSize="10"
+                                                            <TextBlock Text="{Binding CollapseGlyph}" FontSize="{DynamicResource Fs10}"
                                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                        Foreground="{TemplateBinding Foreground}" />
                                                         </Border>
@@ -490,7 +490,7 @@
                                             </Button>
 
                                             <!-- 種別セレクタ（AI / コマンド / 読込 / 書込 / 変換） -->
-                                            <ComboBox Grid.Column="1" Margin="0,0,8,0" MinWidth="118" FontSize="11.5"
+                                            <ComboBox Grid.Column="1" Margin="0,0,8,0" MinWidth="118" FontSize="{DynamicResource Fs11_5}"
                                                       VerticalAlignment="Center"
                                                       ItemsSource="{Binding KindOptions}"
                                                       SelectedValuePath="Kind" DisplayMemberPath="Label"
@@ -500,19 +500,19 @@
                                             <!-- タイトル（任意・枠なし） -->
                                             <Grid Grid.Column="2" Margin="0,0,8,0" VerticalAlignment="Center">
                                                 <TextBlock Text="ステップ名（任意）" IsHitTestVisible="False"
-                                                           VerticalAlignment="Center" FontSize="12"
+                                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
                                                            Foreground="{DynamicResource FgDim}"
                                                            Visibility="{Binding Title, Converter={StaticResource EmptyToVis}}" />
                                                 <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
                                                          Background="Transparent" BorderThickness="0" Padding="0"
-                                                         FontSize="12" FontWeight="SemiBold"
+                                                         FontSize="{DynamicResource Fs12}" FontWeight="SemiBold"
                                                          VerticalContentAlignment="Center"
                                                          Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}" />
                                             </Grid>
 
                                             <!-- 状態テキスト（待機／実行中…／完了 (2.1秒)／失敗） -->
                                             <TextBlock Grid.Column="3" Text="{Binding StatusText}" VerticalAlignment="Center"
-                                                       Margin="0,0,6,0" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                       Margin="0,0,6,0" FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis"
                                                        MaxWidth="160">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
@@ -569,7 +569,7 @@
                                                     <ContentPresenter />
                                                 </ControlTemplate>
                                             </Button.Template>
-                                            <TextBlock Text="{Binding PromptPreview}" FontSize="11.5"
+                                            <TextBlock Text="{Binding PromptPreview}" FontSize="{DynamicResource Fs11_5}"
                                                        Foreground="{DynamicResource FgDim}"
                                                        TextTrimming="CharacterEllipsis" />
                                         </Button>
@@ -579,7 +579,7 @@
 
                                         <!-- 主テキスト（種別でプレースホルダ・等幅が変わる：指示文／コマンド／パス／入力） -->
                                         <Grid Margin="0,8,0,0">
-                                            <TextBlock IsHitTestVisible="False" Margin="6,5" FontSize="12"
+                                            <TextBlock IsHitTestVisible="False" Margin="6,5" FontSize="{DynamicResource Fs12}"
                                                        Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
                                                        Text="{Binding PrimaryPlaceholder}"
                                                        Visibility="{Binding Prompt, Converter={StaticResource EmptyToVis}}" />
@@ -605,7 +605,7 @@
                                         <!-- 書込ステップ：書き込む内容 -->
                                         <Grid Margin="0,6,0,0"
                                               Visibility="{Binding IsWriteFileStep, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock IsHitTestVisible="False" Margin="6,5" FontSize="12"
+                                            <TextBlock IsHitTestVisible="False" Margin="6,5" FontSize="{DynamicResource Fs12}"
                                                        Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
                                                        Text="書き込む内容…（{{prev}} / {{input}} を指定できます）"
                                                        Visibility="{Binding Content, Converter={StaticResource EmptyToVis}}" />
@@ -628,17 +628,17 @@
                                             <TextBox Grid.Column="0" Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}"
                                                      Background="{DynamicResource BgAlt}" FontFamily="Cascadia Mono, Consolas"
                                                      BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                     Padding="6,4" Margin="0,0,4,0" FontSize="12"
+                                                     Padding="6,4" Margin="0,0,4,0" FontSize="{DynamicResource Fs12}"
                                                      Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
                                                      ToolTip="検索する文字列（正規表現も可）" />
                                             <TextBox Grid.Column="1" Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
                                                      Background="{DynamicResource BgAlt}" FontFamily="Cascadia Mono, Consolas"
                                                      BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                     Padding="6,4" Margin="0,0,8,0" FontSize="12"
+                                                     Padding="6,4" Margin="0,0,8,0" FontSize="{DynamicResource Fs12}"
                                                      Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
                                                      ToolTip="置換後の文字列" />
                                             <CheckBox Grid.Column="2" Content="正規表現" VerticalAlignment="Center"
-                                                      FontSize="11" Foreground="{DynamicResource FgDim}"
+                                                      FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                                       IsChecked="{Binding IsRegex}" />
                                         </Grid>
 
@@ -646,7 +646,7 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
                                                     Visibility="{Binding RefTokens.Count, Converter={StaticResource CountToVis}}">
                                             <TextBlock Text="参照:" VerticalAlignment="Center" Margin="0,0,6,4"
-                                                       FontSize="11" Foreground="{DynamicResource FgDim}" />
+                                                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
                                             <ItemsControl ItemsSource="{Binding RefTokens}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -658,7 +658,7 @@
                                                                 CommandParameter="{Binding}"
                                                                 ToolTip="クリックで指示文へ挿入">
                                                             <TextBlock Text="{Binding}" FontFamily="Cascadia Mono, Consolas"
-                                                                       FontSize="11" Foreground="{DynamicResource Fg}" />
+                                                                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource Fg}" />
                                                         </Button>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -674,7 +674,7 @@
                                                         Style="{StaticResource ToolbarGhostButton}"
                                                         Command="{Binding AppendPreviousCommand}"
                                                         Visibility="{Binding CanAppendPrevious, Converter={StaticResource BoolToVis}}" />
-                                                <TextBlock Text="{Binding PromptNotice}" FontSize="11"
+                                                <TextBlock Text="{Binding PromptNotice}" FontSize="{DynamicResource Fs11}"
                                                            Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
                                                            VerticalAlignment="Center" />
                                             </DockPanel>
@@ -702,7 +702,7 @@
                     <ToggleButton x:Name="AddPaletteToggle" Grid.Column="1" HorizontalAlignment="Left"
                                   Margin="2,4,0,0" Content="＋ ステップを追加 ▾"
                                   Foreground="{DynamicResource Fg}" Background="Transparent"
-                                  BorderBrush="{DynamicResource Border}" Padding="11,5" FontSize="12"
+                                  BorderBrush="{DynamicResource Border}" Padding="11,5" FontSize="{DynamicResource Fs12}"
                                   Cursor="Hand" ToolTip="小さなタスクの候補からステップを選んで追加">
                         <ToggleButton.Template>
                             <ControlTemplate TargetType="ToggleButton">
@@ -748,7 +748,7 @@
                                                 HorizontalAlignment="Stretch"
                                                 Command="{Binding DataContext.AddCandidateCommand, ElementName=AddPaletteToggle}"
                                                 ToolTip="空のステップを追加して自分で書く">
-                                            <TextBlock Text="＋ 空のステップ" FontSize="11.5" FontWeight="SemiBold"
+                                            <TextBlock Text="＋ 空のステップ" FontSize="{DynamicResource Fs11_5}" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource Fg}" />
                                         </Button>
                                     </Border>
@@ -767,7 +767,7 @@
                                                                      ElementName="AddPaletteToggle" />
                                                         </MultiBinding>
                                                     </Button.Tag>
-                                                    <TextBlock Text="{Binding Category}" FontSize="12"
+                                                    <TextBlock Text="{Binding Category}" FontSize="{DynamicResource Fs12}"
                                                                Foreground="{DynamicResource Fg}"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
@@ -789,9 +789,9 @@
                                                             CommandParameter="{Binding}"
                                                             ToolTip="{Binding Prompt}">
                                                         <StackPanel>
-                                                            <TextBlock Text="{Binding Name}" FontSize="12"
+                                                            <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                                                        FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
-                                                            <TextBlock Text="{Binding Description}" FontSize="11"
+                                                            <TextBlock Text="{Binding Description}" FontSize="{DynamicResource Fs11}"
                                                                        Foreground="{DynamicResource FgDim}"
                                                                        TextWrapping="Wrap" />
                                                         </StackPanel>
@@ -837,10 +837,10 @@
                                                  Foreground="{DynamicResource Accent}" Background="Transparent"
                                                  BorderThickness="0" VerticalAlignment="Center" />
                                     <TextBlock Text="ウォームアップ中" Margin="10,0,0,0" VerticalAlignment="Center"
-                                               FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
+                                               FontSize="{DynamicResource Fs11_5}" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" />
                                 </StackPanel>
                                 <TextBlock Text="{Binding RunStatus}" TextWrapping="Wrap"
-                                           FontSize="11.5" Foreground="{DynamicResource FgDim}" />
+                                           FontSize="{DynamicResource Fs11_5}" Foreground="{DynamicResource FgDim}" />
                             </StackPanel>
                         </Border>
 
@@ -854,7 +854,7 @@
                                     <ToggleButton DockPanel.Dock="Right"
                                                   IsChecked="{Binding IsProgressDetailsExpanded, Mode=TwoWay}"
                                                   Content="詳細" Padding="8,2" Margin="8,0,0,0"
-                                                  FontSize="11" Cursor="Hand"
+                                                  FontSize="{DynamicResource Fs11}" Cursor="Hand"
                                                   ToolTip="進行状況の詳細ログを表示">
                                         <ToggleButton.Template>
                                             <ControlTemplate TargetType="ToggleButton">
@@ -876,13 +876,13 @@
                                             </ControlTemplate>
                                         </ToggleButton.Template>
                                     </ToggleButton>
-                                    <TextBlock DockPanel.Dock="Left" Text="進行状況" FontSize="11" FontWeight="SemiBold"
+                                    <TextBlock DockPanel.Dock="Left" Text="進行状況" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                                VerticalAlignment="Center" Foreground="{DynamicResource FgDim}" />
                                     <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Width="60" Height="4"
                                                  Foreground="{DynamicResource Accent}" Background="Transparent"
                                                  BorderThickness="0" VerticalAlignment="Center" Margin="8,0,0,0"
                                                  Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding RunStatus}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding RunStatus}" FontSize="{DynamicResource Fs11}"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                MaxWidth="320" Foreground="{DynamicResource FgDim}" />
                                 </DockPanel>
@@ -917,7 +917,7 @@
                                             Style="{StaticResource ToolbarGhostButton}" Padding="8,2"
                                             Click="OnCopyFinalOutputClick"
                                             ToolTip="ワークフローの出力をコピー" />
-                                    <TextBlock DockPanel.Dock="Left" Text="出力" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Left" Text="出力" FontSize="{DynamicResource Fs11}"
                                                FontWeight="SemiBold" Foreground="{DynamicResource FgDim}"
                                                VerticalAlignment="Center" />
                                 </DockPanel>
@@ -926,7 +926,7 @@
                                              TextWrapping="Wrap" BorderThickness="0" Padding="0"
                                              Background="Transparent" IsReadOnlyCaretVisible="False"
                                              IsTabStop="False" Cursor="IBeam"
-                                             Foreground="{DynamicResource Fg}" FontSize="12.5" />
+                                             Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12_5}" />
                                 </ScrollViewer>
                             </DockPanel>
                         </Border>

@@ -34,7 +34,7 @@
                                                     <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
                                                                Foreground="{DynamicResource Fg}" />
                                                     <TextBlock Text="{Binding UpdatedAt, StringFormat='yyyy/MM/dd HH:mm'}"
-                                                               Foreground="{DynamicResource FgDim}" FontSize="11" Margin="0,2,0,0" />
+                                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="0,2,0,0" />
                                                 </StackPanel>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -47,7 +47,7 @@
                                 </Button>
 
                                 <!-- 削除 -->
-                                <Button Grid.Column="1" Content="🗑" Width="34" FontSize="13" Cursor="Hand"
+                                <Button Grid.Column="1" Content="🗑" Width="34" FontSize="{DynamicResource Fs13}" Cursor="Hand"
                                         ToolTip="削除" Foreground="{DynamicResource FgDim}"
                                         Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                         CommandParameter="{Binding}">

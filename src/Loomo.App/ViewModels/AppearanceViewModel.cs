@@ -18,6 +18,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     private readonly AiSettings _settings;
     private readonly AiSettingsStore _store;
     private readonly ThemeManager _themeManager;
+    private readonly UiFontManager _UiFontManager;
 
     /// <summary>アプリ全体のカラーテーマの選択肢。<see cref="AppTheme"/> に値を足すだけで増やせる。</summary>
     public IReadOnlyList<PresetSwatch> Themes { get; }
@@ -34,6 +35,20 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// <summary>ターミナルの配色テーマの選択肢（背景／文字色／カーソル色）。</summary>
     public IReadOnlyList<PresetSwatch> TerminalThemes { get; }
 
+    /// <summary>アプリ UI 全体の基準フォントサイズ（本文の px）の選択肢。既定は 16px。</summary>
+    public IReadOnlyList<FontSizeChoice> FontSizes { get; } = new[]
+    {
+        new FontSizeChoice(12, "12 px"),
+        new FontSizeChoice(13, "13 px"),
+        new FontSizeChoice(14, "14 px"),
+        new FontSizeChoice(15, "15 px"),
+        new FontSizeChoice(16, "16 px（既定）"),
+        new FontSizeChoice(17, "17 px"),
+        new FontSizeChoice(18, "18 px"),
+        new FontSizeChoice(20, "20 px"),
+        new FontSizeChoice(22, "22 px"),
+    };
+
     /// <summary>「機能をペインに前面表示する」ときの配置の振る舞いの選択肢（メイン／サブ／ループ）。</summary>
     public IReadOnlyList<PaneOpenBehaviorChoice> PaneOpenBehaviors { get; } = new[]
     {
@@ -49,6 +64,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     [ObservableProperty] private PresetSwatch _selectedPreviewTheme;
     [ObservableProperty] private PresetSwatch _selectedTerminalTheme;
     [ObservableProperty] private PaneOpenBehaviorChoice _selectedPaneOpenBehavior;
+    [ObservableProperty] private FontSizeChoice _selectedFontSize;
 
     /// <summary>アクセントカラーの上書き（"#RRGGBB"）。空ならテーマ既定。コンボボックスと任意指定の入力欄で共有する。</summary>
     [ObservableProperty] private string _accentColor = "";
@@ -68,11 +84,13 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// ホスト（ShellWindow）が購読し、開いているタブやプレビューへ即時反映する。</summary>
     public event Action? AppearanceChanged;
 
-    public AppearanceViewModel(AiSettings settings, AiSettingsStore store, ThemeManager themeManager)
+    public AppearanceViewModel(AiSettings settings, AiSettingsStore store, ThemeManager themeManager,
+        UiFontManager UiFontManager)
     {
         _settings = settings;
         _store = store;
         _themeManager = themeManager;
+        _UiFontManager = UiFontManager;
 
         // チップの色は各テーマの固定代表色（適用中の配色とは独立に表示）。Key は永続化値／照合に使う。
         Themes = new[]
@@ -138,6 +156,10 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
         _selectedPaneOpenBehavior = PaneOpenBehaviors.FirstOrDefault(c => c.Value == settings.PaneOpenBehavior)
             ?? PaneOpenBehaviors[0];
+
+        // 現在の基準フォントサイズ（未設定なら既定）に最も近いプリセットを選択に反映する。
+        var effectiveSize = UiFontManager.Effective(ap.UiFontSize);
+        _selectedFontSize = FontSizes.OrderBy(c => Math.Abs(c.Size - effectiveSize)).First();
 
         _editorFontFamily = ap.EditorFontFamily ?? "";
         _editorFontSize = ap.EditorFontSize > 0 ? ap.EditorFontSize.ToString("0.#") : "";
@@ -234,6 +256,16 @@ public sealed partial class AppearanceViewModel : ObservableObject
         Persist("ペインの表示方法を変更しました");
     }
 
+    /// <summary>アプリ UI の基準フォントサイズ：選択を即時適用＆永続化する。DynamicResource 参照のため
+    /// 開いている画面へその場で反映される（エディタ／ターミナルの個別フォント設定とは連動しない）。</summary>
+    partial void OnSelectedFontSizeChanged(FontSizeChoice value)
+    {
+        if (value is null || _settings.Appearance.UiFontSize == value.Size) return;
+        _settings.Appearance.UiFontSize = value.Size;
+        _UiFontManager.Apply(value.Size);
+        Persist("文字サイズを変更しました");
+    }
+
     partial void OnEditorFontFamilyChanged(string value)
     {
         _settings.Appearance.EditorFontFamily = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -321,6 +353,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         {
             Key = key; Name = name; Bg = bg; Accent = accent; Fg = fg;
         }
+    }
+
+    /// <summary>アプリ UI の基準フォントサイズの選択肢1つ（コンボボックス用）。<see cref="Size"/> が永続化値（本文の px）。</summary>
+    public sealed class FontSizeChoice
+    {
+        public double Size { get; }
+        public string Name { get; }
+
+        public FontSizeChoice(double size, string name) { Size = size; Name = name; }
     }
 
     /// <summary>ペイン前面表示の配置の振る舞いの選択肢1つ（コンボボックス用）。<see cref="Value"/> が永続化値。</summary>

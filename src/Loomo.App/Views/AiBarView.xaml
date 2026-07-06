@@ -133,7 +133,7 @@
                                             <Button Grid.Column="0" Content="{Binding CollapseGlyph}"
                                                     Command="{Binding ToggleCollapseCommand}"
                                                     Width="18" Height="18"
-                                                    Padding="0" FontSize="9" Margin="0,0,6,0"
+                                                    Padding="0" FontSize="{DynamicResource Fs9}" Margin="0,0,6,0"
                                                     ToolTip="ブロックを開閉">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
@@ -153,7 +153,7 @@
                                                 </Button.Style>
                                             </Button>
                                             <!-- 役割アバター（あなた=👤／エージェント=🤖）。col0 で開閉ボタンと排他表示。 -->
-                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,7,0" FontSize="14">
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,7,0" FontSize="{DynamicResource Fs14}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -176,7 +176,7 @@
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="FontWeight" Value="SemiBold" />
-                                                        <Setter Property="FontSize" Value="11" />
+                                                        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
                                                         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding Kind}" Value="User">
@@ -195,7 +195,7 @@
                                             <Button Grid.Column="2" Content="📋"
                                                     Command="{Binding CopyCommand}"
                                                     Width="20" Height="20"
-                                                    Padding="0" FontSize="10" Margin="6,0,0,0"
+                                                    Padding="0" FontSize="{DynamicResource Fs10}" Margin="6,0,0,0"
                                                     ToolTip="この内容をコピー">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
@@ -222,13 +222,13 @@
                                                     <Style TargetType="TextBox">
                                                         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                                                         <Setter Property="FontFamily" Value="Segoe UI" />
-                                                        <Setter Property="FontSize" Value="13" />
+                                                        <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding Kind}" Value="Thinking">
                                                                 <Setter Property="FontStyle" Value="Italic" />
                                                                 <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                                 <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-                                                                <Setter Property="FontSize" Value="12" />
+                                                                <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
                                                             </DataTrigger>
                                                             <!-- 進行状況は等幅テキストではなく構造化タイムライン（下の ActivityTimelineView）で見せるので本文は隠す -->
                                                             <DataTrigger Binding="{Binding Kind}" Value="Activity">
@@ -236,7 +236,7 @@
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding Kind}" Value="Tool">
                                                                 <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-                                                                <Setter Property="FontSize" Value="12" />
+                                                                <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
                                                             </DataTrigger>
                                                             <!-- 差分エントリ等で本文が空のときは行を占有しない -->
                                                             <DataTrigger Binding="{Binding Text}" Value="">
@@ -261,7 +261,7 @@
                                                                          Foreground="{Binding Foreground}" Background="Transparent"
                                                                          BorderThickness="0" Padding="6,0" IsTabStop="False"
                                                                          IsReadOnlyCaretVisible="False" Cursor="IBeam"
-                                                                         FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                         FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                                                          TextWrapping="NoWrap"
                                                                          PreviewMouseWheel="OnTranscriptPreviewMouseWheel" />
                                                             </Border>
@@ -279,7 +279,7 @@
                                                                 ToolTip="このモデルに切替（次のターンから適用）">
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock Width="18" TextAlignment="Center"
-                                                                           VerticalAlignment="Center" FontSize="12">
+                                                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs12}">
                                                                     <TextBlock.Style>
                                                                         <Style TargetType="TextBlock">
                                                                             <Setter Property="Text" Value="○" />
@@ -295,7 +295,7 @@
                                                                 </TextBlock>
                                                                 <TextBlock Text="{Binding Name}" Margin="6,0,0,0"
                                                                            VerticalAlignment="Center"
-                                                                           FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                                           FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                                                            Foreground="{DynamicResource Fg}" />
                                                             </StackPanel>
                                                         </Button>
@@ -329,7 +329,7 @@
                              Foreground="{DynamicResource Accent}" Background="Transparent"
                              BorderThickness="0" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding StatusText}" Margin="10,0,0,0"
-                           VerticalAlignment="Center" FontSize="12"
+                           VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
                            Foreground="{DynamicResource FgDim}" />
             </StackPanel>
         </Border>
@@ -346,7 +346,7 @@
                 <ProgressBar Grid.Column="0" IsIndeterminate="True" Width="80" Height="4"
                              Foreground="{DynamicResource Accent}" Background="Transparent"
                              BorderThickness="0" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12"
+                <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
                            Foreground="{DynamicResource FgDim}"
                            TextWrapping="Wrap"
                            Text="{Binding WarmupStatusText}" />
@@ -369,7 +369,7 @@
 
                 <StackPanel Grid.Column="1" Margin="10,0,12,0">
                     <TextBlock Text="ウォームアップ完了"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{DynamicResource Fs12}" FontWeight="SemiBold"
                                Foreground="{DynamicResource Fg}" />
                     <ItemsControl ItemsSource="{Binding WarmupCompletionStages}" Margin="0,4,0,0">
                         <ItemsControl.ItemsPanel>
@@ -387,10 +387,10 @@
                                         Margin="0,0,6,4">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Name}"
-                                                   FontSize="11"
+                                                   FontSize="{DynamicResource Fs11}"
                                                    Foreground="{DynamicResource FgDim}" />
                                         <TextBlock Text="{Binding Duration}"
-                                                   FontSize="11"
+                                                   FontSize="{DynamicResource Fs11}"
                                                    FontFamily="Cascadia Mono, Consolas"
                                                    Foreground="{DynamicResource Fg}"
                                                    Margin="6,0,0,0" />
@@ -403,11 +403,11 @@
 
                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
                     <TextBlock Text="合計"
-                               FontSize="10"
+                               FontSize="{DynamicResource Fs10}"
                                Foreground="{DynamicResource FgDim}"
                                HorizontalAlignment="Right" />
                     <TextBlock Text="{Binding WarmupCompletionTotalText}"
-                               FontSize="14"
+                               FontSize="{DynamicResource Fs14}"
                                FontWeight="SemiBold"
                                FontFamily="Cascadia Mono, Consolas"
                                Foreground="{DynamicResource Fg}" />
@@ -474,7 +474,7 @@
                                         <TextBlock Text="{Binding Name}" Width="90" FontWeight="SemiBold"
                                                    FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource Fg}" />
                                         <TextBlock Text="{Binding Description}" VerticalAlignment="Center"
-                                                   FontSize="12" Foreground="{DynamicResource FgDim}" />
+                                                   FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

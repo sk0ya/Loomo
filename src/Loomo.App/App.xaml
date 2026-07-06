@@ -6,6 +6,8 @@
             <ResourceDictionary.MergedDictionaries>
                 <!-- 配色（テーマ）。ThemeManager が起動時／切替時に Palette.* を差し替える。 -->
                 <ResourceDictionary Source="Themes/Palette.Dark.xaml" />
+                <!-- フォントサイズ・トークン（Fs*）。実行時は UiFontManager がユーザー指定サイズに合わせて上書きする。 -->
+                <ResourceDictionary Source="Themes/Typography.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

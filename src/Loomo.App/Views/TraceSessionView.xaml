@@ -50,7 +50,7 @@
 
             <!-- セッション一覧（新しい順） -->
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="11" FontWeight="SemiBold"
+                <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                            Foreground="{DynamicResource FgDim}" Text="トレース（新しい順）" />
                 <Grid>
                     <ListBox Style="{StaticResource TraceList}"
@@ -58,9 +58,9 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel LastChildFill="True" ToolTip="{Binding SessionId}">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding SizeLabel}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding SizeLabel}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding UpdatedLabel}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding UpdatedLabel}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
                                     <TextBlock Text="{Binding SessionId}" TextTrimming="CharacterEllipsis" />
                                 </DockPanel>
@@ -95,7 +95,7 @@
 
                 <ListBox Grid.Row="0" Style="{StaticResource TraceList}"
                          ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
-                         FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                         FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -127,7 +127,7 @@
                 <!-- 選択イベントの payload（整形 JSON） -->
                 <TextBox Grid.Row="2" IsReadOnly="True" TextWrapping="NoWrap"
                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                         FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                         FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                          BorderThickness="0" Background="{DynamicResource BgAlt}"
                          Text="{Binding DetailText, Mode=OneWay}" />
             </Grid>

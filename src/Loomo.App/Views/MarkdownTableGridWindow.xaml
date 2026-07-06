@@ -12,7 +12,7 @@
     <DockPanel Margin="12">
         <TextBlock DockPanel.Dock="Top"
                    Foreground="{DynamicResource FgDim}"
-                   FontSize="12"
+                   FontSize="{DynamicResource Fs12}"
                    TextWrapping="Wrap"
                    Margin="0,0,0,8"
                    Text="グリッドでセルを編集できます（Vim キーバインド対応）。閉じると元の Markdown テーブルへ反映します。" />

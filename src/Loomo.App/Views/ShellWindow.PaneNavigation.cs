@@ -173,7 +173,7 @@ public partial class ShellWindow
             {
                 Text = "リサイズモード　h/j/k/l で伸縮　・　Esc で終了",
                 Foreground = (Brush)FindResource("Fg"),
-                FontSize = 12
+                FontSize = UiFontManager.Scaled(12)
             }
         };
         _resizeHintPopup = new Popup

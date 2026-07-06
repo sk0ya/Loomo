@@ -35,13 +35,13 @@
 
         <!-- 同期ボタンの矢印：対象がある（件数>0）ときアクセント色、無いとき淡色 -->
         <Style x:Key="SyncArrow" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs14}" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
         </Style>
         <!-- 同期ボタンの件数：対象があるときだけ表示し、アクセント色で目立たせる -->
         <Style x:Key="SyncCount" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="3,0,0,0" />
@@ -56,7 +56,7 @@
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Width" Value="22" />
             <Setter Property="Height" Value="20" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -177,7 +177,7 @@
                         Padding="6,0" MinWidth="18" Height="15" Margin="6,0,0,0"
                         VerticalAlignment="Center"
                         Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="{Binding LeafCount}" FontSize="10" Foreground="{DynamicResource Fg}"
+                    <TextBlock Text="{Binding LeafCount}" FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource Fg}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding Change.Status}" Width="16" Margin="4,0,2,0"
@@ -274,7 +274,7 @@
                 <StackPanel>
                     <!-- 1行目：ブランチ名（全幅。長くてもここで省略表示） -->
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="⎇" FontSize="14" Foreground="{DynamicResource Accent}"
+                        <TextBlock Text="⎇" FontSize="{DynamicResource Fs14}" Foreground="{DynamicResource Accent}"
                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                         <TextBlock Text="{Binding BranchLabel}" FontWeight="SemiBold"
                                    VerticalAlignment="Center"
@@ -289,7 +289,7 @@
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⭮" Style="{StaticResource SyncArrow}" />
-                                <TextBlock Text="フェッチ" FontSize="11" VerticalAlignment="Center"
+                                <TextBlock Text="フェッチ" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
                                            Margin="5,0,0,0" Foreground="{DynamicResource FgDim}" />
                             </StackPanel>
                         </Button>
@@ -366,7 +366,7 @@
             </StackPanel>
 
             <!-- 実行結果メッセージ -->
-            <TextBlock DockPanel.Dock="Bottom" Margin="10,4,10,8" FontSize="11"
+            <TextBlock DockPanel.Dock="Bottom" Margin="10,4,10,8" FontSize="{DynamicResource Fs11}"
                        Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxHeight="80">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
@@ -401,9 +401,9 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
-                                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                           FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 <Border Style="{StaticResource CountPill}">
-                                    <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="10"
+                                    <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
                                                Foreground="{DynamicResource Fg}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -431,7 +431,7 @@
                                             <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                       FontSize="11" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                       FontSize="{DynamicResource Fs11}" Margin="6,1,0,0" VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </DockPanel>
@@ -461,10 +461,10 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="スタッシュ" Foreground="{DynamicResource FgDim}"
-                                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                           FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 <Border Style="{StaticResource CountPill}"
                                         Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
-                                    <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="10"
+                                    <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
                                                Foreground="{DynamicResource Fg}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -489,7 +489,7 @@
                                                     CommandParameter="{Binding}" />
                                         </StackPanel>
                                         <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center" FontSize="11" />
+                                                   VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
                                     </DockPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

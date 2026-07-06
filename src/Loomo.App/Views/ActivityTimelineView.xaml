@@ -24,7 +24,7 @@
                                 HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,1,0,0"
                                 Background="{DynamicResource BgAlt}"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="1.5">
-                            <TextBlock Text="{Binding Glyph}" FontSize="9"
+                            <TextBlock Text="{Binding Glyph}" FontSize="{DynamicResource Fs9}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                     </Grid>
@@ -32,13 +32,13 @@
                     <!-- 本文（詳細がある段だけ折りたたみ、閉じた状態では1行要約だけを見せる） -->
                     <Grid Grid.Column="1">
                         <TextBlock x:Name="Msg" Text="{Binding Message}" TextWrapping="Wrap"
-                                   Margin="7,2,8,2" VerticalAlignment="Center" FontSize="12"
+                                   Margin="7,2,8,2" VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
                                    Foreground="{DynamicResource Fg}" />
                         <Expander x:Name="DetailExpander" Visibility="Collapsed" Margin="3,0,8,2"
                                   IsExpanded="False">
                             <Expander.Header>
                                 <TextBlock x:Name="DetailHeader" Text="{Binding Message}"
-                                           TextTrimming="CharacterEllipsis" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" FontSize="{DynamicResource Fs12}"
                                            Foreground="{DynamicResource Fg}" />
                             </Expander.Header>
                             <Border Margin="22,4,0,4" Padding="8,7" CornerRadius="4"
@@ -47,7 +47,7 @@
                                 <TextBox Text="{Binding Detail}" IsReadOnly="True" TextWrapping="Wrap"
                                          BorderThickness="0" Padding="0" Background="Transparent"
                                          IsReadOnlyCaretVisible="False" IsTabStop="False" Cursor="IBeam"
-                                         FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                                         FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11_5}"
                                          Foreground="{DynamicResource Fg}" />
                             </Border>
                         </Expander>
@@ -55,7 +55,7 @@
 
                     <!-- 経過時刻（各段に添える・等幅で揃える） -->
                     <TextBlock Grid.Column="2" Text="{Binding TimeLabel}" VerticalAlignment="Top" Margin="0,3,0,0"
-                               FontFamily="Cascadia Mono, Consolas" FontSize="10"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs10}"
                                Foreground="{DynamicResource FgDim}"
                                Visibility="{Binding HasTime, Converter={StaticResource BoolToVis}}" />
                 </Grid>

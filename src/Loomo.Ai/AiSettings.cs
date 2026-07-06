@@ -251,4 +251,10 @@ public sealed class AppearanceSettings
     /// <summary>ターミナルで OpenType のプログラミングフォント合字（<c>=&gt;</c> / <c>!=</c> / <c>-&gt;</c> 等）を
     /// 有効にするか。既定 OFF。フォントが合字を持つ場合のみ描画に反映される。</summary>
     public bool TerminalFontLigatures { get; set; }
+
+    /// <summary>アプリ UI 全体の基準フォントサイズ（本文の px）。0 以下なら未設定（既定サイズを使う）。
+    /// サイドバー・設定・ツリー・タブ・AIバーなど WPF で組んだ UI に一律に効き、見出し／補足などの大小関係は
+    /// 比率を保って連動する。エディタ／ターミナルのフォントサイズ（<see cref="EditorFontSize"/> /
+    /// <see cref="TerminalFontSize"/>）とは独立で連動しない。</summary>
+    public double UiFontSize { get; set; }
 }

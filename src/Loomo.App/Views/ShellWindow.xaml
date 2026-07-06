@@ -20,7 +20,7 @@
         <Style x:Key="PaneHeaderToolButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
             <Setter Property="Padding" Value="8,2" />
             <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
@@ -257,9 +257,9 @@
             <!-- ===== カスタムタイトルバー ===== -->
             <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Height="36" Background="{DynamicResource ActivityBarBg}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
-                    <TextBlock Text="🤖" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="🤖" FontSize="{DynamicResource Fs13}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBlock Text="Loomo" VerticalAlignment="Center"
-                               FontSize="12" Foreground="{DynamicResource FgDim}" Margin="0,0,12,0" />
+                               FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" Margin="0,0,12,0" />
                     <ComboBox Height="24"
                               ItemsSource="{Binding Workspaces.Workspaces}"
                               SelectedItem="{Binding Workspaces.SelectedWorkspace, Mode=TwoWay}"
@@ -297,10 +297,10 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                        Margin="0,0,5,0" />
-                            <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="12"
+                            <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="{DynamicResource Fs12}"
                                        VerticalAlignment="Center" MaxWidth="220"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                            <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
                                        VerticalAlignment="Center" Margin="5,1,0,0" />
                         </StackPanel>
                     </Button>
@@ -316,9 +316,9 @@
                                 <!-- フッター：新規ブランチ作成＋このポップアップ発の操作が失敗したときの理由表示 -->
                                 <StackPanel DockPanel.Dock="Bottom">
                                     <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
-                                    <Button Style="{StaticResource BranchMenuItem}" FontSize="12"
+                                    <Button Style="{StaticResource BranchMenuItem}" FontSize="{DynamicResource Fs12}"
                                             Content="＋ 新しいブランチ" Click="OnTitleBarNewBranchClick" />
-                                    <TextBlock x:Name="BranchPopupStatus" Margin="10,2,10,4" FontSize="11"
+                                    <TextBlock x:Name="BranchPopupStatus" Margin="10,2,10,4" FontSize="{DynamicResource Fs11}"
                                                Foreground="#FFE57373" TextWrapping="Wrap"
                                                MaxHeight="80" Visibility="Collapsed" />
                                 </StackPanel>
@@ -358,11 +358,11 @@
                             WindowChrome.IsHitTestVisibleInChrome="True">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="📐" VerticalAlignment="Center" Margin="0,0,5,0" />
-                            <TextBlock Text="レイアウト:" Foreground="{DynamicResource FgDim}" FontSize="12"
+                            <TextBlock Text="レイアウト:" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs12}"
                                        VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock x:Name="LayoutButtonLabel" Text="（未保存）" FontSize="12"
+                            <TextBlock x:Name="LayoutButtonLabel" Text="（未保存）" FontSize="{DynamicResource Fs12}"
                                        VerticalAlignment="Center" MaxWidth="160" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                            <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
                                        VerticalAlignment="Center" Margin="5,1,0,0" />
                         </StackPanel>
                     </Button>
@@ -406,7 +406,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Path x:Name="MainPaneIcon" Style="{StaticResource PaneToggleIcon}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                            <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                            <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
                                        VerticalAlignment="Center" Margin="4,1,0,0" />
                         </StackPanel>
                     </Button>
@@ -531,10 +531,10 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Terminal" Click="OnHidePane" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnTerminalNewTab" />
+                                Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnTerminalNewTab" />
                         <!-- コンポーザ（§23.2）の表示/非表示。下部にはめ込んだ複数行コマンド入力 -->
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 ToolTip="コンポーザ（複数行コマンドを Vim で組み立てて実行）を表示/非表示"
@@ -568,7 +568,7 @@
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnTerminalTabSelected">
-                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
@@ -603,13 +603,13 @@
                                    PreviewKeyDown="OnComposerPreviewKeyDown">
                             <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False">
                                 <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="22"
-                                        Content="✕" FontSize="11" ToolTip="コンポーザを閉じる" Click="OnToggleComposer" />
+                                        Content="✕" FontSize="{DynamicResource Fs11}" ToolTip="コンポーザを閉じる" Click="OnToggleComposer" />
                                 <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderToolButton}"
                                         Content="▶ 実行"
                                         ToolTip="本文をこのターミナルで実行（Ctrl+Enter。複数行は一時 .ps1 経由）"
                                         Click="OnComposerRun" />
                                 <TextBlock DockPanel.Dock="Left" Text="Ctrl+Enter" VerticalAlignment="Center"
-                                           Margin="2,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}" />
+                                           Margin="2,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
                                 <!-- 組み立てたコマンドを道具掛けへ（§23.3 素材の流れ：作業台→ペグボード） -->
                                 <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderToolButton}"
                                         Content="📌 ペグボードへ" Margin="8,0,0,0"
@@ -628,10 +628,10 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Editor" Click="OnHidePane" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnEditorNewTab" />
+                                Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnEditorNewTab" />
                         <ScrollViewer x:Name="EditorTabStripScrollViewer"
                                       HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
@@ -658,7 +658,7 @@
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnEditorTabSelected">
-                                                    <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="12"
+                                                    <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
@@ -692,18 +692,18 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" VerticalAlignment="Center" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource Fg}" FontSize="12"
+                                       Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}"
                                        Text="{Binding LspPrompt.Message}" />
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                                 <Button Content="インストール" Style="{StaticResource FlatButton}"
-                                        FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                         Command="{Binding LspPrompt.InstallCommand}"
                                         Visibility="{Binding LspPrompt.CanInstall, Converter={StaticResource BoolToVis}}" />
                                 <Button Content="設定を開く" Style="{StaticResource SecondaryButton}"
-                                        FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                         Command="{Binding LspPrompt.OpenSettingsCommand}" />
                                 <Button Content="今後表示しない" Style="{StaticResource SecondaryButton}"
-                                        FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                         Command="{Binding LspPrompt.DismissForeverCommand}" />
                                 <Button Style="{StaticResource CaptionButton}" Width="24" Height="22"
                                         Content="×" ToolTip="閉じる" Command="{Binding LspPrompt.CloseCommand}" />
@@ -723,7 +723,7 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR SUPPORT" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="EditorSupport" Click="OnHidePane" />
                         <ToggleButton x:Name="EditorSupportPinToggle" DockPanel.Dock="Right"
                                       Style="{StaticResource PaneToggle}" Width="30" Height="24"
@@ -762,7 +762,7 @@
                                   Data="M8,2 V9 M5,6 L8,9 L11,6 M3,12 H13" />
                         </Button>
                         <TextBlock x:Name="EditorSupportTitle" VerticalAlignment="Center" Margin="4,0,8,0"
-                                   FontSize="11" Foreground="{DynamicResource FgDim}"
+                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <Grid x:Name="EditorSupportContentHost" />
@@ -775,10 +775,10 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Browser" Click="OnHidePane" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="+" FontSize="15" ToolTip="新しいタブ" Click="OnBrowserNewTab" />
+                                Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnBrowserNewTab" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
                                       PanningMode="HorizontalOnly"
@@ -804,7 +804,7 @@
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnBrowserTabSelected">
-                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
@@ -867,7 +867,7 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="GIT" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Git" Click="OnHidePane" />
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
@@ -878,10 +878,10 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                                Margin="0,0,5,0" />
-                                    <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="{DynamicResource Fs12}" FontWeight="SemiBold"
                                                VerticalAlignment="Center" MaxWidth="220"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="▾" FontSize="8" Foreground="{DynamicResource FgDim}"
+                                    <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
                                                VerticalAlignment="Center" Margin="5,1,0,0" />
                                 </StackPanel>
                             </Button>
@@ -896,9 +896,9 @@
                                     <DockPanel>
                                         <StackPanel DockPanel.Dock="Bottom">
                                             <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
-                                            <Button Style="{StaticResource BranchMenuItem}" FontSize="12"
+                                            <Button Style="{StaticResource BranchMenuItem}" FontSize="{DynamicResource Fs12}"
                                                     Content="＋ 新しいブランチ" Click="OnGitPaneNewBranchClick" />
-                                            <TextBlock x:Name="GitPaneBranchPopupStatus" Margin="10,2,10,4" FontSize="11"
+                                            <TextBlock x:Name="GitPaneBranchPopupStatus" Margin="10,2,10,4" FontSize="{DynamicResource Fs11}"
                                                        Foreground="#FFE57373" TextWrapping="Wrap"
                                                        MaxHeight="80" Visibility="Collapsed" />
                                         </StackPanel>
@@ -928,7 +928,7 @@
                                          VerticalContentAlignment="Center"
                                          Text="{Binding GitSession.LogFilter, UpdateSourceTrigger=PropertyChanged, Delay=150}" />
                                 <TextBlock Text="🔍 コミットを絞り込み" Foreground="{DynamicResource FgDim}"
-                                           FontSize="12" Margin="8,0,0,0" IsHitTestVisible="False"
+                                           FontSize="{DynamicResource Fs12}" Margin="8,0,0,0" IsHitTestVisible="False"
                                            VerticalAlignment="Center"
                                            Visibility="{Binding GitSession.LogFilter, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
@@ -944,15 +944,15 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="DIFF" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Diff" Click="OnHidePane" />
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                             <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
                                     Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="12"
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="{DynamicResource Fs12}"
                                                  IsChecked="{Binding DiffSession.IsGitMode}" />
-                                    <RadioButton Style="{StaticResource SourceToggle}" Content="AI変更" FontSize="12"
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="AI変更" FontSize="{DynamicResource Fs12}"
                                                  IsChecked="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBool}}" />
                                 </StackPanel>
                             </Border>
@@ -960,10 +960,10 @@
                             <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
                                     Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <RadioButton Style="{StaticResource SourceToggle}" Content="統合" FontSize="12"
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="統合" FontSize="{DynamicResource Fs12}"
                                                  ToolTip="差分を1列で表示（unified）"
                                                  IsChecked="{Binding DiffSession.IsSideBySide, Converter={StaticResource InverseBool}}" />
-                                    <RadioButton Style="{StaticResource SourceToggle}" Content="左右" FontSize="12"
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="左右" FontSize="{DynamicResource Fs12}"
                                                  ToolTip="削除を左・追加を右に並べて表示（side by side）"
                                                  IsChecked="{Binding DiffSession.IsSideBySide}" />
                                 </StackPanel>
@@ -979,7 +979,7 @@
                                         </Style.Triggers>
                                     </Style>
                                 </StackPanel.Style>
-                                <TextBlock Text="{Binding DiffSession.GitTargetLabel}" FontSize="12"
+                                <TextBlock Text="{Binding DiffSession.GitTargetLabel}" FontSize="{DynamicResource Fs12}"
                                            Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
                                            Margin="0,0,6,0" TextTrimming="CharacterEllipsis" MaxWidth="240" />
                                 <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 作業ツリーへ"
@@ -1024,14 +1024,14 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TRACE" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Trace" Click="OnHidePane" />
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="削除"
                                     ToolTip="選択中セッションのトレースファイルを削除"
                                     Command="{Binding TraceSession.DeleteSelectedCommand}" />
                             <TextBlock Text="{Binding TraceSession.SummaryLabel}" VerticalAlignment="Center"
-                                       Margin="2,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}"
+                                       Margin="2,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </DockPanel>
@@ -1045,7 +1045,7 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="IDE" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Debug" Click="OnHidePane" />
                         <!-- デバッグツールバー（タブより上はヘッダーのみ）。状態で出し分け：
                              デバッグ前＝開始/ビルド/テスト、停止中＝続行/ステップ、デバッグ中＝中断/再起動/停止。
@@ -1055,15 +1055,15 @@
                             <StackPanel Orientation="Horizontal"
                                         Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}">
                                 <Button Style="{StaticResource FlatButton}" Height="22" Padding="12,0" Margin="0,1,6,1"
-                                        FontSize="11" Content="▶ 開始" ToolTip="デバッグを開始"
+                                        FontSize="{DynamicResource Fs11}" Content="▶ 開始" ToolTip="デバッグを開始"
                                         Command="{Binding Debug.Launch.StartCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
-                                        FontSize="11" Content="🔨 ビルド" ToolTip="dotnet build を実行（.sln 優先）"
+                                        FontSize="{DynamicResource Fs11}" Content="🔨 ビルド" ToolTip="dotnet build を実行（.sln 優先）"
                                         Command="{Binding Debug.Launch.BuildTargetCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
-                                        FontSize="11" Content="🧪 テスト" ToolTip="dotnet test を実行（.sln 優先）"
+                                        FontSize="{DynamicResource Fs11}" Content="🧪 テスト" ToolTip="dotnet test を実行（.sln 優先）"
                                         Command="{Binding Debug.Tests.TestCommand}" />
-                                <CheckBox Content="先にビルド" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="11"
+                                <CheckBox Content="先にビルド" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="{DynamicResource Fs11}"
                                           Foreground="{DynamicResource Fg}" IsChecked="{Binding Debug.Launch.BuildFirst, Mode=TwoWay}"
                                           ToolTip="開始前に dotnet build を実行する" />
                             </StackPanel>
@@ -1071,35 +1071,35 @@
                             <StackPanel Orientation="Horizontal"
                                         Visibility="{Binding Debug.IsStopped, Converter={StaticResource BoolToVis}}">
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
-                                        FontSize="12" Content="▶" ToolTip="続行 (F5)"
+                                        FontSize="{DynamicResource Fs12}" Content="▶" ToolTip="続行 (F5)"
                                         Command="{Binding Debug.Launch.ContinueCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
-                                        FontSize="12" Content="⤼" ToolTip="ステップオーバー"
+                                        FontSize="{DynamicResource Fs12}" Content="⤼" ToolTip="ステップオーバー"
                                         Command="{Binding Debug.Launch.StepOverCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
-                                        FontSize="12" Content="⤷" ToolTip="ステップイン"
+                                        FontSize="{DynamicResource Fs12}" Content="⤷" ToolTip="ステップイン"
                                         Command="{Binding Debug.Launch.StepIntoCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,8,1"
-                                        FontSize="12" Content="⤴" ToolTip="ステップアウト"
+                                        FontSize="{DynamicResource Fs12}" Content="⤴" ToolTip="ステップアウト"
                                         Command="{Binding Debug.Launch.StepOutCommand}" />
                             </StackPanel>
                             <!-- デバッグ中のみ：中断・再起動・停止 -->
                             <StackPanel Orientation="Horizontal"
                                         Visibility="{Binding Debug.IsBusy, Converter={StaticResource BoolToVis}}">
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
-                                        FontSize="12" Content="⏸" ToolTip="すべて中断（一時停止）"
+                                        FontSize="{DynamicResource Fs12}" Content="⏸" ToolTip="すべて中断（一時停止）"
                                         Command="{Binding Debug.Launch.PauseCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,8,1"
-                                        FontSize="12" Content="⟳" ToolTip="同じ対象で再起動"
+                                        FontSize="{DynamicResource Fs12}" Content="⟳" ToolTip="同じ対象で再起動"
                                         Command="{Binding Debug.Launch.RestartCommand}" />
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
-                                        FontSize="11" Content="■ 停止" ToolTip="デバッグを停止"
+                                        FontSize="{DynamicResource Fs11}" Content="■ 停止" ToolTip="デバッグを停止"
                                         Command="{Binding Debug.Launch.StopCommand}" />
                             </StackPanel>
                         </StackPanel>
                         <!-- 状態（ビルド/デバッグの進行・結果）。ラベルの右、ツールバーの左を埋める。 -->
                         <TextBlock DockPanel.Dock="Left" Text="{Binding Debug.StatusMessage}" VerticalAlignment="Center"
-                                   Margin="10,0,0,0" FontSize="11" Foreground="{DynamicResource FgDim}"
+                                   Margin="10,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <views:DebugView DataContext="{Binding Debug}" />
@@ -1112,7 +1112,7 @@
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="13" ToolTip="このペインを隠す"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Ai" Click="OnHidePane" />
                         <!-- チャット/ワークフロー切替（ヘッダー側）。DataContext は ShellViewModel なので AiBar 経由で束ねる。 -->
                         <Border DockPanel.Dock="Left" Margin="10,0,0,0" VerticalAlignment="Center"
@@ -1211,7 +1211,7 @@
                         </Border.Effect>
                         <DockPanel>
                             <TextBlock x:Name="ReferencesPopupTitle" DockPanel.Dock="Top"
-                                       FontSize="12" FontWeight="SemiBold" Margin="8,4,8,6"
+                                       FontSize="{DynamicResource Fs12}" FontWeight="SemiBold" Margin="8,4,8,6"
                                        Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" />
                             <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
                                 <StackPanel x:Name="ReferencesPopupList" />
@@ -1251,7 +1251,7 @@
                                         <Setter Property="BorderBrush" Value="Transparent" />
                                         <Setter Property="Padding" Value="8,2" />
                                         <Setter Property="Margin" Value="0,0,4,0" />
-                                        <Setter Property="FontSize" Value="11" />
+                                        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
                                         <Setter Property="Cursor" Value="Hand" />
                                         <Setter Property="Template">
                                             <Setter.Value>
@@ -1276,7 +1276,7 @@
                                 <Button x:Name="PaletteModeTerminal" Style="{StaticResource PaletteModeChip}"
                                         Content="ターミナル" Click="OnPaletteModeClick" Tag="Terminal" />
                             </StackPanel>
-                            <TextBox x:Name="PaletteInput" Grid.Row="1" Margin="4,0,4,4" Padding="6,4" FontSize="13"
+                            <TextBox x:Name="PaletteInput" Grid.Row="1" Margin="4,0,4,4" Padding="6,4" FontSize="{DynamicResource Fs13}"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                                      TextChanged="OnPaletteTextChanged" PreviewKeyDown="OnPaletteInputKeyDown" />
@@ -1300,10 +1300,10 @@
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <DockPanel LastChildFill="True">
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="11"
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="{DynamicResource Fs11}"
                                                            Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                                                            VerticalAlignment="Center" />
-                                                <TextBlock FontSize="12" TextTrimming="CharacterEllipsis"><Run
+                                                <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"><Run
                                                         Text="{Binding Category, Mode=OneWay}"
                                                         Foreground="{DynamicResource FgDim}" /><Run
                                                         Text=" › " Foreground="{DynamicResource FgDim}" /><Run
@@ -1316,7 +1316,7 @@
                                         BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="3">
                                     <ScrollViewer x:Name="PalettePreviewScroll" VerticalScrollBarVisibility="Auto"
                                                   HorizontalScrollBarVisibility="Auto" Padding="6,4">
-                                        <TextBlock x:Name="PalettePreview" FontFamily="Consolas" FontSize="11"
+                                        <TextBlock x:Name="PalettePreview" FontFamily="Consolas" FontSize="{DynamicResource Fs11}"
                                                    Foreground="{DynamicResource Fg}" />
                                     </ScrollViewer>
                                 </Border>
@@ -1353,7 +1353,7 @@
                          時間帯（HH:00）を1つのポップアップから即トグルして選ぶ。選択はリアルタイムでバーへ
                          反映し、フォーカスを外すと閉じる。最新地点へは右クリックメニュー「最新に戻る」。 -->
                     <Button x:Name="TrailDateTimeButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
-                            Padding="8,1" FontSize="11" VerticalAlignment="Center"
+                            Padding="8,1" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
                             Foreground="{DynamicResource FgDim}"
                             Content="{Binding Trail.DateTimeLabel}"
                             ToolTip="クリックで日付と時間帯を選んでその軌跡へ移動（選択はすぐ反映・フォーカスを外すと閉じる）"
@@ -1385,7 +1385,7 @@
                                     <!-- 最新（今）へ戻る：過去日表示・過去地点へのスクラブどちらからも
                                          ライブの最新地点へ1回で戻す。押したらポップアップを閉じる。 -->
                                     <Button DockPanel.Dock="Top" Style="{StaticResource FlatButton}"
-                                            Padding="10,4" FontSize="12" HorizontalContentAlignment="Left"
+                                            Padding="10,4" FontSize="{DynamicResource Fs12}" HorizontalContentAlignment="Left"
                                             Content="⟳ 最新に戻る" ToolTip="ライブの最新地点（今）へ戻る"
                                             Click="OnTrailBackToLatestFromPopup" />
                                     <Border DockPanel.Dock="Top" Height="1" Margin="4,3"
@@ -1405,7 +1405,7 @@
                                                     <Setter Property="Cursor" Value="Hand" />
                                                     <Setter Property="MinWidth" Value="64" />
                                                     <Setter Property="Padding" Value="10,3" />
-                                                    <Setter Property="FontSize" Value="12" />
+                                                    <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
                                                     <Setter Property="HorizontalContentAlignment" Value="Left" />
                                                     <Setter Property="Template">
                                                         <Setter.Value>
@@ -1452,7 +1452,7 @@
                     </Popup>
                     <!-- ×：過去の日を表示中のみ出す（今日の軌跡へ戻る） -->
                     <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="22"
-                            Content="×" FontSize="11" ToolTip="今日の軌跡へ戻る"
+                            Content="×" FontSize="{DynamicResource Fs11}" ToolTip="今日の軌跡へ戻る"
                             Visibility="{Binding Trail.IsViewingPast, Converter={StaticResource BoolToVis}}"
                             Command="{Binding Trail.BackToTodayCommand}" />
                     <!-- ドット列：素のホイール＝バーの水平スクロール／Shift+ホイール＝現在地の前後移動（OnTrailWheel）。スクロールは追従制御 -->
@@ -1478,7 +1478,7 @@
                                         <StackPanel Orientation="Horizontal">
                                             <Rectangle Width="1" Margin="0,3" VerticalAlignment="Stretch"
                                                        Fill="{DynamicResource FgDim}" />
-                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="10" FontWeight="SemiBold"
+                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource Fg}"
                                                        VerticalAlignment="Center" Margin="3,0,0,0"
                                                        TextOptions.TextFormattingMode="Ideal" />

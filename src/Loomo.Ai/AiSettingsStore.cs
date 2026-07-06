@@ -178,6 +178,7 @@ public sealed class AiSettingsStore
         public string? TerminalTheme { get; set; }
         public string? TerminalFontFamily { get; set; }
         public double TerminalFontSize { get; set; }
+        public double UiFontSize { get; set; }
 
         public static PersistedAppearance From(AppearanceSettings a) => new()
         {
@@ -188,6 +189,7 @@ public sealed class AiSettingsStore
             TerminalTheme = a.TerminalTheme,
             TerminalFontFamily = a.TerminalFontFamily,
             TerminalFontSize = a.TerminalFontSize,
+            UiFontSize = a.UiFontSize,
         };
 
         public void ApplyTo(AppearanceSettings a)
@@ -199,6 +201,7 @@ public sealed class AiSettingsStore
             if (!string.IsNullOrWhiteSpace(TerminalTheme)) a.TerminalTheme = TerminalTheme;
             a.TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily;
             if (TerminalFontSize > 0) a.TerminalFontSize = TerminalFontSize;
+            if (UiFontSize > 0) a.UiFontSize = UiFontSize;
         }
     }
 

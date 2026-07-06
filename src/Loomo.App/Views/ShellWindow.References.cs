@@ -1,10 +1,18 @@
+using sk0ya.Loomo.App.Services;
 using System;
+using sk0ya.Loomo.App.Services;
 using System.Collections.Generic;
+using sk0ya.Loomo.App.Services;
 using System.IO;
+using sk0ya.Loomo.App.Services;
 using System.Linq;
+using sk0ya.Loomo.App.Services;
 using System.Windows;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Controls;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 using Editor.Controls;
 
 namespace sk0ya.Loomo.App.Views;
@@ -34,7 +42,7 @@ public partial class ShellWindow
             ReferencesPopupList.Children.Add(new TextBlock
             {
                 Text = "使用箇所が見つかりませんでした",
-                FontSize = 12,
+                FontSize = UiFontManager.Scaled(12),
                 Margin = new Thickness(10, 6, 10, 6),
                 Foreground = (Brush)FindResource("FgDim"),
             });
@@ -62,7 +70,7 @@ public partial class ShellWindow
             var row = new Button
             {
                 Style = (Style)FindResource("BranchMenuItem"),
-                FontSize = 12,
+                FontSize = UiFontManager.Scaled(12),
                 ToolTip = $"{captured.FilePath}:{captured.Line + 1}:{captured.Col + 1}",
                 Content = content,
             };

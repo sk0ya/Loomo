@@ -7,7 +7,7 @@
         <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
             <Setter Property="Padding" Value="8,3" />
             <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         </Style>
 
         <!-- 一覧アイテム共通：行全体ハイライト・選択はアクセント -->
@@ -73,7 +73,7 @@
             </Border>
 
             <!-- 実行結果メッセージ -->
-            <TextBlock DockPanel.Dock="Bottom" Margin="10,2,10,6" FontSize="11"
+            <TextBlock DockPanel.Dock="Bottom" Margin="10,2,10,6" FontSize="{DynamicResource Fs11}"
                        Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxHeight="60">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
@@ -180,7 +180,7 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel LastChildFill="True" ToolTip="{Binding Subject}">
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding TargetShortHash}" FontSize="11"
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding TargetShortHash}" FontSize="{DynamicResource Fs11}"
                                                        Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                                                        FontFamily="Cascadia Mono, Consolas" />
                                             <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -195,7 +195,7 @@
                                    Visibility="{Binding Submodules.Count, Converter={StaticResource CountToVis}}">
                             <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
                                 <TextBlock DockPanel.Dock="Left" Text="サブモジュール" VerticalAlignment="Center"
-                                           FontSize="11" Foreground="{DynamicResource FgDim}" />
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
                                 <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
                                         Content="同期" Click="OnSubmodulesSync" />
                             </DockPanel>
@@ -213,9 +213,9 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel LastChildFill="True" ToolTip="{Binding Describe}">
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding StatusLabel}" FontSize="11"
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding StatusLabel}" FontSize="{DynamicResource Fs11}"
                                                        Foreground="#FFE5A23B" Margin="8,0,0,0" />
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ShortHash}" FontSize="11"
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ShortHash}" FontSize="{DynamicResource Fs11}"
                                                        Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                                                        FontFamily="Cascadia Mono, Consolas" />
                                             <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
@@ -275,9 +275,9 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Date}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Date}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Author}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Author}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                                                MaxWidth="120" TextTrimming="CharacterEllipsis" />
                                     <TextBlock TextTrimming="CharacterEllipsis">
@@ -298,7 +298,7 @@
                          リンク化してクリックでエディタで開く（描画・パース判定は code-behind）。 -->
                     <RichTextBox x:Name="CommitDetailBox" Grid.Row="2" IsReadOnly="True" IsDocumentEnabled="True"
                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                 FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                 FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                  Foreground="{DynamicResource Fg}"
                                  BorderThickness="0" Background="{DynamicResource BgAlt}" />
                 </Grid>

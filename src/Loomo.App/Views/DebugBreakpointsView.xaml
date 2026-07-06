@@ -34,14 +34,14 @@
                             </Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=TwoWay}"
                                       VerticalAlignment="Center" ToolTip="有効/無効" />
-                            <TextBlock Grid.Column="1" Text="{Binding Location}" FontSize="11" FontFamily="Consolas"
+                            <TextBlock Grid.Column="1" Text="{Binding Location}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                        VerticalAlignment="Center" Margin="6,0,0,0"
                                        TextTrimming="CharacterEllipsis" />
-                            <ToggleButton Grid.Column="2" Content="条件" FontSize="10" Padding="6,0" Height="18"
+                            <ToggleButton Grid.Column="2" Content="条件" FontSize="{DynamicResource Fs10}" Padding="6,0" Height="18"
                                           IsChecked="{Binding IsExpanded, Mode=TwoWay}" Cursor="Hand"
                                           Background="Transparent" Foreground="{DynamicResource FgDim}"
                                           ToolTip="条件・ヒット数・ログポイントを編集" />
-                            <Button Grid.Column="3" Content="✕" FontSize="10" Padding="6,0" Cursor="Hand"
+                            <Button Grid.Column="3" Content="✕" FontSize="{DynamicResource Fs10}" Padding="6,0" Cursor="Hand"
                                     Background="Transparent" BorderThickness="0" Foreground="{DynamicResource FgDim}"
                                     Command="{Binding DataContext.RemoveBreakpointCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                     CommandParameter="{Binding}" ToolTip="削除" />
@@ -50,21 +50,21 @@
                         <!-- 2 行目以降：条件編集（トグルで展開）。LostFocus で反映。 -->
                         <StackPanel Margin="22,3,0,2"
                                     Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="条件式（真のとき停止。例: i &gt; 5）" FontSize="10"
+                            <TextBlock Text="条件式（真のとき停止。例: i &gt; 5）" FontSize="{DynamicResource Fs10}"
                                        Foreground="{DynamicResource FgDim}" />
-                            <TextBox Text="{Binding Condition, Mode=TwoWay}" FontSize="11" FontFamily="Consolas"
+                            <TextBox Text="{Binding Condition, Mode=TwoWay}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                      Padding="4,2" Margin="0,1,0,3"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}" />
-                            <TextBlock Text="ヒット数（例: 5 / &gt;=3 / %2）" FontSize="10"
+                            <TextBlock Text="ヒット数（例: 5 / &gt;=3 / %2）" FontSize="{DynamicResource Fs10}"
                                        Foreground="{DynamicResource FgDim}" />
-                            <TextBox Text="{Binding HitCondition, Mode=TwoWay}" FontSize="11" FontFamily="Consolas"
+                            <TextBox Text="{Binding HitCondition, Mode=TwoWay}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                      Padding="4,2" Margin="0,1,0,3"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}" />
-                            <TextBlock Text="ログポイント（停止せず出力。{式} 展開）" FontSize="10"
+                            <TextBlock Text="ログポイント（停止せず出力。{式} 展開）" FontSize="{DynamicResource Fs10}"
                                        Foreground="{DynamicResource FgDim}" />
-                            <TextBox Text="{Binding LogMessage, Mode=TwoWay}" FontSize="11" FontFamily="Consolas"
+                            <TextBox Text="{Binding LogMessage, Mode=TwoWay}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                      Padding="4,2" Margin="0,1,0,0"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}" />
@@ -75,7 +75,7 @@
         </ListBox>
 
         <TextBlock Grid.Row="1" Text="ブレークポイントはありません（エディタの行頭をクリックで設定）"
-                   Foreground="{DynamicResource FgDim}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" TextWrapping="Wrap" TextAlignment="Center"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12,0"
                    Visibility="{Binding HasBreakpoints, Converter={StaticResource InverseBoolToVis}}" />
     </Grid>

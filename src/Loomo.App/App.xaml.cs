@@ -63,6 +63,9 @@ public partial class App : Application
 
         // 保存済みカラーテーマ・アクセントカラーを適用する
         _services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
+        // アプリ UI の基準フォントサイズを適用する（未設定なら既定サイズ）。ウィンドウ生成前に効かせる。
+        _services.GetRequiredService<UiFontManager>()
+            .Apply(UiFontManager.Effective(settings.Appearance.UiFontSize));
         StartupProfiler.Mark("テーマ適用完了");
 
         // ワークスペース開始時にローカルLLMを非同期でウォームアップする。
@@ -214,6 +217,7 @@ public partial class App : Application
 
         // --- ViewModels / Window ---
         services.AddSingleton<ThemeManager>();
+        services.AddSingleton<UiFontManager>();
         services.AddSingleton<LocalLlmWarmupService>();
         services.AddSingleton<IAiWarmup>(sp => sp.GetRequiredService<LocalLlmWarmupService>());
         services.AddSingleton<WorkspaceStateStore>();

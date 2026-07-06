@@ -18,7 +18,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Foreground="{DynamicResource Fg}" FontSize="13" TextWrapping="Wrap"
+        <TextBlock Grid.Row="0" Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs13}" TextWrapping="Wrap"
                    Margin="0,0,0,8"
                    Text="順序を変更し、各コミットのアクションを選んで実行してください（Reword は先にメッセージを入力します）。実行するとコミットは作り直されます。" />
 
@@ -61,7 +61,7 @@
 
         <TextBlock x:Name="ErrorText" Grid.Row="3"
                    Foreground="#FFE4676B"
-                   FontSize="11"
+                   FontSize="{DynamicResource Fs11}"
                    TextWrapping="Wrap"
                    Visibility="Collapsed"
                    Margin="0,8,0,0" />

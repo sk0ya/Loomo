@@ -5,7 +5,7 @@
 
     <UserControl.Resources>
         <Style x:Key="TabSectionLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="Margin" Value="3,8,0,2" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Opacity" Value="0.75" />
@@ -50,7 +50,7 @@
                             <Image Grid.Column="0" Source="{Binding Icon}"
                                    Width="14" Height="14" Margin="0,0,7,0"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock x:Name="EntryTitle" Grid.Column="1" Text="{Binding Title}" FontSize="12.5"
+                            <TextBlock x:Name="EntryTitle" Grid.Column="1" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" />
                         </Grid>

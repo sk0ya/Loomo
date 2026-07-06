@@ -37,22 +37,22 @@
             <TreeView.Resources>
                 <HierarchicalDataTemplate DataType="{x:Type vm:DebugVariableViewModel}" ItemsSource="{Binding Children}">
                     <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource VarItemMenu}">
-                        <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas" />
-                        <TextBlock Text="=" FontSize="11" Opacity="0.5" Margin="4,0,4,0"
+                        <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas" />
+                        <TextBlock Text="=" FontSize="{DynamicResource Fs11}" Opacity="0.5" Margin="4,0,4,0"
                                    Visibility="{Binding Value, Converter={StaticResource NonEmptyToVis}}" />
                         <!-- 値：通常は読み取り表示、編集中は TextBox（setVariable で反映）。 -->
-                        <TextBlock Text="{Binding Value}" FontSize="11" FontFamily="Consolas"
+                        <TextBlock Text="{Binding Value}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                    Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis"
                                    Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVis}}" />
                         <TextBox Text="{Binding EditValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 FontSize="11" FontFamily="Consolas" MinWidth="80" Padding="2,0"
+                                 FontSize="{DynamicResource Fs11}" FontFamily="Consolas" MinWidth="80" Padding="2,0"
                                  Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                  BorderBrush="{DynamicResource Accent}" CaretBrush="{DynamicResource Fg}"
                                  Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
                                  Loaded="OnVariableEditBoxLoaded"
                                  PreviewKeyDown="OnVariableEditKeyDown"
                                  LostKeyboardFocus="OnVariableEditLostFocus" />
-                        <TextBlock Text="{Binding Type}" FontSize="10" Opacity="0.5" Margin="6,1,0,0" />
+                        <TextBlock Text="{Binding Type}" FontSize="{DynamicResource Fs10}" Opacity="0.5" Margin="6,1,0,0" />
                     </StackPanel>
                 </HierarchicalDataTemplate>
             </TreeView.Resources>
@@ -60,19 +60,19 @@
 
         <!-- 停止していないときの案内 -->
         <TextBlock Grid.Row="0" Text="停止すると変数が表示されます" Foreground="{DynamicResource FgDim}"
-                   FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
                    Visibility="{Binding IsStopped, Converter={StaticResource InverseBoolToVis}}" />
 
         <!-- ウォッチ -->
         <StackPanel Grid.Row="1" Margin="0,6,0,0">
-            <TextBlock Text="ウォッチ" Foreground="{DynamicResource FgDim}" FontSize="11" Margin="2,0,0,3" />
+            <TextBlock Text="ウォッチ" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="2,0,0,3" />
             <Grid>
-                <TextBox x:Name="WatchBox" Padding="6,3" FontSize="11" FontFamily="Consolas"
+                <TextBox x:Name="WatchBox" Padding="6,3" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                          Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                          BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                          Text="{Binding WatchExpression, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="OnWatchKeyDown" />
-                <TextBlock Text="ウォッチ式を追加（Enter）" IsHitTestVisible="False" FontSize="11"
+                <TextBlock Text="ウォッチ式を追加（Enter）" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
                            Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
                            Visibility="{Binding Text, ElementName=WatchBox, Converter={StaticResource EmptyToVis}}" />
             </Grid>
@@ -85,11 +85,11 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Expression}" FontSize="11" FontFamily="Consolas" />
-                            <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="11" FontFamily="Consolas"
+                            <TextBlock Grid.Column="0" Text="{Binding Expression}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas" />
+                            <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                        Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
                                        TextTrimming="CharacterEllipsis" />
-                            <Button Grid.Column="2" Content="✕" FontSize="10" Padding="4,0" Cursor="Hand"
+                            <Button Grid.Column="2" Content="✕" FontSize="{DynamicResource Fs10}" Padding="4,0" Cursor="Hand"
                                     Background="Transparent" BorderThickness="0" Foreground="{DynamicResource FgDim}"
                                     Command="{Binding DataContext.RemoveWatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                     CommandParameter="{Binding}" />

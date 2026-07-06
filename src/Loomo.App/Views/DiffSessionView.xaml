@@ -42,7 +42,7 @@
             <Setter Property="Background" Value="{DynamicResource BgAlt}" />
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
             <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
             <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
         </Style>
@@ -62,17 +62,17 @@
              文字が見えなくなるため、必ず FlatButton ベースの明示スタイルを当てる）。 -->
         <Style x:Key="DiffActionButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
             <Setter Property="Padding" Value="8,3" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         </Style>
         <Style x:Key="DiffSecondaryButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
             <Setter Property="Padding" Value="8,3" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         </Style>
 
         <!-- コンフリクトの Ours→Result / Theirs→Result 取り込みボタン（«/» のみ。Rider の merge gutter と同じ最小限の見た目）。 -->
         <Style x:Key="ConflictGutterButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
             <Setter Property="Padding" Value="2,1" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
             <Setter Property="MinWidth" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Center" />
         </Style>
@@ -87,7 +87,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
             <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="Padding" Value="6,4" />
             <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
             <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
@@ -129,30 +129,30 @@
                 </Grid.ColumnDefinitions>
                 <DockPanel Grid.Column="0" LastChildFill="True">
                     <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
-                               Text="{Binding OursGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               Text="{Binding OursGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource FgDim}" />
-                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" />
                 </DockPanel>
                 <DockPanel Grid.Column="2" LastChildFill="True">
                     <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
-                               Text="{Binding ResultGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               Text="{Binding ResultGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource FgDim}" />
-                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" />
                 </DockPanel>
                 <DockPanel Grid.Column="4" LastChildFill="True">
                     <TextBlock DockPanel.Dock="Left" Width="34" TextAlignment="Right" Margin="4,0,8,0"
-                               Text="{Binding TheirsGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               Text="{Binding TheirsGutterText}" FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource FgDim}" />
-                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                    <TextBlock Text="{Binding BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                LineHeight="16" LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" />
@@ -228,7 +228,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Width="34" TextAlignment="Right" Margin="4,4,8,4"
                                    Text="{Binding ResultLineNumberText}"
-                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                   FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
                                    Foreground="{DynamicResource FgDim}" />
                         <TextBox Grid.Column="1" Style="{StaticResource ConflictResultTextBox}"
                                  Text="{Binding ResultText, UpdateSourceTrigger=PropertyChanged}"
@@ -280,7 +280,7 @@
         <!-- ツールバー（ソース切替・更新等）はペインヘッダー側（ShellWindow）へ集約 -->
 
         <!-- 実行結果メッセージ -->
-        <TextBlock DockPanel.Dock="Bottom" Margin="10,2,10,6" FontSize="11"
+        <TextBlock DockPanel.Dock="Bottom" Margin="10,2,10,6" FontSize="{DynamicResource Fs11}"
                    Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxHeight="60">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
@@ -306,7 +306,7 @@
 
             <!-- 変更ファイル一覧 -->
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="11" FontWeight="SemiBold"
+                <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                            Foreground="{DynamicResource FgDim}" Text="変更ファイル" />
                 <Grid>
                     <ListBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
@@ -320,9 +320,9 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel LastChildFill="True" ToolTip="{Binding DisplayPath}">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Stats}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Stats}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource Accent}" Margin="8,0,0,0" />
                                     <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis" />
                                 </DockPanel>
@@ -356,7 +356,7 @@
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                     Visibility="{Binding CanStageHunks, Converter={StaticResource BoolToVis}}">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Left" Text="ハンク" FontSize="11" FontWeight="SemiBold"
+                    <TextBlock DockPanel.Dock="Left" Text="ハンク" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="4,0,8,0" />
                     <ItemsControl ItemsSource="{Binding Hunks}" MaxHeight="120">
                         <ItemsControl.Template>
@@ -375,7 +375,7 @@
                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding}" />
                                     <TextBlock Text="{Binding Summary}" FontFamily="Cascadia Mono, Consolas"
-                                               FontSize="11" Foreground="{DynamicResource FgDim}"
+                                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 </DockPanel>
                             </DataTemplate>
@@ -452,7 +452,7 @@
                                     <Button Content="次へ ▼" ToolTip="次のコンフリクトへ"
                                             Style="{StaticResource DiffSecondaryButton}" Margin="0,0,8,0"
                                             Command="{Binding NextConflictCommand}" />
-                                    <TextBlock Text="{Binding ConflictPositionText}" FontSize="11"
+                                    <TextBlock Text="{Binding ConflictPositionText}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
                                 </StackPanel>
                                 <Button DockPanel.Dock="Left" Content="元に戻す"
@@ -468,7 +468,7 @@
                                         Style="{StaticResource DiffSecondaryButton}" Margin="0,0,8,0"
                                         Command="{Binding OpenInEditorCommand}" />
                                 <TextBlock DockPanel.Dock="Left" Text="{Binding ConflictProgressText}"
-                                           FontSize="11" Foreground="{DynamicResource FgDim}"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
 
@@ -476,7 +476,7 @@
                                  ボタンをコンフリクト行の中に混ぜず、ここにまとめる。 -->
                             <DockPanel LastChildFill="False" Margin="0,6,0,0"
                                        Visibility="{Binding IsWholeFileConflict, Converter={StaticResource InverseBoolToVis}}">
-                                <TextBlock DockPanel.Dock="Left" Text="現在地のコンフリクトを解決：" FontSize="11"
+                                <TextBlock DockPanel.Dock="Left" Text="現在地のコンフリクトを解決：" FontSize="{DynamicResource Fs11}"
                                            Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <Button DockPanel.Dock="Left" Content="Ours 採用 »" ToolTip="現在地に Ours を採用する"
                                         Style="{StaticResource DiffSecondaryButton}" Margin="0,0,4,0"
@@ -523,11 +523,11 @@
                             <ColumnDefinition Width="*" MinWidth="120" />
                             <ColumnDefinition Width="17" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{Binding ConflictOursHeader}" FontSize="11"
+                        <TextBlock Grid.Column="0" Text="{Binding ConflictOursHeader}" FontSize="{DynamicResource Fs11}"
                                    FontWeight="SemiBold" Foreground="#FF81C784" Margin="6,0,0,4" />
-                        <TextBlock Grid.Column="2" Text="Result（マージ結果・編集可）" FontSize="11"
+                        <TextBlock Grid.Column="2" Text="Result（マージ結果・編集可）" FontSize="{DynamicResource Fs11}"
                                    FontWeight="SemiBold" Foreground="{DynamicResource Accent}" Margin="6,0,0,4" />
-                        <TextBlock Grid.Column="4" Text="{Binding ConflictTheirsHeader}" FontSize="11"
+                        <TextBlock Grid.Column="4" Text="{Binding ConflictTheirsHeader}" FontSize="{DynamicResource Fs11}"
                                    FontWeight="SemiBold" Foreground="#FFE57373" Margin="6,0,0,4" />
                     </Grid>
 

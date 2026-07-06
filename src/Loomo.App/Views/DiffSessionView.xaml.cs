@@ -1,14 +1,26 @@
+using sk0ya.Loomo.App.Services;
 using System;
+using sk0ya.Loomo.App.Services;
 using System.Collections.Generic;
+using sk0ya.Loomo.App.Services;
 using System.Collections.Specialized;
+using sk0ya.Loomo.App.Services;
 using System.Globalization;
+using sk0ya.Loomo.App.Services;
 using System.Linq;
+using sk0ya.Loomo.App.Services;
 using System.Windows;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Controls;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Documents;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Input;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 using System.Windows.Threading;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -194,7 +206,7 @@ public partial class DiffSessionView : UserControl
         {
             PagePadding = new Thickness(0),
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
-            FontSize = 12,
+            FontSize = UiFontManager.Scaled(12),
         };
         if (pageWidth is double w) doc.PageWidth = w; // 行番号ガター（null）は内容幅に自動フィット
         return doc;
@@ -424,7 +436,7 @@ public partial class DiffSessionView : UserControl
                 band.Child = new TextBlock
                 {
                     Text = "»",
-                    FontSize = 13,
+                    FontSize = UiFontManager.Scaled(13),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = Brushes.White,

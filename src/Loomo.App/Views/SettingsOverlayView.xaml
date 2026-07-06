@@ -37,7 +37,7 @@
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs15}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
@@ -65,7 +65,7 @@
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="Padding" Value="12,8" />
             <Setter Property="Margin" Value="0,1" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Template">
@@ -113,7 +113,7 @@
                 <DockPanel Grid.Column="0" Background="{DynamicResource BgAlt}" Margin="0">
                     <Grid DockPanel.Dock="Top">
                         <TextBlock Text="設定" Margin="16,14,0,10"
-                                   FontSize="15" FontWeight="SemiBold"
+                                   FontSize="{DynamicResource Fs15}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Fg}" />
                     </Grid>
                     <StackPanel Margin="8,4,8,8">
@@ -201,7 +201,7 @@
                                 <TextBlock Text="{Binding Settings.ModelPath, StringFormat='📁 {0}'}"
                                            TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Settings.ModelPath}"
-                                           Foreground="{DynamicResource FgDim}" FontSize="11"
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                            Margin="2,5,0,0" />
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大出力トークン" />
@@ -233,7 +233,7 @@
                                            Text="1行に1つ・正規表現（大文字小文字無視）。保存（:w）で即時反映。" />
 
                                 <TextBlock Text="{Binding Settings.Status}" TextWrapping="Wrap" Margin="0,16,0,0"
-                                           Foreground="{DynamicResource FgDim}" FontSize="11" />
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
                             <!-- ===== 言語サーバー (LSP) ===== -->
@@ -245,7 +245,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionTitle}" Text="言語サーバー (LSP)" Margin="0,0,0,4" />
                                     <Button Grid.Column="1" Style="{StaticResource IconButton}" Width="28" Height="28"
-                                            FontSize="14" Content="↻" ToolTip="導入状況を更新"
+                                            FontSize="{DynamicResource Fs14}" Content="↻" ToolTip="導入状況を更新"
                                             Command="{Binding Lsp.RefreshStatusCommand}" />
                                 </Grid>
                                 <TextBlock Style="{StaticResource FieldHint}"
@@ -271,30 +271,30 @@
                                                         </StackPanel>
                                                         <Border Grid.Column="1" CornerRadius="4" Padding="6,1"
                                                                 Background="{DynamicResource Bg}">
-                                                            <TextBlock Text="{Binding StatusBadge}" FontSize="11"
+                                                            <TextBlock Text="{Binding StatusBadge}" FontSize="{DynamicResource Fs11}"
                                                                        Foreground="{DynamicResource FgDim}" />
                                                         </Border>
                                                     </Grid>
                                                     <TextBlock Text="{Binding CommandText}" FontFamily="Cascadia Mono, Consolas"
-                                                               FontSize="11" Foreground="{DynamicResource FgDim}"
+                                                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                                         <Button Content="インストール" Style="{StaticResource FlatButton}"
-                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding InstallCommand}"
                                                                 ToolTip="インストールコマンドを可視ターミナルで実行します。"
                                                                 Visibility="{Binding CanInstall, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="手順" Style="{StaticResource SecondaryButton}"
-                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding OpenDocsCommand}"
                                                                 ToolTip="導入手順のページをブラウザで開きます。"
                                                                 Visibility="{Binding HasDocs, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="{Binding RemoveLabel}" Style="{StaticResource SecondaryButton}"
-                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding RemoveCommand}"
                                                                 Visibility="{Binding CanRemove, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="{Binding ResetLabel}" Style="{StaticResource SecondaryButton}"
-                                                                FontSize="11" Padding="8,2"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2"
                                                                 Command="{Binding ResetCommand}"
                                                                 Visibility="{Binding CanReset, Converter={StaticResource BoolToVis}}" />
                                                     </StackPanel>
@@ -324,7 +324,7 @@
                                 </Grid>
 
                                 <TextBlock Text="{Binding Lsp.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
-                                           Foreground="{DynamicResource FgDim}" FontSize="11" />
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
                             <!-- ===== 整形 (Formatter) ===== -->
@@ -336,7 +336,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionTitle}" Text="整形 (Formatter)" Margin="0,0,0,4" />
                                     <Button Grid.Column="1" Style="{StaticResource IconButton}" Width="28" Height="28"
-                                            FontSize="14" Content="↻" ToolTip="導入状況を更新"
+                                            FontSize="{DynamicResource Fs14}" Content="↻" ToolTip="導入状況を更新"
                                             Command="{Binding Formatter.RefreshStatusCommand}" />
                                 </Grid>
                                 <TextBlock Style="{StaticResource FieldHint}"
@@ -358,37 +358,37 @@
                                                             <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
                                                                        Foreground="{DynamicResource Fg}" />
                                                             <TextBlock Text="{Binding ExtensionsLabel}" Margin="10,0,0,0"
-                                                                       FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                                                       FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}"
                                                                        Foreground="{DynamicResource FgDim}"
                                                                        TextTrimming="CharacterEllipsis" />
                                                         </StackPanel>
                                                         <Border Grid.Column="1" CornerRadius="4" Padding="6,1"
                                                                 Background="{DynamicResource Bg}">
-                                                            <TextBlock Text="{Binding StatusBadge}" FontSize="11"
+                                                            <TextBlock Text="{Binding StatusBadge}" FontSize="{DynamicResource Fs11}"
                                                                        Foreground="{DynamicResource FgDim}" />
                                                         </Border>
                                                     </Grid>
                                                     <TextBlock Text="{Binding CommandText}" FontFamily="Cascadia Mono, Consolas"
-                                                               FontSize="11" Foreground="{DynamicResource FgDim}"
+                                                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                                         <Button Content="インストール" Style="{StaticResource FlatButton}"
-                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding InstallCommand}"
                                                                 ToolTip="インストールコマンドを可視ターミナルで実行します。"
                                                                 Visibility="{Binding CanInstall, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="適用" Style="{StaticResource FlatButton}"
-                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding ApplyCommand}"
                                                                 ToolTip="このフォーマッタを対象拡張子の :Format に割り当てます。"
                                                                 Visibility="{Binding CanApply, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="手順" Style="{StaticResource SecondaryButton}"
-                                                                FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding OpenDocsCommand}"
                                                                 ToolTip="導入手順のページをブラウザで開きます。"
                                                                 Visibility="{Binding HasDocs, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="{Binding UnapplyLabel}" Style="{StaticResource SecondaryButton}"
-                                                                FontSize="11" Padding="8,2"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2"
                                                                 Command="{Binding UnapplyCommand}"
                                                                 ToolTip="この割り当てを外します。"
                                                                 Visibility="{Binding CanUnapply, Converter={StaticResource BoolToVis}}" />
@@ -419,11 +419,17 @@
                                 </Grid>
 
                                 <TextBlock Text="{Binding Formatter.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
-                                           Foreground="{DynamicResource FgDim}" FontSize="11" />
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
                             <!-- ===== 外観（カラーテーマはアプリ全体・エディタ・ターミナル・プレビューをここに集約） ===== -->
                             <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}">
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="文字サイズ（アプリ全体）" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.FontSizes}" SelectedItem="{Binding Appearance.SelectedFontSize}"
+                                          DisplayMemberPath="Name"
+                                          ToolTip="サイドバー・設定・ツリー・タブ・AIバーなどアプリUIの文字サイズをまとめて指定します。見出しや補足の大小関係は比率を保ちます。エディタ／ターミナルの文字サイズは各項目で別に設定します。" />
+
+                                <Separator Margin="0,16,0,8" />
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ（アプリ全体）" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding Appearance.Themes}" SelectedItem="{Binding Appearance.SelectedTheme}"
                                           ItemTemplate="{StaticResource PresetItemTemplate}" />
@@ -461,7 +467,7 @@
                                 </CheckBox>
 
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
-                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
+                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
                             <!-- ===== エディタ（テーマは「外観」へ集約） ===== -->
@@ -496,7 +502,7 @@
                                 </CheckBox>
 
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
-                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="11" />
+                                           Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
                             <!-- ===== キーボード ===== -->
@@ -527,13 +533,13 @@
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
                                                     <TextBlock Text="{Binding Title}" Foreground="{DynamicResource Fg}" />
-                                                    <TextBlock Text="{Binding ConflictText}" FontSize="11"
+                                                    <TextBlock Text="{Binding ConflictText}" FontSize="{DynamicResource Fs11}"
                                                                Foreground="#E0A030"
                                                                Visibility="{Binding HasConflict, Converter={StaticResource BoolToVis}}" />
                                                 </StackPanel>
                                                 <local:KeyCaptureBox Grid.Column="1" VerticalAlignment="Center" />
                                                 <Button Grid.Column="2" Style="{StaticResource IconButton}"
-                                                        Width="28" Height="28" FontSize="14" Margin="6,0,0,0"
+                                                        Width="28" Height="28" FontSize="{DynamicResource Fs14}" Margin="6,0,0,0"
                                                         Content="↺" ToolTip="既定に戻す"
                                                         Command="{Binding ResetCommand}"
                                                         Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />

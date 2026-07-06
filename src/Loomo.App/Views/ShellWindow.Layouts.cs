@@ -177,7 +177,7 @@ public partial class ShellWindow
             LayoutPopupList.Children.Add(new TextBlock
             {
                 Text = "保存したレイアウトはまだありません",
-                FontSize = 12,
+                FontSize = UiFontManager.Scaled(12),
                 Margin = new Thickness(10, 6, 10, 6),
                 Foreground = (Brush)FindResource("FgDim"),
             });
@@ -193,7 +193,7 @@ public partial class ShellWindow
             var del = new Button
             {
                 Content = "✕",
-                FontSize = 11,
+                FontSize = UiFontManager.Scaled(11),
                 ToolTip = "このレイアウトを削除",
                 Width = 28,
                 Style = (Style)FindResource("BranchMenuItem"),
@@ -210,7 +210,7 @@ public partial class ShellWindow
             var load = new Button
             {
                 Style = (Style)FindResource("BranchMenuItem"),
-                FontSize = 12,
+                FontSize = UiFontManager.Scaled(12),
                 Content = new TextBlock
                 {
                     Text = LayoutSummary(layout),

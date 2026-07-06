@@ -78,7 +78,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
             {
                 Margin = new Thickness(12),
                 TextWrapping = TextWrapping.Wrap,
-                FontSize = 12,
+                FontSize = UiFontManager.Scaled(12),
                 Visibility = Visibility.Collapsed,
             };
             _message.SetResourceReference(TextBlock.ForegroundProperty, "FgDim");

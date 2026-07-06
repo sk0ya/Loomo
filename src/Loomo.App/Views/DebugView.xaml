@@ -17,7 +17,7 @@
         <!-- 検査タブ（出力／変数／…／構成）。下線で選択を示すフラットなタブ。 -->
         <Style x:Key="DebugTabItem" TargetType="TabItem">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
@@ -84,7 +84,7 @@
                     <RichTextBox x:Name="ConsoleBox" IsReadOnly="True" IsReadOnlyCaretVisible="True"
                                  IsDocumentEnabled="True" Background="Transparent" Padding="6,4"
                                  Foreground="{DynamicResource Fg}" BorderThickness="0"
-                                 FontFamily="Consolas" FontSize="12"
+                                 FontFamily="Consolas" FontSize="{DynamicResource Fs12}"
                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <RichTextBox.ContextMenu>
                             <ContextMenu>
@@ -116,8 +116,8 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Expression}" FontSize="11" FontFamily="Consolas" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="11" FontFamily="Consolas"
+                                    <TextBlock Grid.Column="0" Text="{Binding Expression}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                                Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
                                                TextTrimming="CharacterEllipsis" />
                                 </Grid>
@@ -126,10 +126,10 @@
                     </ListBox>
 
                     <TextBlock Text="停止すると自動変数が表示されます" Foreground="{DynamicResource FgDim}"
-                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding IsStopped, Converter={StaticResource InverseBoolToVis}}" />
                     <TextBlock Text="この行に表示できる変数がありません" Foreground="{DynamicResource FgDim}"
-                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center">
+                               FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -160,16 +160,16 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:DebugFrameViewModel}">
                                 <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource CopyItemMenu}">
-                                    <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas"
+                                    <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Location}" FontSize="11" Opacity="0.6" Margin="8,0,0,0" />
+                                    <TextBlock Text="{Binding Location}" FontSize="{DynamicResource Fs11}" Opacity="0.6" Margin="8,0,0,0" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
 
                     <TextBlock Text="停止するとコールスタックが表示されます" Foreground="{DynamicResource FgDim}"
-                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding IsStopped, Converter={StaticResource InverseBoolToVis}}" />
                 </Grid>
             </TabItem>
@@ -190,16 +190,16 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type dbg:DebugThread}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Id}" FontSize="11" FontFamily="Consolas"
+                                    <TextBlock Text="{Binding Id}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                                Foreground="{DynamicResource FgDim}" Width="40" />
-                                    <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas"
+                                    <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                                TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                     <TextBlock Text="停止するとスレッドが表示されます" Foreground="{DynamicResource FgDim}"
-                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding IsStopped, Converter={StaticResource InverseBoolToVis}}" />
                 </Grid>
             </TabItem>
@@ -235,15 +235,15 @@
                             <DataTemplate DataType="{x:Type dbg:DebugModule}">
                                 <StackPanel Margin="0,1">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Name}" FontSize="11" FontFamily="Consolas"
+                                        <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Version}" FontSize="10" Opacity="0.5" Margin="8,1,0,0"
+                                        <TextBlock Text="{Binding Version}" FontSize="{DynamicResource Fs10}" Opacity="0.5" Margin="8,1,0,0"
                                                    Visibility="{Binding Version, Converter={StaticResource NonEmptyToVis}}" />
                                     </StackPanel>
-                                    <TextBlock Text="{Binding SymbolStatus}" FontSize="10" Opacity="0.6"
+                                    <TextBlock Text="{Binding SymbolStatus}" FontSize="{DynamicResource Fs10}" Opacity="0.6"
                                                Foreground="{DynamicResource FgDim}"
                                                Visibility="{Binding SymbolStatus, Converter={StaticResource NonEmptyToVis}}" />
-                                    <TextBlock Text="{Binding Path}" FontSize="10" Opacity="0.5"
+                                    <TextBlock Text="{Binding Path}" FontSize="{DynamicResource Fs10}" Opacity="0.5"
                                                Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"
                                                Visibility="{Binding Path, Converter={StaticResource NonEmptyToVis}}" />
                                 </StackPanel>
@@ -252,7 +252,7 @@
                     </ListBox>
 
                     <TextBlock Grid.Row="1" Text="停止するとモジュールが表示されます" Foreground="{DynamicResource FgDim}"
-                               FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding Inspection.HasModules, Converter={StaticResource InverseBoolToVis}}" />
                 </Grid>
             </TabItem>

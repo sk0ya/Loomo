@@ -12,7 +12,7 @@
         <Style x:Key="RunGlyphButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
             <Setter Property="Width" Value="22" />
             <Setter Property="Height" Value="18" />
-            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs10}" />
         </Style>
 
         <!-- 状態フィルタのトグル。OFF はグレーで除外を示し、ON は Tag の色（成功=緑/失敗=赤/未実施=アクセント）。 -->
@@ -21,7 +21,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Height" Value="20" />
             <Setter Property="Padding" Value="9,0" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -50,7 +50,7 @@
         <!-- グリフ色（成功/失敗/実行中）。グループ・葉で共有。 -->
         <Style x:Key="TestGlyph" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="Margin" Value="0,0,6,0" />
             <Setter Property="VerticalAlignment" Value="Top" />
             <Style.Triggers>
@@ -97,11 +97,11 @@
             <Button Content="▶ 全実行" Style="{StaticResource SecondaryButton}" Height="20" Padding="8,0"
                     VerticalAlignment="Center" Command="{Binding TestCommand}" ToolTip="すべてのテストを実行" />
             <Grid Width="130" Margin="8,0,0,0">
-                <TextBox x:Name="TestFilterBox" Padding="6,2" FontSize="11"
+                <TextBox x:Name="TestFilterBox" Padding="6,2" FontSize="{DynamicResource Fs11}"
                          Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                          BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                          Text="{Binding TestFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Text="検索（名前）" IsHitTestVisible="False" FontSize="11"
+                <TextBlock Text="検索（名前）" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
                            Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
                            Visibility="{Binding Text, ElementName=TestFilterBox, Converter={StaticResource EmptyToVis}}" />
             </Grid>
@@ -114,14 +114,14 @@
             <ToggleButton Content="未実施" Style="{StaticResource FilterToggle}" Tag="{DynamicResource Accent}"
                           VerticalAlignment="Center" Margin="4,0,0,0" ToolTip="未実施・スキップのテストを表示"
                           IsChecked="{Binding ShowNotRun, Mode=TwoWay}" />
-            <TextBlock Text="収集中…" Foreground="{DynamicResource FgDim}" FontSize="11"
+            <TextBlock Text="収集中…" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                        VerticalAlignment="Center" Margin="8,0,0,0"
                        Visibility="{Binding IsDiscoveringTests, Converter={StaticResource BoolToVis}}" />
         </StackPanel>
 
         <!-- 集計行 -->
         <TextBlock Grid.Row="1" Text="{Binding TestSummary}" Foreground="{DynamicResource Fg}"
-                   FontSize="11" Margin="2,0,0,4"
+                   FontSize="{DynamicResource Fs11}" Margin="2,0,0,4"
                    Visibility="{Binding HasTestResults, Converter={StaticResource BoolToVis}}" />
 
         <!-- テストツリー：クラスでグループ化し、葉がテスト。ダブルクリックでジャンプ、▶ で実行。 -->
@@ -149,10 +149,10 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{Binding Glyph}" Style="{StaticResource TestGlyph}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                    Style="{StaticResource TestText}"
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="10" Opacity="0.6"
+                        <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="{DynamicResource Fs10}" Opacity="0.6"
                                    Margin="8,0,0,0" VerticalAlignment="Center" />
                         <Button Grid.Column="3" Content="▶" Style="{StaticResource RunGlyphButton}"
                                 Margin="6,0,0,0" VerticalAlignment="Center"
@@ -173,15 +173,15 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{Binding Glyph}" Style="{StaticResource TestGlyph}" />
                         <StackPanel Grid.Column="1">
-                            <TextBlock Text="{Binding MethodName}" FontSize="11" FontFamily="Consolas"
+                            <TextBlock Text="{Binding MethodName}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                        Style="{StaticResource TestText}"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding Message}" FontSize="10" Opacity="0.7"
+                            <TextBlock Text="{Binding Message}" FontSize="{DynamicResource Fs10}" Opacity="0.7"
                                        Foreground="{DynamicResource Error}"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{Binding HasMessage, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
-                        <TextBlock Grid.Column="2" Text="{Binding Location}" FontSize="11" Opacity="0.6"
+                        <TextBlock Grid.Column="2" Text="{Binding Location}" FontSize="{DynamicResource Fs11}" Opacity="0.6"
                                    Margin="8,0,0,0" VerticalAlignment="Top" />
                         <Button Grid.Column="3" Content="▶" Style="{StaticResource RunGlyphButton}"
                                 Margin="6,0,0,0" VerticalAlignment="Top"
@@ -194,14 +194,14 @@
         </TreeView>
 
         <!-- まだテストが無いときの案内（収集中かどうかで文言を変える） -->
-        <TextBlock Grid.Row="2" Foreground="{DynamicResource FgDim}" FontSize="11"
+        <TextBlock Grid.Row="2" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                    TextWrapping="Wrap" Margin="12,0"
                    Visibility="{Binding HasTestResults, Converter={StaticResource InverseBoolToVis}}"
                    Text="{Binding TestEmptyHint}" />
 
         <!-- テストはあるがフィルタで全て隠れているときの案内 -->
-        <TextBlock Grid.Row="2" Foreground="{DynamicResource FgDim}" FontSize="11"
+        <TextBlock Grid.Row="2" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                    TextWrapping="Wrap" Margin="12,0"
                    Visibility="{Binding NoFilterMatch, Converter={StaticResource BoolToVis}}"

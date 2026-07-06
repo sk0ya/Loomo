@@ -10,7 +10,7 @@
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="4,0" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -97,12 +97,12 @@
                             <DockPanel>
                                 <!-- 見出し行：種別・タイトル・作成時刻・操作 -->
                                 <DockPanel DockPanel.Dock="Top" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Left" Text="{Binding TypeGlyph}" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding TypeGlyph}" FontSize="{DynamicResource Fs11}"
                                                Margin="0,0,4,0" VerticalAlignment="Center" />
                                     <!-- 右肩：通常は作成時刻、カードにホバーすると操作アイコン群へ差し替え（高密度・脱クラッタ）。
                                          全操作は右クリックメニューにもある。 -->
                                     <Grid DockPanel.Dock="Right" VerticalAlignment="Center" Margin="4,0,0,0">
-                                        <TextBlock Text="{Binding CreatedLabel}" FontSize="10"
+                                        <TextBlock Text="{Binding CreatedLabel}" FontSize="{DynamicResource Fs10}"
                                                    Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                                    HorizontalAlignment="Right">
                                             <TextBlock.Style>
@@ -141,12 +141,12 @@
                                                     CommandParameter="{Binding}" />
                                         </StackPanel>
                                     </Grid>
-                                    <TextBlock Text="{Binding DisplayTitle}" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}" FontWeight="SemiBold"
                                                Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding Content}" VerticalAlignment="Center" />
                                 </DockPanel>
                                 <!-- 本文プレビュー（単一行で見出しと同じなら出さない） -->
-                                <TextBlock Text="{Binding Preview}" FontSize="11"
+                                <TextBlock Text="{Binding Preview}" FontSize="{DynamicResource Fs11}"
                                            FontFamily="Cascadia Mono, Consolas"
                                            Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"
                                            TextWrapping="Wrap" MaxHeight="48" Margin="0,1,0,0"

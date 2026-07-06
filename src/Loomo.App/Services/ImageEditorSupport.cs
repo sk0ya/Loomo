@@ -59,7 +59,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 12,
+            FontSize = UiFontManager.Scaled(12),
             Visibility = Visibility.Visible
         };
         _emptyState.SetResourceReference(TextBlock.ForegroundProperty, "FgDim");
@@ -89,7 +89,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             Margin = new Thickness(10, 6, 10, 8),
             TextAlignment = TextAlignment.Left,
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 12
+            FontSize = UiFontManager.Scaled(12)
         };
         _caption.SetResourceReference(TextBlock.ForegroundProperty, "FgDim");
 
@@ -167,7 +167,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             Width = 52,
             VerticalAlignment = VerticalAlignment.Center,
             TextAlignment = TextAlignment.Right,
-            FontSize = 12
+            FontSize = UiFontManager.Scaled(12)
         };
         _zoomLabel.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
 
@@ -211,7 +211,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             Text = "ドラッグで移動 / Ctrl+ホイールでズーム",
             VerticalAlignment = VerticalAlignment.Center,
             TextAlignment = TextAlignment.Right,
-            FontSize = 11,
+            FontSize = UiFontManager.Scaled(11),
             Margin = new Thickness(8, 0, 2, 0)
         };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "FgDim");
@@ -241,7 +241,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             Height = 26,
             Margin = new Thickness(2, 0, 2, 0),
             Padding = new Thickness(8, 0, 8, 0),
-            FontSize = 12
+            FontSize = UiFontManager.Scaled(12)
         };
         button.SetResourceReference(Control.ForegroundProperty, "Fg");
         button.SetResourceReference(Control.BackgroundProperty, "BgAlt");
