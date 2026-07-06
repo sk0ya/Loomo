@@ -338,7 +338,8 @@
             <!-- コミットメッセージ＋コミット -->
             <StackPanel DockPanel.Dock="Top" Margin="8,0,8,6">
                 <Grid>
-                    <TextBox Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox x:Name="CommitMessageBox"
+                             Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MaxHeight="120"
                              VerticalScrollBarVisibility="Auto">
                         <TextBox.InputBindings>
@@ -346,23 +347,36 @@
                         </TextBox.InputBindings>
                     </TextBox>
                     <TextBlock Text="メッセージ（Ctrl+Enter でコミット）" Foreground="{DynamicResource FgDim}"
-                               Margin="9,7,0,0" IsHitTestVisible="False" VerticalAlignment="Top"
-                               Visibility="{Binding CommitMessage, Converter={StaticResource EmptyToVis}}" />
+                               Margin="9,7,0,0" IsHitTestVisible="False" VerticalAlignment="Top">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <!-- 通常は CommitMessage が空のときだけ表示 -->
+                                <Setter Property="Visibility"
+                                        Value="{Binding CommitMessage, Converter={StaticResource EmptyToVis}}" />
+                                <Style.Triggers>
+                                    <!-- フォーカス中（IME変換中含む）は非表示にして重なりを防ぐ -->
+                                    <DataTrigger Binding="{Binding IsKeyboardFocused, ElementName=CommitMessageBox}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </Grid>
-                <DockPanel Margin="0,6,0,0">
-                    <CheckBox DockPanel.Dock="Right" Content="amend" VerticalAlignment="Center"
-                              Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,6">
+                    <CheckBox Content="amend" VerticalAlignment="Center"
+                              Foreground="{DynamicResource FgDim}"
                               IsChecked="{Binding Amend}" />
-                    <CheckBox DockPanel.Dock="Right" Content="GPG署名" VerticalAlignment="Center"
-                              Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                    <CheckBox Content="GPG署名" VerticalAlignment="Center"
+                              Foreground="{DynamicResource FgDim}" Margin="14,0,0,0"
                               ToolTip="commit -S で GPG 署名を付けます（署名鍵未設定・gpg 未インストール時は失敗メッセージが出ます）。"
                               IsChecked="{Binding Sign}" />
-                    <Button Content="✓ コミット" Style="{StaticResource FlatButton}"
-                            HorizontalAlignment="Stretch"
-                            ToolTip="チェックしたファイルだけをコミットします。"
-                            Command="{Binding CommitCommand}"
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
-                </DockPanel>
+                </StackPanel>
+                <Button Content="✓ コミット" Style="{StaticResource FlatButton}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip="チェックしたファイルだけをコミットします。"
+                        Command="{Binding CommitCommand}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
             </StackPanel>
 
             <!-- 実行結果メッセージ -->
