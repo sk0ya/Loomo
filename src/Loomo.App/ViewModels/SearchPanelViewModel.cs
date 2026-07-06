@@ -279,7 +279,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         ScheduleSearch();
     }
 
-    /// <summary>検索ワードをクリアする（結果もエディタのハイライトも消える）。Esc 用。</summary>
+    /// <summary>検索ワードをクリアする（結果もエディタのハイライトも消える）。Esc・ワークスペース切替時に使う。</summary>
     public void ClearQuery() => Query = "";
 
     /// <summary>検索の開始フォルダーを指定する（フォルダーツリーの「このフォルダーで検索」用）。

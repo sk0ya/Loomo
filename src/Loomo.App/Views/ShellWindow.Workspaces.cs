@@ -191,6 +191,10 @@ public partial class ShellWindow
     private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool deferHydration)
     {
         ClearStageModeForWorkspaceSwitch();
+        // 検索サイドバーは開始フォルダーだけ SetDefaultRoot（FolderTree.CurrentRootChanged 経由）で
+        // 追従するが、新旧ワークスペースの相対ルートが共に ""（ワークスペースルート）だと値が変わらず
+        // 再検索がかからない。クエリ・結果は別ワークスペースのものを残さないようここで明示的に消す。
+        _vm.SearchPanel.ClearQuery();
         DetachTerminalTabs();
         DetachEditorTabs();
         DetachBrowserTabs();
