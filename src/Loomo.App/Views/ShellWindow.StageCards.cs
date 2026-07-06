@@ -209,9 +209,14 @@ public partial class ShellWindow
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
                     return;
                 }
-                // ミニチュアのクリックも設定 PaneOpenBehavior に従う（main＝左上と入れ替え〔従来〕／
-                // sub＝右上と入れ替え／loop＝サブ表示・サブ起点ならメインへ繰り上げ）。可視時に位置を保つ
-                // main の早期リターンは付けない（袖クリックは「そのペインを前面へ」＝常に組み替える意図）。
+                // 既に画面に出ているならレイアウトの入れ替えはせず、フォーカスだけ移す（全モード共通）。
+                if (IsPaneVisible(kind))
+                {
+                    FocusPane(kind);
+                    return;
+                }
+                // 非表示のミニチュアのクリックは設定 PaneOpenBehavior に従って前面へ配置する
+                // （main＝左上と入れ替え〔従来〕／sub＝右上と入れ替え／loop＝サブ表示・サブ起点ならメインへ繰り上げ）。
                 PlacePaneByBehavior(kind);
                 FocusPane(kind);
             });

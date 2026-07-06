@@ -251,9 +251,9 @@ public partial class ShellWindow
         }
 
         // タイルモード：配置は設定 PaneOpenBehavior に従う（結果表示の EnsurePaneVisibleOrSwapTopLeft と同じ）。
-        // main（現行）はエディタ系（Editor/EditorSupport）がどちらか可視ならその位置を保つ。
-        if (_settings.PaneOpenBehavior == PaneOpenBehavior.Main
-            && (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport)))
+        // 全モード共通：エディタ系（Editor/EditorSupport）がどちらか可視ならレイアウトの入れ替えはしない
+        // （ファイル自体は呼び出し側が既存のエディタへ開く。ここは配置専用）。
+        if (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport))
             return;
         PlacePaneByBehavior(target);
     }
@@ -274,9 +274,9 @@ public partial class ShellWindow
             return;
         }
 
-        // main（現行）は既に可視ならその位置を保つ。sub/loop は「対象を右上（サブ）へ」なので、既定で可視な
-        // Ai/Browser/Terminal 相手でも位置を組み替える（組み替え不要な場合は各ヘルパ内で早期リターン）。
-        if (_settings.PaneOpenBehavior == PaneOpenBehavior.Main && IsPaneVisible(target))
+        // 全モード共通：対象が既に画面に出ているならレイアウトは変えない（右上への組み替えもしない）。
+        // 配置（左上／右上／繰り上げ）は対象が非表示のときだけ行う。
+        if (IsPaneVisible(target))
             return;
         PlacePaneByBehavior(target);
     }
@@ -315,13 +315,12 @@ public partial class ShellWindow
     /// 求める（<see cref="TopRowLeftPane"/>／<see cref="TopRightPane"/>）ので、矩形未確定でも右へ入る。</summary>
     private void PlaceIntoSubPane(PaneKind target)
     {
-        var main = TopRowLeftPane();
-        var sub = TopRightPane();
-
-        // 既に右上（サブ）に居るなら何もしない（＝上段の最右が対象。単一ペインで対象自身のときも含む）。
-        if (sub == target)
+        // 既に画面に出ているならレイアウトの入れ替えはしない（右上への組み替えもしない）。
+        if (IsPaneVisible(target))
             return;
 
+        var main = TopRowLeftPane();
+        var sub = TopRightPane();
         if (sub is { } s && s != main)
             PlaceWingPane(target, s, center: true, zone: null);                // 右上と入れ替え
         else if (main is { } m && m != target)
@@ -335,6 +334,10 @@ public partial class ShellWindow
     /// （サブでの作業がメインへ繰り上がり、新しい結果はサブに来るベルトコンベア）。</summary>
     private void PlaceIntoLoopPane(PaneKind target)
     {
+        // 既に画面に出ているならレイアウトの入れ替えはしない（繰り上げも含めて組み替えない）。
+        if (IsPaneVisible(target))
+            return;
+
         var main = TopRowLeftPane();
         var sub = TopRightPane();
         var originFromSub = _focusedRegion?.Pane is { } origin
