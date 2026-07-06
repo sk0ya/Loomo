@@ -9,6 +9,24 @@ using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>デバッグ構成（プロファイル）コンボボックスの 1 項目。<see cref="Model"/> の差し替えで
+/// <see cref="Name"/> 変更をコンボボックスへ通知する（リネーム時の表示更新用）。</summary>
+public sealed class DebugLaunchProfileItem : ObservableObject
+{
+    private DebugLaunchProfile _model;
+
+    public DebugLaunchProfileItem(DebugLaunchProfile model) => _model = model;
+
+    public DebugLaunchProfile Model
+    {
+        get => _model;
+        set { if (SetProperty(ref _model, value)) OnPropertyChanged(nameof(Name)); }
+    }
+
+    public string Id => Model.Id;
+    public string Name => Model.Name;
+}
+
 /// <summary>コールスタックの 1 フレーム（停止時の呼び出し履歴）。選択でそのフレームの変数を表示する。</summary>
 public sealed class DebugFrameViewModel
 {

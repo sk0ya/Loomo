@@ -243,6 +243,7 @@ public partial class App : Application
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();
         services.AddSingleton<SearchPanelViewModel>();
+        services.AddSingleton<sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore>();
         services.AddSingleton<DebugViewModel>();
         services.AddSingleton<TrailStore>();
         services.AddSingleton<TrailViewModel>();

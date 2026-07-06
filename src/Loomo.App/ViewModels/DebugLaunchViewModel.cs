@@ -21,6 +21,7 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
     private readonly IDebugSession _session;
     private readonly DebugInspectionViewModel _inspection;
     private readonly DebugAttachViewModel _attach;
+    private readonly DebugProfilesViewModel _profiles;
 
     /// <summary>デバッグ対象（<c>*.dll</c>/<c>*.exe</c>）の明示指定。空ならワークスペースから自動検出する。</summary>
     [ObservableProperty] private string _targetProgram = "";
@@ -47,7 +48,8 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
     public string AdapterInstallCommand => DebugAdapterCatalog.Netcoredbg.InstallCommand ?? "";
 
     internal DebugLaunchViewModel(IDebugService debug, IWorkspaceService workspace, ITerminalService terminal,
-        IDebugSession session, DebugInspectionViewModel inspection, DebugAttachViewModel attach)
+        IDebugSession session, DebugInspectionViewModel inspection, DebugAttachViewModel attach,
+        DebugProfilesViewModel profiles)
     {
         _debug = debug;
         _workspace = workspace;
@@ -55,6 +57,7 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
         _session = session;
         _inspection = inspection;
         _attach = attach;
+        _profiles = profiles;
         _session.SessionStateChanged += OnSessionStateChanged;
     }
 
@@ -130,7 +133,8 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
             return;
         }
 
-        var program = await DebugTargetResolver.ResolveProgramAsync(_workspace, _terminal, _session, TargetProgram, BuildFirst);
+        var program = await DebugTargetResolver.ResolveProgramAsync(
+            _workspace, _terminal, _session, TargetProgram, BuildFirst, _profiles.SelectedProjectPath);
         if (program is null) return;
 
         _attach.ClearLastAttach();  // この起動は launch（再起動で再 launch する）

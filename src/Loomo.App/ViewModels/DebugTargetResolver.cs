@@ -77,10 +77,11 @@ internal static class DebugTargetResolver
         return csproj;
     }
 
-    /// <summary>デバッグ対象（実行する .dll）を解決する。明示指定が無ければワークスペースの .csproj を 1 つ探し、
+    /// <summary>デバッグ対象（実行する .dll）を解決する。明示指定が無ければ <paramref name="explicitProjectPath"/>
+    /// （起動プロジェクト選択コンボボックスの選択）を、それも無ければワークスペースの .csproj を 1 つ探し、
     /// 任意でビルドしてから出力 dll を見つける。解決できなければ null（理由はコンソールへ）。</summary>
     public static async Task<string?> ResolveProgramAsync(IWorkspaceService workspace, ITerminalService terminal,
-        IDebugSession session, string targetProgram, bool buildFirst)
+        IDebugSession session, string targetProgram, bool buildFirst, string? explicitProjectPath = null)
     {
         var root = workspace.RootPath;
 
@@ -101,8 +102,8 @@ internal static class DebugTargetResolver
             return null;
         }
 
-        var csproj = FindProject(root);
-        if (csproj is null)
+        var csproj = string.IsNullOrWhiteSpace(explicitProjectPath) ? FindProject(root) : explicitProjectPath;
+        if (csproj is null || !File.Exists(csproj))
         {
             session.Append(DebugOutputCategory.Important,
                 "ワークスペースに .csproj が見つかりません。デバッグ対象（.dll/.exe）を直接指定してください。");

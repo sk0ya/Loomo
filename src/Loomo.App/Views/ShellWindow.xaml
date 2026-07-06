@@ -1047,6 +1047,13 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Debug" Click="OnHidePane" />
+                        <!-- デバッグ構成（プロファイル）切替：どの起動プロジェクト/引数・環境変数の組で開始するか。
+                             編集（プロジェクト選択・追加/名前変更/削除）は「構成」タブ側。 -->
+                        <ComboBox DockPanel.Dock="Left" Margin="10,0,0,0" Width="150" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Debug.Profiles.Profiles}"
+                                  SelectedItem="{Binding Debug.Profiles.SelectedProfile, Mode=TwoWay}"
+                                  DisplayMemberPath="Name" ToolTip="デバッグ構成" />
+
                         <!-- デバッグツールバー（タブより上はヘッダーのみ）。状態で出し分け：
                              デバッグ前＝開始/ビルド/テスト、停止中＝続行/ステップ、デバッグ中＝中断/再起動/停止。
                              起動構成・例外・アタッチは「構成」タブへ。 -->

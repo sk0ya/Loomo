@@ -58,6 +58,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
     public DebugAttachViewModel Attach { get; }
     public DebugTestsViewModel Tests { get; }
     public DebugLaunchViewModel Launch { get; }
+    public DebugProfilesViewModel Profiles { get; }
 
     // --- エディタ連携の通知（ShellWindow が購読） ---
 
@@ -81,7 +82,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
     public event Action? OutputRequested;
 
     public DebugViewModel(IDebugService debug, IWorkspaceService workspace, ITerminalService terminal,
-        ITestDiscoveryService testDiscovery)
+        ITestDiscoveryService testDiscovery, DebugLaunchProfileStore profileStore)
     {
         _debug = debug;
         _dispatcher = Dispatcher.CurrentDispatcher;
@@ -90,7 +91,9 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
         Inspection = new DebugInspectionViewModel(debug, this);
         Attach = new DebugAttachViewModel(debug, this);
         Tests = new DebugTestsViewModel(workspace, terminal, testDiscovery, this);
-        Launch = new DebugLaunchViewModel(debug, workspace, terminal, this, Inspection, Attach);
+        Profiles = new DebugProfilesViewModel(workspace, profileStore);
+        Launch = new DebugLaunchViewModel(debug, workspace, terminal, this, Inspection, Attach, Profiles);
+        Profiles.AttachLaunch(Launch);
         _findBuildTarget = () => DebugTargetResolver.FindBuildTarget(workspace, this);
 
         _debug.Output += OnOutput;
@@ -217,5 +220,9 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
 
     private void Dispatch(Func<System.Threading.Tasks.Task> action) => _dispatcher.InvokeAsync(action);
 
-    public void Dispose() => Tests.Dispose();
+    public void Dispose()
+    {
+        Tests.Dispose();
+        Profiles.Dispose();
+    }
 }
