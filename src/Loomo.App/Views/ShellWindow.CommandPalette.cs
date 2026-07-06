@@ -455,6 +455,8 @@ public partial class ShellWindow
         list.Add(new("サイドバー", "外観（テーマ）", () => _vm.ShowAppearanceCommand.Execute(null),
             Sc("sidebar.appearance"), "sidebar.appearance"));
         list.Add(new("サイドバー", "キーボード設定", () => _vm.ShowKeyboardSettingsCommand.Execute(null)));
+        list.Add(new("サイドバー", "エクスプローラで現在のファイルを選択（同期）", RevealActiveFileInFolderTree,
+            Sc("explorer.revealActiveFile"), "explorer.revealActiveFile"));
 
         // ワークスペース
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive))

@@ -83,6 +83,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" VerticalAlignment="Center">
                 <!-- 表示ルートの切替。候補はワークスペースルート＋ピン留めフォルダ。
@@ -162,6 +163,23 @@
                 <TextBlock Text="Δ" FontSize="{DynamicResource Fs13}" FontWeight="SemiBold"
                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
             </ToggleButton>
+
+            <Button Grid.Column="5" Style="{StaticResource ExplorerIconButton}"
+                    Margin="2,0,0,0"
+                    Command="{Binding RevealCurrentFileCommand}"
+                    ToolTip="エディタの現在のファイルを選択（同期）">
+                <!-- 十字照準（現在地を指し示す） -->
+                <Grid Width="13" Height="13">
+                    <Ellipse Width="7" Height="7"
+                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                             StrokeThickness="1.5" />
+                    <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          Data="M6.5,0 L6.5,2 M6.5,11 L6.5,13 M0,6.5 L2,6.5 M11,6.5 L13,6.5" />
+                </Grid>
+            </Button>
         </Grid>
 
         <Border x:Name="SearchBar" DockPanel.Dock="Bottom"

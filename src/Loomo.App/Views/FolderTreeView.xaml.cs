@@ -224,8 +224,9 @@ public partial class FolderTreeView : UserControl
     }
 
     // 遅延読込ツリーで指定パスを上から順に展開し、たどり着いたノードを選択・表示する。
-    // フィルタ解除後（全ツリーは未展開）に元の選択を復元するために使う。
-    private void RevealPath(string fullPath)
+    // フィルタ解除後（全ツリーは未展開）に元の選択を復元するため、また ShellWindow から
+    // エディタの現在ファイルをツリーへ同期表示するために使う。
+    public void RevealPath(string fullPath)
     {
         if (DataContext is FolderTreeViewModel vm)
             RevealStep(vm.Nodes, fullPath);

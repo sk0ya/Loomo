@@ -132,6 +132,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;
 
+    // FolderTree の「現在のファイルを選択」ボタン／ショートカット。ShellWindow が購読し、
+    // エディタでアクティブなファイルをツリーで展開・選択する（同期）。
+    public event EventHandler? RevealCurrentFileRequested;
+
     public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows)
     {
         _workspace = workspace;
@@ -188,6 +192,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         foreach (var node in Nodes)
             CollapseRecursive(node);
     }
+
+    [RelayCommand]
+    private void RevealCurrentFile() => RevealCurrentFileRequested?.Invoke(this, EventArgs.Empty);
 
     partial void OnHideIgnoredFilesChanged(bool value) => RefreshWorkspace();
 

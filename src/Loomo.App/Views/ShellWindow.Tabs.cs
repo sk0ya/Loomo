@@ -377,4 +377,22 @@ public partial class ShellWindow
             || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>FolderTree のボタン／ショートカットから、エディタでアクティブなファイルをツリーで
+    /// 展開・選択する（同期）。開いているタブが未保存（パス無し）なら何もしない。</summary>
+    private void RevealActiveFileInFolderTree()
+    {
+        var path = _activeEditorTab?.PeekFilePath;
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        _vm.RevealExplorerPanel();
+        // 直前までエクスプローラが非表示／別パネルだった場合、FolderTreeView は Collapsed の
+        // 間レイアウトされずツリーの TreeViewItem コンテナが未生成なことがある。
+        // レイアウト確定後（Loaded 優先度）まで反映を遅らせる。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (SidebarContainer.Children.OfType<FolderTreeView>().FirstOrDefault() is { } tree)
+                tree.RevealPath(path);
+        }));
+    }
 }

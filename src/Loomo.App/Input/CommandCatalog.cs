@@ -76,6 +76,7 @@ public static class CommandCatalog
         new CommandDescriptor("sidebar.pegboard", CatSidebar, "ペグボードを開く", null),
         new CommandDescriptor("sidebar.settings", CatSidebar, "設定を開く", null),
         new CommandDescriptor("sidebar.appearance", CatSidebar, "外観（テーマ）を開く", null),
+        new CommandDescriptor("explorer.revealActiveFile", CatSidebar, "エクスプローラで現在のファイルを選択（同期）", null),
 
         // ===== タブ（既定未割当） =====
         new CommandDescriptor("tab.newTerminal", CatTab, "新しいターミナルタブ", null),

@@ -65,6 +65,7 @@ public partial class ShellWindow
             ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null),
             ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null),
             ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null),
+            ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree,
         };
 
         return new KeyboardDispatcher(

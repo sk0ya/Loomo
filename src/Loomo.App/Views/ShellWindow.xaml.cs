@@ -368,6 +368,9 @@ public partial class ShellWindow : Window
         // FolderTree でのリネーム／削除を、開いているエディタタブへ反映する（パス追従／タブを閉じる）。
         vm.FolderTree.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);
         vm.FolderTree.EntryDeleted += (_, path) => OnFolderTreeEntryDeleted(path);
+        // FolderTree の「現在のファイルを選択」ボタン／ショートカット：エディタでアクティブな
+        // ファイルをツリーで展開・選択する（同期）。
+        vm.FolderTree.RevealCurrentFileRequested += (_, _) => RevealActiveFileInFolderTree();
         // サイドバー検索：選択ヒットはプレビュータブで該当行へ、確定（Enter/ダブルクリック）は通常タブへ開く。
         vm.SearchPanel.PreviewRequested += async (_, h) =>
         {

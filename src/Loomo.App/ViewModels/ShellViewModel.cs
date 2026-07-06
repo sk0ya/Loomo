@@ -194,6 +194,14 @@ public sealed partial class ShellViewModel : ObservableObject
         IsSidebarVisible = true;
     }
 
+    /// <summary>エクスプローラを開く（トグルせず必ず開く）。エディタの現在ファイルをツリーで
+    /// 選択・表示する「同期」機能用。</summary>
+    public void RevealExplorerPanel()
+    {
+        ActivePanel = SidebarPanel.Explorer;
+        IsSidebarVisible = true;
+    }
+
     /// <summary>ActivityBar の Git アイコン。表示中は作業ツリーをライブ監視して自動更新する
     /// （実際の開始・停止は <see cref="UpdateGitPanelLive"/> が可視状態の変化に応じて行う）。</summary>
     [RelayCommand]
