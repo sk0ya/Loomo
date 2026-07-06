@@ -53,7 +53,8 @@ public partial class GitSessionView : UserControl
     /// <summary>
     /// CommitDetail（<c>git show --stat</c> の生テキスト）を RichTextBox へ整形描画する。
     /// 変更ファイル一覧の統計行はファイルパス部分だけを Hyperlink 化し、その他の行は素のまま流す。
-    /// 折り返しは避け（等幅グラフの桁を保つ）、最長行に合わせて横幅を確保する。
+    /// 幅は表示領域へ折り返す（固定 PageWidth を与えると横スクロールバーが縦スクロールの Auto 判定と
+    /// 競合し、下端が横バーに隠れて見えなくなるため）。通常のペイン幅では stat 行は折り返さず桁も保たれる。
     /// </summary>
     private void RenderCommitDetail()
     {
@@ -62,12 +63,9 @@ public partial class GitSessionView : UserControl
         var accent = TryFindResource("Accent") as Brush ?? Brushes.SteelBlue;
 
         var lines = text.Replace("\r\n", "\n").Split('\n');
-        var maxLen = 0;
         for (var i = 0; i < lines.Length; i++)
         {
-            var line = lines[i];
-            maxLen = Math.Max(maxLen, line.Length);
-            AppendLine(paragraph, line, accent);
+            AppendLine(paragraph, lines[i], accent);
             if (i < lines.Length - 1)
                 paragraph.Inlines.Add(new LineBreak());
         }
@@ -77,8 +75,6 @@ public partial class GitSessionView : UserControl
             FontFamily = CommitDetailBox.FontFamily,
             FontSize = CommitDetailBox.FontSize,
             PagePadding = new Thickness(6, 4, 6, 4),
-            // 等幅の目安 ≈ FontSize*0.62px/桁。折り返さないよう最長行ぶんの幅を確保する。
-            PageWidth = Math.Max(200, maxLen * CommitDetailBox.FontSize * 0.62 + 24),
         };
         CommitDetailBox.Document = doc;
     }

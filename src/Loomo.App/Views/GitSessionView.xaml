@@ -297,7 +297,7 @@
                     <!-- 選択コミットの詳細（git show の統計表示）。変更ファイル一覧のパスは
                          リンク化してクリックでエディタで開く（描画・パース判定は code-behind）。 -->
                     <RichTextBox x:Name="CommitDetailBox" Grid.Row="2" IsReadOnly="True" IsDocumentEnabled="True"
-                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                  FontFamily="Cascadia Mono, Consolas" FontSize="12"
                                  Foreground="{DynamicResource Fg}"
                                  BorderThickness="0" Background="{DynamicResource BgAlt}" />
