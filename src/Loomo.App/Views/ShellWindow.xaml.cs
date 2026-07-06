@@ -486,6 +486,8 @@ public partial class ShellWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         StartupProfiler.Mark("OnLoaded 開始");
+        // カクつき計測（LOOMO_JANK_PROFILE=1 のときだけ動く。既定は完全に無効）。
+        UiJankProfiler.Start(Dispatcher);
         try
         {
             if (_vm.Workspaces.ActiveWorkspace is { } workspace)

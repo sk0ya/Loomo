@@ -49,7 +49,29 @@ public sealed class DebouncedFolderWatcher : IDisposable
         _watcher.EnableRaisingEvents = true;
     }
 
-    private void OnChanged(object sender, FileSystemEventArgs e) => ScheduleRefresh();
+    /// <summary>再帰監視で無視するディレクトリ（パスのどこかにこのセグメントを含む変更は refresh しない）。
+    /// とくに <c>.git</c> は致命的で、git 状態の読込（<c>git status</c>）が <c>.git/index</c> を書き換える
+    /// たびに監視が発火し、また git 読込が走る自己フィードバックループになって UI スレッドを刻み続ける。
+    /// <c>bin</c>/<c>obj</c> 等はビルドで頻繁に更新されるだけでツリー表示に無関係なので併せて外す。</summary>
+    private static readonly string[] IgnoredSegments =
+        { ".git", "bin", "obj", "node_modules", ".vs", ".idea" };
+
+    private void OnChanged(object sender, FileSystemEventArgs e)
+    {
+        if (IsIgnoredPath(e.FullPath))
+            return;
+        ScheduleRefresh();
+    }
+
+    /// <summary>変更パスが無視対象ディレクトリの下か（ディレクトリセグメント単位の一致で判定）。</summary>
+    private static bool IsIgnoredPath(string fullPath)
+    {
+        foreach (var segment in fullPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            foreach (var ignored in IgnoredSegments)
+                if (segment.Equals(ignored, StringComparison.OrdinalIgnoreCase))
+                    return true;
+        return false;
+    }
 
     private void ScheduleRefresh()
     {
