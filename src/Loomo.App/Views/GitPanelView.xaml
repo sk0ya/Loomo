@@ -403,87 +403,106 @@
 
             <!-- 変更一覧。上はステージ済み（プレーンなリスト＝コミット対象）、下は作業ツリーを
                  ディレクトリツリーで表示し、チェックしたファイルをコミットに含める。
-                 「変更」「バージョン管理外ファイル」をトップレベルのセクションに分ける。 -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0">
-                <StackPanel>
-                    <!-- ステージ済み -->
-                    <StackPanel Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}">
-                        <DockPanel Margin="4,2" Background="Transparent">
-                            <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
-                                <Button Style="{StaticResource RowActionButton}" Content="−"
-                                        ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
-                                           FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Border Style="{StaticResource CountPill}">
-                                    <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
-                                               Foreground="{DynamicResource Fg}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                            </StackPanel>
-                        </DockPanel>
-                        <ListBox ItemsSource="{Binding Staged}" SelectionMode="Extended"
-                                 Background="Transparent" BorderThickness="0" Padding="0"
-                                 ItemContainerStyle="{StaticResource ChangeRowItem}"
-                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                 SelectionChanged="StagedList_SelectionChanged"
-                                 MouseDoubleClick="ChangeList_MouseDoubleClick"
-                                 PreviewMouseRightButtonDown="ChangeList_PreviewMouseRightButtonDown"
-                                 ContextMenu="{StaticResource StagedRowMenu}">
-                            <ListBox.InputBindings>
-                                <KeyBinding Key="Delete" Command="{Binding UnstageSelectedCommand}" />
-                            </ListBox.InputBindings>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Background="Transparent" ToolTip="{Binding ToolTipText}">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Width="16" Margin="4,0,2,0"
-                                                   Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
-                                                   TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
-                                                   FontFamily="Cascadia Mono, Consolas" />
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                       FontSize="{DynamicResource Fs11}" Margin="6,1,0,0" VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </StackPanel>
+                 「変更」「バージョン管理外ファイル」をトップレベルのセクションに分ける。
+                 3セクションとも GridSplitter で高さを相互にドラッグ調整でき、各セクションは
+                 自前でスクロールする（多いときに一覧全体を押し出さない）。 -->
+            <Grid Margin="6,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="{Binding Staged.Count, Converter={StaticResource BoolToStarLength}, ConverterParameter=1}" MinHeight="0" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="3*" MinHeight="80" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1*" MinHeight="28" />
+                </Grid.RowDefinitions>
 
-                    <!-- 変更／バージョン管理外をトップレベルノードに持つコミット対象ツリー -->
-                    <TreeView ItemsSource="{Binding WorkingTreeSections}" Margin="0,6,0,0"
-                              ItemTemplate="{StaticResource GitChangeTreeTemplate}"
-                              ItemContainerStyle="{StaticResource GitChangeTreeItem}"
-                              Background="Transparent" BorderThickness="0" Padding="0"
-                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                              MouseDoubleClick="ChangeList_MouseDoubleClick"
-                              PreviewMouseLeftButtonDown="ChangeTree_PreviewMouseLeftButtonDown"
-                              PreviewMouseRightButtonDown="ChangeTree_PreviewMouseRightButtonDown"
-                              ContextMenu="{StaticResource WorkingTreeRowMenu}" />
+                <!-- ステージ済み。DockPanel で包み、見出しを Dock="Top"・ListBox を残り全域の
+                     fill 子にする（StackPanel だと子が欲しいだけの高さを取ってしまい、行の実高さを
+                     超えても ListBox 自身は「全部表示できている」と誤認してスクロールが効かない）。 -->
+                <DockPanel Grid.Row="0" Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}">
+                    <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
+                        <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                            <Button Style="{StaticResource RowActionButton}" Content="−"
+                                    ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Border Style="{StaticResource CountPill}">
+                                <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
+                                           Foreground="{DynamicResource Fg}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </DockPanel>
+                    <ListBox ItemsSource="{Binding Staged}" SelectionMode="Extended"
+                             Background="Transparent" BorderThickness="0" Padding="0"
+                             ItemContainerStyle="{StaticResource ChangeRowItem}"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             SelectionChanged="StagedList_SelectionChanged"
+                             MouseDoubleClick="ChangeList_MouseDoubleClick"
+                             PreviewMouseRightButtonDown="ChangeList_PreviewMouseRightButtonDown"
+                             ContextMenu="{StaticResource StagedRowMenu}">
+                        <ListBox.InputBindings>
+                            <KeyBinding Key="Delete" Command="{Binding UnstageSelectedCommand}" />
+                        </ListBox.InputBindings>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Background="Transparent" ToolTip="{Binding ToolTipText}">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Width="16" Margin="4,0,2,0"
+                                               Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
+                                               TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               FontFamily="Cascadia Mono, Consolas" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs11}" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
 
-                    <!-- スタッシュ（退避）。見出しの「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。 -->
-                    <StackPanel Margin="0,8,0,0">
-                        <DockPanel Margin="4,2" Background="Transparent">
-                            <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
-                                <Button Style="{StaticResource RowActionButton}" Content="⤓"
-                                        ToolTip="現在の変更を退避（スタッシュ）"
-                                        Command="{Binding StashPushCommand}" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="スタッシュ" Foreground="{DynamicResource FgDim}"
-                                           FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Border Style="{StaticResource CountPill}"
-                                        Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
-                                    <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
-                                               Foreground="{DynamicResource Fg}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                            </StackPanel>
-                        </DockPanel>
+                <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
+                              Background="{DynamicResource Border}"
+                              Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}" />
+
+                <!-- 変更／バージョン管理外をトップレベルノードに持つコミット対象ツリー -->
+                <TreeView Grid.Row="2" ItemsSource="{Binding WorkingTreeSections}" Margin="0,2,0,0"
+                          ItemTemplate="{StaticResource GitChangeTreeTemplate}"
+                          ItemContainerStyle="{StaticResource GitChangeTreeItem}"
+                          Background="Transparent" BorderThickness="0" Padding="0"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          MouseDoubleClick="ChangeList_MouseDoubleClick"
+                          PreviewMouseLeftButtonDown="ChangeTree_PreviewMouseLeftButtonDown"
+                          PreviewMouseRightButtonDown="ChangeTree_PreviewMouseRightButtonDown"
+                          ContextMenu="{StaticResource WorkingTreeRowMenu}" />
+
+                <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch"
+                              Background="{DynamicResource Border}" />
+
+                <!-- スタッシュ（退避）。見出しの「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。 -->
+                <DockPanel Grid.Row="4">
+                    <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
+                        <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                            <Button Style="{StaticResource RowActionButton}" Content="⤓"
+                                    ToolTip="現在の変更を退避（スタッシュ）"
+                                    Command="{Binding StashPushCommand}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="スタッシュ" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Border Style="{StaticResource CountPill}"
+                                    Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
+                                <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
+                                           Foreground="{DynamicResource Fg}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </DockPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding Stashes}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -508,9 +527,9 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
+                    </ScrollViewer>
+                </DockPanel>
+            </Grid>
         </DockPanel>
     </DockPanel>
 </UserControl>

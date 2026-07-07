@@ -43,6 +43,89 @@
             <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
         </Style>
+
+        <!-- LogList（ListView+GridView）専用の行コンテナ。GitListItem（ListBoxItem 用）を GridView 付き
+             ListView にそのまま使うと、ControlTemplate の ContentPresenter が GridViewRowPresenter を
+             持たないため列が描画されず「オブジェクトの ToString()」表示に落ちる（要 GridViewRowPresenter）。 -->
+        <Style x:Key="GitLogListItem" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="b" Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <GridViewRowPresenter Content="{TemplateBinding Content}"
+                                                  Columns="{TemplateBinding GridView.ColumnCollection}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- コミット一覧の列境界のつまみに共通のスタイル（ヘッダー行の PART_HeaderGripper と、行本体
+             オーバーレイ側のつまみの両方から参照する。定義順の都合でヘッダースタイルより前に置く）。
+             既定の Thumb 外観（テーマ非依存の立体調グレー帯。Background だけでは消せず、これが
+             「見出しの区切り線がカラーテーマに追従しない」原因だった）を消し、ホバー中だけ
+             アクセント色の細い線を見せる。 -->
+        <Style x:Key="LogColumnResizeThumb" TargetType="Thumb">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="b" Background="Transparent" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- コミット一覧（LogList）の列見出し。既定の GridViewColumnHeader は OS 標準のボタン風装飾で
+             ダークテーマに馴染まないため平板化するが、列幅ドラッグ自体は既定テンプレートが
+             "PART_HeaderGripper" という名前の Thumb を探して配線するので、そのThumbだけは残す
+             （ただし既定の Thumb 外観のままだと Background 指定だけでは灰色の区切り線が残ってしまう
+             ため、LogColumnResizeThumb と同じテンプレートを与えて完全に平板化する）。
+             GridView の末尾に自動生成される空の「埋め草」ヘッダー（Role=Padding）は
+             GridView.ColumnHeaderContainerStyle を経由せず既定スタイルのまま残る（White地のまま浮く）ため、
+             x:Key を付けず TargetType 一致の暗黙スタイルにして埋め草にも確実に適用する。 -->
+        <Style TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridViewColumnHeader">
+                        <Grid>
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </Border>
+                            <Thumb x:Name="PART_HeaderGripper" HorizontalAlignment="Right" Width="6"
+                                   Style="{StaticResource LogColumnResizeThumb}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <DockPanel>
@@ -238,15 +321,51 @@
                         <RowDefinition Height="140" MinHeight="60" />
                     </Grid.RowDefinitions>
 
-                    <ListBox x:Name="LogList" Grid.Row="0" Style="{StaticResource GitList}"
+                    <!-- 列幅は GridView の列見出し境界をドラッグして調整できる（作者・日時が固定幅で
+                         コミットメッセージを圧迫し、狭いペインで見出しがほぼ読めなくなる問題への対処）。 -->
+                    <ListView x:Name="LogList" Grid.Row="0" Style="{StaticResource GitList}"
+                             ItemContainerStyle="{StaticResource GitLogListItem}"
                              ItemsSource="{Binding LogView}"
                              SelectedItem="{Binding SelectedLogRow}"
                              SelectionMode="Extended"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              MouseDoubleClick="OnCommitShowDiff"
                              PreviewMouseRightButtonDown="OnListRightClickSelect"
                              ContextMenuOpening="OnCommitContextMenuOpening"
                              FontFamily="Cascadia Mono, Consolas">
-                        <ListBox.ContextMenu>
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="コミット" Width="380">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding Graph, Mode=OneWay}" Foreground="{DynamicResource FgDim}" /><Run Text=" " /><Run
+                                                    Text="{Binding ShortHash, Mode=OneWay}" Foreground="{DynamicResource Accent}" /><Run Text=" " /><Run
+                                                    Text="{Binding Refs, Mode=OneWay}" Foreground="#FFE5A23B" /><Run Text=" " /><Run
+                                                    Text="{Binding Subject, Mode=OneWay}" Foreground="{DynamicResource Fg}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="作成者" Width="120">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Author}" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="日時" Width="140">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Date}" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                        <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff" />
                                 <Separator />
@@ -271,25 +390,14 @@
                                 <MenuItem Header="パッチをエディタで開く" Click="OnCommitOpenPatch" />
                                 <MenuItem Header="ハッシュをコピー" Click="OnCommitCopyHash" />
                             </ContextMenu>
-                        </ListBox.ContextMenu>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Date}" FontSize="{DynamicResource Fs11}"
-                                               Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Author}" FontSize="{DynamicResource Fs11}"
-                                               Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
-                                               MaxWidth="120" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock TextTrimming="CharacterEllipsis">
-                                        <Run Text="{Binding Graph, Mode=OneWay}" Foreground="{DynamicResource FgDim}" /><Run Text=" " /><Run
-                                            Text="{Binding ShortHash, Mode=OneWay}" Foreground="{DynamicResource Accent}" /><Run Text=" " /><Run
-                                            Text="{Binding Refs, Mode=OneWay}" Foreground="#FFE5A23B" /><Run Text=" " /><Run
-                                            Text="{Binding Subject, Mode=OneWay}" Foreground="{DynamicResource Fg}" />
-                                    </TextBlock>
-                                </DockPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                        </ListView.ContextMenu>
+                    </ListView>
+
+                    <!-- 列幅ドラッグをヘッダー行の細い当たり判定に限定せず、一覧本体からも行える
+                         ようにするオーバーレイ（GitSessionView.LogColumnResize.cs が組み立て・追従）。
+                         背景は敢えて未設定（null）にして、つまみ以外の透過部分はクリックを
+                         下の行へそのまま通す（Background="Transparent" は当たり判定を奪うので使わない）。 -->
+                    <Canvas x:Name="LogColumnResizeOverlay" Grid.Row="0" />
 
                     <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />

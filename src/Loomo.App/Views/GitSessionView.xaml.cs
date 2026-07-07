@@ -27,6 +27,7 @@ public partial class GitSessionView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        SetupLogColumnResize();
     }
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
