@@ -83,7 +83,10 @@ public sealed class GitService
 
     /// <summary>作業ツリーの署名（git status の porcelain 出力）を取り、前回と違えば変化を通知する。
     /// 前回のポーリングがまだ走っていれば今回は飛ばす（多重起動しない）。状態が同じなら
-    /// 出力も同じなので、git status による .git/index の書き戻しでは発火しない。</summary>
+    /// 出力も同じなので、git status による .git/index の書き戻しでは発火しない。
+    /// <c>--no-optional-locks</c>必須：このポーリングは stage/commit と同じスレッドを介さず走るため、
+    /// 素の git status がインデックスの統計キャッシュを書き戻そうとして進行中の commit と
+    /// .git/index.lock を取り合い、コミットが「ステージだけ済んで失敗」することがあった。</summary>
     private async Task PollOnceAsync()
     {
         if (!_pollGate.Wait(0)) return;
@@ -91,7 +94,7 @@ public sealed class GitService
         {
             var root = RootPath;
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
-            var result = await RunAsync("status", "--porcelain=v2", "--branch").ConfigureAwait(false);
+            var result = await RunAsync("--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
             if (!result.Success) return;
             var prev = _lastSignature;
             _lastSignature = result.Output;
@@ -115,10 +118,11 @@ public sealed class GitService
 
     // ===== 照会 =====
 
-    /// <summary>現在の状態（ブランチ・ahead/behind・変更一覧・進行中操作）を取得する。</summary>
+    /// <summary>現在の状態（ブランチ・ahead/behind・変更一覧・進行中操作）を取得する。
+    /// <c>--no-optional-locks</c>の理由は <see cref="PollOnceAsync"/> 参照（進行中の commit とのロック競合回避）。</summary>
     public async Task<GitStatusSnapshot> GetStatusAsync()
     {
-        var result = await RunAsync("status", "--porcelain=v2", "--branch").ConfigureAwait(false);
+        var result = await RunAsync("--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
         if (!result.Success)
             return new GitStatusSnapshot { IsRepository = false };
 
