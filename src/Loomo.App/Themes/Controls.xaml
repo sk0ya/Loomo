@@ -407,6 +407,16 @@
                             <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
                             <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
                         </Trigger>
+                        <!-- 編集可能かつ読み取り専用（入力はできず一覧から選ぶだけ）のときは、入力欄がクリックを
+                             奪って矢印以外の領域でドロップダウンが開かない不便を解消する。入力欄をヒットテスト
+                             対象から外し、下に重なる ToggleButton（全面）へクリックを通す。 -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsEditable" Value="True" />
+                                <Condition Property="IsReadOnly" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="PART_EditableTextBox" Property="IsHitTestVisible" Value="False" />
+                        </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                             <Setter Property="Opacity" Value="0.6" />
