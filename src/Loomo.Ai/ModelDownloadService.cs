@@ -34,15 +34,16 @@ public sealed record DownloadableModel(
 /// Hugging Face からモデル一式をローカルへダウンロードする。取得先は
 /// <c>%APPDATA%/Loomo/models/&lt;FolderName&gt;/</c>。各ファイルをストリーム保存し、既に正しいサイズで
 /// 存在するファイルはスキップする（中断後の再実行で続きから取得できる）。取得対象は <see cref="Catalog"/>
-/// （現在は GGUF・llama.cpp 用：Qwen3-4B Q4_K_M の1種）から選ぶ。
+/// （現在は GGUF・llama.cpp 用のモデル群）から選ぶ。
 /// </summary>
 public sealed class ModelDownloadService
 {
     /// <summary>ダウンロード可能なモデルのカタログ。設定画面の選択肢に出す。
-    /// 現在はユーザー向けに <b>Qwen3-4B GGUF Q4_K_M（llama.cpp バックエンド）の1種のみ</b>を提示する。
+    /// 現在はユーザー向けに <b>GGUF（llama.cpp バックエンド）</b>のみを提示する。
     /// ONNX は内部的にはなお動くが UI には出さない方針。Q5_K_M は CPU では prefill が約2倍・decode も遅く
     /// 精度の上積みも無かった（`docs/reports/llamacpp-vs-onnx-qwen3-4b.md`）ため提示しない。単体ファイルを
-    /// <c>models/&lt;FolderName&gt;/</c> へ置き、ルータが <c>.gguf</c> 拡張子で llama.cpp へ振り分ける。</summary>
+    /// <c>models/&lt;FolderName&gt;/</c> へ置き、ルータが <c>.gguf</c> 拡張子で llama.cpp へ振り分ける。
+    /// Qwen3.5-9B は公式 GGUF 配布が無いため unsloth の量子化（Unsloth Dynamic 2.0）を使う。</summary>
     public static readonly IReadOnlyList<DownloadableModel> Catalog = new[]
     {
         new DownloadableModel(
@@ -52,6 +53,13 @@ public sealed class ModelDownloadService
             Subfolder: "",
             FolderName: "qwen3-4b-q4_k_m",
             Files: new[] { "Qwen3-4B-Q4_K_M.gguf" }),
+        new DownloadableModel(
+            Id: "qwen3.5-9b-q4_k_m",
+            DisplayName: "Qwen3.5-9B GGUF Q4_K_M（CPU・約5.7GB）",
+            Repo: "unsloth/Qwen3.5-9B-GGUF",
+            Subfolder: "",
+            FolderName: "qwen3.5-9b-q4_k_m",
+            Files: new[] { "Qwen3.5-9B-Q4_K_M.gguf" }),
     };
 
     /// <summary>既定で選択するモデル（Qwen3-4B GGUF Q4_K_M）。</summary>

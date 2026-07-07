@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
@@ -26,6 +27,13 @@ namespace sk0ya.Loomo.Ai.Clients;
 /// 再 prefill する（<see cref="SafeLLamaContextHandle.MemorySequenceRemove"/> で末尾の KV を捨て、差分を
 /// <see cref="LLamaBatch"/> で decode）。CPU 実行では prefill が支配的なので、安定プレフィックス
 /// （system + tools + 既存履歴）の再 prefill を初回 1 回に抑えるのが最大の効き手。
+///
+/// この再利用は<b>純粋な Attention Transformer 限定</b>。Mamba/SSM 系の再帰メモリを持つハイブリッド
+/// アーキテクチャ（例: Qwen3.5 の "qwen35"、Gated Delta Net）では再帰状態を途中の位置まで巻き戻せない
+/// ため、GGUF メタデータの <c>*.ssm.*</c> キーの有無で検出して常に全破棄→完全再 prefill に切り替える
+/// （<see cref="_isRecurrent"/> 参照）。<see cref="SafeLlamaModelHandle.IsRecurrent"/>（<c>llama_model_is_recurrent</c>）
+/// は実機確認したところ Qwen3.5 のような<b>ハイブリッド</b>では false を返す（純粋 Mamba/RWKV 等の
+/// 判定用らしく、ハイブリッドは対象外）ため、判定には使えない。
 /// </summary>
 public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine, IDisposable
 {
@@ -39,6 +47,22 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
 
     // KV に現在入っているトークン列（プロンプト＋生成済み）。ターン間で最長共通接頭辞の再利用に使う。
     private readonly List<int> _fedTokens = new();
+
+    // Mamba/SSM 系の再帰メモリ（"Gated Delta Net" 等）を持つハイブリッドアーキテクチャか（例: Qwen3.5 の qwen35）。
+    // 通常の Attention KV は位置指定で部分破棄できるが、再帰状態は「途中の位置まで巻き戻す」ことができない
+    // （RNN の隠れ状態と同じで、逐次上書きされるのみ）。このため MemorySequenceRemove(reuse>0, -1) による
+    // 部分再利用は、Attention KV は正しく巻き戻っても再帰状態は前ターン終端のまま残り、次の Decode が
+    // 即座に失敗する（実機で Qwen3.5-9B GGUF にて確認。しかも MemoryClear(true) による全クリアに変えても
+    // 再現した＝reuse=0 側の呼び出しでも直らない）。
+    private bool _isRecurrent;
+
+    // 再帰メモリ搭載モデル向けの代替キャッシュ：位置ベースの部分巻き戻しの代わりに、PrimeAsync で確定した
+    // 安定プレフィックス（system+tools）の直後の状態を GetState/LoadState で丸ごとスナップショット・復元する
+    // （llama_state_seq_get_data/set_data は KV も再帰状態もまるごと保存/復元する不透明データなので、位置
+    // 指定の部分除去と違い再帰メモリでも正しく機能する）。プロンプト先頭がこのトークン列と一致する間だけ
+    // 有効で、不一致・未取得なら Prefill が MemoryClear による全破棄→完全再 prefill にフォールバックする。
+    private LLamaContext.SequenceState? _checkpoint;
+    private int[]? _checkpointTokens;
 
     // llama.cpp の n_batch（既定 512）を超える一括 decode は失敗するため、prefill はこの粒度で分割して
     // decode し、チャンク間で停止要求を確認する（ONNX 版と同じ狙い・値は n_batch 安全圏に収める）。
@@ -79,6 +103,14 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
                 ct.ThrowIfCancellationRequested();
                 progress?.Invoke($"KVキャッシュを作成しています（prefill {promptTokens.Length} トークン）");
                 Prefill(context, promptTokens, promptInts, ct);   // KV ＋ _fedTokens を満たす（重みのページイン込み）
+                if (_isRecurrent)
+                {
+                    // ここで確定した安定プレフィックス（system+tools）の直後状態を1つだけスナップショットし、
+                    // 以降の実ターンでプロンプト先頭がこれと一致すれば復元して再利用する。
+                    _checkpoint?.Dispose();
+                    _checkpoint = context.GetState(LLamaSeqId.Zero);
+                    _checkpointTokens = (int[])promptInts.Clone();
+                }
                 progress?.Invoke("ウォームアップを完了しています");
             }, ct);
         }
@@ -132,6 +164,11 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
                 var mp = MakeParams(nativeModelPath.Path, maxLength);
                 weights = LLamaWeights.LoadFromFile(mp);
                 context = weights.CreateContext(mp);
+                // NativeHandle.IsRecurrent は「純粋な」再帰アーキテクチャ判定用らしく、Qwen3.5 のような
+                // Attention+SSM ハイブリッドでは実機確認で false を返したため使えない。GGUF メタデータの
+                // "<arch>.ssm.*" キーの有無で汎用的に検出する（アーキテクチャ名を個別に列挙しない）。
+                _isRecurrent = weights.NativeHandle.IsRecurrent
+                    || weights.Metadata.Keys.Any(k => k.Contains(".ssm.", StringComparison.Ordinal));
             }
             catch
             {
@@ -251,28 +288,90 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
     private int Prefill(LLamaContext context, LLamaToken[] promptTokens, int[] promptInts, CancellationToken ct)
     {
         var n = promptTokens.Length;
-        var common = TokenPrefix.CommonLength(_fedTokens, promptInts);
-        var reuse = Math.Max(0, Math.Min(common, n - 1));   // 末尾1トークンは必ず decode し直す
+        int reuse;
 
-        if (reuse < _fedTokens.Count)
+        if (_isRecurrent)
         {
-            context.NativeHandle.MemorySequenceRemove(LLamaSeqId.Zero, reuse, -1);   // [reuse, ∞) を破棄
-            _fedTokens.RemoveRange(reuse, _fedTokens.Count - reuse);
+            if (_fedTokens.Count > 0 && n > _fedTokens.Count
+                && TokenPrefix.CommonLength(_fedTokens, promptInts) == _fedTokens.Count)
+            {
+                // 今 KV／再帰状態に載っている内容がそのまま新プロンプトの厳密な接頭辞（同一会話の続き）。
+                // 巻き戻し不要＝何も削除・復元せず、続きを追記するだけでよい最安経路
+                // （MemorySequenceRemove も LoadState も使わないため再帰メモリでも無条件に安全）。
+                reuse = _fedTokens.Count;
+            }
+            else if (_checkpoint is not null && _checkpointTokens is not null && n > _checkpointTokens.Length
+                && TokenPrefix.CommonLength(_checkpointTokens, promptInts) == _checkpointTokens.Length)
+            {
+                // プロンプト先頭が安定プレフィックスと一致：スナップショットを復元し、続きだけ prefill する。
+                context.LoadState(_checkpoint, LLamaSeqId.Zero);
+                _fedTokens.Clear();
+                _fedTokens.AddRange(_checkpointTokens);
+                reuse = _checkpointTokens.Length;
+            }
+            else
+            {
+                // 不一致・チェックポイント未取得のフォールバック。既知の参照トークン列（チェックポイント、
+                // 無ければ現在 KV に載っている分＝直前の PrimeAsync/ターンの内容）との共通接頭辞を実測し、
+                // その境界までを独立して prefill し直してチェックポイントを取り直す。
+                // （PrimeAsync が渡す stablePrompt は「会話が空」の状態で組んだ文字列なので、生成開始マーカ
+                // が system ブロック直後に付き、実ターン（system→ユーザー発話→生成開始マーカ）とは末尾が
+                // 食い違う＝バイト完全一致しない。実測した共通接頭辞＝system+tools の真の境界を使うことで、
+                // 1回だけこの発見コストを払えば以降のターンは正しい境界にヒットして高速化される。）
+                // 実機検証: MemorySequenceRemove は reuse=0（全除去相当）で呼んでも再帰状態が残り、
+                // 次ターンの Decode が即座に失敗した（seq 位置ベースの除去は再帰メモリに正しく伝播しない）。
+                // 位置指定に依らずメモリ全体を明示的にクリアする MemoryClear を使う。
+                var reference = _checkpointTokens ?? (_fedTokens.Count > 0 ? _fedTokens.ToArray() : null);
+                var boundary = reference is null ? 0 : Math.Min(TokenPrefix.CommonLength(reference, promptInts), n - 1);
+
+                if (_fedTokens.Count > 0)
+                    context.NativeHandle.MemoryClear(true);
+                _fedTokens.Clear();
+
+                if (boundary > 0)
+                {
+                    FeedRange(context, promptTokens, promptInts, 0, boundary, wantLastLogit: false, ct);
+                    _checkpoint?.Dispose();
+                    _checkpoint = context.GetState(LLamaSeqId.Zero);
+                    _checkpointTokens = promptInts[..boundary];
+                }
+                reuse = boundary;
+            }
+        }
+        else
+        {
+            var common = TokenPrefix.CommonLength(_fedTokens, promptInts);
+            reuse = Math.Max(0, Math.Min(common, n - 1));   // 末尾1トークンは必ず decode し直す
+            if (reuse < _fedTokens.Count)
+            {
+                context.NativeHandle.MemorySequenceRemove(LLamaSeqId.Zero, reuse, -1);   // [reuse, ∞) を破棄
+                _fedTokens.RemoveRange(reuse, _fedTokens.Count - reuse);
+            }
         }
 
+        reuse = Math.Max(0, Math.Min(reuse, n - 1));   // 末尾1トークンは必ず decode し直す（両経路共通の安全弁）
+        return FeedRange(context, promptTokens, promptInts, reuse, n, wantLastLogit: true, ct);
+    }
+
+    /// <summary>[start, end) を _fedTokens 追記込みでチャンク分割 decode する。<paramref name="wantLastLogit"/>
+    /// が true のときだけ末尾トークンの logits を要求し、その row index を返す（false なら -1）。</summary>
+    private int FeedRange(
+        LLamaContext context, LLamaToken[] promptTokens, int[] promptInts, int start, int end,
+        bool wantLastLogit, CancellationToken ct)
+    {
         var batch = new LLamaBatch();
         var lastLogit = -1;
         var inBatch = 0;
-        for (var p = reuse; p < n; p++)
+        for (var p = start; p < end; p++)
         {
             ct.ThrowIfCancellationRequested();
-            var wantLogits = p == n - 1;
+            var wantLogits = wantLastLogit && p == end - 1;
             var idx = batch.Add(promptTokens[p], p, LLamaSeqId.Zero, wantLogits);
             if (wantLogits) lastLogit = idx;
             _fedTokens.Add(promptInts[p]);
             inBatch++;
 
-            if (inBatch >= PrefillChunkTokens || p == n - 1)
+            if (inBatch >= PrefillChunkTokens || p == end - 1)
             {
                 if (context.Decode(batch) != DecodeResult.Ok)
                     throw new InvalidOperationException(
@@ -312,6 +411,9 @@ public sealed class LlamaCppEngine : ILocalInferenceEngine, ILocalWarmableEngine
         _context = null;
         _ctxSize = 0;
         _fedTokens.Clear();
+        _checkpoint?.Dispose();
+        _checkpoint = null;
+        _checkpointTokens = null;
     }
 
     private static string DescribeError(Exception ex) => ex switch

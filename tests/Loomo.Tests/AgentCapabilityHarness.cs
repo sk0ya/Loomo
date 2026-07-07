@@ -159,6 +159,23 @@ public sealed class AgentCapabilityHarness
         var orch = new AgentOrchestrator(factory, tools, approval, safety, context,
             NullLogger<AgentOrchestrator>.Instance);
 
+        // --- 暖機（HARNESS_WARMUP=1 で有効・既定オフ）：実アプリの LocalLlmWarmupService と同じ経路で
+        //     安定プレフィックス（system+tools、会話は空）を prefill しておく。再帰メモリ搭載モデル
+        //     （Qwen3.5 等）は LlamaCppEngine がここで確定した安定プレフィックスをスナップショットし、
+        //     以降の実ターンでプロンプト先頭が一致すれば復元して再利用する（それ以外のモデルも通常の
+        //     KV プレフィックス再利用の恩恵を初回ターンから受けられる）。既定はオフ＝従来どおりの
+        //     コールドスタート計測（他モデルとの既存比較を壊さないため opt-in）。
+        if (Environment.GetEnvironmentVariable("HARNESS_WARMUP") == "1")
+        {
+            var modelProfile = ModelProfiles.Resolve(settings.Local.Model);
+            var stablePrompt = ChatPrompt.Build(
+                modelProfile.Format, settings, AgentProfiles.Root, workspace.RootPath, new Conversation(), tools.Definitions);
+            var maxLength = ModelProfiles.EffectiveNumCtx(settings.Local.Model, settings.Local.NumCtx);
+            using var warmupCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            await engine.WarmableFor(settings.Local.ModelPath!).PrimeAsync(
+                settings.Local.ModelPath!, stablePrompt, maxLength, modelProfile.Sampling, warmupCts.Token);
+        }
+
         // --- 地上真実オラクル。モデルの自己申告ではなく実ファイル/最終回答で機械判定する。
         //     ケース＋オラクルを足す→走らせる→PASS率で前後比較→プロンプト/ループを直す、という
         //     「能力拡張の回し車」を成立させる肝。 ---
@@ -470,6 +487,7 @@ public sealed class AgentCapabilityHarness
         header.AppendLine($"- モデル: {settings.Local.Model}");
         header.AppendLine($"- スイート: {(Environment.GetEnvironmentVariable("HARNESS_SUITE") ?? "agent")}");
         header.AppendLine($"- 追加プロンプト(モード): {preambleMode}");
+        header.AppendLine($"- 暖機(HARNESS_WARMUP): {(Environment.GetEnvironmentVariable("HARNESS_WARMUP") == "1" ? "あり" : "なし（コールドスタート）")}");
         if (!string.IsNullOrEmpty(reportTag)) header.AppendLine($"- 構成タグ: {reportTag}");
         header.AppendLine($"- ワークスペース: {ws}");
         header.AppendLine();
