@@ -405,24 +405,45 @@ internal static class MarkdownPage
                         window.chrome.webview.postMessage({ type: 'toggleTaskCheckbox', line });
                 });
 
+                // 同一ページ内アンカー（#見出し 等）はブラウザの既定ナビゲーションに任せず自前でスクロールする。
+                // <base href> が本文の相対画像解決のため別オリジン（preview.loomo）を指しているので、
+                // href="#id" を既定動作に委ねると base 側の URL への遷移になり、そこには何も配信されて
+                // おらず到達不能ページに飛んでしまう（フラグメントは常に「今の文書」宛のはずが base 起点で
+                // 解決されてしまう）。location.hash の代入は base の影響を受けないため安全に使える。
+                function scrollToFragment(href) {
+                    const id = decodeURIComponent(href.slice(1));
+                    if (!id) return;
+                    const target = document.getElementById(id) || document.getElementsByName(id)[0];
+                    if (target) target.scrollIntoView();
+                    try { history.replaceState(null, '', '#' + id); } catch (e) {}
+                }
+
                 // 本文中のリンク（<a href>）クリックはページ内遷移させず、ホスト（Loomo）へ振り分ける。
-                // 同一ページ内アンカー（#見出し 等）だけは既定のスクロール動作に任せる。見出しのパーマリンク
+                // 同一ページ内アンカー（#見出し 等）だけは上の自前スクロールに任せる。見出しのパーマリンク
                 // （.heading-anchor）はさらに「#見出しid」をクリップボードへコピーする。
                 document.addEventListener('click', e => {
                     const anchor = e.target.closest && e.target.closest('a.heading-anchor');
                     if (anchor) {
                         const href = anchor.getAttribute('href') || '';
                         if (href.startsWith('#')) {
+                            e.preventDefault();
                             copyText(href);
+                            scrollToFragment(href);
                             anchor.classList.add('copied');
                             setTimeout(() => anchor.classList.remove('copied'), 700);
                         }
-                        return; // href="#..." は既定のページ内スクロールへ任せる
+                        return;
                     }
                     const a = e.target.closest && e.target.closest('a[href]');
-                    if (!a || !window.chrome?.webview) return;
+                    if (!a) return;
                     const href = a.getAttribute('href');
-                    if (!href || href.startsWith('#')) return;
+                    if (!href) return;
+                    if (href.startsWith('#')) {
+                        e.preventDefault();
+                        scrollToFragment(href);
+                        return;
+                    }
+                    if (!window.chrome?.webview) return;
                     e.preventDefault();
                     window.chrome.webview.postMessage({ type: 'linkClicked', href });
                 });
