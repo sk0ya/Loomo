@@ -64,7 +64,7 @@ public sealed class AiSettings
     public ProviderConfig Local { get; set; } = new()
     {
         Model = DefaultLocalModel,
-        MaxTokens = 1024
+        MaxTokens = 4096
     };
 
     public string SystemPrompt => DefaultSystemPrompt;

@@ -21,7 +21,10 @@ public static class ModelProfiles
     {
         Family = "phi4-mini",
         NumCtx = 8192,
-        MaxOutputTokens = 1024,
+        // write_file/edit_file は content 全文を1応答のJSON文字列として出す。1024だと数百字を超える
+        // ファイルで生成が途中打ち切りになり、閉じ引用符/波括弧を欠いた壊れたJSON→ツール呼び出し解釈失敗
+        // →エラーになっていた（実障害）。4096に上げて実用的なファイルサイズを賄う。
+        MaxOutputTokens = 4096,
         Sampling = SamplingOptions.Unspecified,
     };
 
@@ -43,7 +46,8 @@ public static class ModelProfiles
         Family = "qwen3",
         Format = ChatFormat.Qwen3,
         NumCtx = 8192,
-        MaxOutputTokens = 1024,
+        // Phi4Mini と同じ理由（上のコメント参照）で 1024 は write_file の長文content途中打ち切りを招くため 4096 に上げる。
+        MaxOutputTokens = 4096,
         Sampling = new SamplingOptions(Temperature: 0.7, TopP: 0.8, TopK: 20, RepeatPenalty: 1.05),
     };
 
