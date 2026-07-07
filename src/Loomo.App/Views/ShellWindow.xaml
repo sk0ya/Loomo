@@ -263,7 +263,7 @@
                     <ComboBox Height="24"
                               ItemsSource="{Binding Workspaces.Workspaces}"
                               SelectedItem="{Binding Workspaces.SelectedWorkspace, Mode=TwoWay}"
-                              ToolTip="ワークスペース（右クリックでパスコピー・削除）"
+                              ToolTip="ワークスペース（右クリックでパスコピー・エクスプローラで開く・削除）"
                               WindowChrome.IsHitTestVisibleInChrome="True">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
@@ -271,6 +271,7 @@
                                     <TextBlock.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="パスをコピー" Click="OnCopyWorkspacePathMenuClick" />
+                                            <MenuItem Header="エクスプローラで開く" Click="OnRevealWorkspaceInExplorerMenuClick" />
                                             <MenuItem Header="ワークスペースを削除" Click="OnDeleteWorkspaceMenuClick" />
                                         </ContextMenu>
                                     </TextBlock.ContextMenu>

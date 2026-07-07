@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -124,6 +125,22 @@ public partial class ShellWindow
 
         try { Clipboard.SetText(entry.RootPath); }
         catch { /* クリップボードのロック等は無視 */ }
+    }
+
+    private void OnRevealWorkspaceInExplorerMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
+            return;
+
+        try
+        {
+            if (Directory.Exists(entry.RootPath))
+                Process.Start("explorer.exe", $"\"{entry.RootPath}\"");
+        }
+        catch
+        {
+            // explorer 起動失敗は無視。
+        }
     }
 
     private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e)
