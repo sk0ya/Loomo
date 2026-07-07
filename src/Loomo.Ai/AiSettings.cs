@@ -46,6 +46,9 @@ public sealed class AiSettings
     /// <summary>埋め込み Vim エディタの設定。</summary>
     public VimSettings Vim { get; set; } = new();
 
+    /// <summary>埋め込みエディタの表示設定。</summary>
+    public EditorSettings Editor { get; set; } = new();
+
     /// <summary>キーボードショートカットのユーザー上書き（既定と異なるものだけ保持）。</summary>
     public KeybindingSettings Keybindings { get; set; } = new();
 
@@ -204,6 +207,14 @@ public sealed class VimSettings
     /// 埋め込みエディタで Vim キーバインドを有効にする。
     /// </summary>
     public bool Enabled { get; set; } = false;
+}
+
+/// <summary>埋め込みエディタの表示に関する設定（Vim キーバインドの有無とは独立）。</summary>
+public sealed class EditorSettings
+{
+    /// <summary>全角スペース・行末スペースのハイライト表示（sk0ya.Editor.Controls 1.0.43）。
+    /// エディタ既定と同じく既定は有効。</summary>
+    public bool HighlightWhitespace { get; set; } = true;
 }
 
 /// <summary>キーボードショートカットのユーザー上書き。

@@ -44,6 +44,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _warmupEnabled;
 
     [ObservableProperty] private bool _vimEnabled;
+    [ObservableProperty] private bool _highlightWhitespace;
     [ObservableProperty] private string _status = "";
 
     /// <summary>モデルをダウンロード中か。</summary>
@@ -100,6 +101,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         MaxTokens = cfg.MaxTokens;
         WarmupEnabled = _settings.WarmupEnabled;
         VimEnabled = _settings.Vim.Enabled;
+        HighlightWhitespace = _settings.Editor.HighlightWhitespace;
         _suppressPersist = false;
     }
 
@@ -122,6 +124,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnModelPathChanged(string value) => Persist();
     partial void OnMaxTokensChanged(int value) => Persist();
     partial void OnVimEnabledChanged(bool value) => Persist();
+    partial void OnHighlightWhitespaceChanged(bool value) => Persist();
     partial void OnWarmupEnabledChanged(bool value)
     {
         if (_suppressPersist) return;
@@ -154,6 +157,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.Provider = AiProvider.Local;
         _settings.WarmupEnabled = WarmupEnabled;
         _settings.Vim.Enabled = VimEnabled;
+        _settings.Editor.HighlightWhitespace = HighlightWhitespace;
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
 

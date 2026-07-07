@@ -305,6 +305,7 @@ public partial class ShellWindow : Window
         // サイドバーの開閉に追従して列幅・スプリッターを切り替える
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
+        vm.Settings.Saved += ApplyHighlightWhitespaceToOpenEditorTabs;
         vm.Appearance.AppearanceChanged += ApplyAppearanceToOpenTabs;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;

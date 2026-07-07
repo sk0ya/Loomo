@@ -309,6 +309,7 @@ public partial class ShellWindow
             VimEnabled = _settings.Vim.Enabled,
             Visibility = Visibility.Collapsed
         };
+        control.Engine.Options.HighlightWhitespace = _settings.Editor.HighlightWhitespace;
         ApplyEditorAppearance(control);
         // 分割時もステータスバーを1つに集約する（sk0ya.Editor.Controls 1.0.5 の共有ステータスバー機能）。
         // 各コントロールの内蔵バーは隠れ、フォーカス中エディタの状態だけが下端の共有バーへ流れる。
@@ -374,6 +375,18 @@ public partial class ShellWindow
         foreach (var tab in _editorTabs)
             if (tab.IsRealized)
                 tab.Control.VimEnabled = _settings.Vim.Enabled;
+    }
+
+    private void ApplyHighlightWhitespaceToOpenEditorTabs()
+    {
+        // Options はコントロールの依存関係プロパティではないため、変更を即座に見せるには
+        // 明示的な再描画（InvalidateVisual）が要る。
+        foreach (var tab in _editorTabs)
+        {
+            if (!tab.IsRealized) continue;
+            tab.Control.Engine.Options.HighlightWhitespace = _settings.Editor.HighlightWhitespace;
+            tab.Control.InvalidateVisual();
+        }
     }
 
     /// <summary>

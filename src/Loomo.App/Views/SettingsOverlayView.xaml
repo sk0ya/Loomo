@@ -484,6 +484,12 @@
                                           ToolTip="有効/無効は開いているタブにも反映されます。">
                                     <TextBlock Text="Vim キーバインドを有効にする" TextWrapping="Wrap" />
                                 </CheckBox>
+
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.HighlightWhitespace}"
+                                          ToolTip="全角スペースと行末の余分な空白を背景色でハイライト表示します。開いているタブにも即時反映されます。">
+                                    <TextBlock Text="全角スペース・行末スペースをハイライトする" TextWrapping="Wrap" />
+                                </CheckBox>
                             </StackPanel>
 
                             <!-- ===== ターミナル（テーマは「外観」へ集約） ===== -->

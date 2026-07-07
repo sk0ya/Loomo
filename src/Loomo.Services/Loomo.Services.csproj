@@ -30,7 +30,8 @@
     <!-- 1.0.41: HTML/XMLタグ自動閉じ、gc/gccブロックコメント、autocmd拡張(InsertEnter/Leave/BufNewFile/BufLeave/BufWrite系)、
          数値削除レジスタ・読み取り専用レジスタ(. : %)、Exコマンドのマーク範囲/検索パターン再利用/:sort u、
          dH/yM/dLスクリーン相対モーション修正・gp/gP追加、C系コメント継続、コードレビュー由来の不具合修正 -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.42" />
+    <!-- 1.0.43: 全角スペース・行末スペースの検出とハイライト機能を追加 -->
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.43" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
          BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->
