@@ -91,6 +91,18 @@ internal static class DebugTargetResolver
             var p = Path.IsPathRooted(targetProgram) || root is null
                 ? targetProgram
                 : Path.GetFullPath(Path.Combine(root, targetProgram));
+
+            // 明示指定でも「ビルドしてから起動」は尊重する。以前はここで無条件に buildFirst を無視しており、
+            // チェックが ON でもビルドされないまま古い実行対象が起動される／削除済みで「見つかりません」に
+            // なるケースがあった。関連プロジェクトが分かる場合のみビルドする（分からなければ静かにスキップ、
+            // 従来どおり存在チェックのみ）。
+            if (buildFirst)
+            {
+                var proj = string.IsNullOrWhiteSpace(explicitProjectPath) ? FindProjectNear(p) : explicitProjectPath;
+                if (proj is not null && File.Exists(proj) && !await BuildAsync(terminal, session, proj))
+                    return null;
+            }
+
             if (File.Exists(p)) return p;
             session.Append(DebugOutputCategory.Important, $"指定された実行対象が見つかりません: {p}");
             return null;
@@ -153,6 +165,25 @@ internal static class DebugTargetResolver
                 .FirstOrDefault();
         }
         catch { return null; }
+    }
+
+    /// <summary>実行対象（<c>bin/Debug/&lt;tfm&gt;/App.dll</c> 等）の場所から親方向へ遡り、最初に見つかった
+    /// .csproj を返す（起動プロジェクト未選択で実行対象だけ明示指定されたときの、ビルド対象の推定用）。
+    /// 見つからなければ null（呼び出し側はビルドを静かにスキップする）。</summary>
+    private static string? FindProjectNear(string programPath)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(programPath);
+            for (var i = 0; i < 6 && dir is not null; i++)
+            {
+                var csproj = Directory.EnumerateFiles(dir, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+                if (csproj is not null) return csproj;
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+        catch { /* アクセス不能ディレクトリは無視。見つからなければビルドはスキップされる */ }
+        return null;
     }
 
     /// <summary>プロジェクトの <c>bin/Debug</c> 配下から <c>&lt;projName&gt;.dll</c> を新しい順に探す。</summary>

@@ -52,6 +52,13 @@ public interface IDebugService
     /// <summary>実行中のセッションを停止（disconnect/terminate）する。セッションが無ければ何もしない。</summary>
     Task StopAsync();
 
+    /// <summary>直前のセッションが自然終了（デバッグ対象の終了・アダプタの異常終了）した際の、アダプタプロセスの
+    /// 後始末（対象 dll/pdb のファイルハンドル解放）が完了するまで待つ。<see cref="StateChanged"/> で
+    /// <see cref="DebugSessionState.Terminated"/> が届いても後始末は非同期に進むため、この直後に再ビルドする
+    /// 呼び出し元（<c>DebugTargetResolver</c> 等）は、ビルドが「ファイル使用中」で失敗しないようこれを先に
+    /// 待つ必要がある。保留中の後始末が無ければ即座に完了する。</summary>
+    Task WaitForIdleAsync();
+
     /// <summary>あるソースファイルのブレークポイント（<b>1 始まり</b>の行＋任意の条件）をまとめて設定する。
     /// セッション開始前に呼ばれた分は記憶し、起動時の構成フェーズで送る。実行中の呼び出しは即時反映する。
     /// <see cref="DebugBreakpoint.Enabled"/> が false の行は送らない。</summary>

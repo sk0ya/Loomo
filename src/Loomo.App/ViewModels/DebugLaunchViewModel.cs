@@ -133,6 +133,10 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
             return;
         }
 
+        // 直前セッションが対象プログラムの自然終了で終わっていた場合、アダプタの後始末（dll/pdb のハンドル解放）
+        // が非同期に進んでいる可能性がある。先にビルドすると「ファイル使用中」で失敗し得るため、ここで待つ。
+        await _debug.WaitForIdleAsync();
+
         var program = await DebugTargetResolver.ResolveProgramAsync(
             _workspace, _terminal, _session, TargetProgram, BuildFirst, _profiles.SelectedProjectPath);
         if (program is null) return;
@@ -178,6 +182,8 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
         _session.IsTaskRunning = true;
         try
         {
+            // StartAsync 同様、直前セッションのアダプタ後始末が残っていれば「ファイル使用中」を避けるため待つ。
+            await _debug.WaitForIdleAsync();
             _session.StatusMessage = "ビルド中…";
             _session.Append(DebugOutputCategory.Important, $"ビルド: {Path.GetFileName(target)}");
             var result = await _terminal.RunCommandAsync(

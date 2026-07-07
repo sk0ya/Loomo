@@ -50,6 +50,10 @@ public sealed class NetcoredbgDebugService : IDebugService
     /// </summary>
     private TaskCompletionSource? _requestSent;
 
+    /// <summary>自然終了時のアダプタ後始末（<see cref="TearDownAdapterAsync"/>）を追跡するタスク。
+    /// <see cref="WaitForIdleAsync"/> が待つ対象。null/完了済みなら後始末は残っていない。</summary>
+    private Task? _teardownTask;
+
     public DebugSessionState State => _state;
 
     public bool IsAdapterAvailable => ExecutableResolver.IsOnPath(DebugAdapterCatalog.Netcoredbg.Executable);
@@ -317,7 +321,20 @@ public sealed class NetcoredbgDebugService : IDebugService
         // プログラムが自分で終了（terminated）してもアダプタは生き続ける。netcoredbg は対象の DLL/PDB を
         // 開いて握るため、残ると終了後に対象を再ビルドできない（「ファイル使用中」）。ここで確実に破棄する。
         // 対象は既に終了しているので disconnect は不要、破棄（プロセス kill）のみでよい。
-        if (client is not null) _ = TearDownAdapterAsync(client);
+        // ここでは await しない（Finish は DAP イベント受信スレッドから呼ばれ、ここをブロックしたくない）が、
+        // タスク自体は _teardownTask に残す。StateChanged で Terminated を見た直後に UI が「開始」を再度押して
+        // ビルドが走ると、まだ生きているこのプロセスが dll/pdb を握ったままでビルドが「ファイル使用中」で
+        // 失敗し得る（間欠的なデバッグ起動失敗の原因だった）。呼び出し元は再ビルド前に WaitForIdleAsync を待つ。
+        if (client is not null) _teardownTask = TearDownAdapterAsync(client);
+    }
+
+    /// <summary>直前セッションの自然終了に伴うアダプタ後始末が完了するまで待つ。保留が無ければ即座に返る。</summary>
+    public async Task WaitForIdleAsync()
+    {
+        if (_teardownTask is { } t)
+        {
+            try { await t; } catch { /* 後始末自体の失敗は無視（Dispose は例外を投げない設計） */ }
+        }
     }
 
     /// <summary>セッション自然終了後にアダプタプロセスを破棄してファイルハンドルを解放する。
