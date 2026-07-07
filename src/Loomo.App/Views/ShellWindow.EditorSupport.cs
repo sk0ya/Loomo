@@ -141,6 +141,19 @@ public partial class ShellWindow
             : "現在のサポート対象にピン留め";
     }
 
+    /// <summary>
+    /// EditorSupport ヘッダーの Web 系ボタン（発表モード／ブラウザで開く／エクスポート）の表示・非表示。
+    /// ピン留めはどの表示種別にも意味があるので常時表示のまま、この3つだけを現在の表示内容
+    /// （HTML／URI／ビジュアル／コードアウトライン）に応じて絞る（例：コード構造や画像・Hex・CSV グリッド
+    /// 表示中はブラウザで開く先や発表モードが無いので隠す）。
+    /// </summary>
+    private void UpdateEditorSupportHeaderButtons(bool showSlide, bool showOpenInBrowser, bool showExport)
+    {
+        EditorSupportSlideToggle.Visibility = showSlide ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportOpenInBrowserButton.Visibility = showOpenInBrowser ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportExportButton.Visibility = showExport ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>編集中の連続更新をまとめる（300ms デバウンスで <see cref="UpdateEditorSupportAsync"/>）。</summary>
     private void ScheduleEditorSupportUpdate()
     {
@@ -188,6 +201,7 @@ public partial class ShellWindow
         // （registry 外・Hex と同じ形）。専用 provider 解決の後・ビジュアル/Hex 判定より前で拾う。
         if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath))
         {
+            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             await UpdateCodeEditorSupportAsync(source, filePath);
             return;
         }
@@ -203,6 +217,7 @@ public partial class ShellWindow
             if (_editorSupportEditSubscribed.Add(visual))
                 visual.ContentEdited += EditorSupportVisual_ContentEdited;
 
+            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             ShowEditorSupportVisual(visual.GetOrCreateView());
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
             // ファイル直読み系（Image/Hex/Office 等）はエディタ本文を使わない。巨大バイナリを文字列化して
@@ -231,11 +246,15 @@ public partial class ShellWindow
         if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
         {
             // PDF・SVG・HTML 等はファイルをそのままブラウザへナビゲートする（本文には依存しない）。
+            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: true, showExport: false);
             title = uriProvider.DescribeTitle(filePath);
             uri = uriProvider.ResolveNavigationUri(filePath);
         }
         else if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
         {
+            // 発表モードは marp 文書（Markdown）にしか効かないので、Markdown 提供者のときだけ出す。
+            UpdateEditorSupportHeaderButtons(
+                showSlide: provider is MarkdownEditorSupport, showOpenInBrowser: true, showExport: true);
             title = htmlProvider.DescribeTitle(filePath);
             mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
 
@@ -259,6 +278,7 @@ public partial class ShellWindow
         else
         {
             // 手動表示中で対応プロバイダの無いファイル：案内だけ出す。
+            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             title = "Editor Support";
             html = MarkdownRenderer.RenderToHtml(
                 "## Editor Support\n\nこのファイルに対応するサポートはありません。",
