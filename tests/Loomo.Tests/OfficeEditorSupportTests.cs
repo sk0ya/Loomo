@@ -86,6 +86,18 @@ public class OfficeEditorSupportTests
     }
 
     [Fact]
+    public void Word_Markdownとして変換できる()
+    {
+        var path = CreateDocx("これはテスト段落です。");
+        try
+        {
+            var markdown = new WordEditorSupport(new AiSettings()).RenderMarkdown(path, text: "");
+            Assert.Equal("これはテスト段落です。\n", markdown);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void 壊れたファイルはExcelReaderが例外を投げる_UI側で握る()
     {
         // Reader は素直に例外を投げ、UI 側（ExcelEditorSupport.UpdateAsync）が握って案内を出す。

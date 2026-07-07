@@ -147,8 +147,10 @@ public static class ExcelSheetReader
 /// Word 文書（.docx）の読み取り専用プレビュー。Mammoth で意味的な HTML（見出し・段落・表・箇条書き・
 /// 画像は data URI で自己完結）へ変換し、EditorSupport ペインの WebView2 へ表示する。エディタ本文は
 /// 使わず、ファイルパスから直接読む（<see cref="UsesEditorText"/> = false）。表示専用で書き戻しはしない。
+/// <see cref="IEditorSupportMarkdownExportProvider"/> も実装し、同じ Mammoth 変換結果を
+/// <see cref="HtmlToMarkdownConverter"/> へ通して「Markdownとして保存」に応じる。
 /// </summary>
-public sealed class WordEditorSupport : IEditorSupportHtmlProvider
+public sealed class WordEditorSupport : IEditorSupportHtmlProvider, IEditorSupportMarkdownExportProvider
 {
     private readonly AiSettings _settings;
     private static readonly string[] Extensions = [".docx"];
@@ -167,15 +169,21 @@ public sealed class WordEditorSupport : IEditorSupportHtmlProvider
         var theme = _settings.Appearance.MarkdownPreviewTheme;
         try
         {
-            // ファイルをロックしないよう自前ストリーム経由で変換する。
-            using var stream = File.OpenRead(filePath);
-            var result = new Mammoth.DocumentConverter().ConvertToHtml(stream);
-            var body = OfficePreview.BodyStyle + "<div class=\"office-doc\">" + result.Value + "</div>";
+            var body = OfficePreview.BodyStyle + "<div class=\"office-doc\">" + ConvertToHtml(filePath) + "</div>";
             return MarkdownPage.BuildPage(body, DescribeTitle(filePath), theme);
         }
         catch (Exception ex)
         {
             return OfficePreview.ErrorPage(filePath, ex, theme);
         }
+    }
+
+    public string RenderMarkdown(string filePath, string text) => HtmlToMarkdownConverter.Convert(ConvertToHtml(filePath));
+
+    private static string ConvertToHtml(string filePath)
+    {
+        // ファイルをロックしないよう自前ストリーム経由で変換する。
+        using var stream = File.OpenRead(filePath);
+        return new Mammoth.DocumentConverter().ConvertToHtml(stream).Value;
     }
 }

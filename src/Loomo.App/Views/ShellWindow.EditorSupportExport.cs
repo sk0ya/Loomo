@@ -16,11 +16,16 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    /// <summary>エクスポートボタンのクリック：ドロップダウン（HTML/PDF）を開く。</summary>
+    /// <summary>エクスポートボタンのクリック：ドロップダウン（HTML/PDF/Markdown）を開く。</summary>
     private void OnExportEditorSupportClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button { ContextMenu: { } menu } button)
         {
+            // Markdown 保存は対応する提供者（Word 等）だけで意味を持つので、開くたびに現在の対象で判定する。
+            var filePath = _editorSupportSourceTab?.Control.FilePath;
+            ExportMarkdownMenuItem.IsEnabled = filePath is not null
+                && _editorSupports.Resolve(filePath) is IEditorSupportMarkdownExportProvider;
+
             menu.PlacementTarget = button;
             menu.Placement = PlacementMode.Bottom;
             menu.IsOpen = true;
@@ -93,6 +98,37 @@ public partial class ShellWindow
         catch (Exception ex)
         {
             ReportEditorSupportExportError("PDF", ex.Message);
+        }
+    }
+
+    /// <summary>現在のプレビューを Markdown ファイルとして保存する（対応提供者のみ、例：Word）。</summary>
+    private async void OnExportEditorSupportMarkdown(object sender, RoutedEventArgs e)
+    {
+        var source = _editorSupportSourceTab;
+        var filePath = source?.Control.FilePath;
+        if (source is null || filePath is null)
+            return;
+        if (_editorSupports.Resolve(filePath) is not IEditorSupportMarkdownExportProvider markdownProvider)
+            return;
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Markdownとして保存",
+            Filter = "Markdown ファイル (*.md)|*.md",
+            FileName = Path.GetFileNameWithoutExtension(filePath) + ".md",
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        var text = source.Control.Text;
+        try
+        {
+            var markdown = await Task.Run(() => markdownProvider.RenderMarkdown(filePath, text));
+            await File.WriteAllTextAsync(dialog.FileName, markdown, System.Text.Encoding.UTF8);
+        }
+        catch (Exception ex)
+        {
+            ReportEditorSupportExportError("Markdown", ex.Message);
         }
     }
 

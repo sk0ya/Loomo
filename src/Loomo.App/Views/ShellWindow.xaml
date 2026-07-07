@@ -757,6 +757,8 @@
                                 <ContextMenu>
                                     <MenuItem Header="HTMLとして保存…" Click="OnExportEditorSupportHtml" />
                                     <MenuItem Header="PDFとして保存…" Click="OnExportEditorSupportPdf" />
+                                    <MenuItem x:Name="ExportMarkdownMenuItem" Header="Markdownとして保存…"
+                                              Click="OnExportEditorSupportMarkdown" />
                                 </ContextMenu>
                             </Button.ContextMenu>
                             <Path Style="{StaticResource PaneActionIcon}"

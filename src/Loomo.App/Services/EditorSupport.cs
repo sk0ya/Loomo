@@ -63,6 +63,18 @@ public interface IEditorSupportIncrementalHtmlProvider : IEditorSupportHtmlProvi
 }
 
 /// <summary>
+/// プレビューの内容を Markdown テキストとしても書き出せる提供者（Word 等、見出し・表・箇条書きのような
+/// 意味構造を持つ文書）。EditorSupport のエクスポートから「Markdownとして保存」を有効にする。CSV/JSON の
+/// ような表・木構造の羅列にはあまり意味を持たないため、HTML/PDF（すべての <see cref="IEditorSupportHtmlProvider"/>
+/// で常時有効）とは別の任意実装インターフェースにしてある。
+/// </summary>
+public interface IEditorSupportMarkdownExportProvider : IEditorSupportProvider
+{
+    /// <summary>ファイルの内容を Markdown テキストへ変換する。</summary>
+    string RenderMarkdown(string filePath, string text);
+}
+
+/// <summary>
 /// ファイルそのものを EditorSupport ペインの WebView2 へ直接ナビゲートして表示する提供者
 /// （PDF・SVG・HTML 等、ブラウザが標準で開けるもの）。エディタ本文ではなくファイルパスを
 /// そのまま開くので、テキストの内容には依存しない（バイナリでもよい）。
