@@ -257,7 +257,7 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
                     <TextBlock Text="Loomo" VerticalAlignment="Center"
                                FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" Margin="0,0,12,0" />
-                    <ComboBox Height="24"
+                    <ComboBox MinHeight="24"
                               ItemsSource="{Binding Workspaces.Workspaces}"
                               SelectedItem="{Binding Workspaces.SelectedWorkspace, Mode=TwoWay}"
                               ToolTip="ワークスペース（右クリックでパスコピー・エクスプローラで開く・削除）"
@@ -849,11 +849,11 @@
                                   StrokeLineJoin="Round"
                                   Data="M10.8,4.8 A4.5,4.5 0 1 0 9.6,9.7 M10.8,4.8 V1.2 H7.2" />
                         </Button>
-                        <TextBox x:Name="BrowserAddressBox" Grid.Column="3" Height="28" Margin="6,0"
+                        <TextBox x:Name="BrowserAddressBox" Grid.Column="3" MinHeight="28" Margin="6,0"
                                  VerticalContentAlignment="Center"
                                  KeyDown="OnBrowserAddressKeyDown" />
                         <Button Grid.Column="4" Content="Go" Style="{StaticResource FlatButton}"
-                                Padding="10,4" Height="28" Click="OnBrowserGo" />
+                                Padding="10,4" MinHeight="28" Click="OnBrowserGo" />
                     </Grid>
                     <Grid x:Name="BrowserContentHost" />
                 </DockPanel>
@@ -922,7 +922,7 @@
                             <!-- コミット一覧の絞り込み（メッセージ・作者・ハッシュ・ref を部分一致）。
                                  git は再実行せず、読み込み済みの一覧をクライアント側でフィルタする。 -->
                             <Grid Width="200" Margin="8,0,0,0" VerticalAlignment="Center">
-                                <TextBox x:Name="LogFilterBox" Height="24" Padding="6,0"
+                                <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center"
                                          Text="{Binding GitSession.LogFilter, UpdateSourceTrigger=PropertyChanged, Delay=150}" />
                                 <TextBlock Text="🔍 コミットを絞り込み" Foreground="{DynamicResource FgDim}"

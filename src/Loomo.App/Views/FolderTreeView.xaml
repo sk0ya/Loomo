@@ -104,7 +104,7 @@
                               StrokeLineJoin="Round"
                               Data="M9,2 L14,7 L11,8 L8,11 L5,8 L8,5 Z M5,11 L2,14 M2,2 L14,14" />
                     </Button>
-                    <ComboBox Height="24"
+                    <ComboBox MinHeight="24"
                               ItemsSource="{Binding RootOptions}"
                               SelectedItem="{Binding SelectedRootOption, Mode=TwoWay}"
                               DisplayMemberPath="Label"
