@@ -1,26 +1,15 @@
 using sk0ya.Loomo.App.Services;
 using System;
-using sk0ya.Loomo.App.Services;
 using System.Collections.Generic;
-using sk0ya.Loomo.App.Services;
 using System.Collections.Specialized;
-using sk0ya.Loomo.App.Services;
 using System.Globalization;
-using sk0ya.Loomo.App.Services;
 using System.Linq;
-using sk0ya.Loomo.App.Services;
 using System.Windows;
-using sk0ya.Loomo.App.Services;
 using System.Windows.Controls;
-using sk0ya.Loomo.App.Services;
 using System.Windows.Documents;
-using sk0ya.Loomo.App.Services;
 using System.Windows.Input;
-using sk0ya.Loomo.App.Services;
 using System.Windows.Media;
-using sk0ya.Loomo.App.Services;
 using System.Windows.Threading;
-using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
