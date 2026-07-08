@@ -110,6 +110,7 @@ public sealed class AiSettingsStore
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
         public PersistedVim? Vim { get; set; }
+        public PersistedEditor? Editor { get; set; }
         public PersistedAppearance? Appearance { get; set; }
         public PersistedKeybindings? Keybindings { get; set; }
 
@@ -124,6 +125,7 @@ public sealed class AiSettingsStore
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
             Vim = PersistedVim.From(s.Vim),
+            Editor = PersistedEditor.From(s.Editor),
             Appearance = PersistedAppearance.From(s.Appearance),
             Keybindings = PersistedKeybindings.From(s.Keybindings),
         };
@@ -140,6 +142,7 @@ public sealed class AiSettingsStore
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
             Vim?.ApplyTo(s.Vim);
+            Editor?.ApplyTo(s.Editor); // 旧設定（null）は in-memory 既定を維持
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
         }
@@ -219,6 +222,50 @@ public sealed class AiSettingsStore
         public void ApplyTo(VimSettings v)
         {
             v.Enabled = Enabled;
+        }
+    }
+
+    // ===== 埋め込みエディタの表示設定。平文で保持（秘匿情報ではない）。 =====
+
+    private sealed class PersistedEditor
+    {
+        public bool HighlightWhitespace { get; set; } = true;
+        public bool ShowLineNumbers { get; set; } = true;
+        public bool RelativeLineNumbers { get; set; }
+        public bool HighlightCurrentLine { get; set; } = true;
+        public bool WordWrap { get; set; }
+        public bool ShowMinimap { get; set; }
+        public bool ShowIndentGuides { get; set; }
+        public bool AutoClosePairs { get; set; }
+        public int TabWidth { get; set; } = 2;
+        public bool UseSpacesForTab { get; set; } = true;
+
+        public static PersistedEditor From(EditorSettings e) => new()
+        {
+            HighlightWhitespace = e.HighlightWhitespace,
+            ShowLineNumbers = e.ShowLineNumbers,
+            RelativeLineNumbers = e.RelativeLineNumbers,
+            HighlightCurrentLine = e.HighlightCurrentLine,
+            WordWrap = e.WordWrap,
+            ShowMinimap = e.ShowMinimap,
+            ShowIndentGuides = e.ShowIndentGuides,
+            AutoClosePairs = e.AutoClosePairs,
+            TabWidth = e.TabWidth,
+            UseSpacesForTab = e.UseSpacesForTab,
+        };
+
+        public void ApplyTo(EditorSettings e)
+        {
+            e.HighlightWhitespace = HighlightWhitespace;
+            e.ShowLineNumbers = ShowLineNumbers;
+            e.RelativeLineNumbers = RelativeLineNumbers;
+            e.HighlightCurrentLine = HighlightCurrentLine;
+            e.WordWrap = WordWrap;
+            e.ShowMinimap = ShowMinimap;
+            e.ShowIndentGuides = ShowIndentGuides;
+            e.AutoClosePairs = AutoClosePairs;
+            e.TabWidth = TabWidth > 0 ? TabWidth : 2;
+            e.UseSpacesForTab = UseSpacesForTab;
         }
     }
 

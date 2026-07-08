@@ -490,6 +490,43 @@
                                           ToolTip="全角スペースと行末の余分な空白を背景色でハイライト表示します。開いているタブにも即時反映されます。">
                                     <TextBlock Text="全角スペース・行末スペースをハイライトする" TextWrapping="Wrap" />
                                 </CheckBox>
+
+                                <Separator Margin="0,16,0,10" />
+                                <CheckBox IsChecked="{Binding Settings.ShowLineNumbers}">
+                                    <TextBlock Text="行番号を表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.RelativeLineNumbers}"
+                                          ToolTip="カーソル行からの相対行数で表示します（Vimキーバインド利用時のジャンプ数の目安に便利です）。">
+                                    <TextBlock Text="相対行番号を使う" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0" IsChecked="{Binding Settings.HighlightCurrentLine}">
+                                    <TextBlock Text="カーソル行をハイライトする" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.WordWrap}"
+                                          ToolTip="OFF（既定）では長い行を折り返さず横スクロールで表示します。">
+                                    <TextBlock Text="長い行を折り返して表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0" IsChecked="{Binding Settings.ShowMinimap}">
+                                    <TextBlock Text="ミニマップを表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0" IsChecked="{Binding Settings.ShowIndentGuides}">
+                                    <TextBlock Text="インデントガイドを表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+
+                                <Separator Margin="0,16,0,10" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="タブ幅（インデント幅）" Margin="0,0,0,3" />
+                                <TextBox Text="{Binding Settings.TabWidth, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas" />
+                                <CheckBox Margin="0,8,0,0" IsChecked="{Binding Settings.UseSpacesForTab}">
+                                    <TextBlock Text="Tabキーでスペースを挿入する（OFFでタブ文字を挿入）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.AutoClosePairs}"
+                                          ToolTip="( [ { や &quot; ' を入力すると対応する閉じ記号を自動挿入します。">
+                                    <TextBlock Text="括弧・引用符を自動で閉じる" TextWrapping="Wrap" />
+                                </CheckBox>
                             </StackPanel>
 
                             <!-- ===== ターミナル（テーマは「外観」へ集約） ===== -->

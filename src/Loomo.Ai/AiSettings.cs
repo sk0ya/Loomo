@@ -209,12 +209,44 @@ public sealed class VimSettings
     public bool Enabled { get; set; } = false;
 }
 
-/// <summary>埋め込みエディタの表示に関する設定（Vim キーバインドの有無とは独立）。</summary>
+/// <summary>埋め込みエディタの表示に関する設定（Vim キーバインドの有無とは独立）。
+/// ここに並ぶ真偽値は <c>Editor.Core.Config.VimOptions</c> の項目を Loomo 設定画面から
+/// 触れるようにしたもので、適用は <c>VimEditorControl.ExecuteCommand("set ...")</c>（Vim の
+/// <c>:set</c> 相当）を経由する（設定画面のチェックボックスを ON/OFF する体験になる）。既定値は
+/// ライブラリ既定と一致させてあり、未設定ユーザーの見た目は変わらない。</summary>
 public sealed class EditorSettings
 {
     /// <summary>全角スペース・行末スペースのハイライト表示（sk0ya.Editor.Controls 1.0.43）。
     /// エディタ既定と同じく既定は有効。</summary>
     public bool HighlightWhitespace { get; set; } = true;
+
+    /// <summary>行番号ガターの表示（Vim <c>number</c>）。既定 ON。</summary>
+    public bool ShowLineNumbers { get; set; } = true;
+
+    /// <summary>相対行番号表示（Vim <c>relativenumber</c>）。Vim キーバインド利用時に
+    /// ジャンプ数の目安になる。既定 OFF。</summary>
+    public bool RelativeLineNumbers { get; set; }
+
+    /// <summary>カーソル行の背景ハイライト（Vim <c>cursorline</c>）。既定 ON。</summary>
+    public bool HighlightCurrentLine { get; set; } = true;
+
+    /// <summary>長い行の折り返し表示（Vim <c>wrap</c>）。OFF（既定）では横スクロール。</summary>
+    public bool WordWrap { get; set; }
+
+    /// <summary>コード全体を縮小表示するミニマップ（Vim <c>minimap</c>）。既定 OFF。</summary>
+    public bool ShowMinimap { get; set; }
+
+    /// <summary>インデントの深さを示す縦線（Vim <c>indentguides</c>）。既定 OFF。</summary>
+    public bool ShowIndentGuides { get; set; }
+
+    /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
+    public bool AutoClosePairs { get; set; }
+
+    /// <summary>インデント幅（Vim <c>tabstop</c>/<c>shiftwidth</c>）。既定 2（ライブラリ既定と同じ）。</summary>
+    public int TabWidth { get; set; } = 2;
+
+    /// <summary>Tab入力・自動インデントでスペースを使うか（false = タブ文字、Vim <c>expandtab</c>）。既定 ON。</summary>
+    public bool UseSpacesForTab { get; set; } = true;
 }
 
 /// <summary>キーボードショートカットのユーザー上書き。

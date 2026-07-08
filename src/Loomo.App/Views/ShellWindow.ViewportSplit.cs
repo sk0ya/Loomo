@@ -309,7 +309,7 @@ public partial class ShellWindow
             VimEnabled = _settings.Vim.Enabled,
             Visibility = Visibility.Collapsed
         };
-        control.Engine.Options.HighlightWhitespace = _settings.Editor.HighlightWhitespace;
+        ApplyEditorOptions(control);
         ApplyEditorAppearance(control);
         // 分割時もステータスバーを1つに集約する（sk0ya.Editor.Controls 1.0.5 の共有ステータスバー機能）。
         // 各コントロールの内蔵バーは隠れ、フォーカス中エディタの状態だけが下端の共有バーへ流れる。
@@ -377,17 +377,39 @@ public partial class ShellWindow
                 tab.Control.VimEnabled = _settings.Vim.Enabled;
     }
 
-    private void ApplyHighlightWhitespaceToOpenEditorTabs()
+    private void ApplyEditorSettingsToOpenEditorTabs()
     {
-        // Options はコントロールの依存関係プロパティではないため、変更を即座に見せるには
-        // 明示的な再描画（InvalidateVisual）が要る。
         foreach (var tab in _editorTabs)
         {
             if (!tab.IsRealized) continue;
-            tab.Control.Engine.Options.HighlightWhitespace = _settings.Editor.HighlightWhitespace;
-            tab.Control.InvalidateVisual();
+            ApplyEditorOptions(tab.Control);
         }
     }
+
+    /// <summary>設定画面のエディタ項目（<see cref="AiSettings.Editor"/>）を1つの
+    /// <see cref="VimEditorControl"/> に適用する。真偽値の大半は <c>VimOptions</c> 直下のフィールドで
+    /// コントロール側の依存関係プロパティではないため、<c>ExecuteCommand("set ...")</c>（Vim の
+    /// <c>:set</c> 相当）経由で適用する — エンジンが発する <c>OptionsChanged</c> イベントが内部の
+    /// 再描画（UpdateAll）を呼ぶので、生成直後・タブ実体化後のどちらでも即座に反映される。
+    /// <see cref="EditorSettings.HighlightWhitespace"/> だけは <c>:set</c> に無い専用フィールドのため
+    /// 直接代入＋<see cref="UIElement.InvalidateVisual"/> で反映する。</summary>
+    private void ApplyEditorOptions(VimEditorControl control)
+    {
+        var e = _settings.Editor;
+        control.Engine.Options.HighlightWhitespace = e.HighlightWhitespace;
+        control.InvalidateVisual();
+        ApplySetOption(control, "number", e.ShowLineNumbers);
+        ApplySetOption(control, "relativenumber", e.RelativeLineNumbers);
+        ApplySetOption(control, "cursorline", e.HighlightCurrentLine);
+        ApplySetOption(control, "wrap", e.WordWrap);
+        ApplySetOption(control, "minimap", e.ShowMinimap);
+        ApplySetOption(control, "indentguides", e.ShowIndentGuides);
+        ApplySetOption(control, "pairs", e.AutoClosePairs);
+        control.SetTabWidth(e.TabWidth, e.UseSpacesForTab);
+    }
+
+    private static void ApplySetOption(VimEditorControl control, string name, bool value)
+        => control.ExecuteCommand($"set {(value ? "" : "no")}{name}");
 
     /// <summary>
     /// エディタの配色は設定で選んだプリセット（<see cref="AppearanceSettings.EditorTheme"/>）を

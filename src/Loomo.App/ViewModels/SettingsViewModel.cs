@@ -45,6 +45,15 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private bool _vimEnabled;
     [ObservableProperty] private bool _highlightWhitespace;
+    [ObservableProperty] private bool _showLineNumbers;
+    [ObservableProperty] private bool _relativeLineNumbers;
+    [ObservableProperty] private bool _highlightCurrentLine;
+    [ObservableProperty] private bool _wordWrap;
+    [ObservableProperty] private bool _showMinimap;
+    [ObservableProperty] private bool _showIndentGuides;
+    [ObservableProperty] private bool _autoClosePairs;
+    [ObservableProperty] private int _tabWidth;
+    [ObservableProperty] private bool _useSpacesForTab;
     [ObservableProperty] private string _status = "";
 
     /// <summary>モデルをダウンロード中か。</summary>
@@ -102,6 +111,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         WarmupEnabled = _settings.WarmupEnabled;
         VimEnabled = _settings.Vim.Enabled;
         HighlightWhitespace = _settings.Editor.HighlightWhitespace;
+        ShowLineNumbers = _settings.Editor.ShowLineNumbers;
+        RelativeLineNumbers = _settings.Editor.RelativeLineNumbers;
+        HighlightCurrentLine = _settings.Editor.HighlightCurrentLine;
+        WordWrap = _settings.Editor.WordWrap;
+        ShowMinimap = _settings.Editor.ShowMinimap;
+        ShowIndentGuides = _settings.Editor.ShowIndentGuides;
+        AutoClosePairs = _settings.Editor.AutoClosePairs;
+        TabWidth = _settings.Editor.TabWidth;
+        UseSpacesForTab = _settings.Editor.UseSpacesForTab;
         _suppressPersist = false;
     }
 
@@ -125,6 +143,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnMaxTokensChanged(int value) => Persist();
     partial void OnVimEnabledChanged(bool value) => Persist();
     partial void OnHighlightWhitespaceChanged(bool value) => Persist();
+    partial void OnShowLineNumbersChanged(bool value) => Persist();
+    partial void OnRelativeLineNumbersChanged(bool value) => Persist();
+    partial void OnHighlightCurrentLineChanged(bool value) => Persist();
+    partial void OnWordWrapChanged(bool value) => Persist();
+    partial void OnShowMinimapChanged(bool value) => Persist();
+    partial void OnShowIndentGuidesChanged(bool value) => Persist();
+    partial void OnAutoClosePairsChanged(bool value) => Persist();
+    partial void OnTabWidthChanged(int value) => Persist();
+    partial void OnUseSpacesForTabChanged(bool value) => Persist();
     partial void OnWarmupEnabledChanged(bool value)
     {
         if (_suppressPersist) return;
@@ -158,6 +185,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.WarmupEnabled = WarmupEnabled;
         _settings.Vim.Enabled = VimEnabled;
         _settings.Editor.HighlightWhitespace = HighlightWhitespace;
+        _settings.Editor.ShowLineNumbers = ShowLineNumbers;
+        _settings.Editor.RelativeLineNumbers = RelativeLineNumbers;
+        _settings.Editor.HighlightCurrentLine = HighlightCurrentLine;
+        _settings.Editor.WordWrap = WordWrap;
+        _settings.Editor.ShowMinimap = ShowMinimap;
+        _settings.Editor.ShowIndentGuides = ShowIndentGuides;
+        _settings.Editor.AutoClosePairs = AutoClosePairs;
+        _settings.Editor.TabWidth = TabWidth > 0 ? TabWidth : 2;
+        _settings.Editor.UseSpacesForTab = UseSpacesForTab;
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
 
