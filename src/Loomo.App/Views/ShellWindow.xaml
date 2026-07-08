@@ -1161,7 +1161,7 @@
                                 VerticalAlignment="Top" />
                     </Border>
                     <!-- AIセッション一覧：左のアイコンのクリックで開閉する折りたたみサイドバー（既定は非表示）。 -->
-                    <Border DockPanel.Dock="Left" Width="220"
+                    <Border DockPanel.Dock="Left" Width="280"
                             BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0"
                             DataContext="{Binding Sessions}"
                             Visibility="{Binding IsOpen, Converter={StaticResource BoolToVis}}">

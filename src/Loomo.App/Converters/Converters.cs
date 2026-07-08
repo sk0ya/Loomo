@@ -164,3 +164,20 @@ public sealed class InverseBoolToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>日時を「今日→時刻のみ／今年→月日／それ以外→年月日」の簡潔な表記へ変換する
+/// （AIセッション一覧など、カード内で日時を目立たせすぎない用途向け）。</summary>
+public sealed class RelativeDateConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not DateTime dt) return string.Empty;
+        var now = DateTime.Now;
+        if (dt.Date == now.Date) return dt.ToString("HH:mm", culture);
+        if (dt.Date == now.Date.AddDays(-1)) return "昨日 " + dt.ToString("HH:mm", culture);
+        return dt.Year == now.Year ? dt.ToString("M/d", culture) : dt.ToString("yyyy/M/d", culture);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

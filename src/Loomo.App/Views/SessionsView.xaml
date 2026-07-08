@@ -4,19 +4,77 @@
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
     Background="{DynamicResource BgAlt}">
 
+    <UserControl.Resources>
+        <!-- 一覧カード：既定は縁取りのみ、ホバーで背景と縁をアクセント寄りに持ち上げる。
+             削除ボタンの表示/非表示もこの Border の IsMouseOver を基準にする。 -->
+        <Style x:Key="SessionCard" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Bg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Margin" Value="8,4" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- カード内の削除ボタン：常設・控えめなグレー文字、ホバーでだけ赤みを帯びる。 -->
+        <Style x:Key="SessionDeleteButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#FFE57373" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <DockPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="AIセッション" />
 
-        <Button DockPanel.Dock="Top" Margin="10,2,10,8" Content="＋ 新規セッション"
+        <Button DockPanel.Dock="Top" Margin="10,4,10,8" Padding="10,7"
                 Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
-                Command="{Binding NewCommand}" />
+                Command="{Binding NewCommand}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <TextBlock Text="＋" FontWeight="Bold" Margin="0,0,6,0" />
+                <TextBlock Text="新規セッション" />
+            </StackPanel>
+        </Button>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0,6,8">
+        <!-- セッションが一件も無いときの案内。一覧が空のとき以外は隠す。 -->
+        <TextBlock DockPanel.Dock="Top" Text="まだ保存されたセッションはありません" TextWrapping="Wrap"
+                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs12}"
+                   HorizontalAlignment="Center" TextAlignment="Center" Margin="20,24,20,0">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Sessions.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,0,8">
             <ItemsControl ItemsSource="{Binding Sessions}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Margin="4,3" CornerRadius="4" Background="{DynamicResource Bg}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                        <Border Style="{StaticResource SessionCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -29,41 +87,26 @@
                                         CommandParameter="{Binding}">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border x:Name="b" Background="Transparent" Padding="8,6">
-                                                <StackPanel HorizontalAlignment="Left">
+                                            <Border Background="Transparent" Padding="10,8">
+                                                <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                                               FontSize="{DynamicResource Fs13}"
                                                                Foreground="{DynamicResource Fg}" />
-                                                    <TextBlock Text="{Binding UpdatedAt, StringFormat='yyyy/MM/dd HH:mm'}"
-                                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="0,2,0,0" />
+                                                    <TextBlock Text="{Binding UpdatedAt, Converter={StaticResource RelativeDate}}"
+                                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                               Margin="0,3,0,0" />
                                                 </StackPanel>
                                             </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Button.Template>
                                 </Button>
 
                                 <!-- 削除 -->
-                                <Button Grid.Column="1" Content="🗑" Width="34" FontSize="{DynamicResource Fs13}" Cursor="Hand"
-                                        ToolTip="削除" Foreground="{DynamicResource FgDim}"
+                                <Button Grid.Column="1" Content="✕" Width="30" VerticalAlignment="Center"
+                                        FontSize="{DynamicResource Fs11}" ToolTip="削除"
+                                        Style="{StaticResource SessionDeleteButton}"
                                         Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                        CommandParameter="{Binding}">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="b" Background="Transparent">
-                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="b" Property="Background" Value="#FF6E1E1E" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
+                                        CommandParameter="{Binding}" />
                             </Grid>
                         </Border>
                     </DataTemplate>
