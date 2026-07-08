@@ -309,6 +309,8 @@ public partial class ShellWindow : Window
         vm.Appearance.AppearanceChanged += ApplyAppearanceToOpenTabs;
         vm.Tabs.TabActivated += OnSidebarTabActivated;
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
+        vm.Tabs.TabCloseOthersRequested += OnSidebarTabCloseOthersRequested;
+        vm.Tabs.TabCloseAllRequested += OnSidebarTabCloseAllRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
         InitializeDebugWiring();

@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 
@@ -39,6 +41,10 @@ public sealed partial class TabEntryViewModel : ObservableObject
 
     /// <summary>プレビュータブ（FolderTree の単クリックで開き、編集するまで確定しない）。タイトルを斜体で表示する。</summary>
     [ObservableProperty] private bool _isPreview;
+
+    /// <summary>実ファイルの絶対パス（Editor タブのみ。Untitled／仮想ドキュメントは null）。
+    /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
+    [ObservableProperty] private string? _filePath;
 }
 
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
@@ -52,6 +58,10 @@ public sealed partial class TabsViewModel : ObservableObject
 
     public event EventHandler<TabEntryViewModel>? TabActivated;
     public event EventHandler<TabEntryViewModel>? TabCloseRequested;
+    /// <summary>「他のタブを閉じる」：同じ Kind（Terminal/Editor/Browser）内の他タブを閉じる。</summary>
+    public event EventHandler<TabEntryViewModel>? TabCloseOthersRequested;
+    /// <summary>「すべて閉じる」：同じ Kind 内の全タブを閉じる。</summary>
+    public event EventHandler<TabEntryViewModel>? TabCloseAllRequested;
 
     public TabsViewModel()
         : this(new TabIconService())
@@ -108,7 +118,10 @@ public sealed partial class TabsViewModel : ObservableObject
             TabEntryKind.Editor,
             title,
             isActive,
-            _icons.GetFileIcon(path));
+            _icons.GetFileIcon(path))
+        {
+            FilePath = RealFilePath(path),
+        };
 
         var previewIndex = IndexOfPreviewEditorTab();
         if (previewIndex >= 0)
@@ -130,7 +143,13 @@ public sealed partial class TabsViewModel : ObservableObject
 
         tab.Title = title;
         tab.Icon = _icons.GetFileIcon(path);
+        tab.FilePath = RealFilePath(path);
     }
+
+    /// <summary>AddEditorTab/UpdateEditorTab の path 引数は Untitled=null・仮想ドキュメント=タイトル文字列・
+    /// 実ファイル=絶対パスを兼用しているため、絶対パスの場合だけ実ファイルとして扱う。</summary>
+    private static string? RealFilePath(string? path)
+        => path is { Length: > 0 } p && Path.IsPathRooted(p) ? p : null;
 
     /// <summary>エディタタブのプレビュー表示（斜体）を切り替える。</summary>
     public void SetEditorTabPreview(Guid id, bool isPreview)
@@ -235,5 +254,33 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is not null)
             TabCloseRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void CloseOtherTabs(TabEntryViewModel? tab)
+    {
+        if (tab is not null)
+            TabCloseOthersRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void CloseAllTabs(TabEntryViewModel? tab)
+    {
+        if (tab is not null)
+            TabCloseAllRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void CopyPath(TabEntryViewModel? tab)
+    {
+        if (tab?.FilePath is { Length: > 0 } path)
+            Clipboard.SetText(path);
+    }
+
+    [RelayCommand]
+    private void RevealInExplorer(TabEntryViewModel? tab)
+    {
+        if (tab?.FilePath is { Length: > 0 } path && File.Exists(path))
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
     }
 }

@@ -66,6 +66,47 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>サイドバー Tabs の「他のタブを閉じる」：同じ Kind の他タブをすべて閉じる。</summary>
+    private async void OnSidebarTabCloseOthersRequested(object? sender, TabEntryViewModel tab)
+    {
+        switch (tab.Kind)
+        {
+            case TabEntryKind.Terminal:
+                foreach (var id in _terminalTabs.Where(t => t.Id != tab.Id).Select(t => t.Id).ToList())
+                    await CloseTerminalTabAsync(id);
+                break;
+            case TabEntryKind.Editor:
+                foreach (var id in _editorTabs.Where(t => t.Id != tab.Id).Select(t => t.Id).ToList())
+                    CloseEditorTab(id);
+                break;
+            case TabEntryKind.Browser:
+                foreach (var id in _browserTabs.Where(t => t.Id != tab.Id).Select(t => t.Id).ToList())
+                    await CloseBrowserTabAsync(id);
+                break;
+        }
+    }
+
+    /// <summary>サイドバー Tabs の「すべて閉じる」：同じ Kind の全タブを閉じる
+    /// （各 CloseXxxTab は最後の1枚を閉じると空の代替タブを自動生成する）。</summary>
+    private async void OnSidebarTabCloseAllRequested(object? sender, TabEntryViewModel tab)
+    {
+        switch (tab.Kind)
+        {
+            case TabEntryKind.Terminal:
+                foreach (var id in _terminalTabs.Select(t => t.Id).ToList())
+                    await CloseTerminalTabAsync(id);
+                break;
+            case TabEntryKind.Editor:
+                foreach (var id in _editorTabs.Select(t => t.Id).ToList())
+                    CloseEditorTab(id);
+                break;
+            case TabEntryKind.Browser:
+                foreach (var id in _browserTabs.Select(t => t.Id).ToList())
+                    await CloseBrowserTabAsync(id);
+                break;
+        }
+    }
+
     private void UpdateTerminalTab(TerminalTab tab, string? title)
     {
         _vm.Tabs.UpdateTerminalTab(tab.Id, title);

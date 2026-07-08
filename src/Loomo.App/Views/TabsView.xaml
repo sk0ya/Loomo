@@ -31,6 +31,33 @@
         <DataTemplate x:Key="TabEntryTemplate">
             <Border x:Name="TabBorder" Height="28" Margin="0,1" CornerRadius="4"
                     Background="Transparent" MouseDown="OnTabMiddleClick">
+                <!-- 右クリック：ContextMenu は視覚ツリーから切り離されるため、Tag へ
+                     TabsViewModel（UserControl の DataContext）を積んで PlacementTarget.Tag 経由で参照する -->
+                <Border.Tag>
+                    <Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                </Border.Tag>
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="閉じる"
+                                  Command="{Binding PlacementTarget.Tag.CloseTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <MenuItem Header="他のタブを閉じる"
+                                  Command="{Binding PlacementTarget.Tag.CloseOtherTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <MenuItem Header="すべて閉じる"
+                                  Command="{Binding PlacementTarget.Tag.CloseAllTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <Separator Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}" />
+                        <MenuItem Header="パスをコピー"
+                                  Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.CopyPathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <MenuItem Header="エクスプローラーで表示"
+                                  Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.RevealInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <Grid>
                     <!-- アクティブタブのアクセントバー -->
                     <Border x:Name="ActiveBar" Width="3" CornerRadius="2" Margin="1,4"
