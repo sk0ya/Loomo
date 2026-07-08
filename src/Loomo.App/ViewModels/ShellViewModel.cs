@@ -8,7 +8,6 @@ public enum SidebarPanel
 {
     Explorer,
     Tabs,
-    Sessions,
     Settings,
     Appearance,
     Git,
@@ -118,15 +117,6 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar のタブ一覧アイコン。</summary>
     [RelayCommand]
     private void ShowTabs() => Activate(SidebarPanel.Tabs);
-
-    /// <summary>ActivityBar の AIセッションアイコン。開くときに保存済みセッション一覧を遅延読込する。</summary>
-    [RelayCommand]
-    private void ShowSessions()
-    {
-        Activate(SidebarPanel.Sessions);
-        if (ActivePanel == SidebarPanel.Sessions && IsSidebarVisible)
-            Sessions.EnsureLoaded();
-    }
 
     /// <summary>ActivityBar の設定（歯車）アイコン。中央オーバーレイの設定画面を外観カテゴリで開く
     /// （同じカテゴリで開いていれば閉じる＝トグル）。開くときにローカルのモデル一覧を取得する。</summary>

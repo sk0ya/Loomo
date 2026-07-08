@@ -7,7 +7,8 @@ using sk0ya.Loomo.Core.Observability;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>AIセッション履歴パネルの ViewModel。保存済み会話の一覧・新規・復元・削除。</summary>
+/// <summary>AIセッション履歴パネルの ViewModel。保存済み会話の一覧・新規・復元・削除。
+/// AIペインのチャット横に開閉できるサイドバーとして表示される（<see cref="IsOpen"/>）。</summary>
 public sealed partial class SessionsViewModel : ObservableObject
 {
     private readonly ConversationStore _store;
@@ -16,7 +17,10 @@ public sealed partial class SessionsViewModel : ObservableObject
 
     public ObservableCollection<SessionSummary> Sessions { get; } = new();
 
-    /// <summary>初回の一覧読込を済ませたか。Sessions パネルを開くまで遅延する。</summary>
+    /// <summary>サイドバー（AIペイン内の一覧）を開いているか。</summary>
+    [ObservableProperty] private bool _isOpen;
+
+    /// <summary>初回の一覧読込を済ませたか。サイドバーを開くまで遅延する。</summary>
     private bool _loaded;
 
     public SessionsViewModel(ConversationStore store, AiBarViewModel aiBar, TraceReader traces)
@@ -29,12 +33,20 @@ public sealed partial class SessionsViewModel : ObservableObject
         _store.Changed += OnStoreChanged;
     }
 
-    /// <summary>Sessions パネルが初めて開かれたときに一覧を読み込む（以降は Changed で追従）。</summary>
+    /// <summary>サイドバーが初めて開かれたときに一覧を読み込む（以降は Changed で追従）。</summary>
     public void EnsureLoaded()
     {
         if (_loaded) return;
         _loaded = true;
         Refresh();
+    }
+
+    /// <summary>AIペインヘッダーの開閉ボタン。開くときに一覧を遅延読込する。</summary>
+    [RelayCommand]
+    private void ToggleOpen()
+    {
+        IsOpen = !IsOpen;
+        if (IsOpen) EnsureLoaded();
     }
 
     private void OnStoreChanged()

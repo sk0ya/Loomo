@@ -247,8 +247,6 @@
                             Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
                             Command="{Binding ShowGitCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション"
-                            Command="{Binding ShowSessionsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
                             Command="{Binding ShowPegboardCommand}" />
                 </StackPanel>
@@ -502,7 +500,7 @@
                     <ColumnDefinition x:Name="WingColumn" Width="Auto" />            <!-- 袖（ミニチュア）：両モード共通 -->
                 </Grid.ColumnDefinitions>
 
-                <!-- Sidebar : Explorer / Tabs / Sessions / Settings を ActivePanel で切替 -->
+                <!-- Sidebar : Explorer / Tabs / Settings を ActivePanel で切替 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="0">
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
@@ -512,8 +510,6 @@
                                     Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Tabs}" />
                     <views:GitPanelView DataContext="{Binding GitPanel}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Git}" />
-                    <views:SessionsView DataContext="{Binding Sessions}"
-                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Sessions}" />
                     <!-- 設定／外観はサイドバーではなく中央オーバーレイ（SettingsOverlayView）で開く。 -->
                     <views:PegboardView DataContext="{Binding Pegboard}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Pegboard}" />
@@ -1158,6 +1154,19 @@
                             </Button.Visibility>
                         </Button>
                     </DockPanel>
+                    <!-- AIセッション：チャット欄の左上に常設した ActivityBar 風アイコン。クリックで一覧を開閉する。 -->
+                    <Border DockPanel.Dock="Left" Background="{DynamicResource ActivityBarBg}">
+                        <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション一覧"
+                                Command="{Binding Sessions.ToggleOpenCommand}"
+                                VerticalAlignment="Top" />
+                    </Border>
+                    <!-- AIセッション一覧：左のアイコンのクリックで開閉する折りたたみサイドバー（既定は非表示）。 -->
+                    <Border DockPanel.Dock="Left" Width="220"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0"
+                            DataContext="{Binding Sessions}"
+                            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVis}}">
+                        <views:SessionsView DataContext="{Binding}" />
+                    </Border>
                     <views:AiBarView x:Name="AiBarHost" DataContext="{Binding AiBar}" />
                 </DockPanel>
 

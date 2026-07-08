@@ -510,7 +510,6 @@ public partial class ShellWindow
         SidebarPanel.Explorer => "エクスプローラ",
         SidebarPanel.Search => "検索",
         SidebarPanel.Tabs => "タブ一覧",
-        SidebarPanel.Sessions => "AIセッション",
         SidebarPanel.Git => "Gitパネル",
         SidebarPanel.Pegboard => "ペグボード",
         _ => panel.ToString()

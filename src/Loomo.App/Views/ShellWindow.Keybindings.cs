@@ -60,7 +60,7 @@ public partial class ShellWindow
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null),
             ["sidebar.search"] = () => _vm.ShowSearchCommand.Execute(null),
             ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null),
-            ["sidebar.sessions"] = () => _vm.ShowSessionsCommand.Execute(null),
+            ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null),
             ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null),
             ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null),
             ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null),

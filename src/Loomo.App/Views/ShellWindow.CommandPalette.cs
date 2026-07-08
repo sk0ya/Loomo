@@ -444,8 +444,6 @@ public partial class ShellWindow
             Sc("sidebar.search"), "sidebar.search"));
         list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null),
             Sc("sidebar.tabs"), "sidebar.tabs"));
-        list.Add(new("サイドバー", "AIセッション", () => _vm.ShowSessionsCommand.Execute(null),
-            Sc("sidebar.sessions"), "sidebar.sessions"));
         list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null),
             Sc("sidebar.git"), "sidebar.git"));
         list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null),
@@ -457,6 +455,10 @@ public partial class ShellWindow
         list.Add(new("サイドバー", "キーボード設定", () => _vm.ShowKeyboardSettingsCommand.Execute(null)));
         list.Add(new("サイドバー", "エクスプローラで現在のファイルを選択（同期）", RevealActiveFileInFolderTree,
             Sc("explorer.revealActiveFile"), "explorer.revealActiveFile"));
+
+        // AI
+        list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null),
+            Sc("sidebar.sessions"), "sidebar.sessions"));
 
         // ワークスペース
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive))
