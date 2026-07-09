@@ -319,7 +319,7 @@ public partial class ShellWindow
             Child = new TextBlock
             {
                 Text = PaneLabel(kind),
-                FontSize = isOverview ? 12 : 11,
+                FontSize = UiFontManager.Scaled(isOverview ? 12 : 11),
                 Margin = new Thickness(8, 3, 8, 3),
                 Foreground = Brushes.White,
             },

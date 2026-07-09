@@ -257,13 +257,16 @@ public sealed partial class AppearanceViewModel : ObservableObject
     }
 
     /// <summary>アプリ UI の基準フォントサイズ：選択を即時適用＆永続化する。DynamicResource 参照のため
-    /// 開いている画面へその場で反映される（エディタ／ターミナルの個別フォント設定とは連動しない）。</summary>
+    /// 開いている画面へその場で反映される（エディタ／ターミナルの個別フォント設定とは連動しない）。
+    /// 袖／俯瞰カードの名札のようにコードビハインドで <see cref="UiFontManager.Scaled"/> を使う箇所は
+    /// DynamicResource が効かないため、<see cref="AppearanceChanged"/> でホストに組み直しを促す。</summary>
     partial void OnSelectedFontSizeChanged(FontSizeChoice value)
     {
         if (value is null || _settings.Appearance.UiFontSize == value.Size) return;
         _settings.Appearance.UiFontSize = value.Size;
         _UiFontManager.Apply(value.Size);
         Persist("文字サイズを変更しました");
+        AppearanceChanged?.Invoke();
     }
 
     partial void OnEditorFontFamilyChanged(string value)
