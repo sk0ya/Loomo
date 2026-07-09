@@ -446,15 +446,18 @@ public partial class ShellWindow
         _ => EditorTheme.Dracula,
     };
 
-    /// <summary>エディタへ配色テーマとフォント（設定値、未指定なら触らない）を適用する。</summary>
+    /// <summary>エディタへ配色テーマとフォント（設定値、未指定なら触らない）を適用する。
+    /// <see cref="VimEditorControl"/> は WPF 標準の <c>FontFamily</c>/<c>FontSize</c> を描画に使わず、
+    /// 専用の <see cref="VimEditorControl.EditorFontFamily"/>/<see cref="VimEditorControl.EditorFontSize"/>
+    /// （内部で <c>Canvas.UpdateFont</c> を呼ぶ）を経由しないとキャンバス描画に反映されない。</summary>
     private void ApplyEditorAppearance(VimEditorControl control)
     {
         control.SetTheme(BuildEditorTheme());
         var ap = _settings.Appearance;
         if (!string.IsNullOrWhiteSpace(ap.EditorFontFamily))
-            control.FontFamily = new FontFamily(ap.EditorFontFamily);
+            control.EditorFontFamily = ap.EditorFontFamily;
         if (ap.EditorFontSize > 0)
-            control.FontSize = ap.EditorFontSize;
+            control.EditorFontSize = ap.EditorFontSize;
     }
 
     /// <summary>ターミナルへ配色（背景/文字色/ANSIパレット）とフォントを適用する。
