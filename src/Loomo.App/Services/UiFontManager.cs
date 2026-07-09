@@ -28,11 +28,14 @@ public sealed class UiFontManager
     public const double MaxSize = 28;
 
     /// <summary>Typography.xaml のトークン（キー→等倍px）。トークンを増やすときは両方に足す。
-    /// 小数の px はキー名の <c>.</c> を <c>_</c> に置き換える（例: 11.5px → <c>Fs11_5</c>）。</summary>
+    /// 小数の px はキー名の <c>.</c> を <c>_</c> に置き換える（例: 11.5px → <c>Fs11_5</c>）。
+    /// <c>Fs*</c> 以外にも、中の文字がフォントサイズに追随する必要のあるレイアウト幅
+    /// （<c>TrailHourLabelW</c> 等）を同じ表で同倍率にスケールする。</summary>
     private static readonly (string Key, double Base)[] Tokens =
     {
         ("Fs8", 8), ("Fs9", 9), ("Fs10", 10), ("Fs11", 11), ("Fs11_5", 11.5),
         ("Fs12", 12), ("Fs12_5", 12.5), ("Fs13", 13), ("Fs14", 14), ("Fs15", 15), ("Fs20", 20),
+        ("TrailHourLabelW", 38),
     };
 
     /// <summary>直近に適用した倍率（基準サイズ / <see cref="ReferenceSize"/>）。

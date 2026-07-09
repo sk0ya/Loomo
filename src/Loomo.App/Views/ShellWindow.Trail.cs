@@ -767,8 +767,10 @@ public partial class ShellWindow
     /// <summary>ドット1個のスロット幅。XAML のドット Button の幅と揃える。</summary>
     private const double TrailDotWidth = 20;
 
-    /// <summary>時間帯の先頭ドットに前置する時刻ラベル枠の幅。XAML の HourTick Border の幅と揃える。</summary>
-    private const double TrailHourLabelWidth = 32;
+    /// <summary>時間帯の先頭ドットに前置する時刻ラベル枠の幅。XAML の HourTick Border は
+    /// TrailHourLabelW トークン（UiFontManager がフォントサイズと同倍率でスケール）を参照するため、
+    /// ここも <see cref="UiFontManager.Scaled"/> で同じ倍率を掛けて揃える。</summary>
+    private static double TrailHourLabelWidth => UiFontManager.Scaled(38);
 
     /// <summary>ドット列の左端から index 番目のスロットの左端までの累積幅。時間帯の先頭ドットは
     /// 左に時刻ラベル枠（幅 <see cref="TrailHourLabelWidth"/>）が前置されてスロットが広くなるため、

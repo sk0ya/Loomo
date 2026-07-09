@@ -1489,14 +1489,15 @@
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
                                     <!-- 時間帯の先頭ドットにだけ、左に区切り（|）＋時刻ラベル（HH:00）を前置する。
-                                         非境界では Collapsed で幅ゼロ。幅32は ShellWindow.Trail.cs の
+                                         非境界では Collapsed で幅ゼロ。幅は TrailHourLabelW トークン（UiFontManager が
+                                         フォントサイズと同倍率でスケール）を ShellWindow.Trail.cs の
                                          TrailHourLabelWidth（TrailSlotOffset が積む実効幅）と揃える（§27.7.3）。 -->
-                                    <Border Width="32" Height="26"
+                                    <Border Width="{DynamicResource TrailHourLabelW}" Height="26"
                                             Visibility="{Binding StartsNewHour, Converter={StaticResource BoolToVis}}">
                                         <StackPanel Orientation="Horizontal">
                                             <Rectangle Width="1" Margin="0,3" VerticalAlignment="Stretch"
                                                        Fill="{DynamicResource FgDim}" />
-                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
+                                            <TextBlock Text="{Binding HourBandLabel}" FontSize="{DynamicResource Fs12}" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource Fg}"
                                                        VerticalAlignment="Center" Margin="3,0,0,0"
                                                        TextOptions.TextFormattingMode="Ideal" />

@@ -22,4 +22,9 @@
     <sys:Double x:Key="Fs15">15</sys:Double>
     <sys:Double x:Key="Fs20">20</sys:Double>
 
+    <!-- ===== 文字サイズに追随させるレイアウト幅トークン =====
+         フォントサイズではないが、中の文字（HH:00 等）が収まるよう同じ倍率で
+         スケールする必要がある固定幅。UiFontManager.Apply が Fs* と同様に上書きする。 -->
+    <sys:Double x:Key="TrailHourLabelW">38</sys:Double>
+
 </ResourceDictionary>
