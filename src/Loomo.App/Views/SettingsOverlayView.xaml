@@ -489,6 +489,22 @@
                                           ToolTip="( [ { や &quot; ' を入力すると対応する閉じ記号を自動挿入します。">
                                     <TextBlock Text="括弧・引用符を自動で閉じる" TextWrapping="Wrap" />
                                 </CheckBox>
+
+                                <Separator Margin="0,16,0,10" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="画像貼り付け先フォルダ" Margin="0,0,0,3" />
+                                <TextBox Text="{Binding Settings.ImagePasteDirectory, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas"
+                                         ToolTip="Markdownファイルへ画像を貼り付けたときの保存先です。開いているMarkdownファイル自身のディレクトリからの相対パス（空で同じディレクトリ）。{filename}/{date}/{time}/{datetime} が使えます。" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="画像ファイル名" Margin="0,10,0,3" />
+                                <TextBox Text="{Binding Settings.ImagePasteFileName, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas"
+                                         ToolTip="保存する画像ファイル名（拡張子込み）です。{filename}/{date}/{time}/{datetime}/{seq} が使えます。既存ファイルと重複する場合は自動で連番が付きます。" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="代替テキスト（空でファイル名）" Margin="0,10,0,3" />
+                                <TextBox Text="{Binding Settings.ImagePasteAltText, UpdateSourceTrigger=LostFocus}"
+                                         FontFamily="Cascadia Mono, Consolas"
+                                         ToolTip="挿入される ![alt](path) の alt 部分です。空なら保存ファイル名（拡張子なし）を使います。" />
+                                <TextBlock Style="{StaticResource FieldHint}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="Markdownファイルを開いた状態でクリップボードの画像を貼り付けると、上記の設定で保存されリンクが挿入されます。" />
                             </StackPanel>
 
                             <!-- ===== ターミナル（テーマは「外観」へ集約） ===== -->

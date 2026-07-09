@@ -406,6 +406,12 @@ public partial class ShellWindow
         ApplySetOption(control, "indentguides", e.ShowIndentGuides);
         ApplySetOption(control, "pairs", e.AutoClosePairs);
         control.SetTabWidth(e.TabWidth, e.UseSpacesForTab);
+        control.ImagePasteOptions = new Editor.Core.Editing.ImagePasteOptions
+        {
+            Directory = e.ImagePasteDirectory,
+            FileName = e.ImagePasteFileName,
+            AltText = e.ImagePasteAltText
+        };
     }
 
     private static void ApplySetOption(VimEditorControl control, string name, bool value)

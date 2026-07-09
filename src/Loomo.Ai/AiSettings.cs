@@ -247,6 +247,19 @@ public sealed class EditorSettings
 
     /// <summary>Tab入力・自動インデントでスペースを使うか（false = タブ文字、Vim <c>expandtab</c>）。既定 ON。</summary>
     public bool UseSpacesForTab { get; set; } = true;
+
+    /// <summary>Markdownへ画像を貼り付けたときの保存先ディレクトリ（Markdownファイル自身のディレクトリからの
+    /// 相対パス）。{filename}/{date}/{time}/{datetime} プレースホルダ対応。既定は <c>images</c>
+    /// （<c>Editor.Core.Editing.ImagePasteOptions</c> のライブラリ既定と同じ、sk0ya.Editor.Controls 1.0.45）。</summary>
+    public string ImagePasteDirectory { get; set; } = "images";
+
+    /// <summary>Markdownへ画像を貼り付けたときの保存ファイル名（拡張子込み）。
+    /// {filename}/{date}/{time}/{datetime}/{seq} プレースホルダ対応。既定は <c>{filename}-{datetime}.png</c>。</summary>
+    public string ImagePasteFileName { get; set; } = "{filename}-{datetime}.png";
+
+    /// <summary>貼り付け画像の Markdown リンクに入れる代替テキスト（<c>![alt](path)</c> の alt）。
+    /// 空なら保存ファイル名（拡張子なし）を使う。</summary>
+    public string ImagePasteAltText { get; set; } = "";
 }
 
 /// <summary>キーボードショートカットのユーザー上書き。

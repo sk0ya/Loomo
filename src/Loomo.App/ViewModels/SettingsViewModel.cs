@@ -54,6 +54,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _autoClosePairs;
     [ObservableProperty] private int _tabWidth;
     [ObservableProperty] private bool _useSpacesForTab;
+    [ObservableProperty] private string _imagePasteDirectory = "";
+    [ObservableProperty] private string _imagePasteFileName = "";
+    [ObservableProperty] private string _imagePasteAltText = "";
     [ObservableProperty] private string _status = "";
 
     // --- 安全設計（設計書 §10） ---
@@ -130,6 +133,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         AutoClosePairs = _settings.Editor.AutoClosePairs;
         TabWidth = _settings.Editor.TabWidth;
         UseSpacesForTab = _settings.Editor.UseSpacesForTab;
+        ImagePasteDirectory = _settings.Editor.ImagePasteDirectory;
+        ImagePasteFileName = _settings.Editor.ImagePasteFileName;
+        ImagePasteAltText = _settings.Editor.ImagePasteAltText;
         _suppressPersist = false;
     }
 
@@ -190,6 +196,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnAutoClosePairsChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
     partial void OnUseSpacesForTabChanged(bool value) => Persist();
+    partial void OnImagePasteDirectoryChanged(string value) => Persist();
+    partial void OnImagePasteFileNameChanged(string value) => Persist();
+    partial void OnImagePasteAltTextChanged(string value) => Persist();
     partial void OnWarmupEnabledChanged(bool value)
     {
         if (_suppressPersist) return;
@@ -232,6 +241,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.Editor.AutoClosePairs = AutoClosePairs;
         _settings.Editor.TabWidth = TabWidth > 0 ? TabWidth : 2;
         _settings.Editor.UseSpacesForTab = UseSpacesForTab;
+        _settings.Editor.ImagePasteDirectory = ImagePasteDirectory.Trim();
+        _settings.Editor.ImagePasteFileName = ImagePasteFileName.Trim();
+        _settings.Editor.ImagePasteAltText = ImagePasteAltText.Trim();
         _settings.Safety.AutoApprove = AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
 
