@@ -266,10 +266,26 @@ public partial class ShellWindow
 
             // Markdown→HTML 変換は正規表現主体で重く、大きいファイルでは打鍵を固める。バックグラウンド
             // スレッドで変換し、結果だけを UI スレッドへ戻して反映する（ユーザー操作を妨げない）。
-            if (reuseLoadedPage)
-                body = await Task.Run(() => incremental!.RenderBody(filePath, text));
-            else
-                html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
+            // 変換例外はここで受け止める：このメソッドは ActivateEditorTab 等から fire-and-forget
+            // （`_ = SwitchEditorSupportSourceAsync(...)`）で呼ばれるため、投げっぱなしにすると
+            // タスクが黙って死に、ペインが直前の内容（別タブ・別ワークスペースのものすら）に
+            // 固まったまま以降の切替・編集でも一切更新されなくなる。
+            try
+            {
+                if (reuseLoadedPage)
+                    body = await Task.Run(() => incremental!.RenderBody(filePath, text));
+                else
+                    html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
+            }
+            catch (Exception ex)
+            {
+                body = null;
+                pageKey = null; // 壊れたページを以降の本文差し替え判定の「同一鍵」に使わせない
+                html = MarkdownRenderer.RenderToHtml(
+                    $"## プレビューエラー\n\n変換中に例外が発生しました。\n\n```\n{ex}\n```",
+                    title,
+                    _settings.Appearance.MarkdownPreviewTheme);
+            }
 
             // 変換中に新しい要求が来ていれば、そちらが最新を描くのでこのコールは降りる。
             if (seq != _editorSupportRenderSeq)
