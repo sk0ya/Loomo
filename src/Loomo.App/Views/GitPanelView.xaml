@@ -185,7 +185,7 @@
                            TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
                            FontFamily="Cascadia Mono, Consolas">
                     <TextBlock.Style>
-                        <Style TargetType="TextBlock">
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsDirectory}" Value="True">
                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -196,7 +196,7 @@
                 </TextBlock>
                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                     <TextBlock.Style>
-                        <Style TargetType="TextBlock">
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                             <Setter Property="FontWeight" Value="Normal" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsDirectory}" Value="True">
@@ -349,7 +349,7 @@
                     <TextBlock Text="メッセージ（Ctrl+Enter でコミット）" Foreground="{DynamicResource FgDim}"
                                Margin="9,7,0,0" IsHitTestVisible="False" VerticalAlignment="Top">
                         <TextBlock.Style>
-                            <Style TargetType="TextBlock">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <!-- 通常は CommitMessage が空のときだけ表示 -->
                                 <Setter Property="Visibility"
                                         Value="{Binding CommitMessage, Converter={StaticResource EmptyToVis}}" />
