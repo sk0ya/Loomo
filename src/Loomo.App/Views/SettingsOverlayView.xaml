@@ -32,34 +32,6 @@
             </StackPanel>
         </DataTemplate>
 
-        <!-- モデル入手ポップアップを開くアイコントグル（モデル欄の右隣）。 -->
-        <Style x:Key="AcquireToggle" TargetType="ToggleButton">
-            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FontSize" Value="{DynamicResource Fs15}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- 左ナビのカテゴリ項目（全幅・ホバー/選択でハイライト）。 -->
         <Style x:Key="CategoryNavItem" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -151,58 +123,48 @@
                             <!-- ===== AI ===== -->
                             <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Ai}">
                                 <TextBlock Style="{StaticResource SectionTitle}" Text="モデル" Margin="0,0,0,4" />
-                                <!-- モデル選択 ＋ 入手アイコン（右隣）。入手UIはポップアップに畳む。 -->
+                                <!-- モデル選択：配置済み＋未取得の Hugging Face カタログ候補を1本の ComboBox にまとめる
+                                     （未取得候補は先頭に ⬇ が付く）。右の「📂」は別の場所にあるモデルフォルダの手動追加用。 -->
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <ComboBox Grid.Column="0" IsEditable="True" IsReadOnly="True"
-                                              ItemsSource="{Binding Settings.AvailableModels}"
+                                              ItemsSource="{Binding Settings.ModelChoices}"
+                                              DisplayMemberPath="Label"
+                                              TextSearch.TextPath="Name"
                                               IsDropDownOpen="{Binding Settings.ModelDropDownOpen, Mode=TwoWay}"
                                               Text="{Binding Settings.Model, UpdateSourceTrigger=PropertyChanged}"
-                                              ToolTip="ローカルに配置済みの ONNX モデルから選びます。" />
-                                    <ToggleButton x:Name="AcquireToggle" Grid.Column="1"
-                                                  Style="{StaticResource AcquireToggle}"
-                                                  Width="30" Margin="6,0,0,0" Content="＋"
-                                                  ToolTip="モデルを入手（ダウンロード／別の場所から追加）" />
-                                    <Popup IsOpen="{Binding IsChecked, ElementName=AcquireToggle}" StaysOpen="False"
-                                           AllowsTransparency="True" PlacementTarget="{Binding ElementName=AcquireToggle}"
-                                           Placement="Bottom" HorizontalOffset="-262" VerticalOffset="2">
-                                        <Border Width="300" Background="{DynamicResource Panel}"
-                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                CornerRadius="6" Padding="12" Margin="0,0,10,10">
-                                            <Border.Effect>
-                                                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.35" />
-                                            </Border.Effect>
-                                            <StackPanel>
-                                                <TextBlock Style="{StaticResource FieldLabel}" Text="Hugging Face から入手"
-                                                           Margin="0,0,0,4" />
-                                                <ComboBox ItemsSource="{Binding Settings.DownloadableModels}"
-                                                          SelectedItem="{Binding Settings.SelectedDownloadModel, Mode=TwoWay}"
-                                                          DisplayMemberPath="DisplayName"
-                                                          IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}"
-                                                          ToolTip="Hugging Face から取得する ONNX（CPU int4・ORT-GenAI 互換）モデルを選びます。" />
-                                                <Button Style="{StaticResource WideSecondaryButton}" Content="⬇  ダウンロード"
-                                                        ToolTip="選択したモデル（CPU int4）を Hugging Face からダウンロードして追加します。"
-                                                        Command="{Binding Settings.DownloadModelCommand}"
-                                                        IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}" />
-                                                <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
-                                                             Value="{Binding Settings.DownloadProgress, Mode=OneWay}"
-                                                             Visibility="{Binding Settings.IsDownloading, Converter={StaticResource BoolToVis}}" />
-                                                <Separator Margin="0,10,0,0" />
-                                                <Button Style="{StaticResource WideSecondaryButton}" Content="📂  別の場所から追加…"
-                                                        ToolTip="任意の場所にある ONNX モデルフォルダ（genai_config.json を含む）を選んで追加します。"
-                                                        Command="{Binding Settings.BrowseModelCommand}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </Popup>
+                                              ToolTip="ローカルに配置済み、または Hugging Face から取得できるモデルから選びます（⬇ は未取得）。" />
+                                    <Button Grid.Column="1" Style="{StaticResource CaptionButton}"
+                                            Width="30" Margin="6,0,0,0" Content="📂"
+                                            ToolTip="任意の場所にある ONNX モデルフォルダ（genai_config.json を含む）を選んで追加します。"
+                                            Command="{Binding Settings.BrowseModelCommand}" />
                                 </Grid>
+
+                                <!-- 選択中モデルが配置済み：フォルダパスを表示。 -->
                                 <TextBlock Text="{Binding Settings.ModelPath, StringFormat='📁 {0}'}"
+                                           Visibility="{Binding Settings.SelectedModelIsInstalled, Converter={StaticResource BoolToVis}}"
                                            TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Settings.ModelPath}"
                                            Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                            Margin="2,5,0,0" />
+
+                                <!-- 選択中モデルが未取得：その場でダウンロードできる案内を表示。 -->
+                                <StackPanel Visibility="{Binding Settings.SelectedModelIsInstalled, Converter={StaticResource InverseBoolToVis}}"
+                                            Margin="0,6,0,0">
+                                    <TextBlock Text="⬇ 未取得です。ダウンロードするとこのモデルに切り替わります。"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                               TextWrapping="Wrap" Margin="2,0,0,6" />
+                                    <Button Style="{StaticResource WideSecondaryButton}" Content="⬇  ダウンロード"
+                                            ToolTip="選択したモデル（CPU int4）を Hugging Face からダウンロードして追加します。"
+                                            Command="{Binding Settings.DownloadModelCommand}"
+                                            IsEnabled="{Binding Settings.IsDownloading, Converter={StaticResource InverseBool}}" />
+                                    <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
+                                                 Value="{Binding Settings.DownloadProgress, Mode=OneWay}"
+                                                 Visibility="{Binding Settings.IsDownloading, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="最大出力トークン" />
                                 <TextBox Text="{Binding Settings.MaxTokens, UpdateSourceTrigger=PropertyChanged}" />

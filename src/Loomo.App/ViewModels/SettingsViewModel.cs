@@ -56,17 +56,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _useSpacesForTab;
     [ObservableProperty] private string _status = "";
 
-    /// <summary>モデルをダウンロード中か。</summary>
-    [ObservableProperty] private bool _isDownloading;
-
-    /// <summary>ダウンロード進捗（0–100、不明時は不定表示用に -1）。</summary>
-    [ObservableProperty] private double _downloadProgress;
-
     // --- 安全設計（設計書 §10） ---
     [ObservableProperty] private bool _autoApprove;
     [ObservableProperty] private bool _restrictToWorkspaceRoot;
 
-    /// <summary>エンドポイントから取得した利用可能モデルの一覧（選択肢）。</summary>
+    /// <summary>ローカルに配置済みのモデルフォルダ名の一覧。</summary>
     public ObservableCollection<string> AvailableModels { get; } = new();
 
     /// <summary>モデル一覧を取得中か。</summary>
@@ -75,11 +69,26 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>モデル選択ドロップダウンを開いているか（XAML の IsDropDownOpen と双方向バインド）。</summary>
     [ObservableProperty] private bool _modelDropDownOpen;
 
-    /// <summary>ダウンロード可能なモデルの選択肢（Hugging Face のカタログ）。</summary>
-    public ObservableCollection<DownloadableModel> DownloadableModels { get; } =
-        new(ModelDownloadService.Catalog);
+    /// <summary>モデル選択欄の1候補。ローカル配置済み（<see cref="Download"/> が null）と、
+    /// 未取得の Hugging Face カタログ候補（<see cref="IsInstalled"/> が false）の両方を表す。
+    /// 両者を同じ一覧に混在させ、ダウンロード用の別 ComboBox を持たない設計にするための型。</summary>
+    public sealed record ModelChoice(string Name, string Label, bool IsInstalled, DownloadableModel? Download);
 
-    /// <summary>ダウンロードボタンで取得する対象モデル。既定は Qwen3-4B GGUF Q4_K_M。</summary>
+    /// <summary>モデル選択欄に出す選択肢：ローカル配置済み＋未取得のカタログ候補を1本にまとめたもの。</summary>
+    public ObservableCollection<ModelChoice> ModelChoices { get; } = new();
+
+    /// <summary>現在の <see cref="Model"/> がローカルに配置済みか。false なら未ダウンロード
+    /// （フォルダパス表示の代わりにダウンロード案内を出す）。</summary>
+    [ObservableProperty] private bool _selectedModelIsInstalled = true;
+
+    /// <summary>ダウンロード中か。</summary>
+    [ObservableProperty] private bool _isDownloading;
+
+    /// <summary>ダウンロード進捗（0–100、不明時は不定表示用に -1）。</summary>
+    [ObservableProperty] private double _downloadProgress;
+
+    /// <summary>ダウンロードボタンで取得する対象モデル。<see cref="Model"/> が未取得のカタログ候補を
+    /// 指しているときに <see cref="RefreshModelChoices"/> が追従させる。既定は Qwen3-4B GGUF Q4_K_M。</summary>
     [ObservableProperty] private DownloadableModel _selectedDownloadModel =
         ModelDownloadService.Default;
 
@@ -96,6 +105,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadLocalFields();
+        RefreshModelChoices();
     }
 
     public void SyncProvider(AiProvider provider) { }
@@ -123,6 +133,33 @@ public sealed partial class SettingsViewModel : ObservableObject
         _suppressPersist = false;
     }
 
+    /// <summary>ローカル配置済みモデル（<see cref="AvailableModels"/>）と未取得のカタログ候補
+    /// （<see cref="ModelDownloadService.Catalog"/>）を1本の一覧にまとめ直す。フォルダ名が重複する
+    /// カタログ候補（＝既にダウンロード済み）は候補側を出さない。一覧を作り直した後、現在の
+    /// <see cref="Model"/> に対応する選択状態（インストール済みか／ダウンロード対象）も更新する。</summary>
+    private void RefreshModelChoices()
+    {
+        var installed = new HashSet<string>(AvailableModels, StringComparer.OrdinalIgnoreCase);
+        ModelChoices.Clear();
+        foreach (var name in AvailableModels)
+            ModelChoices.Add(new ModelChoice(name, name, IsInstalled: true, Download: null));
+        foreach (var m in ModelDownloadService.Catalog)
+            if (!installed.Contains(m.FolderName))
+                ModelChoices.Add(new ModelChoice(m.FolderName, $"⬇ {m.DisplayName}", IsInstalled: false, Download: m));
+        UpdateSelectedModelStatus();
+    }
+
+    /// <summary>現在の <see cref="Model"/> が <see cref="ModelChoices"/> のどれに対応するかを見て、
+    /// <see cref="SelectedModelIsInstalled"/>（フォルダパス表示 vs ダウンロード案内の切替）と
+    /// <see cref="SelectedDownloadModel"/>（ダウンロードボタンの対象）を追従させる。</summary>
+    private void UpdateSelectedModelStatus()
+    {
+        var match = ModelChoices.FirstOrDefault(c => string.Equals(c.Name, Model, StringComparison.OrdinalIgnoreCase));
+        SelectedModelIsInstalled = match?.IsInstalled ?? true;
+        if (match?.Download is { } download)
+            SelectedDownloadModel = download;
+    }
+
     // 「保存」ボタンは廃止。各項目の変更はその場で共有 AiSettings へ反映し、ファイルへ即永続化する。
     partial void OnModelChanged(string value)
     {
@@ -137,6 +174,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 _suppressPersist = false;
             }
         }
+        UpdateSelectedModelStatus();
         Persist();
     }
     partial void OnModelPathChanged(string value) => Persist();
@@ -255,9 +293,11 @@ public sealed partial class SettingsViewModel : ObservableObject
                     Model = previous;
             }
 
+            RefreshModelChoices();
+
             if (AvailableModels.Count == 0)
             {
-                Status = "ローカルにモデルが見つかりませんでした。「ダウンロード」または「別の場所から追加」で用意してください。";
+                Status = "ローカルにモデルが見つかりませんでした。下の一覧からダウンロード、または「📂」で別の場所から追加してください。";
             }
             else
             {
@@ -324,6 +364,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var name = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
         if (!string.IsNullOrEmpty(name) && !AvailableModels.Contains(name))
             AvailableModels.Add(name);
+        RefreshModelChoices();
         if (!string.IsNullOrEmpty(name))
             Model = name;
         Status = $"モデルフォルダを設定しました: {folder}";
@@ -361,6 +402,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             if (!string.IsNullOrEmpty(name))
             {
                 if (!AvailableModels.Contains(name)) AvailableModels.Add(name);
+                RefreshModelChoices();
                 Model = name;
             }
             Status = $"モデルのダウンロードが完了しました: {dir}";
