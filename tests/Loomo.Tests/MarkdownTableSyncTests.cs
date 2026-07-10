@@ -91,6 +91,39 @@ public class MarkdownTableSyncTests
     }
 
     [Fact]
+    public void InsertTableAt_AfterNonBlankLine_AddsBlankSeparators()
+    {
+        var lines = Lines("前の段落\n次の段落");
+        var result = MarkdownTableSync.InsertTableAt(lines, caretLine: 0, "| a |\n|---|");
+
+        Assert.Equal(new[] { "前の段落", "", "| a |", "|---|", "", "次の段落" }, result);
+    }
+
+    [Fact]
+    public void InsertTableAt_OnBlankLine_ReplacesIt()
+    {
+        var lines = Lines("前の段落\n\n次の段落");
+        var result = MarkdownTableSync.InsertTableAt(lines, caretLine: 1, "| a |\n|---|");
+
+        // 空行のカーソル行はテーブルに置き換わり、前後に空行が補われる。
+        Assert.Equal(new[] { "前の段落", "", "| a |", "|---|", "", "次の段落" }, result);
+    }
+
+    [Fact]
+    public void InsertTableAt_EmptyDocument_InsertsTableOnly()
+    {
+        var result = MarkdownTableSync.InsertTableAt(Lines(""), caretLine: 0, "| a |\n|---|");
+        Assert.Equal(new[] { "| a |", "|---|" }, result);
+    }
+
+    [Fact]
+    public void InsertTableAt_AtLastLine_NoTrailingBlank()
+    {
+        var result = MarkdownTableSync.InsertTableAt(Lines("末尾の行"), caretLine: 0, "| a |\n|---|");
+        Assert.Equal(new[] { "末尾の行", "", "| a |", "|---|" }, result);
+    }
+
+    [Fact]
     public void Serialize_DropsTrailingEmptyRowsAndColumns()
     {
         // グリッドの余白（末尾の空行・空列）は出力しない。

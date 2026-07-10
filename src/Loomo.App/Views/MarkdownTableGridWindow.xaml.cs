@@ -15,10 +15,11 @@ using VGrid.VimEngine;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// Markdown テーブルを VGrid のグリッド（<see cref="TsvEditorControl"/>）で編集するモーダルウィンドウ。
+/// Markdown テーブルを VGrid のグリッド（<see cref="TsvEditorControl"/>）で編集・新規作成するモーダルウィンドウ。
 /// 開くときに <see cref="MarkdownTableRegion"/> の行列をグリッドへ流し込み、閉じるときに編集後の行列を
 /// <see cref="ResultRows"/> として公開する（呼び元が Markdown へ再生成して本文へ反映する）。
 /// 「反映して閉じる」/ ✕ で <see cref="Apply"/>=true、「キャンセル」で false。
+/// 新規作成（挿入）は <see cref="Insert"/> — 空グリッドで開き、呼び元がカーソル位置へ挿入する。
 /// </summary>
 public partial class MarkdownTableGridWindow : Window
 {
@@ -50,6 +51,28 @@ public partial class MarkdownTableGridWindow : Window
         Window owner, MarkdownTableRegion region, AppTheme theme)
     {
         var window = new MarkdownTableGridWindow(region, theme) { Owner = owner };
+        window.ShowDialog();
+        return window.Apply ? window.ResultRows : null;
+    }
+
+    /// <summary>
+    /// 空のグリッドでテーブル新規作成ウィンドウを開く。反映が選ばれたら入力後の行列を返す（キャンセル時は null）。
+    /// 1 行目がヘッダとして扱われる（<see cref="MarkdownTableSync.SerializeTable"/> の規約）。
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<string>>? Insert(Window owner, AppTheme theme)
+    {
+        var region = new MarkdownTableRegion(
+            0, 0,
+            new IReadOnlyList<string>[] { new[] { string.Empty } },
+            Array.Empty<MarkdownColumnAlignment>());
+        var window = new MarkdownTableGridWindow(region, theme)
+        {
+            Owner = owner,
+            Title = "テーブルを挿入",
+        };
+        window.DescriptionText.Text =
+            "グリッドでセルを入力できます（Vim キーバインド対応。1 行目がヘッダになります）。" +
+            "閉じるとカーソル位置へ Markdown テーブルとして挿入します。";
         window.ShowDialog();
         return window.Apply ? window.ResultRows : null;
     }

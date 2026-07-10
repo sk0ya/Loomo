@@ -130,6 +130,32 @@ public static class MarkdownTableSync
         return sb.ToString().TrimEnd('\n');
     }
 
+    /// <summary>
+    /// 生成済みテーブル本文（<see cref="SerializeTable"/> の出力）を <paramref name="caretLine"/> の位置へ
+    /// 挿入した行配列を返す。カーソル行が空行ならその行をテーブルで置き換え、非空行ならその直後へ挿入する。
+    /// 前後の行が非空なら空行を 1 行挟み、テーブルが独立した Markdown ブロックになるようにする。
+    /// </summary>
+    public static string[] InsertTableAt(string[] lines, int caretLine, string table)
+    {
+        var tableLines = table.Split('\n');
+        caretLine = Math.Clamp(caretLine, 0, Math.Max(0, lines.Length - 1));
+
+        bool caretBlank = lines.Length > 0 && string.IsNullOrWhiteSpace(lines[caretLine]);
+        int insertAt = lines.Length == 0 ? 0 : caretBlank ? caretLine : caretLine + 1;
+        // 空行のカーソル行はテーブルへ置き換える（消費する）。
+        int restStart = caretBlank ? insertAt + 1 : insertAt;
+
+        var result = new List<string>(lines.Length + tableLines.Length + 2);
+        result.AddRange(lines[..insertAt]);
+        if (result.Count > 0 && !string.IsNullOrWhiteSpace(result[^1]))
+            result.Add(string.Empty);
+        result.AddRange(tableLines);
+        if (restStart < lines.Length && !string.IsNullOrWhiteSpace(lines[restStart]))
+            result.Add(string.Empty);
+        result.AddRange(lines[restStart..]);
+        return result.ToArray();
+    }
+
     private static void AppendRow(StringBuilder sb, string[] cells, int[] widths)
     {
         sb.Append("| ");

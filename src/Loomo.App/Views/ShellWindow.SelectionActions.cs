@@ -34,27 +34,36 @@ public partial class ShellWindow
         AddGitMenuItems(e.Menu, control);
         // デバッグ停止中なら、カーソル行に対するデバッグ操作（次のステートメントに設定）を足す。
         AddDebugMenuItems(e.Menu, control);
-        // .md でカーソルが Markdown テーブル内にあるなら「テーブルを VGrid で編集」を足す。
+        // .md ならテーブル操作を足す（テーブル内なら「編集」、テーブル外なら「挿入」）。
         AddMarkdownTableMenuItem(e.Menu, control);
     }
 
     private static readonly string[] MarkdownExtensions = { ".md", ".markdown" };
 
-    // カーソルが Markdown テーブル内にあるとき、そのテーブルを VGrid グリッドのウィンドウで編集する項目を足す。
-    // .md/.markdown 以外・パス無し（未保存の新規バッファ）・テーブル外では何もしない。
+    // Markdown ファイルへのテーブル操作項目を足す。カーソルがテーブル内なら「VGrid で編集」、
+    // テーブル外なら「挿入」（同じグリッドウィンドウを空で開き、カーソル位置へ挿入する）。
+    // .md/.markdown 以外・パス無し（未保存の新規バッファ）では何もしない。
     private void AddMarkdownTableMenuItem(ContextMenu menu, VimEditorControl? control)
     {
         if (control?.FilePath is not { Length: > 0 } path || !IsMarkdownFile(path))
             return;
 
         var lines = control.Text.Replace("\r\n", "\n").Split('\n');
-        if (!MarkdownTableSync.TryFindTableAt(lines, control.Caret.Line, out _))
-            return;
+        bool inTable = MarkdownTableSync.TryFindTableAt(lines, control.Caret.Line, out _);
 
         menu.Items.Add(new Separator());
-        var edit = new MenuItem { Header = "テーブルを VGrid で編集…" };
-        edit.Click += (_, _) => EditMarkdownTable(control);
-        menu.Items.Add(edit);
+        if (inTable)
+        {
+            var edit = new MenuItem { Header = "テーブルを VGrid で編集…" };
+            edit.Click += (_, _) => EditMarkdownTable(control);
+            menu.Items.Add(edit);
+        }
+        else
+        {
+            var insert = new MenuItem { Header = "テーブルを挿入…" };
+            insert.Click += (_, _) => InsertMarkdownTable(control);
+            menu.Items.Add(insert);
+        }
     }
 
     private static bool IsMarkdownFile(string path)
@@ -83,6 +92,24 @@ public partial class ShellWindow
             result.AddRange(table.Split('\n'));
         result.AddRange(lines[(region.EndLine + 1)..]);
 
+        control.SetText(string.Join(newline, result));
+    }
+
+    // 空のグリッドウィンドウでテーブルを作らせ、カーソル位置へ Markdown テーブルとして挿入する。
+    // カーソル行が空行ならその行に、非空行ならその直後に入る（前後に空行を補って独立ブロックにする）。
+    private void InsertMarkdownTable(VimEditorControl control)
+    {
+        var edited = MarkdownTableGridWindow.Insert(this, _settings.Theme);
+        if (edited is null)
+            return;   // キャンセル
+
+        var table = MarkdownTableSync.SerializeTable(edited, Array.Empty<MarkdownColumnAlignment>());
+        if (table.Length == 0)
+            return;   // 何も入力せずに閉じた
+
+        var newline = control.Text.Contains("\r\n") ? "\r\n" : "\n";
+        var lines = control.Text.Replace("\r\n", "\n").Split('\n');
+        var result = MarkdownTableSync.InsertTableAt(lines, control.Caret.Line, table);
         control.SetText(string.Join(newline, result));
     }
 

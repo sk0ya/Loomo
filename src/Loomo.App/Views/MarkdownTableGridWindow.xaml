@@ -10,7 +10,8 @@
     Background="{DynamicResource Bg}"
     FontFamily="Segoe UI">
     <DockPanel Margin="12">
-        <TextBlock DockPanel.Dock="Top"
+        <TextBlock x:Name="DescriptionText"
+                   DockPanel.Dock="Top"
                    Foreground="{DynamicResource FgDim}"
                    FontSize="{DynamicResource Fs12}"
                    TextWrapping="Wrap"
