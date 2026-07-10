@@ -38,7 +38,8 @@
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
          BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.25" />
+    <!-- 1.0.26: VT未対応だった5項目（色リセット・DECRQSS等）のエミュレーションを実装 -->
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.26" />
   </ItemGroup>
 
 </Project>
