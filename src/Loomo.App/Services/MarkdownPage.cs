@@ -616,9 +616,12 @@ internal static class MarkdownPage
             img { max-width: 100%; border-radius: 4px; display: block; margin: 8px 0; cursor: zoom-in; }
             hr { border: none; border-top: 1px solid {{border}}; margin: 20px 0; }
 
-            /* GFM タスクリスト（- [ ] / - [x]）：箇条書きマーカーを消してチェックボックスに差し替える */
-            li.task-list-item { list-style: none; margin-left: -20px; }
-            li.task-list-item input[type="checkbox"] { margin-right: 6px; vertical-align: middle; cursor: pointer; }
+            /* GFM タスクリスト（- [ ] / - [x]）：箇条書きマーカーを消してチェックボックスに差し替える。
+               <li> 自体は動かさず（負マージンを載せるとネスト各段で左へ寄り、入れ子のインデントが
+               24px/段→実質 4px/段に潰れる）、チェックボックスだけをマーカー溝へ負マージンで吊るして
+               本文位置を通常リストと揃える。 */
+            li.task-list-item { list-style: none; }
+            li.task-list-item input[type="checkbox"] { margin: 0 6px 0 -20px; vertical-align: middle; cursor: pointer; }
 
             /* 見出しのパーマリンク（ホバーで # が出て、クリックでアンカーをコピー） */
             h1, h2, h3, h4, h5, h6 { position: relative; }
