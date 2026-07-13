@@ -195,13 +195,21 @@ internal static class MarkdownPage
                 // 高さが変わるのでスクロールを最後の比率へ貼り直し、mermaid を描き直す。
                 function applyBody(html) {
                     suppressScrollMessage = true;
+                    // 差し替え前の絶対スクロール位置と文書高を控える。高さが変わらない差し替え
+                    // （タスクチェックボックスの反転など）では比率変換を挟まず絶対位置をそのまま保つ
+                    // ＝比率→ピクセルの丸めで数 px 飛ぶのを防ぐ。高さが変わった場合のみ比率で貼り直す。
+                    const prevScrollY = window.scrollY;
+                    const prevScrollHeight = document.documentElement.scrollHeight;
                     document.body.innerHTML = html;
                     // 差し替え前の要素は detach 済み。開いたままだと overflow ロックが残るので解除して作り直す。
                     lightboxEl = null;
                     lightboxImg = null;
                     document.documentElement.style.overflow = '';
                     renderMermaid();
-                    window.scrollTo(0, scrollMax() * lastRatio);
+                    if (document.documentElement.scrollHeight === prevScrollHeight)
+                        window.scrollTo(0, prevScrollY);
+                    else
+                        window.scrollTo(0, scrollMax() * lastRatio);
                     requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
                 }
 

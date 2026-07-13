@@ -879,7 +879,12 @@ public partial class ShellWindow
             return;
 
         lines[lineIndex] = toggled;
-        source.Control.SetText(string.Join(eol, lines));
+        // SetText はエディタのビューポートを組み直すため ViewportScrolled が発火する。ここで流れる
+        // エディタの行ベース比率をプレビューへ送るとピクセル位置へ変換し直されてスクロールが微妙にズレる
+        // （チェックボックスの反転は文書高を変えないので本来動くべきではない）。同期エコーを抑止する。
+        _syncingEditorFromSupport = true;
+        try { source.Control.SetText(string.Join(eol, lines)); }
+        finally { _syncingEditorFromSupport = false; }
         ScheduleEditorSupportUpdate();
     }
 
