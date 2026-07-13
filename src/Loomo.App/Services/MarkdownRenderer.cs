@@ -402,6 +402,11 @@ internal static class MarkdownRenderer
             var m = ListItemRe.Match(lines[i]);
             if (!m.Success || m.Groups[1].Value.Length < indent)
                 break; // リスト外、または親レベルへ戻った → このリストは終了
+            // 同じインデントでもマーカー種別（順序付き 1. ↔ 無順序 -/*/+）が変われば別リスト。
+            // 混ぜて同一 <ol> に吸収すると後続の順序付き項目の番号が繰り上がってしまう
+            // （例: "1. task" の後に "- item" 群、さらに "1. fdsf" が 1 でなく通し番号になる）。
+            if (m.Groups[1].Value.Length == indent && char.IsDigit(m.Groups[2].Value[0]) != ordered)
+                break;
 
             var content = m.Groups[3].Value;
             var task = TaskItemRe.Match(content);

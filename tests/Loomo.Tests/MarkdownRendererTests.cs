@@ -45,6 +45,20 @@ public class MarkdownRendererTests
     }
 
     [Fact]
+    public void MarkerTypeChangeAtSameIndent_SplitsIntoSeparateLists()
+    {
+        // 同レベルで順序付き→無順序→順序付きと切り替わったら別リストに割れ、
+        // 後続の順序付きリストは 1 から採番し直す（無順序項目を <ol> に吸収して
+        // 番号を繰り上げない）。
+        var html = Render("1. a\n- b\n- c\n1. d\n2. e");
+
+        Assert.Equal(2, Count(html, "<ol>"));
+        Assert.Equal(1, Count(html, "<ul>"));
+        // 2つ目の順序付きリストは start 属性なし（＝1始まり）。
+        Assert.DoesNotContain("<ol start", html);
+    }
+
+    [Fact]
     public void NestedUnorderedList_IndentBecomesChildList()
     {
         var html = Render("- parent\n  - child\n- parent2");
