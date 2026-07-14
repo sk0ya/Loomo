@@ -14,15 +14,21 @@ namespace sk0ya.Loomo.App.Services;
 /// 既存ファイルとバイト一致する（書込経路をリフレクションから移しても出力フォーマットは変わらない）。</summary>
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(WorkspaceState))]
+[JsonSerializable(typeof(WorkspaceIndex))]
 internal partial class WorkspaceStateJsonContext : JsonSerializerContext;
 
 public sealed class WorkspaceStateStore
 {
     private readonly string _filePath;
+    private readonly string _workspaceDirectory;
 
     public WorkspaceStateStore() : this(DefaultPath()) { }
 
-    public WorkspaceStateStore(string filePath) => _filePath = filePath;
+    public WorkspaceStateStore(string filePath)
+    {
+        _filePath = filePath;
+        _workspaceDirectory = Path.Combine(Path.GetDirectoryName(filePath)!, "workspaces");
+    }
 
     public static string DefaultPath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -35,14 +41,79 @@ public sealed class WorkspaceStateStore
 
         try
         {
-            // 読み書きともソースジェネレータ経路（リフレクションのメタデータ生成コストを外す）。
-            return JsonSerializer.Deserialize(
-                File.ReadAllText(_filePath), WorkspaceStateJsonContext.Default.WorkspaceState) ?? new WorkspaceState();
+            var json = File.ReadAllText(_filePath);
+            var index = JsonSerializer.Deserialize(json, WorkspaceStateJsonContext.Default.WorkspaceIndex);
+            if (index?.Version == 2)
+            {
+                return new WorkspaceState
+                {
+                    ActiveWorkspaceId = index.ActiveWorkspaceId,
+                    Workspaces = index.Workspaces.Select(summary =>
+                    {
+                        var workspace = LoadWorkspace(summary.Id) ?? summary.ToSnapshot();
+                        foreach (var tab in workspace.EditorTabs)
+                            tab.Text = tab.LoadText();
+                        return workspace;
+                    }).ToList()
+                };
+            }
+
+            return JsonSerializer.Deserialize(json, WorkspaceStateJsonContext.Default.WorkspaceState)
+                ?? new WorkspaceState();
         }
         catch
         {
             return new WorkspaceState();
         }
+    }
+
+    /// <summary>起動用。一覧とアクティブなワークスペースだけを読み、他の詳細は切替時まで遅延する。</summary>
+    public WorkspaceState LoadForStartup()
+    {
+        if (!File.Exists(_filePath)) return new WorkspaceState();
+        try
+        {
+            var json = File.ReadAllText(_filePath);
+            var index = JsonSerializer.Deserialize(json, WorkspaceStateJsonContext.Default.WorkspaceIndex);
+            if (index?.Version == 2)
+            {
+                return new WorkspaceState
+                {
+                    ActiveWorkspaceId = index.ActiveWorkspaceId,
+                    Workspaces = index.Workspaces.Select(s => s.Id == index.ActiveWorkspaceId
+                        ? LoadWorkspace(s.Id) ?? s.ToSnapshot()
+                        : s.ToSnapshot()).ToList()
+                };
+            }
+
+            // 旧形式は一度だけ全読込し、直ちに分割形式へ移行する。
+            var legacy = JsonSerializer.Deserialize(json, WorkspaceStateJsonContext.Default.WorkspaceState)
+                ?? new WorkspaceState();
+            Save(legacy);
+            return legacy;
+        }
+        catch { return new WorkspaceState(); }
+    }
+
+    public WorkspaceSnapshot? LoadWorkspace(Guid id)
+    {
+        var path = StatePath(id);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            var state = JsonSerializer.Deserialize(
+                File.ReadAllText(path), WorkspaceStateJsonContext.Default.WorkspaceState);
+            var workspace = state?.Workspaces.FirstOrDefault();
+            if (workspace is null) return null;
+            workspace.IsDetailsLoaded = true;
+            foreach (var tab in workspace.EditorTabs)
+            {
+                var draft = DraftPath(id, tab.Id);
+                if (File.Exists(draft)) tab.DeferredTextPath = draft;
+            }
+            return workspace;
+        }
+        catch { return null; }
     }
 
     /// <summary>状態を同期でディスクへ書き出す。書込直後の <see cref="Load"/>（別インスタンス含む）が
@@ -51,9 +122,119 @@ public sealed class WorkspaceStateStore
     public void Save(WorkspaceState state)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-        File.WriteAllText(
-            _filePath, JsonSerializer.Serialize(state, WorkspaceStateJsonContext.Default.WorkspaceState));
+        Directory.CreateDirectory(_workspaceDirectory);
+
+        foreach (var workspace in state.Workspaces.Where(w => w.IsDetailsLoaded))
+            SaveWorkspace(workspace);
+
+        var index = new WorkspaceIndex
+        {
+            Version = 2,
+            ActiveWorkspaceId = state.ActiveWorkspaceId,
+            Workspaces = state.Workspaces.Select(WorkspaceSummary.From).ToList()
+        };
+        File.WriteAllText(_filePath,
+            JsonSerializer.Serialize(index, WorkspaceStateJsonContext.Default.WorkspaceIndex));
     }
+
+    public void DeleteWorkspace(Guid id)
+    {
+        var dir = WorkspacePath(id);
+        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+    }
+
+    private void SaveWorkspace(WorkspaceSnapshot workspace)
+    {
+        var dir = WorkspacePath(workspace.Id);
+        var drafts = Path.Combine(dir, "drafts");
+        Directory.CreateDirectory(drafts);
+
+        // 旧 single-editor 形式を保存時点で新しいタブ形式へ確定させる。本文を state.json から
+        // 除外する前に draft へ書くため、移行直後にプロセスが終了しても未保存内容を失わない。
+        if (workspace.EditorTabs.Count == 0
+            && (!string.IsNullOrWhiteSpace(workspace.Editor.FilePath)
+                || workspace.Editor.Text is not null
+                || workspace.Editor.IsModified))
+        {
+            workspace.EditorTabs.Add(new EditorTabSnapshot
+            {
+                FilePath = workspace.Editor.FilePath,
+                Text = workspace.Editor.Text,
+                Title = string.IsNullOrWhiteSpace(workspace.Editor.FilePath)
+                    ? "Untitled"
+                    : Path.GetFileName(workspace.Editor.FilePath),
+                IsModified = workspace.Editor.IsModified,
+                IsActive = true
+            });
+        }
+
+        foreach (var tab in workspace.EditorTabs)
+        {
+            var draft = DraftPath(workspace.Id, tab.Id);
+            if (tab.IsModified || string.IsNullOrWhiteSpace(tab.FilePath))
+            {
+                if (tab.Text is not null)
+                    File.WriteAllText(draft, tab.Text);
+                else if (tab.DeferredTextPath is { } source && File.Exists(source)
+                         && !string.Equals(source, draft, StringComparison.OrdinalIgnoreCase))
+                    File.Copy(source, draft, overwrite: true);
+                tab.DeferredTextPath = draft;
+            }
+            else if (File.Exists(draft))
+            {
+                File.Delete(draft);
+                tab.DeferredTextPath = null;
+            }
+        }
+
+        var liveDrafts = workspace.EditorTabs.Select(t => t.Id.ToString("N") + ".txt")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in Directory.EnumerateFiles(drafts, "*.txt"))
+            if (!liveDrafts.Contains(Path.GetFileName(stale))) File.Delete(stale);
+
+        // state.json はメタデータのみ。本文は drafts に置き、タブ実体化時に読む。
+        var text = workspace.EditorTabs.Select(t => t.Text).ToArray();
+        var legacyText = workspace.Editor.Text;
+        try
+        {
+            foreach (var tab in workspace.EditorTabs) tab.Text = null;
+            workspace.Editor.Text = null;
+            var wrapper = new WorkspaceState { Workspaces = [workspace] };
+            File.WriteAllText(Path.Combine(dir, "state.json"),
+                JsonSerializer.Serialize(wrapper, WorkspaceStateJsonContext.Default.WorkspaceState));
+        }
+        finally
+        {
+            for (var i = 0; i < workspace.EditorTabs.Count; i++)
+                workspace.EditorTabs[i].Text = text[i];
+            workspace.Editor.Text = legacyText;
+        }
+    }
+
+    private string WorkspacePath(Guid id) => Path.Combine(_workspaceDirectory, id.ToString("N"));
+    private string StatePath(Guid id) => Path.Combine(WorkspacePath(id), "state.json");
+    private string DraftPath(Guid workspaceId, Guid tabId) =>
+        Path.Combine(WorkspacePath(workspaceId), "drafts", tabId.ToString("N") + ".txt");
+}
+
+public sealed class WorkspaceIndex
+{
+    public int Version { get; set; }
+    public Guid? ActiveWorkspaceId { get; set; }
+    public List<WorkspaceSummary> Workspaces { get; set; } = new();
+}
+
+public sealed class WorkspaceSummary
+{
+    public Guid Id { get; set; }
+    public string RootPath { get; set; } = "";
+    public string Name { get; set; } = "";
+    public DateTime LastUsedUtc { get; set; }
+
+    public static WorkspaceSummary From(WorkspaceSnapshot s) => new()
+        { Id = s.Id, RootPath = s.RootPath, Name = s.Name, LastUsedUtc = s.LastUsedUtc };
+    public WorkspaceSnapshot ToSnapshot() => new()
+        { Id = Id, RootPath = RootPath, Name = Name, LastUsedUtc = LastUsedUtc, IsDetailsLoaded = false };
 }
 
 public sealed class WorkspaceState
@@ -64,6 +245,7 @@ public sealed class WorkspaceState
 
 public sealed class WorkspaceSnapshot
 {
+    [JsonIgnore] public bool IsDetailsLoaded { get; set; } = true;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string RootPath { get; set; } = "";
     public string Name { get; set; } = "";
@@ -239,6 +421,15 @@ public sealed class EditorTabSnapshot
     public Guid Id { get; set; } = Guid.NewGuid();
     public string? FilePath { get; set; }
     public string? Text { get; set; }
+    [JsonIgnore] public string? DeferredTextPath { get; set; }
+
+    public string LoadText()
+    {
+        if (Text is not null) return Text;
+        if (DeferredTextPath is null) return string.Empty;
+        try { return File.ReadAllText(DeferredTextPath); }
+        catch { return string.Empty; }
+    }
     public string? Title { get; set; }
     public bool IsModified { get; set; }
     public bool IsActive { get; set; }

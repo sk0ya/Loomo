@@ -46,7 +46,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     public WorkspaceListViewModel(WorkspaceStateStore store)
     {
         _store = store;
-        _state = store.Load();
+        _state = store.LoadForStartup();
 
         foreach (var snapshot in _state.Workspaces
                      .Where(w => !string.IsNullOrWhiteSpace(w.RootPath))
@@ -127,6 +127,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
         _state.Workspaces.RemoveAll(w => w.Id == entry.Id);
         Workspaces.Remove(entry);
+        _store.DeleteWorkspace(entry.Id);
         _store.Save(_state);
         RemoveWorkspaceCommand.NotifyCanExecuteChanged();
 
@@ -185,6 +186,14 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             _store.Save(_state);
             RefreshEntries();
             return;
+        }
+
+        var loaded = _store.LoadWorkspace(snapshot.Id);
+        if (loaded is not null && !ReferenceEquals(loaded, snapshot))
+        {
+            var index = _state.Workspaces.FindIndex(w => w.Id == snapshot.Id);
+            if (index >= 0) _state.Workspaces[index] = loaded;
+            snapshot = loaded;
         }
 
         snapshot.LastUsedUtc = DateTime.UtcNow;

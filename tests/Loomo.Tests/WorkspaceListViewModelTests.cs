@@ -145,4 +145,94 @@ public class WorkspaceListViewModelTests
         Assert.False(loaded.Stage?.IsActive);
         Assert.Null(loaded.Stage?.Pane);
     }
+
+    [Fact]
+    public void Store_splits_workspace_details_and_defers_unsaved_text()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "workspaces.json");
+        var store = new WorkspaceStateStore(path);
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\work",
+            EditorTabs =
+            [
+                new EditorTabSnapshot
+                {
+                    FilePath = @"C:\work\draft.txt",
+                    Text = "unsaved body",
+                    IsModified = true
+                },
+                new EditorTabSnapshot
+                {
+                    FilePath = @"C:\work\clean.txt",
+                    Text = "clean body",
+                    IsModified = false
+                }
+            ]
+        };
+
+        store.Save(new WorkspaceState
+            { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        var indexJson = File.ReadAllText(path);
+        var workspaceDir = Path.Combine(root, "workspaces", workspace.Id.ToString("N"));
+        var stateJson = File.ReadAllText(Path.Combine(workspaceDir, "state.json"));
+        Assert.DoesNotContain("unsaved body", indexJson);
+        Assert.DoesNotContain("unsaved body", stateJson);
+        Assert.DoesNotContain("clean body", stateJson);
+        Assert.Single(Directory.GetFiles(Path.Combine(workspaceDir, "drafts"), "*.txt"));
+
+        var startup = store.LoadForStartup().Workspaces.Single();
+        var draft = startup.EditorTabs[0];
+        Assert.Null(draft.Text);
+        Assert.Equal("unsaved body", draft.LoadText());
+        Assert.Equal("unsaved body", store.Load().Workspaces.Single().EditorTabs[0].Text);
+    }
+
+    [Fact]
+    public void Startup_loads_only_active_workspace_details()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
+        var store = new WorkspaceStateStore(Path.Combine(root, "workspaces.json"));
+        var active = new WorkspaceSnapshot { RootPath = @"C:\active", ComposerText = "active detail" };
+        var inactive = new WorkspaceSnapshot { RootPath = @"C:\inactive", ComposerText = "inactive detail" };
+        store.Save(new WorkspaceState
+            { ActiveWorkspaceId = active.Id, Workspaces = [active, inactive] });
+
+        var startup = store.LoadForStartup();
+
+        Assert.Equal("active detail", startup.Workspaces.Single(w => w.Id == active.Id).ComposerText);
+        Assert.Null(startup.Workspaces.Single(w => w.Id == inactive.Id).ComposerText);
+        Assert.Equal("inactive detail", store.LoadWorkspace(inactive.Id)?.ComposerText);
+    }
+
+    [Fact]
+    public void Legacy_single_editor_unsaved_text_is_migrated_to_a_draft_immediately()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
+        var store = new WorkspaceStateStore(Path.Combine(root, "workspaces.json"));
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\work",
+            Editor = new EditorSnapshot
+            {
+                FilePath = @"C:\work\legacy.txt",
+                Text = "legacy unsaved body",
+                IsModified = true
+            }
+        };
+
+        store.Save(new WorkspaceState
+            { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        var workspaceDir = Path.Combine(root, "workspaces", workspace.Id.ToString("N"));
+        var draft = Assert.Single(Directory.GetFiles(Path.Combine(workspaceDir, "drafts"), "*.txt"));
+        Assert.Equal("legacy unsaved body", File.ReadAllText(draft));
+
+        var loaded = store.LoadForStartup().Workspaces.Single();
+        var tab = Assert.Single(loaded.EditorTabs);
+        Assert.True(tab.IsModified);
+        Assert.Equal("legacy unsaved body", tab.LoadText());
+    }
 }

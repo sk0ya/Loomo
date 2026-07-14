@@ -337,7 +337,7 @@ public partial class ShellWindow
 
         if (snapshot.IsModified || string.IsNullOrWhiteSpace(snapshot.FilePath))
         {
-            editor.SetText(snapshot.Text ?? string.Empty);
+            editor.SetText(snapshot.LoadText());
             RestoreEditorViewState(editor, snapshot);
             return;
         }
@@ -372,6 +372,7 @@ public partial class ShellWindow
                 Id = tab.Id,
                 FilePath = p.FilePath,
                 Text = p.Text,
+                DeferredTextPath = p.DeferredTextPath,
                 Title = p.Title,
                 IsModified = p.IsModified,
                 IsActive = isActive,
