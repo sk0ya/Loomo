@@ -62,6 +62,8 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabCloseOthersRequested;
     /// <summary>「すべて閉じる」：同じ Kind 内の全タブを閉じる。</summary>
     public event EventHandler<TabEntryViewModel>? TabCloseAllRequested;
+    /// <summary>「別ウィンドウで開く」：このタブをフローティングウィンドウへ切り離す（複製／スピンオフ）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabDetachRequested;
 
     public TabsViewModel()
         : this(new TabIconService())
@@ -268,6 +270,13 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is not null)
             TabCloseAllRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void DetachTab(TabEntryViewModel? tab)
+    {
+        if (tab is not null)
+            TabDetachRequested?.Invoke(this, tab);
     }
 
     [RelayCommand]

@@ -532,6 +532,9 @@ public partial class ShellWindow
     /// 1度だけ発火する（Closing と違いキャンセルされない）ので破棄に安全。</summary>
     private void OnClosed(object? sender, EventArgs e)
     {
+        // 切り離しウィンドウと全項目を破棄する（同期購読解除・ターミナルセッション/WebView2 の解放）。
+        _detached?.CloseAll();
+
         foreach (var workspace in _editorWorkspaces.Values)
             foreach (var tab in workspace.Tabs)
                 if (tab.IsRealized)

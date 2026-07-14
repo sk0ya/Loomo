@@ -47,6 +47,10 @@
                         <MenuItem Header="すべて閉じる"
                                   Command="{Binding PlacementTarget.Tag.CloseAllTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <Separator />
+                        <MenuItem Header="別ウィンドウで開く"
+                                  Command="{Binding PlacementTarget.Tag.DetachTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
                         <Separator Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}" />
                         <MenuItem Header="パスをコピー"
                                   Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}"

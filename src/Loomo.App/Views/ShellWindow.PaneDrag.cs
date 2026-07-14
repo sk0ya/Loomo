@@ -32,9 +32,18 @@ public partial class ShellWindow
             return;
         }
 
+        // タブ（Guid の Tag を持つタブ要素）の上から掴んだときは、ペイン移動ではなくタブのドラッグ
+        // （別ウィンドウへの切り離し）に任せる。ここでペイン移動を arm するとヘッダー移動のゴースト／
+        // プレビュー効果がタブドラッグ中に出てしまう（Preview トンネルはヘッダー DockPanel が先に拾うため）。
+        if (ResolvePaneTabId(e.OriginalSource) is not null)
+        {
+            _paneDragArmed = false;
+            return;
+        }
+
         // ここでは捕捉しない（下にあるタブ／ボタンのクリックを殺さないため）。開始位置だけ控え、
         // しきい値を超えて動いたときに初めて OnPaneTitleMouseMove がドラッグを開始する。
-        // Preview（トンネル）で拾うので、タブ・ボタンの上から掴んでもヘッダー全域でドラッグできる。
+        // Preview（トンネル）で拾うので、（タブ以外の）ボタンやヘッダー空き領域から掴んでもドラッグできる。
         _paneDragStart = e.GetPosition(null);
         _paneDragArmed = true;
     }

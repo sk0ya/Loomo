@@ -312,6 +312,7 @@ public partial class ShellWindow : Window
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
         vm.Tabs.TabCloseOthersRequested += OnSidebarTabCloseOthersRequested;
         vm.Tabs.TabCloseAllRequested += OnSidebarTabCloseAllRequested;
+        vm.Tabs.TabDetachRequested += OnSidebarTabDetachRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
         InitializeDebugWiring();
