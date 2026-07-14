@@ -25,6 +25,7 @@ namespace sk0ya.Loomo.App.Detach;
 /// </summary>
 internal sealed class DetachedEditorSupportView : Grid, IDisposable
 {
+    internal string? SourceFilePath => _source.FilePath;
     private readonly EditorSupportRegistry _editorSupports;
     private readonly AiSettings _settings;
     private readonly string? _workspaceRoot;

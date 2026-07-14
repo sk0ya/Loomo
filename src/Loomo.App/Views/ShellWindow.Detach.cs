@@ -8,6 +8,7 @@ using System.Windows.Media;
 using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.Detach;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.App.Services;
 using Editor.Controls;
 using Terminal.Tabs;
 
@@ -15,13 +16,74 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: ペイン項目の別ウィンドウ切り離し。Editor は同一ファイルの複製＋双方向テキスト同期、
 /// Terminal/Browser は同期なしの新規スピンオフ。ウィンドウ管理・タブ結合は <see cref="DetachedWindowManager"/>。
-/// レイアウト永続化には一切乗せない（アプリ終了で <see cref="DetachedWindowManager.CloseAll"/> により破棄）。</summary>
+/// 状態はワークスペースのスナップショットへ保存し、切替・再起動時に復元する。</summary>
 public partial class ShellWindow
 {
     private DetachedWindowManager? _detached;
 
     /// <summary>切り離しウィンドウの管理（初回切り離し時に生成）。</summary>
-    private DetachedWindowManager Detached => _detached ??= new DetachedWindowManager(this);
+    private DetachedWindowManager Detached => _detached ??= new DetachedWindowManager(this, () => SaveActiveWorkspaceSnapshot());
+
+    private DetachedItemSnapshot? CaptureDetachedItem(DetachedItem item)
+    {
+        var snapshot = new DetachedItemSnapshot { Kind = item.Kind.ToString() };
+        switch (item.Content)
+        {
+            case VimEditorControl editor:
+                snapshot.FilePath = editor.FilePath;
+                snapshot.Text = editor.IsModified || string.IsNullOrWhiteSpace(editor.FilePath) ? editor.Text : null;
+                snapshot.IsModified = editor.IsModified;
+                break;
+            case TerminalTabView terminal:
+                snapshot.WorkingDirectory = terminal.WorkingDirectory;
+                break;
+            case WebView2CompositionControl browser:
+                snapshot.Url = browser.Source?.ToString();
+                break;
+            case DetachedEditorSupportView preview:
+                snapshot.FilePath = preview.SourceFilePath;
+                break;
+            default:
+                return null;
+        }
+        return snapshot;
+    }
+
+    private DetachedItem? RestoreDetachedItem(DetachedItemSnapshot snapshot)
+    {
+        if (!Enum.TryParse<DetachKind>(snapshot.Kind, out var kind)) return null;
+        if (kind == DetachKind.EditorMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath))
+        {
+            var source = _editorTabs.FirstOrDefault(t => string.Equals(
+                t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
+            if (source is not null) return TryCreateEditorMirrorItem(source.Id);
+        }
+        if (kind is DetachKind.EditorMirror or DetachKind.EditorMove)
+        {
+            var editor = CreateEditorTab().Control;
+            if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
+                editor.LoadFile(snapshot.FilePath);
+            if (snapshot.Text is not null) editor.SetText(snapshot.Text);
+            var title = string.IsNullOrWhiteSpace(snapshot.FilePath) ? "Untitled" : Path.GetFileName(snapshot.FilePath);
+            return new DetachedItem(DetachKind.EditorMove, title, editor,
+                _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose);
+        }
+        if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath))
+        {
+            var source = _editorTabs.FirstOrDefault(t => string.Equals(
+                t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
+            if (source is null) return null;
+            var view = new DetachedEditorSupportView(_editorSupports, _settings, _workspace.RootPath, source.Control);
+            var item = new DetachedItem(kind, $"Preview: {Path.GetFileName(snapshot.FilePath)}", view, dispose: view.Dispose);
+            view.TitleChanged += (_, title) => item.Title = title;
+            return item;
+        }
+        if (kind is DetachKind.TerminalSpinoff or DetachKind.TerminalMove)
+            return CreateTerminalSpinoffItem(snapshot.WorkingDirectory);
+        if (kind == DetachKind.BrowserSpinoff)
+            return CreateBrowserSpinoffItem(snapshot.Url);
+        return null;
+    }
 
     /// <summary>サイドバータブの右クリック「別ウィンドウで開く」：種別に応じた切り離し項目を作って開く。</summary>
     private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab)
@@ -133,8 +195,11 @@ public partial class ShellWindow
     // ===== Terminal: 新規スピンオフ（同期なし） =====
 
     private DetachedItem CreateTerminalSpinoffItem(TerminalTab? sourceTab)
+        => CreateTerminalSpinoffItem(sourceTab?.View.WorkingDirectory);
+
+    private DetachedItem CreateTerminalSpinoffItem(string? sourceDirectory)
     {
-        var cwd = sourceTab?.View.WorkingDirectory;
+        var cwd = sourceDirectory;
         if (string.IsNullOrWhiteSpace(cwd) || !Directory.Exists(cwd))
             cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
 
@@ -152,8 +217,11 @@ public partial class ShellWindow
     // ===== Browser: 新規スピンオフ（同期なし） =====
 
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
+        => CreateBrowserSpinoffItem(sourceTab?.View.Source?.ToString() ?? sourceTab?.PendingUrl);
+
+    private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl)
     {
-        var url = sourceTab?.View.Source?.ToString() ?? sourceTab?.PendingUrl ?? DefaultBrowserUrl;
+        var url = sourceUrl ?? DefaultBrowserUrl;
         var view = new WebView2CompositionControl
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),

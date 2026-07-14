@@ -119,6 +119,42 @@ public class WorkspaceListViewModelTests
     }
 
     [Fact]
+    public void Workspace_state_round_trips_detached_windows_per_workspace()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
+        var store = new WorkspaceStateStore(path);
+        var first = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\first",
+            DetachedWindows =
+            [
+                new DetachedWindowSnapshot
+                {
+                    Left = 120, Top = 80, Width = 1100, Height = 720, IsMaximized = true,
+                    ActiveItemIndex = 1,
+                    Items =
+                    [
+                        new DetachedItemSnapshot { Kind = "TerminalSpinoff", WorkingDirectory = @"C:\first\src" },
+                        new DetachedItemSnapshot { Kind = "BrowserSpinoff", Url = "https://example.com/" }
+                    ]
+                }
+            ]
+        };
+        var second = new WorkspaceSnapshot { RootPath = @"C:\second" };
+
+        store.Save(new WorkspaceState { ActiveWorkspaceId = first.Id, Workspaces = [first, second] });
+
+        var loadedFirst = store.LoadWorkspace(first.Id)!;
+        var window = Assert.Single(loadedFirst.DetachedWindows);
+        Assert.Equal((120, 80, 1100, 720), (window.Left, window.Top, window.Width, window.Height));
+        Assert.True(window.IsMaximized);
+        Assert.Equal(1, window.ActiveItemIndex);
+        Assert.Equal(@"C:\first\src", window.Items[0].WorkingDirectory);
+        Assert.Equal("https://example.com/", window.Items[1].Url);
+        Assert.Empty(store.LoadWorkspace(second.Id)!.DetachedWindows);
+    }
+
+    [Fact]
     public void New_workspace_snapshot_defaults_to_stage_mode()
     {
         var snapshot = new WorkspaceSnapshot();

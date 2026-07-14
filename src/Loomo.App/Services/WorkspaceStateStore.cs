@@ -255,6 +255,8 @@ public sealed class WorkspaceSnapshot
     public List<TerminalTabSnapshot> TerminalTabs { get; set; } = new();
     public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
     public List<BrowserTabSnapshot> BrowserTabs { get; set; } = new();
+    /// <summary>このワークスペースで開いている切り離しウィンドウ。</summary>
+    public List<DetachedWindowSnapshot> DetachedWindows { get; set; } = new();
 
     /// <summary>FolderTree でピン留めしたフォルダ（フルパス）。ルート切替 ComboBox の候補になる。</summary>
     public List<string> PinnedFolders { get; set; } = new();
@@ -302,6 +304,27 @@ public sealed class WorkspaceSnapshot
 
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
+}
+
+public sealed class DetachedWindowSnapshot
+{
+    public double Left { get; set; }
+    public double Top { get; set; }
+    public double Width { get; set; } = 960;
+    public double Height { get; set; } = 680;
+    public bool IsMaximized { get; set; }
+    public int ActiveItemIndex { get; set; }
+    public List<DetachedItemSnapshot> Items { get; set; } = new();
+}
+
+public sealed class DetachedItemSnapshot
+{
+    public string Kind { get; set; } = "";
+    public string? FilePath { get; set; }
+    public string? Text { get; set; }
+    public bool IsModified { get; set; }
+    public string? WorkingDirectory { get; set; }
+    public string? Url { get; set; }
 }
 
 /// <summary>ペグボード（§23.3）の1アイテム。</summary>

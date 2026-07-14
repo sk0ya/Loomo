@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Detach;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -37,6 +38,9 @@ public partial class DetachedPaneWindow : Window
         TabStripItems.ItemsSource = _items;
         Closed += OnWindowClosed;
         StateChanged += (_, _) => MaxRestoreButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+        LocationChanged += (_, _) => _manager.NotifyChanged();
+        SizeChanged += (_, _) => _manager.NotifyChanged();
+        StateChanged += (_, _) => _manager.NotifyChanged();
 
         // アイコンはコード側で assembly 修飾の pack URI から設定する（App 実行時のみ解決可。テスト等の
         // Application 無し環境では例外になるため握りつぶす）。
@@ -133,6 +137,7 @@ public partial class DetachedPaneWindow : Window
         if (!ContentHost.Children.Contains(item.Content))
             ContentHost.Children.Add(item.Content);
         SetActive(item);
+        _manager.NotifyChanged();
     }
 
     /// <summary>項目をこのウィンドウから外す。<paramref name="dispose"/> が真なら破棄も行う
@@ -167,6 +172,24 @@ public partial class DetachedPaneWindow : Window
             it.Content.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         }
         Title = $"{item.Title} — Loomo";
+        _manager.NotifyChanged();
+    }
+
+    internal DetachedWindowSnapshot Capture(Func<DetachedItem, DetachedItemSnapshot?> captureItem)
+    {
+        var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        return new DetachedWindowSnapshot
+        {
+            Left = bounds.Left, Top = bounds.Top, Width = bounds.Width, Height = bounds.Height,
+            IsMaximized = WindowState == WindowState.Maximized,
+            ActiveItemIndex = Math.Max(0, _items.ToList().FindIndex(i => i.IsActive)),
+            Items = _items.Select(captureItem).Where(i => i is not null).Cast<DetachedItemSnapshot>().ToList()
+        };
+    }
+
+    internal void RestoreActiveIndex(int index)
+    {
+        if (_items.Count > 0) SetActive(_items[Math.Clamp(index, 0, _items.Count - 1)]);
     }
 
     /// <summary>ウィンドウを閉じ、残っている全項目を破棄する（アプリ終了時の一括破棄用）。</summary>

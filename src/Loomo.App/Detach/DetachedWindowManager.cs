@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Views;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Detach;
 
@@ -18,6 +19,8 @@ internal sealed class DetachedWindowManager
 {
     private readonly Window _owner;
     private readonly List<DetachedPaneWindow> _windows = new();
+    private readonly Action _changed;
+    private bool _suppressChanged;
 
     // ===== ドラッグの一時状態（同時ドラッグは1つ） =====
     private DetachedItem? _dragItem;            // 既存項目（detached 窓由来）
@@ -26,7 +29,11 @@ internal sealed class DetachedWindowManager
     private bool _dropConsumed;
     private bool _dragCancelled;
 
-    public DetachedWindowManager(Window owner) => _owner = owner;
+    public DetachedWindowManager(Window owner, Action? changed = null)
+    {
+        _owner = owner;
+        _changed = changed ?? (() => { });
+    }
 
     internal bool IsDragging => _dragItem is not null || _dragFactory is not null;
 
@@ -37,6 +44,7 @@ internal sealed class DetachedWindowManager
         win.AddItem(item);
         win.Show();
         win.Activate();
+        NotifyChanged();
     }
 
     private DetachedPaneWindow NewWindow(double? left = null, double? top = null)
@@ -53,7 +61,41 @@ internal sealed class DetachedWindowManager
     }
 
     /// <summary>ウィンドウが閉じられたら管理から外す（<see cref="DetachedPaneWindow"/> の Closed から呼ばれる）。</summary>
-    internal void OnWindowClosed(DetachedPaneWindow window) => _windows.Remove(window);
+    internal void OnWindowClosed(DetachedPaneWindow window)
+    {
+        _windows.Remove(window);
+        NotifyChanged();
+    }
+
+    internal void NotifyChanged()
+    {
+        if (!_suppressChanged) _changed();
+    }
+
+    public List<DetachedWindowSnapshot> Capture(Func<DetachedItem, DetachedItemSnapshot?> captureItem)
+        => _windows.Where(w => w.IsLoaded).Select(w => w.Capture(captureItem)).ToList();
+
+    public void Restore(IEnumerable<DetachedWindowSnapshot> snapshots, Func<DetachedItemSnapshot, DetachedItem?> createItem)
+    {
+        _suppressChanged = true;
+        try
+        {
+            CloseAll();
+            foreach (var snapshot in snapshots)
+            {
+                var items = snapshot.Items.Select(createItem).Where(i => i is not null).Cast<DetachedItem>().ToList();
+                if (items.Count == 0) continue;
+                var win = NewWindow(snapshot.Left, snapshot.Top);
+                win.Width = Math.Max(win.MinWidth, snapshot.Width);
+                win.Height = Math.Max(win.MinHeight, snapshot.Height);
+                foreach (var item in items) win.AddItem(item);
+                win.Show();
+                win.RestoreActiveIndex(snapshot.ActiveItemIndex);
+                if (snapshot.IsMaximized) win.WindowState = WindowState.Maximized;
+            }
+        }
+        finally { _suppressChanged = false; }
+    }
 
     // ===== ドラッグ調停 =====
 
@@ -151,9 +193,11 @@ internal sealed class DetachedWindowManager
     /// <summary>アプリ終了時：全フローティングウィンドウを閉じ、全項目を破棄する。</summary>
     public void CloseAll()
     {
+        _suppressChanged = true;
         foreach (var win in _windows.ToList())
             win.CloseAndDisposeItems();
         _windows.Clear();
+        _suppressChanged = false;
     }
 
     // ===== カーソル位置ユーティリティ =====

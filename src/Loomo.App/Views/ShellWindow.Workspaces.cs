@@ -256,6 +256,7 @@ public partial class ShellWindow
         DetachTerminalTabs();
         DetachEditorTabs();
         DetachBrowserTabs();
+        _detached?.CloseAll();
         _activeWorkspace = workspace;
         // 起動時（deferHydration）はエクスプローラのツリー読込（フォルダ列挙）を初フレーム後へ回す。
         // ツリーは初フレームに含まれるが、空→直後に流し込みでよく、初フレームを ~120ms 早められる。
@@ -309,6 +310,8 @@ public partial class ShellWindow
         await RestoreBrowserTabsAsync(workspace);
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
         CompleteStageSnapshotRestore();
+        if (workspace.DetachedWindows.Count > 0)
+            Detached.Restore(workspace.DetachedWindows, RestoreDetachedItem);
         StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
 
         SaveActiveWorkspaceSnapshot();
@@ -491,6 +494,8 @@ public partial class ShellWindow
                 Title = tab.View.CoreWebView2?.DocumentTitle,
                 IsActive = tab.Id == _activeBrowserTab?.Id
             }).ToList();
+
+        snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
 
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
