@@ -748,24 +748,30 @@ public sealed class GitService
         if (commitMessage is not null && string.IsNullOrWhiteSpace(commitMessage))
             return new GitCommandResult(-1, "", "コミットメッセージを入力してください。");
 
-        // 選択コミット自身を topo 順（新しい→古い）に並べ、両端（先端＝newest／根＝oldest）を取る。
-        var ordered = await RunAsync(
-            new[] { "rev-list", "--no-walk=sorted", "--topo-order" }.Concat(hashes).ToArray())
-            .ConfigureAwait(false);
-        if (!ordered.Success)
-            return ordered;
-        var sel = ordered.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        if (sel.Count < 2)
+        // コミット日時は親子関係と逆転し得るため、新旧判定には使わない。
+        // HEAD の主系列を古い順にたどり、その中で選択されたコミットを履歴上の順番に並べる。
+        var resolved = new List<string>(hashes.Count);
+        foreach (var hash in hashes)
+        {
+            var result = await RunAsync("rev-parse", "--verify", $"{hash}^{{commit}}").ConfigureAwait(false);
+            if (!result.Success)
+                return result;
+            resolved.Add(result.Output.Trim());
+        }
+        var selected = resolved.ToHashSet(StringComparer.Ordinal);
+        if (selected.Count < 2)
             return new GitCommandResult(-1, "", "スカッシュには2件以上のコミットを選択してください。");
-        var newest = sel[0];
-        var oldest = sel[^1];
 
-        // 先端は現在の HEAD に到達可能（同一含む）でなければならない（別ブランチのコミットは対象外）。
-        var onHead = await RunAsync("merge-base", "--is-ancestor", newest, "HEAD").ConfigureAwait(false);
-        if (!onHead.Success)
+        var historyResult = await RunAsync("rev-list", "--reverse", "--first-parent", "HEAD").ConfigureAwait(false);
+        if (!historyResult.Success)
+            return historyResult;
+        var sel = historyResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim()).Where(selected.Contains).ToList();
+        if (sel.Count != selected.Count)
             return new GitCommandResult(-1, "",
                 "現在のブランチに含まれる連続したコミットのみスカッシュできます。");
+        var oldest = sel[0];
+        var newest = sel[^1];
 
         // 根に親があるか（最初のコミットを含むなら --root リベース）。
         var hasParent = (await RunAsync("rev-parse", "--verify", "--quiet", $"{oldest}^").ConfigureAwait(false))
@@ -783,8 +789,17 @@ public sealed class GitService
             return new GitCommandResult(-1, "",
                 "連続したコミットを選択してください（範囲の途中に選択していないコミットやマージがあります）。");
 
+        // rebase で作り直す範囲全体にマージがある場合、通常の pick では履歴構造を維持できない。
+        var rewriteRange = hasParent ? $"{oldest}^..HEAD" : "HEAD";
+        var merges = await RunAsync("rev-list", "--min-parents=2", rewriteRange).ConfigureAwait(false);
+        if (!merges.Success)
+            return merges;
+        if (SplitLines(merges.Output).Count > 0)
+            return new GitCommandResult(-1, "",
+                "選択範囲から HEAD までにマージコミットがあるため、スカッシュできません。");
+
         // 先端より上に積まれているコミット（newest..HEAD）。これらは pick で再適用する。
-        var aboveResult = await RunAsync("rev-list", "--reverse", $"{newest}..HEAD").ConfigureAwait(false);
+        var aboveResult = await RunAsync("rev-list", "--reverse", "--first-parent", $"{newest}..HEAD").ConfigureAwait(false);
         if (!aboveResult.Success)
             return aboveResult;
         var above = aboveResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
