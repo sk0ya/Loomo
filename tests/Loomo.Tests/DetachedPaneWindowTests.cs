@@ -12,6 +12,30 @@ namespace sk0ya.Loomo.Tests;
 public class DetachedPaneWindowTests
 {
     [Fact]
+    public void 最大化解除ドラッグでは掴んだ横位置の比率を維持する()
+    {
+        var position = DetachedPaneWindow.CalculateRestoredTopLeft(
+            cursor: new Point(1200, 20),
+            captionPoint: new Point(960, 12),
+            maximizedWidth: 1920,
+            restoredBounds: new Rect(100, 100, 1000, 700));
+
+        Assert.Equal(new Point(700, 8), position);
+    }
+
+    [Fact]
+    public void 最大化解除ドラッグの横位置比率はウィンドウ内に制限する()
+    {
+        var position = DetachedPaneWindow.CalculateRestoredTopLeft(
+            cursor: new Point(1200, 20),
+            captionPoint: new Point(2500, 12),
+            maximizedWidth: 1920,
+            restoredBounds: new Rect(100, 100, 1000, 700));
+
+        Assert.Equal(new Point(200, 8), position);
+    }
+
+    [Fact]
     public void 追加した項目はアクティブになり他は退避する()
     {
         RunSta(() =>

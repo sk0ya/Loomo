@@ -68,10 +68,39 @@ public partial class DetachedPaneWindow : Window
             return;
         }
         if (WindowState == WindowState.Maximized)
-            return;
+            RestoreForCaptionDrag(e);
         var hwnd = new WindowInteropHelper(this).Handle;
         ReleaseCapture();
         SendMessage(hwnd, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+    }
+
+    /// <summary>
+    /// 最大化中のタイトルバーを掴んだ位置の下へ復元する。カスタムタイトルバーは非クライアント領域の
+    /// 標準処理を通らないため、Windows が通常行う restore-on-drag をここで補う。
+    /// </summary>
+    private void RestoreForCaptionDrag(MouseButtonEventArgs e)
+    {
+        var cursor = PointToScreen(e.GetPosition(this));
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+            cursor = target.TransformFromDevice.Transform(cursor);
+
+        var restoredBounds = RestoreBounds;
+        var captionPoint = e.GetPosition(this);
+        var maximizedWidth = Math.Max(ActualWidth, 1);
+
+        WindowState = WindowState.Normal;
+        var position = CalculateRestoredTopLeft(cursor, captionPoint, maximizedWidth, restoredBounds);
+        Left = position.X;
+        Top = position.Y;
+    }
+
+    internal static Point CalculateRestoredTopLeft(
+        Point cursor, Point captionPoint, double maximizedWidth, Rect restoredBounds)
+    {
+        var horizontalRatio = Math.Clamp(captionPoint.X / Math.Max(maximizedWidth, 1), 0, 1);
+        return new Point(
+            cursor.X - restoredBounds.Width * horizontalRatio,
+            cursor.Y - captionPoint.Y);
     }
 
     private static bool IsWithinButton(object source)
