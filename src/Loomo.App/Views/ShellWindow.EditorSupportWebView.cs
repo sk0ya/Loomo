@@ -593,10 +593,26 @@ public partial class ShellWindow
 
         try
         {
+            // プレビューは生成した 1 枚ページなので、既定メニューの「戻る／進む」（ブラウザのページ履歴）は
+            // 意味を持たず、こちらのファイル履歴「前のファイルへ戻る」と同名で紛らわしい（戻るが 2 つ出る）。
+            // 既定のページ内ナビ項目（back/forward、Name は非ローカライズの安定 ID）は取り除く。
+            for (var i = e.MenuItems.Count - 1; i >= 0; i--)
+            {
+                if (e.MenuItems[i].Name is "back" or "forward")
+                    e.MenuItems.RemoveAt(i);
+            }
+
             var item = core.Environment.CreateContextMenuItem(
                 "エディタへフォーカス", null, CoreWebView2ContextMenuItemKind.Command);
             item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => FocusEditorSupportSource(null));
             e.MenuItems.Insert(0, item);
+
+            // 前のファイルへ戻る（エディタのファイル履歴）。戻れる履歴が無ければ無効表示。
+            var back = core.Environment.CreateContextMenuItem(
+                "前のファイルへ戻る", null, CoreWebView2ContextMenuItemKind.Command);
+            back.IsEnabled = _editorSupportHistory.CanGoBack;
+            back.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => _ = EditorSupportGoBackAsync());
+            e.MenuItems.Insert(1, back);
         }
         catch
         {

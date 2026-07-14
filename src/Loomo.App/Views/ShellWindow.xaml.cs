@@ -72,6 +72,10 @@ public partial class ShellWindow : Window
     // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示し、
     // IEditorSupportUriProvider（PDF/SVG/HTML 等）はファイルを WebView2 へ直接ナビゲートして表示する。
     private EditorTab? _editorSupportSourceTab;
+    /// <summary>エディタの現在ファイル（＝EditorSupport の追従ソース）の「戻る・進む」履歴（純ロジック）。</summary>
+    private readonly Services.EditorSupportHistory _editorSupportHistory = new();
+    /// <summary>戻る/進む操作中は <see cref="Services.EditorSupportHistory.Navigate"/> 記録を抑止するガード。</summary>
+    private bool _editorSupportNavigating;
     private WebView2CompositionControl? _editorSupportView;
     /// <summary>現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。</summary>
     private FrameworkElement? _editorSupportVisual;
@@ -273,6 +277,10 @@ public partial class ShellWindow : Window
         _browserTabs = _scratchBrowserWorkspace.Tabs;
 
         InitializePanes();
+
+        // マウスのサイドボタン（戻る=XButton1／進む=XButton2）でエディタのファイル履歴を行き来する
+        // （IDE 標準の手触り）。Window レベルのトンネル（Preview）で各 WPF ペインより先に受ける。
+        PreviewMouseDown += OnShellPreviewMouseNavigate;
 
         // サイドバーのスプリッターもペイン用と同じ手触りに：ホバーで光らせ、ダブルクリックで既定幅へ。
         SidebarSplitter.Cursor = Cursors.SizeWE;

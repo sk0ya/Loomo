@@ -272,6 +272,12 @@ public partial class ShellWindow
         }
         if (ReferenceEquals(_previewEditorTab, tab))
             _previewEditorTab = null;
+        // 閉じたファイルは戻る/進む履歴からも除く（移動側でも実在チェックで飛ばすが、ボタン活性を正確に保つ）。
+        if (tab.PeekFilePath is { Length: > 0 } closedPath)
+        {
+            _editorSupportHistory.Remove(closedPath);
+            UpdateEditorSupportNavAffordances();
+        }
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);

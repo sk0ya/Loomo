@@ -48,6 +48,75 @@ public partial class ShellWindow
         RecordTrailPreview(sourceTab);
     }
 
+    /// <summary>ヘッダー／コンテキストメニューの「戻る」。エディタのファイル履歴を 1 つ前へ戻す。</summary>
+    private async void OnEditorSupportBack(object sender, RoutedEventArgs e) => await EditorSupportGoBackAsync();
+
+    /// <summary>
+    /// マウスのサイドボタン（戻る=XButton1／進む=XButton2）でエディタのファイル履歴を行き来する。
+    /// Window レベルの PreviewMouseDown（トンネル）で各 WPF ペインより先に受ける。ブラウザ／プレビューの
+    /// WebView2 エアスペース上ではマウスイベントが WPF へ来ないため効かない（＝WebView 自身の履歴が優先）。
+    /// </summary>
+    private void OnShellPreviewMouseNavigate(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.XButton1)
+        {
+            e.Handled = true;
+            _ = EditorSupportGoBackAsync();
+        }
+        else if (e.ChangedButton == MouseButton.XButton2)
+        {
+            e.Handled = true;
+            _ = EditorSupportGoForwardAsync();
+        }
+    }
+
+    private Task EditorSupportGoBackAsync() => EditorSupportNavigateHistoryAsync(back: true);
+    private Task EditorSupportGoForwardAsync() => EditorSupportNavigateHistoryAsync(back: false);
+
+    /// <summary>
+    /// ファイル履歴を <paramref name="back"/> の向きへ 1 つ移動する。移動先タブが開いていれば前面化し、
+    /// 閉じていて実在すれば開き直す。消えたファイルは飛ばして次の履歴へ進む。移動中は
+    /// <see cref="_editorSupportNavigating"/> を立て、内部で走る <see cref="SwitchEditorSupportSourceAsync"/> の
+    /// 履歴記録を抑止する（二重記録・forward 破棄の防止）。
+    /// </summary>
+    private async Task EditorSupportNavigateHistoryAsync(bool back)
+    {
+        _editorSupportNavigating = true;
+        try
+        {
+            while ((back ? _editorSupportHistory.GoBack() : _editorSupportHistory.GoForward()) is { } path)
+            {
+                var open = _editorTabs.FirstOrDefault(t =>
+                    string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
+                if (open is not null)
+                {
+                    ActivateEditorTab(open.Id);
+                    break;
+                }
+
+                if (File.Exists(path))
+                {
+                    await OpenFileInNewEditorTabAsync(path);
+                    break;
+                }
+                // 消えたファイルは飛ばして次の履歴へ。
+            }
+        }
+        finally
+        {
+            _editorSupportNavigating = false;
+        }
+
+        UpdateEditorSupportNavAffordances();
+    }
+
+    /// <summary>戻る操作の可否を UI へ反映する（進む UI は無いので back ボタンの活性のみ）。</summary>
+    private void UpdateEditorSupportNavAffordances()
+    {
+        if (EditorSupportBackButton is not null)
+            EditorSupportBackButton.IsEnabled = _editorSupportHistory.CanGoBack;
+    }
+
     /// <summary>EditorSupport の追従先エディタタブを切り替えて内容を更新する（同一タブなら何もしない）。</summary>
     private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab, bool force = false)
     {
@@ -65,6 +134,14 @@ public partial class ShellWindow
         StopCodeReadyRetry();
 
         _editorSupportSourceTab = sourceTab;
+        // 「戻る・進む」履歴へ現在ファイルを記録する（戻る/進む操作中は抑止＝二重記録・forward 破棄を防ぐ）。
+        // この記録は同期区間で走るので、ActivateEditorTab からの fire-and-forget 呼び出しでも
+        // _editorSupportNavigating の窓内で判定される。空/仮想パスは Navigate 側で無視。
+        if (!_editorSupportNavigating)
+        {
+            _editorSupportHistory.Navigate(sourceTab.PeekFilePath);
+            UpdateEditorSupportNavAffordances();
+        }
         sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
         // コード解析（②）のキャレット追従。非コードや案内表示中は Schedule 側で無視される。
         sourceTab.Control.CaretMoved += EditorSupportSource_CaretMoved;

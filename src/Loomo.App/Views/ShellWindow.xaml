@@ -179,6 +179,10 @@
                                 <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
                                 <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                             </Trigger>
+                            <!-- 無効時ははっきり薄く（「押せそうに見えて押せない」を避ける）。 -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="b" Property="Opacity" Value="0.3" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -782,6 +786,14 @@
                             </Button.ContextMenu>
                             <Path Style="{StaticResource PaneActionIcon}"
                                   Data="M8,2 V9 M5,6 L8,9 L11,6 M3,12 H13" />
+                        </Button>
+                        <!-- 前のファイルへ戻る（エディタのファイル履歴。マウスのサイドボタンでも戻る/進む）。
+                             右の操作ボタン群の左端（他ボタンと一貫）。 -->
+                        <Button x:Name="EditorSupportBackButton" DockPanel.Dock="Right"
+                                Style="{StaticResource PaneActionButton}" Width="30" Height="24"
+                                ToolTip="前のファイルへ戻る（マウスのサイドボタンでも戻る/進む）" IsEnabled="False"
+                                Click="OnEditorSupportBack">
+                            <Path Style="{StaticResource PaneActionIcon}" Data="M9,3 L4,8 L9,13 M4,8 H13" />
                         </Button>
                         <TextBlock x:Name="EditorSupportTitle" VerticalAlignment="Center" Margin="4,0,8,0"
                                    FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
