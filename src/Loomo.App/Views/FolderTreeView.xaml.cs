@@ -294,6 +294,13 @@ public partial class FolderTreeView : UserControl
 
         e.Handled = true;
 
+        // マウスで直接クリックできた項目は既にビューポート内にある。選択時に WPF が
+        // 発行する BringIntoView まで処理すると、項目数が多いツリーでクリックのたびに
+        // 行が上端／下端へ寄ってしまう。マウス操作中だけ現在位置を保ち、キーボード移動や
+        // RevealPath による明示的な表示要求は従来どおり縦スクロールさせる。
+        if (Mouse.LeftButton == MouseButtonState.Pressed)
+            return;
+
         if (FindDescendant<ScrollViewer>(FileTree) is not { } scrollViewer)
             return;
 
