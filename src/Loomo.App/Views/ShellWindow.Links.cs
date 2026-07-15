@@ -200,8 +200,10 @@ public partial class ShellWindow
     /// Markdown プレビュー本文のリンククリック（&lt;a href&gt;）を振り分ける。http/https は内蔵ブラウザペイン、
     /// ファイルパス（相対はプレビュー元ファイルのフォルダ→ワークスペース根の順で解決、:行[:列] も許容）は
     /// エディタタブで開く。それ以外（mailto: 等）は OS 既定の外部起動に委ねる。解決できないリンクは何もしない。
+    /// <paramref name="sourcePath"/> は相対リンクの基準にするプレビュー元ファイル。省略時は EditorSupport
+    /// ペインの追従元タブ（別ウィンドウの複製は自身の追従元を渡す）。
     /// </summary>
-    private async Task HandleEditorSupportLinkClickedAsync(string href)
+    private async Task HandleEditorSupportLinkClickedAsync(string href, string? sourcePath = null)
     {
         if (string.IsNullOrWhiteSpace(href))
             return;
@@ -225,7 +227,7 @@ public partial class ShellWindow
             return;
         }
 
-        var currentPath = _editorSupportSourceTab?.Control.FilePath;
+        var currentPath = sourcePath ?? _editorSupportSourceTab?.Control.FilePath;
         if (!EditorFileLinkResolver.TryResolve(
                 href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
             return;

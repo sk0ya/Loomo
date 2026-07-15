@@ -76,6 +76,7 @@ public partial class ShellWindow
             var view = new DetachedEditorSupportView(_editorSupports, _settings, _workspace.RootPath, source.Control);
             var item = new DetachedItem(kind, $"Preview: {Path.GetFileName(snapshot.FilePath)}", view, dispose: view.Dispose);
             view.TitleChanged += (_, title) => item.Title = title;
+            AttachEditorSupportMirrorLinks(view);
             return item;
         }
         if (kind is DetachKind.TerminalSpinoff or DetachKind.TerminalMove)
@@ -137,8 +138,22 @@ public partial class ShellWindow
         var item = new DetachedItem(
             DetachKind.EditorSupportMirror, title, view, dispose: view.Dispose);
         view.TitleChanged += (_, t) => item.Title = t;
+        AttachEditorSupportMirrorLinks(view);
         Detached.Detach(item);
     }
+
+    /// <summary>
+    /// 別ウィンドウのプレビュー複製のリンククリックを、メインウィンドウのペイン内プレビューと同じ導線
+    /// （http/https は内蔵ブラウザ、ファイルはエディタタブ）へ流す。相対リンクの基準はこの複製自身の
+    /// 追従元ファイル（ペインの追従元とは別のことがある）。開いた先はメインウィンドウ側なので、
+    /// 背面に隠れたままにならないよう前面へ出す。
+    /// </summary>
+    private void AttachEditorSupportMirrorLinks(DetachedEditorSupportView view)
+        => view.LinkClicked += async (_, href) =>
+        {
+            await HandleEditorSupportLinkClickedAsync(href, view.SourceFilePath);
+            Activate();
+        };
 
     // ===== Editor: 複製＋双方向テキスト同期 =====
 

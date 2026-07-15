@@ -42,6 +42,9 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     /// <summary>タブ見出しに使う現在のプレビュー題名の変化通知。</summary>
     public event EventHandler<string>? TitleChanged;
 
+    /// <summary>プレビュー本文のリンククリック（href）。振り分けはメインウィンドウ側が行う。</summary>
+    public event EventHandler<string>? LinkClicked;
+
     public DetachedEditorSupportView(
         EditorSupportRegistry editorSupports, AiSettings settings, string? workspaceRoot, VimEditorControl source)
     {
@@ -181,7 +184,31 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
                 CoreWebView2HostResourceAccessKind.DenyCors);
         }
         catch { /* 失敗しても mermaid が原文表示になるだけ */ }
+
+        // ページ側スクリプトからのメッセージ（リンククリック等）を受ける。WebView2 は再ペアレント時に
+        // 作り直される（RebuildWebView）が、その都度この初期化を通るので購読も新しい core に張り直る。
+        core.WebMessageReceived += OnWebMessageReceived;
         return true;
+    }
+
+    /// <summary>
+    /// プレビュー本文のリンククリックをホストへ中継する。スクロール同期・タスクチェックボックス等の
+    /// 他メッセージは、この複製が追従専用（メインのパイプラインに触れない）なので扱わない。
+    /// </summary>
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(e.WebMessageAsJson);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("type", out var type) && type.GetString() == "linkClicked"
+                && root.TryGetProperty("href", out var hrefElement)
+                && hrefElement.GetString() is { } href)
+            {
+                LinkClicked?.Invoke(this, href);
+            }
+        }
+        catch { /* 壊れたメッセージは無視 */ }
     }
 
     /// <summary>プレビューの相対パス画像用に、preview 仮想ホストを表示中ファイルのフォルダへ張り替える。</summary>
