@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -141,11 +142,29 @@ public sealed class GitService
         };
     }
 
-    /// <summary>ローカル・リモートのブランチ一覧。リモートの HEAD ポインタ（origin/HEAD）は除く。</summary>
+    /// <summary>設定されているリモート名（git remote）。無ければ空。</summary>
+    public async Task<IReadOnlyList<string>> GetRemotesAsync()
+    {
+        var result = await RunAsync("remote").ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<string>();
+
+        return result.Output.Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+    }
+
+    /// <summary>
+    /// ローカル・リモートのブランチ一覧。リモートの HEAD ポインタ（origin/HEAD）は除く。
+    /// 上流との差（ahead/behind）と先頭コミット日時も併せて取り、1回の git 呼び出しで賄う。
+    /// </summary>
     public async Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync()
     {
         var result = await RunAsync(
-            "branch", "-a", "--format=%(refname)\t%(HEAD)\t%(upstream:short)").ConfigureAwait(false);
+            "branch", "-a",
+            "--format=%(refname)\t%(HEAD)\t%(upstream:short)\t%(upstream:track)\t%(committerdate:iso-strict)")
+            .ConfigureAwait(false);
         if (!result.Success)
             return Array.Empty<GitBranchInfo>();
 
@@ -159,21 +178,61 @@ public sealed class GitService
 
             var refName = parts[0];
             var upstream = parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null;
+            var (ahead, behind, gone) = ParseTrack(parts.Length > 3 ? parts[3] : "");
+            var lastCommit = ParseDate(parts.Length > 4 ? parts[4] : "");
+
             if (refName.StartsWith("refs/heads/", StringComparison.Ordinal))
             {
                 branches.Add(new GitBranchInfo(
-                    refName["refs/heads/".Length..], parts[1] == "*", IsRemote: false, upstream));
+                    refName["refs/heads/".Length..], parts[1] == "*", IsRemote: false, upstream)
+                {
+                    Ahead = ahead,
+                    Behind = behind,
+                    UpstreamGone = gone,
+                    LastCommit = lastCommit,
+                });
             }
             else if (refName.StartsWith("refs/remotes/", StringComparison.Ordinal))
             {
                 var name = refName["refs/remotes/".Length..];
                 if (name.EndsWith("/HEAD", StringComparison.Ordinal))
                     continue;
-                branches.Add(new GitBranchInfo(name, IsCurrent: false, IsRemote: true, upstream));
+                branches.Add(new GitBranchInfo(name, IsCurrent: false, IsRemote: true, upstream)
+                {
+                    LastCommit = lastCommit,
+                });
             }
         }
         return branches;
     }
+
+    /// <summary>
+    /// <c>%(upstream:track)</c> の値を分解する。取り得る形は
+    /// <c>[ahead 1]</c> / <c>[behind 2]</c> / <c>[ahead 1, behind 2]</c> / <c>[gone]</c> / 空。
+    /// 上流が無いブランチは空になる（この場合すべて既定値）。
+    /// </summary>
+    internal static (int Ahead, int Behind, bool Gone) ParseTrack(string track)
+    {
+        if (track.Length == 0)
+            return (0, 0, false);
+        if (track.Contains("gone", StringComparison.Ordinal))
+            return (0, 0, true);
+
+        return (ReadCount(track, "ahead "), ReadCount(track, "behind "), false);
+
+        static int ReadCount(string track, string keyword)
+        {
+            var at = track.IndexOf(keyword, StringComparison.Ordinal);
+            if (at < 0) return 0;
+            var digits = track[(at + keyword.Length)..].TakeWhile(char.IsAsciiDigit).ToArray();
+            return digits.Length > 0 && int.TryParse(digits, out var n) ? n : 0;
+        }
+    }
+
+    /// <summary>ISO-8601（<c>committerdate:iso-strict</c>）を解釈する。空・解釈不能なら null。</summary>
+    private static DateTimeOffset? ParseDate(string value) =>
+        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var parsed) ? parsed : null;
 
     /// <summary>タグ一覧（作成日の新しい順）。</summary>
     public async Task<IReadOnlyList<GitTagInfo>> GetTagsAsync()

@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+    <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
   </ItemGroup>
 
   <ItemGroup>

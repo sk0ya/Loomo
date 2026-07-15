@@ -77,7 +77,24 @@ public sealed record GitStatusSnapshot
 
 /// <summary>ブランチ1件。</summary>
 /// <param name="Name">短縮名（ローカル: main、リモート: origin/main）。</param>
-public sealed record GitBranchInfo(string Name, bool IsCurrent, bool IsRemote, string? Upstream);
+public sealed record GitBranchInfo(string Name, bool IsCurrent, bool IsRemote, string? Upstream)
+{
+    /// <summary>上流より進んでいるコミット数。上流なし・リモートブランチ・上流が消えた（gone）なら 0。</summary>
+    public int Ahead { get; init; }
+
+    /// <summary>上流より遅れているコミット数。条件は <see cref="Ahead"/> と同じ。</summary>
+    public int Behind { get; init; }
+
+    /// <summary>上流が設定されているが実体が消えている（<c>[gone]</c>）か。</summary>
+    public bool UpstreamGone { get; init; }
+
+    /// <summary>
+    /// 先頭コミットの日時。表示用の相対表記（「2日前」）はビュー側で作ること——
+    /// ここに相対文字列を持たせると時間が経つだけでレコードが不一致になり、
+    /// <c>BranchTreeBuilder.Update</c> の同一判定が毎回外れてツリーが作り直される。
+    /// </summary>
+    public DateTimeOffset? LastCommit { get; init; }
+}
 
 /// <summary>タグ1件（git for-each-ref refs/tags の1行）。</summary>
 /// <param name="Name">タグ名。</param>

@@ -24,33 +24,8 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
-        <!-- ブランチポップアップの行（ブランチ項目・新規作成）。ホバーで背景を付ける素のメニュー風ボタン -->
-        <Style x:Key="BranchMenuItem" TargetType="Button">
-            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,5" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- タイトルバーのブランチ切替ボタン。非リポジトリ（BranchLabel が空）のときは非表示 -->
+        <!-- タイトルバーのブランチ切替ボタン。非リポジトリ（BranchLabel が空）のときは非表示。
+             BranchMenuItem 本体は Themes/Controls.xaml（BranchSwitcherView と共用するため）。 -->
         <Style x:Key="TitleBarBranchButton" TargetType="Button" BasedOn="{StaticResource BranchMenuItem}">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding GitSession.BranchLabel}" Value="">
@@ -58,28 +33,6 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-
-        <!-- ブランチ一覧（タイトルバー／Git ペインの両ポップアップで共用）の右クリックメニュー。
-             右クリックした行（PreviewMouseRightButtonDown → OnBranchTreeRightClickSelect が選択状態にする）
-             が対象。フェッチ／プル／プッシュは選択行に関係なく現在ブランチに対して働く（PlacementTarget は
-             ContextMenu を開いた側の TreeView に動的に解決されるので、共用インスタンスのままでよい）。 -->
-        <ContextMenu x:Key="BranchTreeContextMenu">
-            <MenuItem Header="チェックアウト" Click="OnBranchMenuCheckout" />
-            <MenuItem Header="現在のブランチへマージ" Click="OnBranchMenuMerge" />
-            <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchMenuRebase" />
-            <Separator />
-            <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchMenuCreateFrom" />
-            <MenuItem Header="ブランチ名をコピー" Click="OnBranchMenuCopyName" />
-            <Separator />
-            <MenuItem Header="削除" Click="OnBranchMenuDelete" />
-            <Separator />
-            <MenuItem Header="⭮ フェッチ"
-                      Command="{Binding PlacementTarget.DataContext.GitSession.FetchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-            <MenuItem Header="⇣ プル"
-                      Command="{Binding PlacementTarget.DataContext.GitSession.PullCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-            <MenuItem Header="⇡ プッシュ"
-                      Command="{Binding PlacementTarget.DataContext.GitSession.PushCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-        </ContextMenu>
 
         <!-- Diff のソース切替（AI変更 / Git）のセグメントボタン -->
         <Style x:Key="SourceToggle" TargetType="RadioButton">
@@ -308,36 +261,7 @@
                     </Button>
                     <Popup x:Name="BranchPopup" PlacementTarget="{Binding ElementName=BranchButton}"
                            Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="4" Padding="4"
-                                MinWidth="240" MaxWidth="360" Margin="0,2,8,8">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
-                            </Border.Effect>
-                            <DockPanel>
-                                <!-- フッター：新規ブランチ作成＋このポップアップ発の操作が失敗したときの理由表示 -->
-                                <StackPanel DockPanel.Dock="Bottom">
-                                    <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
-                                    <Button Style="{StaticResource BranchMenuItem}" FontSize="{DynamicResource Fs12}"
-                                            Content="＋ 新しいブランチ" Click="OnTitleBarNewBranchClick" />
-                                    <TextBlock x:Name="BranchPopupStatus" Margin="10,2,10,4" FontSize="{DynamicResource Fs11}"
-                                               Foreground="#FFE57373" TextWrapping="Wrap"
-                                               MaxHeight="80" Visibility="Collapsed" />
-                                </StackPanel>
-                                <!-- ブランチツリー（3個以上で "/" フォルダ表示）。クリック＝リーフはチェックアウト、
-                                     フォルダは開閉（code-behind の OnTitleBarBranchTreeClick） -->
-                                <TreeView x:Name="BranchPopupTree" MaxHeight="360"
-                                          Background="Transparent" BorderThickness="0"
-                                          Foreground="{DynamicResource Fg}"
-                                          ItemsSource="{Binding GitSession.BranchTree}"
-                                          ItemContainerStyle="{StaticResource BranchTreeItem}"
-                                          ItemTemplate="{StaticResource BranchNodeTemplate}"
-                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                          PreviewMouseLeftButtonUp="OnTitleBarBranchTreeClick"
-                                          PreviewMouseRightButtonDown="OnBranchTreeRightClickSelect"
-                                          ContextMenu="{StaticResource BranchTreeContextMenu}" />
-                            </DockPanel>
-                        </Border>
+                        <views:BranchSwitcherView x:Name="BranchSwitcher" DataContext="{Binding GitSession}" />
                     </Popup>
 
                 </StackPanel>
@@ -929,40 +853,10 @@
                             </Button>
                             <Popup x:Name="GitPaneBranchPopup" PlacementTarget="{Binding ElementName=GitPaneBranchButton}"
                                    Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                        BorderThickness="1" CornerRadius="4" Padding="4"
-                                        MinWidth="240" MaxWidth="360" Margin="0,2,8,8">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
-                                    </Border.Effect>
-                                    <DockPanel>
-                                        <StackPanel DockPanel.Dock="Bottom">
-                                            <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
-                                            <Button Style="{StaticResource BranchMenuItem}" FontSize="{DynamicResource Fs12}"
-                                                    Content="＋ 新しいブランチ" Click="OnGitPaneNewBranchClick" />
-                                            <TextBlock x:Name="GitPaneBranchPopupStatus" Margin="10,2,10,4" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="#FFE57373" TextWrapping="Wrap"
-                                                       MaxHeight="80" Visibility="Collapsed" />
-                                        </StackPanel>
-                                        <TreeView x:Name="GitPaneBranchPopupTree" MaxHeight="360"
-                                                  Background="Transparent" BorderThickness="0"
-                                                  Foreground="{DynamicResource Fg}"
-                                                  ItemsSource="{Binding GitSession.BranchTree}"
-                                                  ItemContainerStyle="{StaticResource BranchTreeItem}"
-                                                  ItemTemplate="{StaticResource BranchNodeTemplate}"
-                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                  PreviewMouseLeftButtonUp="OnGitPaneBranchTreeClick"
-                                                  PreviewMouseRightButtonDown="OnBranchTreeRightClickSelect"
-                                                  ContextMenu="{StaticResource BranchTreeContextMenu}" />
-                                    </DockPanel>
-                                </Border>
+                                <views:BranchSwitcherView x:Name="GitPaneBranchSwitcher" DataContext="{Binding GitSession}" />
                             </Popup>
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⭮ フェッチ"
-                                    Command="{Binding GitSession.FetchCommand}" />
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇣ プル"
-                                    Command="{Binding GitSession.PullCommand}" />
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇡ プッシュ"
-                                    Command="{Binding GitSession.PushCommand}" />
+                            <!-- フェッチ／プル／プッシュはここには置かない。ブランチ切替ポップアップの
+                                 同期帯（BranchSwitcherView）が一箇所の持ち場で、上流と件数もそこに出る。 -->
                             <!-- コミット一覧の絞り込み（メッセージ・作者・ハッシュ・ref を部分一致）。
                                  git は再実行せず、読み込み済みの一覧をクライアント側でフィルタする。 -->
                             <Grid Width="200" Margin="8,0,0,0" VerticalAlignment="Center">

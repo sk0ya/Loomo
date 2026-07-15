@@ -4,6 +4,21 @@ namespace sk0ya.Loomo.Tests;
 
 public class GitParserTests
 {
+    // ===== ブランチの上流追跡（git branch --format の %(upstream:track)）=====
+
+    [Theory]
+    // 上流なし（追跡していない）は空文字で来る
+    [InlineData("", 0, 0, false)]
+    [InlineData("[ahead 1]", 1, 0, false)]
+    [InlineData("[behind 2]", 0, 2, false)]
+    [InlineData("[ahead 12, behind 34]", 12, 34, false)]
+    // 上流は設定されているがリモートから消えている
+    [InlineData("[gone]", 0, 0, true)]
+    public void ブランチ_上流との差を読める(string track, int ahead, int behind, bool gone)
+    {
+        Assert.Equal((ahead, behind, gone), GitService.ParseTrack(track));
+    }
+
     [Fact]
     public void ステータス_ブランチとaheadbehindを読める()
     {

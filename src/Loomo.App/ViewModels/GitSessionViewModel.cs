@@ -27,6 +27,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private bool _loaded;
     private GitStatusSnapshot _status = new();
 
+    /// <summary>直近に読み込んだブランチ一覧（絞り込みの元・上流の参照元）。</summary>
+    private IReadOnlyList<GitBranchInfo> _allBranches = Array.Empty<GitBranchInfo>();
+
     [ObservableProperty] private bool _isRepository = true;
     [ObservableProperty] private string _branchLabel = "";
     [ObservableProperty] private bool _isBusy;
@@ -43,8 +46,40 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>進行中操作が「スキップ」を持つか（rebase / cherry-pick のみ）。</summary>
     [ObservableProperty] private bool _operationCanSkip;
 
-    /// <summary>ブランチ一覧のツリー（3個以上で "/" 区切りのフォルダ表示、未満はフラット）。</summary>
+    /// <summary>ブランチ一覧のツリー（ローカル／リモートの見出し、その中を "/" でフォルダ化）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
+
+    /// <summary>
+    /// ブランチ切替ポップアップ用の絞り込み語。<see cref="BranchTree"/> 側（Git ペインのブランチ一覧）は
+    /// 絞り込まない——同じ VM を見ているが用途が違う（あちらはコミットグラフの表示範囲を選ぶ一覧）。
+    /// </summary>
+    [ObservableProperty] private string _branchFilter = "";
+
+    /// <summary>絞り込み後のブランチ一覧。空語なら <see cref="BranchTree"/> と同一インスタンス。</summary>
+    [ObservableProperty] private IReadOnlyList<BranchTreeNode> _filteredBranchTree = Array.Empty<BranchTreeNode>();
+
+    /// <summary>現在ブランチの上流との差。ポップアップの同期帯がプル／プッシュの件数として出す。</summary>
+    [ObservableProperty] private int _ahead;
+    [ObservableProperty] private int _behind;
+
+    /// <summary>
+    /// 同期の相手になるリモート名（現在ブランチの上流があればその、無ければ最初のリモート）。
+    /// リモートが1つも無ければ空＝フェッチ／プル／プッシュは無効。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRemote))]
+    private string _remoteLabel = "";
+
+    /// <summary>現在ブランチの上流（例: origin/main）。未設定なら空。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SyncTargetLabel))]
+    private string _upstreamLabel = "";
+
+    public bool HasRemote => RemoteLabel.Length > 0;
+
+    /// <summary>同期帯の副題：プル／プッシュが実際に相手にする ref。上流未設定はそう明示する
+    /// （PushAsync が -u origin HEAD で作りに行くため、押せないわけではない）。</summary>
+    public string SyncTargetLabel => UpstreamLabel.Length > 0 ? UpstreamLabel : "上流未設定";
 
     /// <summary>タグ一覧（作成日の新しい順、フラット表示）。</summary>
     [ObservableProperty] private IReadOnlyList<GitTagInfo> _tags = Array.Empty<GitTagInfo>();
@@ -152,7 +187,12 @@ public sealed partial class GitSessionViewModel : ObservableObject
         if (!_status.IsRepository)
         {
             BranchLabel = "";
+            _allBranches = Array.Empty<GitBranchInfo>();
             BranchTree = Array.Empty<BranchTreeNode>();
+            FilteredBranchTree = BranchTree;
+            RemoteLabel = "";
+            UpstreamLabel = "";
+            Ahead = Behind = 0;
             Tags = Array.Empty<GitTagInfo>();
             Submodules = Array.Empty<GitSubmoduleInfo>();
             LogRows.Clear();
@@ -161,7 +201,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
             return;
         }
 
-        BranchLabel = (_status.Ahead, _status.Behind) switch
+        Ahead = _status.Ahead;
+        Behind = _status.Behind;
+        BranchLabel = (Ahead, Behind) switch
         {
             (0, 0) => _status.Branch,
             (var a, 0) => $"{_status.Branch} ↑{a}",
@@ -177,13 +219,38 @@ public sealed partial class GitSessionViewModel : ObservableObject
         OperationCanSkip = _status.RebaseInProgress || _status.CherryPickInProgress;
 
         // 構成が変わらなければ同一インスタンスが返り、ビュー（開閉・選択）はそのまま保たれる
-        var branches = await _git.GetBranchesAsync();
-        BranchTree = BranchTreeBuilder.Update(BranchTree, branches);
+        _allBranches = await _git.GetBranchesAsync();
+        BranchTree = BranchTreeBuilder.Update(BranchTree, _allBranches);
+        UpdateFilteredBranchTree();
+        UpdateRemote(await _git.GetRemotesAsync());
         Tags = await _git.GetTagsAsync();
         Submodules = await _git.GetSubmodulesAsync();
 
         await ReloadLogAsync();
     }
+
+    /// <summary>
+    /// 同期の相手（リモート・上流）を決める。上流があればそのリモート、無ければ最初のリモート
+    /// （push が -u origin HEAD で作りに行く先と一致させる）。
+    /// </summary>
+    private void UpdateRemote(IReadOnlyList<string> remotes)
+    {
+        var current = _allBranches.FirstOrDefault(b => b.IsCurrent);
+        UpstreamLabel = current?.Upstream ?? "";
+
+        var fromUpstream = UpstreamLabel.Length > 0 ? UpstreamLabel.Split('/')[0] : null;
+        RemoteLabel = fromUpstream is not null && remotes.Contains(fromUpstream)
+            ? fromUpstream
+            : remotes.FirstOrDefault() ?? "";
+    }
+
+    partial void OnBranchFilterChanged(string value) => UpdateFilteredBranchTree();
+
+    /// <summary>空語のときは <see cref="BranchTree"/> をそのまま指す（作り直さない＝開閉状態が生きる）。</summary>
+    private void UpdateFilteredBranchTree() =>
+        FilteredBranchTree = string.IsNullOrWhiteSpace(BranchFilter)
+            ? BranchTree
+            : BranchTreeBuilder.BuildFiltered(_allBranches, BranchFilter);
 
     /// <summary>コミットグラフだけを（現在の表示ブランチ範囲で）読み直す。選択は可能なら維持する。</summary>
     private async Task ReloadLogAsync()

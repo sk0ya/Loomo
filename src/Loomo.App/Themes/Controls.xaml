@@ -668,12 +668,70 @@
 
     <!-- ノード表示：現在ブランチは ✓＋アクセント色で目立たせる（✓ は現在行にだけ出して幅を取らない）。
          リモートとフォルダは淡色 -->
+    <!-- ブランチポップアップの行（新規作成ボタン等）。ホバーで背景を付ける素のメニュー風ボタン。
+         ShellWindow（TitleBarBranchButton の基底）と BranchSwitcherView が共用する。 -->
+    <Style x:Key="BranchMenuItem" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ブランチ1行。左＝現在印＋名前、右＝上流との差と最終コミット（右揃えで列に見える）。
+         見出し（ローカル／origin）は名前を淡く太く、右に配下の件数ピル。 -->
     <HierarchicalDataTemplate x:Key="BranchNodeTemplate" ItemsSource="{Binding Children}">
-        <StackPanel Orientation="Horizontal" ToolTip="{Binding ToolTip}">
-            <TextBlock Text="✓ " Foreground="{DynamicResource Accent}" FontSize="{DynamicResource Fs12}">
+        <DockPanel ToolTip="{Binding ToolTip}" Background="Transparent">
+            <!-- 見出しの件数ピル -->
+            <Border DockPanel.Dock="Right" Background="{DynamicResource Border}" CornerRadius="7"
+                    Padding="6,0" MinWidth="18" Height="15" Margin="6,0,2,0" VerticalAlignment="Center"
+                    Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding LeafCount}" FontSize="{DynamicResource Fs10}"
+                           Foreground="{DynamicResource Fg}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+
+            <!-- 最終コミットの相対日時（どれが生きているブランチかの目安） -->
+            <TextBlock DockPanel.Dock="Right" Text="{Binding RelativeDate}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,1,2,0" />
+
+            <!-- 上流との差。0 のときは TrackLabel が空になり、幅も取らない -->
+            <TextBlock DockPanel.Dock="Right" Text="{Binding TrackLabel}" FontSize="{DynamicResource Fs10}"
+                       FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                       VerticalAlignment="Center" Margin="8,0,0,0" />
+
+            <!-- 上流が消えている（リモートで削除済み）ブランチの目印 -->
+            <TextBlock DockPanel.Dock="Right" Text="上流なし" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                       ToolTip="上流ブランチがリモートに存在しません（削除済み）"
+                       Visibility="{Binding IsUpstreamGone, Converter={StaticResource BoolToVis}}" />
+
+            <!-- 現在ブランチの印。Collapsed ではなく Hidden で幅を残す（印の有無で名前の
+                 左端がずれると、行が階段状になって一覧として読めなくなる）。 -->
+            <TextBlock DockPanel.Dock="Left" Text="●" Width="10" Margin="0,0,4,0"
+                       FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
+                       TextAlignment="Center">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Setter Property="Visibility" Value="Hidden" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                                 <Setter Property="Visibility" Value="Visible" />
@@ -682,7 +740,9 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-            <TextBlock Text="{Binding Label}" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis">
+
+            <TextBlock Text="{Binding Label}" FontSize="{DynamicResource Fs12}"
+                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
                         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
@@ -693,6 +753,12 @@
                             <DataTrigger Binding="{Binding IsFolder}" Value="True">
                                 <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                             </DataTrigger>
+                            <!-- 見出しは項目ではなく区切り。小さく太い淡色にして行と混ざらないようにする -->
+                            <DataTrigger Binding="{Binding IsSection}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                                 <Setter Property="Foreground" Value="{DynamicResource Accent}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
@@ -701,7 +767,7 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-        </StackPanel>
+        </DockPanel>
     </HierarchicalDataTemplate>
 
     <!-- ツリー項目：FolderTree と同じ作り（ヘッダ行だけをホバー/選択ハイライト・子に左ガイド線）。
@@ -772,9 +838,10 @@
                         <Trigger Property="IsExpanded" Value="False">
                             <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
                         </Trigger>
-                        <!-- リーフは矢印を Collapsed にして列ごと畳む（無駄なすきまを作らない） -->
+                        <!-- リーフは矢印を消すが Hidden で列は残す。Collapsed にすると同じ階層でも
+                             フォルダ行より 13px 左へ出て、左端が階段状になり一覧として読めなくなる -->
                         <Trigger Property="HasItems" Value="False">
-                            <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
                         </Trigger>
                         <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />

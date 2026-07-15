@@ -277,6 +277,7 @@ public partial class ShellWindow : Window
         _browserTabs = _scratchBrowserWorkspace.Tabs;
 
         InitializePanes();
+        HookBranchSwitchers();
 
         // マウスのサイドボタン（戻る=XButton1／進む=XButton2）でエディタのファイル履歴を行き来する
         // （IDE 標準の手触り）。Window レベルのトンネル（Preview）で各 WPF ペインより先に受ける。
