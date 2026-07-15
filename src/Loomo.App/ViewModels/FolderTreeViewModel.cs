@@ -502,6 +502,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void RefreshGitStateAsync()
     {
         _gitLoadCts?.Cancel();
+        // 新しい状態を構築している間、切替前ワークスペースの全パスを保持し続けない。
+        _gitState = GitTreeState.Empty;
 
         if (_currentRoot is null)
         {
@@ -524,7 +526,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         var token = cts.Token;
         try
         {
-            var state = await Task.Run(() => GitTreeState.Load(root), token);
+            var state = await Task.Run(() => GitTreeState.Load(root, token), token);
             token.ThrowIfCancellationRequested();
 
             // 切替・別ルート選択・更新で置き換えられていたら、この結果は捨てる

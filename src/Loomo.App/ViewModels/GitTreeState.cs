@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -52,14 +53,16 @@ internal sealed class GitTreeState
     public GitChangeKind GetFileStatus(string fullPath)
         => FileStatuses.TryGetValue(Path.GetFullPath(fullPath), out var kind) ? kind : GitChangeKind.None;
 
-    public static GitTreeState Load(string rootPath)
+    public static GitTreeState Load(string rootPath, CancellationToken token)
     {
         var fullRoot = Path.GetFullPath(rootPath);
-        var gitRoot = FindGitRoot(fullRoot);
+        var gitRoot = FindGitRoot(fullRoot, token);
         if (gitRoot is null)
             return new GitTreeState(fullRoot, null, new(), new(), new());
 
-        var fileStatuses = LoadFileStatuses(gitRoot);
+        token.ThrowIfCancellationRequested();
+        var fileStatuses = LoadFileStatuses(gitRoot, token);
+        token.ThrowIfCancellationRequested();
         var changedFiles = new HashSet<string>(fileStatuses.Keys, StringComparer.OrdinalIgnoreCase);
         var changedDirectories = LoadChangedDirectories(changedFiles, fullRoot);
         return new GitTreeState(fullRoot, gitRoot, fileStatuses, changedFiles, changedDirectories);
@@ -110,9 +113,9 @@ internal sealed class GitTreeState
             || fullPath.StartsWith(normalizedGitDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? FindGitRoot(string rootPath)
+    private static string? FindGitRoot(string rootPath, CancellationToken token)
     {
-        var result = RunGit(rootPath, "rev-parse", "--show-toplevel");
+        var result = RunGit(rootPath, null, token, ["rev-parse", "--show-toplevel"]);
         if (result.ExitCode != 0)
             return FindGitRootByDirectory(rootPath);
 
@@ -137,11 +140,12 @@ internal sealed class GitTreeState
         return null;
     }
 
-    private static Dictionary<string, GitChangeKind> LoadFileStatuses(string gitRoot)
+    private static Dictionary<string, GitChangeKind> LoadFileStatuses(string gitRoot, CancellationToken token)
     {
         var statuses = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
 
-        var result = RunGit(gitRoot, "status", "--porcelain", "-z", "--untracked-files=all");
+        var result = RunGit(gitRoot, null, token,
+            ["status", "--porcelain", "-z", "--untracked-files=all"]);
         if (result.ExitCode != 0)
             return statuses;
 
@@ -234,6 +238,10 @@ internal sealed class GitTreeState
     // standardInput に解決され（git のサブコマンドが渡らず exit 129 になる）。
     // 明示的な string[] にすることで、可変長引数の呼び出しは必ず上の params 版へ振り分けられる。
     private static GitCommandResult RunGit(string workingDirectory, string? standardInput, string[] args)
+        => RunGit(workingDirectory, standardInput, CancellationToken.None, args);
+
+    private static GitCommandResult RunGit(
+        string workingDirectory, string? standardInput, CancellationToken token, string[] args)
     {
         try
         {
@@ -255,6 +263,18 @@ internal sealed class GitTreeState
                 process.StartInfo.ArgumentList.Add(arg);
 
             process.Start();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+            var waitToken = linkedCts.Token;
+            using var registration = waitToken.Register(() =>
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch { /* 終了との競合 */ }
+            });
 
             if (standardInput is not null)
             {
@@ -262,16 +282,21 @@ internal sealed class GitTreeState
                 process.StandardInput.Close();
             }
 
-            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var outputTask = process.StandardOutput.ReadToEndAsync(waitToken);
 
-            if (!process.WaitForExit(5000))
+            try
             {
-                process.Kill(entireProcessTree: true);
+                process.WaitForExitAsync(waitToken).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
                 return new GitCommandResult(-1, "");
             }
+            catch (OperationCanceledException) { throw; }
 
             return new GitCommandResult(process.ExitCode, outputTask.GetAwaiter().GetResult());
         }
+        catch (OperationCanceledException) { throw; }
         catch
         {
             return new GitCommandResult(-1, "");
