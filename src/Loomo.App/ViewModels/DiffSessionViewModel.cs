@@ -80,8 +80,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     [ObservableProperty] private bool _isGitMode = true;
     private bool _suppressModeChangeRefresh;
-    /// <summary>差分本体を左右並び（side-by-side）で表示するか。false は統合（unified）表示。</summary>
-    [ObservableProperty] private bool _isSideBySide;
+    /// <summary>差分本体を左右並び（side-by-side）で表示するか。false は統合（unified）表示。既定は左右。</summary>
+    [ObservableProperty] private bool _isSideBySide = true;
     /// <summary>コミット範囲を表示中のヘッダーラベル（空なら作業ツリー表示）。</summary>
     [ObservableProperty] private string _gitTargetLabel = "";
     [ObservableProperty] private DiffFileItem? _selectedFile;
