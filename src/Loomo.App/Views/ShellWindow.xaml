@@ -1241,8 +1241,9 @@
                 <!-- コマンドパレット：部屋の全操作（移動・表示・タブ・コンポーザ・ペグボード・WS切替）を
                      名前で検索して実行する（Ctrl+Shift+P / Ctrl+W p。ShellWindow.CommandPalette.cs）。 -->
                 <Grid x:Name="CommandPaletteOverlay" Grid.ColumnSpan="4" Panel.ZIndex="200" Visibility="Collapsed"
-                      Background="#59101010" MouseLeftButtonDown="OnPaletteBackgroundMouseDown">
-                    <!-- 幅は常に固定（モード切替で左右にズレないように）。検索モードは右にプレビュー枠を開く。 -->
+                      Background="#59101010" MouseLeftButtonDown="OnPaletteBackgroundMouseDown"
+                      SizeChanged="OnPaletteOverlaySizeChanged">
+                    <!-- 幅・高さはウィンドウに合わせてコードで広げる（UpdatePaletteBoxSize）。ここの値は初期フォールバック。 -->
                     <Border x:Name="PaletteBox" Width="760" MaxHeight="440" HorizontalAlignment="Center" VerticalAlignment="Top"
                             Margin="0,46,0,0" Background="{DynamicResource Panel}"
                             BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="6"
@@ -1300,7 +1301,7 @@
                                      TextChanged="OnPaletteTextChanged" PreviewKeyDown="OnPaletteInputKeyDown" />
                             <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" MinWidth="300" />
                                     <ColumnDefinition x:Name="PalettePreviewColumn" Width="0" MinWidth="0" />
                                 </Grid.ColumnDefinitions>
                                 <ListBox x:Name="PaletteList" Grid.Column="0" Margin="4,0,4,4" BorderThickness="0"
@@ -1316,16 +1317,20 @@
                                         </Style>
                                     </ListBox.ItemContainerStyle>
                                     <ListBox.ItemTemplate>
+                                        <!-- タイトルを主役にして横幅いっぱいに使い、カテゴリ（種別・位置）は右端に淡色で添える。
+                                             タイトルは一致文字だけ Accent＋太字で強調する（PaletteHighlight）。 -->
                                         <DataTemplate>
                                             <DockPanel LastChildFill="True">
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="{DynamicResource Fs11}"
                                                            Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                                                            VerticalAlignment="Center" />
-                                                <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"><Run
-                                                        Text="{Binding Category, Mode=OneWay}"
-                                                        Foreground="{DynamicResource FgDim}" /><Run
-                                                        Text=" › " Foreground="{DynamicResource FgDim}" /><Run
-                                                        Text="{Binding Title, Mode=OneWay}" /></TextBlock>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Category}" FontSize="{DynamicResource Fs11}"
+                                                           Foreground="{DynamicResource FgDim}" Margin="10,0,0,0" MaxWidth="300"
+                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"
+                                                           views:PaletteHighlight.Text="{Binding Title}"
+                                                           views:PaletteHighlight.Query="{Binding TitleMatch}" />
                                             </DockPanel>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -1334,7 +1339,7 @@
                                         BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="3">
                                     <ScrollViewer x:Name="PalettePreviewScroll" VerticalScrollBarVisibility="Auto"
                                                   HorizontalScrollBarVisibility="Auto" Padding="6,4">
-                                        <TextBlock x:Name="PalettePreview" FontFamily="Consolas" FontSize="{DynamicResource Fs11}"
+                                        <TextBlock x:Name="PalettePreview" FontFamily="Consolas" FontSize="{DynamicResource Fs13}"
                                                    Foreground="{DynamicResource Fg}" />
                                     </ScrollViewer>
                                 </Border>

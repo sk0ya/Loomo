@@ -23,6 +23,10 @@ public sealed record PaletteCommand(string Category, string Title, Action Execut
 
     /// <summary>スニペット内で強調する語（grep の検索語）。null ならハイライトなし。</summary>
     public string? PreviewHighlight { get; init; }
+
+    /// <summary>一覧で <see cref="Title"/> 内の一致箇所を強調するための語（現在の素のクエリ）。
+    /// 表示直前に ShellWindow がまとめて設定する。null／空なら強調なし。</summary>
+    public string? TitleMatch { get; set; }
 }
 
 /// <summary>パレットの絞り込み（純ロジック・テスト対象）。</summary>

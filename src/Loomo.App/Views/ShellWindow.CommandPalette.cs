@@ -40,9 +40,35 @@ public partial class ShellWindow
     {
         _paletteCommands = BuildPaletteCommands();
         CommandPaletteOverlay.Visibility = Visibility.Visible;
+        UpdatePaletteBoxSize();
         PaletteInput.Text = string.Empty;
         RefilterPalette();
         PaletteInput.Focus();
+    }
+
+    /// <summary>プレビューを開いているか（＝箱の背を高く固定するか）。RefilterPalette が更新する。</summary>
+    private bool _palettePreviewShown;
+
+    /// <summary>パレット本体の大きさをウィンドウに合わせて広げる（画面が広いほど一覧＋プレビューを広く取る）。
+    /// 幅・高さともにウィンドウの割合をとりつつ下限・上限でクランプする。オーバーレイの SizeChanged からも呼ぶ
+    /// ので、開いたまま／最大化しても追従する。プレビュー表示中は候補が少なくてもプレビューを大きく見せたいので
+    /// 背を高く固定し、一覧だけのときは中身なりに縮める（無駄な余白を出さない）。</summary>
+    private void UpdatePaletteBoxSize()
+    {
+        var w = ActualWidth;
+        var h = ActualHeight;
+        if (w <= 0 || h <= 0)
+            return;
+        PaletteBox.Width = Math.Clamp(w * 0.72, 760, 1600);
+        var tall = Math.Max(440, h * 0.82);
+        PaletteBox.MaxHeight = tall;
+        PaletteBox.Height = _palettePreviewShown ? tall : double.NaN;
+    }
+
+    private void OnPaletteOverlaySizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (IsPaletteOpen)
+            UpdatePaletteBoxSize();
     }
 
     /// <param name="refocus">true なら直前にフォーカスしていたペインへ戻す（Esc・背景クリック時）。
@@ -154,7 +180,11 @@ public partial class ShellWindow
         // ハイライト＋ジャンプするのでプレビューは持たない。
         var showPreview = mode is PaletteMode.File or PaletteMode.Grep or PaletteMode.Class or PaletteMode.Symbol
             || (mode == PaletteMode.All && !string.IsNullOrWhiteSpace(query));
-        PalettePreviewColumn.Width = showPreview ? new GridLength(340) : new GridLength(0);
+        // プレビューは一覧と同じ割合（★）で開くので、箱がウィンドウに合わせて広がると一緒に大きくなる。
+        PalettePreviewColumn.Width = showPreview ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        // 候補が少なくてもプレビューが縮まないよう、開いている間は箱の背を高く固定する（UpdatePaletteBoxSize）。
+        _palettePreviewShown = showPreview;
+        UpdatePaletteBoxSize();
 
         if (mode == PaletteMode.Command)
         {
@@ -395,6 +425,11 @@ public partial class ShellWindow
 
     private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items)
     {
+        // 一覧のタイトル強調用に、いま入力中の素のクエリを各項目へ添える（モード先頭記号は落とす）。
+        var (_, query) = ParsePaletteMode(PaletteInput.Text);
+        foreach (var item in items)
+            item.TitleMatch = query;
+
         PaletteList.ItemsSource = items;
         if (PaletteList.Items.Count > 0)
         {
@@ -445,7 +480,8 @@ public partial class ShellWindow
                 return;
             }
 
-            const int radius = 14;
+            const int radius = 40; // 背の高いプレビューでも上下に余白が出ないよう広めに見せる
+
             var center = command.PreviewLine > 0 ? command.PreviewLine : 1;
             var start = Math.Max(1, center - radius);
             var end = Math.Min(lines.Length, center + radius);
