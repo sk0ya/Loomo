@@ -1337,11 +1337,9 @@
                                 </ListBox>
                                 <Border Grid.Column="1" Margin="4,0,4,4" Background="{DynamicResource Bg}"
                                         BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="3">
-                                    <ScrollViewer x:Name="PalettePreviewScroll" VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Auto" Padding="6,4">
-                                        <TextBlock x:Name="PalettePreview" FontFamily="Consolas" FontSize="{DynamicResource Fs13}"
-                                                   Foreground="{DynamicResource Fg}" />
-                                    </ScrollViewer>
+                                    <!-- プレビュー本体は読み取り専用の VimEditorControl をコードから流し込む
+                                         （ShellWindow.CommandPalette.cs / EnsurePreviewEditor）。 -->
+                                    <Border x:Name="PalettePreviewHost" ClipToBounds="True" />
                                 </Border>
                             </Grid>
                         </Grid>

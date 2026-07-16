@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using Editor.Controls;
 using Editor.Controls.Lsp;
 using Editor.Core.Lsp;
 using sk0ya.Loomo.App.Services;
@@ -39,6 +40,9 @@ public partial class ShellWindow
     private void OpenCommandPalette()
     {
         _paletteCommands = BuildPaletteCommands();
+        // テーマ／フォントが前回開いてから変わっていることがあるので、プレビュー用エディタへ再適用する。
+        if (_previewEditor is not null)
+            ApplyEditorAppearance(_previewEditor);
         CommandPaletteOverlay.Visibility = Visibility.Visible;
         UpdatePaletteBoxSize();
         PaletteInput.Text = string.Empty;
@@ -78,6 +82,7 @@ public partial class ShellWindow
         if (!IsPaletteOpen)
             return;
         _paletteSearchCts?.Cancel();
+        _palettePreviewCts?.Cancel();
         CommandPaletteOverlay.Visibility = Visibility.Collapsed;
         if (refocus && _focusedRegion?.Pane is { } pane)
             FocusPane(pane);
@@ -463,74 +468,81 @@ public partial class ShellWindow
     private void OnPaletteSelectionChanged(object sender, SelectionChangedEventArgs e)
         => UpdatePalettePreview(PaletteList.SelectedItem as PaletteCommand);
 
-    /// <summary>選択中ヒットのファイルを、該当行を中心に数行スニペット表示する。一致行は ▶ で印を付け、
-    /// grep モードでは検索語をテーマ色でハイライトする。</summary>
+    /// <summary>プレビュー用の読み取り専用エディタ（素の <see cref="VimEditorControl"/>）。エディタ本体と同じ
+    /// 描画・シンタックスハイライト・全文スクロールをそのまま使う。1 個だけ作って使い回す。</summary>
+    private VimEditorControl? _previewEditor;
+
+    /// <summary>選択が高速に変わっても毎回ファイルを開かないよう、軽くデバウンスするためのトークン源。</summary>
+    private CancellationTokenSource? _palettePreviewCts;
+
+    /// <summary>プレビュー用エディタを（初回のみ）生成する。LSP/git ファクトリを渡さない「素」の構成なので
+    /// 言語サーバー接続・git 差分・ファイル監視の副作用が無い。フォーカス不可にしてパレットの ↑↓ 操作を
+    /// 奪わせない（<see cref="Editor.Controls.Rendering.EditorCanvas"/> はフォーカス無しでもホイールスクロール可）。
+    /// 行番号とスクロールバーは残し、ステータスバーは切り離しの共有バーを渡して隠し、ミニマップは切る。
+    /// 配色・フォントは本体エディタと揃える。</summary>
+    private VimEditorControl EnsurePreviewEditor()
+    {
+        if (_previewEditor is { } existing)
+            return existing;
+
+        var editor = new VimEditorControl(new VimEditorControlOptions())
+        {
+            VimEnabled = false,
+            Focusable = false,  // キーボードフォーカスを奪わない（↑↓・Enter はパレットのまま）
+        };
+        ApplyEditorOptions(editor);
+        ApplyEditorAppearance(editor);
+        editor.ExecuteCommand("set number");     // 行番号は常に表示（本体設定に依らず）
+        editor.ExecuteCommand("set cursorline"); // ヒット行を常に強調
+        editor.ExecuteCommand("set nominimap");  // 狭いプレビューではミニマップは邪魔なので切る
+        // 表示しない共有ステータスバーを与えて内蔵ステータスバーだけ隠す（プレビューは非フォーカスなので
+        // このバーへ状態は流れず、見た目にも出ない）。行番号ガターとスクロールバーはそのまま残る。
+        editor.SetSharedStatusBar(new VimStatusBar());
+        PalettePreviewHost.Child = editor;
+        _previewEditor = editor;
+        return editor;
+    }
+
+    /// <summary>選択中ヒットのファイルを、プレビュー用エディタで開いてヒット行へジャンプする。grep モードでは
+    /// 検索語をエディタの検索ハイライトで重ねる。ファイル以外（コマンド等）を選んだときは隠す。</summary>
     private void UpdatePalettePreview(PaletteCommand? command)
     {
-        PalettePreview.Inlines.Clear();
-        if (command?.PreviewPath is not { } path || !File.Exists(path))
-            return;
+        _palettePreviewCts?.Cancel();
 
+        if (command?.PreviewPath is not { } path || !File.Exists(path))
+        {
+            if (_previewEditor is not null)
+                _previewEditor.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _palettePreviewCts = cts;
+        _ = ShowPalettePreviewAsync(command, path, cts.Token);
+    }
+
+    private async Task ShowPalettePreviewAsync(PaletteCommand command, string path, CancellationToken ct)
+    {
         try
         {
-            var lines = File.ReadAllLines(path);
-            if (lines.Length == 0)
-            {
-                PalettePreview.Inlines.Add(new Run("(空ファイル)"));
-                return;
-            }
+            await Task.Delay(60, ct); // ↑↓ の連続移動でファイルを開きすぎないよう軽く待つ
+        }
+        catch (OperationCanceledException) { return; }
+        if (ct.IsCancellationRequested)
+            return;
 
-            const int radius = 40; // 背の高いプレビューでも上下に余白が出ないよう広めに見せる
-
-            var center = command.PreviewLine > 0 ? command.PreviewLine : 1;
-            var start = Math.Max(1, center - radius);
-            var end = Math.Min(lines.Length, center + radius);
-
-            for (var i = start; i <= end; i++)
-            {
-                var gutter = new Run((command.PreviewLine > 0 && i == command.PreviewLine ? "▶" : " ")
-                    + i.ToString().PadLeft(4) + "  ");
-                gutter.SetResourceReference(TextElement.ForegroundProperty, "FgDim");
-                PalettePreview.Inlines.Add(gutter);
-                AppendHighlighted(lines[i - 1], command.PreviewHighlight);
-                if (i < end)
-                    PalettePreview.Inlines.Add(new LineBreak());
-            }
+        var editor = EnsurePreviewEditor();
+        editor.Visibility = Visibility.Visible;
+        try
+        {
+            editor.LoadFile(path);
+            // PreviewLine は1始まり、NavigateTo は0始まり。ファイル（行指定なし）は先頭へ。
+            editor.NavigateTo(Math.Max(0, command.PreviewLine - 1), 0);
+            editor.HighlightSearch(command.PreviewHighlight ?? "");
         }
         catch
         {
-            PalettePreview.Inlines.Add(new Run("(プレビューを読み込めません)"));
-        }
-        PalettePreviewScroll.ScrollToTop();
-    }
-
-    /// <summary>1 行を、検索語の出現箇所だけテーマ色（Accent 背景）で強調しつつ追加する。</summary>
-    private void AppendHighlighted(string text, string? highlight)
-    {
-        if (string.IsNullOrEmpty(highlight))
-        {
-            PalettePreview.Inlines.Add(new Run(text));
-            return;
-        }
-
-        var idx = 0;
-        while (true)
-        {
-            var found = text.IndexOf(highlight, idx, StringComparison.OrdinalIgnoreCase);
-            if (found < 0)
-            {
-                PalettePreview.Inlines.Add(new Run(text[idx..]));
-                break;
-            }
-            if (found > idx)
-                PalettePreview.Inlines.Add(new Run(text[idx..found]));
-
-            var hit = new Run(text.Substring(found, highlight.Length));
-            hit.SetResourceReference(TextElement.BackgroundProperty, "Accent");
-            hit.SetResourceReference(TextElement.ForegroundProperty, "Bg");
-            PalettePreview.Inlines.Add(hit);
-
-            idx = found + highlight.Length;
+            editor.Visibility = Visibility.Collapsed;
         }
     }
 
