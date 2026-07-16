@@ -8,6 +8,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using Editor.Controls.Lsp;
+using Editor.Core.Lsp;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using Terminal.Tabs;
@@ -28,8 +30,9 @@ public partial class ShellWindow
     /// <summary>@／# モードの非同期検索を、入力が変わるたびにキャンセル＆再発行するためのトークン源。</summary>
     private CancellationTokenSource? _paletteSearchCts;
 
-    /// <summary>パレットの入力モード。先頭の記号で切り替える（VS Code 風）。</summary>
-    private enum PaletteMode { Command, File, Grep, Terminal }
+    /// <summary>パレットの入力モード。先頭の記号で切り替える（VS Code 風）。既定は「すべて」（横断検索）。
+    /// クラス／シンボルは LSP（ワークスペースシンボル）経由で取得する。</summary>
+    private enum PaletteMode { All, File, Grep, Class, Symbol, Terminal, Command }
 
     private bool IsPaletteOpen => CommandPaletteOverlay.Visibility == Visibility.Visible;
 
@@ -54,23 +57,30 @@ public partial class ShellWindow
             FocusPane(pane);
     }
 
-    /// <summary>先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、$＝ターミナル内検索、無印＝コマンド。</summary>
+    /// <summary>先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、:＝クラス、%＝シンボル、
+    /// $＝ターミナル内検索、&gt;＝コマンド、無印＝すべて（横断検索）。</summary>
     private static (PaletteMode Mode, string Query) ParsePaletteMode(string? text)
     {
         text ??= string.Empty;
         if (text.StartsWith('@')) return (PaletteMode.File, text[1..].Trim());
         if (text.StartsWith('#')) return (PaletteMode.Grep, text[1..].Trim());
+        if (text.StartsWith(':')) return (PaletteMode.Class, text[1..].Trim());
+        if (text.StartsWith('%')) return (PaletteMode.Symbol, text[1..].Trim());
         if (text.StartsWith('$')) return (PaletteMode.Terminal, text[1..].Trim());
-        return (PaletteMode.Command, text);
+        if (text.StartsWith('>')) return (PaletteMode.Command, text[1..].Trim());
+        return (PaletteMode.All, text);
     }
 
-    /// <summary>そのモードの先頭記号（コマンドは無印）。</summary>
+    /// <summary>そのモードの先頭記号（すべては無印）。</summary>
     private static string ModePrefix(PaletteMode mode) => mode switch
     {
         PaletteMode.File => "@",
         PaletteMode.Grep => "#",
+        PaletteMode.Class => ":",
+        PaletteMode.Symbol => "%",
         PaletteMode.Terminal => "$",
-        _ => string.Empty,
+        PaletteMode.Command => ">",
+        _ => string.Empty,  // All（無印）
     };
 
     /// <summary>素のクエリは保ったままモードだけ差し替える（先頭記号を付け替えてキャレットを末尾へ）。
@@ -83,16 +93,20 @@ public partial class ShellWindow
         PaletteInput.Focus();
     }
 
-    /// <summary>コマンド → ファイル名 → grep → コマンド… と巡回する（Ctrl+Shift+P 連打）。</summary>
+    /// <summary>すべて → ファイル → テキスト → クラス → シンボル → ターミナル → コマンド → すべて…
+    /// とチップ表示順で巡回する（Ctrl+Shift+P 連打）。</summary>
     private void CyclePaletteMode()
     {
         var (mode, _) = ParsePaletteMode(PaletteInput.Text);
         var next = mode switch
         {
-            PaletteMode.Command => PaletteMode.File,
+            PaletteMode.All => PaletteMode.File,
             PaletteMode.File => PaletteMode.Grep,
-            PaletteMode.Grep => PaletteMode.Terminal,
-            _ => PaletteMode.Command,
+            PaletteMode.Grep => PaletteMode.Class,
+            PaletteMode.Class => PaletteMode.Symbol,
+            PaletteMode.Symbol => PaletteMode.Terminal,
+            PaletteMode.Terminal => PaletteMode.Command,
+            _ => PaletteMode.All,
         };
         SetPaletteMode(next);
     }
@@ -106,10 +120,13 @@ public partial class ShellWindow
     /// <summary>現在モードのチップを強調する（選択中＝Accent 枠＋通常文字色、他は淡色）。</summary>
     private void UpdateModeChips(PaletteMode mode)
     {
-        Highlight(PaletteModeCommand, mode == PaletteMode.Command);
+        Highlight(PaletteModeAll, mode == PaletteMode.All);
         Highlight(PaletteModeFile, mode == PaletteMode.File);
         Highlight(PaletteModeGrep, mode == PaletteMode.Grep);
+        Highlight(PaletteModeClass, mode == PaletteMode.Class);
+        Highlight(PaletteModeSymbol, mode == PaletteMode.Symbol);
         Highlight(PaletteModeTerminal, mode == PaletteMode.Terminal);
+        Highlight(PaletteModeCommand, mode == PaletteMode.Command);
 
         static void Highlight(Button chip, bool active)
         {
@@ -131,9 +148,12 @@ public partial class ShellWindow
         var (mode, query) = ParsePaletteMode(PaletteInput.Text);
         UpdateModeChips(mode);
 
-        // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト検索だけ右にプレビュー枠を開く
-        // （ターミナル検索は実ターミナル側でハイライト＋ジャンプするのでプレビューは持たない）。
-        var showPreview = mode is PaletteMode.File or PaletteMode.Grep;
+        // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト/クラス/シンボル検索は
+        // 右にプレビュー枠を開く（該当のファイル・行をスニペット表示）。すべて（横断）は入力後だけ開く
+        // （開いた直後のコマンド一覧では空プレビューを出さない）。ターミナル検索は実ターミナル側で
+        // ハイライト＋ジャンプするのでプレビューは持たない。
+        var showPreview = mode is PaletteMode.File or PaletteMode.Grep or PaletteMode.Class or PaletteMode.Symbol
+            || (mode == PaletteMode.All && !string.IsNullOrWhiteSpace(query));
         PalettePreviewColumn.Width = showPreview ? new GridLength(340) : new GridLength(0);
 
         if (mode == PaletteMode.Command)
@@ -150,10 +170,20 @@ public partial class ShellWindow
             return;
         }
 
+        // すべて（空クエリ）は、開いた直後の既定表示としてコマンド一覧を即時に出す
+        // （ファイル検索・LSP を走らせず、Ctrl+Shift+P からの表示を軽く保つ）。
+        if (mode == PaletteMode.All && string.IsNullOrWhiteSpace(query))
+        {
+            _paletteSearchCts?.Cancel();
+            ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, string.Empty));
+            return;
+        }
+
         _ = RefilterSearchAsync(mode, query);
     }
 
-    /// <summary>@／# モードの検索。直前の検索をキャンセルし、軽くデバウンスしてから走らせる。</summary>
+    /// <summary>非同期モード（すべて／ファイル／テキスト／クラス／シンボル）の検索。直前の検索を
+    /// キャンセルし、軽くデバウンスしてから走らせる。</summary>
     private async Task RefilterSearchAsync(PaletteMode mode, string query)
     {
         _paletteSearchCts?.Cancel();
@@ -165,28 +195,169 @@ public partial class ShellWindow
         {
             await Task.Delay(120, ct); // 連続入力をまとめる
 
-            IReadOnlyList<PaletteCommand> items;
-            if (mode == PaletteMode.File)
+            IReadOnlyList<PaletteCommand> items = mode switch
             {
-                var hits = await _search.FindFilesAsync(query, 50, ct);
-                items = hits.Select(FileEntry).ToList();
-            }
-            else // Grep（空クエリは検索しない）
-            {
-                if (string.IsNullOrEmpty(query))
-                {
-                    ShowPaletteItems(Array.Empty<PaletteCommand>());
-                    return;
-                }
-                var hits = await _search.GrepAsync(query, new GrepOptions(MaxResults: 200), ct);
-                items = hits.Select(h => GrepEntry(h, query)).ToList();
-            }
+                PaletteMode.File => (await _search.FindFilesAsync(query, 50, ct)).Select(FileEntry).ToList(),
+                PaletteMode.Grep => await BuildGrepMatchesAsync(query, ct),
+                PaletteMode.Class => await BuildSymbolMatchesAsync(query, isClass: true, ct),
+                PaletteMode.Symbol => await BuildSymbolMatchesAsync(query, isClass: false, ct),
+                _ => await BuildAllMatchesAsync(query, ct),   // All（横断）
+            };
 
             if (!ct.IsCancellationRequested)
                 ShowPaletteItems(items);
         }
         catch (OperationCanceledException) { /* 新しい入力に置き換わった */ }
     }
+
+    /// <summary>テキスト検索（#）。空クエリは検索しない。</summary>
+    private async Task<IReadOnlyList<PaletteCommand>> BuildGrepMatchesAsync(string query, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(query))
+            return Array.Empty<PaletteCommand>();
+        var hits = await _search.GrepAsync(query, new GrepOptions(MaxResults: 200), ct);
+        return hits.Select(h => GrepEntry(h, query)).ToList();
+    }
+
+    /// <summary>
+    /// クラス（:）／シンボル（%）検索。LSP のワークスペースシンボルから引く（<paramref name="isClass"/> で
+    /// クラス限定／全シンボルを切り替える）。空クエリは案内行だけ、言語サーバー未接続なら案内行を出す。
+    /// </summary>
+    private async Task<IReadOnlyList<PaletteCommand>> BuildSymbolMatchesAsync(
+        string query, bool isClass, CancellationToken ct)
+    {
+        var label = isClass ? "クラス" : "シンボル";
+        if (string.IsNullOrWhiteSpace(query))
+            return new[] { SymbolStatus($"入力して{label}を検索") };
+
+        var managers = ConnectedCodeLspManagers();
+        if (managers.Count == 0)
+            return new[] { SymbolStatus("言語サーバーが未接続です（対象コードのファイルを開いてください）") };
+
+        var syms = await MergeWorkspaceSymbolsAsync(managers, query, isClass, ct);
+        if (ct.IsCancellationRequested)
+            return Array.Empty<PaletteCommand>();
+        if (syms.Count == 0)
+            return new[] { SymbolStatus("一致なし") };
+
+        return syms.Take(200).Select(s => SymbolEntry(s, label)).ToList();
+    }
+
+    /// <summary>
+    /// すべて（無印）：コマンド＋ファイル＋クラス＋シンボルを横断し、カテゴリ順に混在させて返す。
+    /// LSP（クラス／シンボル）は言語サーバー接続時のみ。各カテゴリは件数を抑えて一覧が偏らないようにする。
+    /// </summary>
+    private async Task<IReadOnlyList<PaletteCommand>> BuildAllMatchesAsync(string query, CancellationToken ct)
+    {
+        var items = new List<PaletteCommand>();
+
+        // コマンド（同期・軽い）。
+        items.AddRange(PaletteFilter.Filter(_paletteCommands, query).Take(8));
+
+        // ファイル。
+        var files = await _search.FindFilesAsync(query, 12, ct);
+        if (ct.IsCancellationRequested)
+            return items;
+        items.AddRange(files.Select(FileEntry));
+
+        // クラス／シンボル（コードファイルの言語サーバー接続時のみ。未接続なら黙って省く）。
+        var managers = ConnectedCodeLspManagers();
+        if (managers.Count > 0)
+        {
+            var classes = await MergeWorkspaceSymbolsAsync(managers, query, isClass: true, ct);
+            if (ct.IsCancellationRequested)
+                return items;
+            items.AddRange(classes.Take(10).Select(s => SymbolEntry(s, "クラス")));
+
+            var symbols = await MergeWorkspaceSymbolsAsync(managers, query, isClass: false, ct);
+            if (ct.IsCancellationRequested)
+                return items;
+            // クラス系は上のグループで既出なので、シンボルグループからは除いて重複を避ける。
+            items.AddRange(symbols.Where(s => !IsClassKind(s.Kind)).Take(10).Select(s => SymbolEntry(s, "シンボル")));
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// ワークスペースシンボルを引ける言語サーバー（＝<b>コードファイルのタブ</b>に紐づく接続済みマネージャ）を
+    /// すべて集める。アクティブタブが Markdown 等だと、そのサーバー（marksman 等）がプロジェクトのクラス／
+    /// シンボルではなく見出しを返してしまう（アクティブタブに引っ張られる問題）ため、アクティブタブ一つに
+    /// 頼らず全タブから集め、<see cref="CodeEditorSupport.CanHandle"/> で<b>コード拡張子に絞る</b>
+    /// （Markdown/JSON/CSV 等のサーバーは対象外）。アクティブなコードタブは先頭に置いて結果を優先させる。
+    /// マネージャ実体で重複排除する。
+    /// </summary>
+    private IReadOnlyList<IEditorLspManager> ConnectedCodeLspManagers()
+    {
+        var seen = new HashSet<IEditorLspManager>();
+        var result = new List<IEditorLspManager>();
+
+        void TryAdd(EditorTab? tab)
+        {
+            // コードファイルのタブだけ（未接続・非コード・未実体化は除外）。非対応サーバーでも
+            // GetWorkspaceSymbolsAsync は空を返す（MergeWorkspaceSymbolsAsync で吸収）ので接続だけ条件にする。
+            if (tab is null || !_codeSupport.CanHandle(tab.PeekFilePath))
+                return;
+            var lsp = GetLspManager(tab);
+            if (lsp is { IsConnected: true } && seen.Add(lsp))
+                result.Add(lsp);
+        }
+
+        TryAdd(_activeEditorTab);              // アクティブなコードタブを優先（結果が先頭に来る）
+        foreach (var tab in _editorTabs)
+            TryAdd(tab);
+
+        return result;
+    }
+
+    /// <summary>複数の言語サーバーからワークスペースシンボルを引いて統合する（プロジェクト＝複数言語横断）。
+    /// 各サーバーの結果を名前＋位置で重複排除する。個々の取得は失敗しても落とさず空で飛ばす。</summary>
+    private static async Task<IReadOnlyList<LspSymbolInformation>> MergeWorkspaceSymbolsAsync(
+        IReadOnlyList<IEditorLspManager> managers, string query, bool isClass, CancellationToken ct)
+    {
+        var merged = new List<LspSymbolInformation>();
+        var seen = new HashSet<(string Name, string Uri, int Line)>();
+
+        foreach (var lsp in managers)
+        {
+            IReadOnlyList<LspSymbolInformation> syms;
+            try { syms = await lsp.GetWorkspaceSymbolsAsync(query, isClass, ct); }
+            catch { continue; }
+            if (ct.IsCancellationRequested)
+                break;
+
+            foreach (var s in syms)
+            {
+                var key = (s.Name ?? "", s.Location?.Uri ?? "", s.Location?.Range?.Start?.Line ?? 0);
+                if (seen.Add(key))
+                    merged.Add(s);
+            }
+        }
+
+        return merged;
+    }
+
+    /// <summary>LSP シンボル 1 件を候補化する。選択でその定義（file:// URI → ローカルパス）の宣言行へジャンプ。
+    /// 名前に加え、所属（<c>ContainerName</c>・名前空間や型）があれば併記する。</summary>
+    private PaletteCommand SymbolEntry(LspSymbolInformation sym, string category)
+    {
+        var path = CodeEditorSupport.TryUriToLocalPath(sym.Location?.Uri);
+        var line1 = (sym.Location?.Range?.Start?.Line ?? 0) + 1;
+        var title = string.IsNullOrEmpty(sym.ContainerName) ? sym.Name : $"{sym.Name}  ·  {sym.ContainerName}";
+        return new PaletteCommand(category, title,
+            () => { if (path is not null) _ = OpenAndNavigateAsync(path, line1); })
+        {
+            PreviewPath = path,
+            PreviewLine = line1,
+        };
+    }
+
+    /// <summary>クラス／シンボル検索の状態行（空クエリ・未接続・一致なし）。実行アクションは持たない。</summary>
+    private static PaletteCommand SymbolStatus(string text) => new("シンボル検索", text, static () => { });
+
+    /// <summary>クラス相当（クラス／構造体／インターフェース／列挙体）の種別か。すべてモードでの重複除去に使う。</summary>
+    private static bool IsClassKind(SymbolKind kind)
+        => kind is SymbolKind.Class or SymbolKind.Struct or SymbolKind.Interface or SymbolKind.Enum;
 
     /// <summary>
     /// ターミナル内テキスト検索（$）。アクティブなターミナルタブのバッファから一致をすべて拾い、

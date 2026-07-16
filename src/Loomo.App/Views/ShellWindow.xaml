@@ -1279,14 +1279,20 @@
                                         </Setter>
                                     </Style>
                                 </StackPanel.Resources>
-                                <Button x:Name="PaletteModeCommand" Style="{StaticResource PaletteModeChip}"
-                                        Content="コマンド" Click="OnPaletteModeClick" Tag="Command" />
+                                <Button x:Name="PaletteModeAll" Style="{StaticResource PaletteModeChip}"
+                                        Content="すべて" Click="OnPaletteModeClick" Tag="All" />
                                 <Button x:Name="PaletteModeFile" Style="{StaticResource PaletteModeChip}"
                                         Content="ファイル" Click="OnPaletteModeClick" Tag="File" />
                                 <Button x:Name="PaletteModeGrep" Style="{StaticResource PaletteModeChip}"
                                         Content="テキスト" Click="OnPaletteModeClick" Tag="Grep" />
+                                <Button x:Name="PaletteModeClass" Style="{StaticResource PaletteModeChip}"
+                                        Content="クラス" Click="OnPaletteModeClick" Tag="Class" />
+                                <Button x:Name="PaletteModeSymbol" Style="{StaticResource PaletteModeChip}"
+                                        Content="シンボル" Click="OnPaletteModeClick" Tag="Symbol" />
                                 <Button x:Name="PaletteModeTerminal" Style="{StaticResource PaletteModeChip}"
                                         Content="ターミナル" Click="OnPaletteModeClick" Tag="Terminal" />
+                                <Button x:Name="PaletteModeCommand" Style="{StaticResource PaletteModeChip}"
+                                        Content="コマンド" Click="OnPaletteModeClick" Tag="Command" />
                             </StackPanel>
                             <TextBox x:Name="PaletteInput" Grid.Row="1" Margin="4,0,4,4" Padding="6,4" FontSize="{DynamicResource Fs13}"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
