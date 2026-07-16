@@ -127,6 +127,95 @@ public sealed partial class FolderTreeViewModel
         EntryDeleted?.Invoke(this, path);
     }
 
+    /// <summary>クリップボードのファイル／フォルダを targetDirectory 直下へコピー（move=false）または
+    /// 移動（move=true）し、貼り付け先のフルパスを返す。貼り付け先は ResolvePath でワークスペースルート
+    /// 配下に限定する（コピー元は外部＝Explorer からでも受け付ける）。同名衝突は上書きせず
+    /// 「 - コピー」を付けて一意化し、フォルダを自身／配下へ貼るのは拒否する。</summary>
+    public string PasteEntry(string targetDirectory, string sourcePath, bool move)
+    {
+        var source = Path.GetFullPath(sourcePath);
+        var isDirectory = Directory.Exists(source);
+        if (!isDirectory && !File.Exists(source))
+            throw new InvalidOperationException("貼り付け元が見つかりません。");
+
+        var targetDir = _workspace.ResolvePath(targetDirectory);
+
+        // フォルダを自身の中（または配下）へ貼ると無限再帰になるため拒否する。
+        if (isDirectory && (PathsEqual(source, targetDir) || IsPathUnder(targetDir, source)))
+            throw new InvalidOperationException("フォルダーを自身の中へは貼り付けできません。");
+
+        var name = Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var destination = _workspace.ResolvePath(Path.Combine(targetDir, name));
+
+        // 同じ場所への移動は何もしない（元の位置に置いたまま）。
+        if (move && PathsEqual(source, destination))
+            return destination;
+
+        destination = EnsureUniqueDestination(destination, isDirectory);
+
+        try
+        {
+            if (isDirectory)
+            {
+                if (move) Directory.Move(source, destination);
+                else CopyDirectory(source, destination);
+            }
+            else
+            {
+                if (move) File.Move(source, destination);
+                else File.Copy(source, destination);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"貼り付けに失敗しました: {ex.Message}", ex);
+        }
+
+        RefreshWorkspace();
+        // 移動はリネームと同じく、開いているエディタタブを新パスへ追従させる。
+        if (move)
+            EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(source, destination, isDirectory));
+        return destination;
+    }
+
+    // 貼り付け先が既存なら「 - コピー」「 - コピー (2)」…を付けて空きパスを返す。
+    private static string EnsureUniqueDestination(string destination, bool isDirectory)
+    {
+        if (!File.Exists(destination) && !Directory.Exists(destination))
+            return destination;
+
+        var dir = Path.GetDirectoryName(destination)!;
+        var name = Path.GetFileName(destination);
+        var ext = isDirectory ? "" : Path.GetExtension(name);
+        var stem = isDirectory ? name : Path.GetFileNameWithoutExtension(name);
+
+        for (var i = 1; ; i++)
+        {
+            var suffix = i == 1 ? " - コピー" : $" - コピー ({i})";
+            var candidate = Path.Combine(dir, stem + suffix + ext);
+            if (!File.Exists(candidate) && !Directory.Exists(candidate))
+                return candidate;
+        }
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (var file in Directory.EnumerateFiles(source))
+            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
+        foreach (var dir in Directory.EnumerateDirectories(source))
+            CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
+    }
+
+    // path が directory と同じか、その配下にあるか。
+    private static bool IsPathUnder(string path, string directory)
+    {
+        var full = Path.GetFullPath(path).TrimEnd('\\', '/');
+        var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
+        return full.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void ValidateName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

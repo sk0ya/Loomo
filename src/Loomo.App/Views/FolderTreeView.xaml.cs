@@ -117,6 +117,28 @@ public partial class FolderTreeView : UserControl
         var wasPendingG = _pendingG;
         _pendingG = false;
 
+        // Ctrl+C/X/V はコピー／切り取り／貼り付け（下の Ctrl 早期 return より前で処理する）。
+        if ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0
+            && (e.KeyboardDevice.Modifiers & (ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
+        {
+            var node = tree.SelectedItem as FileNodeViewModel;
+            switch (e.Key)
+            {
+                case Key.C:
+                    SetClipboardFiles(node, move: false);
+                    e.Handled = true;
+                    return;
+                case Key.X:
+                    SetClipboardFiles(node, move: true);
+                    e.Handled = true;
+                    return;
+                case Key.V:
+                    PasteInto(node);
+                    e.Handled = true;
+                    return;
+            }
+        }
+
         // Ctrl/Alt/Win 付きの組み合わせは対象外。上位（ウィンドウ）のショートカットへ通す。
         // Shift は N（前のヒット）や G（末尾）の判定に使うので許容する。
         if ((e.KeyboardDevice.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)

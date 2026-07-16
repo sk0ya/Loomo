@@ -212,8 +212,13 @@
         <Grid>
             <TreeView x:Name="FileTree" ItemsSource="{Binding Nodes}" Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource Fg}"
+                      AllowDrop="True"
                       MouseDoubleClick="OnTreeMouseDoubleClick"
+                      PreviewMouseLeftButtonDown="OnTreePreviewMouseLeftButtonDown"
                       PreviewMouseLeftButtonUp="OnTreeMouseLeftButtonUp"
+                      PreviewMouseMove="OnTreePreviewMouseMove"
+                      DragOver="OnTreeDragOver"
+                      Drop="OnTreeDrop"
                       PreviewKeyDown="OnTreeKeyDown"
                       PreviewTextInput="OnTreePreviewTextInput"
                       PreviewMouseRightButtonDown="OnTreeRightButtonDown"
@@ -223,6 +228,8 @@
                     <ContextMenu>
                         <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
                         <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                        <Separator />
+                        <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
@@ -342,6 +349,10 @@
                                 <ContextMenu Opened="OnNodeContextMenuOpened">
                                     <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
                                     <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                                    <Separator />
+                                    <MenuItem Header="コピー" InputGestureText="Ctrl+C" Click="OnCopyClick" />
+                                    <MenuItem Header="切り取り" InputGestureText="Ctrl+X" Click="OnCutClick" />
+                                    <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
                                     <Separator />
                                     <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
                                     <MenuItem Header="削除" InputGestureText="Delete" Click="OnDeleteClick" />
