@@ -281,9 +281,6 @@ public partial class ShellWindow
     {
         var items = new List<PaletteCommand>();
 
-        // コマンド（同期・軽い）。
-        items.AddRange(PaletteFilter.Filter(_paletteCommands, query).Take(8));
-
         // ファイル。
         var files = await _search.FindFilesAsync(query, 12, ct);
         if (ct.IsCancellationRequested)
@@ -305,6 +302,9 @@ public partial class ShellWindow
             // クラス系は上のグループで既出なので、シンボルグループからは除いて重複を避ける。
             items.AddRange(symbols.Where(s => !IsClassKind(s.Kind)).Take(10).Select(s => SymbolEntry(s, "シンボル")));
         }
+
+        // コマンド（同期・軽い）は末尾に回す（すべてモードではファイル／シンボルを優先して見せる）。
+        items.AddRange(PaletteFilter.Filter(_paletteCommands, query).Take(8));
 
         return items;
     }
