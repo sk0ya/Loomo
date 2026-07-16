@@ -127,6 +127,18 @@ public sealed partial class GitSessionViewModel : ObservableObject
     public bool HasActiveFilters =>
         !_parsedFilter.IsEmpty || EffectiveAuthor is not null || DateFrom.HasValue || DateTo.HasValue;
 
+    /// <summary>コミット一覧の1ページ分の読み込み件数（末尾スクロールでこの単位ずつ追加読み込みする）。</summary>
+    private const int LogPageSize = 200;
+
+    /// <summary>現在読み込み済みのコミット件数。次ページの <c>--skip</c> に使う（グラフ継続行は数えない）。</summary>
+    private int _loadedCommitCount;
+
+    /// <summary>まだ読み込んでいない古いコミットがあるか（末尾スクロールで追加読み込みできるか）。</summary>
+    [ObservableProperty] private bool _hasMoreLog;
+
+    /// <summary>追加読み込み中か（多重発火の抑止・読み込み中表示に使う）。</summary>
+    [ObservableProperty] private bool _isLoadingMoreLog;
+
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
 
     /// <summary>ビューにバインドするフィルタ済みコミット一覧。<see cref="LogFilter"/> で絞り込む。</summary>
@@ -318,24 +330,63 @@ public sealed partial class GitSessionViewModel : ObservableObject
             ? BranchTree
             : BranchTreeBuilder.BuildFiltered(_allBranches, BranchFilter);
 
-    /// <summary>コミットグラフだけを（現在の表示ブランチ範囲で）読み直す。選択は可能なら維持する。</summary>
+    /// <summary>コミットグラフだけを（現在の表示ブランチ範囲で）先頭ページから読み直す。選択は可能なら維持する。</summary>
     private async Task ReloadLogAsync()
     {
         var selectedHash = SelectedLogRow?.Hash;
-        var log = await _git.GetLogAsync(_logBranch);
         LogRows.Clear();
-        GitLogRow? reselect = null;
-        foreach (var row in log)
-        {
-            LogRows.Add(row);
-            if (selectedHash is not null && row.Hash == selectedHash)
-                reselect = row;
-        }
+        _loadedCommitCount = 0;
+        var reselect = await AppendLogPageAsync(selectedHash);
         SelectedLogRow = reselect;
         if (reselect is null)
             CommitDetail = "";
 
         UpdateAuthorOptions();
+    }
+
+    /// <summary>
+    /// 末尾スクロールでの追加読み込み：次の1ページを一覧の末尾へ足す。
+    /// 追加読み込み中・これ以上ない場合は何もしない（多重発火はここで弾く）。
+    /// </summary>
+    public async Task LoadMoreLogAsync()
+    {
+        if (IsLoadingMoreLog || !HasMoreLog)
+            return;
+        IsLoadingMoreLog = true;
+        try
+        {
+            await AppendLogPageAsync(SelectedLogRow?.Hash);
+            UpdateAuthorOptions();
+        }
+        finally
+        {
+            IsLoadingMoreLog = false;
+        }
+    }
+
+    /// <summary>
+    /// 現在の <see cref="_loadedCommitCount"/> を skip として1ページ分読み、末尾へ追加する。
+    /// <see cref="HasMoreLog"/> を更新し、<paramref name="reselectHash"/> と一致する行があれば返す（選択維持用）。
+    /// </summary>
+    private async Task<GitLogRow?> AppendLogPageAsync(string? reselectHash)
+    {
+        var page = await _git.GetLogAsync(_logBranch, LogPageSize, _loadedCommitCount);
+        var commitsInPage = 0;
+        GitLogRow? reselect = null;
+        foreach (var row in page)
+        {
+            LogRows.Add(row);
+            if (row.IsCommit)
+            {
+                commitsInPage++;
+                _loadedCommitCount++;
+            }
+            if (reselectHash is not null && row.Hash == reselectHash)
+                reselect = row;
+        }
+        // 満ページ（依頼件数ちょうど）なら、まだ続きがあるとみなす。
+        HasMoreLog = commitsInPage >= LogPageSize;
+        return reselect;
     }
 
     /// <summary>読み込み済みログの作者を作者ドロップダウンへ反映する。選択中の作者が消えたら「すべて」へ戻す。</summary>

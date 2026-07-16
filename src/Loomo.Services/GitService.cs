@@ -276,14 +276,18 @@ public sealed class GitService
     /// <summary>
     /// コミットグラフを取得する。<paramref name="branchRef"/> 指定時はそのブランチ（ref）のみ、
     /// null/空のときは全ブランチ込み（--all）。空リポジトリは空リスト。
+    /// <paramref name="skip"/> は先頭から読み飛ばすコミット数（末尾スクロールの追加読み込み用ページング）。
+    /// --graph はページごとにグラフを描き直すため、ページ境界で枝の接続は保証されない（表示上の割り切り）。
     /// </summary>
-    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(string? branchRef = null, int limit = 300)
+    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(string? branchRef = null, int limit = 300, int skip = 0)
     {
         var revArg = string.IsNullOrWhiteSpace(branchRef) ? "--all" : branchRef;
-        var result = await RunAsync(
-            "log", "--graph", revArg, $"-n{limit}",
-            "--date=format:%Y-%m-%d %H:%M",
-            $"--pretty=format:{GitLogParser.PrettyFormat}").ConfigureAwait(false);
+        var args = new List<string> { "log", "--graph", revArg, $"-n{limit}" };
+        if (skip > 0)
+            args.Add($"--skip={skip}");
+        args.Add("--date=format:%Y-%m-%d %H:%M");
+        args.Add($"--pretty=format:{GitLogParser.PrettyFormat}");
+        var result = await RunAsync(args.ToArray()).ConfigureAwait(false);
         if (!result.Success)
             return Array.Empty<GitLogRow>();
         return GitLogParser.Parse(result.Output);

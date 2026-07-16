@@ -329,6 +329,7 @@
                              SelectedItem="{Binding SelectedLogRow}"
                              SelectionMode="Extended"
                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.ScrollChanged="OnLogScrollChanged"
                              MouseDoubleClick="OnCommitShowDiff"
                              PreviewMouseRightButtonDown="OnListRightClickSelect"
                              ContextMenuOpening="OnCommitContextMenuOpening"

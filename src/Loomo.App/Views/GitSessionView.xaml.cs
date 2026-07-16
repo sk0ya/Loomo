@@ -354,6 +354,25 @@ public partial class GitSessionView : UserControl
     private GitLogRow? SelectedCommit =>
         LogList.SelectedItem is GitLogRow { IsCommit: true } row ? row : null;
 
+    /// <summary>
+    /// コミット一覧を末尾付近までスクロールしたら次ページを追加読み込みする（無限スクロール）。
+    /// 下方向のスクロール（またはビューポート縮小）でのみ判定し、追加読み込み後の伸長で連鎖発火しないよう
+    /// 純粋な内容伸長（VerticalChange・ViewportHeightChange が 0）は無視する。仮想化は既定の行単位スクロール
+    /// なので Extent/Offset/Viewport は行数単位だが、末尾までの残り行数で判定する式は同じく成立する。
+    /// </summary>
+    private void OnLogScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (Vm is not { } vm)
+            return;
+        if (e.VerticalChange <= 0 && e.ViewportHeightChange <= 0)
+            return;
+        if (e.ExtentHeight <= 0)
+            return;
+        var remaining = e.ExtentHeight - (e.VerticalOffset + e.ViewportHeight);
+        if (remaining <= e.ViewportHeight)
+            _ = vm.LoadMoreLogAsync();
+    }
+
     /// <summary>選択コミットの差分を Diff セッションへ（1件=コミットの変更、複数=端点間の比較）。</summary>
     private void OnCommitShowDiff(object sender, RoutedEventArgs e)
     {
