@@ -159,7 +159,8 @@
             </Grid>
 
             <!-- ===== ブランチ一覧 =====
-                 クリック＝リーフはチェックアウト、フォルダ／見出しは開閉（OnTreeClick）。 -->
+                 クリック＝リーフは選択のみ（チェックアウトは右クリックメニューから）、
+                 フォルダ／見出しは開閉（OnTreeClick）。 -->
             <TreeView x:Name="Tree" MaxHeight="360"
                       Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource Fg}"

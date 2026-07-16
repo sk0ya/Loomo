@@ -90,39 +90,18 @@ public partial class BranchSwitcherView : UserControl
         return element as TreeViewItem;
     }
 
+    /// <summary>
+    /// フォルダ・見出しは行のどこをクリックしても開閉する（メニューとしての手触り）。
+    /// ブランチ行のクリックは<em>選択のみ</em>——チェックアウトは誤操作で切り替わらないよう
+    /// 右クリックメニューの「チェックアウト」からだけ行う（選択自体は TreeView が処理する）。
+    /// </summary>
     private void OnTreeClick(object sender, MouseButtonEventArgs e)
-        => _ = HandleTreeClickAsync(e);
-
-    private async Task HandleTreeClickAsync(MouseButtonEventArgs e)
     {
         if (FindRow(e.OriginalSource) is not { DataContext: BranchTreeNode node } item)
             return;
 
-        if (node.Branch is not { } branch)
-        {
-            // フォルダ・見出しは行のどこをクリックしても開閉する（メニューとしての手触り）
+        if (node.Branch is null)
             item.IsExpanded = !item.IsExpanded;
-            return;
-        }
-
-        if (branch.IsCurrent)
-        {
-            Close();
-            return;
-        }
-
-        if (Vm is not { } vm) return;
-        var result = await vm.CheckoutBranchAsync(branch);
-        if (result is { Success: true })
-        {
-            Close();
-        }
-        else if (result is not null)
-        {
-            // 失敗（未コミット変更とのコンフリクト等）はポップアップを開いたまま理由を見せる
-            ShowError(result.Message);
-        }
-        // result が null のときは他の git 操作が実行中（RunOpAsync が抑止）。何もしない
     }
 
     // ===== 行の右クリックメニュー =====
