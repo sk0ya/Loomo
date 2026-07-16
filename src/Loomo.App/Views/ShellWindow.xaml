@@ -862,7 +862,7 @@
                                  一覧をクライアント側で CommitLogFilter により判定する。 -->
                             <Grid Width="210" Margin="8,0,0,0" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
-                                         VerticalContentAlignment="Center"
+                                         VerticalContentAlignment="Center" Cursor="IBeam"
                                          Text="{Binding GitSession.LogFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}">
                                     <TextBox.ToolTip>
                                         <ToolTip MaxWidth="380">
@@ -885,7 +885,7 @@
 
                             <!-- 作者で絞り込み（先頭の「すべて」で解除） -->
                             <ComboBox x:Name="LogAuthorFilter" Width="140" MinHeight="24" Margin="6,0,0,0"
-                                      VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                      VerticalAlignment="Center" VerticalContentAlignment="Center" Cursor="Arrow"
                                       ToolTip="作者で絞り込み"
                                       ItemsSource="{Binding GitSession.AuthorOptions}"
                                       SelectedItem="{Binding GitSession.AuthorSelection}" />
