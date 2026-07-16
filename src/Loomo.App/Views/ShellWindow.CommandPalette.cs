@@ -536,14 +536,32 @@ public partial class ShellWindow
         try
         {
             editor.LoadFile(path);
-            // PreviewLine は1始まり、NavigateTo は0始まり。ファイル（行指定なし）は先頭へ。
-            editor.NavigateTo(Math.Max(0, command.PreviewLine - 1), 0);
             editor.HighlightSearch(command.PreviewHighlight ?? "");
+            // 行が指定されていればその行をプレビューの中央に置き、無指定なら先頭から見せる。
+            // 開いた直後はまだ Canvas が未計測で中央寄せ（JumpToLine）が効かないことがあるので、
+            // レイアウトが確定する Background 優先度でもう一度合わせて確実に中央へ寄せる。
+            NavigatePreview(editor, command);
+            editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            {
+                if (!ct.IsCancellationRequested && editor.Visibility == Visibility.Visible)
+                    NavigatePreview(editor, command);
+            });
         }
         catch
         {
             editor.Visibility = Visibility.Collapsed;
         }
+    }
+
+    /// <summary>プレビューを指定行へ移動する。行指定あり（grep／シンボル）は <see cref="VimEditorControl.JumpToLine"/>
+    /// でその行を<b>ビューポート中央</b>に置き、行指定なし（ファイル）は先頭から見せる。
+    /// PreviewLine は 1 始まり、JumpToLine／NavigateTo は 0 始まりなので変換する。</summary>
+    private static void NavigatePreview(VimEditorControl editor, PaletteCommand command)
+    {
+        if (command.PreviewLine > 0)
+            editor.JumpToLine(command.PreviewLine - 1, 0);
+        else
+            editor.NavigateTo(0, 0);
     }
 
     private void ExecutePaletteSelection()
