@@ -168,6 +168,34 @@ public partial class GitSessionView : UserControl
             await vm.ShowAllBranchesLogAsync();
     }
 
+    /// <summary>
+    /// 対象が無い（フォルダ・見出しを右クリックした）ならメニューごと出さない。ブランチ行なら、
+    /// そのブランチに意味を成さない項目を無効化する（自分自身へのチェックアウト／マージ／リベース、
+    /// 現在ブランチの削除、リモートブランチの削除＝git branch -d では消せない）。
+    /// タイトルバーのブランチ切替（BranchSwitcherView.OnTreeContextMenuOpening）と同じ作法。
+    /// </summary>
+    private void OnBranchContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (SelectedBranch is not { } branch)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        BranchMenuCheckout.IsEnabled = !branch.IsCurrent;
+        BranchMenuMerge.IsEnabled = !branch.IsCurrent;
+        BranchMenuMergeStrategy.IsEnabled = !branch.IsCurrent;
+        BranchMenuRebase.IsEnabled = !branch.IsCurrent;
+        BranchMenuDelete.IsEnabled = !branch.IsCurrent && !branch.IsRemote;
+    }
+
+    /// <summary>ダブルクリックと同じ「右のコミットグラフをこのブランチに切り替える」を右クリックからも。</summary>
+    private async void OnBranchShowLog(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.ShowBranchLogAsync(branch);
+    }
+
     private async void OnBranchCheckout(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedBranch is { } branch)

@@ -137,7 +137,52 @@
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
 
-            <!-- ツールバー（更新・プル等）はペインヘッダー側（ShellWindow）へ集約 -->
+            <!-- ===== 同期帯：フェッチ／プル／プッシュ =====
+                 リポジトリ全体（現在ブランチと上流）に効く操作。以前はブランチ切替ポップアップの中
+                 （BranchSwitcherView）にしか無く、Git ペインを見ても「どこでプルするのか」が分からなかった。
+                 対象がブランチ一覧の選択と無関係なので、一覧の外＝この常設帯に置く。上流の増減は件数で示す。 -->
+            <Border DockPanel.Dock="Top" Margin="8,6,8,2" Padding="6,4" CornerRadius="4"
+                    Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" IsEnabled="{Binding HasRemote}">
+                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding FetchCommand}"
+                                Content="⭮ フェッチ"
+                                ToolTip="フェッチ（リモートの最新を取得する。作業ツリーは変えない）" />
+                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding PullCommand}"
+                                ToolTip="プル（上流の変更を現在ブランチへ取り込む）">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="↓ プル" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Behind}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
+                                           Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding PushCommand}"
+                                ToolTip="プッシュ（現在ブランチのコミットを上流へ送る。上流未設定なら作成する）">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="↑ プッシュ" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Ahead}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
+                                           Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
+                                Margin="8,0,2,0">
+                        <TextBlock Text="{Binding RemoteLabel}" FontSize="{DynamicResource Fs12}"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource Fg}" VerticalAlignment="Center"
+                                   Visibility="{Binding HasRemote, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding SyncTargetLabel}" FontSize="{DynamicResource Fs11}"
+                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,1,0,0"
+                                   MaxWidth="200" TextTrimming="CharacterEllipsis"
+                                   ToolTip="プル／プッシュの相手（現在ブランチの上流）"
+                                   Visibility="{Binding HasRemote, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="リモートがありません" FontSize="{DynamicResource Fs11}"
+                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                   Visibility="{Binding HasRemote, Converter={StaticResource InverseBoolToVis}}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
 
             <!-- 進行中操作（rebase / merge / cherry-pick）のバナー -->
             <Border DockPanel.Dock="Top" Margin="8,4,8,4" Padding="8,6" CornerRadius="4"
@@ -202,29 +247,28 @@
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   MouseDoubleClick="OnBranchDoubleClick"
                                   PreviewMouseLeftButtonUp="OnBranchTreeClick"
-                                  PreviewMouseRightButtonDown="OnListRightClickSelect">
+                                  PreviewMouseRightButtonDown="OnListRightClickSelect"
+                                  ContextMenuOpening="OnBranchContextMenuOpening">
+                            <!-- 行の右クリック＝そのブランチ1本に効く操作だけ。フォルダ／見出しではメニューを出さず、
+                                 現在ブランチやリモートブランチに意味を成さない項目は OnBranchContextMenuOpening が無効化する。
+                                 リポジトリ全体のフェッチ／プル／プッシュはここではなくヘッダーの同期帯（BranchSwitcherView）にある。 -->
                             <TreeView.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="チェックアウト" Click="OnBranchCheckout" />
-                                    <MenuItem Header="現在のブランチへマージ" Click="OnBranchMerge" />
-                                    <MenuItem Header="現在のブランチへマージ（戦略を選択）">
+                                    <MenuItem Header="このブランチのコミットを表示" Click="OnBranchShowLog" />
+                                    <Separator />
+                                    <MenuItem x:Name="BranchMenuCheckout" Header="チェックアウト" Click="OnBranchCheckout" />
+                                    <MenuItem x:Name="BranchMenuMerge" Header="現在のブランチへマージ" Click="OnBranchMerge" />
+                                    <MenuItem x:Name="BranchMenuMergeStrategy" Header="現在のブランチへマージ（戦略を選択）">
                                         <MenuItem Header="Fast-forwardのみでマージ" Click="OnBranchMergeFastForwardOnly" />
                                         <MenuItem Header="マージコミットを作成してマージ" Click="OnBranchMergeNoFastForward" />
                                         <MenuItem Header="スカッシュマージ（コミットは別途実行）" Click="OnBranchMergeSquash" />
                                     </MenuItem>
-                                    <MenuItem Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
+                                    <MenuItem x:Name="BranchMenuRebase" Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
                                     <Separator />
                                     <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
                                     <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
                                     <Separator />
-                                    <MenuItem Header="削除" Click="OnBranchDelete" />
-                                    <Separator />
-                                    <MenuItem Header="⭮ フェッチ"
-                                              Command="{Binding PlacementTarget.DataContext.FetchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                    <MenuItem Header="⇣ プル"
-                                              Command="{Binding PlacementTarget.DataContext.PullCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                    <MenuItem Header="⇡ プッシュ"
-                                              Command="{Binding PlacementTarget.DataContext.PushCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem x:Name="BranchMenuDelete" Header="削除" Click="OnBranchDelete" />
                                 </ContextMenu>
                             </TreeView.ContextMenu>
                         </TreeView>
