@@ -96,9 +96,36 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>特定ブランチに絞っているか（「すべてのブランチを表示」リンクの表示判定）。</summary>
     [ObservableProperty] private bool _isLogScoped;
 
-    /// <summary>コミット一覧の絞り込み語（メッセージ・作者・ハッシュ・ref を対象に部分一致）。
-    /// 空なら全件。git を再実行せず、読み込み済みの一覧をクライアント側でフィルタする。</summary>
+    /// <summary>コミット一覧の絞り込み式（<c>author:</c>／<c>msg:</c>／<c>hash:</c>／<c>ref:</c>／<c>date:</c> の
+    /// トークン構文、接頭辞なしは全項目部分一致、複数語は AND）。空なら全件。git を再実行せず、
+    /// 読み込み済みの一覧をクライアント側で <see cref="CommitLogFilter"/> により判定する。</summary>
     [ObservableProperty] private string _logFilter = "";
+
+    /// <summary><see cref="LogFilter"/> を解析した述語（テキスト変更のたびに作り直す）。</summary>
+    private CommitLogFilter _parsedFilter = CommitLogFilter.Parse(null);
+
+    /// <summary>作者ドロップダウンの「すべて」を表す特別値（実在の作者名と衝突しないよう括弧付き）。</summary>
+    public const string AllAuthorsLabel = "（すべての作者）";
+
+    /// <summary>作者ドロップダウンの選択肢（先頭が <see cref="AllAuthorsLabel"/>、以降は読み込み済みログの作者）。</summary>
+    [ObservableProperty] private IReadOnlyList<string> _authorOptions = new[] { AllAuthorsLabel };
+
+    /// <summary>作者ドロップダウンの選択値。<see cref="AllAuthorsLabel"/>（既定）なら作者で絞らない。</summary>
+    [ObservableProperty] private string _authorSelection = AllAuthorsLabel;
+
+    /// <summary>期間フィルタの開始日（含む）。null なら下限なし。</summary>
+    [ObservableProperty] private DateTime? _dateFrom;
+
+    /// <summary>期間フィルタの終了日（含む）。null なら上限なし。</summary>
+    [ObservableProperty] private DateTime? _dateTo;
+
+    /// <summary>実効の作者フィルタ（「すべて」・空は null＝絞らない）。</summary>
+    private string? EffectiveAuthor =>
+        string.IsNullOrEmpty(AuthorSelection) || AuthorSelection == AllAuthorsLabel ? null : AuthorSelection;
+
+    /// <summary>何らかの絞り込みが有効か（クリアボタンの表示・「全件」判定に使う）。</summary>
+    public bool HasActiveFilters =>
+        !_parsedFilter.IsEmpty || EffectiveAuthor is not null || DateFrom.HasValue || DateTo.HasValue;
 
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
 
@@ -115,25 +142,63 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _git.RepositoryChanged += OnRepositoryChanged;
     }
 
-    /// <summary>絞り込み語が変わったらビューを更新する。</summary>
-    partial void OnLogFilterChanged(string value) => LogView.Refresh();
-
-    /// <summary>1行がフィルタに合致するか。空語は全件通す。グラフ継続だけの行は絞り込み中は隠す。</summary>
-    private bool FilterLogRow(object item)
+    /// <summary>絞り込み式が変わったら解析し直してビューを更新する。</summary>
+    partial void OnLogFilterChanged(string value)
     {
-        var term = LogFilter?.Trim();
-        if (string.IsNullOrEmpty(term)) return true;
-        if (item is not GitLogRow row) return false;
-        if (!row.IsCommit) return false;  // 絞り込み中はグラフ継続行（ハッシュ無し）を隠す
-        return Contains(row.Subject, term)
-            || Contains(row.Author, term)
-            || Contains(row.ShortHash, term)
-            || Contains(row.Hash, term)
-            || Contains(row.Refs, term);
+        _parsedFilter = CommitLogFilter.Parse(value);
+        RefreshLogView();
     }
 
-    private static bool Contains(string? haystack, string term) =>
-        haystack is not null && haystack.Contains(term, StringComparison.OrdinalIgnoreCase);
+    partial void OnAuthorSelectionChanged(string value) => RefreshLogView();
+    partial void OnDateFromChanged(DateTime? value) => RefreshLogView();
+    partial void OnDateToChanged(DateTime? value) => RefreshLogView();
+
+    private void RefreshLogView()
+    {
+        OnPropertyChanged(nameof(HasActiveFilters));
+        LogView.Refresh();
+    }
+
+    /// <summary>すべての絞り込み（式・作者・期間）を解除する。</summary>
+    [RelayCommand]
+    private void ClearLogFilters()
+    {
+        LogFilter = "";
+        AuthorSelection = AllAuthorsLabel;
+        DateFrom = null;
+        DateTo = null;
+    }
+
+    /// <summary>期間フィルタ（開始日・終了日）だけを解除する。</summary>
+    [RelayCommand]
+    private void ClearDateFilter()
+    {
+        DateFrom = null;
+        DateTo = null;
+    }
+
+    /// <summary>1行がフィルタに合致するか。何も指定が無ければ全件通す。
+    /// 絞り込み中はグラフ継続だけの行（ハッシュ無し）は隠す。</summary>
+    private bool FilterLogRow(object item)
+    {
+        if (!HasActiveFilters) return true;
+        if (item is not GitLogRow { IsCommit: true } row) return false;
+        if (!_parsedFilter.Matches(row)) return false;
+        if (EffectiveAuthor is { } author && !string.Equals(row.Author, author, StringComparison.Ordinal))
+            return false;
+        return MatchesDateRange(row);
+    }
+
+    /// <summary>作者ドロップダウン・期間ピッカーによる日付範囲（両端含む・日単位）に合致するか。</summary>
+    private bool MatchesDateRange(GitLogRow row)
+    {
+        if (!DateFrom.HasValue && !DateTo.HasValue) return true;
+        var day = CommitLogFilter.DayOf(row);
+        if (day is null) return false;
+        if (DateFrom is { } from && string.CompareOrdinal(day, from.ToString("yyyy-MM-dd")) < 0) return false;
+        if (DateTo is { } to && string.CompareOrdinal(day, to.ToString("yyyy-MM-dd")) > 0) return false;
+        return true;
+    }
 
     /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
     public event EventHandler? DiffOpenRequested;
@@ -196,6 +261,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             Tags = Array.Empty<GitTagInfo>();
             Submodules = Array.Empty<GitSubmoduleInfo>();
             LogRows.Clear();
+            UpdateAuthorOptions();
             CommitDetail = "";
             OperationInProgress = false;
             return;
@@ -268,6 +334,27 @@ public sealed partial class GitSessionViewModel : ObservableObject
         SelectedLogRow = reselect;
         if (reselect is null)
             CommitDetail = "";
+
+        UpdateAuthorOptions();
+    }
+
+    /// <summary>読み込み済みログの作者を作者ドロップダウンへ反映する。選択中の作者が消えたら「すべて」へ戻す。</summary>
+    private void UpdateAuthorOptions()
+    {
+        var authors = LogRows
+            .Where(r => r.IsCommit && !string.IsNullOrEmpty(r.Author))
+            .Select(r => r.Author!)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(a => a, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        var options = new List<string>(authors.Count + 1) { AllAuthorsLabel };
+        options.AddRange(authors);
+        AuthorOptions = options;
+
+        // 選択中の作者が今回のログに居なければ「すべて」へ戻す（ブランチ切替で作者集合が変わるため）。
+        if (!options.Contains(AuthorSelection, StringComparer.Ordinal))
+            AuthorSelection = AllAuthorsLabel;
     }
 
     /// <summary>

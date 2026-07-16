@@ -1044,4 +1044,114 @@
         <Setter Property="CalendarButtonStyle" Value="{StaticResource ThemedCalendarButton}" />
     </Style>
 
+    <!-- DatePicker の入力欄（DatePickerTextBox）。既定テンプレートは白背景・透かしが OS 配色で
+         ダークテーマから浮くため、テキスト表示だけの最小テンプレートに置き換える（背景は
+         親 DatePicker の Border が受け持つ）。PART_ContentHost の名前は TextBoxBase の規約。 -->
+    <Style x:Key="ThemedDatePickerTextBox" TargetType="DatePickerTextBox">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DatePickerTextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                  VerticalAlignment="Center" Padding="{TemplateBinding Padding}"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Hidden" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- DatePicker 本体。PART_TextBox / PART_Button / PART_Popup の名前は DatePicker の
+         OnApplyTemplate が探す規約なので変えないこと。ポップアップのカレンダーは CalendarStyle で
+         ThemedCalendar を差してテーマ対応する。 -->
+    <Style x:Key="ThemedDatePicker" TargetType="DatePicker">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="CalendarStyle" Value="{StaticResource ThemedCalendar}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DatePicker">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <DatePickerTextBox x:Name="PART_TextBox" Grid.Column="0"
+                                               Style="{StaticResource ThemedDatePickerTextBox}"
+                                               VerticalContentAlignment="Center"
+                                               Foreground="{TemplateBinding Foreground}"
+                                               Padding="6,3" />
+                            <Button x:Name="PART_Button" Grid.Column="1" Focusable="False"
+                                    Width="26" Cursor="Hand" Background="Transparent" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="2">
+                                            <TextBlock Text="📅" FontSize="{DynamicResource Fs12}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource Border}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Popup x:Name="PART_Popup" AllowsTransparency="True" StaysOpen="False"
+                                   Placement="Bottom" PlacementTarget="{Binding ElementName=PART_TextBox}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ツールバー用の軽量トグルボタン（選択時は SelectionBg で塗る）。素の ToggleButton は
+         OS 配色でダークテーマから浮くため、フラットなテーマ配色で描き直す。 -->
+    <Style x:Key="ToolbarToggleButton" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,2" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="bg" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource BgAlt}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
