@@ -160,6 +160,12 @@ public partial class FolderTreeView
             vm.RequestGitBlame(node);
     }
 
+    private void OnGitHistoryClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestGitHistory(node);
+    }
+
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)

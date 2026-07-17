@@ -362,12 +362,13 @@
                                               Visibility="{Binding IsHtml, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="ターミナルにセット" Click="OnSetInTerminalClick" />
-                                    <!-- ファイルかつ Git リポジトリ配下のときだけ：Git 系操作をまとめる
-                                         （今後 blame 以外も増やす想定）。Blame はエディタ（VimEditorControl）
-                                         のネイティブ Git Blame 表示（:Gblame）をトリガーするだけで、
-                                         Diff ペインの独自 UI は使わない。 -->
-                                    <MenuItem Header="Git" Visibility="{Binding CanGitBlame, Converter={StaticResource BoolToVis}}">
-                                        <MenuItem Header="Git Blame" Click="OnGitBlameClick" />
+                                    <!-- Git リポジトリ配下のときだけ：Git 系操作をまとめる。履歴表示は
+                                         ファイル・フォルダ両方（Git ペインをそのパスの履歴に絞る）、Git Blame は
+                                         ファイルのみ（エディタ VimEditorControl のネイティブ :Gblame をトリガー）。 -->
+                                    <MenuItem Header="Git" Visibility="{Binding CanGitHistory, Converter={StaticResource BoolToVis}}">
+                                        <MenuItem Header="履歴を表示" Click="OnGitHistoryClick" />
+                                        <MenuItem Header="Git Blame" Click="OnGitBlameClick"
+                                                  Visibility="{Binding CanGitBlame, Converter={StaticResource BoolToVis}}" />
                                     </MenuItem>
                                     <!-- フォルダのみ：このフォルダーを検索の開始フォルダーにして検索パネルを開く。 -->
                                     <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"

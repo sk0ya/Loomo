@@ -300,6 +300,17 @@ public sealed partial class FolderTreeViewModel
         GitBlameRequested?.Invoke(this, node.FullPath);
     }
 
+    /// <summary>指定ファイル／フォルダの Git 履歴表示を要求する（ShellWindow が Git ペインを前面に出し、
+    /// そのパスの履歴に絞る）。Git リポジトリ配下かつ実在するときだけ発火する。</summary>
+    public void RequestGitHistory(FileNodeViewModel node)
+    {
+        if (!_gitState.IsGitRepository)
+            return;
+        var exists = node.IsDirectory ? Directory.Exists(node.FullPath) : File.Exists(node.FullPath);
+        if (exists)
+            GitHistoryRequested?.Invoke(this, node.FullPath);
+    }
+
     /// <summary>選択ノードのワークスペースルート相対パスを、ルート直下の .gitignore に1行追加する
     /// （フォルダは末尾に "/" を付ける）。.gitignore が無ければ新規作成し、同じ行が既にあれば追加しない
     /// （重複防止）。Git リポジトリではない・ルート未オープンなら何もしない（例外は投げない）。

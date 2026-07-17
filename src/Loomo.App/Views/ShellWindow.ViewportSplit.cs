@@ -341,14 +341,9 @@ public partial class ShellWindow
         // blame 左カラム（:Gblame 表示中）の行クリック：該当コミットの差分を Diff ペインで開き、
         // そのファイルを選択してクリック行（コミット時点の行番号）までスクロールする
         // （sk0ya.Editor.Controls 1.0.40。ハッシュを解析できない注釈＝カスタム形式では何もしない）。
-        control.BlameCommitClicked += (_, e) =>
-        {
-            if (e.CommitHash is not { Length: > 0 } hash) return;
-            _ = _vm.DiffSession.ShowCommitFileAsync(
-                hash, $"コミット {hash}", control.FilePath, e.Blame.OriginalLine);
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
-            FocusPane(PaneKind.Diff);
-        };
+        // 左クリックは従来どおり Diff ペインへ直行する（右クリックでは Diff / Git 履歴を選べる。
+        // ShellWindow.SelectionActions.cs の AddBlameCommitMenuItems と実処理を共有する）。
+        control.BlameCommitClicked += (_, e) => ShowBlameCommitDiff(control, e.Blame);
 
         // エディタ内の Vim ウィンドウ/タブ操作（:vsplit / :split / :tabnew / gt / gT / :tabclose / :close）を、
         // ホスト側の分割・タブ実装へ橋渡しする

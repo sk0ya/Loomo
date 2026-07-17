@@ -26,8 +26,17 @@ public partial class ShellWindow
 
     private void OnEditorContextMenuBuilding(object? sender, EditorContextMenuBuildingEventArgs e)
     {
-        AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
         var control = sender as VimEditorControl ?? _activeEditorTab?.Control;
+
+        // blame ガター上の右クリック（sk0ya.Editor.Controls 1.0.54）：エディタは自前の項目を出さず
+        // blame 行のコミット情報だけを渡してくる。ここで遷移先を選ばせる（Diff / Git ペインの履歴）。
+        if (e.BlameLine is { } blame && control is not null)
+        {
+            AddBlameCommitMenuItems(e.Menu, control, blame);
+            return;
+        }
+
+        AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
         // 右クリックされたエディタ（複数分割でもイベント発火元）で開いているスクリプトを実行する項目を足す。
         AddRunScriptMenuItem(e.Menu, control);
         // Git リポジトリ配下で開いているファイルなら「Git」>「Git Blame」を足す。
@@ -121,15 +130,57 @@ public partial class ShellWindow
     // ExecuteCommand でトリガーするだけでよい。
     private void AddGitMenuItems(ContextMenu menu, VimEditorControl? control)
     {
-        if (control?.FilePath is not { Length: > 0 } || !_vm.FolderTree.IsGitRepository)
+        if (control?.FilePath is not { Length: > 0 } path || !_vm.FolderTree.IsGitRepository)
             return;
 
         menu.Items.Add(new Separator());
         var git = new MenuItem { Header = "Git" };
+
+        // 履歴を表示：Git ペインを前面に出して、このファイルの履歴（git log -- path）に絞る。
+        var history = new MenuItem { Header = "履歴を表示" };
+        history.Click += (_, _) => _ = ShowGitHistoryAsync(path);
+        git.Items.Add(history);
+
         var blame = new MenuItem { Header = "Git Blame" };
         blame.Click += (_, _) => control.ExecuteCommand("Gblame");
         git.Items.Add(blame);
         menu.Items.Add(git);
+    }
+
+    // blame ガター右クリック用のメニュー：この行のコミットについて、Diff ペインで差分を見るか、
+    // Git ペインでこのファイルの履歴に絞るかを選ばせる（左クリックは従来どおり Diff へ直行）。
+    private void AddBlameCommitMenuItems(
+        ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame)
+    {
+        var shortHash = blame.CommitHash is { Length: > 7 } h ? h[..7] : blame.CommitHash;
+
+        var diff = new MenuItem { Header = $"Diff で差分を表示（{shortHash}）" };
+        diff.Click += (_, _) => ShowBlameCommitDiff(control, blame);
+        menu.Items.Add(diff);
+
+        var history = new MenuItem { Header = "Git ペインでこのファイルの履歴を表示" };
+        history.Click += (_, _) => { if (control.FilePath is { Length: > 0 } p) _ = ShowGitHistoryAsync(p); };
+        menu.Items.Add(history);
+    }
+
+    // blame 行のコミット差分を Diff ペインで開く（左クリックと右クリックメニュー「Diff で差分を表示」の合流点）。
+    private void ShowBlameCommitDiff(VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame)
+    {
+        if (blame.CommitHash is not { Length: > 0 } hash) return;
+        _ = _vm.DiffSession.ShowCommitFileAsync(
+            hash, $"コミット {hash}", control.FilePath, blame.OriginalLine);
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
+        FocusPane(PaneKind.Diff);
+    }
+
+    // Git ペインを前面に出して、指定パス（ファイル／フォルダ）の履歴にコミットグラフを絞る。
+    // FolderTree「Git」>「履歴を表示」とエディタ右クリックの合流点。VM の絞り込みを先に反映してから
+    // ペインを可視化する（可視化が発火する EnsureLoaded と二重読込にならないよう順序を固定する）。
+    private async Task ShowGitHistoryAsync(string fullPath)
+    {
+        await _vm.GitSession.ShowPathHistoryAsync(Path.GetFullPath(fullPath));
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
+        FocusPane(PaneKind.Git);
     }
 
     // カーソル行に対するデバッグ操作をメニュー末尾へ足す。ブレークポイント条件編集は常時、Run to Cursor／

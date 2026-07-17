@@ -26,6 +26,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private readonly DiffSessionViewModel _diff;
     private bool _loaded;
     private GitStatusSnapshot _status = new();
+    private string? _lastWorkspaceRoot;
 
     /// <summary>直近に読み込んだブランチ一覧（絞り込みの元・上流の参照元）。</summary>
     private IReadOnlyList<GitBranchInfo> _allBranches = Array.Empty<GitBranchInfo>();
@@ -92,6 +93,18 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// ブランチ一覧のダブルクリックで切り替わり、ヘッダーのチェックアウト（作業ブランチの変更）とは独立。
     /// </summary>
     private string? _logBranch;
+
+    /// <summary>
+    /// コミットグラフを絞る対象パス（リポジトリルート相対・ファイル／フォルダ）。null は絞り込みなし。
+    /// FolderTree／エディタの「履歴を表示」で設定され、ブランチ範囲の切替とは独立に効く（両方指定も可）。
+    /// </summary>
+    private string? _logPath;
+
+    /// <summary>特定パスの履歴に絞っているか（履歴スコープ帯の表示判定）。</summary>
+    [ObservableProperty] private bool _isPathScoped;
+
+    /// <summary>絞り込み中のパス（履歴スコープ帯に表示する。リポジトリルート相対）。</summary>
+    [ObservableProperty] private string _pathScopeLabel = "";
 
     /// <summary>特定ブランチに絞っているか（「すべてのブランチを表示」リンクの表示判定）。</summary>
     [ObservableProperty] private bool _isLogScoped;
@@ -258,6 +271,15 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private async Task RefreshAsync()
     {
         _loaded = true;
+
+        var workspaceRoot = _git.RootPath;
+        if (_lastWorkspaceRoot is not null &&
+            !string.Equals(_lastWorkspaceRoot, workspaceRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            ResetPathScope();
+        }
+        _lastWorkspaceRoot = workspaceRoot;
+
         _status = await _git.GetStatusAsync();
         IsRepository = _status.IsRepository;
 
@@ -276,6 +298,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             UpdateAuthorOptions();
             CommitDetail = "";
             OperationInProgress = false;
+            ResetPathScope();
             return;
         }
 
@@ -370,7 +393,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// </summary>
     private async Task<GitLogRow?> AppendLogPageAsync(string? reselectHash)
     {
-        var page = await _git.GetLogAsync(_logBranch, LogPageSize, _loadedCommitCount);
+        var page = await _git.GetLogAsync(_logBranch, LogPageSize, _loadedCommitCount, _logPath);
         var commitsInPage = 0;
         GitLogRow? reselect = null;
         foreach (var row in page)
@@ -425,6 +448,44 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _logBranch = null;
         IsLogScoped = false;
         return ReloadLogAsync();
+    }
+
+    /// <summary>
+    /// 指定パス（ファイル／フォルダのフルパス）を変更したコミットだけにコミットグラフを絞る
+    /// （FolderTree／エディタの「履歴を表示」の合流点）。ペイン未読込ならフル読込（RefreshAsync）を、
+    /// 読込済みならコミットグラフだけ読み直す。ブランチ範囲の絞り込みとは併用される。
+    /// </summary>
+    public Task ShowPathHistoryAsync(string fullPath)
+    {
+        var root = _git.RootPath;
+        if (string.IsNullOrEmpty(root))
+            return Task.CompletedTask;
+
+        _logPath = System.IO.Path.GetRelativePath(root, fullPath).Replace('\\', '/');
+        PathScopeLabel = _logPath;
+        IsPathScoped = true;
+
+        if (!_loaded)
+        {
+            _loaded = true;
+            return RefreshAsync();
+        }
+        return ReloadLogAsync();
+    }
+
+    /// <summary>パスの履歴絞り込みを解除して全コミット表示に戻す（履歴スコープ帯の「✕」）。</summary>
+    [RelayCommand]
+    private Task ClearPathScope()
+    {
+        ResetPathScope();
+        return ReloadLogAsync();
+    }
+
+    private void ResetPathScope()
+    {
+        _logPath = null;
+        IsPathScoped = false;
+        PathScopeLabel = "";
     }
 
     partial void OnSelectedLogRowChanged(GitLogRow? value)

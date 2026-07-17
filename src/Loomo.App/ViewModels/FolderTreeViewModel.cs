@@ -128,6 +128,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // トリガーする。引数はファイルのフルパス。
     public event EventHandler<string>? GitBlameRequested;
 
+    // FolderTree の「Git」>「履歴を表示」要求（ファイル・フォルダ両方）。View（コンテキストメニュー）から
+    // 発火し、ShellWindow が Git ペインを前面に出して、そのパスの履歴（git log -- path）に絞る。
+    // 引数は対象のフルパス。
+    public event EventHandler<string>? GitHistoryRequested;
+
     // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
     // View 側が先頭ヒットの選択・件数表示を行うために購読する。
     public event EventHandler? FilterCompleted;

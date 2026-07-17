@@ -35,10 +35,14 @@ public sealed partial class FileNodeViewModel : ObservableObject
     // 現在のツリーが Git リポジトリ配下か（「Git」コンテキストメニューの出し分け用）。
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGitBlame))]
+    [NotifyPropertyChangedFor(nameof(CanGitHistory))]
     private bool _isGitRepository;
 
     /// <summary>「Git」メニュー（Git Blame 等）を出すか（ファイルかつ Git リポジトリ配下）。</summary>
     public bool CanGitBlame => !IsDirectory && IsGitRepository;
+
+    /// <summary>「Git」メニューを出すか（Git リポジトリ配下。履歴表示はファイル・フォルダ両方に効く）。</summary>
+    public bool CanGitHistory => IsGitRepository;
 
     // ピン留め済みか（コンテキストメニューの「ピン留め／解除」の出し分け）。
     // ピン状態の変更時は owner（RefreshPinMarks）が読込済みノードへ反映する。

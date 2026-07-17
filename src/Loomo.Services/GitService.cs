@@ -277,9 +277,12 @@ public sealed class GitService
     /// コミットグラフを取得する。<paramref name="branchRef"/> 指定時はそのブランチ（ref）のみ、
     /// null/空のときは全ブランチ込み（--all）。空リポジトリは空リスト。
     /// <paramref name="skip"/> は先頭から読み飛ばすコミット数（末尾スクロールの追加読み込み用ページング）。
-    /// --graph はページごとにグラフを描き直すため、ページ境界で枝の接続は保証されない（表示上の割り切り）。
+    /// <paramref name="pathFilter"/> を指定すると、そのパス（リポジトリルート相対・ファイル／フォルダ）を
+    /// 変更したコミットだけに絞る（<c>git log -- &lt;path&gt;</c>）。--graph はページごとにグラフを描き直すため、
+    /// ページ境界で枝の接続は保証されない（表示上の割り切り）。
     /// </summary>
-    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(string? branchRef = null, int limit = 300, int skip = 0)
+    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(
+        string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null)
     {
         var revArg = string.IsNullOrWhiteSpace(branchRef) ? "--all" : branchRef;
         var args = new List<string> { "log", "--graph", revArg, $"-n{limit}" };
@@ -287,6 +290,12 @@ public sealed class GitService
             args.Add($"--skip={skip}");
         args.Add("--date=format:%Y-%m-%d %H:%M");
         args.Add($"--pretty=format:{GitLogParser.PrettyFormat}");
+        // パス絞り込みは pathspec 区切り（--）の後に置く。ファイル・フォルダどちらでも履歴が取れる。
+        if (!string.IsNullOrWhiteSpace(pathFilter))
+        {
+            args.Add("--");
+            args.Add(pathFilter);
+        }
         var result = await RunAsync(args.ToArray()).ConfigureAwait(false);
         if (!result.Success)
             return Array.Empty<GitLogRow>();

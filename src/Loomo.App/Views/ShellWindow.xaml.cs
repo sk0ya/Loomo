@@ -447,6 +447,8 @@ public partial class ShellWindow : Window
                 string.Equals(t.PeekFilePath, fullPath, StringComparison.OrdinalIgnoreCase));
             tab?.Control.ExecuteCommand("Gblame");
         };
+        // FolderTree の「Git」>「履歴を表示」：Git ペインを前面に出し、そのファイル／フォルダの履歴に絞る。
+        vm.FolderTree.GitHistoryRequested += async (_, fullPath) => await ShowGitHistoryAsync(fullPath);
         // FolderTree のピン留め・表示ルート切替をワークスペーススナップショットへ保存する。
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         // Git セッションの「DIFF ペインで差分を表示」：エディタ/「AIに聞く」等と同じく、出ていなければ
