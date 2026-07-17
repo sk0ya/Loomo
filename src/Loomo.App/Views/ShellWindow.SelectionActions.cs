@@ -159,7 +159,11 @@ public partial class ShellWindow
         menu.Items.Add(diff);
 
         var history = new MenuItem { Header = "Git ペインでこのファイルの履歴を表示" };
-        history.Click += (_, _) => { if (control.FilePath is { Length: > 0 } p) _ = ShowGitHistoryAsync(p); };
+        history.Click += (_, _) =>
+        {
+            if (control.FilePath is { Length: > 0 } p)
+                _ = ShowGitHistoryAsync(p, blame.CommitHash);
+        };
         menu.Items.Add(history);
     }
 
@@ -176,9 +180,9 @@ public partial class ShellWindow
     // Git ペインを前面に出して、指定パス（ファイル／フォルダ）の履歴にコミットグラフを絞る。
     // FolderTree「Git」>「履歴を表示」とエディタ右クリックの合流点。VM の絞り込みを先に反映してから
     // ペインを可視化する（可視化が発火する EnsureLoaded と二重読込にならないよう順序を固定する）。
-    private async Task ShowGitHistoryAsync(string fullPath)
+    private async Task ShowGitHistoryAsync(string fullPath, string? commitHash = null)
     {
-        await _vm.GitSession.ShowPathHistoryAsync(Path.GetFullPath(fullPath));
+        await _vm.GitSession.ShowPathHistoryAsync(Path.GetFullPath(fullPath), commitHash);
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
         FocusPane(PaneKind.Git);
     }

@@ -392,7 +392,7 @@
                     <ListView x:Name="LogList" Style="{StaticResource GitList}"
                              ItemContainerStyle="{StaticResource GitLogListItem}"
                              ItemsSource="{Binding LogView}"
-                             SelectedItem="{Binding SelectedLogRow}"
+                             SelectedItem="{Binding SelectedLogRow, Mode=TwoWay}"
                              SelectionMode="Extended"
                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              ScrollViewer.ScrollChanged="OnLogScrollChanged"

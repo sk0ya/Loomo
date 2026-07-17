@@ -22,6 +22,7 @@ namespace sk0ya.Loomo.App.Views;
 public partial class GitSessionView : UserControl
 {
     private GitSessionViewModel? _subscribed;
+    private bool _isRevealingLogRow;
 
     public GitSessionView()
     {
@@ -49,6 +50,35 @@ public partial class GitSessionView : UserControl
     {
         if (e.PropertyName == nameof(GitSessionViewModel.CommitDetail))
             RenderCommitDetail();
+        else if (e.PropertyName == nameof(GitSessionViewModel.SelectedLogRow) &&
+                 Vm?.SelectedLogRow is { } row && !_isRevealingLogRow)
+        {
+            // Extended 選択の ListView は SelectedItem バインディングだけでは外部からの選択が
+            // コンテナへ反映されない場合があるため、実体の選択も明示して画面内へ出す。
+            Dispatcher.BeginInvoke(() => SelectAndRevealLogRow(row));
+        }
+    }
+
+    private void SelectAndRevealLogRow(GitLogRow row)
+    {
+        if (!LogList.Items.Contains(row))
+            return;
+        _isRevealingLogRow = true;
+        try
+        {
+            // バインディングが既に選択を反映していれば触らない。Clear→再選択は VM の変更通知を
+            // 再発火させ、Dispatcher に同じ処理を積み続けるため行わない。
+            if (!ReferenceEquals(LogList.SelectedItem, row))
+                LogList.SelectedItem = row;
+            LogList.ScrollIntoView(row);
+            LogList.UpdateLayout();
+            if (LogList.ItemContainerGenerator.ContainerFromItem(row) is ListViewItem item)
+                item.BringIntoView();
+        }
+        finally
+        {
+            _isRevealingLogRow = false;
+        }
     }
 
     /// <summary>

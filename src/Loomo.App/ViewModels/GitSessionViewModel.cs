@@ -455,11 +455,11 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// （FolderTree／エディタの「履歴を表示」の合流点）。ペイン未読込ならフル読込（RefreshAsync）を、
     /// 読込済みならコミットグラフだけ読み直す。ブランチ範囲の絞り込みとは併用される。
     /// </summary>
-    public Task ShowPathHistoryAsync(string fullPath)
+    public async Task ShowPathHistoryAsync(string fullPath, string? selectCommitHash = null)
     {
         var root = _git.RootPath;
         if (string.IsNullOrEmpty(root))
-            return Task.CompletedTask;
+            return;
 
         _logPath = System.IO.Path.GetRelativePath(root, fullPath).Replace('\\', '/');
         PathScopeLabel = _logPath;
@@ -468,9 +468,41 @@ public sealed partial class GitSessionViewModel : ObservableObject
         if (!_loaded)
         {
             _loaded = true;
-            return RefreshAsync();
+            await RefreshAsync();
         }
-        return ReloadLogAsync();
+        else
+        {
+            await ReloadLogAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(selectCommitHash))
+            return;
+
+        // Blame のコミットが最初のページより古い場合も、見つかるまで履歴を追加取得する。
+        // パス履歴に存在しないハッシュ（置換コミット等）なら全ページを読み終えて選択なしとする。
+        var target = FindCommitRow(selectCommitHash);
+        while (target is null && HasMoreLog)
+        {
+            await LoadMoreLogAsync();
+            target = FindCommitRow(selectCommitHash);
+        }
+
+        if (target is not null)
+        {
+            // 既存の検索条件で対象が隠れている場合、履歴遷移の目的（対象コミットの選択）を優先する。
+            if (!LogView.Contains(target))
+                ClearLogFilters();
+            SelectedLogRow = target;
+        }
+    }
+
+    private GitLogRow? FindCommitRow(string hash)
+    {
+        // git blame の境界コミットは先頭に '^' が付くことがある。短縮ハッシュで渡される実装にも対応する。
+        var sought = hash.Trim().TrimStart('^');
+        return LogRows.FirstOrDefault(row => row is { IsCommit: true, Hash: { } candidate } &&
+            (string.Equals(candidate, sought, StringComparison.OrdinalIgnoreCase) ||
+             candidate.StartsWith(sought, StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>パスの履歴絞り込みを解除して全コミット表示に戻す（履歴スコープ帯の「✕」）。</summary>
