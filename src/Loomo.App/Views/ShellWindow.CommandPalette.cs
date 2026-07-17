@@ -541,7 +541,7 @@ public partial class ShellWindow
             // 開いた直後はまだ Canvas が未計測で中央寄せ（JumpToLine）が効かないことがあるので、
             // レイアウトが確定する Background 優先度でもう一度合わせて確実に中央へ寄せる。
             NavigatePreview(editor, command);
-            editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            _ = editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
             {
                 if (!ct.IsCancellationRequested && editor.Visibility == Visibility.Visible)
                     NavigatePreview(editor, command);
