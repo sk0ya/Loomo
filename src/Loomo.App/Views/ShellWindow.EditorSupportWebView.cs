@@ -464,6 +464,15 @@ public partial class ShellWindow
 
     private void OnEditorSupportNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+        // URI（PDF 等）ナビゲートが失敗・中断したらガードを解除する。_editorSupportNavigatedUri は
+        // Navigate 発行時に楽観的に確定するが、内蔵 PDF ビューアが file:// の遷移を取りこぼす等で
+        // 失敗すると、ガードは「そのファイルを表示済み」と信じたまま残り、同じファイルを選び直しても
+        // 再ナビゲートされず固まる（＝別 PDF へ切り替わらない）。失敗時に解除して再選択で復帰できるようにする。
+        // HTML ページ描画中は _editorSupportNavigatedUri は null（RenderPendingEditorSupportContent で
+        // クリア済み）なので、この解除は URI 分岐の失敗だけに効く。
+        if (!e.IsSuccess && _editorSupportNavigatedUri is not null)
+            _editorSupportNavigatedUri = null;
+
         // ページ読込が完了した＝ページ側スクリプトの setBody リスナが準備できた。以降この鍵の間は
         // 本文差し替え（フル再ナビゲートなし）を許す。読込中に新しいフル描画が始まっていれば、その
         // 鍵は次の完了で昇格するので、ここでは現在の loading 鍵をそのまま採用する。
