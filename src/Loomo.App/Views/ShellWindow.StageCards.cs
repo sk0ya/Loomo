@@ -155,6 +155,13 @@ public partial class ShellWindow
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
             _layoutWingBuildQueued = false;
+            // ドラッグ中は RebuildWings の強制 UpdateLayout がスプリッターのマウスキャプチャを奪い、
+            // GridSplitter がリサイズを取り消して幅が元へ戻ってしまう。入口のガード（上）だけでは、
+            // ドラッグ開始直前にキューへ積まれたこのコールバックがドラッグ中の ContextIdle で発火する
+            // 取りこぼしが残るため、ここでも弾く。_layoutWingBuildPending は残すので DragCompleted 側の
+            // ScheduleLayoutWings で必ず組み直される。
+            if (_paneSplitterDragging)
+                return;
             if (_stageActive || !_layoutWingBuildPending)
                 return;
             // まだ Measure/Arrange 前なら SizeChanged が次の一度を予約する。
