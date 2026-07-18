@@ -31,6 +31,7 @@ public sealed class GitService
     private readonly GitSubmoduleService _submodules;
     private readonly GitCommitService _commits;
     private readonly GitStashService _stashes;
+    private readonly GitDiffService _diff;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -49,6 +50,7 @@ public sealed class GitService
         _submodules = new GitSubmoduleService(_runner, _mutations);
         _commits = new GitCommitService(workspace, _runner, _mutations);
         _stashes = new GitStashService(_runner, _mutations);
+        _diff = new GitDiffService(workspace, _runner, _mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
@@ -183,48 +185,8 @@ public sealed class GitService
     /// （左右並びの全文表示では大きな値を渡してファイル全体を含める）。未追跡ファイルは全行を追加扱いの
     /// 合成パッチで返す。
     /// </summary>
-    public async Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3)
-    {
-        if (entry.IsUntracked)
-        {
-            var root = RootPath;
-            if (root is null) return "";
-            var full = Path.Combine(root, entry.Path);
-            try
-            {
-                var content = File.Exists(full) ? await File.ReadAllTextAsync(full).ConfigureAwait(false) : "";
-                return BuildUntrackedPatch(entry.Path, content);
-            }
-            catch (Exception ex)
-            {
-                return $"# 読み取り失敗: {ex.Message}";
-            }
-        }
-
-        var unified = $"--unified={contextLines}";
-        var args = staged
-            ? new[] { "diff", "--cached", unified, "--", entry.Path }
-            : new[] { "diff", unified, "--", entry.Path };
-        var result = await RunAsync(args).ConfigureAwait(false);
-        return result.Success ? result.Output : result.Message;
-    }
-
-    /// <summary>未追跡ファイルを「全行追加」の unified パッチ風テキストに整形する（差分表示で緑＋行番号にする）。</summary>
-    private static string BuildUntrackedPatch(string path, string content)
-    {
-        var sb = new StringBuilder();
-        sb.Append("# 未追跡ファイル: ").Append(path).Append('\n');
-        if (content.Length == 0)
-            return sb.ToString().TrimEnd('\n');
-
-        var lines = content.Replace("\r\n", "\n").Split('\n');
-        var count = lines.Length;
-        if (count > 0 && lines[^1].Length == 0) count--; // 末尾改行ぶんの空要素は1行に数えない
-        sb.Append("@@ -0,0 +1,").Append(count).Append(" @@\n");
-        for (var i = 0; i < count; i++)
-            sb.Append('+').Append(lines[i]).Append('\n');
-        return sb.ToString().TrimEnd('\n');
-    }
+    public Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3) =>
+        _diff.GetDiffTextAsync(entry, staged, contextLines);
 
     /// <summary>コミットの概要（メッセージ＋変更ファイル統計）。セッションペインの詳細表示用。</summary>
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
@@ -247,21 +209,13 @@ public sealed class GitService
 
     /// <summary>コンフリクト中の1ステージ（1=共通祖先, 2=ours, 3=theirs）の内容。そのステージが無い
     /// （追加/削除の片方など）場合は null。</summary>
-    public async Task<string?> GetConflictStageContentAsync(string path, int stage)
-    {
-        var result = await RunAsync("show", $":{stage}:{path}").ConfigureAwait(false);
-        return result.Success ? result.Output : null;
-    }
+    public Task<string?> GetConflictStageContentAsync(string path, int stage) =>
+        _diff.GetConflictStageContentAsync(path, stage);
 
     /// <summary>コンフリクトの base/ours/theirs をまとめて取得する。作業ツリーにマーカーが書かれない
     /// コンフリクト種別（削除/変更の衝突・リネーム等）でファイル全体の解決を選ばせるためのフォールバック用。</summary>
-    public async Task<(string? Base, string? Ours, string? Theirs)> GetConflictSidesAsync(string path)
-    {
-        var baseContent = await GetConflictStageContentAsync(path, 1).ConfigureAwait(false);
-        var ours = await GetConflictStageContentAsync(path, 2).ConfigureAwait(false);
-        var theirs = await GetConflictStageContentAsync(path, 3).ConfigureAwait(false);
-        return (baseContent, ours, theirs);
-    }
+    public Task<(string? Base, string? Ours, string? Theirs)> GetConflictSidesAsync(string path) =>
+        _diff.GetConflictSidesAsync(path);
 
     // ===== 更新系（実行後は RepositoryChanged を発火） =====
 
@@ -411,32 +365,8 @@ public sealed class GitService
     /// （ステージ済みからのアンステージ）。git は末尾改行に厳しいので LF 固定＋末尾改行を保証して渡す。
     /// パッチは git ディレクトリ内の一時ファイル経由で渡す。
     /// </summary>
-    public async Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse)
-    {
-        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
-        if (gitDir is null)
-            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
-
-        var patchPath = Path.Combine(gitDir, "loomo-hunk.patch");
-        try
-        {
-            var normalized = patch.Replace("\r\n", "\n");
-            if (!normalized.EndsWith('\n'))
-                normalized += "\n";
-            // BOM 無し UTF-8・LF で書く（git apply はパッチ書式に厳密）。
-            await File.WriteAllTextAsync(patchPath, normalized, new UTF8Encoding(false)).ConfigureAwait(false);
-
-            var args = new List<string> { "apply", "--cached", "--whitespace=nowarn" };
-            if (reverse)
-                args.Add("-R");
-            args.Add(patchPath);
-            return await MutateAsync(args.ToArray()).ConfigureAwait(false);
-        }
-        finally
-        {
-            TryDelete(patchPath);
-        }
-    }
+    public Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse) =>
+        _diff.ApplyCachedPatchAsync(patch, reverse);
 
     public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) =>
         MutateAsync("reset", $"--{mode.ToString().ToLowerInvariant()}", hash);
