@@ -8,7 +8,6 @@ public partial class ShellWindow
 {
     private DetachedWindowManager? _detached;
 
-    // 切り離しウィンドウの管理（初回切り離し時に生成）。
     private DetachedWindowManager Detached => _detached ??= new DetachedWindowManager(this, () => SaveActiveWorkspaceSnapshot());
 
     private DetachedItemSnapshot? CaptureDetachedItem(DetachedItem item)
@@ -73,7 +72,6 @@ public partial class ShellWindow
         return null;
     }
 
-    // サイドバータブの右クリック「別ウィンドウで開く」：種別に応じた切り離し項目を作って開く。
     private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab)
     {
         DetachedItem? item = tab.Kind switch
@@ -87,7 +85,6 @@ public partial class ShellWindow
             Detached.Detach(item);
     }
 
-    // Editor ペインヘッダーの「別ウィンドウ」：フォーカス中（無ければアクティブ）タブを複製して切り離す。
     private void OnDetachEditorPane(object sender, RoutedEventArgs e)
     {
         var id = _editorViews?.FocusedTabId ?? _activeEditorTab?.Id;
@@ -95,7 +92,6 @@ public partial class ShellWindow
             Detached.Detach(item);
     }
 
-    // Terminal ペインヘッダーの「別ウィンドウ」：フォーカス中（無ければアクティブ）ターミナルをスピンオフする。
     private void OnDetachTerminalPane(object sender, RoutedEventArgs e)
     {
         var src = _terminalViews?.FocusedTabId is { } id
@@ -104,13 +100,10 @@ public partial class ShellWindow
         Detached.Detach(CreateTerminalSpinoffItem(src));
     }
 
-    // Browser ペインヘッダーの「別ウィンドウ」：アクティブなブラウザをスピンオフする。
     private void OnDetachBrowserPane(object sender, RoutedEventArgs e)
         => Detached.Detach(CreateBrowserSpinoffItem(_activeBrowserTab));
 
-    // ===== EditorSupport: 複製＋同期（追従元エディタの編集を専用 WebView2 へ再描画） =====
 
-    // EditorSupport ペインヘッダーの「別ウィンドウ」：追従元（無ければアクティブ）エディタに 同期する EditorSupport 複製を別ウィンドウで開く。
     private void OnDetachEditorSupport(object sender, RoutedEventArgs e)
     {
         var source = (_editorSupport.Source ?? _activeEditorTab)?.Control;
@@ -128,7 +121,6 @@ public partial class ShellWindow
         Detached.Detach(item);
     }
 
-    // 別ウィンドウのプレビュー複製のリンククリックを、メインウィンドウのペイン内プレビューと同じ導線 （http/https は内蔵ブラウザ、ファイルはエディタタブ）へ流す。相対リンクの基準はこの複製自身の 追従元ファイル（ペインの追従元とは別のことがある）。開いた先はメインウィンドウ側なので、 背面に隠れたままにならないよう前面へ出す。
     private void AttachEditorSupportMirrorLinks(DetachedEditorSupportView view)
         => view.LinkClicked += async (_, href) =>
         {
@@ -136,9 +128,7 @@ public partial class ShellWindow
             Activate();
         };
 
-    // ===== Editor: 複製＋双方向テキスト同期 =====
 
-    // 対象エディタタブと同一ファイルを開く2つ目の VimEditorControl を作り、双方向テキスト同期を張る。 カーソル/スクロールは各ウィンドウで独立（受け側の Caret を退避→SetText→復元）。無限エコーは syncing ガードで抑止（_syncingEditorFromSupport と同型）。
     private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId)
     {
         var src = _editorTabs.FirstOrDefault(t => t.Id == sourceTabId);
@@ -184,7 +174,6 @@ public partial class ShellWindow
             });
     }
 
-    // ===== Terminal: 新規スピンオフ（同期なし） =====
 
     private DetachedItem CreateTerminalSpinoffItem(TerminalTab? sourceTab)
         => CreateTerminalSpinoffItem(sourceTab?.View.WorkingDirectory);
@@ -206,7 +195,6 @@ public partial class ShellWindow
         return item;
     }
 
-    // ===== Browser: 新規スピンオフ（同期なし） =====
 
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
         => CreateBrowserSpinoffItem(sourceTab?.View.Source?.ToString() ?? sourceTab?.PendingUrl);
@@ -241,7 +229,6 @@ public partial class ShellWindow
         catch { /* 不正 URL は無視（空ページのまま） */ }
     }
 
-    // ===== ペイン内タブのドラッグで別ウィンドウへ「移動」（複製なし） ===== Editor/Terminal タブストリップのタブをドラッグして外へ離すと、その<b>実コントロールごと</b>別ウィンドウへ 移す（メインからは消える）。Browser は WebView2 が再ペアレントで空表示になるため、同 URL の新規ブラウザを 別窓に出しつつ元タブを閉じる＝実質移動。実体化（メインからの除去）は<b>ドロップ時</b>まで遅延するので、 メイン窓の内側で離す／Esc したときは元タブが消えない（DetachedWindowManager が調停）。
 
     private Point _paneTabDragStart;
     private Guid _paneTabDragId;
@@ -271,13 +258,11 @@ public partial class ShellWindow
         StartPaneTabTearOff(_paneTabDragId, sender as UIElement);
     }
 
-    // メインペインのタブ引き出しドラッグを開始する。生成器は「ドロップ時」に呼ばれ、そこで初めて メインから当該タブを除去して別ウィンドウ用の項目を作る（途中キャンセルでは呼ばれない）。
     private void StartPaneTabTearOff(Guid id, UIElement? source)
     {
         if (source is null || BuildTearOffFactory(id) is not { } factory)
             return;
 
-        // タブ選択は Button でマウスをキャプチャするため、解放しないと DoDragDrop が始まらない。
         if (Mouse.Captured is not null)
             Mouse.Capture(null);
 
@@ -297,7 +282,6 @@ public partial class ShellWindow
         }
     }
 
-    // タブ種別に応じた「ドロップ時に実行する移動＋項目生成」を組み立てる（対象外 id は null）。
     private Func<DetachedItem>? BuildTearOffFactory(Guid id)
     {
         if (_editorTabs.Any(t => t.Id == id))
@@ -335,7 +319,6 @@ public partial class ShellWindow
         return null;
     }
 
-    // イベント発生元から所属タブの Id（タブ要素の Tag）を辿る。
     private static Guid? ResolvePaneTabId(object originalSource)
     {
         for (var d = originalSource as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
@@ -344,7 +327,6 @@ public partial class ShellWindow
         return null;
     }
 
-    // Editor タブをメインから外して実コントロールを返す（CloseEditorTab の Dispose 無し版）。
     private VimEditorControl? RemoveEditorTabForMove(Guid id)
     {
         var index = _editorTabs.FindIndex(t => t.Id == id);
@@ -391,7 +373,6 @@ public partial class ShellWindow
         return control;
     }
 
-    // Terminal タブをメインから外して実ビュー（生セッション）を返す（CloseTerminalTabAsync の Close 無し版）。
     private TerminalTabView? RemoveTerminalTabForMove(Guid id)
     {
         var index = _terminalTabs.FindIndex(t => t.Id == id);

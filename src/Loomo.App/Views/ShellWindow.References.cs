@@ -15,7 +15,6 @@ public partial class ShellWindow
         ReferencesPopup.IsOpen = true;
     }
 
-    // ポップアップの中身（参照行の一覧）を組み直す。
     private void BuildReferencesPopup(IReadOnlyList<FindReferenceItem> items, string title)
     {
         ReferencesPopupTitle.Text = title;
@@ -36,7 +35,6 @@ public partial class ShellWindow
         foreach (var item in items)
         {
             var captured = item;
-            // Line/Col は LSP 由来の 0 始まり。表示は 1 始まりへ、ジャンプ（OpenPathInEditorAsync は 1 始まり）も +1。
             var location = $"{Path.GetFileName(captured.FilePath)}:{captured.Line + 1}:{captured.Col + 1}";
             var preview = captured.Preview ?? ReadSourceLine(captured.FilePath, captured.Line);
 
@@ -67,7 +65,6 @@ public partial class ShellWindow
         }
     }
 
-    // ファイルの指定行（0 始まり）をプレビュー用に読む。読めなければ空文字。
     private static string ReadSourceLine(string filePath, int line)
     {
         try

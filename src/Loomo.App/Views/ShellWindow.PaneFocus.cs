@@ -6,32 +6,24 @@ namespace sk0ya.Loomo.App.Views;
 /// キー入口・リサイズモードは ShellWindow.PaneNavigation.cs。</summary>
 public partial class ShellWindow
 {
-    // キーボードフォーカスが入ったペインを記録する（移動の起点に使う）。
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        // フォーカスが他所へ移ったら、待ち状態のプレフィックス連鎖は破棄する
-        // （Ctrl+W → 気が変わってクリック/別ペインへ移動 → 後続の h/j/k/l が誤って奪われるのを防ぐ）。
-        // リサイズ自身が起こすフォーカス移動（ガード中）以外でフォーカスが動いたら、
-        // ユーザー操作とみなしてリサイズモードも終了する。
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
 
         if (e.NewFocus is not DependencyObject d)
             return;
         if (FindPaneOf(d) is { } kind)
         {
-            // 分割中ならどのビューポートが取得したかまで記録する（hjkl 移動の起点に使う）。
             if (ViewsFor(kind) is { } views && views.SetFocusedFromElement(d) is { } viewId)
                 _focusedRegion = FocusTarget.Viewport(kind, viewId);
             else
                 _focusedRegion = FocusTarget.Of(kind);
-            // 別ペインへのフォーカス移動を軌跡（操作ログ）へ記録する（同一ペイン内は増やさない）。
             RecordTrailPane(kind);
         }
         else if (IsWithin(d, SidebarContainer))
             _focusedRegion = FocusTarget.Sidebar;
     }
 
-    // 要素が指定の祖先（論理・視覚いずれか）の内側にあるか。
     private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
     {
         for (var current = element; current is not null; current = GetAnyParent(current))
@@ -40,11 +32,9 @@ public partial class ShellWindow
         return false;
     }
 
-    // ウィンドウが非アクティブになったらプレフィックス待ち・リサイズモードを解除する。
     private void OnWindowDeactivated(object? sender, EventArgs e)
         => _keyboard?.Reset();
 
-    // 要素を内包するペイン種別を視覚ツリーを遡って特定する（ペイン外なら null）。
     private PaneKind? FindPaneOf(DependencyObject element)
     {
         for (var current = element; current is not null; current = GetAnyParent(current))
@@ -61,11 +51,8 @@ public partial class ShellWindow
             ? VisualTreeHelper.GetParent(d)
             : LogicalTreeHelper.GetParent(d);
 
-    // 起点領域から指定方向で最も近い隣接領域へフォーカスを移す。候補にはペイン本体に加え、 表示中ならサイドバー（Explorer 等）も含めるので、最左ペインから Ctrl+W h でサイドバーへ移れる。
     private void FocusPaneInDirection(DropZone direction)
     {
-        // ソロモード中でも、Editor/Terminal の内部分割がある場合は vim 風に
-        // そのペイン内のビューポート移動を優先する。端まで来たら舞台を切り替える。
         if (_stageActive && _focusedRegion?.Pane is { } stageFocused
             && ViewsFor(stageFocused) is { LeafCount: > 1 } stageViews)
         {
@@ -78,7 +65,6 @@ public partial class ShellWindow
             }
         }
 
-        // ソロモード中の h/j/k/l は「舞台の転換」（並び順で前後のペインへ）と読み替える。
         if (_stageActive)
         {
             CycleStage(StageCycleDirection(direction));
@@ -88,7 +74,6 @@ public partial class ShellWindow
         if (targets.Count == 0)
             return;
 
-        // 起点：直近フォーカスの領域。見つからなければ最初の候補（=可視ペイン）を起点扱いにする。
         var originIndex = _focusedRegion is { } region
             ? targets.FindIndex(t => t.Target == region)
             : -1;
@@ -105,7 +90,6 @@ public partial class ShellWindow
             if (target == originTarget)
                 continue;
 
-            // 指定方向の側にある領域だけを候補にする（タイル配置なので辺で判定）。
             const double tolerance = 1.0;
             var inDirection = direction switch
             {
@@ -118,7 +102,6 @@ public partial class ShellWindow
                 continue;
 
             var center = new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
-            // 移動軸方向の距離を主に、直交方向のずれを従にして最も近い領域を選ぶ。
             var (axis, perpendicular) = direction is DropZone.Left or DropZone.Right
                 ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
                 : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
@@ -137,14 +120,12 @@ public partial class ShellWindow
     private static int StageCycleDirection(DropZone direction)
         => direction is DropZone.Below or DropZone.Right ? 1 : -1;
 
-    // ナビゲーション候補（表示中ペイン＋サイドバー）を矩形付きで列挙する。ペインを先頭に並べる。
     private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets()
     {
         foreach (var leaf in AllLeaves())
         {
             if (leaf.Hidden)
                 continue;
-            // 内部分割しているペインはビューポート単位、それ以外はペイン全体を1候補にする。
             if (ViewsFor(leaf.Kind) is { LeafCount: > 1 } views)
             {
                 foreach (var (id, rect) in views.ViewportRects(PaneHost))
@@ -160,7 +141,6 @@ public partial class ShellWindow
             yield return (FocusTarget.Sidebar, sidebarRect);
     }
 
-    // そのペインの内部分割マネージャ（Editor/Terminal のみ。それ以外は null）。
     private PaneSplitView? ViewsFor(PaneKind kind) => kind switch
     {
         PaneKind.Editor => _editorViews,
@@ -168,7 +148,6 @@ public partial class ShellWindow
         _ => null
     };
 
-    // サイドバーの矩形（PaneHost 座標系）を取得する。非表示・未配置なら false。
     private bool TryGetSidebarRect(out Rect rect)
     {
         rect = default;
@@ -176,7 +155,6 @@ public partial class ShellWindow
             || SidebarContainer.ActualWidth <= 0 || SidebarContainer.ActualHeight <= 0)
             return false;
 
-        // サイドバーは PaneHost の左隣にあるため X は負になるが、辺判定・距離計算はそのまま成立する。
         var topLeft = SidebarContainer.TransformToVisual(PaneHost).Transform(new Point(0, 0));
         rect = new Rect(topLeft, new Size(SidebarContainer.ActualWidth, SidebarContainer.ActualHeight));
         return true;
@@ -203,7 +181,6 @@ public partial class ShellWindow
         }
     }
 
-    // フォーカス中ビューポートのタブに合わせて strip 強調・サービスアタッチを追従させる。
     private void SyncActiveFromViewport(PaneKind kind)
     {
         if (kind == PaneKind.Editor && _editorViews?.FocusedTabId is { } eid
@@ -214,7 +191,6 @@ public partial class ShellWindow
             SetActiveTerminalTab(tt);
     }
 
-    // 表示中のサイドバー（Explorer 等）へキーボードフォーカスを移す。
     private void FocusSidebar()
     {
         if (!_vm.IsSidebarVisible)
@@ -232,7 +208,6 @@ public partial class ShellWindow
             FocusFirstFocusable(view);  // 他パネルは最初のフォーカス可能要素へ
     }
 
-    // 要素ツリーを深さ優先でたどり、最初のフォーカス可能要素へフォーカスを移す。
     private static bool FocusFirstFocusable(DependencyObject root)
     {
         if (root is UIElement { Focusable: true, IsVisible: true, IsEnabled: true } element)
@@ -248,7 +223,6 @@ public partial class ShellWindow
         return false;
     }
 
-    // ペイン本体の矩形（PaneHost 座標系）を取得する。非表示・未配置なら false。
     private bool TryGetPaneRect(PaneKind kind, out Rect rect)
     {
         rect = default;
@@ -261,11 +235,8 @@ public partial class ShellWindow
         return true;
     }
 
-    // 指定ペインのアクティブな中身へキーボードフォーカスを移す。
     private void FocusPane(PaneKind kind)
     {
-        // ソロモード中は、フォーカス対象を舞台へ立てる（AI がファイルを開いた・
-        // 差分を出した等の既存フローがそのまま「舞台の自動転換」になる）。
         if (_stageActive && kind != _stagePane)
             SetStagePane(kind);
         _focusedRegion = FocusTarget.Of(kind);
@@ -302,12 +273,6 @@ public partial class ShellWindow
                 break;
         }
 
-        // ペインへの切替はここで記録する。マウスでペインへクリックした場合は
-        // OnWindowPreviewGotKeyboardFocus が拾うが、プログラム的な切替（hjkl・ステージ・
-        // コマンドパレット等）や、内部コントロールがキーボードフォーカスを取らないペイン
-        // （IDE・WebView プレビュー等）はフォーカスイベントが飛ばず取りこぼす。FocusPane は
-        // すべてのプログラム的なペイン切替の choke point なので、ここで確実に記録する
-        // （デデュープ＋1秒デバウンスにより GotKeyboardFocus 側と二重にはならない）。
         RecordTrailPane(kind);
     }
 }

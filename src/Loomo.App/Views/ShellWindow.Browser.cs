@@ -67,7 +67,6 @@ public partial class ShellWindow
         if (ReferenceEquals(_activeBrowserTab, tab))
         {
             BrowserAddressBox.Text = view.Source?.ToString() ?? string.Empty;
-            // 見えているタブの遷移だけを軌跡（操作ログ）へ記録する（背景タブの読込は対象外）。
             if (e.IsSuccess)
                 RecordTrailBrowser(view.Source?.ToString(), view.CoreWebView2?.DocumentTitle);
         }
@@ -81,11 +80,9 @@ public partial class ShellWindow
         if (_activeBrowserTab is not { } tab)
             return;
 
-        // 未実体化なら、この URL を保留先にして実体化（＝そのままナビゲート）する。
         tab.PendingUrl = address;
         await EnsureBrowserRealizedAsync(tab);
 
-        // 既に実体化済みだった場合は PendingUrl が消費されないので、明示的にナビゲートする。
         if (tab.View.CoreWebView2 is { } core && tab.PendingUrl is not null)
         {
             tab.PendingUrl = null;
@@ -100,7 +97,6 @@ public partial class ShellWindow
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
 
-    // ブラウザタブを生成して即座に WebView2 まで実体化する（新規タブなど、直後に CoreWebView2 を 使う呼び出し向け）。起動経路は CreateBrowserTab（遅延）を使う。
     private async Task<BrowserTab> CreateBrowserTabAsync(
         string url,
         Guid? requestedId = null,
@@ -111,7 +107,6 @@ public partial class ShellWindow
         return tab;
     }
 
-    // ブラウザタブの器（WebView2 コントロール・タブUI）だけを同期で用意し、CoreWebView2 の生成は遅延する。 重い EnsureCoreWebView2Async を起動の臨界パスから外すのが狙い。実体化は Browser ペインが 見えてアクティブになった時（ScheduleBrowserRealize）に背景優先度で行う。
     private BrowserTab CreateBrowserTab(
         string url,
         Guid? requestedId = null,
@@ -123,7 +118,6 @@ public partial class ShellWindow
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
             Visibility = Visibility.Collapsed,
-            // 全タブで同じユーザーデータフォルダを共有 → Cookie・保存パスワード・サイト権限が タブ間で共通になり、再ビルド・再起動をまたいで残る。
             CreationProperties = CreateWebViewCreationProperties()
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
@@ -139,7 +133,6 @@ public partial class ShellWindow
         return tab;
     }
 
-    // タブの CoreWebView2 を生成し、保留中の URL があればナビゲートする（冪等・多重生成防止）。
     private async Task EnsureBrowserRealizedAsync(BrowserTab tab)
     {
         if (tab.RealizationStarted)
@@ -166,7 +159,6 @@ public partial class ShellWindow
         await RefreshBrowserTabIconAsync(tab);
     }
 
-    // 実体化した CoreWebView2 を通常ブラウザらしく設定する：パスワードの自動保存・自動入力を有効化し、 サイト権限（フォルダ/ファイルアクセス・通知・位置情報など）の許可/拒否をプロファイルへ保存させる。 永続化先は WebViewUserDataFolder。
     private static void ConfigureBrowserCore(CoreWebView2 core)
     {
         var settings = core.Settings;
@@ -176,7 +168,6 @@ public partial class ShellWindow
         core.PermissionRequested += OnBrowserPermissionRequested;
     }
 
-    // サイト権限リクエストの扱い。原則は既定UI（許可/拒否ダイアログ）に任せつつ、ユーザーの選択を プロファイルへ保存して次回以降は再確認しないようにする（CoreWebView2PermissionRequestedEventArgs.SavesInProfile）。 ただし File System Access API（フォルダ/ファイルの読み書き許可）は Chromium が原則セッション 限りでしか権限を保持しないため、SavesInProfile を立てても起動のたびに再確認される。 dev ツール用途として、この権限だけは自動的に許可してプロンプトを抑止する。
     private static void OnBrowserPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
     {
         e.SavesInProfile = true;
@@ -185,10 +176,8 @@ public partial class ShellWindow
             e.State = CoreWebView2PermissionState.Allow;
     }
 
-    // Browser ペインが表示中なら、アクティブなブラウザタブの WebView2 実体化を背景優先度で予約する。 起動・レイアウト変更の臨界パスをブロックしないよう DispatcherPriority.Background で遅延実行する。
     private void ScheduleBrowserRealize(BrowserTab? tab)
     {
-        // ステージモード中はブラウザも必ず（舞台か袖の）どこかに見えている。
         if (tab is null || tab.RealizationStarted || !(_stageActive || IsPaneVisible(PaneKind.Browser)))
             return;
 
@@ -196,7 +185,6 @@ public partial class ShellWindow
             DispatcherPriority.Background,
             new Action(() =>
             {
-                // 予約後に別タブへ切替・ペイン非表示になっていたら実体化しない。
                 if (ReferenceEquals(_activeBrowserTab, tab) && (_stageActive || IsPaneVisible(PaneKind.Browser)))
                     _ = EnsureBrowserRealizedAsync(tab);
             }));
@@ -241,17 +229,13 @@ public partial class ShellWindow
 
         _activeBrowserTab = tab;
         CurrentBrowserWorkspace.ActiveTabId = id;
-        // AIのブラウザ操作（IBrowserService）の対象を、いま見えているタブへ一本化する。
         _browser.SetActiveView(tab.View);
         _vm.Tabs.ActivateBrowserTab(id);
-        // 未実体化のタブは Source が null なので、保留中の遷移先 URL を表示する。
         BrowserAddressBox.Text = tab.View.Source?.ToString() ?? tab.PendingUrl ?? string.Empty;
-        // 読込済みタブへの切替では NavigationCompleted が発生しないため、活性化時にも現在地を記録する。
         RecordTrailBrowser(
             tab.View.Source?.ToString() ?? tab.PendingUrl,
             tab.View.CoreWebView2?.DocumentTitle);
         tab.View.Focus();
-        // Browser ペインが見えていれば、このタブの WebView2 を背景で実体化する。
         ScheduleBrowserRealize(tab);
         SaveActiveWorkspaceSnapshot();
     }

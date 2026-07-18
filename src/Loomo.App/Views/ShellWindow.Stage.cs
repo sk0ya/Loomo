@@ -13,53 +13,35 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    // ===== ソロモード（舞台＋袖＋俯瞰） =====
 
-    // ソロモード中か（true＝ソロ、false＝レイアウトモード）。中は RebuildPaneLayout がステージの組み直しへ委譲される。
     private readonly StageModeCoordinator _stageMode = new();
     private bool _stageActive { get => _stageMode.Active; set => _stageMode.Active = value; }
-    // 舞台に立っているペイン。
     private PaneKind _stagePane { get => _stageMode.Pane; set => _stageMode.Pane = value; }
 
-    // 指定ペインが舞台に立っているか。
     private bool OnStage(PaneKind kind) => _stageMode.IsOnStage(kind);
 
-    // 俯瞰（全カード一望）レイヤを表示中か。
     private bool _overviewActive { get => _stageMode.Overview; set => _stageMode.Overview = value; }
-    // リサイズ追従のデバウンス用タイマー。発火時に仮想寸法が変わっていたら組み直す。
     private DispatcherTimer? _stageResizeTimer;
-    // 直近の構築に使った仮想キャンバス寸法（＝舞台の実寸）。
     private Size _stageBuiltSize;
-    // 袖カードの VisualBrush が参照する、舞台サイズにレイアウト済みの非表示ホスト。
     private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
 
-    // 有効なセッション（タイトルバーの表示トグルが ON のもの）。タイル配置（_root）とは独立した集合で、 通常はタイルより広い。Main に出ている有効セッションはそのまま Main に、Main に出ていない有効セッションは 袖（ミニチュア）に出る（＝有効セッションは Main と袖のどちらかに必ず出る）。無効なセッションはどちらにも出さない。
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
 
-    // 現在のワークスペースで IDE（デバッグ）ペインが適用対象か（C# プロジェクトを含むか）。 false のときは IDE ペインを有効セッションから外し、タイトルバーのトグルも隠す。 ワークスペース切替時に ApplyIdePaneApplicability で更新する（既定は表示）。
     private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
 
-    // 袖の列（カード＋余白＋スクロールバー）が占める幅の見積もり。舞台幅の算出に使う。
     private const double WingColumnReserve = 210;
-    // ミニチュア（袖／俯瞰カード）の寸法・見た目の定数は ShellWindow.StageCards.cs に集約。
 
-    // 袖カードのドラッグ判定（しきい値を超えたらタイルへの配置ドラッグを始める）。
     private Point _wingDragStart;
     private bool _wingDragArmed;
 
-    // 袖・俯瞰での並び順（よく使うものから）。
     private static readonly PaneKind[] StageOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport,
         PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug,
-        // AI トレースは通常セッションとしては表示しない。
-        // PaneKind.Trace,
     ];
 
-    // ソロ⇄レイアウトの切替（タイトルバーのトグル／Ctrl+Shift+T）。
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
 
-    // ソロ⇄レイアウトを切り替える。
     private void ToggleDisplayMode()
     {
         BeginTrailLayoutChange();
@@ -72,7 +54,6 @@ public partial class ShellWindow
     private void EnterStageMode()
         => EnterStageMode(null);
 
-    // レイアウトモードからソロモード（単一ステージ）へ入る。
     private void EnterStageMode(PaneKind? pane)
     {
         var selectedPane = pane is { } requested && _paneElements.ContainsKey(requested)
@@ -93,7 +74,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // ワークスペース切替前に、保存済み状態を変えずステージ表示だけ通常状態へ戻す。
     private void ClearStageModeForWorkspaceSwitch()
     {
         if (!_stageMode.Exit())
@@ -114,7 +94,6 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    // ワークスペース復元時、ペインレイアウト適用前にソロ表示状態だけ先に立てる。 これにより ApplyPaneLayout がタイル表示を描かず、最初からステージとして組み直す。
     private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot)
     {
         ClearStageModeForWorkspaceSwitch();
@@ -135,19 +114,14 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    // タブ実体の復元後に、ステージの内容とフォーカスを確定する。
     private void CompleteStageSnapshotRestore()
     {
         if (!_stageActive)
             return;
 
         RebuildStage();
-        // 舞台が EditorSupport なら、復元直後に現在のエディタ内容でプレビューを描き直す
-        // （タブ復元経路で描かれない場合の保険。可視意図 false でも onStage で描く）。
         if (_stagePane == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
-        // 組み直し直後は舞台の要素がまだレイアウト前（IsVisible=false）で Focus が失敗し得るため、
-        // レイアウト確定後（Loaded 優先度）にフォーカスを入れる。
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
             if (_stageActive)
@@ -155,7 +129,6 @@ public partial class ShellWindow
         }));
     }
 
-    // ソロモードを抜けてレイアウトモード（タイル表示）へ戻す。
     private void ExitStageMode()
     {
         if (!_stageMode.Exit())
@@ -176,30 +149,23 @@ public partial class ShellWindow
         UpdateModeButtons();
         RebuildPaneLayout();
         FocusPane(_stagePane);
-        // タイル表示でターミナルが見えるようになったなら、未確認の結果は「見た」扱い。
         if (IsPaneVisible(PaneKind.Terminal))
             MarkPaneActivitySeen(PaneKind.Terminal);
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 舞台のペインを差し替える（袖・俯瞰カードのクリック先）。
     private void SetStagePane(PaneKind kind)
     {
         if (!_stageMode.Select(kind))
             return;
         BeginTrailLayoutChange();
         RebuildStage();
-        // EditorSupport を舞台へ立てた瞬間に、現在のエディタ内容でプレビューを描き直す
-        // （RebuildStage はペイン実体を移すだけで中身は更新しないため、ここで明示的に流し込む）。
         if (kind == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
         MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
-        // 舞台ペインの切替は、下の保存が呼ぶ RecordTrailLayoutIfChanged が Layout ドットとして確実に記録する
-        // （キーに Mode／StagePane を含むため）。デバウンスやフォーカス競合のある Pane 経路では記録しない。
         SaveActiveWorkspaceSnapshot();
     }
 
-    // Ctrl+T：現在のモードに応じた巡回。ソロは舞台のものを並び順で前後へ転換し、 レイアウトは保存レイアウトを巡回する（CycleLayout）。
     private void CycleInActiveMode(int direction)
     {
         if (_stageActive)
@@ -208,7 +174,6 @@ public partial class ShellWindow
             CycleLayout(direction);
     }
 
-    // 舞台を並び順で前後のペインへ転換する（ソロ中の Ctrl+T / Ctrl+W h/j/k/l）。
     private void CycleStage(int direction)
     {
         var index = Array.IndexOf(StageOrder, _stagePane);
@@ -217,7 +182,6 @@ public partial class ShellWindow
         FocusPane(next);
     }
 
-    // 全ペインを現在の親から外す（ステージ⇄タイルどちらの構成でも直親は必ず Panel）。
     private void DetachPaneElements()
     {
         foreach (var element in _paneElements.Values)
@@ -225,7 +189,6 @@ public partial class ShellWindow
                 parent.Children.Remove(element);
     }
 
-    // 仮想キャンバス＝舞台の実寸。初回（StageArea 未レイアウト）は同じセルを 占めていた PaneHost の実寸から見積もる。カードの縦横比もこの寸法に追従する。
     private Size StageVirtualSize()
     {
         if (StageArea.ActualWidth > 0 && StageArea.ActualHeight > 0)
@@ -237,7 +200,6 @@ public partial class ShellWindow
             Math.Max(hostH - 18, 320));                      // 18 ≒ 上下マージン
     }
 
-    // ウィンドウリサイズへの追従。連続イベントをデバウンスし、寸法が実際に変わったときだけ組み直す。
     private void OnStageHostSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (!_stageActive)
@@ -260,10 +222,8 @@ public partial class ShellWindow
         _stageResizeTimer.Start();
     }
 
-    // セッションが有効か（タイトルバーの表示トグルが ON）。タイル配置とは独立で、 有効なら Main か袖のどちらかに必ず出る。無効ならどちらにも出さない。
     private bool IsSessionEnabled(PaneKind kind) => _enabledSessions.Contains(kind);
 
-    // そのセッションが Main（舞台／タイル）に実際に表示されているか。 ソロは舞台に立っている1枚、レイアウトはズーム中なら対象1枚・通常は可視リーフすべて。 有効なのに Main に出ていないセッションは袖（ミニチュア）に出す（＝有効なら Main か袖のどちらか）。
     private bool IsShownInMain(PaneKind kind)
     {
         if (_stageActive)
@@ -273,7 +233,6 @@ public partial class ShellWindow
         return IsPaneVisible(kind);
     }
 
-    // 有効セッション集合を復元する（null／空の旧データは全セッション有効＝袖が常時にぎわう既定）。
     private void LoadEnabledSessions(IEnumerable<PaneKind>? enabled)
     {
         _enabledSessions.Clear();
@@ -284,24 +243,20 @@ public partial class ShellWindow
         if (_enabledSessions.Count == 0)
             foreach (var kind in StageOrder)
                 _enabledSessions.Add(kind);
-        // C# プロジェクトの無いワークスペースでは IDE ペインを出さない（保存値・既定どちらでも）。
         if (!_idePaneApplicable)
             _enabledSessions.Remove(PaneKind.Debug);
     }
 
-    // ワークスペースのルートを見て IDE（デバッグ）ペインの適用可否を決め、トグルの表示を同期する。 ワークスペース切替時、有効セッション・レイアウト復元より前に呼ぶ（後続の復元が結果を参照する）。
     private void ApplyIdePaneApplicability(string? root)
     {
         _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(root);
         DebugPaneToggle.Visibility = _idePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // タイトルバーのトグルでセッションの有効／無効を切り替える。 有効化：レイアウトにタイル（隠れたリーフ）があれば Main へ戻し、無ければ袖（ミニチュア）に出す。 無効化：Main に出ていれば隠して（最後の1枚は隠さない）どこにも出さない。
     private void ToggleSessionEnabled(PaneKind kind)
     {
         if (_enabledSessions.Contains(kind))
         {
-            // 無効化：Main に出ていれば隠す。最後の1枚は隠せないので、その場合は有効のまま据え置く。
             if (IsPaneVisible(kind))
             {
                 SetPaneVisible(kind, false);
@@ -314,8 +269,6 @@ public partial class ShellWindow
         else
         {
             _enabledSessions.Add(kind);
-            // レイアウトに在って隠れているタイルなら Main へ戻す（SetPaneVisible が再構築・保存まで行う）。
-            // タイルが無い（＝レイアウト未配置）なら袖に出すだけ。
             if (FindLeaf(kind) is { Hidden: true })
                 SetPaneVisible(kind, true);
             else
@@ -323,7 +276,6 @@ public partial class ShellWindow
         }
     }
 
-    // 有効セッションの変化を画面へ反映する（トグル状態・Main／袖の組み直し・保存）。 SetPaneVisible を経た経路は既に再構築済みなので、それ以外の経路から呼ぶ。
     private void RebuildSessionsView()
     {
         UpdatePaneToggleStates();
@@ -336,10 +288,8 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 俯瞰に並べるセッション（有効なもの＋舞台に立っているもの）。
     private IEnumerable<PaneKind> OverviewKinds() => StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
 
-    // ソロモードの画面を組み直す（舞台1枚＋袖カード、または俯瞰カード一覧）。
     private void RebuildStage()
     {
         if (!_stageActive)
@@ -365,7 +315,6 @@ public partial class ShellWindow
         else
         {
             OverviewLayer.Visibility = Visibility.Collapsed;
-            // 舞台：主役を全面に立てる。
             StageArea.Children.Add(BuildLiveSlot(_stagePane));
         }
 
@@ -377,7 +326,6 @@ public partial class ShellWindow
 
     private void OnToggleOverview(object sender, RoutedEventArgs e) => ToggleOverview();
 
-    // 俯瞰（全セッションのカード一覧）をトグルする。ソロ中の Ctrl+W z でも入れる。
     private void ToggleOverview()
     {
         if (!_stageActive)
@@ -388,7 +336,6 @@ public partial class ShellWindow
 
     private void OnOverviewBackgroundClick(object sender, MouseButtonEventArgs e)
     {
-        // カード上のクリックは Handled 済み。素通りしてきた＝背景クリックなので俯瞰を閉じる。
         if (_overviewActive)
         {
             _overviewActive = false;

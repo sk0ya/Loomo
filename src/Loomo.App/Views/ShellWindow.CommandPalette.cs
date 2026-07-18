@@ -17,7 +17,6 @@ public partial class ShellWindow
     private void OpenCommandPalette()
     {
         _paletteCommands = BuildPaletteCommands();
-        // テーマ／フォントが前回開いてから変わっていることがあるので、プレビュー用エディタへ再適用する。
         if (_previewEditor is not null)
             _appearance.ApplyEditorAppearance(_previewEditor);
         CommandPaletteOverlay.Visibility = Visibility.Visible;
@@ -27,10 +26,8 @@ public partial class ShellWindow
         PaletteInput.Focus();
     }
 
-    // プレビューを開いているか（＝箱の背を高く固定するか）。RefilterPalette が更新する。
     private bool _palettePreviewShown;
 
-    // パレット本体の大きさをウィンドウに合わせて広げる（画面が広いほど一覧＋プレビューを広く取る）。 幅・高さともにウィンドウの割合をとりつつ下限・上限でクランプする。オーバーレイの SizeChanged からも呼ぶ ので、開いたまま／最大化しても追従する。プレビュー表示中は候補が少なくてもプレビューを大きく見せたいので 背を高く固定し、一覧だけのときは中身なりに縮める（無駄な余白を出さない）。
     private void UpdatePaletteBoxSize()
     {
         var w = ActualWidth;
@@ -49,7 +46,6 @@ public partial class ShellWindow
             UpdatePaletteBoxSize();
     }
 
-    // true なら直前にフォーカスしていたペインへ戻す（Esc・背景クリック時）。 コマンド実行時は実行先がフォーカスを決めるので false。
     private void CloseCommandPalette(bool refocus)
     {
         if (!IsPaletteOpen)
@@ -61,7 +57,6 @@ public partial class ShellWindow
             FocusPane(pane);
     }
 
-    // 先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、:＝クラス、%＝シンボル、 $＝ターミナル内検索、>＝コマンド、無印＝すべて（横断検索）。 素のクエリは保ったままモードだけ差し替える（先頭記号を付け替えてキャレットを末尾へ）。 マウスでのチップ選択・Ctrl+Shift+P 連打の両方から呼ばれる。
     private void SetPaletteMode(PaletteMode mode)
     {
         var (_, query) = CommandPaletteService.Parse(PaletteInput.Text);
@@ -70,7 +65,6 @@ public partial class ShellWindow
         PaletteInput.Focus();
     }
 
-    // すべて → ファイル → テキスト → クラス → シンボル → ターミナル → コマンド → すべて… とチップ表示順で巡回する（Ctrl+Shift+P 連打）。
     private void CyclePaletteMode()
     {
         var (mode, _) = CommandPaletteService.Parse(PaletteInput.Text);
@@ -83,7 +77,6 @@ public partial class ShellWindow
             SetPaletteMode(mode);
     }
 
-    // 現在モードのチップを強調する（選択中＝Accent 枠＋通常文字色、他は淡色）。
     private void UpdateModeChips(PaletteMode mode)
     {
         Highlight(PaletteModeAll, mode == PaletteMode.All);
@@ -114,12 +107,9 @@ public partial class ShellWindow
         var (mode, query) = CommandPaletteService.Parse(PaletteInput.Text);
         UpdateModeChips(mode);
 
-        // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト/クラス/シンボル検索は 右にプレビュー枠を開く（該当のファイル・行をスニペット表示）。すべて（横断）は入力後だけ開く （開いた直後のコマンド一覧では空プレビューを出さない）。ターミナル検索は実ターミナル側で ハイライト＋ジャンプするのでプレビューは持たない。
         var showPreview = mode is PaletteMode.File or PaletteMode.Grep or PaletteMode.Class or PaletteMode.Symbol
             || (mode == PaletteMode.All && !string.IsNullOrWhiteSpace(query));
-        // プレビューは一覧と同じ割合（★）で開くので、箱がウィンドウに合わせて広がると一緒に大きくなる。
         PalettePreviewColumn.Width = showPreview ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        // 候補が少なくてもプレビューが縮まないよう、開いている間は箱の背を高く固定する（UpdatePaletteBoxSize）。
         _palettePreviewShown = showPreview;
         UpdatePaletteBoxSize();
 
@@ -137,7 +127,6 @@ public partial class ShellWindow
             return;
         }
 
-        // すべて（空クエリ）は、開いた直後の既定表示としてコマンド一覧を即時に出す （ファイル検索・LSP を走らせず、Ctrl+Shift+P からの表示を軽く保つ）。
         if (mode == PaletteMode.All && string.IsNullOrWhiteSpace(query))
         {
             _paletteSearch.Cancel();
@@ -148,7 +137,6 @@ public partial class ShellWindow
         _ = RefilterSearchAsync(mode, query);
     }
 
-    // 非同期モード（すべて／ファイル／テキスト／クラス／シンボル）の検索。直前の検索を キャンセルし、軽くデバウンスしてから走らせる。
     private async Task RefilterSearchAsync(PaletteMode mode, string query)
     {
         var items = await _paletteSearch.SearchLatestAsync(mode, query, _paletteCommands,
@@ -157,7 +145,6 @@ public partial class ShellWindow
             ShowPaletteItems(items);
     }
 
-    // ワークスペースシンボルを引ける言語サーバー（＝コードファイルのタブに紐づく接続済みマネージャ）を すべて集める。アクティブタブが Markdown 等だと、そのサーバー（marksman 等）がプロジェクトのクラス／ シンボルではなく見出しを返してしまう（アクティブタブに引っ張られる問題）ため、アクティブタブ一つに 頼らず全タブから集め、CodeEditorSupport.CanHandle でコード拡張子に絞る （Markdown/JSON/CSV 等のサーバーは対象外）。アクティブなコードタブは先頭に置いて結果を優先させる。 マネージャ実体で重複排除する。
     private IReadOnlyList<IEditorLspManager> ConnectedCodeLspManagers()
     {
         var seen = new HashSet<IEditorLspManager>();
@@ -165,7 +152,6 @@ public partial class ShellWindow
 
         void TryAdd(EditorTab? tab)
         {
-            // コードファイルのタブだけ（未接続・非コード・未実体化は除外）。非対応サーバーでも GetWorkspaceSymbolsAsync は空を返す（MergeWorkspaceSymbolsAsync で吸収）ので接続だけ条件にする。
             if (tab is null || !_codeSupport.CanHandle(tab.PeekFilePath))
                 return;
             var lsp = GetLspManager(tab);
@@ -180,7 +166,6 @@ public partial class ShellWindow
         return result;
     }
 
-    // LSP シンボル 1 件を候補化する。選択でその定義（file:// URI → ローカルパス）の宣言行へジャンプ。 名前に加え、所属（ContainerName・名前空間や型）があれば併記する。
     private PaletteCommand SymbolEntry(LspSymbolInformation sym, string category)
     {
         var path = CodeEditorSupport.TryUriToLocalPath(sym.Location?.Uri);
@@ -194,7 +179,6 @@ public partial class ShellWindow
         };
     }
 
-    // ターミナル内テキスト検索（$）。アクティブなターミナルタブのバッファから一致をすべて拾い、 @（ファイル）／#（grep）と同じく候補一覧として並べる。選ぶとその箇所をターミナル上で 選択ハイライト＋スクロールしてジャンプする。一致が無い・ターミナルが無い場合は状態行だけ出す。
     private IReadOnlyList<PaletteCommand> BuildTerminalMatches(string query)
     {
         if (_activeTerminalTab?.View is not { } view)
@@ -211,7 +195,6 @@ public partial class ShellWindow
         return matches.Take(max).Select(m => TerminalMatchEntry(m, view)).ToList();
     }
 
-    // ターミナル一致1件を候補化する。選択で該当箇所へジャンプ（ハイライト＋スクロール）。
     private PaletteCommand TerminalMatchEntry(TerminalMatch match, TerminalTabView view)
         => new($"行 {match.LineIndex + 1}", match.LineText.Trim(), () =>
         {
@@ -220,13 +203,11 @@ public partial class ShellWindow
             view.FocusTerminal();
         });
 
-    // ターミナル検索モードのリストに出す状態行（実行アクションは持たない）。
     private static PaletteCommand TerminalStatus(string text)
         => new("ターミナル検索", text, static () => { });
 
     private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items)
     {
-        // 一覧のタイトル強調用に、いま入力中の素のクエリを各項目へ添える（モード先頭記号は落とす）。
         var (_, query) = CommandPaletteService.Parse(PaletteInput.Text);
         foreach (var item in items)
             item.TitleMatch = query;
@@ -252,25 +233,20 @@ public partial class ShellWindow
             () => _ = OpenAndNavigateAsync(hit.FullPath, hit.Line))
         { PreviewPath = hit.FullPath, PreviewLine = hit.Line, PreviewHighlight = query };
 
-    // ファイルをエディタタブで開き、行が指定されていればそこへジャンプする。
     private async Task OpenAndNavigateAsync(string path, int line)
     {
         await OpenFileInNewEditorTabAsync(path);
         if (line > 0 && _activeEditorTab?.Control is { } control)
-            // line は1始まり、NavigateTo は0始まりなので変換する。
             control.NavigateTo(line - 1, 0);
     }
 
     private void OnPaletteSelectionChanged(object sender, SelectionChangedEventArgs e)
         => UpdatePalettePreview(PaletteList.SelectedItem as PaletteCommand);
 
-    // プレビュー用の読み取り専用エディタ（素の VimEditorControl）。エディタ本体と同じ 描画・シンタックスハイライト・全文スクロールをそのまま使う。1 個だけ作って使い回す。
     private VimEditorControl? _previewEditor;
 
-    // 選択が高速に変わっても毎回ファイルを開かないよう、軽くデバウンスするためのトークン源。
     private CancellationTokenSource? _palettePreviewCts;
 
-    // プレビュー用エディタを（初回のみ）生成する。LSP/git ファクトリを渡さない「素」の構成なので 言語サーバー接続・git 差分・ファイル監視の副作用が無い。フォーカス不可にしてパレットの ↑↓ 操作を 奪わせない（Editor.Controls.Rendering.EditorCanvas はフォーカス無しでもホイールスクロール可）。 行番号とスクロールバーは残し、ステータスバーは切り離しの共有バーを渡して隠し、ミニマップは切る。 配色・フォントは本体エディタと揃える。
     private VimEditorControl EnsurePreviewEditor()
     {
         if (_previewEditor is { } existing)
@@ -286,14 +262,12 @@ public partial class ShellWindow
         editor.ExecuteCommand("set number");     // 行番号は常に表示（本体設定に依らず）
         editor.ExecuteCommand("set cursorline"); // ヒット行を常に強調
         editor.ExecuteCommand("set nominimap");  // 狭いプレビューではミニマップは邪魔なので切る
-        // 表示しない共有ステータスバーを与えて内蔵ステータスバーだけ隠す（プレビューは非フォーカスなので このバーへ状態は流れず、見た目にも出ない）。行番号ガターとスクロールバーはそのまま残る。
         editor.SetSharedStatusBar(new VimStatusBar());
         PalettePreviewHost.Child = editor;
         _previewEditor = editor;
         return editor;
     }
 
-    // 選択中ヒットのファイルを、プレビュー用エディタで開いてヒット行へジャンプする。grep モードでは 検索語をエディタの検索ハイライトで重ねる。ファイル以外（コマンド等）を選んだときは隠す。
     private void UpdatePalettePreview(PaletteCommand? command)
     {
         _palettePreviewCts?.Cancel();
@@ -326,7 +300,6 @@ public partial class ShellWindow
         {
             editor.LoadFile(path);
             editor.HighlightSearch(command.PreviewHighlight ?? "");
-            // 行が指定されていればその行をプレビューの中央に置き、無指定なら先頭から見せる。 開いた直後はまだ Canvas が未計測で中央寄せ（JumpToLine）が効かないことがあるので、 レイアウトが確定する Background 優先度でもう一度合わせて確実に中央へ寄せる。
             NavigatePreview(editor, command);
             _ = editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
             {
@@ -340,7 +313,6 @@ public partial class ShellWindow
         }
     }
 
-    // プレビューを指定行へ移動する。行指定あり（grep／シンボル）は VimEditorControl.JumpToLine でその行をビューポート中央に置き、行指定なし（ファイル）は先頭から見せる。 PreviewLine は 1 始まり、JumpToLine／NavigateTo は 0 始まりなので変換する。
     private static void NavigatePreview(VimEditorControl editor, PaletteCommand command)
     {
         if (command.PreviewLine > 0)
@@ -388,11 +360,9 @@ public partial class ShellWindow
         PaletteList.ScrollIntoView(PaletteList.SelectedItem);
     }
 
-    // 背景（薄暗がり）クリックはキャンセル。
     private void OnPaletteBackgroundMouseDown(object sender, MouseButtonEventArgs e)
         => CloseCommandPalette(refocus: true);
 
-    // パレット本体のクリックは背景まで抜けさせない。
     private void OnPaletteBoxMouseDown(object sender, MouseButtonEventArgs e)
         => e.Handled = true;
 
@@ -406,15 +376,12 @@ public partial class ShellWindow
         }
     }
 
-    // 現在状態からコマンド一覧を組む（開くたびに呼ぶ）。
     private List<PaletteCommand> BuildPaletteCommands()
     {
         var list = new List<PaletteCommand>();
 
-        // カタログコマンドの実効ジェスチャ（再割り当てに追従）。
         string? Sc(string id) => _keybindings.For(id)?.Format();
 
-        // ステージ
         list.Add(new("ステージ",
             _stageActive ? "ステージモードを解除（タイル表示へ）" : "ステージモードへ（舞台＋袖）",
             () => { if (_stageActive) ExitStageMode(); else EnterStageMode(); }));
@@ -422,7 +389,6 @@ public partial class ShellWindow
             list.Add(new("ステージ", _overviewActive ? "俯瞰を閉じる" : "俯瞰（全カードを一望）",
                 ToggleOverview, "Ctrl+W z"));
 
-        // 移動（ステージ中は FocusPane がそのまま舞台転換になる）
         foreach (var kind in StageOrder)
         {
             var target = kind;
@@ -430,7 +396,6 @@ public partial class ShellWindow
                 () => { SetPaneVisible(target, true); FocusPane(target); }));
         }
 
-        // ペイン表示
         foreach (var kind in StageOrder)
         {
             var target = kind;
@@ -438,7 +403,6 @@ public partial class ShellWindow
                 () => SetPaneVisible(target, !IsPaneVisible(target))));
         }
 
-        // タブ
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()),
             Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()),
@@ -446,20 +410,17 @@ public partial class ShellWindow
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()),
             Sc("tab.newBrowser"), "tab.newBrowser"));
 
-        // コンポーザ（作業台）
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く",
             () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
         list.Add(new("コンポーザ", "本文をペグボードへピン",
             () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
 
-        // ペグボード（道具掛け）
         list.Add(new("ペグボード", "クリップボードから追加",
             () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
         list.Add(new("ペグボード", "エディタの選択をピン", PinEditorSelectionToPegboard));
         list.Add(new("ペグボード", "ブラウザのURLをピン", PinBrowserUrlToPegboard));
 
-        // サイドバー
         list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null),
             Sc("sidebar.explorer"), "sidebar.explorer"));
         list.Add(new("サイドバー", "検索（全文検索 / grep）", () => _vm.ShowSearchCommand.Execute(null),
@@ -478,11 +439,9 @@ public partial class ShellWindow
         list.Add(new("サイドバー", "エクスプローラで現在のファイルを選択（同期）", RevealActiveFileInFolderTree,
             Sc("explorer.revealActiveFile"), "explorer.revealActiveFile"));
 
-        // AI
         list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null),
             Sc("sidebar.sessions"), "sidebar.sessions"));
 
-        // ワークスペース
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive))
         {
             var target = workspace;

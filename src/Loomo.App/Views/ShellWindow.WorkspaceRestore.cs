@@ -71,10 +71,6 @@ public partial class ShellWindow
             }
             : workspace.EditorTabs.ToArray();
 
-        // タブは未実体化（Pending のみ）で並べる。strip 見出しはスナップショットのメタ情報だけで描けるので
-        // コントロール生成は不要。実際の VimEditorControl 生成＋ファイル読込＋Git差分は、下の
-        // ActivateEditorTab がアクティブタブ 1 枚だけを実体化し、残りは各タブを開いた時に初めて走る
-        // （起動時に全タブ分を作っていたのが重さの主因だった）。
         foreach (var snapshot in snapshots)
         {
             var tab = CreatePendingEditorTab(snapshot);
@@ -109,7 +105,6 @@ public partial class ShellWindow
     private void DetachTerminalTabs()
     {
         CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;
-        // 分割木を畳んでコンテンツホストを空に（次ワークスペースは単一ビューポートから再構築）。コントロールは破棄しない。
         _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
         _activeTerminalTab = null;
@@ -120,18 +115,14 @@ public partial class ShellWindow
         _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
 
-        // コントロールの配置は後続の ActivateTerminalTab（→ PaneSplitView.Activate）が行う。ここでは strip のみ復元。
         foreach (var tab in _terminalTabs)
             _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
     }
 
     private void DetachEditorTabs()
     {
-        // EditorSupport の追従先は別ワークスペースへ持ち越さない（stale な購読・参照を残さない）。
-        // 内容は復元後の ActivateEditorTab → SwitchEditorSupportSourceAsync が作り直す。
         _editorSupportDebounceTimer?.Stop();
         DetachEditorSupportSource();
-        // 別ワークスペースへ持ち越さない：次の描画は確実にフル再構築させる（本文差し替えの取り違え防止）。
         _editorSupport.WebView.ResetPageState();
         _editorSupport.IsPinned = false;
         UpdateEditorSupportPinToggle();
@@ -139,7 +130,6 @@ public partial class ShellWindow
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
         _activeEditorTab = null;
-        // プレビュー状態はワークスペースをまたいで持ち越さない（復元後は通常タブとして扱う）。
         _previewEditorTab = null;
     }
 
@@ -148,7 +138,6 @@ public partial class ShellWindow
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
 
-        // 未実体化タブも strip へ戻す（メタ情報のみで描けるので実体化しない）。
         foreach (var tab in _editorTabs)
             _vm.Tabs.AddEditorTab(tab.Id, tab.PeekFilePath, tab.PeekIsModified, false);
     }
@@ -172,7 +161,6 @@ public partial class ShellWindow
             ? new[] { new BrowserTabSnapshot { Url = DefaultBrowserUrl, Title = "Browser", IsActive = true } }
             : snapshots.ToArray();
 
-        // WebView2 の生成は遅延。アクティブなタブだけが、ペイン表示時に背景で実体化される。
         foreach (var snapshot in tabs)
             CreateBrowserTab(
                 snapshot.Url ?? DefaultBrowserUrl,

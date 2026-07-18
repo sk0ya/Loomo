@@ -17,7 +17,6 @@ public partial class ShellWindow
         _vm.Pegboard.InsertToComposerRequested += (_, item) => InsertIntoComposer(item.Content);
     }
 
-    // 「ブラウザのURLをピン」：ブラウザペインで表示中のページをカードにする。
     private void PinBrowserUrlToPegboard()
     {
         if (_activeBrowserTab?.View.Source?.ToString() is { Length: > 0 } url)
@@ -25,14 +24,12 @@ public partial class ShellWindow
                 title: _activeBrowserTab.View.CoreWebView2?.DocumentTitle);
     }
 
-    // 「エディタの選択をピン」：アクティブエディタの選択テキストをカードにする（素材の流れ）。
     private void PinEditorSelectionToPegboard()
     {
         if (_activeEditorTab?.Control.SelectedText is { Length: > 0 } text)
             _vm.Pegboard.AddContent(text, type: "text");
     }
 
-    // 「ターミナルへ送る」：単一行は可視ターミナルのプロンプトへ入力する（実行はしない＝ FolderTree の「ターミナルにセット」と同じ流儀）。複数行はプロンプトで暴発しないよう コンポーザへ流し、推敲してから Ctrl+Enter で実行してもらう。
     private void SendPegboardItemToTerminal(PegboardItemVm item)
     {
         var content = item.Content;
@@ -43,13 +40,11 @@ public partial class ShellWindow
         }
 
         SetPaneVisible(PaneKind.Terminal, true);
-        // 空白を含むパスはそのまま使えるよう引用する（ファイル/フォルダのカードのみ）。
         var text = item.Type == "file" && content.IndexOf(' ') >= 0 ? $"\"{content}\"" : content;
         _activeTerminalTab?.View.SendTerminalInput(text);
         FocusPane(PaneKind.Terminal);
     }
 
-    // カードの「開く」：url→ブラウザ新タブ / file→エディタ（フォルダはターミナル cd）/ text→エディタの仮想ドキュメント。
     private async Task OpenPegboardItemAsync(PegboardItemVm item)
     {
         switch (item.Type)
@@ -61,8 +56,6 @@ public partial class ShellWindow
                 break;
 
             case "file" when File.Exists(item.Content):
-                // OpenFileInNewEditorTabAsync が EnsureEditorPaneForOpenedFile で
-                // （バイナリ判定込みで）前面化するので、ここでの明示表示は不要。
                 await OpenFileInNewEditorTabAsync(item.Content);
                 break;
 
@@ -73,7 +66,6 @@ public partial class ShellWindow
                 break;
 
             default:
-                // テキスト片（や消えたファイルパス）は読み流し用の仮想ドキュメントで開く。
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
                 await _editor.OpenDocumentAsync(new EditorDocument
                 {

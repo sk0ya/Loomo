@@ -20,7 +20,6 @@ public partial class ShellWindow
     private GridLength _fullscreenWingWidth;
     private Thickness _fullscreenStageMargin;
 
-    // 現在ペインだけを、ウィンドウ装飾・ActivityBar・Sidebar・袖を除いて 現在のモニター全域（タスクバー領域を含む）へ表示する。再実行で全状態を復元する。
     private void TogglePaneFullscreen()
     {
         if (_paneFullscreen)
@@ -77,8 +76,6 @@ public partial class ShellWindow
         _zoomedPane = pane;
         RebuildPaneLayout();
 
-        // WindowState=Maximized は WM_GETMINMAXINFO によりワーク領域へ制限されるため、
-        // Normal のボーダーレスウィンドウをモニター矩形へ直接広げる。
         WindowState = WindowState.Normal;
         ResizeMode = System.Windows.ResizeMode.NoResize;
         Topmost = true;
@@ -112,7 +109,6 @@ public partial class ShellWindow
         WindowState = WindowState.Normal;
         if (_fullscreenPreviousWindowState == WindowState.Maximized)
         {
-            // 最大化前の通常矩形も維持し、後で最大化解除したときの位置まで元に戻す。
             Left = _fullscreenPreviousRestoreBounds.Left;
             Top = _fullscreenPreviousRestoreBounds.Top;
             Width = _fullscreenPreviousRestoreBounds.Width;

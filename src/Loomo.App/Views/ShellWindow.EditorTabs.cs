@@ -14,7 +14,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 仮想ドキュメント（システムプロンプト・危険コマンド一覧など）を編集するための専用タブを用意する。 同名タブが既にあればそれをアクティブ化して再利用し、無ければ新規タブを作成する。 EditorService が VimEditorControl.OpenVirtualDocument を呼ぶ直前にこれを呼ぶため、 ここでアクティブ化（＝Attach）した control に対して仮想ドキュメントが開かれる。
     private void OpenVirtualDocumentTab(string title)
     {
         var existing = _editorTabs.FirstOrDefault(t =>
@@ -38,21 +37,17 @@ public partial class ShellWindow
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
-        // 同一ファイルの重複タブを防ぐためパスを正規化する。Git ペイン等は Path.Combine(root, "a/b") で区切り混在の path（C:\root\a/b）を渡すので、正規化しないとエクスプローラ起点のタブと 文字列一致せず二重に開いてしまう。VimEditorControl は渡した文字列をそのまま FilePath に保持する。
         path = Path.GetFullPath(path);
 
-        // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
         EnsureEditorPaneForOpenedFile(path);
 
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
-            // 明示的に開いた（ダブルクリック・Enter 等）ので、プレビュー中なら通常タブへ確定する。
             if (ReferenceEquals(_previewEditorTab, existing))
                 SetPreviewTab(null);
             ActivateEditorTab(existing.Id);
-            // 既に開いているファイルが外部（AI の write_file/edit_file・git・ターミナル等）で書き換わって いれば、ここで読み直して本文と EditorSupport を最新化する（下記ヘルパ参照）。
             await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
@@ -61,26 +56,20 @@ public partial class ShellWindow
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
-        // 活性化済みタブの control へ直接読み込む。ここで _editor.OpenFileAsync を呼ぶと FileOpenRequested 経由で本メソッドへ再入してしまうため、低レベルの LoadFile を使う。
         tab.Control.LoadFile(path);
         UpdateEditorTab(tab);
-        // タブ活性化の時点では FilePath が未確定（＝軌跡へ記録されない）ので、読込後に記録する。
         RecordTrailEditorTab(tab);
-        // タブ活性化の時点では FilePath が未確定だったので、読込後に EditorSupport を同期し直す。
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
     }
 
-    // FolderTree の単クリックでファイルをプレビュータブ（タイトル斜体）で開く。 未編集のプレビュータブ（無ければ空の Untitled タブ）を使い回して中身だけ差し替えるので、 クリックのたびにタブが増えない。プレビュータブは編集された時点で通常タブへ昇格する （UpdateEditorTab）。既にタブで開いているファイルはそれをアクティブ化するだけ。
     private async Task OpenFileInPreviewTabAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
-        // 区切り混在のパス（Git 起点等）でも既存タブと一致させるため正規化する（上記参照）。
         path = Path.GetFullPath(path);
 
-        // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
         EnsureEditorPaneForOpenedFile(path);
 
         var existing = _editorTabs.FirstOrDefault(t =>
@@ -88,12 +77,10 @@ public partial class ShellWindow
         if (existing is not null)
         {
             ActivateEditorTab(existing.Id);
-            // 外部変更があれば読み直して本文と EditorSupport を最新化する（下記ヘルパ参照）。
             await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
 
-        // 差し替え先：未編集のプレビュータブ、無ければアクティブな空の Untitled タブを転用する。
         var target = _previewEditorTab is { } preview && _editorTabs.Contains(preview)
                      && !preview.PeekIsModified && !preview.PeekIsVirtual
             ? preview
@@ -110,14 +97,11 @@ public partial class ShellWindow
             _vm.Tabs.AddEditorTab(target.Id, path, false, false);
         }
 
-        // プレビュータブの使い回しでは、活性化の時点ではまだ差し替え前のファイルが載っているため、 ここでの活性化は軌跡へ記録せず、読込後に新しいパスで記録する。
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
         try { ActivateEditorTab(target.Id); }
         finally { _trailSuppressed = trailSaved; }
-        // 活性化済みタブの control へ直接読み込む（_editor.OpenFileAsync は再入を招くため使わない）。
         target.Control.LoadFile(path);
-        // LoadFile 中の BufferChanged が UpdateEditorTab の昇格判定を誤爆させないよう、読込後に印を付ける。
         SetPreviewTab(target);
         UpdateEditorTab(target);
         RecordTrailEditorTab(target);
@@ -125,14 +109,12 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 既に開いているタブを再オープンしたとき、ファイルが外部（AI の write_file/edit_file・git・ ターミナル等）で書き換わっていれば、未編集に限りディスクから読み直して本文を最新化する。 エディタ内蔵のファイルウォッチャによる自動リロード（VimEditorControl.ReloadCurrentFile）は BufferChanged を発火しないため、それに依存せず明示的に LoadFile して BufferChanged を 起こす。さらに EditorSupport の追従元タブなら、同一タブ再活性で SwitchEditorSupportSourceAsync が早期 return する分を補ってプレビューを即更新する。
     private async Task ReloadExistingTabIfChangedAsync(EditorTab tab)
     {
         var path = tab.Control.FilePath;
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
             return;
 
-        // 未保存編集のあるタブは読み直さない（編集を破棄しない）。リロード判断はエディタ側に委ねる。
         if (tab.Control.IsModified)
             return;
 
@@ -140,20 +122,16 @@ public partial class ShellWindow
         try { diskText = await File.ReadAllTextAsync(path); }
         catch { return; }   // 読めなければ現状維持（best-effort）
 
-        // 改行コードだけの差では読み直さない（無編集ファイルのスクロール位置を無駄に失わない）。
         if (NormalizeEol(diskText) != NormalizeEol(tab.Control.Text))
         {
-            // ディスク内容が違う＝外部変更。LoadFile で本文を最新化する（BufferChanged が発火する）。
             tab.Control.LoadFile(path);
             UpdateEditorTab(tab);
         }
 
-        // 本文が既に最新（ウォッチャが先に読み直した等）でも、外部リロードは BufferChanged を上げず EditorSupport が取り残されるため、追従元タブなら明示的に更新する。
         if (ReferenceEquals(_editorSupport.Source, tab))
             await UpdateEditorSupportAsync();
     }
 
-    // 開いている全エディタタブを、必要なら（未編集かつディスク内容が違えば）ディスクから読み直す。 ShellWindow.xaml.cs が GitSession.RepositoryChanged（チェックアウト・pull・ 外部変更検出等）を受けて呼ぶ。ReloadExistingTabIfChangedAsync はユーザーがファイルツリーから同じファイルを再オープンしたときにしか働かないため、git の ブランチ切り替え等でアクティブタブのファイルが（ユーザー操作を介さず）書き換わる／消える／ 元に戻るケースだと EditorSupport プレビューが古い内容のまま取り残される。実体化済みタブだけを 対象にする（未実体化タブは次にアクティブ化されたとき RestoreEditor がディスクから 読むので、ここで先回りして実体化させる必要はない）。
     private async Task RefreshOpenEditorTabsFromDiskAsync()
     {
         foreach (var tab in _editorTabs.ToArray())
@@ -165,7 +143,6 @@ public partial class ShellWindow
 
     private static string NormalizeEol(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
-    // プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。
     private void SetPreviewTab(EditorTab? tab)
     {
         if (_previewEditorTab is { } old && !ReferenceEquals(old, tab))

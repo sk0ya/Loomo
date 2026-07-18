@@ -8,16 +8,11 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    // このワークスペースに保存したレイアウト（タイトルバーのドロップダウンに並ぶ）。
     private readonly List<SavedLayout> _layouts = new();
-    // 未保存作業を退避する単一スクラッチ枠（次の未保存編集で上書きされる）。
     private PaneNodeSnapshot? _scratchLayout;
-    // 巡回の現在位置（-1＝スクラッチ、0..n＝_layouts[i]）。
     private int _activeLayoutIndex = -1;
-    // 現在のタイル配置が保存レイアウトから変化しているか（編集で立つ）。
     private bool _layoutDirty;
 
-    // ワークスペース復元時に保存レイアウトを読み込む（無ければ既定3種を投入）。
     private void LoadLayouts(IEnumerable<SavedLayout> layouts, PaneNodeSnapshot? scratch, int activeIndex, bool dirty)
     {
         _layouts.Clear();
@@ -30,7 +25,6 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    // タイトルバーのモードトグルとレイアウトボタンの表示／ラベルを現状へ同期する。
     private void UpdateModeButtons()
     {
         if (StageModeToggle is not null)
@@ -38,12 +32,10 @@ public partial class ShellWindow
 
         if (LayoutButton is null)   // InitializeComponent 前のガード
             return;
-        // レイアウトモード時のみレイアウト切替ボタンを出す。
         LayoutButton.Visibility = _stageActive ? Visibility.Collapsed : Visibility.Visible;
         LayoutButtonLabel.Text = CurrentLayoutLabel();
     }
 
-    // 現在のレイアウト表示名（保存レイアウト名、または未保存）。
     private string CurrentLayoutLabel()
     {
         if (!_layoutDirty && _activeLayoutIndex >= 0 && _activeLayoutIndex < _layouts.Count)
@@ -51,16 +43,13 @@ public partial class ShellWindow
         return "（未保存）";
     }
 
-    // Ctrl+T（レイアウトモード）：保存レイアウトを巡回する。未保存の変更はスクラッチへ退避。
     private void CycleLayout(int direction)
     {
         if (_stageActive)
             return;
 
-        // 現在の比率を取り込んでから巡回（リサイズ結果を保つ）。
         CaptureLayoutSizes();
 
-        // 未保存の変更（または現在がスクラッチ）なら、現配置を単一スクラッチへ退避（上書き）。 ただし保存レイアウトと同じ配置なら、退避すると Ctrl+T で同じものが2度出てしまうので 退避せず、その保存レイアウトを現在位置として巡回を続ける。
         if ((_layoutDirty || _activeLayoutIndex < 0) && _root is not null)
         {
             var current = ToSnapshot(_root);
@@ -85,7 +74,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 巡回位置のレイアウトを _root へ立てる（-1＝スクラッチ）。
     private void LoadLayoutAt(int index)
     {
         BeginTrailLayoutChange();
@@ -100,7 +88,6 @@ public partial class ShellWindow
             FocusPane(first);
     }
 
-    // 保存レイアウトをポップアップから読み込む。
     private void LoadLayout(int index)
     {
         if (index < 0 || index >= _layouts.Count || _stageActive)
@@ -109,7 +96,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 現在のタイル配置を保存レイアウトとして保存（同名は上書き）。
     private void SaveCurrentLayout(string name)
     {
         name = name.Trim();
@@ -135,7 +121,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // 保存レイアウトを削除する。
     private void DeleteLayout(int index)
     {
         if (index < 0 || index >= _layouts.Count)
@@ -157,7 +142,6 @@ public partial class ShellWindow
         LayoutPopup.IsOpen = true;
     }
 
-    // ポップアップの中身（保存レイアウトの一覧）を組み直す。
     private void BuildLayoutPopup()
     {
         LayoutPopupList.Children.Clear();
@@ -225,7 +209,6 @@ public partial class ShellWindow
         return $"{layout.Name}  ({string.Join(" · ", panes)})";
     }
 
-    // ツリー内の全リーフ（ペイン種別）を表示順に列挙する。
     private static IEnumerable<PaneKind> LeafKinds(PaneNodeSnapshot node)
     {
         if (node.Kind is { } kind)

@@ -22,7 +22,6 @@ public partial class ShellWindow
             ActivateTerminalTab(id);
     }
 
-    // タブを中ボタンクリックで閉じる（Terminal / Editor / Browser 共通）
     private async void OnTabMiddleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Middle || sender is not FrameworkElement { Tag: Guid id })
@@ -89,7 +88,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。
     private void SetActiveTerminalTab(TerminalTab tab)
     {
         _activeTerminalTab = tab;
@@ -146,7 +144,6 @@ public partial class ShellWindow
         if (tab is null)
             return;
 
-        // フォーカス中ビューポートへこのタブを割り当てて再描画＋フォーカス（分割していなければ単一ビューポート）。
         _editorViews?.Activate(id);
 
         _activeEditorTab = tab;
@@ -159,7 +156,6 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    // フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。
     private void SetActiveEditorTab(EditorTab tab)
     {
         _activeEditorTab = tab;
@@ -169,7 +165,6 @@ public partial class ShellWindow
         QueueEditorTabHeaderIntoView(tab.Id);
         _ = SwitchEditorSupportSourceAsync(tab);
         RecordTrailEditorTab(tab);
-        // 開いたファイルの拡張子に対応する言語サーバーが未導入/未設定なら、エディタ上端で導入を促す。
         _vm.LspPrompt.EvaluateForFile(tab.Control.FilePath);
     }
 
@@ -235,10 +230,6 @@ public partial class ShellWindow
             _editorSupport.IsPinned = false;
             UpdateEditorSupportPinToggle();
         }
-        // 実体化済みのときだけ視覚ツリーから外して破棄する（未実体化タブは VimEditorControl を
-        // 持たず、触れると無駄に実体化してしまう）。Dispose は LSP（言語サーバープロセス）と
-        // ファイル監視を解放する。これは Unloaded では行われない（ワークスペース切替の一時的な
-        // デタッチでも Unloaded は発火するため、ライブラリ側で破棄をホスト責務に分離した）。
         if (tab.IsRealized)
         {
             ViewportTree.Detach(tab.Control);
@@ -246,7 +237,6 @@ public partial class ShellWindow
         }
         if (ReferenceEquals(_previewEditorTab, tab))
             _previewEditorTab = null;
-        // 閉じたファイルは戻る/進む履歴からも除く（移動側でも実在チェックで飛ばすが、ボタン活性を正確に保つ）。
         if (tab.PeekFilePath is { Length: > 0 } closedPath)
         {
             _editorSupport.History.Remove(closedPath);
@@ -279,7 +269,6 @@ public partial class ShellWindow
         }
     }
 
-    // FolderTree でファイル／フォルダがリネームされたとき、開いているエディタタブのパス・タブ名を 新パスへ追従させる。フォルダのリネームでは配下のファイルを開いたタブもまとめて付け替える。
     private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e)
     {
         foreach (var tab in _editorTabs)
@@ -304,12 +293,10 @@ public partial class ShellWindow
         }
     }
 
-    // エディタタブのファイルパスを差し替える（本文・Undo・未保存編集を保ったまま追従させる）。 未実体化タブは復元用スナップショットのパスだけ書き換え、開くときは新パスから読み込ませる。
     private void RebaseEditorTabPath(EditorTab tab, string newPath)
     {
         if (tab.IsRealized)
         {
-            // バッファのパスを差し替えるだけ（LoadFile による再読込はカーソル・Undo・未保存編集を失うため避ける）。
             tab.Control.Engine.CurrentBuffer.FilePath = newPath;
             UpdateEditorTab(tab);   // タブ名更新＋スナップショット保存
         }
@@ -322,7 +309,6 @@ public partial class ShellWindow
         }
     }
 
-    // FolderTree でファイル／フォルダが削除されたとき、該当（フォルダなら配下）の エディタタブを閉じる。
     private void OnFolderTreeEntryDeleted(string deletedPath)
     {
         var affected = _editorTabs
@@ -345,7 +331,6 @@ public partial class ShellWindow
             Path.GetFullPath(b).TrimEnd('\\', '/'),
             StringComparison.OrdinalIgnoreCase);
 
-    // path が directory 配下か（directory 自身は含まない）。
     private static bool IsPathUnder(string path, string directory)
     {
         var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
@@ -354,7 +339,6 @@ public partial class ShellWindow
             || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    // FolderTree のボタン／ショートカットから、エディタでアクティブなファイルをツリーで 展開・選択する（同期）。開いているタブが未保存（パス無し）なら何もしない。
     private void RevealActiveFileInFolderTree()
     {
         var path = _activeEditorTab?.PeekFilePath;
@@ -362,9 +346,6 @@ public partial class ShellWindow
             return;
 
         _vm.RevealExplorerPanel();
-        // 直前までエクスプローラが非表示／別パネルだった場合、FolderTreeView は Collapsed の
-        // 間レイアウトされずツリーの TreeViewItem コンテナが未生成なことがある。
-        // レイアウト確定後（Loaded 優先度）まで反映を遅らせる。
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
             if (SidebarContainer.Children.OfType<FolderTreeView>().FirstOrDefault() is { } tree)

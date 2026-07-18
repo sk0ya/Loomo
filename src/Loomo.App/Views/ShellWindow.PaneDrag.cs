@@ -6,13 +6,11 @@ public partial class ShellWindow
 {
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // ソロモード中はタイル前提の操作（ドラッグ移動・ダブルクリックズーム）を無効化する（舞台は1枚）。
         if (_stageActive)
             return;
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
 
-        // ダブルクリックでそのペインをズーム／復元する（tmux の zoom 相当）。 ただしタブや操作ボタンの上では割り込まない（タブの2連クリックやボタンの ダブルクリックを横取りしないため）。
         if (e.ClickCount == 2)
         {
             if (IsWithinButton(e.OriginalSource))
@@ -22,21 +20,18 @@ public partial class ShellWindow
             return;
         }
 
-        // タブ（Guid の Tag を持つタブ要素）の上から掴んだときは、ペイン移動ではなくタブのドラッグ （別ウィンドウへの切り離し）に任せる。ここでペイン移動を arm するとヘッダー移動のゴースト／ プレビュー効果がタブドラッグ中に出てしまう（Preview トンネルはヘッダー DockPanel が先に拾うため）。
         if (ResolvePaneTabId(e.OriginalSource) is not null)
         {
             _paneDragArmed = false;
             return;
         }
 
-        // ここでは捕捉しない（下にあるタブ／ボタンのクリックを殺さないため）。開始位置だけ控え、 しきい値を超えて動いたときに初めて OnPaneTitleMouseMove がドラッグを開始する。 Preview（トンネル）で拾うので、（タブ以外の）ボタンやヘッダー空き領域から掴んでもドラッグできる。
         _paneDragStart = e.GetPosition(null);
         _paneDragArmed = true;
     }
 
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
     {
-        // ソロモード中はタイル前提の並べ替えドラッグを無効化する。
         if (_stageActive)
             return;
         if (_paneDragging || !_paneDragArmed)
@@ -54,7 +49,6 @@ public partial class ShellWindow
 
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
         {
-            // しきい値超え。BeginPaneDrag がオーバーレイへ捕捉を移すので、タブ／ボタンが 押下時に握った捕捉も奪われ、ドラッグへ切り替わる（＝そのクリックは成立しない）。
             DisarmTitleDrag();
             BeginPaneDrag(kind);
         }
@@ -65,7 +59,6 @@ public partial class ShellWindow
         DisarmTitleDrag();
     }
 
-    // ドラッグ判定を解除する。
     private void DisarmTitleDrag()
     {
         _paneDragArmed = false;
@@ -77,7 +70,6 @@ public partial class ShellWindow
         }
     }
 
-    // ヒットテストの起点要素が（ツリーを遡って）ボタンの内側にあるか。
     private static bool IsWithinButton(object? source)
     {
         var current = source as DependencyObject;
@@ -92,7 +84,6 @@ public partial class ShellWindow
         return false;
     }
 
-    // スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は PaneHost と同セルの透明オーバーレイ （PaneDragOverlay）を被せ、その上でマウスを追跡＆プレビューを描画する。 Popup ではなくウィンドウ内レイヤなのは、Popup が1モニタへクリップされて マルチモニタ跨ぎ最大化中に隣のモニタでプレビューが見えなくなるため。
     private void BeginPaneDrag(PaneKind source)
     {
         if (_zoomedPane is not null)
@@ -117,7 +108,6 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    // 袖（ミニチュア）からのドラッグを開始する。ドロップ先のタイル上では既存のゾーン プレビューを出し、中央なら入れ替え・端なら分割挿入する（PlaceWingPane）。 レイアウトモード専用（ステージ中はタイルが無いので無効）。
     private void BeginWingDrag(PaneKind source)
     {
         if (_stageActive || VisibleLeafCount() < 1)
@@ -140,7 +130,6 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    // ソロモードのミニチュアからのドラッグを開始する。ドロップ先は舞台1枚で、中央なら 舞台のペインを入れ替え（クリックと同じ）、端ならレイアウトモードへ切り替えて舞台のペインの 当該辺へ分割挿入する（HandleStageDrop）。ソロモード専用。
     private void BeginStageDrag(PaneKind source)
     {
         if (!_stageActive || _overviewActive)
@@ -164,7 +153,6 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    // ドラッグ用オーバーレイ（_dragCanvas）のヒットテストを有効化してから マウスキャプチャを移す。オーバーレイは EnsureDragOverlay で常時実体化済み （IsVisible=true）なので、ここで掴めば「表示直後で IsVisible=false → Mouse.Capture 失敗」という 競合（＝ミニチュアからのドラッグが初回／ときどき不発になる原因）は起きない。万一掴み損ねたとき （HWND エアスペース等）はボタン押下中だけ数フレーム再試行する。
     private void BeginDragCapture()
     {
         _dragCanvas!.IsHitTestVisible = true;   // 素通し→掴める状態へ（EndPaneDrag で false へ戻す）
@@ -210,7 +198,6 @@ public partial class ShellWindow
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false
         };
-        // PaneDragOverlay は PaneHost と同セルなので、Canvas 上の座標＝PaneHost 座標になる。 ClipToBounds でタイル領域外（右の袖＝ミニチュア列など）へプレビューがはみ出さないようにする。 既定は IsHitTestVisible=false ＝素通し（ペインのクリックを邪魔しない）。ドラッグ中だけ BeginDragCapture が true にして掴む。オーバーレイ自体は常時 Visible にして「表示直後は IsVisible=false で Mouse.Capture が失敗する」競合（＝初回ドラッグが不発になる原因）を断つ。
         _dragCanvas = new Canvas
         {
             Background = Brushes.Transparent,
@@ -223,7 +210,6 @@ public partial class ShellWindow
         _dragCanvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
         _dragCanvas.LostMouseCapture += OnDragCanvasLostCapture;
         PaneDragOverlay.Children.Add(_dragCanvas);
-        // 実体化させて IsVisible を確定させておく（初回ドラッグ時にここで初めて生成・追加されると、 同フレームで掴もうとして失敗するため、生成時点でレイアウトを通しておく）。
         PaneDragOverlay.Visibility = Visibility.Visible;
         PaneDragOverlay.UpdateLayout();
     }
