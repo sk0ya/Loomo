@@ -18,7 +18,8 @@ public sealed record EditorSupportResult(
     string? PageKey,
     bool ShowSlide,
     bool ShowOpenInBrowser,
-    bool ShowExport);
+    bool ShowExport,
+    IEditorSupportVisualProvider? VisualProvider = null);
 
 /// <summary>Provider の出力を EditorSupport 共通の表示結果へ変換する。</summary>
 public sealed class EditorSupportPipeline
@@ -60,6 +61,19 @@ public sealed class EditorSupportPipeline
     {
         var filePath = context.FilePath;
         var text = provider?.UsesEditorText == false ? string.Empty : context.Text;
+        if (provider is IEditorSupportVisualProvider visualProvider && filePath is not null)
+        {
+            var title = visualProvider.DescribeTitle(filePath);
+            return new EditorSupportResult(
+                title,
+                MarkdownRenderer.RenderToHtml(
+                    "## Editor Support\n\nこの種類のプレビューは別ウィンドウでの複製に未対応です。",
+                    title, context.PreviewTheme),
+                null, null, null, null,
+                ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false,
+                VisualProvider: visualProvider);
+        }
+
         if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
         {
             return new EditorSupportResult(

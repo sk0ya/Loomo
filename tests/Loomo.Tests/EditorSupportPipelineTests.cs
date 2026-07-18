@@ -1,5 +1,6 @@
 using sk0ya.Loomo.App.Services;
 using System.IO;
+using System.Windows;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -66,6 +67,18 @@ public class EditorSupportPipelineTests
         Assert.Equal("markdown:content", markdown);
     }
 
+    [Fact]
+    public async Task Visual_provider_is_returned_without_view_creation()
+    {
+        var provider = new VisualProvider();
+
+        var result = await new EditorSupportPipeline().PrepareAsync(provider, Context());
+
+        Assert.Same(provider, result.VisualProvider);
+        Assert.Equal("Visual", result.Title);
+        Assert.Contains("別ウィンドウでの複製に未対応", result.Html);
+    }
+
     private static EditorSupportContext Context(string? readyPageKey = null) => new(
         FilePath: Path.Combine("workspace", "document.test"),
         Text: "content",
@@ -113,5 +126,18 @@ public class EditorSupportPipelineTests
         public IReadOnlyCollection<string> SupportedExtensions => [".test"];
         public string DescribeTitle(string filePath) => "Markdown";
         public string RenderMarkdown(string filePath, string text) => $"markdown:{text}";
+    }
+
+    private sealed class VisualProvider : IEditorSupportVisualProvider
+    {
+        public IReadOnlyCollection<string> SupportedExtensions => [".test"];
+        public event EventHandler<EditorSupportContentEdited>? ContentEdited
+        {
+            add { }
+            remove { }
+        }
+        public string DescribeTitle(string filePath) => "Visual";
+        public FrameworkElement GetOrCreateView() => throw new InvalidOperationException();
+        public Task UpdateAsync(string filePath, string text) => Task.CompletedTask;
     }
 }

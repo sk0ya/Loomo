@@ -116,14 +116,6 @@ public partial class ShellWindow {
             await UpdateCodeEditorSupportAsync(source, filePath);
             return;
         }
-        var visual = provider as IEditorSupportVisualProvider;
-        if (visual is not null && filePath is not null) {
-            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
-            EditorSupportTitle.Text = visual.DescribeTitle(filePath);
-            await _editorSupport.ShowVisualAsync( EditorSupportContentHost, visual, filePath, source.Control.Text, EditorSupportVisual_ContentEdited);
-            return;
-        }
-        HideEditorSupportVisual();
         var seq = _editorSupport.BeginRender();
         var content = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
             filePath,
@@ -134,6 +126,14 @@ public partial class ShellWindow {
         if (!_editorSupport.IsLatestRender(seq))
             return;
         UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);
+        if (content.VisualProvider is { } visual && filePath is not null)
+        {
+            EditorSupportTitle.Text = content.Title;
+            await _editorSupport.ShowVisualAsync(EditorSupportContentHost, visual, filePath,
+                source.Control.Text, EditorSupportVisual_ContentEdited);
+            return;
+        }
+        HideEditorSupportVisual();
         _editorSupport.WebView.SetPending( content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
         EditorSupportTitle.Text = content.Title;
         var view = await EnsureEditorSupportViewAsync();
