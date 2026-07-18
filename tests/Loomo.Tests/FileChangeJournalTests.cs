@@ -181,7 +181,6 @@ public class FileChangeJournalTests
     {
         private readonly IAiClient _client;
         public FixedFactory(IAiClient client) => _client = client;
-        public IAiClient Resolve(AiProvider provider) => _client;
         public IAiClient ResolveCurrent() => _client;
     }
 

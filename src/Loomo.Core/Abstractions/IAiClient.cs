@@ -28,6 +28,5 @@ public interface IAiClient
 /// <summary>現在の設定に応じて IAiClient を解決する。</summary>
 public interface IAiClientFactory
 {
-    IAiClient Resolve(AiProvider provider);
     IAiClient ResolveCurrent();
 }

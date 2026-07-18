@@ -231,7 +231,6 @@ public class TraceSinkTests
     {
         public ScriptedAiClientFactory(string toolName) => Client = new ScriptedAiClient(toolName);
         public ScriptedAiClient Client { get; }
-        public IAiClient Resolve(AiProvider provider) => Client;
         public IAiClient ResolveCurrent() => Client;
     }
 
@@ -256,7 +255,6 @@ public class TraceSinkTests
     {
         private readonly IAiClient _client;
         public StaticAiClientFactory(IAiClient client) => _client = client;
-        public IAiClient Resolve(AiProvider provider) => _client;
         public IAiClient ResolveCurrent() => _client;
     }
 

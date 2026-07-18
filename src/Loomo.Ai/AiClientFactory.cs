@@ -1,5 +1,4 @@
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Ai.Clients;
 
 namespace sk0ya.Loomo.Ai;
@@ -19,8 +18,6 @@ public sealed class AiClientFactory : IAiClientFactory
         _workspace = workspace;
     }
 
-    public IAiClient ResolveCurrent() => Resolve(_settings.Provider);
-
-    public IAiClient Resolve(AiProvider provider) =>
+    public IAiClient ResolveCurrent() =>
         new OnnxGenAiClient(_engine, _settings, _workspace);
 }

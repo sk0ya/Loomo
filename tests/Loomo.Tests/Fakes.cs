@@ -70,6 +70,5 @@ internal sealed class FakeTerminalService : ITerminalService
 /// <summary>AI へは到達しないテスト用ファクトリ（呼ばれたら失敗させる）。</summary>
 internal sealed class FakeAiClientFactory : IAiClientFactory
 {
-    public IAiClient Resolve(AiProvider provider) => throw new NotSupportedException();
     public IAiClient ResolveCurrent() => throw new NotSupportedException();
 }
