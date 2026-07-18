@@ -5,6 +5,7 @@ internal sealed class EditorSupportController
 {
     private FrameworkElement? _visual;
     private readonly HashSet<IEditorSupportVisualProvider> _editSubscribed = new();
+    private int _renderSequence;
 
     internal EditorSupportController() => WebView = null!;
     public EditorSupportController(EditorSupportWebViewController webView) => WebView = webView;
@@ -14,6 +15,40 @@ internal sealed class EditorSupportController
     public bool IsPinned { get; set; }
     public bool IsNavigating { get; set; }
     public EditorSupportHistory History { get; } = new();
+    public IReadOnlyList<OutlineNode>? OutlineRoots { get; private set; }
+    public EditorTab? OutlineSource { get; private set; }
+    public LspRange? CurrentSymbolRange { get; set; }
+    public (int Line, int Col)? CurrentCaret { get; set; }
+
+    public int BeginRender() => ++_renderSequence;
+    public bool IsLatestRender(int sequence) => sequence == _renderSequence;
+
+    public void SetOutline(EditorTab source, IReadOnlyList<OutlineNode> roots)
+    {
+        OutlineSource = source;
+        OutlineRoots = roots;
+    }
+
+    public void ClearOutline()
+    {
+        OutlineRoots = null;
+        OutlineSource = null;
+        CurrentSymbolRange = null;
+        CurrentCaret = null;
+    }
+
+    public bool ShouldRefreshCallPanels(EditorTab source, CaretInfo caret)
+    {
+        if (OutlineRoots is null || !ReferenceEquals(OutlineSource, source))
+            return false;
+        if (CurrentSymbolRange is { } range
+            && CodeEditorSupportAnalysis.CaretInRange(range, caret.Line, caret.Column))
+            return false;
+        return CurrentSymbolRange is not null
+            || CurrentCaret is not { } previous
+            || previous.Line != caret.Line
+            || previous.Col != caret.Column;
+    }
 
     public async Task ShowVisualAsync(
         Panel host,

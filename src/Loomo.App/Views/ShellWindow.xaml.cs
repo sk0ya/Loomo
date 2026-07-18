@@ -56,19 +56,9 @@ public partial class ShellWindow : Window
     private int _codeReadyRetryAttempts;
     // 診断用（Services.CodeSupportDiag）：コード表示要求からアウトライン描画完了までの経過を計るストップウォッチ。
     private System.Diagnostics.Stopwatch? _codeSupportDiagStopwatch;
-    // 直近に描いたコードアウトラインのノード（キャレット追従で②を再取得する差分判定に使う。null＝未描画）。
-    private System.Collections.Generic.IReadOnlyList<Services.OutlineNode>? _codeOutlineRoots;
-    // _codeOutlineRoots の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。
-    private EditorTab? _codeOutlineSource;
     // コード構造アウトライン＋②呼び出し解析のネイティブ WPF ビュー（コードのフォールバック表示）。遅延生成・使い回し。
     private CodeOutlineView? _codeOutlineView;
-    // 直近に②（呼び出し解析）を問い合わせた「キャレット直下シンボル」の名前範囲（LSP callHierarchy の SelectionRange・0 始まり）。キャレットがこの範囲内に留まる間は同じシンボル＝再取得しない差分基準。 シンボルが解決できなかった（callHierarchy 非対応・変数・空白上）ときは null。
-    private Editor.Core.Lsp.LspRange? _codeCurrentSymbolRange;
-    // 直近に②を問い合わせたキャレット位置（0 始まり line/col）。_codeCurrentSymbolRange が null（シンボル未解決）のときの差分基準＝この位置から動いたら再取得する。
-    private (int Line, int Col)? _codeCurrentCaret;
     // プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。 WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。
-    // HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。
-    private int _editorSupportRenderSeq;
     // 最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。
     // 最新の本文差し替え内容（同一ページの編集中のみ。フル HTML 描画時は null）。
     // 最新描画のページ体裁の鍵（インクリメンタル提供者のみ。フル再構築の要否判定に使う）。

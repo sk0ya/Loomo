@@ -67,6 +67,18 @@ public class EditorSupportControllerTests
         Assert.False(content.ShowExport);
     }
 
+    [Fact]
+    public void Only_latest_render_sequence_is_current()
+    {
+        var controller = new EditorSupportController();
+
+        var first = controller.BeginRender();
+        var second = controller.BeginRender();
+
+        Assert.False(controller.IsLatestRender(first));
+        Assert.True(controller.IsLatestRender(second));
+    }
+
     private static EditorTab Tab(string path)
         => new(Guid.NewGuid()) { Pending = new EditorTabSnapshot { FilePath = path } };
 }

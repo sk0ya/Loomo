@@ -210,12 +210,12 @@ public partial class ShellWindow
         var text = (provider?.UsesEditorText ?? true) ? source.Control.Text : string.Empty;
 
         // 描画要求のシーケンス番号。init / 変換の await を跨いで最後の要求だけが描くよう畳む。
-        var seq = ++_editorSupportRenderSeq;
+        var seq = _editorSupport.BeginRender();
 
         var content = await _editorSupport.PrepareWebContentAsync(
             provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupport.WebView.ReadyPageKey,
             _settings.Appearance.MarkdownPreviewTheme);
-        if (seq != _editorSupportRenderSeq)
+        if (!_editorSupport.IsLatestRender(seq))
             return;
         UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);
         _editorSupport.WebView.SetPending(
@@ -227,7 +227,7 @@ public partial class ShellWindow
             return;
 
         // init を待っている間に新しい描画要求が来ていれば、そちらが描くのでこのコールは降りる （起動時に殺到した要求が同時に NavigateToString して初回ナビゲーションを潰し合うのを防ぐ）。
-        if (seq != _editorSupportRenderSeq)
+        if (!_editorSupport.IsLatestRender(seq))
             return;
 
         RenderPendingEditorSupportContent(view.CoreWebView2);
@@ -237,7 +237,7 @@ public partial class ShellWindow
     private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath, bool fromReadyRetry = false)
     {
         // 描画要求のシーケンス番号。LSP 呼び出しの await を跨いで最後の要求だけが描くよう畳む。
-        var seq = ++_editorSupportRenderSeq;
+        var seq = _editorSupport.BeginRender();
         var lsp = GetLspManager(source);
 
         // 接続済み・ドキュメント準備済みに加え、LSP の現在ドキュメントが対象ファイルと一致することも 条件に含める（別ファイルのアウトラインを誤って描かないため）。
@@ -266,10 +266,7 @@ public partial class ShellWindow
         if (!ready)
         {
             // 追従キャッシュは破棄（キャレット追従を止める）。案内を出したまま ready へ遷移しても再描画 契機が無いので、ready になるまで軽くポーリングして本描画へ差し替える（案内は描き直さない）。
-            _codeOutlineRoots = null;
-            _codeOutlineSource = null;
-            _codeCurrentSymbolRange = null;
-            _codeCurrentCaret = null;
+            _editorSupport.ClearOutline();
 
             // ファイル切替直後、サーバーが ready になるまでの短い待ち（warm でも約1秒）に「接続待ち」案内を 毎回フラッシュさせるとうるさい、というフィードバックへの対応。導入済みで接続待ちのとき （EvaluateForFile==null）は grace 経過まで案内もペイン差し替えもせず、前の表示を保つ＝ ready が grace 内に来れば案内は一切出ずに構造へ直行する。サーバー未導入（!=null）は actionable かつ永続的なので従来どおり即出す（フラッシュ対象ではない）。
             var prompt = _lspManagement.EvaluateForFile(filePath);
@@ -295,7 +292,7 @@ public partial class ShellWindow
         CodeSupportDiag.Log($"documentSymbols {symbolsSw?.ElapsedMilliseconds ?? 0}ms count={symbols.Count}");
 
         // 取得の await を跨いで新しい要求が来ていれば、そちらが描くのでこのコールは降りる。
-        if (seq != _editorSupportRenderSeq)
+        if (!_editorSupport.IsLatestRender(seq))
             return;
 
         // Caret.Line/Column は 0 始まり。LSP の DocumentSymbol も 0 始まりなので current 判定はそのまま、 表示・ジャンプ用の行だけ +1 して 1 始まりにする（ビュー側 DataLine1）。
@@ -307,10 +304,9 @@ public partial class ShellWindow
         if (roots.Count > 0)
         {
             var currentLine1 = CurrentMemberLine1(roots, caret);
-            _codeOutlineRoots = roots;
-            _codeOutlineSource = source;
-            _codeCurrentSymbolRange = null;                       // ②は未取得（この後 SetCurrentAndPanels で埋める）
-            _codeCurrentCaret = (caret.Line, caret.Column);
+            _editorSupport.SetOutline(source, roots);
+            _editorSupport.CurrentSymbolRange = null;                       // ②は未取得（この後 SetCurrentAndPanels で埋める）
+            _editorSupport.CurrentCaret = (caret.Line, caret.Column);
             view.ShowOutline(roots, currentLine1, CallPanels.Empty);   // 構造だけ先に（②は待たない）
             LogOutlineShown("structure");
         }
@@ -326,15 +322,15 @@ public partial class ShellWindow
         CodeSupportDiag.Log(
             $"callPanels {panelsSw?.ElapsedMilliseconds ?? 0}ms " +
             $"in={panels.Incoming.Count} out={panels.Outgoing.Count} refs={panels.References.Count}");
-        if (seq != _editorSupportRenderSeq)
+        if (!_editorSupport.IsLatestRender(seq))
             return;
 
         if (roots.Count > 0)
         {
             // 構造は既に描画済み → ②パネルだけ後埋め（ツリー非再構築＝折りたたみ・スクロール保持）。
             var currentLine1 = CurrentMemberLine1(roots, caret);
-            _codeCurrentSymbolRange = symbolRange;
-            _codeCurrentCaret = (caret.Line, caret.Column);
+            _editorSupport.CurrentSymbolRange = symbolRange;
+            _editorSupport.CurrentCaret = (caret.Line, caret.Column);
             view.SetCurrentAndPanels(currentLine1, panels);
             LogOutlineShown("panels");
             return;
@@ -344,22 +340,21 @@ public partial class ShellWindow
         for (var attempt = 0; attempt < CodeColdStructureRetries; attempt++)
         {
             symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
-            if (seq != _editorSupportRenderSeq)
+            if (!_editorSupport.IsLatestRender(seq))
                 return;
             roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
             if (roots.Count > 0)
                 break;
             await Task.Delay(CodeColdStructureRetryDelay);
-            if (seq != _editorSupportRenderSeq)
+            if (!_editorSupport.IsLatestRender(seq))
                 return;
         }
         CodeSupportDiag.Log($"cold structure refetch count={roots.Count}");
 
         var current = CurrentMemberLine1(roots, caret);
-        _codeOutlineRoots = roots;
-        _codeOutlineSource = source;
-        _codeCurrentSymbolRange = symbolRange;
-        _codeCurrentCaret = (caret.Line, caret.Column);
+        _editorSupport.SetOutline(source, roots);
+        _editorSupport.CurrentSymbolRange = symbolRange;
+        _editorSupport.CurrentCaret = (caret.Line, caret.Column);
         view.ShowOutline(roots, current, panels);
         LogOutlineShown(roots.Count > 0 ? "cold-structure+panels" : "empty");
     }
@@ -418,11 +413,7 @@ public partial class ShellWindow
     private static IReadOnlyList<string> SplitLines(string? text)
         => CodeEditorSupportAnalysis.SplitLines(text);
 
-    // キャレット（0 始まり line/col）が LSP 範囲 range（0 始まり・両端含む）の内側か。 ②の差分基準：直近に解決したシンボルの名前範囲にキャレットが留まる間は同じシンボル＝再取得しない。
-    private static bool CaretInRange(LspRange range, int line0, int col0)
-        => CodeEditorSupportAnalysis.CaretInRange(range, line0, col0);
-
-    // キャレット追従（②の再取得）。ScheduleCodeCallPanelsRefresh のデバウンス満了で呼ばれる。 ②はキャレット直下のシンボルで問い合わせる（IDE の「参照を検索」相当）。直近に解決したシンボルの 名前範囲（_codeCurrentSymbolRange）にキャレットが留まる間は同じシンボル＝再取得しない。 範囲が取れなかった（変数・空白上等）ときはキャレット位置（_codeCurrentCaret）で差分を取る。 アウトライン（＝ドキュメントシンボル）は取り直さない（構造は編集でしか変わらない）。
+    // キャレット追従（②の再取得）。ScheduleCodeCallPanelsRefresh のデバウンス満了で呼ばれる。 ②はキャレット直下のシンボルで問い合わせる（IDE の「参照を検索」相当）。直近に解決したシンボルの 名前範囲（_editorSupport.CurrentSymbolRange）にキャレットが留まる間は同じシンボル＝再取得しない。 範囲が取れなかった（変数・空白上等）ときはキャレット位置（_editorSupport.CurrentCaret）で差分を取る。 アウトライン（＝ドキュメントシンボル）は取り直さない（構造は編集でしか変わらない）。
     private async Task RefreshCodeCallPanelsAsync()
     {
         var source = _editorSupport.Source;
@@ -430,10 +421,6 @@ public partial class ShellWindow
             return;
 
         // コードページを描いていない／別タブへ移った＝追従対象外。
-        var roots = _codeOutlineRoots;
-        if (roots is null || !ReferenceEquals(_codeOutlineSource, source))
-            return;
-
         // ペインが見えていなければ描かない（通常更新と同じゲート）。
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
         if (!EditorSupportRenderPolicy.ShouldRender(
@@ -441,13 +428,9 @@ public partial class ShellWindow
             return;
 
         var caret = source.Control.Caret;
-
-        // 同じシンボル上（前回解決した名前範囲の内側）の移動、または範囲が取れなかった前回と同一キャレット位置の ままなら②を再取得しない。※キャッシュ更新は実描画の直前まで遅延する（await 後に降りたら旧値で再試行）。
-        if (_codeCurrentSymbolRange is { } range && CaretInRange(range, caret.Line, caret.Column))
+        if (!_editorSupport.ShouldRefreshCallPanels(source, caret))
             return;
-        if (_codeCurrentSymbolRange is null && _codeCurrentCaret is { } prev
-            && prev.Line == caret.Line && prev.Col == caret.Column)
-            return;
+        var roots = _editorSupport.OutlineRoots!;
 
         var filePath = source.Control.FilePath;
         if (filePath is null)
@@ -456,10 +439,10 @@ public partial class ShellWindow
         if (lsp is null || !lsp.IsConnected || !lsp.IsDocumentReady || !LspMatchesFile(lsp, filePath))
             return;
 
-        var seq = ++_editorSupportRenderSeq;
+        var seq = _editorSupport.BeginRender();
         // ②はキャレット直下のシンボルで問い合わせる（解決できなければ空パネル＋範囲 null）。
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column);
-        if (seq != _editorSupportRenderSeq)
+        if (!_editorSupport.IsLatestRender(seq))
             return;
 
         // アウトラインの current ハイライトはキャレットを含む最深メンバーへ付ける。
@@ -467,8 +450,8 @@ public partial class ShellWindow
         var currentLine1 = member is null ? 0 : member.Line0 + 1; // current を付け替える行（1 始まり）
 
         // ツリーは作り直さず current 付替え＋②パネル差し替えだけ（折りたたみ状態・スクロールを保つ）。
-        _codeCurrentSymbolRange = symbolRange;
-        _codeCurrentCaret = (caret.Line, caret.Column);
+        _editorSupport.CurrentSymbolRange = symbolRange;
+        _editorSupport.CurrentCaret = (caret.Line, caret.Column);
         _codeOutlineView?.SetCurrentAndPanels(currentLine1, panels);
     }
 
@@ -525,7 +508,7 @@ public partial class ShellWindow
         var filePath = source?.Control.FilePath;
 
         // 対象が変わった／コード外／既にアウトライン描画済み → 停止。
-        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _codeOutlineRoots is not null)
+        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _editorSupport.OutlineRoots is not null)
         {
             StopCodeReadyRetry();
             return;
@@ -561,7 +544,7 @@ public partial class ShellWindow
     private void ScheduleCodeCallPanelsRefresh()
     {
         // コードページを描いていなければ追従不要（非コードファイル・案内表示中など）。
-        if (_codeOutlineRoots is null)
+        if (_editorSupport.OutlineRoots is null)
             return;
 
         if (_codeCaretTimer is null)
