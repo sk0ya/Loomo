@@ -8,6 +8,7 @@ public partial class ShellWindow : Window
     private readonly BrowserService _browser;
     private readonly IWorkspaceService _workspace;
     private readonly IWorkspaceSearchService _search;
+    private readonly PaletteSearchCoordinator _paletteSearch;
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
     private readonly ShellAppearanceCoordinator _appearance;
@@ -239,6 +240,7 @@ public partial class ShellWindow : Window
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
         _search = search;
+        _paletteSearch = new PaletteSearchCoordinator(search);
         _tabIcons = tabIcons;
         _settings = settings;
         _appearance = new ShellAppearanceCoordinator(settings, () =>
