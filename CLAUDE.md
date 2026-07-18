@@ -188,7 +188,7 @@ Copilot remnants are unused by the agent.
 ### Persistence
 
 `%APPDATA%/Loomo/` holds `settings.json` (provider/model/`modelPath`/MaxTokens + Safety; legacy
-`baseUrl`/`numGpu`/`thinking`/SystemPrompt fields are read for back-compat but ignored), `models/` (downloaded
+legacy `baseUrl`/`numGpu`/`thinking`/`thinkingEffort`/`SystemPrompt` fields are ignored), `models/` (downloaded
 ONNX models), and `sessions/*.json`. **API keys are DPAPI-encrypted (CurrentUser)** — classes touching this are
 `[SupportedOSPlatform("windows")]` (kept for forward-compat; the local engine needs no key). Sessions auto-save
 in the turn-completion `finally`; restore via the Sessions panel (`ConversationStore` raises a `Changed` event).

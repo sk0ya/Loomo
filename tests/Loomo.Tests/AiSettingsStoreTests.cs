@@ -18,6 +18,9 @@ public class AiSettingsStoreTests
               "local": {
                 "model": "phi4-mini:latest",
                 "baseUrl": "http://localhost:11434",
+                "numGpu": 99,
+                "thinking": true,
+                "thinkingEffort": "high",
                 "maxTokens": 1234
               }
             }
@@ -75,6 +78,9 @@ public class AiSettingsStoreTests
             var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
             Assert.False(json.ContainsKey("systemPrompt"));
             Assert.False(json["local"]!.AsObject().ContainsKey("baseUrl"));
+            Assert.False(json["local"]!.AsObject().ContainsKey("numGpu"));
+            Assert.False(json["local"]!.AsObject().ContainsKey("thinking"));
+            Assert.False(json["local"]!.AsObject().ContainsKey("thinkingEffort"));
         }
         finally
         {

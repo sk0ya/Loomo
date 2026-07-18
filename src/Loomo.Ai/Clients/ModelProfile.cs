@@ -18,10 +18,7 @@ public enum ChatFormat
 }
 
 /// <summary>
-/// モデル別の最適な呼び出しプロファイル。capabilities（tools / thinking 対応）と、
-/// 各モデルファミリの公式推奨サンプリング・コンテキスト長を保持し、Ollama
-/// <c>/api/chat</c> の <c>options</c> 構築や <c>think</c>・<c>tools</c> の送出可否に使う。
-/// 値は各モデルの公式推奨と <c>ollama show</c> の capabilities を根拠にしている。
+/// モデル別のチャット形式、サンプリング、コンテキスト長を保持する。
 /// </summary>
 public sealed record ModelProfile
 {
@@ -30,13 +27,6 @@ public sealed record ModelProfile
 
     /// <summary>このモデルのチャットテンプレート／ツール記法。プロンプト組み立てと本文パースの切り替えに使う。</summary>
     public ChatFormat Format { get; init; } = ChatFormat.Phi4;
-
-    /// <summary>function calling（tools）に対応するか。false なら tools を送らない。</summary>
-    public bool SupportsTools { get; init; } = true;
-
-    /// <summary>thinking（<c>think</c> 真偽値）に対応するか。false なら think を一切送らない
-    /// （非対応モデルは <c>think:true</c> で「does not support thinking」エラーになる）。</summary>
-    public bool SupportsThinking { get; init; }
 
     /// <summary>
     /// <c>num_ctx</c> に設定する推奨コンテキスト長。Ollama 既定の 4096 はエージェント用途
@@ -55,20 +45,11 @@ public sealed record ModelProfile
     /// </summary>
     public int MaxOutputTokens { get; init; }
 
-    /// <summary>
-    /// thinking を無効化して動かすときのサンプリング上書き（qwen3 等は thinking 有無で
-    /// 推奨温度が変わる）。null なら <see cref="Sampling"/> をそのまま使う。
-    /// </summary>
-    public SamplingOptions? NonThinkingSampling { get; init; }
-
-    /// <summary>現在の thinking 状態に応じたサンプリング設定を返す。</summary>
-    public SamplingOptions SamplingFor(bool thinking)
-        => thinking || NonThinkingSampling is null ? Sampling : NonThinkingSampling;
 }
 
 /// <summary>
-/// Ollama <c>options</c> に展開するサンプリングパラメータ。
-/// null の項目は送らず、モデル（Modelfile）の既定に委ねる。
+/// ローカル推論エンジンへ渡すサンプリングパラメータ。
+/// null の項目は指定せず、モデルの既定に委ねる。
 /// </summary>
 public sealed record SamplingOptions(
     double? Temperature = null,

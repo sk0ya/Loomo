@@ -2,8 +2,8 @@ namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
 /// モデル名から <see cref="ModelProfile"/> を解決する。ファミリ名（タグ ":xxx" を含む接頭辞）で判定し、
-/// 現在インストールされている各モデルに合わせて tools / thinking / サンプリングを最適化する。
-/// 既知でないモデルは安全側の既定（tools は試行、thinking なし、控えめな num_ctx）にフォールバックする。
+/// 現在インストールされている各モデルに合わせてチャット形式とサンプリングを最適化する。
+/// 既知でないモデルは控えめなコンテキスト窓の既定へフォールバックする。
 /// </summary>
 public static class ModelProfiles
 {
@@ -61,7 +61,7 @@ public static class ModelProfiles
 
     /// <summary>
     /// 実効コンテキスト窓（<c>num_ctx</c>）を返す。設定の上書き（&gt;0）を優先し、無ければモデル別の推奨値。
-    /// Ollama への <c>num_ctx</c> と履歴トリムの上限を一致させるため、両者がこれを共有する。
+    /// 推論エンジンのコンテキスト窓と履歴トリムの上限を一致させるため、両者がこれを共有する。
     /// </summary>
     public static int EffectiveNumCtx(string? model, int numCtxOverride)
         => numCtxOverride > 0 ? numCtxOverride : Resolve(model).NumCtx;
