@@ -72,7 +72,7 @@ public partial class DiffSessionView : UserControl
         {
             _hooked.ScrollToRowRequested -= ScrollToRow;
             _hooked.AutoJumpRequested -= OnAutoJumpRequested;
-            _hooked.ScrollToConflictRequested -= OnScrollToConflictRequested;
+            _hooked.Conflict.ScrollToConflictRequested -= OnScrollToConflictRequested;
             _hooked.DiffRows.CollectionChanged -= OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged -= OnSideRowsChanged;
         }
@@ -81,7 +81,7 @@ public partial class DiffSessionView : UserControl
         {
             _hooked.ScrollToRowRequested += ScrollToRow;
             _hooked.AutoJumpRequested += OnAutoJumpRequested;
-            _hooked.ScrollToConflictRequested += OnScrollToConflictRequested;
+            _hooked.Conflict.ScrollToConflictRequested += OnScrollToConflictRequested;
             _hooked.DiffRows.CollectionChanged += OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged += OnSideRowsChanged;
             ScheduleRebuildUnified();
@@ -97,7 +97,7 @@ public partial class DiffSessionView : UserControl
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (Vm is null) return;
-            var region = Vm.ConflictBlocks.OfType<ConflictRegionVm>().FirstOrDefault(r => r.Index == regionIndex);
+            var region = Vm.Conflict.ConflictBlocks.OfType<ConflictRegionVm>().FirstOrDefault(r => r.Index == regionIndex);
             if (region is null) return;
             if (ConflictItemsControl.ItemContainerGenerator.ContainerFromItem(region) is FrameworkElement fe)
                 fe.BringIntoView();
@@ -529,7 +529,7 @@ public partial class DiffSessionView : UserControl
     private void OnConflictResultGotFocus(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: ConflictRegionVm region } && Vm is not null)
-            Vm.FocusConflictRegion(region);
+            Vm.Conflict.FocusConflictRegion(region);
     }
 
     // ===== ファイル一覧 =====
