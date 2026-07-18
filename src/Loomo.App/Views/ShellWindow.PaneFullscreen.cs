@@ -1,6 +1,4 @@
-
 namespace sk0ya.Loomo.App.Views;
-
 /// <summary>ShellWindow: F11 による現在ペインのモニター全画面表示。</summary>
 public partial class ShellWindow {
     private bool _paneFullscreen;
@@ -18,19 +16,16 @@ public partial class ShellWindow {
     private GridLength _fullscreenSidebarSplitterWidth;
     private GridLength _fullscreenWingWidth;
     private Thickness _fullscreenStageMargin;
-
     private void TogglePaneFullscreen() {
         if (_paneFullscreen) {
             ExitPaneFullscreen();
             return;
         }
-
         var target = _stageActive
             ? _stagePane
             : _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
         if (target is not { } pane || !_paneElements.ContainsKey(pane))
             return;
-
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var windowRect))
             return;
@@ -40,7 +35,6 @@ public partial class ShellWindow {
         var monitorInfo = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref monitorInfo))
             return;
-
         _paneFullscreen = true;
         _fullscreenPane = pane;
         _fullscreenPreviousZoomedPane = _zoomedPane;
@@ -49,7 +43,6 @@ public partial class ShellWindow {
         _fullscreenPreviousTopmost = Topmost;
         _fullscreenPreviousWindowRect = windowRect;
         _fullscreenPreviousRestoreBounds = RestoreBounds;
-
         _fullscreenActivityBarWidth = ActivityBarColumn.Width;
         _fullscreenTitleBarHeight = TitleBarRow.Height;
         _fullscreenSidebarWidth = SidebarColumn.Width;
@@ -57,7 +50,6 @@ public partial class ShellWindow {
         _fullscreenSidebarSplitterWidth = SidebarSplitterColumn.Width;
         _fullscreenWingWidth = WingColumn.Width;
         _fullscreenStageMargin = StageArea.Margin;
-
         ActivityBarColumn.Width = new GridLength(0);
         TitleBarRow.Height = new GridLength(0);
         SidebarColumn.MinWidth = 0;
@@ -65,11 +57,9 @@ public partial class ShellWindow {
         SidebarSplitterColumn.Width = new GridLength(0);
         WingColumn.Width = new GridLength(0);
         StageArea.Margin = new Thickness(0);
-
         _overviewActive = false;
         _zoomedPane = pane;
         RebuildPaneLayout();
-
         WindowState = WindowState.Normal;
         ResizeMode = System.Windows.ResizeMode.NoResize;
         Topmost = true;
@@ -77,11 +67,9 @@ public partial class ShellWindow {
         SetWindowPos(hwnd, IntPtr.Zero, screen.Left, screen.Top, screen.Right - screen.Left, screen.Bottom - screen.Top, SwpNoZOrder | SwpNoActivate);
         FocusPane(pane);
     }
-
     private void ExitPaneFullscreen() {
         var pane = _fullscreenPane;
         var hwnd = new WindowInteropHelper(this).Handle;
-
         ActivityBarColumn.Width = _fullscreenActivityBarWidth;
         TitleBarRow.Height = _fullscreenTitleBarHeight;
         SidebarColumn.MinWidth = _fullscreenSidebarMinWidth;
@@ -89,12 +77,10 @@ public partial class ShellWindow {
         SidebarSplitterColumn.Width = _fullscreenSidebarSplitterWidth;
         WingColumn.Width = _fullscreenWingWidth;
         StageArea.Margin = _fullscreenStageMargin;
-
         _zoomedPane = _fullscreenPreviousZoomedPane;
         _paneFullscreen = false;
         _fullscreenPane = null;
         RebuildPaneLayout();
-
         Topmost = _fullscreenPreviousTopmost;
         ResizeMode = _fullscreenPreviousResizeMode;
         WindowState = WindowState.Normal;
@@ -108,10 +94,8 @@ public partial class ShellWindow {
             var rect = _fullscreenPreviousWindowRect;
             SetWindowPos(hwnd, IntPtr.Zero, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, SwpNoZOrder | SwpNoActivate);
         }
-
         UpdateMaximizeGlyph();
         if (pane is { } focus)
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => FocusPane(focus)));
     }
-
 }

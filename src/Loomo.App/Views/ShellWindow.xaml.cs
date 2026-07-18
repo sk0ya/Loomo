@@ -1,6 +1,4 @@
-
 namespace sk0ya.Loomo.App.Views;
-
 public partial class ShellWindow : Window {
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
@@ -39,11 +37,8 @@ public partial class ShellWindow : Window {
     private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
     private static readonly string EditorSupportPreviewFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2", "preview-page");
-
     private static readonly string WebViewUserDataFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2");
-
     private const string WebViewAdditionalBrowserArguments = "--allow-file-access-from-files";
-
     private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
         => new() {
             UserDataFolder = WebViewUserDataFolder, AdditionalBrowserArguments = WebViewAdditionalBrowserArguments
@@ -52,9 +47,7 @@ public partial class ShellWindow : Window {
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";
-
     private GridLength _savedSidebarWidth = new(220);
-
     private const double SplitterThickness = 6;
     private PaneKind? _zoomedPane;
     private readonly PaneLayoutCoordinator _paneLayout = new();
@@ -63,7 +56,6 @@ public partial class ShellWindow : Window {
     private FrameworkElement? _dragHandle;
     private Point _paneDragStart;
     private bool _paneDragArmed;
-
     private Canvas? _dragCanvas;
     private Border? _dragPreview;       // ドロップ先の半分を塗るプレビュー矩形
     private Border? _dragTargetOutline; // ドロップ先ペイン全体の枠
@@ -76,22 +68,18 @@ public partial class ShellWindow : Window {
     private bool _stageDrag;
     private bool _dragCenter;
     private bool _dragSpan;
-
     private FocusTarget? _focusedRegion;
     private bool _resizeMode;
     private bool _suppressResizeExit;
     private Popup? _resizeHintPopup;
-
     private PaneSplitView? _editorViews;
     private PaneSplitView? _terminalViews;
-
     private readonly record struct FocusTarget(PaneKind? Pane, Guid ViewportId = default) {
         public bool IsSidebar => Pane is null;
         public static FocusTarget Sidebar => new((PaneKind?)null);
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-
     public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, IWorkspaceSearchService search, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, HexEditorSupport hexSupport, CodeEditorSupport codeSupport, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
@@ -136,12 +124,9 @@ public partial class ShellWindow : Window {
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
         _browserTabs = _scratchBrowserWorkspace.Tabs;
-
         InitializePanes();
         HookBranchSwitchers();
-
         PreviewMouseDown += OnShellPreviewMouseNavigate;
-
         SidebarSplitter.Cursor = Cursors.SizeWE;
         SidebarSplitter.MouseEnter += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Accent");
         SidebarSplitter.MouseLeave += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Border");
@@ -152,7 +137,6 @@ public partial class ShellWindow : Window {
             PaneLayoutDebugLog.Log($"SidebarSplitter DragCompleted -> SidebarColumn.Width={SidebarColumn.Width}");
             ScheduleLayoutWings();
         };
-
         if (PaneLayoutDebugLog.Enabled) {
             DependencyPropertyDescriptor.FromProperty(ColumnDefinition.WidthProperty, typeof(ColumnDefinition))
                 ?.AddValueChanged(SidebarColumn, (_, _) =>
@@ -161,7 +145,6 @@ public partial class ShellWindow : Window {
                 ?.AddValueChanged(WingColumn, (_, _) =>
                     PaneLayoutDebugLog.Log($"WingColumn.Width -> {WingColumn.Width}", withCaller: true));
         }
-
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;
@@ -179,13 +162,10 @@ public partial class ShellWindow : Window {
         Closing += OnClosing;
         Closed += OnClosed;
         Loaded += OnLoaded;
-
         PreviewKeyDown += OnPaneNavKey;
         PreviewGotKeyboardFocus += OnWindowPreviewGotKeyboardFocus;
         Deactivated += OnWindowDeactivated;
-
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-
         if (vm.Workspaces.ActiveWorkspace is null) {
             var termTab = CreateTerminalTab(startDir);
             _terminalTabs.Add(termTab);
@@ -194,7 +174,6 @@ public partial class ShellWindow : Window {
             _terminal.SetWorkingDirectory(startDir);
             UpdateTerminalTab(termTab, termTab.View.HeaderTitle);
             StartupProfiler.Mark("初期ターミナルタブ生成完了");
-
             var editorTab = CreateEditorTab();
             _editorTabs.Add(editorTab);
             _vm.Tabs.AddEditorTab(editorTab.Id, editorTab.PeekFilePath, editorTab.PeekIsModified, false);
@@ -202,16 +181,13 @@ public partial class ShellWindow : Window {
             UpdateEditorTab(editorTab);
             StartupProfiler.Mark("初期エディタタブ生成完了");
         }
-
         _workspace.RootChanged += (_, root) => {
             if (_activeTerminalTab is not { } activeTerminal)
                 return;
-
             if (!string.IsNullOrEmpty(root))
                 _terminal.SetWorkingDirectory(root);
             UpdateTerminalTab(activeTerminal, activeTerminal.View.HeaderTitle);
         };
-
         vm.FolderTree.FilePreviewRequested += async (_, path) => await OpenFileInPreviewTabAsync(path);
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
@@ -298,7 +274,6 @@ public partial class ShellWindow : Window {
         InitializeTrail();
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
-
     private async void OnLoaded(object sender, RoutedEventArgs e) {
         StartupProfiler.Mark("OnLoaded 開始");
         UiJankProfiler.Start(Dispatcher);
@@ -317,14 +292,10 @@ public partial class ShellWindow : Window {
         } catch (Exception ex) {
             BrowserAddressBox.Text = $"WebView2 initialization failed: {ex.Message}";
         }
-
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.GitSession.EnsureLoaded()));
-
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(EnsureDragOverlay));
-
         StartupProfiler.Mark("OnLoaded 完了");
     }
-
     private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e) {
         if (sender is not ShellViewModel vm) return;
         if (e.PropertyName == nameof(ShellViewModel.IsSidebarVisible)) {
@@ -336,12 +307,10 @@ public partial class ShellWindow : Window {
         else if (e.PropertyName == nameof(ShellViewModel.ActivePanel))
             RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
     }
-
     private void EnsureSettingsOverlayCreated() {
         if (SettingsOverlayHost.Content is null)
             SettingsOverlayHost.Content = new SettingsOverlayView();
     }
-
     private void ApplySidebarVisibility(bool visible) {
         if (visible) {
             SidebarColumn.MinWidth = 120;

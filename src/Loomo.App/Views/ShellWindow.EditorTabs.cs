@@ -1,6 +1,4 @@
-
 namespace sk0ya.Loomo.App.Views;
-
 /// <summary>ShellWindow: エディタタブを開く・プレビュータブの使い回し（新規タブ・仮想ドキュメント・ ファイル/プレビューで開く・外部変更の読み直し・プレビュー↔通常の昇格）。選択/クローズ/活性化は ShellWindow.Tabs.cs。</summary>
 public partial class ShellWindow {
     private void OnEditorNewTab(object sender, RoutedEventArgs e) {
@@ -10,7 +8,6 @@ public partial class ShellWindow {
         ActivateEditorTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
     }
-
     private void OpenVirtualDocumentTab(string title) {
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.VirtualTitle, title, StringComparison.Ordinal));
@@ -18,7 +15,6 @@ public partial class ShellWindow {
             ActivateEditorTab(existing.Id);
             return;
         }
-
         var tab = CreateEditorTab();
         tab.VirtualTitle = title;
         _editorTabs.Add(tab);
@@ -26,15 +22,11 @@ public partial class ShellWindow {
         ActivateEditorTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
     }
-
     private async Task OpenFileInNewEditorTabAsync(string path) {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
-
         path = Path.GetFullPath(path);
-
         EnsureEditorPaneForOpenedFile(path);
-
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) {
@@ -44,7 +36,6 @@ public partial class ShellWindow {
             await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
-
         var tab = CreateEditorTab();
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
@@ -55,15 +46,11 @@ public partial class ShellWindow {
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
     }
-
     private async Task OpenFileInPreviewTabAsync(string path) {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
-
         path = Path.GetFullPath(path);
-
         EnsureEditorPaneForOpenedFile(path);
-
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) {
@@ -71,7 +58,6 @@ public partial class ShellWindow {
             await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
-
         var target = _previewEditorTab is { } preview && _editorTabs.Contains(preview)
                      && !preview.PeekIsModified && !preview.PeekIsVirtual
             ? preview
@@ -80,13 +66,11 @@ public partial class ShellWindow {
               && !active.PeekIsVirtual && active.VirtualTitle is null
                 ? active
                 : null;
-
         if (target is null) {
             target = CreateEditorTab();
             _editorTabs.Add(target);
             _vm.Tabs.AddEditorTab(target.Id, path, false, false);
         }
-
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
         try { ActivateEditorTab(target.Id); }
@@ -98,37 +82,29 @@ public partial class ShellWindow {
         await UpdateEditorSupportAsync();
         SaveActiveWorkspaceSnapshot();
     }
-
     private async Task ReloadExistingTabIfChangedAsync(EditorTab tab) {
         var path = tab.Control.FilePath;
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
             return;
-
         if (tab.Control.IsModified)
             return;
-
         string diskText;
         try { diskText = await File.ReadAllTextAsync(path); }
         catch { return; }   // 読めなければ現状維持（best-effort）
-
         if (NormalizeEol(diskText) != NormalizeEol(tab.Control.Text)) {
             tab.Control.LoadFile(path);
             UpdateEditorTab(tab);
         }
-
         if (ReferenceEquals(_editorSupport.Source, tab))
             await UpdateEditorSupportAsync();
     }
-
     private async Task RefreshOpenEditorTabsFromDiskAsync() {
         foreach (var tab in _editorTabs.ToArray()) {
             if (tab.IsRealized)
                 await ReloadExistingTabIfChangedAsync(tab);
         }
     }
-
     private static string NormalizeEol(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
-
     private void SetPreviewTab(EditorTab? tab) {
         if (_previewEditorTab is { } old && !ReferenceEquals(old, tab))
             _vm.Tabs.SetEditorTabPreview(old.Id, false);
@@ -138,16 +114,13 @@ public partial class ShellWindow {
             _vm.Tabs.SetEditorTabPreview(tab.Id, true);
         }
     }
-
     private void MovePreviewEditorTabToEnd() {
         if (_previewEditorTab is not { } preview)
             return;
-
         var index = _editorTabs.FindIndex(t => ReferenceEquals(t, preview));
         var last = _editorTabs.Count - 1;
         if (index < 0 || index == last)
             return;
-
         _editorTabs.RemoveAt(index);
         _editorTabs.Add(preview);
     }
