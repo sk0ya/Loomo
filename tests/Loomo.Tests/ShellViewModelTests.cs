@@ -74,8 +74,9 @@ public class ShellViewModelTests
             new sk0ya.Loomo.Core.Diff.FileChangeJournal(), git, new FakeEditorService(), workspace,
             new DiffFileGateway());
         var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService(), workspace, diffSessionVm);
+        var gitQuery = new GitSessionQuery(git);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(), diffSessionVm,
-            new GitSessionQuery(git), new GitSessionCommandHandler(git));
+            gitQuery, new GitSessionCommandHandler(git), new GitHistoryViewModel(gitQuery));
         var traceSessionVm = new TraceSessionViewModel(
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 

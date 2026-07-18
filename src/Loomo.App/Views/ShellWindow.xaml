@@ -863,7 +863,7 @@
                             <Grid Width="210" Margin="8,0,0,0" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center" Cursor="IBeam"
-                                         Text="{Binding GitSession.LogFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}">
+                                         Text="{Binding GitSession.History.LogFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}">
                                     <TextBox.ToolTip>
                                         <ToolTip MaxWidth="380">
                                             <StackPanel>
@@ -880,15 +880,15 @@
                                 <TextBlock Text="🔍 author: msg: date:…" Foreground="{DynamicResource FgDim}"
                                            FontSize="{DynamicResource Fs12}" Margin="8,0,0,0" IsHitTestVisible="False"
                                            VerticalAlignment="Center"
-                                           Visibility="{Binding GitSession.LogFilter, Converter={StaticResource EmptyToVis}}" />
+                                           Visibility="{Binding GitSession.History.LogFilter, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
 
                             <!-- 作者で絞り込み（先頭の「すべて」で解除） -->
                             <ComboBox x:Name="LogAuthorFilter" Width="140" MinHeight="24" Margin="6,0,0,0"
                                       VerticalAlignment="Center" VerticalContentAlignment="Center" Cursor="Arrow"
                                       ToolTip="作者で絞り込み"
-                                      ItemsSource="{Binding GitSession.AuthorOptions}"
-                                      SelectedItem="{Binding GitSession.AuthorSelection}" />
+                                      ItemsSource="{Binding GitSession.History.AuthorOptions}"
+                                      SelectedItem="{Binding GitSession.History.AuthorSelection}" />
 
                             <!-- 期間で絞り込み：クリックでポップアップ（開始・終了の日付ピッカー） -->
                             <ToggleButton x:Name="LogDateButton" Margin="6,0,0,0" MinHeight="24"
@@ -905,15 +905,15 @@
                                                    Foreground="{DynamicResource Fg}" Margin="0,0,0,6" />
                                         <TextBlock Text="開始日（含む）" Foreground="{DynamicResource FgDim}"
                                                    FontSize="{DynamicResource Fs11}" />
-                                        <DatePicker SelectedDate="{Binding GitSession.DateFrom}" Margin="0,2,0,6"
+                                        <DatePicker SelectedDate="{Binding GitSession.History.DateFrom}" Margin="0,2,0,6"
                                                     Style="{StaticResource ThemedDatePicker}" />
                                         <TextBlock Text="終了日（含む）" Foreground="{DynamicResource FgDim}"
                                                    FontSize="{DynamicResource Fs11}" />
-                                        <DatePicker SelectedDate="{Binding GitSession.DateTo}" Margin="0,2,0,8"
+                                        <DatePicker SelectedDate="{Binding GitSession.History.DateTo}" Margin="0,2,0,8"
                                                     Style="{StaticResource ThemedDatePicker}" />
                                         <Button Content="期間をクリア" HorizontalAlignment="Right"
                                                 Padding="8,2" Style="{StaticResource SecondaryButton}"
-                                                Command="{Binding GitSession.ClearDateFilterCommand}" />
+                                                Command="{Binding GitSession.History.ClearDateFilterCommand}" />
                                     </StackPanel>
                                 </Border>
                             </Popup>
@@ -922,8 +922,8 @@
                             <Button Content="✕ 解除" Margin="6,0,0,0" Padding="8,2" MinHeight="24"
                                     VerticalAlignment="Center" Style="{StaticResource SecondaryButton}"
                                     ToolTip="絞り込みをすべて解除"
-                                    Command="{Binding GitSession.ClearLogFiltersCommand}"
-                                    Visibility="{Binding GitSession.HasActiveFilters, Converter={StaticResource BoolToVis}}" />
+                                    Command="{Binding GitSession.History.ClearLogFiltersCommand}"
+                                    Visibility="{Binding GitSession.History.HasActiveFilters, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                     </DockPanel>
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />

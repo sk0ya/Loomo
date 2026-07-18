@@ -238,7 +238,7 @@
                         <Button DockPanel.Dock="Top" Margin="8,0,8,2" HorizontalAlignment="Left"
                                 Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
                                 Click="OnShowAllBranchesLog"
-                                Visibility="{Binding IsLogScoped, Converter={StaticResource BoolToVis}}" />
+                                Visibility="{Binding History.IsLogScoped, Converter={StaticResource BoolToVis}}" />
                         <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
                                   Foreground="{DynamicResource Fg}"
                                   ItemsSource="{Binding BranchTree}"
@@ -372,18 +372,18 @@
                     <Border DockPanel.Dock="Top" Margin="0,0,0,2" Padding="8,4"
                             Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="0,0,0,1"
-                            Visibility="{Binding IsPathScoped, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding History.IsPathScoped, Converter={StaticResource BoolToVis}}">
                         <DockPanel LastChildFill="True">
                             <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
-                                    Content="✕ 解除" Command="{Binding ClearPathScopeCommand}"
+                                    Content="✕ 解除" Command="{Binding History.ClearPathScopeCommand}"
                                     ToolTip="パスの履歴絞り込みを解除して全コミットを表示" />
                             <TextBlock DockPanel.Dock="Left" Text="履歴:" VerticalAlignment="Center"
                                        Margin="0,0,6,0" FontSize="{DynamicResource Fs11}"
                                        Foreground="{DynamicResource FgDim}" />
-                            <TextBlock Text="{Binding PathScopeLabel}" VerticalAlignment="Center"
+                            <TextBlock Text="{Binding History.PathScopeLabel}" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" FontFamily="Cascadia Mono, Consolas"
                                        FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}"
-                                       ToolTip="{Binding PathScopeLabel}" />
+                                       ToolTip="{Binding History.PathScopeLabel}" />
                         </DockPanel>
                     </Border>
                     <Grid>
@@ -391,8 +391,8 @@
                          コミットメッセージを圧迫し、狭いペインで見出しがほぼ読めなくなる問題への対処）。 -->
                     <ListView x:Name="LogList" Style="{StaticResource GitList}"
                              ItemContainerStyle="{StaticResource GitLogListItem}"
-                             ItemsSource="{Binding LogView}"
-                             SelectedItem="{Binding SelectedLogRow, Mode=TwoWay}"
+                             ItemsSource="{Binding History.LogView}"
+                             SelectedItem="{Binding History.SelectedLogRow, Mode=TwoWay}"
                              SelectionMode="Extended"
                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              ScrollViewer.ScrollChanged="OnLogScrollChanged"

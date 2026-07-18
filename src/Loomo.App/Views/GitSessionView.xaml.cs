@@ -22,7 +22,7 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class GitSessionView : UserControl
 {
-    private GitSessionViewModel? _subscribed;
+    private GitHistoryViewModel? _subscribed;
     private bool _isRevealingLogRow;
 
     public GitSessionView()
@@ -41,7 +41,7 @@ public partial class GitSessionView : UserControl
     {
         if (_subscribed is not null)
             _subscribed.PropertyChanged -= OnVmPropertyChanged;
-        _subscribed = Vm;
+        _subscribed = Vm?.History;
         if (_subscribed is not null)
             _subscribed.PropertyChanged += OnVmPropertyChanged;
         RenderCommitDetail();
@@ -49,10 +49,10 @@ public partial class GitSessionView : UserControl
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(GitSessionViewModel.CommitDetail))
+        if (e.PropertyName == nameof(GitHistoryViewModel.CommitDetail))
             RenderCommitDetail();
-        else if (e.PropertyName == nameof(GitSessionViewModel.SelectedLogRow) &&
-                 Vm?.SelectedLogRow is { } row && !_isRevealingLogRow)
+        else if (e.PropertyName == nameof(GitHistoryViewModel.SelectedLogRow) &&
+                 Vm?.History.SelectedLogRow is { } row && !_isRevealingLogRow)
         {
             // Extended 選択の ListView は SelectedItem バインディングだけでは外部からの選択が
             // コンテナへ反映されない場合があるため、実体の選択も明示して画面内へ出す。
@@ -90,7 +90,7 @@ public partial class GitSessionView : UserControl
     /// </summary>
     private void RenderCommitDetail()
     {
-        var text = Vm?.CommitDetail ?? "";
+        var text = Vm?.History.CommitDetail ?? "";
         var paragraph = new Paragraph { Margin = new Thickness(0) };
         var accent = TryFindResource("Accent") as Brush ?? Brushes.SteelBlue;
 
@@ -429,7 +429,7 @@ public partial class GitSessionView : UserControl
             return;
         var remaining = e.ExtentHeight - (e.VerticalOffset + e.ViewportHeight);
         if (remaining <= e.ViewportHeight)
-            _ = vm.LoadMoreLogAsync();
+            _ = vm.History.LoadMoreAsync();
     }
 
     /// <summary>選択コミットの差分を Diff セッションへ（1件=コミットの変更、複数=端点間の比較）。</summary>

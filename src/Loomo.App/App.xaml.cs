@@ -250,6 +250,7 @@ public partial class App : Application
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionQuery>();
         services.AddSingleton<GitSessionCommandHandler>();
+        services.AddSingleton<GitHistoryViewModel>();
         services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<DiffFileGateway>();
         services.AddSingleton<DiffSessionViewModel>();
