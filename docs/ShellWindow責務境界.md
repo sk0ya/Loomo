@@ -15,6 +15,9 @@
 | `WorkspaceSessionCoordinator` | タブとワークスペース状態の相互変換 |
 | `CommandPaletteService` | モード解析と候補フィルター |
 | `PaletteSearchCoordinator` | 検索のキャンセル、デバウンス、ファイル・Grep・LSP横断検索 |
+| `CommandPaletteViewController` | 候補一覧、モード表示、サイズ、プレビューエディタ |
+| `EditorSupportController` | 追従元、ピン、履歴、描画シーケンス、Provider描画準備、Visual切替 |
+| `EditorSupportWebViewController` | WebView2生成、仮想ホスト、ナビゲーション、本文差し替え、スクロール転送 |
 | `EditorSupportNavigationService` | EditorSupportの戻る・進む履歴 |
 | `CodeEditorSupportAnalysis` | LSP結果の解析、アウトライン・参照情報の変換 |
 | `ShellAppearanceCoordinator` | エディタとターミナルへの外観適用 |
