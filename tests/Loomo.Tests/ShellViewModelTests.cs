@@ -21,7 +21,8 @@ public class ShellViewModelTests
     {
         var workspace = new FakeWorkspaceService();
         var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")));
+            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+            new FolderTreeCommandHandler(workspace));
 
         var approval = new UiApprovalService();
         var settings = new AiSettings();
@@ -66,7 +67,8 @@ public class ShellViewModelTests
 
         var git = new sk0ya.Loomo.Services.GitService(workspace);
         var diffSessionVm = new DiffSessionViewModel(
-            new sk0ya.Loomo.Core.Diff.FileChangeJournal(), git, new FakeEditorService(), workspace);
+            new sk0ya.Loomo.Core.Diff.FileChangeJournal(), git, new FakeEditorService(), workspace,
+            new DiffFileGateway());
         var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService(), workspace, diffSessionVm);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(), diffSessionVm);
         var traceSessionVm = new TraceSessionViewModel(

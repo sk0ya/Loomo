@@ -38,29 +38,7 @@ public sealed partial class FolderTreeViewModel
     /// <summary>指定ディレクトリ直下に空ファイル／フォルダを作成し、作成したフルパスを返す。</summary>
     public string CreateEntry(string parentDirectory, string name, bool isDirectory)
     {
-        ValidateName(name);
-        var fullPath = _workspace.ResolvePath(Path.Combine(parentDirectory, name));
-
-        if (File.Exists(fullPath) || Directory.Exists(fullPath))
-            throw new InvalidOperationException("同じ名前の項目が既に存在します。");
-
-        try
-        {
-            if (isDirectory)
-            {
-                Directory.CreateDirectory(fullPath);
-            }
-            else
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-                using (File.Create(fullPath)) { }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            throw new InvalidOperationException($"作成に失敗しました: {ex.Message}", ex);
-        }
-
+        var fullPath = _fileCommands.Create(parentDirectory, name, isDirectory);
         RefreshWorkspace();
         return fullPath;
     }
@@ -68,32 +46,9 @@ public sealed partial class FolderTreeViewModel
     /// <summary>ノードを新しい名前へ変更し、変更後のフルパスを返す。</summary>
     public string RenameEntry(FileNodeViewModel node, string newName)
     {
-        ValidateName(newName);
         var oldPath = _workspace.ResolvePath(node.FullPath);
-        var parent = Path.GetDirectoryName(oldPath)
-            ?? throw new InvalidOperationException("親ディレクトリを特定できません。");
-        var newPath = _workspace.ResolvePath(Path.Combine(parent, newName));
-
-        if (string.Equals(oldPath, newPath, StringComparison.Ordinal))
-            return oldPath;   // 変更なし
-
-        // 大文字小文字だけの変更は許容しつつ、別項目との衝突は防ぐ。
-        if (!string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)
-            && (File.Exists(newPath) || Directory.Exists(newPath)))
-            throw new InvalidOperationException("同じ名前の項目が既に存在します。");
-
-        try
-        {
-            if (node.IsDirectory)
-                Directory.Move(oldPath, newPath);
-            else
-                File.Move(oldPath, newPath);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            throw new InvalidOperationException($"名前の変更に失敗しました: {ex.Message}", ex);
-        }
-
+        var newPath = _fileCommands.Rename(oldPath, newName, node.IsDirectory);
+        if (string.Equals(oldPath, newPath, StringComparison.Ordinal)) return oldPath;
         RefreshWorkspace();
         // 開いているエディタタブを新パスへ追従させる（フォルダなら配下のファイルも対象）。
         EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(oldPath, newPath, node.IsDirectory));
@@ -104,24 +59,7 @@ public sealed partial class FolderTreeViewModel
     public void DeleteEntry(FileNodeViewModel node)
     {
         var path = _workspace.ResolvePath(node.FullPath);
-        try
-        {
-            if (node.IsDirectory)
-            {
-                if (Directory.Exists(path))
-                    FileSystem.DeleteDirectory(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-            }
-            else
-            {
-                if (File.Exists(path))
-                    FileSystem.DeleteFile(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
-        {
-            throw new InvalidOperationException($"削除に失敗しました: {ex.Message}", ex);
-        }
-
+        _fileCommands.Delete(path, node.IsDirectory);
         RefreshWorkspace();
         // 削除したファイル（フォルダなら配下）を開いているエディタタブを閉じる。
         EntryDeleted?.Invoke(this, path);
@@ -134,43 +72,8 @@ public sealed partial class FolderTreeViewModel
     public string PasteEntry(string targetDirectory, string sourcePath, bool move)
     {
         var source = Path.GetFullPath(sourcePath);
-        var isDirectory = Directory.Exists(source);
-        if (!isDirectory && !File.Exists(source))
-            throw new InvalidOperationException("貼り付け元が見つかりません。");
-
-        var targetDir = _workspace.ResolvePath(targetDirectory);
-
-        // フォルダを自身の中（または配下）へ貼ると無限再帰になるため拒否する。
-        if (isDirectory && (PathsEqual(source, targetDir) || IsPathUnder(targetDir, source)))
-            throw new InvalidOperationException("フォルダーを自身の中へは貼り付けできません。");
-
-        var name = Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var destination = _workspace.ResolvePath(Path.Combine(targetDir, name));
-
-        // 同じ場所への移動は何もしない（元の位置に置いたまま）。
-        if (move && PathsEqual(source, destination))
-            return destination;
-
-        destination = EnsureUniqueDestination(destination, isDirectory);
-
-        try
-        {
-            if (isDirectory)
-            {
-                if (move) Directory.Move(source, destination);
-                else CopyDirectory(source, destination);
-            }
-            else
-            {
-                if (move) File.Move(source, destination);
-                else File.Copy(source, destination);
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            throw new InvalidOperationException($"貼り付けに失敗しました: {ex.Message}", ex);
-        }
-
+        var isDirectory = _fileCommands.DirectoryExists(source);
+        var destination = _fileCommands.Paste(targetDirectory, source, move);
         RefreshWorkspace();
         // 移動はリネームと同じく、開いているエディタタブを新パスへ追従させる。
         if (move)
@@ -178,74 +81,26 @@ public sealed partial class FolderTreeViewModel
         return destination;
     }
 
-    // 貼り付け先が既存なら「 - コピー」「 - コピー (2)」…を付けて空きパスを返す。
-    private static string EnsureUniqueDestination(string destination, bool isDirectory)
-    {
-        if (!File.Exists(destination) && !Directory.Exists(destination))
-            return destination;
-
-        var dir = Path.GetDirectoryName(destination)!;
-        var name = Path.GetFileName(destination);
-        var ext = isDirectory ? "" : Path.GetExtension(name);
-        var stem = isDirectory ? name : Path.GetFileNameWithoutExtension(name);
-
-        for (var i = 1; ; i++)
-        {
-            var suffix = i == 1 ? " - コピー" : $" - コピー ({i})";
-            var candidate = Path.Combine(dir, stem + suffix + ext);
-            if (!File.Exists(candidate) && !Directory.Exists(candidate))
-                return candidate;
-        }
-    }
-
-    private static void CopyDirectory(string source, string destination)
-    {
-        Directory.CreateDirectory(destination);
-        foreach (var file in Directory.EnumerateFiles(source))
-            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
-        foreach (var dir in Directory.EnumerateDirectories(source))
-            CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
-    }
-
-    // path が directory と同じか、その配下にあるか。
-    private static bool IsPathUnder(string path, string directory)
-    {
-        var full = Path.GetFullPath(path).TrimEnd('\\', '/');
-        var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
-        return full.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void ValidateName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new InvalidOperationException("名前を入力してください。");
-        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            throw new InvalidOperationException("名前に使用できない文字が含まれています。");
-        if (name is "." or "..")
-            throw new InvalidOperationException("その名前は使用できません。");
-    }
-
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
 
     public void NotifyActivated(string fullPath)
     {
         _workspace.SelectedPath = fullPath;
-        if (File.Exists(fullPath))
+        if (_fileCommands.FileExists(fullPath))
             FileActivated?.Invoke(this, fullPath);
     }
 
     public void NotifyPreviewRequested(string fullPath)
     {
         _workspace.SelectedPath = fullPath;
-        if (File.Exists(fullPath))
+        if (_fileCommands.FileExists(fullPath))
             FilePreviewRequested?.Invoke(this, fullPath);
     }
 
     /// <summary>HTML ファイルをアプリ内ブラウザで開くよう要求する（ShellWindow が処理）。</summary>
     public void RequestOpenInBrowser(string fullPath)
     {
-        if (File.Exists(fullPath))
+        if (_fileCommands.FileExists(fullPath))
             OpenInBrowserRequested?.Invoke(this, fullPath);
     }
 
@@ -253,7 +108,7 @@ public sealed partial class FolderTreeViewModel
     /// フォルダはそのフォルダへ cd、ファイルはパスをプロンプトへ入力する。</summary>
     public void RequestSetInTerminal(FileNodeViewModel node)
     {
-        if (node.IsDirectory ? Directory.Exists(node.FullPath) : File.Exists(node.FullPath))
+        if (_fileCommands.EntryExists(node.FullPath, node.IsDirectory))
             SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(node.FullPath, node.IsDirectory));
     }
 
@@ -261,7 +116,7 @@ public sealed partial class FolderTreeViewModel
     /// フォルダかつ実在のときだけ発火する。</summary>
     public void RequestSearchInFolder(FileNodeViewModel node)
     {
-        if (node.IsDirectory && Directory.Exists(node.FullPath))
+        if (node.IsDirectory && _fileCommands.DirectoryExists(node.FullPath))
             SearchInFolderRequested?.Invoke(this, node.FullPath);
     }
 
@@ -269,7 +124,7 @@ public sealed partial class FolderTreeViewModel
     /// AI が使える状態（暖機完了）かつ実在ファイルのときだけ発火する。</summary>
     public void RequestTypoCheck(FileNodeViewModel node)
     {
-        if (!node.IsDirectory && IsAiReady && File.Exists(node.FullPath))
+        if (!node.IsDirectory && IsAiReady && _fileCommands.FileExists(node.FullPath))
             TypoCheckRequested?.Invoke(this, node.FullPath);
     }
 
@@ -280,7 +135,7 @@ public sealed partial class FolderTreeViewModel
     /// （ShellWindow が AIバーをワークフローモードへ切替えて処理）。実在ファイルのときだけ発火する。</summary>
     public void RequestRunWorkflow(FileNodeViewModel? node, string workflowId)
     {
-        if (node is { IsDirectory: false } && File.Exists(node.FullPath)
+        if (node is { IsDirectory: false } && _fileCommands.FileExists(node.FullPath)
             && !string.IsNullOrEmpty(workflowId))
         {
             var relativePath = _workspace.RootPath is null
@@ -295,7 +150,7 @@ public sealed partial class FolderTreeViewModel
     /// VimEditorControl のネイティブ Git Blame 表示（:Gblame）をトリガーする）。実在ファイルのときだけ発火する。</summary>
     public void RequestGitBlame(FileNodeViewModel node)
     {
-        if (node.IsDirectory || !File.Exists(node.FullPath))
+        if (node.IsDirectory || !_fileCommands.FileExists(node.FullPath))
             return;
         GitBlameRequested?.Invoke(this, node.FullPath);
     }
@@ -306,7 +161,7 @@ public sealed partial class FolderTreeViewModel
     {
         if (!_gitState.IsGitRepository)
             return;
-        var exists = node.IsDirectory ? Directory.Exists(node.FullPath) : File.Exists(node.FullPath);
+        var exists = _fileCommands.EntryExists(node.FullPath, node.IsDirectory);
         if (exists)
             GitHistoryRequested?.Invoke(this, node.FullPath);
     }
@@ -322,28 +177,8 @@ public sealed partial class FolderTreeViewModel
         if (_workspace.RootPath is null || !_gitState.IsGitRepository)
             return;
 
-        var relativePath = Path.GetRelativePath(_workspace.RootPath, node.FullPath).Replace('\\', '/');
-        if (node.IsDirectory)
-            relativePath += "/";
-
-        var gitignorePath = Path.Combine(_workspace.RootPath, ".gitignore");
-        var existingText = File.Exists(gitignorePath) ? File.ReadAllText(gitignorePath) : "";
-        if (existingText.Split('\n').Any(line => line.Trim() == relativePath))
-            return;   // 既に同じ行があれば何もしない
-
-        try
-        {
-            // 既存の末尾に改行が無ければ先に補い、行を分ける（末尾が空/既に改行済みならそのまま追記）。
-            var needsLeadingNewline = existingText.Length > 0 && existingText[^1] is not ('\n' or '\r');
-            File.AppendAllText(
-                gitignorePath, (needsLeadingNewline ? "\n" : "") + relativePath + "\n", Encoding.UTF8);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            throw new InvalidOperationException($".gitignore への追加に失敗しました: {ex.Message}", ex);
-        }
-
-        RefreshWorkspace();
+        if (_fileCommands.AddToGitignore(_workspace.RootPath, node.FullPath, node.IsDirectory))
+            RefreshWorkspace();
     }
 }
 

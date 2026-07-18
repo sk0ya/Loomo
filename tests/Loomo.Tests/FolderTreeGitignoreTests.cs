@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Agent;
 
@@ -40,8 +41,12 @@ public sealed class FolderTreeGitignoreTests : IDisposable
     }
 
     private FolderTreeViewModel CreateSut()
-        => new(new FakeWorkspaceService(), new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")));
+    {
+        var workspace = new FakeWorkspaceService();
+        return new FolderTreeViewModel(workspace, new FakeAiWarmup(),
+            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+            new FolderTreeCommandHandler(workspace));
+    }
 
     [Fact]
     public async Task ファイルを追加すると相対パスが1行追記される()

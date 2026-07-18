@@ -1,4 +1,5 @@
 using System.IO;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Services;
@@ -35,7 +36,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(_root, "unchecked.txt"), "unchecked");
 
         var editor = new FakeEditorService();
-        var diff = new DiffSessionViewModel(new FileChangeJournal(), _git, editor, _workspace);
+        var diff = new DiffSessionViewModel(new FileChangeJournal(), _git, editor, _workspace, new DiffFileGateway());
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff);
         await vm.RefreshCommand.ExecuteAsync(null);
         // 未追跡ファイルは「バージョン管理外ファイル」セクションに並び、既定では未チェック。
@@ -61,7 +62,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await MustRunAsync("add", "-A");
 
         var editor = new FakeEditorService();
-        var diff = new DiffSessionViewModel(new FileChangeJournal(), _git, editor, _workspace);
+        var diff = new DiffSessionViewModel(new FileChangeJournal(), _git, editor, _workspace, new DiffFileGateway());
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Contains(vm.Staged, i => i.Entry.Path == "staged.txt");

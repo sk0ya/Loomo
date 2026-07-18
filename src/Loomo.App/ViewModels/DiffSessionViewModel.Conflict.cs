@@ -295,7 +295,7 @@ public sealed partial class DiffSessionViewModel
         string raw;
         try
         {
-            raw = await File.ReadAllTextAsync(item.FullPath);
+            raw = await _files.ReadTextAsync(item.FullPath);
         }
         catch (Exception ex)
         {
@@ -444,7 +444,7 @@ public sealed partial class DiffSessionViewModel
         var previous = _conflictRawText;
         try
         {
-            await File.WriteAllTextAsync(item.FullPath, resolved);
+            await _files.WriteTextAsync(item.FullPath, resolved);
         }
         catch (Exception ex)
         {
@@ -478,7 +478,7 @@ public sealed partial class DiffSessionViewModel
         var (raw, regionIndex) = _conflictUndoStack.Peek();
         try
         {
-            await File.WriteAllTextAsync(item.FullPath, raw);
+            await _files.WriteTextAsync(item.FullPath, raw);
         }
         catch (Exception ex)
         {
@@ -527,7 +527,7 @@ public sealed partial class DiffSessionViewModel
         if (content is null || SelectedFile is not { Entry: not null } item) return;
         try
         {
-            await File.WriteAllTextAsync(item.FullPath, content);
+            await _files.WriteTextAsync(item.FullPath, content);
         }
         catch (Exception ex)
         {
@@ -547,8 +547,7 @@ public sealed partial class DiffSessionViewModel
         if (SelectedFile is not { Entry: not null } item) return;
         try
         {
-            if (File.Exists(item.FullPath))
-                File.Delete(item.FullPath);
+            _files.DeleteIfExists(item.FullPath);
         }
         catch (Exception ex)
         {

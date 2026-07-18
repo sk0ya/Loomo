@@ -228,6 +228,7 @@ public partial class App : Application
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<TabIconService>();
         services.AddSingleton<Input.KeybindingService>();
+        services.AddSingleton<FolderTreeCommandHandler>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<WorkflowToolRunner>();
@@ -243,6 +244,7 @@ public partial class App : Application
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionViewModel>();
+        services.AddSingleton<DiffFileGateway>();
         services.AddSingleton<DiffSessionViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();

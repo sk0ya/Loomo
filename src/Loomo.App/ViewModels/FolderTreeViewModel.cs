@@ -22,6 +22,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly IWorkspaceService _workspace;
     private readonly IAiWarmup _warmup;
     private readonly WorkflowStore _workflows;
+    private readonly FolderTreeCommandHandler _fileCommands;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -141,11 +142,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // エディタでアクティブなファイルをツリーで展開・選択する（同期）。
     public event EventHandler? RevealCurrentFileRequested;
 
-    public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows)
+    public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
+        FolderTreeCommandHandler fileCommands)
     {
         _workspace = workspace;
         _warmup = warmup;
         _workflows = workflows;
+        _fileCommands = fileCommands;
     }
 
     /// <summary>AIの暖機が完了してモデルが使える状態か。「AI-誤字脱字チェック」メニューの出し分けに使う

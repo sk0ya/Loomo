@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Diff;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -73,6 +74,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private readonly GitService _git;
     private readonly IEditorService _editor;
     private readonly IWorkspaceService _workspace;
+    private readonly DiffFileGateway _files;
     private bool _loaded;
 
     /// <summary>Git モードでの表示対象コミット範囲。null は作業ツリー。From=null は To 1コミットの変更。</summary>
@@ -110,12 +112,14 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     public bool CanStageHunks => Hunks.Count > 0;
 
     public DiffSessionViewModel(
-        IFileChangeJournal journal, GitService git, IEditorService editor, IWorkspaceService workspace)
+        IFileChangeJournal journal, GitService git, IEditorService editor, IWorkspaceService workspace,
+        DiffFileGateway files)
     {
         _journal = journal;
         _git = git;
         _editor = editor;
         _workspace = workspace;
+        _files = files;
         _journal.Changed += (_, _) => DispatchRefresh();
         _git.RepositoryChanged += (_, _) => DispatchRefresh();
     }
@@ -490,9 +494,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         try
         {
             if (item.IsNew)
-                File.Delete(item.FullPath);
+                _files.DeleteIfExists(item.FullPath);
             else
-                await File.WriteAllTextAsync(item.FullPath, item.OldContent!);
+                await _files.WriteTextAsync(item.FullPath, item.OldContent!);
             _journal.RemoveForPath(item.FullPath);  // Changed 経由で一覧が更新される
             SetStatus($"{item.DisplayPath} を元に戻しました。", isError: false);
         }
