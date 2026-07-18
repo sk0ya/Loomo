@@ -27,6 +27,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 {
     internal string? SourceFilePath => _source.FilePath;
     private readonly EditorSupportRegistry _editorSupports;
+    private readonly EditorSupportPipeline _pipeline;
     private readonly AiSettings _settings;
     private readonly string? _workspaceRoot;
     private readonly VimEditorControl _source;
@@ -46,9 +47,11 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     public event EventHandler<string>? LinkClicked;
 
     public DetachedEditorSupportView(
-        EditorSupportRegistry editorSupports, AiSettings settings, string? workspaceRoot, VimEditorControl source)
+        EditorSupportRegistry editorSupports, EditorSupportPipeline pipeline,
+        AiSettings settings, string? workspaceRoot, VimEditorControl source)
     {
         _editorSupports = editorSupports;
+        _pipeline = pipeline;
         _settings = settings;
         _workspaceRoot = workspaceRoot;
         _source = source;
@@ -110,42 +113,22 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         }
 
         var provider = _editorSupports.Resolve(filePath);
+        var result = await _pipeline.PrepareAsync(provider, new EditorSupportContext(
+            filePath, _source.Text, _workspaceRoot ?? string.Empty, null, theme));
+        if (seq != _renderSeq)
+            return;
 
-        if (provider is IEditorSupportUriProvider uriProvider)
+        TitleChanged?.Invoke(this, result.Title);
+        if (result.Uri is { } uri)
         {
-            TitleChanged?.Invoke(this, uriProvider.DescribeTitle(filePath));
-            try { core.Navigate(uriProvider.ResolveNavigationUri(filePath)); }
+            try { core.Navigate(uri); }
             catch { /* 無効 URI は無視 */ }
             return;
         }
 
-        if (provider is IEditorSupportHtmlProvider htmlProvider)
-        {
-            var text = provider.UsesEditorText ? _source.Text : string.Empty;
-            string html;
-            try
-            {
-                html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
-            }
-            catch (Exception ex)
-            {
-                html = MarkdownRenderer.RenderToHtml(
-                    $"## プレビューエラー\n\n```\n{ex}\n```", "Preview Error", theme);
-            }
-            if (seq != _renderSeq)
-                return;
-
-            TitleChanged?.Invoke(this, htmlProvider.DescribeTitle(filePath));
-            UpdatePreviewHost(core, MarkdownPreviewPaths.Resolve(_workspaceRoot, filePath).MapFolder);
+        UpdatePreviewHost(core, result.MapFolder);
+        if (result.Html is { } html)
             Navigate(core, html);
-            return;
-        }
-
-        // ビジュアル提供者（CSV グリッド等）・コード構造・非対応ファイルは案内にとどめる。
-        TitleChanged?.Invoke(this, "Editor Support");
-        Navigate(core, MarkdownRenderer.RenderToHtml(
-            "## Editor Support\n\nこの種類のプレビューは別ウィンドウでの複製に未対応です。",
-            "Editor Support", theme));
     }
 
     private static void Navigate(CoreWebView2 core, string html)

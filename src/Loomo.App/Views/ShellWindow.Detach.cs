@@ -42,7 +42,7 @@ public partial class ShellWindow {
         if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
             var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
             if (source is null) return null;
-            var view = new DetachedEditorSupportView(_editorSupports, _settings, _workspace.RootPath, source.Control);
+            var view = new DetachedEditorSupportView(_editorSupports, _editorSupport.Pipeline, _settings, _workspace.RootPath, source.Control);
             var item = new DetachedItem(kind, $"Preview: {Path.GetFileName(snapshot.FilePath)}", view, dispose: view.Dispose);
             view.TitleChanged += (_, title) => item.Title = title;
             AttachEditorSupportMirrorLinks(view);
@@ -78,7 +78,7 @@ public partial class ShellWindow {
         var source = (_editorSupport.Source ?? _activeEditorTab)?.Control;
         if (source is null)
             return;
-        var view = new DetachedEditorSupportView(_editorSupports, _settings, _workspace.RootPath, source);
+        var view = new DetachedEditorSupportView(_editorSupports, _editorSupport.Pipeline, _settings, _workspace.RootPath, source);
         var title = string.IsNullOrWhiteSpace(source.FilePath)
             ? "Preview"
             : $"Preview: {Path.GetFileName(source.FilePath!)}";

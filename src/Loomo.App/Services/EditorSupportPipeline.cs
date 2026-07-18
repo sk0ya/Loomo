@@ -28,6 +28,7 @@ public sealed class EditorSupportPipeline
         EditorSupportContext context)
     {
         var filePath = context.FilePath;
+        var text = provider?.UsesEditorText == false ? string.Empty : context.Text;
         if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
         {
             return new EditorSupportResult(
@@ -41,15 +42,15 @@ public sealed class EditorSupportPipeline
             var title = htmlProvider.DescribeTitle(filePath);
             var mapFolder = MarkdownPreviewPaths.Resolve(context.WorkspaceRoot, filePath).MapFolder;
             var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
-            var pageKey = incremental?.PageContextKey(filePath, context.Text);
+            var pageKey = incremental?.PageContextKey(filePath, text);
             string? html = null;
             string? body = null;
             try
             {
                 if (incremental is not null && pageKey == context.ReadyPageKey)
-                    body = await Task.Run(() => incremental.RenderBody(filePath, context.Text));
+                    body = await Task.Run(() => incremental.RenderBody(filePath, text));
                 else
-                    html = await Task.Run(() => htmlProvider.RenderHtml(filePath, context.Text));
+                    html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
             }
             catch (Exception ex)
             {

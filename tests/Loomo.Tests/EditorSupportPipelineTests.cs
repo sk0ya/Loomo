@@ -44,6 +44,16 @@ public class EditorSupportPipelineTests
         Assert.Null(result.PageKey);
     }
 
+    [Fact]
+    public async Task Provider_that_reads_file_does_not_receive_editor_text()
+    {
+        var provider = new FileBackedProvider();
+
+        await new EditorSupportPipeline().PrepareAsync(provider, Context());
+
+        Assert.Equal(string.Empty, provider.ReceivedText);
+    }
+
     private static EditorSupportContext Context(string? readyPageKey = null) => new(
         FilePath: Path.Combine("workspace", "document.test"),
         Text: "content",
@@ -71,5 +81,18 @@ public class EditorSupportPipelineTests
         public string DescribeTitle(string filePath) => "Broken";
         public string RenderHtml(string filePath, string text)
             => throw new InvalidOperationException("conversion failed");
+    }
+
+    private sealed class FileBackedProvider : IEditorSupportHtmlProvider
+    {
+        public IReadOnlyCollection<string> SupportedExtensions => [".test"];
+        public bool UsesEditorText => false;
+        public string? ReceivedText { get; private set; }
+        public string DescribeTitle(string filePath) => "File";
+        public string RenderHtml(string filePath, string text)
+        {
+            ReceivedText = text;
+            return "html";
+        }
     }
 }

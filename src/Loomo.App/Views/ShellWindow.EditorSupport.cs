@@ -126,11 +126,10 @@ public partial class ShellWindow {
             return;
         }
         HideEditorSupportVisual();
-        var text = (provider?.UsesEditorText ?? true) ? source.Control.Text : string.Empty;
         var seq = _editorSupport.BeginRender();
         var content = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
             filePath,
-            text,
+            source.Control.Text,
             _workspace.RootPath ?? string.Empty,
             _editorSupport.WebView.ReadyPageKey,
             _settings.Appearance.MarkdownPreviewTheme));
