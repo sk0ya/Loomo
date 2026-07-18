@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Win32;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Ai;
@@ -23,18 +22,18 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
-    private readonly IEditorService _editor;
     private readonly ModelCatalogService _modelCatalog;
     private readonly ModelDownloadService _modelDownload;
     private readonly Services.IAiWarmup _warmup;
-    private readonly ModelFolderGateway _modelFolders;
+    private readonly BlockedCommandsHandler _blockedCommands;
+    private readonly SettingsPersistenceHandler _persistence;
+    private readonly SettingsModelChoiceMapper _choiceMapper;
+    private readonly ModelFolderPicker _modelFolderPicker;
     private CancellationTokenSource? _fetchModelsCts;
     private CancellationTokenSource? _downloadCts;
     // 初期ロード中の代入で自動保存（Persist）が走らないようにするためのガード。
     private bool _suppressPersist = true;
 
-    /// <summary>設定が保存されたときに通知（AIバーのプロバイダ表示更新などに使う）。</summary>
     public event Action? Saved;
 
     [ObservableProperty] private string _model = "";
@@ -68,16 +67,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>ローカルに配置済みのモデルフォルダ名の一覧。</summary>
     public ObservableCollection<string> AvailableModels { get; } = new();
 
-    /// <summary>モデル一覧を取得中か。</summary>
     [ObservableProperty] private bool _isFetchingModels;
 
     /// <summary>モデル選択ドロップダウンを開いているか（XAML の IsDropDownOpen と双方向バインド）。</summary>
     [ObservableProperty] private bool _modelDropDownOpen;
-
-    /// <summary>モデル選択欄の1候補。ローカル配置済み（<see cref="Download"/> が null）と、
-    /// 未取得の Hugging Face カタログ候補（<see cref="IsInstalled"/> が false）の両方を表す。
-    /// 両者を同じ一覧に混在させ、ダウンロード用の別 ComboBox を持たない設計にするための型。</summary>
-    public sealed record ModelChoice(string Name, string Label, bool IsInstalled, DownloadableModel? Download);
 
     /// <summary>モデル選択欄に出す選択肢：ローカル配置済み＋未取得のカタログ候補を1本にまとめたもの。</summary>
     public ObservableCollection<ModelChoice> ModelChoices { get; } = new();
@@ -99,74 +92,54 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload,
-        Services.IAiWarmup warmup, ModelFolderGateway modelFolders)
+        Services.IAiWarmup warmup, ModelFolderPicker modelFolderPicker, BlockedCommandsHandler blockedCommands,
+        SettingsPersistenceHandler persistence, SettingsModelChoiceMapper choiceMapper)
     {
         _settings = settings;
-        _store = store;
-        _editor = editor;
         _modelCatalog = modelCatalog;
         _modelDownload = modelDownload;
         _warmup = warmup;
-        _modelFolders = modelFolders;
+        _blockedCommands = blockedCommands;
+        _persistence = persistence;
+        _choiceMapper = choiceMapper;
+        _modelFolderPicker = modelFolderPicker;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadLocalFields();
         RefreshModelChoices();
     }
 
-    public void SyncProvider(AiProvider provider) { }
-
     private void LoadLocalFields()
     {
         // 初期ロード中の代入で自動保存が走らないよう抑止する。
         _suppressPersist = true;
-        var cfg = _settings.Local;
-        Model = cfg.Model;
-        ModelPath = cfg.ModelPath;
-        MaxTokens = cfg.MaxTokens;
-        WarmupEnabled = _settings.WarmupEnabled;
-        VimEnabled = _settings.Vim.Enabled;
-        HighlightWhitespace = _settings.Editor.HighlightWhitespace;
-        ShowLineNumbers = _settings.Editor.ShowLineNumbers;
-        RelativeLineNumbers = _settings.Editor.RelativeLineNumbers;
-        HighlightCurrentLine = _settings.Editor.HighlightCurrentLine;
-        WordWrap = _settings.Editor.WordWrap;
-        ShowMinimap = _settings.Editor.ShowMinimap;
-        ShowIndentGuides = _settings.Editor.ShowIndentGuides;
-        AutoClosePairs = _settings.Editor.AutoClosePairs;
-        TabWidth = _settings.Editor.TabWidth;
-        UseSpacesForTab = _settings.Editor.UseSpacesForTab;
-        ImagePasteDirectory = _settings.Editor.ImagePasteDirectory;
-        ImagePasteFileName = _settings.Editor.ImagePasteFileName;
-        ImagePasteAltText = _settings.Editor.ImagePasteAltText;
+        var form = _persistence.Load();
+        Model = form.Model; ModelPath = form.ModelPath; MaxTokens = form.MaxTokens;
+        WarmupEnabled = form.WarmupEnabled; VimEnabled = form.VimEnabled;
+        HighlightWhitespace = form.HighlightWhitespace; ShowLineNumbers = form.ShowLineNumbers;
+        RelativeLineNumbers = form.RelativeLineNumbers; HighlightCurrentLine = form.HighlightCurrentLine;
+        WordWrap = form.WordWrap; ShowMinimap = form.ShowMinimap; ShowIndentGuides = form.ShowIndentGuides;
+        AutoClosePairs = form.AutoClosePairs; TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
+        ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
+        ImagePasteAltText = form.ImagePasteAltText;
         _suppressPersist = false;
     }
 
-    /// <summary>ローカル配置済みモデル（<see cref="AvailableModels"/>）と未取得のカタログ候補
-    /// （<see cref="ModelDownloadService.Catalog"/>）を1本の一覧にまとめ直す。フォルダ名が重複する
-    /// カタログ候補（＝既にダウンロード済み）は候補側を出さない。一覧を作り直した後、現在の
-    /// <see cref="Model"/> に対応する選択状態（インストール済みか／ダウンロード対象）も更新する。</summary>
+    /// <summary>配置済みモデルと未取得候補を1本の一覧にまとめ直す。</summary>
     private void RefreshModelChoices()
     {
-        var installed = new HashSet<string>(AvailableModels, StringComparer.OrdinalIgnoreCase);
+        var mapped = _choiceMapper.Map(AvailableModels, Model);
         ModelChoices.Clear();
-        foreach (var name in AvailableModels)
-            ModelChoices.Add(new ModelChoice(name, name, IsInstalled: true, Download: null));
-        foreach (var m in ModelDownloadService.Catalog)
-            if (!installed.Contains(m.FolderName))
-                ModelChoices.Add(new ModelChoice(m.FolderName, $"⬇ {m.DisplayName}", IsInstalled: false, Download: m));
-        UpdateSelectedModelStatus();
+        foreach (var choice in mapped.Choices) ModelChoices.Add(choice);
+        SelectedModelIsInstalled = mapped.SelectedIsInstalled;
+        if (mapped.SelectedDownload is { } download) SelectedDownloadModel = download;
     }
 
-    /// <summary>現在の <see cref="Model"/> が <see cref="ModelChoices"/> のどれに対応するかを見て、
-    /// <see cref="SelectedModelIsInstalled"/>（フォルダパス表示 vs ダウンロード案内の切替）と
-    /// <see cref="SelectedDownloadModel"/>（ダウンロードボタンの対象）を追従させる。</summary>
     private void UpdateSelectedModelStatus()
     {
-        var match = ModelChoices.FirstOrDefault(c => string.Equals(c.Name, Model, StringComparison.OrdinalIgnoreCase));
-        SelectedModelIsInstalled = match?.IsInstalled ?? true;
-        if (match?.Download is { } download)
-            SelectedDownloadModel = download;
+        var mapped = _choiceMapper.Map(AvailableModels, Model);
+        SelectedModelIsInstalled = mapped.SelectedIsInstalled;
+        if (mapped.SelectedDownload is { } download) SelectedDownloadModel = download;
     }
 
     // 「保存」ボタンは廃止。各項目の変更はその場で共有 AiSettings へ反映し、ファイルへ即永続化する。
@@ -212,17 +185,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnAutoApproveChanged(bool value) => Persist();
     partial void OnRestrictToWorkspaceRootChanged(bool value) => Persist();
 
-    private void CommitLocalFields()
-    {
-        var cfg = _settings.Local;
-        // 手入力途中の空値ではモデルを上書きしない（実行中モデルを消さないため）。
-        var name = Model.Trim();
-        if (name.Length > 0) cfg.Model = name;
-        cfg.ModelPath = ModelPath.Trim();
-        cfg.ApiKey = null;
-        cfg.MaxTokens = MaxTokens > 0 ? MaxTokens : 4096;
-    }
-
     /// <summary>変更を共有 <see cref="AiSettings"/> へ即時反映し、ファイルへ永続化する。
     /// 「保存」ボタンを廃した代わりに、各項目の変更時に自動で呼ばれる（初期ロード中は抑止）。
     /// 危険コマンド一覧はエディタの保存（:w）時に別途反映するため、ここでは扱わない。</summary>
@@ -230,36 +192,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (_suppressPersist) return;
 
-        CommitLocalFields();
-        _settings.Provider = AiProvider.Local;
-        _settings.WarmupEnabled = WarmupEnabled;
-        _settings.Vim.Enabled = VimEnabled;
-        _settings.Editor.HighlightWhitespace = HighlightWhitespace;
-        _settings.Editor.ShowLineNumbers = ShowLineNumbers;
-        _settings.Editor.RelativeLineNumbers = RelativeLineNumbers;
-        _settings.Editor.HighlightCurrentLine = HighlightCurrentLine;
-        _settings.Editor.WordWrap = WordWrap;
-        _settings.Editor.ShowMinimap = ShowMinimap;
-        _settings.Editor.ShowIndentGuides = ShowIndentGuides;
-        _settings.Editor.AutoClosePairs = AutoClosePairs;
-        _settings.Editor.TabWidth = TabWidth > 0 ? TabWidth : 2;
-        _settings.Editor.UseSpacesForTab = UseSpacesForTab;
-        _settings.Editor.ImagePasteDirectory = ImagePasteDirectory.Trim();
-        _settings.Editor.ImagePasteFileName = ImagePasteFileName.Trim();
-        _settings.Editor.ImagePasteAltText = ImagePasteAltText.Trim();
-        _settings.Safety.AutoApprove = AutoApprove;
-        _settings.Safety.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
-
-        try
+        var result = _persistence.Save(new SettingsFormState
         {
-            _store.Save(_settings);
-            Status = "設定を反映しました（自動保存済み）";
-            Saved?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            Status = $"保存に失敗しました: {ex.Message}";
-        }
+            Model = Model, ModelPath = ModelPath, MaxTokens = MaxTokens, WarmupEnabled = WarmupEnabled,
+            VimEnabled = VimEnabled, HighlightWhitespace = HighlightWhitespace, ShowLineNumbers = ShowLineNumbers,
+            RelativeLineNumbers = RelativeLineNumbers, HighlightCurrentLine = HighlightCurrentLine,
+            WordWrap = WordWrap, ShowMinimap = ShowMinimap, ShowIndentGuides = ShowIndentGuides,
+            AutoClosePairs = AutoClosePairs, TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
+            ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,
+            ImagePasteAltText = ImagePasteAltText, AutoApprove = AutoApprove,
+            RestrictToWorkspaceRoot = RestrictToWorkspaceRoot,
+        });
+        ApplyCommandResult(result);
     }
 
     /// <summary>設定パネルを開いたときに呼ぶ。ローカルのモデルフォルダを列挙し直す
@@ -348,18 +292,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void BrowseModel()
     {
-        var initial = _modelFolders.GetExistingDirectory(ModelPath) ?? ModelDownloadService.DefaultModelsRoot;
-        var dialog = new OpenFolderDialog
-        {
-            Title = "モデルフォルダを選択（ONNX: genai_config.json／GGUF: *.gguf を含むフォルダ）",
-            InitialDirectory = _modelFolders.GetExistingDirectory(initial),
-        };
-        if (dialog.ShowDialog() != true) return;
-
-        var selection = _modelFolders.Resolve(dialog.FolderName);
+        var selection = _modelFolderPicker.Pick(ModelPath);
         if (selection is null)
         {
-            Status = "選択したフォルダに genai_config.json も .gguf もありません（モデルフォルダではありません）。";
             return;
         }
 
@@ -435,9 +370,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (!Confirm("危険コマンドのブロックリストを既定値に戻します。現在の内容は失われます。よろしいですか？"))
             return;
-        _settings.Safety.BlockedCommandPatterns =
-            new List<string>(SafetySettings.DefaultBlockedPatterns);
-        PersistAndNotify("危険コマンドのブロックリストを既定値に戻しました");
+        ApplyCommandResult(_blockedCommands.Reset());
     }
 
     /// <summary>破壊的な操作の前にユーザーへ確認する。アプリ未起動（テスト等）では true を返す。</summary>
@@ -454,44 +387,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task EditBlockedCommandsAsync()
     {
-        const string header =
-            "# ブロックする危険コマンド（run_powershell の照合に使用）\n" +
-            "# ・1行に1つ、正規表現で記述します（大文字小文字は無視）。\n" +
-            "# ・'#' で始まる行と空行は無視されます。\n" +
-            "\n";
-        var body = string.Join("\n", _settings.Safety.BlockedCommandPatterns);
-        await _editor.OpenDocumentAsync(new EditorDocument
-        {
-            FileName = "loomo-blocked-commands.txt",
-            Content = header + body,
-            OnSaved = text =>
-            {
-                _settings.Safety.BlockedCommandPatterns = ParsePatterns(text);
-                PersistAndNotify("危険コマンドのブロックリストを保存しました");
-            }
-        });
-        Status = "危険コマンド一覧をエディタで開きました。編集して保存（:w）すると反映されます。";
+        ApplyCommandResult(await _blockedCommands.OpenEditorAsync(ApplyCommandResult));
     }
 
     /// <summary>エディタ保存コールバックから呼ぶ共通処理：永続化して結果を表示。</summary>
-    private void PersistAndNotify(string message)
+    private void ApplyCommandResult(SettingsCommandResult result)
     {
-        try
-        {
-            _store.Save(_settings);
-            Status = $"{message} — {_store.FilePath}";
-            Saved?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            Status = $"保存に失敗しました: {ex.Message}";
-        }
+        Status = result.Message;
+        if (result.Success) Saved?.Invoke();
     }
-
-    /// <summary>エディタの行テキストを正規表現パターンのリストへ変換（空行・コメント行を除外）。</summary>
-    private static List<string> ParsePatterns(string text) =>
-        text.Replace("\r\n", "\n").Split('\n')
-            .Select(l => l.Trim())
-            .Where(l => l.Length > 0 && !l.StartsWith("#"))
-            .ToList();
 }

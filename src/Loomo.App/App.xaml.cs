@@ -227,6 +227,10 @@ public partial class App : Application
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<ModelFolderGateway>();
+        services.AddSingleton<ModelFolderPicker>();
+        services.AddSingleton<BlockedCommandsHandler>();
+        services.AddSingleton<SettingsPersistenceHandler>();
+        services.AddSingleton<SettingsModelChoiceMapper>();
         services.AddSingleton<TabIconService>();
         services.AddSingleton<Input.KeybindingService>();
         services.AddSingleton<FolderTreeCommandHandler>();

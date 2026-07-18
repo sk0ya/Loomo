@@ -41,8 +41,11 @@ public class ShellViewModelTests
         var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var modelCatalog = new ModelCatalogService(settings);
         var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
-        var settingsVm = new SettingsViewModel(settings, store, new FakeEditorService(), modelCatalog, modelDownload,
-            new FakeAiWarmup(), new ModelFolderGateway());
+        var settingsEditor = new FakeEditorService();
+        var modelFolders = new ModelFolderGateway();
+        var settingsVm = new SettingsViewModel(settings, store, settingsEditor, modelCatalog, modelDownload,
+            new FakeAiWarmup(), new ModelFolderPicker(modelFolders), new BlockedCommandsHandler(settings, store, settingsEditor),
+            new SettingsPersistenceHandler(settings, store), new SettingsModelChoiceMapper());
         var workflowStore = new WorkflowStore(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows"));
         var workflowRunner = new WorkflowToolRunner(
