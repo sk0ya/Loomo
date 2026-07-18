@@ -26,16 +26,15 @@ public sealed class EditorSupportNavigationService
         => Uri.TryCreate(url, UriKind.Absolute, out var uri)
            && string.Equals(uri.Host, MarkdownRenderer.PageVirtualHost, StringComparison.OrdinalIgnoreCase);
 
-    public static void ConfigureVirtualHosts(CoreWebView2 core, string? mapFolder)
+    public void ConfigureVirtualHosts(CoreWebView2 core, string? mapFolder)
     {
         TryMap(core, MarkdownRenderer.AssetsVirtualHost,
             Path.Combine(AppContext.BaseDirectory, "Assets", "Web"));
         if (!string.IsNullOrEmpty(mapFolder))
             TryMap(core, MarkdownRenderer.PreviewVirtualHost, mapFolder);
-        var pageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Loomo", "EditorSupportPreview");
-        try { Directory.CreateDirectory(pageFolder); } catch { }
-        TryMap(core, MarkdownRenderer.PageVirtualHost, pageFolder);
+        // TryWritePage と同じフォルダーを公開しないと preview.html を読み込めない。
+        try { Directory.CreateDirectory(_previewFolder); } catch { }
+        TryMap(core, MarkdownRenderer.PageVirtualHost, _previewFolder);
     }
 
     public void UpdatePreviewHost(CoreWebView2 core, string? folder)

@@ -154,7 +154,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         {
             core.WebMessageReceived += _messageReceived;
             core.ContextMenuRequested += _contextMenuRequested;
-            EditorSupportNavigationService.ConfigureVirtualHosts(core, null);
+            _navigation.ConfigureVirtualHosts(core, null);
             try { await core.AddScriptToExecuteOnDocumentCreatedAsync(HorizontalScrollScript); }
             catch { }
             _eventsAttached = true;

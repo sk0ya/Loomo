@@ -13,7 +13,7 @@ public partial class ShellWindow {
         await EnsureBrowserRealizedAsync(tab);
         if (tab.View.CoreWebView2 is not { } core)
             return;
-        EditorSupportNavigationService.ConfigureVirtualHosts(core, mapFolder);
+        _editorSupportNavigation.ConfigureVirtualHosts(core, mapFolder);
         core.Navigate(pageUrl);
         UpdateBrowserTab(tab);
         SaveActiveWorkspaceSnapshot();
