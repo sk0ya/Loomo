@@ -158,7 +158,7 @@ public partial class ShellWindow
             return;
 
         var label = mode == DisplayMode.Solo
-            ? $"ソロ · {PaneDisplayName(stagePane ?? PaneKind.Editor)}"
+            ? $"ソロ · {TrailLogic.PaneDisplayName(stagePane ?? PaneKind.Editor)}"
             : "レイアウト変更";
         RecordTrail((recordMode, recordStagePane, layout) =>
             _vm.Trail.RecordLayout(layoutKey, label, recordMode, recordStagePane, layout));
@@ -183,8 +183,7 @@ public partial class ShellWindow
         var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
         var snapshot = _root is null ? null : ToSnapshot(_root);
         var paneLayout = snapshot is null ? null : JsonSerializer.Serialize(snapshot, TrailLayoutJson);
-        var structure = snapshot is null ? "-" : PaneLayoutTree.StructureSignature(snapshot);
-        var key = $"{(int)mode}|{stagePane?.ToString() ?? "-"}|{structure}";
+        var key = TrailLogic.LayoutKey(mode, stagePane, snapshot);
         return (key, mode, stagePane, paneLayout);
     }
 
@@ -278,7 +277,7 @@ public partial class ShellWindow
     {
         if (!success)
             return;
-        var (key, label) = DescribeGitOperation(command);
+        var (key, label) = TrailLogic.DescribeGitOperation(command);
         if (string.IsNullOrEmpty(key))
             return;
         RecordTrail((mode, stagePane, _) =>
@@ -288,49 +287,6 @@ public partial class ShellWindow
     /// <summary>git のサブコマンド行（<see cref="sk0ya.Loomo.Services.GitOperationEventArgs.Command"/>）を、デデュープ用の
     /// 種別キーと表示ラベルへ変換する。キーが同じ連続操作は1点に畳まれる（多段の破棄＝clean+restore を
     /// 1点にまとめる等）。未知のサブコマンドはそのまま <c>git &lt;sub&gt;</c> と表示する。</summary>
-    private static (string Key, string Label) DescribeGitOperation(string command)
-    {
-        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-            return ("", "");
-        var sub = parts[0];
-        bool Has(string flag) => Array.IndexOf(parts, flag) >= 0;
-        var lastRef = parts.Length > 1 ? parts[^1] : "";
-        return sub switch
-        {
-            "commit" => ("commit", Has("--amend") ? "コミット（amend）" : "コミット"),
-            "add" => ("stage", "ステージ"),
-            "restore" when Has("--staged") => ("unstage", "アンステージ"),
-            "restore" => ("discard", "変更を破棄"),
-            "clean" => ("discard", "変更を破棄"),
-            "apply" => ("discard", "変更を破棄"),
-            "push" => ("push", "プッシュ"),
-            "pull" => ("pull", "プル"),
-            "fetch" => ("fetch", "フェッチ"),
-            "switch" when Has("-c") => ("branch-create", $"ブランチ作成: {lastRef}"),
-            "switch" => ("checkout", $"ブランチ切替: {lastRef}"),
-            "checkout" when Has("--detach") => ("checkout-detach", "コミットをチェックアウト"),
-            "checkout" => ("checkout", $"ブランチ切替: {lastRef}"),
-            "branch" when Has("-d") || Has("-D") => ("branch-delete", $"ブランチ削除: {lastRef}"),
-            "branch" => ("branch", "ブランチ操作"),
-            "merge" when Has("--continue") => ("merge", "マージ続行"),
-            "merge" when Has("--abort") => ("merge", "マージ中止"),
-            "merge" => ("merge", $"マージ: {lastRef}"),
-            "rebase" when Has("--continue") => ("rebase", "リベース続行"),
-            "rebase" when Has("--abort") => ("rebase", "リベース中止"),
-            "rebase" when Has("--skip") => ("rebase", "リベーススキップ"),
-            "rebase" => ("rebase", "リベース"),
-            "cherry-pick" => ("cherry-pick", "チェリーピック"),
-            "revert" => ("revert", "リバート"),
-            "reset" => ("reset", "リセット"),
-            "stash" => ("stash", "スタッシュ"),
-            "tag" => ("tag", "タグ"),
-            "submodule" => ("submodule", "サブモジュール"),
-            "init" => ("init", "リポジトリ初期化"),
-            _ => (sub, $"git {sub}")
-        };
-    }
-
     /// <summary>EditorSupport（プレビュー）で表示中のファイルを軌跡へ記録する。ペインではなく
     /// プレビュー対象のファイルを target にするので、戻ると同じファイルのプレビューが開き直す
     /// （generic な Pane(EditorSupport) ドットと違い「どのファイルを見ていたか」まで復元できる）。
@@ -347,14 +303,11 @@ public partial class ShellWindow
     /// <summary>ブラウザ遷移を軌跡へ記録する。既定ページ（新規タブの初期表示）と about: は対象外。</summary>
     private void RecordTrailBrowser(string? url, string? title)
     {
-        if (string.IsNullOrWhiteSpace(url))
-            return;
-        if (url.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(url, DefaultBrowserUrl, StringComparison.OrdinalIgnoreCase))
+        if (!TrailLogic.IsRecordableBrowserUrl(url, DefaultBrowserUrl))
             return;
 
         RecordTrail((mode, stagePane, layout) =>
-            _vm.Trail.RecordBrowser(url, title, mode, stagePane, layout));
+            _vm.Trail.RecordBrowser(url!, title, mode, stagePane, layout));
     }
 
     /// <summary>ペイン切替でブラウザのページを軌跡へ代表させるための、アクティブなブラウザタブの
@@ -364,9 +317,7 @@ public partial class ShellWindow
     private string? CurrentBrowserTrailUrl()
     {
         var url = _activeBrowserTab?.View.Source?.ToString() ?? _activeBrowserTab?.PendingUrl;
-        if (string.IsNullOrWhiteSpace(url)
-            || url.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(url, DefaultBrowserUrl, StringComparison.OrdinalIgnoreCase))
+        if (!TrailLogic.IsRecordableBrowserUrl(url, DefaultBrowserUrl))
             return null;
         return url;
     }
@@ -456,7 +407,7 @@ public partial class ShellWindow
                 return;
             }
             RecordTrail((mode, stagePane, layout) =>
-                _vm.Trail.RecordPane(kind.ToString(), PaneDisplayName(kind), mode, stagePane, layout));
+                _vm.Trail.RecordPane(kind.ToString(), TrailLogic.PaneDisplayName(kind), mode, stagePane, layout));
         };
         return timer;
     }
@@ -474,33 +425,9 @@ public partial class ShellWindow
     /// <summary>サイドバーのパネル切替を軌跡へ記録する。</summary>
     private void RecordTrailPanel(SidebarPanel panel)
         => RecordTrail((mode, stagePane, layout) =>
-            _vm.Trail.RecordPanel(panel.ToString(), PanelDisplayName(panel), mode, stagePane, layout));
+            _vm.Trail.RecordPanel(panel.ToString(), TrailLogic.PanelDisplayName(panel), mode, stagePane, layout));
 
     private static readonly JsonSerializerOptions TrailLayoutJson = new();
-
-    private static string PaneDisplayName(PaneKind kind) => kind switch
-    {
-        PaneKind.Terminal => "ターミナル",
-        PaneKind.Editor => "エディタ",
-        PaneKind.Browser => "ブラウザ",
-        PaneKind.Ai => "AI",
-        PaneKind.EditorSupport => "プレビュー",
-        PaneKind.Git => "Git",
-        PaneKind.Diff => "Diff",
-        PaneKind.Trace => "トレース",
-        PaneKind.Debug => "IDE",
-        _ => kind.ToString()
-    };
-
-    private static string PanelDisplayName(SidebarPanel panel) => panel switch
-    {
-        SidebarPanel.Explorer => "エクスプローラ",
-        SidebarPanel.Search => "検索",
-        SidebarPanel.Tabs => "タブ一覧",
-        SidebarPanel.Git => "Gitパネル",
-        SidebarPanel.Pegboard => "ペグボード",
-        _ => panel.ToString()
-    };
 
     // ===== 戻る（ジャンプ） =====
 
