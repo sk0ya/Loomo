@@ -1,13 +1,14 @@
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>EditorSupport 用 WebView2 の生成、描画状態、ナビゲーション、スクロール転送を管理する。</summary>
-public sealed class EditorSupportWebViewController
+public sealed class EditorSupportWebViewController : IDisposable
 {
     private readonly Panel _host;
     private readonly EditorSupportNavigationService _navigation;
     private readonly Func<CoreWebView2CreationProperties> _creationProperties;
     private readonly EventHandler<CoreWebView2WebMessageReceivedEventArgs> _messageReceived;
     private readonly EventHandler<CoreWebView2ContextMenuRequestedEventArgs> _contextMenuRequested;
+    private readonly IEditorSupportViewFactory _viewFactory;
     private Task<bool>? _initTask;
     private bool _eventsAttached;
     private bool _firstRenderHealed;
@@ -24,16 +25,19 @@ public sealed class EditorSupportWebViewController
         EditorSupportNavigationService navigation,
         Func<CoreWebView2CreationProperties> creationProperties,
         EventHandler<CoreWebView2WebMessageReceivedEventArgs> messageReceived,
-        EventHandler<CoreWebView2ContextMenuRequestedEventArgs> contextMenuRequested)
+        EventHandler<CoreWebView2ContextMenuRequestedEventArgs> contextMenuRequested,
+        IEditorSupportViewFactory viewFactory)
     {
         _host = host;
         _navigation = navigation;
         _creationProperties = creationProperties;
         _messageReceived = messageReceived;
         _contextMenuRequested = contextMenuRequested;
+        _viewFactory = viewFactory;
     }
 
     public WebView2CompositionControl? View { get; private set; }
+    public IEditorSupportViewFactory ViewFactory => _viewFactory;
     public string? ReadyPageKey { get; private set; }
     public event EventHandler? NavigationCompleted;
 
@@ -56,11 +60,7 @@ public sealed class EditorSupportWebViewController
     {
         if (View is null)
         {
-            View = new WebView2CompositionControl
-            {
-                DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
-                CreationProperties = _creationProperties()
-            };
+            View = _viewFactory.Create(_creationProperties());
             View.NavigationCompleted += OnNavigationCompleted;
             _host.Children.Add(View);
         }
@@ -146,8 +146,8 @@ public sealed class EditorSupportWebViewController
 
     private async Task<bool> InitializeCoreAsync(WebView2CompositionControl view)
     {
-        try { await view.EnsureCoreWebView2Async(); }
-        catch { return false; }
+        if (!await _viewFactory.InitializeAsync(view))
+            return false;
         if (view.CoreWebView2 is not { } core)
             return false;
         if (!_eventsAttached)
@@ -160,6 +160,21 @@ public sealed class EditorSupportWebViewController
             _eventsAttached = true;
         }
         return true;
+    }
+
+    public void Dispose()
+    {
+        if (View is not null)
+            View.NavigationCompleted -= OnNavigationCompleted;
+        if (_eventsAttached && View?.CoreWebView2 is { } core)
+        {
+            core.WebMessageReceived -= _messageReceived;
+            core.ContextMenuRequested -= _contextMenuRequested;
+        }
+        _viewFactory.Dispose(View);
+        View = null;
+        _initTask = null;
+        _eventsAttached = false;
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)

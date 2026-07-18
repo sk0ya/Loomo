@@ -13,7 +13,7 @@ namespace sk0ya.Loomo.App.Services;
 /// ②呼び出し解析（呼び出し元／呼び出し先／使用箇所）を EditorSupport ペインへ表示する
 /// フォールバック提供者の<b>純ロジック層</b>。<see cref="HexEditorSupport"/> と同じく
 /// <see cref="EditorSupportRegistry"/> には登録せず、専用プロバイダ（Markdown/JSON/XML/CSV 等）を
-/// 持たない拡張子だけを <see cref="CanHandle"/> で拾う。
+/// 持たない拡張子だけを <see cref="EditorSupportResolver"/> が <see cref="CanHandle"/> で拾う。
 /// <para>
 /// 表示は WebView2 ではなく <see cref="Views.CodeOutlineView"/>（ネイティブ WPF）が担う
 /// （2026-07：初回コールドスタート・白フラッシュ・HTML 生成コストを避けるため HTML から移行）。

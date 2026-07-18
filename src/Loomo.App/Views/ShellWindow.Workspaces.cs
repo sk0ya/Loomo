@@ -261,6 +261,7 @@ public partial class ShellWindow {
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
         _detached?.CloseAll();
+        _editorSupport.WebView.Dispose();
         foreach (var workspace in _editorWorkspaces.Values)
             foreach (var tab in workspace.Tabs)
                 if (tab.IsRealized)

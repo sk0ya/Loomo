@@ -8,14 +8,14 @@ using Microsoft.Web.WebView2.Wpf;
 using Editor.Controls;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Views;
 
 namespace sk0ya.Loomo.App.Detach;
 
 /// <summary>
 /// EditorSupport（Markdown プレビュー等）の切り離し複製。追従元エディタの本文編集をデバウンスして
-/// <b>専用の WebView2</b> へ再描画する（メインの EditorSupport パイプラインには触れない＝多重化リスク回避）。
-/// プロバイダ層（<see cref="EditorSupportRegistry"/> / <see cref="IEditorSupportHtmlProvider"/> /
-/// <see cref="IEditorSupportUriProvider"/>）だけを再利用する。CSV グリッド等のビジュアル提供者・コード構造
+/// <b>専用の WebView2</b> へ、メイン表示と同じ <see cref="EditorSupportPipeline"/> で再描画する。
+/// CSV グリッド等のビジュアル提供者・コード構造
 /// アウトラインは共有ビューが単一親制約に反するため、この複製では案内表示にとどめる（既知の制限）。
 /// <para>
 /// タブをウィンドウ間で移動すると WebView2 のコンポジションビジュアルが元ウィンドウのコンポジタに紐づいた
@@ -28,6 +28,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     internal string? SourceFilePath => _source.FilePath;
     private readonly EditorSupportRegistry _editorSupports;
     private readonly EditorSupportPipeline _pipeline;
+    private readonly IEditorSupportViewFactory _viewFactory;
     private readonly AiSettings _settings;
     private readonly string? _workspaceRoot;
     private readonly VimEditorControl _source;
@@ -47,11 +48,12 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     public event EventHandler<string>? LinkClicked;
 
     public DetachedEditorSupportView(
-        EditorSupportRegistry editorSupports, EditorSupportPipeline pipeline,
+        EditorSupportRegistry editorSupports, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
         AiSettings settings, string? workspaceRoot, VimEditorControl source)
     {
         _editorSupports = editorSupports;
         _pipeline = pipeline;
+        _viewFactory = viewFactory;
         _settings = settings;
         _workspaceRoot = workspaceRoot;
         _source = source;
@@ -85,12 +87,9 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         if (_web is not null)
         {
             Children.Remove(_web);
-            try { _web.Dispose(); } catch { /* 破棄失敗は無視 */ }
+            _viewFactory.Dispose(_web);
         }
-        _web = new WebView2CompositionControl
-        {
-            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E)
-        };
+        _web = _viewFactory.Create();
         Children.Add(_web);
         _initTask = null;
         _mappedFolder = null;
@@ -153,8 +152,8 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
     private async Task<bool> InitCoreAsync(WebView2CompositionControl web)
     {
-        try { await web.EnsureCoreWebView2Async(); }
-        catch { return false; }
+        if (!await _viewFactory.InitializeAsync(web))
+            return false;
         if (web.CoreWebView2 is not { } core)
             return false;
 
@@ -218,7 +217,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _debounce.Stop();
         if (_web is not null)
         {
-            try { _web.Dispose(); } catch { /* 破棄失敗は無視 */ }
+            _viewFactory.Dispose(_web);
             _web = null;
         }
     }

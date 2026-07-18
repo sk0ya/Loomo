@@ -214,10 +214,11 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, LogEditorSupport>();      // .log を行レベル色分け＋絞り込みで表示
         services.AddSingleton<EditorSupportRegistry>();
         services.AddSingleton<EditorSupportResolver>();
-        // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。registry には載せず ShellWindow が直接使う。
+        services.AddSingleton<IEditorSupportViewFactory, EditorSupportViewFactory>();
+        // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。Resolver が選択する。
         services.AddSingleton<HexEditorSupport>();
         // 専用プロバイダを持たないコードファイルのフォールバック（LSP ベースの構造アウトライン）。
-        // registry には載せず ShellWindow が直接使う（Hex と同じ形）。
+        // registry には載せず Resolver が選択する（Hex と同じ形）。
         services.AddSingleton<CodeEditorSupport>();
 
         // --- ViewModels / Window ---
