@@ -249,6 +249,7 @@ public partial class App : Application
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionQuery>();
+        services.AddSingleton<GitSessionCommandHandler>();
         services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<DiffFileGateway>();
         services.AddSingleton<DiffSessionViewModel>();

@@ -1,3 +1,4 @@
+
 using System;
 using System.Threading.Tasks;
 using System.Windows;
@@ -137,7 +138,7 @@ public partial class BranchSwitcherView : UserControl
     private async void OnMenuCheckout(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm || Target is not { } branch) return;
-        var result = await vm.CheckoutBranchAsync(branch);
+        var result = await vm.Commands.CheckoutBranchAsync(branch);
         if (result is { Success: true })
             Close();
         else if (result is not null)
@@ -148,7 +149,7 @@ public partial class BranchSwitcherView : UserControl
     {
         if (Vm is not { } vm || Target is not { } branch) return;
         Close();
-        await vm.MergeAsync(branch);
+        await vm.Commands.MergeAsync(branch);
     }
 
     private async void OnMenuRebase(object sender, RoutedEventArgs e)
@@ -159,7 +160,7 @@ public partial class BranchSwitcherView : UserControl
             $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
             "リベース", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Yes)
-            await vm.RebaseAsync(branch);
+            await vm.Commands.RebaseAsync(branch);
     }
 
     private async void OnMenuCreateFrom(object sender, RoutedEventArgs e)
@@ -169,7 +170,7 @@ public partial class BranchSwitcherView : UserControl
         var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ",
             $"{branch.Name} から作成するブランチ名を入力してください");
         if (!string.IsNullOrWhiteSpace(name))
-            await vm.CreateBranchAsync(name, branch.Name);
+            await vm.Commands.CreateBranchAsync(name, branch.Name);
     }
 
     private void OnMenuCopyName(object sender, RoutedEventArgs e)
@@ -191,7 +192,7 @@ public partial class BranchSwitcherView : UserControl
         if (answer != MessageBoxResult.Yes)
             return;
 
-        var result = await vm.DeleteBranchAsync(branch, force: false);
+        var result = await vm.Commands.DeleteBranchAsync(branch, force: false);
         if (result is { Success: false } &&
             result.Message.Contains("not fully merged", StringComparison.OrdinalIgnoreCase))
         {
@@ -199,7 +200,7 @@ public partial class BranchSwitcherView : UserControl
                 $"{branch.Name} はマージされていないコミットを含みます。強制削除（-D）しますか？\nコミットが失われる可能性があります。",
                 "ブランチの強制削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (forceAnswer == MessageBoxResult.Yes)
-                await vm.DeleteBranchAsync(branch, force: true);
+                await vm.Commands.DeleteBranchAsync(branch, force: true);
         }
     }
 
@@ -211,6 +212,6 @@ public partial class BranchSwitcherView : UserControl
         Close();
         var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ", "ブランチ名を入力してください");
         if (!string.IsNullOrWhiteSpace(name))
-            await vm.CreateBranchAsync(name);
+            await vm.Commands.CreateBranchAsync(name);
     }
 }

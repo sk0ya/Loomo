@@ -75,7 +75,7 @@ public class ShellViewModelTests
             new DiffFileGateway());
         var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService(), workspace, diffSessionVm);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(), diffSessionVm,
-            new GitSessionQuery(git));
+            new GitSessionQuery(git), new GitSessionCommandHandler(git));
         var traceSessionVm = new TraceSessionViewModel(
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 

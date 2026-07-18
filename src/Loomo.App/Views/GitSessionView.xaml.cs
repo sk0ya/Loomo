@@ -1,3 +1,4 @@
+
 using System;
 using System.ComponentModel;
 using System.Linq;
@@ -229,31 +230,31 @@ public partial class GitSessionView : UserControl
     private async void OnBranchCheckout(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedBranch is { } branch)
-            await vm.CheckoutBranchAsync(branch);
+            await vm.Commands.CheckoutBranchAsync(branch);
     }
 
     private async void OnBranchMerge(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedBranch is { } branch)
-            await vm.MergeAsync(branch);
+            await vm.Commands.MergeAsync(branch);
     }
 
     private async void OnBranchMergeFastForwardOnly(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedBranch is { } branch)
-            await vm.MergeAsync(branch, GitMergeStrategy.FastForwardOnly);
+            await vm.Commands.MergeAsync(branch, GitMergeStrategy.FastForwardOnly);
     }
 
     private async void OnBranchMergeNoFastForward(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedBranch is { } branch)
-            await vm.MergeAsync(branch, GitMergeStrategy.NoFastForward);
+            await vm.Commands.MergeAsync(branch, GitMergeStrategy.NoFastForward);
     }
 
     private async void OnBranchMergeSquash(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedBranch is { } branch)
-            await vm.MergeAsync(branch, GitMergeStrategy.Squash);
+            await vm.Commands.MergeAsync(branch, GitMergeStrategy.Squash);
     }
 
     private async void OnBranchRebase(object sender, RoutedEventArgs e)
@@ -264,7 +265,7 @@ public partial class GitSessionView : UserControl
             $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
             "リベース", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Yes)
-            await vm.RebaseAsync(branch);
+            await vm.Commands.RebaseAsync(branch);
     }
 
     private async void OnBranchCreateFrom(object sender, RoutedEventArgs e)
@@ -274,7 +275,7 @@ public partial class GitSessionView : UserControl
         var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ",
             $"{branch.Name} から作成するブランチ名を入力してください");
         if (!string.IsNullOrWhiteSpace(name))
-            await vm.CreateBranchAsync(name, branch.Name);
+            await vm.Commands.CreateBranchAsync(name, branch.Name);
     }
 
     private void OnBranchCopyName(object sender, RoutedEventArgs e)
@@ -295,7 +296,7 @@ public partial class GitSessionView : UserControl
         if (answer != MessageBoxResult.Yes)
             return;
 
-        var result = await vm.DeleteBranchAsync(branch, force: false);
+        var result = await vm.Commands.DeleteBranchAsync(branch, force: false);
         if (result is { Success: false } &&
             result.Message.Contains("not fully merged", StringComparison.OrdinalIgnoreCase))
         {
@@ -303,7 +304,7 @@ public partial class GitSessionView : UserControl
                 $"{branch.Name} はマージされていないコミットを含みます。強制削除（-D）しますか？\nコミットが失われる可能性があります。",
                 "ブランチの強制削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (forceAnswer == MessageBoxResult.Yes)
-                await vm.DeleteBranchAsync(branch, force: true);
+                await vm.Commands.DeleteBranchAsync(branch, force: true);
         }
     }
 
@@ -314,19 +315,19 @@ public partial class GitSessionView : UserControl
     private async void OnTagDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (Vm is { } vm && SelectedTag is { } tag)
-            await vm.CheckoutTagAsync(tag);
+            await vm.Commands.CheckoutTagAsync(tag);
     }
 
     private async void OnTagCheckout(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedTag is { } tag)
-            await vm.CheckoutTagAsync(tag);
+            await vm.Commands.CheckoutTagAsync(tag);
     }
 
     private async void OnTagPush(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedTag is { } tag)
-            await vm.PushTagAsync(tag);
+            await vm.Commands.PushTagAsync(tag);
     }
 
     private void OnTagCopyName(object sender, RoutedEventArgs e)
@@ -345,7 +346,7 @@ public partial class GitSessionView : UserControl
             $"タグ {tag.Name} を削除しますか？",
             "タグ削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer == MessageBoxResult.Yes)
-            await vm.DeleteTagAsync(tag);
+            await vm.Commands.DeleteTagAsync(tag);
     }
 
     private async void OnTagCreate(object sender, RoutedEventArgs e) => await CreateTagAsync(target: null);
@@ -359,7 +360,7 @@ public partial class GitSessionView : UserControl
     private async void OnTagsPushAll(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm)
-            await vm.PushAllTagsAsync();
+            await vm.Commands.PushAllTagsAsync();
     }
 
     /// <summary>タグ名（必須）→メッセージ（任意）の順に入力を取り、作成する。</summary>
@@ -374,7 +375,7 @@ public partial class GitSessionView : UserControl
             "注釈メッセージ（空なら軽量タグ）:", allowEmpty: true);
         if (message is null)
             return; // メッセージ入力でキャンセル
-        await vm.CreateTagAsync(name, target, string.IsNullOrWhiteSpace(message) ? null : message);
+        await vm.Commands.CreateTagAsync(name, target, string.IsNullOrWhiteSpace(message) ? null : message);
     }
 
     // ===== サブモジュール操作 =====
@@ -384,19 +385,19 @@ public partial class GitSessionView : UserControl
     private async void OnSubmoduleInit(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedSubmodule is { } submodule)
-            await vm.InitSubmoduleAsync(submodule);
+            await vm.Commands.InitSubmoduleAsync(submodule);
     }
 
     private async void OnSubmoduleUpdate(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedSubmodule is { } submodule)
-            await vm.UpdateSubmoduleAsync(submodule);
+            await vm.Commands.UpdateSubmoduleAsync(submodule);
     }
 
     private async void OnSubmodulesSync(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm)
-            await vm.SyncSubmodulesAsync();
+            await vm.Commands.SyncSubmodulesAsync();
     }
 
     private void OnSubmoduleCopyPath(object sender, RoutedEventArgs e)
@@ -447,20 +448,20 @@ public partial class GitSessionView : UserControl
         var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ",
             $"コミット {row.ShortHash} から作成するブランチ名を入力してください");
         if (!string.IsNullOrWhiteSpace(name))
-            await vm.CreateBranchAsync(name, row.Hash);
+            await vm.Commands.CreateBranchAsync(name, row.Hash);
     }
 
     private async void OnCommitCheckout(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
-            await vm.CheckoutCommitAsync(row);
+            await vm.Commands.CheckoutCommitAsync(row);
     }
 
     private async void OnCommitRewriteMessage(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm || SelectedCommit is not { } row)
             return;
-        var current = await vm.GetCommitMessageAsync(row);
+        var current = await vm.Commands.GetCommitMessageAsync(row);
         var message = InputDialog.Prompt(Window.GetWindow(this), "コミットメッセージを修正",
             $"{row.ShortHash} のコミットメッセージを入力してください。\nこのコミット以降の履歴が書き換わります。",
             current, multiline: true);
@@ -470,7 +471,7 @@ public partial class GitSessionView : UserControl
             $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
             "コミットメッセージを修正", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer == MessageBoxResult.Yes)
-            await vm.RewriteCommitMessageAsync(row, message);
+            await vm.Commands.RewriteCommitMessageAsync(row, message);
     }
 
     /// <summary>選択中のコミット件数（グラフ継続行は除く）。</summary>
@@ -496,7 +497,7 @@ public partial class GitSessionView : UserControl
     {
         if (Vm is not { } vm || SelectedCommit is not { } row)
             return;
-        var (entries, error) = await vm.GetRebaseCandidatesAsync(row);
+        var (entries, error) = await vm.Commands.GetRebaseCandidatesAsync(row);
         if (error is not null)
         {
             MessageBox.Show(Window.GetWindow(this)!, error, "インタラクティブリベース",
@@ -511,7 +512,7 @@ public partial class GitSessionView : UserControl
         var plan = InteractiveRebaseDialog.Show(Window.GetWindow(this), entries);
         if (plan is null)
             return;
-        await vm.InteractiveRebaseAsync(row.Hash!, plan.Value.Plan, plan.Value.Messages);
+        await vm.Commands.InteractiveRebaseAsync(row.Hash!, plan.Value.Plan, plan.Value.Messages);
     }
 
     /// <summary>選択した複数コミットを1つにまとめる（squash）。履歴を書き換えるので確認を取る。</summary>
@@ -532,31 +533,31 @@ public partial class GitSessionView : UserControl
             $"選択した {rows.Count} 件のコミットを1つにまとめます。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
             "スカッシュ", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Yes)
-            await vm.SquashAsync(rows, message);
+            await vm.Commands.SquashAsync(rows, message);
     }
 
     private async void OnCommitCherryPick(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
-            await vm.CherryPickAsync(row);
+            await vm.Commands.CherryPickAsync(row);
     }
 
     private async void OnCommitRevert(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
-            await vm.RevertAsync(row);
+            await vm.Commands.RevertAsync(row);
     }
 
     private async void OnCommitResetSoft(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
-            await vm.ResetAsync(row, GitResetMode.Soft);
+            await vm.Commands.ResetAsync(row, GitResetMode.Soft);
     }
 
     private async void OnCommitResetMixed(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
-            await vm.ResetAsync(row, GitResetMode.Mixed);
+            await vm.Commands.ResetAsync(row, GitResetMode.Mixed);
     }
 
     private async void OnCommitResetHard(object sender, RoutedEventArgs e)
@@ -567,7 +568,7 @@ public partial class GitSessionView : UserControl
             $"{row.ShortHash} まで hard リセットします。作業ツリー・インデックスの変更はすべて失われます。\n実行しますか？",
             "リセット (hard)", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer == MessageBoxResult.Yes)
-            await vm.ResetAsync(row, GitResetMode.Hard);
+            await vm.Commands.ResetAsync(row, GitResetMode.Hard);
     }
 
     private async void OnCommitOpenPatch(object sender, RoutedEventArgs e)

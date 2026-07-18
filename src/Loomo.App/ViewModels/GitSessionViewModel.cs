@@ -1,3 +1,4 @@
+
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -25,6 +26,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private readonly IEditorService _editor;
     private readonly DiffSessionViewModel _diff;
     private readonly GitSessionQuery _query;
+    public GitSessionCommandHandler Commands { get; }
     private bool _loaded;
     private GitStatusSnapshot _status = new();
     private string? _lastWorkspaceRoot;
@@ -159,12 +161,19 @@ public sealed partial class GitSessionViewModel : ObservableObject
     public ICollectionView LogView { get; }
 
     public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff,
-        GitSessionQuery query)
+        GitSessionQuery query, GitSessionCommandHandler commands)
     {
         _git = git;
         _editor = editor;
         _diff = diff;
         _query = query;
+        Commands = commands;
+        Commands.StatusChanged += (_, status) =>
+        {
+            IsBusy = status.IsBusy;
+            StatusIsError = status.IsError;
+            StatusMessage = status.Message;
+        };
         LogView = CollectionViewSource.GetDefaultView(LogRows);
         LogView.Filter = FilterLogRow;
         _git.RepositoryChanged += OnRepositoryChanged;
@@ -588,125 +597,17 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     // ===== 同期 =====
 
-    [RelayCommand] private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());
-    [RelayCommand] private Task PullAsync() => RunOpAsync("プル", () => _git.PullAsync());
-    [RelayCommand] private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
-
-    // ===== ブランチ操作（対象はビューから引数で渡す） =====
-
-    public Task<GitCommandResult?> CheckoutBranchAsync(GitBranchInfo branch) => branch.IsRemote
-        ? RunOpAsync($"チェックアウト {branch.Name}", () => _git.CheckoutTrackAsync(branch.Name))
-        : RunOpAsync($"チェックアウト {branch.Name}", () => _git.CheckoutAsync(branch.Name));
-
-    public Task<GitCommandResult?> CreateBranchAsync(string name, string? startPoint = null) =>
-        RunOpAsync($"ブランチ作成 {name}", () => _git.CreateBranchAsync(name, startPoint));
-
-    public Task<GitCommandResult?> DeleteBranchAsync(GitBranchInfo branch, bool force) =>
-        RunOpAsync($"ブランチ削除 {branch.Name}", () => _git.DeleteBranchAsync(branch.Name, force));
-
-    public async Task<GitCommandResult?> MergeAsync(GitBranchInfo branch, GitMergeStrategy strategy = GitMergeStrategy.Default)
-    {
-        var label = strategy switch
-        {
-            GitMergeStrategy.FastForwardOnly => $"{branch.Name} をFast-forwardのみでマージ",
-            GitMergeStrategy.NoFastForward => $"{branch.Name} をマージコミットを作成してマージ",
-            GitMergeStrategy.Squash => $"{branch.Name} をスカッシュマージ",
-            _ => $"{branch.Name} をマージ"
-        };
-        var result = await RunOpAsync(label, () => _git.MergeAsync(branch.Name, strategy));
-        // スカッシュは git merge --squash の挙動どおりステージするだけでコミットは作らない。
-        // 自動コミットはせず、既存のコミットUI（ステージ済み変更のコミット操作）へ誘導する。
-        if (result is { Success: true } && strategy == GitMergeStrategy.Squash)
-            StatusMessage = $"{label}してステージしました。内容を確認してコミットしてください。";
-        return result;
-    }
-
-    public Task<GitCommandResult?> RebaseAsync(GitBranchInfo branch) =>
-        RunOpAsync($"{branch.Name} へリベース", () => _git.RebaseAsync(branch.Name));
-
-    // ===== インタラクティブリベース =====
-
-    public Task<(IReadOnlyList<RebasePlanEntry> Entries, string? Error)> GetRebaseCandidatesAsync(GitLogRow row) =>
-        row.Hash is null
-            ? Task.FromResult<(IReadOnlyList<RebasePlanEntry>, string?)>((Array.Empty<RebasePlanEntry>(), null))
-            : _git.GetRebaseCandidatesAsync(row.Hash);
-
-    public Task<GitCommandResult?> InteractiveRebaseAsync(
-        string fromHash, IReadOnlyList<RebasePlanEntry> plan, IReadOnlyDictionary<string, string> messages) =>
-        RunOpAsync("インタラクティブリベース", () => _git.InteractiveRebaseAsync(fromHash, plan, messages));
-
-    // ===== タグ操作（対象はビューから引数で渡す） =====
-
-    public Task<GitCommandResult?> CreateTagAsync(string name, string? target, string? message) =>
-        RunOpAsync($"タグ作成 {name}", () => _git.CreateTagAsync(name, target, message));
-
-    public Task<GitCommandResult?> DeleteTagAsync(GitTagInfo tag) =>
-        RunOpAsync($"タグ削除 {tag.Name}", () => _git.DeleteTagAsync(tag.Name));
-
-    public Task<GitCommandResult?> PushTagAsync(GitTagInfo tag) =>
-        RunOpAsync($"タグ {tag.Name} をプッシュ", () => _git.PushTagAsync(tag.Name));
-
-    public Task<GitCommandResult?> PushAllTagsAsync() =>
-        RunOpAsync("すべてのタグをプッシュ", () => _git.PushAllTagsAsync());
-
-    public Task<GitCommandResult?> CheckoutTagAsync(GitTagInfo tag) =>
-        RunOpAsync($"チェックアウト {tag.Name}", () => _git.CheckoutCommitAsync(tag.Name));
-
-    // ===== サブモジュール操作（対象はビューから引数で渡す） =====
-
-    public Task<GitCommandResult?> InitSubmoduleAsync(GitSubmoduleInfo submodule) =>
-        RunOpAsync($"サブモジュール初期化 {submodule.Path}", () => _git.SubmoduleInitAsync(submodule.Path));
-
-    public Task<GitCommandResult?> UpdateSubmoduleAsync(GitSubmoduleInfo submodule) =>
-        RunOpAsync($"サブモジュール更新 {submodule.Path}", () => _git.SubmoduleUpdateAsync(submodule.Path));
-
-    public Task<GitCommandResult?> SyncSubmodulesAsync() =>
-        RunOpAsync("サブモジュール同期", () => _git.SubmoduleSyncAsync());
-
-    // ===== コミット操作 =====
-
-    public Task<GitCommandResult?> CheckoutCommitAsync(GitLogRow row) => row.Hash is null
-        ? Task.FromResult<GitCommandResult?>(null)
-        : RunOpAsync($"チェックアウト {row.ShortHash}", () => _git.CheckoutCommitAsync(row.Hash));
-
-    public Task<GitCommandResult?> CherryPickAsync(GitLogRow row) => row.Hash is null
-        ? Task.FromResult<GitCommandResult?>(null)
-        : RunOpAsync($"チェリーピック {row.ShortHash}", () => _git.CherryPickAsync(row.Hash));
-
-    public Task<GitCommandResult?> RevertAsync(GitLogRow row) => row.Hash is null
-        ? Task.FromResult<GitCommandResult?>(null)
-        : RunOpAsync($"リバート {row.ShortHash}", () => _git.RevertAsync(row.Hash));
-
-    public Task<GitCommandResult?> ResetAsync(GitLogRow row, GitResetMode mode) => row.Hash is null
-        ? Task.FromResult<GitCommandResult?>(null)
-        : RunOpAsync($"リセット（{mode.ToString().ToLowerInvariant()}）{row.ShortHash}",
-            () => _git.ResetAsync(row.Hash, mode));
-
-    public Task<string> GetCommitMessageAsync(GitLogRow row) => row.Hash is null
-        ? Task.FromResult("")
-        : _git.GetCommitMessageAsync(row.Hash);
-
-    public Task<GitCommandResult?> RewriteCommitMessageAsync(GitLogRow row, string message) => row.Hash is null
-        ? Task.FromResult<GitCommandResult?>(null)
-        : RunOpAsync($"コミットメッセージ修正 {row.ShortHash}",
-            () => _git.RewriteCommitMessageAsync(row.Hash, message));
+    [RelayCommand] private Task FetchAsync() => Commands.FetchAsync();
+    [RelayCommand] private Task PullAsync() => Commands.PullAsync();
+    [RelayCommand] private Task PushAsync() => Commands.PushAsync();
 
     public async Task<string> GetCombinedCommitMessageAsync(IReadOnlyList<GitLogRow> rows)
     {
         var commits = rows.Where(r => r.Hash is not null)
             .OrderByDescending(r => LogRows.IndexOf(r)) // 一覧は新しい順なので、古いコミットから連結
             .ToList();
-        var messages = await Task.WhenAll(commits.Select(c => _git.GetCommitMessageAsync(c.Hash!)));
+        var messages = await Task.WhenAll(commits.Select(c => Commands.GetCommitMessageAsync(c)));
         return string.Join("\n\n", messages.Where(m => !string.IsNullOrWhiteSpace(m)));
-    }
-
-    /// <summary>選択した連続コミット群を1つにまとめる（squash）。2件未満なら何もしない。</summary>
-    public Task<GitCommandResult?> SquashAsync(IReadOnlyList<GitLogRow> rows, string commitMessage)
-    {
-        var hashes = rows.Where(r => r.Hash is not null).Select(r => r.Hash!).ToList();
-        if (hashes.Count < 2)
-            return Task.FromResult<GitCommandResult?>(null);
-        return RunOpAsync($"スカッシュ（{hashes.Count} 件）", () => _git.SquashAsync(hashes, commitMessage));
     }
 
     /// <summary>
@@ -748,53 +649,10 @@ public sealed partial class GitSessionViewModel : ObservableObject
         });
     }
 
-    // ===== 進行中操作（rebase / merge / cherry-pick）の続行・スキップ・中止 =====
+    // ===== 進行中操作 =====
 
-    [RelayCommand]
-    private Task ContinueOperationAsync() =>
-        _status.RebaseInProgress ? RunOpAsync("リベース続行", () => _git.RebaseContinueAsync())
-        : _status.CherryPickInProgress ? RunOpAsync("チェリーピック続行", () => _git.CherryPickContinueAsync())
-        : _status.MergeInProgress ? RunOpAsync("マージ続行", () => _git.MergeContinueAsync())
-        : Task.CompletedTask;
+    [RelayCommand] private Task ContinueOperationAsync() => Commands.ContinueAsync(_status);
+    [RelayCommand] private Task SkipOperationAsync() => Commands.SkipAsync(_status);
+    [RelayCommand] private Task AbortOperationAsync() => Commands.AbortAsync(_status);
 
-    [RelayCommand]
-    private Task SkipOperationAsync() =>
-        _status.RebaseInProgress ? RunOpAsync("リベーススキップ", () => _git.RebaseSkipAsync())
-        : _status.CherryPickInProgress ? RunOpAsync("チェリーピックスキップ", () => _git.CherryPickSkipAsync())
-        : Task.CompletedTask;
-
-    [RelayCommand]
-    private Task AbortOperationAsync() =>
-        _status.RebaseInProgress ? RunOpAsync("リベース中止", () => _git.RebaseAbortAsync())
-        : _status.CherryPickInProgress ? RunOpAsync("チェリーピック中止", () => _git.CherryPickAbortAsync())
-        : _status.MergeInProgress ? RunOpAsync("マージ中止", () => _git.MergeAbortAsync())
-        : Task.CompletedTask;
-
-    /// <summary>更新系操作の共通枠：多重実行の抑止・結果メッセージの表示。実行できなければ null。</summary>
-    private async Task<GitCommandResult?> RunOpAsync(string label, Func<Task<GitCommandResult>> operation)
-    {
-        if (IsBusy) return null;
-        IsBusy = true;
-        StatusMessage = $"{label}を実行中…";
-        StatusIsError = false;
-        try
-        {
-            var result = await operation();
-            StatusIsError = !result.Success;
-            StatusMessage = result.Success
-                ? $"{label}が完了しました。"
-                : Truncate(result.Message);
-            return result;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private static string Truncate(string text)
-    {
-        var t = text.Trim();
-        return t.Length <= 300 ? t : t[..300] + "…";
-    }
 }
