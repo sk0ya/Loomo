@@ -271,9 +271,9 @@ public class FileToolTests : IDisposable
         public string? RootPath => "C:\\root";
         public string? SelectedPath { get; set; }
         public void OpenFolder(string rootPath) { }
-        public Task<System.Collections.Generic.IReadOnlyList<sk0ya.Loomo.Core.Models.FileNode>> ListAsync(string path)
+        public Task<System.Collections.Generic.IReadOnlyList<sk0ya.Loomo.Core.Models.FileNode>> ListAsync(string path, CancellationToken ct = default)
             => Task.FromResult<System.Collections.Generic.IReadOnlyList<sk0ya.Loomo.Core.Models.FileNode>>(Array.Empty<sk0ya.Loomo.Core.Models.FileNode>());
-        public Task<string> ReadFileAsync(string path) => Task.FromResult("");
+        public Task<string> ReadFileAsync(string path, CancellationToken ct = default) => Task.FromResult("");
         public string ResolvePath(string path)
             => throw new UnauthorizedAccessException($"ワークスペースルート外へのアクセスは許可されていません: {path}");
 #pragma warning disable CS0067

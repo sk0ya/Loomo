@@ -8,8 +8,8 @@ public interface IWorkspaceService
     string? RootPath { get; }
     string? SelectedPath { get; set; }
     void OpenFolder(string rootPath);
-    Task<IReadOnlyList<FileNode>> ListAsync(string path);
-    Task<string> ReadFileAsync(string path);
+    Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default);
+    Task<string> ReadFileAsync(string path, CancellationToken ct = default);
     /// <summary>パスをワークスペースルート基準の絶対パスへ解決する。</summary>
     string ResolvePath(string path);
     event EventHandler<string?>? SelectionChanged;

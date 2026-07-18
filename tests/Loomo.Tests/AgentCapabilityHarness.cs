@@ -798,7 +798,7 @@ public sealed class AgentCapabilityHarness
             }
         }
         public void OpenFolder(string rootPath) => RootChanged?.Invoke(this, RootPath);
-        public Task<IReadOnlyList<FileNode>> ListAsync(string path)
+        public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)
         {
             var dir = ResolvePath(path);
             IReadOnlyList<FileNode> nodes = Directory.Exists(dir)
@@ -807,7 +807,7 @@ public sealed class AgentCapabilityHarness
                 : new List<FileNode>();
             return Task.FromResult(nodes);
         }
-        public Task<string> ReadFileAsync(string path) => File.ReadAllTextAsync(ResolvePath(path));
+        public Task<string> ReadFileAsync(string path, CancellationToken ct = default) => File.ReadAllTextAsync(ResolvePath(path), ct);
         public string ResolvePath(string path)
         {
             var full = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(_root, path));
@@ -822,10 +822,10 @@ public sealed class AgentCapabilityHarness
     private sealed class HeadlessEditor : IEditorService
     {
         public string? ActiveFilePath { get; private set; }
-        public Task OpenFileAsync(string path) { ActiveFilePath = path; return Task.CompletedTask; }
-        public Task<string> GetActiveContentAsync() => Task.FromResult("");
-        public Task<string> GetSelectedTextAsync() => Task.FromResult("");
-        public Task OpenDocumentAsync(EditorDocument document) => Task.CompletedTask;
+        public Task OpenFileAsync(string path, CancellationToken ct = default) { ActiveFilePath = path; return Task.CompletedTask; }
+        public Task<string> GetActiveContentAsync(CancellationToken ct = default) => Task.FromResult("");
+        public Task<string> GetSelectedTextAsync(CancellationToken ct = default) => Task.FromResult("");
+        public Task OpenDocumentAsync(EditorDocument document, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class AutoApproval : IApprovalService

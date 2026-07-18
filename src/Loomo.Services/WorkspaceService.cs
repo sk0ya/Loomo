@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
@@ -39,24 +40,30 @@ public sealed class WorkspaceService : IWorkspaceService
         RootChanged?.Invoke(this, RootPath);
     }
 
-    public Task<IReadOnlyList<FileNode>> ListAsync(string path)
+    public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var target = ResolvePath(path);
         if (!Directory.Exists(target))
             return Task.FromResult<IReadOnlyList<FileNode>>(Array.Empty<FileNode>());
 
         var dirs = Directory.EnumerateDirectories(target)
+            .TakeWhile(_ => !ct.IsCancellationRequested)
             .Select(d => new FileNode(Path.GetFileName(d), d, true));
         var files = Directory.EnumerateFiles(target)
+            .TakeWhile(_ => !ct.IsCancellationRequested)
             .Select(f => new FileNode(Path.GetFileName(f), f, false));
-        return Task.FromResult<IReadOnlyList<FileNode>>(dirs.Concat(files).ToList());
+        var nodes = dirs.Concat(files).ToList();
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<FileNode>>(nodes);
     }
 
-    public async Task<string> ReadFileAsync(string path)
+    public async Task<string> ReadFileAsync(string path, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var target = ResolvePath(path);
         if (!File.Exists(target)) return $"(ファイルが存在しません: {target})";
-        return await File.ReadAllTextAsync(target);
+        return await File.ReadAllTextAsync(target, ct);
     }
 
     public string ResolvePath(string path)

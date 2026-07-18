@@ -109,7 +109,9 @@ public sealed class EditFileTool : IAgentTool, IFileMutationTool
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { return ToolResult.Error($"書き込みに失敗しました: {ex.Message}"); }
 
-            try { await _editor.OpenFileAsync(resolved); } catch { /* 表示は best-effort */ }
+            try { await _editor.OpenFileAsync(resolved, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch { /* 表示は best-effort */ }
             return ToolResult.Ok($"追記完了: {resolved}（末尾に {newStr.Length} 文字を追記）");
         }
 
@@ -147,7 +149,9 @@ public sealed class EditFileTool : IAgentTool, IFileMutationTool
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return ToolResult.Error($"書き込みに失敗しました: {ex.Message}"); }
 
-        try { await _editor.OpenFileAsync(resolved); } catch { /* 表示は best-effort */ }
+        try { await _editor.OpenFileAsync(resolved, ct); }
+        catch (OperationCanceledException) { throw; }
+        catch { /* 表示は best-effort */ }
 
         return ToolResult.Ok($"編集完了: {resolved}（1 箇所置換）");
     }

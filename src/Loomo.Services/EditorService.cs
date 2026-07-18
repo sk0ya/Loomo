@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
@@ -58,22 +59,30 @@ public sealed class EditorService : IEditorService
 
     public string? ActiveFilePath => Dispatch(() => _ctrl?.FilePath);
 
-    public Task OpenFileAsync(string path)
+    public Task OpenFileAsync(string path, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         // タブの作成・再利用・アクティブ化はホスト側でしか正しく行えないので委ねる。
         // 購読者（ShellWindow）が居なければ何もしない（best-effort）。
         DispatchVoid(() => FileOpenRequested?.Invoke(path));
         return Task.CompletedTask;
     }
 
-    public Task<string> GetActiveContentAsync()
-        => Task.FromResult(Dispatch(() => _ctrl?.Text) ?? string.Empty);
-
-    public Task<string> GetSelectedTextAsync()
-        => Task.FromResult(Dispatch(() => _ctrl?.SelectedText) ?? string.Empty);
-
-    public Task OpenDocumentAsync(EditorDocument document)
+    public Task<string> GetActiveContentAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(Dispatch(() => _ctrl?.Text) ?? string.Empty);
+    }
+
+    public Task<string> GetSelectedTextAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(Dispatch(() => _ctrl?.SelectedText) ?? string.Empty);
+    }
+
+    public Task OpenDocumentAsync(EditorDocument document, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
         // ファイルを介さない仮想ドキュメントとして開く（ディスクには一切書かない）。
         // 保存（:w）は SaveRequested(IsVirtual=true) で通知され、永続化は OnSaved コールバックが担う。
         var syntax = SyntaxFromName(document.FileName);

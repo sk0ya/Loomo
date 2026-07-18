@@ -102,7 +102,9 @@ public sealed class WriteFileTool : IAgentTool, IFileMutationTool
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return ToolResult.Error($"書き込みに失敗しました: {ex.Message}"); }
 
-        try { await _editor.OpenFileAsync(resolved); } catch { /* 表示は best-effort */ }
+        try { await _editor.OpenFileAsync(resolved, ct); }
+        catch (OperationCanceledException) { throw; }
+        catch { /* 表示は best-effort */ }
 
         return ToolResult.Ok(
             $"書き込み完了: {resolved}（{FileToolText.CountLines(content)}行 / {Encoding.UTF8.GetByteCount(content)} bytes）");

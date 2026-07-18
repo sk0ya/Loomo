@@ -73,7 +73,7 @@ public sealed class WorkflowToolRunner
         => step.Kind switch
         {
             WorkflowStepKind.Command => await RunCommandAsync(resolvedPrimary, ct),
-            WorkflowStepKind.ReadFile => await RunReadFileAsync(resolvedPrimary),
+            WorkflowStepKind.ReadFile => await RunReadFileAsync(resolvedPrimary, ct),
             WorkflowStepKind.WriteFile => await RunWriteFileAsync(resolvedPrimary, resolvedContent, ct),
             WorkflowStepKind.Transform => RunTransform(step, resolvedPrimary, resolvedContent),
             _ => new WorkflowToolResult("", false, $"未対応のステップ種別です: {step.Kind}"),
@@ -97,7 +97,7 @@ public sealed class WorkflowToolRunner
         return new WorkflowToolResult(result.Output.TrimEnd(), result.Success, summary);
     }
 
-    private async Task<WorkflowToolResult> RunReadFileAsync(string path)
+    private async Task<WorkflowToolResult> RunReadFileAsync(string path, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(path))
             return new WorkflowToolResult("", false, "ファイルパスが空です。");
@@ -111,9 +111,10 @@ public sealed class WorkflowToolRunner
 
         try
         {
-            var content = await _workspace.ReadFileAsync(resolved);
+            var content = await _workspace.ReadFileAsync(resolved, ct);
             return new WorkflowToolResult(content, true, $"読込: {resolved}（{CountLines(content)}行）");
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             return new WorkflowToolResult("", false, $"読込に失敗しました: {ex.Message}");
@@ -139,7 +140,9 @@ public sealed class WorkflowToolRunner
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return new WorkflowToolResult("", false, $"書き込みに失敗しました: {ex.Message}"); }
 
-        try { await _editor.OpenFileAsync(resolved); } catch { /* 表示は best-effort */ }
+        try { await _editor.OpenFileAsync(resolved, ct); }
+        catch (OperationCanceledException) { throw; }
+        catch { /* 表示は best-effort */ }
 
         var summary = $"書き込み完了: {resolved}（{CountLines(content)}行 / {Encoding.UTF8.GetByteCount(content)} bytes）";
         // 後段で参照できるよう、出力には書き込んだ内容自体を渡す。

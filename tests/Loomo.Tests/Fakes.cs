@@ -39,11 +39,11 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
         RootChanged?.Invoke(this, rootPath);
     }
 
-    public Task<IReadOnlyList<FileNode>> ListAsync(string path)
+    public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<FileNode>>(Array.Empty<FileNode>());
 
-    public async Task<string> ReadFileAsync(string path)
-        => File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty;
+    public async Task<string> ReadFileAsync(string path, CancellationToken ct = default)
+        => File.Exists(path) ? await File.ReadAllTextAsync(path, ct) : string.Empty;
 
     public string ResolvePath(string path) => path;
 
