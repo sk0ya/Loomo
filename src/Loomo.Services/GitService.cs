@@ -27,6 +27,7 @@ public sealed class GitService
     private readonly GitHistoryService _history;
     private readonly GitBranchService _branches;
     private readonly GitMutationExecutor _mutations;
+    private readonly GitMergeService _merge;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -41,6 +42,7 @@ public sealed class GitService
         _history = new GitHistoryService(_runner);
         _branches = new GitBranchService(_runner);
         _mutations = new GitMutationExecutor(_runner);
+        _merge = new GitMergeService(_mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
@@ -431,16 +433,10 @@ public sealed class GitService
     /// 既存の <c>MergeInProgress</c> 検出・解決 UI がそのまま機能する。
     /// </summary>
     public Task<GitCommandResult> MergeAsync(string branch, GitMergeStrategy strategy = GitMergeStrategy.Default) =>
-        strategy switch
-        {
-            GitMergeStrategy.FastForwardOnly => MutateAsync("merge", "--ff-only", branch),
-            GitMergeStrategy.NoFastForward => MutateAsync("merge", "--no-ff", "--no-edit", branch),
-            GitMergeStrategy.Squash => MutateAsync("merge", "--squash", branch),
-            _ => MutateAsync("merge", "--no-edit", branch)
-        };
+        _merge.MergeAsync(branch, strategy);
 
-    public Task<GitCommandResult> MergeContinueAsync() => MutateAsync("merge", "--continue");
-    public Task<GitCommandResult> MergeAbortAsync() => MutateAsync("merge", "--abort");
+    public Task<GitCommandResult> MergeContinueAsync() => _merge.ContinueMergeAsync();
+    public Task<GitCommandResult> MergeAbortAsync() => _merge.AbortMergeAsync();
 
     public Task<GitCommandResult> RebaseAsync(string onto) => MutateAsync("rebase", onto);
     public async Task<GitCommandResult> RebaseContinueAsync()
@@ -458,12 +454,12 @@ public sealed class GitService
         return result;
     }
 
-    public Task<GitCommandResult> CherryPickAsync(string hash) => MutateAsync("cherry-pick", hash);
-    public Task<GitCommandResult> CherryPickContinueAsync() => MutateAsync("cherry-pick", "--continue");
-    public Task<GitCommandResult> CherryPickSkipAsync() => MutateAsync("cherry-pick", "--skip");
-    public Task<GitCommandResult> CherryPickAbortAsync() => MutateAsync("cherry-pick", "--abort");
+    public Task<GitCommandResult> CherryPickAsync(string hash) => _merge.CherryPickAsync(hash);
+    public Task<GitCommandResult> CherryPickContinueAsync() => _merge.ContinueCherryPickAsync();
+    public Task<GitCommandResult> CherryPickSkipAsync() => _merge.SkipCherryPickAsync();
+    public Task<GitCommandResult> CherryPickAbortAsync() => _merge.AbortCherryPickAsync();
 
-    public Task<GitCommandResult> RevertAsync(string hash) => MutateAsync("revert", "--no-edit", hash);
+    public Task<GitCommandResult> RevertAsync(string hash) => _merge.RevertAsync(hash);
 
     // ===== スタッシュ =====
 
