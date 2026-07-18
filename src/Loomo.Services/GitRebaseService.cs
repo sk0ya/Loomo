@@ -242,6 +242,139 @@ public sealed class GitRebaseService
         Directory.Exists(Path.Combine(gitDirectory, "rebase-merge"))
         || Directory.Exists(Path.Combine(gitDirectory, "rebase-apply"));
 
+    public async Task<(IReadOnlyList<RebasePlanEntry> Entries, string? Error)>
+        GetCandidatesAsync(string fromHash)
+    {
+        var onHead = await _runner.RunAsync(
+            "merge-base", "--is-ancestor", fromHash, "HEAD").ConfigureAwait(false);
+        if (!onHead.Success)
+            return (Array.Empty<RebasePlanEntry>(), "現在のブランチに含まれるコミットのみ対象にできます。");
+
+        var hasParent = (await _runner.RunAsync(
+            "rev-parse", "--verify", "--quiet", $"{fromHash}^").ConfigureAwait(false)).Success;
+        var range = hasParent ? $"{fromHash}^..HEAD" : "HEAD";
+        var chainResult = await _runner.RunAsync(
+            "rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
+        if (!chainResult.Success)
+            return (Array.Empty<RebasePlanEntry>(), chainResult.Message);
+        var chain = SplitLines(chainResult.Output);
+        if (chain.Count == 0 || !string.Equals(chain[0], fromHash, StringComparison.OrdinalIgnoreCase))
+            return (Array.Empty<RebasePlanEntry>(), "現在のブランチの主系列にあるコミットのみ対象にできます。");
+
+        var merges = await _runner.RunAsync("rev-list", "--min-parents=2", range)
+            .ConfigureAwait(false);
+        if (!merges.Success)
+            return (Array.Empty<RebasePlanEntry>(), merges.Message);
+        if (SplitLines(merges.Output).Count > 0)
+            return (Array.Empty<RebasePlanEntry>(),
+                "対象から HEAD までにマージコミットがあるため、インタラクティブリベースできません。");
+
+        var detail = await _runner.RunAsync(
+            "log", "--reverse", "--first-parent", "--pretty=format:%H%x1f%h%x1f%s", range)
+            .ConfigureAwait(false);
+        if (!detail.Success)
+            return (Array.Empty<RebasePlanEntry>(), detail.Message);
+
+        var entries = new List<RebasePlanEntry>();
+        foreach (var line in detail.Output.Split('\n'))
+        {
+            var value = line.TrimEnd('\r');
+            if (value.Length == 0) continue;
+            var parts = value.Split('\x1f');
+            if (parts.Length >= 3)
+                entries.Add(new RebasePlanEntry(
+                    parts[0], parts[1], parts[2], RebaseAction.Pick));
+        }
+        return (entries, null);
+    }
+
+    public async Task<GitCommandResult> InteractiveRebaseAsync(
+        string fromHash,
+        IReadOnlyList<RebasePlanEntry> plan,
+        IReadOnlyDictionary<string, string> newMessages)
+    {
+        try
+        {
+            return await InteractiveRebaseCoreAsync(fromHash, plan, newMessages).ConfigureAwait(false);
+        }
+        finally
+        {
+            _mutations.NotifyRepositoryChanged();
+        }
+    }
+
+    private async Task<GitCommandResult> InteractiveRebaseCoreAsync(
+        string fromHash,
+        IReadOnlyList<RebasePlanEntry> plan,
+        IReadOnlyDictionary<string, string> newMessages)
+    {
+        if (plan.Count == 0)
+            return new GitCommandResult(-1, "", "リベース対象がありません。");
+        var onHead = await _runner.RunAsync(
+            "merge-base", "--is-ancestor", fromHash, "HEAD").ConfigureAwait(false);
+        if (!onHead.Success)
+            return new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ対象にできます。");
+
+        var hasParent = (await _runner.RunAsync(
+            "rev-parse", "--verify", "--quiet", $"{fromHash}^").ConfigureAwait(false)).Success;
+        var range = hasParent ? $"{fromHash}^..HEAD" : "HEAD";
+        var chainResult = await _runner.RunAsync(
+            "rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
+        if (!chainResult.Success) return chainResult;
+        var chain = SplitLines(chainResult.Output);
+        var planHashes = plan.Select(entry => entry.Hash).ToList();
+        if (chain.Count != planHashes.Count || !chain.ToHashSet().SetEquals(planHashes))
+            return new GitCommandResult(-1, "", "対象のコミット構成が変わったため実行できません。一覧を開き直してください。");
+
+        var merges = await _runner.RunAsync("rev-list", "--min-parents=2", range)
+            .ConfigureAwait(false);
+        if (!merges.Success) return merges;
+        if (SplitLines(merges.Output).Count > 0)
+            return new GitCommandResult(-1, "", "対象から HEAD までにマージコミットがあるため、インタラクティブリベースできません。");
+
+        var firstNonDrop = plan.FirstOrDefault(entry => entry.Action != RebaseAction.Drop);
+        if (firstNonDrop is null)
+            return new GitCommandResult(-1, "", "少なくとも1件は pick / reword / edit にしてください。");
+        if (firstNonDrop.Action is RebaseAction.Squash or RebaseAction.Fixup)
+            return new GitCommandResult(-1, "", "先頭のコミットは pick / reword / edit のいずれかにしてください。");
+        foreach (var entry in plan)
+            if (entry.Action == RebaseAction.Reword && !newMessages.ContainsKey(entry.Hash))
+                return new GitCommandResult(-1, "", $"{entry.ShortHash} の新しいメッセージが入力されていません。");
+
+        var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
+        if (gitDirectory is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+        var extraFiles = new List<(string FileName, string Content)>();
+        var todo = new StringBuilder();
+        foreach (var entry in plan)
+        {
+            if (entry.Action == RebaseAction.Reword)
+            {
+                var fileName = $"loomo-rebase-msg-{entry.Hash}.txt";
+                todo.Append("pick ").Append(entry.Hash).Append('\n')
+                    .Append("exec git commit --amend -F '")
+                    .Append(ToMsysPath(Path.Combine(gitDirectory, fileName))).Append("'\n");
+                extraFiles.Add((fileName, newMessages[entry.Hash].TrimEnd() + Environment.NewLine));
+            }
+            else
+            {
+                var action = entry.Action switch
+                {
+                    RebaseAction.Drop => "drop",
+                    RebaseAction.Squash => "squash",
+                    RebaseAction.Fixup => "fixup",
+                    RebaseAction.Edit => "edit",
+                    _ => "pick",
+                };
+                todo.Append(action).Append(' ').Append(entry.Hash).Append('\n');
+            }
+        }
+
+        return await RunScriptedRebaseAsync(
+            "loomo-rebase-todo.txt", todo.ToString(), hasParent ? $"{fromHash}^" : "--root", extraFiles)
+            .ConfigureAwait(false);
+    }
+
     internal async Task DeleteScriptedArtifactsAsync()
     {
         var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
