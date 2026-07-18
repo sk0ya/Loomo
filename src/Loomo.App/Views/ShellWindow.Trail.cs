@@ -42,11 +42,12 @@ public partial class ShellWindow
     /// <summary>ユーザーが過去の地点を見ている（＝最新を追っていない）間 true。バーへ新しい地点が
     /// 積まれても左端を動かさず、見ている位置を保つ（レイアウト変更などで最新へ引っ張らない）。
     /// 「今」へ戻す操作・最新への移動・ホイールで右端まで戻したら false（＝ライブ追従）へ戻す。</summary>
-    private bool _trailBrowsingPast;
-
-    /// <summary>ホイールでの現在地移動を1回のジャンプへ畳むデバウンス。</summary>
-    private DispatcherTimer? _trailScrubTimer;
-    private TrailEntryViewModel? _trailScrubTarget;
+    private TrailBarController _trailBar = null!;
+    private bool _trailBrowsingPast
+    {
+        get => _trailBar.BrowsingPast;
+        set => _trailBar.BrowsingPast = value;
+    }
     private TrailEntryViewModel? _trailPendingJumpEntry;
     private bool _trailJumpRunning;
 
@@ -79,16 +80,12 @@ public partial class ShellWindow
             }), DispatcherPriority.Loaded);
         // 末尾余白（ビュー幅ぶん）をバーの幅に追従させる。これが無いと ScrollViewer のクランプで
         // 末尾付近のドットを左端まで寄せられない（選んだ時間帯が左端に届かない）。
-        TrailScroll.SizeChanged += (_, _) => UpdateTrailTrailingMargin();
+        TrailScroll.SizeChanged += (_, _) => _trailBar.UpdateTrailingMargin();
         // 日付・時刻ボタンの再クリックによるトグル判定用：ボタンを再クリックすると、Click が届く前に
         // ロストフォーカスでポップアップが閉じるため、閉じた時刻を覚えて直後の再オープンを抑止する。
         // 併せて、ポップアップ内での日付・時間帯の選択は閉じたこの瞬間にまとめて画面（レイアウト）へ反映する
         // （選択中はバー内ナビゲーションに留め、閉じたときに現在地の地点へジャンプする＝コミット、§27.7.2）。
-        TrailDateTimePopup.Closed += (_, _) =>
-        {
-            _trailDateTimePopupClosedAt = DateTime.UtcNow;
-            CommitTrailPopupSelection();
-        };
+        TrailDateTimePopup.Closed += (_, _) => _trailBar.PopupClosed();
         // ウィンドウがフォーカスを失ったら日付・時刻ポップアップも閉じる（ロストフォーカスで閉じる）。
         // ポップアップ内クリックはウィンドウをアクティブに保つので、真に外部へ移ったときだけ閉じる。
         Deactivated += (_, _) => { if (TrailDateTimePopup.IsOpen) TrailDateTimePopup.IsOpen = false; };
@@ -100,14 +97,6 @@ public partial class ShellWindow
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
             new Action(() => _vm.Trail.EnsureLoaded()));
     }
-
-    /// <summary>日付・時刻ポップアップが最後に閉じた時刻（ボタン再クリックでのトグル判定）。</summary>
-    private DateTime _trailDateTimePopupClosedAt;
-
-    /// <summary>日付・時刻ポップアップを開いてから、日付か時間帯を選んだ（＝現在地をバー内で動かした）か。
-    /// 選択中は画面（レイアウト）を変えず、ポップアップを閉じたときにまとめて現在地の地点へジャンプする
-    /// （<see cref="CommitTrailPopupSelection"/>）ためのフラグ。開くたびに false へ戻す（§27.7.2）。</summary>
-    private bool _trailPopupSelectionMade;
 
     /// <summary>ライブの時刻ラベルを定期更新するタイマ。</summary>
     private DispatcherTimer? _trailHourTicker;
@@ -632,209 +621,18 @@ public partial class ShellWindow
     /// 動かさない＝ドット列を眺めるナビゲーション）。<b>Shift+ホイール</b>は従来どおり現在地を前後へ動かして
     /// その地点の表示を復元する（上＝過去（左）へ、下＝未来（右）へ／実ジャンプは少し遅らせて連続ホイールを
     /// 最後の1回に畳む）。</summary>
-    private void OnTrailWheel(object sender, MouseWheelEventArgs e)
-    {
-        e.Handled = true;
-        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-        {
-            ScrubTrailByWheel(e.Delta);
-            return;
-        }
-        // 素のホイール：バーを水平にスクロールするだけ。右端（ライブ端）から離れたら追従を止め、
-        // 右端まで戻したらライブ追従を再開する。
-        var target = TrailScroll.HorizontalOffset + (e.Delta > 0 ? -1 : +1) * (TrailDotWidth * 3);
-        TrailScroll.ScrollToHorizontalOffset(target);
-        _trailBrowsingPast = target < TrailScroll.ScrollableWidth - 1;
-    }
-
-    /// <summary>Shift+ホイールでの現在地移動。移動先を左端へ寄せて見せ、実ジャンプは
-    /// <see cref="_trailScrubTimer"/> で遅らせて連続ホイールを1回に畳む。</summary>
-    private void ScrubTrailByWheel(int delta)
-    {
-        var entry = _vm.Trail.MoveCurrent(delta > 0 ? -1 : +1);
-        _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
-        ScrollTrailToCurrent();
-        if (entry is null)
-            return;
-
-        _trailScrubTarget = entry;
-        _trailScrubTimer ??= CreateTrailScrubTimer();
-        _trailScrubTimer.Stop();
-        _trailScrubTimer.Start();
-    }
-
-    private DispatcherTimer CreateTrailScrubTimer()
-    {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            if (_trailScrubTarget is { } target)
-            {
-                _trailScrubTarget = null;
-                JumpToTrailEntry(target);
-            }
-        };
-        return timer;
-    }
-
-    /// <summary>ドット1個のスロット幅。XAML のドット Button の幅と揃える。</summary>
-    private const double TrailDotWidth = 20;
-
-    /// <summary>時間帯の先頭ドットに前置する時刻ラベル枠の幅。XAML の HourTick Border は
-    /// TrailHourLabelW トークン（UiFontManager がフォントサイズと同倍率でスケール）を参照するため、
-    /// ここも <see cref="UiFontManager.Scaled"/> で同じ倍率を掛けて揃える。</summary>
-    private static double TrailHourLabelWidth => UiFontManager.Scaled(38);
-
-    /// <summary>ドット列の左端から index 番目のスロットの左端までの累積幅。時間帯の先頭ドットは
-    /// 左に時刻ラベル枠（幅 <see cref="TrailHourLabelWidth"/>）が前置されてスロットが広くなるため、
-    /// 単純な等間隔ではなく各ドットの実効幅を積む。index==Entries.Count で全体の内容幅になる。</summary>
-    private double TrailSlotOffset(int index)
-    {
-        var entries = _vm.Trail.Entries;
-        double x = 0;
-        for (var i = 0; i < index && i < entries.Count; i++)
-            x += TrailDotWidth + (entries[i].StartsNewHour ? TrailHourLabelWidth : 0);
-        return x;
-    }
-
-    /// <summary>唯一のスクロール追従。現在地のドットのスロット左端を表示領域の左端へ寄せる
-    /// （時間帯の先頭なら時刻ラベル枠の先頭）。末尾にビュー幅ぶんの余白（<see cref="UpdateTrailTrailingMargin"/>）が
-    /// あるので、最新を含むどの地点も左端まで寄せられる（最新地点は左端＋右に余白で収まる）。
-    /// ライブ追従も途中地点の「その地点を左端に置いて以後の並びを右に見せる」挙動も同じ計算で表せる。
-    /// 現在地が無ければ末尾（＝最新の並び）へ。追記追従・スクラブ・ジャンプ・時間帯選択の共通経路。</summary>
-    private void ScrollTrailToCurrent()
-    {
-        var index = _vm.Trail.CurrentIndex;
-        if (index < 0)
-        {
-            TrailScroll.ScrollToRightEnd();
-            return;
-        }
-        TrailScroll.ScrollToHorizontalOffset(TrailSlotOffset(index));
-    }
-
-    /// <summary>ドット列の末尾に「ビュー幅ぶん（末尾1ドットを左端に置ける最小＝
-    /// <see cref="TrailScroll"/> の表示幅 − <see cref="TrailDotWidth"/>）」の余白を確保する。
-    /// これが無いと <see cref="ScrollViewer"/> のクランプ（オフセットは <c>ScrollableWidth</c> で頭打ち）で
-    /// 末尾付近のドットを左端まで寄せられず、選んだ時間帯が左端に届かない。バーの幅が変わるたびに追従させ、
-    /// ライブ追従中は余白変更後の現在地を貼り直す。</summary>
-    private void UpdateTrailTrailingMargin()
-    {
-        var trailing = Math.Max(0, TrailScroll.ViewportWidth - TrailDotWidth);
-        if (Math.Abs(TrailDots.Padding.Right - trailing) < 0.5)
-            return;
-        TrailDots.Padding = new Thickness(0, 0, trailing, 0);
-        if (!_trailBrowsingPast)
-            Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
-    }
-
-    /// <summary>バー共通の右クリックメニュー「最新に戻る」。過去日を見ていれば今日へ戻し、現在地を
-    /// 軌跡の最新地点（＝ライブの「今」）へ動かして左端へ寄せる。過去日表示・過去地点へのスクラブ、
-    /// どちらの状態からも1回で最新のライブ追従へ戻す。日付・時刻ポップアップ内の「最新に戻る」ボタン
-    /// （<see cref="OnTrailBackToLatestFromPopup"/>）とも共通の導線。</summary>
-    private void OnTrailBackToLatest(object sender, RoutedEventArgs e) => BackToLatestTrail();
-
-    /// <summary>日付・時刻ポップアップ内の「最新に戻る」ボタン。現在地を最新（＝ライブの「今」）へ動かし、
-    /// それを選択扱いにしてポップアップを閉じる——閉じたときのコミット（<see cref="CommitTrailPopupSelection"/>）が
-    /// 最新地点の画面（レイアウト）を復元する。日付・時間帯の選択と違い、このボタンはポップアップを閉じてよい。</summary>
-    private void OnTrailBackToLatestFromPopup(object sender, RoutedEventArgs e)
-    {
-        BackToLatestTrail();               // 現在地を最新へ（バー内ナビゲーション）
-        _trailPopupSelectionMade = true;   // 閉じたときに最新地点のレイアウトへコミットする
-        TrailDateTimePopup.IsOpen = false; // Closed が同期発火 → CommitTrailPopupSelection が最新へジャンプ
-    }
-
-    /// <summary>過去日表示・過去地点へのスクラブから、ライブの最新地点（＝「今」）へ1回で戻す共通処理。</summary>
-    private void BackToLatestTrail()
-    {
-        _vm.Trail.BackToTodayCommand.Execute(null);   // 過去日表示中なら今日へ（今日表示中は無害）
-        _vm.Trail.MoveToLatest();                     // 過去地点へスクラブ中なら最新へ
-        _trailBrowsingPast = false;                   // ライブ追従を再開（最新は左端＋右余白に収まる）
-        Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
-    }
-
-    // ===== 日付＋時刻（1つのポップアップで過去の軌跡へ） =====
-
-    /// <summary>日付＋時刻ボタンのクリックで日付・時刻ポップアップをトグルする（最新地点への復帰は
-    /// ポップアップ内の「⟳ 最新に戻る」ボタン、またはバー共通の右クリックメニュー「最新に戻る」で行う）。
-    /// <para>開いたままボタンを再クリックすると、押下でフォーカスがポップアップ外（このボタン）へ移り、
-    /// ロストフォーカスで先に閉じる（<c>Closed</c> が <see cref="_trailDateTimePopupClosedAt"/> を記録）→
-    /// その直後の Click はこのガードで閉じたまま＝トグル成立。</para></summary>
-    private void OnTrailDateTimeClick(object sender, RoutedEventArgs e)
-    {
-        // 開いている（または直前にロストフォーカスで閉じた）なら、クリックは閉じるだけ。
-        if (TrailDateTimePopup.IsOpen
-            || (DateTime.UtcNow - _trailDateTimePopupClosedAt).TotalMilliseconds < 250)
-        {
-            TrailDateTimePopup.IsOpen = false;
-            return;
-        }
-
-        OpenTrailDateTimePopup();
-    }
-
-    /// <summary>日付・時刻ポップアップを開き、現在の表示日をカレンダーへ反映してから枠へフォーカスを移す
-    /// （フォーカスがポップアップ外へ出たら閉じる仕掛け＝<see cref="OnTrailDateTimeLostFocus"/> を効かせるため）。</summary>
-    private void OpenTrailDateTimePopup()
-    {
-        _trailPopupSelectionMade = false;   // 新しく開いた回の選択を仕切り直す（閉じたときにコミットする）
-        TrailCalendar.SelectedDate = _vm.Trail.DisplayDate.ToDateTime(TimeOnly.MinValue);
-        TrailCalendar.DisplayDate = TrailCalendar.SelectedDate.Value;
-        TrailCalendar.DisplayDateEnd = DateTime.Today;   // 未来は選べない
-        TrailDateTimePopup.IsOpen = true;
-        Dispatcher.BeginInvoke(new Action(() => TrailDateTimePopupRoot.Focus()), DispatcherPriority.Input);
-    }
-
-    /// <summary>カレンダーで日を選ぶ：その日の軌跡を即バーへ反映する（ポップアップは開いたまま＝
-    /// リアルタイム反映。時間帯リストも新しい日の記録へ自動で更新される）。画面（レイアウト）は変えず、
-    /// 選択したことだけを覚えて閉じたときにコミットする（<see cref="CommitTrailPopupSelection"/>）。</summary>
-    private void OnTrailCalendarSelected(object? sender, SelectionChangedEventArgs e)
-    {
-        if (!TrailDateTimePopup.IsOpen || TrailCalendar.SelectedDate is not { } picked)
-            return;
-        // Calendar はクリック後もマウスキャプチャを持ち続け、直後のクリックを1回飲み込むため解放する。
-        Mouse.Capture(null);
-        _vm.Trail.ShowDate(DateOnly.FromDateTime(picked));
-        _trailBrowsingPast = false;   // 日を切り替えたらその日の最新（右端）から見る
-        _trailPopupSelectionMade = true;
-        Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
-    }
-
-    /// <summary>ポップアップで時間帯を選ぶ：その時間帯の先頭ドットを現在地にしてスクロールする
-    /// （ポップアップは開いたまま＝リアルタイム反映。画面復元はせずバー内のナビゲーションに留め、
-    /// 実際のレイアウト反映はポップアップを閉じたときにまとめて行う＝コミット、§27.7.2）。</summary>
+    private void OnTrailWheel(object sender, MouseWheelEventArgs e) => _trailBar.OnWheel(e);
+    private void ScrollTrailToCurrent() => _trailBar.ScrollToCurrent();
+    private void UpdateTrailTrailingMargin() => _trailBar.UpdateTrailingMargin();
+    private void OnTrailBackToLatest(object sender, RoutedEventArgs e) => _trailBar.BackToLatest();
+    private void OnTrailBackToLatestFromPopup(object sender, RoutedEventArgs e) => _trailBar.BackToLatestFromPopup();
+    private void OnTrailDateTimeClick(object sender, RoutedEventArgs e) => _trailBar.ToggleDateTimePopup();
+    private void OnTrailCalendarSelected(object? sender, SelectionChangedEventArgs e) => _trailBar.SelectCalendarDate();
     private void OnTrailHourSelected(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: TrailHourViewModel hour })
-            return;
-        Mouse.Capture(null);
-        _vm.Trail.SelectHour(hour);
-        // 選んだ時間帯の先頭ドットを表示領域の左端へ寄せる（末尾余白で最新の帯も左端に届く＝ライブへ復帰）。
-        _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
-        _trailPopupSelectionMade = true;
-        Dispatcher.BeginInvoke(new Action(ScrollTrailToCurrent), DispatcherPriority.Loaded);
+        if (sender is FrameworkElement { DataContext: TrailHourViewModel hour })
+            _trailBar.SelectHour(hour);
     }
-
-    /// <summary>日付・時刻ポップアップを閉じた瞬間に、選択していた現在地の地点へジャンプして画面（レイアウト）を
-    /// 復元する。選択中はバー内ナビゲーションに留め、閉じたときにまとめて反映する（§27.7.2）。ポップアップを
-    /// 開いてから何も選ばずに閉じたとき（<see cref="_trailPopupSelectionMade"/> が false）は画面を変えない。</summary>
-    private void CommitTrailPopupSelection()
-    {
-        if (!_trailPopupSelectionMade)
-            return;
-        _trailPopupSelectionMade = false;
-        if (_vm.Trail.CurrentEntry is { } entry)
-            JumpToTrailEntry(entry);
-    }
-
-    /// <summary>日付・時刻ポップアップの枠がキーボードフォーカスを失ったとき、移り先がポップアップの外なら
-    /// 閉じる（ロストフォーカスで閉じる）。カレンダー・時間帯ボタンなどポップアップ内へのフォーカス移動
-    /// （日付・時間帯の選択）では閉じないので、選択はポップアップを開いたまま連続して行える。</summary>
     private void OnTrailDateTimeLostFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        if (e.NewFocus is DependencyObject next && IsWithin(next, TrailDateTimePopupRoot))
-            return;
-        TrailDateTimePopup.IsOpen = false;
-    }
+        => _trailBar.ClosePopupIfFocusLeaves(e);
 }

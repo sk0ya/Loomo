@@ -227,6 +227,8 @@ public partial class ShellWindow : Window
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
         DataContext = vm;
+        _trailBar = new TrailBarController(vm.Trail, TrailScroll, TrailDots,
+            TrailDateTimePopup, TrailCalendar, TrailDateTimePopupRoot, JumpToTrailEntry);
         _vm = vm;
         _terminal = terminal;
         _editor = editor;
