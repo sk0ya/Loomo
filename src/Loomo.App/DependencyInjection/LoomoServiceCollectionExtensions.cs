@@ -135,6 +135,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<ThemeManager>();
         services.AddSingleton<UiFontManager>();
         AddAliasedSingleton<LocalLlmWarmupService, IAiWarmup>(services);
+        services.AddSingleton<AppBootstrapper>();
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<ModelFolderGateway>();

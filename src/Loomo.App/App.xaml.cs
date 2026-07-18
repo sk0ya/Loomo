@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Windows;
 using sk0ya.Loomo.App.DependencyInjection;
 using sk0ya.Loomo.App.Services;
@@ -36,34 +35,7 @@ public partial class App : Application
         _services = services.BuildServiceProvider();
         StartupProfiler.Mark("ServiceProvider 構築完了");
 
-        // 保存済み設定（プロバイダ・APIキー等）を起動時に反映する
-        var settings = _services.GetRequiredService<AiSettings>();
-        _services.GetRequiredService<AiSettingsStore>().Load(settings);
-        StartupProfiler.Mark("設定ロード完了");
-
-        // 言語サーバー（LSP）の対応表＝エディタの LspServerRegistry を、Loomo 配下に永続化させる
-        // （%APPDATA%/Loomo/lsp-servers.json）。エディタコントロールを生成する前に一度だけ向け直す。
-        Editor.Core.Lsp.LspServerRegistry.ConfigureDefault(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Loomo", "lsp-servers.json"));
-
-        // 整形フォーマッタ（拡張子→CLI）の対応表＝エディタの FormatterRegistry も Loomo 配下に
-        // 永続化させる（%APPDATA%/Loomo/formatters.json）。:Format 実行時にユーザーが選んだ／自動
-        // 検出されたフォーマッタがここに保存される。同じく一度だけ向け直す。
-        Editor.Core.Formatting.FormatterRegistry.ConfigureDefault(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Loomo", "formatters.json"));
-
-        // 保存済みカラーテーマ・アクセントカラーを適用する
-        _services.GetRequiredService<ThemeManager>().Apply(settings.Theme, settings.AccentColor);
-        // アプリ UI の基準フォントサイズを適用する（未設定なら既定サイズ）。ウィンドウ生成前に効かせる。
-        _services.GetRequiredService<UiFontManager>()
-            .Apply(UiFontManager.Effective(settings.Appearance.UiFontSize));
-        StartupProfiler.Mark("テーマ適用完了");
-
-        // ワークスペース開始時にローカルLLMを非同期でウォームアップする。
-        _services.GetRequiredService<LocalLlmWarmupService>();
-        StartupProfiler.Mark("ウォームアップ起動完了");
+        _services.GetRequiredService<AppBootstrapper>().Initialize();
 
         var shell = _services.GetRequiredService<ShellWindow>();
         StartupProfiler.Mark("ShellWindow 解決完了");
