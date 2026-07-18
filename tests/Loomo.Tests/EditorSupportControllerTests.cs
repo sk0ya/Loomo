@@ -55,11 +55,11 @@ public class EditorSupportControllerTests
     [Fact]
     public async Task Unsupported_content_produces_stable_fallback_page()
     {
-        var controller = new EditorSupportController();
+        var pipeline = new EditorSupportPipeline();
 
-        var content = await controller.PrepareWebContentAsync(
-            provider: null, filePath: null, text: "", workspaceRoot: "", readyPageKey: null,
-            previewTheme: "dark");
+        var content = await pipeline.PrepareAsync(null, new EditorSupportContext(
+            FilePath: null, Text: "", WorkspaceRoot: "", ReadyPageKey: null,
+            PreviewTheme: "dark"));
 
         Assert.Equal("Editor Support", content.Title);
         Assert.Contains("このファイルに対応するサポートはありません", content.Html);

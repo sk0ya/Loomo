@@ -128,7 +128,12 @@ public partial class ShellWindow {
         HideEditorSupportVisual();
         var text = (provider?.UsesEditorText ?? true) ? source.Control.Text : string.Empty;
         var seq = _editorSupport.BeginRender();
-        var content = await _editorSupport.PrepareWebContentAsync( provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupport.WebView.ReadyPageKey, _settings.Appearance.MarkdownPreviewTheme);
+        var content = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
+            filePath,
+            text,
+            _workspace.RootPath ?? string.Empty,
+            _editorSupport.WebView.ReadyPageKey,
+            _settings.Appearance.MarkdownPreviewTheme));
         if (!_editorSupport.IsLatestRender(seq))
             return;
         UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);

@@ -13,6 +13,7 @@ internal sealed class EditorSupportController
     public EditorSupportController(EditorSupportWebViewController webView) => WebView = webView;
 
     public EditorSupportWebViewController WebView { get; }
+    public EditorSupportPipeline Pipeline { get; } = new();
     public EditorTab? Source { get; private set; }
     public bool IsPinned { get; set; }
     public bool IsNavigating { get; set; }
@@ -188,69 +189,4 @@ internal sealed class EditorSupportController
         IsNavigating = false;
     }
 
-    public async Task<EditorSupportWebContent> PrepareWebContentAsync(
-        IEditorSupportProvider? provider,
-        string? filePath,
-        string text,
-        string workspaceRoot,
-        string? readyPageKey,
-        string previewTheme)
-    {
-        if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
-        {
-            return new EditorSupportWebContent(
-                uriProvider.DescribeTitle(filePath), null, null,
-                uriProvider.ResolveNavigationUri(filePath), null, null,
-                ShowSlide: false, ShowOpenInBrowser: true, ShowExport: false);
-        }
-
-        if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
-        {
-            var title = htmlProvider.DescribeTitle(filePath);
-            var mapFolder = MarkdownPreviewPaths.Resolve(workspaceRoot, filePath).MapFolder;
-            var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
-            var pageKey = incremental?.PageContextKey(filePath, text);
-            string? html = null;
-            string? body = null;
-            try
-            {
-                if (incremental is not null && pageKey == readyPageKey)
-                    body = await Task.Run(() => incremental.RenderBody(filePath, text));
-                else
-                    html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
-            }
-            catch (Exception ex)
-            {
-                pageKey = null;
-                html = MarkdownRenderer.RenderToHtml(
-                    $"## プレビューエラー\n\n変換中に例外が発生しました。\n\n```\n{ex}\n```",
-                    title, previewTheme);
-            }
-
-            return new EditorSupportWebContent(title, html, body, null, mapFolder, pageKey,
-                ShowSlide: provider is MarkdownEditorSupport,
-                ShowOpenInBrowser: true,
-                ShowExport: true);
-        }
-
-        const string fallbackTitle = "Editor Support";
-        return new EditorSupportWebContent(
-            fallbackTitle,
-            MarkdownRenderer.RenderToHtml(
-                "## Editor Support\n\nこのファイルに対応するサポートはありません。",
-                fallbackTitle, previewTheme),
-            null, null, null, null,
-            ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false);
-    }
 }
-
-internal sealed record EditorSupportWebContent(
-    string Title,
-    string? Html,
-    string? Body,
-    string? Uri,
-    string? MapFolder,
-    string? PageKey,
-    bool ShowSlide,
-    bool ShowOpenInBrowser,
-    bool ShowExport);
