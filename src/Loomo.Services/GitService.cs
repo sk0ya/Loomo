@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -16,9 +14,6 @@ namespace sk0ya.Loomo.Services;
 /// </summary>
 public sealed class GitService
 {
-    /// <summary>ライブ監視のポーリング間隔。見えている間だけ、この間隔で軽く状態を見る。</summary>
-    private const int PollIntervalMs = 1500;
-
     private readonly IWorkspaceService _workspace;
     private readonly GitCommandRunner _runner;
     private readonly GitStatusService _status;
@@ -31,11 +26,7 @@ public sealed class GitService
     private readonly GitStashService _stashes;
     private readonly GitDiffService _diff;
     private readonly GitRebaseService _rebase;
-    // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
-    private Timer? _pollTimer;
-    private int _liveTrackers;
-    private string? _lastSignature;
-    private readonly SemaphoreSlim _pollGate = new(1, 1);
+    private readonly GitRepositoryMonitor _monitor;
 
     public GitService(IWorkspaceService workspace)
     {
@@ -51,13 +42,10 @@ public sealed class GitService
         _stashes = new GitStashService(_runner, _mutations);
         _diff = new GitDiffService(workspace, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
+        _monitor = new GitRepositoryMonitor(workspace, _runner);
+        _monitor.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
-        workspace.RootChanged += (_, _) =>
-        {
-            _lastSignature = null; // リポジトリが替わったら署名を取り直す
-            RepositoryChanged?.Invoke(this, EventArgs.Empty);
-        };
     }
 
     /// <summary>
@@ -78,68 +66,20 @@ public sealed class GitService
 
     /// <summary>
     /// ライブ監視を開始する（戻り値を Dispose すると解除）。git ビュー（サイドバー Git パネル・
-    /// Git/Diff ペイン）が画面に出ている間だけ呼び、その間 <see cref="PollIntervalMs"/> ごとに
+    /// Git/Diff ペイン）が画面に出ている間だけ呼び、その間一定間隔で
     /// 作業ツリーの状態を軽くチェックして、変化したときだけ <see cref="RepositoryChanged"/> を発火する。
     /// FileSystemWatcher は使わない（ワークスペース全体の再帰監視はビルド成果物の大量変化で重く、
     /// 自前 git status の .git/index 書き戻しで誤発火もするため）。複数ビューから呼ばれても
     /// ポーリングは1つ（参照カウント）で、どのビューも見えていない間はゼロコスト。
     /// </summary>
-    public IDisposable TrackLiveChanges()
-    {
-        if (Interlocked.Increment(ref _liveTrackers) == 1)
-        {
-            _lastSignature = null; // 開始直後は基準を取り直し、最初のチェックでは発火しない
-            _pollTimer ??= new Timer(_ => _ = PollOnceAsync());
-            _pollTimer.Change(PollIntervalMs, PollIntervalMs);
-        }
-        return new LiveTracker(this);
-    }
-
-    private void ReleaseLiveTracking()
-    {
-        if (Interlocked.Decrement(ref _liveTrackers) == 0)
-            _pollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-    }
-
-    /// <summary>作業ツリーの署名（git status の porcelain 出力）を取り、前回と違えば変化を通知する。
-    /// 前回のポーリングがまだ走っていれば今回は飛ばす（多重起動しない）。状態が同じなら
-    /// 出力も同じなので、git status による .git/index の書き戻しでは発火しない。
-    /// <c>--no-optional-locks</c>必須：このポーリングは stage/commit と同じスレッドを介さず走るため、
-    /// 素の git status がインデックスの統計キャッシュを書き戻そうとして進行中の commit と
-    /// .git/index.lock を取り合い、コミットが「ステージだけ済んで失敗」することがあった。</summary>
-    private async Task PollOnceAsync()
-    {
-        if (!_pollGate.Wait(0)) return;
-        try
-        {
-            var root = RootPath;
-            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
-            var result = await RunAsync("--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
-            if (!result.Success) return;
-            var prev = _lastSignature;
-            _lastSignature = result.Output;
-            if (prev is not null && !string.Equals(prev, result.Output, StringComparison.Ordinal))
-                RepositoryChanged?.Invoke(this, EventArgs.Empty);
-        }
-        finally
-        {
-            _pollGate.Release();
-        }
-    }
-
-    private sealed class LiveTracker : IDisposable
-    {
-        private GitService? _owner;
-        public LiveTracker(GitService owner) => _owner = owner;
-        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.ReleaseLiveTracking();
-    }
+    public IDisposable TrackLiveChanges() => _monitor.TrackLiveChanges();
 
     public string? RootPath => _workspace.RootPath;
 
     // ===== 照会 =====
 
     /// <summary>現在の状態（ブランチ・ahead/behind・変更一覧・進行中操作）を取得する。
-    /// <c>--no-optional-locks</c>の理由は <see cref="PollOnceAsync"/> 参照（進行中の commit とのロック競合回避）。</summary>
+    /// <c>--no-optional-locks</c>で進行中の commit とのロック競合を避ける。</summary>
     public Task<GitStatusSnapshot> GetStatusAsync() => _status.GetStatusAsync();
 
     /// <summary>設定されているリモート名（git remote）。無ければ空。</summary>
