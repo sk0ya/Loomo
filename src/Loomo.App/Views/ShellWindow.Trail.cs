@@ -341,7 +341,7 @@ public partial class ShellWindow
             }
             // プレビューペインへの切替は、いま映しているファイルの Preview ドットが代表する
             // （どのファイルを見ていたかまで戻れる）。追従先が無ければ通常の Pane ドットへ落ちる。
-            if (kind == PaneKind.EditorSupport && _editorSupportSourceTab is { } est
+            if (kind == PaneKind.EditorSupport && _editorSupport.Source is { } est
                 && !string.IsNullOrWhiteSpace(est.PeekFilePath) && !est.PeekIsVirtual)
             {
                 RecordTrailPreview(est);

@@ -54,7 +54,7 @@ public partial class ShellWindow
     // ビジュアル提供者内での編集（CSV/TSV グリッド等）を、追従中のエディタタブの本文へ書き戻す。 SetText で BufferChanged が発火しデバウンス更新が走るが、提供者側が内容比較で再パースを 抑止するためループしない。エディタタブは通常の編集と同じく未保存（modified）になる。
     private void EditorSupportVisual_ContentEdited(object? sender, EditorSupportContentEdited e)
     {
-        var tab = _editorSupportSourceTab;
+        var tab = _editorSupport.Source;
         if (tab is null
             || !string.Equals(tab.Control.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase))
             return;
@@ -101,13 +101,12 @@ public partial class ShellWindow
 
     private void DetachEditorSupportSource()
     {
-        if (_editorSupportSourceTab is not null)
+        if (_editorSupport.DetachSource() is { } previous)
         {
-            _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
-            _editorSupportSourceTab.Control.CaretMoved -= EditorSupportSource_CaretMoved;
+            previous.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+            previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
         StopCodeReadyRetry();
-        _editorSupportSourceTab = null;
     }
 
     private void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e)
@@ -120,7 +119,7 @@ public partial class ShellWindow
 
     private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (_editorSupportSourceTab is null)
+        if (_editorSupport.Source is null)
             return;
 
         try
@@ -137,7 +136,7 @@ public partial class ShellWindow
                         && ratioElement.TryGetDouble(out var ratio))
                     {
                         _syncingEditorFromSupport = true;
-                        try { _editorSupportSourceTab.Control.ScrollToVerticalRatio(ratio); }
+                        try { _editorSupport.Source.Control.ScrollToVerticalRatio(ratio); }
                         finally { _syncingEditorFromSupport = false; }
                     }
                     break;
@@ -171,7 +170,7 @@ public partial class ShellWindow
     // EditorSupport の追従元エディタへフォーカスを戻す（編集対象を見つけたら本文へ入る導線）。 行が指定されればその位置へカーソルを移す（JSON ツリーの「↦」）。指定なしは現在位置のまま フォーカスだけ移す（コンテキストメニュー／同期スクロール位置）。
     private void FocusEditorSupportSource(int? line, bool alignTop = false)
     {
-        var tab = _editorSupportSourceTab;
+        var tab = _editorSupport.Source;
         if (tab is null)
             return;
 
@@ -195,7 +194,7 @@ public partial class ShellWindow
     // EditorSupport の WebView2 右クリックメニューへ「エディタへフォーカス」を足す。プレビューで 編集対象を見つけたら、そのまま追従元エディタへ戻れるようにする（全プレビュー共通の保険）。
     private void EditorSupport_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
     {
-        if (_editorSupportSourceTab is null || sender is not CoreWebView2 core)
+        if (_editorSupport.Source is null || sender is not CoreWebView2 core)
             return;
 
         try
@@ -215,7 +214,7 @@ public partial class ShellWindow
             // 前のファイルへ戻る（エディタのファイル履歴）。戻れる履歴が無ければ無効表示。
             var back = core.Environment.CreateContextMenuItem(
                 "前のファイルへ戻る", null, CoreWebView2ContextMenuItemKind.Command);
-            back.IsEnabled = _editorSupportHistory.CanGoBack;
+            back.IsEnabled = _editorSupport.History.CanGoBack;
             back.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => _ = EditorSupportGoBackAsync());
             e.MenuItems.Insert(1, back);
         }

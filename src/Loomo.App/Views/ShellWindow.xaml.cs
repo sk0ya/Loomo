@@ -46,11 +46,7 @@ public partial class ShellWindow : Window
     // （Markdown プレビュー等）、その HTML を専用 WebView2 へ自動表示する。
     // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示し、
     // IEditorSupportUriProvider（PDF/SVG/HTML 等）はファイルを WebView2 へ直接ナビゲートして表示する。
-    private EditorTab? _editorSupportSourceTab;
-    // エディタの現在ファイル（＝EditorSupport の追従ソース）の「戻る・進む」履歴（純ロジック）。
-    private readonly Services.EditorSupportHistory _editorSupportHistory = new();
-    // 戻る/進む操作中は Services.EditorSupportHistory.Navigate 記録を抑止するガード。
-    private bool _editorSupportNavigating;
+    private readonly EditorSupportController _editorSupport = new();
     private EditorSupportWebViewController _editorSupportWebView = null!;
     // 現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。
     private FrameworkElement? _editorSupportVisual;
@@ -75,8 +71,6 @@ public partial class ShellWindow : Window
     private Editor.Core.Lsp.LspRange? _codeCurrentSymbolRange;
     // 直近に②を問い合わせたキャレット位置（0 始まり line/col）。_codeCurrentSymbolRange が null（シンボル未解決）のときの差分基準＝この位置から動いたら再取得する。
     private (int Line, int Col)? _codeCurrentCaret;
-    // EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。
-    private bool _editorSupportSourcePinned;
     // プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。 WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。
     // HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。
     private int _editorSupportRenderSeq;
@@ -216,8 +210,8 @@ public partial class ShellWindow : Window
             EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested);
         _editorSupportWebView.NavigationCompleted += (_, _) =>
         {
-            if (_editorSupportSourceTab is not null)
-                PostEditorSupportScrollRatio(_editorSupportSourceTab.Control.VerticalScrollRatio);
+            if (_editorSupport.Source is not null)
+                PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);
         };
         _editorSupports = editorSupports;
         _hexSupport = hexSupport;

@@ -149,7 +149,7 @@ public partial class ShellWindow
         }
 
         // 本文が既に最新（ウォッチャが先に読み直した等）でも、外部リロードは BufferChanged を上げず EditorSupport が取り残されるため、追従元タブなら明示的に更新する。
-        if (ReferenceEquals(_editorSupportSourceTab, tab))
+        if (ReferenceEquals(_editorSupport.Source, tab))
             await UpdateEditorSupportAsync();
     }
 

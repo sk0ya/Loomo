@@ -181,7 +181,7 @@ public partial class ShellWindow
             return;
         }
 
-        var currentPath = sourcePath ?? _editorSupportSourceTab?.Control.FilePath;
+        var currentPath = sourcePath ?? _editorSupport.Source?.Control.FilePath;
         if (!EditorFileLinkResolver.TryResolve(
                 href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
             return;

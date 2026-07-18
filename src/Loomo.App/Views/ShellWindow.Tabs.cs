@@ -228,11 +228,11 @@ public partial class ShellWindow
 
         var wasActive = _activeEditorTab?.Id == id;
         var tab = _editorTabs[index];
-        if (ReferenceEquals(_editorSupportSourceTab, tab))
+        if (ReferenceEquals(_editorSupport.Source, tab))
         {
             _editorSupportDebounceTimer?.Stop();
             DetachEditorSupportSource();
-            _editorSupportSourcePinned = false;
+            _editorSupport.IsPinned = false;
             UpdateEditorSupportPinToggle();
         }
         // 実体化済みのときだけ視覚ツリーから外して破棄する（未実体化タブは VimEditorControl を
@@ -249,7 +249,7 @@ public partial class ShellWindow
         // 閉じたファイルは戻る/進む履歴からも除く（移動側でも実在チェックで飛ばすが、ボタン活性を正確に保つ）。
         if (tab.PeekFilePath is { Length: > 0 } closedPath)
         {
-            _editorSupportHistory.Remove(closedPath);
+            _editorSupport.History.Remove(closedPath);
             UpdateEditorSupportNavAffordances();
         }
         _editorTabs.RemoveAt(index);

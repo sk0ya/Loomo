@@ -113,7 +113,7 @@ public partial class ShellWindow
     // EditorSupport ペインヘッダーの「別ウィンドウ」：追従元（無ければアクティブ）エディタに 同期する EditorSupport 複製を別ウィンドウで開く。
     private void OnDetachEditorSupport(object sender, RoutedEventArgs e)
     {
-        var source = (_editorSupportSourceTab ?? _activeEditorTab)?.Control;
+        var source = (_editorSupport.Source ?? _activeEditorTab)?.Control;
         if (source is null)
             return;
 
@@ -354,11 +354,11 @@ public partial class ShellWindow
         var control = tab.Control;   // 未実体化なら実体化（生きたコントロールを移すため）
         var wasActive = _activeEditorTab?.Id == id;
 
-        if (ReferenceEquals(_editorSupportSourceTab, tab))
+        if (ReferenceEquals(_editorSupport.Source, tab))
         {
             _editorSupportDebounceTimer?.Stop();
             DetachEditorSupportSource();
-            _editorSupportSourcePinned = false;
+            _editorSupport.IsPinned = false;
             UpdateEditorSupportPinToggle();
         }
         ViewportTree.Detach(control);   // 視覚ツリーから外す（Dispose はしない＝別窓へ移す）

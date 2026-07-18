@@ -133,7 +133,7 @@ public partial class ShellWindow
         DetachEditorSupportSource();
         // 別ワークスペースへ持ち越さない：次の描画は確実にフル再構築させる（本文差し替えの取り違え防止）。
         _editorSupportWebView.ResetPageState();
-        _editorSupportSourcePinned = false;
+        _editorSupport.IsPinned = false;
         UpdateEditorSupportPinToggle();
         CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;
         _editorViews?.Reset();

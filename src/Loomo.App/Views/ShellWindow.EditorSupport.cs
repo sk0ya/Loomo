@@ -38,13 +38,13 @@ public partial class ShellWindow
     private Task EditorSupportGoBackAsync() => EditorSupportNavigateHistoryAsync(back: true);
     private Task EditorSupportGoForwardAsync() => EditorSupportNavigateHistoryAsync(back: false);
 
-    // ファイル履歴を back の向きへ 1 つ移動する。移動先タブが開いていれば前面化し、 閉じていて実在すれば開き直す。消えたファイルは飛ばして次の履歴へ進む。移動中は _editorSupportNavigating を立て、内部で走る SwitchEditorSupportSourceAsync の 履歴記録を抑止する（二重記録・forward 破棄の防止）。
+    // ファイル履歴を back の向きへ 1 つ移動する。移動先タブが開いていれば前面化し、 閉じていて実在すれば開き直す。消えたファイルは飛ばして次の履歴へ進む。移動中は _editorSupport.IsNavigating を立て、内部で走る SwitchEditorSupportSourceAsync の 履歴記録を抑止する（二重記録・forward 破棄の防止）。
     private async Task EditorSupportNavigateHistoryAsync(bool back)
     {
-        _editorSupportNavigating = true;
+        _editorSupport.IsNavigating = true;
         try
         {
-            while ((back ? _editorSupportHistory.GoBack() : _editorSupportHistory.GoForward()) is { } path)
+            while ((back ? _editorSupport.History.GoBack() : _editorSupport.History.GoForward()) is { } path)
             {
                 var open = _editorTabs.FirstOrDefault(t =>
                     string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
@@ -64,7 +64,7 @@ public partial class ShellWindow
         }
         finally
         {
-            _editorSupportNavigating = false;
+            _editorSupport.IsNavigating = false;
         }
 
         UpdateEditorSupportNavAffordances();
@@ -74,32 +74,24 @@ public partial class ShellWindow
     private void UpdateEditorSupportNavAffordances()
     {
         if (EditorSupportBackButton is not null)
-            EditorSupportBackButton.IsEnabled = _editorSupportHistory.CanGoBack;
+            EditorSupportBackButton.IsEnabled = _editorSupport.History.CanGoBack;
     }
 
     // EditorSupport の追従先エディタタブを切り替えて内容を更新する（同一タブなら何もしない）。
     private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab, bool force = false)
     {
-        if (ReferenceEquals(_editorSupportSourceTab, sourceTab))
-            return;
-        if (_editorSupportSourcePinned && !force && _editorSupportSourceTab is not null)
+        if (!_editorSupport.TryChangeSource(sourceTab, force, out var previous))
             return;
 
-        if (_editorSupportSourceTab is not null)
+        if (previous is not null)
         {
-            _editorSupportSourceTab.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
-            _editorSupportSourceTab.Control.CaretMoved -= EditorSupportSource_CaretMoved;
+            previous.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+            previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
         // 追従先が変わる＝前ファイルの接続待ちポーリングは無効（新ファイルで作り直す）。
         StopCodeReadyRetry();
 
-        _editorSupportSourceTab = sourceTab;
-        // 「戻る・進む」履歴へ現在ファイルを記録する（戻る/進む操作中は抑止＝二重記録・forward 破棄を防ぐ）。 この記録は同期区間で走るので、ActivateEditorTab からの fire-and-forget 呼び出しでも _editorSupportNavigating の窓内で判定される。空/仮想パスは Navigate 側で無視。
-        if (!_editorSupportNavigating)
-        {
-            _editorSupportHistory.Navigate(sourceTab.PeekFilePath);
-            UpdateEditorSupportNavAffordances();
-        }
+        UpdateEditorSupportNavAffordances();
         sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
         // コード解析（②）のキャレット追従。非コードや案内表示中は Schedule 側で無視される。
         sourceTab.Control.CaretMoved += EditorSupportSource_CaretMoved;
@@ -111,12 +103,12 @@ public partial class ShellWindow
     // EditorSupport ヘッダーのピン：追従先タブを現在の対象へ固定／固定解除する。
     private async void OnToggleEditorSupportPin(object sender, RoutedEventArgs e)
     {
-        _editorSupportSourcePinned = EditorSupportPinToggle.IsChecked == true;
+        _editorSupport.IsPinned = EditorSupportPinToggle.IsChecked == true;
         UpdateEditorSupportPinToggle();
 
-        if (_editorSupportSourcePinned)
+        if (_editorSupport.IsPinned)
         {
-            if (_editorSupportSourceTab is null && _activeEditorTab is not null)
+            if (_editorSupport.Source is null && _activeEditorTab is not null)
                 await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
             return;
         }
@@ -135,7 +127,7 @@ public partial class ShellWindow
     // EditorSupport ヘッダーの「ブラウザで開く」：現在のプレビューを Loomo 内蔵ブラウザの新規タブへ スナップショットとして開く（以降の編集には追従しない一回きりの表示）。URI 提供者（PDF 等）は そのファイルを直接開き、HTML 提供者（Markdown/JSON プレビュー等）は現在の本文から HTML を 再生成し、画像・アセット用の仮想ホストをそのタブの CoreWebView2 にも張ってから開く （EditorSupport ペイン自身のマップはそのペインの CoreWebView2 専用で、他のタブへは及ばないため）。
     private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e)
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
@@ -160,8 +152,8 @@ public partial class ShellWindow
 
     private void UpdateEditorSupportPinToggle()
     {
-        EditorSupportPinToggle.IsChecked = _editorSupportSourcePinned;
-        EditorSupportPinToggle.ToolTip = _editorSupportSourcePinned
+        EditorSupportPinToggle.IsChecked = _editorSupport.IsPinned;
+        EditorSupportPinToggle.ToolTip = _editorSupport.IsPinned
             ? "ピン留めを解除してアクティブなエディタに追従"
             : "現在のサポート対象にピン留め";
     }
@@ -177,7 +169,7 @@ public partial class ShellWindow
     // 編集中の連続更新をまとめる（300ms デバウンスで UpdateEditorSupportAsync）。
     private void ScheduleEditorSupportUpdate()
     {
-        if (_editorSupportSourceTab is null)
+        if (_editorSupport.Source is null)
             return;
 
         if (_editorSupportDebounceTimer is null)
@@ -197,7 +189,7 @@ public partial class ShellWindow
     // 追従先エディタの内容を EditorSupport ペインへ反映する。ペインの開閉はしない（明示操作のみ）。 ペインが表示されている（タイルで可視 or ソロで舞台）ときだけ中身を描く。
     private async Task UpdateEditorSupportAsync()
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         if (source is null)
             return;
 
@@ -512,7 +504,7 @@ public partial class ShellWindow
     // キャレット追従（②の再取得）。ScheduleCodeCallPanelsRefresh のデバウンス満了で呼ばれる。 ②はキャレット直下のシンボルで問い合わせる（IDE の「参照を検索」相当）。直近に解決したシンボルの 名前範囲（_codeCurrentSymbolRange）にキャレットが留まる間は同じシンボル＝再取得しない。 範囲が取れなかった（変数・空白上等）ときはキャレット位置（_codeCurrentCaret）で差分を取る。 アウトライン（＝ドキュメントシンボル）は取り直さない（構造は編集でしか変わらない）。
     private async Task RefreshCodeCallPanelsAsync()
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         if (source is null)
             return;
 
@@ -562,7 +554,7 @@ public partial class ShellWindow
     // コード案内ページの「インストール」導線。現在の追従元ファイルの拡張子から対応サーバーを再判定し、 可視ターミナルでインストールコマンドを実行する（端末未接続や導入済みなら何もしない）。
     private void InstallLspForEditorSupportSource()
     {
-        var filePath = _editorSupportSourceTab?.Control.FilePath;
+        var filePath = _editorSupport.Source?.Control.FilePath;
         if (string.IsNullOrEmpty(filePath))
             return;
 
@@ -608,7 +600,7 @@ public partial class ShellWindow
 
     private async void CodeReadyRetry_Tick(object? sender, EventArgs e)
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
 
         // 対象が変わった／コード外／既にアウトライン描画済み → 停止。
@@ -673,7 +665,7 @@ public partial class ShellWindow
     // [ ]/[x] を反転してエディタの本文を書き換える。Vim のモード（挿入中など）に依存 せず安全に書き換えられるよう、キー入力を経由しない VimEditorControl.SetText を使う （プレビュー側のクリックはエディタの現在モードと無関係に届くため、ex コマンド経由だと挿入モード中に コロンがそのまま入力されてしまう）。
     private void ToggleMarkdownTaskCheckbox(int lineIndex)
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         if (source is null)
             return;
 

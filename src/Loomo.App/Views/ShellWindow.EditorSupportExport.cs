@@ -15,7 +15,7 @@ public partial class ShellWindow
         if (sender is Button { ContextMenu: { } menu } button)
         {
             // Markdown 保存は対応する提供者（Word 等）だけで意味を持つので、開くたびに現在の対象で判定する。
-            var filePath = _editorSupportSourceTab?.Control.FilePath;
+            var filePath = _editorSupport.Source?.Control.FilePath;
             ExportMarkdownMenuItem.IsEnabled = filePath is not null
                 && _editorSupports.Resolve(filePath) is IEditorSupportMarkdownExportProvider;
 
@@ -28,7 +28,7 @@ public partial class ShellWindow
     // 現在のプレビューを単体で開ける HTML ファイルとして保存する。
     private async void OnExportEditorSupportHtml(object sender, RoutedEventArgs e)
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
@@ -63,7 +63,7 @@ public partial class ShellWindow
     // 現在のプレビュー（ペインの表示内容そのまま）を PDF ファイルとして保存する。
     private async void OnExportEditorSupportPdf(object sender, RoutedEventArgs e)
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
@@ -97,7 +97,7 @@ public partial class ShellWindow
     // 現在のプレビューを Markdown ファイルとして保存する（対応提供者のみ、例：Word）。
     private async void OnExportEditorSupportMarkdown(object sender, RoutedEventArgs e)
     {
-        var source = _editorSupportSourceTab;
+        var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;

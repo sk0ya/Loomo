@@ -271,13 +271,13 @@ public partial class ShellWindow
         {
             UpdateEditorTab(tab);
             RecordTrailEdit(tab);
-            if (ReferenceEquals(_editorSupportSourceTab, tab))
+            if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
         };
         control.SaveRequested += (_, _) =>
         {
             QueueEditorTabUpdate(tab);
-            if (ReferenceEquals(_editorSupportSourceTab, tab))
+            if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
         };
         // エディタからの明示的なプレビュー要求は、EditorSupport ペインを「手動で開いた」扱いにする。
@@ -343,7 +343,7 @@ public partial class ShellWindow
                 _appearance.ApplyEditorAppearance(tab.Control);
         foreach (var tab in _terminalTabs)
             _appearance.ApplyTerminalAppearance(tab.View);
-        if (_editorSupportSourceTab is not null)
+        if (_editorSupport.Source is not null)
             ScheduleEditorSupportUpdate();
     }
 
