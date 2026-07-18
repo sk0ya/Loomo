@@ -10,8 +10,13 @@ namespace sk0ya.Loomo.Services;
 public sealed class GitBranchService
 {
     private readonly GitCommandRunner _runner;
+    private readonly GitMutationExecutor _mutations;
 
-    public GitBranchService(GitCommandRunner runner) => _runner = runner;
+    public GitBranchService(GitCommandRunner runner, GitMutationExecutor mutations)
+    {
+        _runner = runner;
+        _mutations = mutations;
+    }
 
     public async Task<IReadOnlyList<string>> GetRemotesAsync()
     {
@@ -90,6 +95,65 @@ public sealed class GitBranchService
         }
         return tags;
     }
+
+    public Task<GitCommandResult> FetchAsync() =>
+        _mutations.ExecuteAsync("fetch", "--all", "--prune");
+
+    public Task<GitCommandResult> PullAsync() => _mutations.ExecuteAsync("pull");
+
+    public async Task<GitCommandResult> PushAsync()
+    {
+        var result = await _mutations.ExecuteAsync("push").ConfigureAwait(false);
+        if (!result.Success && result.Error.Contains("no upstream", StringComparison.OrdinalIgnoreCase))
+            result = await _mutations.ExecuteAsync("push", "-u", "origin", "HEAD").ConfigureAwait(false);
+        return result;
+    }
+
+    public Task<GitCommandResult> CheckoutAsync(string branch) =>
+        _mutations.ExecuteAsync("checkout", branch);
+
+    public Task<GitCommandResult> CheckoutTrackAsync(string remoteBranch) =>
+        _mutations.ExecuteAsync("checkout", "--track", remoteBranch);
+
+    public Task<GitCommandResult> CheckoutCommitAsync(string hash) =>
+        _mutations.ExecuteAsync("checkout", "--detach", hash);
+
+    public Task<GitCommandResult> CreateBranchAsync(string name, string? startPoint = null) =>
+        startPoint is null
+            ? _mutations.ExecuteAsync("switch", "-c", name)
+            : _mutations.ExecuteAsync("switch", "-c", name, startPoint);
+
+    public Task<GitCommandResult> DeleteBranchAsync(string name, bool force = false) =>
+        _mutations.ExecuteAsync("branch", force ? "-D" : "-d", name);
+
+    public Task<GitCommandResult> CreateTagAsync(
+        string name, string? target = null, string? message = null)
+    {
+        var args = new List<string> { "tag" };
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            args.Add("-a");
+            args.Add(name);
+            args.Add("-m");
+            args.Add(message.Trim());
+        }
+        else
+        {
+            args.Add(name);
+        }
+        if (target is not null)
+            args.Add(target);
+        return _mutations.ExecuteAsync(args.ToArray());
+    }
+
+    public Task<GitCommandResult> DeleteTagAsync(string name) =>
+        _mutations.ExecuteAsync("tag", "-d", name);
+
+    public Task<GitCommandResult> PushTagAsync(string name) =>
+        _mutations.ExecuteAsync("push", "origin", name);
+
+    public Task<GitCommandResult> PushAllTagsAsync() =>
+        _mutations.ExecuteAsync("push", "--tags");
 
     internal static (int Ahead, int Behind, bool Gone) ParseTrack(string track)
     {

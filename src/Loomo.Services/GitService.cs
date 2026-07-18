@@ -41,8 +41,8 @@ public sealed class GitService
         _runner = new GitCommandRunner(workspace);
         _status = new GitStatusService(_runner);
         _history = new GitHistoryService(_runner);
-        _branches = new GitBranchService(_runner);
         _mutations = new GitMutationExecutor(_runner);
+        _branches = new GitBranchService(_runner, _mutations);
         _merge = new GitMergeService(_mutations);
         _submodules = new GitSubmoduleService(_runner, _mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
@@ -336,59 +336,35 @@ public sealed class GitService
         return MutateAsync(args.ToArray());
     }
 
-    public Task<GitCommandResult> FetchAsync() => MutateAsync("fetch", "--all", "--prune");
-    public Task<GitCommandResult> PullAsync() => MutateAsync("pull");
+    public Task<GitCommandResult> FetchAsync() => _branches.FetchAsync();
+    public Task<GitCommandResult> PullAsync() => _branches.PullAsync();
 
     /// <summary>push。上流未設定なら -u origin HEAD で自動再試行する。</summary>
-    public async Task<GitCommandResult> PushAsync()
-    {
-        var result = await MutateAsync("push").ConfigureAwait(false);
-        if (!result.Success && result.Error.Contains("no upstream", StringComparison.OrdinalIgnoreCase))
-            result = await MutateAsync("push", "-u", "origin", "HEAD").ConfigureAwait(false);
-        return result;
-    }
+    public Task<GitCommandResult> PushAsync() => _branches.PushAsync();
 
-    public Task<GitCommandResult> CheckoutAsync(string branch) => MutateAsync("checkout", branch);
+    public Task<GitCommandResult> CheckoutAsync(string branch) => _branches.CheckoutAsync(branch);
 
     /// <summary>リモートブランチから追跡ローカルブランチを作ってチェックアウトする。</summary>
     public Task<GitCommandResult> CheckoutTrackAsync(string remoteBranch) =>
-        MutateAsync("checkout", "--track", remoteBranch);
-    public Task<GitCommandResult> CheckoutCommitAsync(string hash) => MutateAsync("checkout", "--detach", hash);
+        _branches.CheckoutTrackAsync(remoteBranch);
+    public Task<GitCommandResult> CheckoutCommitAsync(string hash) => _branches.CheckoutCommitAsync(hash);
 
     public Task<GitCommandResult> CreateBranchAsync(string name, string? startPoint = null) =>
-        startPoint is null
-            ? MutateAsync("switch", "-c", name)
-            : MutateAsync("switch", "-c", name, startPoint);
+        _branches.CreateBranchAsync(name, startPoint);
 
     public Task<GitCommandResult> DeleteBranchAsync(string name, bool force = false) =>
-        MutateAsync("branch", force ? "-D" : "-d", name);
+        _branches.DeleteBranchAsync(name, force);
 
     // ===== タグ =====
 
     /// <summary>タグを作成する。<paramref name="message"/> があれば注釈付き（-a -m）、無ければ軽量タグ。
     /// <paramref name="target"/> 省略時は HEAD。</summary>
     public Task<GitCommandResult> CreateTagAsync(string name, string? target = null, string? message = null)
-    {
-        var args = new List<string> { "tag" };
-        if (!string.IsNullOrWhiteSpace(message))
-        {
-            args.Add("-a");
-            args.Add(name);
-            args.Add("-m");
-            args.Add(message.Trim());
-        }
-        else
-        {
-            args.Add(name);
-        }
-        if (target is not null)
-            args.Add(target);
-        return MutateAsync(args.ToArray());
-    }
+        => _branches.CreateTagAsync(name, target, message);
 
-    public Task<GitCommandResult> DeleteTagAsync(string name) => MutateAsync("tag", "-d", name);
-    public Task<GitCommandResult> PushTagAsync(string name) => MutateAsync("push", "origin", name);
-    public Task<GitCommandResult> PushAllTagsAsync() => MutateAsync("push", "--tags");
+    public Task<GitCommandResult> DeleteTagAsync(string name) => _branches.DeleteTagAsync(name);
+    public Task<GitCommandResult> PushTagAsync(string name) => _branches.PushTagAsync(name);
+    public Task<GitCommandResult> PushAllTagsAsync() => _branches.PushAllTagsAsync();
 
     // ===== サブモジュール =====
 
