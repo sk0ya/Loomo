@@ -89,7 +89,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。</summary>
+    // フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。
     private void SetActiveTerminalTab(TerminalTab tab)
     {
         _activeTerminalTab = tab;
@@ -159,7 +159,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。</summary>
+    // フォーカスがビューポート間を移ったとき、タブ strip の強調と各サービスのアタッチを追従させる（再描画はしない）。
     private void SetActiveEditorTab(EditorTab tab)
     {
         _activeEditorTab = tab;
@@ -279,8 +279,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>FolderTree でファイル／フォルダがリネームされたとき、開いているエディタタブのパス・タブ名を
-    /// 新パスへ追従させる。フォルダのリネームでは配下のファイルを開いたタブもまとめて付け替える。</summary>
+    // FolderTree でファイル／フォルダがリネームされたとき、開いているエディタタブのパス・タブ名を 新パスへ追従させる。フォルダのリネームでは配下のファイルを開いたタブもまとめて付け替える。
     private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e)
     {
         foreach (var tab in _editorTabs)
@@ -305,8 +304,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>エディタタブのファイルパスを差し替える（本文・Undo・未保存編集を保ったまま追従させる）。
-    /// 未実体化タブは復元用スナップショットのパスだけ書き換え、開くときは新パスから読み込ませる。</summary>
+    // エディタタブのファイルパスを差し替える（本文・Undo・未保存編集を保ったまま追従させる）。 未実体化タブは復元用スナップショットのパスだけ書き換え、開くときは新パスから読み込ませる。
     private void RebaseEditorTabPath(EditorTab tab, string newPath)
     {
         if (tab.IsRealized)
@@ -324,8 +322,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>FolderTree でファイル／フォルダが削除されたとき、該当（フォルダなら配下）の
-    /// エディタタブを閉じる。</summary>
+    // FolderTree でファイル／フォルダが削除されたとき、該当（フォルダなら配下）の エディタタブを閉じる。
     private void OnFolderTreeEntryDeleted(string deletedPath)
     {
         var affected = _editorTabs
@@ -357,8 +354,7 @@ public partial class ShellWindow
             || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>FolderTree のボタン／ショートカットから、エディタでアクティブなファイルをツリーで
-    /// 展開・選択する（同期）。開いているタブが未保存（パス無し）なら何もしない。</summary>
+    // FolderTree のボタン／ショートカットから、エディタでアクティブなファイルをツリーで 展開・選択する（同期）。開いているタブが未保存（パス無し）なら何もしない。
     private void RevealActiveFileInFolderTree()
     {
         var path = _activeEditorTab?.PeekFilePath;

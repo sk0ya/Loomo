@@ -40,7 +40,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>サイドバー Tabs の「他のタブを閉じる」：同じ Kind の他タブをすべて閉じる。</summary>
+    // サイドバー Tabs の「他のタブを閉じる」：同じ Kind の他タブをすべて閉じる。
     private async void OnSidebarTabCloseOthersRequested(object? sender, TabEntryViewModel tab)
     {
         switch (tab.Kind)
@@ -60,8 +60,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>サイドバー Tabs の「すべて閉じる」：同じ Kind の全タブを閉じる
-    /// （各 CloseXxxTab は最後の1枚を閉じると空の代替タブを自動生成する）。</summary>
+    // サイドバー Tabs の「すべて閉じる」：同じ Kind の全タブを閉じる （各 CloseXxxTab は最後の1枚を閉じると空の代替タブを自動生成する）。
     private async void OnSidebarTabCloseAllRequested(object? sender, TabEntryViewModel tab)
     {
         switch (tab.Kind)
@@ -104,9 +103,7 @@ public partial class ShellWindow
     private async void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
         => await SwitchWorkspaceAsync(workspace, captureCurrent: true);
 
-    /// <summary>ワークスペースが一覧から取り除かれたとき、その Id にひも付くキャッシュ済みタブ実体を破棄する。
-    /// アクティブなものを取り除いた場合は、VM 側が先に別ワークスペースへ切り替えてからこのイベントを上げるため、
-    /// ここに来た時点で対象のタブはデタッチ済み（端末ビューは Reset・ブラウザはホストから除去済み）で安全に破棄できる。</summary>
+    // ワークスペースが一覧から取り除かれたとき、その Id にひも付くキャッシュ済みタブ実体を破棄する。 アクティブなものを取り除いた場合は、VM 側が先に別ワークスペースへ切り替えてからこのイベントを上げるため、 ここに来た時点で対象のタブはデタッチ済み（端末ビューは Reset・ブラウザはホストから除去済み）で安全に破棄できる。
     private async void OnWorkspaceRemoved(object? sender, Guid workspaceId)
     {
         // 端末は ConPTY プロセスを抱えるので明示的に閉じる。
@@ -187,11 +184,7 @@ public partial class ShellWindow
             _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);
     }
 
-    /// <param name="deferHydration">
-    /// true なら、レイアウト（ペイン枠）だけ同期で適用し、重いタブ実体化（端末の ConPTY 起動・
-    /// エディタコントロール生成＋ファイル読込＋Git差分）は<b>初フレーム描画後</b>に Background 優先度で行う。
-    /// 起動時に使い、ウィンドウを素早く表示してから内容をハイドレートする。
-    /// </param>
+    // true なら、レイアウト（ペイン枠）だけ同期で適用し、重いタブ実体化（端末の ConPTY 起動・ エディタコントロール生成＋ファイル読込＋Git差分）は初フレーム描画後に Background 優先度で行う。 起動時に使い、ウィンドウを素早く表示してから内容をハイドレートする。
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false)
     {
         // 切替元の配置は、Trail のワークスペースキーを切り替える前に確定する。
@@ -425,10 +418,7 @@ public partial class ShellWindow
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
 
-    /// <summary>終了時に全ワークスペースの実体化済みエディタを Dispose し、LSP（言語サーバープロセス）と
-    /// ファイル監視を解放する。Unloaded はこれを行わない（一時デタッチでも発火するため破棄をホスト責務へ
-    /// 分離した）ので、明示的に解放しないと言語サーバーが孤児プロセスとして残る。Closed は閉じ確定後に
-    /// 1度だけ発火する（Closing と違いキャンセルされない）ので破棄に安全。</summary>
+    // 終了時に全ワークスペースの実体化済みエディタを Dispose し、LSP（言語サーバープロセス）と ファイル監視を解放する。Unloaded はこれを行わない（一時デタッチでも発火するため破棄をホスト責務へ 分離した）ので、明示的に解放しないと言語サーバーが孤児プロセスとして残る。Closed は閉じ確定後に 1度だけ発火する（Closing と違いキャンセルされない）ので破棄に安全。
     private void OnClosed(object? sender, EventArgs e)
     {
         // 切り離しウィンドウと全項目を破棄する（同期購読解除・ターミナルセッション/WebView2 の解放）。

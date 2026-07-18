@@ -9,7 +9,7 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    /// <summary>エクスポートボタンのクリック：ドロップダウン（HTML/PDF/Markdown）を開く。</summary>
+    // エクスポートボタンのクリック：ドロップダウン（HTML/PDF/Markdown）を開く。
     private void OnExportEditorSupportClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button { ContextMenu: { } menu } button)
@@ -25,7 +25,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>現在のプレビューを単体で開ける HTML ファイルとして保存する。</summary>
+    // 現在のプレビューを単体で開ける HTML ファイルとして保存する。
     private async void OnExportEditorSupportHtml(object sender, RoutedEventArgs e)
     {
         var source = _editorSupportSourceTab;
@@ -60,7 +60,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>現在のプレビュー（ペインの表示内容そのまま）を PDF ファイルとして保存する。</summary>
+    // 現在のプレビュー（ペインの表示内容そのまま）を PDF ファイルとして保存する。
     private async void OnExportEditorSupportPdf(object sender, RoutedEventArgs e)
     {
         var source = _editorSupportSourceTab;
@@ -94,7 +94,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>現在のプレビューを Markdown ファイルとして保存する（対応提供者のみ、例：Word）。</summary>
+    // 現在のプレビューを Markdown ファイルとして保存する（対応提供者のみ、例：Word）。
     private async void OnExportEditorSupportMarkdown(object sender, RoutedEventArgs e)
     {
         var source = _editorSupportSourceTab;

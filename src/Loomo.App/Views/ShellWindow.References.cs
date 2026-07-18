@@ -15,7 +15,7 @@ public partial class ShellWindow
         ReferencesPopup.IsOpen = true;
     }
 
-    /// <summary>ポップアップの中身（参照行の一覧）を組み直す。</summary>
+    // ポップアップの中身（参照行の一覧）を組み直す。
     private void BuildReferencesPopup(IReadOnlyList<FindReferenceItem> items, string title)
     {
         ReferencesPopupTitle.Text = title;
@@ -67,7 +67,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>ファイルの指定行（0 始まり）をプレビュー用に読む。読めなければ空文字。</summary>
+    // ファイルの指定行（0 始まり）をプレビュー用に読む。読めなければ空文字。
     private static string ReadSourceLine(string filePath, int line)
     {
         try

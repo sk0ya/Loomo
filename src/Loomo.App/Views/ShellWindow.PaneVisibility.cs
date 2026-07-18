@@ -19,7 +19,7 @@ public partial class ShellWindow
     // 透明な当たり判定レイヤーは AllowsTransparency ポップアップ上でヒットが不安定なので使わない。
     // この方式ならスラックを画面座標で確実に好きなだけ広げられ、下の UI へのクリックも奪わない。
 
-    /// <summary>当たり判定を見える枠よりどれだけ外側まで広げるか（デバイスピクセル）。</summary>
+    // 当たり判定を見える枠よりどれだけ外側まで広げるか（デバイスピクセル）。
     private const double PaneTogglePopupHoverSlackPx = 120;
 
     private DispatcherTimer? _paneToggleHoverTimer;
@@ -44,7 +44,7 @@ public partial class ShellWindow
         return timer;
     }
 
-    /// <summary>マウスがヘッダー／枠の「ふくらませた」画面矩形のどちらかに入っているか。</summary>
+    // マウスがヘッダー／枠の「ふくらませた」画面矩形のどちらかに入っているか。
     private bool IsMouseNearPaneTogglePopup()
     {
         if (!GetCursorPos(out var p))
@@ -54,7 +54,7 @@ public partial class ShellWindow
             || (PaneTogglePopupRoot.IsVisible && InflatedScreenRect(PaneTogglePopupRoot).Contains(mouse));
     }
 
-    /// <summary>要素の画面矩形（デバイスピクセル）をスラック分ふくらませて返す。</summary>
+    // 要素の画面矩形（デバイスピクセル）をスラック分ふくらませて返す。
     private static Rect InflatedScreenRect(FrameworkElement element)
     {
         var topLeft = element.PointToScreen(new Point(0, 0));
@@ -65,13 +65,13 @@ public partial class ShellWindow
     }
     // GetCursorPos / POINT は ShellWindow.SpanMaximize.cs に定義済みのものを使う。
 
-    /// <summary>現在のメインペイン（ソロ中は舞台のペイン、タイル時は左上の可視ペイン）。</summary>
+    // 現在のメインペイン（ソロ中は舞台のペイン、タイル時は左上の可視ペイン）。
     private PaneKind? CurrentMainPane() => _stageActive ? _stagePane : TopLeftPane();
 
-    /// <summary>ペインの線画アイコンの StreamGeometry リソースキー（XAML 側と単一ソース）。</summary>
+    // ペインの線画アイコンの StreamGeometry リソースキー（XAML 側と単一ソース）。
     private static string PaneIconKey(PaneKind kind) => $"PaneIcon.{kind}";
 
-    /// <summary>メインペインヘッダーのアイコンとツールチップを現在のメインペインへ同期する。</summary>
+    // メインペインヘッダーのアイコンとツールチップを現在のメインペインへ同期する。
     private void UpdateMainPaneHeader()
     {
         var main = CurrentMainPane();
@@ -92,10 +92,7 @@ public partial class ShellWindow
         UpdatePaneToggleStates();
     }
 
-    /// <summary>
-    /// タイトルバーのペイントグルを実際の有効状態へ同期する（IsChecked＝有効→アクセント色）。
-    /// ツールチップも「有効化／無効化」を状態に合わせて切り替える。
-    /// </summary>
+    // タイトルバーのペイントグルを実際の有効状態へ同期する（IsChecked＝有効→アクセント色）。 ツールチップも「有効化／無効化」を状態に合わせて切り替える。
     private void UpdatePaneToggleStates()
     {
         foreach (var child in PaneToggleBar.Children)
@@ -110,7 +107,7 @@ public partial class ShellWindow
         UpdateMainPaneHeader();
     }
 
-    /// <summary>ペインの日本語表示名（ペイントグルのツールチップ用）。</summary>
+    // ペインの日本語表示名（ペイントグルのツールチップ用）。
     private static string PaneLabel(PaneKind kind) => kind switch
     {
         PaneKind.Terminal => "ターミナル",
@@ -125,24 +122,13 @@ public partial class ShellWindow
         _ => kind.ToString(),
     };
 
-    /// <summary>ペインがツリーに在りかつ表示中か。</summary>
+    // ペインがツリーに在りかつ表示中か。
     private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };
 
-    /// <summary>表示中（非 Hidden）のリーフ数。</summary>
+    // 表示中（非 Hidden）のリーフ数。
     private int VisibleLeafCount() => AllLeaves().Count(l => !l.Hidden);
 
-    /// <summary>
-    /// ペインの表示／非表示を切り替える。非表示にしてもリーフはツリーに残し
-    /// <see cref="PaneLeaf.Hidden"/> を立てるだけなので、再表示で元の位置・比率に戻る。
-    /// </summary>
-    /// <remarks>
-    /// 表示（<paramref name="visible"/>=true）は「リーフが無ければ最下段の新しい行へ追加／在れば元位置で再表示」
-    /// であり、ステージモードは見ない（タイルツリーだけを操作する）。<b>結果やコンテンツをペインに出して
-    /// 前面化する用途では <see cref="EnsurePaneVisibleOrSwapTopLeft"/>（左上ペインと入れ替え＋ステージ対応）の
-    /// 利用を検討すること。</b>「AIに聞く」「ブラウザで調べる」「差分を開く」等はそちらに統一済み。
-    /// この直接呼び出しが妥当なのは、非表示化（<paramref name="visible"/>=false）・明示トグル・
-    /// セッション有効化のタイル復帰・専用位置への挿入後の表示など、左上入れ替えが不要な経路に限る。
-    /// </remarks>
+    // ペインの表示／非表示を切り替える。非表示にしてもリーフはツリーに残し PaneLeaf.Hidden を立てるだけなので、再表示で元の位置・比率に戻る。 表示（visible=true）は「リーフが無ければ最下段の新しい行へ追加／在れば元位置で再表示」 であり、ステージモードは見ない（タイルツリーだけを操作する）。結果やコンテンツをペインに出して 前面化する用途では EnsurePaneVisibleOrSwapTopLeft（左上ペインと入れ替え＋ステージ対応）の 利用を検討すること。「AIに聞く」「ブラウザで調べる」「差分を開く」等はそちらに統一済み。 この直接呼び出しが妥当なのは、非表示化（visible=false）・明示トグル・ セッション有効化のタイル復帰・専用位置への挿入後の表示など、左上入れ替えが不要な経路に限る。
     private void SetPaneVisible(PaneKind kind, bool visible)
     {
         var leaf = FindLeaf(kind);
@@ -206,12 +192,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>
-    /// ファイルを開くとき、Editor も EditorSupport もレイアウトに出ていなければ、左上のペインを
-    /// 開く対象（バイナリ＝EditorSupport／テキスト＝Editor）へ差し替えて必ず見えるようにする。
-    /// FolderTree・Diff・Git・検索・ターミナル/エディタのリンクなど、すべての「ファイルを開く」経路の
-    /// 共通前処理として、呼び出し側がタブを活性化する前に呼ぶ。どちらかが既に見えていれば何もしない。
-    /// </summary>
+    // ファイルを開くとき、Editor も EditorSupport もレイアウトに出ていなければ、左上のペインを 開く対象（バイナリ＝EditorSupport／テキスト＝Editor）へ差し替えて必ず見えるようにする。 FolderTree・Diff・Git・検索・ターミナル/エディタのリンクなど、すべての「ファイルを開く」経路の 共通前処理として、呼び出し側がタブを活性化する前に呼ぶ。どちらかが既に見えていれば何もしない。
     private void EnsureEditorPaneForOpenedFile(string path)
     {
         var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
@@ -232,13 +213,7 @@ public partial class ShellWindow
         PlacePaneByBehavior(target);
     }
 
-    /// <summary>
-    /// 指定ペインがレイアウトに出ていなければ、必ず見えるように前面へ出す。ステージモード中は対象を舞台へ立てる。
-    /// 既に見えていれば何もしない。「AIに聞く」「ブラウザで調べる」「差分を開く」のように、結果を表示するペインを
-    /// 前面に出す経路で使う。タイルモードでの具体的な配置は設定 <see cref="AiSettings.PaneOpenBehavior"/> で切り替わる
-    /// （<see cref="PaneOpenBehavior.Main"/>＝左上と入れ替え〔従来〕／<see cref="PaneOpenBehavior.Sub"/>＝右上と入れ替え／
-    /// <see cref="PaneOpenBehavior.Loop"/>＝サブ表示・サブ起点ならメインへ繰り上げ）。
-    /// </summary>
+    // 指定ペインがレイアウトに出ていなければ、必ず見えるように前面へ出す。ステージモード中は対象を舞台へ立てる。 既に見えていれば何もしない。「AIに聞く」「ブラウザで調べる」「差分を開く」のように、結果を表示するペインを 前面に出す経路で使う。タイルモードでの具体的な配置は設定 AiSettings.PaneOpenBehavior で切り替わる （PaneOpenBehavior.Main＝左上と入れ替え〔従来〕／PaneOpenBehavior.Sub＝右上と入れ替え／ PaneOpenBehavior.Loop＝サブ表示・サブ起点ならメインへ繰り上げ）。
     private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target)
     {
         if (_stageActive)
@@ -255,9 +230,7 @@ public partial class ShellWindow
         PlacePaneByBehavior(target);
     }
 
-    /// <summary>タイルモードで対象ペインを設定 <see cref="AiSettings.PaneOpenBehavior"/> に従って前面へ配置する。
-    /// 「AIに聞く」等の結果表示・ファイルを開く・袖ミニチュアのクリックの共通配置ロジック（可視時にその位置を
-    /// 保つかどうかの main 判定だけは呼び出し側が事前に行う）。</summary>
+    // タイルモードで対象ペインを設定 AiSettings.PaneOpenBehavior に従って前面へ配置する。 「AIに聞く」等の結果表示・ファイルを開く・袖ミニチュアのクリックの共通配置ロジック（可視時にその位置を 保つかどうかの main 判定だけは呼び出し側が事前に行う）。
     private void PlacePaneByBehavior(PaneKind target)
     {
         switch (_settings.PaneOpenBehavior)
@@ -274,8 +247,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>対象を左上（メイン）ペインと入れ替える（<see cref="PaneOpenBehavior.Main"/>＝従来の既定動作）。
-    /// 左上が取れない／対象自身が左上のときは素直に表示する。</summary>
+    // 対象を左上（メイン）ペインと入れ替える（PaneOpenBehavior.Main＝従来の既定動作）。 左上が取れない／対象自身が左上のときは素直に表示する。
     private void SwapIntoTopLeft(PaneKind target)
     {
         if (TopLeftPane() is { } topLeft && topLeft != target)
@@ -284,9 +256,7 @@ public partial class ShellWindow
             SetPaneVisible(target, true);
     }
 
-    /// <summary>対象を右上（サブ）ペインと入れ替える（<see cref="PaneOpenBehavior.Sub"/>）。上段が横1枚しか
-    /// なければ、左上ペインの右へ新しく追加してサブを作る。上段の左右判定はどちらも上段ノードから構造的に
-    /// 求める（<see cref="TopRowLeftPane"/>／<see cref="TopRightPane"/>）ので、矩形未確定でも右へ入る。</summary>
+    // 対象を右上（サブ）ペインと入れ替える（PaneOpenBehavior.Sub）。上段が横1枚しか なければ、左上ペインの右へ新しく追加してサブを作る。上段の左右判定はどちらも上段ノードから構造的に 求める（TopRowLeftPane／TopRightPane）ので、矩形未確定でも右へ入る。
     private void PlaceIntoSubPane(PaneKind target)
     {
         // 既に画面に出ているならレイアウトの入れ替えはしない（右上への組み替えもしない）。
@@ -303,9 +273,7 @@ public partial class ShellWindow
             SetPaneVisible(target, true);
     }
 
-    /// <summary><see cref="PaneOpenBehavior.Loop"/>：基本はサブ（右上）へ出す。ただし操作の起点が現在の
-    /// サブペインだった場合は、今サブにある内容をメイン（左上）へ繰り上げてから、対象を空いたサブへ出す
-    /// （サブでの作業がメインへ繰り上がり、新しい結果はサブに来るベルトコンベア）。</summary>
+    // PaneOpenBehavior.Loop：基本はサブ（右上）へ出す。ただし操作の起点が現在の サブペインだった場合は、今サブにある内容をメイン（左上）へ繰り上げてから、対象を空いたサブへ出す （サブでの作業がメインへ繰り上がり、新しい結果はサブに来るベルトコンベア）。
     private void PlaceIntoLoopPane(PaneKind target)
     {
         // 既に画面に出ているならレイアウトの入れ替えはしない（繰り上げも含めて組み替えない）。
@@ -330,11 +298,9 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>再表示するペインを最下段の新しい行として追加する。</summary>
+    // 再表示するペインを最下段の新しい行として追加する。
     private void AddLeafAtBottom(PaneLeaf leaf) => _root = AddLeafAtBottom(_root, leaf);
 
-    /// <summary>指定ツリーの最下段の新しい行としてリーフを追加し、新しいルートを返す。
-    /// 既存ノードを行スプリットで包む場合は外側の重み（親スプリット内の比率）を引き継ぐ。</summary>
+    // 指定ツリーの最下段の新しい行としてリーフを追加し、新しいルートを返す。 既存ノードを行スプリットで包む場合は外側の重み（親スプリット内の比率）を引き継ぐ。
     private static PaneNode AddLeafAtBottom(PaneNode? root, PaneLeaf leaf) => PaneLayoutTree.AddLeafAtBottom(root, leaf);
 }
-

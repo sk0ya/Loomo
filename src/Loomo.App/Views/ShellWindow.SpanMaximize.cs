@@ -7,10 +7,7 @@ namespace sk0ya.Loomo.App.Views;
 /// カスタムタイトルバーと WM_GETMINMAXINFO 処理は ShellWindow.WindowChrome.cs。</summary>
 public partial class ShellWindow
 {
-    /// <summary>
-    /// 現在のモニタのワーク領域 <paramref name="currentWork"/> と縦方向に重なる（＝横並びの）
-    /// 全モニタのワーク領域を左から順に返す。縦積み等の重ならないモニタは含めない。
-    /// </summary>
+    // 現在のモニタのワーク領域 currentWork と縦方向に重なる（＝横並びの） 全モニタのワーク領域を左から順に返す。縦積み等の重ならないモニタは含めない。
     private static List<RECT> GetSideBySideWorkAreas(RECT currentWork)
     {
         var works = new List<RECT>();
@@ -30,11 +27,7 @@ public partial class ShellWindow
             .ToList();
     }
 
-    /// <summary>
-    /// 疑似最大化（跨ぎ）先の矩形を求める。横並びの全モニタのワーク領域を横に連結し、
-    /// 縦はそれらの共通帯に収める（どのモニタ上でもタスクバーを覆わない）。
-    /// 横並びのモニタが無い（1枚・縦積み）場合は現在のワーク領域をそのまま返す。
-    /// </summary>
+    // 疑似最大化（跨ぎ）先の矩形を求める。横並びの全モニタのワーク領域を横に連結し、 縦はそれらの共通帯に収める（どのモニタ上でもタスクバーを覆わない）。 横並びのモニタが無い（1枚・縦積み）場合は現在のワーク領域をそのまま返す。
     private static RECT ComputeMaximizeRect(RECT currentWork)
     {
         var current = ToScreenRect(currentWork);
@@ -48,18 +41,14 @@ public partial class ShellWindow
     private static RECT ToNativeRect(ScreenRect rect)
         => new() { Left = rect.Left, Top = rect.Top, Right = rect.Right, Bottom = rect.Bottom };
 
-    /// <summary>疑似最大化（マルチモニタ跨ぎ）中か。WindowState は Normal のまま運用する。</summary>
+    // 疑似最大化（マルチモニタ跨ぎ）中か。WindowState は Normal のまま運用する。
     private bool _isSpanMaximized;
-    /// <summary>疑似最大化に入る前のウィンドウ矩形（物理px）。復元に使う。</summary>
+    // 疑似最大化に入る前のウィンドウ矩形（物理px）。復元に使う。
     private RECT? _spanRestoreBounds;
-    /// <summary>疑似最大化に入る前のペインレイアウト（深いコピー）。解除時に復元する。
-    /// 跨ぎ中の表示切替・ペイン移動はこのツリーへも反映し、スナップショット保存にもこれを使う。</summary>
+    // 疑似最大化に入る前のペインレイアウト（深いコピー）。解除時に復元する。 跨ぎ中の表示切替・ペイン移動はこのツリーへも反映し、スナップショット保存にもこれを使う。
     private PaneNode? _spanSavedRoot;
 
-    /// <summary>
-    /// 横並びのモニタがあれば、それらのワーク領域を連結した矩形へ疑似最大化する。
-    /// 跨ぐ先が現在のモニタ1枚と変わらなければ何もせず false（通常の最大化に任せる）。
-    /// </summary>
+    // 横並びのモニタがあれば、それらのワーク領域を連結した矩形へ疑似最大化する。 跨ぐ先が現在のモニタ1枚と変わらなければ何もせず false（通常の最大化に任せる）。
     private bool TrySpanMaximize()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
@@ -93,13 +82,7 @@ public partial class ShellWindow
         return true;
     }
 
-    /// <summary>
-    /// 跨ぎ最大化用のペインレイアウトを適用する。表示中の各ペインを（現在の中心位置の比率で）
-    /// 担当モニタへ振り分け、列の境界がモニタの継ぎ目と一致するルート列レイアウトへ組み替える。
-    /// これでどのペインも継ぎ目を跨いで表示されない。元のレイアウトは
-    /// <see cref="_spanSavedRoot"/> に保存し、跨ぎ解除時に復元する。
-    /// 可視ペインが1枚しか無い・ズーム中の場合は組み替えない（継ぎ目跨ぎは許容）。
-    /// </summary>
+    // 跨ぎ最大化用のペインレイアウトを適用する。表示中の各ペインを（現在の中心位置の比率で） 担当モニタへ振り分け、列の境界がモニタの継ぎ目と一致するルート列レイアウトへ組み替える。 これでどのペインも継ぎ目を跨いで表示されない。元のレイアウトは _spanSavedRoot に保存し、跨ぎ解除時に復元する。 可視ペインが1枚しか無い・ズーム中の場合は組み替えない（継ぎ目跨ぎは許容）。
     private void ApplySpanPaneLayout(List<RECT> areas, RECT span)
     {
         _spanSavedRoot = null;
@@ -194,7 +177,7 @@ public partial class ShellWindow
         RebuildPaneLayout();
     }
 
-    /// <summary>1モニタ分の列ノード：割り当てられたペインを現在の縦位置順に縦積みする。</summary>
+    // 1モニタ分の列ノード：割り当てられたペインを現在の縦位置順に縦積みする。
     private static PaneNode BuildSpanColumn(List<(PaneLeaf Leaf, double Cx, double Cy, double Height)> group, double weight)
     {
         var ordered = group.OrderBy(g => g.Cy).ThenBy(g => g.Cx).ToList();
@@ -212,12 +195,7 @@ public partial class ShellWindow
         return rows;
     }
 
-    /// <summary>
-    /// 跨ぎ最大化中にペインレイアウトの出どころが変わった（ワークスペース切替等）とき、
-    /// 新しいレイアウトを基準に現在のモニタ構成で列振り分けを適用し直す。
-    /// <see cref="_spanSavedRoot"/> も適用し直す直前のレイアウトで取り直されるため、
-    /// 解除時・スナップショット保存時に切替前のレイアウトを引きずらない。
-    /// </summary>
+    // 跨ぎ最大化中にペインレイアウトの出どころが変わった（ワークスペース切替等）とき、 新しいレイアウトを基準に現在のモニタ構成で列振り分けを適用し直す。 _spanSavedRoot も適用し直す直前のレイアウトで取り直されるため、 解除時・スナップショット保存時に切替前のレイアウトを引きずらない。
     private void ReapplySpanPaneLayout()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
@@ -235,7 +213,7 @@ public partial class ShellWindow
         ApplySpanPaneLayout(GetSideBySideWorkAreas(info.rcWork), ComputeMaximizeRect(info.rcWork));
     }
 
-    /// <summary>疑似最大化を解き、入る前の矩形とペインレイアウトへ戻す。</summary>
+    // 疑似最大化を解き、入る前の矩形とペインレイアウトへ戻す。
     private void RestoreFromSpan()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
@@ -246,12 +224,7 @@ public partial class ShellWindow
         ExitSpanState();
     }
 
-    /// <summary>
-    /// 跨ぎ最大化中にタイトルバーのドラッグ移動が始まる直前、ウィンドウを跨ぐ前のサイズへ
-    /// 縮めてカーソル下へ配置する（本物の最大化をドラッグで解除したときと同じ挙動）。
-    /// カーソルの横位置のウィンドウ内比率を保つので、掴んだ点がタイトルバー上に残ったまま
-    /// 移動ループへ入れる。ここで縮めた矩形がそのまま移動後のウィンドウサイズになる。
-    /// </summary>
+    // 跨ぎ最大化中にタイトルバーのドラッグ移動が始まる直前、ウィンドウを跨ぐ前のサイズへ 縮めてカーソル下へ配置する（本物の最大化をドラッグで解除したときと同じ挙動）。 カーソルの横位置のウィンドウ内比率を保つので、掴んだ点がタイトルバー上に残ったまま 移動ループへ入れる。ここで縮めた矩形がそのまま移動後のウィンドウサイズになる。
     private void ShrinkToSpanRestoreSizeAtCursor(IntPtr hwnd)
     {
         if (_spanRestoreBounds is not { } restore)
@@ -268,8 +241,7 @@ public partial class ShellWindow
             SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    /// <summary>跨ぎ状態だけを解く（ウィンドウ矩形は触らない）。ペインレイアウトは跨ぐ前
-    /// （＝跨ぎ中の表示切替・移動を反映済みの保存ツリー）へ復元する。</summary>
+    // 跨ぎ状態だけを解く（ウィンドウ矩形は触らない）。ペインレイアウトは跨ぐ前 （＝跨ぎ中の表示切替・移動を反映済みの保存ツリー）へ復元する。
     private void ExitSpanState()
     {
         _isSpanMaximized = false;
@@ -285,7 +257,7 @@ public partial class ShellWindow
         UpdateMaximizeGlyph();
     }
 
-    /// <summary>最大化／復元／跨ぎボタンの見た目を実状態（本物の最大化＋疑似最大化）へ同期する。</summary>
+    // 最大化／復元／跨ぎボタンの見た目を実状態（本物の最大化＋疑似最大化）へ同期する。
     private void UpdateMaximizeGlyph()
     {
         var maximized = _isSpanMaximized || WindowState == WindowState.Maximized;
@@ -294,7 +266,7 @@ public partial class ShellWindow
         SpanMaximizeButton.ToolTip = _isSpanMaximized ? "元に戻す" : "全モニタへ最大化";
     }
 
-    /// <summary>跨ぎ最大化ボタンは横並びのモニタが2枚以上あるときだけ見せる。</summary>
+    // 跨ぎ最大化ボタンは横並びのモニタが2枚以上あるときだけ見せる。
     private void UpdateSpanButtonVisibility()
     {
         var visible = false;
@@ -310,4 +282,3 @@ public partial class ShellWindow
     }
 
 }
-

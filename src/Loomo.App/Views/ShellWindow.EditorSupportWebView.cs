@@ -7,10 +7,7 @@ namespace sk0ya.Loomo.App.Views;
 /// 追従元タブの管理と更新オーケストレーションは ShellWindow.EditorSupport.cs。</summary>
 public partial class ShellWindow
 {
-    /// <summary>
-    /// 最新の描画内容を WebView2 へ反映する。URI プロバイダ（PDF 等）はファイルへ直接ナビゲートし、
-    /// それ以外（Markdown プレビュー等）は HTML 文字列をナビゲートする。
-    /// </summary>
+    // 最新の描画内容を WebView2 へ反映する。URI プロバイダ（PDF 等）はファイルへ直接ナビゲートし、 それ以外（Markdown プレビュー等）は HTML 文字列をナビゲートする。
     private void RenderPendingEditorSupportContent(CoreWebView2 core)
     {
         if (_editorSupportPendingUri is { } uri)
@@ -95,19 +92,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>
-    /// プレビューページの HTML を一時ファイルへ書き出し、page.loomo 経由のナビゲート URL を返す。
-    /// <c>?v=</c> に毎回違う版番号を載せることで同一ファイルでも新 URL になり、WebView2 のキャッシュで
-    /// 古いプレビューが居座らないようにする。書き出し失敗（権限・IO 等）時は false。
-    /// </summary>
-    /// <summary>
-    /// URL が EditorSupport の「ブラウザで開く」が書き出した一時プレビューページ（<see cref="MarkdownRenderer.PageVirtualHost"/>）
-    /// を指しているか。ワークスペース保存時にこの手のタブを除外する判定に使う。
-    /// </summary>
-    /// <summary>
-    /// プレビュー HTML を一時ファイルへ書き出し、新規ブラウザタブでその仮想ホストを張ってから開く
-    /// （<see cref="OnOpenEditorSupportInBrowser"/> から呼ばれる）。
-    /// </summary>
+    // プレビューページの HTML を一時ファイルへ書き出し、page.loomo 経由のナビゲート URL を返す。 ?v= に毎回違う版番号を載せることで同一ファイルでも新 URL になり、WebView2 のキャッシュで 古いプレビューが居座らないようにする。書き出し失敗（権限・IO 等）時は false。 URL が EditorSupport の「ブラウザで開く」が書き出した一時プレビューページ（MarkdownRenderer.PageVirtualHost） を指しているか。ワークスペース保存時にこの手のタブを除外する判定に使う。 プレビュー HTML を一時ファイルへ書き出し、新規ブラウザタブでその仮想ホストを張ってから開く （OnOpenEditorSupportInBrowser から呼ばれる）。
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title)
     {
         if (!_editorSupportNavigation.TryWritePage(html, out var pageUrl))
@@ -125,7 +110,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。</summary>
+    // ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。
     private void ShowEditorSupportVisual(FrameworkElement view)
     {
         if (!ReferenceEquals(_editorSupportVisual, view))
@@ -141,7 +126,7 @@ public partial class ShellWindow
             _editorSupportView.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>ビジュアル提供者のビューを隠し、WebView2 表示へ戻す。</summary>
+    // ビジュアル提供者のビューを隠し、WebView2 表示へ戻す。
     private void HideEditorSupportVisual()
     {
         if (_editorSupportVisual is not null)
@@ -150,11 +135,7 @@ public partial class ShellWindow
             _editorSupportView.Visibility = Visibility.Visible;
     }
 
-    /// <summary>
-    /// ビジュアル提供者内での編集（CSV/TSV グリッド等）を、追従中のエディタタブの本文へ書き戻す。
-    /// SetText で BufferChanged が発火しデバウンス更新が走るが、提供者側が内容比較で再パースを
-    /// 抑止するためループしない。エディタタブは通常の編集と同じく未保存（modified）になる。
-    /// </summary>
+    // ビジュアル提供者内での編集（CSV/TSV グリッド等）を、追従中のエディタタブの本文へ書き戻す。 SetText で BufferChanged が発火しデバウンス更新が走るが、提供者側が内容比較で再パースを 抑止するためループしない。エディタタブは通常の編集と同じく未保存（modified）になる。
     private void EditorSupportVisual_ContentEdited(object? sender, EditorSupportContentEdited e)
     {
         var tab = _editorSupportSourceTab;
@@ -168,7 +149,7 @@ public partial class ShellWindow
         tab.Control.SetText(e.Text);
     }
 
-    /// <summary>EditorSupport ペインを（無ければ Editor の右隣へ作って）表示する。明示プレビュー要求用。</summary>
+    // EditorSupport ペインを（無ければ Editor の右隣へ作って）表示する。明示プレビュー要求用。
     private void ShowEditorSupportPane()
     {
         if (IsPaneVisible(PaneKind.EditorSupport))
@@ -178,10 +159,7 @@ public partial class ShellWindow
         SetPaneVisible(PaneKind.EditorSupport, true);
     }
 
-    /// <summary>
-    /// EditorSupport リーフがレイアウトツリーに無ければ Editor の右隣へ（隠した状態で）挿入する。
-    /// 既定の <see cref="AddLeafAtBottom"/>（最下段の新しい行）よりプレビュー用途に適した位置になる。
-    /// </summary>
+    // EditorSupport リーフがレイアウトツリーに無ければ Editor の右隣へ（隠した状態で）挿入する。 既定の AddLeafAtBottom（最下段の新しい行）よりプレビュー用途に適した位置になる。
     private void EnsureEditorSupportLeafBesideEditor()
     {
         // 跨ぎ最大化中は、解除時に戻す保存レイアウトにも同じ位置（Editor の右隣・隠した状態）で
@@ -203,7 +181,7 @@ public partial class ShellWindow
         _root = InsertRelative(_root, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
     }
 
-    /// <summary>EditorSupport ペインの WebView2 を遅延生成し、CoreWebView2 まで実体化して返す（失敗時 null）。</summary>
+    // EditorSupport ペインの WebView2 を遅延生成し、CoreWebView2 まで実体化して返す（失敗時 null）。
     private async Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync()
     {
         if (_editorSupportView is null)
@@ -229,7 +207,7 @@ public partial class ShellWindow
         return _editorSupportView;
     }
 
-    /// <summary>CoreWebView2 を実体化し、Web イベントと同梱アセットのホストマップを一度だけ設定する。</summary>
+    // CoreWebView2 を実体化し、Web イベントと同梱アセットのホストマップを一度だけ設定する。
     private async Task<bool> InitializeEditorSupportCoreAsync(WebView2CompositionControl view)
     {
         try
@@ -270,11 +248,7 @@ public partial class ShellWindow
         return true;
     }
 
-    /// <summary>
-    /// EditorSupport の全 WebView ページへ注入する横スクロール補助スクリプト。ポインタ位置を追い、
-    /// <c>hscroll</c> メッセージ（WPF の WM_MOUSEHWHEEL フック由来）で、ポインタ直下から辿った
-    /// 最寄りの横スクロール可能要素（無ければドキュメント）を <c>dx</c> だけ横スクロールする。
-    /// </summary>
+    // EditorSupport の全 WebView ページへ注入する横スクロール補助スクリプト。ポインタ位置を追い、 hscroll メッセージ（WPF の WM_MOUSEHWHEEL フック由来）で、ポインタ直下から辿った 最寄りの横スクロール可能要素（無ければドキュメント）を dx だけ横スクロールする。
     private const string HorizontalScrollScript = """
         (() => {
             let mx = 0, my = 0;
@@ -298,10 +272,7 @@ public partial class ShellWindow
         })();
         """;
 
-    /// <summary>
-    /// 横チルトホイールを EditorSupport の WebView コンテンツへ転送する（ポインタが WebView 上にある場合のみ）。
-    /// WPF 側に横スクロール対象が無いとき（<see cref="HorizontalWheelScroll.Handle"/> が false）のフォールバック。
-    /// </summary>
+    // 横チルトホイールを EditorSupport の WebView コンテンツへ転送する（ポインタが WebView 上にある場合のみ）。 WPF 側に横スクロール対象が無いとき（HorizontalWheelScroll.Handle が false）のフォールバック。
     internal bool TryHorizontalScrollEditorSupportWebView(int delta)
     {
         if (delta == 0
@@ -420,11 +391,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>
-    /// EditorSupport の追従元エディタへフォーカスを戻す（編集対象を見つけたら本文へ入る導線）。
-    /// 行が指定されればその位置へカーソルを移す（JSON ツリーの「↦」）。指定なしは現在位置のまま
-    /// フォーカスだけ移す（コンテキストメニュー／同期スクロール位置）。
-    /// </summary>
+    // EditorSupport の追従元エディタへフォーカスを戻す（編集対象を見つけたら本文へ入る導線）。 行が指定されればその位置へカーソルを移す（JSON ツリーの「↦」）。指定なしは現在位置のまま フォーカスだけ移す（コンテキストメニュー／同期スクロール位置）。
     private void FocusEditorSupportSource(int? line, bool alignTop = false)
     {
         var tab = _editorSupportSourceTab;
@@ -450,10 +417,7 @@ public partial class ShellWindow
         _focusedRegion = FocusTarget.Of(PaneKind.Editor);
     }
 
-    /// <summary>
-    /// EditorSupport の WebView2 右クリックメニューへ「エディタへフォーカス」を足す。プレビューで
-    /// 編集対象を見つけたら、そのまま追従元エディタへ戻れるようにする（全プレビュー共通の保険）。
-    /// </summary>
+    // EditorSupport の WebView2 右クリックメニューへ「エディタへフォーカス」を足す。プレビューで 編集対象を見つけたら、そのまま追従元エディタへ戻れるようにする（全プレビュー共通の保険）。
     private void EditorSupport_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
     {
         if (_editorSupportSourceTab is null || sender is not CoreWebView2 core)
@@ -488,12 +452,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>
-    /// エディタの縦スクロール位置（比率）をプレビューへ送る。<c>ExecuteScriptAsync</c>（スクリプト文字列の
-    /// 都度コンパイル＋IPC 往復待ち）ではなく <see cref="CoreWebView2.PostWebMessageAsJson"/> を使う
-    /// ＝送りっぱなしで安く、連続スクロールでも待ち行列が詰まらない。間引き（1 フレーム 1 回の scrollTo）は
-    /// ページ側の requestAnimationFrame が担う。エコー抑止もページ側 suppressScrollMessage が担う。
-    /// </summary>
+    // エディタの縦スクロール位置（比率）をプレビューへ送る。ExecuteScriptAsync（スクリプト文字列の 都度コンパイル＋IPC 往復待ち）ではなく CoreWebView2.PostWebMessageAsJson を使う ＝送りっぱなしで安く、連続スクロールでも待ち行列が詰まらない。間引き（1 フレーム 1 回の scrollTo）は ページ側の requestAnimationFrame が担う。エコー抑止もページ側 suppressScrollMessage が担う。
     private void PostEditorSupportScrollRatio(double ratio)
     {
         var core = _editorSupportView?.CoreWebView2;
@@ -511,4 +470,3 @@ public partial class ShellWindow
         }
     }
 }
-

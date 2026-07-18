@@ -5,23 +5,19 @@ namespace sk0ya.Loomo.App.Views;
 /// アレンジ、ライブ縮小カード（VisualBrush）、舞台スロットの生成。モード制御は ShellWindow.Stage.cs。</summary>
 public partial class ShellWindow
 {
-    /// <summary>袖カードの幅。高さは <see cref="CardAspect"/>（固定）から導出される。</summary>
+    // 袖カードの幅。高さは CardAspect（固定）から導出される。
     private const double WingCardWidth = 180;
-    /// <summary>俯瞰カードの幅。</summary>
+    // 俯瞰カードの幅。
     private const double OverviewCardWidth = 320;
-    /// <summary>カード枠の固定縦横比（幅÷高さ）。サイドバー幅でペインの縦横比が変わっても枠は揺れない。
-    /// 中身は枠へ Uniform で歪ませず・クロップせず収める（描画元の縦横比が変わっても揺れない）。</summary>
+    // カード枠の固定縦横比（幅÷高さ）。サイドバー幅でペインの縦横比が変わっても枠は揺れない。 中身は枠へ Uniform で歪ませず・クロップせず収める（描画元の縦横比が変わっても揺れない）。
     private const double CardAspect = 3.0 / 2.0;
-    /// <summary>袖カードの待機時不透明度（暗がりで生きて待っている感を出す）。</summary>
+    // 袖カードの待機時不透明度（暗がりで生きて待っている感を出す）。
     private const double WingRestOpacity = 0.72;
     private double _layoutWingSourceWidth;
     private bool _layoutWingBuildQueued;
     private bool _layoutWingBuildPending;
 
-    /// <summary>描画元ペインをカードと同じ固定縦横比（<see cref="CardAspect"/>）でレイアウトした非表示ホストを
-    /// 作り、StageSourceArea に登録する。ミニチュア（VisualBrush）はこのホストを縮小描画する。両モード共通。
-    /// 幅は実領域（<paramref name="virtualSize"/>）に合わせて中身の縮尺を保ち、高さだけ枠の比率へ寄せるので、
-    /// カードへ Uniform で収めても余白もはみ出しも出ず、サイドバー幅で揺れない。</summary>
+    // 描画元ペインをカードと同じ固定縦横比（CardAspect）でレイアウトした非表示ホストを 作り、StageSourceArea に登録する。ミニチュア（VisualBrush）はこのホストを縮小描画する。両モード共通。 幅は実領域（virtualSize）に合わせて中身の縮尺を保ち、高さだけ枠の比率へ寄せるので、 カードへ Uniform で収めても余白もはみ出しも出ず、サイドバー幅で揺れない。
     private void ArrangeThumbnailSource(PaneKind kind, Size virtualSize)
     {
         var element = _paneElements[kind];
@@ -52,7 +48,7 @@ public partial class ShellWindow
         _stageThumbnailHosts[kind] = host;
     }
 
-    /// <summary>袖・俯瞰カードの描画元（実体ペイン）を舞台サイズでレイアウトする（ソロモード専用）。</summary>
+    // 袖・俯瞰カードの描画元（実体ペイン）を舞台サイズでレイアウトする（ソロモード専用）。
     private void BuildStageThumbnailSources(Size virtualSize)
     {
         var kinds = _overviewActive
@@ -62,9 +58,7 @@ public partial class ShellWindow
             ArrangeThumbnailSource(kind, virtualSize);
     }
 
-    /// <summary>袖（ミニチュア）を組み直す。両モードとも「有効だが Main に出ていない」セッションを
-    /// 実体ペインのライブ縮小で並べる（Main に出ているもの・無効なものは出さない）。
-    /// ソロは舞台外の有効セッション、レイアウトはタイル未配置やズーム中の非ズームペインが対象。</summary>
+    // 袖（ミニチュア）を組み直す。両モードとも「有効だが Main に出ていない」セッションを 実体ペインのライブ縮小で並べる（Main に出ているもの・無効なものは出さない）。 ソロは舞台外の有効セッション、レイアウトはタイル未配置やズーム中の非ズームペインが対象。
     private void RebuildWings()
     {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
@@ -92,9 +86,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>レイアウトモードの袖カードの描画元を組む：有効だが Main に出ていないペイン
-    /// （タイル未配置・ズーム中の非ズームペイン等）を Main 領域サイズの非表示ホスト（StageSourceArea）へ
-    /// 寄せてレイアウトする。これらは PaneHost に居ないため、ライブ縮小の描画元として別途アレンジが要る。</summary>
+    // レイアウトモードの袖カードの描画元を組む：有効だが Main に出ていないペイン （タイル未配置・ズーム中の非ズームペイン等）を Main 領域サイズの非表示ホスト（StageSourceArea）へ 寄せてレイアウトする。これらは PaneHost に居ないため、ライブ縮小の描画元として別途アレンジが要る。
     private void BuildLayoutWingSources()
     {
         StageSourceArea.Children.Clear();
@@ -110,8 +102,7 @@ public partial class ShellWindow
             ArrangeThumbnailSource(kind, virtualSize);
     }
 
-    /// <summary>レイアウトモードで袖を組み直す。実体ペインはタイルに在るので、レイアウト確定後（Loaded）に
-    /// ライブ要素の実寸でカードを作る。</summary>
+    // レイアウトモードで袖を組み直す。実体ペインはタイルに在るので、レイアウト確定後（Loaded）に ライブ要素の実寸でカードを作る。
     private void ScheduleLayoutWings()
     {
         if (_stageActive)
@@ -175,7 +166,7 @@ public partial class ShellWindow
         ScheduleLayoutWings();
     }
 
-    /// <summary>袖の列（WingHost）の表示と、俯瞰ボタン（ソロ専用）の表示を現状へ同期する。</summary>
+    // 袖の列（WingHost）の表示と、俯瞰ボタン（ソロ専用）の表示を現状へ同期する。
     private void UpdateWingHostVisibility()
     {
         if (WingHost is null)
@@ -184,8 +175,7 @@ public partial class ShellWindow
         OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>ソロ／俯瞰のカード：舞台サイズにレイアウトした非表示ホスト（StageSourceArea）を縮小描画する。
-    /// クリックでそのセッションを舞台へ立てる。</summary>
+    // ソロ／俯瞰のカード：舞台サイズにレイアウトした非表示ホスト（StageSourceArea）を縮小描画する。 クリックでそのセッションを舞台へ立てる。
     private Border BuildSessionCard(PaneKind kind, double width, bool isOverview)
     {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
@@ -193,9 +183,7 @@ public partial class ShellWindow
             () => { SetStagePane(kind); FocusPane(kind); });
     }
 
-    /// <summary>レイアウトモードの袖カード：Main 領域サイズへ寄せた非表示ホスト（<see cref="BuildLayoutWingSources"/>）
-    /// をライブ縮小で描画する。クリックでそのペインを左上ペインと入れ替える（クリックしたセッションが左上の
-    /// 位置を引き継ぎ、元の左上ペインは袖へ退場）。ズーム中は対象をズームへ昇格。</summary>
+    // レイアウトモードの袖カード：Main 領域サイズへ寄せた非表示ホスト（BuildLayoutWingSources） をライブ縮小で描画する。クリックでそのペインを左上ペインと入れ替える（クリックしたセッションが左上の 位置を引き継ぎ、元の左上ペインは袖へ退場）。ズーム中は対象をズームへ昇格。
     private Border BuildLayoutWingCard(PaneKind kind, double width)
     {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
@@ -221,8 +209,7 @@ public partial class ShellWindow
             });
     }
 
-    /// <summary>タイル上で最も左上（上端優先・次に左端）に表示されている可視ペイン。袖クリックの入れ替え先。
-    /// まだレイアウトされておらず矩形が取れないときはツリー順の最初の可視リーフへフォールバックする。</summary>
+    // タイル上で最も左上（上端優先・次に左端）に表示されている可視ペイン。袖クリックの入れ替え先。 まだレイアウトされておらず矩形が取れないときはツリー順の最初の可視リーフへフォールバックする。
     private PaneKind? TopLeftPane()
     {
         PaneKind? best = null;
@@ -242,24 +229,16 @@ public partial class ShellWindow
         return best ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
     }
 
-    /// <summary>タイル上段（最上端の行）で最も右にある可視ペイン。サブ（右上）ペインの入れ替え先。
-    /// 上段が横1枚ならメイン（左上）と一致する。ジオメトリ（矩形）に依存すると、レイアウト直後で
-    /// 矩形が未確定のとき下段のペインを誤って返し得るため、ツリー構造から決定的に求める
-    /// （<see cref="PaneLayoutTree.TopRow"/>＋<see cref="PaneLayoutTree.RightmostVisibleLeaf"/>）。</summary>
+    // タイル上段（最上端の行）で最も右にある可視ペイン。サブ（右上）ペインの入れ替え先。 上段が横1枚ならメイン（左上）と一致する。ジオメトリ（矩形）に依存すると、レイアウト直後で 矩形が未確定のとき下段のペインを誤って返し得るため、ツリー構造から決定的に求める （PaneLayoutTree.TopRow＋PaneLayoutTree.RightmostVisibleLeaf）。
     private PaneKind? TopRightPane()
         => PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind
             ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
 
-    /// <summary>タイル上段（最上端の行）で最も左にある可視ペイン＝サブ判定でのメイン（左上）。
-    /// <see cref="TopRightPane"/> と対で、どちらも上段ノードから構造的に求めるので判定がぶれない。</summary>
+    // タイル上段（最上端の行）で最も左にある可視ペイン＝サブ判定でのメイン（左上）。 TopRightPane と対で、どちらも上段ノードから構造的に求めるので判定がぶれない。
     private PaneKind? TopRowLeftPane()
         => PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind;
 
-    /// <summary>
-    /// セッションカードの共通部分を作る。カード枠は固定縦横比（<see cref="CardAspect"/>）。描画元ホストも
-    /// 同じ比率（<see cref="ArrangeThumbnailSource"/>）なので、VisualBrush の <paramref name="source"/> を
-    /// Uniform で収めると歪み・余白・クロップなく枠いっぱいに埋まる（縦横比が一致するので揺れない）。
-    /// </summary>
+    // セッションカードの共通部分を作る。カード枠は固定縦横比（CardAspect）。描画元ホストも 同じ比率（ArrangeThumbnailSource）なので、VisualBrush の source を Uniform で収めると歪み・余白・クロップなく枠いっぱいに埋まる（縦横比が一致するので揺れない）。
     private Border BuildCard(PaneKind kind, double width, Visual source, bool isOverview, Action onClick)
     {
         var borderBrush = (Brush)FindResource("Border");
@@ -376,7 +355,7 @@ public partial class ShellWindow
         return card;
     }
 
-    /// <summary>実体ペインを角丸枠に入れた舞台スロットを作る。ペイン自身のタイトルバーがあるので余計なヘッダは足さない。</summary>
+    // 実体ペインを角丸枠に入れた舞台スロットを作る。ペイン自身のタイトルバーがあるので余計なヘッダは足さない。
     private Border BuildLiveSlot(PaneKind kind)
     {
         var element = _paneElements[kind];
@@ -396,4 +375,3 @@ public partial class ShellWindow
         };
     }
 }
-

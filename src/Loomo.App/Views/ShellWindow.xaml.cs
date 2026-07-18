@@ -14,15 +14,15 @@ public partial class ShellWindow : Window
     private readonly ShellAppearanceCoordinator _appearance;
     private readonly EditorSupportNavigationService _editorSupportNavigation;
     private readonly EditorSupportRegistry _editorSupports;
-    /// <summary>対応プロバイダの無いバイナリのフォールバック表示（Hex ダンプ）。registry 外。</summary>
+    // 対応プロバイダの無いバイナリのフォールバック表示（Hex ダンプ）。registry 外。
     private readonly HexEditorSupport _hexSupport;
-    /// <summary>専用プロバイダの無いコードファイルのフォールバック表示（LSP 構造アウトライン）。registry 外。</summary>
+    // 専用プロバイダの無いコードファイルのフォールバック表示（LSP 構造アウトライン）。registry 外。
     private readonly CodeEditorSupport _codeSupport;
-    /// <summary>コード案内ページの「インストール」導線に使う LSP 管理サービス（判定＋可視ターミナル実行）。</summary>
+    // コード案内ページの「インストール」導線に使う LSP 管理サービス（判定＋可視ターミナル実行）。
     private readonly sk0ya.Loomo.Services.Lsp.LspManagementService _lspManagement;
     private readonly KeybindingService _keybindings;
     private readonly ShellViewModel _vm;
-    /// <summary>キーボードショートカットのディスパッチャ（実効バインド→コマンド実行）。</summary>
+    // キーボードショートカットのディスパッチャ（実効バインド→コマンド実行）。
     private KeyboardDispatcher? _keyboard;
     private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
     private readonly Dictionary<Guid, EditorWorkspaceTabs> _editorWorkspaces = new();
@@ -39,8 +39,7 @@ public partial class ShellWindow : Window
     private TerminalTab? _activeTerminalTab;
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
-    /// <summary>FolderTree の単クリックで開いたプレビュータブ（VS Code 風）。1つだけ使い回し、
-    /// 別ファイルのクリックで中身を差し替える。編集（modified）された時点で通常タブへ昇格し null へ戻る。</summary>
+    // FolderTree の単クリックで開いたプレビュータブ（VS Code 風）。1つだけ使い回し、 別ファイルのクリックで中身を差し替える。編集（modified）された時点で通常タブへ昇格し null へ戻る。
     private EditorTab? _previewEditorTab;
     // ===== EditorSupport ペイン =====
     // アクティブなエディタタブのファイルに対応する IEditorSupportProvider が登録されていれば
@@ -48,90 +47,71 @@ public partial class ShellWindow : Window
     // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示し、
     // IEditorSupportUriProvider（PDF/SVG/HTML 等）はファイルを WebView2 へ直接ナビゲートして表示する。
     private EditorTab? _editorSupportSourceTab;
-    /// <summary>エディタの現在ファイル（＝EditorSupport の追従ソース）の「戻る・進む」履歴（純ロジック）。</summary>
+    // エディタの現在ファイル（＝EditorSupport の追従ソース）の「戻る・進む」履歴（純ロジック）。
     private readonly Services.EditorSupportHistory _editorSupportHistory = new();
-    /// <summary>戻る/進む操作中は <see cref="Services.EditorSupportHistory.Navigate"/> 記録を抑止するガード。</summary>
+    // 戻る/進む操作中は Services.EditorSupportHistory.Navigate 記録を抑止するガード。
     private bool _editorSupportNavigating;
     private WebView2CompositionControl? _editorSupportView;
-    /// <summary>現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。</summary>
+    // 現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。
     private FrameworkElement? _editorSupportVisual;
-    /// <summary>ContentEdited（グリッド編集→エディタ書き戻し）を購読済みのビジュアル提供者。</summary>
+    // ContentEdited（グリッド編集→エディタ書き戻し）を購読済みのビジュアル提供者。
     private readonly HashSet<IEditorSupportVisualProvider> _editorSupportEditSubscribed = new();
     private bool _editorSupportWebEventsAttached;
     private DispatcherTimer? _editorSupportDebounceTimer;
-    /// <summary>コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。</summary>
+    // コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。
     private DispatcherTimer? _codeCaretTimer;
-    /// <summary>案内（言語サーバー接続待ち）を出している間、ready へ遷移したら本描画へ差し替えるためのポーリング。</summary>
+    // 案内（言語サーバー接続待ち）を出している間、ready へ遷移したら本描画へ差し替えるためのポーリング。
     private DispatcherTimer? _codeReadyRetryTimer;
-    /// <summary><see cref="_codeReadyRetryTimer"/> の試行回数（上限で打ち切り。サーバーが永久に来ないケースの保険）。</summary>
+    // _codeReadyRetryTimer の試行回数（上限で打ち切り。サーバーが永久に来ないケースの保険）。
     private int _codeReadyRetryAttempts;
-    /// <summary>診断用（<see cref="Services.CodeSupportDiag"/>）：コード表示要求からアウトライン描画完了までの経過を計るストップウォッチ。</summary>
+    // 診断用（Services.CodeSupportDiag）：コード表示要求からアウトライン描画完了までの経過を計るストップウォッチ。
     private System.Diagnostics.Stopwatch? _codeSupportDiagStopwatch;
-    /// <summary>直近に描いたコードアウトラインのノード（キャレット追従で②を再取得する差分判定に使う。null＝未描画）。</summary>
+    // 直近に描いたコードアウトラインのノード（キャレット追従で②を再取得する差分判定に使う。null＝未描画）。
     private System.Collections.Generic.IReadOnlyList<Services.OutlineNode>? _codeOutlineRoots;
-    /// <summary><see cref="_codeOutlineRoots"/> の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。</summary>
+    // _codeOutlineRoots の元タブ（別タブへ切り替わったら追従キャッシュを無効化する）。
     private EditorTab? _codeOutlineSource;
-    /// <summary>コード構造アウトライン＋②呼び出し解析のネイティブ WPF ビュー（コードのフォールバック表示）。遅延生成・使い回し。</summary>
+    // コード構造アウトライン＋②呼び出し解析のネイティブ WPF ビュー（コードのフォールバック表示）。遅延生成・使い回し。
     private CodeOutlineView? _codeOutlineView;
-    /// <summary>
-    /// 直近に②（呼び出し解析）を問い合わせた「キャレット直下シンボル」の名前範囲（LSP callHierarchy の
-    /// SelectionRange・0 始まり）。キャレットがこの範囲内に留まる間は同じシンボル＝再取得しない差分基準。
-    /// シンボルが解決できなかった（callHierarchy 非対応・変数・空白上）ときは null。
-    /// </summary>
+    // 直近に②（呼び出し解析）を問い合わせた「キャレット直下シンボル」の名前範囲（LSP callHierarchy の SelectionRange・0 始まり）。キャレットがこの範囲内に留まる間は同じシンボル＝再取得しない差分基準。 シンボルが解決できなかった（callHierarchy 非対応・変数・空白上）ときは null。
     private Editor.Core.Lsp.LspRange? _codeCurrentSymbolRange;
-    /// <summary>
-    /// 直近に②を問い合わせたキャレット位置（0 始まり line/col）。<see cref="_codeCurrentSymbolRange"/> が
-    /// null（シンボル未解決）のときの差分基準＝この位置から動いたら再取得する。
-    /// </summary>
+    // 直近に②を問い合わせたキャレット位置（0 始まり line/col）。_codeCurrentSymbolRange が null（シンボル未解決）のときの差分基準＝この位置から動いたら再取得する。
     private (int Line, int Col)? _codeCurrentCaret;
-    /// <summary>EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。</summary>
+    // EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。
     private bool _editorSupportSourcePinned;
-    /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>
-    /// <summary>WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。</summary>
+    // プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。 WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。
     private Task<bool>? _editorSupportInitTask;
-    /// <summary>HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。</summary>
+    // HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。
     private int _editorSupportRenderSeq;
-    /// <summary>最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。</summary>
+    // 最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。
     private string? _editorSupportPendingHtml;
-    /// <summary>最新の本文差し替え内容（同一ページの編集中のみ。フル HTML 描画時は null）。</summary>
+    // 最新の本文差し替え内容（同一ページの編集中のみ。フル HTML 描画時は null）。
     private string? _editorSupportPendingBody;
-    /// <summary>最新描画のページ体裁の鍵（インクリメンタル提供者のみ。フル再構築の要否判定に使う）。</summary>
+    // 最新描画のページ体裁の鍵（インクリメンタル提供者のみ。フル再構築の要否判定に使う）。
     private string? _editorSupportPendingPageKey;
-    /// <summary>いま再ナビゲート中のページ体裁の鍵（NavigationCompleted で <see cref="_editorSupportReadyPageKey"/> へ昇格）。</summary>
+    // いま再ナビゲート中のページ体裁の鍵（NavigationCompleted で _editorSupportReadyPageKey へ昇格）。
     private string? _editorSupportLoadingPageKey;
-    /// <summary>WebView2 が読込完了し本文差し替え（setBody）を受け付けられるページ体裁の鍵。一致する間はフル再ナビゲートしない。</summary>
+    // WebView2 が読込完了し本文差し替え（setBody）を受け付けられるページ体裁の鍵。一致する間はフル再ナビゲートしない。
     private string? _editorSupportReadyPageKey;
-    /// <summary>最新のナビゲート先 URI（PDF 等の URI プロバイダ。HTML 描画時は null）。</summary>
+    // 最新のナビゲート先 URI（PDF 等の URI プロバイダ。HTML 描画時は null）。
     private string? _editorSupportPendingUri;
-    /// <summary>現在 WebView2 が表示中のナビゲート URI（同一 URI への再ナビゲートでスクロール位置を失わないためのガード）。</summary>
+    // 現在 WebView2 が表示中のナビゲート URI（同一 URI への再ナビゲートでスクロール位置を失わないためのガード）。
     private string? _editorSupportNavigatedUri;
-    /// <summary>最新の描画に対応する仮想ホストのマップ先（プロバイダ無しなら null）。</summary>
+    // 最新の描画に対応する仮想ホストのマップ先（プロバイダ無しなら null）。
     private string? _editorSupportPendingMapFolder;
-    /// <summary>起動直後の初回ナビゲーション取りこぼし対策（初回完了時に最新内容を一度だけ描き直す）を実施済みか。</summary>
+    // 起動直後の初回ナビゲーション取りこぼし対策（初回完了時に最新内容を一度だけ描き直す）を実施済みか。
     private bool _editorSupportFirstRenderHealed;
-    /// <summary>
-    /// プレビューページ（フル HTML）を WebView2 へ配信する一時フォルダ。<c>NavigateToString</c> の
-    /// 約 2MB 上限を避け、大きな Markdown でもページを表示するためファイル経由で配信する。
-    /// </summary>
+    // プレビューページ（フル HTML）を WebView2 へ配信する一時フォルダ。NavigateToString の 約 2MB 上限を避け、大きな Markdown でもページを表示するためファイル経由で配信する。
     private static readonly string EditorSupportPreviewFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "WebView2", "preview-page");
-    /// <summary>プレビューページの配信バージョン（?v= に載せて毎回新 URL にし WebView2 のキャッシュを避ける）。</summary>
+    // プレビューページの配信バージョン（?v= に載せて毎回新 URL にし WebView2 のキャッシュを避ける）。
 
-    /// <summary>
-    /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。
-    /// 既定だと実行ファイル隣に作られ再ビルドで消えるため、%APPDATA%/Loomo 配下に固定して
-    /// パスワード自動保存やフォルダ等の権限許可をセッションをまたいで永続化する。
-    /// </summary>
+    // WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。 既定だと実行ファイル隣に作られ再ビルドで消えるため、%APPDATA%/Loomo 配下に固定して パスワード自動保存やフォルダ等の権限許可をセッションをまたいで永続化する。
     private static readonly string WebViewUserDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "WebView2");
 
-    /// <summary>
-    /// ワークスペース内の file:// ページから、同じワークスペースに置いた JS・JSON 等を読み込めるようにする。
-    /// Loomo はユーザーが明示的に開いた開発ワークスペースを扱うため、URL を仮想ホストへ変換せず
-    /// Chromium のローカルファイル間アクセスを許可し、既存ページの location.href/file: 判定を保つ。
-    /// </summary>
+    // ワークスペース内の file:// ページから、同じワークスペースに置いた JS・JSON 等を読み込めるようにする。 Loomo はユーザーが明示的に開いた開発ワークスペースを扱うため、URL を仮想ホストへ変換せず Chromium のローカルファイル間アクセスを許可し、既存ページの location.href/file: 判定を保つ。
     private const string WebViewAdditionalBrowserArguments = "--allow-file-access-from-files";
 
     private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
@@ -145,19 +125,19 @@ public partial class ShellWindow : Window
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";
 
-    /// <summary>サイドバーを閉じる直前の幅を保持し、再表示時に復元する。</summary>
+    // サイドバーを閉じる直前の幅を保持し、再表示時に復元する。
     private GridLength _savedSidebarWidth = new(220);
 
-    /// <summary>分割スプリッターのトラック厚（px）。見た目の線は細いが、掴み判定をこの幅で確保する。</summary>
+    // 分割スプリッターのトラック厚（px）。見た目の線は細いが、掴み判定をこの幅で確保する。
     private const double SplitterThickness = 6;
-    /// <summary>一時的に全面表示（ズーム）しているペイン。null なら通常のタイル表示。ツリーは保持する。</summary>
+    // 一時的に全面表示（ズーム）しているペイン。null なら通常のタイル表示。ツリーは保持する。
     private PaneKind? _zoomedPane;
-    /// <summary>メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。</summary>
+    // メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。
     private readonly PaneLayoutCoordinator _paneLayout = new();
     private PaneNode? _root { get => _paneLayout.Root; set => _paneLayout.Root = value; }
-    /// <summary>ペイン種別 → そのライブコントロールを内包するルート要素。</summary>
+    // ペイン種別 → そのライブコントロールを内包するルート要素。
     private readonly Dictionary<PaneKind, FrameworkElement> _paneElements = new();
-    /// <summary>ドラッグ判定中に一時的にマウスを捕捉しているタイトル要素。</summary>
+    // ドラッグ判定中に一時的にマウスを捕捉しているタイトル要素。
     private FrameworkElement? _dragHandle;
     private Point _paneDragStart;
     private bool _paneDragArmed;
@@ -171,40 +151,36 @@ public partial class ShellWindow : Window
     private PaneKind _dragSource;
     private PaneKind? _dragTarget;
     private DropZone? _dragZone;
-    /// <summary>ドラッグ元が袖（ミニチュア）か。true なら _dragSource はツリー外のペインで、
-    /// ドロップ時は移動でなく配置（入れ替え／分割挿入）になる。</summary>
+    // ドラッグ元が袖（ミニチュア）か。true なら _dragSource はツリー外のペインで、 ドロップ時は移動でなく配置（入れ替え／分割挿入）になる。
     private bool _dragFromWing;
-    /// <summary>ソロモードのミニチュアからのドラッグか。true ならドロップ先は舞台1枚で、
-    /// 中央＝舞台のペインを入れ替え・端＝レイアウトモードへ切り替えて分割挿入になる
-    /// （<see cref="HandleStageDrop"/>）。</summary>
+    // ソロモードのミニチュアからのドラッグか。true ならドロップ先は舞台1枚で、 中央＝舞台のペインを入れ替え・端＝レイアウトモードへ切り替えて分割挿入になる （HandleStageDrop）。
     private bool _stageDrag;
-    /// <summary>ドロップ先セルの中央ゾーン（=入れ替え）にいるか。端なら分割挿入。</summary>
+    // ドロップ先セルの中央ゾーン（=入れ替え）にいるか。端なら分割挿入。
     private bool _dragCenter;
-    /// <summary>セルの外縁ぎりぎりにいて、単体ペインではなく（直交する）祖先スプリット全体の辺へ
-    /// 落とす「スパン挿入」状態か（例：左右2ペインの下にフル幅で挿入）。</summary>
+    // セルの外縁ぎりぎりにいて、単体ペインではなく（直交する）祖先スプリット全体の辺へ 落とす「スパン挿入」状態か（例：左右2ペインの下にフル幅で挿入）。
     private bool _dragSpan;
 
     // ===== ペイン間フォーカス移動（Ctrl+W h/j/k/l） =====
-    /// <summary>直近でキーボードフォーカスを得た領域（移動の起点）。ペイン本体またはサイドバー。</summary>
+    // 直近でキーボードフォーカスを得た領域（移動の起点）。ペイン本体またはサイドバー。
     private FocusTarget? _focusedRegion;
-    /// <summary>リサイズモードのヒント表示が出ているか（モード本体の状態は <see cref="KeyboardDispatcher"/> が持つ）。</summary>
+    // リサイズモードのヒント表示が出ているか（モード本体の状態は KeyboardDispatcher が持つ）。
     private bool _resizeMode;
-    /// <summary>リサイズ自身が起こすフォーカス移動でモードを抜けてしまうのを防ぐガード。</summary>
+    // リサイズ自身が起こすフォーカス移動でモードを抜けてしまうのを防ぐガード。
     private bool _suppressResizeExit;
-    /// <summary>リサイズモード中に表示する操作ヒント（下部中央の小バナー）。</summary>
+    // リサイズモード中に表示する操作ヒント（下部中央の小バナー）。
     private Popup? _resizeHintPopup;
 
     // ===== ペイン内分割（vim 風 Ctrl+W v/s）。トップレベルの4ペイン木とは独立に各ペインの中身を分割する。 =====
     private PaneSplitView? _editorViews;
     private PaneSplitView? _terminalViews;
 
-    /// <summary>フォーカス移動の対象領域：ペイン本体（<see cref="Pane"/> あり）またはサイドバー（null）。</summary>
+    // フォーカス移動の対象領域：ペイン本体（Pane あり）またはサイドバー（null）。
     private readonly record struct FocusTarget(PaneKind? Pane, Guid ViewportId = default)
     {
         public bool IsSidebar => Pane is null;
         public static FocusTarget Sidebar => new((PaneKind?)null);
         public static FocusTarget Of(PaneKind kind) => new(kind);
-        /// <summary>ペイン内分割のビューポートを指す対象（hjkl 移動でビュー横断に使う）。</summary>
+        // ペイン内分割のビューポートを指す対象（hjkl 移動でビュー横断に使う）。
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
 
@@ -546,8 +522,7 @@ public partial class ShellWindow : Window
             RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
     }
 
-    /// <summary>設定オーバーレイの中身は初回オープン時にだけ生成する（起動コストを払わない）。
-    /// DataContext は ContentControl から ShellViewModel を継承する。</summary>
+    // 設定オーバーレイの中身は初回オープン時にだけ生成する（起動コストを払わない）。 DataContext は ContentControl から ShellViewModel を継承する。
     private void EnsureSettingsOverlayCreated()
     {
         if (SettingsOverlayHost.Content is null)

@@ -5,10 +5,7 @@ public partial class ShellWindow
 {
     // ===== ペイン内分割の操作（Ctrl+W v/s/q） =====
 
-    /// <summary>
-    /// フォーカス中ペインが内部分割しているなら、その分割ビューポートを1枚畳む。
-    /// 畳めた（＝分割があった）場合のみ true。分割が無ければ false（呼び元はペイン非表示へフォールバック）。
-    /// </summary>
+    // フォーカス中ペインが内部分割しているなら、その分割ビューポートを1枚畳む。 畳めた（＝分割があった）場合のみ true。分割が無ければ false（呼び元はペイン非表示へフォールバック）。
     private bool CloseFocusedViewport()
     {
         switch (_focusedRegion?.Pane)
@@ -24,7 +21,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>Ctrl+W v/s/q を、フォーカス中ペイン（Editor / Terminal のみ）の分割操作へ振り分ける。</summary>
+    // Ctrl+W v/s/q を、フォーカス中ペイン（Editor / Terminal のみ）の分割操作へ振り分ける。
     private void HandleViewportSplitKey(Key key)
     {
         switch (_focusedRegion?.Pane)
@@ -42,11 +39,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>
-    /// Editor ペインを分割し、新しいビューポートを隣に置く。<paramref name="filePath"/> を指定した
-    /// （<c>:vsplit foo</c> / <c>:split foo</c> 由来の）場合はそのファイルを開き、無指定なら
-    /// フォーカス中タブと同じ内容を別コントロールへ複製する（真 vim 風）。
-    /// </summary>
+    // Editor ペインを分割し、新しいビューポートを隣に置く。filePath を指定した （:vsplit foo / :split foo 由来の）場合はそのファイルを開き、無指定なら フォーカス中タブと同じ内容を別コントロールへ複製する（真 vim 風）。
     private void SplitEditorView(SplitKind orientation, string? filePath = null)
     {
         if (_editorViews is null)
@@ -80,10 +73,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>
-    /// エディタ由来のウィンドウ/タブ操作で渡されたパス（相対可）を、開ける実ファイルへ解決する。
-    /// 絶対パス→ソースタブのあるフォルダ→ワークスペースルートの順に探し、存在しなければ null。
-    /// </summary>
+    // エディタ由来のウィンドウ/タブ操作で渡されたパス（相対可）を、開ける実ファイルへ解決する。 絶対パス→ソースタブのあるフォルダ→ワークスペースルートの順に探し、存在しなければ null。
     private string? ResolveEditorPath(string? filePath, EditorTab? src)
     {
         if (string.IsNullOrWhiteSpace(filePath))
@@ -110,7 +100,7 @@ public partial class ShellWindow
         return null;
     }
 
-    /// <summary>エディタの <c>:tabnew</c> 由来：ファイル指定があればそれを、無ければ空タブを新規エディタタブで開く。</summary>
+    // エディタの :tabnew 由来：ファイル指定があればそれを、無ければ空タブを新規エディタタブで開く。
     private async Task OpenEditorTabFromEditorAsync(string? filePath)
     {
         var openPath = ResolveEditorPath(filePath, _activeEditorTab);
@@ -128,7 +118,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>エディタの <c>gt</c> / <c>gT</c> 由来：アクティブなエディタタブを巡回切り替えする。</summary>
+    // エディタの gt / gT 由来：アクティブなエディタタブを巡回切り替えする。
     private void CycleEditorTab(int step)
     {
         if (_editorTabs.Count <= 1)
@@ -141,7 +131,7 @@ public partial class ShellWindow
         ActivateEditorTab(_editorTabs[next].Id);
     }
 
-    /// <summary>エディタの <c>:tabclose</c> 由来：アクティブなエディタタブを閉じる。</summary>
+    // エディタの :tabclose 由来：アクティブなエディタタブを閉じる。
     private void CloseActiveEditorTab()
     {
         if (_activeEditorTab is not { } active)
@@ -150,7 +140,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>Editor のフォーカス中ビューポートを畳む（タブ自体は閉じない）。</summary>
+    // Editor のフォーカス中ビューポートを畳む（タブ自体は閉じない）。
     private void CloseEditorView()
     {
         if (_editorViews?.CloseFocused() != true)
@@ -160,7 +150,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>Terminal ペインを分割し、同じ作業ディレクトリの新しいターミナルを隣のビューポートに置く。</summary>
+    // Terminal ペインを分割し、同じ作業ディレクトリの新しいターミナルを隣のビューポートに置く。
     private void SplitTerminalView(SplitKind orientation)
     {
         if (_terminalViews is null)
@@ -181,7 +171,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>Terminal のフォーカス中ビューポートを畳む（タブ自体は閉じない）。</summary>
+    // Terminal のフォーカス中ビューポートを畳む（タブ自体は閉じない）。
     private void CloseTerminalView()
     {
         if (_terminalViews?.CloseFocused() != true)
@@ -212,13 +202,11 @@ public partial class ShellWindow
         return tab;
     }
 
-    /// <summary>空（または即時使用）のエディタタブを作る。コントロールは <see cref="EditorTab.Control"/> の
-    /// 初回アクセスで実体化されるが、ここで作るタブは生成直後に LoadFile 等で使われるため実質その場で実体化する。</summary>
+    // 空（または即時使用）のエディタタブを作る。コントロールは EditorTab.Control の 初回アクセスで実体化されるが、ここで作るタブは生成直後に LoadFile 等で使われるため実質その場で実体化する。
     private EditorTab CreateEditorTab(Guid? requestedId = null) =>
         new(requestedId ?? Guid.NewGuid()) { Realizer = RealizeEditorControl };
 
-    /// <summary>保存済みスナップショットだけを持つ<b>未実体化</b>タブを作る（起動時の遅延復元用）。コントロールは
-    /// アクティブ化・本文取得で初めて生成され、その際 <see cref="EditorTab.Pending"/> から本文が復元される。</summary>
+    // 保存済みスナップショットだけを持つ未実体化タブを作る（起動時の遅延復元用）。コントロールは アクティブ化・本文取得で初めて生成され、その際 EditorTab.Pending から本文が復元される。
     private EditorTab CreatePendingEditorTab(EditorTabSnapshot snapshot) =>
         new(snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id)
         {
@@ -226,9 +214,7 @@ public partial class ShellWindow
             Pending = snapshot
         };
 
-    /// <summary><see cref="EditorTab.Control"/> 初回アクセス時の実体化本体。コントロールを生成・配線し、
-    /// <see cref="EditorTab.SetControl"/> で<b>先に</b>確定してから Pending を復元する（LoadFile→BufferChanged が
-    /// Control へ再入しても無限再帰しない）。</summary>
+    // EditorTab.Control 初回アクセス時の実体化本体。コントロールを生成・配線し、 EditorTab.SetControl で先に確定してから Pending を復元する（LoadFile→BufferChanged が Control へ再入しても無限再帰しない）。
     private void RealizeEditorControl(EditorTab tab)
     {
         var control = BuildEditorControl(tab);
@@ -240,16 +226,10 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>
-    /// エディタコントロールごとに、その LSP マネージャ（<see cref="LspManagerFactoryRetain"/> で
-    /// 遅延生成されたもの）を保持する。EditorSupport のコード構造／呼び出し解析
-    /// （<see cref="UpdateCodeEditorSupportAsync"/>）から参照する。コントロールが GC されれば
-    /// エントリも自動で消えるよう <see cref="ConditionalWeakTable{TKey,TValue}"/> を使う。値は
-    /// factory がファイル初回オープン時に遅延実行されるまで <c>null</c>（<see cref="StrongBox{T}"/> で共有）。
-    /// </summary>
+    // エディタコントロールごとに、その LSP マネージャ（LspManagerFactoryRetain で 遅延生成されたもの）を保持する。EditorSupport のコード構造／呼び出し解析 （UpdateCodeEditorSupportAsync）から参照する。コントロールが GC されれば エントリも自動で消えるよう ConditionalWeakTable{TKey,TValue} を使う。値は factory がファイル初回オープン時に遅延実行されるまで null（StrongBox{T} で共有）。
     private readonly ConditionalWeakTable<VimEditorControl, StrongBox<IEditorLspManager?>> _editorLspManagers = new();
 
-    /// <summary>指定タブのエディタコントロールに紐づく LSP マネージャを返す（未実体化／未オープンなら null）。</summary>
+    // 指定タブのエディタコントロールに紐づく LSP マネージャを返す（未実体化／未オープンなら null）。
     private IEditorLspManager? GetLspManager(EditorTab tab)
     {
         if (!tab.IsRealized)
@@ -354,13 +334,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>設定画面のエディタ項目（<see cref="AiSettings.Editor"/>）を1つの
-    /// <see cref="VimEditorControl"/> に適用する。真偽値の大半は <c>VimOptions</c> 直下のフィールドで
-    /// コントロール側の依存関係プロパティではないため、<c>ExecuteCommand("set ...")</c>（Vim の
-    /// <c>:set</c> 相当）経由で適用する — エンジンが発する <c>OptionsChanged</c> イベントが内部の
-    /// 再描画（UpdateAll）を呼ぶので、生成直後・タブ実体化後のどちらでも即座に反映される。
-    /// <see cref="EditorSettings.HighlightWhitespace"/> だけは <c>:set</c> に無い専用フィールドのため
-    /// 直接代入＋<see cref="UIElement.InvalidateVisual"/> で反映する。</summary>
+    // 設定画面のエディタ項目（AiSettings.Editor）を1つの VimEditorControl に適用する。真偽値の大半は VimOptions 直下のフィールドで コントロール側の依存関係プロパティではないため、ExecuteCommand("set ...")（Vim の :set 相当）経由で適用する — エンジンが発する OptionsChanged イベントが内部の 再描画（UpdateAll）を呼ぶので、生成直後・タブ実体化後のどちらでも即座に反映される。 EditorSettings.HighlightWhitespace だけは :set に無い専用フィールドのため 直接代入＋UIElement.InvalidateVisual で反映する。
     private void ApplyAppearanceToOpenTabs()
     {
         // 未実体化タブは実体化しない（生成時に現在の外観が適用されるため不要）。

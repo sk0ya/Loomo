@@ -72,7 +72,7 @@ public partial class ShellWindow
         DisarmTitleDrag();
     }
 
-    /// <summary>ドラッグ判定を解除する。</summary>
+    // ドラッグ判定を解除する。
     private void DisarmTitleDrag()
     {
         _paneDragArmed = false;
@@ -84,7 +84,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>ヒットテストの起点要素が（ツリーを遡って）ボタンの内側にあるか。</summary>
+    // ヒットテストの起点要素が（ツリーを遡って）ボタンの内側にあるか。
     private static bool IsWithinButton(object? source)
     {
         var current = source as DependencyObject;
@@ -99,12 +99,7 @@ public partial class ShellWindow
         return false;
     }
 
-    /// <summary>
-    /// スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は PaneHost と同セルの透明オーバーレイ
-    /// （<c>PaneDragOverlay</c>）を被せ、その上でマウスを追跡＆プレビューを描画する。
-    /// Popup ではなくウィンドウ内レイヤなのは、Popup が1モニタへクリップされて
-    /// マルチモニタ跨ぎ最大化中に隣のモニタでプレビューが見えなくなるため。
-    /// </summary>
+    // スナップ風のレイアウト・ドラッグを開始する。ドラッグ中は PaneHost と同セルの透明オーバーレイ （PaneDragOverlay）を被せ、その上でマウスを追跡＆プレビューを描画する。 Popup ではなくウィンドウ内レイヤなのは、Popup が1モニタへクリップされて マルチモニタ跨ぎ最大化中に隣のモニタでプレビューが見えなくなるため。
     private void BeginPaneDrag(PaneKind source)
     {
         if (_zoomedPane is not null)
@@ -129,9 +124,7 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    /// <summary>袖（ミニチュア）からのドラッグを開始する。ドロップ先のタイル上では既存のゾーン
-    /// プレビューを出し、中央なら入れ替え・端なら分割挿入する（<see cref="PlaceWingPane"/>）。
-    /// レイアウトモード専用（ステージ中はタイルが無いので無効）。</summary>
+    // 袖（ミニチュア）からのドラッグを開始する。ドロップ先のタイル上では既存のゾーン プレビューを出し、中央なら入れ替え・端なら分割挿入する（PlaceWingPane）。 レイアウトモード専用（ステージ中はタイルが無いので無効）。
     private void BeginWingDrag(PaneKind source)
     {
         if (_stageActive || VisibleLeafCount() < 1)
@@ -154,9 +147,7 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    /// <summary>ソロモードのミニチュアからのドラッグを開始する。ドロップ先は舞台1枚で、中央なら
-    /// 舞台のペインを入れ替え（クリックと同じ）、端ならレイアウトモードへ切り替えて舞台のペインの
-    /// 当該辺へ分割挿入する（<see cref="HandleStageDrop"/>）。ソロモード専用。</summary>
+    // ソロモードのミニチュアからのドラッグを開始する。ドロップ先は舞台1枚で、中央なら 舞台のペインを入れ替え（クリックと同じ）、端ならレイアウトモードへ切り替えて舞台のペインの 当該辺へ分割挿入する（HandleStageDrop）。ソロモード専用。
     private void BeginStageDrag(PaneKind source)
     {
         if (!_stageActive || _overviewActive)
@@ -180,11 +171,7 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    /// <summary>ドラッグ用オーバーレイ（<see cref="_dragCanvas"/>）のヒットテストを有効化してから
-    /// マウスキャプチャを移す。オーバーレイは <see cref="EnsureDragOverlay"/> で常時実体化済み
-    /// （IsVisible=true）なので、ここで掴めば「表示直後で IsVisible=false → Mouse.Capture 失敗」という
-    /// 競合（＝ミニチュアからのドラッグが初回／ときどき不発になる原因）は起きない。万一掴み損ねたとき
-    /// （HWND エアスペース等）はボタン押下中だけ数フレーム再試行する。</summary>
+    // ドラッグ用オーバーレイ（_dragCanvas）のヒットテストを有効化してから マウスキャプチャを移す。オーバーレイは EnsureDragOverlay で常時実体化済み （IsVisible=true）なので、ここで掴めば「表示直後で IsVisible=false → Mouse.Capture 失敗」という 競合（＝ミニチュアからのドラッグが初回／ときどき不発になる原因）は起きない。万一掴み損ねたとき （HWND エアスペース等）はボタン押下中だけ数フレーム再試行する。
     private void BeginDragCapture()
     {
         _dragCanvas!.IsHitTestVisible = true;   // 素通し→掴める状態へ（EndPaneDrag で false へ戻す）

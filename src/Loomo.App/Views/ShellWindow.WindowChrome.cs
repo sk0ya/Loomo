@@ -12,14 +12,10 @@ public partial class ShellWindow
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 0x0002;
 
-    /// <summary>直近に ActivityBar をクリックした時刻（TickCount64）。ダブルクリック自前判定用。</summary>
+    // 直近に ActivityBar をクリックした時刻（TickCount64）。ダブルクリック自前判定用。
     private long _lastActivityBarClickTick;
 
-    /// <summary>
-    /// ActivityBar の空き領域をドラッグするとウィンドウを移動する（タイトルバーと同じ操作感）。
-    /// アイコンボタン上のクリックはボタン側で処理済みのためここへは伝播しない。
-    /// ダブルクリックは最大化／元に戻すをトグルする。
-    /// </summary>
+    // ActivityBar の空き領域をドラッグするとウィンドウを移動する（タイトルバーと同じ操作感）。 アイコンボタン上のクリックはボタン側で処理済みのためここへは伝播しない。 ダブルクリックは最大化／元に戻すをトグルする。
     private void OnActivityBarMouseDown(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
@@ -60,7 +56,7 @@ public partial class ShellWindow
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
 
-    /// <summary>跨ぎ最大化ボタン：全モニタへの疑似最大化／復元をトグルする。</summary>
+    // 跨ぎ最大化ボタン：全モニタへの疑似最大化／復元をトグルする。
     private void OnSpanMaximize(object sender, RoutedEventArgs e)
     {
         if (_isSpanMaximized)

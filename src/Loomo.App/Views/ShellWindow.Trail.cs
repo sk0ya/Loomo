@@ -16,32 +16,28 @@ namespace sk0ya.Loomo.App.Views;
 /// 各ソースはこの3点以外を書かなくてよい。</para></summary>
 public partial class ShellWindow
 {
-    /// <summary>種別ごとの「その地点へ戻る」処理。<see cref="RegisterTrailJumps"/> で一度だけ組み立て、
-    /// <see cref="JumpToTrailEntry"/> がここを引いて呼ぶ（記録抑制の with を共通で被せる）。</summary>
+    // 種別ごとの「その地点へ戻る」処理。RegisterTrailJumps で一度だけ組み立て、 JumpToTrailEntry がここを引いて呼ぶ（記録抑制の with を共通で被せる）。
     private readonly Dictionary<TrailEntryKind, Func<TrailEntryViewModel, Task>> _trailJumps = new();
 
-    /// <summary>Git 操作を軌跡へログ記録するために購読する Git サービス（コンストラクタで注入）。</summary>
+    // Git 操作を軌跡へログ記録するために購読する Git サービス（コンストラクタで注入）。
     private readonly sk0ya.Loomo.Services.GitService _git;
 
-    /// <summary>true の間は軌跡へ記録しない。ワークスペース切替・復元による機械的なタブ活性化と、
-    /// 軌跡からの「戻る」自体（戻った先を新しい地点として積まない）で立てる。</summary>
+    // true の間は軌跡へ記録しない。ワークスペース切替・復元による機械的なタブ活性化と、 軌跡からの「戻る」自体（戻った先を新しい地点として積まない）で立てる。
     private bool _trailSuppressed;
 
-    /// <summary>直近に記録したペイン（同じペイン内のフォーカス移動でドットを増やさない）。</summary>
+    // 直近に記録したペイン（同じペイン内のフォーカス移動でドットを増やさない）。
     private PaneKind? _trailLastPane;
     private DisplayMode? _trailLastPaneMode;
 
-    /// <summary>ペイン切替の確定待ち（フォーカス奪い合いノイズを1個に畳むデバウンス）。</summary>
+    // ペイン切替の確定待ち（フォーカス奪い合いノイズを1個に畳むデバウンス）。
     private DispatcherTimer? _trailPaneCommitTimer;
     private PaneKind? _trailPendingPane;
 
-    /// <summary>編集地点の確定待ち（1打鍵ごとに点を積まないよう、編集が一段落してから1個に畳むデバウンス）。</summary>
+    // 編集地点の確定待ち（1打鍵ごとに点を積まないよう、編集が一段落してから1個に畳むデバウンス）。
     private DispatcherTimer? _trailEditCommitTimer;
     private EditorTab? _trailPendingEditTab;
 
-    /// <summary>ユーザーが過去の地点を見ている（＝最新を追っていない）間 true。バーへ新しい地点が
-    /// 積まれても左端を動かさず、見ている位置を保つ（レイアウト変更などで最新へ引っ張らない）。
-    /// 「今」へ戻す操作・最新への移動・ホイールで右端まで戻したら false（＝ライブ追従）へ戻す。</summary>
+    // ユーザーが過去の地点を見ている（＝最新を追っていない）間 true。バーへ新しい地点が 積まれても左端を動かさず、見ている位置を保つ（レイアウト変更などで最新へ引っ張らない）。 「今」へ戻す操作・最新への移動・ホイールで右端まで戻したら false（＝ライブ追従）へ戻す。
     private TrailBarController _trailBar = null!;
     private bool _trailBrowsingPast
     {
@@ -51,12 +47,10 @@ public partial class ShellWindow
     private TrailEntryViewModel? _trailPendingJumpEntry;
     private bool _trailJumpRunning;
 
-    /// <summary>ジャンプ完了後、抑制を戻すまでの余韻（settle）を計るタイマ。ジャンプが誘発する
-    /// 非同期イベント（フォーカス確定・ブラウザ遷移完了など）を抑制内に収めるために張る。</summary>
+    // ジャンプ完了後、抑制を戻すまでの余韻（settle）を計るタイマ。ジャンプが誘発する 非同期イベント（フォーカス確定・ブラウザ遷移完了など）を抑制内に収めるために張る。
     private DispatcherTimer? _trailJumpSettleTimer;
 
-    /// <summary>settle 後に <see cref="_trailSuppressed"/> を戻す先（ジャンプ開始前の抑制状態）。
-    /// 連続ジャンプで settle を張り直す間は最初に捕まえた値を保つ（外側の抑制を壊さない）。</summary>
+    // settle 後に _trailSuppressed を戻す先（ジャンプ開始前の抑制状態）。 連続ジャンプで settle を張り直す間は最初に捕まえた値を保つ（外側の抑制を壊さない）。
     private bool _trailJumpBaseSuppressed;
     private string? _trailLastLayoutKey;
 
@@ -98,15 +92,12 @@ public partial class ShellWindow
             new Action(() => _vm.Trail.EnsureLoaded()));
     }
 
-    /// <summary>ライブの時刻ラベルを定期更新するタイマ。</summary>
+    // ライブの時刻ラベルを定期更新するタイマ。
     private DispatcherTimer? _trailHourTicker;
 
     // ===== 記録 =====
 
-    /// <summary>あらゆる軌跡ソース共通の記録入口。記録抑制（復元・ジャンプ中）の判定と、
-    /// 新しい地点を積む前に「いま離れるファイル」のカーソルを離脱位置へ上書きする処理を
-    /// ここへ一本化する。各ソースは対象の抽出（ファイルパス・URL 等）だけを行い、
-    /// <paramref name="record"/> で実際の <see cref="TrailViewModel"/> 呼び出しを渡す。</summary>
+    // あらゆる軌跡ソース共通の記録入口。記録抑制（復元・ジャンプ中）の判定と、 新しい地点を積む前に「いま離れるファイル」のカーソルを離脱位置へ上書きする処理を ここへ一本化する。各ソースは対象の抽出（ファイルパス・URL 等）だけを行い、 record で実際の TrailViewModel 呼び出しを渡す。
     private void RecordTrail(Action<DisplayMode, PaneKind?, string?> record)
     {
         if (_trailSuppressed)
@@ -119,7 +110,7 @@ public partial class ShellWindow
         record(mode, _stageActive ? _stagePane : null, paneLayout);
     }
 
-    /// <summary>レイアウト変更後に同じ地点へ留まるケース用。ワークスペース保存の共通入口から呼ぶ。</summary>
+    // レイアウト変更後に同じ地点へ留まるケース用。ワークスペース保存の共通入口から呼ぶ。
     private void RefreshLatestTrailPaneLayout()
     {
         if (_trailSuppressed)
@@ -128,8 +119,7 @@ public partial class ShellWindow
         _vm.Trail.UpdateLatestPaneLayout(paneLayout);
     }
 
-    /// <summary>保存要求のたびに表示状態を比較し、実際に変わったレイアウトだけを独立した軌跡へ積む。
-    /// 復元中も基準値は同期し、復元操作そのものは新しい点にしない。</summary>
+    // 保存要求のたびに表示状態を比較し、実際に変わったレイアウトだけを独立した軌跡へ積む。 復元中も基準値は同期し、復元操作そのものは新しい点にしない。
     private void RecordTrailLayoutIfChanged()
     {
         var (layoutKey, mode, stagePane, paneLayout) = CurrentTrailLayoutState();
@@ -153,19 +143,13 @@ public partial class ShellWindow
             _vm.Trail.RecordLayout(layoutKey, label, recordMode, recordStagePane, layout));
     }
 
-    /// <summary>ユーザーのレイアウト操作を始める直前の状態を基準値にする。
-    /// 起動復元の非同期処理が完全に収束する時刻には依存しない。</summary>
+    // ユーザーのレイアウト操作を始める直前の状態を基準値にする。 起動復元の非同期処理が完全に収束する時刻には依存しない。
     private void BeginTrailLayoutChange()
     {
         _trailLastLayoutKey = CurrentTrailLayoutState().Key;
     }
 
-    /// <summary>Layout ドットの変更検出キー。表示モード・舞台ペイン・ペイン<b>構造</b>から作る。
-    /// 比率（Weight）は <see cref="PaneLayoutTree.StructureSignature"/> で除外するのでリサイズでは増えない。
-    /// モード（ソロ⇄レイアウト）と舞台ペインは含めるので、ソロモードで舞台のペインを切り替えると
-    /// 独立した Layout ドットになる（<c>Mode</c>／<c>StagePane</c> を載せて戻り先の表示を復元する）。
-    /// ステージ中のペイン切替は Pane ドットではなくこの Layout ドットが代表する（<see cref="RecordTrailPane"/>
-    /// はステージ中は記録しない）。この保存 choke point 経由の判定はデバウンス・フォーカス競合が無く確実。</summary>
+    // Layout ドットの変更検出キー。表示モード・舞台ペイン・ペイン構造から作る。 比率（Weight）は PaneLayoutTree.StructureSignature で除外するのでリサイズでは増えない。 モード（ソロ⇄レイアウト）と舞台ペインは含めるので、ソロモードで舞台のペインを切り替えると 独立した Layout ドットになる（Mode／StagePane を載せて戻り先の表示を復元する）。 ステージ中のペイン切替は Pane ドットではなくこの Layout ドットが代表する（RecordTrailPane はステージ中は記録しない）。この保存 choke point 経由の判定はデバウンス・フォーカス競合が無く確実。
     private (string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout) CurrentTrailLayoutState()
     {
         var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
@@ -176,7 +160,7 @@ public partial class ShellWindow
         return (key, mode, stagePane, paneLayout);
     }
 
-    /// <summary>エディタタブの活性化を軌跡へ記録する（無題・仮想ドキュメントは対象外）。</summary>
+    // エディタタブの活性化を軌跡へ記録する（無題・仮想ドキュメントは対象外）。
     private void RecordTrailEditorTab(EditorTab tab)
     {
         var path = tab.PeekFilePath;
@@ -194,8 +178,7 @@ public partial class ShellWindow
             _vm.Trail.RecordFile(path, line, column, mode, stagePane, layout));
     }
 
-    /// <summary>新しい地点を積む直前に、最新エントリ（＝いま離れるファイル）のカーソル位置を
-    /// タブの現在値で上書きする。これで「戻る」が到着時でなく離脱時の場所になる。</summary>
+    // 新しい地点を積む直前に、最新エントリ（＝いま離れるファイル）のカーソル位置を タブの現在値で上書きする。これで「戻る」が到着時でなく離脱時の場所になる。
     private void RefreshLatestTrailFilePosition()
     {
         if (_vm.Trail.LatestFileTarget is not { } target)
@@ -207,10 +190,7 @@ public partial class ShellWindow
             _vm.Trail.UpdateLatestFilePosition(target, tab.Control.Caret.Line, tab.Control.Caret.Column);
     }
 
-    /// <summary>エディタでの編集（バッファ変更）を軌跡へ記録する。BufferChanged は1打鍵ごとに飛ぶので
-    /// 即記録はせず、編集が一段落するまで待って（<see cref="_trailEditCommitTimer"/>）最新の編集行で1点に畳む。
-    /// 未変更（ファイル読込直後など）・無題・仮想ドキュメントは対象外。別ファイルの編集へ移ったときは
-    /// 前のファイルの編集を先に確定してから新しい待ちを張る（編集が取りこぼされないように）。</summary>
+    // エディタでの編集（バッファ変更）を軌跡へ記録する。BufferChanged は1打鍵ごとに飛ぶので 即記録はせず、編集が一段落するまで待って（_trailEditCommitTimer）最新の編集行で1点に畳む。 未変更（ファイル読込直後など）・無題・仮想ドキュメントは対象外。別ファイルの編集へ移ったときは 前のファイルの編集を先に確定してから新しい待ちを張る（編集が取りこぼされないように）。
     private void RecordTrailEdit(EditorTab tab)
     {
         if (_trailSuppressed || !tab.IsRealized || !tab.Control.IsModified)
@@ -239,8 +219,7 @@ public partial class ShellWindow
         return timer;
     }
 
-    /// <summary>保留中の編集地点を、そのタブの現在のカーソル位置で確定する。編集が取り消されて
-    /// 未変更に戻った・タブが破棄された等で対象が無ければ何もしない。</summary>
+    // 保留中の編集地点を、そのタブの現在のカーソル位置で確定する。編集が取り消されて 未変更に戻った・タブが破棄された等で対象が無ければ何もしない。
     private void CommitTrailEdit()
     {
         _trailEditCommitTimer?.Stop();
@@ -258,10 +237,7 @@ public partial class ShellWindow
             _vm.Trail.RecordEdit(path, line, column, mode, stagePane, layout));
     }
 
-    /// <summary>Git 操作（変更系コマンド）を軌跡へログとして記録する。成功した操作だけを記録し
-    /// （失敗→再試行の二重や、内部で失敗した多段操作の断片を避ける）、連続する同種操作はデデュープで
-    /// 1点に畳む。復元は行わないので配置は載せない（<see cref="RecordTrailGit"/> はバックグラウンド
-    /// スレッドの <see cref="sk0ya.Loomo.Services.GitService.OperationExecuted"/> から UI スレッドへ回して呼ぶ）。</summary>
+    // Git 操作（変更系コマンド）を軌跡へログとして記録する。成功した操作だけを記録し （失敗→再試行の二重や、内部で失敗した多段操作の断片を避ける）、連続する同種操作はデデュープで 1点に畳む。復元は行わないので配置は載せない（RecordTrailGit はバックグラウンド スレッドの sk0ya.Loomo.Services.GitService.OperationExecuted から UI スレッドへ回して呼ぶ）。
     private void RecordTrailGit(string command, bool success)
     {
         if (!success)
@@ -273,13 +249,7 @@ public partial class ShellWindow
             _vm.Trail.RecordGit(key, label, mode, stagePane));
     }
 
-    /// <summary>git のサブコマンド行（<see cref="sk0ya.Loomo.Services.GitOperationEventArgs.Command"/>）を、デデュープ用の
-    /// 種別キーと表示ラベルへ変換する。キーが同じ連続操作は1点に畳まれる（多段の破棄＝clean+restore を
-    /// 1点にまとめる等）。未知のサブコマンドはそのまま <c>git &lt;sub&gt;</c> と表示する。</summary>
-    /// <summary>EditorSupport（プレビュー）で表示中のファイルを軌跡へ記録する。ペインではなく
-    /// プレビュー対象のファイルを target にするので、戻ると同じファイルのプレビューが開き直す
-    /// （generic な Pane(EditorSupport) ドットと違い「どのファイルを見ていたか」まで復元できる）。
-    /// 無題・仮想ドキュメント・追従先未確定のときは記録しない。</summary>
+    // git のサブコマンド行（sk0ya.Loomo.Services.GitOperationEventArgs.Command）を、デデュープ用の 種別キーと表示ラベルへ変換する。キーが同じ連続操作は1点に畳まれる（多段の破棄＝clean+restore を 1点にまとめる等）。未知のサブコマンドはそのまま git <sub> と表示する。 EditorSupport（プレビュー）で表示中のファイルを軌跡へ記録する。ペインではなく プレビュー対象のファイルを target にするので、戻ると同じファイルのプレビューが開き直す （generic な Pane(EditorSupport) ドットと違い「どのファイルを見ていたか」まで復元できる）。 無題・仮想ドキュメント・追従先未確定のときは記録しない。
     private void RecordTrailPreview(EditorTab? sourceTab)
     {
         var path = sourceTab?.PeekFilePath;
@@ -289,7 +259,7 @@ public partial class ShellWindow
             _vm.Trail.RecordPreview(path, mode, stagePane, layout));
     }
 
-    /// <summary>ブラウザ遷移を軌跡へ記録する。既定ページ（新規タブの初期表示）と about: は対象外。</summary>
+    // ブラウザ遷移を軌跡へ記録する。既定ページ（新規タブの初期表示）と about: は対象外。
     private void RecordTrailBrowser(string? url, string? title)
     {
         if (!TrailLogic.IsRecordableBrowserUrl(url, DefaultBrowserUrl))
@@ -299,10 +269,7 @@ public partial class ShellWindow
             _vm.Trail.RecordBrowser(url!, title, mode, stagePane, layout));
     }
 
-    /// <summary>ペイン切替でブラウザのページを軌跡へ代表させるための、アクティブなブラウザタブの
-    /// 記録対象 URL（実体化前は保留中の遷移先で代用）。<see cref="RecordTrailBrowser"/> と同じ除外
-    /// （既定ページ・about:・空）を満たす URL が無ければ null を返し、呼び出し側は generic な Pane
-    /// ドットへ落とす（＝この「表示」を Browser ドットにはしない）。</summary>
+    // ペイン切替でブラウザのページを軌跡へ代表させるための、アクティブなブラウザタブの 記録対象 URL（実体化前は保留中の遷移先で代用）。RecordTrailBrowser と同じ除外 （既定ページ・about:・空）を満たす URL が無ければ null を返し、呼び出し側は generic な Pane ドットへ落とす（＝この「表示」を Browser ドットにはしない）。
     private string? CurrentBrowserTrailUrl()
     {
         var url = _activeBrowserTab?.View.Source?.ToString() ?? _activeBrowserTab?.PendingUrl;
@@ -311,7 +278,7 @@ public partial class ShellWindow
         return url;
     }
 
-    /// <summary>ターミナルタブの活性化を、再起動後も同じタブへ戻れる ID 付きで記録する。</summary>
+    // ターミナルタブの活性化を、再起動後も同じタブへ戻れる ID 付きで記録する。
     private void RecordTrailTerminalTab(TerminalTab tab)
     {
         var label = _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tab.Id)?.Title;
@@ -321,12 +288,7 @@ public partial class ShellWindow
             _vm.Trail.RecordTerminal(tab.Id, label, mode, stagePane, layout));
     }
 
-    /// <summary>フォーカスが別ペインへ移ったことを軌跡へ記録する（同一ペイン内の移動は対象外）。
-    /// WebView2 の実体化やプレビュー更新はフォーカスを奪い合って Editor⇄Browser⇄プレビューの
-    /// 往復イベントを大量に起こすため、即時には記録せず「同じペインに一定時間とどまった」ときだけ
-    /// 1個のドットとして確定する（<see cref="_trailPaneCommitTimer"/>）。
-    /// ステージ中は舞台に立つのは常に1ペインで、その切替は <see cref="RecordTrailLayoutIfChanged"/> の
-    /// Layout ドットが確実に代表するため、ここ（デバウンス・フォーカス競合のある経路）では記録しない。</summary>
+    // フォーカスが別ペインへ移ったことを軌跡へ記録する（同一ペイン内の移動は対象外）。 WebView2 の実体化やプレビュー更新はフォーカスを奪い合って Editor⇄Browser⇄プレビューの 往復イベントを大量に起こすため、即時には記録せず「同じペインに一定時間とどまった」ときだけ 1個のドットとして確定する（_trailPaneCommitTimer）。 ステージ中は舞台に立つのは常に1ペインで、その切替は RecordTrailLayoutIfChanged の Layout ドットが確実に代表するため、ここ（デバウンス・フォーカス競合のある経路）では記録しない。
     private void RecordTrailPane(PaneKind kind)
     {
         if (_trailSuppressed || _stageActive)
@@ -401,8 +363,7 @@ public partial class ShellWindow
         return timer;
     }
 
-    /// <summary>AI セッションのアクティブ化を軌跡へ記録する。target は保存済みセッションの ID で、
-    /// 戻るとそのセッションを復元して AI ペインを開き直す。ジャンプ復帰中は <see cref="RecordTrail"/> が抑止する。</summary>
+    // AI セッションのアクティブ化を軌跡へ記録する。target は保存済みセッションの ID で、 戻るとそのセッションを復元して AI ペインを開き直す。ジャンプ復帰中は RecordTrail が抑止する。
     private void RecordTrailSession(string id, string title)
     {
         if (string.IsNullOrWhiteSpace(id))
@@ -411,7 +372,7 @@ public partial class ShellWindow
             _vm.Trail.RecordSession(id, title, mode, stagePane, layout));
     }
 
-    /// <summary>サイドバーのパネル切替を軌跡へ記録する。</summary>
+    // サイドバーのパネル切替を軌跡へ記録する。
     private void RecordTrailPanel(SidebarPanel panel)
         => RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordPanel(panel.ToString(), TrailLogic.PanelDisplayName(panel), mode, stagePane, layout));
@@ -420,8 +381,7 @@ public partial class ShellWindow
 
     // ===== 戻る（ジャンプ） =====
 
-    /// <summary>種別ごとの「戻る」処理を登録する。新しい軌跡ソースはここへ1行足すだけでよい
-    /// （実処理は同期でも <c>Task.CompletedTask</c> を返せば足りる）。</summary>
+    // 種別ごとの「戻る」処理を登録する。新しい軌跡ソースはここへ1行足すだけでよい （実処理は同期でも Task.CompletedTask を返せば足りる）。
     private void RegisterTrailJumps()
     {
         _trailJumps[TrailEntryKind.File] = JumpToFileAsync;
@@ -483,8 +443,7 @@ public partial class ShellWindow
         _trailJumpSettleTimer.Start();
     }
 
-    /// <summary>ジャンプ完了後、誘発される非同期イベントを抑制内に収めるための余韻タイマ。
-    /// 満了で抑制をジャンプ前の状態へ戻す（<see cref="_trailJumpBaseSuppressed"/>）。</summary>
+    // ジャンプ完了後、誘発される非同期イベントを抑制内に収めるための余韻タイマ。 満了で抑制をジャンプ前の状態へ戻す（_trailJumpBaseSuppressed）。
     private DispatcherTimer CreateTrailJumpSettleTimer()
     {
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
@@ -497,7 +456,7 @@ public partial class ShellWindow
         return timer;
     }
 
-    /// <summary>対象と表示コンテキストを先に検証し、失敗時に画面構成だけ変わることを防ぐ。</summary>
+    // 対象と表示コンテキストを先に検証し、失敗時に画面構成だけ変わることを防ぐ。
     private bool CanJumpToTrailEntry(TrailEntryViewModel entry)
     {
         if (!string.IsNullOrWhiteSpace(entry.PaneLayout))
@@ -528,7 +487,7 @@ public partial class ShellWindow
         };
     }
 
-    /// <summary>地点固有の対象へ移動する前に、記録時のレイアウト／ソロ表示を復元する。</summary>
+    // 地点固有の対象へ移動する前に、記録時のレイアウト／ソロ表示を復元する。
     private void RestoreTrailDisplayContext(TrailEntryViewModel entry)
     {
         if (_stageActive)
@@ -596,8 +555,7 @@ public partial class ShellWindow
         _vm.IsSidebarVisible = true;
     }
 
-    /// <summary>AI セッション地点へ戻る：保存済みセッションを復元し、AI ペインを前面に出してフォーカスする。
-    /// 削除済みで復元できないときは画面構成を変えずに何もしない。</summary>
+    // AI セッション地点へ戻る：保存済みセッションを復元し、AI ペインを前面に出してフォーカスする。 削除済みで復元できないときは画面構成を変えずに何もしない。
     private void JumpToSession(TrailEntryViewModel entry)
     {
         if (!_vm.AiBar.RestoreSessionById(entry.Target))
@@ -617,10 +575,7 @@ public partial class ShellWindow
 
     // ===== バー上のホイール：素＝水平スクロール／Shift＝現在地の前後移動（スクラブ） =====
 
-    /// <summary>バー上のホイール。<b>素のホイール</b>はバーを水平にスクロールするだけ（現在地・画面表示は
-    /// 動かさない＝ドット列を眺めるナビゲーション）。<b>Shift+ホイール</b>は従来どおり現在地を前後へ動かして
-    /// その地点の表示を復元する（上＝過去（左）へ、下＝未来（右）へ／実ジャンプは少し遅らせて連続ホイールを
-    /// 最後の1回に畳む）。</summary>
+    // バー上のホイール。素のホイールはバーを水平にスクロールするだけ（現在地・画面表示は 動かさない＝ドット列を眺めるナビゲーション）。Shift+ホイールは従来どおり現在地を前後へ動かして その地点の表示を復元する（上＝過去（左）へ、下＝未来（右）へ／実ジャンプは少し遅らせて連続ホイールを 最後の1回に畳む）。
     private void OnTrailWheel(object sender, MouseWheelEventArgs e) => _trailBar.OnWheel(e);
     private void ScrollTrailToCurrent() => _trailBar.ScrollToCurrent();
     private void UpdateTrailTrailingMargin() => _trailBar.UpdateTrailingMargin();

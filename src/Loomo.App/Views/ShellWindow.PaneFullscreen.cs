@@ -20,10 +20,7 @@ public partial class ShellWindow
     private GridLength _fullscreenWingWidth;
     private Thickness _fullscreenStageMargin;
 
-    /// <summary>
-    /// 現在ペインだけを、ウィンドウ装飾・ActivityBar・Sidebar・袖を除いて
-    /// 現在のモニター全域（タスクバー領域を含む）へ表示する。再実行で全状態を復元する。
-    /// </summary>
+    // 現在ペインだけを、ウィンドウ装飾・ActivityBar・Sidebar・袖を除いて 現在のモニター全域（タスクバー領域を含む）へ表示する。再実行で全状態を復元する。
     private void TogglePaneFullscreen()
     {
         if (_paneFullscreen)

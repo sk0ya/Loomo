@@ -14,24 +14,24 @@ public partial class ShellWindow
 
     private sealed class TerminalActivityState
     {
-        /// <summary>OSC133 C（実行開始）〜 D（完了）の間 true。</summary>
+        // OSC133 C（実行開始）〜 D（完了）の間 true。
         public bool Running;
 
-        /// <summary>まだユーザーが見ていない直近の終了コード（null=結果なし）。</summary>
+        // まだユーザーが見ていない直近の終了コード（null=結果なし）。
         public int? UnseenExitCode;
     }
 
-    /// <summary>ターミナルタブ毎の活動状態（タブを閉じたら除去）。</summary>
+    // ターミナルタブ毎の活動状態（タブを閉じたら除去）。
     private readonly Dictionary<Guid, TerminalActivityState> _terminalActivity = new();
 
-    /// <summary>現在表示中の袖/俯瞰カードのバッジ（RebuildStage で作り直される）。</summary>
+    // 現在表示中の袖/俯瞰カードのバッジ（RebuildStage で作り直される）。
     private readonly Dictionary<PaneKind, (Border Chip, TextBlock Label)> _stageActivityBadges = new();
 
-    /// <summary>タブ作成時に活動イベントを購読する（CreateTerminalTab から）。</summary>
+    // タブ作成時に活動イベントを購読する（CreateTerminalTab から）。
     private void HookTerminalActivity(TerminalTab tab)
         => tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
 
-    /// <summary>タブクローズ時の後始末（CloseTerminalTabAsync から）。</summary>
+    // タブクローズ時の後始末（CloseTerminalTabAsync から）。
     private void ForgetTerminalActivity(Guid tabId)
     {
         if (_terminalActivity.Remove(tabId))
@@ -68,13 +68,13 @@ public partial class ShellWindow
         UpdatePaneActivityBadge(PaneKind.Terminal);
     }
 
-    /// <summary>ターミナルペインがいまユーザーの目に入っているか。</summary>
+    // ターミナルペインがいまユーザーの目に入っているか。
     private bool IsTerminalPaneWatched()
         => _stageActive
             ? _stagePane == PaneKind.Terminal && !_overviewActive
             : IsPaneVisible(PaneKind.Terminal);
 
-    /// <summary>対象ペインが舞台に立った（＝目に入った）ので未確認の結果を流す。実行中表示は保つ。</summary>
+    // 対象ペインが舞台に立った（＝目に入った）ので未確認の結果を流す。実行中表示は保つ。
     private void MarkPaneActivitySeen(PaneKind kind)
     {
         if (kind != PaneKind.Terminal)
@@ -84,7 +84,7 @@ public partial class ShellWindow
         UpdatePaneActivityBadge(kind);
     }
 
-    /// <summary>全タブの状態を1つのバッジへ集約する（実行中 ＞ 失敗 ＞ 成功 ＞ なし）。</summary>
+    // 全タブの状態を1つのバッジへ集約する（実行中 ＞ 失敗 ＞ 成功 ＞ なし）。
     private PaneActivityKind AggregateTerminalActivity(out int exitCode)
     {
         exitCode = 0;
@@ -103,7 +103,7 @@ public partial class ShellWindow
             : PaneActivityKind.None;
     }
 
-    /// <summary>カード上のバッジへ現在の活動状態を反映する（カードが無ければ何もしない）。</summary>
+    // カード上のバッジへ現在の活動状態を反映する（カードが無ければ何もしない）。
     private void UpdatePaneActivityBadge(PaneKind kind)
     {
         if (kind != PaneKind.Terminal
@@ -139,7 +139,7 @@ public partial class ShellWindow
     private static readonly Brush PaneActivityFailedBrush =
         new SolidColorBrush(Color.FromRgb(0xD9, 0x53, 0x4D));
 
-    /// <summary>袖/俯瞰カードの右上に活動バッジを生やす（BuildSessionCard から）。</summary>
+    // 袖/俯瞰カードの右上に活動バッジを生やす（BuildSessionCard から）。
     private void AttachActivityBadge(Grid cardRoot, PaneKind kind, bool isOverview)
     {
         if (kind != PaneKind.Terminal)

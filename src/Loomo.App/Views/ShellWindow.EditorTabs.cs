@@ -14,12 +14,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>
-    /// 仮想ドキュメント（システムプロンプト・危険コマンド一覧など）を編集するための専用タブを用意する。
-    /// 同名タブが既にあればそれをアクティブ化して再利用し、無ければ新規タブを作成する。
-    /// EditorService が <see cref="VimEditorControl.OpenVirtualDocument"/> を呼ぶ直前にこれを呼ぶため、
-    /// ここでアクティブ化（＝Attach）した control に対して仮想ドキュメントが開かれる。
-    /// </summary>
+    // 仮想ドキュメント（システムプロンプト・危険コマンド一覧など）を編集するための専用タブを用意する。 同名タブが既にあればそれをアクティブ化して再利用し、無ければ新規タブを作成する。 EditorService が VimEditorControl.OpenVirtualDocument を呼ぶ直前にこれを呼ぶため、 ここでアクティブ化（＝Attach）した control に対して仮想ドキュメントが開かれる。
     private void OpenVirtualDocumentTab(string title)
     {
         var existing = _editorTabs.FirstOrDefault(t =>
@@ -80,12 +75,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>
-    /// FolderTree の単クリックでファイルをプレビュータブ（タイトル斜体）で開く。
-    /// 未編集のプレビュータブ（無ければ空の Untitled タブ）を使い回して中身だけ差し替えるので、
-    /// クリックのたびにタブが増えない。プレビュータブは編集された時点で通常タブへ昇格する
-    /// （<see cref="UpdateEditorTab"/>）。既にタブで開いているファイルはそれをアクティブ化するだけ。
-    /// </summary>
+    // FolderTree の単クリックでファイルをプレビュータブ（タイトル斜体）で開く。 未編集のプレビュータブ（無ければ空の Untitled タブ）を使い回して中身だけ差し替えるので、 クリックのたびにタブが増えない。プレビュータブは編集された時点で通常タブへ昇格する （UpdateEditorTab）。既にタブで開いているファイルはそれをアクティブ化するだけ。
     private async Task OpenFileInPreviewTabAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -140,14 +130,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>
-    /// 既に開いているタブを再オープンしたとき、ファイルが外部（AI の write_file/edit_file・git・
-    /// ターミナル等）で書き換わっていれば、未編集に限りディスクから読み直して本文を最新化する。
-    /// エディタ内蔵のファイルウォッチャによる自動リロード（VimEditorControl.ReloadCurrentFile）は
-    /// <c>BufferChanged</c> を発火しないため、それに依存せず明示的に <c>LoadFile</c> して BufferChanged を
-    /// 起こす。さらに EditorSupport の追従元タブなら、同一タブ再活性で
-    /// <see cref="SwitchEditorSupportSourceAsync"/> が早期 return する分を補ってプレビューを即更新する。
-    /// </summary>
+    // 既に開いているタブを再オープンしたとき、ファイルが外部（AI の write_file/edit_file・git・ ターミナル等）で書き換わっていれば、未編集に限りディスクから読み直して本文を最新化する。 エディタ内蔵のファイルウォッチャによる自動リロード（VimEditorControl.ReloadCurrentFile）は BufferChanged を発火しないため、それに依存せず明示的に LoadFile して BufferChanged を 起こす。さらに EditorSupport の追従元タブなら、同一タブ再活性で SwitchEditorSupportSourceAsync が早期 return する分を補ってプレビューを即更新する。
     private async Task ReloadExistingTabIfChangedAsync(EditorTab tab)
     {
         var path = tab.Control.FilePath;
@@ -176,16 +159,7 @@ public partial class ShellWindow
             await UpdateEditorSupportAsync();
     }
 
-    /// <summary>
-    /// 開いている全エディタタブを、必要なら（未編集かつディスク内容が違えば）ディスクから読み直す。
-    /// <see cref="ShellWindow.xaml.cs"/> が <c>GitSession.RepositoryChanged</c>（チェックアウト・pull・
-    /// 外部変更検出等）を受けて呼ぶ。<see cref="ReloadExistingTabIfChangedAsync"/>
-    /// はユーザーがファイルツリーから同じファイルを再オープンしたときにしか働かないため、git の
-    /// ブランチ切り替え等でアクティブタブのファイルが（ユーザー操作を介さず）書き換わる／消える／
-    /// 元に戻るケースだと EditorSupport プレビューが古い内容のまま取り残される。実体化済みタブだけを
-    /// 対象にする（未実体化タブは次にアクティブ化されたとき <see cref="RestoreEditor"/> がディスクから
-    /// 読むので、ここで先回りして実体化させる必要はない）。
-    /// </summary>
+    // 開いている全エディタタブを、必要なら（未編集かつディスク内容が違えば）ディスクから読み直す。 ShellWindow.xaml.cs が GitSession.RepositoryChanged（チェックアウト・pull・ 外部変更検出等）を受けて呼ぶ。ReloadExistingTabIfChangedAsync はユーザーがファイルツリーから同じファイルを再オープンしたときにしか働かないため、git の ブランチ切り替え等でアクティブタブのファイルが（ユーザー操作を介さず）書き換わる／消える／ 元に戻るケースだと EditorSupport プレビューが古い内容のまま取り残される。実体化済みタブだけを 対象にする（未実体化タブは次にアクティブ化されたとき RestoreEditor がディスクから 読むので、ここで先回りして実体化させる必要はない）。
     private async Task RefreshOpenEditorTabsFromDiskAsync()
     {
         foreach (var tab in _editorTabs.ToArray())
@@ -197,7 +171,7 @@ public partial class ShellWindow
 
     private static string NormalizeEol(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
-    /// <summary>プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。</summary>
+    // プレビュータブの参照とタブUIの斜体表示を同期して切り替える（null で解除＝昇格）。
     private void SetPreviewTab(EditorTab? tab)
     {
         if (_previewEditorTab is { } old && !ReferenceEquals(old, tab))
@@ -224,4 +198,3 @@ public partial class ShellWindow
         _editorTabs.Add(preview);
     }
 }
-

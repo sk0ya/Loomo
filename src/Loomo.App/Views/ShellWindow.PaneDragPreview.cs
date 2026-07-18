@@ -24,8 +24,7 @@ public partial class ShellWindow
             UpdateDragPreview(e.GetPosition(PaneHost));
     }
 
-    /// <summary>ソロモードのドラッグ中プレビュー。ドロップ先は舞台1枚（<see cref="StageArea"/>）のみで、
-    /// 中央は入れ替え（舞台全体を枠取り）、端は分割挿入（当該辺の半分をプレビュー）。舞台の外は無効。</summary>
+    // ソロモードのドラッグ中プレビュー。ドロップ先は舞台1枚（StageArea）のみで、 中央は入れ替え（舞台全体を枠取り）、端は分割挿入（当該辺の半分をプレビュー）。舞台の外は無効。
     private void UpdateStageDragPreview(Point pos)
     {
         var rect = StageRectInPaneHost();
@@ -57,8 +56,7 @@ public partial class ShellWindow
         _dragPreview!.Visibility = Visibility.Visible;
     }
 
-    /// <summary>舞台（<see cref="StageArea"/>）の矩形を PaneHost 座標で返す（ドラッグオーバーレイと同じ列）。
-    /// まだレイアウトされていなければ空。</summary>
+    // 舞台（StageArea）の矩形を PaneHost 座標で返す（ドラッグオーバーレイと同じ列）。 まだレイアウトされていなければ空。
     private Rect StageRectInPaneHost()
     {
         if (StageArea.ActualWidth <= 0 || StageArea.ActualHeight <= 0)
@@ -110,7 +108,7 @@ public partial class ShellWindow
         _dragPreview!.Visibility = Visibility.Visible;
     }
 
-    /// <summary>当該辺に十分寄せきっているか（外縁から内側 20% のバンド）。スパン挿入の発火条件。</summary>
+    // 当該辺に十分寄せきっているか（外縁から内側 20% のバンド）。スパン挿入の発火条件。
     private static bool IsNearOuterEdge(double relX, double relY, DropZone zone) => zone switch
     {
         DropZone.Left => relX < 0.2,
@@ -119,8 +117,7 @@ public partial class ShellWindow
         _ => relY > 0.8,
     };
 
-    /// <summary>ターゲットペインを起点に、<paramref name="zone"/> 方向へ伸ばせる祖先スプリットの矩形
-    /// （PaneHost 座標、配下の可視リーフの和）を返す。祖先が無ければ false。</summary>
+    // ターゲットペインを起点に、zone 方向へ伸ばせる祖先スプリットの矩形 （PaneHost 座標、配下の可視リーフの和）を返す。祖先が無ければ false。
     private bool TryGetSpanRect(PaneKind targetKind, DropZone zone, out Rect rect)
     {
         rect = default;
@@ -141,7 +138,7 @@ public partial class ShellWindow
         return any;
     }
 
-    /// <summary>スパン矩形が単体ペインより当該辺方向に広いか（同寸ならスパンの意味が無いので出さない）。</summary>
+    // スパン矩形が単体ペインより当該辺方向に広いか（同寸ならスパンの意味が無いので出さない）。
     private static bool SpanAddsBreadth(Rect span, Rect leaf, DropZone zone)
         => zone is DropZone.Above or DropZone.Below
             ? span.Width > leaf.Width + 1
@@ -179,10 +176,7 @@ public partial class ShellWindow
             MovePane(source, t, z, span);
     }
 
-    /// <summary>ソロモードのミニチュアを舞台へドロップしたときの確定処理。
-    /// 中央＝舞台のペインを <paramref name="source"/> へ入れ替える（クリックと同じ）。
-    /// 端＝レイアウトモードへ切り替え、舞台で見えていた1枚と <paramref name="source"/> だけの2分割を
-    /// 当該辺の向きに作る。舞台の外なら何もしない。</summary>
+    // ソロモードのミニチュアを舞台へドロップしたときの確定処理。 中央＝舞台のペインを source へ入れ替える（クリックと同じ）。 端＝レイアウトモードへ切り替え、舞台で見えていた1枚と source だけの2分割を 当該辺の向きに作る。舞台の外なら何もしない。
     private void HandleStageDrop(PaneKind source, PaneKind? target, bool center, DropZone? zone)
     {
         if (target is not { } stage)   // 舞台の外でドロップ＝レイアウトは変えない
@@ -238,8 +232,7 @@ public partial class ShellWindow
         EndPaneDrag();
     }
 
-    /// <summary>ドラッグ中のゴースト（掴んでいるペイン名のチップ）を出し、カーソル追従させる。
-    /// ドラッグが始まったことを一目で分かるようにするための手応え。</summary>
+    // ドラッグ中のゴースト（掴んでいるペイン名のチップ）を出し、カーソル追従させる。 ドラッグが始まったことを一目で分かるようにするための手応え。
     private void ShowDragGhost(PaneKind kind)
     {
         if (_dragGhost is null)
@@ -264,7 +257,7 @@ public partial class ShellWindow
         Mouse.OverrideCursor = Cursors.Hand;   // 掴んでいる感じ（タイル外では UpdateDragPreview が No へ）
     }
 
-    /// <summary>ゴーストをカーソル位置（DragGhostLayer 座標）へ追従させる。少しずらしてポインタを隠さない。</summary>
+    // ゴーストをカーソル位置（DragGhostLayer 座標）へ追従させる。少しずらしてポインタを隠さない。
     private void MoveDragGhost(Point pos)
     {
         if (_dragGhost is null)
@@ -301,10 +294,7 @@ public partial class ShellWindow
             _dragTargetOutline.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>カーソル位置にあるペインのセルとその矩形（PaneHost 座標）を返す。
-    /// 非表示（袖＝ミニチュア送り）のリーフは除外する。これらの実体は袖の描画元として
-    /// StageSourceArea（PaneHost と同じ列・全面サイズ）に生きており、含めるとタイルの隙間などで
-    /// 全面サイズの矩形にヒットしてしまい、ミニチュア宛ての巨大なプレビューが出てしまう。</summary>
+    // カーソル位置にあるペインのセルとその矩形（PaneHost 座標）を返す。 非表示（袖＝ミニチュア送り）のリーフは除外する。これらの実体は袖の描画元として StageSourceArea（PaneHost と同じ列・全面サイズ）に生きており、含めるとタイルの隙間などで 全面サイズの矩形にヒットしてしまい、ミニチュア宛ての巨大なプレビューが出てしまう。
     private (PaneKind Kind, Rect Rect)? HitTestCell(Point pos)
     {
         foreach (var leaf in AllLeaves())
@@ -317,7 +307,7 @@ public partial class ShellWindow
         return null;
     }
 
-    /// <summary>セル内の相対位置から最も近い辺（=ドロップ先）を求める。</summary>
+    // セル内の相対位置から最も近い辺（=ドロップ先）を求める。
     private static DropZone NearestZone(double relX, double relY)
     {
         var dLeft = relX;

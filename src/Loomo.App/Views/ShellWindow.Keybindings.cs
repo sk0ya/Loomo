@@ -9,9 +9,7 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    /// <summary>コマンド Id → 実体アクションの対応を組み、ディスパッチャを生成する。
-    /// ここに登録しないコマンド（例 <c>composer.run</c>）はウィンドウ全体では消費せず、
-    /// より内側のスコープ別ハンドラ（コンポーザ）に委ねる。</summary>
+    // コマンド Id → 実体アクションの対応を組み、ディスパッチャを生成する。 ここに登録しないコマンド（例 composer.run）はウィンドウ全体では消費せず、 より内側のスコープ別ハンドラ（コンポーザ）に委ねる。
     private KeyboardDispatcher BuildKeyboardDispatcher()
     {
         var actions = new Dictionary<string, Action>(StringComparer.Ordinal)

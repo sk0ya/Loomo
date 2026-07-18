@@ -5,8 +5,7 @@ namespace sk0ya.Loomo.App.Views;
 /// ツリーの構築/描画は ShellWindow.PaneLayout.cs、ドラッグ操作は ShellWindow.PaneDrag.cs。</summary>
 public partial class ShellWindow
 {
-    /// <summary>ペインを移動する。<paramref name="span"/> なら単体ペインでなく、ターゲットの当該辺を
-    /// 端まで占めるスプリット全体の辺へ落とす（例：左右2ペインの下へフル幅で挿入）。</summary>
+    // ペインを移動する。span なら単体ペインでなく、ターゲットの当該辺を 端まで占めるスプリット全体の辺へ落とす（例：左右2ペインの下へフル幅で挿入）。
     private void MovePane(PaneKind source, PaneKind target, DropZone zone, bool span = false)
     {
         if (source == target)
@@ -38,12 +37,11 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>指定ツリー上で <see cref="MovePane"/> と同じ移動を行い、新しいルートを返す。</summary>
+    // 指定ツリー上で MovePane と同じ移動を行い、新しいルートを返す。
     private static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone, bool span = false)
         => PaneLayoutTree.MoveInTree(root, source, target, zone, span);
 
-    /// <summary>袖（ミニチュア）のペインをタイルへ配置する。<paramref name="center"/> なら入れ替え
-    /// （ターゲットの位置へ据え、元のペインは袖へ退場）、それ以外は <paramref name="zone"/> の辺へ分割挿入する。</summary>
+    // 袖（ミニチュア）のペインをタイルへ配置する。center なら入れ替え （ターゲットの位置へ据え、元のペインは袖へ退場）、それ以外は zone の辺へ分割挿入する。
     private void PlaceWingPane(PaneKind dragged, PaneKind target, bool center, DropZone? zone, bool span = false)
     {
         if (dragged == target || FindLeaf(target) is null)
@@ -65,16 +63,10 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>ツリーへ <paramref name="dragged"/> を配置した新しいルートを返す。入れ替えなら
-    /// ターゲットの位置へ据えてターゲットをツリーから外し（＝袖へ）、挿入ならターゲットの指定辺へ分割する。</summary>
-    /// <summary>ノードを親スプリットから取り外し、新しいルートを返す（畳み込みは Normalize に任せる）。</summary>
+    // ツリーへ dragged を配置した新しいルートを返す。入れ替えなら ターゲットの位置へ据えてターゲットをツリーから外し（＝袖へ）、挿入ならターゲットの指定辺へ分割する。 ノードを親スプリットから取り外し、新しいルートを返す（畳み込みは Normalize に任せる）。
     private static PaneNode? RemoveNode(PaneNode? root, PaneNode node) => PaneLayoutTree.RemoveNode(root, node);
 
-    /// <summary>
-    /// <paramref name="node"/> を <paramref name="target"/> の指定した辺へ挿入し、新しいルートを返す
-    /// （実体は <see cref="PaneLayoutTree.InsertRelative"/>）。
-    /// </summary>
+    // node を target の指定した辺へ挿入し、新しいルートを返す （実体は PaneLayoutTree.InsertRelative）。
     private static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneNode target, DropZone zone)
         => PaneLayoutTree.InsertRelative(root, node, target, zone);
 }
-

@@ -5,9 +5,7 @@ public partial class ShellWindow
 {
     // ===== ペインレイアウト（2D並べ替え・リサイズ・表示切替） =====
 
-    /// <summary>いずれかのペイン／サイドバーの GridSplitter をドラッグ中か。ドラッグ中は袖（ミニチュア）の
-    /// 組み直し（RebuildWings の強制 UpdateLayout）を止める — さもないと GridSplitter のドラッグ中
-    /// マウスキャプチャが奪われ、ドラッグが分断されて離した瞬間の幅が実質ランダムになる。</summary>
+    // いずれかのペイン／サイドバーの GridSplitter をドラッグ中か。ドラッグ中は袖（ミニチュア）の 組み直し（RebuildWings の強制 UpdateLayout）を止める — さもないと GridSplitter のドラッグ中 マウスキャプチャが奪われ、ドラッグが分断されて離した瞬間の幅が実質ランダムになる。
     private bool _paneSplitterDragging;
 
 
@@ -45,7 +43,7 @@ public partial class ShellWindow
         // レイアウトの構築は OnLoaded（ワークスペース適用 or 既定）に一本化する。
     }
 
-    /// <summary>既定レイアウト：[Editor | (EditorSupport:隠) | Browser] / [Terminal] / [AI]。</summary>
+    // 既定レイアウト：[Editor | (EditorSupport:隠) | Browser] / [Terminal] / [AI]。
     private void ApplyDefaultLayout()
     {
         _zoomedPane = null;
@@ -66,20 +64,17 @@ public partial class ShellWindow
 
     private PaneLeaf NewLeaf(PaneKind kind) => new() { Kind = kind };
 
-    /// <summary>ツリー内のすべてのリーフ（ペイン）を列挙する（実体は <see cref="PaneLayoutTree"/>）。</summary>
+    // ツリー内のすべてのリーフ（ペイン）を列挙する（実体は PaneLayoutTree）。
     private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null) => _paneLayout.Leaves(node);
 
     private PaneLeaf? FindLeaf(PaneKind kind) => _paneLayout.Find(kind);
 
-    /// <summary>指定ノードを直接の子に持つスプリットを返す（ルートなら null）。</summary>
+    // 指定ノードを直接の子に持つスプリットを返す（ルートなら null）。
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
         => _paneLayout.FindParent(target, current);
 
-    /// <summary>
-    /// 現在の <see cref="_root"/>（レイアウトツリー）に合わせて <c>PaneHost</c> を組み直す。
-    /// スプリットごとに Grid を生成し、ペイン本体はその Grid へ再ペアレントする
-    /// （同一ウィンドウ内のため WebView2 等は生存する）。
-    /// </summary>
+    // 現在の _root（レイアウトツリー）に合わせて PaneHost を組み直す。 スプリットごとに Grid を生成し、ペイン本体はその Grid へ再ペアレントする
+    // （同一ウィンドウ内のため WebView2 等は生存する）。
     private void RebuildPaneLayout()
     {
         PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);
@@ -152,10 +147,7 @@ public partial class ShellWindow
         ScheduleLayoutWings();
     }
 
-    /// <summary>
-    /// 1ノード分のビジュアルを生成する（リーフ＝ペイン本体、スプリット＝Grid）。
-    /// 非表示リーフは描画せず、可視な子だけでトラックを組む。すべて非表示なら null。
-    /// </summary>
+    // 1ノード分のビジュアルを生成する（リーフ＝ペイン本体、スプリット＝Grid）。 非表示リーフは描画せず、可視な子だけでトラックを組む。すべて非表示なら null。
     private FrameworkElement? BuildNode(PaneNode node, Brush border)
     {
         if (node is PaneLeaf leaf)
@@ -204,7 +196,7 @@ public partial class ShellWindow
         return grid;
     }
 
-    /// <summary>ノード（リーフ／スプリット）に可視なペインが含まれるか。</summary>
+    // ノード（リーフ／スプリット）に可視なペインが含まれるか。
     private static bool IsNodeVisible(PaneNode node) => PaneLayoutTree.IsNodeVisible(node);
 
     private static void AddTrack(Grid grid, bool cols, GridLength length, double min = 0)
@@ -262,7 +254,7 @@ public partial class ShellWindow
         return splitter;
     }
 
-    /// <summary>スプリッターのダブルクリックで、その分割直下の可視ペインの比率を均等に戻す。</summary>
+    // スプリッターのダブルクリックで、その分割直下の可視ペインの比率を均等に戻す。
     private void EqualizeSiblings(PaneSplit split)
     {
         BeginTrailLayoutChange();
@@ -273,8 +265,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>レイアウトモードでタイル配置を編集したら、現在の保存レイアウトから「未保存」へ印を付ける
-    /// （次の Ctrl+T 巡回でスクラッチへ退避される）。ソロモードでは何もしない。</summary>
+    // レイアウトモードでタイル配置を編集したら、現在の保存レイアウトから「未保存」へ印を付ける （次の Ctrl+T 巡回でスクラッチへ退避される）。ソロモードでは何もしない。
     private void MarkLayoutDirty()
     {
         if (_stageActive || _layoutDirty)
@@ -283,8 +274,7 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    /// <summary>フォーカス中（無ければ最初の可視）ペインのズームをトグルする。
-    /// ステージモード中は「全面表示」の意味を俯瞰へ読み替える。</summary>
+    // フォーカス中（無ければ最初の可視）ペインのズームをトグルする。 ステージモード中は「全面表示」の意味を俯瞰へ読み替える。
     private void ToggleZoom()
     {
         if (_stageActive)
@@ -302,14 +292,10 @@ public partial class ShellWindow
             ZoomPane(kind);
     }
 
-    /// <summary>指定ペインのズームをトグルする（タイトルのダブルクリック用）。</summary>
+    // 指定ペインのズームをトグルする（タイトルのダブルクリック用）。
     private void ToggleZoomFor(PaneKind kind) => ZoomPane(_zoomedPane == kind ? null : kind);
 
-    /// <summary>
-    /// Ctrl+W x：フォーカス中の領域を隠す。サイドバーにフォーカスがあればサイドバーを閉じ、
-    /// ペインにフォーカスがあれば（無ければ最初の可視ペインを）非表示にする。
-    /// 隠したペインはタイトルバーの表示トグルから戻せる（<see cref="SetPaneVisible"/> 参照）。
-    /// </summary>
+    // Ctrl+W x：フォーカス中の領域を隠す。サイドバーにフォーカスがあればサイドバーを閉じ、 ペインにフォーカスがあれば（無ければ最初の可視ペインを）非表示にする。 隠したペインはタイトルバーの表示トグルから戻せる（SetPaneVisible 参照）。
     private void HideFocusedRegion()
     {
         if (_focusedRegion is { IsSidebar: true })
@@ -325,10 +311,7 @@ public partial class ShellWindow
             SetPaneVisible(kind, false);
     }
 
-    /// <summary>
-    /// ペインを一時的に全面表示する／解除する。ツリーは保持するので、解除すれば元の配置・比率へ戻る。
-    /// ズームに入る前に現在の比率を取り込んでおき、復元時に崩れないようにする。
-    /// </summary>
+    // ペインを一時的に全面表示する／解除する。ツリーは保持するので、解除すれば元の配置・比率へ戻る。 ズームに入る前に現在の比率を取り込んでおき、復元時に崩れないようにする。
     private void ZoomPane(PaneKind? kind)
     {
         if (kind is { } k && (!IsPaneVisible(k) || VisibleLeafCount() <= 1))
@@ -343,7 +326,7 @@ public partial class ShellWindow
             FocusPane(prev);
     }
 
-    /// <summary>GridSplitter 操作後の行高・列幅（star比率）を現在のツリーへ取り込む。</summary>
+    // GridSplitter 操作後の行高・列幅（star比率）を現在のツリーへ取り込む。
     private void CaptureLayoutSizes() => CaptureNode(_root);
 
     private static void CaptureNode(PaneNode? node)
@@ -396,7 +379,7 @@ public partial class ShellWindow
     private static double PositiveGridLengthValue(GridLength length, double fallback)
         => length.Value > 0 ? length.Value : (fallback > 0 ? fallback : 1);
 
-    /// <summary>保存済みレイアウトを適用する。非表示ペインはリーフの Hidden で復元する。</summary>
+    // 保存済みレイアウトを適用する。非表示ペインはリーフの Hidden で復元する。
     private void ApplyPaneLayout(PaneNodeSnapshot? snapshot)
     {
         _zoomedPane = null;
@@ -415,16 +398,13 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>スナップショットからツリーを再構築する（重複・未知のペインは捨てる）。</summary>
+    // スナップショットからツリーを再構築する（重複・未知のペインは捨てる）。
     private PaneNode? BuildFromSnapshot(PaneNodeSnapshot snap, HashSet<PaneKind> seen)
         => PaneLayoutTree.BuildFromSnapshot(snap, seen, _paneElements.ContainsKey);
 
     private static PaneNodeSnapshot ToSnapshot(PaneNode node) => PaneLayoutTree.ToSnapshot(node);
 
-    /// <summary>
-    /// ツリーを正規化する：空スプリットを除去し、子が1つのスプリットを畳み、
-    /// 同方向に入れ子になったスプリットをフラット化する。
-    /// </summary>
+    // ツリーを正規化する：空スプリットを除去し、子が1つのスプリットを畳み、 同方向に入れ子になったスプリットをフラット化する。
     private static PaneNode? Normalize(PaneNode? node) => PaneLayoutTree.Normalize(node);
 
 }
