@@ -244,6 +244,7 @@ public partial class App : Application
         services.AddSingleton<FormatterSettingsViewModel>();
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<GitPanelViewModel>();
+        services.AddSingleton<GitSessionQuery>();
         services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<DiffFileGateway>();
         services.AddSingleton<DiffSessionViewModel>();

@@ -24,6 +24,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private readonly GitService _git;
     private readonly IEditorService _editor;
     private readonly DiffSessionViewModel _diff;
+    private readonly GitSessionQuery _query;
     private bool _loaded;
     private GitStatusSnapshot _status = new();
     private string? _lastWorkspaceRoot;
@@ -157,11 +158,13 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>ビューにバインドするフィルタ済みコミット一覧。<see cref="LogFilter"/> で絞り込む。</summary>
     public ICollectionView LogView { get; }
 
-    public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff)
+    public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff,
+        GitSessionQuery query)
     {
         _git = git;
         _editor = editor;
         _diff = diff;
+        _query = query;
         LogView = CollectionViewSource.GetDefaultView(LogRows);
         LogView.Filter = FilterLogRow;
         _git.RepositoryChanged += OnRepositoryChanged;
@@ -564,7 +567,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     private async Task LoadCommitDetailAsync(string hash)
     {
-        CommitDetail = await _git.GetCommitSummaryAsync(hash);
+        CommitDetail = await _query.GetCommitSummaryAsync(hash);
     }
 
     /// <summary>
@@ -573,11 +576,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// </summary>
     public async Task OpenChangedFileAsync(string relativePath)
     {
-        var root = _git.RootPath;
-        if (string.IsNullOrEmpty(root)) return;
-
-        var full = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, relativePath));
-        if (!System.IO.File.Exists(full))
+        var full = _query.ResolveExistingChangedFile(relativePath);
+        if (full is null)
         {
             StatusIsError = true;
             StatusMessage = $"ファイルが見つかりません: {relativePath}";
