@@ -1,12 +1,3 @@
-using sk0ya.Loomo.App.Services;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using Editor.Controls;
 
 namespace sk0ya.Loomo.App.Views;
 

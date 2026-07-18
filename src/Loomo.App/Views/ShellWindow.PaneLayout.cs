@@ -1,28 +1,3 @@
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Interop;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.Ai;
-using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Services;
-using Editor.Controls;
-using Editor.Controls.Git;
-using Editor.Controls.Themes;
-using Terminal.Settings;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインレイアウト（2D並べ替え・ドラッグ移動・ズーム・表示切替・スナップショット適用）</summary>
@@ -92,13 +67,13 @@ public partial class ShellWindow
     private PaneLeaf NewLeaf(PaneKind kind) => new() { Kind = kind };
 
     /// <summary>ツリー内のすべてのリーフ（ペイン）を列挙する（実体は <see cref="PaneLayoutTree"/>）。</summary>
-    private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null) => PaneLayoutTree.AllLeaves(node ?? _root);
+    private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null) => _paneLayout.Leaves(node);
 
-    private PaneLeaf? FindLeaf(PaneKind kind) => PaneLayoutTree.FindLeaf(_root, kind);
+    private PaneLeaf? FindLeaf(PaneKind kind) => _paneLayout.Find(kind);
 
     /// <summary>指定ノードを直接の子に持つスプリットを返す（ルートなら null）。</summary>
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
-        => PaneLayoutTree.FindParent(current ?? _root, target);
+        => _paneLayout.FindParent(target, current);
 
     /// <summary>
     /// 現在の <see cref="_root"/>（レイアウトツリー）に合わせて <c>PaneHost</c> を組み直す。

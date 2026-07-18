@@ -1,11 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using sk0ya.Loomo.App.Services;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 

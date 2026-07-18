@@ -7,18 +7,17 @@ using System.Windows.Media;
 using sk0ya.Loomo.App.Layout;
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ペイン内分割のビューポート管理（<see cref="PaneSplitView"/>）。1つのペイン
+/// <summary>ペイン内分割のビューポート管理。1つのペイン
 /// （Editor / Terminal）の ContentHost 内を複数ビューポートへ分割する。木のノード型は <see cref="ViewNode"/>、
 /// 木の構造操作は <see cref="ViewportTree"/>。分割操作の入口（Ctrl+W v/s/q）は <c>ShellWindow.ViewportSplit.cs</c>。</summary>
-public partial class ShellWindow
-{
     /// <summary>
     /// 1つのペイン（Editor / Terminal）の <c>ContentHost</c>（Grid）内を複数ビューポートへ分割管理する。
     /// 各ビューポートは既存タブの1つを表示する（コントロールは1タブ＝1インスタンスのため）。表示していない
     /// コントロールは <see cref="_parking"/>（非表示）へ退避し破棄しない。トップレベルのペイン木とは独立。
     /// </summary>
-    private sealed class PaneSplitView
+internal sealed class PaneSplitView
     {
+        private const double SplitterThickness = 6;
         private readonly Grid _host;
         private readonly Func<Guid, FrameworkElement?> _resolve;        // タブID → コントロール
         private readonly Func<IEnumerable<FrameworkElement>> _allControls;
@@ -335,16 +334,16 @@ public partial class ShellWindow
             {
                 if (i > 0)
                 {
-                    ShellWindow.AddTrack(grid, cols, new GridLength(ShellWindow.SplitterThickness));
+                    AddTrack(grid, cols, new GridLength(SplitterThickness));
                     var splitter = NewSplitter(cols);
-                    ShellWindow.SetTrack(splitter, cols, i * 2 - 1);
+                    SetTrack(splitter, cols, i * 2 - 1);
                     grid.Children.Add(splitter);
                 }
                 var child = split.Children[i];
-                ShellWindow.AddTrack(grid, cols, new GridLength(child.Weight <= 0 ? 1 : child.Weight, GridUnitType.Star), min);
+                AddTrack(grid, cols, new GridLength(child.Weight <= 0 ? 1 : child.Weight, GridUnitType.Star), min);
                 child.TrackIndex = i * 2;
                 var visual = Build(child);
-                ShellWindow.SetTrack(visual, cols, i * 2);
+                SetTrack(visual, cols, i * 2);
                 grid.Children.Add(visual);
             }
             return grid;
@@ -354,8 +353,8 @@ public partial class ShellWindow
         {
             var splitter = new GridSplitter
             {
-                Width = cols ? ShellWindow.SplitterThickness : double.NaN,
-                Height = cols ? double.NaN : ShellWindow.SplitterThickness,
+                Width = cols ? SplitterThickness : double.NaN,
+                Height = cols ? double.NaN : SplitterThickness,
                 ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
@@ -387,6 +386,22 @@ public partial class ShellWindow
         private ViewLeaf? FindLeafByTab(Guid tabId) => Leaves().FirstOrDefault(l => l.TabId == tabId);
         private ViewLeaf? FindLeafById(Guid id) => Leaves().FirstOrDefault(l => l.Id == id);
 
+        private static void AddTrack(Grid grid, bool columns, GridLength length, double min = 0)
+        {
+            if (columns)
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = length, MinWidth = min });
+            else
+                grid.RowDefinitions.Add(new RowDefinition { Height = length, MinHeight = min });
+        }
+
+        private static void SetTrack(UIElement element, bool columns, int index)
+        {
+            if (columns)
+                Grid.SetColumn(element, index);
+            else
+                Grid.SetRow(element, index);
+        }
+
         private void CaptureSizes(ViewNode? node = null)
         {
             node ??= _root;
@@ -415,5 +430,4 @@ public partial class ShellWindow
             foreach (var child in split.Children)
                 CaptureSizes(child);
         }
-    }
 }

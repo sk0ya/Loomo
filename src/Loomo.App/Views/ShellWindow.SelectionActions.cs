@@ -1,15 +1,3 @@
-using System;
-using System.IO;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using Editor.Controls;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 

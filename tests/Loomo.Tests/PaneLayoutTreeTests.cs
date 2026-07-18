@@ -387,6 +387,34 @@ public class PaneLayoutTreeTests
         Assert.Equal(PaneKind.Diff, PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(after))!.Kind);
     }
 
+    [Fact]
+    public void Coordinator_owns_root_and_replaces_target_without_losing_weight()
+    {
+        var coordinator = new PaneLayoutCoordinator
+        {
+            Root = Split(SplitKind.Columns,
+                Leaf(PaneKind.Editor, weight: 3),
+                Leaf(PaneKind.Browser, weight: 2))
+        };
+
+        Assert.True(coordinator.Place(PaneKind.Diff, PaneKind.Browser, center: true, zone: null));
+
+        Assert.Null(coordinator.Find(PaneKind.Browser));
+        Assert.Equal(2, coordinator.Find(PaneKind.Diff)!.Weight);
+        Assert.Equal(new[] { PaneKind.Editor, PaneKind.Diff },
+            coordinator.Leaves().Select(l => l.Kind));
+    }
+
+    [Fact]
+    public void Coordinator_rejects_invalid_move_without_changing_root()
+    {
+        var root = DefaultishTree();
+        var coordinator = new PaneLayoutCoordinator { Root = root };
+
+        Assert.False(coordinator.Move(PaneKind.Git, PaneKind.Editor, DropZone.Left));
+        Assert.Same(root, coordinator.Root);
+    }
+
     // ===== ToSnapshot / BuildFromSnapshot =====
 
     [Fact]

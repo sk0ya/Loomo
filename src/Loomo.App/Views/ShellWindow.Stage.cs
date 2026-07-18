@@ -1,11 +1,3 @@
-using System;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Threading;
-using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -24,15 +16,16 @@ public partial class ShellWindow
     // ===== ソロモード（舞台＋袖＋俯瞰） =====
 
     /// <summary>ソロモード中か（true＝ソロ、false＝レイアウトモード）。中は RebuildPaneLayout がステージの組み直しへ委譲される。</summary>
-    private bool _stageActive;
+    private readonly StageModeCoordinator _stageMode = new();
+    private bool _stageActive { get => _stageMode.Active; set => _stageMode.Active = value; }
     /// <summary>舞台に立っているペイン。</summary>
-    private PaneKind _stagePane;
+    private PaneKind _stagePane { get => _stageMode.Pane; set => _stageMode.Pane = value; }
 
     /// <summary>指定ペインが舞台に立っているか。</summary>
-    private bool OnStage(PaneKind kind) => _stagePane == kind;
+    private bool OnStage(PaneKind kind) => _stageMode.IsOnStage(kind);
 
     /// <summary>俯瞰（全カード一望）レイヤを表示中か。</summary>
-    private bool _overviewActive;
+    private bool _overviewActive { get => _stageMode.Overview; set => _stageMode.Overview = value; }
     /// <summary>リサイズ追従のデバウンス用タイマー。発火時に仮想寸法が変わっていたら組み直す。</summary>
     private DispatcherTimer? _stageResizeTimer;
     /// <summary>直近の構築に使った仮想キャンバス寸法（＝舞台の実寸）。</summary>
@@ -43,12 +36,12 @@ public partial class ShellWindow
     /// <summary>有効なセッション（タイトルバーの表示トグルが ON のもの）。タイル配置（<c>_root</c>）とは独立した集合で、
     /// 通常はタイルより広い。Main に出ている有効セッションはそのまま Main に、Main に出ていない有効セッションは
     /// 袖（ミニチュア）に出る（＝有効セッションは Main と袖のどちらかに必ず出る）。無効なセッションはどちらにも出さない。</summary>
-    private readonly HashSet<PaneKind> _enabledSessions = new();
+    private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
 
     /// <summary>現在のワークスペースで IDE（デバッグ）ペインが適用対象か（C# プロジェクトを含むか）。
     /// false のときは IDE ペインを有効セッションから外し、タイトルバーのトグルも隠す。
     /// ワークスペース切替時に <see cref="ApplyIdePaneApplicability"/> で更新する（既定は表示）。</summary>
-    private bool _idePaneApplicable = true;
+    private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
 
     /// <summary>袖の列（カード＋余白＋スクロールバー）が占める幅の見積もり。舞台幅の算出に使う。</summary>
     private const double WingColumnReserve = 210;
@@ -86,16 +79,14 @@ public partial class ShellWindow
     /// <summary>レイアウトモードからソロモード（単一ステージ）へ入る。</summary>
     private void EnterStageMode(PaneKind? pane)
     {
-        if (_stageActive)
-            return;
-        _stageActive = true;
-        _overviewActive = false;
-        _zoomedPane = null;
-        _stagePane = pane is { } requested && _paneElements.ContainsKey(requested)
+        var selectedPane = pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
             : _focusedRegion?.Pane
             ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind
             ?? PaneKind.Editor;
+        if (!_stageMode.Enter(selectedPane))
+            return;
+        _zoomedPane = null;
         PaneHost.Opacity = 0;
         PaneHost.IsHitTestVisible = false;
         StageHost.Visibility = Visibility.Visible;
@@ -109,11 +100,8 @@ public partial class ShellWindow
     /// <summary>ワークスペース切替前に、保存済み状態を変えずステージ表示だけ通常状態へ戻す。</summary>
     private void ClearStageModeForWorkspaceSwitch()
     {
-        if (!_stageActive)
+        if (!_stageMode.Exit())
             return;
-
-        _stageActive = false;
-        _overviewActive = false;
         StageHost.SizeChanged -= OnStageHostSizeChanged;
         _stageResizeTimer?.Stop();
         DetachPaneElements();
@@ -141,13 +129,12 @@ public partial class ShellWindow
             return;
 
         snapshot ??= StageSnapshot.Default();
-        _stageActive = true;
-        _overviewActive = snapshot.Overview;   // 俯瞰を開いたまま離れたら俯瞰のまま戻る
-        _zoomedPane = null;
-        _stagePane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
+        var restoredPane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
             && (requested != PaneKind.Debug || _idePaneApplicable)
             ? requested
             : PaneKind.Editor;
+        _stageMode.Restore(active: true, overview: snapshot.Overview, pane: restoredPane);
+        _zoomedPane = null;
         PaneHost.Opacity = 0;
         PaneHost.IsHitTestVisible = false;
         StageHost.Visibility = Visibility.Visible;
@@ -178,10 +165,8 @@ public partial class ShellWindow
     /// <summary>ソロモードを抜けてレイアウトモード（タイル表示）へ戻す。</summary>
     private void ExitStageMode()
     {
-        if (!_stageActive)
+        if (!_stageMode.Exit())
             return;
-        _stageActive = false;
-        _overviewActive = false;
         StageHost.SizeChanged -= OnStageHostSizeChanged;
         _stageResizeTimer?.Stop();
         DetachPaneElements();
@@ -207,11 +192,9 @@ public partial class ShellWindow
     /// <summary>舞台のペインを差し替える（袖・俯瞰カードのクリック先）。</summary>
     private void SetStagePane(PaneKind kind)
     {
-        if (!_stageActive)
+        if (!_stageMode.Select(kind))
             return;
         BeginTrailLayoutChange();
-        _overviewActive = false;
-        _stagePane = kind;
         RebuildStage();
         // EditorSupport を舞台へ立てた瞬間に、現在のエディタ内容でプレビューを描き直す
         // （RebuildStage はペイン実体を移すだけで中身は更新しないため、ここで明示的に流し込む）。

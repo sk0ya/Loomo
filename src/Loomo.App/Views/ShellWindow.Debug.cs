@@ -1,10 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using Editor.Controls;
-using Editor.Controls.Rendering;
-using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
 

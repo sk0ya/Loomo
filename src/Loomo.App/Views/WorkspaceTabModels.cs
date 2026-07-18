@@ -27,18 +27,16 @@ using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: ワークスペース内のタブ実体モデル（端末／エディタ／ブラウザの各タブと、
+/// <summary>ワークスペース内のタブ実体モデル（端末／エディタ／ブラウザの各タブと、
 /// ワークスペース単位のタブ集合）。エディタタブは起動を速くするため遅延実体化する。</summary>
-public partial class ShellWindow
-{
-    private sealed record TerminalTab(Guid Id, TerminalTabView View);
+internal sealed record TerminalTab(Guid Id, TerminalTabView View);
     /// <summary><see cref="VirtualTitle"/> は仮想ドキュメント（設定の長文項目など）を開いたタブの表示名。
     /// 仮想ドキュメントは FilePath を持たないため、タブ名はこの値から決める（通常ファイルは null）。</summary>
     /// <summary>エディタタブ。起動を速くするため <see cref="Control"/>（VimEditorControl の生成＋ファイル
     /// 読込＋Git差分）は<b>初回アクセス時に遅延実体化</b>する。復元直後は <see cref="Pending"/> に保存済み
     /// スナップショットだけを持ち、アクティブ化や本文取得で初めて実体化する。未実体化のままでもタブ strip・
     /// 永続化・パス重複判定が壊れないよう、メタ情報は <see cref="PeekFilePath"/> 等で実体化せずに読める。</summary>
-    private sealed record EditorTab(Guid Id)
+internal sealed record EditorTab(Guid Id)
     {
         private VimEditorControl? _control;
 
@@ -76,7 +74,7 @@ public partial class ShellWindow
         /// <summary>実体化せずに読める仮想ドキュメント判定（未実体化タブは常に実ファイル＝false）。</summary>
         public bool PeekIsVirtual => _control?.IsVirtualDocument ?? false;
     }
-    private sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
+internal sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
     {
         /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
         /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。</summary>
@@ -86,7 +84,7 @@ public partial class ShellWindow
         public bool RealizationStarted { get; set; }
     }
 
-    private sealed class TerminalWorkspaceTabs
+internal sealed class TerminalWorkspaceTabs
     {
         public List<TerminalTab> Tabs { get; } = new();
         public Guid? ActiveTabId { get; set; }
@@ -94,19 +92,18 @@ public partial class ShellWindow
         public bool IsInitialized { get; set; }
     }
 
-    private sealed class EditorWorkspaceTabs
+internal sealed class EditorWorkspaceTabs
     {
         public List<EditorTab> Tabs { get; } = new();
         public Guid? ActiveTabId { get; set; }
         public bool IsInitialized { get; set; }
     }
 
-    private sealed class BrowserWorkspaceTabs
+internal sealed class BrowserWorkspaceTabs
     {
         public List<BrowserTab> Tabs { get; } = new();
         public Guid? ActiveTabId { get; set; }
         public int NextTabNumber { get; set; } = 1;
         public bool IsInitialized { get; set; }
-    }
 }
 

@@ -1,16 +1,3 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Input;
-using System.Windows.Media;
-using Microsoft.Web.WebView2.Wpf;
-using sk0ya.Loomo.App.Detach;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.App.Services;
-using Editor.Controls;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 

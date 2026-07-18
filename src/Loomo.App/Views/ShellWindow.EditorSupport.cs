@@ -1,30 +1,3 @@
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Interop;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.Ai;
-using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Services;
-using Editor.Controls;
-using Editor.Controls.Git;
-using Editor.Controls.Lsp;
-using Editor.Controls.Themes;
-using Editor.Core.Lsp;
-using Terminal.Settings;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。
@@ -564,17 +537,11 @@ public partial class ShellWindow
 
     /// <summary>ドキュメントシンボルを取得する（失敗しても落とさず空で返す）。</summary>
     private static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(IEditorLspManager lsp)
-    {
-        try { return await lsp.RequestDocumentSymbolsAsync(); }
-        catch { return Array.Empty<DocumentSymbol>(); }
-    }
+        => await CodeEditorSupportAnalysis.RequestDocumentSymbolsSafeAsync(lsp);
 
     /// <summary>アウトラインの current ハイライト行（1 始まり・0＝無し）：キャレットを含む最深メンバー。</summary>
     private static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
-    {
-        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
-        return member is null ? 0 : member.Line0 + 1;
-    }
+        => CodeEditorSupportAnalysis.CurrentMemberLine1(roots, caret);
 
     /// <summary>診断：入口（ユーザーが待ち始めた地点）から結果が見えるまでの合計を記録する（構造描画時／②後埋め時）。</summary>
     private void LogOutlineShown(string phase)
@@ -612,20 +579,7 @@ public partial class ShellWindow
     /// <paramref name="filePath"/> と同一ファイルを指しているか。file URI をローカルパス化して大小無視で比較する。
     /// </summary>
     private static bool LspMatchesFile(IEditorLspManager lsp, string filePath)
-    {
-        var current = CodeEditorSupport.TryUriToLocalPath(lsp.CurrentUri);
-        if (string.IsNullOrEmpty(current))
-            return false;
-        try
-        {
-            return string.Equals(
-                Path.GetFullPath(current), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false; // 無効なパス等は不一致扱い（案内ページへ）
-        }
-    }
+        => CodeEditorSupportAnalysis.LspMatchesFile(lsp, filePath);
 
     /// <summary>
     /// ②呼び出し解析を LSP から取得する。<c>PrepareCallHierarchyAsync</c> → 呼び出し元/先、
@@ -640,110 +594,20 @@ public partial class ShellWindow
     /// 2 本同時に投げる（各サーバーは複数リクエストを多重化できる）。
     /// </para>
     /// </summary>
-    private static async Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
+    private static Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
         IEditorLspManager lsp, int line0, int col0)
-    {
-        // 使用箇所は prepareCallHierarchy に依存しない → 先に走らせて呼び出し元/先と並列にする。
-        async Task<List<CallReference>> FetchReferencesAsync()
-        {
-            var list = new List<CallReference>();
-            try
-            {
-                foreach (var r in await lsp.RequestReferencesAsync(line0, col0) ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
-                    if (r is not null)
-                        // 使用箇所はシンボル名を持たない（位置のみ）。行は Range.Start（SelectionRange は無い）。
-                        list.Add(new CallReference("", r.Uri ?? "", r.Range?.Start?.Line ?? 0));
-            }
-            catch { /* references 非対応：使用箇所は空のまま */ }
-            return list;
-        }
-
-        var referencesTask = FetchReferencesAsync();
-
-        var incoming = new List<CallReference>();
-        var outgoing = new List<CallReference>();
-        LspRange? symbolRange = null;
-        string? target = null;
-
-        var prepareSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
-        try
-        {
-            var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
-            CodeSupportDiag.Log($"  prepareCallHierarchy {prepareSw?.ElapsedMilliseconds ?? 0}ms item={(item is null ? "null" : item.Name)}");
-            if (item is not null)
-            {
-                // 解決したシンボルの名前範囲＝キャレット追従の差分基準（この範囲内の移動では再取得しない）。
-                symbolRange = item.SelectionRange;
-                target = item.Name; // パネル見出し用（②がどのシンボルの結果か明示）
-
-                async Task<List<CallReference>> FetchIncomingAsync()
-                {
-                    var list = new List<CallReference>();
-                    try
-                    {
-                        foreach (var c in await lsp.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
-                            if (c?.From is { } f)
-                                list.Add(new CallReference(f.Name ?? "", f.Uri ?? "", f.SelectionRange?.Start?.Line ?? 0));
-                    }
-                    catch { /* incoming 非対応でも他は出す */ }
-                    return list;
-                }
-
-                async Task<List<CallReference>> FetchOutgoingAsync()
-                {
-                    var list = new List<CallReference>();
-                    try
-                    {
-                        foreach (var c in await lsp.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
-                            if (c?.To is { } t)
-                                list.Add(new CallReference(t.Name ?? "", t.Uri ?? "", t.SelectionRange?.Start?.Line ?? 0));
-                    }
-                    catch { /* outgoing 非対応でも他は出す */ }
-                    return list;
-                }
-
-                // 呼び出し元/先は互いに独立 → 同時に投げて両方揃うのを待つ。
-                var callsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
-                var incomingTask = FetchIncomingAsync();
-                var outgoingTask = FetchOutgoingAsync();
-                await Task.WhenAll(incomingTask, outgoingTask);
-                incoming = incomingTask.Result;
-                outgoing = outgoingTask.Result;
-                CodeSupportDiag.Log($"  incoming+outgoing {callsSw?.ElapsedMilliseconds ?? 0}ms");
-            }
-        }
-        catch { /* callHierarchy 非対応サーバー：呼び出し元/先は空のまま */ }
-
-        var refsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
-        var references = await referencesTask;
-        CodeSupportDiag.Log($"  references(await) {refsSw?.ElapsedMilliseconds ?? 0}ms count={references.Count}");
-        return (new CallPanels(incoming, outgoing, references, target), symbolRange);
-    }
+        => CodeEditorSupportAnalysis.FetchCallPanelsAsync(lsp, line0, col0);
 
     /// <summary>本文をシグネチャ抽出用に行分割する（改行種別を吸収。0 始まり index が LSP の line と一致）。</summary>
     private static IReadOnlyList<string> SplitLines(string? text)
-        => string.IsNullOrEmpty(text)
-            ? Array.Empty<string>()
-            : text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        => CodeEditorSupportAnalysis.SplitLines(text);
 
     /// <summary>
     /// キャレット（0 始まり line/col）が LSP 範囲 <paramref name="range"/>（0 始まり・両端含む）の内側か。
     /// ②の差分基準：直近に解決したシンボルの名前範囲にキャレットが留まる間は同じシンボル＝再取得しない。
     /// </summary>
     private static bool CaretInRange(LspRange range, int line0, int col0)
-    {
-        var start = range.Start;
-        var end = range.End;
-        if (start is null || end is null)
-            return false;
-        if (line0 < start.Line || line0 > end.Line)
-            return false;
-        if (line0 == start.Line && col0 < start.Character)
-            return false;
-        if (line0 == end.Line && col0 > end.Character)
-            return false;
-        return true;
-    }
+        => CodeEditorSupportAnalysis.CaretInRange(range, line0, col0);
 
     /// <summary>
     /// キャレット追従（②の再取得）。<see cref="ScheduleCodeCallPanelsRefresh"/> のデバウンス満了で呼ばれる。

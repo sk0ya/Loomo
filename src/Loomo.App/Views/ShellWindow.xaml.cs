@@ -1,30 +1,3 @@
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Interop;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.Input;
-using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.Ai;
-using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Services;
-using Editor.Controls;
-using Editor.Controls.Git;
-using Editor.Controls.Themes;
-using Terminal.Settings;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -179,7 +152,8 @@ public partial class ShellWindow : Window
     /// <summary>一時的に全面表示（ズーム）しているペイン。null なら通常のタイル表示。ツリーは保持する。</summary>
     private PaneKind? _zoomedPane;
     /// <summary>メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。</summary>
-    private PaneNode? _root;
+    private readonly PaneLayoutCoordinator _paneLayout = new();
+    private PaneNode? _root { get => _paneLayout.Root; set => _paneLayout.Root = value; }
     /// <summary>ペイン種別 → そのライブコントロールを内包するルート要素。</summary>
     private readonly Dictionary<PaneKind, FrameworkElement> _paneElements = new();
     /// <summary>ドラッグ判定中に一時的にマウスを捕捉しているタイトル要素。</summary>

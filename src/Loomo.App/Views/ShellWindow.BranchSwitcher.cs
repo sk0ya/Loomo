@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Windows;
-using System.Windows.Controls.Primitives;
 
 namespace sk0ya.Loomo.App.Views;
 

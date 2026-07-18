@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Windows;
-using System.Windows.Input;
-using sk0ya.Loomo.App.Input;
-using sk0ya.Loomo.App.Layout;
 
 namespace sk0ya.Loomo.App.Views;
 

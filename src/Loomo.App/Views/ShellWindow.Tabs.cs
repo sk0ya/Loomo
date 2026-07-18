@@ -1,29 +1,3 @@
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Interop;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.Ai;
-using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Services;
-using Editor.Controls;
-using Editor.Controls.Git;
-using Editor.Controls.Themes;
-using Terminal.Rendering;
-using Terminal.Settings;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナル／エディタのタブ管理（作成・選択・クローズ・プレビュータブ）</summary>

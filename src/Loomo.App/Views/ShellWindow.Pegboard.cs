@@ -1,10 +1,3 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
-using System.Windows;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.Views;
 

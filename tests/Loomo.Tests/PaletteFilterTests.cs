@@ -75,4 +75,40 @@ public class PaletteFilterTests
     [InlineData("", "anything", true)]
     public void IsSubsequence_basics(string needle, string haystack, bool expected)
         => Assert.Equal(expected, PaletteFilter.IsSubsequence(needle, haystack));
+
+    [Theory]
+    [InlineData(null, PaletteMode.All, "")]
+    [InlineData("hello", PaletteMode.All, "hello")]
+    [InlineData("@ file.cs ", PaletteMode.File, "file.cs")]
+    [InlineData("# text ", PaletteMode.Grep, "text")]
+    [InlineData(": Type ", PaletteMode.Class, "Type")]
+    [InlineData("% member ", PaletteMode.Symbol, "member")]
+    [InlineData("$ output ", PaletteMode.Terminal, "output")]
+    [InlineData("> command ", PaletteMode.Command, "command")]
+    public void Palette_mode_is_parsed_without_UI(string? input, PaletteMode expectedMode, string expectedQuery)
+    {
+        var (mode, query) = CommandPaletteService.Parse(input);
+        Assert.Equal(expectedMode, mode);
+        Assert.Equal(expectedQuery, query);
+    }
+
+    [Fact]
+    public void Palette_modes_cycle_in_display_order()
+    {
+        var modes = new List<PaletteMode>();
+        var current = PaletteMode.All;
+        for (var i = 0; i < 7; i++)
+        {
+            current = CommandPaletteService.Next(current);
+            modes.Add(current);
+        }
+
+        Assert.Equal(new[]
+        {
+            PaletteMode.File, PaletteMode.Grep, PaletteMode.Class, PaletteMode.Symbol,
+            PaletteMode.Terminal, PaletteMode.Command, PaletteMode.All
+        }, modes);
+        Assert.Equal("@", CommandPaletteService.Prefix(PaletteMode.File));
+        Assert.Equal(string.Empty, CommandPaletteService.Prefix(PaletteMode.All));
+    }
 }

@@ -1,19 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Input;
-using Editor.Controls;
-using Editor.Controls.Lsp;
-using Editor.Core.Lsp;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.Core.Abstractions;
-using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -30,10 +14,6 @@ public partial class ShellWindow
 
     /// <summary>@／# モードの非同期検索を、入力が変わるたびにキャンセル＆再発行するためのトークン源。</summary>
     private CancellationTokenSource? _paletteSearchCts;
-
-    /// <summary>パレットの入力モード。先頭の記号で切り替える（VS Code 風）。既定は「すべて」（横断検索）。
-    /// クラス／シンボルは LSP（ワークスペースシンボル）経由で取得する。</summary>
-    private enum PaletteMode { All, File, Grep, Class, Symbol, Terminal, Command }
 
     private bool IsPaletteOpen => CommandPaletteOverlay.Visibility == Visibility.Visible;
 
@@ -90,36 +70,12 @@ public partial class ShellWindow
 
     /// <summary>先頭記号でモードと素のクエリへ分解する。@＝ファイル名、#＝grep、:＝クラス、%＝シンボル、
     /// $＝ターミナル内検索、&gt;＝コマンド、無印＝すべて（横断検索）。</summary>
-    private static (PaletteMode Mode, string Query) ParsePaletteMode(string? text)
-    {
-        text ??= string.Empty;
-        if (text.StartsWith('@')) return (PaletteMode.File, text[1..].Trim());
-        if (text.StartsWith('#')) return (PaletteMode.Grep, text[1..].Trim());
-        if (text.StartsWith(':')) return (PaletteMode.Class, text[1..].Trim());
-        if (text.StartsWith('%')) return (PaletteMode.Symbol, text[1..].Trim());
-        if (text.StartsWith('$')) return (PaletteMode.Terminal, text[1..].Trim());
-        if (text.StartsWith('>')) return (PaletteMode.Command, text[1..].Trim());
-        return (PaletteMode.All, text);
-    }
-
-    /// <summary>そのモードの先頭記号（すべては無印）。</summary>
-    private static string ModePrefix(PaletteMode mode) => mode switch
-    {
-        PaletteMode.File => "@",
-        PaletteMode.Grep => "#",
-        PaletteMode.Class => ":",
-        PaletteMode.Symbol => "%",
-        PaletteMode.Terminal => "$",
-        PaletteMode.Command => ">",
-        _ => string.Empty,  // All（無印）
-    };
-
     /// <summary>素のクエリは保ったままモードだけ差し替える（先頭記号を付け替えてキャレットを末尾へ）。
     /// マウスでのチップ選択・Ctrl+Shift+P 連打の両方から呼ばれる。</summary>
     private void SetPaletteMode(PaletteMode mode)
     {
-        var (_, query) = ParsePaletteMode(PaletteInput.Text);
-        PaletteInput.Text = ModePrefix(mode) + query;     // TextChanged が RefilterPalette を呼ぶ
+        var (_, query) = CommandPaletteService.Parse(PaletteInput.Text);
+        PaletteInput.Text = CommandPaletteService.Prefix(mode) + query;     // TextChanged が RefilterPalette を呼ぶ
         PaletteInput.CaretIndex = PaletteInput.Text.Length;
         PaletteInput.Focus();
     }
@@ -128,18 +84,8 @@ public partial class ShellWindow
     /// とチップ表示順で巡回する（Ctrl+Shift+P 連打）。</summary>
     private void CyclePaletteMode()
     {
-        var (mode, _) = ParsePaletteMode(PaletteInput.Text);
-        var next = mode switch
-        {
-            PaletteMode.All => PaletteMode.File,
-            PaletteMode.File => PaletteMode.Grep,
-            PaletteMode.Grep => PaletteMode.Class,
-            PaletteMode.Class => PaletteMode.Symbol,
-            PaletteMode.Symbol => PaletteMode.Terminal,
-            PaletteMode.Terminal => PaletteMode.Command,
-            _ => PaletteMode.All,
-        };
-        SetPaletteMode(next);
+        var (mode, _) = CommandPaletteService.Parse(PaletteInput.Text);
+        SetPaletteMode(CommandPaletteService.Next(mode));
     }
 
     private void OnPaletteModeClick(object sender, RoutedEventArgs e)
@@ -176,7 +122,7 @@ public partial class ShellWindow
 
     private void RefilterPalette()
     {
-        var (mode, query) = ParsePaletteMode(PaletteInput.Text);
+        var (mode, query) = CommandPaletteService.Parse(PaletteInput.Text);
         UpdateModeChips(mode);
 
         // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト/クラス/シンボル検索は
@@ -431,7 +377,7 @@ public partial class ShellWindow
     private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items)
     {
         // 一覧のタイトル強調用に、いま入力中の素のクエリを各項目へ添える（モード先頭記号は落とす）。
-        var (_, query) = ParsePaletteMode(PaletteInput.Text);
+        var (_, query) = CommandPaletteService.Parse(PaletteInput.Text);
         foreach (var item in items)
             item.TitleMatch = query;
 

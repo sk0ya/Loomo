@@ -1,16 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Threading;
-using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
 

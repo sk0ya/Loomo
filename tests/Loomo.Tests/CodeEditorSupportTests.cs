@@ -14,6 +14,22 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class CodeEditorSupportTests
 {
+    [Fact]
+    public void Analysis_normalizes_line_endings_without_WPF()
+        => Assert.Equal(new[] { "a", "b", "c" },
+            CodeEditorSupportAnalysis.SplitLines("a\r\nb\rc"));
+
+    [Theory]
+    [InlineData(2, 3, true)]
+    [InlineData(2, 2, false)]
+    [InlineData(3, 0, true)]
+    [InlineData(4, 5, true)]
+    [InlineData(4, 6, false)]
+    public void Analysis_tests_multiline_LSP_ranges(int line, int column, bool expected)
+    {
+        var range = new LspRange(new LspPosition(2, 3), new LspPosition(4, 5));
+        Assert.Equal(expected, CodeEditorSupportAnalysis.CaretInRange(range, line, column));
+    }
     private static OutlineNode Leaf(string name, SymbolKind kind, int line0, int endLine0)
         => new(name, kind, line0, endLine0, line0, 0, System.Array.Empty<OutlineNode>());
 
