@@ -458,6 +458,14 @@ public partial class ShellWindow : Window
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
         };
+        // Diff で単一コミットを表示中の「Git 一覧で表示」：一覧を全履歴へ戻して対象を選択し、
+        // Git ペインを前面に出す。古いコミットは VM 側がページを追加取得して見つける。
+        vm.DiffSession.CommitOpenInGitRequested += async (_, hash) =>
+        {
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
+            await vm.GitSession.SelectCommitAsync(hash);
+            FocusPane(PaneKind.Git);
+        };
         // サイドバー Git パネルの「差分を開く」も同様に左上入れ替えで Diff ペインを前面に出す。
         vm.GitPanel.DiffOpenRequested += (_, _) =>
         {

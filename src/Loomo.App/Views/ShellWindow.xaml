@@ -974,6 +974,10 @@
                                 <TextBlock Text="{Binding DiffSession.GitTargetLabel}" FontSize="{DynamicResource Fs12}"
                                            Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
                                            Margin="0,0,6,0" TextTrimming="CharacterEllipsis" MaxWidth="240" />
+                                <Button Style="{StaticResource PaneHeaderToolButton}" Content="Git 一覧で表示"
+                                        ToolTip="このコミットを Git のコミット一覧で選択"
+                                        Command="{Binding DiffSession.OpenCommitInGitCommand}"
+                                        Visibility="{Binding DiffSession.CanOpenCommitInGit, Converter={StaticResource BoolToVis}}" />
                                 <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 作業ツリーへ"
                                         ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
                                         Command="{Binding DiffSession.ClearGitTargetCommand}" />

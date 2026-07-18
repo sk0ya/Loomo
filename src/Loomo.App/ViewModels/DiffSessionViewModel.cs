@@ -84,6 +84,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     [ObservableProperty] private bool _isSideBySide = true;
     /// <summary>コミット範囲を表示中のヘッダーラベル（空なら作業ツリー表示）。</summary>
     [ObservableProperty] private string _gitTargetLabel = "";
+    /// <summary>単一コミットの差分を表示中なら、そのコミットを Git 一覧で選択できる。</summary>
+    public bool CanOpenCommitInGit => _commitRange is { From: null };
     [ObservableProperty] private DiffFileItem? _selectedFile;
     [ObservableProperty] private string _emptyMessage = "";
     [ObservableProperty] private string _statusMessage = "";
@@ -100,6 +102,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// <summary>選択中の作業ツリーファイルのハンク一覧（ハンク単位ステージ用）。AI変更・コミット範囲・
     /// 未追跡ファイルでは空。</summary>
     public ObservableCollection<DiffHunkVm> Hunks { get; } = new();
+
+    /// <summary>表示中の単一コミットを Git ペインで選択するよう ShellWindow へ要求する。</summary>
+    public event EventHandler<string>? CommitOpenInGitRequested;
 
     /// <summary>ハンク単位ステージのUIを出せるか（作業ツリーの追跡済みファイルで、ハンクが1つ以上）。</summary>
     public bool CanStageHunks => Hunks.Count > 0;
@@ -151,6 +156,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         if (!value)
         {
             _commitRange = null;
+            OnPropertyChanged(nameof(CanOpenCommitInGit));
             GitTargetLabel = "";
         }
         UpdateCanDiscard();
@@ -209,6 +215,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     {
         _loaded = true;
         _commitRange = (fromHash, toHash);
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
         UpdateCanDiscard();
         if (!IsGitMode)
@@ -228,6 +235,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     {
         _loaded = true;
         _commitRange = (null, hash);
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
         UpdateCanDiscard();
         if (!IsGitMode)
@@ -283,9 +291,17 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     {
         if (_commitRange is null) return;
         _commitRange = null;
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = "";
         UpdateCanDiscard();
         _ = RefreshAsync();
+    }
+
+    [RelayCommand]
+    private void OpenCommitInGit()
+    {
+        if (_commitRange is { From: null, To: var hash })
+            CommitOpenInGitRequested?.Invoke(this, hash);
     }
 
     private async Task RefreshAsync()

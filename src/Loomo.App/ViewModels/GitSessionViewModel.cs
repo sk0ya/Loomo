@@ -505,6 +505,41 @@ public sealed partial class GitSessionViewModel : ObservableObject
              candidate.StartsWith(sought, StringComparison.OrdinalIgnoreCase)));
     }
 
+    /// <summary>
+    /// Git ペインを全コミット表示に戻し、指定コミットを必要なページまで読み込んで選択する。
+    /// Diff ペインなど、コミット一覧の外から対象コミットへ戻るために使う。
+    /// </summary>
+    public async Task SelectCommitAsync(string hash)
+    {
+        _logBranch = null;
+        IsLogScoped = false;
+        ResetPathScope();
+
+        if (!_loaded)
+        {
+            _loaded = true;
+            await RefreshAsync();
+        }
+        else
+        {
+            await ReloadLogAsync();
+        }
+
+        var target = FindCommitRow(hash);
+        while (target is null && HasMoreLog)
+        {
+            await LoadMoreLogAsync();
+            target = FindCommitRow(hash);
+        }
+
+        if (target is null)
+            return;
+
+        if (!LogView.Contains(target))
+            ClearLogFilters();
+        SelectedLogRow = target;
+    }
+
     /// <summary>パスの履歴絞り込みを解除して全コミット表示に戻す（履歴スコープ帯の「✕」）。</summary>
     [RelayCommand]
     private Task ClearPathScope()
