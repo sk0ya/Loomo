@@ -50,14 +50,14 @@ public interface IDebugService
     Task AttachAsync(DebugAttachConfig config, CancellationToken ct);
 
     /// <summary>実行中のセッションを停止（disconnect/terminate）する。セッションが無ければ何もしない。</summary>
-    Task StopAsync();
+    Task StopAsync(CancellationToken ct = default);
 
     /// <summary>直前のセッションが自然終了（デバッグ対象の終了・アダプタの異常終了）した際の、アダプタプロセスの
     /// 後始末（対象 dll/pdb のファイルハンドル解放）が完了するまで待つ。<see cref="StateChanged"/> で
     /// <see cref="DebugSessionState.Terminated"/> が届いても後始末は非同期に進むため、この直後に再ビルドする
     /// 呼び出し元（<c>DebugTargetResolver</c> 等）は、ビルドが「ファイル使用中」で失敗しないようこれを先に
     /// 待つ必要がある。保留中の後始末が無ければ即座に完了する。</summary>
-    Task WaitForIdleAsync();
+    Task WaitForIdleAsync(CancellationToken ct = default);
 
     /// <summary>あるソースファイルのブレークポイント（<b>1 始まり</b>の行＋任意の条件）をまとめて設定する。
     /// セッション開始前に呼ばれた分は記憶し、起動時の構成フェーズで送る。実行中の呼び出しは即時反映する。
@@ -70,21 +70,21 @@ public interface IDebugService
 
     /// <summary>変数値を書き換える（<c>setVariable</c>）。<paramref name="variablesReference"/> はその変数が属する
     /// スコープ/親の参照。成功時は新しい表示値、失敗時は null を返す（例外は投げない）。</summary>
-    Task<string?> SetVariableAsync(int variablesReference, string name, string value);
+    Task<string?> SetVariableAsync(int variablesReference, string name, string value, CancellationToken ct = default);
 
     /// <summary>実行中スレッドの一覧を取得する（取得できなければ空）。</summary>
-    Task<IReadOnlyList<DebugThread>> GetThreadsAsync();
+    Task<IReadOnlyList<DebugThread>> GetThreadsAsync(CancellationToken ct = default);
 
     /// <summary>stackTrace/step の対象スレッドを切り替える（停止中のみ意味を持つ）。</summary>
     void SetActiveThread(int threadId);
 
     /// <summary>実行中のセッションを一時停止する（<c>pause</c>＝VS の「すべて中断」）。停止すると
     /// <see cref="Stopped"/> が発火する。</summary>
-    Task PauseAsync();
+    Task PauseAsync(CancellationToken ct = default);
 
     /// <summary>次に実行する文を指定位置へ移動する（<c>gotoTargets</c>→<c>goto</c>＝VS の「次のステートメントの設定」）。
     /// 停止中のみ有効。<paramref name="line"/> は <b>1 始まり</b>。成功可否を返す（失敗理由は <see cref="Output"/>）。</summary>
-    Task<bool> SetNextStatementAsync(string sourcePath, int line);
+    Task<bool> SetNextStatementAsync(string sourcePath, int line, CancellationToken ct = default);
 
     /// <summary>カーソル行まで実行する（VS の「カーソルまで実行」）。停止中のみ有効。指定位置に一時ブレークポイントを
     /// 置いて続行し、次に停止したとき（その行に達した／別の永続ブレークポイントに当たった）一時分は自動で撤去する。
@@ -94,46 +94,46 @@ public interface IDebugService
     /// <summary>式をイミディエイト（REPL）コンテキストで評価する（<c>evaluate context="repl"</c>＝VS の
     /// イミディエイトウィンドウ）。<see cref="EvaluateAsync"/> と違い副作用のある式も実行できる。
     /// 失敗時はエラーメッセージを返す（例外は投げない）。</summary>
-    Task<string> EvaluateReplAsync(string expression, int? frameId);
+    Task<string> EvaluateReplAsync(string expression, int? frameId, CancellationToken ct = default);
 
     /// <summary>ロード済みモジュール（アセンブリ）の一覧を取得する（<c>modules</c>＝VS のモジュールウィンドウ）。
     /// 取得できなければ空。</summary>
-    Task<IReadOnlyList<DebugModule>> GetModulesAsync();
+    Task<IReadOnlyList<DebugModule>> GetModulesAsync(CancellationToken ct = default);
 
     /// <summary>停止行の「ステップ イン」候補（<c>stepInTargets</c>）を取得する。<see cref="SupportsStepInTargets"/> が
     /// false／取得不可なら空。<paramref name="frameId"/> は対象フレーム（通常は先頭フレーム）。</summary>
-    Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync(int frameId);
+    Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync(int frameId, CancellationToken ct = default);
 
     /// <summary>指定の候補へステップ インする（<c>stepIn</c> に <c>targetId</c> を付ける）。停止中のみ有効。</summary>
-    Task StepInTargetAsync(int targetId);
+    Task StepInTargetAsync(int targetId, CancellationToken ct = default);
 
     /// <summary>停止中のセッションを再開する。</summary>
-    Task ContinueAsync();
+    Task ContinueAsync(CancellationToken ct = default);
 
     /// <summary>ステップオーバー（next）。</summary>
-    Task StepOverAsync();
+    Task StepOverAsync(CancellationToken ct = default);
 
     /// <summary>ステップイン。</summary>
-    Task StepInAsync();
+    Task StepInAsync(CancellationToken ct = default);
 
     /// <summary>ステップアウト。</summary>
-    Task StepOutAsync();
+    Task StepOutAsync(CancellationToken ct = default);
 
     /// <summary>停止中スレッドのコールスタックを取得する（停止していなければ空）。</summary>
-    Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync();
+    Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync(CancellationToken ct = default);
 
     /// <summary>指定スレッドのコールスタックを取得する。</summary>
-    Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync(int threadId);
+    Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync(int threadId, CancellationToken ct = default);
 
     /// <summary>指定フレームのスコープ（Locals/Arguments 等）を取得する。</summary>
-    Task<IReadOnlyList<DebugScope>> GetScopesAsync(int frameId);
+    Task<IReadOnlyList<DebugScope>> GetScopesAsync(int frameId, CancellationToken ct = default);
 
     /// <summary>指定 variablesReference の変数一覧（スコープ直下、または親変数の子）を取得する。</summary>
-    Task<IReadOnlyList<DebugVariable>> GetVariablesAsync(int variablesReference);
+    Task<IReadOnlyList<DebugVariable>> GetVariablesAsync(int variablesReference, CancellationToken ct = default);
 
     /// <summary>式を評価して結果文字列を返す（ウォッチ）。<paramref name="frameId"/> 指定でそのフレーム文脈。
     /// 失敗時はエラーメッセージを返す（例外は投げない）。</summary>
-    Task<string> EvaluateAsync(string expression, int? frameId);
+    Task<string> EvaluateAsync(string expression, int? frameId, CancellationToken ct = default);
 
     /// <summary>状態が変化したときに発火（UI スレッドとは限らない）。</summary>
     event EventHandler<DebugSessionState>? StateChanged;

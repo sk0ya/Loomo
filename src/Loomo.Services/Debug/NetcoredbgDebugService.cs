@@ -219,9 +219,9 @@ public sealed class NetcoredbgDebugService : IDebugService
         }
     }
 
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken ct = default)
     {
-        await _gate.WaitAsync();
+        await _gate.WaitAsync(ct);
         try
         {
             await StopCoreAsync();
@@ -329,11 +329,14 @@ public sealed class NetcoredbgDebugService : IDebugService
     }
 
     /// <summary>直前セッションの自然終了に伴うアダプタ後始末が完了するまで待つ。保留が無ければ即座に返る。</summary>
-    public async Task WaitForIdleAsync()
+    public async Task WaitForIdleAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         if (_teardownTask is { } t)
         {
-            try { await t; } catch { /* 後始末自体の失敗は無視（Dispose は例外を投げない設計） */ }
+            try { await t.WaitAsync(ct); }
+            catch (OperationCanceledException) { throw; }
+            catch { /* 後始末自体の失敗は無視（Dispose は例外を投げない設計） */ }
         }
     }
 
@@ -357,6 +360,7 @@ public sealed class NetcoredbgDebugService : IDebugService
 
     public async Task SetBreakpointsAsync(string sourcePath, IReadOnlyList<DebugBreakpoint> breakpoints, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var path = Path.GetFullPath(sourcePath);
         if (breakpoints.Count == 0) _breakpoints.Remove(path);
         else _breakpoints[path] = breakpoints;
@@ -366,70 +370,78 @@ public sealed class NetcoredbgDebugService : IDebugService
         if (client is { IsRunning: true })
         {
             try { await PushSourceBreakpointsAsync(client, path, ct); }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex) { Emit(DebugOutputCategory.Console, $"ブレークポイント設定に失敗: {ex.Message}"); }
         }
     }
 
     public async Task SetExceptionBreakpointsAsync(IReadOnlyList<string> filterIds, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         _exceptionFilters = filterIds;
         var client = _client;
         if (client is { IsRunning: true })
         {
             try { await SendExceptionBreakpointsAsync(client, ct); }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex) { Emit(DebugOutputCategory.Console, $"例外ブレーク設定に失敗: {ex.Message}"); }
         }
     }
 
-    public Task ContinueAsync() => StepRequestAsync("continue", resumes: true);
-    public Task StepOverAsync() => StepRequestAsync("next", resumes: true);
-    public Task StepInAsync() => StepRequestAsync("stepIn", resumes: true);
-    public Task StepOutAsync() => StepRequestAsync("stepOut", resumes: true);
+    public Task ContinueAsync(CancellationToken ct = default) => StepRequestAsync("continue", resumes: true, ct);
+    public Task StepOverAsync(CancellationToken ct = default) => StepRequestAsync("next", resumes: true, ct);
+    public Task StepInAsync(CancellationToken ct = default) => StepRequestAsync("stepIn", resumes: true, ct);
+    public Task StepOutAsync(CancellationToken ct = default) => StepRequestAsync("stepOut", resumes: true, ct);
 
-    public async Task PauseAsync()
+    public async Task PauseAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || _state != DebugSessionState.Running) return;
         // pause はスレッド指定が要る。アクティブが無ければ先頭スレッドを狙う。
         var threadId = _activeThreadId;
         if (threadId == 0)
         {
-            var threads = await GetThreadsAsync();
+            var threads = await GetThreadsAsync(ct);
             threadId = threads.Count > 0 ? threads[0].Id : 1;
         }
-        try { await client.SendRequestAsync("pause", new { threadId }); }
+        try { await client.SendRequestAsync("pause", new { threadId }, ct); }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"一時停止に失敗: {ex.Message}"); }
     }
 
     public void SetActiveThread(int threadId) => _activeThreadId = threadId;
 
     /// <summary>continue/next/stepIn/stepOut をアクティブスレッドに対して送る。送信成功で Running へ。</summary>
-    private async Task StepRequestAsync(string command, bool resumes)
+    private async Task StepRequestAsync(string command, bool resumes, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return;
         try
         {
-            await client.SendRequestAsync(command, new { threadId = _activeThreadId });
+            await client.SendRequestAsync(command, new { threadId = _activeThreadId }, ct);
             if (resumes)
             {
                 SetState(DebugSessionState.Running);
                 Continued?.Invoke(this, EventArgs.Empty);
             }
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"{command} に失敗: {ex.Message}"); }
     }
 
-    public Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync() => GetStackTraceAsync(_activeThreadId);
+    public Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync(CancellationToken ct = default) => GetStackTraceAsync(_activeThreadId, ct);
 
-    public async Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync(int threadId)
+    public async Task<IReadOnlyList<DebugStackFrame>> GetStackTraceAsync(int threadId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return Array.Empty<DebugStackFrame>();
         try
         {
             var body = await client.SendRequestAsync("stackTrace",
-                new { threadId, startFrame = 0, levels = 50 });
+                new { threadId, startFrame = 0, levels = 50 }, ct);
             var list = new List<DebugStackFrame>();
             if (body is { ValueKind: JsonValueKind.Object } b &&
                 b.TryGetProperty("stackFrames", out var frames) && frames.ValueKind == JsonValueKind.Array)
@@ -446,16 +458,18 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             return list;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return Array.Empty<DebugStackFrame>(); }
     }
 
-    public async Task<IReadOnlyList<DebugScope>> GetScopesAsync(int frameId)
+    public async Task<IReadOnlyList<DebugScope>> GetScopesAsync(int frameId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true }) return Array.Empty<DebugScope>();
         try
         {
-            var body = await client.SendRequestAsync("scopes", new { frameId });
+            var body = await client.SendRequestAsync("scopes", new { frameId }, ct);
             var list = new List<DebugScope>();
             if (body is { ValueKind: JsonValueKind.Object } b &&
                 b.TryGetProperty("scopes", out var scopes) && scopes.ValueKind == JsonValueKind.Array)
@@ -470,16 +484,18 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             return list;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return Array.Empty<DebugScope>(); }
     }
 
-    public async Task<IReadOnlyList<DebugVariable>> GetVariablesAsync(int variablesReference)
+    public async Task<IReadOnlyList<DebugVariable>> GetVariablesAsync(int variablesReference, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || variablesReference <= 0) return Array.Empty<DebugVariable>();
         try
         {
-            var body = await client.SendRequestAsync("variables", new { variablesReference });
+            var body = await client.SendRequestAsync("variables", new { variablesReference }, ct);
             var list = new List<DebugVariable>();
             if (body is { ValueKind: JsonValueKind.Object } b &&
                 b.TryGetProperty("variables", out var vars) && vars.ValueKind == JsonValueKind.Array)
@@ -495,31 +511,35 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             return list;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return Array.Empty<DebugVariable>(); }
     }
 
-    public async Task<string> EvaluateAsync(string expression, int? frameId)
+    public async Task<string> EvaluateAsync(string expression, int? frameId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true }) return "(セッションがありません)";
         try
         {
             var body = await client.SendRequestAsync("evaluate",
-                new { expression, frameId, context = "watch" });
+                new { expression, frameId, context = "watch" }, ct);
             if (body is { ValueKind: JsonValueKind.Object } b && b.TryGetProperty("result", out var r))
                 return r.GetString() ?? "";
             return "";
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return $"(評価エラー: {ex.Message})"; }
     }
 
-    public async Task<IReadOnlyList<DebugThread>> GetThreadsAsync()
+    public async Task<IReadOnlyList<DebugThread>> GetThreadsAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true }) return Array.Empty<DebugThread>();
         try
         {
-            var body = await client.SendRequestAsync("threads", null);
+            var body = await client.SendRequestAsync("threads", null, ct);
             var list = new List<DebugThread>();
             if (body is { ValueKind: JsonValueKind.Object } b &&
                 b.TryGetProperty("threads", out var threads) && threads.ValueKind == JsonValueKind.Array)
@@ -533,25 +553,29 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             return list;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return Array.Empty<DebugThread>(); }
     }
 
-    public async Task<string?> SetVariableAsync(int variablesReference, string name, string value)
+    public async Task<string?> SetVariableAsync(int variablesReference, string name, string value, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || variablesReference <= 0) return null;
         try
         {
-            var body = await client.SendRequestAsync("setVariable", new { variablesReference, name, value });
+            var body = await client.SendRequestAsync("setVariable", new { variablesReference, name, value }, ct);
             if (body is { ValueKind: JsonValueKind.Object } b && b.TryGetProperty("value", out var r))
                 return r.GetString() ?? value;
             return value;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"値の変更に失敗: {ex.Message}"); return null; }
     }
 
-    public async Task<bool> SetNextStatementAsync(string sourcePath, int line)
+    public async Task<bool> SetNextStatementAsync(string sourcePath, int line, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return false;
         try
@@ -562,7 +586,7 @@ public sealed class NetcoredbgDebugService : IDebugService
             {
                 source = new { path, name = Path.GetFileName(path) },
                 line,
-            });
+            }, ct);
             int targetId = -1;
             if (targets is { ValueKind: JsonValueKind.Object } tb &&
                 tb.TryGetProperty("targets", out var arr) && arr.ValueKind == JsonValueKind.Array && arr.GetArrayLength() > 0)
@@ -573,14 +597,16 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             if (targetId < 0) { Emit(DebugOutputCategory.Console, "この行へは移動できません（有効なターゲットがありません）。"); return false; }
 
-            await client.SendRequestAsync("goto", new { threadId = _activeThreadId, targetId });
+            await client.SendRequestAsync("goto", new { threadId = _activeThreadId, targetId }, ct);
             return true;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"次のステートメント設定に失敗: {ex.Message}"); return false; }
     }
 
     public async Task RunToCursorAsync(string sourcePath, int line, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return;
         var path = Path.GetFullPath(sourcePath);
@@ -595,31 +621,35 @@ public sealed class NetcoredbgDebugService : IDebugService
             SetState(DebugSessionState.Running);
             Continued?.Invoke(this, EventArgs.Empty);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"カーソル行まで実行に失敗: {ex.Message}"); }
     }
 
-    public async Task<string> EvaluateReplAsync(string expression, int? frameId)
+    public async Task<string> EvaluateReplAsync(string expression, int? frameId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true }) return "(セッションがありません)";
         try
         {
             var body = await client.SendRequestAsync("evaluate",
-                new { expression, frameId, context = "repl" });
+                new { expression, frameId, context = "repl" }, ct);
             if (body is { ValueKind: JsonValueKind.Object } b && b.TryGetProperty("result", out var r))
                 return r.GetString() ?? "";
             return "";
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return $"(評価エラー: {ex.Message})"; }
     }
 
-    public async Task<IReadOnlyList<DebugModule>> GetModulesAsync()
+    public async Task<IReadOnlyList<DebugModule>> GetModulesAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true }) return Array.Empty<DebugModule>();
         try
         {
-            var body = await client.SendRequestAsync("modules", new { startModule = 0, moduleCount = 0 });
+            var body = await client.SendRequestAsync("modules", new { startModule = 0, moduleCount = 0 }, ct);
             var list = new List<DebugModule>();
             if (body is { ValueKind: JsonValueKind.Object } b &&
                 b.TryGetProperty("modules", out var mods) && mods.ValueKind == JsonValueKind.Array)
@@ -635,16 +665,18 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             return list;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return Array.Empty<DebugModule>(); }
     }
 
-    public async Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync(int frameId)
+    public async Task<IReadOnlyList<DebugStepInTarget>> GetStepInTargetsAsync(int frameId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || !SupportsStepInTargets) return Array.Empty<DebugStepInTarget>();
         try
         {
-            var body = await client.SendRequestAsync("stepInTargets", new { frameId });
+            var body = await client.SendRequestAsync("stepInTargets", new { frameId }, ct);
             var list = new List<DebugStepInTarget>();
             if (body is { ValueKind: JsonValueKind.Object } b &&
                 b.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
@@ -659,19 +691,22 @@ public sealed class NetcoredbgDebugService : IDebugService
             }
             return list;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return Array.Empty<DebugStepInTarget>(); }
     }
 
-    public async Task StepInTargetAsync(int targetId)
+    public async Task StepInTargetAsync(int targetId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var client = _client;
         if (client is not { IsRunning: true } || _state != DebugSessionState.Stopped) return;
         try
         {
-            await client.SendRequestAsync("stepIn", new { threadId = _activeThreadId, targetId });
+            await client.SendRequestAsync("stepIn", new { threadId = _activeThreadId, targetId }, ct);
             SetState(DebugSessionState.Running);
             Continued?.Invoke(this, EventArgs.Empty);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { Emit(DebugOutputCategory.Console, $"特定の関数へのステップ インに失敗: {ex.Message}"); }
     }
 
