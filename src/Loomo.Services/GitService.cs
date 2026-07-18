@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -20,11 +19,11 @@ namespace sk0ya.Loomo.Services;
 /// </summary>
 public sealed class GitService
 {
-    private const int TimeoutMs = 120_000;
     /// <summary>ライブ監視のポーリング間隔。見えている間だけ、この間隔で軽く状態を見る。</summary>
     private const int PollIntervalMs = 1500;
 
     private readonly IWorkspaceService _workspace;
+    private readonly GitCommandRunner _runner;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -34,6 +33,7 @@ public sealed class GitService
     public GitService(IWorkspaceService workspace)
     {
         _workspace = workspace;
+        _runner = new GitCommandRunner(workspace);
         workspace.RootChanged += (_, _) =>
         {
             _lastSignature = null; // リポジトリが替わったら署名を取り直す
@@ -784,7 +784,7 @@ public sealed class GitService
                 ["GIT_EDITOR"] = $"cp '{ToMsysPath(messagePath)}'",
             };
             var baseArg = hasParent ? $"{hash}^" : "--root";
-            return await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
+            return await _runner.RunAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
         }
         finally
         {
@@ -936,7 +936,7 @@ public sealed class GitService
             {
                 ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
             };
-            var result = await RunCoreAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
+            var result = await _runner.RunAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
             keepExtraFiles = !result.Success && IsRebaseDirectoryPresent(gitDir);
             return result;
         }
@@ -1150,74 +1150,7 @@ public sealed class GitService
     }
 
     /// <summary>git を起動し、終了まで待って stdout/stderr を返す。タイムアウト時はプロセスツリーごと kill。</summary>
-    public Task<GitCommandResult> RunAsync(params string[] args) => RunCoreAsync(null, args);
-
-    /// <summary>
-    /// <see cref="RunAsync"/> の実体。<paramref name="extraEnv"/> を指定すると既定の環境変数
-    /// （GIT_EDITOR / GIT_SEQUENCE_EDITOR 等）を上書きできる（スカッシュの todo 差し替えに使う）。
-    /// </summary>
-    private async Task<GitCommandResult> RunCoreAsync(
-        IReadOnlyDictionary<string, string>? extraEnv, params string[] args)
-    {
-        var root = RootPath;
-        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
-            return new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。");
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = root,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        // 非対話に固定：認証は失敗で返し、メッセージ編集は既定のまま確定する
-        psi.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
-        psi.EnvironmentVariables["GIT_EDITOR"] = "true";
-        psi.EnvironmentVariables["GIT_SEQUENCE_EDITOR"] = "true";
-        if (extraEnv is not null)
-            foreach (var (key, value) in extraEnv)
-                psi.EnvironmentVariables[key] = value;
-        // 出力を機械可読に固定（パスの \xxx エスケープと色を無効化）
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add("core.quotepath=false");
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add("color.ui=false");
-        foreach (var arg in args)
-            psi.ArgumentList.Add(arg);
-
-        try
-        {
-            using var process = Process.Start(psi);
-            if (process is null)
-                return new GitCommandResult(-1, "", "git を起動できませんでした。");
-
-            var stdout = process.StandardOutput.ReadToEndAsync();
-            var stderr = process.StandardError.ReadToEndAsync();
-            using var cts = new CancellationTokenSource(TimeoutMs);
-            try
-            {
-                await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { /* 既に終了 */ }
-                return new GitCommandResult(-1, "", $"git がタイムアウトしました（{TimeoutMs / 1000}秒）。");
-            }
-            return new GitCommandResult(
-                process.ExitCode,
-                await stdout.ConfigureAwait(false),
-                await stderr.ConfigureAwait(false));
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return new GitCommandResult(-1, "",
-                "git コマンドが見つかりません。Git for Windows をインストールして PATH を通してください。");
-        }
-    }
+    public Task<GitCommandResult> RunAsync(params string[] args) => _runner.RunAsync(args);
 
     /// <summary>.git ディレクトリの絶対パス（リポジトリ外なら null）。</summary>
     private async Task<string?> GetGitDirAsync()
