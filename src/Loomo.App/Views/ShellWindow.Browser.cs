@@ -84,25 +84,17 @@ public partial class ShellWindow {
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
 
-    private async Task<BrowserTab> CreateBrowserTabAsync(
-        string url,
-        Guid? requestedId = null,
-        string? requestedTitle = null) {
+    private async Task<BrowserTab> CreateBrowserTabAsync( string url, Guid? requestedId = null, string? requestedTitle = null) {
         var tab = CreateBrowserTab(url, requestedId, requestedTitle);
         await EnsureBrowserRealizedAsync(tab);
         return tab;
     }
 
-    private BrowserTab CreateBrowserTab(
-        string url,
-        Guid? requestedId = null,
-        string? requestedTitle = null) {
+    private BrowserTab CreateBrowserTab( string url, Guid? requestedId = null, string? requestedTitle = null) {
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
         var view = new WebView2CompositionControl {
-            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
-            Visibility = Visibility.Collapsed,
-            CreationProperties = CreateWebViewCreationProperties()
+            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E), Visibility = Visibility.Collapsed, CreationProperties = CreateWebViewCreationProperties()
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
 
@@ -156,9 +148,7 @@ public partial class ShellWindow {
         if (tab is null || tab.RealizationStarted || !(_stageActive || IsPaneVisible(PaneKind.Browser)))
             return;
 
-        Dispatcher.BeginInvoke(
-            DispatcherPriority.Background,
-            new Action(() => {
+        Dispatcher.BeginInvoke( DispatcherPriority.Background, new Action(() => {
                 if (ReferenceEquals(_activeBrowserTab, tab) && (_stageActive || IsPaneVisible(PaneKind.Browser)))
                     _ = EnsureBrowserRealizedAsync(tab);
             }));
@@ -203,9 +193,7 @@ public partial class ShellWindow {
         _browser.SetActiveView(tab.View);
         _vm.Tabs.ActivateBrowserTab(id);
         BrowserAddressBox.Text = tab.View.Source?.ToString() ?? tab.PendingUrl ?? string.Empty;
-        RecordTrailBrowser(
-            tab.View.Source?.ToString() ?? tab.PendingUrl,
-            tab.View.CoreWebView2?.DocumentTitle);
+        RecordTrailBrowser( tab.View.Source?.ToString() ?? tab.PendingUrl, tab.View.CoreWebView2?.DocumentTitle);
         tab.View.Focus();
         ScheduleBrowserRealize(tab);
         SaveActiveWorkspaceSnapshot();

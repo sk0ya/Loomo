@@ -35,8 +35,7 @@ public partial class ShellWindow {
     private DetachedItem? RestoreDetachedItem(DetachedItemSnapshot snapshot) {
         if (!Enum.TryParse<DetachKind>(snapshot.Kind, out var kind)) return null;
         if (kind == DetachKind.EditorMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
-            var source = _editorTabs.FirstOrDefault(t => string.Equals(
-                t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
+            var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
             if (source is not null) return TryCreateEditorMirrorItem(source.Id);
         }
         if (kind is DetachKind.EditorMirror or DetachKind.EditorMove) {
@@ -45,12 +44,10 @@ public partial class ShellWindow {
                 editor.LoadFile(snapshot.FilePath);
             if (snapshot.Text is not null) editor.SetText(snapshot.Text);
             var title = string.IsNullOrWhiteSpace(snapshot.FilePath) ? "Untitled" : Path.GetFileName(snapshot.FilePath);
-            return new DetachedItem(DetachKind.EditorMove, title, editor,
-                _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose);
+            return new DetachedItem(DetachKind.EditorMove, title, editor, _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose);
         }
         if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
-            var source = _editorTabs.FirstOrDefault(t => string.Equals(
-                t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
+            var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
             if (source is null) return null;
             var view = new DetachedEditorSupportView(_editorSupports, _settings, _workspace.RootPath, source.Control);
             var item = new DetachedItem(kind, $"Preview: {Path.GetFileName(snapshot.FilePath)}", view, dispose: view.Dispose);
@@ -67,10 +64,7 @@ public partial class ShellWindow {
 
     private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab) {
         DetachedItem? item = tab.Kind switch {
-            TabEntryKind.Editor => TryCreateEditorMirrorItem(tab.Id),
-            TabEntryKind.Terminal => CreateTerminalSpinoffItem(_terminalTabs.FirstOrDefault(t => t.Id == tab.Id)),
-            TabEntryKind.Browser => CreateBrowserSpinoffItem(_browserTabs.FirstOrDefault(t => t.Id == tab.Id)),
-            _ => null
+            TabEntryKind.Editor => TryCreateEditorMirrorItem(tab.Id), TabEntryKind.Terminal => CreateTerminalSpinoffItem(_terminalTabs.FirstOrDefault(t => t.Id == tab.Id)), TabEntryKind.Browser => CreateBrowserSpinoffItem(_browserTabs.FirstOrDefault(t => t.Id == tab.Id)), _ => null
         };
         if (item is not null)
             Detached.Detach(item);
@@ -102,8 +96,7 @@ public partial class ShellWindow {
         var title = string.IsNullOrWhiteSpace(source.FilePath)
             ? "Preview"
             : $"Preview: {Path.GetFileName(source.FilePath!)}";
-        var item = new DetachedItem(
-            DetachKind.EditorSupportMirror, title, view, dispose: view.Dispose);
+        var item = new DetachedItem( DetachKind.EditorSupportMirror, title, view, dispose: view.Dispose);
         view.TitleChanged += (_, t) => item.Title = t;
         AttachEditorSupportMirrorLinks(view);
         Detached.Detach(item);
@@ -147,9 +140,7 @@ public partial class ShellWindow {
         mirror.BufferChanged += mirHandler;
 
         var title = string.IsNullOrWhiteSpace(srcCtl.FilePath) ? "Untitled" : Path.GetFileName(srcCtl.FilePath!);
-        return new DetachedItem(
-            DetachKind.EditorMirror, title, mirror, _tabIcons.GetFileIcon(srcCtl.FilePath),
-            dispose: () => {
+        return new DetachedItem( DetachKind.EditorMirror, title, mirror, _tabIcons.GetFileIcon(srcCtl.FilePath), dispose: () => {
                 srcCtl.BufferChanged -= srcHandler;
                 mirror.BufferChanged -= mirHandler;
                 mirror.Dispose();
@@ -168,9 +159,7 @@ public partial class ShellWindow {
         var view = new TerminalTabView("pwsh.exe", cwd) { AutoFocusOnStart = false };
         _appearance.ApplyTerminalAppearance(view);
 
-        var item = new DetachedItem(
-            DetachKind.TerminalSpinoff, "Terminal", view, _tabIcons.GetTerminalIcon(),
-            dispose: () => _ = view.CloseAsync());
+        var item = new DetachedItem( DetachKind.TerminalSpinoff, "Terminal", view, _tabIcons.GetTerminalIcon(), dispose: () => _ = view.CloseAsync());
         view.HeaderTitleChanged += (_, title) =>
             item.Title = string.IsNullOrWhiteSpace(title) ? "Terminal" : title;
         return item;
@@ -183,12 +172,9 @@ public partial class ShellWindow {
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         var url = sourceUrl ?? DefaultBrowserUrl;
         var view = new WebView2CompositionControl {
-            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
-            CreationProperties = CreateWebViewCreationProperties()
+            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E), CreationProperties = CreateWebViewCreationProperties()
         };
-        var item = new DetachedItem(
-            DetachKind.BrowserSpinoff, "Browser", view, _tabIcons.GetBrowserDefaultIcon(),
-            dispose: () => view.Dispose());
+        var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", view, _tabIcons.GetBrowserDefaultIcon(), dispose: () => view.Dispose());
         _ = RealizeSpinoffBrowserAsync(view, url, item);
         return item;
     }
@@ -257,18 +243,13 @@ public partial class ShellWindow {
             return () => {
                 var control = RemoveEditorTabForMove(id)!;
                 var title = string.IsNullOrWhiteSpace(control.FilePath) ? "Untitled" : Path.GetFileName(control.FilePath!);
-                return new DetachedItem(
-                    DetachKind.EditorMove, title, control, _tabIcons.GetFileIcon(control.FilePath),
-                    dispose: control.Dispose);
+                return new DetachedItem( DetachKind.EditorMove, title, control, _tabIcons.GetFileIcon(control.FilePath), dispose: control.Dispose);
             };
 
         if (_terminalTabs.Any(t => t.Id == id))
             return () => {
                 var view = RemoveTerminalTabForMove(id)!;
-                var item = new DetachedItem(
-                    DetachKind.TerminalMove,
-                    string.IsNullOrWhiteSpace(view.HeaderTitle) ? "Terminal" : view.HeaderTitle,
-                    view, _tabIcons.GetTerminalIcon(), dispose: () => _ = view.CloseAsync());
+                var item = new DetachedItem( DetachKind.TerminalMove, string.IsNullOrWhiteSpace(view.HeaderTitle) ? "Terminal" : view.HeaderTitle, view, _tabIcons.GetTerminalIcon(), dispose: () => _ = view.CloseAsync());
                 view.HeaderTitleChanged += (_, t) => item.Title = string.IsNullOrWhiteSpace(t) ? "Terminal" : t;
                 return item;
             };

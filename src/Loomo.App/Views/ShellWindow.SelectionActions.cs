@@ -47,9 +47,7 @@ public partial class ShellWindow {
     }
 
     private static bool IsMarkdownFile(string path)
-        => Array.Exists(
-            MarkdownExtensions,
-            ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
+        => Array.Exists( MarkdownExtensions, ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
 
     private void EditMarkdownTable(VimEditorControl control) {
         var newline = control.Text.Contains("\r\n") ? "\r\n" : "\n";
@@ -104,8 +102,7 @@ public partial class ShellWindow {
         menu.Items.Add(git);
     }
 
-    private void AddBlameCommitMenuItems(
-        ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
+    private void AddBlameCommitMenuItems( ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         var shortHash = blame.CommitHash is { Length: > 7 } h ? h[..7] : blame.CommitHash;
 
         var diff = new MenuItem { Header = $"Diff で差分を表示（{shortHash}）" };
@@ -122,8 +119,7 @@ public partial class ShellWindow {
 
     private void ShowBlameCommitDiff(VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         if (blame.CommitHash is not { Length: > 0 } hash) return;
-        _ = _vm.DiffSession.ShowCommitFileAsync(
-            hash, $"コミット {hash}", control.FilePath, blame.OriginalLine);
+        _ = _vm.DiffSession.ShowCommitFileAsync( hash, $"コミット {hash}", control.FilePath, blame.OriginalLine);
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
         FocusPane(PaneKind.Diff);
     }
@@ -183,9 +179,7 @@ public partial class ShellWindow {
     private void EditBreakpointCondition(string path, int line0) {
         var bps = _vm.Debug.Breakpoints;
         var current = bps.FindBreakpoint(path, line0)?.Condition ?? "";
-        var input = InputDialog.Prompt(this, "ブレークポイントの条件",
-            "条件式（真のとき停止。例: i > 5）。空にすると条件を解除します。",
-            current, allowEmpty: true);
+        var input = InputDialog.Prompt(this, "ブレークポイントの条件", "条件式（真のとき停止。例: i > 5）。空にすると条件を解除します。", current, allowEmpty: true);
         if (input is null) return;  // キャンセル
         bps.EnsureBreakpoint(path, line0).Condition = input.Trim();
     }
@@ -200,9 +194,7 @@ public partial class ShellWindow {
         menu.Items.Add(new Separator());
 
         var ask = new MenuItem {
-            Header = "AIに聞く",
-            IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
-        };
+            Header = "AIに聞く", IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
         ask.Click += (_, _) => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
             _vm.AiBar.AskAbout(selectedText);
@@ -224,25 +216,20 @@ public partial class ShellWindow {
 
         menu.Items.Add(new Separator());
         var run = new MenuItem {
-            Header = $"ターミナルで実行（{Path.GetFileName(path)}）",
-            IsEnabled = _activeTerminalTab is not null,
-        };
+            Header = $"ターミナルで実行（{Path.GetFileName(path)}）", IsEnabled = _activeTerminalTab is not null, };
         run.Click += (_, _) => RunScriptInTerminal(control, path);
         menu.Items.Add(run);
     }
 
     private static bool IsRunnableScript(string path)
-        => Array.Exists(
-            RunnableScriptExtensions,
-            ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
+        => Array.Exists( RunnableScriptExtensions, ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
 
     private void RunScriptInTerminal(VimEditorControl control, string path) {
         if (control.IsModified) {
             try {
                 control.Save(path);
             } catch (Exception ex) {
-                MessageBox.Show(this, $"保存に失敗したため実行を中止しました: {ex.Message}",
-                    "ターミナルで実行", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(this, $"保存に失敗したため実行を中止しました: {ex.Message}", "ターミナルで実行", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
         }
@@ -261,9 +248,7 @@ public partial class ShellWindow {
             return;
 
         var parent = new MenuItem {
-            Header = "AIワークフロー",
-            IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
-        };
+            Header = "AIワークフロー", IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
         foreach (var wf in workflows) {
             var id = wf.Id;
             var item = new MenuItem { Header = wf.Name };

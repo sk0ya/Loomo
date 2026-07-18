@@ -8,14 +8,12 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private static List<RECT> GetSideBySideWorkAreas(RECT currentWork) {
         var works = new List<RECT>();
-        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero,
-            (IntPtr hMon, IntPtr _, ref RECT _, IntPtr _) => {
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMon, IntPtr _, ref RECT _, IntPtr _) => {
                 var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
                 if (GetMonitorInfo(hMon, ref info))
                     works.Add(info.rcWork);
                 return true;
-            },
-            IntPtr.Zero);
+            }, IntPtr.Zero);
 
         var current = ToScreenRect(currentWork);
         return SpanLayoutPlanner.SideBySide(current, works.Select(ToScreenRect))
@@ -25,8 +23,7 @@ public partial class ShellWindow {
 
     private static RECT ComputeMaximizeRect(RECT currentWork) {
         var current = ToScreenRect(currentWork);
-        return ToNativeRect(SpanLayoutPlanner.MaximizeRect(
-            current, GetSideBySideWorkAreas(currentWork).Select(ToScreenRect)));
+        return ToNativeRect(SpanLayoutPlanner.MaximizeRect( current, GetSideBySideWorkAreas(currentWork).Select(ToScreenRect)));
     }
 
     private static ScreenRect ToScreenRect(RECT rect)
@@ -63,9 +60,7 @@ public partial class ShellWindow {
         _spanRestoreBounds = current;
         _isSpanMaximized = true;
         ApplySpanPaneLayout(areas, span);
-        SetWindowPos(hwnd, IntPtr.Zero,
-            span.Left, span.Top, span.Right - span.Left, span.Bottom - span.Top,
-            SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(hwnd, IntPtr.Zero, span.Left, span.Top, span.Right - span.Left, span.Bottom - span.Top, SWP_NOZORDER | SWP_NOACTIVATE);
         UpdateMaximizeGlyph();
         return true;
     }
@@ -88,10 +83,7 @@ public partial class ShellWindow {
 
         var infos = visible.Select(leaf => {
             if (TryGetPaneRect(leaf.Kind, out var r))
-                return (Leaf: leaf,
-                        Cx: (r.X + r.Width / 2) / hostWidth,
-                        Cy: (r.Y + r.Height / 2) / hostHeight,
-                        Height: Math.Max(r.Height, 1.0));
+                return (Leaf: leaf, Cx: (r.X + r.Width / 2) / hostWidth, Cy: (r.Y + r.Height / 2) / hostHeight, Height: Math.Max(r.Height, 1.0));
             return (Leaf: leaf, Cx: 0.5, Cy: 0.5, Height: 1.0);
         }).ToList();
 
@@ -179,9 +171,7 @@ public partial class ShellWindow {
     private void RestoreFromSpan() {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (_spanRestoreBounds is { } rect && hwnd != IntPtr.Zero)
-            SetWindowPos(hwnd, IntPtr.Zero,
-                rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top,
-                SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(hwnd, IntPtr.Zero, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, SWP_NOZORDER | SWP_NOACTIVATE);
         ExitSpanState();
     }
 
@@ -196,8 +186,7 @@ public partial class ShellWindow {
         var spanWidth = Math.Max(current.Right - current.Left, 1);
         var ratio = Math.Clamp((cursor.X - current.Left) / (double)spanWidth, 0.0, 1.0);
         var left = cursor.X - (int)Math.Round(width * ratio);
-        SetWindowPos(hwnd, IntPtr.Zero, left, current.Top, width, height,
-            SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(hwnd, IntPtr.Zero, left, current.Top, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     private void ExitSpanState() {

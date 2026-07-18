@@ -53,8 +53,7 @@ public partial class ShellWindow {
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot
             && AllLeaves(savedRoot).All(l => l.Kind != PaneKind.EditorSupport)
             && AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == PaneKind.Editor) is { } savedEditor) {
-            _spanSavedRoot = InsertRelative(
-                savedRoot, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, savedEditor, DropZone.Right);
+            _spanSavedRoot = InsertRelative( savedRoot, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, savedEditor, DropZone.Right);
         }
 
         if (FindLeaf(PaneKind.EditorSupport) is not null)
@@ -152,13 +151,11 @@ public partial class ShellWindow {
                     e.MenuItems.RemoveAt(i);
             }
 
-            var item = core.Environment.CreateContextMenuItem(
-                "エディタへフォーカス", null, CoreWebView2ContextMenuItemKind.Command);
+            var item = core.Environment.CreateContextMenuItem( "エディタへフォーカス", null, CoreWebView2ContextMenuItemKind.Command);
             item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => FocusEditorSupportSource(null));
             e.MenuItems.Insert(0, item);
 
-            var back = core.Environment.CreateContextMenuItem(
-                "前のファイルへ戻る", null, CoreWebView2ContextMenuItemKind.Command);
+            var back = core.Environment.CreateContextMenuItem( "前のファイルへ戻る", null, CoreWebView2ContextMenuItemKind.Command);
             back.IsEnabled = _editorSupport.History.CanGoBack;
             back.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => _ = EditorSupportGoBackAsync());
             e.MenuItems.Insert(1, back);

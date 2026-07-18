@@ -37,20 +37,15 @@ public partial class ShellWindow : Window {
     private EditorTab? _previewEditorTab;
     private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
-    private static readonly string EditorSupportPreviewFolder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Loomo", "WebView2", "preview-page");
+    private static readonly string EditorSupportPreviewFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2", "preview-page");
 
-    private static readonly string WebViewUserDataFolder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Loomo", "WebView2");
+    private static readonly string WebViewUserDataFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2");
 
     private const string WebViewAdditionalBrowserArguments = "--allow-file-access-from-files";
 
     private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
         => new() {
-            UserDataFolder = WebViewUserDataFolder,
-            AdditionalBrowserArguments = WebViewAdditionalBrowserArguments
+            UserDataFolder = WebViewUserDataFolder, AdditionalBrowserArguments = WebViewAdditionalBrowserArguments
         };
     private bool _syncingEditorFromSupport;
     private WorkspaceSnapshot? _activeWorkspace;
@@ -96,27 +91,12 @@ public partial class ShellWindow : Window {
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
 
-    public ShellWindow(
-        ShellViewModel vm,
-        TerminalService terminal,
-        EditorService editor,
-        BrowserService browser,
-        IWorkspaceService workspace,
-        IWorkspaceSearchService search,
-        TabIconService tabIcons,
-        AiSettings settings,
-        EditorSupportRegistry editorSupports,
-        HexEditorSupport hexSupport,
-        CodeEditorSupport codeSupport,
-        sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement,
-        sk0ya.Loomo.Services.GitService git,
-        KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, IWorkspaceSearchService search, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, HexEditorSupport hexSupport, CodeEditorSupport codeSupport, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
         DataContext = vm;
-        _trailBar = new TrailBarController(vm.Trail, TrailScroll, TrailDots,
-            TrailDateTimePopup, TrailCalendar, TrailDateTimePopupRoot, JumpToTrailEntry);
+        _trailBar = new TrailBarController(vm.Trail, TrailScroll, TrailDots, TrailDateTimePopup, TrailCalendar, TrailDateTimePopupRoot, JumpToTrailEntry);
         _vm = vm;
         _terminal = terminal;
         _editor = editor;
@@ -132,9 +112,7 @@ public partial class ShellWindow : Window {
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
-        var editorSupportWebView = new EditorSupportWebViewController(
-            EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties,
-            EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested);
+        var editorSupportWebView = new EditorSupportWebViewController( EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties, EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested);
         _editorSupport = new EditorSupportController(editorSupportWebView);
         editorSupportWebView.NavigationCompleted += (_, _) => {
             if (_editorSupport.Source is not null)
@@ -332,8 +310,7 @@ public partial class ShellWindow : Window {
             BrowserAddressBox.Text = $"WebView2 initialization failed: {ex.Message}";
         }
 
-        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
-            new Action(() => _vm.GitSession.EnsureLoaded()));
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.GitSession.EnsureLoaded()));
 
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(EnsureDragOverlay));
 

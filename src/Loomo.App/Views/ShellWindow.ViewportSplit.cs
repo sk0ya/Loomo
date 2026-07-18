@@ -68,10 +68,7 @@ public partial class ShellWindow {
         var bases = new[] {
             src is { } s && !string.IsNullOrWhiteSpace(s.Control.FilePath)
                 ? Path.GetDirectoryName(s.Control.FilePath)
-                : null,
-            _activeWorkspace?.RootPath,
-            _terminal.CurrentDirectory,
-        };
+                : null, _activeWorkspace?.RootPath, _terminal.CurrentDirectory, };
         foreach (var dir in bases) {
             if (string.IsNullOrWhiteSpace(dir))
                 continue;
@@ -153,8 +150,7 @@ public partial class ShellWindow {
 
     private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null) {
         var view = new TerminalTabView("pwsh.exe", startDirectory) {
-            AutoFocusOnStart = false,
-        };
+            AutoFocusOnStart = false, };
         _appearance.ApplyTerminalAppearance(view);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
@@ -169,8 +165,7 @@ public partial class ShellWindow {
 
     private EditorTab CreatePendingEditorTab(EditorTabSnapshot snapshot) =>
         new(snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id) {
-            Realizer = RealizeEditorControl,
-            Pending = snapshot
+            Realizer = RealizeEditorControl, Pending = snapshot
         };
 
     private void RealizeEditorControl(EditorTab tab) {
@@ -193,15 +188,13 @@ public partial class ShellWindow {
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var lspBox = new StrongBox<IEditorLspManager?>(null);
         var control = new VimEditorControl(new VimEditorControlOptions {
-            GitServiceFactory = () => new GitDiffProvider(),
-            LspManagerFactory = dispatcher => {
+            GitServiceFactory = () => new GitDiffProvider(), LspManagerFactory = dispatcher => {
                 var manager = new LspManager(dispatcher);
                 lspBox.Value = manager;
                 return manager;
             }
         }) {
-            VimEnabled = _settings.Vim.Enabled,
-            Visibility = Visibility.Collapsed
+            VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
@@ -267,10 +260,7 @@ public partial class ShellWindow {
         if (sender is not ScrollViewer scrollViewer || scrollViewer.ScrollableWidth <= 0)
             return;
 
-        var nextOffset = Math.Clamp(
-            scrollViewer.HorizontalOffset - e.Delta,
-            0,
-            scrollViewer.ScrollableWidth);
+        var nextOffset = Math.Clamp( scrollViewer.HorizontalOffset - e.Delta, 0, scrollViewer.ScrollableWidth);
 
         scrollViewer.ScrollToHorizontalOffset(nextOffset);
         e.Handled = true;

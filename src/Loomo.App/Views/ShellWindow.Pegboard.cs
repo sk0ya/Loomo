@@ -17,8 +17,7 @@ public partial class ShellWindow {
 
     private void PinBrowserUrlToPegboard() {
         if (_activeBrowserTab?.View.Source?.ToString() is { Length: > 0 } url)
-            _vm.Pegboard.AddContent(url, type: "url",
-                title: _activeBrowserTab.View.CoreWebView2?.DocumentTitle);
+            _vm.Pegboard.AddContent(url, type: "url", title: _activeBrowserTab.View.CoreWebView2?.DocumentTitle);
     }
 
     private void PinEditorSelectionToPegboard() {
@@ -60,8 +59,7 @@ public partial class ShellWindow {
             default:
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
                 await _editor.OpenDocumentAsync(new EditorDocument {
-                    FileName = $"pegboard-{item.Snapshot.Id.ToString("N")[..8]}.txt",
-                    Content = item.Content,
+                    FileName = $"pegboard-{item.Snapshot.Id.ToString("N")[..8]}.txt", Content = item.Content,
                     OnSaved = _ => { }, // 閲覧用：保存しても永続化はしない
                 });
                 break;

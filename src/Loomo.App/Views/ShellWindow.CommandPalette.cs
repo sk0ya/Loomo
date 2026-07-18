@@ -121,8 +121,7 @@ public partial class ShellWindow {
     }
 
     private async Task RefilterSearchAsync(PaletteMode mode, string query) {
-        var items = await _paletteSearch.SearchLatestAsync(mode, query, _paletteCommands,
-            ConnectedCodeLspManagers, FileEntry, GrepEntry, SymbolEntry);
+        var items = await _paletteSearch.SearchLatestAsync(mode, query, _paletteCommands, ConnectedCodeLspManagers, FileEntry, GrepEntry, SymbolEntry);
         if (items is not null)
             ShowPaletteItems(items);
     }
@@ -150,11 +149,8 @@ public partial class ShellWindow {
         var path = CodeEditorSupport.TryUriToLocalPath(sym.Location?.Uri);
         var line1 = (sym.Location?.Range?.Start?.Line ?? 0) + 1;
         var title = string.IsNullOrEmpty(sym.ContainerName) ? sym.Name : $"{sym.Name}  ·  {sym.ContainerName}";
-        return new PaletteCommand(category, title,
-            () => { if (path is not null) _ = OpenAndNavigateAsync(path, line1); }) {
-            PreviewPath = path,
-            PreviewLine = line1,
-        };
+        return new PaletteCommand(category, title, () => { if (path is not null) _ = OpenAndNavigateAsync(path, line1); }) {
+            PreviewPath = path, PreviewLine = line1, };
     }
 
     private IReadOnlyList<PaletteCommand> BuildTerminalMatches(string query) {
@@ -201,8 +197,7 @@ public partial class ShellWindow {
         { PreviewPath = hit.FullPath };
 
     private PaletteCommand GrepEntry(ContentSearchHit hit, string query)
-        => new($"{hit.RelativePath}:{hit.Line}", hit.LineText.Trim(),
-            () => _ = OpenAndNavigateAsync(hit.FullPath, hit.Line))
+        => new($"{hit.RelativePath}:{hit.Line}", hit.LineText.Trim(), () => _ = OpenAndNavigateAsync(hit.FullPath, hit.Line))
         { PreviewPath = hit.FullPath, PreviewLine = hit.Line, PreviewHighlight = query };
 
     private async Task OpenAndNavigateAsync(string path, int line) {
@@ -334,68 +329,47 @@ public partial class ShellWindow {
 
         string? Sc(string id) => _keybindings.For(id)?.Format();
 
-        list.Add(new("ステージ",
-            _stageActive ? "ステージモードを解除（タイル表示へ）" : "ステージモードへ（舞台＋袖）",
-            () => { if (_stageActive) ExitStageMode(); else EnterStageMode(); }));
+        list.Add(new("ステージ", _stageActive ? "ステージモードを解除（タイル表示へ）" : "ステージモードへ（舞台＋袖）", () => { if (_stageActive) ExitStageMode(); else EnterStageMode(); }));
         if (_stageActive)
-            list.Add(new("ステージ", _overviewActive ? "俯瞰を閉じる" : "俯瞰（全カードを一望）",
-                ToggleOverview, "Ctrl+W z"));
+            list.Add(new("ステージ", _overviewActive ? "俯瞰を閉じる" : "俯瞰（全カードを一望）", ToggleOverview, "Ctrl+W z"));
 
         foreach (var kind in StageOrder) {
             var target = kind;
-            list.Add(new("移動", $"{PaneLabel(target)} へ",
-                () => { SetPaneVisible(target, true); FocusPane(target); }));
+            list.Add(new("移動", $"{PaneLabel(target)} へ", () => { SetPaneVisible(target, true); FocusPane(target); }));
         }
 
         foreach (var kind in StageOrder) {
             var target = kind;
-            list.Add(new("ペイン", $"{PaneLabel(target)} の表示を切替",
-                () => SetPaneVisible(target, !IsPaneVisible(target))));
+            list.Add(new("ペイン", $"{PaneLabel(target)} の表示を切替", () => SetPaneVisible(target, !IsPaneVisible(target))));
         }
 
-        list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()),
-            Sc("tab.newTerminal"), "tab.newTerminal"));
-        list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()),
-            Sc("tab.newEditor"), "tab.newEditor"));
-        list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()),
-            Sc("tab.newBrowser"), "tab.newBrowser"));
+        list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
+        list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
+        list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
 
-        list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く",
-            () => SetComposerVisible(!IsComposerVisible)));
+        list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
-        list.Add(new("コンポーザ", "本文をペグボードへピン",
-            () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
+        list.Add(new("コンポーザ", "本文をペグボードへピン", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
 
-        list.Add(new("ペグボード", "クリップボードから追加",
-            () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
+        list.Add(new("ペグボード", "クリップボードから追加", () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
         list.Add(new("ペグボード", "エディタの選択をピン", PinEditorSelectionToPegboard));
         list.Add(new("ペグボード", "ブラウザのURLをピン", PinBrowserUrlToPegboard));
 
-        list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null),
-            Sc("sidebar.explorer"), "sidebar.explorer"));
-        list.Add(new("サイドバー", "検索（全文検索 / grep）", () => _vm.ShowSearchCommand.Execute(null),
-            Sc("sidebar.search"), "sidebar.search"));
-        list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null),
-            Sc("sidebar.tabs"), "sidebar.tabs"));
-        list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null),
-            Sc("sidebar.git"), "sidebar.git"));
-        list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null),
-            Sc("sidebar.pegboard"), "sidebar.pegboard"));
-        list.Add(new("サイドバー", "設定", () => _vm.ShowSettingsCommand.Execute(null),
-            Sc("sidebar.settings"), "sidebar.settings"));
-        list.Add(new("サイドバー", "外観（テーマ）", () => _vm.ShowAppearanceCommand.Execute(null),
-            Sc("sidebar.appearance"), "sidebar.appearance"));
+        list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null), Sc("sidebar.explorer"), "sidebar.explorer"));
+        list.Add(new("サイドバー", "検索（全文検索 / grep）", () => _vm.ShowSearchCommand.Execute(null), Sc("sidebar.search"), "sidebar.search"));
+        list.Add(new("サイドバー", "タブ一覧", () => _vm.ShowTabsCommand.Execute(null), Sc("sidebar.tabs"), "sidebar.tabs"));
+        list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null), Sc("sidebar.git"), "sidebar.git"));
+        list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null), Sc("sidebar.pegboard"), "sidebar.pegboard"));
+        list.Add(new("サイドバー", "設定", () => _vm.ShowSettingsCommand.Execute(null), Sc("sidebar.settings"), "sidebar.settings"));
+        list.Add(new("サイドバー", "外観（テーマ）", () => _vm.ShowAppearanceCommand.Execute(null), Sc("sidebar.appearance"), "sidebar.appearance"));
         list.Add(new("サイドバー", "キーボード設定", () => _vm.ShowKeyboardSettingsCommand.Execute(null)));
-        list.Add(new("サイドバー", "エクスプローラで現在のファイルを選択（同期）", RevealActiveFileInFolderTree,
-            Sc("explorer.revealActiveFile"), "explorer.revealActiveFile"));
+        list.Add(new("サイドバー", "エクスプローラで現在のファイルを選択（同期）", RevealActiveFileInFolderTree, Sc("explorer.revealActiveFile"), "explorer.revealActiveFile"));
 
-        list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null),
-            Sc("sidebar.sessions"), "sidebar.sessions"));
+        list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null), Sc("sidebar.sessions"), "sidebar.sessions"));
 
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive)) {
             var target = workspace;
-            list.Add(new("ワークスペース", $"切替: {target.Name}",
-                () => _vm.Workspaces.ActivateWorkspaceCommand.Execute(target)));
+            list.Add(new("ワークスペース", $"切替: {target.Name}", () => _vm.Workspaces.ActivateWorkspaceCommand.Execute(target)));
         }
 
         return list;

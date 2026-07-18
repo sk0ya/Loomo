@@ -29,10 +29,7 @@ public partial class ShellWindow {
             return; // ビジュアル提供者（CSV/TSV 等）や URI 提供者・非対応ファイルは書き出す HTML が無い。
 
         var dialog = new Microsoft.Win32.SaveFileDialog {
-            Title = "HTMLとして保存",
-            Filter = "HTML ファイル (*.html)|*.html",
-            FileName = Path.GetFileNameWithoutExtension(filePath) + ".html",
-        };
+            Title = "HTMLとして保存", Filter = "HTML ファイル (*.html)|*.html", FileName = Path.GetFileNameWithoutExtension(filePath) + ".html", };
         if (dialog.ShowDialog(this) != true)
             return;
 
@@ -41,8 +38,7 @@ public partial class ShellWindow {
         var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Web");
         var target = dialog.FileName;
         try {
-            var portable = await Task.Run(
-                () => PortableHtml.Build(htmlProvider.RenderHtml(filePath, text), sourceDir, assetsDir));
+            var portable = await Task.Run( () => PortableHtml.Build(htmlProvider.RenderHtml(filePath, text), sourceDir, assetsDir));
             await File.WriteAllTextAsync(target, portable, System.Text.Encoding.UTF8);
         } catch (Exception ex) {
             ReportEditorSupportExportError("HTML", ex.Message);
@@ -60,10 +56,7 @@ public partial class ShellWindow {
             return; // まだ描画されていない（ペイン未表示）。
 
         var dialog = new Microsoft.Win32.SaveFileDialog {
-            Title = "PDFとして保存",
-            Filter = "PDF ファイル (*.pdf)|*.pdf",
-            FileName = Path.GetFileNameWithoutExtension(filePath) + ".pdf",
-        };
+            Title = "PDFとして保存", Filter = "PDF ファイル (*.pdf)|*.pdf", FileName = Path.GetFileNameWithoutExtension(filePath) + ".pdf", };
         if (dialog.ShowDialog(this) != true)
             return;
 
@@ -86,10 +79,7 @@ public partial class ShellWindow {
             return;
 
         var dialog = new Microsoft.Win32.SaveFileDialog {
-            Title = "Markdownとして保存",
-            Filter = "Markdown ファイル (*.md)|*.md",
-            FileName = Path.GetFileNameWithoutExtension(filePath) + ".md",
-        };
+            Title = "Markdownとして保存", Filter = "Markdown ファイル (*.md)|*.md", FileName = Path.GetFileNameWithoutExtension(filePath) + ".md", };
         if (dialog.ShowDialog(this) != true)
             return;
 
@@ -103,6 +93,5 @@ public partial class ShellWindow {
     }
 
     private void ReportEditorSupportExportError(string kind, string message)
-        => MessageBox.Show(this, $"{kind} のエクスポートに失敗しました。\n{message}",
-            "エクスポート", MessageBoxButton.OK, MessageBoxImage.Warning);
+        => MessageBox.Show(this, $"{kind} のエクスポートに失敗しました。\n{message}", "エクスポート", MessageBoxButton.OK, MessageBoxImage.Warning);
 }

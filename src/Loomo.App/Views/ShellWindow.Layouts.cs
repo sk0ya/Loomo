@@ -56,8 +56,7 @@ public partial class ShellWindow {
             }
         }
 
-        var next = LayoutCycleLogic.NextIndex(
-            _activeLayoutIndex, _layouts.Count, _scratchLayout is not null, direction);
+        var next = LayoutCycleLogic.NextIndex( _activeLayoutIndex, _layouts.Count, _scratchLayout is not null, direction);
         if (next == _activeLayoutIndex && !_layoutDirty)
             return;   // 1枚しかない等、行き先が無い
 
@@ -130,11 +129,7 @@ public partial class ShellWindow {
 
         if (_layouts.Count == 0) {
             LayoutPopupList.Children.Add(new TextBlock {
-                Text = "保存したレイアウトはまだありません",
-                FontSize = UiFontManager.Scaled(12),
-                Margin = new Thickness(10, 6, 10, 6),
-                Foreground = (Brush)FindResource("FgDim"),
-            });
+                Text = "保存したレイアウトはまだありません", FontSize = UiFontManager.Scaled(12), Margin = new Thickness(10, 6, 10, 6), Foreground = (Brush)FindResource("FgDim"), });
             return;
         }
 
@@ -144,12 +139,7 @@ public partial class ShellWindow {
             var row = new DockPanel { LastChildFill = true };
 
             var del = new Button {
-                Content = "✕",
-                FontSize = UiFontManager.Scaled(11),
-                ToolTip = "このレイアウトを削除",
-                Width = 28,
-                Style = (Style)FindResource("BranchMenuItem"),
-            };
+                Content = "✕", FontSize = UiFontManager.Scaled(11), ToolTip = "このレイアウトを削除", Width = 28, Style = (Style)FindResource("BranchMenuItem"), };
             del.Click += (_, _) => {
                 DeleteLayout(index);
                 BuildLayoutPopup();
@@ -159,14 +149,8 @@ public partial class ShellWindow {
 
             var active = !_layoutDirty && index == _activeLayoutIndex;
             var load = new Button {
-                Style = (Style)FindResource("BranchMenuItem"),
-                FontSize = UiFontManager.Scaled(12),
-                Content = new TextBlock {
-                    Text = LayoutSummary(layout),
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Foreground = active ? (Brush)FindResource("Accent") : (Brush)FindResource("Fg"),
-                },
-            };
+                Style = (Style)FindResource("BranchMenuItem"), FontSize = UiFontManager.Scaled(12), Content = new TextBlock {
+                    Text = LayoutSummary(layout), TextTrimming = TextTrimming.CharacterEllipsis, Foreground = active ? (Brush)FindResource("Accent") : (Brush)FindResource("Fg"), }, };
             load.Click += (_, _) => {
                 LayoutPopup.IsOpen = false;
                 LoadLayout(index);

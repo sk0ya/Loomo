@@ -38,8 +38,7 @@ public partial class ShellWindow {
     private void NavigateActiveEditorTo(string path, int line0) {
         if (line0 < 0) return;
         var full = Path.GetFullPath(path);
-        if (_activeEditorTab is { } tab && !string.IsNullOrWhiteSpace(tab.PeekFilePath) &&
-            string.Equals(Path.GetFullPath(tab.PeekFilePath), full, StringComparison.OrdinalIgnoreCase))
+        if (_activeEditorTab is { } tab && !string.IsNullOrWhiteSpace(tab.PeekFilePath) && string.Equals(Path.GetFullPath(tab.PeekFilePath), full, StringComparison.OrdinalIgnoreCase))
             tab.Control.NavigateTo(line0, 0);
     }
 
@@ -93,7 +92,6 @@ public partial class ShellWindow {
     private VimEditorControl? FindEditorControl(string path) {
         var full = Path.GetFullPath(path);
         return RealizedEditorControls().FirstOrDefault(c =>
-            !string.IsNullOrWhiteSpace(c.FilePath) &&
-            string.Equals(Path.GetFullPath(c.FilePath), full, StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrWhiteSpace(c.FilePath) && string.Equals(Path.GetFullPath(c.FilePath), full, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -121,20 +121,9 @@ public partial class ShellWindow {
             return;
 
         var label = new TextBlock {
-            FontSize = isOverview ? 12 : 11,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
-        };
+            FontSize = isOverview ? 12 : 11, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, };
         var chip = new Border {
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 5, 5, 0),
-            Padding = new Thickness(7, 2, 7, 2),
-            CornerRadius = new CornerRadius(9),
-            Visibility = Visibility.Collapsed,
-            IsHitTestVisible = false,
-            Child = label,
-        };
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 5, 5, 0), Padding = new Thickness(7, 2, 7, 2), CornerRadius = new CornerRadius(9), Visibility = Visibility.Collapsed, IsHitTestVisible = false, Child = label, };
         cardRoot.Children.Add(chip);
         _stageActivityBadges[kind] = (chip, label);
         UpdatePaneActivityBadge(kind);

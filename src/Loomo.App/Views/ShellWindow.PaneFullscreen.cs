@@ -35,11 +35,8 @@ public partial class ShellWindow {
         if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var windowRect))
             return;
         var paneElement = _paneElements[pane];
-        var center = paneElement.PointToScreen(
-            new Point(paneElement.ActualWidth / 2, paneElement.ActualHeight / 2));
-        var monitor = MonitorFromPoint(
-            new NativePoint { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) },
-            MonitorDefaultToNearest);
+        var center = paneElement.PointToScreen( new Point(paneElement.ActualWidth / 2, paneElement.ActualHeight / 2));
+        var monitor = MonitorFromPoint( new NativePoint { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) }, MonitorDefaultToNearest);
         var monitorInfo = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref monitorInfo))
             return;
@@ -77,9 +74,7 @@ public partial class ShellWindow {
         ResizeMode = System.Windows.ResizeMode.NoResize;
         Topmost = true;
         var screen = monitorInfo.rcMonitor;
-        SetWindowPos(hwnd, IntPtr.Zero,
-            screen.Left, screen.Top, screen.Right - screen.Left, screen.Bottom - screen.Top,
-            SwpNoZOrder | SwpNoActivate);
+        SetWindowPos(hwnd, IntPtr.Zero, screen.Left, screen.Top, screen.Right - screen.Left, screen.Bottom - screen.Top, SwpNoZOrder | SwpNoActivate);
         FocusPane(pane);
     }
 
@@ -111,9 +106,7 @@ public partial class ShellWindow {
             WindowState = WindowState.Maximized;
         } else if (hwnd != IntPtr.Zero) {
             var rect = _fullscreenPreviousWindowRect;
-            SetWindowPos(hwnd, IntPtr.Zero,
-                rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top,
-                SwpNoZOrder | SwpNoActivate);
+            SetWindowPos(hwnd, IntPtr.Zero, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, SwpNoZOrder | SwpNoActivate);
         }
 
         UpdateMaximizeGlyph();

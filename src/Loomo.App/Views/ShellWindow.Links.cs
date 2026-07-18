@@ -24,14 +24,7 @@ public partial class ShellWindow {
             return;
 
         var currentPath = (sender as VimEditorControl)?.FilePath;
-        if (!EditorFileLinkResolver.TryResolve(
-                e.Path,
-                currentPath,
-                _workspace.RootPath,
-                out var fullPath,
-                out var line,
-                out var column,
-                out var isDirectory)) {
+        if (!EditorFileLinkResolver.TryResolve( e.Path, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory)) {
             e.Handled = true;
             if (sender is VimEditorControl editor)
                 editor.ShowStatusMessage($"ファイルが存在しません: {e.Path}");
@@ -117,8 +110,7 @@ public partial class ShellWindow {
         if (line <= 0)
             return;
 
-        if (_activeEditorTab is { } tab &&
-            string.Equals(tab.PeekFilePath, fullPath, StringComparison.OrdinalIgnoreCase)) {
+        if (_activeEditorTab is { } tab && string.Equals(tab.PeekFilePath, fullPath, StringComparison.OrdinalIgnoreCase)) {
             tab.Control.NavigateTo(line - 1, column > 0 ? column - 1 : 0);
             if (alignTop)
                 tab.Control.ScrollCursorToTop();
@@ -146,8 +138,7 @@ public partial class ShellWindow {
         }
 
         var currentPath = sourcePath ?? _editorSupport.Source?.Control.FilePath;
-        if (!EditorFileLinkResolver.TryResolve(
-                href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
+        if (!EditorFileLinkResolver.TryResolve( href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
             return;
 
         if (isDirectory) {

@@ -19,11 +19,7 @@ public partial class ShellWindow {
 
         if (items.Count == 0) {
             ReferencesPopupList.Children.Add(new TextBlock {
-                Text = "使用箇所が見つかりませんでした",
-                FontSize = UiFontManager.Scaled(12),
-                Margin = new Thickness(10, 6, 10, 6),
-                Foreground = (Brush)FindResource("FgDim"),
-            });
+                Text = "使用箇所が見つかりませんでした", FontSize = UiFontManager.Scaled(12), Margin = new Thickness(10, 6, 10, 6), Foreground = (Brush)FindResource("FgDim"), });
             return;
         }
 
@@ -34,19 +30,13 @@ public partial class ShellWindow {
 
             var content = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
             content.Inlines.Add(new System.Windows.Documents.Run(location) {
-                Foreground = (Brush)FindResource("Accent"),
-            });
+                Foreground = (Brush)FindResource("Accent"), });
             if (!string.IsNullOrWhiteSpace(preview))
                 content.Inlines.Add(new System.Windows.Documents.Run("   " + preview) {
-                    Foreground = (Brush)FindResource("FgDim"),
-                });
+                    Foreground = (Brush)FindResource("FgDim"), });
 
             var row = new Button {
-                Style = (Style)FindResource("BranchMenuItem"),
-                FontSize = UiFontManager.Scaled(12),
-                ToolTip = $"{captured.FilePath}:{captured.Line + 1}:{captured.Col + 1}",
-                Content = content,
-            };
+                Style = (Style)FindResource("BranchMenuItem"), FontSize = UiFontManager.Scaled(12), ToolTip = $"{captured.FilePath}:{captured.Line + 1}:{captured.Col + 1}", Content = content, };
             row.Click += (_, _) => {
                 ReferencesPopup.IsOpen = false;
                 _ = OpenPathInEditorAsync(captured.FilePath, captured.Line + 1, captured.Col + 1);

@@ -80,11 +80,7 @@ public partial class ShellWindow {
 
             const double tolerance = 1.0;
             var inDirection = direction switch {
-                DropZone.Left => r.X + r.Width <= from.X + tolerance,
-                DropZone.Right => r.X >= from.X + from.Width - tolerance,
-                DropZone.Above => r.Y + r.Height <= from.Y + tolerance,
-                _ => r.Y >= from.Y + from.Height - tolerance,
-            };
+                DropZone.Left => r.X + r.Width <= from.X + tolerance, DropZone.Right => r.X >= from.X + from.Width - tolerance, DropZone.Above => r.Y + r.Height <= from.Y + tolerance, _ => r.Y >= from.Y + from.Height - tolerance, };
             if (!inDirection)
                 continue;
 
@@ -123,9 +119,7 @@ public partial class ShellWindow {
     }
 
     private PaneSplitView? ViewsFor(PaneKind kind) => kind switch {
-        PaneKind.Editor => _editorViews,
-        PaneKind.Terminal => _terminalViews,
-        _ => null
+        PaneKind.Editor => _editorViews, PaneKind.Terminal => _terminalViews, _ => null
     };
 
     private bool TryGetSidebarRect(out Rect rect) {

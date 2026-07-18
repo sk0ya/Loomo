@@ -151,9 +151,7 @@ public partial class ShellWindow {
     }
 
     private void QueueEditorTabHeaderIntoView(Guid id) {
-        Dispatcher.BeginInvoke(
-            new Action(() => ScrollEditorTabHeaderIntoView(id)),
-            DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke( new Action(() => ScrollEditorTabHeaderIntoView(id)), DispatcherPriority.Loaded);
     }
 
     private void ScrollEditorTabHeaderIntoView(Guid id) {
@@ -168,11 +166,9 @@ public partial class ShellWindow {
             .TransformBounds(new Rect(0, 0, header.ActualWidth, header.ActualHeight));
 
         if (bounds.Left < 0) {
-            EditorTabStripScrollViewer.ScrollToHorizontalOffset(
-                Math.Max(0, EditorTabStripScrollViewer.HorizontalOffset + bounds.Left));
+            EditorTabStripScrollViewer.ScrollToHorizontalOffset( Math.Max(0, EditorTabStripScrollViewer.HorizontalOffset + bounds.Left));
         } else if (bounds.Right > EditorTabStripScrollViewer.ViewportWidth) {
-            EditorTabStripScrollViewer.ScrollToHorizontalOffset(
-                EditorTabStripScrollViewer.HorizontalOffset + bounds.Right - EditorTabStripScrollViewer.ViewportWidth);
+            EditorTabStripScrollViewer.ScrollToHorizontalOffset( EditorTabStripScrollViewer.HorizontalOffset + bounds.Right - EditorTabStripScrollViewer.ViewportWidth);
         }
     }
 
@@ -283,10 +279,7 @@ public partial class ShellWindow {
     }
 
     private static bool PathsEqual(string a, string b)
-        => string.Equals(
-            Path.GetFullPath(a).TrimEnd('\\', '/'),
-            Path.GetFullPath(b).TrimEnd('\\', '/'),
-            StringComparison.OrdinalIgnoreCase);
+        => string.Equals( Path.GetFullPath(a).TrimEnd('\\', '/'), Path.GetFullPath(b).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     private static bool IsPathUnder(string path, string directory) {
         var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');

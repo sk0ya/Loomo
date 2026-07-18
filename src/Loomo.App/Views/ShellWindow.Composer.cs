@@ -47,9 +47,7 @@ public partial class ShellWindow {
             return;
 
         var editor = new VimEditorControl(new VimEditorControlOptions()) {
-            VimEnabled = _settings.Vim.Enabled,
-            MinimalChrome = true,
-        };
+            VimEnabled = _settings.Vim.Enabled, MinimalChrome = true, };
         _appearance.ApplyEditorAppearance(editor);
         editor.LinkClicked += OnEditorLinkClicked;
         editor.SetText(_composerPendingText);
@@ -95,8 +93,7 @@ public partial class ShellWindow {
         try {
             command = ComposerCommandBuilder.Build(editor.Text, ComposerCommandBuilder.DefaultScriptDirectory());
         } catch (Exception ex) {
-            MessageBox.Show(this, $"コンポーザの実行準備に失敗しました: {ex.Message}",
-                "コンポーザ", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"コンポーザの実行準備に失敗しました: {ex.Message}", "コンポーザ", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

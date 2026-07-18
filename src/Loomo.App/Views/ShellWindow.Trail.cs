@@ -60,8 +60,7 @@ public partial class ShellWindow {
         _trailHourTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _trailHourTicker.Tick += (_, _) => _vm.Trail.RefreshHourLabel();
         _trailHourTicker.Start();
-        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
-            new Action(() => _vm.Trail.EnsureLoaded()));
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.Trail.EnsureLoaded()));
     }
 
     private DispatcherTimer? _trailHourTicker;
@@ -357,17 +356,9 @@ public partial class ShellWindow {
         }
 
         return entry.Kind switch {
-            TrailEntryKind.File => File.Exists(entry.Target),
-            TrailEntryKind.Browser => !string.IsNullOrWhiteSpace(entry.Target),
-            TrailEntryKind.Pane => Enum.TryParse<PaneKind>(entry.Target, out var pane)
-                                   && _paneElements.ContainsKey(pane),
-            TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(entry.Target, out _),
-            TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
-                                       && _terminalTabs.Any(t => t.Id == id),
-            TrailEntryKind.Preview => File.Exists(entry.Target),
-            TrailEntryKind.Session => _vm.AiBar.SessionExists(entry.Target),
-            TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout),
-            TrailEntryKind.Edit => File.Exists(entry.Target),
+            TrailEntryKind.File => File.Exists(entry.Target), TrailEntryKind.Browser => !string.IsNullOrWhiteSpace(entry.Target), TrailEntryKind.Pane => Enum.TryParse<PaneKind>(entry.Target, out var pane)
+                                   && _paneElements.ContainsKey(pane), TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(entry.Target, out _), TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
+                                       && _terminalTabs.Any(t => t.Id == id), TrailEntryKind.Preview => File.Exists(entry.Target), TrailEntryKind.Session => _vm.AiBar.SessionExists(entry.Target), TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout), TrailEntryKind.Edit => File.Exists(entry.Target),
             TrailEntryKind.Git => false,   // ログ専用：クリックしても復元しない
             _ => false
         };

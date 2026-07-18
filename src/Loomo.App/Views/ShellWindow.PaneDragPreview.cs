@@ -92,10 +92,7 @@ public partial class ShellWindow {
     }
 
     private static bool IsNearOuterEdge(double relX, double relY, DropZone zone) => zone switch {
-        DropZone.Left => relX < 0.2,
-        DropZone.Right => relX > 0.8,
-        DropZone.Above => relY < 0.2,
-        _ => relY > 0.8,
+        DropZone.Left => relX < 0.2, DropZone.Right => relX > 0.8, DropZone.Above => relY < 0.2, _ => relY > 0.8,
     };
 
     private bool TryGetSpanRect(PaneKind targetKind, DropZone zone, out Rect rect) {
@@ -197,14 +194,9 @@ public partial class ShellWindow {
     private void ShowDragGhost(PaneKind kind) {
         if (_dragGhost is null) {
             _dragGhost = new Border {
-                Background = MakeTranslucent((Brush)FindResource("Accent"), 0.9),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(10, 5, 10, 5),
-                IsHitTestVisible = false,
-                Effect = new System.Windows.Media.Effects.DropShadowEffect {
+                Background = MakeTranslucent((Brush)FindResource("Accent"), 0.9), CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 5, 10, 5), IsHitTestVisible = false, Effect = new System.Windows.Media.Effects.DropShadowEffect {
                     BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5, Color = Colors.Black
-                },
-                Child = new TextBlock { Foreground = Brushes.White, FontSize = UiFontManager.Scaled(12), FontWeight = FontWeights.SemiBold }
+                }, Child = new TextBlock { Foreground = Brushes.White, FontSize = UiFontManager.Scaled(12), FontWeight = FontWeights.SemiBold }
             };
             DragGhostLayer.Children.Add(_dragGhost);
         }
@@ -268,10 +260,7 @@ public partial class ShellWindow {
     }
 
     private static Rect ZoneRect(Rect r, DropZone zone) => zone switch {
-        DropZone.Left => new Rect(r.X, r.Y, r.Width / 2, r.Height),
-        DropZone.Right => new Rect(r.X + r.Width / 2, r.Y, r.Width / 2, r.Height),
-        DropZone.Above => new Rect(r.X, r.Y, r.Width, r.Height / 2),
-        _ => new Rect(r.X, r.Y + r.Height / 2, r.Width, r.Height / 2),
+        DropZone.Left => new Rect(r.X, r.Y, r.Width / 2, r.Height), DropZone.Right => new Rect(r.X + r.Width / 2, r.Y, r.Width / 2, r.Height), DropZone.Above => new Rect(r.X, r.Y, r.Width, r.Height / 2), _ => new Rect(r.X, r.Y + r.Height / 2, r.Width, r.Height / 2),
     };
 
     private static Brush MakeTranslucent(Brush source, double opacity) {

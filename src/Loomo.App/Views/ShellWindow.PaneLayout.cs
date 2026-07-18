@@ -17,22 +17,8 @@ public partial class ShellWindow {
         _paneElements[PaneKind.Trace] = TracePane;
         _paneElements[PaneKind.Debug] = DebugPane;
 
-        _editorViews = new PaneSplitView(
-            EditorContentHost,
-            id => _editorTabs.FirstOrDefault(t => t.Id == id)?.Control,
-            () => _editorTabs.Where(t => t.IsRealized).Select(t => (FrameworkElement)t.Control),
-            () => (Brush)FindResource("Border"),
-            () => (Brush)FindResource("Accent"),
-            el => el.Focus(),
-            () => SaveActiveWorkspaceSnapshot());
-        _terminalViews = new PaneSplitView(
-            TerminalContentHost,
-            id => _terminalTabs.FirstOrDefault(t => t.Id == id)?.View,
-            () => _terminalTabs.Select(t => (FrameworkElement)t.View),
-            () => (Brush)FindResource("Border"),
-            () => (Brush)FindResource("Accent"),
-            el => { if (el is TerminalTabView tv) tv.FocusTerminal(); else el.Focus(); },
-            () => SaveActiveWorkspaceSnapshot());
+        _editorViews = new PaneSplitView( EditorContentHost, id => _editorTabs.FirstOrDefault(t => t.Id == id)?.Control, () => _editorTabs.Where(t => t.IsRealized).Select(t => (FrameworkElement)t.Control), () => (Brush)FindResource("Border"), () => (Brush)FindResource("Accent"), el => el.Focus(), () => SaveActiveWorkspaceSnapshot());
+        _terminalViews = new PaneSplitView( TerminalContentHost, id => _terminalTabs.FirstOrDefault(t => t.Id == id)?.View, () => _terminalTabs.Select(t => (FrameworkElement)t.View), () => (Brush)FindResource("Border"), () => (Brush)FindResource("Accent"), el => { if (el is TerminalTabView tv) tv.FocusTerminal(); else el.Focus(); }, () => SaveActiveWorkspaceSnapshot());
     }
 
     private void ApplyDefaultLayout() {
@@ -175,14 +161,7 @@ public partial class ShellWindow {
     private GridSplitter NewSplitter(bool cols, Brush border, PaneSplit split) {
         var accent = (Brush)FindResource("Accent");
         var splitter = new GridSplitter {
-            Width = cols ? SplitterThickness : double.NaN,
-            Height = cols ? double.NaN : SplitterThickness,
-            ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Background = border,
-            Cursor = cols ? Cursors.SizeWE : Cursors.SizeNS,
-            ToolTip = "ドラッグでリサイズ／ダブルクリックで均等化"
+            Width = cols ? SplitterThickness : double.NaN, Height = cols ? double.NaN : SplitterThickness, ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = border, Cursor = cols ? Cursors.SizeWE : Cursors.SizeNS, ToolTip = "ドラッグでリサイズ／ダブルクリックで均等化"
         };
         splitter.MouseEnter += (_, _) => splitter.Background = accent;
         splitter.MouseLeave += (_, _) => splitter.Background = border;

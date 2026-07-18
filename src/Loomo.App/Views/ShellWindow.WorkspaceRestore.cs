@@ -20,9 +20,7 @@ public partial class ShellWindow {
         var snapshots = workspace.TerminalTabs.Count == 0
             ? new[] {
                 new TerminalTabSnapshot {
-                    WorkingDirectory = workspace.Terminal.WorkingDirectory,
-                    Title = workspace.Terminal.Title ?? "Terminal",
-                    IsActive = true
+                    WorkingDirectory = workspace.Terminal.WorkingDirectory, Title = workspace.Terminal.Title ?? "Terminal", IsActive = true
                 }
             }
             : workspace.TerminalTabs.ToArray();
@@ -53,10 +51,7 @@ public partial class ShellWindow {
         var snapshots = workspace.EditorTabs.Count == 0
             ? new[] {
                 new EditorTabSnapshot {
-                    FilePath = workspace.Editor.FilePath,
-                    Text = workspace.Editor.Text,
-                    IsModified = workspace.Editor.IsModified,
-                    IsActive = true
+                    FilePath = workspace.Editor.FilePath, Text = workspace.Editor.Text, IsModified = workspace.Editor.IsModified, IsActive = true
                 }
             }
             : workspace.EditorTabs.ToArray();
@@ -143,10 +138,7 @@ public partial class ShellWindow {
             : snapshots.ToArray();
 
         foreach (var snapshot in tabs)
-            CreateBrowserTab(
-                snapshot.Url ?? DefaultBrowserUrl,
-                snapshot.Id == Guid.Empty ? null : snapshot.Id,
-                snapshot.Title);
+            CreateBrowserTab( snapshot.Url ?? DefaultBrowserUrl, snapshot.Id == Guid.Empty ? null : snapshot.Id, snapshot.Title);
 
         var active = tabs.FirstOrDefault(t => t.IsActive) ?? tabs.First();
         ActivateBrowserTab(active.Id);

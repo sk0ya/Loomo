@@ -128,22 +128,12 @@ public partial class ShellWindow {
             return;
 
         if (!_vm.Workspaces.RemoveWorkspaceCommand.CanExecute(entry)) {
-            MessageBox.Show(
-                this,
-                "最後のワークスペースは削除できません（常に1つは開いている必要があります）。",
-                "ワークスペースの削除",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            MessageBox.Show( this, "最後のワークスペースは削除できません（常に1つは開いている必要があります）。", "ワークスペースの削除", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var result = MessageBox.Show(
-            this,
-            $"ワークスペース「{entry.Name}」を一覧から削除しますか？\n" +
-            "フォルダ自体は削除されません（タブ・レイアウトの保存状態は失われます）。",
-            "ワークスペースの削除",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
+        var result = MessageBox.Show( this, $"ワークスペース「{entry.Name}」を一覧から削除しますか？\n" +
+            "フォルダ自体は削除されません（タブ・レイアウトの保存状態は失われます）。", "ワークスペースの削除", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
 
         if (result == MessageBoxResult.OK)
             _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);
@@ -231,12 +221,10 @@ public partial class ShellWindow {
         if (_pendingWorkspaceSnapshotSave is { Status: DispatcherOperationStatus.Pending })
             return;
 
-        _pendingWorkspaceSnapshotSave = Dispatcher.BeginInvoke(
-            new Action(() => {
+        _pendingWorkspaceSnapshotSave = Dispatcher.BeginInvoke( new Action(() => {
                 _pendingWorkspaceSnapshotSave = null;
                 SaveActiveWorkspaceSnapshotNow();
-            }),
-            DispatcherPriority.ApplicationIdle);
+            }), DispatcherPriority.ApplicationIdle);
     }
 
     private void SaveActiveWorkspaceSnapshotNow() {
@@ -253,12 +241,9 @@ public partial class ShellWindow {
         snapshot.Name = WorkspaceListViewModel.DisplayName(snapshot.RootPath);
 
         snapshot.TerminalTabs = _terminalTabs.Select(tab => new TerminalTabSnapshot {
-            Id = tab.Id,
-            WorkingDirectory = Directory.Exists(tab.View.WorkingDirectory)
+            Id = tab.Id, WorkingDirectory = Directory.Exists(tab.View.WorkingDirectory)
                 ? tab.View.WorkingDirectory
-                : _terminal.CurrentDirectory,
-            Title = tab.View.HeaderTitle,
-            IsActive = tab.Id == _activeTerminalTab?.Id
+                : _terminal.CurrentDirectory, Title = tab.View.HeaderTitle, IsActive = tab.Id == _activeTerminalTab?.Id
         }).ToList();
 
         var activeTerminal = _activeTerminalTab?.View ?? _terminalTabs.FirstOrDefault()?.View;
@@ -286,10 +271,7 @@ public partial class ShellWindow {
         snapshot.BrowserTabs = _browserTabs
             .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(tab.View.Source?.ToString()))
             .Select(tab => new BrowserTabSnapshot {
-                Id = tab.Id,
-                Url = tab.View.Source?.ToString(),
-                Title = tab.View.CoreWebView2?.DocumentTitle,
-                IsActive = tab.Id == _activeBrowserTab?.Id
+                Id = tab.Id, Url = tab.View.Source?.ToString(), Title = tab.View.CoreWebView2?.DocumentTitle, IsActive = tab.Id == _activeBrowserTab?.Id
             }).ToList();
 
         snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
@@ -303,9 +285,7 @@ public partial class ShellWindow {
         snapshot.Mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
         snapshot.EnabledSessions = _enabledSessions.ToList();
         snapshot.Stage = new StageSnapshot {
-            IsActive = _stageActive,
-            Pane = _stageActive ? _stagePane : null,
-            Overview = _stageActive && _overviewActive
+            IsActive = _stageActive, Pane = _stageActive ? _stagePane : null, Overview = _stageActive && _overviewActive
         };
         snapshot.Layouts = _layouts.Select(l => new SavedLayout { Name = l.Name, Tree = l.Tree }).ToList();
         snapshot.ScratchLayout = _scratchLayout;

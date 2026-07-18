@@ -81,16 +81,7 @@ public partial class ShellWindow {
     }
 
     private static string PaneLabel(PaneKind kind) => kind switch {
-        PaneKind.Terminal => "ターミナル",
-        PaneKind.Editor => "エディタ",
-        PaneKind.EditorSupport => "エディタサポート",
-        PaneKind.Browser => "ブラウザ",
-        PaneKind.Ai => "AI",
-        PaneKind.Git => "Git",
-        PaneKind.Diff => "Diff",
-        PaneKind.Trace => "トレース",
-        PaneKind.Debug => "IDE",
-        _ => kind.ToString(),
+        PaneKind.Terminal => "ターミナル", PaneKind.Editor => "エディタ", PaneKind.EditorSupport => "エディタサポート", PaneKind.Browser => "ブラウザ", PaneKind.Ai => "AI", PaneKind.Git => "Git", PaneKind.Diff => "Diff", PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", _ => kind.ToString(),
     };
 
     private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };

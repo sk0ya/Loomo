@@ -37,8 +37,7 @@ public partial class ShellWindow {
         }
 
         var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _paneDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(pos.Y - _paneDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        if (Math.Abs(pos.X - _paneDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(pos.Y - _paneDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
             return;
 
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind)) {
@@ -164,25 +163,13 @@ public partial class ShellWindow {
 
         var accent = (Brush)FindResource("Accent");
         _dragTargetOutline = new Border {
-            BorderBrush = accent,
-            BorderThickness = new Thickness(1),
-            Background = MakeTranslucent(accent, 0.10),
-            Visibility = Visibility.Collapsed,
-            IsHitTestVisible = false
+            BorderBrush = accent, BorderThickness = new Thickness(1), Background = MakeTranslucent(accent, 0.10), Visibility = Visibility.Collapsed, IsHitTestVisible = false
         };
         _dragPreview = new Border {
-            BorderBrush = accent,
-            BorderThickness = new Thickness(2),
-            Background = MakeTranslucent(accent, 0.35),
-            CornerRadius = new CornerRadius(2),
-            Visibility = Visibility.Collapsed,
-            IsHitTestVisible = false
+            BorderBrush = accent, BorderThickness = new Thickness(2), Background = MakeTranslucent(accent, 0.35), CornerRadius = new CornerRadius(2), Visibility = Visibility.Collapsed, IsHitTestVisible = false
         };
         _dragCanvas = new Canvas {
-            Background = Brushes.Transparent,
-            ClipToBounds = true,
-            IsHitTestVisible = false,
-        };
+            Background = Brushes.Transparent, ClipToBounds = true, IsHitTestVisible = false, };
         _dragCanvas.Children.Add(_dragTargetOutline);
         _dragCanvas.Children.Add(_dragPreview);
         _dragCanvas.MouseMove += OnDragCanvasMouseMove;

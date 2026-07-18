@@ -21,12 +21,7 @@ public partial class ShellWindow {
         var w = Math.Max(virtualSize.Width, 1);
         var h = Math.Max(w / CardAspect, 1);
         var host = new Grid {
-            Width = w,
-            Height = h,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-            Clip = new RectangleGeometry(new Rect(0, 0, w, h)),
-        };
+            Width = w, Height = h, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Clip = new RectangleGeometry(new Rect(0, 0, w, h)), };
         host.Children.Add(element);
         StageSourceArea.Children.Add(host);
 
@@ -133,14 +128,12 @@ public partial class ShellWindow {
 
     private Border BuildSessionCard(PaneKind kind, double width, bool isOverview) {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, source, isOverview,
-            () => { SetStagePane(kind); FocusPane(kind); });
+        return BuildCard(kind, width, source, isOverview, () => { SetStagePane(kind); FocusPane(kind); });
     }
 
     private Border BuildLayoutWingCard(PaneKind kind, double width) {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, source, isOverview: false,
-            () => {
+        return BuildCard(kind, width, source, isOverview: false, () => {
                 if (_zoomedPane is not null) {
                     if (IsPaneVisible(kind))
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
@@ -186,17 +179,7 @@ public partial class ShellWindow {
         var height = Math.Round(width / CardAspect);
 
         var card = new Border {
-            Width = width,
-            Height = height,
-            Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4),
-            CornerRadius = new CornerRadius(6),
-            Background = (Brush)FindResource("Panel"),
-            BorderBrush = onStage ? accent : borderBrush,
-            BorderThickness = new Thickness(1),
-            Cursor = Cursors.Hand,
-            ToolTip = PaneLabel(kind),
-            Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6),
-        };
+            Width = width, Height = height, Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4), CornerRadius = new CornerRadius(6), Background = (Brush)FindResource("Panel"), BorderBrush = onStage ? accent : borderBrush, BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = PaneLabel(kind), Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6), };
 
         var root = new Grid { ClipToBounds = true };
 
@@ -212,26 +195,12 @@ public partial class ShellWindow {
             : height;
 
         root.Children.Add(new Border {
-            IsHitTestVisible = false,
-            Background = new VisualBrush(source) {
-                ViewboxUnits = BrushMappingMode.Absolute,
-                Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)),
-                Stretch = Stretch.Uniform,
-                AlignmentX = AlignmentX.Left,
-                AlignmentY = AlignmentY.Top,
-            },
-        });
+            IsHitTestVisible = false, Background = new VisualBrush(source) {
+                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)), Stretch = Stretch.Uniform, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top, }, });
 
         root.Children.Add(new Border {
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)),
-            Child = new TextBlock {
-                Text = PaneLabel(kind),
-                FontSize = UiFontManager.Scaled(isOverview ? 12 : 11),
-                Margin = new Thickness(8, 3, 8, 3),
-                Foreground = Brushes.White,
-            },
-        });
+            VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
+                Text = PaneLabel(kind), FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
         card.Child = root;
 
         AttachActivityBadge(root, kind, isOverview);
@@ -282,11 +251,6 @@ public partial class ShellWindow {
         host.Children.Add(element);
 
         return new Border {
-            Background = (Brush)FindResource("Panel"),
-            BorderBrush = (Brush)FindResource("Border"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Child = host,
-        };
+            Background = (Brush)FindResource("Panel"), BorderBrush = (Brush)FindResource("Border"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = host, };
     }
 }

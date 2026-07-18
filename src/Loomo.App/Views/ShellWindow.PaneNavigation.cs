@@ -96,23 +96,12 @@ public partial class ShellWindow {
             return;
 
         var banner = new Border {
-            Background = (Brush)FindResource("Panel"),
-            BorderBrush = (Brush)FindResource("Accent"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(12, 6, 12, 6),
-            Child = new TextBlock {
-                Text = "リサイズモード　h/j/k/l で伸縮　・　Esc で終了",
-                Foreground = (Brush)FindResource("Fg"),
-                FontSize = UiFontManager.Scaled(12)
+            Background = (Brush)FindResource("Panel"), BorderBrush = (Brush)FindResource("Accent"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(12, 6, 12, 6), Child = new TextBlock {
+                Text = "リサイズモード　h/j/k/l で伸縮　・　Esc で終了", Foreground = (Brush)FindResource("Fg"), FontSize = UiFontManager.Scaled(12)
             }
         };
         _resizeHintPopup = new Popup {
-            PlacementTarget = PaneHost,
-            Placement = PlacementMode.Relative,
-            AllowsTransparency = true,
-            StaysOpen = true,
-            Child = banner
+            PlacementTarget = PaneHost, Placement = PlacementMode.Relative, AllowsTransparency = true, StaysOpen = true, Child = banner
         };
     }
 

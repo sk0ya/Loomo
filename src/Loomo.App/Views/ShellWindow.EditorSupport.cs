@@ -29,8 +29,7 @@ public partial class ShellWindow {
     private Task EditorSupportGoForwardAsync() => EditorSupportNavigateHistoryAsync(back: false);
 
     private async Task EditorSupportNavigateHistoryAsync(bool back) {
-        await _editorSupport.NavigateHistoryAsync(back, _editorTabs,
-            tab => ActivateEditorTab(tab.Id), path => OpenFileInNewEditorTabAsync(path));
+        await _editorSupport.NavigateHistoryAsync(back, _editorTabs, tab => ActivateEditorTab(tab.Id), path => OpenFileInNewEditorTabAsync(path));
         UpdateEditorSupportNavAffordances();
     }
 
@@ -138,10 +137,7 @@ public partial class ShellWindow {
         var provider = _editorSupports.Resolve(filePath);
 
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender(
-                onStage,
-                IsPaneVisible(PaneKind.EditorSupport),
-                IsEditorSupportInThumbnail()))
+        if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
             return;
 
         if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath)) {
@@ -157,9 +153,7 @@ public partial class ShellWindow {
         if (visual is not null && filePath is not null) {
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
-            await _editorSupport.ShowVisualAsync(
-                EditorSupportContentHost, visual, filePath, source.Control.Text,
-                EditorSupportVisual_ContentEdited);
+            await _editorSupport.ShowVisualAsync( EditorSupportContentHost, visual, filePath, source.Control.Text, EditorSupportVisual_ContentEdited);
             return;
         }
 
@@ -169,14 +163,11 @@ public partial class ShellWindow {
 
         var seq = _editorSupport.BeginRender();
 
-        var content = await _editorSupport.PrepareWebContentAsync(
-            provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupport.WebView.ReadyPageKey,
-            _settings.Appearance.MarkdownPreviewTheme);
+        var content = await _editorSupport.PrepareWebContentAsync( provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupport.WebView.ReadyPageKey, _settings.Appearance.MarkdownPreviewTheme);
         if (!_editorSupport.IsLatestRender(seq))
             return;
         UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);
-        _editorSupport.WebView.SetPending(
-            content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
+        _editorSupport.WebView.SetPending( content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
         EditorSupportTitle.Text = content.Title;
 
         var view = await EnsureEditorSupportViewAsync();
@@ -198,8 +189,7 @@ public partial class ShellWindow {
         if (CodeSupportDiag.IsEnabled) {
             if (!fromReadyRetry)
                 _editorSupport.DiagnosticStopwatch = System.Diagnostics.Stopwatch.StartNew();
-            CodeSupportDiag.Log(
-                $"enter file={Path.GetFileName(filePath)} ready={ready} " +
+            CodeSupportDiag.Log( $"enter file={Path.GetFileName(filePath)} ready={ready} " +
                 $"lsp={(lsp is null ? "null" : "ok")} connected={lsp?.IsConnected} docReady={lsp?.IsDocumentReady} " +
                 $"match={(lsp is not null && LspMatchesFile(lsp, filePath))} " +
                 $"elapsed={_editorSupport.DiagnosticStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_editorSupport.ReadyAttempts}");
@@ -251,8 +241,7 @@ public partial class ShellWindow {
 
         var panelsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
-        CodeSupportDiag.Log(
-            $"callPanels {panelsSw?.ElapsedMilliseconds ?? 0}ms " +
+        CodeSupportDiag.Log( $"callPanels {panelsSw?.ElapsedMilliseconds ?? 0}ms " +
             $"in={panels.Incoming.Count} out={panels.Outgoing.Count} refs={panels.References.Count}");
         if (!_editorSupport.IsLatestRender(seq))
             return;
@@ -321,8 +310,7 @@ public partial class ShellWindow {
     private static bool LspMatchesFile(IEditorLspManager lsp, string filePath)
         => CodeEditorSupportAnalysis.LspMatchesFile(lsp, filePath);
 
-    private static Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
-        IEditorLspManager lsp, int line0, int col0)
+    private static Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync( IEditorLspManager lsp, int line0, int col0)
         => CodeEditorSupportAnalysis.FetchCallPanelsAsync(lsp, line0, col0);
 
     private static IReadOnlyList<string> SplitLines(string? text)
@@ -334,8 +322,7 @@ public partial class ShellWindow {
             return;
 
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender(
-                onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
+        if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
             return;
 
         var caret = source.Control.Caret;
@@ -403,8 +390,7 @@ public partial class ShellWindow {
         }
 
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender(
-                onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
+        if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
             return;
 
         var lsp = GetLspManager(source);
