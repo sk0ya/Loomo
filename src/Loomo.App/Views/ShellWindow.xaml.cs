@@ -12,7 +12,7 @@ public partial class ShellWindow : Window {
     private readonly ShellAppearanceCoordinator _appearance;
     private readonly EditorSupportNavigationService _editorSupportNavigation;
     private readonly EditorSupportRegistry _editorSupports;
-    private readonly HexEditorSupport _hexSupport;
+    private readonly EditorSupportResolver _editorSupportResolver;
     private readonly CodeEditorSupport _codeSupport;
     private readonly sk0ya.Loomo.Services.Lsp.LspManagementService _lspManagement;
     private readonly KeybindingService _keybindings;
@@ -80,7 +80,7 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, IWorkspaceSearchService search, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, HexEditorSupport hexSupport, CodeEditorSupport codeSupport, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, IWorkspaceSearchService search, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -115,7 +115,7 @@ public partial class ShellWindow : Window {
                 PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);
         };
         _editorSupports = editorSupports;
-        _hexSupport = hexSupport;
+        _editorSupportResolver = editorSupportResolver;
         _codeSupport = codeSupport;
         _lspManagement = lspManagement;
         _git = git;

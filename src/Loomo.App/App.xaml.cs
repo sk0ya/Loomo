@@ -213,6 +213,7 @@ public partial class App : Application
         services.AddSingleton<IEditorSupportProvider, FontEditorSupport>();     // .ttf/.otf/.woff/.woff2 を字形サンプルで表示（data URI 埋め込み）
         services.AddSingleton<IEditorSupportProvider, LogEditorSupport>();      // .log を行レベル色分け＋絞り込みで表示
         services.AddSingleton<EditorSupportRegistry>();
+        services.AddSingleton<EditorSupportResolver>();
         // 拡張子で解決できないバイナリのフォールバック（Hex ダンプ）。registry には載せず ShellWindow が直接使う。
         services.AddSingleton<HexEditorSupport>();
         // 専用プロバイダを持たないコードファイルのフォールバック（LSP ベースの構造アウトライン）。

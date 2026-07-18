@@ -64,7 +64,8 @@ public partial class ShellWindow {
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
-        var provider = _editorSupports.Resolve(filePath);
+        var selection = _editorSupportResolver.Resolve(filePath);
+        var provider = selection.Provider;
         if (provider is IEditorSupportUriProvider uriProvider)
         {
             await OpenUrlInBrowserAsync(uriProvider.ResolveNavigationUri(filePath), uriProvider.DescribeTitle(filePath));
@@ -107,18 +108,17 @@ public partial class ShellWindow {
         if (source is null)
             return;
         var filePath = source.Control.FilePath;
-        var provider = _editorSupports.Resolve(filePath);
+        var selection = _editorSupportResolver.Resolve(filePath);
+        var provider = selection.Provider;
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
         if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
             return;
-        if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath)) {
+        if (selection.Kind == EditorSupportKind.Code && filePath is not null) {
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             await UpdateCodeEditorSupportAsync(source, filePath);
             return;
         }
         var visual = provider as IEditorSupportVisualProvider;
-        if (visual is null && provider is null && filePath is not null && BinaryFileDetector.IsBinary(filePath))
-            visual = _hexSupport;
         if (visual is not null && filePath is not null) {
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
