@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Core.Markdown;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナル／エディタの選択テキストに対する右クリックアクション （「AIに聞く」＝AIバーへ即送信、「ブラウザで調べる」＝内蔵ブラウザでBing検索）。 メニュー項目はライブラリ側の ContextMenuBuilding フックで各コントロールのネイティブメニュー末尾へ 追加する（選択があるときだけ。スタイルはライブラリが自前のメニュー様式に合わせる）。</summary>
 public partial class ShellWindow {

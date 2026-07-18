@@ -1,5 +1,5 @@
 using System.Linq;
-using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Markdown;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;

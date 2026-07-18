@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using sk0ya.Loomo.Core.Markdown;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Models;

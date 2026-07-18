@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace sk0ya.Loomo.App.Services;
+namespace sk0ya.Loomo.Core.Markdown;
 
 /// <summary>Markdown テーブルの列揃え（区切り行 <c>:---: </c> の記法）。</summary>
 public enum MarkdownColumnAlignment
@@ -29,7 +29,7 @@ public sealed record MarkdownTableRegion(
     IReadOnlyList<IReadOnlyList<string>> Rows,
     IReadOnlyList<MarkdownColumnAlignment> Alignments);
 
-/// <summary>Markdown テーブルの検出・パース・再生成（<see cref="MarkdownTableGridWindow"/> の純ロジック部分）。</summary>
+/// <summary>Markdown テーブルの検出・パース・再生成。</summary>
 public static class MarkdownTableSync
 {
     // 区切り行のセル（例: ---, :---, ---:, :---:）。ダッシュ1本以上を許す。
