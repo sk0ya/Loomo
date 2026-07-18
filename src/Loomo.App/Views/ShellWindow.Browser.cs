@@ -123,8 +123,7 @@ public partial class ShellWindow
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
             Visibility = Visibility.Collapsed,
-            // 全タブで同じユーザーデータフォルダを共有 → Cookie・保存パスワード・サイト権限が
-            // タブ間で共通になり、再ビルド・再起動をまたいで残る。
+            // 全タブで同じユーザーデータフォルダを共有 → Cookie・保存パスワード・サイト権限が タブ間で共通になり、再ビルド・再起動をまたいで残る。
             CreationProperties = CreateWebViewCreationProperties()
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;

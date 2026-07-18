@@ -50,8 +50,7 @@ public partial class ShellWindow
         {
             switcher.CloseRequested += (_, _) => popup.IsOpen = false;
 
-            // Closed ではなく IsOpen の変化を見る：Closed は押下から数十 ms 遅れて発火し、
-            // しかも束ねられて出ないことがある（＝Click の時点ではまだ「閉じた」ことが分からない）。
+            // Closed ではなく IsOpen の変化を見る：Closed は押下から数十 ms 遅れて発火し、 しかも束ねられて出ないことがある（＝Click の時点ではまだ「閉じた」ことが分からない）。
             DependencyPropertyDescriptor.FromProperty(Popup.IsOpenProperty, typeof(Popup))
                 ?.AddValueChanged(popup, (_, _) =>
                 {

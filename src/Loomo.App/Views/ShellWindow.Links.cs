@@ -201,8 +201,7 @@ public partial class ShellWindow
         if (string.IsNullOrWhiteSpace(url))
             return;
 
-        // ブラウザペインがレイアウトに無ければ左上と入れ替えて前面に出す（「ブラウザで調べる」等と
-        // 同じ流儀＝最下段への新規挿入ではなく入れ替えで一貫させる。既に見えていれば何もしない）。
+        // ブラウザペインがレイアウトに無ければ左上と入れ替えて前面に出す（「ブラウザで調べる」等と 同じ流儀＝最下段への新規挿入ではなく入れ替えで一貫させる。既に見えていれば何もしない）。
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
 
         await CreateBrowserTabAsync(url, requestedTitle: title);

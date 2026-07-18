@@ -56,10 +56,7 @@ public partial class ShellWindow
         if (_composerEditor is not null)
             return;
 
-        // タブのエディタ（CreateEditorTab）と違い、Git 差分・分割/タブ橋渡し・共有ステータスバーは
-        // 使わない素のコントロール。さらに MinimalChrome（sk0ya.Editor.Controls 1.0.7）で行番号桁・
-        // ステータスバー・スクロールバー・ミニマップを隠し、素の TextBox 風の見た目にする
-        // （Vim 編集自体は残す）。外観と Vim 有効設定だけ揃える。
+        // タブのエディタ（CreateEditorTab）と違い、Git 差分・分割/タブ橋渡し・共有ステータスバーは 使わない素のコントロール。さらに MinimalChrome（sk0ya.Editor.Controls 1.0.7）で行番号桁・ ステータスバー・スクロールバー・ミニマップを隠し、素の TextBox 風の見た目にする （Vim 編集自体は残す）。外観と Vim 有効設定だけ揃える。
         var editor = new VimEditorControl(new VimEditorControlOptions())
         {
             VimEnabled = _settings.Vim.Enabled,
@@ -143,8 +140,7 @@ public partial class ShellWindow
         _composerPendingText = workspace.ComposerText ?? string.Empty;
         _composerEditor?.SetText(_composerPendingText);
 
-        // 順序に注意：SetComposerVisible(false) は現在の高さを _composerHeight へ退避するため、
-        // 復元値の反映は表示切替の後に行う（切替前だと旧ワークスペースの高さで上書きされる）。
+        // 順序に注意：SetComposerVisible(false) は現在の高さを _composerHeight へ退避するため、 復元値の反映は表示切替の後に行う（切替前だと旧ワークスペースの高さで上書きされる）。
         SetComposerVisible(workspace.ComposerVisible);
         _composerHeight = workspace.ComposerHeight is { } height and >= 60
             ? height

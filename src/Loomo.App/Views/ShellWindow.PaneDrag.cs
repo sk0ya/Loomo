@@ -12,9 +12,7 @@ public partial class ShellWindow
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
 
-        // ダブルクリックでそのペインをズーム／復元する（tmux の zoom 相当）。
-        // ただしタブや操作ボタンの上では割り込まない（タブの2連クリックやボタンの
-        // ダブルクリックを横取りしないため）。
+        // ダブルクリックでそのペインをズーム／復元する（tmux の zoom 相当）。 ただしタブや操作ボタンの上では割り込まない（タブの2連クリックやボタンの ダブルクリックを横取りしないため）。
         if (e.ClickCount == 2)
         {
             if (IsWithinButton(e.OriginalSource))
@@ -24,18 +22,14 @@ public partial class ShellWindow
             return;
         }
 
-        // タブ（Guid の Tag を持つタブ要素）の上から掴んだときは、ペイン移動ではなくタブのドラッグ
-        // （別ウィンドウへの切り離し）に任せる。ここでペイン移動を arm するとヘッダー移動のゴースト／
-        // プレビュー効果がタブドラッグ中に出てしまう（Preview トンネルはヘッダー DockPanel が先に拾うため）。
+        // タブ（Guid の Tag を持つタブ要素）の上から掴んだときは、ペイン移動ではなくタブのドラッグ （別ウィンドウへの切り離し）に任せる。ここでペイン移動を arm するとヘッダー移動のゴースト／ プレビュー効果がタブドラッグ中に出てしまう（Preview トンネルはヘッダー DockPanel が先に拾うため）。
         if (ResolvePaneTabId(e.OriginalSource) is not null)
         {
             _paneDragArmed = false;
             return;
         }
 
-        // ここでは捕捉しない（下にあるタブ／ボタンのクリックを殺さないため）。開始位置だけ控え、
-        // しきい値を超えて動いたときに初めて OnPaneTitleMouseMove がドラッグを開始する。
-        // Preview（トンネル）で拾うので、（タブ以外の）ボタンやヘッダー空き領域から掴んでもドラッグできる。
+        // ここでは捕捉しない（下にあるタブ／ボタンのクリックを殺さないため）。開始位置だけ控え、 しきい値を超えて動いたときに初めて OnPaneTitleMouseMove がドラッグを開始する。 Preview（トンネル）で拾うので、（タブ以外の）ボタンやヘッダー空き領域から掴んでもドラッグできる。
         _paneDragStart = e.GetPosition(null);
         _paneDragArmed = true;
     }
@@ -60,8 +54,7 @@ public partial class ShellWindow
 
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
         {
-            // しきい値超え。BeginPaneDrag がオーバーレイへ捕捉を移すので、タブ／ボタンが
-            // 押下時に握った捕捉も奪われ、ドラッグへ切り替わる（＝そのクリックは成立しない）。
+            // しきい値超え。BeginPaneDrag がオーバーレイへ捕捉を移すので、タブ／ボタンが 押下時に握った捕捉も奪われ、ドラッグへ切り替わる（＝そのクリックは成立しない）。
             DisarmTitleDrag();
             BeginPaneDrag(kind);
         }
@@ -217,11 +210,7 @@ public partial class ShellWindow
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false
         };
-        // PaneDragOverlay は PaneHost と同セルなので、Canvas 上の座標＝PaneHost 座標になる。
-        // ClipToBounds でタイル領域外（右の袖＝ミニチュア列など）へプレビューがはみ出さないようにする。
-        // 既定は IsHitTestVisible=false ＝素通し（ペインのクリックを邪魔しない）。ドラッグ中だけ
-        // BeginDragCapture が true にして掴む。オーバーレイ自体は常時 Visible にして「表示直後は
-        // IsVisible=false で Mouse.Capture が失敗する」競合（＝初回ドラッグが不発になる原因）を断つ。
+        // PaneDragOverlay は PaneHost と同セルなので、Canvas 上の座標＝PaneHost 座標になる。 ClipToBounds でタイル領域外（右の袖＝ミニチュア列など）へプレビューがはみ出さないようにする。 既定は IsHitTestVisible=false ＝素通し（ペインのクリックを邪魔しない）。ドラッグ中だけ BeginDragCapture が true にして掴む。オーバーレイ自体は常時 Visible にして「表示直後は IsVisible=false で Mouse.Capture が失敗する」競合（＝初回ドラッグが不発になる原因）を断つ。
         _dragCanvas = new Canvas
         {
             Background = Brushes.Transparent,
@@ -234,8 +223,7 @@ public partial class ShellWindow
         _dragCanvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
         _dragCanvas.LostMouseCapture += OnDragCanvasLostCapture;
         PaneDragOverlay.Children.Add(_dragCanvas);
-        // 実体化させて IsVisible を確定させておく（初回ドラッグ時にここで初めて生成・追加されると、
-        // 同フレームで掴もうとして失敗するため、生成時点でレイアウトを通しておく）。
+        // 実体化させて IsVisible を確定させておく（初回ドラッグ時にここで初めて生成・追加されると、 同フレームで掴もうとして失敗するため、生成時点でレイアウトを通しておく）。
         PaneDragOverlay.Visibility = Visibility.Visible;
         PaneDragOverlay.UpdateLayout();
     }

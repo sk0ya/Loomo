@@ -38,9 +38,7 @@ public partial class ShellWindow
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
-        // 同一ファイルの重複タブを防ぐためパスを正規化する。Git ペイン等は Path.Combine(root, "a/b")
-        // で区切り混在の path（C:\root\a/b）を渡すので、正規化しないとエクスプローラ起点のタブと
-        // 文字列一致せず二重に開いてしまう。VimEditorControl は渡した文字列をそのまま FilePath に保持する。
+        // 同一ファイルの重複タブを防ぐためパスを正規化する。Git ペイン等は Path.Combine(root, "a/b") で区切り混在の path（C:\root\a/b）を渡すので、正規化しないとエクスプローラ起点のタブと 文字列一致せず二重に開いてしまう。VimEditorControl は渡した文字列をそのまま FilePath に保持する。
         path = Path.GetFullPath(path);
 
         // Editor も EditorSupport も出ていなければ、左上を開く対象（バイナリ＝サポート／他＝Editor）へ切替える。
@@ -54,8 +52,7 @@ public partial class ShellWindow
             if (ReferenceEquals(_previewEditorTab, existing))
                 SetPreviewTab(null);
             ActivateEditorTab(existing.Id);
-            // 既に開いているファイルが外部（AI の write_file/edit_file・git・ターミナル等）で書き換わって
-            // いれば、ここで読み直して本文と EditorSupport を最新化する（下記ヘルパ参照）。
+            // 既に開いているファイルが外部（AI の write_file/edit_file・git・ターミナル等）で書き換わって いれば、ここで読み直して本文と EditorSupport を最新化する（下記ヘルパ参照）。
             await ReloadExistingTabIfChangedAsync(existing);
             return;
         }
@@ -64,8 +61,7 @@ public partial class ShellWindow
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
-        // 活性化済みタブの control へ直接読み込む。ここで _editor.OpenFileAsync を呼ぶと
-        // FileOpenRequested 経由で本メソッドへ再入してしまうため、低レベルの LoadFile を使う。
+        // 活性化済みタブの control へ直接読み込む。ここで _editor.OpenFileAsync を呼ぶと FileOpenRequested 経由で本メソッドへ再入してしまうため、低レベルの LoadFile を使う。
         tab.Control.LoadFile(path);
         UpdateEditorTab(tab);
         // タブ活性化の時点では FilePath が未確定（＝軌跡へ記録されない）ので、読込後に記録する。
@@ -114,8 +110,7 @@ public partial class ShellWindow
             _vm.Tabs.AddEditorTab(target.Id, path, false, false);
         }
 
-        // プレビュータブの使い回しでは、活性化の時点ではまだ差し替え前のファイルが載っているため、
-        // ここでの活性化は軌跡へ記録せず、読込後に新しいパスで記録する。
+        // プレビュータブの使い回しでは、活性化の時点ではまだ差し替え前のファイルが載っているため、 ここでの活性化は軌跡へ記録せず、読込後に新しいパスで記録する。
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
         try { ActivateEditorTab(target.Id); }
@@ -153,8 +148,7 @@ public partial class ShellWindow
             UpdateEditorTab(tab);
         }
 
-        // 本文が既に最新（ウォッチャが先に読み直した等）でも、外部リロードは BufferChanged を上げず
-        // EditorSupport が取り残されるため、追従元タブなら明示的に更新する。
+        // 本文が既に最新（ウォッチャが先に読み直した等）でも、外部リロードは BufferChanged を上げず EditorSupport が取り残されるため、追従元タブなら明示的に更新する。
         if (ReferenceEquals(_editorSupportSourceTab, tab))
             await UpdateEditorSupportAsync();
     }

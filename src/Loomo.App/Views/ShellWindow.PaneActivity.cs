@@ -52,8 +52,7 @@ public partial class ShellWindow
                 break;
 
             case ShellCommandPhase.CommandDone:
-                // 実行開始（C）を見ていない D は記録しない：シェル統合スクリプトの初期化や
-                // プロンプト再描画が D を発することがあり、起動直後に偽の「完了」が出る。
+                // 実行開始（C）を見ていない D は記録しない：シェル統合スクリプトの初期化や プロンプト再描画が D を発することがあり、起動直後に偽の「完了」が出る。
                 if (!state.Running)
                     return;
                 state.Running = false;

@@ -114,10 +114,7 @@ public partial class ShellWindow
         var (mode, query) = CommandPaletteService.Parse(PaletteInput.Text);
         UpdateModeChips(mode);
 
-        // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト/クラス/シンボル検索は
-        // 右にプレビュー枠を開く（該当のファイル・行をスニペット表示）。すべて（横断）は入力後だけ開く
-        // （開いた直後のコマンド一覧では空プレビューを出さない）。ターミナル検索は実ターミナル側で
-        // ハイライト＋ジャンプするのでプレビューは持たない。
+        // 箱の幅は固定（モード切替で左右にズレないように）。ファイル/テキスト/クラス/シンボル検索は 右にプレビュー枠を開く（該当のファイル・行をスニペット表示）。すべて（横断）は入力後だけ開く （開いた直後のコマンド一覧では空プレビューを出さない）。ターミナル検索は実ターミナル側で ハイライト＋ジャンプするのでプレビューは持たない。
         var showPreview = mode is PaletteMode.File or PaletteMode.Grep or PaletteMode.Class or PaletteMode.Symbol
             || (mode == PaletteMode.All && !string.IsNullOrWhiteSpace(query));
         // プレビューは一覧と同じ割合（★）で開くので、箱がウィンドウに合わせて広がると一緒に大きくなる。
@@ -140,8 +137,7 @@ public partial class ShellWindow
             return;
         }
 
-        // すべて（空クエリ）は、開いた直後の既定表示としてコマンド一覧を即時に出す
-        // （ファイル検索・LSP を走らせず、Ctrl+Shift+P からの表示を軽く保つ）。
+        // すべて（空クエリ）は、開いた直後の既定表示としてコマンド一覧を即時に出す （ファイル検索・LSP を走らせず、Ctrl+Shift+P からの表示を軽く保つ）。
         if (mode == PaletteMode.All && string.IsNullOrWhiteSpace(query))
         {
             _paletteSearch.Cancel();
@@ -169,8 +165,7 @@ public partial class ShellWindow
 
         void TryAdd(EditorTab? tab)
         {
-            // コードファイルのタブだけ（未接続・非コード・未実体化は除外）。非対応サーバーでも
-            // GetWorkspaceSymbolsAsync は空を返す（MergeWorkspaceSymbolsAsync で吸収）ので接続だけ条件にする。
+            // コードファイルのタブだけ（未接続・非コード・未実体化は除外）。非対応サーバーでも GetWorkspaceSymbolsAsync は空を返す（MergeWorkspaceSymbolsAsync で吸収）ので接続だけ条件にする。
             if (tab is null || !_codeSupport.CanHandle(tab.PeekFilePath))
                 return;
             var lsp = GetLspManager(tab);
@@ -291,8 +286,7 @@ public partial class ShellWindow
         editor.ExecuteCommand("set number");     // 行番号は常に表示（本体設定に依らず）
         editor.ExecuteCommand("set cursorline"); // ヒット行を常に強調
         editor.ExecuteCommand("set nominimap");  // 狭いプレビューではミニマップは邪魔なので切る
-        // 表示しない共有ステータスバーを与えて内蔵ステータスバーだけ隠す（プレビューは非フォーカスなので
-        // このバーへ状態は流れず、見た目にも出ない）。行番号ガターとスクロールバーはそのまま残る。
+        // 表示しない共有ステータスバーを与えて内蔵ステータスバーだけ隠す（プレビューは非フォーカスなので このバーへ状態は流れず、見た目にも出ない）。行番号ガターとスクロールバーはそのまま残る。
         editor.SetSharedStatusBar(new VimStatusBar());
         PalettePreviewHost.Child = editor;
         _previewEditor = editor;
@@ -332,9 +326,7 @@ public partial class ShellWindow
         {
             editor.LoadFile(path);
             editor.HighlightSearch(command.PreviewHighlight ?? "");
-            // 行が指定されていればその行をプレビューの中央に置き、無指定なら先頭から見せる。
-            // 開いた直後はまだ Canvas が未計測で中央寄せ（JumpToLine）が効かないことがあるので、
-            // レイアウトが確定する Background 優先度でもう一度合わせて確実に中央へ寄せる。
+            // 行が指定されていればその行をプレビューの中央に置き、無指定なら先頭から見せる。 開いた直後はまだ Canvas が未計測で中央寄せ（JumpToLine）が効かないことがあるので、 レイアウトが確定する Background 優先度でもう一度合わせて確実に中央へ寄せる。
             NavigatePreview(editor, command);
             _ = editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
             {
