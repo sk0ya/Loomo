@@ -23,6 +23,37 @@ public sealed record EditorSupportResult(
 /// <summary>Provider の出力を EditorSupport 共通の表示結果へ変換する。</summary>
 public sealed class EditorSupportPipeline
 {
+    public bool SupportsHtmlExport(IEditorSupportProvider? provider)
+        => provider is IEditorSupportHtmlProvider;
+
+    public bool SupportsMarkdownExport(IEditorSupportProvider? provider)
+        => provider is IEditorSupportMarkdownExportProvider;
+
+    public async Task<string?> RenderPortableHtmlAsync(
+        IEditorSupportProvider? provider,
+        EditorSupportContext context,
+        string? sourceDirectory,
+        string assetsDirectory)
+    {
+        if (provider is not IEditorSupportHtmlProvider htmlProvider || context.FilePath is null)
+            return null;
+
+        var text = provider.UsesEditorText ? context.Text : string.Empty;
+        return await Task.Run(() => PortableHtml.Build(
+            htmlProvider.RenderHtml(context.FilePath, text), sourceDirectory, assetsDirectory));
+    }
+
+    public async Task<string?> RenderMarkdownAsync(
+        IEditorSupportProvider? provider,
+        EditorSupportContext context)
+    {
+        if (provider is not IEditorSupportMarkdownExportProvider markdownProvider || context.FilePath is null)
+            return null;
+
+        var text = provider.UsesEditorText ? context.Text : string.Empty;
+        return await Task.Run(() => markdownProvider.RenderMarkdown(context.FilePath, text));
+    }
+
     public async Task<EditorSupportResult> PrepareAsync(
         IEditorSupportProvider? provider,
         EditorSupportContext context)

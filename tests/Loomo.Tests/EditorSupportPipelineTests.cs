@@ -54,6 +54,18 @@ public class EditorSupportPipelineTests
         Assert.Equal(string.Empty, provider.ReceivedText);
     }
 
+    [Fact]
+    public async Task Markdown_export_is_exposed_through_pipeline()
+    {
+        var provider = new MarkdownExportProvider();
+        var pipeline = new EditorSupportPipeline();
+
+        var markdown = await pipeline.RenderMarkdownAsync(provider, Context());
+
+        Assert.True(pipeline.SupportsMarkdownExport(provider));
+        Assert.Equal("markdown:content", markdown);
+    }
+
     private static EditorSupportContext Context(string? readyPageKey = null) => new(
         FilePath: Path.Combine("workspace", "document.test"),
         Text: "content",
@@ -94,5 +106,12 @@ public class EditorSupportPipelineTests
             ReceivedText = text;
             return "html";
         }
+    }
+
+    private sealed class MarkdownExportProvider : IEditorSupportMarkdownExportProvider
+    {
+        public IReadOnlyCollection<string> SupportedExtensions => [".test"];
+        public string DescribeTitle(string filePath) => "Markdown";
+        public string RenderMarkdown(string filePath, string text) => $"markdown:{text}";
     }
 }

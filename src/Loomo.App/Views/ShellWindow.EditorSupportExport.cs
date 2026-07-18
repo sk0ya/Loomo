@@ -5,7 +5,7 @@ public partial class ShellWindow {
         if (sender is Button { ContextMenu: { } menu } button) {
             var filePath = _editorSupport.Source?.Control.FilePath;
             ExportMarkdownMenuItem.IsEnabled = filePath is not null
-                && _editorSupports.Resolve(filePath) is IEditorSupportMarkdownExportProvider;
+                && _editorSupport.Pipeline.SupportsMarkdownExport(_editorSupports.Resolve(filePath));
             menu.PlacementTarget = button;
             menu.Placement = PlacementMode.Bottom;
             menu.IsOpen = true;
@@ -16,7 +16,8 @@ public partial class ShellWindow {
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
-        if (_editorSupports.Resolve(filePath) is not IEditorSupportHtmlProvider htmlProvider)
+        var provider = _editorSupports.Resolve(filePath);
+        if (!_editorSupport.Pipeline.SupportsHtmlExport(provider))
             return; // ビジュアル提供者（CSV/TSV 等）や URI 提供者・非対応ファイルは書き出す HTML が無い。
         var dialog = new Microsoft.Win32.SaveFileDialog {
             Title = "HTMLとして保存", Filter = "HTML ファイル (*.html)|*.html", FileName = Path.GetFileNameWithoutExtension(filePath) + ".html", };
@@ -27,7 +28,11 @@ public partial class ShellWindow {
         var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Web");
         var target = dialog.FileName;
         try {
-            var portable = await Task.Run( () => PortableHtml.Build(htmlProvider.RenderHtml(filePath, text), sourceDir, assetsDir));
+            var portable = await _editorSupport.Pipeline.RenderPortableHtmlAsync(provider,
+                new EditorSupportContext(filePath, text, _workspace.RootPath ?? string.Empty, null,
+                    _settings.Appearance.MarkdownPreviewTheme), sourceDir, assetsDir);
+            if (portable is null)
+                return;
             await File.WriteAllTextAsync(target, portable, System.Text.Encoding.UTF8);
         } catch (Exception ex) {
             ReportEditorSupportExportError("HTML", ex.Message);
@@ -38,7 +43,7 @@ public partial class ShellWindow {
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
-        if (_editorSupports.Resolve(filePath) is not IEditorSupportHtmlProvider)
+        if (!_editorSupport.Pipeline.SupportsHtmlExport(_editorSupports.Resolve(filePath)))
             return;
         if (_editorSupport.WebView.View?.CoreWebView2 is not { } core)
             return; // まだ描画されていない（ペイン未表示）。
@@ -60,7 +65,8 @@ public partial class ShellWindow {
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
-        if (_editorSupports.Resolve(filePath) is not IEditorSupportMarkdownExportProvider markdownProvider)
+        var provider = _editorSupports.Resolve(filePath);
+        if (!_editorSupport.Pipeline.SupportsMarkdownExport(provider))
             return;
         var dialog = new Microsoft.Win32.SaveFileDialog {
             Title = "Markdownとして保存", Filter = "Markdown ファイル (*.md)|*.md", FileName = Path.GetFileNameWithoutExtension(filePath) + ".md", };
@@ -68,7 +74,11 @@ public partial class ShellWindow {
             return;
         var text = source.Control.Text;
         try {
-            var markdown = await Task.Run(() => markdownProvider.RenderMarkdown(filePath, text));
+            var markdown = await _editorSupport.Pipeline.RenderMarkdownAsync(provider,
+                new EditorSupportContext(filePath, text, _workspace.RootPath ?? string.Empty, null,
+                    _settings.Appearance.MarkdownPreviewTheme));
+            if (markdown is null)
+                return;
             await File.WriteAllTextAsync(dialog.FileName, markdown, System.Text.Encoding.UTF8);
         } catch (Exception ex) {
             ReportEditorSupportExportError("Markdown", ex.Message);

@@ -64,20 +64,18 @@ public partial class ShellWindow {
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
-        var selection = _editorSupportResolver.Resolve(filePath);
-        var provider = selection.Provider;
-        if (provider is IEditorSupportUriProvider uriProvider)
+        var provider = _editorSupports.Resolve(filePath);
+        var result = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
+            filePath, source.Control.Text, _workspace.RootPath ?? string.Empty, null,
+            _settings.Appearance.MarkdownPreviewTheme));
+        if (result.Uri is { } uri)
         {
-            await OpenUrlInBrowserAsync(uriProvider.ResolveNavigationUri(filePath), uriProvider.DescribeTitle(filePath));
+            await OpenUrlInBrowserAsync(uri, result.Title);
             return;
         }
-        if (provider is not IEditorSupportHtmlProvider htmlProvider)
+        if (result.Html is not { } html)
             return; // ビジュアル提供者（CSV/TSV グリッド等）や対応の無いファイルは開ける HTML が無い。
-        var title = htmlProvider.DescribeTitle(filePath);
-        var mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
-        var htmlText = htmlProvider.UsesEditorText ? source.Control.Text : string.Empty;
-        var html = await Task.Run(() => htmlProvider.RenderHtml(filePath, htmlText));
-        await OpenEditorSupportSnapshotInBrowserAsync(html, mapFolder, title);
+        await OpenEditorSupportSnapshotInBrowserAsync(html, result.MapFolder, result.Title);
     }
     private void UpdateEditorSupportPinToggle() {
         EditorSupportPinToggle.IsChecked = _editorSupport.IsPinned;
