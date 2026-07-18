@@ -32,6 +32,7 @@ public sealed class GitService
     private readonly GitCommitService _commits;
     private readonly GitStashService _stashes;
     private readonly GitDiffService _diff;
+    private readonly GitRebaseService _rebase;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -51,6 +52,7 @@ public sealed class GitService
         _commits = new GitCommitService(workspace, _runner, _mutations);
         _stashes = new GitStashService(_runner, _mutations);
         _diff = new GitDiffService(workspace, _runner, _mutations);
+        _rebase = new GitRebaseService(_runner, _mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
@@ -318,21 +320,10 @@ public sealed class GitService
     public Task<GitCommandResult> MergeContinueAsync() => _merge.ContinueMergeAsync();
     public Task<GitCommandResult> MergeAbortAsync() => _merge.AbortMergeAsync();
 
-    public Task<GitCommandResult> RebaseAsync(string onto) => MutateAsync("rebase", onto);
-    public async Task<GitCommandResult> RebaseContinueAsync()
-    {
-        var result = await MutateAsync("rebase", "--continue").ConfigureAwait(false);
-        if (result.Success)
-            await DeleteScriptedRebaseArtifactsAsync().ConfigureAwait(false);
-        return result;
-    }
-    public Task<GitCommandResult> RebaseSkipAsync() => MutateAsync("rebase", "--skip");
-    public async Task<GitCommandResult> RebaseAbortAsync()
-    {
-        var result = await MutateAsync("rebase", "--abort").ConfigureAwait(false);
-        await DeleteScriptedRebaseArtifactsAsync().ConfigureAwait(false);
-        return result;
-    }
+    public Task<GitCommandResult> RebaseAsync(string onto) => _rebase.RebaseAsync(onto);
+    public Task<GitCommandResult> RebaseContinueAsync() => _rebase.ContinueAsync();
+    public Task<GitCommandResult> RebaseSkipAsync() => _rebase.SkipAsync();
+    public Task<GitCommandResult> RebaseAbortAsync() => _rebase.AbortAsync();
 
     public Task<GitCommandResult> CherryPickAsync(string hash) => _merge.CherryPickAsync(hash);
     public Task<GitCommandResult> CherryPickContinueAsync() => _merge.ContinueCherryPickAsync();
@@ -368,15 +359,10 @@ public sealed class GitService
     public Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse) =>
         _diff.ApplyCachedPatchAsync(patch, reverse);
 
-    public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) =>
-        MutateAsync("reset", $"--{mode.ToString().ToLowerInvariant()}", hash);
+    public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) => _rebase.ResetAsync(hash, mode);
 
     /// <summary>コミットメッセージ全文を取得する（末尾の改行は除く）。</summary>
-    public async Task<string> GetCommitMessageAsync(string hash)
-    {
-        var result = await RunAsync("show", "-s", "--format=%B", hash).ConfigureAwait(false);
-        return result.Success ? result.Output.TrimEnd('\r', '\n') : "";
-    }
+    public Task<string> GetCommitMessageAsync(string hash) => _rebase.GetCommitMessageAsync(hash);
 
     /// <summary>
     /// 現在のブランチ上のコミットメッセージを対話的リベースの reword で変更する。
@@ -601,20 +587,6 @@ public sealed class GitService
                 foreach (var (path, _) in extraPaths)
                     TryDelete(path);
         }
-    }
-
-    private async Task DeleteScriptedRebaseArtifactsAsync()
-    {
-        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
-        if (gitDir is null)
-            return;
-        TryDelete(Path.Combine(gitDir, "loomo-squash-message.txt"));
-        try
-        {
-            foreach (var file in Directory.EnumerateFiles(gitDir, "loomo-rebase-msg-*.txt"))
-                TryDelete(file);
-        }
-        catch { /* 列挙失敗（ディレクトリ消失等）は無視 */ }
     }
 
     // ===== インタラクティブリベース =====
