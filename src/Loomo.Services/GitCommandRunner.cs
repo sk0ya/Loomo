@@ -33,6 +33,19 @@ public sealed class GitCommandRunner
     public Task<GitCommandResult> RunAsync(params string[] args) =>
         RunAsync(null, CancellationToken.None, args);
 
+    internal async Task<string?> GetGitDirectoryAsync()
+    {
+        var result = await RunAsync("rev-parse", "--git-dir").ConfigureAwait(false);
+        if (!result.Success)
+            return null;
+        var directory = result.Output.Trim();
+        if (directory.Length == 0)
+            return null;
+        return Path.IsPathRooted(directory)
+            ? directory
+            : Path.Combine(_workspace.RootPath ?? "", directory);
+    }
+
     internal Task<GitCommandResult> RunAsync(
         IReadOnlyDictionary<string, string>? extraEnvironment,
         params string[] args) => RunAsync(extraEnvironment, CancellationToken.None, args);

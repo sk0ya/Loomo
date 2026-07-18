@@ -24,6 +24,7 @@ public sealed class GitService
 
     private readonly IWorkspaceService _workspace;
     private readonly GitCommandRunner _runner;
+    private readonly GitStatusService _status;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -34,6 +35,7 @@ public sealed class GitService
     {
         _workspace = workspace;
         _runner = new GitCommandRunner(workspace);
+        _status = new GitStatusService(_runner);
         workspace.RootChanged += (_, _) =>
         {
             _lastSignature = null; // リポジトリが替わったら署名を取り直す
@@ -121,26 +123,7 @@ public sealed class GitService
 
     /// <summary>現在の状態（ブランチ・ahead/behind・変更一覧・進行中操作）を取得する。
     /// <c>--no-optional-locks</c>の理由は <see cref="PollOnceAsync"/> 参照（進行中の commit とのロック競合回避）。</summary>
-    public async Task<GitStatusSnapshot> GetStatusAsync()
-    {
-        var result = await RunAsync("--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
-        if (!result.Success)
-            return new GitStatusSnapshot { IsRepository = false };
-
-        var snapshot = GitStatusParser.Parse(result.Output);
-
-        // 進行中操作（rebase/merge/cherry-pick）は .git 配下のマーカーで検出する
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
-        if (gitDir is null)
-            return snapshot;
-        return snapshot with
-        {
-            RebaseInProgress = Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
-                || Directory.Exists(Path.Combine(gitDir, "rebase-apply")),
-            MergeInProgress = File.Exists(Path.Combine(gitDir, "MERGE_HEAD")),
-            CherryPickInProgress = File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")),
-        };
-    }
+    public Task<GitStatusSnapshot> GetStatusAsync() => _status.GetStatusAsync();
 
     /// <summary>設定されているリモート名（git remote）。無ければ空。</summary>
     public async Task<IReadOnlyList<string>> GetRemotesAsync()
@@ -689,7 +672,7 @@ public sealed class GitService
     /// </summary>
     public async Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse)
     {
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
 
@@ -769,7 +752,7 @@ public sealed class GitService
         foreach (var commit in chain.Skip(1))
             todo.Append("pick ").Append(commit).Append('\n');
 
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
         var todoPath = Path.Combine(gitDir, "loomo-reword-todo.txt");
@@ -877,7 +860,7 @@ public sealed class GitService
         var above = aboveResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
 
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
         var messagePath = Path.Combine(gitDir, "loomo-squash-message.txt");
@@ -915,7 +898,7 @@ public sealed class GitService
         string todoFileName, string todoText, string baseArg,
         IReadOnlyList<(string FileName, string Content)>? extraFiles = null)
     {
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
 
@@ -951,7 +934,7 @@ public sealed class GitService
 
     private async Task DeleteScriptedRebaseArtifactsAsync()
     {
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
         if (gitDir is null)
             return;
         TryDelete(Path.Combine(gitDir, "loomo-squash-message.txt"));
@@ -1071,7 +1054,7 @@ public sealed class GitService
             if (entry.Action == RebaseAction.Reword && !newMessages.ContainsKey(entry.Hash))
                 return new GitCommandResult(-1, "", $"{entry.ShortHash} の新しいメッセージが入力されていません。");
 
-        var gitDir = await GetGitDirAsync().ConfigureAwait(false);
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
         if (gitDir is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
 
@@ -1152,15 +1135,4 @@ public sealed class GitService
     /// <summary>git を起動し、終了まで待って stdout/stderr を返す。タイムアウト時はプロセスツリーごと kill。</summary>
     public Task<GitCommandResult> RunAsync(params string[] args) => _runner.RunAsync(args);
 
-    /// <summary>.git ディレクトリの絶対パス（リポジトリ外なら null）。</summary>
-    private async Task<string?> GetGitDirAsync()
-    {
-        var result = await RunAsync("rev-parse", "--git-dir").ConfigureAwait(false);
-        if (!result.Success)
-            return null;
-        var dir = result.Output.Trim();
-        if (dir.Length == 0)
-            return null;
-        return Path.IsPathRooted(dir) ? dir : Path.Combine(RootPath ?? "", dir);
-    }
 }
