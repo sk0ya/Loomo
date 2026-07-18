@@ -116,6 +116,132 @@ public sealed class GitRebaseService
         }
     }
 
+    public async Task<GitCommandResult> SquashAsync(
+        IReadOnlyList<string> hashes, string? commitMessage = null)
+    {
+        try
+        {
+            return await SquashCoreAsync(hashes, commitMessage).ConfigureAwait(false);
+        }
+        finally
+        {
+            _mutations.NotifyRepositoryChanged();
+        }
+    }
+
+    private async Task<GitCommandResult> SquashCoreAsync(
+        IReadOnlyList<string> hashes, string? commitMessage)
+    {
+        if (hashes.Count < 2)
+            return new GitCommandResult(-1, "", "スカッシュには2件以上のコミットを選択してください。");
+        if (commitMessage is not null && string.IsNullOrWhiteSpace(commitMessage))
+            return new GitCommandResult(-1, "", "コミットメッセージを入力してください。");
+
+        var resolved = new List<string>(hashes.Count);
+        foreach (var hash in hashes)
+        {
+            var result = await _runner.RunAsync(
+                "rev-parse", "--verify", $"{hash}^{{commit}}").ConfigureAwait(false);
+            if (!result.Success) return result;
+            resolved.Add(result.Output.Trim());
+        }
+        var selected = resolved.ToHashSet(StringComparer.Ordinal);
+        if (selected.Count < 2)
+            return new GitCommandResult(-1, "", "スカッシュには2件以上のコミットを選択してください。");
+
+        var historyResult = await _runner.RunAsync(
+            "rev-list", "--reverse", "--first-parent", "HEAD").ConfigureAwait(false);
+        if (!historyResult.Success) return historyResult;
+        var selectedHistory = historyResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim()).Where(selected.Contains).ToList();
+        if (selectedHistory.Count != selected.Count)
+            return new GitCommandResult(-1, "", "現在のブランチに含まれる連続したコミットのみスカッシュできます。");
+        var oldest = selectedHistory[0];
+        var newest = selectedHistory[^1];
+
+        var hasParent = (await _runner.RunAsync(
+            "rev-parse", "--verify", "--quiet", $"{oldest}^").ConfigureAwait(false)).Success;
+        var chainResult = hasParent
+            ? await _runner.RunAsync("rev-list", "--reverse", $"{oldest}^..{newest}").ConfigureAwait(false)
+            : await _runner.RunAsync("rev-list", "--reverse", newest).ConfigureAwait(false);
+        if (!chainResult.Success) return chainResult;
+        var chain = SplitLines(chainResult.Output);
+        if (chain.Count != selectedHistory.Count || !chain.ToHashSet().SetEquals(selectedHistory))
+            return new GitCommandResult(-1, "", "連続したコミットを選択してください（範囲の途中に選択していないコミットやマージがあります）。");
+
+        var rewriteRange = hasParent ? $"{oldest}^..HEAD" : "HEAD";
+        var merges = await _runner.RunAsync("rev-list", "--min-parents=2", rewriteRange)
+            .ConfigureAwait(false);
+        if (!merges.Success) return merges;
+        if (SplitLines(merges.Output).Count > 0)
+            return new GitCommandResult(-1, "", "選択範囲から HEAD までにマージコミットがあるため、スカッシュできません。");
+
+        var aboveResult = await _runner.RunAsync(
+            "rev-list", "--reverse", "--first-parent", $"{newest}..HEAD").ConfigureAwait(false);
+        if (!aboveResult.Success) return aboveResult;
+        var above = SplitLines(aboveResult.Output);
+
+        var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
+        if (gitDirectory is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+        var messagePath = Path.Combine(gitDirectory, "loomo-squash-message.txt");
+        var todo = new StringBuilder().Append("pick ").Append(chain[0]).Append('\n');
+        for (var index = 1; index < chain.Count; index++)
+            todo.Append(commitMessage is null ? "squash " : "fixup ").Append(chain[index]).Append('\n');
+        if (commitMessage is not null)
+            todo.Append("exec git commit --amend -F '").Append(ToMsysPath(messagePath)).Append("'\n");
+        foreach (var commit in above)
+            todo.Append("pick ").Append(commit).Append('\n');
+
+        var extraFiles = commitMessage is null
+            ? null
+            : new[] { ("loomo-squash-message.txt", commitMessage.TrimEnd() + Environment.NewLine) };
+        return await RunScriptedRebaseAsync(
+            "loomo-squash-todo.txt", todo.ToString(), hasParent ? $"{oldest}^" : "--root", extraFiles)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<GitCommandResult> RunScriptedRebaseAsync(
+        string todoFileName,
+        string todoText,
+        string baseArgument,
+        IReadOnlyList<(string FileName, string Content)>? extraFiles = null)
+    {
+        var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
+        if (gitDirectory is null)
+            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
+
+        var todoPath = Path.Combine(gitDirectory, todoFileName);
+        var extraPaths = (extraFiles ?? Array.Empty<(string FileName, string Content)>())
+            .Select(file => (Path: Path.Combine(gitDirectory, file.FileName), file.Content)).ToList();
+        var keepExtraFiles = false;
+        try
+        {
+            await File.WriteAllTextAsync(todoPath, todoText).ConfigureAwait(false);
+            foreach (var (path, content) in extraPaths)
+                await File.WriteAllTextAsync(path, content).ConfigureAwait(false);
+            var environment = new Dictionary<string, string>
+            {
+                ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
+            };
+            var result = await _runner.RunAsync(
+                environment, "rebase", "-i", baseArgument).ConfigureAwait(false);
+            keepExtraFiles = !result.Success && IsRebaseInProgress(gitDirectory);
+            return result;
+        }
+        finally
+        {
+            TryDelete(todoPath);
+            if (!keepExtraFiles)
+                foreach (var (path, _) in extraPaths)
+                    TryDelete(path);
+        }
+    }
+
+    private static bool IsRebaseInProgress(string gitDirectory) =>
+        Directory.Exists(Path.Combine(gitDirectory, "rebase-merge"))
+        || Directory.Exists(Path.Combine(gitDirectory, "rebase-apply"));
+
     internal async Task DeleteScriptedArtifactsAsync()
     {
         var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
