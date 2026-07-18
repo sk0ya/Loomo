@@ -206,7 +206,7 @@ public partial class ShellWindow
             cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
 
         var view = new TerminalTabView("pwsh.exe", cwd) { AutoFocusOnStart = false };
-        ApplyTerminalAppearance(view);
+        _appearance.ApplyTerminalAppearance(view);
 
         var item = new DetachedItem(
             DetachKind.TerminalSpinoff, "Terminal", view, _tabIcons.GetTerminalIcon(),

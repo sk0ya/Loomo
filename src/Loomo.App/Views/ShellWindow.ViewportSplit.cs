@@ -200,7 +200,7 @@ public partial class ShellWindow
             // 約1秒後のセッション起動が横取りする（sk0ya.Terminal.Controls 1.0.9）。
             AutoFocusOnStart = false,
         };
-        ApplyTerminalAppearance(view);
+        _appearance.ApplyTerminalAppearance(view);
         var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
         view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
         // ターミナル本文の URL クリックを Loomo で受け、http/https は内蔵ブラウザへ振り分ける
@@ -282,8 +282,8 @@ public partial class ShellWindow
             VimEnabled = _settings.Vim.Enabled,
             Visibility = Visibility.Collapsed
         };
-        ApplyEditorOptions(control);
-        ApplyEditorAppearance(control);
+        _appearance.ApplyEditorOptions(control);
+        _appearance.ApplyEditorAppearance(control);
         // 分割時もステータスバーを1つに集約する（sk0ya.Editor.Controls 1.0.5 の共有ステータスバー機能）。
         // 各コントロールの内蔵バーは隠れ、フォーカス中エディタの状態だけが下端の共有バーへ流れる。
         control.SetSharedStatusBar(EditorSharedStatusBar);
@@ -350,7 +350,7 @@ public partial class ShellWindow
         foreach (var tab in _editorTabs)
         {
             if (!tab.IsRealized) continue;
-            ApplyEditorOptions(tab.Control);
+            _appearance.ApplyEditorOptions(tab.Control);
         }
     }
 
@@ -361,162 +361,14 @@ public partial class ShellWindow
     /// 再描画（UpdateAll）を呼ぶので、生成直後・タブ実体化後のどちらでも即座に反映される。
     /// <see cref="EditorSettings.HighlightWhitespace"/> だけは <c>:set</c> に無い専用フィールドのため
     /// 直接代入＋<see cref="UIElement.InvalidateVisual"/> で反映する。</summary>
-    private void ApplyEditorOptions(VimEditorControl control)
-    {
-        var e = _settings.Editor;
-        control.Engine.Options.HighlightWhitespace = e.HighlightWhitespace;
-        control.InvalidateVisual();
-        ApplySetOption(control, "number", e.ShowLineNumbers);
-        ApplySetOption(control, "relativenumber", e.RelativeLineNumbers);
-        ApplySetOption(control, "cursorline", e.HighlightCurrentLine);
-        ApplySetOption(control, "wrap", e.WordWrap);
-        ApplySetOption(control, "minimap", e.ShowMinimap);
-        ApplySetOption(control, "indentguides", e.ShowIndentGuides);
-        ApplySetOption(control, "pairs", e.AutoClosePairs);
-        control.SetTabWidth(e.TabWidth, e.UseSpacesForTab);
-        control.ImagePasteOptions = new Editor.Core.Editing.ImagePasteOptions
-        {
-            Directory = e.ImagePasteDirectory,
-            FileName = e.ImagePasteFileName,
-            AltText = e.ImagePasteAltText
-        };
-    }
-
-    private static void ApplySetOption(VimEditorControl control, string name, bool value)
-        => control.ExecuteCommand($"set {(value ? "" : "no")}{name}");
-
-    /// <summary>
-    /// エディタの配色は設定で選んだプリセット（<see cref="AppearanceSettings.EditorTheme"/>）を
-    /// ベースにしつつ、選択ハイライトだけを Loomo のアクセント色（半透明）へ差し替える。
-    /// 既定の選択色は暗い背景に埋もれて見えないため。<see cref="EditorTheme"/> は複製手段が無いので、
-    /// リフレクションで全プロパティを写し取り <c>SelectionBg</c> だけ上書きする
-    /// （ライブラリ側がパレットを更新しても追従でき、Loomo 側に色定義が漏れない）。
-    /// </summary>
-    private EditorTheme BuildEditorTheme()
-    {
-        var accent = (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
-                     ?? Color.FromRgb(0x61, 0x48, 0xDE);
-        var selection = new SolidColorBrush(Color.FromArgb(0x99, accent.R, accent.G, accent.B));
-
-        var baseTheme = ResolveEditorTheme(_settings.Appearance.EditorTheme);
-        var clone = new EditorTheme();
-        foreach (var prop in typeof(EditorTheme).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (!prop.CanRead || !prop.CanWrite)
-                continue;
-            var value = prop.Name == nameof(EditorTheme.SelectionBg) ? selection : prop.GetValue(baseTheme);
-            prop.SetValue(clone, value);
-        }
-        return clone;
-    }
-
-    /// <summary>設定のテーマ名から <see cref="EditorTheme"/> の組み込みプリセットを解決する。未知名は Dracula。</summary>
-    private static EditorTheme ResolveEditorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
-    {
-        "dark" => EditorTheme.Dark,
-        "nord" => EditorTheme.Nord,
-        "tokyonight" => EditorTheme.TokyoNight,
-        "onedark" => EditorTheme.OneDark,
-        _ => EditorTheme.Dracula,
-    };
-
-    /// <summary>エディタへ配色テーマとフォント（設定値、未指定なら触らない）を適用する。
-    /// <see cref="VimEditorControl"/> は WPF 標準の <c>FontFamily</c>/<c>FontSize</c> を描画に使わず、
-    /// 専用の <see cref="VimEditorControl.EditorFontFamily"/>/<see cref="VimEditorControl.EditorFontSize"/>
-    /// （内部で <c>Canvas.UpdateFont</c> を呼ぶ）を経由しないとキャンバス描画に反映されない。</summary>
-    private void ApplyEditorAppearance(VimEditorControl control)
-    {
-        control.SetTheme(BuildEditorTheme());
-        var ap = _settings.Appearance;
-        if (!string.IsNullOrWhiteSpace(ap.EditorFontFamily))
-            control.EditorFontFamily = ap.EditorFontFamily;
-        if (ap.EditorFontSize > 0)
-            control.EditorFontSize = ap.EditorFontSize;
-    }
-
-    /// <summary>ターミナルへ配色（背景/文字色/ANSIパレット）とフォントを適用する。
-    /// sk0ya.Terminal.Controls 1.0.5 の <see cref="TerminalTabView.SetColorTheme"/> / <see cref="TerminalTabView.SetFont"/>
-    /// を使う。WPF の <c>Background</c>/<c>FontFamily</c> を直接書いても描画サーフェスには届かないため、
-    /// 必ずこの専用APIを経由する。フォントは未指定なら現状値を保つ。</summary>
-    private void ApplyTerminalAppearance(TerminalTabView view)
-    {
-        var ap = _settings.Appearance;
-        view.SetColorTheme(BuildTerminalColorTheme(ap.TerminalTheme));
-
-        var family = string.IsNullOrWhiteSpace(ap.TerminalFontFamily)
-            ? view.FontFamilyName
-            : ap.TerminalFontFamily;
-        var size = ap.TerminalFontSize > 0 ? ap.TerminalFontSize : view.TerminalFontSize;
-        view.SetFont(family, size);
-        view.SetFontLigaturesEnabled(ap.TerminalFontLigatures);
-    }
-
-    /// <summary>ターミナル配色プリセット名 → <see cref="TerminalColorTheme"/>（背景/文字色/16色ANSIパレット）。
-    /// 外観パネルの代表色（背景/文字色）と一致させる。未知名は Dark。</summary>
-    private static TerminalColorTheme BuildTerminalColorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
-    {
-        "light" => MakeTerminalTheme("#1F1F1F", "#FFFFFF", LightAnsiPalette, "#1F1F1F", "#FFB3D7FF"),
-        "dracula" => MakeTerminalTheme("#F8F8F2", "#282A36", DraculaAnsiPalette, "#F8F8F0", "#6644475A"),
-        "nord" => MakeTerminalTheme("#D8DEE9", "#2E3440", NordAnsiPalette, "#D8DEE9", "#66434C5E"),
-        "solarizeddark" => MakeTerminalTheme("#93A1A1", "#002B36", SolarizedDarkAnsiPalette, "#93A1A1", "#66073642"),
-        _ => MakeTerminalTheme("#D4D4D4", "#1E1E1E", DarkAnsiPalette, "#5FAFFF", "#664D4D4D"),
-    };
-
-    private static TerminalColorTheme MakeTerminalTheme(
-        string fg, string bg, string[] ansiPalette, string cursor, string selection) =>
-        new(
-            ParseColor(fg),
-            ParseColor(bg),
-            ansiPalette.Select(ParseColor).ToArray(),
-            ParseColor(cursor),
-            ParseColor(selection));
-
-    private static Color ParseColor(string hex) => (Color)ColorConverter.ConvertFromString(hex)!;
-
-    // 16色ANSIパレット（0-7=標準, 8-15=明色）。
-    private static readonly string[] DarkAnsiPalette =
-    {
-        "#0C0C0C", "#C50F1F", "#13A10E", "#C19C00", "#0037DA", "#881798", "#3A96DD", "#CCCCCC",
-        // index 8(明色の黒)はPSReadLineが引数/演算子に使う。背景#1E1E1Eに埋もれない明度へ(#767676→)。
-        "#9D9D9D", "#E74856", "#16C60C", "#F9F1A5", "#3B78FF", "#B4009E", "#61D6D6", "#F2F2F2",
-    };
-
-    private static readonly string[] LightAnsiPalette =
-    {
-        "#000000", "#C50F1F", "#13A10E", "#B58900", "#0037DA", "#881798", "#3A96DD", "#777777",
-        "#5A5A5A", "#A4262C", "#0E8016", "#986801", "#0037DA", "#A100A1", "#178C92", "#1F1F1F",
-    };
-
-    private static readonly string[] DraculaAnsiPalette =
-    {
-        "#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2",
-        // index 8(引数/演算子色)はDraculaのcomment#6272A4だと背景#282A36でコントラスト不足→明るめに。
-        "#8A95C2", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF",
-    };
-
-    private static readonly string[] NordAnsiPalette =
-    {
-        "#3B4252", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#88C0D0", "#E5E9F0",
-        // index 8(引数/演算子色)はNordのnord3#4C566Aだと背景#2E3440に埋もれる→明るめのフロスト寄りに。
-        "#909FBB", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#8FBCBB", "#ECEFF4",
-    };
-
-    private static readonly string[] SolarizedDarkAnsiPalette =
-    {
-        "#073642", "#DC322F", "#859900", "#B58900", "#268BD2", "#D33682", "#2AA198", "#EEE8D5",
-        // index 8(引数/演算子色)は本来base03#002B36で背景と同色＝不可視。base0#839496へ変更し可読に。
-        "#839496", "#CB4B16", "#586E75", "#657B83", "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
-    };
-
-    /// <summary>外観設定の変更を、開いている全エディタ／ターミナルタブと EditorSupport ペインへ即時反映する。</summary>
     private void ApplyAppearanceToOpenTabs()
     {
         // 未実体化タブは実体化しない（生成時に現在の外観が適用されるため不要）。
         foreach (var tab in _editorTabs)
             if (tab.IsRealized)
-                ApplyEditorAppearance(tab.Control);
+                _appearance.ApplyEditorAppearance(tab.Control);
         foreach (var tab in _terminalTabs)
-            ApplyTerminalAppearance(tab.View);
+            _appearance.ApplyTerminalAppearance(tab.View);
         if (_editorSupportSourceTab is not null)
             ScheduleEditorSupportUpdate();
     }

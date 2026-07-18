@@ -10,6 +10,7 @@ public partial class ShellWindow : Window
     private readonly IWorkspaceSearchService _search;
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
+    private readonly ShellAppearanceCoordinator _appearance;
     private readonly EditorSupportRegistry _editorSupports;
     /// <summary>対応プロバイダの無いバイナリのフォールバック表示（Hex ダンプ）。registry 外。</summary>
     private readonly HexEditorSupport _hexSupport;
@@ -239,6 +240,9 @@ public partial class ShellWindow : Window
         _search = search;
         _tabIcons = tabIcons;
         _settings = settings;
+        _appearance = new ShellAppearanceCoordinator(settings, () =>
+            (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
+            ?? Color.FromRgb(0x61, 0x48, 0xDE));
         _editorSupports = editorSupports;
         _hexSupport = hexSupport;
         _codeSupport = codeSupport;

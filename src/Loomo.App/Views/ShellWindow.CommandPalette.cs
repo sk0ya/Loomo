@@ -22,7 +22,7 @@ public partial class ShellWindow
         _paletteCommands = BuildPaletteCommands();
         // テーマ／フォントが前回開いてから変わっていることがあるので、プレビュー用エディタへ再適用する。
         if (_previewEditor is not null)
-            ApplyEditorAppearance(_previewEditor);
+            _appearance.ApplyEditorAppearance(_previewEditor);
         CommandPaletteOverlay.Visibility = Visibility.Visible;
         UpdatePaletteBoxSize();
         PaletteInput.Text = string.Empty;
@@ -436,8 +436,8 @@ public partial class ShellWindow
             VimEnabled = false,
             Focusable = false,  // キーボードフォーカスを奪わない（↑↓・Enter はパレットのまま）
         };
-        ApplyEditorOptions(editor);
-        ApplyEditorAppearance(editor);
+        _appearance.ApplyEditorOptions(editor);
+        _appearance.ApplyEditorAppearance(editor);
         editor.ExecuteCommand("set number");     // 行番号は常に表示（本体設定に依らず）
         editor.ExecuteCommand("set cursorline"); // ヒット行を常に強調
         editor.ExecuteCommand("set nominimap");  // 狭いプレビューではミニマップは邪魔なので切る

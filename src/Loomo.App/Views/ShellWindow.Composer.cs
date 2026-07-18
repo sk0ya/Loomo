@@ -65,7 +65,7 @@ public partial class ShellWindow
             VimEnabled = _settings.Vim.Enabled,
             MinimalChrome = true,
         };
-        ApplyEditorAppearance(editor);
+        _appearance.ApplyEditorAppearance(editor);
         // 本文中のURLクリック（Ctrl+Click / gx）も内蔵ブラウザで開く（タブのエディタと同じ扱い）。
         editor.LinkClicked += OnEditorLinkClicked;
         editor.SetText(_composerPendingText);
