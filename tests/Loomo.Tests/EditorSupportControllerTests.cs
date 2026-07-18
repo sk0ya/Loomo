@@ -52,6 +52,21 @@ public class EditorSupportControllerTests
         Assert.True(controller.History.CanGoForward);
     }
 
+    [Fact]
+    public async Task Unsupported_content_produces_stable_fallback_page()
+    {
+        var controller = new EditorSupportController();
+
+        var content = await controller.PrepareWebContentAsync(
+            provider: null, filePath: null, text: "", workspaceRoot: "", readyPageKey: null,
+            previewTheme: "dark");
+
+        Assert.Equal("Editor Support", content.Title);
+        Assert.Contains("このファイルに対応するサポートはありません", content.Html);
+        Assert.False(content.ShowOpenInBrowser);
+        Assert.False(content.ShowExport);
+    }
+
     private static EditorTab Tab(string path)
         => new(Guid.NewGuid()) { Pending = new EditorTabSnapshot { FilePath = path } };
 }

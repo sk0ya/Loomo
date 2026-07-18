@@ -41,32 +41,8 @@ public partial class ShellWindow
     // ファイル履歴を back の向きへ 1 つ移動する。移動先タブが開いていれば前面化し、 閉じていて実在すれば開き直す。消えたファイルは飛ばして次の履歴へ進む。移動中は _editorSupport.IsNavigating を立て、内部で走る SwitchEditorSupportSourceAsync の 履歴記録を抑止する（二重記録・forward 破棄の防止）。
     private async Task EditorSupportNavigateHistoryAsync(bool back)
     {
-        _editorSupport.IsNavigating = true;
-        try
-        {
-            while ((back ? _editorSupport.History.GoBack() : _editorSupport.History.GoForward()) is { } path)
-            {
-                var open = _editorTabs.FirstOrDefault(t =>
-                    string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
-                if (open is not null)
-                {
-                    ActivateEditorTab(open.Id);
-                    break;
-                }
-
-                if (File.Exists(path))
-                {
-                    await OpenFileInNewEditorTabAsync(path);
-                    break;
-                }
-                // 消えたファイルは飛ばして次の履歴へ。
-            }
-        }
-        finally
-        {
-            _editorSupport.IsNavigating = false;
-        }
-
+        await _editorSupport.NavigateHistoryAsync(back, _editorTabs,
+            tab => ActivateEditorTab(tab.Id), path => OpenFileInNewEditorTabAsync(path));
         UpdateEditorSupportNavAffordances();
     }
 
@@ -239,67 +215,15 @@ public partial class ShellWindow
         // 描画要求のシーケンス番号。init / 変換の await を跨いで最後の要求だけが描くよう畳む。
         var seq = ++_editorSupportRenderSeq;
 
-        string title;
-        string? html = null;
-        string? body = null;
-        string? uri = null;
-        string? mapFolder = null;
-        string? pageKey = null;
-        if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
-        {
-            // PDF・SVG・HTML 等はファイルをそのままブラウザへナビゲートする（本文には依存しない）。
-            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: true, showExport: false);
-            title = uriProvider.DescribeTitle(filePath);
-            uri = uriProvider.ResolveNavigationUri(filePath);
-        }
-        else if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
-        {
-            // 発表モードは marp 文書（Markdown）にしか効かないので、Markdown 提供者のときだけ出す。
-            UpdateEditorSupportHeaderButtons(
-                showSlide: provider is MarkdownEditorSupport, showOpenInBrowser: true, showExport: true);
-            title = htmlProvider.DescribeTitle(filePath);
-            mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
-
-            // 同一ページ（テーマ・base href・対象ファイルが不変）を編集中なら、本文だけ差し替えて フル再ナビゲート（＝ページ再構築のチカチカ）を避ける。鍵が変わったら従来どおり再構築する。
-            var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
-            pageKey = incremental?.PageContextKey(filePath, text);
-            var reuseLoadedPage = incremental is not null && pageKey == _editorSupportWebView.ReadyPageKey;
-
-            // Markdown→HTML 変換は正規表現主体で重く、大きいファイルでは打鍵を固める。バックグラウンド スレッドで変換し、結果だけを UI スレッドへ戻して反映する（ユーザー操作を妨げない）。 変換例外はここで受け止める：このメソッドは ActivateEditorTab 等から fire-and-forget （`_ = SwitchEditorSupportSourceAsync(...)`）で呼ばれるため、投げっぱなしにすると タスクが黙って死に、ペインが直前の内容（別タブ・別ワークスペースのものすら）に 固まったまま以降の切替・編集でも一切更新されなくなる。
-            try
-            {
-                if (reuseLoadedPage)
-                    body = await Task.Run(() => incremental!.RenderBody(filePath, text));
-                else
-                    html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
-            }
-            catch (Exception ex)
-            {
-                body = null;
-                pageKey = null; // 壊れたページを以降の本文差し替え判定の「同一鍵」に使わせない
-                html = MarkdownRenderer.RenderToHtml(
-                    $"## プレビューエラー\n\n変換中に例外が発生しました。\n\n```\n{ex}\n```",
-                    title,
-                    _settings.Appearance.MarkdownPreviewTheme);
-            }
-
-            // 変換中に新しい要求が来ていれば、そちらが最新を描くのでこのコールは降りる。
-            if (seq != _editorSupportRenderSeq)
-                return;
-        }
-        else
-        {
-            // 手動表示中で対応プロバイダの無いファイル：案内だけ出す。
-            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
-            title = "Editor Support";
-            html = MarkdownRenderer.RenderToHtml(
-                "## Editor Support\n\nこのファイルに対応するサポートはありません。",
-                title,
-                _settings.Appearance.MarkdownPreviewTheme);
-        }
-
-        _editorSupportWebView.SetPending(html, body, uri, mapFolder, pageKey);
-        EditorSupportTitle.Text = title;
+        var content = await _editorSupport.PrepareWebContentAsync(
+            provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupportWebView.ReadyPageKey,
+            _settings.Appearance.MarkdownPreviewTheme);
+        if (seq != _editorSupportRenderSeq)
+            return;
+        UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);
+        _editorSupportWebView.SetPending(
+            content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
+        EditorSupportTitle.Text = content.Title;
 
         var view = await EnsureEditorSupportViewAsync();
         if (view?.CoreWebView2 is null)

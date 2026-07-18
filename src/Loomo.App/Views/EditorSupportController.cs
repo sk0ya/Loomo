@@ -28,10 +28,107 @@ internal sealed class EditorSupportController
         return previous;
     }
 
+    public async Task NavigateHistoryAsync(
+        bool back,
+        IReadOnlyList<EditorTab> openTabs,
+        Action<EditorTab> activate,
+        Func<string, Task> openFile)
+    {
+        IsNavigating = true;
+        try
+        {
+            while ((back ? History.GoBack() : History.GoForward()) is { } path)
+            {
+                var open = openTabs.FirstOrDefault(tab =>
+                    string.Equals(tab.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
+                if (open is not null)
+                {
+                    activate(open);
+                    return;
+                }
+                if (File.Exists(path))
+                {
+                    await openFile(path);
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            IsNavigating = false;
+        }
+    }
+
     public void Reset()
     {
         Source = null;
         IsPinned = false;
         IsNavigating = false;
     }
+
+    public async Task<EditorSupportWebContent> PrepareWebContentAsync(
+        IEditorSupportProvider? provider,
+        string? filePath,
+        string text,
+        string workspaceRoot,
+        string? readyPageKey,
+        string previewTheme)
+    {
+        if (provider is IEditorSupportUriProvider uriProvider && filePath is not null)
+        {
+            return new EditorSupportWebContent(
+                uriProvider.DescribeTitle(filePath), null, null,
+                uriProvider.ResolveNavigationUri(filePath), null, null,
+                ShowSlide: false, ShowOpenInBrowser: true, ShowExport: false);
+        }
+
+        if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
+        {
+            var title = htmlProvider.DescribeTitle(filePath);
+            var mapFolder = MarkdownPreviewPaths.Resolve(workspaceRoot, filePath).MapFolder;
+            var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
+            var pageKey = incremental?.PageContextKey(filePath, text);
+            string? html = null;
+            string? body = null;
+            try
+            {
+                if (incremental is not null && pageKey == readyPageKey)
+                    body = await Task.Run(() => incremental.RenderBody(filePath, text));
+                else
+                    html = await Task.Run(() => htmlProvider.RenderHtml(filePath, text));
+            }
+            catch (Exception ex)
+            {
+                pageKey = null;
+                html = MarkdownRenderer.RenderToHtml(
+                    $"## プレビューエラー\n\n変換中に例外が発生しました。\n\n```\n{ex}\n```",
+                    title, previewTheme);
+            }
+
+            return new EditorSupportWebContent(title, html, body, null, mapFolder, pageKey,
+                ShowSlide: provider is MarkdownEditorSupport,
+                ShowOpenInBrowser: true,
+                ShowExport: true);
+        }
+
+        const string fallbackTitle = "Editor Support";
+        return new EditorSupportWebContent(
+            fallbackTitle,
+            MarkdownRenderer.RenderToHtml(
+                "## Editor Support\n\nこのファイルに対応するサポートはありません。",
+                fallbackTitle, previewTheme),
+            null, null, null, null,
+            ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false);
+    }
 }
+
+internal sealed record EditorSupportWebContent(
+    string Title,
+    string? Html,
+    string? Body,
+    string? Uri,
+    string? MapFolder,
+    string? PageKey,
+    bool ShowSlide,
+    bool ShowOpenInBrowser,
+    bool ShowExport);
