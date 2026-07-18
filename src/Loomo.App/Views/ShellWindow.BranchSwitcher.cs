@@ -8,16 +8,10 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    /// <summary>
-    /// 各ポップアップが最後に閉じた時刻。<c>StaysOpen="False"</c> のポップアップは、開いている間に
-    /// 元のボタンを押すと、それを「外側クリック」とみなして<em>マウス押下で先に自分で閉じ</em>、その後
-    /// ボタンの Click が来る。素直に <see cref="Popup.IsOpen"/> を見て開き直すと押しても閉じない
-    /// （＝トグルにならない）ので、閉じた直後の Click は「閉じる操作だったぶん」として捨てる。
-    /// </summary>
+    // 各ポップアップが最後に閉じた時刻。StaysOpen="False" のポップアップは、開いている間に 元のボタンを押すと、それを「外側クリック」とみなしてマウス押下で先に自分で閉じ、その後 ボタンの Click が来る。素直に Popup.IsOpen を見て開き直すと押しても閉じない （＝トグルにならない）ので、閉じた直後の Click は「閉じる操作だったぶん」として捨てる。
     private readonly Dictionary<Popup, DateTime> _branchPopupClosedAt = new();
 
-    /// <summary>閉じた直後の Click を同じ操作の一部とみなす猶予。実測では押下→Click が約45ms
-    /// （<see cref="Popup.Closed"/> はさらに遅れて発火するうえ束ねられるので、時刻の記録には使えない）。</summary>
+    // 閉じた直後の Click を同じ操作の一部とみなす猶予。実測では押下→Click が約45ms （Popup.Closed はさらに遅れて発火するうえ束ねられるので、時刻の記録には使えない）。
     private static readonly TimeSpan BranchPopupReopenGuard = TimeSpan.FromMilliseconds(250);
 
     private void OnTitleBarBranchClick(object sender, RoutedEventArgs e)
@@ -46,8 +40,7 @@ public partial class ShellWindow
         popup.IsOpen = true;
     }
 
-    /// <summary>中身側から閉じたい（チェックアウト成功・ダイアログを出す前）ときの受け口と、
-    /// トグル判定用の「閉じた時刻」の記録をまとめて配線する。</summary>
+    // 中身側から閉じたい（チェックアウト成功・ダイアログを出す前）ときの受け口と、 トグル判定用の「閉じた時刻」の記録をまとめて配線する。
     private void HookBranchSwitchers()
     {
         Hook(BranchPopup, BranchSwitcher);

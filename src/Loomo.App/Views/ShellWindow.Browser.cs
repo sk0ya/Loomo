@@ -100,10 +100,7 @@ public partial class ShellWindow
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
 
-    /// <summary>
-    /// ブラウザタブを生成して即座に WebView2 まで実体化する（新規タブなど、直後に CoreWebView2 を
-    /// 使う呼び出し向け）。起動経路は <see cref="CreateBrowserTab"/>（遅延）を使う。
-    /// </summary>
+    // ブラウザタブを生成して即座に WebView2 まで実体化する（新規タブなど、直後に CoreWebView2 を 使う呼び出し向け）。起動経路は CreateBrowserTab（遅延）を使う。
     private async Task<BrowserTab> CreateBrowserTabAsync(
         string url,
         Guid? requestedId = null,
@@ -114,11 +111,7 @@ public partial class ShellWindow
         return tab;
     }
 
-    /// <summary>
-    /// ブラウザタブの器（WebView2 コントロール・タブUI）だけを同期で用意し、<b>CoreWebView2 の生成は遅延</b>する。
-    /// 重い <c>EnsureCoreWebView2Async</c> を起動の臨界パスから外すのが狙い。実体化は Browser ペインが
-    /// 見えてアクティブになった時（<see cref="ScheduleBrowserRealize"/>）に背景優先度で行う。
-    /// </summary>
+    // ブラウザタブの器（WebView2 コントロール・タブUI）だけを同期で用意し、CoreWebView2 の生成は遅延する。 重い EnsureCoreWebView2Async を起動の臨界パスから外すのが狙い。実体化は Browser ペインが 見えてアクティブになった時（ScheduleBrowserRealize）に背景優先度で行う。
     private BrowserTab CreateBrowserTab(
         string url,
         Guid? requestedId = null,
@@ -147,9 +140,7 @@ public partial class ShellWindow
         return tab;
     }
 
-    /// <summary>
-    /// タブの CoreWebView2 を生成し、保留中の URL があればナビゲートする（冪等・多重生成防止）。
-    /// </summary>
+    // タブの CoreWebView2 を生成し、保留中の URL があればナビゲートする（冪等・多重生成防止）。
     private async Task EnsureBrowserRealizedAsync(BrowserTab tab)
     {
         if (tab.RealizationStarted)
@@ -176,11 +167,7 @@ public partial class ShellWindow
         await RefreshBrowserTabIconAsync(tab);
     }
 
-    /// <summary>
-    /// 実体化した CoreWebView2 を通常ブラウザらしく設定する：パスワードの自動保存・自動入力を有効化し、
-    /// サイト権限（フォルダ/ファイルアクセス・通知・位置情報など）の許可/拒否をプロファイルへ保存させる。
-    /// 永続化先は <see cref="WebViewUserDataFolder"/>。
-    /// </summary>
+    // 実体化した CoreWebView2 を通常ブラウザらしく設定する：パスワードの自動保存・自動入力を有効化し、 サイト権限（フォルダ/ファイルアクセス・通知・位置情報など）の許可/拒否をプロファイルへ保存させる。 永続化先は WebViewUserDataFolder。
     private static void ConfigureBrowserCore(CoreWebView2 core)
     {
         var settings = core.Settings;
@@ -190,14 +177,7 @@ public partial class ShellWindow
         core.PermissionRequested += OnBrowserPermissionRequested;
     }
 
-    /// <summary>
-    /// サイト権限リクエストの扱い。原則は既定UI（許可/拒否ダイアログ）に任せつつ、ユーザーの選択を
-    /// プロファイルへ保存して次回以降は再確認しないようにする（<see cref="CoreWebView2PermissionRequestedEventArgs.SavesInProfile"/>）。
-    ///
-    /// ただし File System Access API（フォルダ/ファイルの読み書き許可）は Chromium が原則セッション
-    /// 限りでしか権限を保持しないため、<c>SavesInProfile</c> を立てても起動のたびに再確認される。
-    /// dev ツール用途として、この権限だけは自動的に許可してプロンプトを抑止する。
-    /// </summary>
+    // サイト権限リクエストの扱い。原則は既定UI（許可/拒否ダイアログ）に任せつつ、ユーザーの選択を プロファイルへ保存して次回以降は再確認しないようにする（CoreWebView2PermissionRequestedEventArgs.SavesInProfile）。 ただし File System Access API（フォルダ/ファイルの読み書き許可）は Chromium が原則セッション 限りでしか権限を保持しないため、SavesInProfile を立てても起動のたびに再確認される。 dev ツール用途として、この権限だけは自動的に許可してプロンプトを抑止する。
     private static void OnBrowserPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
     {
         e.SavesInProfile = true;
@@ -206,10 +186,7 @@ public partial class ShellWindow
             e.State = CoreWebView2PermissionState.Allow;
     }
 
-    /// <summary>
-    /// Browser ペインが表示中なら、アクティブなブラウザタブの WebView2 実体化を背景優先度で予約する。
-    /// 起動・レイアウト変更の臨界パスをブロックしないよう <see cref="DispatcherPriority.Background"/> で遅延実行する。
-    /// </summary>
+    // Browser ペインが表示中なら、アクティブなブラウザタブの WebView2 実体化を背景優先度で予約する。 起動・レイアウト変更の臨界パスをブロックしないよう DispatcherPriority.Background で遅延実行する。
     private void ScheduleBrowserRealize(BrowserTab? tab)
     {
         // ステージモード中はブラウザも必ず（舞台か袖の）どこかに見えている。

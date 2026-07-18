@@ -13,15 +13,15 @@ public partial class ShellWindow
 
     private VimEditorControl? _composerEditor;
 
-    /// <summary>エディタ未生成の間に復元された本文（生成時に流し込む）。</summary>
+    // エディタ未生成の間に復元された本文（生成時に流し込む）。
     private string _composerPendingText = string.Empty;
 
-    /// <summary>閉じる前の高さ（再表示で復元）。</summary>
+    // 閉じる前の高さ（再表示で復元）。
     private double _composerHeight = ComposerDefaultHeight;
 
     private bool IsComposerVisible => ComposerSection.Visibility == Visibility.Visible;
 
-    /// <summary>ターミナルヘッダーのトグル／コンポーザ内の ✕。</summary>
+    // ターミナルヘッダーのトグル／コンポーザ内の ✕。
     private void OnToggleComposer(object sender, RoutedEventArgs e)
         => SetComposerVisible(!IsComposerVisible);
 
@@ -50,7 +50,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>初回表示でエディタを実体化する（起動コストをかけない遅延生成）。</summary>
+    // 初回表示でエディタを実体化する（起動コストをかけない遅延生成）。
     private void EnsureComposerEditor()
     {
         if (_composerEditor is not null)
@@ -73,10 +73,7 @@ public partial class ShellWindow
         ComposerEditorHost.Child = editor;
     }
 
-    /// <summary>コンポーザ内のどこでも、<c>composer.run</c> の実効ジェスチャ（既定 Ctrl+Enter）で実行する。
-    /// Vim 編集と衝突しないトンネリングで先取りする。ウィンドウ全体のディスパッチャはこのコマンドの
-    /// アクションを持たない（＝消費しない）ため、コンポーザにフォーカスがある時だけここで拾える。
-    /// 単一ジェスチャのみ対応（連鎖を割り当てた場合はコンポーザ内ショートカットとしては無効）。</summary>
+    // コンポーザ内のどこでも、composer.run の実効ジェスチャ（既定 Ctrl+Enter）で実行する。 Vim 編集と衝突しないトンネリングで先取りする。ウィンドウ全体のディスパッチャはこのコマンドの アクションを持たない（＝消費しない）ため、コンポーザにフォーカスがある時だけここで拾える。 単一ジェスチャのみ対応（連鎖を割り当てた場合はコンポーザ内ショートカットとしては無効）。
     private void OnComposerPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_keybindings.For("composer.run") is { Count: 1 } seq
@@ -89,7 +86,7 @@ public partial class ShellWindow
 
     private void OnComposerRun(object sender, RoutedEventArgs e) => RunComposer();
 
-    /// <summary>「📌 ペグボードへ」：組み立てた本文をペグボードへピンして再利用できるようにする。</summary>
+    // 「📌 ペグボードへ」：組み立てた本文をペグボードへピンして再利用できるようにする。
     private void OnComposerPinToPegboard(object sender, RoutedEventArgs e)
     {
         var text = CaptureComposerText();
@@ -97,7 +94,7 @@ public partial class ShellWindow
             _vm.Pegboard.AddContent(text, type: "text");
     }
 
-    /// <summary>ペグボード等からの「コンポーザへ挿入」。表示して本文の末尾に足す（素材の流れ）。</summary>
+    // ペグボード等からの「コンポーザへ挿入」。表示して本文の末尾に足す（素材の流れ）。
     private void InsertIntoComposer(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -112,8 +109,7 @@ public partial class ShellWindow
         editor.Focus();
     }
 
-    /// <summary>コンポーザ本文を直上の可視ターミナルで実行する（複数行は一時 .ps1 経由・§23.2）。
-    /// フォーカスはコンポーザに残す（コマンドを推敲しながら繰り返し実行する使い方のため）。</summary>
+    // コンポーザ本文を直上の可視ターミナルで実行する（複数行は一時 .ps1 経由・§23.2）。 フォーカスはコンポーザに残す（コマンドを推敲しながら繰り返し実行する使い方のため）。
     private void RunComposer()
     {
         if (_composerEditor is not { } editor)
@@ -141,7 +137,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    /// <summary>ワークスペース切替時の復元（本文・表示状態・高さ）。開いたまま離れたら開いたまま戻る。</summary>
+    // ワークスペース切替時の復元（本文・表示状態・高さ）。開いたまま離れたら開いたまま戻る。
     private void RestoreComposer(WorkspaceSnapshot workspace)
     {
         _composerPendingText = workspace.ComposerText ?? string.Empty;
@@ -157,11 +153,11 @@ public partial class ShellWindow
             ComposerRow.Height = new GridLength(_composerHeight);
     }
 
-    /// <summary>スナップショット保存時の本文捕捉。エディタ未生成なら直近の復元値を保つ。</summary>
+    // スナップショット保存時の本文捕捉。エディタ未生成なら直近の復元値を保つ。
     private string CaptureComposerText()
         => _composerEditor?.Text ?? _composerPendingText;
 
-    /// <summary>スナップショット保存時の高さ捕捉（表示中はスプリッタで変わり得る現在値を優先）。</summary>
+    // スナップショット保存時の高さ捕捉（表示中はスプリッタで変わり得る現在値を優先）。
     private double CaptureComposerHeight()
         => IsComposerVisible && ComposerRow.Height.IsAbsolute ? ComposerRow.Height.Value : _composerHeight;
 }

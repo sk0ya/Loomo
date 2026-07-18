@@ -9,9 +9,7 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow
 {
-    /// <summary>ctor から一度だけ呼び、停止位置→実行行ハイライトの配線をつなぐ。
-    /// デバッグペインの開閉はタイトルバーのペイントグル（他ペインと同じ <c>OnTogglePaneVisibility</c>）が担う。
-    /// アダプタ未導入の再確認は未導入バーの「再確認」ボタンで行う。</summary>
+    // ctor から一度だけ呼び、停止位置→実行行ハイライトの配線をつなぐ。 デバッグペインの開閉はタイトルバーのペイントグル（他ペインと同じ OnTogglePaneVisibility）が担う。 アダプタ未導入の再確認は未導入バーの「再確認」ボタンで行う。
     private void InitializeDebugWiring()
     {
         _vm.Debug.ExecutionLineChanged += OnDebugExecutionLineChanged;
@@ -21,29 +19,27 @@ public partial class ShellWindow
         _vm.Debug.StoppedChanged += OnDebugStoppedChanged;
     }
 
-    /// <summary>停止/再開に合わせて全エディタの DataTip（ホバー値表示）を有効化/無効化する。
-    /// 停止中だけホバー評価を許可し、再開・終了でポップアップを閉じる。</summary>
+    // 停止/再開に合わせて全エディタの DataTip（ホバー値表示）を有効化/無効化する。 停止中だけホバー評価を許可し、再開・終了でポップアップを閉じる。
     private void OnDebugStoppedChanged(bool stopped)
     {
         foreach (var c in RealizedEditorControls())
             c.SetDataTipsEnabled(stopped);
     }
 
-    /// <summary>ブレークポイント管理パネルでの削除/全削除を、そのパスを開いているエディタのガターへ反映する。</summary>
+    // ブレークポイント管理パネルでの削除/全削除を、そのパスを開いているエディタのガターへ反映する。
     private void OnDebugBreakpointsRefreshed(string path)
     {
         if (FindEditorControl(path) is { } control) SyncEditorBreakpoints(control);
     }
 
-    /// <summary>コールスタックのフレーム選択：そのソース位置をプレビュータブで表示し、その行へスクロールする。
-    /// フォーカスはデバッグペイン側に残す（プレビュー）。</summary>
+    // コールスタックのフレーム選択：そのソース位置をプレビュータブで表示し、その行へスクロールする。 フォーカスはデバッグペイン側に残す（プレビュー）。
     private async void OnDebugFramePreviewRequested(string path, int line0)
     {
         await OpenFileInPreviewTabAsync(path);
         NavigateActiveEditorTo(path, line0);
     }
 
-    /// <summary>コールスタックのフレームのダブルクリック：通常タブで開いてジャンプし、エディタにフォーカスする。</summary>
+    // コールスタックのフレームのダブルクリック：通常タブで開いてジャンプし、エディタにフォーカスする。
     private async void OnDebugFrameActivated(string path, int line0)
     {
         // OpenPathInEditorAsync は 1 始まりの行を受け取り内部で -1 する。
@@ -51,7 +47,7 @@ public partial class ShellWindow
         if (_activeEditorTab is { } tab) tab.Control.Focus();
     }
 
-    /// <summary>アクティブなエディタタブが指定パスを開いていれば、その行（0 始まり）へキャレットを移す。</summary>
+    // アクティブなエディタタブが指定パスを開いていれば、その行（0 始まり）へキャレットを移す。
     private void NavigateActiveEditorTo(string path, int line0)
     {
         if (line0 < 0) return;
@@ -61,7 +57,7 @@ public partial class ShellWindow
             tab.Control.NavigateTo(line0, 0);
     }
 
-    /// <summary>新規エディタにブレークポイント列を有効化し、トグル/同期を配線する（BuildEditorControl から呼ぶ）。</summary>
+    // 新規エディタにブレークポイント列を有効化し、トグル/同期を配線する（BuildEditorControl から呼ぶ）。
     private void WireEditorForDebug(VimEditorControl control)
     {
         control.SetBreakpointsEnabled(true);
@@ -90,8 +86,7 @@ public partial class ShellWindow
             : _vm.Debug.Breakpoints.GetBreakpointGlyphs(path).Select(ToEditorBreakpoint).ToList());
     }
 
-    /// <summary>VM のブレークポイントメタを Editor のガター表示用 <see cref="EditorBreakpoint"/> へ写像する。
-    /// ログポイント（◆）を条件付き（＋）より優先して描く。</summary>
+    // VM のブレークポイントメタを Editor のガター表示用 EditorBreakpoint へ写像する。 ログポイント（◆）を条件付き（＋）より優先して描く。
     private static EditorBreakpoint ToEditorBreakpoint(BreakpointGlyphInfo info)
     {
         var glyph = info.IsLogpoint ? BreakpointGlyphKind.Logpoint
@@ -100,8 +95,7 @@ public partial class ShellWindow
         return new EditorBreakpoint(info.Line0, glyph, info.Enabled);
     }
 
-    /// <summary>停止位置をエディタへ反映する。まず全エディタの実行行を解除し、対象パスのエディタを
-    /// （無ければ開いて）見つけてその行をハイライトする。path=null/line&lt;0 は解除のみ。</summary>
+    // 停止位置をエディタへ反映する。まず全エディタの実行行を解除し、対象パスのエディタを （無ければ開いて）見つけてその行をハイライトする。path=null/line<0 は解除のみ。
     private async void OnDebugExecutionLineChanged(string? path, int line0)
     {
         foreach (var c in RealizedEditorControls())
