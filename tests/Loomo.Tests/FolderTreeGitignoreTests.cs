@@ -45,7 +45,7 @@ public sealed class FolderTreeGitignoreTests : IDisposable
         var workspace = new FakeWorkspaceService();
         return new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace));
+            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
     }
 
     [Fact]

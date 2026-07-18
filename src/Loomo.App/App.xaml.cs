@@ -234,6 +234,7 @@ public partial class App : Application
         services.AddSingleton<TabIconService>();
         services.AddSingleton<Input.KeybindingService>();
         services.AddSingleton<FolderTreeCommandHandler>();
+        services.AddSingleton<FolderTreeQuery>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
         services.AddSingleton<WorkflowToolRunner>();

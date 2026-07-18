@@ -31,7 +31,7 @@ public sealed partial class FolderTreeViewModel
             return;
 
         var full = Path.GetFullPath(fullPath);
-        if (PathsEqual(full, _workspaceRoot) || IsPinnedPath(full) || !Directory.Exists(full))
+        if (PathsEqual(full, _workspaceRoot) || IsPinnedPath(full) || !_query.DirectoryExists(full))
             return;
 
         RootOptions.Add(new FolderRootOption(full, LabelFor(full), isPinned: true));
@@ -92,7 +92,7 @@ public sealed partial class FolderTreeViewModel
                 if (string.IsNullOrWhiteSpace(pin))
                     continue;
                 var full = Path.GetFullPath(pin);
-                if (PathsEqual(full, _workspaceRoot!) || !Directory.Exists(full))
+                if (PathsEqual(full, _workspaceRoot!) || !_query.DirectoryExists(full))
                     continue;
                 if (RootOptions.Any(o => PathsEqual(o.FullPath, full)))
                     continue;

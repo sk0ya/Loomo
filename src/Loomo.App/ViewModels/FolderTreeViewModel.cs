@@ -23,6 +23,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly IAiWarmup _warmup;
     private readonly WorkflowStore _workflows;
     private readonly FolderTreeCommandHandler _fileCommands;
+    private readonly FolderTreeQuery _query;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -143,12 +144,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     public event EventHandler? RevealCurrentFileRequested;
 
     public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
-        FolderTreeCommandHandler fileCommands)
+        FolderTreeCommandHandler fileCommands, FolderTreeQuery query)
     {
         _workspace = workspace;
         _warmup = warmup;
         _workflows = workflows;
         _fileCommands = fileCommands;
+        _query = query;
     }
 
     /// <summary>AIの暖機が完了してモデルが使える状態か。「AI-誤字脱字チェック」メニューの出し分けに使う
@@ -188,20 +190,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ExpandAll()
-    {
-        foreach (var node in Nodes)
-            ExpandRecursive(node, depth: 0);
-    }
-
-    [RelayCommand]
-    private void CollapseAll()
-    {
-        foreach (var node in Nodes)
-            CollapseRecursive(node);
-    }
-
-    [RelayCommand]
     private void RevealCurrentFile() => RevealCurrentFileRequested?.Invoke(this, EventArgs.Empty);
 
     partial void OnHideIgnoredFilesChanged(bool value) => RefreshWorkspace();
@@ -212,28 +200,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 文字入力を止めないよう、再構築はデバウンス＋バックグラウンドで行う（ScheduleFilter）。
     // ハイライト用の SearchFilter バインドは即時更新されるので、入力の手応えは保たれる。
     partial void OnSearchFilterChanged(string value) => ScheduleFilter(value);
-
-    private static void ExpandRecursive(FileNodeViewModel node, int depth)
-    {
-        if (!node.IsDirectory || depth > FolderTreeFilter.MaxDepth || FolderTreeFilter.IsReparsePoint(node.FullPath))
-            return;
-
-        node.IsExpanded = true;
-
-        foreach (var child in node.Children)
-            ExpandRecursive(child, depth + 1);
-    }
-
-    private static void CollapseRecursive(FileNodeViewModel node)
-    {
-        if (!node.IsDirectory)
-            return;
-
-        node.IsExpanded = false;
-
-        foreach (var child in node.Children)
-            CollapseRecursive(child);
-    }
 
     private bool IsFiltering => !string.IsNullOrEmpty(SearchFilter);
 
@@ -329,101 +295,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         return -1;
     }
 
-    // フィルタの実体。入力連打中は debounce で再構築を間引き、重い列挙＋git は
-    // Task.Run でバックグラウンド実行する。後続の入力が来たら CancellationToken で打ち切る。
-    private async void ScheduleFilter(string query)
-    {
-        // 進行中のフィルタを打ち切る。古い CTS の Dispose は、その所有タスク自身が
-        // finally で行う（ここで Dispose すると、まだ token を見ている処理が
-        // ObjectDisposedException を投げ得るため）。
-        _filterCts?.Cancel();
-
-        if (_currentRoot is null)
-            return;
-
-        if (string.IsNullOrEmpty(query))
-        {
-            // 解除はトップレベルのみで軽いので即時反映。
-            _filterCts = null;
-            ReloadNodes();
-            FilterCompleted?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
-        var cts = new CancellationTokenSource();
-        _filterCts = cts;
-        var token = cts.Token;
-        var root = _currentRoot;
-
-        try
-        {
-            await Task.Delay(160, token);   // 入力が続く間は再構築しない
-            var built = await Task.Run(() => BuildFilteredTree(root, token), token);
-            token.ThrowIfCancellationRequested();
-
-            // ここは await 後＝UI スレッド。Nodes を一括で差し替える。
-            Nodes.Clear();
-            foreach (var node in built)
-                Nodes.Add(node);
-
-            HasVisibleNodes = Nodes.Count > 0;
-            EmptyMessage = CreateEmptyMessage();
-            FilterCompleted?.Invoke(this, EventArgs.Empty);
-        }
-        catch (OperationCanceledException)
-        {
-            // 後続の入力／更新に置き換えられた。表示はそのまま残す。
-        }
-        catch
-        {
-            // 想定外の I/O 等。async void なのでここで握りつぶし、表示は維持する
-            // （UI スレッドへ伝播するとアプリが落ちるため。git 系の例外と同じ防御方針）。
-        }
-        finally
-        {
-            // 自分が現役なら参照を外し、いずれにせよ自分の CTS は確実に破棄する。
-            if (ReferenceEquals(_filterCts, cts))
-                _filterCts = null;
-            cts.Dispose();
-        }
-    }
-
-    // フィルタの実体は FolderTreeFilter（Services）。表示条件・git 問い合わせだけを渡す。
-    private List<FileNodeViewModel> BuildFilteredTree(string root, CancellationToken token)
-    {
-        var entries = FolderTreeFilter.BuildFilteredTree(
-            root,
-            MatchesFilter,
-            ShouldShow,
-            _gitState.GetIgnoredPaths,
-            computeIgnored: HideIgnoredFiles && !ShowChangedOnly,
-            token);
-        return entries.Select(ToNode).ToList();
-    }
-
-    // フィルタ結果（UI 非依存の Entry）を表示用ノードへ変換する。一致フォルダは自動展開して
-    // 埋もれたヒットを見せる。reparse point は展開しない葉として見せる。
-    private FileNodeViewModel ToNode(FolderTreeFilter.Entry entry)
-    {
-        var node = new FileNodeViewModel(entry.FullPath, entry.IsDirectory, this);
-        if (entry.IsReparseLeaf)
-        {
-            node.LoadChildren(Array.Empty<FileNodeViewModel>());
-        }
-        else if (entry.IsDirectory)
-        {
-            node.LoadChildren(entry.Children.Select(ToNode).ToList());
-            node.IsExpanded = true;
-        }
-        return node;
-    }
-
     private IEnumerable<FileNodeViewModel> EnumerateChildren(string path)
     {
-        if (!Directory.Exists(path)) yield break;
-
-        var directories = Directory.EnumerateDirectories(path).ToArray();
-        var files = Directory.EnumerateFiles(path).ToArray();
+        var entries = _query.EnumerateChildren(path);
+        var directories = entries.Directories;
+        var files = entries.Files;
         // 「変更のみ表示」では変更ファイル集合だけを通すため、ignore 判定は不要
         // （git が変更として報告するパスは ignore 対象になり得ない）。これにより、
         // 変更フォルダを再帰的に自動展開する際にディレクトリ階層ごとに
@@ -500,83 +376,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             return "変更されたファイルはありません";
 
         return "表示する項目はありません";
-    }
-
-    /// <summary>git 状態（rev-parse / status / check-ignore のためのインデックス）をバックグラウンドで
-    /// 読み込み、完了後に UI スレッドで <see cref="_gitState"/> を差し替えて <see cref="ReloadNodes"/> で
-    /// ツリー（ignore 非表示・差分マーク）へ反映する。git プロセス起動は大きいリポジトリで数百ms〜と
-    /// 重く、これを UI スレッドで同期実行するとワークスペース切替・監視更新が固まるため逃がす。
-    /// 読込中は既存のツリー表示をそのまま残す（呼び出し側が必要なら先に Nodes をクリアする）。</summary>
-    private void RefreshGitStateAsync()
-    {
-        _gitLoadCts?.Cancel();
-        // 新しい状態を構築している間、切替前ワークスペースの全パスを保持し続けない。
-        _gitState = GitTreeState.Empty;
-
-        if (_currentRoot is null)
-        {
-            _gitLoadCts = null;
-            _gitState = GitTreeState.Empty;
-            FilterStatus = "";
-            ReloadNodes();
-            _gitLoadTask = Task.CompletedTask;
-            return;
-        }
-
-        var root = _currentRoot;
-        var cts = new CancellationTokenSource();
-        _gitLoadCts = cts;
-        _gitLoadTask = LoadGitStateAndReloadAsync(root, cts);
-    }
-
-    private async Task LoadGitStateAndReloadAsync(string root, CancellationTokenSource cts)
-    {
-        var token = cts.Token;
-        try
-        {
-            var state = await Task.Run(() => GitTreeState.Load(root, token), token);
-            token.ThrowIfCancellationRequested();
-
-            // 切替・別ルート選択・更新で置き換えられていたら、この結果は捨てる
-            // （await 後は UI スレッド。_gitState/Nodes の操作はここで安全に行える）。
-            if (!ReferenceEquals(_gitLoadCts, cts)
-                || _currentRoot is null
-                || !PathsEqual(_currentRoot, root))
-                return;
-
-            _gitState = state;
-            ApplyFilterStatus(state);
-            ReloadNodes();
-        }
-        catch (OperationCanceledException)
-        {
-            // 後続のルート切替・更新に置き換えられた。表示はそのまま。
-        }
-        catch
-        {
-            // git／I-O の想定外例外は握りつぶす（async void なので UI へ伝播させない。
-            // 既存の git 例外防御方針と同じ）。
-        }
-        finally
-        {
-            if (ReferenceEquals(_gitLoadCts, cts))
-                _gitLoadCts = null;
-            cts.Dispose();
-        }
-    }
-
-    private void ApplyFilterStatus(GitTreeState state)
-    {
-        var filters = new List<string>();
-        if (HideIgnoredFiles) filters.Add("ignore 非表示");
-        if (ShowChangedOnly) filters.Add("変更のみ");
-
-        var gitStatus = state.IsGitRepository
-            ? $"{state.ChangedFiles.Count} 件変更"
-            : "Git 未検出";
-        FilterStatus = filters.Count == 0
-            ? gitStatus
-            : $"{string.Join(" / ", filters)} - {gitStatus}";
     }
 
     private void StartWatching(string path)

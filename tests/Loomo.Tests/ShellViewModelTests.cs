@@ -22,7 +22,7 @@ public class ShellViewModelTests
         var workspace = new FakeWorkspaceService();
         var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace));
+            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
 
         var approval = new UiApprovalService();
         var settings = new AiSettings();
