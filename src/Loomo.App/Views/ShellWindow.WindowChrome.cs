@@ -12,16 +12,6 @@ public partial class ShellWindow
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 0x0002;
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ReleaseCapture();
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDoubleClickTime();
-
     /// <summary>直近に ActivityBar をクリックした時刻（TickCount64）。ダブルクリック自前判定用。</summary>
     private long _lastActivityBarClickTick;
 
@@ -109,7 +99,6 @@ public partial class ShellWindow
     private const int SC_SIZE = 0xF000;
     private const int SC_MOVE = 0xF010;
     private const int SC_MAXIMIZE = 0xF030;
-    private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -127,15 +116,15 @@ public partial class ShellWindow
         }
         else if (msg == WM_GETMINMAXINFO)
         {
-            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
             if (monitor != IntPtr.Zero)
             {
-                var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                var monitorInfo = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
                 if (GetMonitorInfo(monitor, ref monitorInfo))
                 {
                     var work = monitorInfo.rcWork;
                     var mon = monitorInfo.rcMonitor;
-                    var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+                    var mmi = Marshal.PtrToStructure<MinMaxInfo>(lParam);
                     // 最大化位置とサイズをワーク領域基準（モニタ左上からの相対）に設定する。
                     mmi.ptMaxPosition.X = work.Left - mon.Left;
                     mmi.ptMaxPosition.Y = work.Top - mon.Top;

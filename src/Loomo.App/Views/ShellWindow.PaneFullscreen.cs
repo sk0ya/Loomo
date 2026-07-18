@@ -10,7 +10,7 @@ public partial class ShellWindow
     private WindowState _fullscreenPreviousWindowState;
     private ResizeMode _fullscreenPreviousResizeMode;
     private bool _fullscreenPreviousTopmost;
-    private RECT _fullscreenPreviousWindowRect;
+    private NativeRect _fullscreenPreviousWindowRect;
     private Rect _fullscreenPreviousRestoreBounds;
     private GridLength _fullscreenActivityBarWidth;
     private GridLength _fullscreenTitleBarHeight;
@@ -45,9 +45,9 @@ public partial class ShellWindow
         var center = paneElement.PointToScreen(
             new Point(paneElement.ActualWidth / 2, paneElement.ActualHeight / 2));
         var monitor = MonitorFromPoint(
-            new POINT { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) },
-            MONITOR_DEFAULTTONEAREST);
-        var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            new NativePoint { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) },
+            MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref monitorInfo))
             return;
 
@@ -88,7 +88,7 @@ public partial class ShellWindow
         var screen = monitorInfo.rcMonitor;
         SetWindowPos(hwnd, IntPtr.Zero,
             screen.Left, screen.Top, screen.Right - screen.Left, screen.Bottom - screen.Top,
-            SWP_NOZORDER | SWP_NOACTIVATE);
+            SwpNoZOrder | SwpNoActivate);
         FocusPane(pane);
     }
 
@@ -127,7 +127,7 @@ public partial class ShellWindow
             var rect = _fullscreenPreviousWindowRect;
             SetWindowPos(hwnd, IntPtr.Zero,
                 rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top,
-                SWP_NOZORDER | SWP_NOACTIVATE);
+                SwpNoZOrder | SwpNoActivate);
         }
 
         UpdateMaximizeGlyph();
@@ -135,6 +135,4 @@ public partial class ShellWindow
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => FocusPane(focus)));
     }
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromPoint(POINT point, uint flags);
 }

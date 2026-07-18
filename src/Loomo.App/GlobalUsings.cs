@@ -40,3 +40,8 @@ global using sk0ya.Loomo.Core.Abstractions;
 global using sk0ya.Loomo.Core.Agent;
 global using sk0ya.Loomo.Core.Models;
 global using sk0ya.Loomo.Services;
+global using static sk0ya.Loomo.App.Views.WindowNative;
+global using RECT = sk0ya.Loomo.App.Views.WindowNative.NativeRect;
+global using POINT = sk0ya.Loomo.App.Views.WindowNative.NativePoint;
+global using MONITORINFO = sk0ya.Loomo.App.Views.WindowNative.MonitorInfo;
+global using MINMAXINFO = sk0ya.Loomo.App.Views.WindowNative.MinMaxInfo;

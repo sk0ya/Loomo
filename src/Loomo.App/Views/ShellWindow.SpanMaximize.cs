@@ -24,11 +24,10 @@ public partial class ShellWindow
             },
             IntPtr.Zero);
 
-        var result = works
-            .Where(w => w.Bottom > currentWork.Top && w.Top < currentWork.Bottom)
-            .OrderBy(w => w.Left)
+        var current = ToScreenRect(currentWork);
+        return SpanLayoutPlanner.SideBySide(current, works.Select(ToScreenRect))
+            .Select(ToNativeRect)
             .ToList();
-        return result.Count > 0 ? result : new List<RECT> { currentWork };
     }
 
     /// <summary>
@@ -38,24 +37,16 @@ public partial class ShellWindow
     /// </summary>
     private static RECT ComputeMaximizeRect(RECT currentWork)
     {
-        var result = currentWork;
-        var top = currentWork.Top;
-        var bottom = currentWork.Bottom;
-        foreach (var w in GetSideBySideWorkAreas(currentWork))
-        {
-            result.Left = Math.Min(result.Left, w.Left);
-            result.Right = Math.Max(result.Right, w.Right);
-            top = Math.Max(top, w.Top);
-            bottom = Math.Min(bottom, w.Bottom);
-        }
-
-        // 共通帯が成立しない（理論上のみ）場合は現在のワーク領域へフォールバック
-        if (bottom <= top)
-            return currentWork;
-        result.Top = top;
-        result.Bottom = bottom;
-        return result;
+        var current = ToScreenRect(currentWork);
+        return ToNativeRect(SpanLayoutPlanner.MaximizeRect(
+            current, GetSideBySideWorkAreas(currentWork).Select(ToScreenRect)));
     }
+
+    private static ScreenRect ToScreenRect(RECT rect)
+        => new(rect.Left, rect.Top, rect.Right, rect.Bottom);
+
+    private static RECT ToNativeRect(ScreenRect rect)
+        => new() { Left = rect.Left, Top = rect.Top, Right = rect.Right, Bottom = rect.Bottom };
 
     /// <summary>疑似最大化（マルチモニタ跨ぎ）中か。WindowState は Normal のまま運用する。</summary>
     private bool _isSpanMaximized;
@@ -318,63 +309,5 @@ public partial class ShellWindow
         SpanMaximizeButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private const uint SWP_NOZORDER = 0x0004;
-    private const uint SWP_NOACTIVATE = 0x0010;
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetCursorPos(out POINT lpPoint);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-
-    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
-    {
-        public int Left, Top, Right, Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X, Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MONITORINFO
-    {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MINMAXINFO
-    {
-        public POINT ptReserved;
-        public POINT ptMaxSize;
-        public POINT ptMaxPosition;
-        public POINT ptMinTrackSize;
-        public POINT ptMaxTrackSize;
-    }
 }
 
