@@ -51,12 +51,11 @@ public partial class ShellWindow : Window
     private readonly Services.EditorSupportHistory _editorSupportHistory = new();
     // 戻る/進む操作中は Services.EditorSupportHistory.Navigate 記録を抑止するガード。
     private bool _editorSupportNavigating;
-    private WebView2CompositionControl? _editorSupportView;
+    private EditorSupportWebViewController _editorSupportWebView = null!;
     // 現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。
     private FrameworkElement? _editorSupportVisual;
     // ContentEdited（グリッド編集→エディタ書き戻し）を購読済みのビジュアル提供者。
     private readonly HashSet<IEditorSupportVisualProvider> _editorSupportEditSubscribed = new();
-    private bool _editorSupportWebEventsAttached;
     private DispatcherTimer? _editorSupportDebounceTimer;
     // コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。
     private DispatcherTimer? _codeCaretTimer;
@@ -79,27 +78,16 @@ public partial class ShellWindow : Window
     // EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。
     private bool _editorSupportSourcePinned;
     // プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。 WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。
-    private Task<bool>? _editorSupportInitTask;
     // HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。
     private int _editorSupportRenderSeq;
     // 最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。
-    private string? _editorSupportPendingHtml;
     // 最新の本文差し替え内容（同一ページの編集中のみ。フル HTML 描画時は null）。
-    private string? _editorSupportPendingBody;
     // 最新描画のページ体裁の鍵（インクリメンタル提供者のみ。フル再構築の要否判定に使う）。
-    private string? _editorSupportPendingPageKey;
-    // いま再ナビゲート中のページ体裁の鍵（NavigationCompleted で _editorSupportReadyPageKey へ昇格）。
-    private string? _editorSupportLoadingPageKey;
     // WebView2 が読込完了し本文差し替え（setBody）を受け付けられるページ体裁の鍵。一致する間はフル再ナビゲートしない。
-    private string? _editorSupportReadyPageKey;
     // 最新のナビゲート先 URI（PDF 等の URI プロバイダ。HTML 描画時は null）。
-    private string? _editorSupportPendingUri;
     // 現在 WebView2 が表示中のナビゲート URI（同一 URI への再ナビゲートでスクロール位置を失わないためのガード）。
-    private string? _editorSupportNavigatedUri;
     // 最新の描画に対応する仮想ホストのマップ先（プロバイダ無しなら null）。
-    private string? _editorSupportPendingMapFolder;
     // 起動直後の初回ナビゲーション取りこぼし対策（初回完了時に最新内容を一度だけ描き直す）を実施済みか。
-    private bool _editorSupportFirstRenderHealed;
     // プレビューページ（フル HTML）を WebView2 へ配信する一時フォルダ。NavigateToString の 約 2MB 上限を避け、大きな Markdown でもページを表示するためファイル経由で配信する。
     private static readonly string EditorSupportPreviewFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -223,6 +211,14 @@ public partial class ShellWindow : Window
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
+        _editorSupportWebView = new EditorSupportWebViewController(
+            EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties,
+            EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested);
+        _editorSupportWebView.NavigationCompleted += (_, _) =>
+        {
+            if (_editorSupportSourceTab is not null)
+                PostEditorSupportScrollRatio(_editorSupportSourceTab.Control.VerticalScrollRatio);
+        };
         _editorSupports = editorSupports;
         _hexSupport = hexSupport;
         _codeSupport = codeSupport;

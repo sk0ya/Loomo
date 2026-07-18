@@ -13,8 +13,7 @@ public partial class ShellWindow
         else
             ShowEditorSupportPane();                 // タイルは Editor の右隣へ開く
         await UpdateEditorSupportAsync();
-        // 明示的なプレビュー要求＝「このファイルのプレビューを見に来た」地点。ペインフォーカスの
-        // デバウンス経路とは同一ファイルでデデュープされるので二重ドットにはならない。
+        // 明示的なプレビュー要求＝「このファイルのプレビューを見に来た」地点。ペインフォーカスの デバウンス経路とは同一ファイルでデデュープされるので二重ドットにはならない。
         RecordTrailPreview(sourceTab);
     }
 
@@ -95,9 +94,7 @@ public partial class ShellWindow
         StopCodeReadyRetry();
 
         _editorSupportSourceTab = sourceTab;
-        // 「戻る・進む」履歴へ現在ファイルを記録する（戻る/進む操作中は抑止＝二重記録・forward 破棄を防ぐ）。
-        // この記録は同期区間で走るので、ActivateEditorTab からの fire-and-forget 呼び出しでも
-        // _editorSupportNavigating の窓内で判定される。空/仮想パスは Navigate 側で無視。
+        // 「戻る・進む」履歴へ現在ファイルを記録する（戻る/進む操作中は抑止＝二重記録・forward 破棄を防ぐ）。 この記録は同期区間で走るので、ActivateEditorTab からの fire-and-forget 呼び出しでも _editorSupportNavigating の窓内で判定される。空/仮想パスは Navigate 側で無視。
         if (!_editorSupportNavigating)
         {
             _editorSupportHistory.Navigate(sourceTab.PeekFilePath);
@@ -207,9 +204,7 @@ public partial class ShellWindow
         var filePath = source.Control.FilePath;
         var provider = _editorSupports.Resolve(filePath);
 
-        // 自動表示はしない。ペインが実際に表示されている
-        // （タイルで可視 / ソロで舞台 / 袖・俯瞰ミニチュア）ときだけ描く。
-        // 判定は EditorSupportRenderPolicy に一元化（テスト可能）。
+        // 自動表示はしない。ペインが実際に表示されている （タイルで可視 / ソロで舞台 / 袖・俯瞰ミニチュア）ときだけ描く。 判定は EditorSupportRenderPolicy に一元化（テスト可能）。
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
         if (!EditorSupportRenderPolicy.ShouldRender(
                 onStage,
@@ -217,8 +212,7 @@ public partial class ShellWindow
                 IsEditorSupportInThumbnail()))
             return;
 
-        // 専用プロバイダの無いコードファイルは、LSP ベースの構造アウトラインへフォールバックする
-        // （registry 外・Hex と同じ形）。専用 provider 解決の後・ビジュアル/Hex 判定より前で拾う。
+        // 専用プロバイダの無いコードファイルは、LSP ベースの構造アウトラインへフォールバックする （registry 外・Hex と同じ形）。専用 provider 解決の後・ビジュアル/Hex 判定より前で拾う。
         if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath))
         {
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
@@ -226,8 +220,7 @@ public partial class ShellWindow
             return;
         }
 
-        // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。
-        // 対応プロバイダが無く、かつバイナリのファイルは Hex ダンプへフォールバックする（registry 外）。
+        // WPF コントロールをそのまま表示する提供者（CSV/TSV グリッド等）。WebView2 は使わない。 対応プロバイダが無く、かつバイナリのファイルは Hex ダンプへフォールバックする（registry 外）。
         var visual = provider as IEditorSupportVisualProvider;
         if (visual is null && provider is null && filePath is not null && BinaryFileDetector.IsBinary(filePath))
             visual = _hexSupport;
@@ -240,8 +233,7 @@ public partial class ShellWindow
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             ShowEditorSupportVisual(visual.GetOrCreateView());
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
-            // ファイル直読み系（Image/Hex/Office 等）はエディタ本文を使わない。巨大バイナリを文字列化して
-            // 渡す無駄を避け、UsesEditorText の提供者にだけ Control.Text を渡す。
+            // ファイル直読み系（Image/Hex/Office 等）はエディタ本文を使わない。巨大バイナリを文字列化して 渡す無駄を避け、UsesEditorText の提供者にだけ Control.Text を渡す。
             await visual.UpdateAsync(filePath, visual.UsesEditorText ? source.Control.Text : string.Empty);
             return;
         }
@@ -249,9 +241,7 @@ public partial class ShellWindow
         // WebView2 系。直前までビジュアル系を表示していたら退ける。
         HideEditorSupportVisual();
 
-        // 本文スナップショットは UI スレッドで取る（エディタは UI スレッド専有）。重い
-        // Markdown→HTML 変換はこの後バックグラウンドで行うので、ここで一度だけ読む。
-        // ファイル直読み系（Office 等 UsesEditorText=false）は本文を使わないので取得しない。
+        // 本文スナップショットは UI スレッドで取る（エディタは UI スレッド専有）。重い Markdown→HTML 変換はこの後バックグラウンドで行うので、ここで一度だけ読む。 ファイル直読み系（Office 等 UsesEditorText=false）は本文を使わないので取得しない。
         var text = (provider?.UsesEditorText ?? true) ? source.Control.Text : string.Empty;
 
         // 描画要求のシーケンス番号。init / 変換の await を跨いで最後の要求だけが描くよう畳む。
@@ -278,18 +268,12 @@ public partial class ShellWindow
             title = htmlProvider.DescribeTitle(filePath);
             mapFolder = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).MapFolder;
 
-            // 同一ページ（テーマ・base href・対象ファイルが不変）を編集中なら、本文だけ差し替えて
-            // フル再ナビゲート（＝ページ再構築のチカチカ）を避ける。鍵が変わったら従来どおり再構築する。
+            // 同一ページ（テーマ・base href・対象ファイルが不変）を編集中なら、本文だけ差し替えて フル再ナビゲート（＝ページ再構築のチカチカ）を避ける。鍵が変わったら従来どおり再構築する。
             var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
             pageKey = incremental?.PageContextKey(filePath, text);
-            var reuseLoadedPage = incremental is not null && pageKey == _editorSupportReadyPageKey;
+            var reuseLoadedPage = incremental is not null && pageKey == _editorSupportWebView.ReadyPageKey;
 
-            // Markdown→HTML 変換は正規表現主体で重く、大きいファイルでは打鍵を固める。バックグラウンド
-            // スレッドで変換し、結果だけを UI スレッドへ戻して反映する（ユーザー操作を妨げない）。
-            // 変換例外はここで受け止める：このメソッドは ActivateEditorTab 等から fire-and-forget
-            // （`_ = SwitchEditorSupportSourceAsync(...)`）で呼ばれるため、投げっぱなしにすると
-            // タスクが黙って死に、ペインが直前の内容（別タブ・別ワークスペースのものすら）に
-            // 固まったまま以降の切替・編集でも一切更新されなくなる。
+            // Markdown→HTML 変換は正規表現主体で重く、大きいファイルでは打鍵を固める。バックグラウンド スレッドで変換し、結果だけを UI スレッドへ戻して反映する（ユーザー操作を妨げない）。 変換例外はここで受け止める：このメソッドは ActivateEditorTab 等から fire-and-forget （`_ = SwitchEditorSupportSourceAsync(...)`）で呼ばれるため、投げっぱなしにすると タスクが黙って死に、ペインが直前の内容（別タブ・別ワークスペースのものすら）に 固まったまま以降の切替・編集でも一切更新されなくなる。
             try
             {
                 if (reuseLoadedPage)
@@ -322,19 +306,14 @@ public partial class ShellWindow
                 _settings.Appearance.MarkdownPreviewTheme);
         }
 
-        _editorSupportPendingHtml = html;
-        _editorSupportPendingBody = body;
-        _editorSupportPendingUri = uri;
-        _editorSupportPendingMapFolder = mapFolder;
-        _editorSupportPendingPageKey = pageKey;
+        _editorSupportWebView.SetPending(html, body, uri, mapFolder, pageKey);
         EditorSupportTitle.Text = title;
 
         var view = await EnsureEditorSupportViewAsync();
         if (view?.CoreWebView2 is null)
             return;
 
-        // init を待っている間に新しい描画要求が来ていれば、そちらが描くのでこのコールは降りる
-        // （起動時に殺到した要求が同時に NavigateToString して初回ナビゲーションを潰し合うのを防ぐ）。
+        // init を待っている間に新しい描画要求が来ていれば、そちらが描くのでこのコールは降りる （起動時に殺到した要求が同時に NavigateToString して初回ナビゲーションを潰し合うのを防ぐ）。
         if (seq != _editorSupportRenderSeq)
             return;
 
@@ -348,12 +327,10 @@ public partial class ShellWindow
         var seq = ++_editorSupportRenderSeq;
         var lsp = GetLspManager(source);
 
-        // 接続済み・ドキュメント準備済みに加え、LSP の現在ドキュメントが対象ファイルと一致することも
-        // 条件に含める（別ファイルのアウトラインを誤って描かないため）。
+        // 接続済み・ドキュメント準備済みに加え、LSP の現在ドキュメントが対象ファイルと一致することも 条件に含める（別ファイルのアウトラインを誤って描かないため）。
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
 
-        // 診断：コード表示要求の入口。ready 待ちのポーリング tick からの再入（fromReadyRetry）では計り直さず、
-        // 新規要求（ファイル切替・オープン・編集）のときだけ「ユーザーが待ち始めた」起点として計り直す。
+        // 診断：コード表示要求の入口。ready 待ちのポーリング tick からの再入（fromReadyRetry）では計り直さず、 新規要求（ファイル切替・オープン・編集）のときだけ「ユーザーが待ち始めた」起点として計り直す。
         if (CodeSupportDiag.IsEnabled)
         {
             if (!fromReadyRetry)
@@ -365,8 +342,7 @@ public partial class ShellWindow
                 $"elapsed={_codeSupportDiagStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_codeReadyRetryAttempts}");
         }
 
-        // コードビュー（無ければ生成）。ペインへの差し替え自体は「実際に何か描くとき」まで遅延する
-        // （↓の grace 参照）。差し替え＋タイトル更新をまとめる小ヘルパ。
+        // コードビュー（無ければ生成）。ペインへの差し替え自体は「実際に何か描くとき」まで遅延する （↓の grace 参照）。差し替え＋タイトル更新をまとめる小ヘルパ。
         var view = EnsureCodeOutlineView();
         void ShowCodeView()
         {
@@ -376,18 +352,13 @@ public partial class ShellWindow
 
         if (!ready)
         {
-            // 追従キャッシュは破棄（キャレット追従を止める）。案内を出したまま ready へ遷移しても再描画
-            // 契機が無いので、ready になるまで軽くポーリングして本描画へ差し替える（案内は描き直さない）。
+            // 追従キャッシュは破棄（キャレット追従を止める）。案内を出したまま ready へ遷移しても再描画 契機が無いので、ready になるまで軽くポーリングして本描画へ差し替える（案内は描き直さない）。
             _codeOutlineRoots = null;
             _codeOutlineSource = null;
             _codeCurrentSymbolRange = null;
             _codeCurrentCaret = null;
 
-            // ファイル切替直後、サーバーが ready になるまでの短い待ち（warm でも約1秒）に「接続待ち」案内を
-            // 毎回フラッシュさせるとうるさい、というフィードバックへの対応。導入済みで接続待ちのとき
-            // （EvaluateForFile==null）は grace 経過まで案内もペイン差し替えもせず、前の表示を保つ＝
-            // ready が grace 内に来れば案内は一切出ずに構造へ直行する。サーバー未導入（!=null）は actionable
-            // かつ永続的なので従来どおり即出す（フラッシュ対象ではない）。
+            // ファイル切替直後、サーバーが ready になるまでの短い待ち（warm でも約1秒）に「接続待ち」案内を 毎回フラッシュさせるとうるさい、というフィードバックへの対応。導入済みで接続待ちのとき （EvaluateForFile==null）は grace 経過まで案内もペイン差し替えもせず、前の表示を保つ＝ ready が grace 内に来れば案内は一切出ずに構造へ直行する。サーバー未導入（!=null）は actionable かつ永続的なので従来どおり即出す（フラッシュ対象ではない）。
             var prompt = _lspManagement.EvaluateForFile(filePath);
             if (prompt is not null || _codeReadyRetryAttempts >= CodeConnectingNoticeGraceTicks)
             {
@@ -401,8 +372,7 @@ public partial class ShellWindow
         // ready＝これから構造を描く。ここでペインをコードビューへ差し替える（grace 中は差し替えていない）。
         ShowCodeView();
 
-        // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める（以降のコールド構造
-        // リトライはこのメソッド内のループで面倒を見る）。
+        // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める（以降のコールド構造 リトライはこのメソッド内のループで面倒を見る）。
         StopCodeReadyRetry();
         // 診断：ready 待ちの合計（＝この地点までの経過）。ここから先は LSP 往復のコスト。
         CodeSupportDiag.Log($"ready reached after {_codeSupportDiagStopwatch?.ElapsedMilliseconds ?? 0}ms");
@@ -415,18 +385,12 @@ public partial class ShellWindow
         if (seq != _editorSupportRenderSeq)
             return;
 
-        // Caret.Line/Column は 0 始まり。LSP の DocumentSymbol も 0 始まりなので current 判定はそのまま、
-        // 表示・ジャンプ用の行だけ +1 して 1 始まりにする（ビュー側 DataLine1）。
+        // Caret.Line/Column は 0 始まり。LSP の DocumentSymbol も 0 始まりなので current 判定はそのまま、 表示・ジャンプ用の行だけ +1 して 1 始まりにする（ビュー側 DataLine1）。
         var caret = source.Control.Caret;
-        // シグネチャ（Detail）は本文の宣言行から切り出すので、ここで一度だけ行分割して渡す
-        // （エディタは UI スレッド専有。以降の LSP await を跨がないよう先に取る）。
+        // シグネチャ（Detail）は本文の宣言行から切り出すので、ここで一度だけ行分割して渡す （エディタは UI スレッド専有。以降の LSP await を跨がないよう先に取る）。
         var roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
 
-        // ★構造アウトラインを②（呼び出し解析）から切り離す。②の LSP 往復（特に prepareCallHierarchy は
-        //   コールド初回でプロジェクトのロード待ちに数秒かかる）に構造描画を引きずらせない＝
-        //   documentSymbols が返った時点で構造を先に描き、②はこの後バックグラウンドで後埋めする。
-        //   ただし構造が空（コールド初回はプロジェクト未ロードで documentSymbols が空を返す）のときは
-        //   誤った空アウトラインを確定させず、案内のまま②往復でサーバーを温めてから構造を取り直す（下記）。
+        // ★構造アウトラインを②（呼び出し解析）から切り離す。②の LSP 往復（特に prepareCallHierarchy は コールド初回でプロジェクトのロード待ちに数秒かかる）に構造描画を引きずらせない＝ documentSymbols が返った時点で構造を先に描き、②はこの後バックグラウンドで後埋めする。 ただし構造が空（コールド初回はプロジェクト未ロードで documentSymbols が空を返す）のときは 誤った空アウトラインを確定させず、案内のまま②往復でサーバーを温めてから構造を取り直す（下記）。
         if (roots.Count > 0)
         {
             var currentLine1 = CurrentMemberLine1(roots, caret);
@@ -439,15 +403,11 @@ public partial class ShellWindow
         }
         else
         {
-            // コールド初回：プロジェクト未ロードで構造が空。②往復でサーバーを温める数秒間、誤解を招く
-            //「（コード構造がありません）」プレースホルダではなく接続待ち案内を出しておく（真に数秒かかる
-            // 待ちなので案内が適切。warm の一瞬の待ちは grace 側で既に抑制済み）。
+            // コールド初回：プロジェクト未ロードで構造が空。②往復でサーバーを温める数秒間、誤解を招く 「（コード構造がありません）」プレースホルダではなく接続待ち案内を出しておく（真に数秒かかる 待ちなので案内が適切。warm の一瞬の待ちは grace 側で既に抑制済み）。
             view.ShowNotice(LspNoticeModel.Build(null));
         }
 
-        // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。
-        // 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。
-        // コールド初回はここでサーバーが温まる（副作用）。
+        // ②（呼び出し元/先・使用箇所）は<b>キャレット直下のシンボル</b>で問い合わせる（IDE の「参照を検索」相当）。 返る名前範囲はキャレット追従の差分基準（このシンボル上を動く間は再取得しない）に使う。 コールド初回はここでサーバーが温まる（副作用）。
         var panelsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
         CodeSupportDiag.Log(
@@ -467,9 +427,7 @@ public partial class ShellWindow
             return;
         }
 
-        // ここに来る＝構造が空だった（コールド初回のプロジェクト未ロードが濃厚）。②往復でサーバーが
-        // 温まったはずなので、構造を短くリトライして取り直す（②は再取得しない）。取れたら確定描画、
-        // 上限まで空のまま（＝本当に空のファイル等）なら空アウトライン＋取れた②で確定する。
+        // ここに来る＝構造が空だった（コールド初回のプロジェクト未ロードが濃厚）。②往復でサーバーが 温まったはずなので、構造を短くリトライして取り直す（②は再取得しない）。取れたら確定描画、 上限まで空のまま（＝本当に空のファイル等）なら空アウトライン＋取れた②で確定する。
         for (var attempt = 0; attempt < CodeColdStructureRetries; attempt++)
         {
             symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
@@ -521,8 +479,7 @@ public partial class ShellWindow
             return _codeOutlineView;
 
         var view = new CodeOutlineView();
-        // アウトラインのメンバー名クリック → ソース行（1 始まり）へジャンプしてフォーカスを戻す。
-        // コードジャンプは対象行を vim の zt 相当でビュー最上段へ寄せる（alignTop: true）。
+        // アウトラインのメンバー名クリック → ソース行（1 始まり）へジャンプしてフォーカスを戻す。 コードジャンプは対象行を vim の zt 相当でビュー最上段へ寄せる（alignTop: true）。
         view.SourceLineActivated += (_, line1) => FocusEditorSupportSource(line1 > 0 ? line1 : null, alignTop: true);
         // ②パネルの行クリック → 別ファイル（または同一ファイル）の該当行を開く（1 始まり→内部で 0 始まりへ）。
         view.FileLocationActivated += (_, e) => _ = OpenPathInEditorAsync(e.Path, e.Line1, column: 0, alignTop: true);
@@ -572,8 +529,7 @@ public partial class ShellWindow
 
         var caret = source.Control.Caret;
 
-        // 同じシンボル上（前回解決した名前範囲の内側）の移動、または範囲が取れなかった前回と同一キャレット位置の
-        // ままなら②を再取得しない。※キャッシュ更新は実描画の直前まで遅延する（await 後に降りたら旧値で再試行）。
+        // 同じシンボル上（前回解決した名前範囲の内側）の移動、または範囲が取れなかった前回と同一キャレット位置の ままなら②を再取得しない。※キャッシュ更新は実描画の直前まで遅延する（await 後に降りたら旧値で再試行）。
         if (_codeCurrentSymbolRange is { } range && CaretInRange(range, caret.Line, caret.Column))
             return;
         if (_codeCurrentSymbolRange is null && _codeCurrentCaret is { } prev
@@ -614,8 +570,7 @@ public partial class ShellWindow
         if (info is null)
             return; // 既に導入済み等（案内ボタンが古い）：何もしない
 
-        // 実行結果（可視ターミナルの有無）に関わらず、案内ページ自体はそのまま（LSP 接続後の
-        // 再オープン／再描画で自然にアウトラインへ切り替わる）。
+        // 実行結果（可視ターミナルの有無）に関わらず、案内ページ自体はそのまま（LSP 接続後の 再オープン／再描画で自然にアウトラインへ切り替わる）。
         _lspManagement.InstallForPrompt(info);
     }
 
@@ -679,16 +634,13 @@ public partial class ShellWindow
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
         if (!ready)
         {
-            // grace を過ぎてもまだ ready でない＝一瞬で消える待ちではなくサーバーが遅い/来ない。ここで初めて
-            // 「接続待ち」案内へ差し替える（本メソッドの not-ready 分岐が attempts>=grace で案内を出す）。
-            // ちょうど grace 到達の tick でのみ一度呼ぶ（以降の tick は案内を描き直さずポーリングだけ）。
+            // grace を過ぎてもまだ ready でない＝一瞬で消える待ちではなくサーバーが遅い/来ない。ここで初めて 「接続待ち」案内へ差し替える（本メソッドの not-ready 分岐が attempts>=grace で案内を出す）。 ちょうど grace 到達の tick でのみ一度呼ぶ（以降の tick は案内を描き直さずポーリングだけ）。
             if (_codeReadyRetryAttempts == CodeConnectingNoticeGraceTicks)
                 await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
             return;
         }
 
-        // ready 到達：本描画へ差し替える（ready 分岐が StopCodeReadyRetry する）。
-        // fromReadyRetry=true＝ポーリング中の再入。診断ストップウォッチを計り直さない（待ちの起点を保つ）。
+        // ready 到達：本描画へ差し替える（ready 分岐が StopCodeReadyRetry する）。 fromReadyRetry=true＝ポーリング中の再入。診断ストップウォッチを計り直さない（待ちの起点を保つ）。
         await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
     }
 
@@ -736,9 +688,7 @@ public partial class ShellWindow
             return;
 
         lines[lineIndex] = toggled;
-        // SetText はエディタのビューポートを組み直すため ViewportScrolled が発火する。ここで流れる
-        // エディタの行ベース比率をプレビューへ送るとピクセル位置へ変換し直されてスクロールが微妙にズレる
-        // （チェックボックスの反転は文書高を変えないので本来動くべきではない）。同期エコーを抑止する。
+        // SetText はエディタのビューポートを組み直すため ViewportScrolled が発火する。ここで流れる エディタの行ベース比率をプレビューへ送るとピクセル位置へ変換し直されてスクロールが微妙にズレる （チェックボックスの反転は文書高を変えないので本来動くべきではない）。同期エコーを抑止する。
         _syncingEditorFromSupport = true;
         try { source.Control.SetText(string.Join(eol, lines)); }
         finally { _syncingEditorFromSupport = false; }
