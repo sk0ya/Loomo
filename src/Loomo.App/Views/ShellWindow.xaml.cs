@@ -11,6 +11,7 @@ public partial class ShellWindow : Window
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
     private readonly ShellAppearanceCoordinator _appearance;
+    private readonly EditorSupportNavigationService _editorSupportNavigation;
     private readonly EditorSupportRegistry _editorSupports;
     /// <summary>対応プロバイダの無いバイナリのフォールバック表示（Hex ダンプ）。registry 外。</summary>
     private readonly HexEditorSupport _hexSupport;
@@ -85,7 +86,6 @@ public partial class ShellWindow : Window
     /// <summary>EditorSupport の追従先を現在のタブに固定し、アクティブタブ変更では差し替えない。</summary>
     private bool _editorSupportSourcePinned;
     /// <summary>プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。</summary>
-    private string? _editorSupportMappedFolder;
     /// <summary>WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。</summary>
     private Task<bool>? _editorSupportInitTask;
     /// <summary>HTML 描画要求のシーケンス番号（init 待ちの間に積み重なった要求を最新の1つへ畳む）。</summary>
@@ -116,7 +116,6 @@ public partial class ShellWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "WebView2", "preview-page");
     /// <summary>プレビューページの配信バージョン（?v= に載せて毎回新 URL にし WebView2 のキャッシュを避ける）。</summary>
-    private int _editorSupportPageVersion;
 
     /// <summary>
     /// WebView2 のユーザーデータフォルダ（Cookie・保存パスワード・サイト権限の保存先）。
@@ -243,6 +242,7 @@ public partial class ShellWindow : Window
         _appearance = new ShellAppearanceCoordinator(settings, () =>
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
+        _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
         _editorSupports = editorSupports;
         _hexSupport = hexSupport;
         _codeSupport = codeSupport;

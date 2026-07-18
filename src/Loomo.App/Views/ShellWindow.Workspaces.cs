@@ -379,7 +379,7 @@ public partial class ShellWindow
         // 書き出し先は一時フォルダで、マップ先の仮想ホストもそのタブの CoreWebView2 限り（再起動後には
         // 張られていない）なので、そのまま復元すると「存在しないファイル」を指す壊れたタブになる。
         snapshot.BrowserTabs = _browserTabs
-            .Where(tab => !IsEditorSupportPreviewUrl(tab.View.Source?.ToString()))
+            .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(tab.View.Source?.ToString()))
             .Select(tab => new BrowserTabSnapshot
             {
                 Id = tab.Id,

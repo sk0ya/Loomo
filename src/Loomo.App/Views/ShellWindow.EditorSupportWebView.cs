@@ -38,7 +38,7 @@ public partial class ShellWindow
         {
             // 同じファイルでも別フォルダへ移った場合に備えて画像のマップ先は更新しておく。
             if (_editorSupportPendingMapFolder is not null)
-                UpdateEditorSupportVirtualHost(core, _editorSupportPendingMapFolder);
+                _editorSupportNavigation.UpdatePreviewHost(core, _editorSupportPendingMapFolder);
 
             try
             {
@@ -59,7 +59,7 @@ public partial class ShellWindow
         _editorSupportNavigatedUri = null;
 
         if (_editorSupportPendingMapFolder is not null)
-            UpdateEditorSupportVirtualHost(core, _editorSupportPendingMapFolder);
+            _editorSupportNavigation.UpdatePreviewHost(core, _editorSupportPendingMapFolder);
 
         // 新ページの読込が完了するまで本文差し替えは受け付けられない（ready 鍵を一旦クリアし、
         // 読込中の鍵を控える）。NavigationCompleted で ready へ昇格させ、そこから setBody を許す。
@@ -70,7 +70,7 @@ public partial class ShellWindow
         // ために setBody の差分更新も始まらない（＝大きいファイルが一切表示・更新されない）。生成済み HTML を
         // 一時ファイルへ書き出して page.loomo 経由でナビゲートすればサイズ無制限になる。書き出し失敗時のみ
         // 従来の NavigateToString へ退避する。
-        if (TryWriteEditorSupportPage(_editorSupportPendingHtml, out var pageUrl))
+        if (_editorSupportNavigation.TryWritePage(_editorSupportPendingHtml, out var pageUrl))
         {
             try
             {
@@ -100,38 +100,17 @@ public partial class ShellWindow
     /// <c>?v=</c> に毎回違う版番号を載せることで同一ファイルでも新 URL になり、WebView2 のキャッシュで
     /// 古いプレビューが居座らないようにする。書き出し失敗（権限・IO 等）時は false。
     /// </summary>
-    private bool TryWriteEditorSupportPage(string html, out string url)
-    {
-        url = "";
-        try
-        {
-            Directory.CreateDirectory(EditorSupportPreviewFolder);
-            File.WriteAllText(
-                Path.Combine(EditorSupportPreviewFolder, "preview.html"), html, System.Text.Encoding.UTF8);
-            url = $"https://{MarkdownRenderer.PageVirtualHost}/preview.html?v={++_editorSupportPageVersion}";
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     /// <summary>
     /// URL が EditorSupport の「ブラウザで開く」が書き出した一時プレビューページ（<see cref="MarkdownRenderer.PageVirtualHost"/>）
     /// を指しているか。ワークスペース保存時にこの手のタブを除外する判定に使う。
     /// </summary>
-    private static bool IsEditorSupportPreviewUrl(string? url)
-        => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-           && string.Equals(uri.Host, MarkdownRenderer.PageVirtualHost, StringComparison.OrdinalIgnoreCase);
-
     /// <summary>
     /// プレビュー HTML を一時ファイルへ書き出し、新規ブラウザタブでその仮想ホストを張ってから開く
     /// （<see cref="OnOpenEditorSupportInBrowser"/> から呼ばれる）。
     /// </summary>
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title)
     {
-        if (!TryWriteEditorSupportPage(html, out var pageUrl))
+        if (!_editorSupportNavigation.TryWritePage(html, out var pageUrl))
             return;
 
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
@@ -140,55 +119,10 @@ public partial class ShellWindow
         if (tab.View.CoreWebView2 is not { } core)
             return;
 
-        ConfigureEditorSupportVirtualHosts(core, mapFolder);
+        EditorSupportNavigationService.ConfigureVirtualHosts(core, mapFolder);
         core.Navigate(pageUrl);
         UpdateBrowserTab(tab);
         SaveActiveWorkspaceSnapshot();
-    }
-
-    /// <summary>
-    /// Markdown/JSON プレビュー用の仮想ホスト（アセット・画像・ページ本体）を任意の CoreWebView2 へ張る。
-    /// マップは CoreWebView2 インスタンスごとなので、EditorSupport ペイン本体
-    /// （<see cref="InitializeEditorSupportCoreAsync"/>）とは別に、ブラウザタブ側の CoreWebView2 にも
-    /// 同じマップ先を複製する必要がある。
-    /// </summary>
-    private static void ConfigureEditorSupportVirtualHosts(CoreWebView2 core, string? mapFolder)
-    {
-        try
-        {
-            core.SetVirtualHostNameToFolderMapping(
-                MarkdownRenderer.AssetsVirtualHost,
-                Path.Combine(AppContext.BaseDirectory, "Assets", "Web"),
-                CoreWebView2HostResourceAccessKind.DenyCors);
-        }
-        catch
-        {
-            // マップ失敗時は mermaid/marp 図が原文表示になるだけで、プレビュー自体は動く。
-        }
-
-        if (!string.IsNullOrEmpty(mapFolder))
-        {
-            try
-            {
-                core.SetVirtualHostNameToFolderMapping(
-                    MarkdownRenderer.PreviewVirtualHost, mapFolder, CoreWebView2HostResourceAccessKind.DenyCors);
-            }
-            catch
-            {
-                // マップ失敗時は画像だけ出ない。
-            }
-        }
-
-        try
-        {
-            Directory.CreateDirectory(EditorSupportPreviewFolder);
-            core.SetVirtualHostNameToFolderMapping(
-                MarkdownRenderer.PageVirtualHost, EditorSupportPreviewFolder, CoreWebView2HostResourceAccessKind.DenyCors);
-        }
-        catch
-        {
-            // ここが失敗すると書き出したページ自体が開けない（稀: 権限等）。
-        }
     }
 
     /// <summary>ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。</summary>
@@ -232,30 +166,6 @@ public partial class ShellWindow
             return;
 
         tab.Control.SetText(e.Text);
-    }
-
-    /// <summary>
-    /// プレビューの相対パス画像（&lt;base href&gt; = <see cref="MarkdownRenderer.PreviewVirtualHost"/>）を
-    /// 表示中ファイルのフォルダから読めるよう、仮想ホストのマップ先を切り替える。
-    /// NavigateToString のページは about:blank オリジンのため file:// は読めず、このマップが必要。
-    /// </summary>
-    private void UpdateEditorSupportVirtualHost(CoreWebView2 core, string? folder)
-    {
-        if (string.IsNullOrEmpty(folder)
-            || string.Equals(folder, _editorSupportMappedFolder, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        try
-        {
-            // 同名ホストへの再呼び出しはマップ先の差し替えになる。DenyCors でも <img> は読める。
-            core.SetVirtualHostNameToFolderMapping(
-                MarkdownRenderer.PreviewVirtualHost, folder, CoreWebView2HostResourceAccessKind.DenyCors);
-            _editorSupportMappedFolder = folder;
-        }
-        catch
-        {
-            // マップ失敗（無効なフォルダ等）でもプレビュー本文の表示は続ける（画像だけ出ない）。
-        }
     }
 
     /// <summary>EditorSupport ペインを（無ければ Editor の右隣へ作って）表示する。明示プレビュー要求用。</summary>
@@ -339,33 +249,7 @@ public partial class ShellWindow
             view.CoreWebView2.WebMessageReceived += EditorSupport_WebMessageReceived;
             view.CoreWebView2.ContextMenuRequested += EditorSupport_ContextMenuRequested;
 
-            // 同梱 Web アセット（mermaid.min.js）の配信元。アプリ出力フォルダ固定なので一度だけマップする。
-            try
-            {
-                view.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    MarkdownRenderer.AssetsVirtualHost,
-                    Path.Combine(AppContext.BaseDirectory, "Assets", "Web"),
-                    CoreWebView2HostResourceAccessKind.DenyCors);
-            }
-            catch
-            {
-                // マップ失敗時は mermaid 図が原文表示になるだけで、プレビュー自体は動く。
-            }
-
-            // プレビューページ本体（フル HTML）の配信元。NavigateToString の 2MB 上限を避けるため、
-            // 生成した HTML を一時ファイルへ書き出してこのホスト経由でナビゲートする（一度だけマップ）。
-            try
-            {
-                Directory.CreateDirectory(EditorSupportPreviewFolder);
-                view.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    MarkdownRenderer.PageVirtualHost,
-                    EditorSupportPreviewFolder,
-                    CoreWebView2HostResourceAccessKind.DenyCors);
-            }
-            catch
-            {
-                // マップ失敗時は NavigateToString フォールバックで表示する（大きいファイルは出ないことがある）。
-            }
+            EditorSupportNavigationService.ConfigureVirtualHosts(view.CoreWebView2, mapFolder: null);
 
             // 横チルトホイール（WM_MOUSEHWHEEL）は WebView2CompositionControl が web コンテンツへ
             // 転送しない（縦の WM_MOUSEWHEEL は転送される）ため、WPF 側の WndProc フックから "hscroll"
