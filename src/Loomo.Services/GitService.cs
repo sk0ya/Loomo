@@ -26,6 +26,7 @@ public sealed class GitService
     private readonly GitStatusService _status;
     private readonly GitHistoryService _history;
     private readonly GitBranchService _branches;
+    private readonly GitMutationExecutor _mutations;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -39,6 +40,9 @@ public sealed class GitService
         _status = new GitStatusService(_runner);
         _history = new GitHistoryService(_runner);
         _branches = new GitBranchService(_runner);
+        _mutations = new GitMutationExecutor(_runner);
+        _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
         {
             _lastSignature = null; // リポジトリが替わったら署名を取り直す
@@ -961,20 +965,7 @@ public sealed class GitService
     // ===== 実行基盤 =====
 
     private async Task<GitCommandResult> MutateAsync(params string[] args)
-    {
-        GitCommandResult? result = null;
-        try
-        {
-            result = await RunAsync(args).ConfigureAwait(false);
-            return result;
-        }
-        finally
-        {
-            RepositoryChanged?.Invoke(this, EventArgs.Empty);
-            OperationExecuted?.Invoke(this,
-                new GitOperationEventArgs(string.Join(' ', args), result?.Success ?? false));
-        }
-    }
+        => await _mutations.ExecuteAsync(args).ConfigureAwait(false);
 
     /// <summary>git を起動し、終了まで待って stdout/stderr を返す。タイムアウト時はプロセスツリーごと kill。</summary>
     public Task<GitCommandResult> RunAsync(params string[] args) => _runner.RunAsync(args);
