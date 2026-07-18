@@ -3,10 +3,8 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: ペインの表示/非表示トグルと、開いたファイル・結果表示のためのペイン確保
 /// （SetPaneVisible・トグル状態同期・左上入れ替え・最下段追加）。レイアウト構築は ShellWindow.PaneLayout.cs。</summary>
-public partial class ShellWindow
-{
-    private void OnHidePane(object sender, RoutedEventArgs e)
-    {
+public partial class ShellWindow {
+    private void OnHidePane(object sender, RoutedEventArgs e) {
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
         BeginTrailLayoutChange();
@@ -18,19 +16,15 @@ public partial class ShellWindow
 
     private DispatcherTimer? _paneToggleHoverTimer;
 
-    private void OnMainPaneMouseEnter(object sender, MouseEventArgs e)
-    {
+    private void OnMainPaneMouseEnter(object sender, MouseEventArgs e) {
         PaneTogglePopup.IsOpen = true;
         (_paneToggleHoverTimer ??= CreatePaneToggleHoverTimer()).Start();
     }
 
-    private DispatcherTimer CreatePaneToggleHoverTimer()
-    {
+    private DispatcherTimer CreatePaneToggleHoverTimer() {
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
-        timer.Tick += (_, _) =>
-        {
-            if (!PaneTogglePopup.IsOpen || !IsMouseNearPaneTogglePopup())
-            {
+        timer.Tick += (_, _) => {
+            if (!PaneTogglePopup.IsOpen || !IsMouseNearPaneTogglePopup()) {
                 PaneTogglePopup.IsOpen = false;
                 _paneToggleHoverTimer?.Stop();
             }
@@ -38,8 +32,7 @@ public partial class ShellWindow
         return timer;
     }
 
-    private bool IsMouseNearPaneTogglePopup()
-    {
+    private bool IsMouseNearPaneTogglePopup() {
         if (!GetCursorPos(out var p))
             return true; // 座標取得に失敗したら閉じない（誤クローズより開きっぱなしの方が安全）
         var mouse = new Point(p.X, p.Y);
@@ -47,8 +40,7 @@ public partial class ShellWindow
             || (PaneTogglePopupRoot.IsVisible && InflatedScreenRect(PaneTogglePopupRoot).Contains(mouse));
     }
 
-    private static Rect InflatedScreenRect(FrameworkElement element)
-    {
+    private static Rect InflatedScreenRect(FrameworkElement element) {
         var topLeft = element.PointToScreen(new Point(0, 0));
         var bottomRight = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
         var rect = new Rect(topLeft, bottomRight);
@@ -60,8 +52,7 @@ public partial class ShellWindow
 
     private static string PaneIconKey(PaneKind kind) => $"PaneIcon.{kind}";
 
-    private void UpdateMainPaneHeader()
-    {
+    private void UpdateMainPaneHeader() {
         var main = CurrentMainPane();
         MainPaneIcon.Data = main is { } kind && TryFindResource(PaneIconKey(kind)) is Geometry geo ? geo : null;
         MainPaneButton.ToolTip = main is { } k
@@ -69,8 +60,7 @@ public partial class ShellWindow
             : "表示ペインを切り替え（ホバーで一覧）";
     }
 
-    private void OnTogglePaneVisibility(object sender, RoutedEventArgs e)
-    {
+    private void OnTogglePaneVisibility(object sender, RoutedEventArgs e) {
         BeginTrailLayoutChange();
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
             ToggleSessionEnabled(kind);
@@ -78,10 +68,8 @@ public partial class ShellWindow
         UpdatePaneToggleStates();
     }
 
-    private void UpdatePaneToggleStates()
-    {
-        foreach (var child in PaneToggleBar.Children)
-        {
+    private void UpdatePaneToggleStates() {
+        foreach (var child in PaneToggleBar.Children) {
             if (child is not ToggleButton { Tag: string tag } button || !Enum.TryParse<PaneKind>(tag, out var kind))
                 continue;
             var enabled = IsSessionEnabled(kind);
@@ -92,8 +80,7 @@ public partial class ShellWindow
         UpdateMainPaneHeader();
     }
 
-    private static string PaneLabel(PaneKind kind) => kind switch
-    {
+    private static string PaneLabel(PaneKind kind) => kind switch {
         PaneKind.Terminal => "ターミナル",
         PaneKind.Editor => "エディタ",
         PaneKind.EditorSupport => "エディタサポート",
@@ -110,8 +97,7 @@ public partial class ShellWindow
 
     private int VisibleLeafCount() => AllLeaves().Count(l => !l.Hidden);
 
-    private void SetPaneVisible(PaneKind kind, bool visible)
-    {
+    private void SetPaneVisible(PaneKind kind, bool visible) {
         var leaf = FindLeaf(kind);
         var currentlyVisible = leaf is { Hidden: false };
 
@@ -123,22 +109,17 @@ public partial class ShellWindow
 
         CaptureLayoutSizes();
 
-        if (visible)
-        {
-            if (leaf is null)
-            {
+        if (visible) {
+            if (leaf is null) {
                 var newLeaf = NewLeaf(kind);
                 if (_isSpanMaximized && _root is PaneSplit { Orientation: SplitKind.Columns } columns
                     && columns.Children.Count > 0)
                     columns.Children[^1] = AddLeafAtBottom(columns.Children[^1], newLeaf);
                 else
                     AddLeafAtBottom(newLeaf);
-            }
-            else
+            } else
                 leaf.Hidden = false;
-        }
-        else
-        {
+        } else {
             if (VisibleLeafCount() <= 1)
                 return;
             leaf!.Hidden = true;
@@ -146,8 +127,7 @@ public partial class ShellWindow
                 _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
         }
 
-        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
-        {
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot) {
             if (AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == kind) is { } savedLeaf)
                 savedLeaf.Hidden = !visible;
             else if (visible)
@@ -164,12 +144,10 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void EnsureEditorPaneForOpenedFile(string path)
-    {
+    private void EnsureEditorPaneForOpenedFile(string path) {
         var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
 
-        if (_stageActive)
-        {
+        if (_stageActive) {
             if (!OnStage(PaneKind.Editor) && !OnStage(PaneKind.EditorSupport))
                 SetStagePane(target);
             return;
@@ -180,10 +158,8 @@ public partial class ShellWindow
         PlacePaneByBehavior(target);
     }
 
-    private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target)
-    {
-        if (_stageActive)
-        {
+    private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target) {
+        if (_stageActive) {
             if (!OnStage(target))
                 SetStagePane(target);
             return;
@@ -194,10 +170,8 @@ public partial class ShellWindow
         PlacePaneByBehavior(target);
     }
 
-    private void PlacePaneByBehavior(PaneKind target)
-    {
-        switch (_settings.PaneOpenBehavior)
-        {
+    private void PlacePaneByBehavior(PaneKind target) {
+        switch (_settings.PaneOpenBehavior) {
             case PaneOpenBehavior.Sub:
                 PlaceIntoSubPane(target);
                 break;
@@ -210,16 +184,14 @@ public partial class ShellWindow
         }
     }
 
-    private void SwapIntoTopLeft(PaneKind target)
-    {
+    private void SwapIntoTopLeft(PaneKind target) {
         if (TopLeftPane() is { } topLeft && topLeft != target)
             PlaceWingPane(target, topLeft, center: true, zone: null);
         else
             SetPaneVisible(target, true);
     }
 
-    private void PlaceIntoSubPane(PaneKind target)
-    {
+    private void PlaceIntoSubPane(PaneKind target) {
         if (IsPaneVisible(target))
             return;
 
@@ -233,8 +205,7 @@ public partial class ShellWindow
             SetPaneVisible(target, true);
     }
 
-    private void PlaceIntoLoopPane(PaneKind target)
-    {
+    private void PlaceIntoLoopPane(PaneKind target) {
         if (IsPaneVisible(target))
             return;
 
@@ -243,13 +214,10 @@ public partial class ShellWindow
         var originFromSub = _focusedRegion?.Pane is { } origin
             && sub is { } s && s != main && origin == s;
 
-        if (originFromSub && main is { } m && sub is { } current && current != target)
-        {
+        if (originFromSub && main is { } m && sub is { } current && current != target) {
             PlaceWingPane(current, m, center: true, zone: null);
             PlaceWingPane(target, current, center: false, zone: DropZone.Right);
-        }
-        else
-        {
+        } else {
             PlaceIntoSubPane(target);
         }
     }

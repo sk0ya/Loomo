@@ -7,23 +7,18 @@ namespace sk0ya.Loomo.App.Views;
 /// ポップアップに一覧を出し、クリックで該当ファイル・行へジャンプさせる。
 /// 同じイベントは grep / 診断一覧 / コール・型ヒエラルキー / ワークスペースシンボルの結果にも使われる。
 /// ※「まず配線だけ最小実装」段階：機能は通っているが見た目は最小。後でドッキングパネル等へ移す。</summary>
-public partial class ShellWindow
-{
-    private void OnEditorFindReferencesResult(object? sender, FindReferencesResultEventArgs e)
-    {
+public partial class ShellWindow {
+    private void OnEditorFindReferencesResult(object? sender, FindReferencesResultEventArgs e) {
         BuildReferencesPopup(e.Items, $"{e.TitlePrefix} ({e.Items.Count}) — {e.SymbolName}");
         ReferencesPopup.IsOpen = true;
     }
 
-    private void BuildReferencesPopup(IReadOnlyList<FindReferenceItem> items, string title)
-    {
+    private void BuildReferencesPopup(IReadOnlyList<FindReferenceItem> items, string title) {
         ReferencesPopupTitle.Text = title;
         ReferencesPopupList.Children.Clear();
 
-        if (items.Count == 0)
-        {
-            ReferencesPopupList.Children.Add(new TextBlock
-            {
+        if (items.Count == 0) {
+            ReferencesPopupList.Children.Add(new TextBlock {
                 Text = "使用箇所が見つかりませんでした",
                 FontSize = UiFontManager.Scaled(12),
                 Margin = new Thickness(10, 6, 10, 6),
@@ -32,32 +27,27 @@ public partial class ShellWindow
             return;
         }
 
-        foreach (var item in items)
-        {
+        foreach (var item in items) {
             var captured = item;
             var location = $"{Path.GetFileName(captured.FilePath)}:{captured.Line + 1}:{captured.Col + 1}";
             var preview = captured.Preview ?? ReadSourceLine(captured.FilePath, captured.Line);
 
             var content = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
-            content.Inlines.Add(new System.Windows.Documents.Run(location)
-            {
+            content.Inlines.Add(new System.Windows.Documents.Run(location) {
                 Foreground = (Brush)FindResource("Accent"),
             });
             if (!string.IsNullOrWhiteSpace(preview))
-                content.Inlines.Add(new System.Windows.Documents.Run("   " + preview)
-                {
+                content.Inlines.Add(new System.Windows.Documents.Run("   " + preview) {
                     Foreground = (Brush)FindResource("FgDim"),
                 });
 
-            var row = new Button
-            {
+            var row = new Button {
                 Style = (Style)FindResource("BranchMenuItem"),
                 FontSize = UiFontManager.Scaled(12),
                 ToolTip = $"{captured.FilePath}:{captured.Line + 1}:{captured.Col + 1}",
                 Content = content,
             };
-            row.Click += (_, _) =>
-            {
+            row.Click += (_, _) => {
                 ReferencesPopup.IsOpen = false;
                 _ = OpenPathInEditorAsync(captured.FilePath, captured.Line + 1, captured.Col + 1);
             };
@@ -65,15 +55,12 @@ public partial class ShellWindow
         }
     }
 
-    private static string ReadSourceLine(string filePath, int line)
-    {
-        try
-        {
+    private static string ReadSourceLine(string filePath, int line) {
+        try {
             using var reader = new StreamReader(filePath);
             for (var i = 0; i < line; i++)
                 if (reader.ReadLine() == null) return "";
             return (reader.ReadLine() ?? "").Trim();
-        }
-        catch { return ""; }
+        } catch { return ""; }
     }
 }

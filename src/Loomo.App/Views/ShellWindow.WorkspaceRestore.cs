@@ -4,16 +4,13 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: ワークスペース復元時のタブ実体の付け替え（端末／エディタ／ブラウザの
 /// Restore・Attach・Detach・GetOrCreate）。切替の入口とスナップショット保存は ShellWindow.Workspaces.cs。</summary>
-public partial class ShellWindow
-{
-    private void RestoreTerminalTabs(WorkspaceSnapshot workspace)
-    {
+public partial class ShellWindow {
+    private void RestoreTerminalTabs(WorkspaceSnapshot workspace) {
         var terminalWorkspace = GetOrCreateTerminalWorkspace(workspace.Id);
         _activeTerminalWorkspace = terminalWorkspace;
         _terminalTabs = terminalWorkspace.Tabs;
 
-        if (terminalWorkspace.IsInitialized && _terminalTabs.Count > 0)
-        {
+        if (terminalWorkspace.IsInitialized && _terminalTabs.Count > 0) {
             AttachTerminalTabs();
             ActivateTerminalTab(terminalWorkspace.ActiveTabId ?? _terminalTabs[0].Id);
             return;
@@ -21,10 +18,8 @@ public partial class ShellWindow
 
         terminalWorkspace.IsInitialized = true;
         var snapshots = workspace.TerminalTabs.Count == 0
-            ? new[]
-            {
-                new TerminalTabSnapshot
-                {
+            ? new[] {
+                new TerminalTabSnapshot {
                     WorkingDirectory = workspace.Terminal.WorkingDirectory,
                     Title = workspace.Terminal.Title ?? "Terminal",
                     IsActive = true
@@ -32,8 +27,7 @@ public partial class ShellWindow
             }
             : workspace.TerminalTabs.ToArray();
 
-        foreach (var snapshot in snapshots)
-        {
+        foreach (var snapshot in snapshots) {
             var cwd = Directory.Exists(snapshot.WorkingDirectory) ? snapshot.WorkingDirectory! : workspace.RootPath;
             var tab = CreateTerminalTab(cwd, snapshot.Id == Guid.Empty ? null : snapshot.Id);
             _terminalTabs.Add(tab);
@@ -44,14 +38,12 @@ public partial class ShellWindow
         ActivateTerminalTab(active.Id == Guid.Empty ? _terminalTabs[0].Id : active.Id);
     }
 
-    private void RestoreEditorTabs(WorkspaceSnapshot workspace)
-    {
+    private void RestoreEditorTabs(WorkspaceSnapshot workspace) {
         var editorWorkspace = GetOrCreateEditorWorkspace(workspace.Id);
         _activeEditorWorkspace = editorWorkspace;
         _editorTabs = editorWorkspace.Tabs;
 
-        if (editorWorkspace.IsInitialized && _editorTabs.Count > 0)
-        {
+        if (editorWorkspace.IsInitialized && _editorTabs.Count > 0) {
             AttachEditorTabs();
             ActivateEditorTab(editorWorkspace.ActiveTabId ?? _editorTabs[0].Id);
             return;
@@ -59,10 +51,8 @@ public partial class ShellWindow
 
         editorWorkspace.IsInitialized = true;
         var snapshots = workspace.EditorTabs.Count == 0
-            ? new[]
-            {
-                new EditorTabSnapshot
-                {
+            ? new[] {
+                new EditorTabSnapshot {
                     FilePath = workspace.Editor.FilePath,
                     Text = workspace.Editor.Text,
                     IsModified = workspace.Editor.IsModified,
@@ -71,8 +61,7 @@ public partial class ShellWindow
             }
             : workspace.EditorTabs.ToArray();
 
-        foreach (var snapshot in snapshots)
-        {
+        foreach (var snapshot in snapshots) {
             var tab = CreatePendingEditorTab(snapshot);
             _editorTabs.Add(tab);
             _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
@@ -82,8 +71,7 @@ public partial class ShellWindow
         ActivateEditorTab(active.Id == Guid.Empty ? _editorTabs[0].Id : active.Id);
     }
 
-    private TerminalWorkspaceTabs GetOrCreateTerminalWorkspace(Guid workspaceId)
-    {
+    private TerminalWorkspaceTabs GetOrCreateTerminalWorkspace(Guid workspaceId) {
         if (_terminalWorkspaces.TryGetValue(workspaceId, out var terminalWorkspace))
             return terminalWorkspace;
 
@@ -92,8 +80,7 @@ public partial class ShellWindow
         return terminalWorkspace;
     }
 
-    private EditorWorkspaceTabs GetOrCreateEditorWorkspace(Guid workspaceId)
-    {
+    private EditorWorkspaceTabs GetOrCreateEditorWorkspace(Guid workspaceId) {
         if (_editorWorkspaces.TryGetValue(workspaceId, out var editorWorkspace))
             return editorWorkspace;
 
@@ -102,16 +89,14 @@ public partial class ShellWindow
         return editorWorkspace;
     }
 
-    private void DetachTerminalTabs()
-    {
+    private void DetachTerminalTabs() {
         CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;
         _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
         _activeTerminalTab = null;
     }
 
-    private void AttachTerminalTabs()
-    {
+    private void AttachTerminalTabs() {
         _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
 
@@ -119,8 +104,7 @@ public partial class ShellWindow
             _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
     }
 
-    private void DetachEditorTabs()
-    {
+    private void DetachEditorTabs() {
         _editorSupportDebounceTimer?.Stop();
         DetachEditorSupportSource();
         _editorSupport.WebView.ResetPageState();
@@ -133,8 +117,7 @@ public partial class ShellWindow
         _previewEditorTab = null;
     }
 
-    private void AttachEditorTabs()
-    {
+    private void AttachEditorTabs() {
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
 
@@ -142,14 +125,12 @@ public partial class ShellWindow
             _vm.Tabs.AddEditorTab(tab.Id, tab.PeekFilePath, tab.PeekIsModified, false);
     }
 
-    private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace)
-    {
+    private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace) {
         var browserWorkspace = GetOrCreateBrowserWorkspace(workspace.Id);
         _activeBrowserWorkspace = browserWorkspace;
         _browserTabs = browserWorkspace.Tabs;
 
-        if (browserWorkspace.IsInitialized && _browserTabs.Count > 0)
-        {
+        if (browserWorkspace.IsInitialized && _browserTabs.Count > 0) {
             await AttachBrowserTabsAsync();
             ActivateBrowserTab(browserWorkspace.ActiveTabId ?? _browserTabs[0].Id);
             return;
@@ -171,8 +152,7 @@ public partial class ShellWindow
         ActivateBrowserTab(active.Id);
     }
 
-    private BrowserWorkspaceTabs GetOrCreateBrowserWorkspace(Guid workspaceId)
-    {
+    private BrowserWorkspaceTabs GetOrCreateBrowserWorkspace(Guid workspaceId) {
         if (_browserWorkspaces.TryGetValue(workspaceId, out var browserWorkspace))
             return browserWorkspace;
 
@@ -181,8 +161,7 @@ public partial class ShellWindow
         return browserWorkspace;
     }
 
-    private void DetachBrowserTabs()
-    {
+    private void DetachBrowserTabs() {
         CurrentBrowserWorkspace.ActiveTabId = _activeBrowserTab?.Id;
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
@@ -190,13 +169,11 @@ public partial class ShellWindow
         _browser.SetActiveView(null);
     }
 
-    private async Task AttachBrowserTabsAsync()
-    {
+    private async Task AttachBrowserTabsAsync() {
         BrowserContentHost.Children.Clear();
         _vm.Tabs.BrowserTabs.Clear();
 
-        foreach (var tab in _browserTabs)
-        {
+        foreach (var tab in _browserTabs) {
             if (!BrowserContentHost.Children.Contains(tab.View))
                 BrowserContentHost.Children.Add(tab.View);
 

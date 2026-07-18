@@ -2,17 +2,14 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインのドラッグ＆ドロップ操作（タイトルバーからの掴み・袖/舞台からのドラッグ・
 /// オーバーレイ上のプレビュー描画・ドロップ確定）。レイアウトツリーの構築は <c>ShellWindow.PaneLayout.cs</c>。</summary>
-public partial class ShellWindow
-{
-    private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e)
-    {
+public partial class ShellWindow {
+    private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e) {
         if (_stageActive)
             return;
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
 
-        if (e.ClickCount == 2)
-        {
+        if (e.ClickCount == 2) {
             if (IsWithinButton(e.OriginalSource))
                 return;
             ToggleZoomFor(kind);
@@ -20,8 +17,7 @@ public partial class ShellWindow
             return;
         }
 
-        if (ResolvePaneTabId(e.OriginalSource) is not null)
-        {
+        if (ResolvePaneTabId(e.OriginalSource) is not null) {
             _paneDragArmed = false;
             return;
         }
@@ -30,14 +26,12 @@ public partial class ShellWindow
         _paneDragArmed = true;
     }
 
-    private void OnPaneTitleMouseMove(object sender, MouseEventArgs e)
-    {
+    private void OnPaneTitleMouseMove(object sender, MouseEventArgs e) {
         if (_stageActive)
             return;
         if (_paneDragging || !_paneDragArmed)
             return;
-        if (e.LeftButton != MouseButtonState.Pressed)
-        {
+        if (e.LeftButton != MouseButtonState.Pressed) {
             DisarmTitleDrag();
             return;
         }
@@ -47,34 +41,28 @@ public partial class ShellWindow
             Math.Abs(pos.Y - _paneDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
             return;
 
-        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
-        {
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind)) {
             DisarmTitleDrag();
             BeginPaneDrag(kind);
         }
     }
 
-    private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e)
-    {
+    private void OnPaneTitleMouseUp(object sender, MouseButtonEventArgs e) {
         DisarmTitleDrag();
     }
 
-    private void DisarmTitleDrag()
-    {
+    private void DisarmTitleDrag() {
         _paneDragArmed = false;
-        if (_dragHandle is not null)
-        {
+        if (_dragHandle is not null) {
             if (ReferenceEquals(Mouse.Captured, _dragHandle))
                 _dragHandle.ReleaseMouseCapture();
             _dragHandle = null;
         }
     }
 
-    private static bool IsWithinButton(object? source)
-    {
+    private static bool IsWithinButton(object? source) {
         var current = source as DependencyObject;
-        while (current is not null)
-        {
+        while (current is not null) {
             if (current is System.Windows.Controls.Primitives.ButtonBase)
                 return true;
             current = current is Visual or System.Windows.Media.Media3D.Visual3D
@@ -84,8 +72,7 @@ public partial class ShellWindow
         return false;
     }
 
-    private void BeginPaneDrag(PaneKind source)
-    {
+    private void BeginPaneDrag(PaneKind source) {
         if (_zoomedPane is not null)
             return; // ズーム中は移動先が1枚しか見えないので並べ替えしない
         if (VisibleLeafCount() <= 1)
@@ -108,8 +95,7 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    private void BeginWingDrag(PaneKind source)
-    {
+    private void BeginWingDrag(PaneKind source) {
         if (_stageActive || VisibleLeafCount() < 1)
             return;
 
@@ -130,8 +116,7 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    private void BeginStageDrag(PaneKind source)
-    {
+    private void BeginStageDrag(PaneKind source) {
         if (!_stageActive || _overviewActive)
             return;
 
@@ -153,15 +138,13 @@ public partial class ShellWindow
         BeginDragCapture();
     }
 
-    private void BeginDragCapture()
-    {
+    private void BeginDragCapture() {
         _dragCanvas!.IsHitTestVisible = true;   // 素通し→掴める状態へ（EndPaneDrag で false へ戻す）
         if (TryCaptureDragCanvas())
             return;
 
         var attempts = 0;
-        void Retry()
-        {
+        void Retry() {
             if (!_paneDragging || Mouse.LeftButton != MouseButtonState.Pressed)
                 return;                                       // ドラッグ終了／ボタンが離れた＝もう不要
             if (TryCaptureDragCanvas() || ++attempts >= 5)
@@ -175,22 +158,19 @@ public partial class ShellWindow
         => ReferenceEquals(Mouse.Captured, _dragCanvas)
            || Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
 
-    private void EnsureDragOverlay()
-    {
+    private void EnsureDragOverlay() {
         if (_dragCanvas is not null)
             return;
 
         var accent = (Brush)FindResource("Accent");
-        _dragTargetOutline = new Border
-        {
+        _dragTargetOutline = new Border {
             BorderBrush = accent,
             BorderThickness = new Thickness(1),
             Background = MakeTranslucent(accent, 0.10),
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false
         };
-        _dragPreview = new Border
-        {
+        _dragPreview = new Border {
             BorderBrush = accent,
             BorderThickness = new Thickness(2),
             Background = MakeTranslucent(accent, 0.35),
@@ -198,8 +178,7 @@ public partial class ShellWindow
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false
         };
-        _dragCanvas = new Canvas
-        {
+        _dragCanvas = new Canvas {
             Background = Brushes.Transparent,
             ClipToBounds = true,
             IsHitTestVisible = false,

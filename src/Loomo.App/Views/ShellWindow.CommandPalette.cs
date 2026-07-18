@@ -8,14 +8,12 @@ namespace sk0ya.Loomo.App.Views;
 /// 一覧は開くたびに現在状態（ステージ中か・WS一覧など）から組み直す。
 /// 絞り込みロジックは <see cref="PaletteFilter"/>（純ロジック・テスト済み）。
 /// </summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private IReadOnlyList<PaletteCommand> _paletteCommands = Array.Empty<PaletteCommand>();
 
     private bool IsPaletteOpen => CommandPaletteOverlay.Visibility == Visibility.Visible;
 
-    private void OpenCommandPalette()
-    {
+    private void OpenCommandPalette() {
         _paletteCommands = BuildPaletteCommands();
         if (_previewEditor is not null)
             _appearance.ApplyEditorAppearance(_previewEditor);
@@ -28,8 +26,7 @@ public partial class ShellWindow
 
     private bool _palettePreviewShown;
 
-    private void UpdatePaletteBoxSize()
-    {
+    private void UpdatePaletteBoxSize() {
         var w = ActualWidth;
         var h = ActualHeight;
         if (w <= 0 || h <= 0)
@@ -40,14 +37,12 @@ public partial class ShellWindow
         PaletteBox.Height = _palettePreviewShown ? tall : double.NaN;
     }
 
-    private void OnPaletteOverlaySizeChanged(object sender, SizeChangedEventArgs e)
-    {
+    private void OnPaletteOverlaySizeChanged(object sender, SizeChangedEventArgs e) {
         if (IsPaletteOpen)
             UpdatePaletteBoxSize();
     }
 
-    private void CloseCommandPalette(bool refocus)
-    {
+    private void CloseCommandPalette(bool refocus) {
         if (!IsPaletteOpen)
             return;
         _paletteSearch.Cancel();
@@ -57,28 +52,24 @@ public partial class ShellWindow
             FocusPane(pane);
     }
 
-    private void SetPaletteMode(PaletteMode mode)
-    {
+    private void SetPaletteMode(PaletteMode mode) {
         var (_, query) = CommandPaletteService.Parse(PaletteInput.Text);
         PaletteInput.Text = CommandPaletteService.Prefix(mode) + query;     // TextChanged が RefilterPalette を呼ぶ
         PaletteInput.CaretIndex = PaletteInput.Text.Length;
         PaletteInput.Focus();
     }
 
-    private void CyclePaletteMode()
-    {
+    private void CyclePaletteMode() {
         var (mode, _) = CommandPaletteService.Parse(PaletteInput.Text);
         SetPaletteMode(CommandPaletteService.Next(mode));
     }
 
-    private void OnPaletteModeClick(object sender, RoutedEventArgs e)
-    {
+    private void OnPaletteModeClick(object sender, RoutedEventArgs e) {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaletteMode>(tag, out var mode))
             SetPaletteMode(mode);
     }
 
-    private void UpdateModeChips(PaletteMode mode)
-    {
+    private void UpdateModeChips(PaletteMode mode) {
         Highlight(PaletteModeAll, mode == PaletteMode.All);
         Highlight(PaletteModeFile, mode == PaletteMode.File);
         Highlight(PaletteModeGrep, mode == PaletteMode.Grep);
@@ -87,23 +78,18 @@ public partial class ShellWindow
         Highlight(PaletteModeTerminal, mode == PaletteMode.Terminal);
         Highlight(PaletteModeCommand, mode == PaletteMode.Command);
 
-        static void Highlight(Button chip, bool active)
-        {
-            if (active)
-            {
+        static void Highlight(Button chip, bool active) {
+            if (active) {
                 chip.SetResourceReference(Control.BorderBrushProperty, "Accent");
                 chip.SetResourceReference(Control.ForegroundProperty, "Fg");
-            }
-            else
-            {
+            } else {
                 chip.BorderBrush = System.Windows.Media.Brushes.Transparent;
                 chip.SetResourceReference(Control.ForegroundProperty, "FgDim");
             }
         }
     }
 
-    private void RefilterPalette()
-    {
+    private void RefilterPalette() {
         var (mode, query) = CommandPaletteService.Parse(PaletteInput.Text);
         UpdateModeChips(mode);
 
@@ -113,22 +99,19 @@ public partial class ShellWindow
         _palettePreviewShown = showPreview;
         UpdatePaletteBoxSize();
 
-        if (mode == PaletteMode.Command)
-        {
+        if (mode == PaletteMode.Command) {
             _paletteSearch.Cancel();
             ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, query));
             return;
         }
 
-        if (mode == PaletteMode.Terminal)
-        {
+        if (mode == PaletteMode.Terminal) {
             _paletteSearch.Cancel();
             ShowPaletteItems(BuildTerminalMatches(query));
             return;
         }
 
-        if (mode == PaletteMode.All && string.IsNullOrWhiteSpace(query))
-        {
+        if (mode == PaletteMode.All && string.IsNullOrWhiteSpace(query)) {
             _paletteSearch.Cancel();
             ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, string.Empty));
             return;
@@ -137,21 +120,18 @@ public partial class ShellWindow
         _ = RefilterSearchAsync(mode, query);
     }
 
-    private async Task RefilterSearchAsync(PaletteMode mode, string query)
-    {
+    private async Task RefilterSearchAsync(PaletteMode mode, string query) {
         var items = await _paletteSearch.SearchLatestAsync(mode, query, _paletteCommands,
             ConnectedCodeLspManagers, FileEntry, GrepEntry, SymbolEntry);
         if (items is not null)
             ShowPaletteItems(items);
     }
 
-    private IReadOnlyList<IEditorLspManager> ConnectedCodeLspManagers()
-    {
+    private IReadOnlyList<IEditorLspManager> ConnectedCodeLspManagers() {
         var seen = new HashSet<IEditorLspManager>();
         var result = new List<IEditorLspManager>();
 
-        void TryAdd(EditorTab? tab)
-        {
+        void TryAdd(EditorTab? tab) {
             if (tab is null || !_codeSupport.CanHandle(tab.PeekFilePath))
                 return;
             var lsp = GetLspManager(tab);
@@ -166,21 +146,18 @@ public partial class ShellWindow
         return result;
     }
 
-    private PaletteCommand SymbolEntry(LspSymbolInformation sym, string category)
-    {
+    private PaletteCommand SymbolEntry(LspSymbolInformation sym, string category) {
         var path = CodeEditorSupport.TryUriToLocalPath(sym.Location?.Uri);
         var line1 = (sym.Location?.Range?.Start?.Line ?? 0) + 1;
         var title = string.IsNullOrEmpty(sym.ContainerName) ? sym.Name : $"{sym.Name}  ·  {sym.ContainerName}";
         return new PaletteCommand(category, title,
-            () => { if (path is not null) _ = OpenAndNavigateAsync(path, line1); })
-        {
+            () => { if (path is not null) _ = OpenAndNavigateAsync(path, line1); }) {
             PreviewPath = path,
             PreviewLine = line1,
         };
     }
 
-    private IReadOnlyList<PaletteCommand> BuildTerminalMatches(string query)
-    {
+    private IReadOnlyList<PaletteCommand> BuildTerminalMatches(string query) {
         if (_activeTerminalTab?.View is not { } view)
             return new[] { TerminalStatus("ターミナルがありません") };
 
@@ -196,8 +173,7 @@ public partial class ShellWindow
     }
 
     private PaletteCommand TerminalMatchEntry(TerminalMatch match, TerminalTabView view)
-        => new($"行 {match.LineIndex + 1}", match.LineText.Trim(), () =>
-        {
+        => new($"行 {match.LineIndex + 1}", match.LineText.Trim(), () => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
             view.SelectMatch(match);
             view.FocusTerminal();
@@ -206,20 +182,16 @@ public partial class ShellWindow
     private static PaletteCommand TerminalStatus(string text)
         => new("ターミナル検索", text, static () => { });
 
-    private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items)
-    {
+    private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items) {
         var (_, query) = CommandPaletteService.Parse(PaletteInput.Text);
         foreach (var item in items)
             item.TitleMatch = query;
 
         PaletteList.ItemsSource = items;
-        if (PaletteList.Items.Count > 0)
-        {
+        if (PaletteList.Items.Count > 0) {
             PaletteList.SelectedIndex = 0;
             PaletteList.ScrollIntoView(PaletteList.SelectedItem);
-        }
-        else
-        {
+        } else {
             UpdatePalettePreview(null);
         }
     }
@@ -233,8 +205,7 @@ public partial class ShellWindow
             () => _ = OpenAndNavigateAsync(hit.FullPath, hit.Line))
         { PreviewPath = hit.FullPath, PreviewLine = hit.Line, PreviewHighlight = query };
 
-    private async Task OpenAndNavigateAsync(string path, int line)
-    {
+    private async Task OpenAndNavigateAsync(string path, int line) {
         await OpenFileInNewEditorTabAsync(path);
         if (line > 0 && _activeEditorTab?.Control is { } control)
             control.NavigateTo(line - 1, 0);
@@ -247,13 +218,11 @@ public partial class ShellWindow
 
     private CancellationTokenSource? _palettePreviewCts;
 
-    private VimEditorControl EnsurePreviewEditor()
-    {
+    private VimEditorControl EnsurePreviewEditor() {
         if (_previewEditor is { } existing)
             return existing;
 
-        var editor = new VimEditorControl(new VimEditorControlOptions())
-        {
+        var editor = new VimEditorControl(new VimEditorControlOptions()) {
             VimEnabled = false,
             Focusable = false,  // キーボードフォーカスを奪わない（↑↓・Enter はパレットのまま）
         };
@@ -268,12 +237,10 @@ public partial class ShellWindow
         return editor;
     }
 
-    private void UpdatePalettePreview(PaletteCommand? command)
-    {
+    private void UpdatePalettePreview(PaletteCommand? command) {
         _palettePreviewCts?.Cancel();
 
-        if (command?.PreviewPath is not { } path || !File.Exists(path))
-        {
+        if (command?.PreviewPath is not { } path || !File.Exists(path)) {
             if (_previewEditor is not null)
                 _previewEditor.Visibility = Visibility.Collapsed;
             return;
@@ -284,45 +251,36 @@ public partial class ShellWindow
         _ = ShowPalettePreviewAsync(command, path, cts.Token);
     }
 
-    private async Task ShowPalettePreviewAsync(PaletteCommand command, string path, CancellationToken ct)
-    {
-        try
-        {
+    private async Task ShowPalettePreviewAsync(PaletteCommand command, string path, CancellationToken ct) {
+        try {
             await Task.Delay(60, ct); // ↑↓ の連続移動でファイルを開きすぎないよう軽く待つ
-        }
-        catch (OperationCanceledException) { return; }
+        } catch (OperationCanceledException) { return; }
         if (ct.IsCancellationRequested)
             return;
 
         var editor = EnsurePreviewEditor();
         editor.Visibility = Visibility.Visible;
-        try
-        {
+        try {
             editor.LoadFile(path);
             editor.HighlightSearch(command.PreviewHighlight ?? "");
             NavigatePreview(editor, command);
-            _ = editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
-            {
+            _ = editor.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => {
                 if (!ct.IsCancellationRequested && editor.Visibility == Visibility.Visible)
                     NavigatePreview(editor, command);
             });
-        }
-        catch
-        {
+        } catch {
             editor.Visibility = Visibility.Collapsed;
         }
     }
 
-    private static void NavigatePreview(VimEditorControl editor, PaletteCommand command)
-    {
+    private static void NavigatePreview(VimEditorControl editor, PaletteCommand command) {
         if (command.PreviewLine > 0)
             editor.JumpToLine(command.PreviewLine - 1, 0);
         else
             editor.NavigateTo(0, 0);
     }
 
-    private void ExecutePaletteSelection()
-    {
+    private void ExecutePaletteSelection() {
         if (PaletteList.SelectedItem is not PaletteCommand command)
             return;
         CloseCommandPalette(refocus: false);
@@ -331,10 +289,8 @@ public partial class ShellWindow
 
     private void OnPaletteTextChanged(object sender, TextChangedEventArgs e) => RefilterPalette();
 
-    private void OnPaletteInputKeyDown(object sender, KeyEventArgs e)
-    {
-        switch (e.Key)
-        {
+    private void OnPaletteInputKeyDown(object sender, KeyEventArgs e) {
+        switch (e.Key) {
             case Key.Escape:
                 CloseCommandPalette(refocus: true);
                 e.Handled = true;
@@ -350,8 +306,7 @@ public partial class ShellWindow
         }
     }
 
-    private void MovePaletteSelection(int delta)
-    {
+    private void MovePaletteSelection(int delta) {
         var count = PaletteList.Items.Count;
         if (count == 0)
             return;
@@ -366,18 +321,15 @@ public partial class ShellWindow
     private void OnPaletteBoxMouseDown(object sender, MouseButtonEventArgs e)
         => e.Handled = true;
 
-    private void OnPaletteItemClick(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is ListBoxItem { DataContext: PaletteCommand command })
-        {
+    private void OnPaletteItemClick(object sender, MouseButtonEventArgs e) {
+        if (sender is ListBoxItem { DataContext: PaletteCommand command }) {
             e.Handled = true;
             CloseCommandPalette(refocus: false);
             command.Execute();
         }
     }
 
-    private List<PaletteCommand> BuildPaletteCommands()
-    {
+    private List<PaletteCommand> BuildPaletteCommands() {
         var list = new List<PaletteCommand>();
 
         string? Sc(string id) => _keybindings.For(id)?.Format();
@@ -389,15 +341,13 @@ public partial class ShellWindow
             list.Add(new("ステージ", _overviewActive ? "俯瞰を閉じる" : "俯瞰（全カードを一望）",
                 ToggleOverview, "Ctrl+W z"));
 
-        foreach (var kind in StageOrder)
-        {
+        foreach (var kind in StageOrder) {
             var target = kind;
             list.Add(new("移動", $"{PaneLabel(target)} へ",
                 () => { SetPaneVisible(target, true); FocusPane(target); }));
         }
 
-        foreach (var kind in StageOrder)
-        {
+        foreach (var kind in StageOrder) {
             var target = kind;
             list.Add(new("ペイン", $"{PaneLabel(target)} の表示を切替",
                 () => SetPaneVisible(target, !IsPaneVisible(target))));
@@ -442,8 +392,7 @@ public partial class ShellWindow
         list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null),
             Sc("sidebar.sessions"), "sidebar.sessions"));
 
-        foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive))
-        {
+        foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive)) {
             var target = workspace;
             list.Add(new("ワークスペース", $"切替: {target.Name}",
                 () => _vm.Workspaces.ActivateWorkspaceCommand.Execute(target)));

@@ -2,8 +2,7 @@
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: F11 による現在ペインのモニター全画面表示。</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private bool _paneFullscreen;
     private PaneKind? _fullscreenPane;
     private PaneKind? _fullscreenPreviousZoomedPane;
@@ -20,10 +19,8 @@ public partial class ShellWindow
     private GridLength _fullscreenWingWidth;
     private Thickness _fullscreenStageMargin;
 
-    private void TogglePaneFullscreen()
-    {
-        if (_paneFullscreen)
-        {
+    private void TogglePaneFullscreen() {
+        if (_paneFullscreen) {
             ExitPaneFullscreen();
             return;
         }
@@ -86,8 +83,7 @@ public partial class ShellWindow
         FocusPane(pane);
     }
 
-    private void ExitPaneFullscreen()
-    {
+    private void ExitPaneFullscreen() {
         var pane = _fullscreenPane;
         var hwnd = new WindowInteropHelper(this).Handle;
 
@@ -107,16 +103,13 @@ public partial class ShellWindow
         Topmost = _fullscreenPreviousTopmost;
         ResizeMode = _fullscreenPreviousResizeMode;
         WindowState = WindowState.Normal;
-        if (_fullscreenPreviousWindowState == WindowState.Maximized)
-        {
+        if (_fullscreenPreviousWindowState == WindowState.Maximized) {
             Left = _fullscreenPreviousRestoreBounds.Left;
             Top = _fullscreenPreviousRestoreBounds.Top;
             Width = _fullscreenPreviousRestoreBounds.Width;
             Height = _fullscreenPreviousRestoreBounds.Height;
             WindowState = WindowState.Maximized;
-        }
-        else if (hwnd != IntPtr.Zero)
-        {
+        } else if (hwnd != IntPtr.Zero) {
             var rect = _fullscreenPreviousWindowRect;
             SetWindowPos(hwnd, IntPtr.Zero,
                 rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top,

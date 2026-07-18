@@ -6,15 +6,13 @@ namespace sk0ya.Loomo.App.Views;
 /// ワークスペース毎に保持し、タイトルバーの「📐 レイアウト」ドロップダウンから切り替える。Ctrl+T で
 /// 巡回する（未保存の変更は単一スクラッチ枠へ退避）。巡回の純ロジックは <see cref="LayoutCycleLogic"/>。
 /// </summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private readonly List<SavedLayout> _layouts = new();
     private PaneNodeSnapshot? _scratchLayout;
     private int _activeLayoutIndex = -1;
     private bool _layoutDirty;
 
-    private void LoadLayouts(IEnumerable<SavedLayout> layouts, PaneNodeSnapshot? scratch, int activeIndex, bool dirty)
-    {
+    private void LoadLayouts(IEnumerable<SavedLayout> layouts, PaneNodeSnapshot? scratch, int activeIndex, bool dirty) {
         _layouts.Clear();
         _layouts.AddRange(layouts);
         if (_layouts.Count == 0)
@@ -25,8 +23,7 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    private void UpdateModeButtons()
-    {
+    private void UpdateModeButtons() {
         if (StageModeToggle is not null)
             StageModeToggle.IsChecked = _stageActive;
 
@@ -36,31 +33,25 @@ public partial class ShellWindow
         LayoutButtonLabel.Text = CurrentLayoutLabel();
     }
 
-    private string CurrentLayoutLabel()
-    {
+    private string CurrentLayoutLabel() {
         if (!_layoutDirty && _activeLayoutIndex >= 0 && _activeLayoutIndex < _layouts.Count)
             return _layouts[_activeLayoutIndex].Name;
         return "（未保存）";
     }
 
-    private void CycleLayout(int direction)
-    {
+    private void CycleLayout(int direction) {
         if (_stageActive)
             return;
 
         CaptureLayoutSizes();
 
-        if ((_layoutDirty || _activeLayoutIndex < 0) && _root is not null)
-        {
+        if ((_layoutDirty || _activeLayoutIndex < 0) && _root is not null) {
             var current = ToSnapshot(_root);
             var sameAsSaved = _layouts.FindIndex(l => PaneLayoutTree.SnapshotsEquivalent(l.Tree, current));
-            if (sameAsSaved >= 0)
-            {
+            if (sameAsSaved >= 0) {
                 _activeLayoutIndex = sameAsSaved;
                 _layoutDirty = false;
-            }
-            else
-            {
+            } else {
                 _scratchLayout = current;
             }
         }
@@ -74,8 +65,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void LoadLayoutAt(int index)
-    {
+    private void LoadLayoutAt(int index) {
         BeginTrailLayoutChange();
         var snapshot = index < 0
             ? _scratchLayout
@@ -88,16 +78,14 @@ public partial class ShellWindow
             FocusPane(first);
     }
 
-    private void LoadLayout(int index)
-    {
+    private void LoadLayout(int index) {
         if (index < 0 || index >= _layouts.Count || _stageActive)
             return;
         LoadLayoutAt(index);
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void SaveCurrentLayout(string name)
-    {
+    private void SaveCurrentLayout(string name) {
         name = name.Trim();
         if (name.Length == 0 || _stageActive || _root is null)
             return;
@@ -105,13 +93,10 @@ public partial class ShellWindow
         CaptureLayoutSizes();
         var layout = new SavedLayout { Name = name, Tree = ToSnapshot(_root) };
         var existing = _layouts.FindIndex(p => p.Name == name);
-        if (existing >= 0)
-        {
+        if (existing >= 0) {
             _layouts[existing] = layout;
             _activeLayoutIndex = existing;
-        }
-        else
-        {
+        } else {
             _layouts.Add(layout);
             _activeLayoutIndex = _layouts.Count - 1;
         }
@@ -121,8 +106,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void DeleteLayout(int index)
-    {
+    private void DeleteLayout(int index) {
         if (index < 0 || index >= _layouts.Count)
             return;
         _layouts.RemoveAt(index);
@@ -134,22 +118,18 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void OnLayoutMenuClick(object sender, RoutedEventArgs e)
-    {
+    private void OnLayoutMenuClick(object sender, RoutedEventArgs e) {
         if (_stageActive)
             return;
         BuildLayoutPopup();
         LayoutPopup.IsOpen = true;
     }
 
-    private void BuildLayoutPopup()
-    {
+    private void BuildLayoutPopup() {
         LayoutPopupList.Children.Clear();
 
-        if (_layouts.Count == 0)
-        {
-            LayoutPopupList.Children.Add(new TextBlock
-            {
+        if (_layouts.Count == 0) {
+            LayoutPopupList.Children.Add(new TextBlock {
                 Text = "保存したレイアウトはまだありません",
                 FontSize = UiFontManager.Scaled(12),
                 Margin = new Thickness(10, 6, 10, 6),
@@ -158,22 +138,19 @@ public partial class ShellWindow
             return;
         }
 
-        for (var i = 0; i < _layouts.Count; i++)
-        {
+        for (var i = 0; i < _layouts.Count; i++) {
             var index = i;
             var layout = _layouts[i];
             var row = new DockPanel { LastChildFill = true };
 
-            var del = new Button
-            {
+            var del = new Button {
                 Content = "✕",
                 FontSize = UiFontManager.Scaled(11),
                 ToolTip = "このレイアウトを削除",
                 Width = 28,
                 Style = (Style)FindResource("BranchMenuItem"),
             };
-            del.Click += (_, _) =>
-            {
+            del.Click += (_, _) => {
                 DeleteLayout(index);
                 BuildLayoutPopup();
             };
@@ -181,19 +158,16 @@ public partial class ShellWindow
             row.Children.Add(del);
 
             var active = !_layoutDirty && index == _activeLayoutIndex;
-            var load = new Button
-            {
+            var load = new Button {
                 Style = (Style)FindResource("BranchMenuItem"),
                 FontSize = UiFontManager.Scaled(12),
-                Content = new TextBlock
-                {
+                Content = new TextBlock {
                     Text = LayoutSummary(layout),
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     Foreground = active ? (Brush)FindResource("Accent") : (Brush)FindResource("Fg"),
                 },
             };
-            load.Click += (_, _) =>
-            {
+            load.Click += (_, _) => {
                 LayoutPopup.IsOpen = false;
                 LoadLayout(index);
             };
@@ -203,16 +177,13 @@ public partial class ShellWindow
         }
     }
 
-    private static string LayoutSummary(SavedLayout layout)
-    {
+    private static string LayoutSummary(SavedLayout layout) {
         var panes = LeafKinds(layout.Tree).Select(PaneLabel);
         return $"{layout.Name}  ({string.Join(" · ", panes)})";
     }
 
-    private static IEnumerable<PaneKind> LeafKinds(PaneNodeSnapshot node)
-    {
-        if (node.Kind is { } kind)
-        {
+    private static IEnumerable<PaneKind> LeafKinds(PaneNodeSnapshot node) {
+        if (node.Kind is { } kind) {
             yield return kind;
             yield break;
         }
@@ -221,8 +192,7 @@ public partial class ShellWindow
                 yield return k;
     }
 
-    private void OnLayoutSaveClick(object sender, RoutedEventArgs e)
-    {
+    private void OnLayoutSaveClick(object sender, RoutedEventArgs e) {
         var name = LayoutNameInput.Text;
         if (string.IsNullOrWhiteSpace(name))
             name = $"レイアウト {_layouts.Count + 1}";

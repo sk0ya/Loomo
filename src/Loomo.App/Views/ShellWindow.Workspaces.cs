@@ -1,13 +1,10 @@
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース切替とスナップショット保存・復元（タブ実体の付け替え）</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
 
-    private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab)
-    {
-        switch (tab.Kind)
-        {
+    private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab) {
+        switch (tab.Kind) {
             case TabEntryKind.Terminal:
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
                 ActivateTerminalTab(tab.Id);
@@ -23,10 +20,8 @@ public partial class ShellWindow
         }
     }
 
-    private async void OnSidebarTabCloseRequested(object? sender, TabEntryViewModel tab)
-    {
-        switch (tab.Kind)
-        {
+    private async void OnSidebarTabCloseRequested(object? sender, TabEntryViewModel tab) {
+        switch (tab.Kind) {
             case TabEntryKind.Terminal:
                 await CloseTerminalTabAsync(tab.Id);
                 break;
@@ -39,10 +34,8 @@ public partial class ShellWindow
         }
     }
 
-    private async void OnSidebarTabCloseOthersRequested(object? sender, TabEntryViewModel tab)
-    {
-        switch (tab.Kind)
-        {
+    private async void OnSidebarTabCloseOthersRequested(object? sender, TabEntryViewModel tab) {
+        switch (tab.Kind) {
             case TabEntryKind.Terminal:
                 foreach (var id in _terminalTabs.Where(t => t.Id != tab.Id).Select(t => t.Id).ToList())
                     await CloseTerminalTabAsync(id);
@@ -58,10 +51,8 @@ public partial class ShellWindow
         }
     }
 
-    private async void OnSidebarTabCloseAllRequested(object? sender, TabEntryViewModel tab)
-    {
-        switch (tab.Kind)
-        {
+    private async void OnSidebarTabCloseAllRequested(object? sender, TabEntryViewModel tab) {
+        switch (tab.Kind) {
             case TabEntryKind.Terminal:
                 foreach (var id in _terminalTabs.Select(t => t.Id).ToList())
                     await CloseTerminalTabAsync(id);
@@ -77,14 +68,12 @@ public partial class ShellWindow
         }
     }
 
-    private void UpdateTerminalTab(TerminalTab tab, string? title)
-    {
+    private void UpdateTerminalTab(TerminalTab tab, string? title) {
         _vm.Tabs.UpdateTerminalTab(tab.Id, title);
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void UpdateEditorTab(EditorTab tab)
-    {
+    private void UpdateEditorTab(EditorTab tab) {
         if (ReferenceEquals(_previewEditorTab, tab) && tab.Control.IsModified)
             SetPreviewTab(null);
 
@@ -98,16 +87,13 @@ public partial class ShellWindow
     private async void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
         => await SwitchWorkspaceAsync(workspace, captureCurrent: true);
 
-    private async void OnWorkspaceRemoved(object? sender, Guid workspaceId)
-    {
-        if (_terminalWorkspaces.Remove(workspaceId, out var terminal))
-        {
+    private async void OnWorkspaceRemoved(object? sender, Guid workspaceId) {
+        if (_terminalWorkspaces.Remove(workspaceId, out var terminal)) {
             foreach (var tab in terminal.Tabs)
                 await tab.View.CloseAsync();
         }
 
-        if (_browserWorkspaces.Remove(workspaceId, out var browser))
-        {
+        if (_browserWorkspaces.Remove(workspaceId, out var browser)) {
             foreach (var tab in browser.Tabs)
                 tab.View.Dispose();
         }
@@ -118,8 +104,7 @@ public partial class ShellWindow
                     tab.Control.Dispose();
     }
 
-    private void OnCopyWorkspacePathMenuClick(object sender, RoutedEventArgs e)
-    {
+    private void OnCopyWorkspacePathMenuClick(object sender, RoutedEventArgs e) {
         if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
             return;
 
@@ -127,28 +112,22 @@ public partial class ShellWindow
         catch { /* クリップボードのロック等は無視 */ }
     }
 
-    private void OnRevealWorkspaceInExplorerMenuClick(object sender, RoutedEventArgs e)
-    {
+    private void OnRevealWorkspaceInExplorerMenuClick(object sender, RoutedEventArgs e) {
         if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
             return;
 
-        try
-        {
+        try {
             if (Directory.Exists(entry.RootPath))
                 Process.Start("explorer.exe", $"\"{entry.RootPath}\"");
-        }
-        catch
-        {
+        } catch {
         }
     }
 
-    private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e)
-    {
+    private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e) {
         if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
             return;
 
-        if (!_vm.Workspaces.RemoveWorkspaceCommand.CanExecute(entry))
-        {
+        if (!_vm.Workspaces.RemoveWorkspaceCommand.CanExecute(entry)) {
             MessageBox.Show(
                 this,
                 "最後のワークスペースは削除できません（常に1つは開いている必要があります）。",
@@ -170,29 +149,24 @@ public partial class ShellWindow
             _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);
     }
 
-    private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false)
-    {
+    private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false) {
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);
 
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
-        try
-        {
+        try {
             _vm.Trail.SetWorkspace(workspace.Id.ToString());
             _vm.Trail.EnsureLoaded();
             _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
             _trailLastPaneMode = null;
             await SwitchWorkspaceCoreAsync(workspace, deferHydration);
-        }
-        finally
-        {
+        } finally {
             _trailSuppressed = trailSaved;
         }
     }
 
-    private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool deferHydration)
-    {
+    private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool deferHydration) {
         ClearStageModeForWorkspaceSwitch();
         _vm.SearchPanel.ClearQuery();
         DetachTerminalTabs();
@@ -200,8 +174,7 @@ public partial class ShellWindow
         DetachBrowserTabs();
         _detached?.CloseAll();
         _activeWorkspace = workspace;
-        if (!deferHydration)
-        {
+        if (!deferHydration) {
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
@@ -217,8 +190,7 @@ public partial class ShellWindow
             ReapplySpanPaneLayout();
         StartupProfiler.Mark("  復元:ApplyPaneLayout");
 
-        if (deferHydration)
-        {
+        if (deferHydration) {
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             StartupProfiler.Mark("  復元:初フレーム後に継続");
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
@@ -243,15 +215,13 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void SaveActiveWorkspaceSnapshot(bool immediate = false)
-    {
+    private void SaveActiveWorkspaceSnapshot(bool immediate = false) {
         if (_activeWorkspace is null)
             return;
 
         RecordTrailLayoutIfChanged();
 
-        if (immediate)
-        {
+        if (immediate) {
             _pendingWorkspaceSnapshotSave?.Abort();
             _pendingWorkspaceSnapshotSave = null;
             SaveActiveWorkspaceSnapshotNow();
@@ -262,16 +232,14 @@ public partial class ShellWindow
             return;
 
         _pendingWorkspaceSnapshotSave = Dispatcher.BeginInvoke(
-            new Action(() =>
-            {
+            new Action(() => {
                 _pendingWorkspaceSnapshotSave = null;
                 SaveActiveWorkspaceSnapshotNow();
             }),
             DispatcherPriority.ApplicationIdle);
     }
 
-    private void SaveActiveWorkspaceSnapshotNow()
-    {
+    private void SaveActiveWorkspaceSnapshotNow() {
         if (_activeWorkspace is null)
             return;
 
@@ -280,13 +248,11 @@ public partial class ShellWindow
         RefreshLatestTrailPaneLayout();
     }
 
-    private void CaptureInto(WorkspaceSnapshot snapshot)
-    {
+    private void CaptureInto(WorkspaceSnapshot snapshot) {
         snapshot.LastUsedUtc = DateTime.UtcNow;
         snapshot.Name = WorkspaceListViewModel.DisplayName(snapshot.RootPath);
 
-        snapshot.TerminalTabs = _terminalTabs.Select(tab => new TerminalTabSnapshot
-        {
+        snapshot.TerminalTabs = _terminalTabs.Select(tab => new TerminalTabSnapshot {
             Id = tab.Id,
             WorkingDirectory = Directory.Exists(tab.View.WorkingDirectory)
                 ? tab.View.WorkingDirectory
@@ -296,8 +262,7 @@ public partial class ShellWindow
         }).ToList();
 
         var activeTerminal = _activeTerminalTab?.View ?? _terminalTabs.FirstOrDefault()?.View;
-        if (activeTerminal is not null)
-        {
+        if (activeTerminal is not null) {
             snapshot.Terminal.WorkingDirectory = Directory.Exists(activeTerminal.WorkingDirectory)
                 ? activeTerminal.WorkingDirectory
                 : _terminal.CurrentDirectory;
@@ -311,8 +276,7 @@ public partial class ShellWindow
 
         var activeTab = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)
             ?? persistableEditorTabs.FirstOrDefault();
-        if (activeTab is not null)
-        {
+        if (activeTab is not null) {
             var s = WorkspaceSessionCoordinator.CaptureEditorTab(activeTab, _activeEditorTab?.Id);
             snapshot.Editor.FilePath = s.FilePath;
             snapshot.Editor.Text = s.Text;
@@ -321,8 +285,7 @@ public partial class ShellWindow
 
         snapshot.BrowserTabs = _browserTabs
             .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(tab.View.Source?.ToString()))
-            .Select(tab => new BrowserTabSnapshot
-            {
+            .Select(tab => new BrowserTabSnapshot {
                 Id = tab.Id,
                 Url = tab.View.Source?.ToString(),
                 Title = tab.View.CoreWebView2?.DocumentTitle,
@@ -339,8 +302,7 @@ public partial class ShellWindow
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
         snapshot.Mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
         snapshot.EnabledSessions = _enabledSessions.ToList();
-        snapshot.Stage = new StageSnapshot
-        {
+        snapshot.Stage = new StageSnapshot {
             IsActive = _stageActive,
             Pane = _stageActive ? _stagePane : null,
             Overview = _stageActive && _overviewActive
@@ -350,12 +312,9 @@ public partial class ShellWindow
         snapshot.ActiveLayoutIndex = _activeLayoutIndex;
         snapshot.LayoutDirty = _layoutDirty;
 
-        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
-        {
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot) {
             snapshot.PaneLayout = ToSnapshot(savedRoot);
-        }
-        else
-        {
+        } else {
             CaptureLayoutSizes();
             snapshot.PaneLayout = _root is null ? null : ToSnapshot(_root);
         }
@@ -364,8 +323,7 @@ public partial class ShellWindow
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
 
-    private void OnClosed(object? sender, EventArgs e)
-    {
+    private void OnClosed(object? sender, EventArgs e) {
         _detached?.CloseAll();
 
         foreach (var workspace in _editorWorkspaces.Values)
@@ -374,8 +332,7 @@ public partial class ShellWindow
                     tab.Control.Dispose();
     }
 
-    private void OnWindowStateChanged(object? sender, EventArgs e)
-    {
+    private void OnWindowStateChanged(object? sender, EventArgs e) {
         if (WindowState == WindowState.Maximized && _isSpanMaximized)
             ExitSpanState();
         UpdateMaximizeGlyph();

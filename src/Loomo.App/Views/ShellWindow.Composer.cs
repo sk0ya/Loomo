@@ -7,8 +7,7 @@ namespace sk0ya.Loomo.App.Views;
 /// Ctrl+Enter（または ▶ ボタン）で直上の可視ターミナルへ送る。
 /// 本文はワークスペーススナップショットに保存・復元する。
 /// </summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private const double ComposerDefaultHeight = 140;
 
     private VimEditorControl? _composerEditor;
@@ -22,22 +21,18 @@ public partial class ShellWindow
     private void OnToggleComposer(object sender, RoutedEventArgs e)
         => SetComposerVisible(!IsComposerVisible);
 
-    private void SetComposerVisible(bool visible)
-    {
+    private void SetComposerVisible(bool visible) {
         if (visible == IsComposerVisible)
             return;
 
-        if (visible)
-        {
+        if (visible) {
             EnsureComposerEditor();
             ComposerSection.Visibility = Visibility.Visible;
             ComposerSplitter.Visibility = Visibility.Visible;
             ComposerSplitterRow.Height = new GridLength(6);
             ComposerRow.Height = new GridLength(Math.Max(_composerHeight, 60));
             _composerEditor?.Focus();
-        }
-        else
-        {
+        } else {
             if (ComposerRow.Height.IsAbsolute)
                 _composerHeight = ComposerRow.Height.Value;
             ComposerSection.Visibility = Visibility.Collapsed;
@@ -47,13 +42,11 @@ public partial class ShellWindow
         }
     }
 
-    private void EnsureComposerEditor()
-    {
+    private void EnsureComposerEditor() {
         if (_composerEditor is not null)
             return;
 
-        var editor = new VimEditorControl(new VimEditorControlOptions())
-        {
+        var editor = new VimEditorControl(new VimEditorControlOptions()) {
             VimEnabled = _settings.Vim.Enabled,
             MinimalChrome = true,
         };
@@ -64,11 +57,9 @@ public partial class ShellWindow
         ComposerEditorHost.Child = editor;
     }
 
-    private void OnComposerPreviewKeyDown(object sender, KeyEventArgs e)
-    {
+    private void OnComposerPreviewKeyDown(object sender, KeyEventArgs e) {
         if (_keybindings.For("composer.run") is { Count: 1 } seq
-            && Input.KeyChord.FromEvent(e) is { } chord && chord.Equals(seq.First))
-        {
+            && Input.KeyChord.FromEvent(e) is { } chord && chord.Equals(seq.First)) {
             e.Handled = true;
             RunComposer();
         }
@@ -76,15 +67,13 @@ public partial class ShellWindow
 
     private void OnComposerRun(object sender, RoutedEventArgs e) => RunComposer();
 
-    private void OnComposerPinToPegboard(object sender, RoutedEventArgs e)
-    {
+    private void OnComposerPinToPegboard(object sender, RoutedEventArgs e) {
         var text = CaptureComposerText();
         if (!string.IsNullOrWhiteSpace(text))
             _vm.Pegboard.AddContent(text, type: "text");
     }
 
-    private void InsertIntoComposer(string text)
-    {
+    private void InsertIntoComposer(string text) {
         if (string.IsNullOrWhiteSpace(text))
             return;
 
@@ -103,12 +92,9 @@ public partial class ShellWindow
             return;
 
         string? command;
-        try
-        {
+        try {
             command = ComposerCommandBuilder.Build(editor.Text, ComposerCommandBuilder.DefaultScriptDirectory());
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             MessageBox.Show(this, $"コンポーザの実行準備に失敗しました: {ex.Message}",
                 "コンポーザ", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -123,8 +109,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void RestoreComposer(WorkspaceSnapshot workspace)
-    {
+    private void RestoreComposer(WorkspaceSnapshot workspace) {
         _composerPendingText = workspace.ComposerText ?? string.Empty;
         _composerEditor?.SetText(_composerPendingText);
 

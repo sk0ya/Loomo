@@ -7,12 +7,9 @@ namespace sk0ya.Loomo.App.Views;
 /// <see cref="KeybindingService"/> から実効バインドを得るので、設定画面での再割り当てが即反映される。
 /// 新しいショートカットは、カタログに 1 行足してここへアクションを 1 行結ぶだけで有効になる。
 /// </summary>
-public partial class ShellWindow
-{
-    private KeyboardDispatcher BuildKeyboardDispatcher()
-    {
-        var actions = new Dictionary<string, Action>(StringComparer.Ordinal)
-        {
+public partial class ShellWindow {
+    private KeyboardDispatcher BuildKeyboardDispatcher() {
+        var actions = new Dictionary<string, Action>(StringComparer.Ordinal) {
             ["palette.open"] = OpenCommandPalette,
             ["palette.openFromPrefix"] = OpenCommandPalette,
 

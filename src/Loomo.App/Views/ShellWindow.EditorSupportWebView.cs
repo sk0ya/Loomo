@@ -1,15 +1,13 @@
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow に残る EditorSupport の View イベント配線。</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync() => _editorSupport.WebView.EnsureAsync();
     private void RenderPendingEditorSupportContent(CoreWebView2 core) => _editorSupport.WebView.RenderPending(core);
     internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupport.WebView.TryHorizontalScroll(delta);
     private void PostEditorSupportScrollRatio(double ratio) => _editorSupport.WebView.PostScrollRatio(ratio);
 
-    private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title)
-    {
+    private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title) {
         if (!_editorSupportNavigation.TryWritePage(html, out var pageUrl))
             return;
 
@@ -31,8 +29,7 @@ public partial class ShellWindow
     private void HideEditorSupportVisual()
         => _editorSupport.ShowWebView();
 
-    private void EditorSupportVisual_ContentEdited(object? sender, EditorSupportContentEdited e)
-    {
+    private void EditorSupportVisual_ContentEdited(object? sender, EditorSupportContentEdited e) {
         var tab = _editorSupport.Source;
         if (tab is null
             || !string.Equals(tab.Control.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase))
@@ -44,8 +41,7 @@ public partial class ShellWindow
         tab.Control.SetText(e.Text);
     }
 
-    private void ShowEditorSupportPane()
-    {
+    private void ShowEditorSupportPane() {
         if (IsPaneVisible(PaneKind.EditorSupport))
             return;
 
@@ -53,12 +49,10 @@ public partial class ShellWindow
         SetPaneVisible(PaneKind.EditorSupport, true);
     }
 
-    private void EnsureEditorSupportLeafBesideEditor()
-    {
+    private void EnsureEditorSupportLeafBesideEditor() {
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot
             && AllLeaves(savedRoot).All(l => l.Kind != PaneKind.EditorSupport)
-            && AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == PaneKind.Editor) is { } savedEditor)
-        {
+            && AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == PaneKind.Editor) is { } savedEditor) {
             _spanSavedRoot = InsertRelative(
                 savedRoot, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, savedEditor, DropZone.Right);
         }
@@ -74,26 +68,22 @@ public partial class ShellWindow
 
 
 
-    private void DetachEditorSupportSource()
-    {
-        if (_editorSupport.DetachSource() is { } previous)
-        {
+    private void DetachEditorSupportSource() {
+        if (_editorSupport.DetachSource() is { } previous) {
             previous.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
             previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
         StopCodeReadyRetry();
     }
 
-    private void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e)
-    {
+    private void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e) {
         if (_syncingEditorFromSupport || sender is not VimEditorControl editor)
             return;
 
         _editorSupport.WebView.PostScrollRatio(editor.VerticalScrollRatio);
     }
 
-    private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-    {
+    private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e) {
         if (_editorSupport.Source is null)
             return;
 
@@ -104,12 +94,10 @@ public partial class ShellWindow
             if (!root.TryGetProperty("type", out var typeElement))
                 return;
 
-            switch (typeElement.GetString())
-            {
+            switch (typeElement.GetString()) {
                 case "markdownPreviewScroll":
                     if (root.TryGetProperty("ratio", out var ratioElement)
-                        && ratioElement.TryGetDouble(out var ratio))
-                    {
+                        && ratioElement.TryGetDouble(out var ratio)) {
                         _syncingEditorFromSupport = true;
                         try { _editorSupport.Source.Control.ScrollToVerticalRatio(ratio); }
                         finally { _syncingEditorFromSupport = false; }
@@ -132,14 +120,11 @@ public partial class ShellWindow
                         ToggleMarkdownTaskCheckbox(taskLine);
                     break;
             }
-        }
-        catch
-        {
+        } catch {
         }
     }
 
-    private void FocusEditorSupportSource(int? line, bool alignTop = false)
-    {
+    private void FocusEditorSupportSource(int? line, bool alignTop = false) {
         var tab = _editorSupport.Source;
         if (tab is null)
             return;
@@ -148,8 +133,7 @@ public partial class ShellWindow
             SetStagePane(PaneKind.Editor);
 
         SetActiveEditorTab(tab);
-        if (line is int l)
-        {
+        if (line is int l) {
             tab.Control.NavigateTo(l - 1, 0);
             if (alignTop)
                 tab.Control.ScrollCursorToTop();
@@ -158,15 +142,12 @@ public partial class ShellWindow
         _focusedRegion = FocusTarget.Of(PaneKind.Editor);
     }
 
-    private void EditorSupport_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
-    {
+    private void EditorSupport_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e) {
         if (_editorSupport.Source is null || sender is not CoreWebView2 core)
             return;
 
-        try
-        {
-            for (var i = e.MenuItems.Count - 1; i >= 0; i--)
-            {
+        try {
+            for (var i = e.MenuItems.Count - 1; i >= 0; i--) {
                 if (e.MenuItems[i].Name is "back" or "forward")
                     e.MenuItems.RemoveAt(i);
             }
@@ -181,9 +162,7 @@ public partial class ShellWindow
             back.IsEnabled = _editorSupport.History.CanGoBack;
             back.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => _ = EditorSupportGoBackAsync());
             e.MenuItems.Insert(1, back);
-        }
-        catch
-        {
+        } catch {
         }
     }
 

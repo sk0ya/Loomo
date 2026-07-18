@@ -1,14 +1,12 @@
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインレイアウト（2D並べ替え・ドラッグ移動・ズーム・表示切替・スナップショット適用）</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
 
     private bool _paneSplitterDragging;
 
 
-    private void InitializePanes()
-    {
+    private void InitializePanes() {
         _paneElements[PaneKind.Terminal] = TerminalPane;
         _paneElements[PaneKind.Editor] = EditorPane;
         _paneElements[PaneKind.EditorSupport] = EditorSupportPane;
@@ -37,8 +35,7 @@ public partial class ShellWindow
             () => SaveActiveWorkspaceSnapshot());
     }
 
-    private void ApplyDefaultLayout()
-    {
+    private void ApplyDefaultLayout() {
         _zoomedPane = null;
         var top = new PaneSplit { Orientation = SplitKind.Columns, Weight = 2 };
         top.Children.Add(NewLeaf(PaneKind.Editor));
@@ -63,12 +60,10 @@ public partial class ShellWindow
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
         => _paneLayout.FindParent(target, current);
 
-    private void RebuildPaneLayout()
-    {
+    private void RebuildPaneLayout() {
         PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);
 
-        if (_stageActive)
-        {
+        if (_stageActive) {
             RebuildStage();
             return;
         }
@@ -84,8 +79,7 @@ public partial class ShellWindow
         PaneHost.ColumnDefinitions.Clear();
 
         _root = Normalize(_root);
-        if (_root is null)
-        {
+        if (_root is null) {
             ApplyDefaultLayout();
             return;
         }
@@ -96,10 +90,8 @@ public partial class ShellWindow
 
         UpdatePaneToggleStates();
 
-        if (_zoomedPane is { } zoom)
-        {
-            if (FindLeaf(zoom) is { Hidden: false } && _paneElements.TryGetValue(zoom, out var zoomElement))
-            {
+        if (_zoomedPane is { } zoom) {
+            if (FindLeaf(zoom) is { Hidden: false } && _paneElements.TryGetValue(zoom, out var zoomElement)) {
                 zoomElement.Visibility = Visibility.Visible;
                 PaneHost.Children.Add(zoomElement);
                 ScheduleBrowserRealize(_activeBrowserTab);
@@ -111,8 +103,7 @@ public partial class ShellWindow
 
         var border = (Brush)FindResource("Border");
         var visual = BuildNode(_root, border);
-        if (visual is null)
-        {
+        if (visual is null) {
             ApplyDefaultLayout();
             return;
         }
@@ -122,10 +113,8 @@ public partial class ShellWindow
         ScheduleLayoutWings();
     }
 
-    private FrameworkElement? BuildNode(PaneNode node, Brush border)
-    {
-        if (node is PaneLeaf leaf)
-        {
+    private FrameworkElement? BuildNode(PaneNode node, Brush border) {
+        if (node is PaneLeaf leaf) {
             if (leaf.Hidden)
                 return null;
             var element = _paneElements[leaf.Kind];
@@ -149,10 +138,8 @@ public partial class ShellWindow
         var cols = split.Orientation == SplitKind.Columns;
         var min = cols ? 160.0 : 100.0;
 
-        for (var i = 0; i < visibleChildren.Count; i++)
-        {
-            if (i > 0)
-            {
+        for (var i = 0; i < visibleChildren.Count; i++) {
+            if (i > 0) {
                 AddTrack(grid, cols, new GridLength(SplitterThickness));
                 var splitter = NewSplitter(cols, border, split);
                 SetTrack(splitter, cols, i * 2 - 1);
@@ -171,27 +158,23 @@ public partial class ShellWindow
 
     private static bool IsNodeVisible(PaneNode node) => PaneLayoutTree.IsNodeVisible(node);
 
-    private static void AddTrack(Grid grid, bool cols, GridLength length, double min = 0)
-    {
+    private static void AddTrack(Grid grid, bool cols, GridLength length, double min = 0) {
         if (cols)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = length, MinWidth = min });
         else
             grid.RowDefinitions.Add(new RowDefinition { Height = length, MinHeight = min });
     }
 
-    private static void SetTrack(UIElement element, bool cols, int index)
-    {
+    private static void SetTrack(UIElement element, bool cols, int index) {
         if (cols)
             Grid.SetColumn(element, index);
         else
             Grid.SetRow(element, index);
     }
 
-    private GridSplitter NewSplitter(bool cols, Brush border, PaneSplit split)
-    {
+    private GridSplitter NewSplitter(bool cols, Brush border, PaneSplit split) {
         var accent = (Brush)FindResource("Accent");
-        var splitter = new GridSplitter
-        {
+        var splitter = new GridSplitter {
             Width = cols ? SplitterThickness : double.NaN,
             Height = cols ? double.NaN : SplitterThickness,
             ResizeDirection = cols ? GridResizeDirection.Columns : GridResizeDirection.Rows,
@@ -203,13 +186,11 @@ public partial class ShellWindow
         };
         splitter.MouseEnter += (_, _) => splitter.Background = accent;
         splitter.MouseLeave += (_, _) => splitter.Background = border;
-        splitter.DragStarted += (_, _) =>
-        {
+        splitter.DragStarted += (_, _) => {
             BeginTrailLayoutChange();
             _paneSplitterDragging = true;
         };
-        splitter.DragCompleted += (_, _) =>
-        {
+        splitter.DragCompleted += (_, _) => {
             _paneSplitterDragging = false;
             PaneLayoutDebugLog.Log($"tile splitter DragCompleted cols={cols} splitWeights=[{string.Join(",", split.Children.Select(c => c.Weight.ToString("0.#")))}]");
             CaptureLayoutSizes();
@@ -222,8 +203,7 @@ public partial class ShellWindow
         return splitter;
     }
 
-    private void EqualizeSiblings(PaneSplit split)
-    {
+    private void EqualizeSiblings(PaneSplit split) {
         BeginTrailLayoutChange();
         foreach (var child in split.Children)
             child.Weight = 1;
@@ -232,23 +212,19 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void MarkLayoutDirty()
-    {
+    private void MarkLayoutDirty() {
         if (_stageActive || _layoutDirty)
             return;
         _layoutDirty = true;
         UpdateModeButtons();
     }
 
-    private void ToggleZoom()
-    {
-        if (_stageActive)
-        {
+    private void ToggleZoom() {
+        if (_stageActive) {
             ToggleOverview();
             return;
         }
-        if (_zoomedPane is not null)
-        {
+        if (_zoomedPane is not null) {
             ZoomPane(null);
             return;
         }
@@ -259,10 +235,8 @@ public partial class ShellWindow
 
     private void ToggleZoomFor(PaneKind kind) => ZoomPane(_zoomedPane == kind ? null : kind);
 
-    private void HideFocusedRegion()
-    {
-        if (_focusedRegion is { IsSidebar: true })
-        {
+    private void HideFocusedRegion() {
+        if (_focusedRegion is { IsSidebar: true }) {
             _vm.IsSidebarVisible = false;
             return;
         }
@@ -273,8 +247,7 @@ public partial class ShellWindow
             SetPaneVisible(kind, false);
     }
 
-    private void ZoomPane(PaneKind? kind)
-    {
+    private void ZoomPane(PaneKind? kind) {
         if (kind is { } k && (!IsPaneVisible(k) || VisibleLeafCount() <= 1))
             return; // 1枚だけ、または隠れているペインはズームしない
         if (_zoomedPane is null && kind is not null)
@@ -289,13 +262,11 @@ public partial class ShellWindow
 
     private void CaptureLayoutSizes() => CaptureNode(_root);
 
-    private static void CaptureNode(PaneNode? node)
-    {
+    private static void CaptureNode(PaneNode? node) {
         if (node is not PaneSplit split)
             return;
 
-        if (split.Host is { } grid)
-        {
+        if (split.Host is { } grid) {
             var cols = split.Orientation == SplitKind.Columns;
             foreach (var child in split.Children)
             {
@@ -303,28 +274,22 @@ public partial class ShellWindow
                 if (index < 0)
                     continue;
                 var oldWeight = child.Weight;
-                if (cols)
-                {
-                    if (index < grid.ColumnDefinitions.Count)
-                    {
+                if (cols) {
+                    if (index < grid.ColumnDefinitions.Count) {
                         var definition = grid.ColumnDefinitions[index];
                         child.Weight = definition.ActualWidth > 0
                             ? definition.ActualWidth
                             : PositiveGridLengthValue(definition.Width, child.Weight);
                     }
-                }
-                else
-                {
-                    if (index < grid.RowDefinitions.Count)
-                    {
+                } else {
+                    if (index < grid.RowDefinitions.Count) {
                         var definition = grid.RowDefinitions[index];
                         child.Weight = definition.ActualHeight > 0
                             ? definition.ActualHeight
                             : PositiveGridLengthValue(definition.Height, child.Weight);
                     }
                 }
-                if (PaneLayoutDebugLog.Enabled && Math.Abs(oldWeight - child.Weight) > 0.5)
-                {
+                if (PaneLayoutDebugLog.Enabled && Math.Abs(oldWeight - child.Weight) > 0.5) {
                     var label = child is PaneLeaf leaf ? leaf.Kind.ToString() : "split";
                     PaneLayoutDebugLog.Log($"    CaptureNode: {label}[{index}] weight {oldWeight:0.#} -> {child.Weight:0.#}");
                 }
@@ -338,19 +303,15 @@ public partial class ShellWindow
     private static double PositiveGridLengthValue(GridLength length, double fallback)
         => length.Value > 0 ? length.Value : (fallback > 0 ? fallback : 1);
 
-    private void ApplyPaneLayout(PaneNodeSnapshot? snapshot)
-    {
+    private void ApplyPaneLayout(PaneNodeSnapshot? snapshot) {
         _zoomedPane = null;
         var built = snapshot is null ? null : BuildFromSnapshot(snapshot, new HashSet<PaneKind>());
-        if (built is not null && AllLeaves(built).Any())
-        {
+        if (built is not null && AllLeaves(built).Any()) {
             _root = built;
             if (!_idePaneApplicable && FindLeaf(PaneKind.Debug) is { Hidden: false } dbg)
                 dbg.Hidden = true;
             RebuildPaneLayout();
-        }
-        else
-        {
+        } else {
             ApplyDefaultLayout();
         }
     }

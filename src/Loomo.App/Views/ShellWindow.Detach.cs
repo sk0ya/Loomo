@@ -4,17 +4,14 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン項目の別ウィンドウ切り離し。Editor は同一ファイルの複製＋双方向テキスト同期、
 /// Terminal/Browser は同期なしの新規スピンオフ。ウィンドウ管理・タブ結合は <see cref="DetachedWindowManager"/>。
 /// 状態はワークスペースのスナップショットへ保存し、切替・再起動時に復元する。</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private DetachedWindowManager? _detached;
 
     private DetachedWindowManager Detached => _detached ??= new DetachedWindowManager(this, () => SaveActiveWorkspaceSnapshot());
 
-    private DetachedItemSnapshot? CaptureDetachedItem(DetachedItem item)
-    {
+    private DetachedItemSnapshot? CaptureDetachedItem(DetachedItem item) {
         var snapshot = new DetachedItemSnapshot { Kind = item.Kind.ToString() };
-        switch (item.Content)
-        {
+        switch (item.Content) {
             case VimEditorControl editor:
                 snapshot.FilePath = editor.FilePath;
                 snapshot.Text = editor.IsModified || string.IsNullOrWhiteSpace(editor.FilePath) ? editor.Text : null;
@@ -35,17 +32,14 @@ public partial class ShellWindow
         return snapshot;
     }
 
-    private DetachedItem? RestoreDetachedItem(DetachedItemSnapshot snapshot)
-    {
+    private DetachedItem? RestoreDetachedItem(DetachedItemSnapshot snapshot) {
         if (!Enum.TryParse<DetachKind>(snapshot.Kind, out var kind)) return null;
-        if (kind == DetachKind.EditorMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath))
-        {
+        if (kind == DetachKind.EditorMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
             var source = _editorTabs.FirstOrDefault(t => string.Equals(
                 t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
             if (source is not null) return TryCreateEditorMirrorItem(source.Id);
         }
-        if (kind is DetachKind.EditorMirror or DetachKind.EditorMove)
-        {
+        if (kind is DetachKind.EditorMirror or DetachKind.EditorMove) {
             var editor = CreateEditorTab().Control;
             if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
                 editor.LoadFile(snapshot.FilePath);
@@ -54,8 +48,7 @@ public partial class ShellWindow
             return new DetachedItem(DetachKind.EditorMove, title, editor,
                 _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose);
         }
-        if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath))
-        {
+        if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
             var source = _editorTabs.FirstOrDefault(t => string.Equals(
                 t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
             if (source is null) return null;
@@ -72,10 +65,8 @@ public partial class ShellWindow
         return null;
     }
 
-    private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab)
-    {
-        DetachedItem? item = tab.Kind switch
-        {
+    private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab) {
+        DetachedItem? item = tab.Kind switch {
             TabEntryKind.Editor => TryCreateEditorMirrorItem(tab.Id),
             TabEntryKind.Terminal => CreateTerminalSpinoffItem(_terminalTabs.FirstOrDefault(t => t.Id == tab.Id)),
             TabEntryKind.Browser => CreateBrowserSpinoffItem(_browserTabs.FirstOrDefault(t => t.Id == tab.Id)),
@@ -85,15 +76,13 @@ public partial class ShellWindow
             Detached.Detach(item);
     }
 
-    private void OnDetachEditorPane(object sender, RoutedEventArgs e)
-    {
+    private void OnDetachEditorPane(object sender, RoutedEventArgs e) {
         var id = _editorViews?.FocusedTabId ?? _activeEditorTab?.Id;
         if (id is { } tabId && TryCreateEditorMirrorItem(tabId) is { } item)
             Detached.Detach(item);
     }
 
-    private void OnDetachTerminalPane(object sender, RoutedEventArgs e)
-    {
+    private void OnDetachTerminalPane(object sender, RoutedEventArgs e) {
         var src = _terminalViews?.FocusedTabId is { } id
             ? _terminalTabs.FirstOrDefault(t => t.Id == id)
             : _activeTerminalTab;
@@ -104,8 +93,7 @@ public partial class ShellWindow
         => Detached.Detach(CreateBrowserSpinoffItem(_activeBrowserTab));
 
 
-    private void OnDetachEditorSupport(object sender, RoutedEventArgs e)
-    {
+    private void OnDetachEditorSupport(object sender, RoutedEventArgs e) {
         var source = (_editorSupport.Source ?? _activeEditorTab)?.Control;
         if (source is null)
             return;
@@ -122,15 +110,13 @@ public partial class ShellWindow
     }
 
     private void AttachEditorSupportMirrorLinks(DetachedEditorSupportView view)
-        => view.LinkClicked += async (_, href) =>
-        {
+        => view.LinkClicked += async (_, href) => {
             await HandleEditorSupportLinkClickedAsync(href, view.SourceFilePath);
             Activate();
         };
 
 
-    private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId)
-    {
+    private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId) {
         var src = _editorTabs.FirstOrDefault(t => t.Id == sourceTabId);
         if (src is null)
             return null;
@@ -144,18 +130,15 @@ public partial class ShellWindow
             mirror.SetText(srcCtl.Text);
 
         var syncing = false;
-        void Sync(VimEditorControl from, VimEditorControl to)
-        {
+        void Sync(VimEditorControl from, VimEditorControl to) {
             if (syncing || string.Equals(to.Text, from.Text, StringComparison.Ordinal))
                 return;
             syncing = true;
-            try
-            {
+            try {
                 var caret = to.Caret;
                 to.SetText(from.Text);
                 try { to.NavigateTo(caret.Line, caret.Column); } catch { /* 縮んだ本文で範囲外なら内部でクランプ */ }
-            }
-            finally { syncing = false; }
+            } finally { syncing = false; }
         }
 
         EventHandler srcHandler = (_, _) => Sync(srcCtl, mirror);
@@ -166,8 +149,7 @@ public partial class ShellWindow
         var title = string.IsNullOrWhiteSpace(srcCtl.FilePath) ? "Untitled" : Path.GetFileName(srcCtl.FilePath!);
         return new DetachedItem(
             DetachKind.EditorMirror, title, mirror, _tabIcons.GetFileIcon(srcCtl.FilePath),
-            dispose: () =>
-            {
+            dispose: () => {
                 srcCtl.BufferChanged -= srcHandler;
                 mirror.BufferChanged -= mirHandler;
                 mirror.Dispose();
@@ -178,8 +160,7 @@ public partial class ShellWindow
     private DetachedItem CreateTerminalSpinoffItem(TerminalTab? sourceTab)
         => CreateTerminalSpinoffItem(sourceTab?.View.WorkingDirectory);
 
-    private DetachedItem CreateTerminalSpinoffItem(string? sourceDirectory)
-    {
+    private DetachedItem CreateTerminalSpinoffItem(string? sourceDirectory) {
         var cwd = sourceDirectory;
         if (string.IsNullOrWhiteSpace(cwd) || !Directory.Exists(cwd))
             cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
@@ -199,11 +180,9 @@ public partial class ShellWindow
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
         => CreateBrowserSpinoffItem(sourceTab?.View.Source?.ToString() ?? sourceTab?.PendingUrl);
 
-    private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl)
-    {
+    private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         var url = sourceUrl ?? DefaultBrowserUrl;
-        var view = new WebView2CompositionControl
-        {
+        var view = new WebView2CompositionControl {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
             CreationProperties = CreateWebViewCreationProperties()
         };
@@ -214,14 +193,12 @@ public partial class ShellWindow
         return item;
     }
 
-    private async Task RealizeSpinoffBrowserAsync(WebView2CompositionControl view, string url, DetachedItem item)
-    {
+    private async Task RealizeSpinoffBrowserAsync(WebView2CompositionControl view, string url, DetachedItem item) {
         try { await view.EnsureCoreWebView2Async(); }
         catch { return; }
 
         ConfigureBrowserCore(view.CoreWebView2!);
-        view.CoreWebView2!.DocumentTitleChanged += (_, _) =>
-        {
+        view.CoreWebView2!.DocumentTitleChanged += (_, _) => {
             var title = view.CoreWebView2?.DocumentTitle;
             item.Title = string.IsNullOrWhiteSpace(title) ? "Browser" : title!;
         };
@@ -234,19 +211,16 @@ public partial class ShellWindow
     private Guid _paneTabDragId;
     private bool _paneTabDragArmed;
 
-    private void OnPaneTabPreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
+    private void OnPaneTabPreviewMouseDown(object sender, MouseButtonEventArgs e) {
         _paneTabDragArmed = false;
-        if (ResolvePaneTabId(e.OriginalSource) is { } id)
-        {
+        if (ResolvePaneTabId(e.OriginalSource) is { } id) {
             _paneTabDragStart = e.GetPosition(this);
             _paneTabDragId = id;
             _paneTabDragArmed = true;
         }
     }
 
-    private void OnPaneTabPreviewMouseMove(object sender, MouseEventArgs e)
-    {
+    private void OnPaneTabPreviewMouseMove(object sender, MouseEventArgs e) {
         if (!_paneTabDragArmed || e.LeftButton != MouseButtonState.Pressed)
             return;
         var pos = e.GetPosition(this);
@@ -258,8 +232,7 @@ public partial class ShellWindow
         StartPaneTabTearOff(_paneTabDragId, sender as UIElement);
     }
 
-    private void StartPaneTabTearOff(Guid id, UIElement? source)
-    {
+    private void StartPaneTabTearOff(Guid id, UIElement? source) {
         if (source is null || BuildTearOffFactory(id) is not { } factory)
             return;
 
@@ -269,24 +242,19 @@ public partial class ShellWindow
         Detached.BeginExternalDrag(factory);
         QueryContinueDragEventHandler onQcd = (_, e) => { if (e.EscapePressed) Detached.CancelDrag(); };
         source.QueryContinueDrag += onQcd;
-        try
-        {
+        try {
             var data = new DataObject(DetachedPaneWindow.DetachDragFormat, "external");
             var result = DragDrop.DoDragDrop(source, data, DragDropEffects.Move);
             Detached.EndDrag(result);
-        }
-        finally
-        {
+        } finally {
             source.QueryContinueDrag -= onQcd;
             Detached.ClearDrag();
         }
     }
 
-    private Func<DetachedItem>? BuildTearOffFactory(Guid id)
-    {
+    private Func<DetachedItem>? BuildTearOffFactory(Guid id) {
         if (_editorTabs.Any(t => t.Id == id))
-            return () =>
-            {
+            return () => {
                 var control = RemoveEditorTabForMove(id)!;
                 var title = string.IsNullOrWhiteSpace(control.FilePath) ? "Untitled" : Path.GetFileName(control.FilePath!);
                 return new DetachedItem(
@@ -295,8 +263,7 @@ public partial class ShellWindow
             };
 
         if (_terminalTabs.Any(t => t.Id == id))
-            return () =>
-            {
+            return () => {
                 var view = RemoveTerminalTabForMove(id)!;
                 var item = new DetachedItem(
                     DetachKind.TerminalMove,
@@ -307,8 +274,7 @@ public partial class ShellWindow
             };
 
         if (_browserTabs.Any(t => t.Id == id))
-            return () =>
-            {
+            return () => {
                 var srcTab = _browserTabs.FirstOrDefault(t => t.Id == id);
                 var item = CreateBrowserSpinoffItem(srcTab);   // 同 URL で新規 WebView2（再ペアレント空表示回避）
                 if (srcTab is not null)
@@ -319,16 +285,14 @@ public partial class ShellWindow
         return null;
     }
 
-    private static Guid? ResolvePaneTabId(object originalSource)
-    {
+    private static Guid? ResolvePaneTabId(object originalSource) {
         for (var d = originalSource as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
             if (d is FrameworkElement { Tag: Guid id })
                 return id;
         return null;
     }
 
-    private VimEditorControl? RemoveEditorTabForMove(Guid id)
-    {
+    private VimEditorControl? RemoveEditorTabForMove(Guid id) {
         var index = _editorTabs.FindIndex(t => t.Id == id);
         if (index < 0)
             return null;
@@ -336,8 +300,7 @@ public partial class ShellWindow
         var control = tab.Control;   // 未実体化なら実体化（生きたコントロールを移すため）
         var wasActive = _activeEditorTab?.Id == id;
 
-        if (ReferenceEquals(_editorSupport.Source, tab))
-        {
+        if (ReferenceEquals(_editorSupport.Source, tab)) {
             _editorSupportDebounceTimer?.Stop();
             DetachEditorSupportSource();
             _editorSupport.IsPinned = false;
@@ -350,20 +313,16 @@ public partial class ShellWindow
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);
 
-        if (_editorTabs.Count == 0)
-        {
+        if (_editorTabs.Count == 0) {
             var newTab = CreateEditorTab();
             _editorTabs.Add(newTab);
             _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
             ActivateEditorTab(newTab.Id);
-        }
-        else
-        {
+        } else {
             _editorViews?.RepairTabs(_editorTabs.Select(t => t.Id));
             if (wasActive)
                 ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
-            else
-            {
+            else {
                 _editorViews?.Rebuild();
                 if (_editorViews?.FocusedTabId is { } fid && _editorTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
                     SetActiveEditorTab(ft);
@@ -373,8 +332,7 @@ public partial class ShellWindow
         return control;
     }
 
-    private TerminalTabView? RemoveTerminalTabForMove(Guid id)
-    {
+    private TerminalTabView? RemoveTerminalTabForMove(Guid id) {
         var index = _terminalTabs.FindIndex(t => t.Id == id);
         if (index < 0)
             return null;
@@ -387,21 +345,17 @@ public partial class ShellWindow
         _terminalViews?.RemoveTab(id);
         ForgetTerminalActivity(id);
 
-        if (_terminalTabs.Count == 0)
-        {
+        if (_terminalTabs.Count == 0) {
             var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
             var newTab = CreateTerminalTab(startDir);
             _terminalTabs.Add(newTab);
             _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
             ActivateTerminalTab(newTab.Id);
-        }
-        else
-        {
+        } else {
             _terminalViews?.RepairTabs(_terminalTabs.Select(t => t.Id));
             if (wasActive)
                 ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
-            else
-            {
+            else {
                 _terminalViews?.Rebuild();
                 if (_terminalViews?.FocusedTabId is { } fid && _terminalTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
                     SetActiveTerminalTab(ft);

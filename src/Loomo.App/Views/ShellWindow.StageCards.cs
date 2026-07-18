@@ -3,8 +3,7 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: ソロモード（舞台＋袖＋俯瞰）のカード／ミニチュア描画。袖・俯瞰カードの描画元の
 /// アレンジ、ライブ縮小カード（VisualBrush）、舞台スロットの生成。モード制御は ShellWindow.Stage.cs。</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private const double WingCardWidth = 180;
     private const double OverviewCardWidth = 320;
     private const double CardAspect = 3.0 / 2.0;
@@ -13,8 +12,7 @@ public partial class ShellWindow
     private bool _layoutWingBuildQueued;
     private bool _layoutWingBuildPending;
 
-    private void ArrangeThumbnailSource(PaneKind kind, Size virtualSize)
-    {
+    private void ArrangeThumbnailSource(PaneKind kind, Size virtualSize) {
         var element = _paneElements[kind];
         if (element.Parent is Panel parent)
             parent.Children.Remove(element);
@@ -22,8 +20,7 @@ public partial class ShellWindow
 
         var w = Math.Max(virtualSize.Width, 1);
         var h = Math.Max(w / CardAspect, 1);
-        var host = new Grid
-        {
+        var host = new Grid {
             Width = w,
             Height = h,
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -41,8 +38,7 @@ public partial class ShellWindow
         _stageThumbnailHosts[kind] = host;
     }
 
-    private void BuildStageThumbnailSources(Size virtualSize)
-    {
+    private void BuildStageThumbnailSources(Size virtualSize) {
         var kinds = _overviewActive
             ? OverviewKinds()
             : StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k));
@@ -50,11 +46,9 @@ public partial class ShellWindow
             ArrangeThumbnailSource(kind, virtualSize);
     }
 
-    private void RebuildWings()
-    {
+    private void RebuildWings() {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
-        if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0))
-        {
+        if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)) {
             ScheduleLayoutWings();
             return;
         }
@@ -62,21 +56,17 @@ public partial class ShellWindow
             _layoutWingBuildPending = false;
 
         WingStrip.Children.Clear();
-        if (_stageActive)
-        {
+        if (_stageActive) {
             foreach (var kind in StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k)))
                 WingStrip.Children.Add(BuildSessionCard(kind, WingCardWidth, isOverview: false));
-        }
-        else
-        {
+        } else {
             BuildLayoutWingSources();
             foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
                 WingStrip.Children.Add(BuildLayoutWingCard(kind, WingCardWidth));
         }
     }
 
-    private void BuildLayoutWingSources()
-    {
+    private void BuildLayoutWingSources() {
         StageSourceArea.Children.Clear();
         _stageThumbnailHosts.Clear();
 
@@ -87,12 +77,10 @@ public partial class ShellWindow
             ArrangeThumbnailSource(kind, virtualSize);
     }
 
-    private void ScheduleLayoutWings()
-    {
+    private void ScheduleLayoutWings() {
         if (_stageActive)
             return;
-        if (_paneSplitterDragging)
-        {
+        if (_paneSplitterDragging) {
             PaneLayoutDebugLog.Log("ScheduleLayoutWings skipped: splitter drag in progress");
             return;
         }
@@ -101,8 +89,7 @@ public partial class ShellWindow
         PaneLayoutDebugLog.Log($"ScheduleLayoutWings hasWings={hasWings} prevWingColumnWidth={WingColumn.Width}", withCaller: true);
         WingColumn.Width = hasWings ? new GridLength(WingColumnReserve) : GridLength.Auto;
         WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
-        if (!hasWings)
-        {
+        if (!hasWings) {
             _layoutWingBuildPending = false;
             WingStrip.Children.Clear();
             StageSourceArea.Children.Clear();
@@ -114,8 +101,7 @@ public partial class ShellWindow
         if (_layoutWingBuildQueued)
             return;
         _layoutWingBuildQueued = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-        {
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => {
             _layoutWingBuildQueued = false;
             if (_paneSplitterDragging)
                 return;
@@ -130,8 +116,7 @@ public partial class ShellWindow
         }));
     }
 
-    private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e)
-    {
+    private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e) {
         if (_stageActive || e.NewSize.Width <= 0
             || Math.Abs(e.NewSize.Width - _layoutWingSourceWidth) <= 1)
             return;
@@ -139,35 +124,29 @@ public partial class ShellWindow
         ScheduleLayoutWings();
     }
 
-    private void UpdateWingHostVisibility()
-    {
+    private void UpdateWingHostVisibility() {
         if (WingHost is null)
             return;
         WingHost.Visibility = WingStrip.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private Border BuildSessionCard(PaneKind kind, double width, bool isOverview)
-    {
+    private Border BuildSessionCard(PaneKind kind, double width, bool isOverview) {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
         return BuildCard(kind, width, source, isOverview,
             () => { SetStagePane(kind); FocusPane(kind); });
     }
 
-    private Border BuildLayoutWingCard(PaneKind kind, double width)
-    {
+    private Border BuildLayoutWingCard(PaneKind kind, double width) {
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
         return BuildCard(kind, width, source, isOverview: false,
-            () =>
-            {
-                if (_zoomedPane is not null)
-                {
+            () => {
+                if (_zoomedPane is not null) {
                     if (IsPaneVisible(kind))
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
                     return;
                 }
-                if (IsPaneVisible(kind))
-                {
+                if (IsPaneVisible(kind)) {
                     FocusPane(kind);
                     return;
                 }
@@ -176,18 +155,15 @@ public partial class ShellWindow
             });
     }
 
-    private PaneKind? TopLeftPane()
-    {
+    private PaneKind? TopLeftPane() {
         PaneKind? best = null;
         Rect bestRect = default;
-        foreach (var leaf in AllLeaves())
-        {
+        foreach (var leaf in AllLeaves()) {
             if (leaf.Hidden || !TryGetPaneRect(leaf.Kind, out var rect))
                 continue;
             if (best is null
                 || rect.Y < bestRect.Y - 0.5
-                || (Math.Abs(rect.Y - bestRect.Y) <= 0.5 && rect.X < bestRect.X))
-            {
+                || (Math.Abs(rect.Y - bestRect.Y) <= 0.5 && rect.X < bestRect.X)) {
                 best = leaf.Kind;
                 bestRect = rect;
             }
@@ -202,16 +178,14 @@ public partial class ShellWindow
     private PaneKind? TopRowLeftPane()
         => PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind;
 
-    private Border BuildCard(PaneKind kind, double width, Visual source, bool isOverview, Action onClick)
-    {
+    private Border BuildCard(PaneKind kind, double width, Visual source, bool isOverview, Action onClick) {
         var borderBrush = (Brush)FindResource("Border");
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && OnStage(kind);
 
         var height = Math.Round(width / CardAspect);
 
-        var card = new Border
-        {
+        var card = new Border {
             Width = width,
             Height = height,
             Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4),
@@ -237,11 +211,9 @@ public partial class ShellWindow
                 : sourceElement2.ActualHeight
             : height;
 
-        root.Children.Add(new Border
-        {
+        root.Children.Add(new Border {
             IsHitTestVisible = false,
-            Background = new VisualBrush(source)
-            {
+            Background = new VisualBrush(source) {
                 ViewboxUnits = BrushMappingMode.Absolute,
                 Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)),
                 Stretch = Stretch.Uniform,
@@ -250,12 +222,10 @@ public partial class ShellWindow
             },
         });
 
-        root.Children.Add(new Border
-        {
+        root.Children.Add(new Border {
             VerticalAlignment = VerticalAlignment.Bottom,
             Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)),
-            Child = new TextBlock
-            {
+            Child = new TextBlock {
                 Text = PaneLabel(kind),
                 FontSize = UiFontManager.Scaled(isOverview ? 12 : 11),
                 Margin = new Thickness(8, 3, 8, 3),
@@ -269,30 +239,25 @@ public partial class ShellWindow
         var rest = isOverview ? 1.0 : WingRestOpacity;
         card.Opacity = rest;
 
-        card.MouseEnter += (_, _) =>
-        {
+        card.MouseEnter += (_, _) => {
             card.BorderBrush = accent;
             card.Opacity = 1;
         };
-        card.MouseLeave += (_, _) =>
-        {
+        card.MouseLeave += (_, _) => {
             card.BorderBrush = onStage ? accent : borderBrush;
             card.Opacity = rest;
         };
-        card.MouseLeftButtonUp += (_, e) =>
-        {
+        card.MouseLeftButtonUp += (_, e) => {
             _wingDragArmed = false;
             e.Handled = true; // 俯瞰レイヤの背景クリック（＝俯瞰を閉じる）と区別する
             onClick();
         };
 
-        card.PreviewMouseLeftButtonDown += (_, e) =>
-        {
+        card.PreviewMouseLeftButtonDown += (_, e) => {
             _wingDragStart = e.GetPosition(this);
             _wingDragArmed = true;
         };
-        card.PreviewMouseMove += (_, e) =>
-        {
+        card.PreviewMouseMove += (_, e) => {
             if (isOverview || !_wingDragArmed || e.LeftButton != MouseButtonState.Pressed)
                 return;
             var pos = e.GetPosition(this);
@@ -308,8 +273,7 @@ public partial class ShellWindow
         return card;
     }
 
-    private Border BuildLiveSlot(PaneKind kind)
-    {
+    private Border BuildLiveSlot(PaneKind kind) {
         var element = _paneElements[kind];
         element.Visibility = Visibility.Visible;
 
@@ -317,8 +281,7 @@ public partial class ShellWindow
         host.SizeChanged += (_, e) => host.Clip = new RectangleGeometry(new Rect(e.NewSize), 7, 7);
         host.Children.Add(element);
 
-        return new Border
-        {
+        return new Border {
             Background = (Brush)FindResource("Panel"),
             BorderBrush = (Brush)FindResource("Border"),
             BorderThickness = new Thickness(1),

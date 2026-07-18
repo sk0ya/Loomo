@@ -1,13 +1,10 @@
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン内分割（vim 風 Ctrl+W v/s/q）と外観適用・PaneSplitView 実装</summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
 
-    private bool CloseFocusedViewport()
-    {
-        switch (_focusedRegion?.Pane)
-        {
+    private bool CloseFocusedViewport() {
+        switch (_focusedRegion?.Pane) {
             case PaneKind.Editor when _editorViews is { LeafCount: > 1 }:
                 CloseEditorView();
                 return true;
@@ -19,10 +16,8 @@ public partial class ShellWindow
         }
     }
 
-    private void HandleViewportSplitKey(Key key)
-    {
-        switch (_focusedRegion?.Pane)
-        {
+    private void HandleViewportSplitKey(Key key) {
+        switch (_focusedRegion?.Pane) {
             case PaneKind.Editor:
                 if (key == Key.V) SplitEditorView(SplitKind.Columns);
                 else if (key == Key.S) SplitEditorView(SplitKind.Rows);
@@ -36,8 +31,7 @@ public partial class ShellWindow
         }
     }
 
-    private void SplitEditorView(SplitKind orientation, string? filePath = null)
-    {
+    private void SplitEditorView(SplitKind orientation, string? filePath = null) {
         if (_editorViews is null)
             return;
         var src = _editorViews.FocusedTabId is { } sid
@@ -50,12 +44,9 @@ public partial class ShellWindow
         _editorTabs.Add(newTab);
         _vm.Tabs.AddEditorTab(newTab.Id, openPath ?? src?.Control.FilePath, src?.Control.IsModified ?? false, false);
 
-        if (openPath is not null)
-        {
+        if (openPath is not null) {
             newTab.Control.LoadFile(openPath);
-        }
-        else if (src is not null)
-        {
+        } else if (src is not null) {
             if (!string.IsNullOrWhiteSpace(src.Control.FilePath) && File.Exists(src.Control.FilePath) && !src.Control.IsModified)
                 newTab.Control.LoadFile(src.Control.FilePath);
             else
@@ -68,23 +59,20 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private string? ResolveEditorPath(string? filePath, EditorTab? src)
-    {
+    private string? ResolveEditorPath(string? filePath, EditorTab? src) {
         if (string.IsNullOrWhiteSpace(filePath))
             return null;
         if (Path.IsPathRooted(filePath))
             return File.Exists(filePath) ? Path.GetFullPath(filePath) : null;
 
-        var bases = new[]
-        {
+        var bases = new[] {
             src is { } s && !string.IsNullOrWhiteSpace(s.Control.FilePath)
                 ? Path.GetDirectoryName(s.Control.FilePath)
                 : null,
             _activeWorkspace?.RootPath,
             _terminal.CurrentDirectory,
         };
-        foreach (var dir in bases)
-        {
+        foreach (var dir in bases) {
             if (string.IsNullOrWhiteSpace(dir))
                 continue;
             var candidate = Path.GetFullPath(Path.Combine(dir, filePath));
@@ -94,8 +82,7 @@ public partial class ShellWindow
         return null;
     }
 
-    private async Task OpenEditorTabFromEditorAsync(string? filePath)
-    {
+    private async Task OpenEditorTabFromEditorAsync(string? filePath) {
         var openPath = ResolveEditorPath(filePath, _activeEditorTab);
         if (openPath is not null)
         {
@@ -111,8 +98,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void CycleEditorTab(int step)
-    {
+    private void CycleEditorTab(int step) {
         if (_editorTabs.Count <= 1)
             return;
         var index = _activeEditorTab is { } active ? _editorTabs.FindIndex(t => t.Id == active.Id) : 0;
@@ -123,16 +109,14 @@ public partial class ShellWindow
         ActivateEditorTab(_editorTabs[next].Id);
     }
 
-    private void CloseActiveEditorTab()
-    {
+    private void CloseActiveEditorTab() {
         if (_activeEditorTab is not { } active)
             return;
         CloseEditorTab(active.Id);
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void CloseEditorView()
-    {
+    private void CloseEditorView() {
         if (_editorViews?.CloseFocused() != true)
             return;
         if (_editorViews.FocusedTabId is { } id && _editorTabs.FirstOrDefault(t => t.Id == id) is { } tab)
@@ -140,8 +124,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void SplitTerminalView(SplitKind orientation)
-    {
+    private void SplitTerminalView(SplitKind orientation) {
         if (_terminalViews is null)
             return;
         var src = _terminalViews.FocusedTabId is { } sid
@@ -160,8 +143,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void CloseTerminalView()
-    {
+    private void CloseTerminalView() {
         if (_terminalViews?.CloseFocused() != true)
             return;
         if (_terminalViews.FocusedTabId is { } id && _terminalTabs.FirstOrDefault(t => t.Id == id) is { } tab)
@@ -169,10 +151,8 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null)
-    {
-        var view = new TerminalTabView("pwsh.exe", startDirectory)
-        {
+    private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null) {
+        var view = new TerminalTabView("pwsh.exe", startDirectory) {
             AutoFocusOnStart = false,
         };
         _appearance.ApplyTerminalAppearance(view);
@@ -188,18 +168,15 @@ public partial class ShellWindow
         new(requestedId ?? Guid.NewGuid()) { Realizer = RealizeEditorControl };
 
     private EditorTab CreatePendingEditorTab(EditorTabSnapshot snapshot) =>
-        new(snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id)
-        {
+        new(snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id) {
             Realizer = RealizeEditorControl,
             Pending = snapshot
         };
 
-    private void RealizeEditorControl(EditorTab tab)
-    {
+    private void RealizeEditorControl(EditorTab tab) {
         var control = BuildEditorControl(tab);
         tab.SetControl(control);
-        if (tab.Pending is { } snapshot)
-        {
+        if (tab.Pending is { } snapshot) {
             WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
             tab.Pending = null;
         }
@@ -207,42 +184,35 @@ public partial class ShellWindow
 
     private readonly ConditionalWeakTable<VimEditorControl, StrongBox<IEditorLspManager?>> _editorLspManagers = new();
 
-    private IEditorLspManager? GetLspManager(EditorTab tab)
-    {
+    private IEditorLspManager? GetLspManager(EditorTab tab) {
         if (!tab.IsRealized)
             return null; // コントロール未実体化＝LSP はまだ存在しない
         return _editorLspManagers.TryGetValue(tab.Control, out var box) ? box.Value : null;
     }
 
-    private VimEditorControl BuildEditorControl(EditorTab tab)
-    {
+    private VimEditorControl BuildEditorControl(EditorTab tab) {
         var lspBox = new StrongBox<IEditorLspManager?>(null);
-        var control = new VimEditorControl(new VimEditorControlOptions
-        {
+        var control = new VimEditorControl(new VimEditorControlOptions {
             GitServiceFactory = () => new GitDiffProvider(),
-            LspManagerFactory = dispatcher =>
-            {
+            LspManagerFactory = dispatcher => {
                 var manager = new LspManager(dispatcher);
                 lspBox.Value = manager;
                 return manager;
             }
-        })
-        {
+        }) {
             VimEnabled = _settings.Vim.Enabled,
             Visibility = Visibility.Collapsed
         };
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
         control.SetSharedStatusBar(EditorSharedStatusBar);
-        control.BufferChanged += (_, _) =>
-        {
+        control.BufferChanged += (_, _) => {
             UpdateEditorTab(tab);
             RecordTrailEdit(tab);
             if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
         };
-        control.SaveRequested += (_, _) =>
-        {
+        control.SaveRequested += (_, _) => {
             QueueEditorTabUpdate(tab);
             if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
@@ -265,24 +235,20 @@ public partial class ShellWindow
         return control;
     }
 
-    private void ApplyVimEnabledToOpenEditorTabs()
-    {
+    private void ApplyVimEnabledToOpenEditorTabs() {
         foreach (var tab in _editorTabs)
             if (tab.IsRealized)
                 tab.Control.VimEnabled = _settings.Vim.Enabled;
     }
 
-    private void ApplyEditorSettingsToOpenEditorTabs()
-    {
-        foreach (var tab in _editorTabs)
-        {
+    private void ApplyEditorSettingsToOpenEditorTabs() {
+        foreach (var tab in _editorTabs) {
             if (!tab.IsRealized) continue;
             _appearance.ApplyEditorOptions(tab.Control);
         }
     }
 
-    private void ApplyAppearanceToOpenTabs()
-    {
+    private void ApplyAppearanceToOpenTabs() {
         foreach (var tab in _editorTabs)
             if (tab.IsRealized)
                 _appearance.ApplyEditorAppearance(tab.Control);
@@ -292,8 +258,7 @@ public partial class ShellWindow
             ScheduleEditorSupportUpdate();
     }
 
-    private void QueueEditorTabUpdate(EditorTab tab)
-    {
+    private void QueueEditorTabUpdate(EditorTab tab) {
         _ = tab.Control.Dispatcher.BeginInvoke(new Action(() => UpdateEditorTab(tab)));
     }
 

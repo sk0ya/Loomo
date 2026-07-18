@@ -2,10 +2,8 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。
 /// 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。</summary>
-public partial class ShellWindow
-{
-    private async Task OpenEditorSupportAsync(EditorTab sourceTab)
-    {
+public partial class ShellWindow {
+    private async Task OpenEditorSupportAsync(EditorTab sourceTab) {
         await SwitchEditorSupportSourceAsync(sourceTab, force: true);
         if (_stageActive)
             SetStagePane(PaneKind.EditorSupport);   // ソロは舞台へ立てる
@@ -17,15 +15,11 @@ public partial class ShellWindow
 
     private async void OnEditorSupportBack(object sender, RoutedEventArgs e) => await EditorSupportGoBackAsync();
 
-    private void OnShellPreviewMouseNavigate(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton == MouseButton.XButton1)
-        {
+    private void OnShellPreviewMouseNavigate(object sender, MouseButtonEventArgs e) {
+        if (e.ChangedButton == MouseButton.XButton1) {
             e.Handled = true;
             _ = EditorSupportGoBackAsync();
-        }
-        else if (e.ChangedButton == MouseButton.XButton2)
-        {
+        } else if (e.ChangedButton == MouseButton.XButton2) {
             e.Handled = true;
             _ = EditorSupportGoForwardAsync();
         }
@@ -34,26 +28,22 @@ public partial class ShellWindow
     private Task EditorSupportGoBackAsync() => EditorSupportNavigateHistoryAsync(back: true);
     private Task EditorSupportGoForwardAsync() => EditorSupportNavigateHistoryAsync(back: false);
 
-    private async Task EditorSupportNavigateHistoryAsync(bool back)
-    {
+    private async Task EditorSupportNavigateHistoryAsync(bool back) {
         await _editorSupport.NavigateHistoryAsync(back, _editorTabs,
             tab => ActivateEditorTab(tab.Id), path => OpenFileInNewEditorTabAsync(path));
         UpdateEditorSupportNavAffordances();
     }
 
-    private void UpdateEditorSupportNavAffordances()
-    {
+    private void UpdateEditorSupportNavAffordances() {
         if (EditorSupportBackButton is not null)
             EditorSupportBackButton.IsEnabled = _editorSupport.History.CanGoBack;
     }
 
-    private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab, bool force = false)
-    {
+    private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab, bool force = false) {
         if (!_editorSupport.TryChangeSource(sourceTab, force, out var previous))
             return;
 
-        if (previous is not null)
-        {
+        if (previous is not null) {
             previous.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
             previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
@@ -67,13 +57,11 @@ public partial class ShellWindow
         await UpdateEditorSupportAsync();
     }
 
-    private async void OnToggleEditorSupportPin(object sender, RoutedEventArgs e)
-    {
+    private async void OnToggleEditorSupportPin(object sender, RoutedEventArgs e) {
         _editorSupport.IsPinned = EditorSupportPinToggle.IsChecked == true;
         UpdateEditorSupportPinToggle();
 
-        if (_editorSupport.IsPinned)
-        {
+        if (_editorSupport.IsPinned) {
             if (_editorSupport.Source is null && _activeEditorTab is not null)
                 await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
             return;
@@ -83,14 +71,12 @@ public partial class ShellWindow
             await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
     }
 
-    private async void OnToggleEditorSupportSlideMode(object sender, RoutedEventArgs e)
-    {
+    private async void OnToggleEditorSupportSlideMode(object sender, RoutedEventArgs e) {
         _settings.Appearance.MarkdownSlideMode = EditorSupportSlideToggle.IsChecked == true;
         await UpdateEditorSupportAsync();
     }
 
-    private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e)
-    {
+    private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e) {
         var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
@@ -114,31 +100,26 @@ public partial class ShellWindow
         await OpenEditorSupportSnapshotInBrowserAsync(html, mapFolder, title);
     }
 
-    private void UpdateEditorSupportPinToggle()
-    {
+    private void UpdateEditorSupportPinToggle() {
         EditorSupportPinToggle.IsChecked = _editorSupport.IsPinned;
         EditorSupportPinToggle.ToolTip = _editorSupport.IsPinned
             ? "ピン留めを解除してアクティブなエディタに追従"
             : "現在のサポート対象にピン留め";
     }
 
-    private void UpdateEditorSupportHeaderButtons(bool showSlide, bool showOpenInBrowser, bool showExport)
-    {
+    private void UpdateEditorSupportHeaderButtons(bool showSlide, bool showOpenInBrowser, bool showExport) {
         EditorSupportSlideToggle.Visibility = showSlide ? Visibility.Visible : Visibility.Collapsed;
         EditorSupportOpenInBrowserButton.Visibility = showOpenInBrowser ? Visibility.Visible : Visibility.Collapsed;
         EditorSupportExportButton.Visibility = showExport ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ScheduleEditorSupportUpdate()
-    {
+    private void ScheduleEditorSupportUpdate() {
         if (_editorSupport.Source is null)
             return;
 
-        if (_editorSupportDebounceTimer is null)
-        {
+        if (_editorSupportDebounceTimer is null) {
             _editorSupportDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-            _editorSupportDebounceTimer.Tick += async (s, _) =>
-            {
+            _editorSupportDebounceTimer.Tick += async (s, _) => {
                 ((DispatcherTimer)s!).Stop();
                 await UpdateEditorSupportAsync();
             };
@@ -148,8 +129,7 @@ public partial class ShellWindow
         _editorSupportDebounceTimer.Start();
     }
 
-    private async Task UpdateEditorSupportAsync()
-    {
+    private async Task UpdateEditorSupportAsync() {
         var source = _editorSupport.Source;
         if (source is null)
             return;
@@ -164,8 +144,7 @@ public partial class ShellWindow
                 IsEditorSupportInThumbnail()))
             return;
 
-        if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath))
-        {
+        if (provider is null && filePath is not null && _codeSupport.CanHandle(filePath)) {
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             await UpdateCodeEditorSupportAsync(source, filePath);
             return;
@@ -175,8 +154,7 @@ public partial class ShellWindow
         if (visual is null && provider is null && filePath is not null && BinaryFileDetector.IsBinary(filePath))
             visual = _hexSupport;
 
-        if (visual is not null && filePath is not null)
-        {
+        if (visual is not null && filePath is not null) {
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
             await _editorSupport.ShowVisualAsync(
@@ -211,15 +189,13 @@ public partial class ShellWindow
         RenderPendingEditorSupportContent(view.CoreWebView2);
     }
 
-    private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath, bool fromReadyRetry = false)
-    {
+    private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath, bool fromReadyRetry = false) {
         var seq = _editorSupport.BeginRender();
         var lsp = GetLspManager(source);
 
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
 
-        if (CodeSupportDiag.IsEnabled)
-        {
+        if (CodeSupportDiag.IsEnabled) {
             if (!fromReadyRetry)
                 _editorSupport.DiagnosticStopwatch = System.Diagnostics.Stopwatch.StartNew();
             CodeSupportDiag.Log(
@@ -230,19 +206,16 @@ public partial class ShellWindow
         }
 
         var view = EnsureCodeOutlineView();
-        void ShowCodeView()
-        {
+        void ShowCodeView() {
             ShowEditorSupportVisual(view);
             EditorSupportTitle.Text = _codeSupport.DescribeTitle(filePath);
         }
 
-        if (!ready)
-        {
+        if (!ready) {
             _editorSupport.ClearOutline();
 
             var prompt = _lspManagement.EvaluateForFile(filePath);
-            if (prompt is not null || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks)
-            {
+            if (prompt is not null || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks) {
                 ShowCodeView();
                 view.ShowNotice(LspNoticeModel.Build(prompt));
             }
@@ -265,17 +238,14 @@ public partial class ShellWindow
         var caret = source.Control.Caret;
         var roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
 
-        if (roots.Count > 0)
-        {
+        if (roots.Count > 0) {
             var currentLine1 = CurrentMemberLine1(roots, caret);
             _editorSupport.SetOutline(source, roots);
             _editorSupport.CurrentSymbolRange = null;                       // ②は未取得（この後 SetCurrentAndPanels で埋める）
             _editorSupport.CurrentCaret = (caret.Line, caret.Column);
             view.ShowOutline(roots, currentLine1, CallPanels.Empty);   // 構造だけ先に（②は待たない）
             LogOutlineShown("structure");
-        }
-        else
-        {
+        } else {
             view.ShowNotice(LspNoticeModel.Build(null));
         }
 
@@ -287,8 +257,7 @@ public partial class ShellWindow
         if (!_editorSupport.IsLatestRender(seq))
             return;
 
-        if (roots.Count > 0)
-        {
+        if (roots.Count > 0) {
             var currentLine1 = CurrentMemberLine1(roots, caret);
             _editorSupport.CurrentSymbolRange = symbolRange;
             _editorSupport.CurrentCaret = (caret.Line, caret.Column);
@@ -329,14 +298,12 @@ public partial class ShellWindow
     private static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
         => CodeEditorSupportAnalysis.CurrentMemberLine1(roots, caret);
 
-    private void LogOutlineShown(string phase)
-    {
+    private void LogOutlineShown(string phase) {
         if (_editorSupport.DiagnosticStopwatch is not null)
             CodeSupportDiag.Log($"shown[{phase}], TOTAL {_editorSupport.DiagnosticStopwatch.ElapsedMilliseconds}ms");
     }
 
-    private CodeOutlineView EnsureCodeOutlineView()
-    {
+    private CodeOutlineView EnsureCodeOutlineView() {
         if (_editorSupport.OutlineView is not null)
             return _editorSupport.OutlineView;
 
@@ -361,8 +328,7 @@ public partial class ShellWindow
     private static IReadOnlyList<string> SplitLines(string? text)
         => CodeEditorSupportAnalysis.SplitLines(text);
 
-    private async Task RefreshCodeCallPanelsAsync()
-    {
+    private async Task RefreshCodeCallPanelsAsync() {
         var source = _editorSupport.Source;
         if (source is null)
             return;
@@ -422,19 +388,16 @@ public partial class ShellWindow
     private void StopCodeReadyRetry()
         => _editorSupport.StopReadyRetry();
 
-    private async void CodeReadyRetry_Tick(object? sender, EventArgs e)
-    {
+    private async void CodeReadyRetry_Tick(object? sender, EventArgs e) {
         var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
 
-        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _editorSupport.OutlineRoots is not null)
-        {
+        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _editorSupport.OutlineRoots is not null) {
             StopCodeReadyRetry();
             return;
         }
 
-        if (_editorSupport.AdvanceReadyAttempt() > CodeReadyMaxRetries)
-        {
+        if (_editorSupport.AdvanceReadyAttempt() > CodeReadyMaxRetries) {
             StopCodeReadyRetry(); // サーバーが来ない：案内のまま諦める（ペイン再オープンで再試行される）
             return;
         }
@@ -446,8 +409,7 @@ public partial class ShellWindow
 
         var lsp = GetLspManager(source);
         var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
-        if (!ready)
-        {
+        if (!ready) {
             if (_editorSupport.ReadyAttempts == CodeConnectingNoticeGraceTicks)
                 await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
             return;
@@ -462,8 +424,7 @@ public partial class ShellWindow
     private void EditorSupportSource_CaretMoved(object? sender, CaretInfo e)
         => ScheduleCodeCallPanelsRefresh();
 
-    private void ToggleMarkdownTaskCheckbox(int lineIndex)
-    {
+    private void ToggleMarkdownTaskCheckbox(int lineIndex) {
         var source = _editorSupport.Source;
         if (source is null)
             return;
@@ -485,8 +446,7 @@ public partial class ShellWindow
         ScheduleEditorSupportUpdate();
     }
 
-    private bool IsEditorSupportInThumbnail()
-    {
+    private bool IsEditorSupportInThumbnail() {
         if (!IsSessionEnabled(PaneKind.EditorSupport))
             return false;
 

@@ -4,28 +4,23 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: フォーカス追跡と方向移動（Ctrl+W h/j/k/l）。フォーカス領域の記録、隣接領域の探索、
 /// ビューポート/サイドバー/ペインへのフォーカス適用、ペイン/サイドバー矩形の取得。
 /// キー入口・リサイズモードは ShellWindow.PaneNavigation.cs。</summary>
-public partial class ShellWindow
-{
-    private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
+public partial class ShellWindow {
+    private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
 
         if (e.NewFocus is not DependencyObject d)
             return;
-        if (FindPaneOf(d) is { } kind)
-        {
+        if (FindPaneOf(d) is { } kind) {
             if (ViewsFor(kind) is { } views && views.SetFocusedFromElement(d) is { } viewId)
                 _focusedRegion = FocusTarget.Viewport(kind, viewId);
             else
                 _focusedRegion = FocusTarget.Of(kind);
             RecordTrailPane(kind);
-        }
-        else if (IsWithin(d, SidebarContainer))
+        } else if (IsWithin(d, SidebarContainer))
             _focusedRegion = FocusTarget.Sidebar;
     }
 
-    private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
-    {
+    private static bool IsWithin(DependencyObject element, DependencyObject ancestor) {
         for (var current = element; current is not null; current = GetAnyParent(current))
             if (ReferenceEquals(current, ancestor))
                 return true;
@@ -35,10 +30,8 @@ public partial class ShellWindow
     private void OnWindowDeactivated(object? sender, EventArgs e)
         => _keyboard?.Reset();
 
-    private PaneKind? FindPaneOf(DependencyObject element)
-    {
-        for (var current = element; current is not null; current = GetAnyParent(current))
-        {
+    private PaneKind? FindPaneOf(DependencyObject element) {
+        for (var current = element; current is not null; current = GetAnyParent(current)) {
             foreach (var (kind, paneElement) in _paneElements)
                 if (ReferenceEquals(paneElement, current))
                     return kind;
@@ -51,22 +44,18 @@ public partial class ShellWindow
             ? VisualTreeHelper.GetParent(d)
             : LogicalTreeHelper.GetParent(d);
 
-    private void FocusPaneInDirection(DropZone direction)
-    {
+    private void FocusPaneInDirection(DropZone direction) {
         if (_stageActive && _focusedRegion?.Pane is { } stageFocused
-            && ViewsFor(stageFocused) is { LeafCount: > 1 } stageViews)
-        {
+            && ViewsFor(stageFocused) is { LeafCount: > 1 } stageViews) {
             if (stageViews.FocusInDirection(direction, PaneHost)
-                && stageViews.FocusedViewportId is { } viewportId)
-            {
+                && stageViews.FocusedViewportId is { } viewportId) {
                 _focusedRegion = FocusTarget.Viewport(stageFocused, viewportId);
                 SyncActiveFromViewport(stageFocused);
                 return;
             }
         }
 
-        if (_stageActive)
-        {
+        if (_stageActive) {
             CycleStage(StageCycleDirection(direction));
             return;
         }
@@ -85,14 +74,12 @@ public partial class ShellWindow
         FocusTarget? best = null;
         var bestScore = double.MaxValue;
 
-        foreach (var (target, r) in targets)
-        {
+        foreach (var (target, r) in targets) {
             if (target == originTarget)
                 continue;
 
             const double tolerance = 1.0;
-            var inDirection = direction switch
-            {
+            var inDirection = direction switch {
                 DropZone.Left => r.X + r.Width <= from.X + tolerance,
                 DropZone.Right => r.X >= from.X + from.Width - tolerance,
                 DropZone.Above => r.Y + r.Height <= from.Y + tolerance,
@@ -106,8 +93,7 @@ public partial class ShellWindow
                 ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
                 : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
             var score = axis + perpendicular * 2;
-            if (score < bestScore)
-            {
+            if (score < bestScore) {
                 bestScore = score;
                 best = target;
             }
@@ -120,19 +106,14 @@ public partial class ShellWindow
     private static int StageCycleDirection(DropZone direction)
         => direction is DropZone.Below or DropZone.Right ? 1 : -1;
 
-    private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets()
-    {
-        foreach (var leaf in AllLeaves())
-        {
+    private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets() {
+        foreach (var leaf in AllLeaves()) {
             if (leaf.Hidden)
                 continue;
-            if (ViewsFor(leaf.Kind) is { LeafCount: > 1 } views)
-            {
+            if (ViewsFor(leaf.Kind) is { LeafCount: > 1 } views) {
                 foreach (var (id, rect) in views.ViewportRects(PaneHost))
                     yield return (FocusTarget.Viewport(leaf.Kind, id), rect);
-            }
-            else if (TryGetPaneRect(leaf.Kind, out var rect))
-            {
+            } else if (TryGetPaneRect(leaf.Kind, out var rect)) {
                 yield return (FocusTarget.Of(leaf.Kind), rect);
             }
         }
@@ -141,15 +122,13 @@ public partial class ShellWindow
             yield return (FocusTarget.Sidebar, sidebarRect);
     }
 
-    private PaneSplitView? ViewsFor(PaneKind kind) => kind switch
-    {
+    private PaneSplitView? ViewsFor(PaneKind kind) => kind switch {
         PaneKind.Editor => _editorViews,
         PaneKind.Terminal => _terminalViews,
         _ => null
     };
 
-    private bool TryGetSidebarRect(out Rect rect)
-    {
+    private bool TryGetSidebarRect(out Rect rect) {
         rect = default;
         if (!_vm.IsSidebarVisible || !SidebarContainer.IsVisible
             || SidebarContainer.ActualWidth <= 0 || SidebarContainer.ActualHeight <= 0)
@@ -160,29 +139,23 @@ public partial class ShellWindow
         return true;
     }
 
-    private void ApplyFocusTarget(FocusTarget target)
-    {
-        if (target.IsSidebar)
-        {
+    private void ApplyFocusTarget(FocusTarget target) {
+        if (target.IsSidebar) {
             FocusSidebar();
             return;
         }
 
         var kind = target.Pane!.Value;
-        if (target.ViewportId != default && ViewsFor(kind) is { } views)
-        {
+        if (target.ViewportId != default && ViewsFor(kind) is { } views) {
             views.FocusViewport(target.ViewportId);
             _focusedRegion = target;
             SyncActiveFromViewport(kind);
-        }
-        else
-        {
+        } else {
             FocusPane(kind);
         }
     }
 
-    private void SyncActiveFromViewport(PaneKind kind)
-    {
+    private void SyncActiveFromViewport(PaneKind kind) {
         if (kind == PaneKind.Editor && _editorViews?.FocusedTabId is { } eid
             && _editorTabs.FirstOrDefault(t => t.Id == eid) is { } et)
             SetActiveEditorTab(et);
@@ -191,8 +164,7 @@ public partial class ShellWindow
             SetActiveTerminalTab(tt);
     }
 
-    private void FocusSidebar()
-    {
+    private void FocusSidebar() {
         if (!_vm.IsSidebarVisible)
             return;
 
@@ -208,10 +180,8 @@ public partial class ShellWindow
             FocusFirstFocusable(view);  // 他パネルは最初のフォーカス可能要素へ
     }
 
-    private static bool FocusFirstFocusable(DependencyObject root)
-    {
-        if (root is UIElement { Focusable: true, IsVisible: true, IsEnabled: true } element)
-        {
+    private static bool FocusFirstFocusable(DependencyObject root) {
+        if (root is UIElement { Focusable: true, IsVisible: true, IsEnabled: true } element) {
             element.Focus();
             return true;
         }
@@ -223,8 +193,7 @@ public partial class ShellWindow
         return false;
     }
 
-    private bool TryGetPaneRect(PaneKind kind, out Rect rect)
-    {
+    private bool TryGetPaneRect(PaneKind kind, out Rect rect) {
         rect = default;
         if (!_paneElements.TryGetValue(kind, out var element)
             || !element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
@@ -235,13 +204,11 @@ public partial class ShellWindow
         return true;
     }
 
-    private void FocusPane(PaneKind kind)
-    {
+    private void FocusPane(PaneKind kind) {
         if (_stageActive && kind != _stagePane)
             SetStagePane(kind);
         _focusedRegion = FocusTarget.Of(kind);
-        switch (kind)
-        {
+        switch (kind) {
             case PaneKind.Terminal:
                 if (_terminalViews is { } tv) tv.FocusFocused();
                 else _activeTerminalTab?.View.FocusTerminal();

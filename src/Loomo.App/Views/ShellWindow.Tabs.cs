@@ -1,10 +1,8 @@
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナル／エディタのタブ管理（作成・選択・クローズ・プレビュータブ）</summary>
-public partial class ShellWindow
-{
-    private void OnTerminalNewTab(object sender, RoutedEventArgs e)
-    {
+public partial class ShellWindow {
+    private void OnTerminalNewTab(object sender, RoutedEventArgs e) {
         var startDir = _activeTerminalTab?.View.WorkingDirectory;
         if (string.IsNullOrWhiteSpace(startDir) || !Directory.Exists(startDir))
             startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
@@ -16,14 +14,12 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void OnTerminalTabSelected(object sender, RoutedEventArgs e)
-    {
+    private void OnTerminalTabSelected(object sender, RoutedEventArgs e) {
         if (sender is FrameworkElement { Tag: Guid id })
             ActivateTerminalTab(id);
     }
 
-    private async void OnTabMiddleClick(object sender, MouseButtonEventArgs e)
-    {
+    private async void OnTabMiddleClick(object sender, MouseButtonEventArgs e) {
         if (e.ChangedButton != MouseButton.Middle || sender is not FrameworkElement { Tag: Guid id })
             return;
 
@@ -40,25 +36,20 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private async void OnTerminalTabClosed(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: Guid id })
-        {
+    private async void OnTerminalTabClosed(object sender, RoutedEventArgs e) {
+        if (sender is FrameworkElement { Tag: Guid id }) {
             await CloseTerminalTabAsync(id);
             SaveActiveWorkspaceSnapshot();
         }
     }
 
-    private void OnEditorTabSelected(object sender, RoutedEventArgs e)
-    {
+    private void OnEditorTabSelected(object sender, RoutedEventArgs e) {
         if (sender is FrameworkElement { Tag: Guid id })
             ActivateEditorTab(id);
     }
 
-    private void OnEditorTabClosed(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: Guid id })
-        {
+    private void OnEditorTabClosed(object sender, RoutedEventArgs e) {
+        if (sender is FrameworkElement { Tag: Guid id }) {
             CloseEditorTab(id);
             SaveActiveWorkspaceSnapshot();
         }
@@ -70,8 +61,7 @@ public partial class ShellWindow
     private EditorWorkspaceTabs CurrentEditorWorkspace
         => _activeEditorWorkspace ?? _scratchEditorWorkspace;
 
-    private void ActivateTerminalTab(Guid id)
-    {
+    private void ActivateTerminalTab(Guid id) {
         var tab = _terminalTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null)
             return;
@@ -88,8 +78,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void SetActiveTerminalTab(TerminalTab tab)
-    {
+    private void SetActiveTerminalTab(TerminalTab tab) {
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = tab.Id;
         _terminal.Attach(tab.View);
@@ -99,8 +88,7 @@ public partial class ShellWindow
         RecordTrailTerminalTab(tab);
     }
 
-    private async Task CloseTerminalTabAsync(Guid id)
-    {
+    private async Task CloseTerminalTabAsync(Guid id) {
         var index = _terminalTabs.FindIndex(t => t.Id == id);
         if (index < 0)
             return;
@@ -114,8 +102,7 @@ public partial class ShellWindow
         _terminalViews?.RemoveTab(id);
         ForgetTerminalActivity(id);
 
-        if (_terminalTabs.Count == 0)
-        {
+        if (_terminalTabs.Count == 0) {
             var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
             var newTab = CreateTerminalTab(startDir);
             _terminalTabs.Add(newTab);
@@ -126,20 +113,16 @@ public partial class ShellWindow
 
         _terminalViews?.RepairTabs(_terminalTabs.Select(t => t.Id));
 
-        if (wasActive)
-        {
+        if (wasActive) {
             ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
-        }
-        else
-        {
+        } else {
             _terminalViews?.Rebuild();
             if (_terminalViews?.FocusedTabId is { } fid && _terminalTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
                 SetActiveTerminalTab(ft);
         }
     }
 
-    private void ActivateEditorTab(Guid id)
-    {
+    private void ActivateEditorTab(Guid id) {
         var tab = _editorTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null)
             return;
@@ -156,8 +139,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void SetActiveEditorTab(EditorTab tab)
-    {
+    private void SetActiveEditorTab(EditorTab tab) {
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = tab.Id;
         _editor.Attach(tab.Control);
@@ -168,15 +150,13 @@ public partial class ShellWindow
         _vm.LspPrompt.EvaluateForFile(tab.Control.FilePath);
     }
 
-    private void QueueEditorTabHeaderIntoView(Guid id)
-    {
+    private void QueueEditorTabHeaderIntoView(Guid id) {
         Dispatcher.BeginInvoke(
             new Action(() => ScrollEditorTabHeaderIntoView(id)),
             DispatcherPriority.Loaded);
     }
 
-    private void ScrollEditorTabHeaderIntoView(Guid id)
-    {
+    private void ScrollEditorTabHeaderIntoView(Guid id) {
         if (EditorTabStripScrollViewer.ViewportWidth <= 0)
             return;
 
@@ -187,23 +167,18 @@ public partial class ShellWindow
         var bounds = header.TransformToAncestor(EditorTabStripScrollViewer)
             .TransformBounds(new Rect(0, 0, header.ActualWidth, header.ActualHeight));
 
-        if (bounds.Left < 0)
-        {
+        if (bounds.Left < 0) {
             EditorTabStripScrollViewer.ScrollToHorizontalOffset(
                 Math.Max(0, EditorTabStripScrollViewer.HorizontalOffset + bounds.Left));
-        }
-        else if (bounds.Right > EditorTabStripScrollViewer.ViewportWidth)
-        {
+        } else if (bounds.Right > EditorTabStripScrollViewer.ViewportWidth) {
             EditorTabStripScrollViewer.ScrollToHorizontalOffset(
                 EditorTabStripScrollViewer.HorizontalOffset + bounds.Right - EditorTabStripScrollViewer.ViewportWidth);
         }
     }
 
-    private static FrameworkElement? FindEditorTabHeader(Guid id, DependencyObject root)
-    {
+    private static FrameworkElement? FindEditorTabHeader(Guid id, DependencyObject root) {
         var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
+        for (var i = 0; i < count; i++) {
             var child = VisualTreeHelper.GetChild(root, i);
             if (child is FrameworkElement { DataContext: TabEntryViewModel tab } element && tab.Id == id)
                 return element;
@@ -215,30 +190,26 @@ public partial class ShellWindow
         return null;
     }
 
-    private void CloseEditorTab(Guid id)
-    {
+    private void CloseEditorTab(Guid id) {
         var index = _editorTabs.FindIndex(t => t.Id == id);
         if (index < 0)
             return;
 
         var wasActive = _activeEditorTab?.Id == id;
         var tab = _editorTabs[index];
-        if (ReferenceEquals(_editorSupport.Source, tab))
-        {
+        if (ReferenceEquals(_editorSupport.Source, tab)) {
             _editorSupportDebounceTimer?.Stop();
             DetachEditorSupportSource();
             _editorSupport.IsPinned = false;
             UpdateEditorSupportPinToggle();
         }
-        if (tab.IsRealized)
-        {
+        if (tab.IsRealized) {
             ViewportTree.Detach(tab.Control);
             tab.Control.Dispose();
         }
         if (ReferenceEquals(_previewEditorTab, tab))
             _previewEditorTab = null;
-        if (tab.PeekFilePath is { Length: > 0 } closedPath)
-        {
+        if (tab.PeekFilePath is { Length: > 0 } closedPath) {
             _editorSupport.History.Remove(closedPath);
             UpdateEditorSupportNavAffordances();
         }
@@ -246,8 +217,7 @@ public partial class ShellWindow
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);
 
-        if (_editorTabs.Count == 0)
-        {
+        if (_editorTabs.Count == 0) {
             var newTab = CreateEditorTab();
             _editorTabs.Add(newTab);
             _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
@@ -257,34 +227,26 @@ public partial class ShellWindow
 
         _editorViews?.RepairTabs(_editorTabs.Select(t => t.Id));
 
-        if (wasActive)
-        {
+        if (wasActive) {
             ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
-        }
-        else
-        {
+        } else {
             _editorViews?.Rebuild();
             if (_editorViews?.FocusedTabId is { } fid && _editorTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
                 SetActiveEditorTab(ft);
         }
     }
 
-    private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e)
-    {
-        foreach (var tab in _editorTabs)
-        {
+    private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e) {
+        foreach (var tab in _editorTabs) {
             var path = tab.PeekFilePath;
             if (string.IsNullOrEmpty(path))
                 continue;
 
             string? newPath = null;
-            if (e.IsDirectory)
-            {
+            if (e.IsDirectory) {
                 if (IsPathUnder(path, e.OldPath))
                     newPath = Path.GetFullPath(Path.Combine(e.NewPath, Path.GetRelativePath(e.OldPath, path)));
-            }
-            else if (PathsEqual(path, e.OldPath))
-            {
+            } else if (PathsEqual(path, e.OldPath)) {
                 newPath = e.NewPath;
             }
 
@@ -293,15 +255,11 @@ public partial class ShellWindow
         }
     }
 
-    private void RebaseEditorTabPath(EditorTab tab, string newPath)
-    {
-        if (tab.IsRealized)
-        {
+    private void RebaseEditorTabPath(EditorTab tab, string newPath) {
+        if (tab.IsRealized) {
             tab.Control.Engine.CurrentBuffer.FilePath = newPath;
             UpdateEditorTab(tab);   // タブ名更新＋スナップショット保存
-        }
-        else if (tab.Pending is { } pending)
-        {
+        } else if (tab.Pending is { } pending) {
             pending.FilePath = newPath;
             pending.Title = Path.GetFileName(newPath);
             _vm.Tabs.UpdateEditorTab(tab.Id, newPath, pending.IsModified);
@@ -309,8 +267,7 @@ public partial class ShellWindow
         }
     }
 
-    private void OnFolderTreeEntryDeleted(string deletedPath)
-    {
+    private void OnFolderTreeEntryDeleted(string deletedPath) {
         var affected = _editorTabs
             .Where(t => t.PeekFilePath is { Length: > 0 } p
                 && (PathsEqual(p, deletedPath) || IsPathUnder(p, deletedPath)))
@@ -331,23 +288,20 @@ public partial class ShellWindow
             Path.GetFullPath(b).TrimEnd('\\', '/'),
             StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsPathUnder(string path, string directory)
-    {
+    private static bool IsPathUnder(string path, string directory) {
         var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
         var full = Path.GetFullPath(path);
         return full.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void RevealActiveFileInFolderTree()
-    {
+    private void RevealActiveFileInFolderTree() {
         var path = _activeEditorTab?.PeekFilePath;
         if (string.IsNullOrEmpty(path))
             return;
 
         _vm.RevealExplorerPanel();
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
-        {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
             if (SidebarContainer.Children.OfType<FolderTreeView>().FirstOrDefault() is { } tree)
                 tree.RevealPath(path);
         }));

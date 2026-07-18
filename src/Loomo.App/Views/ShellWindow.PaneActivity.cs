@@ -8,12 +8,10 @@ namespace sk0ya.Loomo.App.Views;
 /// バッジで知らせる。長いビルドを袖に置いたまま、終わったことを目の端で気づける。
 /// 未確認の結果はターミナルが舞台に立つ（＝目に入る）と消える。
 /// </summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private enum PaneActivityKind { None, Running, Succeeded, Failed }
 
-    private sealed class TerminalActivityState
-    {
+    private sealed class TerminalActivityState {
         public bool Running;
 
         public int? UnseenExitCode;
@@ -26,19 +24,16 @@ public partial class ShellWindow
     private void HookTerminalActivity(TerminalTab tab)
         => tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
 
-    private void ForgetTerminalActivity(Guid tabId)
-    {
+    private void ForgetTerminalActivity(Guid tabId) {
         if (_terminalActivity.Remove(tabId))
             UpdatePaneActivityBadge(PaneKind.Terminal);
     }
 
-    private void OnTerminalShellActivity(Guid tabId, ShellCommandActivityEventArgs e)
-    {
+    private void OnTerminalShellActivity(Guid tabId, ShellCommandActivityEventArgs e) {
         if (!_terminalActivity.TryGetValue(tabId, out var state))
             _terminalActivity[tabId] = state = new TerminalActivityState();
 
-        switch (e.Phase)
-        {
+        switch (e.Phase) {
             case ShellCommandPhase.CommandExecuted:
                 state.Running = true;
                 state.UnseenExitCode = null;
@@ -63,8 +58,7 @@ public partial class ShellWindow
             ? _stagePane == PaneKind.Terminal && !_overviewActive
             : IsPaneVisible(PaneKind.Terminal);
 
-    private void MarkPaneActivitySeen(PaneKind kind)
-    {
+    private void MarkPaneActivitySeen(PaneKind kind) {
         if (kind != PaneKind.Terminal)
             return;
         foreach (var state in _terminalActivity.Values)
@@ -72,15 +66,13 @@ public partial class ShellWindow
         UpdatePaneActivityBadge(kind);
     }
 
-    private PaneActivityKind AggregateTerminalActivity(out int exitCode)
-    {
+    private PaneActivityKind AggregateTerminalActivity(out int exitCode) {
         exitCode = 0;
         if (_terminalActivity.Values.Any(s => s.Running))
             return PaneActivityKind.Running;
 
         var failed = _terminalActivity.Values.FirstOrDefault(s => s.UnseenExitCode is > 0);
-        if (failed is not null)
-        {
+        if (failed is not null) {
             exitCode = failed.UnseenExitCode!.Value;
             return PaneActivityKind.Failed;
         }
@@ -90,8 +82,7 @@ public partial class ShellWindow
             : PaneActivityKind.None;
     }
 
-    private void UpdatePaneActivityBadge(PaneKind kind)
-    {
+    private void UpdatePaneActivityBadge(PaneKind kind) {
         if (kind != PaneKind.Terminal
             || !_stageActivityBadges.TryGetValue(kind, out var badge))
             return;
@@ -125,19 +116,16 @@ public partial class ShellWindow
     private static readonly Brush PaneActivityFailedBrush =
         new SolidColorBrush(Color.FromRgb(0xD9, 0x53, 0x4D));
 
-    private void AttachActivityBadge(Grid cardRoot, PaneKind kind, bool isOverview)
-    {
+    private void AttachActivityBadge(Grid cardRoot, PaneKind kind, bool isOverview) {
         if (kind != PaneKind.Terminal)
             return;
 
-        var label = new TextBlock
-        {
+        var label = new TextBlock {
             FontSize = isOverview ? 12 : 11,
             FontWeight = FontWeights.SemiBold,
             Foreground = Brushes.White,
         };
-        var chip = new Border
-        {
+        var chip = new Border {
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 5, 5, 0),

@@ -11,8 +11,7 @@ namespace sk0ya.Loomo.App.Views;
 /// ソロ中に <c>FocusPane</c> が呼ばれると対象が自動で舞台に立つので、AI がファイルを
 /// 開いた・差分を出した等の既存フローがそのまま「舞台の自動転換」になる。
 /// </summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
 
     private readonly StageModeCoordinator _stageMode = new();
     private bool _stageActive { get => _stageMode.Active; set => _stageMode.Active = value; }
@@ -42,8 +41,7 @@ public partial class ShellWindow
 
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
 
-    private void ToggleDisplayMode()
-    {
+    private void ToggleDisplayMode() {
         BeginTrailLayoutChange();
         if (_stageActive)
             ExitStageMode();   // → レイアウトモード
@@ -54,8 +52,7 @@ public partial class ShellWindow
     private void EnterStageMode()
         => EnterStageMode(null);
 
-    private void EnterStageMode(PaneKind? pane)
-    {
+    private void EnterStageMode(PaneKind? pane) {
         var selectedPane = pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
             : _focusedRegion?.Pane
@@ -74,8 +71,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void ClearStageModeForWorkspaceSwitch()
-    {
+    private void ClearStageModeForWorkspaceSwitch() {
         if (!_stageMode.Exit())
             return;
         StageHost.SizeChanged -= OnStageHostSizeChanged;
@@ -94,8 +90,7 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot)
-    {
+    private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot) {
         ClearStageModeForWorkspaceSwitch();
         if (!solo)
             return;
@@ -114,23 +109,20 @@ public partial class ShellWindow
         UpdateModeButtons();
     }
 
-    private void CompleteStageSnapshotRestore()
-    {
+    private void CompleteStageSnapshotRestore() {
         if (!_stageActive)
             return;
 
         RebuildStage();
         if (_stagePane == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
-        {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
             if (_stageActive)
                 FocusPane(_stagePane);
         }));
     }
 
-    private void ExitStageMode()
-    {
+    private void ExitStageMode() {
         if (!_stageMode.Exit())
             return;
         StageHost.SizeChanged -= OnStageHostSizeChanged;
@@ -154,8 +146,7 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void SetStagePane(PaneKind kind)
-    {
+    private void SetStagePane(PaneKind kind) {
         if (!_stageMode.Select(kind))
             return;
         BeginTrailLayoutChange();
@@ -166,31 +157,27 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void CycleInActiveMode(int direction)
-    {
+    private void CycleInActiveMode(int direction) {
         if (_stageActive)
             CycleStage(direction);
         else
             CycleLayout(direction);
     }
 
-    private void CycleStage(int direction)
-    {
+    private void CycleStage(int direction) {
         var index = Array.IndexOf(StageOrder, _stagePane);
         var next = StageOrder[((index < 0 ? 0 : index) + direction + StageOrder.Length) % StageOrder.Length];
         SetStagePane(next);
         FocusPane(next);
     }
 
-    private void DetachPaneElements()
-    {
+    private void DetachPaneElements() {
         foreach (var element in _paneElements.Values)
             if (element.Parent is Panel parent)
                 parent.Children.Remove(element);
     }
 
-    private Size StageVirtualSize()
-    {
+    private Size StageVirtualSize() {
         if (StageArea.ActualWidth > 0 && StageArea.ActualHeight > 0)
             return new Size(StageArea.ActualWidth, StageArea.ActualHeight);
         var hostW = StageHost.ActualWidth > 0 ? StageHost.ActualWidth : PaneHost.ActualWidth;
@@ -200,15 +187,12 @@ public partial class ShellWindow
             Math.Max(hostH - 18, 320));                      // 18 ≒ 上下マージン
     }
 
-    private void OnStageHostSizeChanged(object sender, SizeChangedEventArgs e)
-    {
+    private void OnStageHostSizeChanged(object sender, SizeChangedEventArgs e) {
         if (!_stageActive)
             return;
-        if (_stageResizeTimer is null)
-        {
+        if (_stageResizeTimer is null) {
             _stageResizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-            _stageResizeTimer.Tick += (_, _) =>
-            {
+            _stageResizeTimer.Tick += (_, _) => {
                 _stageResizeTimer!.Stop();
                 if (!_stageActive)
                     return;
@@ -224,8 +208,7 @@ public partial class ShellWindow
 
     private bool IsSessionEnabled(PaneKind kind) => _enabledSessions.Contains(kind);
 
-    private bool IsShownInMain(PaneKind kind)
-    {
+    private bool IsShownInMain(PaneKind kind) {
         if (_stageActive)
             return !_overviewActive && OnStage(kind);
         if (_zoomedPane is { } zoom)
@@ -233,8 +216,7 @@ public partial class ShellWindow
         return IsPaneVisible(kind);
     }
 
-    private void LoadEnabledSessions(IEnumerable<PaneKind>? enabled)
-    {
+    private void LoadEnabledSessions(IEnumerable<PaneKind>? enabled) {
         _enabledSessions.Clear();
         if (enabled is not null)
             foreach (var kind in enabled)
@@ -247,27 +229,21 @@ public partial class ShellWindow
             _enabledSessions.Remove(PaneKind.Debug);
     }
 
-    private void ApplyIdePaneApplicability(string? root)
-    {
+    private void ApplyIdePaneApplicability(string? root) {
         _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(root);
         DebugPaneToggle.Visibility = _idePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ToggleSessionEnabled(PaneKind kind)
-    {
-        if (_enabledSessions.Contains(kind))
-        {
-            if (IsPaneVisible(kind))
-            {
+    private void ToggleSessionEnabled(PaneKind kind) {
+        if (_enabledSessions.Contains(kind)) {
+            if (IsPaneVisible(kind)) {
                 SetPaneVisible(kind, false);
                 if (IsPaneVisible(kind))
                     return;
             }
             _enabledSessions.Remove(kind);
             RebuildSessionsView();
-        }
-        else
-        {
+        } else {
             _enabledSessions.Add(kind);
             if (FindLeaf(kind) is { Hidden: true })
                 SetPaneVisible(kind, true);
@@ -276,13 +252,11 @@ public partial class ShellWindow
         }
     }
 
-    private void RebuildSessionsView()
-    {
+    private void RebuildSessionsView() {
         UpdatePaneToggleStates();
         if (_stageActive)
             RebuildStage();
-        else
-        {
+        else {
             ScheduleLayoutWings();
         }
         SaveActiveWorkspaceSnapshot();
@@ -290,8 +264,7 @@ public partial class ShellWindow
 
     private IEnumerable<PaneKind> OverviewKinds() => StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
 
-    private void RebuildStage()
-    {
+    private void RebuildStage() {
         if (!_stageActive)
             return;
 
@@ -306,14 +279,11 @@ public partial class ShellWindow
         _stageBuiltSize = virtualSize;
         BuildStageThumbnailSources(virtualSize);
 
-        if (_overviewActive)
-        {
+        if (_overviewActive) {
             OverviewLayer.Visibility = Visibility.Visible;
             foreach (var kind in OverviewKinds())
                 OverviewPanel.Children.Add(BuildSessionCard(kind, OverviewCardWidth, isOverview: true));
-        }
-        else
-        {
+        } else {
             OverviewLayer.Visibility = Visibility.Collapsed;
             StageArea.Children.Add(BuildLiveSlot(_stagePane));
         }
@@ -326,18 +296,15 @@ public partial class ShellWindow
 
     private void OnToggleOverview(object sender, RoutedEventArgs e) => ToggleOverview();
 
-    private void ToggleOverview()
-    {
+    private void ToggleOverview() {
         if (!_stageActive)
             return;
         _overviewActive = !_overviewActive;
         RebuildStage();
     }
 
-    private void OnOverviewBackgroundClick(object sender, MouseButtonEventArgs e)
-    {
-        if (_overviewActive)
-        {
+    private void OnOverviewBackgroundClick(object sender, MouseButtonEventArgs e) {
+        if (_overviewActive) {
             _overviewActive = false;
             RebuildStage();
         }

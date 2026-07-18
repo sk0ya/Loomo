@@ -6,8 +6,7 @@ namespace sk0ya.Loomo.App.Views;
 /// <see cref="BranchSwitcherView"/> が持ち、タイトルバーと Git ペインヘッダーはそれを同じように
 /// ポップアップへ載せるだけ。ここは「どのボタンでどのポップアップを開くか」に徹する。
 /// </summary>
-public partial class ShellWindow
-{
+public partial class ShellWindow {
     private readonly Dictionary<Popup, DateTime> _branchPopupClosedAt = new();
 
     private static readonly TimeSpan BranchPopupReopenGuard = TimeSpan.FromMilliseconds(250);
@@ -18,17 +17,14 @@ public partial class ShellWindow
     private void OnGitPaneBranchClick(object sender, RoutedEventArgs e)
         => ToggleBranchPopup(GitPaneBranchPopup, GitPaneBranchSwitcher);
 
-    private void ToggleBranchPopup(Popup popup, BranchSwitcherView switcher)
-    {
-        if (popup.IsOpen)
-        {
+    private void ToggleBranchPopup(Popup popup, BranchSwitcherView switcher) {
+        if (popup.IsOpen) {
             popup.IsOpen = false;
             return;
         }
 
         if (_branchPopupClosedAt.TryGetValue(popup, out var closedAt)
-            && DateTime.UtcNow - closedAt < BranchPopupReopenGuard)
-        {
+            && DateTime.UtcNow - closedAt < BranchPopupReopenGuard) {
             return;
         }
 
@@ -37,18 +33,15 @@ public partial class ShellWindow
         popup.IsOpen = true;
     }
 
-    private void HookBranchSwitchers()
-    {
+    private void HookBranchSwitchers() {
         Hook(BranchPopup, BranchSwitcher);
         Hook(GitPaneBranchPopup, GitPaneBranchSwitcher);
 
-        void Hook(Popup popup, BranchSwitcherView switcher)
-        {
+        void Hook(Popup popup, BranchSwitcherView switcher) {
             switcher.CloseRequested += (_, _) => popup.IsOpen = false;
 
             DependencyPropertyDescriptor.FromProperty(Popup.IsOpenProperty, typeof(Popup))
-                ?.AddValueChanged(popup, (_, _) =>
-                {
+                ?.AddValueChanged(popup, (_, _) => {
                     if (!popup.IsOpen)
                         _branchPopupClosedAt[popup] = DateTime.UtcNow;
                 });

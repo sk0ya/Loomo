@@ -4,14 +4,11 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインドラッグ中のプレビュー描画・ドロップ確定・ゴースト追従・ゾーン計算
 /// （オーバーレイ上のマウス追跡、挿入/入れ替えプレビュー、ヒットテスト、矩形/色ヘルパ）。
 /// ドラッグ開始・捕捉・オーバーレイ生成は ShellWindow.PaneDrag.cs。</summary>
-public partial class ShellWindow
-{
-    private void OnDragCanvasMouseMove(object sender, MouseEventArgs e)
-    {
+public partial class ShellWindow {
+    private void OnDragCanvasMouseMove(object sender, MouseEventArgs e) {
         if (!_paneDragging)
             return;
-        if (e.LeftButton != MouseButtonState.Pressed)
-        {
+        if (e.LeftButton != MouseButtonState.Pressed) {
             EndPaneDrag();
             return;
         }
@@ -23,11 +20,9 @@ public partial class ShellWindow
             UpdateDragPreview(e.GetPosition(PaneHost));
     }
 
-    private void UpdateStageDragPreview(Point pos)
-    {
+    private void UpdateStageDragPreview(Point pos) {
         var rect = StageRectInPaneHost();
-        if (rect.Width <= 0 || rect.Height <= 0 || !rect.Contains(pos))
-        {
+        if (rect.Width <= 0 || rect.Height <= 0 || !rect.Contains(pos)) {
             _dragTarget = null;
             _dragZone = null;
             _dragCenter = false;
@@ -53,19 +48,16 @@ public partial class ShellWindow
         _dragPreview!.Visibility = Visibility.Visible;
     }
 
-    private Rect StageRectInPaneHost()
-    {
+    private Rect StageRectInPaneHost() {
         if (StageArea.ActualWidth <= 0 || StageArea.ActualHeight <= 0)
             return Rect.Empty;
         var topLeft = StageArea.TransformToVisual(PaneHost).Transform(new Point(0, 0));
         return new Rect(topLeft, new Size(StageArea.ActualWidth, StageArea.ActualHeight));
     }
 
-    private void UpdateDragPreview(Point pos)
-    {
+    private void UpdateDragPreview(Point pos) {
         var hit = HitTestCell(pos);
-        if (hit is null)
-        {
+        if (hit is null) {
             _dragTarget = null;
             _dragZone = null;
             _dragCenter = false;
@@ -99,16 +91,14 @@ public partial class ShellWindow
         _dragPreview!.Visibility = Visibility.Visible;
     }
 
-    private static bool IsNearOuterEdge(double relX, double relY, DropZone zone) => zone switch
-    {
+    private static bool IsNearOuterEdge(double relX, double relY, DropZone zone) => zone switch {
         DropZone.Left => relX < 0.2,
         DropZone.Right => relX > 0.8,
         DropZone.Above => relY < 0.2,
         _ => relY > 0.8,
     };
 
-    private bool TryGetSpanRect(PaneKind targetKind, DropZone zone, out Rect rect)
-    {
+    private bool TryGetSpanRect(PaneKind targetKind, DropZone zone, out Rect rect) {
         rect = default;
         if (FindLeaf(targetKind) is not { } targetLeaf)
             return false;
@@ -117,8 +107,7 @@ public partial class ShellWindow
             return false; // 直交する祖先が無い＝単体ペインへの挿入と同じ
 
         var any = false;
-        foreach (var leaf in AllLeaves(node))
-        {
+        foreach (var leaf in AllLeaves(node)) {
             if (leaf.Hidden || !TryGetPaneRect(leaf.Kind, out var r))
                 continue;
             rect = any ? Rect.Union(rect, r) : r;
@@ -132,16 +121,14 @@ public partial class ShellWindow
             ? span.Width > leaf.Width + 1
             : span.Height > leaf.Height + 1;
 
-    private static void PlaceOverlay(Border border, Rect r)
-    {
+    private static void PlaceOverlay(Border border, Rect r) {
         Canvas.SetLeft(border, r.X);
         Canvas.SetTop(border, r.Y);
         border.Width = r.Width;
         border.Height = r.Height;
     }
 
-    private void OnDragCanvasMouseUp(object sender, MouseButtonEventArgs e)
-    {
+    private void OnDragCanvasMouseUp(object sender, MouseButtonEventArgs e) {
         var source = _dragSource;
         var target = _dragTarget;
         var zone = _dragZone;
@@ -151,8 +138,7 @@ public partial class ShellWindow
         var stageDrag = _stageDrag;
         EndPaneDrag();
 
-        if (stageDrag)
-        {
+        if (stageDrag) {
             HandleStageDrop(source, target, center, zone);
             return;
         }
@@ -164,13 +150,11 @@ public partial class ShellWindow
             MovePane(source, t, z, span);
     }
 
-    private void HandleStageDrop(PaneKind source, PaneKind? target, bool center, DropZone? zone)
-    {
+    private void HandleStageDrop(PaneKind source, PaneKind? target, bool center, DropZone? zone) {
         if (target is not { } stage)   // 舞台の外でドロップ＝レイアウトは変えない
             return;
 
-        if (center)
-        {
+        if (center) {
             SetStagePane(source);
             FocusPane(source);
             return;
@@ -183,13 +167,10 @@ public partial class ShellWindow
         var split = new PaneSplit { Orientation = orientation };
         var stageLeaf = new PaneLeaf { Kind = stage };
         var draggedLeaf = new PaneLeaf { Kind = source };
-        if (z is DropZone.Left or DropZone.Above)
-        {
+        if (z is DropZone.Left or DropZone.Above) {
             split.Children.Add(draggedLeaf);
             split.Children.Add(stageLeaf);
-        }
-        else
-        {
+        } else {
             split.Children.Add(stageLeaf);
             split.Children.Add(draggedLeaf);
         }
@@ -203,30 +184,24 @@ public partial class ShellWindow
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void OnDragCanvasLostCapture(object sender, MouseEventArgs e)
-    {
+    private void OnDragCanvasLostCapture(object sender, MouseEventArgs e) {
         if (!_paneDragging)
             return;
-        if (Mouse.LeftButton == MouseButtonState.Pressed)
-        {
+        if (Mouse.LeftButton == MouseButtonState.Pressed) {
             Dispatcher.BeginInvoke(new Action(BeginDragCapture), System.Windows.Threading.DispatcherPriority.Input);
             return;
         }
         EndPaneDrag();
     }
 
-    private void ShowDragGhost(PaneKind kind)
-    {
-        if (_dragGhost is null)
-        {
-            _dragGhost = new Border
-            {
+    private void ShowDragGhost(PaneKind kind) {
+        if (_dragGhost is null) {
+            _dragGhost = new Border {
                 Background = MakeTranslucent((Brush)FindResource("Accent"), 0.9),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(10, 5, 10, 5),
                 IsHitTestVisible = false,
-                Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
+                Effect = new System.Windows.Media.Effects.DropShadowEffect {
                     BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5, Color = Colors.Black
                 },
                 Child = new TextBlock { Foreground = Brushes.White, FontSize = UiFontManager.Scaled(12), FontWeight = FontWeights.SemiBold }
@@ -239,24 +214,21 @@ public partial class ShellWindow
         Mouse.OverrideCursor = Cursors.Hand;   // 掴んでいる感じ（タイル外では UpdateDragPreview が No へ）
     }
 
-    private void MoveDragGhost(Point pos)
-    {
+    private void MoveDragGhost(Point pos) {
         if (_dragGhost is null)
             return;
         Canvas.SetLeft(_dragGhost, pos.X + 14);
         Canvas.SetTop(_dragGhost, pos.Y + 16);
     }
 
-    private void HideDragGhost()
-    {
+    private void HideDragGhost() {
         if (_dragGhost is not null)
             _dragGhost.Visibility = Visibility.Collapsed;
         DragGhostLayer.Visibility = Visibility.Collapsed;
         Mouse.OverrideCursor = null;
     }
 
-    private void EndPaneDrag()
-    {
+    private void EndPaneDrag() {
         _paneDragging = false;
         _dragFromWing = false;
         _stageDrag = false;
@@ -273,10 +245,8 @@ public partial class ShellWindow
             _dragTargetOutline.Visibility = Visibility.Collapsed;
     }
 
-    private (PaneKind Kind, Rect Rect)? HitTestCell(Point pos)
-    {
-        foreach (var leaf in AllLeaves())
-        {
+    private (PaneKind Kind, Rect Rect)? HitTestCell(Point pos) {
+        foreach (var leaf in AllLeaves()) {
             if (leaf.Hidden)
                 continue;
             if (TryGetPaneRect(leaf.Kind, out var rect) && rect.Contains(pos))
@@ -285,8 +255,7 @@ public partial class ShellWindow
         return null;
     }
 
-    private static DropZone NearestZone(double relX, double relY)
-    {
+    private static DropZone NearestZone(double relX, double relY) {
         var dLeft = relX;
         var dRight = 1 - relX;
         var dTop = relY;
@@ -298,18 +267,15 @@ public partial class ShellWindow
         return DropZone.Below;
     }
 
-    private static Rect ZoneRect(Rect r, DropZone zone) => zone switch
-    {
+    private static Rect ZoneRect(Rect r, DropZone zone) => zone switch {
         DropZone.Left => new Rect(r.X, r.Y, r.Width / 2, r.Height),
         DropZone.Right => new Rect(r.X + r.Width / 2, r.Y, r.Width / 2, r.Height),
         DropZone.Above => new Rect(r.X, r.Y, r.Width, r.Height / 2),
         _ => new Rect(r.X, r.Y + r.Height / 2, r.Width, r.Height / 2),
     };
 
-    private static Brush MakeTranslucent(Brush source, double opacity)
-    {
-        if (source is SolidColorBrush solid)
-        {
+    private static Brush MakeTranslucent(Brush source, double opacity) {
+        if (source is SolidColorBrush solid) {
             var c = solid.Color;
             return new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), c.R, c.G, c.B));
         }

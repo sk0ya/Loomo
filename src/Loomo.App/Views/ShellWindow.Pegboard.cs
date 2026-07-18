@@ -5,10 +5,8 @@ namespace sk0ya.Loomo.App.Views;
 /// ShellWindow: ペグボードペイン（設計書 §23.3）のシェル側配線。
 /// アイテムの「開く」を種別に応じて各ペインへ振り分け、変更をワークスペーススナップショットへ保存する。
 /// </summary>
-public partial class ShellWindow
-{
-    private void InitializePegboard()
-    {
+public partial class ShellWindow {
+    private void InitializePegboard() {
         _vm.Pegboard.Changed += (_, _) => SaveActiveWorkspaceSnapshot();
         _vm.Pegboard.OpenRequested += async (_, item) => await OpenPegboardItemAsync(item);
         _vm.Pegboard.BrowserPinRequested += (_, _) => PinBrowserUrlToPegboard();
@@ -17,24 +15,20 @@ public partial class ShellWindow
         _vm.Pegboard.InsertToComposerRequested += (_, item) => InsertIntoComposer(item.Content);
     }
 
-    private void PinBrowserUrlToPegboard()
-    {
+    private void PinBrowserUrlToPegboard() {
         if (_activeBrowserTab?.View.Source?.ToString() is { Length: > 0 } url)
             _vm.Pegboard.AddContent(url, type: "url",
                 title: _activeBrowserTab.View.CoreWebView2?.DocumentTitle);
     }
 
-    private void PinEditorSelectionToPegboard()
-    {
+    private void PinEditorSelectionToPegboard() {
         if (_activeEditorTab?.Control.SelectedText is { Length: > 0 } text)
             _vm.Pegboard.AddContent(text, type: "text");
     }
 
-    private void SendPegboardItemToTerminal(PegboardItemVm item)
-    {
+    private void SendPegboardItemToTerminal(PegboardItemVm item) {
         var content = item.Content;
-        if (content.Contains('\n'))
-        {
+        if (content.Contains('\n')) {
             InsertIntoComposer(content);
             return;
         }
@@ -45,10 +39,8 @@ public partial class ShellWindow
         FocusPane(PaneKind.Terminal);
     }
 
-    private async Task OpenPegboardItemAsync(PegboardItemVm item)
-    {
-        switch (item.Type)
-        {
+    private async Task OpenPegboardItemAsync(PegboardItemVm item) {
+        switch (item.Type) {
             case "url":
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 var tab = await CreateBrowserTabAsync(item.Content);
@@ -67,8 +59,7 @@ public partial class ShellWindow
 
             default:
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
-                await _editor.OpenDocumentAsync(new EditorDocument
-                {
+                await _editor.OpenDocumentAsync(new EditorDocument {
                     FileName = $"pegboard-{item.Snapshot.Id.ToString("N")[..8]}.txt",
                     Content = item.Content,
                     OnSaved = _ => { }, // 閲覧用：保存しても永続化はしない
