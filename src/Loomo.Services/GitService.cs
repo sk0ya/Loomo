@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -26,6 +25,7 @@ public sealed class GitService
     private readonly GitCommandRunner _runner;
     private readonly GitStatusService _status;
     private readonly GitHistoryService _history;
+    private readonly GitBranchService _branches;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -38,6 +38,7 @@ public sealed class GitService
         _runner = new GitCommandRunner(workspace);
         _status = new GitStatusService(_runner);
         _history = new GitHistoryService(_runner);
+        _branches = new GitBranchService(_runner);
         workspace.RootChanged += (_, _) =>
         {
             _lastSignature = null; // リポジトリが替わったら署名を取り直す
@@ -128,68 +129,13 @@ public sealed class GitService
     public Task<GitStatusSnapshot> GetStatusAsync() => _status.GetStatusAsync();
 
     /// <summary>設定されているリモート名（git remote）。無ければ空。</summary>
-    public async Task<IReadOnlyList<string>> GetRemotesAsync()
-    {
-        var result = await RunAsync("remote").ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<string>();
-
-        return result.Output.Split('\n')
-            .Select(l => l.Trim())
-            .Where(l => l.Length > 0)
-            .ToList();
-    }
+    public Task<IReadOnlyList<string>> GetRemotesAsync() => _branches.GetRemotesAsync();
 
     /// <summary>
     /// ローカル・リモートのブランチ一覧。リモートの HEAD ポインタ（origin/HEAD）は除く。
     /// 上流との差（ahead/behind）と先頭コミット日時も併せて取り、1回の git 呼び出しで賄う。
     /// </summary>
-    public async Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync()
-    {
-        var result = await RunAsync(
-            "branch", "-a",
-            "--format=%(refname)\t%(HEAD)\t%(upstream:short)\t%(upstream:track)\t%(committerdate:iso-strict)")
-            .ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitBranchInfo>();
-
-        var branches = new List<GitBranchInfo>();
-        foreach (var line in result.Output.Split('\n'))
-        {
-            var l = line.TrimEnd('\r');
-            if (l.Length == 0) continue;
-            var parts = l.Split('\t');
-            if (parts.Length < 2) continue;
-
-            var refName = parts[0];
-            var upstream = parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null;
-            var (ahead, behind, gone) = ParseTrack(parts.Length > 3 ? parts[3] : "");
-            var lastCommit = ParseDate(parts.Length > 4 ? parts[4] : "");
-
-            if (refName.StartsWith("refs/heads/", StringComparison.Ordinal))
-            {
-                branches.Add(new GitBranchInfo(
-                    refName["refs/heads/".Length..], parts[1] == "*", IsRemote: false, upstream)
-                {
-                    Ahead = ahead,
-                    Behind = behind,
-                    UpstreamGone = gone,
-                    LastCommit = lastCommit,
-                });
-            }
-            else if (refName.StartsWith("refs/remotes/", StringComparison.Ordinal))
-            {
-                var name = refName["refs/remotes/".Length..];
-                if (name.EndsWith("/HEAD", StringComparison.Ordinal))
-                    continue;
-                branches.Add(new GitBranchInfo(name, IsCurrent: false, IsRemote: true, upstream)
-                {
-                    LastCommit = lastCommit,
-                });
-            }
-        }
-        return branches;
-    }
+    public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync() => _branches.GetBranchesAsync();
 
     /// <summary>
     /// <c>%(upstream:track)</c> の値を分解する。取り得る形は
@@ -197,54 +143,10 @@ public sealed class GitService
     /// 上流が無いブランチは空になる（この場合すべて既定値）。
     /// </summary>
     internal static (int Ahead, int Behind, bool Gone) ParseTrack(string track)
-    {
-        if (track.Length == 0)
-            return (0, 0, false);
-        if (track.Contains("gone", StringComparison.Ordinal))
-            return (0, 0, true);
-
-        return (ReadCount(track, "ahead "), ReadCount(track, "behind "), false);
-
-        static int ReadCount(string track, string keyword)
-        {
-            var at = track.IndexOf(keyword, StringComparison.Ordinal);
-            if (at < 0) return 0;
-            var digits = track[(at + keyword.Length)..].TakeWhile(char.IsAsciiDigit).ToArray();
-            return digits.Length > 0 && int.TryParse(digits, out var n) ? n : 0;
-        }
-    }
-
-    /// <summary>ISO-8601（<c>committerdate:iso-strict</c>）を解釈する。空・解釈不能なら null。</summary>
-    private static DateTimeOffset? ParseDate(string value) =>
-        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
-            DateTimeStyles.None, out var parsed) ? parsed : null;
+        => GitBranchService.ParseTrack(track);
 
     /// <summary>タグ一覧（作成日の新しい順）。</summary>
-    public async Task<IReadOnlyList<GitTagInfo>> GetTagsAsync()
-    {
-        var result = await RunAsync("for-each-ref", "refs/tags", "--sort=-creatordate",
-            "--format=%(refname:short)\t%(objecttype)\t%(objectname:short)\t%(*objectname:short)\t%(subject)\t%(creatordate:format:%Y-%m-%d %H:%M)")
-            .ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitTagInfo>();
-
-        var tags = new List<GitTagInfo>();
-        foreach (var line in result.Output.Split('\n'))
-        {
-            var l = line.TrimEnd('\r');
-            if (l.Length == 0) continue;
-            var parts = l.Split('\t');
-            if (parts.Length < 6) continue;
-
-            var isAnnotated = parts[1] == "tag";
-            // 注釈付きタグは参照解決後（*objectname）のコミットハッシュを対象にする
-            var target = isAnnotated && parts[3].Length > 0 ? parts[3] : parts[2];
-            var subject = parts[4].Length > 0 ? parts[4] : null;
-            var date = parts[5].Length > 0 ? parts[5] : null;
-            tags.Add(new GitTagInfo(parts[0], target, subject, isAnnotated, date));
-        }
-        return tags;
-    }
+    public Task<IReadOnlyList<GitTagInfo>> GetTagsAsync() => _branches.GetTagsAsync();
 
     /// <summary>
     /// サブモジュール一覧（<c>git submodule status</c>）。<c>.gitmodules</c> が無い／サブモジュールが
