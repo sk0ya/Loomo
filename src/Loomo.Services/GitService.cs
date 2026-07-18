@@ -25,6 +25,7 @@ public sealed class GitService
     private readonly IWorkspaceService _workspace;
     private readonly GitCommandRunner _runner;
     private readonly GitStatusService _status;
+    private readonly GitHistoryService _history;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -36,6 +37,7 @@ public sealed class GitService
         _workspace = workspace;
         _runner = new GitCommandRunner(workspace);
         _status = new GitStatusService(_runner);
+        _history = new GitHistoryService(_runner);
         workspace.RootChanged += (_, _) =>
         {
             _lastSignature = null; // リポジトリが替わったら署名を取り直す
@@ -266,24 +268,7 @@ public sealed class GitService
     /// </summary>
     public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(
         string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null)
-    {
-        var revArg = string.IsNullOrWhiteSpace(branchRef) ? "--all" : branchRef;
-        var args = new List<string> { "log", "--graph", revArg, $"-n{limit}" };
-        if (skip > 0)
-            args.Add($"--skip={skip}");
-        args.Add("--date=format:%Y-%m-%d %H:%M");
-        args.Add($"--pretty=format:{GitLogParser.PrettyFormat}");
-        // パス絞り込みは pathspec 区切り（--）の後に置く。ファイル・フォルダどちらでも履歴が取れる。
-        if (!string.IsNullOrWhiteSpace(pathFilter))
-        {
-            args.Add("--");
-            args.Add(pathFilter);
-        }
-        var result = await RunAsync(args.ToArray()).ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitLogRow>();
-        return GitLogParser.Parse(result.Output);
-    }
+        => await _history.GetLogAsync(branchRef, limit, skip, pathFilter).ConfigureAwait(false);
 
     /// <summary>
     /// 1ファイルの差分テキスト（unified patch）。<paramref name="contextLines"/> で前後コンテキスト行数を指定する
@@ -334,66 +319,23 @@ public sealed class GitService
     }
 
     /// <summary>コミットの概要（メッセージ＋変更ファイル統計）。セッションペインの詳細表示用。</summary>
-    public async Task<string> GetCommitSummaryAsync(string hash)
-    {
-        // --stat は diff 出力形式の指定なので、既定のパッチ表示は付かず統計のみになる
-        var result = await RunAsync("show", "--stat", "--format=fuller", hash).ConfigureAwait(false);
-        return result.Success ? result.Output : result.Message;
-    }
+    public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 
     /// <summary>コミットのフルパッチ（git show）。エディタの仮想ドキュメント表示用。</summary>
-    public async Task<string> GetCommitPatchAsync(string hash)
-    {
-        var result = await RunAsync("show", hash).ConfigureAwait(false);
-        return result.Success ? result.Output : result.Message;
-    }
+    public Task<string> GetCommitPatchAsync(string hash) => _history.GetCommitPatchAsync(hash);
 
     /// <summary>
     /// コミット範囲の変更ファイル一覧。<paramref name="fromHash"/> が null なら
     /// <paramref name="toHash"/> 1コミットの変更（親との diff。ルートコミット対応、マージは第1親と比較）、
     /// 指定があれば両端スナップショット間の diff（from..to の到達差ではなく単純比較）。
     /// </summary>
-    public async Task<IReadOnlyList<GitCommitFileChange>> GetRangeChangesAsync(string? fromHash, string toHash)
-    {
-        var result = fromHash is null
-            ? await RunAsync("diff-tree", "--root", "-r", "-m", "--first-parent",
-                "--no-commit-id", "--name-status", toHash).ConfigureAwait(false)
-            : await RunAsync("diff", "--name-status", fromHash, toHash).ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitCommitFileChange>();
-
-        var list = new List<GitCommitFileChange>();
-        foreach (var line in result.Output.Split('\n'))
-        {
-            var l = line.TrimEnd('\r');
-            if (l.Length == 0) continue;
-            var parts = l.Split('\t');
-            if (parts.Length < 2 || parts[0].Length == 0) continue;
-            var status = parts[0][0]; // "R100" などのスコアは落とす
-            var (path, orig) = parts.Length >= 3 ? (parts[2], parts[1]) : (parts[1], (string?)null);
-            list.Add(new GitCommitFileChange(status, path, orig));
-        }
-        return list;
-    }
+    public Task<IReadOnlyList<GitCommitFileChange>> GetRangeChangesAsync(string? fromHash, string toHash) =>
+        _history.GetRangeChangesAsync(fromHash, toHash);
 
     /// <summary>コミット範囲（<see cref="GetRangeChangesAsync"/> と同じ規約）の1ファイル差分テキスト。</summary>
     public async Task<string> GetRangeFileDiffAsync(
         string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3)
-    {
-        var unified = $"--unified={contextLines}";
-        var args = new List<string>();
-        if (fromHash is null)
-            args.AddRange(new[]
-                { "diff-tree", "--root", "-p", unified, "-m", "--first-parent", "--no-commit-id", toHash });
-        else
-            args.AddRange(new[] { "diff", unified, fromHash, toHash });
-        args.Add("--");
-        if (file.OrigPath is not null)
-            args.Add(file.OrigPath);
-        args.Add(file.Path);
-        var result = await RunAsync(args.ToArray()).ConfigureAwait(false);
-        return result.Success ? result.Output : result.Message;
-    }
+        => await _history.GetRangeFileDiffAsync(fromHash, toHash, file, contextLines).ConfigureAwait(false);
 
     /// <summary>コンフリクト中の1ステージ（1=共通祖先, 2=ours, 3=theirs）の内容。そのステージが無い
     /// （追加/削除の片方など）場合は null。</summary>
