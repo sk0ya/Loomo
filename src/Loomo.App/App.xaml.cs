@@ -226,6 +226,7 @@ public partial class App : Application
         services.AddSingleton<IAiWarmup>(sp => sp.GetRequiredService<LocalLlmWarmupService>());
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<PromptHistoryStore>();
+        services.AddSingleton<ModelFolderGateway>();
         services.AddSingleton<TabIconService>();
         services.AddSingleton<Input.KeybindingService>();
         services.AddSingleton<FolderTreeCommandHandler>();

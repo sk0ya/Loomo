@@ -12,6 +12,7 @@ using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Safety;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -27,6 +28,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ModelCatalogService _modelCatalog;
     private readonly ModelDownloadService _modelDownload;
     private readonly Services.IAiWarmup _warmup;
+    private readonly ModelFolderGateway _modelFolders;
     private CancellationTokenSource? _fetchModelsCts;
     private CancellationTokenSource? _downloadCts;
     // 初期ロード中の代入で自動保存（Persist）が走らないようにするためのガード。
@@ -97,7 +99,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(AiSettings settings, AiSettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload,
-        Services.IAiWarmup warmup)
+        Services.IAiWarmup warmup, ModelFolderGateway modelFolders)
     {
         _settings = settings;
         _store = store;
@@ -105,6 +107,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _modelCatalog = modelCatalog;
         _modelDownload = modelDownload;
         _warmup = warmup;
+        _modelFolders = modelFolders;
         _autoApprove = settings.Safety.AutoApprove;
         _restrictToWorkspaceRoot = settings.Safety.RestrictToWorkspaceRoot;
         LoadLocalFields();
@@ -345,41 +348,29 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void BrowseModel()
     {
-        var initial = !string.IsNullOrWhiteSpace(ModelPath) && Directory.Exists(ModelPath)
-            ? ModelPath
-            : ModelDownloadService.DefaultModelsRoot;
+        var initial = _modelFolders.GetExistingDirectory(ModelPath) ?? ModelDownloadService.DefaultModelsRoot;
         var dialog = new OpenFolderDialog
         {
             Title = "モデルフォルダを選択（ONNX: genai_config.json／GGUF: *.gguf を含むフォルダ）",
-            InitialDirectory = Directory.Exists(initial) ? initial : null,
+            InitialDirectory = _modelFolders.GetExistingDirectory(initial),
         };
         if (dialog.ShowDialog() != true) return;
 
-        var folder = dialog.FolderName;
-        string resolvedPath;
-        if (File.Exists(Path.Combine(folder, "genai_config.json")))
-        {
-            resolvedPath = folder;                   // ONNX はフォルダパスを渡す
-        }
-        else if (Directory.EnumerateFiles(folder, "*.gguf")
-                     .OrderBy(p => p, StringComparer.OrdinalIgnoreCase).FirstOrDefault() is { } gguf)
-        {
-            resolvedPath = gguf;                      // GGUF は .gguf ファイルパスを渡す
-        }
-        else
+        var selection = _modelFolders.Resolve(dialog.FolderName);
+        if (selection is null)
         {
             Status = "選択したフォルダに genai_config.json も .gguf もありません（モデルフォルダではありません）。";
             return;
         }
 
-        ModelPath = resolvedPath;                     // OnModelPathChanged → Persist
-        var name = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
+        ModelPath = selection.ModelPath;              // OnModelPathChanged → Persist
+        var name = selection.Name;
         if (!string.IsNullOrEmpty(name) && !AvailableModels.Contains(name))
             AvailableModels.Add(name);
         RefreshModelChoices();
         if (!string.IsNullOrEmpty(name))
             Model = name;
-        Status = $"モデルフォルダを設定しました: {folder}";
+        Status = $"モデルフォルダを設定しました: {selection.Folder}";
     }
 
     /// <summary>選択中のモデル（GGUF・CPU）を Hugging Face からダウンロードして設定する。</summary>
