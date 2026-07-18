@@ -27,7 +27,7 @@ public sealed partial class FolderTreeViewModel
         var token = cts.Token;
         try
         {
-            var state = await Task.Run(() => GitTreeState.Load(root, token), token);
+            var state = await Task.Run(() => _query.LoadGitState(root, token), token);
             token.ThrowIfCancellationRequested();
             if (!ReferenceEquals(_gitLoadCts, cts) || _currentRoot is null || !PathsEqual(_currentRoot, root))
                 return;

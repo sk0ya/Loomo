@@ -23,4 +23,7 @@ public sealed class FolderTreeQuery
             return new FolderTreeEntries(Array.Empty<string>(), Array.Empty<string>());
         }
     }
+
+    internal GitTreeState LoadGitState(string rootPath, CancellationToken token)
+        => GitTreeState.Load(rootPath, token);
 }
