@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Services.Terminal;
 using sk0ya.Loomo.App.ViewModels;
 using Xunit;
 
