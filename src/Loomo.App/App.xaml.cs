@@ -253,6 +253,8 @@ public partial class App : Application
         services.AddSingleton<GitHistoryViewModel>();
         services.AddSingleton<GitSessionViewModel>();
         services.AddSingleton<DiffFileGateway>();
+        services.AddSingleton<DiffSessionQuery>();
+        services.AddSingleton<DiffSessionCommandHandler>();
         services.AddSingleton<DiffSessionViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();

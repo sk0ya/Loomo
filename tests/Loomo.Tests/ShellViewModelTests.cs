@@ -70,9 +70,11 @@ public class ShellViewModelTests
         var workspacesVm = new WorkspaceListViewModel(workspaceStore);
 
         var git = new sk0ya.Loomo.Services.GitService(workspace);
-        var diffSessionVm = new DiffSessionViewModel(
-            new sk0ya.Loomo.Core.Diff.FileChangeJournal(), git, new FakeEditorService(), workspace,
-            new DiffFileGateway());
+        var diffJournal = new sk0ya.Loomo.Core.Diff.FileChangeJournal();
+        var diffFiles = new DiffFileGateway();
+        var diffSessionVm = new DiffSessionViewModel(diffJournal, git, new FakeEditorService(), workspace,
+            diffFiles, new DiffSessionQuery(diffJournal, git, workspace),
+            new DiffSessionCommandHandler(diffFiles, diffJournal, git));
         var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService(), workspace, diffSessionVm);
         var gitQuery = new GitSessionQuery(git);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(), diffSessionVm,

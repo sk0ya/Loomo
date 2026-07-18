@@ -36,7 +36,10 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(_root, "unchecked.txt"), "unchecked");
 
         var editor = new FakeEditorService();
-        var diff = new DiffSessionViewModel(new FileChangeJournal(), _git, editor, _workspace, new DiffFileGateway());
+        var journal = new FileChangeJournal();
+        var files = new DiffFileGateway();
+        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
+            new DiffSessionQuery(journal, _git, _workspace), new DiffSessionCommandHandler(files, journal, _git));
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff);
         await vm.RefreshCommand.ExecuteAsync(null);
         // 未追跡ファイルは「バージョン管理外ファイル」セクションに並び、既定では未チェック。
@@ -62,7 +65,10 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await MustRunAsync("add", "-A");
 
         var editor = new FakeEditorService();
-        var diff = new DiffSessionViewModel(new FileChangeJournal(), _git, editor, _workspace, new DiffFileGateway());
+        var journal = new FileChangeJournal();
+        var files = new DiffFileGateway();
+        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
+            new DiffSessionQuery(journal, _git, _workspace), new DiffSessionCommandHandler(files, journal, _git));
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Contains(vm.Staged, i => i.Entry.Path == "staged.txt");
