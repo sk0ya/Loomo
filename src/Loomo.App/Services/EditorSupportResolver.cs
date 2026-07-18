@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Core.Files;
+
 namespace sk0ya.Loomo.App.Services;
 
 public enum EditorSupportKind

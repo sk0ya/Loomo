@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Core.Files;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインの表示/非表示トグルと、開いたファイル・結果表示のためのペイン確保 （SetPaneVisible・トグル状態同期・左上入れ替え・最下段追加）。レイアウト構築は ShellWindow.PaneLayout.cs。</summary>
 public partial class ShellWindow {

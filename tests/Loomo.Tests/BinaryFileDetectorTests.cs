@@ -1,6 +1,6 @@
 using System.IO;
 using System.Text;
-using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.Tests;
 
