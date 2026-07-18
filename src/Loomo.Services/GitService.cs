@@ -29,6 +29,7 @@ public sealed class GitService
     private readonly GitMutationExecutor _mutations;
     private readonly GitMergeService _merge;
     private readonly GitSubmoduleService _submodules;
+    private readonly GitCommitService _commits;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -45,6 +46,7 @@ public sealed class GitService
         _branches = new GitBranchService(_runner, _mutations);
         _merge = new GitMergeService(_mutations);
         _submodules = new GitSubmoduleService(_runner, _mutations);
+        _commits = new GitCommitService(workspace, _runner, _mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
@@ -261,80 +263,40 @@ public sealed class GitService
 
     // ===== 更新系（実行後は RepositoryChanged を発火） =====
 
-    public Task<GitCommandResult> InitAsync() => MutateAsync("init");
+    public Task<GitCommandResult> InitAsync() => _commits.InitializeAsync();
 
-    public Task<GitCommandResult> StageAsync(string path) => MutateAsync("add", "-A", "--", path);
-    public Task<GitCommandResult> StageAllAsync() => MutateAsync("add", "-A");
-    public Task<GitCommandResult> UnstageAsync(string path) => MutateAsync("restore", "--staged", "--", path);
-    public Task<GitCommandResult> UnstageAllAsync() => MutateAsync("restore", "--staged", "--", ".");
+    public Task<GitCommandResult> StageAsync(string path) => _commits.StageAsync(path);
+    public Task<GitCommandResult> StageAllAsync() => _commits.StageAllAsync();
+    public Task<GitCommandResult> UnstageAsync(string path) => _commits.UnstageAsync(path);
+    public Task<GitCommandResult> UnstageAllAsync() => _commits.UnstageAllAsync();
 
     /// <summary>複数パスをまとめてステージする（git は 1 コマンドで複数パスを取れる）。空なら何もしない。</summary>
-    public Task<GitCommandResult> StageAsync(IReadOnlyCollection<string> paths) => paths.Count == 0
-        ? Task.FromResult(new GitCommandResult(0, "", ""))
-        : MutateAsync(new[] { "add", "-A", "--" }.Concat(paths).ToArray());
+    public Task<GitCommandResult> StageAsync(IReadOnlyCollection<string> paths) => _commits.StageAsync(paths);
 
     /// <summary>複数パスをまとめてアンステージする。空なら何もしない。</summary>
-    public Task<GitCommandResult> UnstageAsync(IReadOnlyCollection<string> paths) => paths.Count == 0
-        ? Task.FromResult(new GitCommandResult(0, "", ""))
-        : MutateAsync(new[] { "restore", "--staged", "--" }.Concat(paths).ToArray());
+    public Task<GitCommandResult> UnstageAsync(IReadOnlyCollection<string> paths) => _commits.UnstageAsync(paths);
 
     /// <summary>変更を破棄する。未追跡は削除（git clean）、追跡済みは作業ツリーを復元する。破壊的。</summary>
-    public Task<GitCommandResult> DiscardAsync(GitChangeEntry entry) => entry.IsUntracked
-        ? MutateAsync("clean", "-fd", "--", entry.Path)
-        : MutateAsync("restore", "--", entry.Path);
+    public Task<GitCommandResult> DiscardAsync(GitChangeEntry entry) => _commits.DiscardAsync(entry);
 
     /// <summary>複数の変更をまとめて破棄する。未追跡（git clean）と追跡済み（git restore）でコマンドが
     /// 違うため分けて実行し、結果を1つに集約して返す。いずれかが失敗したら以降は実行しない。破壊的。</summary>
-    public async Task<GitCommandResult> DiscardAsync(IReadOnlyCollection<GitChangeEntry> entries)
-    {
-        var untracked = entries.Where(e => e.IsUntracked).Select(e => e.Path).ToArray();
-        var tracked = entries.Where(e => !e.IsUntracked).Select(e => e.Path).ToArray();
-        GitCommandResult? last = null;
-        if (untracked.Length > 0)
-            last = await MutateAsync(new[] { "clean", "-fd", "--" }.Concat(untracked).ToArray()).ConfigureAwait(false);
-        if (tracked.Length > 0 && (last is null || last.Success))
-            last = await MutateAsync(new[] { "restore", "--" }.Concat(tracked).ToArray()).ConfigureAwait(false);
-        return last ?? new GitCommandResult(0, "", "");
-    }
+    public Task<GitCommandResult> DiscardAsync(IReadOnlyCollection<GitChangeEntry> entries) =>
+        _commits.DiscardAsync(entries);
 
     /// <summary>
     /// 縮約パッチを作業ツリーへ逆適用して、選んだ行の変更だけを破棄する（<c>git apply --reverse --recount</c>）。
     /// パッチは一時ファイルへ LF・UTF-8(BOMなし) で書き出して渡す。<paramref name="patch"/> は
     /// <see cref="sk0ya.Loomo.Core.Diff.UnifiedPatchEditor.BuildReverseDiscardPatch"/> が組み立てたもの。破壊的。
     /// </summary>
-    public async Task<GitCommandResult> ApplyReverseDiscardPatchAsync(string patch)
-    {
-        var root = RootPath;
-        if (string.IsNullOrEmpty(root))
-            return new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。");
-
-        var temp = Path.Combine(Path.GetTempPath(), $"loomo-discard-{Guid.NewGuid():N}.patch");
-        try
-        {
-            await File.WriteAllTextAsync(temp, patch.Replace("\r\n", "\n"), new UTF8Encoding(false))
-                .ConfigureAwait(false);
-            return await RunAsync("apply", "--reverse", "--recount", "--whitespace=nowarn", temp)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            try { File.Delete(temp); } catch { /* 一時ファイルの後始末は失敗しても無視 */ }
-            RepositoryChanged?.Invoke(this, EventArgs.Empty);
-        }
-    }
+    public Task<GitCommandResult> ApplyReverseDiscardPatchAsync(string patch) =>
+        _commits.ApplyReverseDiscardPatchAsync(patch);
 
     /// <summary><paramref name="sign"/> が true なら <c>-S</c>（GPG署名）を付けてコミットする。
     /// 署名鍵未設定・gpg 未インストール等の失敗は git のエラー出力として <see cref="GitCommandResult"/>
     /// に返るだけで、ここでは特別扱いしない（呼び出し側が result.Message を表示する既存方針のまま）。</summary>
-    public Task<GitCommandResult> CommitAsync(string message, bool amend = false, bool sign = false)
-    {
-        var args = new List<string> { "commit" };
-        if (amend) args.Add("--amend");
-        if (sign) args.Add("-S");
-        args.Add("-m");
-        args.Add(message);
-        return MutateAsync(args.ToArray());
-    }
+    public Task<GitCommandResult> CommitAsync(string message, bool amend = false, bool sign = false) =>
+        _commits.CommitAsync(message, amend, sign);
 
     public Task<GitCommandResult> FetchAsync() => _branches.FetchAsync();
     public Task<GitCommandResult> PullAsync() => _branches.PullAsync();
