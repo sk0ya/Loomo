@@ -250,6 +250,8 @@ public partial class App : Application
         services.AddSingleton<DiffSessionViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();
+        services.AddSingleton<SearchResultTreeMapper>();
+        services.AddSingleton<SearchPanelQuery>();
         services.AddSingleton<SearchPanelViewModel>();
         services.AddSingleton<sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore>();
         services.AddSingleton<DebugViewModel>();
