@@ -69,7 +69,7 @@ public partial class ShellWindow
             return;
         if (_editorSupports.Resolve(filePath) is not IEditorSupportHtmlProvider)
             return;
-        if (_editorSupportWebView.View?.CoreWebView2 is not { } core)
+        if (_editorSupport.WebView.View?.CoreWebView2 is not { } core)
             return; // まだ描画されていない（ペイン未表示）。
 
         var dialog = new Microsoft.Win32.SaveFileDialog

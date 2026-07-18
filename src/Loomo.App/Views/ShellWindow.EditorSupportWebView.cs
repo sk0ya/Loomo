@@ -3,10 +3,10 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow に残る EditorSupport の View イベント配線。</summary>
 public partial class ShellWindow
 {
-    private Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync() => _editorSupportWebView.EnsureAsync();
-    private void RenderPendingEditorSupportContent(CoreWebView2 core) => _editorSupportWebView.RenderPending(core);
-    internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupportWebView.TryHorizontalScroll(delta);
-    private void PostEditorSupportScrollRatio(double ratio) => _editorSupportWebView.PostScrollRatio(ratio);
+    private Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync() => _editorSupport.WebView.EnsureAsync();
+    private void RenderPendingEditorSupportContent(CoreWebView2 core) => _editorSupport.WebView.RenderPending(core);
+    internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupport.WebView.TryHorizontalScroll(delta);
+    private void PostEditorSupportScrollRatio(double ratio) => _editorSupport.WebView.PostScrollRatio(ratio);
 
     // プレビューページの HTML を一時ファイルへ書き出し、page.loomo 経由のナビゲート URL を返す。 ?v= に毎回違う版番号を載せることで同一ファイルでも新 URL になり、WebView2 のキャッシュで 古いプレビューが居座らないようにする。書き出し失敗（権限・IO 等）時は false。 URL が EditorSupport の「ブラウザで開く」が書き出した一時プレビューページ（MarkdownRenderer.PageVirtualHost） を指しているか。ワークスペース保存時にこの手のタブを除外する判定に使う。 プレビュー HTML を一時ファイルへ書き出し、新規ブラウザタブでその仮想ホストを張ってから開く （OnOpenEditorSupportInBrowser から呼ばれる）。
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title)
@@ -28,28 +28,11 @@ public partial class ShellWindow
 
     // ビジュアル提供者のビューをペインへ載せ、WebView2 を隠す（差し替え時は古いビューを外す）。
     private void ShowEditorSupportVisual(FrameworkElement view)
-    {
-        if (!ReferenceEquals(_editorSupportVisual, view))
-        {
-            if (_editorSupportVisual is not null)
-                EditorSupportContentHost.Children.Remove(_editorSupportVisual);
-            EditorSupportContentHost.Children.Add(view);
-            _editorSupportVisual = view;
-        }
-
-        view.Visibility = Visibility.Visible;
-        if (_editorSupportWebView.View is not null)
-            _editorSupportWebView.View.Visibility = Visibility.Collapsed;
-    }
+        => _editorSupport.ShowVisual(EditorSupportContentHost, view);
 
     // ビジュアル提供者のビューを隠し、WebView2 表示へ戻す。
     private void HideEditorSupportVisual()
-    {
-        if (_editorSupportVisual is not null)
-            _editorSupportVisual.Visibility = Visibility.Collapsed;
-        if (_editorSupportWebView.View is not null)
-            _editorSupportWebView.View.Visibility = Visibility.Visible;
-    }
+        => _editorSupport.ShowWebView();
 
     // ビジュアル提供者内での編集（CSV/TSV グリッド等）を、追従中のエディタタブの本文へ書き戻す。 SetText で BufferChanged が発火しデバウンス更新が走るが、提供者側が内容比較で再パースを 抑止するためループしない。エディタタブは通常の編集と同じく未保存（modified）になる。
     private void EditorSupportVisual_ContentEdited(object? sender, EditorSupportContentEdited e)
@@ -114,7 +97,7 @@ public partial class ShellWindow
         if (_syncingEditorFromSupport || sender is not VimEditorControl editor)
             return;
 
-        _editorSupportWebView.PostScrollRatio(editor.VerticalScrollRatio);
+        _editorSupport.WebView.PostScrollRatio(editor.VerticalScrollRatio);
     }
 
     private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)

@@ -195,14 +195,11 @@ public partial class ShellWindow
 
         if (visual is not null && filePath is not null)
         {
-            if (_editorSupportEditSubscribed.Add(visual))
-                visual.ContentEdited += EditorSupportVisual_ContentEdited;
-
             UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
-            ShowEditorSupportVisual(visual.GetOrCreateView());
             EditorSupportTitle.Text = visual.DescribeTitle(filePath);
-            // ファイル直読み系（Image/Hex/Office 等）はエディタ本文を使わない。巨大バイナリを文字列化して 渡す無駄を避け、UsesEditorText の提供者にだけ Control.Text を渡す。
-            await visual.UpdateAsync(filePath, visual.UsesEditorText ? source.Control.Text : string.Empty);
+            await _editorSupport.ShowVisualAsync(
+                EditorSupportContentHost, visual, filePath, source.Control.Text,
+                EditorSupportVisual_ContentEdited);
             return;
         }
 
@@ -216,12 +213,12 @@ public partial class ShellWindow
         var seq = ++_editorSupportRenderSeq;
 
         var content = await _editorSupport.PrepareWebContentAsync(
-            provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupportWebView.ReadyPageKey,
+            provider, filePath, text, _workspace.RootPath ?? string.Empty, _editorSupport.WebView.ReadyPageKey,
             _settings.Appearance.MarkdownPreviewTheme);
         if (seq != _editorSupportRenderSeq)
             return;
         UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);
-        _editorSupportWebView.SetPending(
+        _editorSupport.WebView.SetPending(
             content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
         EditorSupportTitle.Text = content.Title;
 

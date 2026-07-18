@@ -3,10 +3,53 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>EditorSupport の追従元、ピン留め、ファイル履歴を所有する機能コントローラー。</summary>
 internal sealed class EditorSupportController
 {
+    private FrameworkElement? _visual;
+    private readonly HashSet<IEditorSupportVisualProvider> _editSubscribed = new();
+
+    internal EditorSupportController() => WebView = null!;
+    public EditorSupportController(EditorSupportWebViewController webView) => WebView = webView;
+
+    public EditorSupportWebViewController WebView { get; }
     public EditorTab? Source { get; private set; }
     public bool IsPinned { get; set; }
     public bool IsNavigating { get; set; }
     public EditorSupportHistory History { get; } = new();
+
+    public async Task ShowVisualAsync(
+        Panel host,
+        IEditorSupportVisualProvider provider,
+        string filePath,
+        string text,
+        EventHandler<EditorSupportContentEdited> contentEdited)
+    {
+        if (_editSubscribed.Add(provider))
+            provider.ContentEdited += contentEdited;
+        var view = provider.GetOrCreateView();
+        ShowVisual(host, view);
+        await provider.UpdateAsync(filePath, provider.UsesEditorText ? text : string.Empty);
+    }
+
+    public void ShowVisual(Panel host, FrameworkElement view)
+    {
+        if (!ReferenceEquals(_visual, view))
+        {
+            if (_visual is not null)
+                host.Children.Remove(_visual);
+            host.Children.Add(view);
+            _visual = view;
+        }
+        view.Visibility = Visibility.Visible;
+        if (WebView.View is not null)
+            WebView.View.Visibility = Visibility.Collapsed;
+    }
+
+    public void ShowWebView()
+    {
+        if (_visual is not null)
+            _visual.Visibility = Visibility.Collapsed;
+        if (WebView.View is not null)
+            WebView.View.Visibility = Visibility.Visible;
+    }
 
     public bool TryChangeSource(EditorTab source, bool force, out EditorTab? previous)
     {

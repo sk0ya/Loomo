@@ -280,7 +280,7 @@ public partial class ShellWindow
                 else _activeEditorTab?.Control.Focus();
                 break;
             case PaneKind.EditorSupport:
-                _editorSupportWebView.View?.Focus();
+                _editorSupport.WebView.View?.Focus();
                 break;
             case PaneKind.Browser:
                 _activeBrowserTab?.View.Focus();

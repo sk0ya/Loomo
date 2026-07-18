@@ -46,12 +46,7 @@ public partial class ShellWindow : Window
     // （Markdown プレビュー等）、その HTML を専用 WebView2 へ自動表示する。
     // IEditorSupportVisualProvider（CSV/TSV グリッド等）は WebView2 の代わりに WPF コントロールを表示し、
     // IEditorSupportUriProvider（PDF/SVG/HTML 等）はファイルを WebView2 へ直接ナビゲートして表示する。
-    private readonly EditorSupportController _editorSupport = new();
-    private EditorSupportWebViewController _editorSupportWebView = null!;
-    // 現在ペインへ載せている WPF ビジュアル提供者のビュー（未使用は null）。
-    private FrameworkElement? _editorSupportVisual;
-    // ContentEdited（グリッド編集→エディタ書き戻し）を購読済みのビジュアル提供者。
-    private readonly HashSet<IEditorSupportVisualProvider> _editorSupportEditSubscribed = new();
+    private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
     // コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。
     private DispatcherTimer? _codeCaretTimer;
@@ -205,10 +200,11 @@ public partial class ShellWindow : Window
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
-        _editorSupportWebView = new EditorSupportWebViewController(
+        var editorSupportWebView = new EditorSupportWebViewController(
             EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties,
             EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested);
-        _editorSupportWebView.NavigationCompleted += (_, _) =>
+        _editorSupport = new EditorSupportController(editorSupportWebView);
+        editorSupportWebView.NavigationCompleted += (_, _) =>
         {
             if (_editorSupport.Source is not null)
                 PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);
