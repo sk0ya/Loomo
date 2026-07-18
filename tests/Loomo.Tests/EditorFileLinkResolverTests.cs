@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -14,7 +14,7 @@ public class EditorFileLinkResolverTests
         var current = temp.Write("docs", "README.md", "# docs");
         var target = temp.Write("docs", "guide.md", "# guide");
 
-        var ok = EditorFileLinkResolver.TryResolve(
+        var ok = FileLinkResolver.TryResolve(
             "guide.md",
             current,
             temp.Root,
@@ -37,7 +37,7 @@ public class EditorFileLinkResolverTests
         var current = temp.Write("docs", "README.md", "# docs");
         var target = temp.Write("src", "Program.cs", "class Program {}");
 
-        var ok = EditorFileLinkResolver.TryResolve(
+        var ok = FileLinkResolver.TryResolve(
             Path.Combine("src", "Program.cs"),
             current,
             temp.Root,
@@ -57,7 +57,7 @@ public class EditorFileLinkResolverTests
         using var temp = new TempWorkspace();
         var target = temp.Write("src", "Program.cs", "class Program {}");
 
-        var ok = EditorFileLinkResolver.TryResolve(
+        var ok = FileLinkResolver.TryResolve(
             target + ":12:4",
             currentDocumentPath: null,
             workspaceRoot: null,
@@ -79,7 +79,7 @@ public class EditorFileLinkResolverTests
         using var temp = new TempWorkspace();
         var dir = Directory.CreateDirectory(Path.Combine(temp.Root, "docs")).FullName;
 
-        var ok = EditorFileLinkResolver.TryResolve(
+        var ok = FileLinkResolver.TryResolve(
             "docs",
             currentDocumentPath: null,
             temp.Root,

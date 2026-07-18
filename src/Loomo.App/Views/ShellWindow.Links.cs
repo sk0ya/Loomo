@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Core.Files;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: 本文中のリンク／ファイルパスのクリック（エディタ・ターミナルの URL/ファイル、 OSC8 ハイパーリンク）を内蔵ブラウザペインやエディタタブで開く振り分け。</summary>
 public partial class ShellWindow {
@@ -16,7 +18,7 @@ public partial class ShellWindow {
         if (string.IsNullOrWhiteSpace(e.Path))
             return;
         var currentPath = (sender as VimEditorControl)?.FilePath;
-        if (!EditorFileLinkResolver.TryResolve( e.Path, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory)) {
+        if (!FileLinkResolver.TryResolve( e.Path, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory)) {
             e.Handled = true;
             if (sender is VimEditorControl editor)
                 editor.ShowStatusMessage($"ファイルが存在しません: {e.Path}");
@@ -108,7 +110,7 @@ public partial class ShellWindow {
             return;
         }
         var currentPath = sourcePath ?? _editorSupport.Source?.Control.FilePath;
-        if (!EditorFileLinkResolver.TryResolve( href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
+        if (!FileLinkResolver.TryResolve( href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
             return;
         if (isDirectory) {
             _workspace.SelectedPath = fullPath;

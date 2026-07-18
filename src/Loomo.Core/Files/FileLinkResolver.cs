@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 
-namespace sk0ya.Loomo.App.Services;
+namespace sk0ya.Loomo.Core.Files;
 
-internal static class EditorFileLinkResolver
+/// <summary>エディタ内リンクを既存ファイルまたはディレクトリへ解決する。</summary>
+public static class FileLinkResolver
 {
     private static readonly Regex TrailingLineColumn =
         new(@":(\d+)(?::(\d+))?$", RegexOptions.Compiled);
@@ -94,11 +96,11 @@ internal static class EditorFileLinkResolver
 
         if (!string.IsNullOrWhiteSpace(currentDocumentPath))
         {
-            var currentDir = Directory.Exists(currentDocumentPath)
+            var currentDirectory = Directory.Exists(currentDocumentPath)
                 ? currentDocumentPath
                 : Path.GetDirectoryName(currentDocumentPath);
-            if (!string.IsNullOrWhiteSpace(currentDir))
-                yield return Path.Combine(currentDir, path);
+            if (!string.IsNullOrWhiteSpace(currentDirectory))
+                yield return Path.Combine(currentDirectory, path);
         }
 
         if (!string.IsNullOrWhiteSpace(workspaceRoot))
