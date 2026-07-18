@@ -247,7 +247,7 @@ public partial class ShellWindow
             var title = view.CoreWebView2?.DocumentTitle;
             item.Title = string.IsNullOrWhiteSpace(title) ? "Browser" : title!;
         };
-        try { view.Source = new Uri(NormalizeBrowserAddress(url)); }
+        try { view.Source = new Uri(WorkspaceSessionCoordinator.NormalizeBrowserAddress(url, DefaultBrowserUrl)); }
         catch { /* 不正 URL は無視（空ページのまま） */ }
     }
 

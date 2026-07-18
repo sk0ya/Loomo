@@ -247,7 +247,7 @@ public partial class ShellWindow
         // 有効セッション・ステージ・タイル復元より前に IDE ペインの適用可否を確定する。
         ApplyIdePaneApplicability(workspace.RootPath);
         LoadEnabledSessions(workspace.EnabledSessions);
-        PrepareStageSnapshot(ResolveSoloMode(workspace), workspace.Stage);
+        PrepareStageSnapshot(WorkspaceSessionCoordinator.ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         ApplyPaneLayout(workspace.PaneLayout);
         // 跨ぎ最大化中のワークスペース切替：切替先のレイアウトを基準に列振り分けを適用し直す。
@@ -289,89 +289,6 @@ public partial class ShellWindow
         StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
 
         SaveActiveWorkspaceSnapshot();
-    }
-
-    /// <summary>復元時のモード判定。<see cref="WorkspaceSnapshot.Mode"/> が正。null の旧データは
-    /// かつてのステージ ON をソロ、それ以外（タイル／旧配置）をレイアウトへ移行する。</summary>
-    private static bool ResolveSoloMode(WorkspaceSnapshot ws) => ws.Mode switch
-    {
-        DisplayMode.Solo => true,
-        DisplayMode.Layout => false,
-        _ => ws.Stage?.IsActive == true,
-    };
-
-    private static void RestoreEditor(VimEditorControl editor, EditorTabSnapshot snapshot)
-    {
-        if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
-        {
-            editor.LoadFile(snapshot.FilePath);
-            if (!snapshot.IsModified)
-            {
-                RestoreEditorViewState(editor, snapshot);
-                return;
-            }
-        }
-
-        if (snapshot.IsModified || string.IsNullOrWhiteSpace(snapshot.FilePath))
-        {
-            editor.SetText(snapshot.LoadText());
-            RestoreEditorViewState(editor, snapshot);
-            return;
-        }
-
-        editor.SetText(string.Empty);
-    }
-
-    /// <summary>カーソル位置とスクロールを戻す（復元の完全性・§19.5）。カーソルはモデル状態なので
-    /// 即時に効く。スクロールはレイアウト後でないと算出できないため Loaded 優先度へ遅延し、
-    /// それでも取れない場合はカーソル可視化スクロールに任せるベストエフォート。</summary>
-    private static void RestoreEditorViewState(VimEditorControl editor, EditorTabSnapshot snapshot)
-    {
-        if (snapshot.CaretLine > 0 || snapshot.CaretColumn > 0)
-            editor.NavigateTo(snapshot.CaretLine, snapshot.CaretColumn);
-
-        if (snapshot.ScrollRatio is { } ratio and > 0)
-            editor.Dispatcher.BeginInvoke(
-                new Action(() => editor.ScrollToVerticalRatio(ratio)),
-                DispatcherPriority.Loaded);
-    }
-
-    /// <summary>1タブを永続化用スナップショットへ写す。実体化済みならコントロールの現状から、未実体化なら
-    /// 保存済み <see cref="EditorTab.Pending"/> をそのまま返す（まだ開いていない＝内容は不変なので実体化しない）。
-    /// <see cref="EditorTabSnapshot.IsActive"/> だけは現在のアクティブタブで上書きする。</summary>
-    private EditorTabSnapshot CaptureEditorTab(EditorTab tab)
-    {
-        var isActive = tab.Id == _activeEditorTab?.Id;
-        if (!tab.IsRealized && tab.Pending is { } p)
-        {
-            return new EditorTabSnapshot
-            {
-                Id = tab.Id,
-                FilePath = p.FilePath,
-                Text = p.Text,
-                DeferredTextPath = p.DeferredTextPath,
-                Title = p.Title,
-                IsModified = p.IsModified,
-                IsActive = isActive,
-                CaretLine = p.CaretLine,
-                CaretColumn = p.CaretColumn,
-                ScrollRatio = p.ScrollRatio
-            };
-        }
-
-        var c = tab.Control;
-        return new EditorTabSnapshot
-        {
-            Id = tab.Id,
-            FilePath = c.FilePath,
-            Text = c.Text,
-            Title = EditorTitle(c),
-            IsModified = c.IsModified,
-            IsActive = isActive,
-            CaretLine = c.Caret.Line,
-            CaretColumn = c.Caret.Column,
-            ScrollRatio = c.VerticalScrollRatio
-        };
     }
 
     private void SaveActiveWorkspaceSnapshot(bool immediate = false)
@@ -443,14 +360,16 @@ public partial class ShellWindow
         // 復元しても設定への保存コールバックが失われた「Untitled」タブになってしまうため。
         // PeekIsVirtual で判定（未実体化タブを実体化しない）。未実体化タブは常に実ファイルなので除外されない。
         var persistableEditorTabs = _editorTabs.Where(tab => !tab.PeekIsVirtual).ToList();
-        snapshot.EditorTabs = persistableEditorTabs.Select(CaptureEditorTab).ToList();
+        snapshot.EditorTabs = persistableEditorTabs
+            .Select(tab => WorkspaceSessionCoordinator.CaptureEditorTab(tab, _activeEditorTab?.Id))
+            .ToList();
 
         // 凡例（旧 single-editor）フィールド：アクティブタブの内容を反映する。未実体化なら Pending から。
         var activeTab = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)
             ?? persistableEditorTabs.FirstOrDefault();
         if (activeTab is not null)
         {
-            var s = CaptureEditorTab(activeTab);
+            var s = WorkspaceSessionCoordinator.CaptureEditorTab(activeTab, _activeEditorTab?.Id);
             snapshot.Editor.FilePath = s.FilePath;
             snapshot.Editor.Text = s.Text;
             snapshot.Editor.IsModified = s.IsModified;
@@ -519,29 +438,6 @@ public partial class ShellWindow
             foreach (var tab in workspace.Tabs)
                 if (tab.IsRealized)
                     tab.Control.Dispose();
-    }
-
-    private static string EditorTitle(VimEditorControl editor)
-        => string.IsNullOrWhiteSpace(editor.FilePath) ? "Untitled" : Path.GetFileName(editor.FilePath);
-
-    private static string NormalizeBrowserAddress(string text)
-    {
-        var address = text.Trim();
-        if (string.IsNullOrWhiteSpace(address))
-            return DefaultBrowserUrl;
-
-        if (Uri.TryCreate(address, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme))
-            return uri.ToString();
-
-        if (address.Contains(' '))
-            return $"https://www.google.com/search?q={Uri.EscapeDataString(address)}";
-
-        var scheme = address.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
-                     || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            ? "http://"
-            : "https://";
-
-        return scheme + address;
     }
 
     private void OnWindowStateChanged(object? sender, EventArgs e)

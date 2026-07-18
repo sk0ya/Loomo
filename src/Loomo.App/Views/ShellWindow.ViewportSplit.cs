@@ -235,7 +235,7 @@ public partial class ShellWindow
         tab.SetControl(control);
         if (tab.Pending is { } snapshot)
         {
-            RestoreEditor(control, snapshot);
+            WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
             tab.Pending = null;
         }
     }

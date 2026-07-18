@@ -75,7 +75,7 @@ public partial class ShellWindow
 
     private async void NavigateBrowser(string text)
     {
-        var address = NormalizeBrowserAddress(text);
+        var address = WorkspaceSessionCoordinator.NormalizeBrowserAddress(text, DefaultBrowserUrl);
         BrowserAddressBox.Text = address;
 
         if (_activeBrowserTab is not { } tab)
@@ -138,7 +138,7 @@ public partial class ShellWindow
 
         var tab = new BrowserTab(id, view)
         {
-            PendingUrl = NormalizeBrowserAddress(url)
+            PendingUrl = WorkspaceSessionCoordinator.NormalizeBrowserAddress(url, DefaultBrowserUrl)
         };
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
