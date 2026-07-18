@@ -16,7 +16,7 @@ public sealed record DiffLine(DiffLineKind Kind, string Text);
 
 /// <summary>
 /// 行単位の差分（LCS）を計算し、変更箇所の周辺だけを抜き出した「ハンク」形式で返す。
-/// propose_edit の承認カードで色付き差分を見せるために使う。UI 非依存。
+/// ファイル編集ツールの承認カードで色付き差分を見せるために使う。UI 非依存。
 /// </summary>
 public static class DiffUtil
 {

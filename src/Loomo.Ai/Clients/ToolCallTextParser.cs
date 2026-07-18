@@ -12,7 +12,7 @@ namespace sk0ya.Loomo.Ai.Clients;
 
 /// <summary>
 /// 小型ローカルLLMが構造化された tool_calls ではなく本文テキストとしてツール呼び出しを書いてしまった場合に、
-/// それを <see cref="ToolUse"/> へ変換するパーサ。Ollama・ONNX(Phi-4) いずれの本文出力にも使える。
+/// それを <see cref="ToolUse"/> へ変換する、ローカル推論エンジン共通のパーサ。
 /// 対応形式：関数呼び出し風 <c>run_powershell("...")</c>、引数 JSON オブジェクト <c>{"command":"..."}</c>、
 /// およびその配列 <c>[{"name":...,"arguments":{...}}]</c>（小モデルが arguments だけ／別名キー／
 /// コードフェンス付き／配列で吐くことがある）。Phi-4-mini の tool call も後者の JSON 配列形式で返る。

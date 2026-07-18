@@ -249,7 +249,7 @@
                                             <!-- 進行状況の構造化タイムライン（各段＝種別アイコン＋本文＋経過時刻。Activity のみ表示） -->
                                             <views:ActivityTimelineView
                                                 Visibility="{Binding Kind, Converter={StaticResource EnumToVis}, ConverterParameter=Activity}" />
-                                            <!-- 差分ビュー（propose_edit の承認カード） -->
+                                            <!-- 差分ビュー（ファイル編集ツールの承認カード） -->
                                             <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"
                                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                     CornerRadius="4" Margin="0,4,0,0" Padding="0,2">

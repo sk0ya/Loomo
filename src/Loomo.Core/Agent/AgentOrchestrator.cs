@@ -129,8 +129,8 @@ public sealed class AgentOrchestrator
             var sawModelOutput = false;
             ToolCallParseFailed? parseFailed = null;
             // 単段ループ：全反復で同じ profile（既定は Root）と同じツール集合を使う。
-            // system プロンプトとツール配列を反復間でバイト不変に保つことで、Ollama の
-            // プレフィックスKVキャッシュが効き、prefill を毎ターン払い直さずに済む。
+            // system プロンプトとツール配列を反復間でバイト不変に保ち、推論エンジンの
+            // プレフィックスKVキャッシュを再利用できるようにする。
             var activeDefinitions = definitions;
 
             // コンテキスト超過を防ぐため、送信用に履歴をトリム（元会話は保持）。

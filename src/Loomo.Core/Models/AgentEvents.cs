@@ -36,9 +36,8 @@ public sealed record ApprovalRequested(string ToolName, string Summary) : AgentE
 
 /// <summary>
 /// 1回のAI呼び出しの利用統計（トークン数・段階別の所要時間）。
-/// Ollama は最終 <c>done</c> 行で <c>prompt_eval_count</c> / <c>eval_count</c>（トークン）と
-/// <c>load_duration</c> / <c>prompt_eval_duration</c> / <c>eval_duration</c>（ナノ秒）を返す。
-/// これを ms に直して載せ、オーケストレーターが <c>ai.usage</c> トレースに記録する。
+/// ローカル推論エンジンが自己計測したトークン数と load / prefill / decode 時間を載せ、
+/// オーケストレーターが <c>ai.usage</c> トレースに記録する。
 /// 「重みロード / prefill / decode のどこが遅いか」を数値で切り分けるための内部イベント（UIには出さない）。
 /// </summary>
 public sealed record AiUsageReported(

@@ -34,7 +34,7 @@ public sealed partial class TranscriptEntry : ObservableObject
     [ObservableProperty] private bool _isPending;
     private TaskCompletionSource<bool>? _completion;
 
-    // 差分表示用（propose_edit の承認カード）
+    // 差分表示用（ファイル編集ツールの承認カード）
     public ObservableCollection<DiffLineVm> DiffLines { get; } = new();
     public bool HasDiff => DiffLines.Count > 0;
 

@@ -15,7 +15,7 @@ using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>設定パネル（Ollama モデル等）の ViewModel。
+/// <summary>設定パネル（ローカルモデル等）の ViewModel。
 /// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
 /// 危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
 /// 編集する（<see cref="IEditorService.OpenDocumentAsync"/>。保存=:w 時にコールバックで即時反映）。</summary>
