@@ -30,6 +30,7 @@ public sealed class GitService
     private readonly GitMergeService _merge;
     private readonly GitSubmoduleService _submodules;
     private readonly GitCommitService _commits;
+    private readonly GitStashService _stashes;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -47,6 +48,7 @@ public sealed class GitService
         _merge = new GitMergeService(_mutations);
         _submodules = new GitSubmoduleService(_runner, _mutations);
         _commits = new GitCommitService(workspace, _runner, _mutations);
+        _stashes = new GitStashService(_runner, _mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
@@ -389,47 +391,18 @@ public sealed class GitService
 
     /// <summary>現在の変更を退避する。<paramref name="includeUntracked"/> で未追跡ファイルも含める
     /// （-u）。退避するものが無ければ git が「No local changes to save」を返す。</summary>
-    public Task<GitCommandResult> StashPushAsync(string? message, bool includeUntracked)
-    {
-        var args = new List<string> { "stash", "push" };
-        if (includeUntracked)
-            args.Add("-u");
-        if (!string.IsNullOrWhiteSpace(message))
-        {
-            args.Add("-m");
-            args.Add(message.Trim());
-        }
-        return MutateAsync(args.ToArray());
-    }
+    public Task<GitCommandResult> StashPushAsync(string? message, bool includeUntracked) =>
+        _stashes.PushAsync(message, includeUntracked);
 
     /// <summary>スタッシュ一覧（新しい＝stash@{0} が先頭）。</summary>
-    public async Task<IReadOnlyList<GitStashEntry>> GetStashesAsync()
-    {
-        // %gd=参照（stash@{n}）, %x09=タブ, %gs=説明。
-        var result = await RunAsync("stash", "list", "--format=%gd%x09%gs").ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitStashEntry>();
-
-        var list = new List<GitStashEntry>();
-        foreach (var line in result.Output.Split('\n'))
-        {
-            var l = line.TrimEnd('\r');
-            if (l.Length == 0) continue;
-            var tab = l.IndexOf('\t');
-            if (tab < 0)
-                list.Add(new GitStashEntry(l, ""));
-            else
-                list.Add(new GitStashEntry(l[..tab], l[(tab + 1)..]));
-        }
-        return list;
-    }
+    public Task<IReadOnlyList<GitStashEntry>> GetStashesAsync() => _stashes.GetStashesAsync();
 
     /// <summary>スタッシュを作業ツリーへ復元する（退避は残す）。</summary>
-    public Task<GitCommandResult> StashApplyAsync(string stashRef) => MutateAsync("stash", "apply", stashRef);
+    public Task<GitCommandResult> StashApplyAsync(string stashRef) => _stashes.ApplyAsync(stashRef);
     /// <summary>スタッシュを作業ツリーへ復元し、その退避を削除する。</summary>
-    public Task<GitCommandResult> StashPopAsync(string stashRef) => MutateAsync("stash", "pop", stashRef);
+    public Task<GitCommandResult> StashPopAsync(string stashRef) => _stashes.PopAsync(stashRef);
     /// <summary>スタッシュを削除する（復元しない・破壊的）。</summary>
-    public Task<GitCommandResult> StashDropAsync(string stashRef) => MutateAsync("stash", "drop", stashRef);
+    public Task<GitCommandResult> StashDropAsync(string stashRef) => _stashes.DropAsync(stashRef);
 
     // ===== ハンク単位のステージ =====
 
