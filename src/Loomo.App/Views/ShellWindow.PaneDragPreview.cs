@@ -1,9 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: ペインドラッグ中のプレビュー描画・ドロップ確定・ゴースト追従・ゾーン計算
-/// （オーバーレイ上のマウス追跡、挿入/入れ替えプレビュー、ヒットテスト、矩形/色ヘルパ）。
-/// ドラッグ開始・捕捉・オーバーレイ生成は ShellWindow.PaneDrag.cs。</summary>
+/// <summary>ShellWindow: ペインドラッグ中のプレビュー描画・ドロップ確定・ゴースト追従・ゾーン計算 （オーバーレイ上のマウス追跡、挿入/入れ替えプレビュー、ヒットテスト、矩形/色ヘルパ）。 ドラッグ開始・捕捉・オーバーレイ生成は ShellWindow.PaneDrag.cs。</summary>
 public partial class ShellWindow {
     private void OnDragCanvasMouseMove(object sender, MouseEventArgs e) {
         if (!_paneDragging)

@@ -1,19 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: 軌跡（操作ログ）バーの配線。エディタのファイル活性化・ブラウザ遷移・
-/// ペイン／パネル切替を <see cref="TrailViewModel"/> へ記録し、ドットのクリックや
-/// バー上の Shift+ホイール（現在地の前後移動）でその地点へ戻る（素のホイールはバーの水平スクロール）。
-/// バー左端の日付クリック→カレンダーで
-/// 過去の日の軌跡も表示できる。アイデア.md「Semantic Depth」構想の Thread Rail の種。
-///
-/// <para><b>新しい軌跡ソースの足し方（登録側はこれだけ）</b>：
-/// ①<see cref="TrailEntryKind"/> に enum 値を1つ追加し <c>Glyph</c>（ツールチップ・一意性テスト用）と
-/// <c>IconGeometry</c>（バーに描く絵姿）を対で1本ずつ足す。
-/// ②<see cref="RegisterTrailJumps"/> にその種別の「戻る」処理を1行登録する。
-/// ③記録したい場所（イベントハンドラ等）で <see cref="RecordTrail"/> を呼ぶ。
-/// 記録の抑制（復元・ジャンプ中）と離脱位置の上書きは <see cref="RecordTrail"/> が共通で面倒を見るので、
-/// 各ソースはこの3点以外を書かなくてよい。</para></summary>
+/// <summary>ShellWindow: 軌跡（操作ログ）バーの配線。エディタのファイル活性化・ブラウザ遷移・ ペイン／パネル切替を <see cref="TrailViewModel"/> へ記録し、ドットのクリックや バー上の Shift+ホイール（現在地の前後移動）でその地点へ戻る（素のホイールはバーの水平スクロール）。 バー左端の日付クリック→カレンダーで 過去の日の軌跡も表示できる。アイデア.md「Semantic Depth」構想の Thread Rail の種。 <para><b>新しい軌跡ソースの足し方（登録側はこれだけ）</b>： ①<see cref="TrailEntryKind"/> に enum 値を1つ追加し <c>Glyph</c>（ツールチップ・一意性テスト用）と <c>IconGeometry</c>（バーに描く絵姿）を対で1本ずつ足す。 ②<see cref="RegisterTrailJumps"/> にその種別の「戻る」処理を1行登録する。 ③記録したい場所（イベントハンドラ等）で <see cref="RecordTrail"/> を呼ぶ。 記録の抑制（復元・ジャンプ中）と離脱位置の上書きは <see cref="RecordTrail"/> が共通で面倒を見るので、 各ソースはこの3点以外を書かなくてよい。</para></summary>
 public partial class ShellWindow {
     private readonly Dictionary<TrailEntryKind, Func<TrailEntryViewModel, Task>> _trailJumps = new();
 

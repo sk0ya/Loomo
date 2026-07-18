@@ -1,12 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: エディタの「使用箇所表示（Find References / gr）」の結果を受けて一覧表示する。
-/// エディタコントロールは LSP に問い合わせて参照を計算するが、結果は自身では描画せず
-/// <see cref="VimEditorControl.FindReferencesResult"/> イベントを発火するだけなので、ホスト側で
-/// ポップアップに一覧を出し、クリックで該当ファイル・行へジャンプさせる。
-/// 同じイベントは grep / 診断一覧 / コール・型ヒエラルキー / ワークスペースシンボルの結果にも使われる。
-/// ※「まず配線だけ最小実装」段階：機能は通っているが見た目は最小。後でドッキングパネル等へ移す。</summary>
+/// <summary>ShellWindow: エディタの「使用箇所表示（Find References / gr）」の結果を受けて一覧表示する。 エディタコントロールは LSP に問い合わせて参照を計算するが、結果は自身では描画せず <see cref="VimEditorControl.FindReferencesResult"/> イベントを発火するだけなので、ホスト側で ポップアップに一覧を出し、クリックで該当ファイル・行へジャンプさせる。 同じイベントは grep / 診断一覧 / コール・型ヒエラルキー / ワークスペースシンボルの結果にも使われる。 ※「まず配線だけ最小実装」段階：機能は通っているが見た目は最小。後でドッキングパネル等へ移す。</summary>
 public partial class ShellWindow {
     private void OnEditorFindReferencesResult(object? sender, FindReferencesResultEventArgs e) {
         BuildReferencesPopup(e.Items, $"{e.TitlePrefix} ({e.Items.Count}) — {e.SymbolName}");

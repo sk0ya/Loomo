@@ -1,11 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ブランチ切替コントロールの開閉。中身（同期帯・絞り込み・一覧・右クリックメニュー）は
-/// <see cref="BranchSwitcherView"/> が持ち、タイトルバーと Git ペインヘッダーはそれを同じように
-/// ポップアップへ載せるだけ。ここは「どのボタンでどのポップアップを開くか」に徹する。
-/// </summary>
+/// <summary>ブランチ切替コントロールの開閉。中身（同期帯・絞り込み・一覧・右クリックメニュー）は <see cref="BranchSwitcherView"/> が持ち、タイトルバーと Git ペインヘッダーはそれを同じように ポップアップへ載せるだけ。ここは「どのボタンでどのポップアップを開くか」に徹する。</summary>
 public partial class ShellWindow {
     private readonly Dictionary<Popup, DateTime> _branchPopupClosedAt = new();
 

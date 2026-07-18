@@ -1,13 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。OSC133 シェル統合
-/// （sk0ya.Terminal.Controls 1.0.8 の <see cref="TerminalTabView.ShellCommandActivity"/>）で
-/// 可視ターミナルのコマンド実行を検知し、実行中／未確認の成功・失敗を袖・俯瞰カードの
-/// バッジで知らせる。長いビルドを袖に置いたまま、終わったことを目の端で気づける。
-/// 未確認の結果はターミナルが舞台に立つ（＝目に入る）と消える。
-/// </summary>
+/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。OSC133 シェル統合 （sk0ya.Terminal.Controls 1.0.8 の <see cref="TerminalTabView.ShellCommandActivity"/>）で 可視ターミナルのコマンド実行を検知し、実行中／未確認の成功・失敗を袖・俯瞰カードの バッジで知らせる。長いビルドを袖に置いたまま、終わったことを目の端で気づける。 未確認の結果はターミナルが舞台に立つ（＝目に入る）と消える。</summary>
 public partial class ShellWindow {
     private enum PaneActivityKind { None, Running, Succeeded, Failed }
 

@@ -1,8 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: エディタタブを開く・プレビュータブの使い回し（新規タブ・仮想ドキュメント・
-/// ファイル/プレビューで開く・外部変更の読み直し・プレビュー↔通常の昇格）。選択/クローズ/活性化は ShellWindow.Tabs.cs。</summary>
+/// <summary>ShellWindow: エディタタブを開く・プレビュータブの使い回し（新規タブ・仮想ドキュメント・ ファイル/プレビューで開く・外部変更の読み直し・プレビュー↔通常の昇格）。選択/クローズ/活性化は ShellWindow.Tabs.cs。</summary>
 public partial class ShellWindow {
     private void OnEditorNewTab(object sender, RoutedEventArgs e) {
         var tab = CreateEditorTab();

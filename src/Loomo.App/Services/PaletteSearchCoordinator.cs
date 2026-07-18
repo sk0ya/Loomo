@@ -13,6 +13,35 @@ public sealed class PaletteSearchCoordinator
 
     public void Cancel() => _searchCts?.Cancel();
 
+    internal static IReadOnlyList<IEditorLspManager> ConnectedCodeManagers(
+        Views.EditorTab? active, IReadOnlyList<Views.EditorTab> tabs,
+        CodeEditorSupport support, Func<Views.EditorTab, IEditorLspManager?> getManager)
+    {
+        var seen = new HashSet<IEditorLspManager>();
+        var result = new List<IEditorLspManager>();
+        void Add(Views.EditorTab? tab)
+        {
+            if (tab is null || !support.CanHandle(tab.PeekFilePath)) return;
+            var manager = getManager(tab);
+            if (manager is { IsConnected: true } && seen.Add(manager)) result.Add(manager);
+        }
+        Add(active);
+        foreach (var tab in tabs) Add(tab);
+        return result;
+    }
+
+    internal static IReadOnlyList<PaletteCommand> TerminalMatches(
+        TerminalTabView? view, string query, Action<TerminalMatch, TerminalTabView> select)
+    {
+        static PaletteCommand Status(string text) => new("ターミナル検索", text, static () => { });
+        if (view is null) return new[] { Status("ターミナルがありません") };
+        if (string.IsNullOrWhiteSpace(query)) return new[] { Status("入力してターミナル内を検索") };
+        var matches = view.FindMatches(query, caseSensitive: false);
+        if (matches.Count == 0) return new[] { Status("一致なし") };
+        return matches.Take(200).Select(match => new PaletteCommand(
+            $"行 {match.LineIndex + 1}", match.LineText.Trim(), () => select(match, view))).ToList();
+    }
+
     public async Task<IReadOnlyList<PaletteCommand>?> SearchLatestAsync(
         PaletteMode mode,
         string query,

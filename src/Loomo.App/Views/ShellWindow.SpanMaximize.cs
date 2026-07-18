@@ -1,10 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: カスタムタイトルバー（WindowChrome）と最大化サイズ制御（マルチモニタ跨ぎ最大化）</summary>
 
-/// <summary>ShellWindow: マルチモニタ跨ぎの疑似最大化（横並びモニタのワーク領域を連結した矩形へ広げ、
-/// ペインをモニタ単位の列へ振り分けて継ぎ目跨ぎを防ぐ）。関連する Win32 P/Invoke と構造体もここに置く。
-/// カスタムタイトルバーと WM_GETMINMAXINFO 処理は ShellWindow.WindowChrome.cs。</summary>
+/// <summary>ShellWindow: カスタムタイトルバー（WindowChrome）と最大化サイズ制御（マルチモニタ跨ぎ最大化） ShellWindow: マルチモニタ跨ぎの疑似最大化（横並びモニタのワーク領域を連結した矩形へ広げ、 ペインをモニタ単位の列へ振り分けて継ぎ目跨ぎを防ぐ）。関連する Win32 P/Invoke と構造体もここに置く。 カスタムタイトルバーと WM_GETMINMAXINFO 処理は ShellWindow.WindowChrome.cs。</summary>
 public partial class ShellWindow {
     private static List<RECT> GetSideBySideWorkAreas(RECT currentWork) {
         var works = new List<RECT>();

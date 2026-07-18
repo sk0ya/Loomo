@@ -1,12 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ShellWindow: EditorSupport ペインの「エクスポート」（HTML/PDF 保存）。ヘッダーのエクスポート
-/// ボタン → ドロップダウンから、現在のプレビューをファイルへ書き出す。HTML は仮想ホスト依存を外して
-/// 単体で開ける形へ（<see cref="PortableHtml"/>）、PDF はペインの WebView2 の表示内容をそのまま
-/// （WYSIWYG・プレビューのテーマ反映）<c>PrintToPdfAsync</c> で出力する。
-/// </summary>
+/// <summary>ShellWindow: EditorSupport ペインの「エクスポート」（HTML/PDF 保存）。ヘッダーのエクスポート ボタン → ドロップダウンから、現在のプレビューをファイルへ書き出す。HTML は仮想ホスト依存を外して 単体で開ける形へ（<see cref="PortableHtml"/>）、PDF はペインの WebView2 の表示内容をそのまま （WYSIWYG・プレビューのテーマ反映）<c>PrintToPdfAsync</c> で出力する。</summary>
 public partial class ShellWindow {
     private void OnExportEditorSupportClick(object sender, RoutedEventArgs e) {
         if (sender is Button { ContextMenu: { } menu } button) {

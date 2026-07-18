@@ -1,9 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: フォーカス追跡と方向移動（Ctrl+W h/j/k/l）。フォーカス領域の記録、隣接領域の探索、
-/// ビューポート/サイドバー/ペインへのフォーカス適用、ペイン/サイドバー矩形の取得。
-/// キー入口・リサイズモードは ShellWindow.PaneNavigation.cs。</summary>
+/// <summary>ShellWindow: フォーカス追跡と方向移動（Ctrl+W h/j/k/l）。フォーカス領域の記録、隣接領域の探索、 ビューポート/サイドバー/ペインへのフォーカス適用、ペイン/サイドバー矩形の取得。 キー入口・リサイズモードは ShellWindow.PaneNavigation.cs。</summary>
 public partial class ShellWindow {
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);

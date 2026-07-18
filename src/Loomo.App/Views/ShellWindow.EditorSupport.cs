@@ -1,7 +1,6 @@
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。
-/// 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。</summary>
+/// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。</summary>
 public partial class ShellWindow {
     private async Task OpenEditorSupportAsync(EditorTab sourceTab) {
         await SwitchEditorSupportSourceAsync(sourceTab, force: true);

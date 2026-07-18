@@ -2,8 +2,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>ShellWindow: ワークスペース復元時のタブ実体の付け替え（端末／エディタ／ブラウザの
-/// Restore・Attach・Detach・GetOrCreate）。切替の入口とスナップショット保存は ShellWindow.Workspaces.cs。</summary>
+/// <summary>ShellWindow: ワークスペース復元時のタブ実体の付け替え（端末／エディタ／ブラウザの Restore・Attach・Detach・GetOrCreate）。切替の入口とスナップショット保存は ShellWindow.Workspaces.cs。</summary>
 public partial class ShellWindow {
     private void RestoreTerminalTabs(WorkspaceSnapshot workspace) {
         var terminalWorkspace = GetOrCreateTerminalWorkspace(workspace.Id);
@@ -174,4 +173,3 @@ public partial class ShellWindow {
         }
     }
 }
-

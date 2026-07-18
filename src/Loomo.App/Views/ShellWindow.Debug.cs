@@ -1,12 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// デバッグ（DAP）とエディタの橋渡し。エディタのブレークポイント列のトグルを
-/// <see cref="ViewModels.DebugViewModel"/> のブレークポイントストア＋デバッグアダプタへ反映し、
-/// 停止位置（実行中行）をエディタのハイライトへ反映する。
-/// ブレークポイント状態の真実は DebugViewModel が持ち、エディタは表示するだけ（AI/人間で経路を一本化する流儀）。
-/// </summary>
+/// <summary>デバッグ（DAP）とエディタの橋渡し。エディタのブレークポイント列のトグルを <see cref="ViewModels.DebugViewModel"/> のブレークポイントストア＋デバッグアダプタへ反映し、 停止位置（実行中行）をエディタのハイライトへ反映する。 ブレークポイント状態の真実は DebugViewModel が持ち、エディタは表示するだけ（AI/人間で経路を一本化する流儀）。</summary>
 public partial class ShellWindow {
     private void InitializeDebugWiring() {
         _vm.Debug.ExecutionLineChanged += OnDebugExecutionLineChanged;

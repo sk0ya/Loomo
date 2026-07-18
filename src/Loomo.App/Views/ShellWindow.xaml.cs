@@ -8,6 +8,7 @@ public partial class ShellWindow : Window {
     private readonly IWorkspaceService _workspace;
     private readonly IWorkspaceSearchService _search;
     private readonly PaletteSearchCoordinator _paletteSearch;
+    private readonly CommandPaletteViewController _paletteView;
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
     private readonly ShellAppearanceCoordinator _appearance;
@@ -111,6 +112,13 @@ public partial class ShellWindow : Window {
         _appearance = new ShellAppearanceCoordinator(settings, () =>
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
+        _paletteView = new CommandPaletteViewController(
+            PaletteList, PalettePreviewHost, PalettePreviewColumn, PaletteBox, PaletteInput, _appearance,
+            new Dictionary<PaletteMode, Button> {
+                [PaletteMode.All] = PaletteModeAll, [PaletteMode.File] = PaletteModeFile,
+                [PaletteMode.Grep] = PaletteModeGrep, [PaletteMode.Class] = PaletteModeClass,
+                [PaletteMode.Symbol] = PaletteModeSymbol, [PaletteMode.Terminal] = PaletteModeTerminal,
+                [PaletteMode.Command] = PaletteModeCommand });
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
         var editorSupportWebView = new EditorSupportWebViewController( EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties, EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested);
         _editorSupport = new EditorSupportController(editorSupportWebView);

@@ -1,10 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ShellWindow: ペグボードペイン（設計書 §23.3）のシェル側配線。
-/// アイテムの「開く」を種別に応じて各ペインへ振り分け、変更をワークスペーススナップショットへ保存する。
-/// </summary>
+/// <summary>ShellWindow: ペグボードペイン（設計書 §23.3）のシェル側配線。 アイテムの「開く」を種別に応じて各ペインへ振り分け、変更をワークスペーススナップショットへ保存する。</summary>
 public partial class ShellWindow {
     private void InitializePegboard() {
         _vm.Pegboard.Changed += (_, _) => SaveActiveWorkspaceSnapshot();

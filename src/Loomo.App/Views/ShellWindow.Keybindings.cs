@@ -1,12 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ShellWindow: キーボードショートカットの結線。<see cref="CommandCatalog"/> の各コマンド Id を
-/// 実体アクションへ結び、<see cref="KeyboardDispatcher"/> を組み立てる。ディスパッチャは
-/// <see cref="KeybindingService"/> から実効バインドを得るので、設定画面での再割り当てが即反映される。
-/// 新しいショートカットは、カタログに 1 行足してここへアクションを 1 行結ぶだけで有効になる。
-/// </summary>
+/// <summary>ShellWindow: キーボードショートカットの結線。<see cref="CommandCatalog"/> の各コマンド Id を 実体アクションへ結び、<see cref="KeyboardDispatcher"/> を組み立てる。ディスパッチャは <see cref="KeybindingService"/> から実効バインドを得るので、設定画面での再割り当てが即反映される。 新しいショートカットは、カタログに 1 行足してここへアクションを 1 行結ぶだけで有効になる。</summary>
 public partial class ShellWindow {
     private KeyboardDispatcher BuildKeyboardDispatcher() {
         var actions = new Dictionary<string, Action>(StringComparer.Ordinal) {

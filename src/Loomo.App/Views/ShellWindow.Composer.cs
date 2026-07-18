@@ -1,12 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ShellWindow: コマンドコンポーザ（設計書 §23.2）。ターミナルペインの下部にはめ込まれ、
-/// ヘッダーのトグルで表示/非表示。長い PowerShell を Vim エディタで組み立てて
-/// Ctrl+Enter（または ▶ ボタン）で直上の可視ターミナルへ送る。
-/// 本文はワークスペーススナップショットに保存・復元する。
-/// </summary>
+/// <summary>ShellWindow: コマンドコンポーザ（設計書 §23.2）。ターミナルペインの下部にはめ込まれ、 ヘッダーのトグルで表示/非表示。長い PowerShell を Vim エディタで組み立てて Ctrl+Enter（または ▶ ボタン）で直上の可視ターミナルへ送る。 本文はワークスペーススナップショットに保存・復元する。</summary>
 public partial class ShellWindow {
     private const double ComposerDefaultHeight = 140;
 

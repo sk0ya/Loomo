@@ -1,11 +1,7 @@
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>
-/// ShellWindow: レイアウトモードの保存レイアウト（自由タイル配置に名前を付けたもの）の保存・呼び出し・巡回。
-/// ワークスペース毎に保持し、タイトルバーの「📐 レイアウト」ドロップダウンから切り替える。Ctrl+T で
-/// 巡回する（未保存の変更は単一スクラッチ枠へ退避）。巡回の純ロジックは <see cref="LayoutCycleLogic"/>。
-/// </summary>
+/// <summary>ShellWindow: レイアウトモードの保存レイアウト（自由タイル配置に名前を付けたもの）の保存・呼び出し・巡回。 ワークスペース毎に保持し、タイトルバーの「📐 レイアウト」ドロップダウンから切り替える。Ctrl+T で 巡回する（未保存の変更は単一スクラッチ枠へ退避）。巡回の純ロジックは <see cref="LayoutCycleLogic"/>。</summary>
 public partial class ShellWindow {
     private readonly List<SavedLayout> _layouts = new();
     private PaneNodeSnapshot? _scratchLayout;
