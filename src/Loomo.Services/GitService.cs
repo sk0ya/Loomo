@@ -28,6 +28,7 @@ public sealed class GitService
     private readonly GitBranchService _branches;
     private readonly GitMutationExecutor _mutations;
     private readonly GitMergeService _merge;
+    private readonly GitSubmoduleService _submodules;
     // ライブ監視：FileSystemWatcher は使わず、git ビューが見えている間だけ軽量ポーリングする。
     private Timer? _pollTimer;
     private int _liveTrackers;
@@ -43,6 +44,7 @@ public sealed class GitService
         _branches = new GitBranchService(_runner);
         _mutations = new GitMutationExecutor(_runner);
         _merge = new GitMergeService(_mutations);
+        _submodules = new GitSubmoduleService(_runner, _mutations);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
         workspace.RootChanged += (_, _) =>
@@ -158,13 +160,7 @@ public sealed class GitService
     /// サブモジュール一覧（<c>git submodule status</c>）。<c>.gitmodules</c> が無い／サブモジュールが
     /// 無いリポジトリでは空リストを返す（エラーではない）。
     /// </summary>
-    public async Task<IReadOnlyList<GitSubmoduleInfo>> GetSubmodulesAsync()
-    {
-        var result = await RunAsync("submodule", "status").ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitSubmoduleInfo>();
-        return GitSubmoduleParser.Parse(result.Output);
-    }
+    public Task<IReadOnlyList<GitSubmoduleInfo>> GetSubmodulesAsync() => _submodules.GetSubmodulesAsync();
 
     /// <summary>
     /// コミットグラフを取得する。<paramref name="branchRef"/> 指定時はそのブランチ（ref）のみ、
@@ -398,8 +394,8 @@ public sealed class GitService
 
     /// <summary>サブモジュールを初期化する（<c>git submodule init</c>）。<paramref name="path"/> 省略時は全件。</summary>
     public Task<GitCommandResult> SubmoduleInitAsync(string? path = null) => string.IsNullOrEmpty(path)
-        ? MutateAsync("submodule", "init")
-        : MutateAsync("submodule", "init", "--", path);
+        ? _submodules.InitializeAsync()
+        : _submodules.InitializeAsync(path);
 
     /// <summary>
     /// サブモジュールを取得・更新する。既定は <c>git submodule update --init --recursive</c>
@@ -407,24 +403,14 @@ public sealed class GitService
     /// <paramref name="path"/> 省略時は全サブモジュールが対象。
     /// </summary>
     public Task<GitCommandResult> SubmoduleUpdateAsync(string? path = null, bool init = true, bool recursive = true)
-    {
-        var args = new List<string> { "submodule", "update" };
-        if (init) args.Add("--init");
-        if (recursive) args.Add("--recursive");
-        if (!string.IsNullOrEmpty(path))
-        {
-            args.Add("--");
-            args.Add(path);
-        }
-        return MutateAsync(args.ToArray());
-    }
+        => _submodules.UpdateAsync(path, init, recursive);
 
     /// <summary>
     /// サブモジュールの登録 URL の変更を作業ツリーの <c>.git/config</c> へ反映する
     /// （<c>git submodule sync --recursive</c>）。URL 変更後に <see cref="SubmoduleUpdateAsync"/> と
     /// セットで使う。
     /// </summary>
-    public Task<GitCommandResult> SubmoduleSyncAsync() => MutateAsync("submodule", "sync", "--recursive");
+    public Task<GitCommandResult> SubmoduleSyncAsync() => _submodules.SynchronizeAsync();
 
     /// <summary>
     /// ブランチをマージする。<paramref name="strategy"/> で戦略を切り替える
