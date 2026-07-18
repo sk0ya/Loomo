@@ -368,70 +368,8 @@ public sealed class GitService
     /// 現在のブランチ上のコミットメッセージを対話的リベースの reword で変更する。
     /// 対象より後のコミットも再作成される。マージを含む範囲は履歴構造を壊さないため拒否する。
     /// </summary>
-    public async Task<GitCommandResult> RewriteCommitMessageAsync(string hash, string message)
-    {
-        try
-        {
-            return await RewriteCommitMessageCoreAsync(hash, message).ConfigureAwait(false);
-        }
-        finally
-        {
-            RepositoryChanged?.Invoke(this, EventArgs.Empty);
-        }
-    }
-
-    private async Task<GitCommandResult> RewriteCommitMessageCoreAsync(string hash, string message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-            return new GitCommandResult(-1, "", "コミットメッセージを入力してください。");
-
-        var onHead = await RunAsync("merge-base", "--is-ancestor", hash, "HEAD").ConfigureAwait(false);
-        if (!onHead.Success)
-            return new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ修正できます。");
-
-        var hasParent = (await RunAsync("rev-parse", "--verify", "--quiet", $"{hash}^").ConfigureAwait(false)).Success;
-        var range = hasParent ? $"{hash}^..HEAD" : "HEAD";
-        var chainResult = await RunAsync("rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
-        if (!chainResult.Success)
-            return chainResult;
-        var chain = SplitLines(chainResult.Output);
-        if (chain.Count == 0 || !string.Equals(chain[0], hash, StringComparison.OrdinalIgnoreCase))
-            return new GitCommandResult(-1, "", "現在のブランチの主系列にあるコミットのみ修正できます。");
-
-        var merges = await RunAsync("rev-list", "--min-parents=2", range).ConfigureAwait(false);
-        if (!merges.Success)
-            return merges;
-        if (SplitLines(merges.Output).Count > 0)
-            return new GitCommandResult(-1, "", "対象から HEAD までにマージコミットがあるため、メッセージを修正できません。");
-
-        var todo = new StringBuilder();
-        todo.Append("reword ").Append(chain[0]).Append('\n');
-        foreach (var commit in chain.Skip(1))
-            todo.Append("pick ").Append(commit).Append('\n');
-
-        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
-        if (gitDir is null)
-            return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
-        var todoPath = Path.Combine(gitDir, "loomo-reword-todo.txt");
-        var messagePath = Path.Combine(gitDir, "loomo-reword-message.txt");
-        try
-        {
-            await File.WriteAllTextAsync(todoPath, todo.ToString()).ConfigureAwait(false);
-            await File.WriteAllTextAsync(messagePath, message.TrimEnd() + Environment.NewLine).ConfigureAwait(false);
-            var env = new Dictionary<string, string>
-            {
-                ["GIT_SEQUENCE_EDITOR"] = $"cp '{ToMsysPath(todoPath)}'",
-                ["GIT_EDITOR"] = $"cp '{ToMsysPath(messagePath)}'",
-            };
-            var baseArg = hasParent ? $"{hash}^" : "--root";
-            return await _runner.RunAsync(env, "rebase", "-i", baseArg).ConfigureAwait(false);
-        }
-        finally
-        {
-            TryDelete(todoPath);
-            TryDelete(messagePath);
-        }
-    }
+    public Task<GitCommandResult> RewriteCommitMessageAsync(string hash, string message) =>
+        _rebase.RewriteCommitMessageAsync(hash, message);
 
     /// <summary>
     /// 選択した連続するコミット群を1つにまとめる（squash）。<paramref name="hashes"/> は表示順・選択順に
