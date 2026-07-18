@@ -247,12 +247,12 @@ public partial class ShellWindow
         if (CodeSupportDiag.IsEnabled)
         {
             if (!fromReadyRetry)
-                _codeSupportDiagStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                _editorSupport.DiagnosticStopwatch = System.Diagnostics.Stopwatch.StartNew();
             CodeSupportDiag.Log(
                 $"enter file={Path.GetFileName(filePath)} ready={ready} " +
                 $"lsp={(lsp is null ? "null" : "ok")} connected={lsp?.IsConnected} docReady={lsp?.IsDocumentReady} " +
                 $"match={(lsp is not null && LspMatchesFile(lsp, filePath))} " +
-                $"elapsed={_codeSupportDiagStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_codeReadyRetryAttempts}");
+                $"elapsed={_editorSupport.DiagnosticStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_editorSupport.ReadyAttempts}");
         }
 
         // コードビュー（無ければ生成）。ペインへの差し替え自体は「実際に何か描くとき」まで遅延する （↓の grace 参照）。差し替え＋タイトル更新をまとめる小ヘルパ。
@@ -270,7 +270,7 @@ public partial class ShellWindow
 
             // ファイル切替直後、サーバーが ready になるまでの短い待ち（warm でも約1秒）に「接続待ち」案内を 毎回フラッシュさせるとうるさい、というフィードバックへの対応。導入済みで接続待ちのとき （EvaluateForFile==null）は grace 経過まで案内もペイン差し替えもせず、前の表示を保つ＝ ready が grace 内に来れば案内は一切出ずに構造へ直行する。サーバー未導入（!=null）は actionable かつ永続的なので従来どおり即出す（フラッシュ対象ではない）。
             var prompt = _lspManagement.EvaluateForFile(filePath);
-            if (prompt is not null || _codeReadyRetryAttempts >= CodeConnectingNoticeGraceTicks)
+            if (prompt is not null || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks)
             {
                 ShowCodeView();
                 view.ShowNotice(LspNoticeModel.Build(prompt));
@@ -285,7 +285,7 @@ public partial class ShellWindow
         // ready に到達＝アウトラインを描く。接続待ちポーリングは役目を終えたので止める（以降のコールド構造 リトライはこのメソッド内のループで面倒を見る）。
         StopCodeReadyRetry();
         // 診断：ready 待ちの合計（＝この地点までの経過）。ここから先は LSP 往復のコスト。
-        CodeSupportDiag.Log($"ready reached after {_codeSupportDiagStopwatch?.ElapsedMilliseconds ?? 0}ms");
+        CodeSupportDiag.Log($"ready reached after {_editorSupport.DiagnosticStopwatch?.ElapsedMilliseconds ?? 0}ms");
 
         var symbolsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
@@ -376,15 +376,15 @@ public partial class ShellWindow
     // 診断：入口（ユーザーが待ち始めた地点）から結果が見えるまでの合計を記録する（構造描画時／②後埋め時）。
     private void LogOutlineShown(string phase)
     {
-        if (_codeSupportDiagStopwatch is not null)
-            CodeSupportDiag.Log($"shown[{phase}], TOTAL {_codeSupportDiagStopwatch.ElapsedMilliseconds}ms");
+        if (_editorSupport.DiagnosticStopwatch is not null)
+            CodeSupportDiag.Log($"shown[{phase}], TOTAL {_editorSupport.DiagnosticStopwatch.ElapsedMilliseconds}ms");
     }
 
     // コード構造アウトラインの WPF ビューを（無ければ作って）返す。初回にジャンプ／インストール等の 操作イベントを既存導線へ配線する（以降は使い回すので一度だけ）。
     private CodeOutlineView EnsureCodeOutlineView()
     {
-        if (_codeOutlineView is not null)
-            return _codeOutlineView;
+        if (_editorSupport.OutlineView is not null)
+            return _editorSupport.OutlineView;
 
         var view = new CodeOutlineView();
         // アウトラインのメンバー名クリック → ソース行（1 始まり）へジャンプしてフォーカスを戻す。 コードジャンプは対象行を vim の zt 相当でビュー最上段へ寄せる（alignTop: true）。
@@ -396,7 +396,7 @@ public partial class ShellWindow
         view.OpenLspSettingsRequested += (_, _) => _vm.LspPrompt.OpenSettingsCommand.Execute(null);
         view.OpenDocsRequested += (_, url) => _ = OpenUrlInBrowserAsync(url, null);
 
-        _codeOutlineView = view;
+        _editorSupport.OutlineView = view;
         return view;
     }
 
@@ -452,7 +452,7 @@ public partial class ShellWindow
         // ツリーは作り直さず current 付替え＋②パネル差し替えだけ（折りたたみ状態・スクロールを保つ）。
         _editorSupport.CurrentSymbolRange = symbolRange;
         _editorSupport.CurrentCaret = (caret.Line, caret.Column);
-        _codeOutlineView?.SetCurrentAndPanels(currentLine1, panels);
+        _editorSupport.OutlineView?.SetCurrentAndPanels(currentLine1, panels);
     }
 
     // コード案内ページの「インストール」導線。現在の追従元ファイルの拡張子から対応サーバーを再判定し、 可視ターミナルでインストールコマンドを実行する（端末未接続や導入済みなら何もしない）。
@@ -481,26 +481,11 @@ public partial class ShellWindow
 
     // 案内（言語サーバー接続待ち）を出したあと、ready へ遷移したかを CodeReadyRetryInterval 間隔で 確認するポーリングを開始する。既に動いていれば何もしない。ready でない間は案内を描き直さない （チカチカ防止）＝ready になった tick でだけ本描画（UpdateCodeEditorSupportAsync の ready 分岐）へ差し替える。
     private void ScheduleCodeReadyRetry()
-    {
-        if (_codeReadyRetryTimer is null)
-        {
-            _codeReadyRetryTimer = new DispatcherTimer { Interval = CodeReadyRetryInterval };
-            _codeReadyRetryTimer.Tick += CodeReadyRetry_Tick;
-        }
-
-        if (!_codeReadyRetryTimer.IsEnabled)
-        {
-            _codeReadyRetryAttempts = 0;
-            _codeReadyRetryTimer.Start();
-        }
-    }
+        => _editorSupport.ScheduleReadyRetry(CodeReadyRetryInterval, CodeReadyRetry_Tick);
 
     // 接続待ちポーリングを止める（ready 到達・対象変更・上限で呼ぶ）。
     private void StopCodeReadyRetry()
-    {
-        _codeReadyRetryTimer?.Stop();
-        _codeReadyRetryAttempts = 0;
-    }
+        => _editorSupport.StopReadyRetry();
 
     private async void CodeReadyRetry_Tick(object? sender, EventArgs e)
     {
@@ -514,7 +499,7 @@ public partial class ShellWindow
             return;
         }
 
-        if (++_codeReadyRetryAttempts > CodeReadyMaxRetries)
+        if (_editorSupport.AdvanceReadyAttempt() > CodeReadyMaxRetries)
         {
             StopCodeReadyRetry(); // サーバーが来ない：案内のまま諦める（ペイン再オープンで再試行される）
             return;
@@ -531,7 +516,7 @@ public partial class ShellWindow
         if (!ready)
         {
             // grace を過ぎてもまだ ready でない＝一瞬で消える待ちではなくサーバーが遅い/来ない。ここで初めて 「接続待ち」案内へ差し替える（本メソッドの not-ready 分岐が attempts>=grace で案内を出す）。 ちょうど grace 到達の tick でのみ一度呼ぶ（以降の tick は案内を描き直さずポーリングだけ）。
-            if (_codeReadyRetryAttempts == CodeConnectingNoticeGraceTicks)
+            if (_editorSupport.ReadyAttempts == CodeConnectingNoticeGraceTicks)
                 await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
             return;
         }
@@ -542,24 +527,7 @@ public partial class ShellWindow
 
     // キャレット追従（②再取得）を 150ms デバウンスする。コードページ未描画のときは無視。
     private void ScheduleCodeCallPanelsRefresh()
-    {
-        // コードページを描いていなければ追従不要（非コードファイル・案内表示中など）。
-        if (_editorSupport.OutlineRoots is null)
-            return;
-
-        if (_codeCaretTimer is null)
-        {
-            _codeCaretTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
-            _codeCaretTimer.Tick += async (s, _) =>
-            {
-                ((DispatcherTimer)s!).Stop();
-                await RefreshCodeCallPanelsAsync();
-            };
-        }
-
-        _codeCaretTimer.Stop();
-        _codeCaretTimer.Start();
-    }
+        => _editorSupport.ScheduleCaretRefresh(RefreshCodeCallPanelsAsync);
 
     // 追従元エディタのキャレット移動：コード解析（②）をデバウンスして追従する。
     private void EditorSupportSource_CaretMoved(object? sender, CaretInfo e)

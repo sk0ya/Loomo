@@ -48,16 +48,6 @@ public partial class ShellWindow : Window
     // IEditorSupportUriProvider（PDF/SVG/HTML 等）はファイルを WebView2 へ直接ナビゲートして表示する。
     private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
-    // コード解析（②呼び出し解析）のキャレット追従デバウンス（150ms）。
-    private DispatcherTimer? _codeCaretTimer;
-    // 案内（言語サーバー接続待ち）を出している間、ready へ遷移したら本描画へ差し替えるためのポーリング。
-    private DispatcherTimer? _codeReadyRetryTimer;
-    // _codeReadyRetryTimer の試行回数（上限で打ち切り。サーバーが永久に来ないケースの保険）。
-    private int _codeReadyRetryAttempts;
-    // 診断用（Services.CodeSupportDiag）：コード表示要求からアウトライン描画完了までの経過を計るストップウォッチ。
-    private System.Diagnostics.Stopwatch? _codeSupportDiagStopwatch;
-    // コード構造アウトライン＋②呼び出し解析のネイティブ WPF ビュー（コードのフォールバック表示）。遅延生成・使い回し。
-    private CodeOutlineView? _codeOutlineView;
     // プレビュー用仮想ホストの現在のマップ先フォルダ（未マップは null）。 WebView2 の初回初期化 Task（起動時に殺到する描画要求が同じ初期化を共有し、多重 EnsureCoreWebView2Async を防ぐ）。
     // 最新の描画内容（init 完了後・初回 ready 後の再描画に使う）。
     // 最新の本文差し替え内容（同一ページの編集中のみ。フル HTML 描画時は null）。

@@ -6,6 +6,8 @@ internal sealed class EditorSupportController
     private FrameworkElement? _visual;
     private readonly HashSet<IEditorSupportVisualProvider> _editSubscribed = new();
     private int _renderSequence;
+    private DispatcherTimer? _caretTimer;
+    private DispatcherTimer? _readyTimer;
 
     internal EditorSupportController() => WebView = null!;
     public EditorSupportController(EditorSupportWebViewController webView) => WebView = webView;
@@ -19,6 +21,9 @@ internal sealed class EditorSupportController
     public EditorTab? OutlineSource { get; private set; }
     public LspRange? CurrentSymbolRange { get; set; }
     public (int Line, int Col)? CurrentCaret { get; set; }
+    public int ReadyAttempts { get; private set; }
+    public Stopwatch? DiagnosticStopwatch { get; set; }
+    public CodeOutlineView? OutlineView { get; set; }
 
     public int BeginRender() => ++_renderSequence;
     public bool IsLatestRender(int sequence) => sequence == _renderSequence;
@@ -48,6 +53,45 @@ internal sealed class EditorSupportController
             || CurrentCaret is not { } previous
             || previous.Line != caret.Line
             || previous.Col != caret.Column;
+    }
+
+    public void ScheduleCaretRefresh(Func<Task> refresh)
+    {
+        if (OutlineRoots is null)
+            return;
+        if (_caretTimer is null)
+        {
+            _caretTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _caretTimer.Tick += async (_, _) =>
+            {
+                _caretTimer.Stop();
+                await refresh();
+            };
+        }
+        _caretTimer.Stop();
+        _caretTimer.Start();
+    }
+
+    public void ScheduleReadyRetry(TimeSpan interval, EventHandler tick)
+    {
+        if (_readyTimer is null)
+        {
+            _readyTimer = new DispatcherTimer { Interval = interval };
+            _readyTimer.Tick += tick;
+        }
+        if (!_readyTimer.IsEnabled)
+        {
+            ReadyAttempts = 0;
+            _readyTimer.Start();
+        }
+    }
+
+    public int AdvanceReadyAttempt() => ++ReadyAttempts;
+
+    public void StopReadyRetry()
+    {
+        _readyTimer?.Stop();
+        ReadyAttempts = 0;
     }
 
     public async Task ShowVisualAsync(
