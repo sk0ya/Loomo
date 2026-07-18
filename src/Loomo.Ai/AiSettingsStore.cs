@@ -325,10 +325,6 @@ public sealed class AiSettingsStore
         public string? ModelPath { get; set; }
         public string? ApiKeyEnc { get; set; }
 
-        /// <summary>旧設定からの読み込み互換用。現在は固定ローカルURLを使うため保存しない。</summary>
-        [JsonPropertyName("baseUrl")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? LegacyBaseUrl { get; set; }
         public int MaxTokens { get; set; } = 4096;
 
         /// <summary>thinking を有効にするか。null=未指定（既定維持）。</summary>
