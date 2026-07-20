@@ -15,10 +15,13 @@ public sealed class WorkspaceService : IWorkspaceService
 {
     private readonly SafetySettings _safety;
     private string? _selectedPath;
+    private readonly List<string> _folders = new();
 
     public WorkspaceService(SafetySettings safety) => _safety = safety;
 
-    public string? RootPath { get; private set; }
+    public IReadOnlyList<string> Folders => _folders;
+
+    public string? RootPath => _folders.Count > 0 ? _folders[0] : null;
 
     public string? SelectedPath
     {
@@ -33,11 +36,35 @@ public sealed class WorkspaceService : IWorkspaceService
 
     public event EventHandler<string?>? SelectionChanged;
     public event EventHandler<string?>? RootChanged;
+    public event EventHandler? FoldersChanged;
 
     public void OpenFolder(string rootPath)
     {
-        RootPath = Path.GetFullPath(rootPath);
+        _folders.Clear();
+        _folders.Add(Path.GetFullPath(rootPath));
         RootChanged?.Invoke(this, RootPath);
+        FoldersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void AddFolder(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (_folders.Any(f => IsWithin(f, full) || IsWithin(full, f)))
+            return;
+
+        _folders.Add(full);
+        FoldersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveFolder(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var index = _folders.FindIndex(f => f.Equals(full, StringComparison.OrdinalIgnoreCase));
+        if (index <= 0) // 0件（未該当）または 0番目（プライマリ）は取り除かない
+            return;
+
+        _folders.RemoveAt(index);
+        FoldersChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)
@@ -75,10 +102,11 @@ public sealed class WorkspaceService : IWorkspaceService
                 ? Path.GetFullPath(path)
                 : Path.GetFullPath(Path.Combine(root, path));
 
-        // 設計書 §10: ツールのアクセスはワークスペースルート配下に限定（パストラバーサル防止）
-        if (_safety.RestrictToWorkspaceRoot && RootPath is not null && !IsWithin(RootPath, full))
+        // 設計書 §10: ツールのアクセスはワークスペースフォルダー配下に限定（パストラバーサル防止）。
+        // マルチルート：プライマリ以外に AddFolder で追加したフォルダー配下も許可対象に含める。
+        if (_safety.RestrictToWorkspaceRoot && _folders.Count > 0 && !_folders.Any(f => IsWithin(f, full)))
             throw new UnauthorizedAccessException(
-                $"ワークスペースルート外へのアクセスは許可されていません: {full}");
+                $"ワークスペースフォルダー外へのアクセスは許可されていません: {full}");
 
         return full;
     }

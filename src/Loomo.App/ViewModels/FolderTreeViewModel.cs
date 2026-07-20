@@ -45,9 +45,21 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 直近の git 状態読込タスク（読込→ツリー反映まで）。テストが反映完了を待つための継ぎ目。
     private Task _gitLoadTask = Task.CompletedTask;
 
+    // マルチルート（複数ワークスペースフォルダー）時のフォルダーごとの表示状態。空＝単一フォルダー
+    // （既存の _workspaceRoot/_currentRoot/_pinnedPaths/RootOptions/_gitState/_watcher 経路をそのまま使う）。
+    private Dictionary<string, FolderTreeRootState> _multiRootStates = new(StringComparer.OrdinalIgnoreCase);
+
+    // LoadRoot 内の _workspace.OpenFolder 呼び出しで発火する FoldersChanged を、LoadRoot 自身の
+    // 初期化ロジックと二重処理しないよう抑止するフラグ（OpenFolder は LoadRoot からしか呼ばれない）。
+    private bool _suppressFoldersChangedReaction;
+
     /// <summary>テスト用：進行中の git 状態読込＋ツリー反映が完了するまで待つ
     /// （非フィルタ時はこの完了で <see cref="Nodes"/> が投入済みになる）。</summary>
     internal Task WhenTreeLoadedAsync() => _gitLoadTask;
+
+    /// <summary>複数フォルダーワークスペースか（true のとき <see cref="Nodes"/> はフォルダーごとの
+    /// 見出しノードの並びになり、ルート切替 ComboBox は隠れる——ピン切替は見出しの右クリックに移る）。</summary>
+    public bool IsMultiRootWorkspace => _multiRootStates.Count > 0;
 
     [ObservableProperty]
     private string _rootLabel = "(フォルダ未選択)";
@@ -151,6 +163,21 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _workflows = workflows;
         _fileCommands = fileCommands;
         _query = query;
+        _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
+    }
+
+    // AddFolder/RemoveFolder（および RemoveFolder で単一フォルダーへ戻った場合）に反応する。
+    // LoadRoot 内の OpenFolder 起因の発火は _suppressFoldersChangedReaction で無視する
+    // （LoadRoot 自身が初期化を完結させるため、ここで二重に走らせない）。
+    private void OnWorkspaceFoldersChanged(object? sender, EventArgs e)
+    {
+        if (_suppressFoldersChangedReaction || _workspaceRoot is null)
+            return;
+        ReconcileRootStates();
+        // RestoreAdditionalFolders は AddFolder 呼び出し中 _suppressFoldersChangedReaction を立てて
+        // ここを素通りさせる（復元中の保存イベント多重発火を避ける）。ここに来るのは実行時の
+        // 追加・削除（ボタン／「ワークスペースから削除」）だけなので、常に保存イベントを出してよい。
+        RootStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>AIの暖機が完了してモデルが使える状態か。「AI-誤字脱字チェック」メニューの出し分けに使う
@@ -163,8 +190,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// </summary>
     public void LoadRoot(string path, IReadOnlyList<string>? pinnedFolders = null, string? treeRootPath = null)
     {
-        _workspace.OpenFolder(path);
+        _suppressFoldersChangedReaction = true;
+        try { _workspace.OpenFolder(path); }
+        finally { _suppressFoldersChangedReaction = false; }
         _workspaceRoot = Path.GetFullPath(path);
+
+        foreach (var state in _multiRootStates.Values)
+            state.Watcher?.Dispose();
+        _multiRootStates.Clear();
 
         BuildRootOptions(pinnedFolders ?? Array.Empty<string>());
 
@@ -208,7 +241,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     private void RefreshWorkspace()
     {
-        if (_currentRoot is null) return;
+        if (_multiRootStates.Count == 0 && _currentRoot is null) return;
         // git 状態はバックグラウンドで読み、完了後に ReloadNodes でツリーへ反映する
         // （RefreshGitStateAsync の継続が ReloadNodes を呼ぶ）。
         RefreshGitStateAsync();
@@ -216,6 +249,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     private void ReloadNodes()
     {
+        // マルチルート時は各フォルダーの見出しの Children を Git.cs 側（状態ごとの読込完了）で
+        // 個別に反映するため、ここでは何もしない（Nodes 自体の増減は RebuildMultiRootNodes の担当）。
+        if (_multiRootStates.Count > 0)
+            return;
+
         if (_currentRoot is null)
         {
             _filterCts?.Cancel();
@@ -235,7 +273,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         // 非フィルタ時はトップレベルのみ（遅延読込）なので同期で十分軽い。
         _filterCts?.Cancel();
-        ReconcileChildren(Nodes, _currentRoot);
+        ReconcileChildren(Nodes, _currentRoot, _currentRoot);
 
         HasVisibleNodes = Nodes.Count > 0;
         EmptyMessage = CreateEmptyMessage();
@@ -246,9 +284,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 更新で頻発するため、展開してもすぐ畳まれフォーカスも外れて見える）。そこで Clear せず、
     // FullPath をキーに既存インスタンスを再利用しながら、増減・並びの差分だけを反映する。
     // 内容が変わらなければコレクションは無変更＝コンテナもフォーカスも維持される。
-    private void ReconcileChildren(ObservableCollection<FileNodeViewModel> target, string path)
+    // マルチルートの見出しリスト（Nodes = フォルダーごとの見出し）も同じ diff/reuse ロジックで
+    // 反映できるよう、実体は「desired（比較したい内容）を直接受け取る」 ReconcileChildrenCore
+    // へ切り出してある。単一フォルダー時の呼び出し元はこのラッパーで挙動が変わらない。
+    private void ReconcileChildren(ObservableCollection<FileNodeViewModel> target, string path, string rootKey)
+        => ReconcileChildrenCore(target, EnumerateChildren(path, rootKey).ToList());
+
+    private void ReconcileChildrenCore(ObservableCollection<FileNodeViewModel> target, List<FileNodeViewModel> desired)
     {
-        var desired = EnumerateChildren(path).ToList();
         var desiredPaths = new HashSet<string>(
             desired.Select(d => d.FullPath), StringComparer.OrdinalIgnoreCase);
 
@@ -280,7 +323,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             if (keep.IsDirectory)
             {
                 if (keep.IsExpanded)
-                    ReconcileChildren(keep.Children, keep.FullPath);
+                    ReconcileChildren(keep.Children, keep.FullPath, keep.RootKey);
                 else
                     keep.ResetToLazy();
             }
@@ -295,8 +338,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         return -1;
     }
 
-    private IEnumerable<FileNodeViewModel> EnumerateChildren(string path)
+    private IEnumerable<FileNodeViewModel> EnumerateChildren(string path, string rootKey)
     {
+        var state = ResolveGitState(rootKey);
         var entries = _query.EnumerateChildren(path);
         var directories = entries.Directories;
         var files = entries.Files;
@@ -305,15 +349,15 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         // 変更フォルダを再帰的に自動展開する際にディレクトリ階層ごとに
         // `git check-ignore` を同期起動して UI を固める問題を避ける。
         var ignoredPaths = (HideIgnoredFiles && !ShowChangedOnly)
-            ? _gitState.GetIgnoredPaths(directories.Concat(files))
+            ? state.GetIgnoredPaths(directories.Concat(files))
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var visibleDirectories = directories
             .OrderBy(d => Path.GetFileName(d))
-            .Where(d => ShouldShow(d, isDirectory: true, ignoredPaths))
+            .Where(d => ShouldShow(d, isDirectory: true, ignoredPaths, state))
             .Select(d =>
             {
-                var node = new FileNodeViewModel(d, true, this);
+                var node = new FileNodeViewModel(d, true, this, rootKey);
                 // 「変更のみ表示」では変更ファイルがフォルダの奥に埋もれて見えなくなるため、
                 // 該当フォルダを自動展開して中の追加/変更ファイルをそのまま見せる。
                 // （展開すると子も同じ経路でフィルタ＆自動展開され、末端まで再帰的に開く）
@@ -323,16 +367,16 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         var visibleFiles = files
             .OrderBy(f => Path.GetFileName(f))
-            .Where(f => ShouldShow(f, isDirectory: false, ignoredPaths))
-            .Select(f => new FileNodeViewModel(f, false, this));
+            .Where(f => ShouldShow(f, isDirectory: false, ignoredPaths, state))
+            .Select(f => new FileNodeViewModel(f, false, this, rootKey));
 
         foreach (var node in visibleDirectories.Concat(visibleFiles))
             yield return node;
     }
 
-    public IEnumerable<FileNodeViewModel> Children(string dirPath) => EnumerateChildren(dirPath);
+    public IEnumerable<FileNodeViewModel> Children(string dirPath, string rootKey) => EnumerateChildren(dirPath, rootKey);
 
-    private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths)
+    private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths, GitTreeState state)
     {
         var fullPath = Path.GetFullPath(path);
 
@@ -343,23 +387,40 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             return true;
 
         return isDirectory
-            ? _gitState.ChangedDirectories.Contains(fullPath)
-            : _gitState.ChangedFiles.Contains(fullPath);
+            ? state.ChangedDirectories.Contains(fullPath)
+            : state.ChangedFiles.Contains(fullPath);
+    }
+
+    /// <summary>rootKey に対応する Git 状態を返す。単一フォルダー時は常に <see cref="_gitState"/>
+    /// （rootKey は無視——一意なのでキー引きの必要がない）。複数フォルダー時はそのフォルダーの状態、
+    /// 未読込／該当なしは空状態。</summary>
+    private GitTreeState ResolveGitState(string rootKey)
+    {
+        if (_multiRootStates.Count == 0)
+            return _gitState;
+        return _multiRootStates.TryGetValue(rootKey, out var state) ? state.GitState : GitTreeState.Empty;
     }
 
     // ツリー上のノードに付ける差分マークの種別。フォルダは配下に変更を含むなら DirectoryChanged。
-    internal GitChangeKind GitStatusFor(string fullPath, bool isDirectory)
+    internal GitChangeKind GitStatusFor(string fullPath, bool isDirectory, string rootKey)
     {
+        var state = ResolveGitState(rootKey);
         if (isDirectory)
-            return _gitState.ChangedDirectories.Contains(Path.GetFullPath(fullPath))
+            return state.ChangedDirectories.Contains(Path.GetFullPath(fullPath))
                 ? GitChangeKind.DirectoryChanged
                 : GitChangeKind.None;
-        return _gitState.GetFileStatus(fullPath);
+        return state.GetFileStatus(fullPath);
     }
 
-    /// <summary>現在のツリーが Git リポジトリ配下か。FileNodeViewModel の「Git」メニュー出し分けと、
-    /// エディタの右クリックメニューの Git 系項目出し分けに使う。</summary>
-    internal bool IsGitRepository => _gitState.IsGitRepository;
+    /// <summary>rootKey が属するフォルダーが Git リポジトリ配下か（FileNodeViewModel の「Git」メニュー
+    /// 出し分けに使う）。</summary>
+    internal bool IsGitRepositoryFor(string rootKey) => ResolveGitState(rootKey).IsGitRepository;
+
+    /// <summary>ワークスペースのどこかが Git リポジトリ配下か。ノードに紐付かない汎用のゲート
+    /// （エディタの右クリックメニューの Git 系項目出し分け等）に使う。</summary>
+    internal bool IsGitRepository => _multiRootStates.Count == 0
+        ? _gitState.IsGitRepository
+        : _multiRootStates.Values.Any(s => s.GitState.IsGitRepository);
 
     private string CreateEmptyMessage()
     {
@@ -382,5 +443,99 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     {
         _watcher ??= new DebouncedFolderWatcher(RefreshWorkspace);
         _watcher.Watch(path);
+    }
+
+    // ===== マルチルート（複数ワークスペースフォルダー） =====
+
+    /// <summary>workspace.Folders の変化（追加・削除）に、既存フォルダーの状態（Git・監視・ピン）を
+    /// 極力保ったまま追従する。Folders.Count が 1 以下へ戻ったときは単一フォルダー経路へ復帰する。</summary>
+    private void ReconcileRootStates()
+    {
+        var folders = _workspace.Folders;
+
+        if (folders.Count <= 1)
+        {
+            foreach (var state in _multiRootStates.Values)
+                state.Watcher?.Dispose();
+            _multiRootStates.Clear();
+            OnPropertyChanged(nameof(IsMultiRootWorkspace));
+
+            if (folders.Count == 1)
+                _workspaceRoot = folders[0];
+            // _currentRoot を明示的に null化し、SelectRootOption に必ず SetDisplayRoot
+            // （watcher・git・Nodes の再構築）を実行させる（単一フォルダー化直後は両方とも
+            // 古いマルチルート表示のままなので、素通りされると復旧できない）。
+            _currentRoot = null;
+            BuildRootOptions(Array.Empty<string>());
+            SelectRootOption(RootOptions[0]);
+            return;
+        }
+
+        var next = new Dictionary<string, FolderTreeRootState>(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in folders)
+        {
+            if (_multiRootStates.TryGetValue(folder, out var existing))
+            {
+                next[folder] = existing;
+                continue;
+            }
+
+            var state = new FolderTreeRootState(folder);
+            var rootOption = new FolderRootOption(folder, LabelForWithin(folder, folder), isPinned: false);
+            state.RootOptions.Add(rootOption);
+            state.SelectedRootOption = rootOption;
+            next[folder] = state;
+        }
+
+        foreach (var kvp in _multiRootStates)
+            if (!next.ContainsKey(kvp.Key))
+                kvp.Value.Watcher?.Dispose();
+
+        // 単一フォルダー時に使っていた監視・進行中読込は、複数化と同時に片付ける
+        // （_currentRoot/_pinnedPaths/RootOptions 等は folders.Count<=1 へ戻ったときに作り直すので、
+        // ここでは触れない）。
+        _watcher?.Dispose();
+        _watcher = null;
+        _gitLoadCts?.Cancel();
+        _gitLoadCts = null;
+
+        _multiRootStates = next;
+        OnPropertyChanged(nameof(IsMultiRootWorkspace));
+        RebuildMultiRootNodes();
+    }
+
+    /// <summary>Nodes をフォルダーごとの見出しノードの並びへ再構成する（diff/reuse なので既存フォルダー
+    /// の展開・フォーカス状態は保たれる）。その後、フォルダーごとに Git 状態の読込・監視を開始する。</summary>
+    private void RebuildMultiRootNodes()
+    {
+        _filterCts?.Cancel();
+
+        var desired = new List<FileNodeViewModel>();
+        foreach (var folder in _workspace.Folders)
+        {
+            var state = _multiRootStates[folder];
+            desired.Add(new FileNodeViewModel(state.DisplayedPath, true, this, state.FolderPath,
+                isWorkspaceFolderRoot: true));
+            if (state.Watcher is null)
+                StartWatchingRootState(state);
+        }
+
+        ReconcileChildrenCore(Nodes, desired);
+
+        // diff/reuse で Nodes に入った実インスタンス（新規 or 再利用）を state.HeaderNode として記録する。
+        foreach (var node in Nodes)
+            if (_multiRootStates.TryGetValue(node.RootKey, out var state))
+                state.HeaderNode = node;
+
+        HasVisibleNodes = Nodes.Count > 0;
+        EmptyMessage = Nodes.Count == 0 ? "フォルダを開いてください" : "";
+
+        RefreshGitStateAsync();
+    }
+
+    private void StartWatchingRootState(FolderTreeRootState state)
+    {
+        state.Watcher = new DebouncedFolderWatcher(() => RefreshRootState(state));
+        state.Watcher.Watch(state.DisplayedPath);
     }
 }

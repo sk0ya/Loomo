@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -12,10 +13,13 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// メッセージ出力・状態文言は <see cref="IDebugSession"/> 経由でコンソール/ヘッダへ流す。</summary>
 internal static class DebugTargetResolver
 {
-    /// <summary>ワークスペースが C#/.NET プロジェクト（.sln/.csproj）を含むか。
-    /// IDE（ビルド・テスト・デバッグ）ペインの表示要否判定に使う。root が null/空、または
+    /// <summary>ワークスペースが C#/.NET プロジェクト（.sln/.csproj）を含むか（いずれかのワークスペース
+    /// フォルダーが対象）。IDE（ビルド・テスト・デバッグ）ペインの表示要否判定に使う。folders が空、または
     /// ビルド対象が 1 つも無ければ false。</summary>
-    public static bool HasCSharpProject(string? root)
+    public static bool HasCSharpProject(IReadOnlyList<string> folders)
+        => folders.Any(HasCSharpProjectIn);
+
+    private static bool HasCSharpProjectIn(string? root)
     {
         if (string.IsNullOrEmpty(root))
             return false;
@@ -55,26 +59,35 @@ internal static class DebugTargetResolver
         return false;
     }
 
-    /// <summary>ビルド/テスト対象を解決する。ワークスペース直下の .sln を優先し、無ければ最初の .csproj。</summary>
+    /// <summary>ビルド/テスト対象を解決する。各ワークスペースフォルダー直下の .sln を優先し
+    /// （フォルダーの並び順）、無ければ最初に見つかった .csproj。</summary>
     public static string? FindBuildTarget(IWorkspaceService workspace, IDebugSession session)
     {
-        var root = workspace.RootPath;
-        if (root is null)
+        var folders = workspace.Folders;
+        if (folders.Count == 0)
         {
             session.Append(DebugOutputCategory.Important, "ワークスペースが開かれていません。");
             return null;
         }
-        try
-        {
-            var sln = Directory.GetFiles(root, "*.sln", SearchOption.TopDirectoryOnly);
-            if (sln.Length > 0) return sln[0];
-        }
-        catch { /* 列挙失敗時は csproj へフォールバック */ }
 
-        var csproj = FindProject(root);
-        if (csproj is null)
-            session.Append(DebugOutputCategory.Important, "ワークスペースに .sln/.csproj が見つかりません。");
-        return csproj;
+        foreach (var root in folders)
+        {
+            try
+            {
+                var sln = Directory.GetFiles(root, "*.sln", SearchOption.TopDirectoryOnly);
+                if (sln.Length > 0) return sln[0];
+            }
+            catch { /* 列挙失敗時は次のフォルダー／csproj へフォールバック */ }
+        }
+
+        foreach (var root in folders)
+        {
+            var csproj = FindProject(root);
+            if (csproj is not null) return csproj;
+        }
+
+        session.Append(DebugOutputCategory.Important, "ワークスペースに .sln/.csproj が見つかりません。");
+        return null;
     }
 
     /// <summary>デバッグ対象（実行する .dll）を解決する。明示指定が無ければ <paramref name="explicitProjectPath"/>
@@ -114,7 +127,9 @@ internal static class DebugTargetResolver
             return null;
         }
 
-        var csproj = string.IsNullOrWhiteSpace(explicitProjectPath) ? FindProject(root) : explicitProjectPath;
+        var csproj = string.IsNullOrWhiteSpace(explicitProjectPath)
+            ? workspace.Folders.Select(FindProject).FirstOrDefault(p => p is not null)
+            : explicitProjectPath;
         if (csproj is null || !File.Exists(csproj))
         {
             session.Append(DebugOutputCategory.Important,

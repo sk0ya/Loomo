@@ -15,9 +15,13 @@ namespace sk0ya.Loomo.Services.Search;
 /// <summary>
 /// ファイル名検索・全文検索（grep）の実装。ripgrep（<c>rg</c>）が PATH 上にあればそれを使い
 /// （<c>--files</c> / <c>--vimgrep</c>、.gitignore 尊重）、無ければインプロセス走査へ退避する。
-/// 検索ルートは既定で <see cref="IWorkspaceService.RootPath"/>。呼び出し側が searchRoot を渡せば
-/// （ルート配下に限り）そのフォルダへ絞れる（<see cref="ResolveRoot"/>）。ルート未設定なら空を返す。
-/// プロセスは <c>WorkingDirectory=実効ルート</c>＋検索対象 <c>.</c> で起動するため、出力パスは常に相対。
+/// 検索ルートは既定で <see cref="IWorkspaceService.Folders"/> 全件（マルチルート横断）。呼び出し側が
+/// searchRoot を渡せば（いずれかのワークスペースフォルダー配下に限り）そのフォルダへ絞れる
+/// （<see cref="ResolveExplicitRoot"/>）。フォルダー未設定なら空を返す。フォルダーごとに
+/// <c>WorkingDirectory=そのフォルダー</c>＋検索対象 <c>.</c> でプロセスを起動するため、出力パスは
+/// フォルダー相対。複数フォルダー横断時は相対パスの先頭にフォルダー名を付けて区別する
+/// （<see cref="FolderPrefix"/>）。<see cref="FileSearchHit.FullPath"/>/<see cref="ContentSearchHit.FullPath"/>
+/// は常に絶対パスなのでファイルを開く側はこの表示上の区別に影響されない。
 /// </summary>
 public sealed class WorkspaceSearchService : IWorkspaceSearchService
 {
@@ -36,40 +40,43 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
     public async Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(
         string query, int max, CancellationToken ct, string? searchRoot = null)
     {
-        var root = ResolveRoot(searchRoot);
-        if (root is null)
+        var scopes = ResolveScopes(searchRoot);
+        if (scopes.Count == 0)
             return Array.Empty<FileSearchHit>();
 
-        var relPaths = HasRg.Value
-            ? await RunRgAsync(new[] { "--files" }, root, maxLines: 50_000, ct).ConfigureAwait(false)
-            : EnumerateRelativeFiles(root).ToList();
-
         var scored = new List<FileSearchHit>();
-        foreach (var raw in relPaths)
+        foreach (var (root, prefix) in scopes)
         {
-            ct.ThrowIfCancellationRequested();
-            var rel = NormalizeRel(raw);
-            if (rel.Length == 0)
-                continue;
+            var relPaths = HasRg.Value
+                ? await RunRgAsync(new[] { "--files" }, root, maxLines: 50_000, ct).ConfigureAwait(false)
+                : EnumerateRelativeFiles(root).ToList();
 
-            int score;
-            if (string.IsNullOrWhiteSpace(query))
+            foreach (var raw in relPaths)
             {
-                score = 0;
-            }
-            else
-            {
-                var name = Path.GetFileName(rel);
-                var byName = FuzzyMatcher.Score(name, query);
-                if (byName is { } s)
-                    score = s;
-                else if (FuzzyMatcher.Score(rel, query) is { } sp)
-                    score = sp + 5; // パスのみ一致は名前一致より下げる
-                else
+                ct.ThrowIfCancellationRequested();
+                var rel = NormalizeRel(raw);
+                if (rel.Length == 0)
                     continue;
-            }
 
-            scored.Add(new FileSearchHit(Path.GetFullPath(Path.Combine(root, rel)), rel, score));
+                int score;
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    score = 0;
+                }
+                else
+                {
+                    var name = Path.GetFileName(rel);
+                    var byName = FuzzyMatcher.Score(name, query);
+                    if (byName is { } s)
+                        score = s;
+                    else if (FuzzyMatcher.Score(rel, query) is { } sp)
+                        score = sp + 5; // パスのみ一致は名前一致より下げる
+                    else
+                        continue;
+                }
+
+                scored.Add(new FileSearchHit(Path.GetFullPath(Path.Combine(root, rel)), WithPrefix(rel, prefix), score));
+            }
         }
 
         return scored
@@ -85,44 +92,84 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         if (string.IsNullOrEmpty(query))
             return Array.Empty<ContentSearchHit>();
 
-        var root = ResolveRoot(searchRoot);
-        if (root is null)
+        var scopes = ResolveScopes(searchRoot);
+        if (scopes.Count == 0)
             return Array.Empty<ContentSearchHit>();
 
-        return HasRg.Value
-            ? await GrepWithRgAsync(query, options, root, ct).ConfigureAwait(false)
-            : GrepInProcess(query, options, root, ct);
+        var hits = new List<ContentSearchHit>();
+        foreach (var (root, prefix) in scopes)
+        {
+            var remaining = options.MaxResults - hits.Count;
+            if (remaining <= 0)
+                break;
+            var scoped = options with { MaxResults = remaining };
+            hits.AddRange(HasRg.Value
+                ? await GrepWithRgAsync(query, scoped, root, prefix, ct).ConfigureAwait(false)
+                : GrepInProcess(query, scoped, root, prefix, ct));
+        }
+        return hits;
     }
 
-    /// <summary>検索の実効ルートを決める。<paramref name="searchRoot"/> が空ならワークスペースルート、
-    /// 指定があればワークスペースルート配下に限り採用する（ルート外・不在のフォルダは無視してルート全体へ退避）。
-    /// 出力の相対パスはこの実効ルート基準になる（FullPath は絶対なのでファイルを開く側は影響を受けない）。
-    /// ルート未設定／不在なら null。</summary>
-    private string? ResolveRoot(string? searchRoot)
+    /// <summary>検索対象スコープを決める。<paramref name="searchRoot"/> が空ならワークスペースフォルダー
+    /// 全件（プレフィックスは <see cref="Folders"/> が2件以上のときだけフォルダー名を付ける）、指定があれば
+    /// いずれかのワークスペースフォルダー配下に限り単一スコープとして採用する（プレフィックス無し）。
+    /// どのフォルダーにも属さない・不在なら、ワークスペースフォルダー全体へ退避する。</summary>
+    private IReadOnlyList<(string Root, string? Prefix)> ResolveScopes(string? searchRoot)
     {
-        var root = _workspace.RootPath;
-        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
-            return null;
+        var folders = _workspace.Folders.Where(Directory.Exists).ToList();
 
         if (string.IsNullOrWhiteSpace(searchRoot))
-            return root;
+            return folders.Count <= 1
+                ? folders.Select(f => (f, (string?)null)).ToList()
+                : folders.Select(f => (f, (string?)FolderPrefix(f))).ToList();
 
-        var rootFull = Path.GetFullPath(root).TrimEnd('\\', '/');
-        // 相対パスはワークスペースルート基準で解決する（絶対パスはそのまま）。
-        var candidate = Path.GetFullPath(searchRoot, rootFull).TrimEnd('\\', '/');
-        if (!Directory.Exists(candidate))
-            return root;
+        var explicitRoot = ResolveExplicitRoot(searchRoot, folders);
+        if (explicitRoot is not null)
+            return new[] { (explicitRoot, (string?)null) };
 
-        var withinRoot = candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
-            || candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            || candidate.StartsWith(rootFull + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-        return withinRoot ? candidate : root;
+        // ルート外・不在ならワークスペースフォルダー全体へ退避する（既存の単一ルート挙動を踏襲）。
+        return folders.Count <= 1
+            ? folders.Select(f => (f, (string?)null)).ToList()
+            : folders.Select(f => (f, (string?)FolderPrefix(f))).ToList();
     }
+
+    /// <summary>searchRoot（相対はいずれかのワークスペースフォルダー基準、絶対はそのまま）が、実在し、
+    /// かついずれかのワークスペースフォルダー配下（フォルダー自身を含む）にあればそのフルパスを返す。
+    /// 見つからなければ null（呼び出し側はスコープ無しとして扱う）。</summary>
+    private static string? ResolveExplicitRoot(string searchRoot, IReadOnlyList<string> folders)
+    {
+        foreach (var folder in folders)
+        {
+            var rootFull = Path.GetFullPath(folder).TrimEnd('\\', '/');
+            if (!Directory.Exists(rootFull))
+                continue;
+
+            var candidate = Path.GetFullPath(searchRoot, rootFull).TrimEnd('\\', '/');
+            if (!Directory.Exists(candidate))
+                continue;
+
+            var withinRoot = candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
+                || candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || candidate.StartsWith(rootFull + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            if (withinRoot)
+                return candidate;
+        }
+        return null;
+    }
+
+    private static string FolderPrefix(string folder)
+    {
+        var name = Path.GetFileName(folder.TrimEnd('\\', '/'));
+        return string.IsNullOrEmpty(name) ? folder : name;
+    }
+
+    private static string WithPrefix(string relativePath, string? prefix)
+        => prefix is null ? relativePath : prefix + "/" + relativePath;
 
     // ===== ripgrep =====
 
     private async Task<IReadOnlyList<ContentSearchHit>> GrepWithRgAsync(
-        string query, GrepOptions options, string root, CancellationToken ct)
+        string query, GrepOptions options, string root, string? prefix, CancellationToken ct)
     {
         var args = new List<string> { "--vimgrep", "--color=never" };
         args.Add(options.CaseSensitive ? "-s" : "-i");
@@ -150,7 +197,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                 continue;
             var rel = NormalizeRel(p.Path);
             hits.Add(new ContentSearchHit(
-                Path.GetFullPath(Path.Combine(root, rel)), rel, p.Line, p.Column, p.Text));
+                Path.GetFullPath(Path.Combine(root, rel)), WithPrefix(rel, prefix), p.Line, p.Column, p.Text));
             if (hits.Count >= options.MaxResults)
                 break;
         }
@@ -209,7 +256,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
     // ===== インプロセス・フォールバック =====
 
     private IReadOnlyList<ContentSearchHit> GrepInProcess(
-        string query, GrepOptions options, string root, CancellationToken ct)
+        string query, GrepOptions options, string root, string? prefix, CancellationToken ct)
     {
         Regex? regex = null;
         if (options.UseRegex)
@@ -265,7 +312,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                     if (idx < 0) continue;
                     col = idx + 1;
                 }
-                hits.Add(new ContentSearchHit(Path.GetFullPath(full), rel, i + 1, col, text));
+                hits.Add(new ContentSearchHit(Path.GetFullPath(full), WithPrefix(rel, prefix), i + 1, col, text));
             }
         }
         return hits;

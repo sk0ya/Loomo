@@ -169,7 +169,7 @@ public sealed class AgentCapabilityHarness
         {
             var modelProfile = ModelProfiles.Resolve(settings.Local.Model);
             var stablePrompt = ChatPrompt.Build(
-                modelProfile.Format, settings, AgentProfiles.Root, workspace.RootPath, new Conversation(), tools.Definitions);
+                modelProfile.Format, settings, AgentProfiles.Root, workspace.Folders, new Conversation(), tools.Definitions);
             var maxLength = ModelProfiles.EffectiveNumCtx(settings.Local.Model, settings.Local.NumCtx);
             using var warmupCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             await engine.WarmableFor(settings.Local.ModelPath!).PrimeAsync(
@@ -785,6 +785,7 @@ public sealed class AgentCapabilityHarness
         private readonly string _root;
         private string? _selectedPath;
         public HeadlessWorkspace(string root) => _root = Path.GetFullPath(root);
+        public IReadOnlyList<string> Folders => new[] { _root };
         public string? RootPath => _root;
         public string? SelectedPath
         {
@@ -798,6 +799,8 @@ public sealed class AgentCapabilityHarness
             }
         }
         public void OpenFolder(string rootPath) => RootChanged?.Invoke(this, RootPath);
+        public void AddFolder(string path) { }
+        public void RemoveFolder(string path) { }
         public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)
         {
             var dir = ResolvePath(path);
@@ -817,6 +820,9 @@ public sealed class AgentCapabilityHarness
         }
         public event EventHandler<string?>? SelectionChanged;
         public event EventHandler<string?>? RootChanged;
+#pragma warning disable CS0067
+        public event EventHandler? FoldersChanged;
+#pragma warning restore CS0067
     }
 
     private sealed class HeadlessEditor : IEditorService

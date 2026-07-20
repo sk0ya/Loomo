@@ -190,6 +190,36 @@ public partial class FolderTreeView
         // 「AI」サブメニューを出すときだけ、入力ありワークフローの一覧を流し込む。
         if (show && DataContext is FolderTreeViewModel treeVm)
             PopulateWorkflowMenu(cm, treeVm, node!);
+
+        // 複数フォルダーワークスペースの見出し（ワークスペースフォルダー自身）だけ、
+        // そのフォルダー内のピン留め切替候補を流し込む。
+        if (node is { IsWorkspaceFolderRoot: true } headerNode && DataContext is FolderTreeViewModel vm2)
+            PopulateRootSwitchMenu(cm, vm2, headerNode);
+    }
+
+    // 見出しの「ピン留めフォルダーへ切替」サブメニューを、そのフォルダー自身の切替候補
+    // （フォルダー自身＋ピン留めしたサブフォルダー）で作り直す。現在の表示先にはチェックを付ける。
+    private void PopulateRootSwitchMenu(ContextMenu cm, FolderTreeViewModel vm, FileNodeViewModel headerNode)
+    {
+        var switchMenu = cm.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == "RootSwitchMenu");
+        if (switchMenu is null)
+            return;
+
+        var options = vm.RootOptionsFor(headerNode);
+        var selected = vm.SelectedRootOptionFor(headerNode);
+
+        switchMenu.Items.Clear();
+        foreach (var option in options)
+        {
+            var item = new MenuItem
+            {
+                Header = option.Label,
+                IsCheckable = true,
+                IsChecked = ReferenceEquals(option, selected),
+            };
+            item.Click += (_, _) => vm.SwitchRootOption(headerNode, option);
+            switchMenu.Items.Add(item);
+        }
     }
 
     // 「AI」→「ワークフロー」サブメニューを、入力ありワークフロー一覧で作り直す。
@@ -238,6 +268,12 @@ public partial class FolderTreeView
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
             vm.UnpinFolder(node.FullPath);
+    }
+
+    private void OnRemoveFromWorkspaceClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsWorkspaceFolderRoot: true } node && DataContext is FolderTreeViewModel vm)
+            vm.RemoveFromWorkspace(node);
     }
 
     private void OnCopyPathClick(object sender, RoutedEventArgs e)

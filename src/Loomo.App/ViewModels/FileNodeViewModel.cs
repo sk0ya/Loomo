@@ -15,6 +15,15 @@ public sealed partial class FileNodeViewModel : ObservableObject
     public string Name { get; }
     public bool IsDirectory { get; }
 
+    /// <summary>この項目が属する表示ルート（Git状態・ピン状態の参照先を決める）。単一フォルダー時は
+    /// ワークスペースの表示ルート、複数フォルダー時は所属するワークスペースフォルダーのパス。
+    /// 子ノードは生成時に親の RootKey をそのまま引き継ぐ。</summary>
+    public string RootKey { get; }
+
+    /// <summary>複数フォルダーワークスペースで、この項目がフォルダー見出し（トップレベル）ノードか。
+    /// 見出しノードはピン留め不可・「ワークスペースから削除」メニューの対象になる。</summary>
+    public bool IsWorkspaceFolderRoot { get; }
+
     // 拡張子から分類したベクターアイコン。形状は種別ごと、色はカテゴリ（コード/設定/マークアップ/
     // 画像/フォルダ/既定）で割り当てる。テーマに依らず一定（ファイル種別の色は固定が分かりやすい）。
     public Geometry IconGeometry { get; }
@@ -51,18 +60,25 @@ public sealed partial class FileNodeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsPinnable))]
     private bool _isPinned;
 
-    /// <summary>「ピン留め」メニューを出すか（フォルダかつ未ピン）。</summary>
-    public bool IsPinnable => IsDirectory && !IsPinned;
+    /// <summary>「ピン留め」メニューを出すか（フォルダかつ未ピン。見出しノードはピン留め不可）。</summary>
+    public bool IsPinnable => IsDirectory && !IsPinned && !IsWorkspaceFolderRoot;
 
-    public FileNodeViewModel(string fullPath, bool isDirectory, FolderTreeViewModel owner)
+    /// <summary>「ワークスペースから削除」メニューを出すか（見出しノードのみ）。</summary>
+    public bool CanRemoveFromWorkspace => IsWorkspaceFolderRoot;
+
+    public FileNodeViewModel(string fullPath, bool isDirectory, FolderTreeViewModel owner, string rootKey,
+        bool isWorkspaceFolderRoot = false)
     {
         FullPath = fullPath;
         IsDirectory = isDirectory;
-        Name = Path.GetFileName(fullPath);
+        var name = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+        Name = string.IsNullOrEmpty(name) ? fullPath : name;
+        RootKey = rootKey;
+        IsWorkspaceFolderRoot = isWorkspaceFolderRoot;
         _owner = owner;
-        GitStatus = owner.GitStatusFor(fullPath, isDirectory);
-        IsGitRepository = owner.IsGitRepository;
-        if (isDirectory)
+        GitStatus = owner.GitStatusFor(fullPath, isDirectory, rootKey);
+        IsGitRepository = owner.IsGitRepositoryFor(rootKey);
+        if (isDirectory && !isWorkspaceFolderRoot)
             _isPinned = owner.IsPinnedPath(fullPath);
 
         var iconKind = FileIcons.Classify(fullPath, isDirectory);
@@ -76,8 +92,8 @@ public sealed partial class FileNodeViewModel : ObservableObject
     // マークを最新へ更新する。
     public void RefreshGitStatus()
     {
-        GitStatus = _owner.GitStatusFor(FullPath, IsDirectory);
-        IsGitRepository = _owner.IsGitRepository;
+        GitStatus = _owner.GitStatusFor(FullPath, IsDirectory, RootKey);
+        IsGitRepository = _owner.IsGitRepositoryFor(RootKey);
     }
 
     private static readonly FileNodeViewModel Placeholder = new();
@@ -86,6 +102,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         FullPath = "";
         Name = "";
         IsDirectory = false;
+        RootKey = "";
         _owner = null!;
         IconGeometry = FileIcons.GeometryFor(FileIconKind.Document);
         IconBrush = FileIcons.BrushFor(FileIconKind.Document);
@@ -97,7 +114,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         {
             _loaded = true;
             Children.Clear();
-            foreach (var child in _owner.Children(FullPath))
+            foreach (var child in _owner.Children(FullPath, RootKey))
                 Children.Add(child);
         }
     }

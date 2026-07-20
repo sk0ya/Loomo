@@ -189,8 +189,8 @@ public partial class ShellWindow {
         if (!_idePaneApplicable)
             _enabledSessions.Remove(PaneKind.Debug);
     }
-    private void ApplyIdePaneApplicability(string? root) {
-        _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(root);
+    private void ApplyIdePaneApplicability(IReadOnlyList<string> folders) {
+        _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(folders);
         DebugPaneToggle.Visibility = _idePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
     }
     private void ToggleSessionEnabled(PaneKind kind) {

@@ -20,7 +20,7 @@ public class Phi4PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("ファイル一覧を出して");
 
-        var prompt = Phi4PromptFormatter.Build(new AiSettings(), profile: null, workspaceRoot: null, conv, Pwsh());
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), profile: null, workspaceFolders: System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.StartsWith("<|system|>", prompt);
         Assert.Contains("<|tool|>[", prompt);
@@ -39,7 +39,7 @@ public class Phi4PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("やあ");
 
-        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, System.Array.Empty<ToolDefinition>());
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, System.Array.Empty<ToolDefinition>());
 
         Assert.DoesNotContain("<|tool|>", prompt);
         Assert.Contains("<|system|>", prompt);
@@ -52,11 +52,27 @@ public class Phi4PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("これは何？");
 
-        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, "C:\\proj", conv, System.Array.Empty<ToolDefinition>());
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, new[] { "C:\\proj" }, conv, System.Array.Empty<ToolDefinition>());
 
         // 現在のフォルダは準安定値なので system（安定プレフィックス）に載せる。
         Assert.Contains("現在のフォルダ", prompt);
         Assert.Contains("C:\\proj", prompt);
+    }
+
+    [Fact]
+    public void Includes_all_workspace_folders_when_multi_root()
+    {
+        var conv = new Conversation();
+        conv.AddUser("これは何？");
+
+        var prompt = Phi4PromptFormatter.Build(
+            new AiSettings(), null, new[] { "C:\\proj", "C:\\other" }, conv, System.Array.Empty<ToolDefinition>());
+
+        Assert.Contains("C:\\proj", prompt);
+        Assert.Contains("C:\\other", prompt);
+        // 相対パス解決の基準（プライマリ）はワークスペースルート1件のみなので、
+        // 追加フォルダーは絶対パスで参照するようモデルへ明示する。
+        Assert.Contains("絶対パス", prompt);
     }
 
     [Fact]
@@ -71,7 +87,7 @@ public class Phi4PromptFormatterTests
         tool.ToolResults.Add(new ToolResultMessage("t1", "成功", IsError: false));
         conv.Messages.Add(tool);
 
-        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
 
         // アシスタントの過去ツール呼び出しはモデル出力と同じ JSON 配列形式で履歴に残す。
         Assert.Contains("<|assistant|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"dotnet build\"}}]<|end|>", prompt);
@@ -88,7 +104,7 @@ public class Phi4PromptFormatterTests
         assistant.ToolUses.Add(new ToolUse("t1", "run_powershell", "{\"command\":\"ls\"}"));
         conv.Messages.Add(assistant);
 
-        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.Contains(
             "<|assistant|>[{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"ls\"}}]\n一覧を取得します。<|end|>",
@@ -103,7 +119,7 @@ public class Phi4PromptFormatterTests
         // 先頭と完全一致することが、KV プレフィックス再利用の前提。ここを回帰として固定する。
         var settings = new AiSettings();
         var tools = Pwsh();
-        const string root = "C:\\proj";
+        var root = new[] { "C:\\proj" };
 
         var warmup = Phi4PromptFormatter.Build(settings, AgentProfiles.Root, root, new Conversation(), tools);
 
@@ -126,7 +142,7 @@ public class Phi4PromptFormatterTests
         var user = conv.AddUser("次の文章を英語に翻訳してください。\n\n対象:\nこんにちは");
         user.RenderPrefix = AiSettings.WorkflowTurnPreamble;
 
-        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+        var prompt = Phi4PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
 
         // 追加プロンプトはユーザーターン内（<|user|>…<|end|>）で、本文の前に入る。
         Assert.Contains("<|user|>" + AiSettings.WorkflowTurnPreamble + "\n\n次の文章を英語に翻訳してください。", prompt);
@@ -138,7 +154,7 @@ public class Phi4PromptFormatterTests
         // モード別の追加プロンプトを user ターンへ入れても、暖機する system ブロック（=最長共通接頭辞）は不変。
         var settings = new AiSettings();
         var tools = Pwsh();
-        const string root = "C:\\proj";
+        var root = new[] { "C:\\proj" };
 
         var warmup = Phi4PromptFormatter.Build(settings, AgentProfiles.Root, root, new Conversation(), tools);
         var systemBlock = warmup[..^"<|assistant|>".Length];

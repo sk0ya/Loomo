@@ -138,13 +138,21 @@ public sealed partial class FolderTreeViewModel
         if (node is { IsDirectory: false } && _fileCommands.FileExists(node.FullPath)
             && !string.IsNullOrEmpty(workflowId))
         {
-            var relativePath = _workspace.RootPath is null
+            var folderRoot = FolderRootFor(node.RootKey);
+            var relativePath = folderRoot is null
                 ? null
-                : Path.GetRelativePath(_workspace.RootPath, node.FullPath);
+                : Path.GetRelativePath(folderRoot, node.FullPath);
             WorkflowRequested?.Invoke(this,
                 new WorkflowRunRequest(workflowId, WorkflowRunInput.FromFile(node.FullPath, relativePath)));
         }
     }
+
+    /// <summary>rootKey が属するワークスペースフォルダーの固定ルート（単一フォルダー時は
+    /// ワークスペースルート、複数フォルダー時はそのフォルダー自身のパス）。</summary>
+    private string? FolderRootFor(string rootKey)
+        => _multiRootStates.Count == 0
+            ? _workspace.RootPath
+            : _multiRootStates.TryGetValue(rootKey, out var state) ? state.FolderPath : null;
 
     /// <summary>指定ファイルの Git Blame 表示を要求する（ShellWindow がエディタペインでファイルを開き、
     /// VimEditorControl のネイティブ Git Blame 表示（:Gblame）をトリガーする）。実在ファイルのときだけ発火する。</summary>
@@ -159,7 +167,7 @@ public sealed partial class FolderTreeViewModel
     /// そのパスの履歴に絞る）。Git リポジトリ配下かつ実在するときだけ発火する。</summary>
     public void RequestGitHistory(FileNodeViewModel node)
     {
-        if (!_gitState.IsGitRepository)
+        if (!IsGitRepositoryFor(node.RootKey))
             return;
         var exists = _fileCommands.EntryExists(node.FullPath, node.IsDirectory);
         if (exists)
@@ -174,10 +182,11 @@ public sealed partial class FolderTreeViewModel
     /// 開いているエディタタブをディスクから読み直す）が自然に追従する。</summary>
     public void AddToGitignore(FileNodeViewModel node)
     {
-        if (_workspace.RootPath is null || !_gitState.IsGitRepository)
+        var folderRoot = FolderRootFor(node.RootKey);
+        if (folderRoot is null || !IsGitRepositoryFor(node.RootKey))
             return;
 
-        if (_fileCommands.AddToGitignore(_workspace.RootPath, node.FullPath, node.IsDirectory))
+        if (_fileCommands.AddToGitignore(folderRoot, node.FullPath, node.IsDirectory))
             RefreshWorkspace();
     }
 }

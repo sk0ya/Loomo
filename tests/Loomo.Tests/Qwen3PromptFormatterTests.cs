@@ -19,7 +19,7 @@ public class Qwen3PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("ファイル一覧を出して");
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), profile: null, workspaceRoot: null, conv, Pwsh());
+        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), profile: null, workspaceFolders: System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.StartsWith("<|im_start|>system\n", prompt);
         Assert.Contains("<tools>\n", prompt);
@@ -73,7 +73,7 @@ public class Qwen3PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("やあ");
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, null, conv, System.Array.Empty<ToolDefinition>());
+        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, System.Array.Empty<ToolDefinition>());
 
         Assert.DoesNotContain("<tools>", prompt);
         Assert.Contains("<|im_start|>system\n", prompt);
@@ -91,7 +91,7 @@ public class Qwen3PromptFormatterTests
         tool.ToolResults.Add(new ToolResultMessage("t1", "成功", IsError: false));
         conv.Messages.Add(tool);
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.Contains(
             "<|im_start|>assistant\n<tool_call>\n{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"dotnet build\"}}\n</tool_call><|im_end|>\n",
@@ -106,7 +106,7 @@ public class Qwen3PromptFormatterTests
         var user = conv.AddUser("次の文章を英語に翻訳してください。\n\n対象:\nこんにちは");
         user.RenderPrefix = AiSettings.WorkflowTurnPreamble;
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, null, conv, Pwsh());
+        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.Contains("<|im_start|>user\n" + AiSettings.WorkflowTurnPreamble + "\n\n次の文章を英語に翻訳してください。", prompt);
     }
@@ -116,7 +116,7 @@ public class Qwen3PromptFormatterTests
     {
         var settings = new AiSettings();
         var tools = Pwsh();
-        const string root = "C:\\proj";
+        var root = new[] { "C:\\proj" };
 
         // 暖機（空会話）の system ブロック＝最長共通接頭辞。Qwen3 は末尾に生成開始＋空 think を付ける。
         const string genMarker = "<|im_start|>assistant\n<think>\n\n</think>\n\n";
@@ -139,7 +139,7 @@ public class Qwen3PromptFormatterTests
 
         var conv = new Conversation();
         conv.AddUser("やあ");
-        var prompt = ChatPrompt.Build(profile.Format, new AiSettings(), null, null, conv, Pwsh());
+        var prompt = ChatPrompt.Build(profile.Format, new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
         Assert.StartsWith("<|im_start|>system\n", prompt);
     }
 

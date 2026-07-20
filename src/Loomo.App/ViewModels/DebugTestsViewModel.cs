@@ -21,7 +21,8 @@ public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
     private readonly ITestDiscoveryService _testDiscovery;
     private readonly IDebugSession _session;
     private readonly Dispatcher _dispatcher;
-    private readonly TestSourceWatcher _watcher;
+    // ワークスペースフォルダーごとに1つ（複数フォルダー時は全フォルダーを監視する）。
+    private readonly List<TestSourceWatcher> _watchers = new();
 
     /// <summary>探索中に来た再収集要求（探索完了後にもう一度走らせる）。</summary>
     private bool _rediscoverRequested;
@@ -73,8 +74,6 @@ public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
         _testDiscovery = testDiscovery;
         _session = session;
         _dispatcher = Dispatcher.CurrentDispatcher;
-        _watcher = new TestSourceWatcher(_dispatcher);
-        _watcher.Changed += () => _ = DiscoverTestsAsync();
 
         _session.SessionStateChanged += () =>
         {
@@ -84,15 +83,32 @@ public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
         };
 
         // テストはバックグラウンドで自動収集する。ワークスペースを開いた時点とソース変更を契機に高速探索で更新。
+        // 複数フォルダー時は RootChanged／FoldersChanged のどちらでも全フォルダーを監視し直す。
         _workspace.RootChanged += OnWorkspaceRootChanged;
-        _watcher.Watch(_workspace.RootPath);
-        if (_workspace.RootPath is not null) _ = DiscoverTestsAsync();
+        _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
+        RewatchFolders();
+        if (_workspace.Folders.Count > 0) _ = DiscoverTestsAsync();
     }
 
     public void Dispose()
     {
         _workspace.RootChanged -= OnWorkspaceRootChanged;
-        _watcher.Dispose();
+        _workspace.FoldersChanged -= OnWorkspaceFoldersChanged;
+        foreach (var w in _watchers) w.Dispose();
+        _watchers.Clear();
+    }
+
+    private void RewatchFolders()
+    {
+        foreach (var w in _watchers) w.Dispose();
+        _watchers.Clear();
+        foreach (var folder in _workspace.Folders)
+        {
+            var w = new TestSourceWatcher(_dispatcher);
+            w.Changed += () => _ = DiscoverTestsAsync();
+            w.Watch(folder);
+            _watchers.Add(w);
+        }
     }
 
     /// <summary>テストタブが表示されたときの保険的な収集（まだ一覧が無ければバックグラウンド収集を起動する）。</summary>
@@ -112,15 +128,20 @@ public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
     /// 初フレーム後のハイドレート中（エディタ／ブラウザ実体化）に発火するため、Background 優先度で
     /// 後回しにして復元を割り込まない（テスト一覧は IDE ペインを開くまで見えないので即時性は不要）。</summary>
     private void OnWorkspaceRootChanged(object? sender, string? root)
-        => _dispatcher.InvokeAsync(() => { _watcher.Watch(root); _ = DiscoverTestsAsync(); },
+        => _dispatcher.InvokeAsync(() => { RewatchFolders(); _ = DiscoverTestsAsync(); },
             DispatcherPriority.Background);
 
-    /// <summary>ソース走査でテスト一覧を収集する（ビルドを伴わない・バックグラウンド）。探索中に来た要求は
-    /// 1 回にまとめて末尾でもう一度回す（編集中の連続変更で重複起動しない）。</summary>
+    private void OnWorkspaceFoldersChanged(object? sender, EventArgs e)
+        => _dispatcher.InvokeAsync(() => { RewatchFolders(); _ = DiscoverTestsAsync(); },
+            DispatcherPriority.Background);
+
+    /// <summary>ソース走査でテスト一覧を収集する（ビルドを伴わない・バックグラウンド）。複数フォルダー時は
+    /// 全フォルダーを走査して結果をマージする。探索中に来た要求は1回にまとめて末尾でもう一度回す
+    /// （編集中の連続変更で重複起動しない）。</summary>
     private async Task DiscoverTestsAsync()
     {
-        var root = _workspace.RootPath;
-        if (root is null) return;
+        var folders = _workspace.Folders;
+        if (folders.Count == 0) return;
         if (IsDiscoveringTests) { _rediscoverRequested = true; return; }
 
         IsDiscoveringTests = true;
@@ -130,7 +151,7 @@ public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
             {
                 _rediscoverRequested = false;
                 IReadOnlyList<DiscoveredTest> found;
-                try { found = await Task.Run(() => _testDiscovery.Discover(root)); }
+                try { found = await Task.Run(() => folders.SelectMany(_testDiscovery.Discover).ToList()); }
                 catch { found = Array.Empty<DiscoveredTest>(); }
                 // 走査の resume が UI 以外で来ても、コレクション更新は必ず UI スレッドで行う。
                 await _dispatcher.InvokeAsync(() => ApplyDiscovered(found));

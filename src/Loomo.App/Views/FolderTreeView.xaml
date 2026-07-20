@@ -84,11 +84,14 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <!-- 表示ルートの切替。候補はワークスペースルート＋ピン留めフォルダ。
-                     ピン留め中のルートを表示しているときは右に解除ボタンを出す。 -->
-                <DockPanel LastChildFill="True">
+                <!-- 表示ルートの切替（単一フォルダー時のみ）。候補はワークスペースルート＋ピン留めフォルダ。
+                     ピン留め中のルートを表示しているときは右に解除ボタンを出す。複数フォルダー時は
+                     ツリー自体が全ルートを同時表示するので隠す（ピン切替は見出しの右クリックへ移る）。 -->
+                <DockPanel LastChildFill="True"
+                           Visibility="{Binding IsMultiRootWorkspace, Converter={StaticResource InverseBoolToVis}}">
                     <Button DockPanel.Dock="Right"
                             Style="{StaticResource ExplorerIconButton}"
                             Width="22" Height="22"
@@ -119,6 +122,23 @@
             </StackPanel>
 
             <Button Grid.Column="1" Style="{StaticResource ExplorerIconButton}"
+                    Click="OnAddFolderToWorkspaceClick"
+                    ToolTip="フォルダーをワークスペースに追加">
+                <!-- フォルダー＋プラス -->
+                <Grid Width="14" Height="13">
+                    <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.4"
+                          StrokeLineJoin="Round"
+                          Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,11.5 L1,11.5 Z" />
+                    <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.6"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          Data="M10,6.5 L10,10.5 M8,8.5 L12,8.5" />
+                </Grid>
+            </Button>
+
+            <Button Grid.Column="2" Style="{StaticResource ExplorerIconButton}"
                     Command="{Binding ExpandAllCommand}"
                     IsEnabled="{Binding HasVisibleNodes}"
                     ToolTip="すべて展開">
@@ -131,7 +151,7 @@
                       Data="M2,3 L6.5,7.5 L11,3 M2,8 L6.5,12 L11,8" />
             </Button>
 
-            <Button Grid.Column="2" Style="{StaticResource ExplorerIconButton}"
+            <Button Grid.Column="3" Style="{StaticResource ExplorerIconButton}"
                     Command="{Binding CollapseAllCommand}"
                     IsEnabled="{Binding HasVisibleNodes}"
                     ToolTip="すべて折りたたみ">
@@ -144,7 +164,7 @@
                       Data="M2,5 L6.5,1 L11,5 M2,10 L6.5,6 L11,10" />
             </Button>
 
-            <ToggleButton Grid.Column="3" Style="{StaticResource ExplorerToggleButton}"
+            <ToggleButton Grid.Column="4" Style="{StaticResource ExplorerToggleButton}"
                           IsChecked="{Binding HideIgnoredFiles}"
                           ToolTip="ignore を非表示">
                 <Path Width="13" Height="13" Stretch="Uniform"
@@ -153,14 +173,14 @@
                       Data="M1,6.5 A5.5,5.5 0 1 1 12,6.5 A5.5,5.5 0 1 1 1,6.5 M3,10 L10,3" />
             </ToggleButton>
 
-            <ToggleButton Grid.Column="4" Style="{StaticResource ExplorerToggleButton}"
+            <ToggleButton Grid.Column="5" Style="{StaticResource ExplorerToggleButton}"
                           IsChecked="{Binding ShowChangedOnly}"
                           ToolTip="変更のみ表示">
                 <TextBlock Text="Δ" FontSize="{DynamicResource Fs13}" FontWeight="SemiBold"
                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
             </ToggleButton>
 
-            <Button Grid.Column="5" Style="{StaticResource ExplorerIconButton}"
+            <Button Grid.Column="6" Style="{StaticResource ExplorerIconButton}"
                     Command="{Binding RevealCurrentFileCommand}"
                     ToolTip="エディタの現在のファイルを選択（同期）">
                 <!-- 十字照準（現在地を指し示す） -->
@@ -376,11 +396,19 @@
                                     <MenuItem Header="パスをコピー" Click="OnCopyPathClick" />
                                     <!-- .gitignore ルート直下に相対パスを1行追加する（Git リポジトリでなければ何もしない）。 -->
                                     <MenuItem Header=".gitignore に追加" Click="OnAddToGitignoreClick" />
-                                    <!-- フォルダのみ：ピン留めするとヘッダの ComboBox からルートとして表示できる。 -->
+                                    <!-- フォルダのみ：ピン留めするとヘッダの ComboBox（単一フォルダー時）／
+                                         見出しの「ピン留めフォルダーへ切替」（複数フォルダー時）から表示できる。 -->
                                     <MenuItem Header="ルートにピン留め" Click="OnPinClick"
                                               Visibility="{Binding IsPinnable, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="ピン留めを解除" Click="OnUnpinClick"
                                               Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
+                                    <!-- 複数フォルダーワークスペースの見出し（ワークスペースフォルダー自身）のみ：
+                                         そのフォルダー内のピン留め切替候補・ワークスペースからの除去。
+                                         中身は OnNodeContextMenuOpened→PopulateRootSwitchMenu が動的に流し込む。 -->
+                                    <MenuItem Header="ピン留めフォルダーへ切替" Tag="RootSwitchMenu"
+                                              Visibility="{Binding IsWorkspaceFolderRoot, Converter={StaticResource BoolToVis}}" />
+                                    <MenuItem Header="ワークスペースから削除" Click="OnRemoveFromWorkspaceClick"
+                                              Visibility="{Binding CanRemoveFromWorkspace, Converter={StaticResource BoolToVis}}" />
                                     <!-- AI 関連（一番下にまとめる）。AIの暖機完了時のみファイルに表示し、
                                          区切り線・「AI」親メニューとも Opened で出し分ける。
                                          AI 操作は「AI」の子メニューとして増やしていく想定。 -->

@@ -112,7 +112,10 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         _tools = tools;
 
         // ワークスペースが確定／切り替わるたびに、プレフィックスを実ターンと一致させ直す。
+        // フォルダー追加・削除（マルチルート）もプロンプトの安定プレフィックスを変えるので、
+        // RootChanged と同様に暖機し直す（RequestWarmup 側の 500ms コアレスで多重発火は畳まれる）。
         _workspace.RootChanged += OnRootChanged;
+        _workspace.FoldersChanged += OnFoldersChanged;
 
         // 起動時は保存済みワークスペースの復元で RootChanged がすぐ来る。root 未確定のまま暖機すると、
         // 直後に root 入りプレフィックスで再暖機になり UI 上「2回走った」ように見えるため、
@@ -122,6 +125,8 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     }
 
     private void OnRootChanged(object? sender, string? root) => RequestWarmup();
+
+    private void OnFoldersChanged(object? sender, EventArgs e) => RequestWarmup();
 
     /// <summary>ウォームアップを改めて要求する。設定でONに切り替えた直後などに呼ぶ。
     /// 無効時・モデル未設定時は何もしない。</summary>
@@ -229,7 +234,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
                 // profile は対話セッション既定の Root（AgentOrchestrator.RunTurnAsync と一致）。
                 var modelProfile = ModelProfiles.Resolve(cfg.Model);
                 var prompt = ChatPrompt.Build(
-                    modelProfile.Format, _settings, AgentProfiles.Root, _workspace.RootPath, new Conversation(), _tools.Definitions);
+                    modelProfile.Format, _settings, AgentProfiles.Root, _workspace.Folders, new Conversation(), _tools.Definitions);
                 var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
                 var sampling = modelProfile.Sampling;
 
@@ -253,7 +258,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
             cfg.ModelPath ?? "",
             cfg.Model ?? "",
             cfg.NumCtx.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            _workspace.RootPath ?? "",
+            string.Join('|', _workspace.Folders),
             string.Join('\u001e', _tools.Definitions.Select(t => t.Name)));
 
     private void SetStatus(string status)

@@ -258,11 +258,17 @@ public sealed class WorkspaceSnapshot
     /// <summary>このワークスペースで開いている切り離しウィンドウ。</summary>
     public List<DetachedWindowSnapshot> DetachedWindows { get; set; } = new();
 
-    /// <summary>FolderTree でピン留めしたフォルダ（フルパス）。ルート切替 ComboBox の候補になる。</summary>
+    /// <summary>FolderTree でピン留めしたフォルダ（フルパス）。ルート切替 ComboBox の候補になる
+    /// （プライマリフォルダーぶん。プライマリ以外は <see cref="AdditionalFolders"/> 側に持つ）。</summary>
     public List<string> PinnedFolders { get; set; } = new();
 
-    /// <summary>FolderTree の表示中ルート。null ならワークスペースルートを表示する。</summary>
+    /// <summary>FolderTree の表示中ルート。null ならワークスペースルートを表示する
+    /// （プライマリフォルダーぶん。プライマリ以外は <see cref="AdditionalFolders"/> 側に持つ）。</summary>
     public string? TreeRootPath { get; set; }
+
+    /// <summary>マルチルートワークスペースで、プライマリ（<see cref="RootPath"/>）以外に追加した
+    /// ワークスペースフォルダー。単一フォルダー時は空。</summary>
+    public List<WorkspaceFolderPin> AdditionalFolders { get; set; } = new();
 
     /// <summary>
     /// メイン領域のレイアウトツリー（リーフ＝ペイン、スプリット＝行/列の入れ子）。
@@ -304,6 +310,16 @@ public sealed class WorkspaceSnapshot
 
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
+}
+
+/// <summary>マルチルートワークスペースの追加フォルダー1件ぶん（<see cref="WorkspaceSnapshot.AdditionalFolders"/>）。
+/// プライマリフォルダーの <see cref="WorkspaceSnapshot.PinnedFolders"/>/<see cref="WorkspaceSnapshot.TreeRootPath"/>
+/// と同じ情報を、このフォルダー自身についてまとめて持つ。</summary>
+public sealed class WorkspaceFolderPin
+{
+    public string FolderPath { get; set; } = "";
+    public List<string> PinnedFolders { get; set; } = new();
+    public string? TreeRootPath { get; set; }
 }
 
 public sealed class DetachedWindowSnapshot

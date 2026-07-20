@@ -30,13 +30,34 @@ internal sealed class FakeAiWarmup : IAiWarmup
 /// <summary>VM 構築に必要な最小限のワークスペース実装（副作用なし）。</summary>
 internal sealed class FakeWorkspaceService : IWorkspaceService
 {
-    public string? RootPath { get; private set; }
+    private readonly List<string> _folders = new();
+
+    public IReadOnlyList<string> Folders => _folders;
+    public string? RootPath => _folders.Count > 0 ? _folders[0] : null;
     public string? SelectedPath { get; set; }
 
     public void OpenFolder(string rootPath)
     {
-        RootPath = rootPath;
+        _folders.Clear();
+        _folders.Add(rootPath);
         RootChanged?.Invoke(this, rootPath);
+        FoldersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void AddFolder(string path)
+    {
+        if (!_folders.Contains(path))
+            _folders.Add(path);
+        FoldersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveFolder(string path)
+    {
+        var index = _folders.IndexOf(path);
+        if (index <= 0)
+            return;
+        _folders.RemoveAt(index);
+        FoldersChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)
@@ -50,6 +71,7 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
 #pragma warning disable CS0067 // テストでは発火させないイベント
     public event EventHandler<string?>? SelectionChanged;
     public event EventHandler<string?>? RootChanged;
+    public event EventHandler? FoldersChanged;
 #pragma warning restore CS0067
 }
 

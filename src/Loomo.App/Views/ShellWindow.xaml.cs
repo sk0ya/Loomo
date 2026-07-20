@@ -282,7 +282,7 @@ public partial class ShellWindow : Window {
                 await SwitchWorkspaceAsync(workspace, captureCurrent: false, deferHydration: true);
             else {
                 LoadLayouts(System.Array.Empty<SavedLayout>(), scratch: null, activeIndex: -1, dirty: false);
-                ApplyIdePaneApplicability(root: null);
+                ApplyIdePaneApplicability(System.Array.Empty<string>());
                 PrepareStageSnapshot(solo: true, StageSnapshot.Default());
                 ApplyDefaultLayout();
                 BrowserAddressBox.Text = DefaultBrowserUrl;

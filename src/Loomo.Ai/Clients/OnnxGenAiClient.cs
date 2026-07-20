@@ -42,7 +42,7 @@ public sealed class OnnxGenAiClient : IAiClient
     {
         var cfg = _settings.Local;
         var modelProfile = ModelProfiles.Resolve(cfg.Model);
-        var prompt = ChatPrompt.Build(modelProfile.Format, _settings, profile, _workspace.RootPath, conversation, tools);
+        var prompt = ChatPrompt.Build(modelProfile.Format, _settings, profile, _workspace.Folders, conversation, tools);
         var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
         var maxNewTokens = modelProfile.MaxOutputTokens > 0
             ? Math.Min(cfg.MaxTokens, modelProfile.MaxOutputTokens)

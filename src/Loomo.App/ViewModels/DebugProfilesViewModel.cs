@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -59,12 +60,14 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveCurrentToSelectedProfile(); };
 
         _workspace.RootChanged += OnWorkspaceRootChanged;
+        _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
         ReloadForWorkspace();
     }
 
     public void Dispose()
     {
         _workspace.RootChanged -= OnWorkspaceRootChanged;
+        _workspace.FoldersChanged -= OnWorkspaceFoldersChanged;
         _saveDebounce.Stop();
         if (_launch is not null) _launch.PropertyChanged -= OnLaunchPropertyChanged;
     }
@@ -144,8 +147,12 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
     private void OnWorkspaceRootChanged(object? sender, string? root)
         => _dispatcher.InvokeAsync(ReloadForWorkspace, DispatcherPriority.Background);
 
+    private void OnWorkspaceFoldersChanged(object? sender, EventArgs e)
+        => _dispatcher.InvokeAsync(ReloadForWorkspace, DispatcherPriority.Background);
+
     /// <summary>ワークスペース（切替含む）に合わせてプロジェクト候補とプロファイル一覧を読み直す。
-    /// 保存済みプロファイルが無ければ「既定」を1件シードする（＝これまでの自動検出のみの体験を維持）。</summary>
+    /// 保存済みプロファイルが無ければ「既定」を1件シードする（＝これまでの自動検出のみの体験を維持）。
+    /// 複数フォルダー時は全フォルダーを走査し、候補の相対パスにフォルダー名を前置して区別する。</summary>
     private void ReloadForWorkspace()
     {
         var root = _workspace.RootPath;
@@ -159,8 +166,20 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
             return;
         }
 
-        foreach (var p in DebugProjectDiscovery.Discover(root).Where(p => !p.IsTest))
-            AvailableProjects.Add(p);
+        var folders = _workspace.Folders;
+        foreach (var folder in folders)
+        {
+            var entries = DebugProjectDiscovery.Discover(folder).Where(p => !p.IsTest);
+            if (folders.Count <= 1)
+            {
+                foreach (var p in entries) AvailableProjects.Add(p);
+                continue;
+            }
+
+            var folderName = Path.GetFileName(folder.TrimEnd('\\', '/'));
+            foreach (var p in entries)
+                AvailableProjects.Add(p with { RelativePath = folderName + "/" + p.RelativePath });
+        }
 
         var (loaded, selectedId) = _store.Load(root);
         var seeded = loaded.Count == 0;

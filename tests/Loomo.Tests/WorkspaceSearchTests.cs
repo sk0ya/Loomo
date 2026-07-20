@@ -209,6 +209,96 @@ public class WorkspaceSearchTests
         finally { TryDelete(root); }
     }
 
+    // ===== マルチルート（複数ワークスペースフォルダー） =====
+
+    [Fact]
+    public async Task GrepAsync_default_scope_searches_all_workspace_folders()
+    {
+        var (svc, root) = NewWorkspace();
+        var second = Path.Combine(Path.GetTempPath(), "LoomoSearchTest2_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(second);
+        File.WriteAllText(Path.Combine(second, "other.cs"), "// needle in second folder\n");
+
+        try
+        {
+            var ws = new FakeWorkspaceService();
+            ws.OpenFolder(root);
+            ws.AddFolder(second);
+            var multiSvc = new WorkspaceSearchService(ws);
+
+            var hits = await multiSvc.GrepAsync("needle", new GrepOptions(), CancellationToken.None);
+
+            Assert.Contains(hits, h => h.FullPath.Equals(
+                Path.GetFullPath(Path.Combine(root, "src", "app.cs")), StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(hits, h => h.FullPath.Equals(
+                Path.GetFullPath(Path.Combine(second, "other.cs")), StringComparison.OrdinalIgnoreCase));
+
+            // 複数フォルダー横断時は表示パスの先頭にフォルダー名を付けて区別する。
+            var secondName = Path.GetFileName(second);
+            Assert.Contains(hits, h => h.RelativePath.StartsWith(secondName + "/", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDelete(root);
+            TryDelete(second);
+        }
+    }
+
+    [Fact]
+    public async Task FindFilesAsync_default_scope_searches_all_workspace_folders()
+    {
+        var (svc, root) = NewWorkspace();
+        var second = Path.Combine(Path.GetTempPath(), "LoomoSearchTest2_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(second);
+        File.WriteAllText(Path.Combine(second, "other.cs"), "// content\n");
+
+        try
+        {
+            var ws = new FakeWorkspaceService();
+            ws.OpenFolder(root);
+            ws.AddFolder(second);
+            var multiSvc = new WorkspaceSearchService(ws);
+
+            var hits = await multiSvc.FindFilesAsync("", 50, CancellationToken.None);
+
+            Assert.Contains(hits, h => h.RelativePath.EndsWith("app.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(hits, h => h.RelativePath.EndsWith("other.cs", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDelete(root);
+            TryDelete(second);
+        }
+    }
+
+    [Fact]
+    public async Task GrepAsync_explicit_searchRoot_in_secondary_folder_is_not_ignored()
+    {
+        var (svc, root) = NewWorkspace();
+        var second = Path.Combine(Path.GetTempPath(), "LoomoSearchTest2_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(second);
+        File.WriteAllText(Path.Combine(second, "other.cs"), "// needle in second folder\n");
+
+        try
+        {
+            var ws = new FakeWorkspaceService();
+            ws.OpenFolder(root);
+            ws.AddFolder(second);
+            var multiSvc = new WorkspaceSearchService(ws);
+
+            // 明示的にセカンダリフォルダー自身を searchRoot に指定 → プライマリへ迷子扱いされず絞れる。
+            var hits = await multiSvc.GrepAsync("needle", new GrepOptions(), CancellationToken.None, second);
+
+            var hit = Assert.Single(hits);
+            Assert.Equal("other.cs", hit.RelativePath);
+        }
+        finally
+        {
+            TryDelete(root);
+            TryDelete(second);
+        }
+    }
+
     private static void TryDelete(string dir)
     {
         try { Directory.Delete(dir, recursive: true); } catch { /* ベストエフォート */ }

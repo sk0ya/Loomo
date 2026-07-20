@@ -30,12 +30,12 @@ public static class Phi4PromptFormatter
     public static string Build(
         AiSettings settings,
         AgentProfile? profile,
-        string? workspaceRoot,
+        IReadOnlyList<string> workspaceFolders,
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools)
     {
         // システムプロンプトは安定要素のみ（検索ガイダンスは環境固定、現在フォルダは準安定）。
-        var system = PromptShared.SystemText(settings, profile, workspaceRoot, ChatFormat.Phi4);
+        var system = PromptShared.SystemText(settings, profile, workspaceFolders, ChatFormat.Phi4);
 
         var sb = new StringBuilder();
 

@@ -13,11 +13,13 @@ namespace sk0ya.Loomo.Ai.Clients;
 internal static class PromptShared
 {
     /// <summary>システムプロンプト本文を組み立てる。安定要素のみ（行動規約は固定、検索ガイダンスは環境固定、
-    /// 現在フォルダは準安定）。<paramref name="format"/> で tool 呼び出しの記法に合った例文を選ぶ。</summary>
-    public static string SystemText(AiSettings settings, AgentProfile? profile, string? workspaceRoot, ChatFormat format)
+    /// 現在フォルダは準安定）。<paramref name="format"/> で tool 呼び出しの記法に合った例文を選ぶ。
+    /// <paramref name="workspaceFolders"/>[0] がプライマリ（相対パス解決・検索ガイダンスの基準）。</summary>
+    public static string SystemText(
+        AiSettings settings, AgentProfile? profile, IReadOnlyList<string> workspaceFolders, ChatFormat format)
         => settings.BuildSystemPrompt(profile, format)
-           + SearchGuidance(workspaceRoot)
-           + WorkspaceContext.Describe(workspaceRoot);
+           + SearchGuidance(workspaceFolders.Count > 0 ? workspaceFolders[0] : null)
+           + WorkspaceContext.Describe(workspaceFolders);
 
     /// <summary>ユーザーターンの描画本文。<see cref="ChatMessage.RenderPrefix"/>（モード別の追加プロンプト）が
     /// あれば本文の前へ連結する。共有 system プレフィックスより後ろ（user ターン）に入るため KV 共有を壊さない。</summary>

@@ -268,9 +268,12 @@ public class FileToolTests : IDisposable
     /// <summary>常にルート外として弾くワークスペース（確定処理の確認用）。</summary>
     private sealed class DenyingWorkspace : IWorkspaceService
     {
+        public System.Collections.Generic.IReadOnlyList<string> Folders { get; } = new[] { "C:\\root" };
         public string? RootPath => "C:\\root";
         public string? SelectedPath { get; set; }
         public void OpenFolder(string rootPath) { }
+        public void AddFolder(string path) { }
+        public void RemoveFolder(string path) { }
         public Task<System.Collections.Generic.IReadOnlyList<sk0ya.Loomo.Core.Models.FileNode>> ListAsync(string path, CancellationToken ct = default)
             => Task.FromResult<System.Collections.Generic.IReadOnlyList<sk0ya.Loomo.Core.Models.FileNode>>(Array.Empty<sk0ya.Loomo.Core.Models.FileNode>());
         public Task<string> ReadFileAsync(string path, CancellationToken ct = default) => Task.FromResult("");
@@ -279,6 +282,7 @@ public class FileToolTests : IDisposable
 #pragma warning disable CS0067
         public event EventHandler<string?>? SelectionChanged;
         public event EventHandler<string?>? RootChanged;
+        public event EventHandler? FoldersChanged;
 #pragma warning restore CS0067
     }
 }

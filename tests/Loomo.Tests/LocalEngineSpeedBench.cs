@@ -54,7 +54,7 @@ public sealed class LocalEngineSpeedBench
         // （decode 速度は prompt 内容に依存しない。prefill tok/s も throughput なので長さ非依存）。
         var convo = new Conversation();
         convo.AddUser("ローカルでLLMを動かす利点と注意点を、日本語の文章で400字程度、詳しく説明してください。箇条書きは使わないでください。");
-        var prompt = ChatPrompt.Build(profile.Format, settings, AgentProfiles.Root, @"C:\Projects\Loomo",
+        var prompt = ChatPrompt.Build(profile.Format, settings, AgentProfiles.Root, new[] { @"C:\Projects\Loomo" },
             convo, Array.Empty<ToolDefinition>());
 
         const int budget = 300;

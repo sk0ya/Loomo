@@ -29,11 +29,11 @@ public static class Qwen3PromptFormatter
     public static string Build(
         AiSettings settings,
         AgentProfile? profile,
-        string? workspaceRoot,
+        IReadOnlyList<string> workspaceFolders,
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools)
     {
-        var system = PromptShared.SystemText(settings, profile, workspaceRoot, ChatFormat.Qwen3);
+        var system = PromptShared.SystemText(settings, profile, workspaceFolders, ChatFormat.Qwen3);
 
         var sb = new StringBuilder();
 

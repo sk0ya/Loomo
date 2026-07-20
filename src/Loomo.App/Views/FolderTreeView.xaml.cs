@@ -50,6 +50,18 @@ public partial class FolderTreeView : UserControl
             FileTree.Focus();
     }
 
+    // 「フォルダーをワークスペースに追加」ボタン。選んだフォルダーをマルチルートワークスペースへ
+    // 追加する（既存フォルダーと同一・祖先/子孫関係のときは ViewModel 側で無視される）。
+    private void OnAddFolderToWorkspaceClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "ワークスペースに追加するフォルダーを選択" };
+        if (dlg.ShowDialog(OwnerWindow) == true)
+            vm.AddFolderToWorkspace(dlg.FolderName);
+    }
+
     private void OnTreeMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is not TreeView || e.OriginalSource is not DependencyObject source)

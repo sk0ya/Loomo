@@ -143,12 +143,13 @@ public partial class ShellWindow {
         _activeWorkspace = workspace;
         if (!deferHydration) {
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
+            _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
-        ApplyIdePaneApplicability(workspace.RootPath);
+        ApplyIdePaneApplicability(WorkspaceFolders(workspace));
         LoadEnabledSessions(workspace.EnabledSessions);
         PrepareStageSnapshot(WorkspaceSessionCoordinator.ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
@@ -160,6 +161,7 @@ public partial class ShellWindow {
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             StartupProfiler.Mark("  復元:初フレーム後に継続");
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
+            _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
         }
         RestoreTerminalTabs(workspace);
@@ -178,6 +180,19 @@ public partial class ShellWindow {
         StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
         SaveActiveWorkspaceSnapshot();
     }
+    // スナップショットからワークスペースフォルダー一覧（プライマリ＋追加）を組み立てる。deferHydration 中は
+    // _workspace（実サービス）がまだ新ワークスペースへ切り替わっていないことがあるため、スナップショットの
+    // データから直接組み立てる（_workspace.Folders を読むと古いワークスペースの値を拾ってしまう）。
+    private static List<string> WorkspaceFolders(WorkspaceSnapshot workspace) {
+        var folders = new List<string>();
+        if (!string.IsNullOrWhiteSpace(workspace.RootPath))
+            folders.Add(workspace.RootPath);
+        folders.AddRange(workspace.AdditionalFolders
+            .Select(f => f.FolderPath)
+            .Where(p => !string.IsNullOrWhiteSpace(p)));
+        return folders;
+    }
+
     private void SaveActiveWorkspaceSnapshot(bool immediate = false) {
         if (_activeWorkspace is null)
             return;
@@ -237,6 +252,7 @@ public partial class ShellWindow {
         snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
+        snapshot.AdditionalFolders = _vm.FolderTree.CaptureAdditionalFolders().ToList();
         snapshot.ComposerText = CaptureComposerText();
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();
