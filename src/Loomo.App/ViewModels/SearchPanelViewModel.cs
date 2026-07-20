@@ -53,13 +53,14 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索範囲（テキスト grep / ファイル名 / ターミナル）。</summary>
     [ObservableProperty] private SearchScope _scope = SearchScope.Text;
 
-    /// <summary>検索の開始フォルダー。ワークスペースルートからの相対パス（'/' 区切り）で持つ。
-    /// 空＝ワークスペースルート全体。既定は FolderTree の表示ルート（<see cref="SetDefaultRoot"/>）。
-    /// ルート配下のフォルダのみ有効（サービス側でルート外は無視される）。
+    /// <summary>検索の開始フォルダー。単一ルートはワークスペースルートからの相対パス（'/' 区切り）。
+    /// マルチルートは先頭にワークスペースフォルダーの表示名を付けた「フォルダー名/相対パス」
+    /// （結果ツリーのフォルダー見出しと同じ表記・<see cref="EffectiveSearchRoot"/> で解決する）。
+    /// 空＝ワークスペース全体。既定は FolderTree の表示ルート（<see cref="SetDefaultRoot"/>）。
     /// テキスト／ファイル名検索でのみ使う（ターミナル検索は対象外）。</summary>
     [ObservableProperty] private string _searchRoot = "";
 
-    // 既定の開始フォルダー（FolderTree の表示ルート・相対）。リセットの戻り先・追従の基準。
+    // 既定の開始フォルダー（FolderTree の表示ルート・SearchRoot と同じ表記）。リセットの戻り先・追従の基準。
     private string _defaultRoot = "";
 
     /// <summary>既定（FolderTree ルート）と違うフォルダーに絞っているか（リセットボタンの表示可否）。</summary>
@@ -69,8 +70,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>フォルダー欄を表示するか（ターミナル検索では対象外）。</summary>
     public bool ShowSearchRoot => Scope != SearchScope.Terminal;
 
-    /// <summary>フォルダパス補完（インテリセンス）の基準となるワークスペースルート。</summary>
-    public string? WorkspaceRoot => _workspace.RootPath;
+    /// <summary>フォルダパス補完（インテリセンス）が辿るワークスペースフォルダー一覧
+    /// （マルチルート時は各フォルダー配下を「フォルダー名/…」として提示する）。</summary>
+    public IReadOnlyList<string> WorkspaceFolders => _workspace.Folders;
 
     /// <summary>検索結果の各行で強調する検索ワード（テキスト／ファイル名／ターミナルとも Query を渡す）。
     /// 空ならハイライトなし。</summary>
@@ -112,8 +114,36 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     // CurrentRootChanged 側の SetDisplayRoot が改めて既定フォルダーを設定し直す。
     private void OnFoldersChanged()
     {
+        OnPropertyChanged(nameof(WorkspaceFolders));
         if (_workspace.Folders.Count > 1)
             SetDefaultRoot(null);
+    }
+
+    private static string LabelFor(string fullPath)
+    {
+        var name = System.IO.Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+        return string.IsNullOrEmpty(name) ? fullPath : name;
+    }
+
+    /// <summary>フルパスを含むワークスペースフォルダー（マルチルートの各ルート）を返す。
+    /// どれにも属さなければプライマリフォルダーへ退避する。</summary>
+    private string? FindOwningFolder(string fullPath)
+    {
+        string full;
+        try { full = System.IO.Path.GetFullPath(fullPath).TrimEnd('\\', '/'); }
+        catch { return _workspace.RootPath; }
+
+        foreach (var folder in _workspace.Folders)
+        {
+            string root;
+            try { root = System.IO.Path.GetFullPath(folder).TrimEnd('\\', '/'); }
+            catch { continue; }
+            if (full.Equals(root, StringComparison.OrdinalIgnoreCase)
+                || full.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || full.StartsWith(root + System.IO.Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return folder;
+        }
+        return _workspace.RootPath;
     }
 
     partial void OnQueryChanged(string value)
@@ -159,7 +189,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public void ClearQuery() => Query = "";
 
     /// <summary>検索の開始フォルダーを指定する（フォルダーツリーの「このフォルダーで検索」用）。
-    /// フルパスをワークスペースルート相対に直して持つ。</summary>
+    /// フルパスが属するワークスペースフォルダーからの相対パスとして持つ（マルチルートは
+    /// 「フォルダー名/相対パス」表記）。</summary>
     public void SetSearchRoot(string fullPath) => SearchRoot = ToRelative(fullPath);
 
     /// <summary>検索の既定の開始フォルダー（FolderTree の表示ルート）を設定する。
@@ -175,28 +206,63 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     [RelayCommand]
     private void ResetSearchRoot() => SearchRoot = _defaultRoot;
 
-    /// <summary>フルパスをワークスペースルートからの相対パス（'/' 区切り）へ。ルート＝空、
-    /// ルート外・ルート未設定はフルパスのまま（サービス側でルート外は無視される）。</summary>
+    /// <summary>フルパスを検索フォルダー欄用の表記へ変換する。単一ルートはワークスペースルートからの
+    /// 相対パス（'/' 区切り）。マルチルートは先頭にそのフォルダーの表示名を付けた「フォルダー名/相対パス」
+    /// （<see cref="EffectiveSearchRoot"/> が同じ表記を解決する）。基準そのもの＝空、
+    /// ルート外・変換不可はフルパスのまま（サービス側でルート外は無視される）。</summary>
     private string ToRelative(string? fullPath)
     {
         if (string.IsNullOrEmpty(fullPath))
             return "";
-        var root = _workspace.RootPath;
-        if (string.IsNullOrEmpty(root))
+
+        var owner = FindOwningFolder(fullPath);
+        if (string.IsNullOrEmpty(owner))
             return fullPath;
+
+        string rel;
         try
         {
-            var rel = System.IO.Path.GetRelativePath(root, fullPath);
-            if (rel == ".")
-                return "";
+            rel = System.IO.Path.GetRelativePath(owner, fullPath);
             if (rel.StartsWith("..", StringComparison.Ordinal) || System.IO.Path.IsPathRooted(rel))
                 return fullPath;
-            return rel.Replace('\\', '/');
+            rel = rel == "." ? "" : rel.Replace('\\', '/');
         }
         catch
         {
             return fullPath;
         }
+
+        if (_workspace.Folders.Count <= 1)
+            return rel;
+
+        var name = LabelFor(owner);
+        return string.IsNullOrEmpty(rel) ? name : name + "/" + rel;
+    }
+
+    /// <summary>サービスへ渡す実際の検索開始フォルダー。空＝全ルート。単一ルートは <see cref="SearchRoot"/> を
+    /// そのまま渡す（従来通りサービス側でワークスペースルート相対として解決）。マルチルートは先頭セグメントを
+    /// ワークスペースフォルダーの表示名として解決し、絶対パスに組み立てて渡す（同名フォルダー・同名
+    /// サブフォルダーの取り違えを防ぐ）。名前解決できなければそのまま渡す（サービス側の「各フォルダーへ
+    /// 順に試す」フォールバックに任せる）。</summary>
+    private string? EffectiveSearchRoot()
+    {
+        var raw = NullIfBlank(SearchRoot);
+        if (raw is null || _workspace.Folders.Count <= 1)
+            return raw;
+
+        var normalized = raw.Replace('\\', '/');
+        var slash = normalized.IndexOf('/');
+        var rootName = slash >= 0 ? normalized[..slash] : normalized;
+        var sub = slash >= 0 ? normalized[(slash + 1)..] : "";
+
+        var folder = _workspace.Folders.FirstOrDefault(f =>
+            string.Equals(LabelFor(f), rootName, StringComparison.OrdinalIgnoreCase));
+        if (folder is null)
+            return raw;
+        if (string.IsNullOrEmpty(sub))
+            return folder;
+        try { return System.IO.Path.GetFullPath(sub, folder); }
+        catch { return folder; }
     }
 
     private static string Normalize(string? path)
@@ -254,7 +320,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     private async Task RunGrepAsync(CancellationToken ct)
     {
         var result = await _searchQuery.GrepAsync(Query, CaseSensitive, UseRegex,
-            NullIfBlank(IncludeGlob), NullIfBlank(ExcludeGlob), NullIfBlank(SearchRoot), ct);
+            NullIfBlank(IncludeGlob), NullIfBlank(ExcludeGlob), EffectiveSearchRoot(), ct);
         if (ct.IsCancellationRequested) return;
         ReplaceResults(result.Roots);
         StatusMessage = result.StatusMessage;
@@ -263,7 +329,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>ファイル名を曖昧検索し、1ファイル1行（一致行なし）の結果として反映する。</summary>
     private async Task RunFindFilesAsync(CancellationToken ct)
     {
-        var result = await _searchQuery.FindFilesAsync(Query, NullIfBlank(SearchRoot), ct);
+        var result = await _searchQuery.FindFilesAsync(Query, EffectiveSearchRoot(), ct);
         if (ct.IsCancellationRequested) return;
         ReplaceResults(result.Roots);
         StatusMessage = result.StatusMessage;

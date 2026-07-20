@@ -21,6 +21,7 @@
     <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVisibilityConverter" />
     <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
     <conv:RelativeDateConverter x:Key="RelativeDate" />
+    <conv:LastPathSegmentConverter x:Key="LastPathSegment" />
 
     <!-- ===== Base text ===== -->
     <Style TargetType="TextBlock">

@@ -171,9 +171,11 @@
                               IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
             </StackPanel>
 
-            <!-- 検索の開始フォルダー（編集可・ワークスペースルート相対）。既定は FolderTree の表示ルート。
-                 空＝ワークスペース全体。入力中はサブフォルダの補完候補をポップアップ表示し、↺ で
-                 FolderTree のルートへ戻す。ターミナル検索時は隠す。 -->
+            <!-- 検索の開始フォルダー（編集可・テキストで指定）。既定は FolderTree の表示ルート。
+                 空＝ワークスペース全体。マルチルート時は先頭に対象フォルダーの表示名を付けて指定する
+                 （例: フォルダー名/src。結果ツリーのフォルダー見出しと同じ表記）。入力中はサブフォルダの
+                 補完候補をポップアップ表示し（Ctrl+Space でも呼び出せる）、↺ で FolderTree のルートへ戻す。
+                 ターミナル検索時は隠す。 -->
             <Grid Margin="0,0,0,4"
                   Visibility="{Binding ShowSearchRoot, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
@@ -190,7 +192,7 @@
                              Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                              BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                              VerticalContentAlignment="Center"
-                             ToolTip="検索する開始フォルダー（ワークスペースルート相対・空＝全体）"
+                             ToolTip="検索する開始フォルダー（空＝ワークスペース全体・複数フォルダー時は「フォルダー名/相対パス」・Ctrl+Space で候補表示）"
                              Text="{Binding SearchRoot, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                              TextChanged="OnRootBoxTextChanged"
                              PreviewKeyDown="OnRootBoxKeyDown"
@@ -198,17 +200,27 @@
                     <TextBlock Text="ワークスペース全体" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
                                Visibility="{Binding Text, ElementName=RootBox, Converter={StaticResource EmptyToVis}}" />
-                    <!-- フォルダパス補完（インテリセンス）。候補は RootBox の入力に応じて code-behind が流し込む。 -->
+                    <!-- フォルダパス補完（インテリセンス）。候補は RootBox の入力に応じて code-behind が流し込む
+                         （値そのものは蓄積された相対パスだが、表示は直近の名前だけ＝LastPathSegment。
+                         全体パスは ToolTip で見られる）。少なくとも RootBox 幅は確保しつつ、長い名前でも
+                         見切れないよう MaxWidth まで広がる（それでも収まらなければ末尾を省略）。 -->
                     <Popup x:Name="RootSuggestPopup" PlacementTarget="{Binding ElementName=RootBox}"
-                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
-                           Width="{Binding ActualWidth, ElementName=RootBox}">
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                         <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="3" Padding="1">
+                                BorderThickness="1" CornerRadius="3" Padding="1"
+                                MinWidth="{Binding ActualWidth, ElementName=RootBox}" MaxWidth="360">
                             <ListBox x:Name="RootSuggestList" MaxHeight="180" BorderThickness="0"
                                      Background="Transparent" Foreground="{DynamicResource Fg}"
                                      FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     PreviewMouseLeftButtonDown="OnRootSuggestMouseDown" />
+                                     PreviewMouseLeftButtonDown="OnRootSuggestMouseDown">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource LastPathSegment}}"
+                                                   ToolTip="{Binding}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Border>
                     </Popup>
                 </Grid>

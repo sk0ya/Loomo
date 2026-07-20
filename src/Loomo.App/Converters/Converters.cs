@@ -165,6 +165,23 @@ public sealed class InverseBoolToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>'/' 区切りパスの末尾セグメントだけを返す（無ければそのまま）。フォルダー補完候補のように
+/// 「入力済みのディレクトリ部分＋名前」を蓄積した文字列から、直近の名前だけを表示したい用途向け。</summary>
+public sealed class LastPathSegmentConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string s || s.Length == 0)
+            return value ?? string.Empty;
+        var trimmed = s.Replace('\\', '/').TrimEnd('/');
+        var idx = trimmed.LastIndexOf('/');
+        return idx >= 0 ? trimmed[(idx + 1)..] : trimmed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>日時を「今日→時刻のみ／今年→月日／それ以外→年月日」の簡潔な表記へ変換する
 /// （AIセッション一覧など、カード内で日時を目立たせすぎない用途向け）。</summary>
 public sealed class RelativeDateConverter : IValueConverter

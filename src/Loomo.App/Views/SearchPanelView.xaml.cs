@@ -102,9 +102,23 @@ public partial class SearchPanelView : UserControl
 
         var matches = ComputeRootSuggestions(RootBox.Text);
         var text = RootBox.Text.Replace('\\', '/').TrimEnd('/');
-        // 候補が無い／唯一の候補が入力そのものなら出さない。
-        if (matches.Count == 0 ||
-            (matches.Count == 1 && string.Equals(matches[0], text, StringComparison.OrdinalIgnoreCase)))
+        // 候補が無い／唯一の候補が入力そのものなら出さない（入力中の自動表示のみ抑制。Ctrl+Space の
+        // 明示呼び出しは ShowRootSuggestions を直接使うのでここを通らない）。
+        if (matches.Count == 1 && string.Equals(matches[0], text, StringComparison.OrdinalIgnoreCase))
+        {
+            CloseRootSuggest();
+            return;
+        }
+
+        ShowRootSuggestions(matches);
+    }
+
+    /// <summary>補完候補ポップアップを表示する。<paramref name="matches"/> 省略時は現在の入力から算出する。
+    /// 一般的なエディタ流に Ctrl+Space からも明示的に呼べる（<see cref="OnRootBoxKeyDown"/>）。</summary>
+    private void ShowRootSuggestions(System.Collections.Generic.List<string>? matches = null)
+    {
+        matches ??= ComputeRootSuggestions(RootBox.Text);
+        if (matches.Count == 0)
         {
             CloseRootSuggest();
             return;
@@ -115,10 +129,15 @@ public partial class SearchPanelView : UserControl
         RootSuggestPopup.IsOpen = true;
     }
 
+    /// <summary>補完候補を組み立てる。単一ルートは従来通りワークスペースルート配下をブラウズする。
+    /// マルチルートは <see cref="sk0ya.Loomo.App.ViewModels.SearchPanelViewModel.SearchRoot"/> と同じ
+    /// 「フォルダー名/相対パス」表記に合わせ、まずフォルダー名（先頭セグメント）を候補にし、
+    /// 一致するフォルダーが確定してからその配下をブラウズする。</summary>
     private System.Collections.Generic.List<string> ComputeRootSuggestions(string input)
     {
         var empty = new System.Collections.Generic.List<string>();
-        if (Vm?.WorkspaceRoot is not { } root || string.IsNullOrEmpty(root))
+        var folders = Vm?.WorkspaceFolders;
+        if (folders is null || folders.Count == 0)
             return empty;
 
         var text = (input ?? "").Replace('\\', '/');
@@ -126,6 +145,36 @@ public partial class SearchPanelView : UserControl
         var dirPart = lastSep >= 0 ? text[..lastSep] : "";
         var prefix = lastSep >= 0 ? text[(lastSep + 1)..] : text;
 
+        if (folders.Count == 1)
+            return SuggestSubfolders(folders[0], dirPart, prefix);
+
+        if (string.IsNullOrEmpty(dirPart))
+        {
+            // まだフォルダー名を入力中：ワークスペースフォルダーの表示名を候補にする。
+            return folders
+                .Select(LabelFor)
+                .Where(n => n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxRootSuggestions)
+                .ToList();
+        }
+
+        // フォルダー名以降：先頭セグメントを解決し、そのフォルダー配下をブラウズする。
+        var nameSep = dirPart.IndexOf('/');
+        var rootName = nameSep >= 0 ? dirPart[..nameSep] : dirPart;
+        var restDir = nameSep >= 0 ? dirPart[(nameSep + 1)..] : "";
+        var folder = folders.FirstOrDefault(f => string.Equals(LabelFor(f), rootName, StringComparison.OrdinalIgnoreCase));
+        if (folder is null)
+            return empty;
+
+        return SuggestSubfolders(folder, restDir, prefix)
+            .Select(s => rootName + "/" + s)
+            .ToList();
+    }
+
+    private static System.Collections.Generic.List<string> SuggestSubfolders(string root, string dirPart, string prefix)
+    {
+        var empty = new System.Collections.Generic.List<string>();
         string baseDir;
         try { baseDir = string.IsNullOrEmpty(dirPart) ? root : Path.GetFullPath(dirPart, root); }
         catch { return empty; }
@@ -150,8 +199,15 @@ public partial class SearchPanelView : UserControl
         }
     }
 
+    private static string LabelFor(string fullPath)
+    {
+        var name = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+        return string.IsNullOrEmpty(name) ? fullPath : name;
+    }
+
     /// <summary>検索フォルダー欄のキー操作。補完ポップアップが開いていれば上下で候補移動・
-    /// Enter/Tab で確定・Esc で閉じる。閉じているときは Enter で入力を即確定する。</summary>
+    /// Enter/Tab で確定・Esc で閉じる。閉じているときは Ctrl+Space で候補を呼び出せる（一般的な
+    /// エディタのインテリセンス起動キーに合わせる）・Enter で入力を即確定する。</summary>
     private void OnRootBoxKeyDown(object sender, KeyEventArgs e)
     {
         if (RootSuggestPopup.IsOpen)
@@ -171,6 +227,13 @@ public partial class SearchPanelView : UserControl
                     }
                     break;
             }
+        }
+
+        if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            ShowRootSuggestions();
+            e.Handled = true;
+            return;
         }
 
         if (e.Key == Key.Enter)
