@@ -86,6 +86,7 @@ internal static class LoomoServiceCollectionExtensions
     {
         // git CLI の監視状態と各画面の選択状態を共有するため、Git 機能は Singleton で構成する。
         services.AddSingleton<GitService>();
+        services.AddSingleton<GitRootSwitchViewModel>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionQuery>();
         services.AddSingleton<GitSessionCommandHandler>();

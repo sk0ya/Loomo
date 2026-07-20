@@ -3,21 +3,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
-using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Services;
 
 /// <summary>作業ツリー差分、競合ステージ、インデックス向けパッチを扱う。</summary>
 public sealed class GitDiffService
 {
-    private readonly IWorkspaceService _workspace;
+    private readonly GitRootState _rootState;
     private readonly GitCommandRunner _runner;
     private readonly GitMutationExecutor _mutations;
 
     public GitDiffService(
-        IWorkspaceService workspace, GitCommandRunner runner, GitMutationExecutor mutations)
+        GitRootState rootState, GitCommandRunner runner, GitMutationExecutor mutations)
     {
-        _workspace = workspace;
+        _rootState = rootState;
         _runner = runner;
         _mutations = mutations;
     }
@@ -27,8 +26,8 @@ public sealed class GitDiffService
     {
         if (entry.IsUntracked)
         {
-            if (_workspace.RootPath is null) return "";
-            var fullPath = Path.Combine(_workspace.RootPath, entry.Path);
+            if (_rootState.CurrentRoot is null) return "";
+            var fullPath = Path.Combine(_rootState.CurrentRoot, entry.Path);
             try
             {
                 var content = File.Exists(fullPath)

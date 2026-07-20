@@ -4,21 +4,20 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Services;
 
 /// <summary>リポジトリ初期化、ステージ、変更破棄、コミットを行う。</summary>
 public sealed class GitCommitService
 {
-    private readonly IWorkspaceService _workspace;
+    private readonly GitRootState _rootState;
     private readonly GitCommandRunner _runner;
     private readonly GitMutationExecutor _mutations;
 
     public GitCommitService(
-        IWorkspaceService workspace, GitCommandRunner runner, GitMutationExecutor mutations)
+        GitRootState rootState, GitCommandRunner runner, GitMutationExecutor mutations)
     {
-        _workspace = workspace;
+        _rootState = rootState;
         _runner = runner;
         _mutations = mutations;
     }
@@ -67,7 +66,7 @@ public sealed class GitCommitService
 
     public async Task<GitCommandResult> ApplyReverseDiscardPatchAsync(string patch)
     {
-        if (string.IsNullOrEmpty(_workspace.RootPath))
+        if (string.IsNullOrEmpty(_rootState.CurrentRoot))
             return new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。");
 
         var temp = Path.Combine(Path.GetTempPath(), $"loomo-discard-{Guid.NewGuid():N}.patch");

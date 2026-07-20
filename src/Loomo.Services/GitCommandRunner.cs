@@ -6,7 +6,6 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Services;
 
@@ -16,17 +15,17 @@ namespace sk0ya.Loomo.Services;
 public sealed class GitCommandRunner
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
-    private readonly IWorkspaceService _workspace;
+    private readonly GitRootState _rootState;
     private readonly TimeSpan _timeout;
 
-    public GitCommandRunner(IWorkspaceService workspace)
-        : this(workspace, DefaultTimeout)
+    public GitCommandRunner(GitRootState rootState)
+        : this(rootState, DefaultTimeout)
     {
     }
 
-    internal GitCommandRunner(IWorkspaceService workspace, TimeSpan timeout)
+    internal GitCommandRunner(GitRootState rootState, TimeSpan timeout)
     {
-        _workspace = workspace;
+        _rootState = rootState;
         _timeout = timeout;
     }
 
@@ -43,7 +42,7 @@ public sealed class GitCommandRunner
             return null;
         return Path.IsPathRooted(directory)
             ? directory
-            : Path.Combine(_workspace.RootPath ?? "", directory);
+            : Path.Combine(_rootState.CurrentRoot ?? "", directory);
     }
 
     internal Task<GitCommandResult> RunAsync(
@@ -55,7 +54,7 @@ public sealed class GitCommandRunner
         CancellationToken cancellationToken,
         params string[] args)
     {
-        var root = _workspace.RootPath;
+        var root = _rootState.CurrentRoot;
         if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
             return new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。");
 

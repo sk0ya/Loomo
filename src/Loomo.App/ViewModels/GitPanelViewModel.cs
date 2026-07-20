@@ -234,13 +234,19 @@ public sealed partial class GitPanelViewModel : ObservableObject
         StagedSelectedCount = _stagedSelection.Count;
     }
 
+    /// <summary>Git 操作の対象フォルダーの切替 UI 状態。サイドバー Git パネルとセッションペイン
+    /// （<see cref="GitSessionViewModel"/>）で共有する（どちらから切り替えても両方に反映される）。</summary>
+    public GitRootSwitchViewModel RootSwitch { get; }
+
     public GitPanelViewModel(
-        GitService git, IEditorService editor, IWorkspaceService workspace, DiffSessionViewModel diff)
+        GitService git, IEditorService editor, IWorkspaceService workspace, DiffSessionViewModel diff,
+        GitRootSwitchViewModel rootSwitch)
     {
         _git = git;
         _editor = editor;
         _workspace = workspace;
         _diff = diff;
+        RootSwitch = rootSwitch;
         _git.RepositoryChanged += OnRepositoryChanged;
     }
 
@@ -458,7 +464,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     private async Task OpenFileAsync(GitChangeItem? item)
     {
         if (item is null) return;
-        var root = _workspace.RootPath;
+        var root = _git.RootPath;
         if (string.IsNullOrEmpty(root)) return;
         var fullPath = Path.Combine(root, item.Entry.Path);
         if (!File.Exists(fullPath)) return;  // 削除済みなど、開く実体が無い

@@ -171,6 +171,11 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// </summary>
     public async Task ShowCommitFileAsync(string hash, string label, string? filePath, int lineInCommit)
     {
+        // マルチルート：filePath が現在の Git 操作対象と違うワークスペースフォルダーに属していたら、
+        // そのフォルダーのリポジトリへ切り替えてからコミットを引く（さもないと hash が別リポジトリの
+        // ものとして解決され、コミット範囲の変更に一致しない＝下の target が見つからない）。
+        if (!string.IsNullOrEmpty(filePath))
+            _git.SetActiveRootForPath(filePath);
         _loaded = true;
         _commitRange = (null, hash);
         OnPropertyChanged(nameof(CanOpenCommitInGit));

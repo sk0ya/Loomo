@@ -79,8 +79,18 @@
                                    Visibility="{Binding HasRemote, Converter={StaticResource InverseBoolToVis}}" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal"
-                                IsEnabled="{Binding HasRemote}">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- マルチルート（ワークスペースフォルダーが2つ以上）のときだけ：Git 操作の対象フォルダーを
+                             選ぶ。Git ペイン・サイドバー Git パネルと同じ GitRootSwitchViewModel を共有するので、
+                             どこで切り替えても全部に反映される。 -->
+                        <ComboBox MinHeight="26" Margin="0,0,6,0"
+                                  ItemsSource="{Binding RootSwitch.RootOptions}"
+                                  SelectedItem="{Binding RootSwitch.SelectedRootOption, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"
+                                  ToolTip="{Binding RootSwitch.SelectedRootOption.FullPath}"
+                                  Visibility="{Binding RootSwitch.IsMultiRoot, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Orientation="Horizontal"
+                                    IsEnabled="{Binding HasRemote}">
                         <Button Style="{StaticResource SyncOpButton}"
                                 ToolTip="フェッチ（リモートの最新を取得する。作業ツリーは変えない）"
                                 Command="{Binding FetchCommand}">
@@ -132,6 +142,7 @@
                                            Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
                             </StackPanel>
                         </Button>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </Border>

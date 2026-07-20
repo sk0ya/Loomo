@@ -144,28 +144,39 @@
             <Border DockPanel.Dock="Top" Margin="8,6,8,2" Padding="6,4" CornerRadius="4"
                     Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1">
                 <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" IsEnabled="{Binding HasRemote}">
-                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding FetchCommand}"
-                                Content="⭮ フェッチ"
-                                ToolTip="フェッチ（リモートの最新を取得する。作業ツリーは変えない）" />
-                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding PullCommand}"
-                                ToolTip="プル（上流の変更を現在ブランチへ取り込む）">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="↓ プル" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Behind}" FontWeight="SemiBold" Margin="4,0,0,0"
-                                           VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
-                                           Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding PushCommand}"
-                                ToolTip="プッシュ（現在ブランチのコミットを上流へ送る。上流未設定なら作成する）">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="↑ プッシュ" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Ahead}" FontWeight="SemiBold" Margin="4,0,0,0"
-                                           VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
-                                           Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
-                            </StackPanel>
-                        </Button>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                        <!-- マルチルート（ワークスペースフォルダーが2つ以上）のときだけ：Git 操作の対象フォルダーを
+                             選ぶ。サイドバー Git パネル・タイトルバーのブランチ切替と同じ GitRootSwitchViewModel を
+                             共有するので、どこで切り替えても全部に反映される。 -->
+                        <ComboBox MinHeight="24" Margin="0,0,8,0"
+                                  ItemsSource="{Binding RootSwitch.RootOptions}"
+                                  SelectedItem="{Binding RootSwitch.SelectedRootOption, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"
+                                  ToolTip="{Binding RootSwitch.SelectedRootOption.FullPath}"
+                                  Visibility="{Binding RootSwitch.IsMultiRoot, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Orientation="Horizontal" IsEnabled="{Binding HasRemote}">
+                            <Button Style="{StaticResource ToolbarButton}" Command="{Binding FetchCommand}"
+                                    Content="⭮ フェッチ"
+                                    ToolTip="フェッチ（リモートの最新を取得する。作業ツリーは変えない）" />
+                            <Button Style="{StaticResource ToolbarButton}" Command="{Binding PullCommand}"
+                                    ToolTip="プル（上流の変更を現在ブランチへ取り込む）">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="↓ プル" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Behind}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
+                                               Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource ToolbarButton}" Command="{Binding PushCommand}"
+                                    ToolTip="プッシュ（現在ブランチのコミットを上流へ送る。上流未設定なら作成する）">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="↑ プッシュ" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Ahead}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
+                                               Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
                                 Margin="8,0,2,0">

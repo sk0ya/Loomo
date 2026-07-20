@@ -102,6 +102,18 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         _workspace = workspace;
         _searchQuery = searchQuery;
         _treeMapper = treeMapper;
+        _workspace.FoldersChanged += (_, _) => OnFoldersChanged();
+    }
+
+    // マルチルートになった瞬間（フォルダー追加）は既定の開始フォルダーをワークスペース全体へ戻す。
+    // FolderTree の CurrentRootChanged は単一フォルダー時のピン留め切替でしか発火しない
+    // （複数フォルダー時は「今表示中のルート」という概念が無い＝全フォルダー見出しを同時に表示するため）
+    // ので、ここで直接 FoldersChanged を見て追従する。単一フォルダーへ戻ったときは
+    // CurrentRootChanged 側の SetDisplayRoot が改めて既定フォルダーを設定し直す。
+    private void OnFoldersChanged()
+    {
+        if (_workspace.Folders.Count > 1)
+            SetDefaultRoot(null);
     }
 
     partial void OnQueryChanged(string value)

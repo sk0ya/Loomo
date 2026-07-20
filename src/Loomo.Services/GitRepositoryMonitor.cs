@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Services;
 
@@ -10,18 +9,18 @@ namespace sk0ya.Loomo.Services;
 public sealed class GitRepositoryMonitor
 {
     private const int PollIntervalMs = 1500;
-    private readonly IWorkspaceService _workspace;
+    private readonly GitRootState _rootState;
     private readonly GitCommandRunner _runner;
     private readonly SemaphoreSlim _pollGate = new(1, 1);
     private Timer? _pollTimer;
     private int _liveTrackers;
     private string? _lastSignature;
 
-    public GitRepositoryMonitor(IWorkspaceService workspace, GitCommandRunner runner)
+    public GitRepositoryMonitor(GitRootState rootState, GitCommandRunner runner)
     {
-        _workspace = workspace;
+        _rootState = rootState;
         _runner = runner;
-        workspace.RootChanged += (_, _) =>
+        rootState.Changed += (_, _) =>
         {
             _lastSignature = null;
             RepositoryChanged?.Invoke(this, EventArgs.Empty);
@@ -52,7 +51,7 @@ public sealed class GitRepositoryMonitor
         if (!_pollGate.Wait(0)) return;
         try
         {
-            var root = _workspace.RootPath;
+            var root = _rootState.CurrentRoot;
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
             var result = await _runner.RunAsync(
                 "--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);

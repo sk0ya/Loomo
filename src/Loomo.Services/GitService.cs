@@ -15,6 +15,7 @@ namespace sk0ya.Loomo.Services;
 public sealed class GitService
 {
     private readonly IWorkspaceService _workspace;
+    private readonly GitRootState _rootState;
     private readonly GitCommandRunner _runner;
     private readonly GitStatusService _status;
     private readonly GitHistoryService _history;
@@ -31,18 +32,19 @@ public sealed class GitService
     public GitService(IWorkspaceService workspace)
     {
         _workspace = workspace;
-        _runner = new GitCommandRunner(workspace);
+        _rootState = new GitRootState(workspace);
+        _runner = new GitCommandRunner(_rootState);
         _status = new GitStatusService(_runner);
         _history = new GitHistoryService(_runner);
         _mutations = new GitMutationExecutor(_runner);
         _branches = new GitBranchService(_runner, _mutations);
         _merge = new GitMergeService(_mutations);
         _submodules = new GitSubmoduleService(_runner, _mutations);
-        _commits = new GitCommitService(workspace, _runner, _mutations);
+        _commits = new GitCommitService(_rootState, _runner, _mutations);
         _stashes = new GitStashService(_runner, _mutations);
-        _diff = new GitDiffService(workspace, _runner, _mutations);
+        _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
-        _monitor = new GitRepositoryMonitor(workspace, _runner);
+        _monitor = new GitRepositoryMonitor(_rootState, _runner);
         _monitor.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
@@ -52,9 +54,26 @@ public sealed class GitService
 
     public event EventHandler<GitOperationEventArgs>? OperationExecuted;
 
+    /// <summary>Git 操作の対象フォルダーが切り替わったとき（マルチルートの明示切替）。</summary>
+    public event EventHandler? ActiveRootChanged
+    {
+        add => _rootState.Changed += value;
+        remove => _rootState.Changed -= value;
+    }
+
     public IDisposable TrackLiveChanges() => _monitor.TrackLiveChanges();
 
-    public string? RootPath => _workspace.RootPath;
+    public string? RootPath => _rootState.CurrentRoot;
+
+    /// <summary>マルチルート：Git 操作の対象を選べるワークスペースフォルダー一覧。</summary>
+    public IReadOnlyList<string> AvailableRoots => _workspace.Folders;
+
+    /// <summary>Git 操作の対象フォルダーを明示的に切り替える（ワークスペースフォルダーでなければ無視）。</summary>
+    public void SetActiveRoot(string? path) => _rootState.SetRoot(path);
+
+    /// <summary>fullPath を含むワークスペースフォルダーへ Git 操作対象を切り替える（該当が無ければ何もしない）。
+    /// ブレーム・履歴などファイル起点の操作を、現在の対象と違うフォルダーのファイルに対して行うときに使う。</summary>
+    public void SetActiveRootForPath(string fullPath) => _rootState.SelectForPath(fullPath);
 
     public Task<GitStatusSnapshot> GetStatusAsync() => _status.GetStatusAsync();
 

@@ -11,6 +11,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     private readonly string _root = Path.Combine(Path.GetTempPath(), "loomo-git-panel-tests", Guid.NewGuid().ToString("N"));
     private FakeWorkspaceService _workspace = null!;
     private GitService _git = null!;
+    private GitRootSwitchViewModel _rootSwitch = null!;
 
     public async Task InitializeAsync()
     {
@@ -18,6 +19,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         _workspace = new FakeWorkspaceService();
         _workspace.OpenFolder(_root);
         _git = new GitService(_workspace);
+        _rootSwitch = new GitRootSwitchViewModel(_git, _workspace);
         await MustRunAsync("init");
         await MustRunAsync("config", "user.name", "Loomo Test");
         await MustRunAsync("config", "user.email", "loomo@example.invalid");
@@ -39,8 +41,8 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
-            new DiffSessionQuery(journal, _git, _workspace), new DiffSessionCommandHandler(files, journal, _git));
-        var vm = new GitPanelViewModel(_git, editor, _workspace, diff);
+            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
         // 未追跡ファイルは「バージョン管理外ファイル」セクションに並び、既定では未チェック。
         var section = Assert.Single(vm.WorkingTreeSections);
@@ -68,8 +70,8 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
-            new DiffSessionQuery(journal, _git, _workspace), new DiffSessionCommandHandler(files, journal, _git));
-        var vm = new GitPanelViewModel(_git, editor, _workspace, diff);
+            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Contains(vm.Staged, i => i.Entry.Path == "staged.txt");
         Assert.Empty(vm.WorkingTreeSections);

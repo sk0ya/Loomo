@@ -256,6 +256,15 @@
     <DockPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="GIT" />
 
+        <!-- マルチルート（ワークスペースフォルダーが2つ以上）のときだけ：Git 操作の対象フォルダーを選ぶ。
+             FolderTree の見出し ComboBox と同じ形式（ItemsSource+SelectedItem+DisplayMemberPath）。 -->
+        <ComboBox DockPanel.Dock="Top" Margin="8,4,8,0"
+                  ItemsSource="{Binding RootSwitch.RootOptions}"
+                  SelectedItem="{Binding RootSwitch.SelectedRootOption, Mode=TwoWay}"
+                  DisplayMemberPath="Label"
+                  ToolTip="{Binding RootSwitch.SelectedRootOption.FullPath}"
+                  Visibility="{Binding RootSwitch.IsMultiRoot, Converter={StaticResource BoolToVis}}" />
+
         <!-- リポジトリでないとき -->
         <StackPanel DockPanel.Dock="Top" Margin="10,4"
                     Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}">

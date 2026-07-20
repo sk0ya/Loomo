@@ -89,8 +89,13 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>サブモジュール一覧（0件ならビュー側でセクションごと隠す）。</summary>
     [ObservableProperty] private IReadOnlyList<GitSubmoduleInfo> _submodules = Array.Empty<GitSubmoduleInfo>();
 
+    /// <summary>Git 操作の対象フォルダーの切替 UI 状態。サイドバー Git パネル（<see cref="GitPanelViewModel"/>）
+    /// と共有する（どちらから切り替えても両方に反映される）。</summary>
+    public GitRootSwitchViewModel RootSwitch { get; }
+
     public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff,
-        GitSessionQuery query, GitSessionCommandHandler commands, GitHistoryViewModel history)
+        GitSessionQuery query, GitSessionCommandHandler commands, GitHistoryViewModel history,
+        GitRootSwitchViewModel rootSwitch)
     {
         _git = git;
         _editor = editor;
@@ -98,6 +103,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _query = query;
         Commands = commands;
         History = history;
+        RootSwitch = rootSwitch;
         Commands.StatusChanged += (_, status) =>
         {
             IsBusy = status.IsBusy;
@@ -239,9 +245,14 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     public async Task ShowPathHistoryAsync(string fullPath, string? selectCommitHash = null)
     {
+        // マルチルート：fullPath が現在の対象と違うワークスペースフォルダーに属していたら、
+        // そのフォルダーのリポジトリへ Git 操作対象を切り替えてから履歴を引く
+        // （さもないと現在の対象リポジトリへ誤って git log -- path が飛ぶ）。
+        _git.SetActiveRootForPath(fullPath);
         var root = _git.RootPath;
         if (string.IsNullOrEmpty(root)) return;
-        if (!_loaded) { _loaded = true; await RefreshAsync(); }
+        _loaded = true;
+        await RefreshAsync();
         await History.ShowPathAsync(root, fullPath, selectCommitHash);
     }
 

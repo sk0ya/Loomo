@@ -1,5 +1,4 @@
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Services;
 
@@ -12,13 +11,11 @@ public sealed class DiffSessionQuery
 {
     private readonly IFileChangeJournal _journal;
     private readonly GitService _git;
-    private readonly IWorkspaceService _workspace;
 
-    public DiffSessionQuery(IFileChangeJournal journal, GitService git, IWorkspaceService workspace)
+    public DiffSessionQuery(IFileChangeJournal journal, GitService git)
     {
         _journal = journal;
         _git = git;
-        _workspace = workspace;
     }
 
     public async Task<DiffFileList> LoadAsync(bool gitMode, (string? From, string To)? range)
@@ -27,9 +24,11 @@ public sealed class DiffSessionQuery
         return range is { } commitRange ? await LoadCommitRangeAsync(commitRange) : await LoadWorkingTreeAsync();
     }
 
+    // マルチルート：作業ツリー・コミット範囲の項目は常に「今 Git 操作の対象になっているフォルダー」
+    // （_git.RootPath）基準。AI 変更（絶対パス）はどのワークスペースフォルダー配下でも一致すればよい。
     public string ToDisplayPath(string fullPath)
     {
-        var root = _workspace.RootPath;
+        var root = _git.RootPath;
         if (!string.IsNullOrEmpty(root) && fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             return fullPath[root.Length..].TrimStart('\\', '/').Replace('\\', '/');
         return fullPath;
@@ -77,7 +76,7 @@ public sealed class DiffSessionQuery
         var status = await _git.GetStatusAsync();
         if (!status.IsRepository)
             return new DiffFileList(Array.Empty<DiffFileItem>(), "このワークスペースは git リポジトリではありません。");
-        var root = _workspace.RootPath ?? "";
+        var root = _git.RootPath ?? "";
         var items = status.Staged.Select(entry => (entry, true)).Concat(status.Unstaged.Select(entry => (entry, false)))
             .Select(pair =>
             {
@@ -95,7 +94,7 @@ public sealed class DiffSessionQuery
 
     private async Task<DiffFileList> LoadCommitRangeAsync((string? From, string To) range)
     {
-        var root = _workspace.RootPath ?? "";
+        var root = _git.RootPath ?? "";
         var items = (await _git.GetRangeChangesAsync(range.From, range.To)).Select(change => new DiffFileItem
         {
             FullPath = Path.Combine(root, change.Path), DisplayPath = change.Path,
