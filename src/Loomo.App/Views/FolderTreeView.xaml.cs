@@ -50,6 +50,30 @@ public partial class FolderTreeView : UserControl
             FileTree.Focus();
     }
 
+    // 常時表示の絞り込み欄。Esc で解除してツリーへフォーカスを戻し、Enter でツリーへフォーカスを移す。
+    private void OnFilterBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape:
+                FilterBox.Text = "";
+                FocusTree();
+                e.Handled = true;
+                break;
+
+            case Key.Enter:
+                FocusTree();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void OnClearFilterBoxClick(object sender, RoutedEventArgs e)
+    {
+        FilterBox.Text = "";
+        FilterBox.Focus();
+    }
+
     // 「フォルダーをワークスペースに追加」ボタン。選んだフォルダーをマルチルートワークスペースへ
     // 追加する（既存フォルダーと同一・祖先/子孫関係のときは ViewModel 側で無視される）。
     private void OnAddFolderToWorkspaceClick(object sender, RoutedEventArgs e)
