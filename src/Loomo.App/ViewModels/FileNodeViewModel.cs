@@ -24,6 +24,16 @@ public sealed partial class FileNodeViewModel : ObservableObject
     /// 見出しノードはピン留め不可・「ワークスペースから削除」メニューの対象になる。</summary>
     public bool IsWorkspaceFolderRoot { get; }
 
+    /// <summary>見出しノード（<see cref="IsWorkspaceFolderRoot"/>）専用：このワークスペースフォルダーの
+    /// ルート切替候補（自身＋ピン留めしたサブフォルダー）。FolderTreeRootState.RootOptions と同一インスタンス
+    /// を参照するため、ピン留めの増減がそのまま ComboBox に反映される。見出し以外では null。</summary>
+    public ObservableCollection<FolderRootOption>? RootSwitchOptions { get; }
+
+    /// <summary>見出し行の per-folder ComboBox の選択項目（見出し以外では使わない）。ComboBox からの
+    /// 選択変更で <see cref="FolderTreeViewModel.SwitchRootOption(FileNodeViewModel, FolderRootOption)"/>
+    /// を呼び、表示中サブフォルダーを切替える。</summary>
+    [ObservableProperty] private FolderRootOption? _selectedRootSwitchOption;
+
     // 拡張子から分類したベクターアイコン。形状は種別ごと、色はカテゴリ（コード/設定/マークアップ/
     // 画像/フォルダ/既定）で割り当てる。テーマに依らず一定（ファイル種別の色は固定が分かりやすい）。
     public Geometry IconGeometry { get; }
@@ -67,7 +77,9 @@ public sealed partial class FileNodeViewModel : ObservableObject
     public bool CanRemoveFromWorkspace => IsWorkspaceFolderRoot;
 
     public FileNodeViewModel(string fullPath, bool isDirectory, FolderTreeViewModel owner, string rootKey,
-        bool isWorkspaceFolderRoot = false)
+        bool isWorkspaceFolderRoot = false,
+        ObservableCollection<FolderRootOption>? rootSwitchOptions = null,
+        FolderRootOption? selectedRootSwitchOption = null)
     {
         FullPath = fullPath;
         IsDirectory = isDirectory;
@@ -80,6 +92,12 @@ public sealed partial class FileNodeViewModel : ObservableObject
         IsGitRepository = owner.IsGitRepositoryFor(rootKey);
         if (isDirectory && !isWorkspaceFolderRoot)
             _isPinned = owner.IsPinnedPath(fullPath);
+
+        RootSwitchOptions = rootSwitchOptions;
+        // ComboBox の初期選択はプロパティ経由で代入しない：生成された setter は
+        // OnSelectedRootSwitchOptionChanged を発火し、構築中に owner.SwitchRootOption を
+        // 呼んでしまう（不要な再切替・RootStateChanged の多重発火）。
+        _selectedRootSwitchOption = selectedRootSwitchOption;
 
         var iconKind = FileIcons.Classify(fullPath, isDirectory);
         IconGeometry = FileIcons.GeometryFor(iconKind);
@@ -143,5 +161,13 @@ public sealed partial class FileNodeViewModel : ObservableObject
     partial void OnIsSelectedChanged(bool value)
     {
         if (value) _owner.NotifySelected(FullPath);
+    }
+
+    // 見出し行の ComboBox からの切替。旧 SwitchRootOption(FileNodeViewModel, FolderRootOption) を経由するのは
+    // 見出しの右クリックメニューと同じ経路にするため（Watcher/RootStateChanged を含め挙動を一本化する）。
+    partial void OnSelectedRootSwitchOptionChanged(FolderRootOption? value)
+    {
+        if (IsWorkspaceFolderRoot && value is not null)
+            _owner.SwitchRootOption(this, value);
     }
 }

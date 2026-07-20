@@ -448,13 +448,26 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ===== マルチルート（複数ワークスペースフォルダー） =====
 
     /// <summary>workspace.Folders の変化（追加・削除）に、既存フォルダーの状態（Git・監視・ピン）を
-    /// 極力保ったまま追従する。Folders.Count が 1 以下へ戻ったときは単一フォルダー経路へ復帰する。</summary>
+    /// 極力保ったまま追従する。Folders.Count が 1 以下へ戻ったときは単一フォルダー経路へ復帰する。
+    /// 単一⇔複数の切替をまたいでプライマリフォルダーのピン留め・表示中サブフォルダーを引き継ぐ
+    /// （さもないとフォルダーを追加/削除するたびにピン留め切替候補が失われ、ルートの入れ替えが
+    /// できなくなる）。</summary>
     private void ReconcileRootStates()
     {
         var folders = _workspace.Folders;
 
         if (folders.Count <= 1)
         {
+            // 複数フォルダー時にプライマリへ溜まっていたピン留め・表示中サブフォルダーを、
+            // 単一フォルダー経路（RootOptions/ComboBox）へ引き継ぐ。
+            IReadOnlyList<string> pinnedForRestore = Array.Empty<string>();
+            string? displayedForRestore = null;
+            if (folders.Count == 1 && _multiRootStates.TryGetValue(folders[0], out var primaryState))
+            {
+                pinnedForRestore = primaryState.RootOptions.Where(o => o.IsPinned).Select(o => o.FullPath).ToList();
+                displayedForRestore = primaryState.DisplayedPath;
+            }
+
             foreach (var state in _multiRootStates.Values)
                 state.Watcher?.Dispose();
             _multiRootStates.Clear();
@@ -466,10 +479,17 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             // （watcher・git・Nodes の再構築）を実行させる（単一フォルダー化直後は両方とも
             // 古いマルチルート表示のままなので、素通りされると復旧できない）。
             _currentRoot = null;
-            BuildRootOptions(Array.Empty<string>());
-            SelectRootOption(RootOptions[0]);
+            BuildRootOptions(pinnedForRestore);
+
+            var toSelect = displayedForRestore is null ? null : FindRootOption(displayedForRestore);
+            SelectRootOption(toSelect ?? RootOptions[0]);
             return;
         }
+
+        // 単一フォルダー時に使っていたピン留め・表示中サブフォルダー（RootOptions/_currentRoot）は、
+        // このタイミング（初めて複数化する瞬間）でしか引き継げない——次にここへ来たときは
+        // 既にプライマリの FolderTreeRootState が存在するので、この分岐は通らない。
+        var wasSingleRoot = _multiRootStates.Count == 0;
 
         var next = new Dictionary<string, FolderTreeRootState>(StringComparer.OrdinalIgnoreCase);
         foreach (var folder in folders)
@@ -484,6 +504,25 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             var rootOption = new FolderRootOption(folder, LabelForWithin(folder, folder), isPinned: false);
             state.RootOptions.Add(rootOption);
             state.SelectedRootOption = rootOption;
+
+            if (wasSingleRoot && _workspaceRoot is not null && PathsEqual(folder, _workspaceRoot))
+            {
+                foreach (var pinned in RootOptions.Where(o => o.IsPinned))
+                    state.RootOptions.Add(new FolderRootOption(
+                        pinned.FullPath, LabelForWithin(folder, pinned.FullPath), isPinned: true));
+                RebuildPinnedSet(state);
+
+                if (_currentRoot is { Length: > 0 } current)
+                {
+                    var displayedOption = state.RootOptions.FirstOrDefault(o => PathsEqual(o.FullPath, current));
+                    if (displayedOption is not null)
+                    {
+                        state.SelectedRootOption = displayedOption;
+                        state.DisplayedPath = Path.GetFullPath(current);
+                    }
+                }
+            }
+
             next[folder] = state;
         }
 
@@ -515,7 +554,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         {
             var state = _multiRootStates[folder];
             desired.Add(new FileNodeViewModel(state.DisplayedPath, true, this, state.FolderPath,
-                isWorkspaceFolderRoot: true));
+                isWorkspaceFolderRoot: true,
+                rootSwitchOptions: state.RootOptions,
+                selectedRootSwitchOption: state.SelectedRootOption));
             if (state.Watcher is null)
                 StartWatchingRootState(state);
         }

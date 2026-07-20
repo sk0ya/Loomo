@@ -197,4 +197,73 @@ public sealed class FolderTreeMultiRootTests : IDisposable
         var secondaryHeaderBefore = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_secondary));
         Assert.Contains(secondaryHeaderBefore.Children, c => c.Name == "secondary.txt");
     }
+
+    // 回帰：単一フォルダー時に作ったピン留め・表示中サブフォルダーは、フォルダーを追加して
+    // 複数フォルダー化した瞬間に消えてはいけない（見出しの「ピン留めフォルダーへ切替」＝
+    // ルートの入れ替えができなくなる不具合の再発防止）。
+    [Fact]
+    public async Task AddFolder_preserves_pins_and_displayed_subfolder_from_single_root_mode()
+    {
+        var nestedInPrimary = Path.Combine(_primary, "nested");
+        Directory.CreateDirectory(nestedInPrimary);
+
+        var (sut, workspace) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+
+        // 単一フォルダー時：ピン留めしてルート（ComboBox）を切替える。
+        sut.PinFolder(nestedInPrimary);
+        sut.SelectedRootOption = sut.RootOptions.Single(o => o.IsPinned);
+        await sut.WhenTreeLoadedAsync();
+        Assert.Equal(Path.GetFullPath(nestedInPrimary), sut.CurrentRoot);
+
+        // 複数フォルダー化。
+        workspace.AddFolder(_secondary);
+        await sut.WhenTreeLoadedAsync();
+
+        Assert.True(sut.IsMultiRootWorkspace);
+        var primaryHeader = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_primary));
+
+        // ピン留め切替候補（自身＋nested）が引き継がれている＝ルートの入れ替えが可能。
+        var options = sut.RootOptionsFor(primaryHeader);
+        Assert.Contains(options, o => o.IsPinned && Path.GetFullPath(o.FullPath) == Path.GetFullPath(nestedInPrimary));
+
+        // 表示中だったサブフォルダーもそのまま引き継がれる。
+        Assert.Equal(Path.GetFullPath(nestedInPrimary), primaryHeader.FullPath);
+        Assert.True(sut.IsPinnedPath(nestedInPrimary));
+
+        // 見出しの右クリックから、フォルダー自身へ切替え直せる（＝入れ替えが機能する）。
+        sut.SwitchRootOption(primaryHeader, options.Single(o => !o.IsPinned));
+        await sut.WhenTreeLoadedAsync();
+        var switchedHeader = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_primary));
+        Assert.Equal(Path.GetFullPath(_primary), switchedHeader.FullPath);
+    }
+
+    // 回帰：複数フォルダー時にプライマリへ作ったピン留め・表示中サブフォルダーは、他フォルダーを
+    // 取り除いて単一フォルダーへ戻ったときも消えてはいけない（上と対称のケース）。
+    [Fact]
+    public async Task RemoveFolder_back_to_one_preserves_primarys_pins_and_displayed_subfolder()
+    {
+        var nestedInPrimary = Path.Combine(_primary, "nested");
+        Directory.CreateDirectory(nestedInPrimary);
+
+        var (sut, workspace) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+        workspace.AddFolder(_secondary);
+        await sut.WhenTreeLoadedAsync();
+
+        sut.PinFolder(nestedInPrimary);
+        var primaryHeader = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_primary));
+        sut.SwitchRootOption(primaryHeader, sut.RootOptionsFor(primaryHeader).Single(o => o.IsPinned));
+        await sut.WhenTreeLoadedAsync();
+
+        workspace.RemoveFolder(_secondary);
+        await sut.WhenTreeLoadedAsync();
+
+        Assert.False(sut.IsMultiRootWorkspace);
+        Assert.True(sut.IsPinnedPath(nestedInPrimary));
+        Assert.Equal(Path.GetFullPath(nestedInPrimary), sut.CurrentRoot);
+        Assert.Contains(sut.RootOptions, o => o.IsPinned && Path.GetFullPath(o.FullPath) == Path.GetFullPath(nestedInPrimary));
+    }
 }
