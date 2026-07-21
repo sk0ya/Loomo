@@ -37,8 +37,8 @@ internal static class LoomoServiceCollectionExtensions
 
         services.AddSingleton<sk0ya.Loomo.Services.Lsp.LspManagementService>();
         services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();
-        services.AddSingleton<sk0ya.Loomo.Core.Debug.IDebugService,
-            sk0ya.Loomo.Services.Debug.NetcoredbgDebugService>();
+        services.AddSingleton<sk0ya.Loomo.Services.Debug.IDebugSessionFactory,
+            sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory>();
         services.AddSingleton<ITestDiscoveryService,
             sk0ya.Loomo.Services.Debug.TestDiscoveryService>();
 

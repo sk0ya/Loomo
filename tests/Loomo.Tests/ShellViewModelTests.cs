@@ -89,7 +89,7 @@ public class ShellViewModelTests
             new SearchPanelQuery(searchService, searchMapper), searchMapper);
 
         var debugVm = new DebugViewModel(
-            new sk0ya.Loomo.Services.Debug.NetcoredbgDebugService(), workspace, new FakeTerminalService(),
+            new sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory(), workspace, new FakeTerminalService(),
             new sk0ya.Loomo.Services.Debug.TestDiscoveryService(),
             new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-launch-profiles.json")));

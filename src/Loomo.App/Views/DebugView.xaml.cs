@@ -84,10 +84,19 @@ public partial class DebugView : UserControl
 
     // ブレークポイント等で停止したら「変数」へ、続行したら「出力」へ自動で切り替える。
     // 開始/ビルド/テスト押下時の「出力」表示は OutputRequested（押下と同期）で行う。
+    // Output はセッション切替で参照先の ObservableCollection ごと差し替わるので、そのたびに購読と表示を作り直す。
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DebugViewModel.IsStopped) && _vm is not null)
             DebugTabs.SelectedIndex = _vm.IsStopped ? VariablesTab : OutputTab;
+
+        if (e.PropertyName == nameof(DebugViewModel.Output) && _vm is not null)
+        {
+            if (_observed is not null) _observed.CollectionChanged -= OnOutputChanged;
+            _observed = _vm.Output;
+            _observed.CollectionChanged += OnOutputChanged;
+            RebuildConsole();
+        }
     }
 
     // 実行系コマンド（開始/アタッチ/ビルド/テスト）押下で「出力」タブを即表示する。
@@ -130,8 +139,8 @@ public partial class DebugView : UserControl
         {
             if (d is ListBoxItem)
             {
-                if (DataContext is DebugViewModel vm)
-                    vm.Inspection.ActivateFrame(vm.Inspection.SelectedFrame);
+                if (DataContext is DebugViewModel { Inspection: { } insp })
+                    insp.ActivateFrame(insp.SelectedFrame);
                 return;
             }
         }

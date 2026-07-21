@@ -10,12 +10,12 @@ using sk0ya.Loomo.Services.Debug;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>実行中プロセスへのアタッチを扱うサブ ViewModel。一覧の列挙・絞り込み・接続を持つ。
-/// 停止してもそのプロセスは終了しない（デタッチのみ）。</summary>
+/// <summary>実行中プロセスへのアタッチを扱うサブ ViewModel。一覧の列挙・絞り込みは全セッション共有の「入り口」だが、
+/// 「アタッチ」は必ず<b>新しいセッション</b>を作る（既存セッションは止めない）。停止してもそのプロセスは終了しない
+/// （デタッチのみ）。</summary>
 public sealed partial class DebugAttachViewModel : ObservableObject
 {
-    private readonly IDebugService _debug;
-    private readonly IDebugSession _session;
+    private readonly DebugViewModel _manager;
 
     /// <summary>アタッチのプロセス選択パネルを開いているか。</summary>
     [ObservableProperty] private bool _showAttach;
@@ -38,18 +38,11 @@ public sealed partial class DebugAttachViewModel : ObservableObject
     /// <summary>最後に列挙した全プロセス（絞り込み前）。フィルタ変更時はこれを再フィルタする。</summary>
     private IReadOnlyList<DebugProcessViewModel> _allProcesses = Array.Empty<DebugProcessViewModel>();
 
-    /// <summary>直前のセッションがアタッチだったときの対象プロセス（再起動で再アタッチする）。launch なら null。</summary>
-    public DebugProcessViewModel? LastAttachProcess { get; private set; }
-
-    internal DebugAttachViewModel(IDebugService debug, IDebugSession session)
+    internal DebugAttachViewModel(DebugViewModel manager)
     {
-        _debug = debug;
-        _session = session;
-        _session.SessionStateChanged += () => AttachCommand.NotifyCanExecuteChanged();
+        _manager = manager;
+        _manager.SessionStateChanged += () => AttachCommand.NotifyCanExecuteChanged();
     }
-
-    /// <summary>再起動が launch を選ぶように、直前アタッチの記録を消す（起動側から呼ぶ）。</summary>
-    public void ClearLastAttach() => LastAttachProcess = null;
 
     /// <summary>アタッチパネルの開閉。開くときに（未取得なら）プロセス一覧を読み込む。</summary>
     [RelayCommand]
@@ -60,39 +53,50 @@ public sealed partial class DebugAttachViewModel : ObservableObject
             await RefreshProcessesAsync();
     }
 
-    private bool CanAttach() => !_session.IsBusy && !_session.IsTaskRunning && SelectedProcess is not null;
+    private bool CanAttach() => !_manager.IsTaskRunning && SelectedProcess is not null;
 
-    /// <summary>選択中プロセスにアタッチする。停止してもそのプロセスは終了しない（デタッチのみ）。</summary>
+    /// <summary>選択中プロセスに、新しいセッションでアタッチする。</summary>
     [RelayCommand(CanExecute = nameof(CanAttach))]
     private async Task Attach()
     {
-        if (SelectedProcess is { } proc) await AttachToAsync(proc);
+        if (SelectedProcess is { } proc) await AttachToNewSessionAsync(proc);
     }
 
-    /// <summary>指定プロセスにアタッチする（コマンド本体と再起動の共通処理）。</summary>
-    public async Task AttachToAsync(DebugProcessViewModel proc)
+    /// <summary>指定プロセスへ新しいセッションでアタッチする（コマンド本体）。</summary>
+    public async Task AttachToNewSessionAsync(DebugProcessViewModel proc)
     {
-        _session.RefreshAdapter();
-        if (_session.IsAdapterMissing)
+        _manager.Refresh();
+        if (_manager.IsAdapterMissing)
         {
-            _session.StatusMessage = "アダプタ未導入";
-            _session.Append(DebugOutputCategory.Important,
+            _manager.StatusMessage = "アダプタ未導入";
+            _manager.Append(DebugOutputCategory.Important,
                 $"デバッグアダプタ {DebugAdapterCatalog.Netcoredbg.Executable} が見つかりません。下のバーから導入できます。");
             return;
         }
 
-        _session.RequestOutput();  // 押下時に即「出力」へ
         ShowAttach = false;
-        LastAttachProcess = proc;  // 再起動で再アタッチする対象
-        var token = _session.BeginSession();
+        var session = _manager.CreateSession($"{proc.Name} (PID {proc.Pid})", DebugSessionKind.Attach);
+        session.AttachedProcess = proc;
+        await AttachIntoAsync(session, proc);
+    }
+
+    /// <summary>同じプロセスへ、既存セッション（同じタブ）で再アタッチする（Restart 用）。</summary>
+    internal async Task RelaunchIntoAsync(DebugSessionViewModel session, DebugProcessViewModel proc)
+        => await AttachIntoAsync(session, proc);
+
+    private async Task AttachIntoAsync(DebugSessionViewModel session, DebugProcessViewModel proc)
+    {
+        _manager.RequestOutput();  // 押下時に即「出力」へ
+        var iSession = (IDebugSession)session;
+        var token = iSession.BeginSession();
         try
         {
-            await _debug.AttachAsync(new DebugAttachConfig(proc.Pid, proc.Name), token);
+            await session.DebugService.AttachAsync(new DebugAttachConfig(proc.Pid, proc.Name), token);
         }
         catch (OperationCanceledException) { /* 停止操作 */ }
         catch (Exception ex)
         {
-            _session.Append(DebugOutputCategory.Important, $"アタッチでエラー: {ex.Message}");
+            iSession.Append(DebugOutputCategory.Important, $"アタッチでエラー: {ex.Message}");
         }
     }
 

@@ -25,8 +25,10 @@
                 </StackPanel>
             </Border>
 
-            <!-- 対象（.dll/.exe）＋引数/環境変数：デバッグ前のみ表示（デバッグ中は隠す）。 -->
-            <StackPanel Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}">
+            <!-- 対象（.dll/.exe）＋引数/環境変数：常時編集可（複数セッション対応——他のセッションが実行中でも、
+                 違う対象/引数でもう1本始めたいことがあるため隠さない。ここでの編集は「次に開始するセッション」に
+                 効くだけで、実行中のセッションには影響しない）。 -->
+            <StackPanel>
                 <TextBlock Text="起動構成" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="2,0,0,3" />
 
                 <!-- 構成（プロファイル）の管理：追加/名前変更/削除。切替はヘッダーのコンボでも可能。 -->
@@ -97,9 +99,9 @@
                           ToolTip="外部/フレームワークコードへステップインしない" />
             </StackPanel>
 
-            <!-- プロセスにアタッチ：トグルで一覧を展開し、選んで接続。停止してもそのプロセスは終了しない。 -->
-            <StackPanel Margin="0,10,0,0"
-                        Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}">
+            <!-- プロセスにアタッチ：トグルで一覧を展開し、選んで接続。停止してもそのプロセスは終了しない。
+                 常時表示（他のセッションが実行中でも、別プロセスへもう1本アタッチできる）。 -->
+            <StackPanel Margin="0,10,0,0">
                 <Button Content="⮌ プロセスにアタッチ" Style="{StaticResource SecondaryButton}" Height="24" Padding="10,0"
                         HorizontalAlignment="Left" Command="{Binding Attach.ToggleAttachCommand}"
                         ToolTip="実行中の .NET プロセスにアタッチ（一覧を開閉）" />

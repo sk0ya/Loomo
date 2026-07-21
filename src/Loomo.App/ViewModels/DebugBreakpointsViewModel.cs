@@ -14,10 +14,11 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// エディタのガター表示の元データでもある（<see cref="IDebugSession.RaiseBreakpointsRefreshed"/> でガターを同期させる）。</summary>
 public sealed partial class DebugBreakpointsViewModel : ObservableObject
 {
-    private readonly IDebugService _debug;
+    private readonly Func<IEnumerable<IDebugService>> _activeDebugServices;
     private readonly IDebugSession _session;
 
-    /// <summary>ソースパス（絶対）→ そのファイルのブレークポイント行。行・条件・有効フラグの真実。</summary>
+    /// <summary>ソースパス（絶対）→ そのファイルのブレークポイント行。行・条件・有効フラグの真実。
+    /// ブレークポイントはファイル単位でグローバル共有（Rider 同様、セッションごとに別々には持たない）。</summary>
     private readonly Dictionary<string, List<BreakpointViewModel>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>全ブレークポイントのフラット一覧（管理パネルの表示元）。</summary>
@@ -26,10 +27,19 @@ public sealed partial class DebugBreakpointsViewModel : ObservableObject
     /// <summary>ブレークポイントが 1 件でもあるか（パネルの空案内の出し分け）。</summary>
     [ObservableProperty] private bool _hasBreakpoints;
 
-    internal DebugBreakpointsViewModel(IDebugService debug, IDebugSession session)
+    internal DebugBreakpointsViewModel(Func<IEnumerable<IDebugService>> activeDebugServices, IDebugSession session)
     {
-        _debug = debug;
+        _activeDebugServices = activeDebugServices;
         _session = session;
+    }
+
+    /// <summary>新しく作った（まだ起動していない）セッションへ、現在の全ブレークポイントを流し込む。
+    /// 起動時の構成フェーズ（initialized イベント）で送り直されるので、開始/アタッチの前に呼べばよい。</summary>
+    internal void PrimeSession(IDebugService debug)
+    {
+        foreach (var (path, list) in _breakpoints)
+            _ = debug.SetBreakpointsAsync(path, list.OrderBy(b => b.Line0).Select(b => b.ToModel()).ToList(),
+                CancellationToken.None);
     }
 
     /// <summary>あるファイルのブレークポイントをトグルする（行は 0 始まり）。新しい行集合を返す。
@@ -142,13 +152,14 @@ public sealed partial class DebugBreakpointsViewModel : ObservableObject
         return bp;
     }
 
-    /// <summary>そのファイルのブレークポイント（条件込み）をアダプタへ送る。</summary>
+    /// <summary>そのファイルのブレークポイント（条件込み）を、実行中/起動中の全セッションのアダプタへ送る。</summary>
     private void PushBreakpoints(string path)
     {
         var models = _breakpoints.TryGetValue(path, out var list)
             ? list.OrderBy(b => b.Line0).Select(b => b.ToModel()).ToList()
             : new List<DebugBreakpoint>();
-        _ = _debug.SetBreakpointsAsync(path, models, CancellationToken.None);
+        foreach (var debug in _activeDebugServices())
+            _ = debug.SetBreakpointsAsync(path, models, CancellationToken.None);
     }
 
     private void RefreshFlags() => HasBreakpoints = Breakpoints.Count > 0;

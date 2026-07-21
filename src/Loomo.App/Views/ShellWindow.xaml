@@ -1049,14 +1049,24 @@
                                   ItemsSource="{Binding Debug.Profiles.Profiles}"
                                   SelectedItem="{Binding Debug.Profiles.SelectedProfile, Mode=TwoWay}"
                                   DisplayMemberPath="Name" ToolTip="デバッグ構成" />
+                        <!-- セッション切替：複数のデバッグセッションを同時実行しているときだけ表示する（1 個の間は
+                             従来どおり見た目が変わらない）。選択中セッションのコールスタック/変数/出力をデバッグ
+                             ペインへ表示する（Rider の実行ツールウィンドウのタブ切替と同じ発想）。 -->
+                        <ComboBox DockPanel.Dock="Left" Margin="6,0,0,0" Width="170" VerticalAlignment="Center"
+                                  Visibility="{Binding Debug.HasMultipleSessions, Converter={StaticResource BoolToVis}}"
+                                  ItemsSource="{Binding Debug.Sessions}"
+                                  SelectedItem="{Binding Debug.ActiveSession, Mode=TwoWay}"
+                                  DisplayMemberPath="DisplayName" ToolTip="表示中のデバッグセッション" />
 
                         <!-- デバッグツールバー（タブより上はヘッダーのみ）。状態で出し分け：
-                             デバッグ前＝開始/ビルド/テスト、停止中＝続行/ステップ、デバッグ中＝中断/再起動/停止。
+                             開始/ビルド/テストは常時（複数セッション対応——アクティブなセッションが実行中でも、
+                             新しいセッションを始められないと「2つ目を開始」できないため常に出す）、
+                             停止中＝続行/ステップ、デバッグ中＝中断/再起動/停止（どちらもアクティブなセッションに対して行う）。
                              起動構成・例外・アタッチは「構成」タブへ。 -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                            <!-- デバッグ前のみ：開始・ビルド・テスト -->
-                            <StackPanel Orientation="Horizontal"
-                                        Visibility="{Binding Debug.IsBusy, Converter={StaticResource InverseBoolToVis}}">
+                            <!-- 常時：開始・ビルド・テスト（新しいセッションを始める入口なので、他のセッションが
+                                 実行中でも隠さない） -->
+                            <StackPanel Orientation="Horizontal">
                                 <Button Style="{StaticResource FlatButton}" Height="22" Padding="12,0" Margin="0,1,6,1"
                                         FontSize="{DynamicResource Fs11}" Content="▶ 開始" ToolTip="デバッグを開始"
                                         Command="{Binding Debug.Launch.StartCommand}" />

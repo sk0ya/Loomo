@@ -32,7 +32,7 @@ public partial class ShellWindow {
     private void WireEditorForDebug(VimEditorControl control) {
         control.SetBreakpointsEnabled(true);
         control.BreakpointToggled += line => OnEditorBreakpointToggled(control, line);
-        control.DataTipEvaluator = (req, _) => _vm.Debug.Inspection.EvaluateDataTipAsync(req.Expression);
+        control.DataTipEvaluator = (req, _) => _vm.Debug.Inspection?.EvaluateDataTipAsync(req.Expression) ?? Task.FromResult<string?>(null);
         control.SetDataTipsEnabled(_vm.Debug.IsStopped);
         control.BufferChanged += (_, _) => SyncEditorBreakpoints(control);
         SyncEditorBreakpoints(control);
