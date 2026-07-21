@@ -166,6 +166,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SearchResultTreeMapper>();
         services.AddSingleton<SearchPanelQuery>();
         services.AddSingleton<SearchPanelViewModel>();
+        services.AddSingleton<ProblemsPanelViewModel>();
         services.AddSingleton<sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore>();
         services.AddSingleton<DebugViewModel>();
         services.AddSingleton<TrailStore>();

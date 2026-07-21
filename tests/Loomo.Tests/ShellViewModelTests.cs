@@ -87,6 +87,7 @@ public class ShellViewModelTests
         var searchMapper = new SearchResultTreeMapper();
         var searchVm = new SearchPanelViewModel(workspace,
             new SearchPanelQuery(searchService, searchMapper), searchMapper);
+        var problemsVm = new ProblemsPanelViewModel();
 
         var debugVm = new DebugViewModel(
             new sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory(), workspace, new FakeTerminalService(),
@@ -96,7 +97,7 @@ public class ShellViewModelTests
 
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
-            new PegboardViewModel(), searchVm, debugVm,
+            new PegboardViewModel(), searchVm, problemsVm, debugVm,
             new TrailViewModel(new TrailStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db"))));
     }

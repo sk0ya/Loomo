@@ -158,6 +158,7 @@ public partial class ShellWindow : Window {
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
         InitializeDebugWiring();
+        InitializeProblemsWiring();
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
         Closed += OnClosed;

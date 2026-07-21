@@ -200,6 +200,8 @@
                             Command="{Binding ShowExplorerCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索（全文検索 / grep）"
                             Command="{Binding ShowSearchCommand}" />
+                    <Button Style="{StaticResource IconButton}" Content="⚠" ToolTip="診断（開いているファイルのエラー/警告）"
+                            Command="{Binding ShowProblemsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
                             Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
@@ -433,6 +435,8 @@
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
                     <views:SearchPanelView DataContext="{Binding SearchPanel}"
                                            Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Search}" />
+                    <views:ProblemsPanelView DataContext="{Binding Problems}"
+                                             Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Problems}" />
                     <views:TabsView DataContext="{Binding Tabs}"
                                     Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Tabs}" />
                     <views:GitPanelView DataContext="{Binding GitPanel}"

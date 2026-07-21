@@ -12,7 +12,8 @@ public enum SidebarPanel
     Appearance,
     Git,
     Pegboard,
-    Search
+    Search,
+    Problems
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -47,6 +48,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
     public SearchPanelViewModel SearchPanel { get; }
+    public ProblemsPanelViewModel Problems { get; }
     public DebugViewModel Debug { get; }
     /// <summary>ウィンドウ最下部の軌跡（操作ログ）バー。クリックで通過した地点へ戻る。</summary>
     public TrailViewModel Trail { get; }
@@ -81,6 +83,7 @@ public sealed partial class ShellViewModel : ObservableObject
         TraceSessionViewModel traceSession,
         PegboardViewModel pegboard,
         SearchPanelViewModel searchPanel,
+        ProblemsPanelViewModel problems,
         DebugViewModel debug,
         TrailViewModel trail)
     {
@@ -103,6 +106,7 @@ public sealed partial class ShellViewModel : ObservableObject
         TraceSession = traceSession;
         Pegboard = pegboard;
         SearchPanel = searchPanel;
+        Problems = problems;
         Debug = debug;
         Trail = trail;
 
@@ -176,6 +180,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar の検索アイコン。grep（全文検索）パネルを開く。</summary>
     [RelayCommand]
     private void ShowSearch() => Activate(SidebarPanel.Search);
+
+    /// <summary>ActivityBar の診断アイコン。開いているエディタタブの診断（エラー/警告）一覧を開く。</summary>
+    [RelayCommand]
+    private void ShowProblems() => Activate(SidebarPanel.Problems);
 
     /// <summary>検索パネルを開く（トグルせず必ず開く）。フォルダーツリーの「このフォルダーで検索」用。</summary>
     public void RevealSearchPanel()

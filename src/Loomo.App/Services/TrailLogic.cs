@@ -67,7 +67,7 @@ public static class TrailLogic
     {
         SidebarPanel.Explorer => "エクスプローラ", SidebarPanel.Search => "検索",
         SidebarPanel.Tabs => "タブ一覧", SidebarPanel.Git => "Gitパネル",
-        SidebarPanel.Pegboard => "ペグボード",
+        SidebarPanel.Pegboard => "ペグボード", SidebarPanel.Problems => "診断",
         _ => panel.ToString()
     };
 }
