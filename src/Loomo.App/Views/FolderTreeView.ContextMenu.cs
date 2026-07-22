@@ -391,6 +391,6 @@ public partial class FolderTreeView
     }
 
     private static void ShowError(string message)
-        => MessageBox.Show(message, "Loomo", MessageBoxButton.OK, MessageBoxImage.Warning);
+        => ToastService.Error(message);
 }
 

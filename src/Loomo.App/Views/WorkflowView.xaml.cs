@@ -63,8 +63,7 @@ public partial class WorkflowView : UserControl
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show($"ファイルを読み込めませんでした:\n{ex.Message}", "Loomo",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            ToastService.Error($"ファイルを読み込めませんでした: {ex.Message}");
         }
     }
 

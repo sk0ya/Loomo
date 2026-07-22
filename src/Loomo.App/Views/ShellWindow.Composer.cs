@@ -72,7 +72,7 @@ public partial class ShellWindow {
         try {
             command = ComposerCommandBuilder.Build(editor.Text, ComposerCommandBuilder.DefaultScriptDirectory());
         } catch (Exception ex) {
-            MessageBox.Show(this, $"コンポーザの実行準備に失敗しました: {ex.Message}", "コンポーザ", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ToastService.Error($"コンポーザの実行準備に失敗しました: {ex.Message}");
             return;
         }
         if (command is null)

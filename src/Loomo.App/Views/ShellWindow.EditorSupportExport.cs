@@ -85,5 +85,5 @@ public partial class ShellWindow {
         }
     }
     private void ReportEditorSupportExportError(string kind, string message)
-        => MessageBox.Show(this, $"{kind} のエクスポートに失敗しました。\n{message}", "エクスポート", MessageBoxButton.OK, MessageBoxImage.Warning);
+        => ToastService.Error($"{kind} のエクスポートに失敗しました。 {message}");
 }

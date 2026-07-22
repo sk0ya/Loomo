@@ -110,7 +110,7 @@ public partial class ShellWindow {
         if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
             return;
         if (!_vm.Workspaces.RemoveWorkspaceCommand.CanExecute(entry)) {
-            MessageBox.Show( this, "最後のワークスペースは削除できません（常に1つは開いている必要があります）。", "ワークスペースの削除", MessageBoxButton.OK, MessageBoxImage.Information);
+            ToastService.Info("最後のワークスペースは削除できません（常に1つは開いている必要があります）。");
             return;
         }
         var result = MessageBox.Show( this, $"ワークスペース「{entry.Name}」を一覧から削除しますか？\n" +

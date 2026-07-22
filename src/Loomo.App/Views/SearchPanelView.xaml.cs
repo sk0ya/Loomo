@@ -382,8 +382,7 @@ public partial class SearchPanelView : UserControl
             return;
 
         var (files, matches) = vm.ReplaceAll();
-        MessageBox.Show($"{files} ファイルの {matches} 件を置換しました。",
-            "Loomo", MessageBoxButton.OK, MessageBoxImage.Information);
+        ToastService.Success($"{files} ファイルの {matches} 件を置換しました。");
     }
 
     /// <summary>クエリ欄のキー操作。Down で先頭ファイルへ移動、Esc でクエリをクリア（結果とエディタのハイライトも消える）。</summary>

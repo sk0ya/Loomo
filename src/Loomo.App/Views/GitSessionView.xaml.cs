@@ -501,8 +501,7 @@ public partial class GitSessionView : UserControl
         var (entries, error) = await vm.Commands.GetRebaseCandidatesAsync(row);
         if (error is not null)
         {
-            MessageBox.Show(Window.GetWindow(this)!, error, "インタラクティブリベース",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            ToastService.Error(error);
             return;
         }
         var answer = MessageBox.Show(Window.GetWindow(this)!,

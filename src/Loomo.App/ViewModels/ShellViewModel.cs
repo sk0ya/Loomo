@@ -52,6 +52,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public DebugViewModel Debug { get; }
     /// <summary>ウィンドウ最下部の軌跡（操作ログ）バー。クリックで通過した地点へ戻る。</summary>
     public TrailViewModel Trail { get; }
+    /// <summary>右下に積み上げて表示する非モーダルなトースト通知（<see cref="Services.ToastService"/>）。</summary>
+    public ToastHostViewModel Toasts { get; } = new();
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty] private bool _isSidebarVisible = true;

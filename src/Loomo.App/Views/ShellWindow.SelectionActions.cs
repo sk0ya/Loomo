@@ -180,7 +180,7 @@ public partial class ShellWindow {
             try {
                 control.Save(path);
             } catch (Exception ex) {
-                MessageBox.Show(this, $"保存に失敗したため実行を中止しました: {ex.Message}", "ターミナルで実行", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ToastService.Error($"保存に失敗したため実行を中止しました: {ex.Message}");
                 return;
             }
         }

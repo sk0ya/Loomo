@@ -1628,6 +1628,60 @@
                  全面・最前面・ヒットテスト無効（構築は ShellWindow.PaneLayout.cs）。 -->
             <Canvas x:Name="DragGhostLayer" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="3"
                     Panel.ZIndex="200" IsHitTestVisible="False" Visibility="Collapsed" />
+
+            <!-- トースト通知：右下に積み上げ表示。MessageBox.Show と違い非モーダルで自動的に消える
+                 （ToastService／ToastHostViewModel、§03参照）。決定が要る確認は引き続き MessageBox。 -->
+            <ItemsControl Grid.ColumnSpan="4" Grid.RowSpan="3" Panel.ZIndex="250" IsHitTestVisible="True"
+                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"
+                          ItemsSource="{Binding Toasts.Items}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="ToastBorder" Margin="0,6,0,0" MinWidth="240" MaxWidth="420"
+                                Background="{DynamicResource Panel}" BorderThickness="0,0,0,0"
+                                CornerRadius="4" Padding="10,8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.35" />
+                            </Border.Effect>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="4" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="AccentBar" Grid.Column="0" Background="{DynamicResource FgDim}"
+                                        CornerRadius="2" Margin="0,0,8,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource Fg}"
+                                           FontSize="{DynamicResource Fs12}" />
+                                <Button Grid.Column="2" Style="{StaticResource CaptionButton}" Width="20" Height="20"
+                                        VerticalAlignment="Top" Content="×" Foreground="{DynamicResource FgDim}"
+                                        ToolTip="閉じる"
+                                        Command="{Binding DataContext.Toasts.DismissCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Kind}" Value="Info">
+                                <Setter TargetName="AccentBar" Property="Background" Value="{DynamicResource Accent}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Success">
+                                <Setter TargetName="AccentBar" Property="Background" Value="{DynamicResource Success}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Warning">
+                                <Setter TargetName="AccentBar" Property="Background" Value="{DynamicResource Error}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Error">
+                                <Setter TargetName="AccentBar" Property="Background" Value="{DynamicResource Error}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </Grid>
     </Border>
 </Window>
