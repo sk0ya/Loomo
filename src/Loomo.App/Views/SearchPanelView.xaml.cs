@@ -298,9 +298,15 @@ public partial class SearchPanelView : UserControl
     }
 
     /// <summary>一致行（grep）やファイル名ヒットを選択したらエディタでプレビューする（単クリック・矢印キー移動）。
-    /// grep のファイル見出し（一致行を子に持つグループ）は展開用なのでプレビューしない。</summary>
+    /// grep のファイル見出し（一致行を子に持つグループ）は展開用なのでプレビューしない。
+    /// プレビュー（ActivateEditorTab 経由）はエディタコントロールへ同期的にキーボードフォーカスを奪う
+    /// （PaneSplitView.Activate → FocusFocused）ため、選択変更の直前に結果ツリーがフォーカスを
+    /// 持っていた（＝矢印キーやクリックでこのツリーを操作中だった）場合は、プレビュー後にフォーカスを
+    /// ツリーへ戻し、引き続き矢印キーで選択を送れるようにする。ダブルクリック／Enter による明示的な
+    /// Activate はこの対象外＝そのままエディタへフォーカスが移る（編集に入る意図のため）。</summary>
     private void OnResultSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        var hadFocus = ResultTree.IsKeyboardFocusWithin;
         switch (e.NewValue)
         {
             case SearchMatchItem match:
@@ -309,7 +315,48 @@ public partial class SearchPanelView : UserControl
             case SearchFileGroup group when group.Count == 0: // ファイル名ヒット
                 Vm?.Preview(group);
                 break;
+            default:
+                return;
         }
+        if (hadFocus)
+            RestoreResultTreeFocus();
+    }
+
+    /// <summary>結果ツリーの現在選択中の節点へキーボードフォーカスを戻す（矢印キー操作を継続できるように）。
+    /// プレビュー先のファイルが未読込／外部変更ありだと、読込み直しやそれに続く git 差分更新が非同期に
+    /// 走り、その完了時にエディタコントロールが再度フォーカスを奪い返すことがある（この時点ではまだ
+    /// 起きていないので検出できない）。ディスパッチャがアイドルになったところでもう一度確認・再取得する。</summary>
+    private void RestoreResultTreeFocus()
+    {
+        if (!ResultTree.IsKeyboardFocusWithin)
+            FocusSelectedResultItem();
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!ResultTree.IsKeyboardFocusWithin)
+                FocusSelectedResultItem();
+        }), DispatcherPriority.ApplicationIdle);
+    }
+
+    private void FocusSelectedResultItem()
+    {
+        if (FindSelectedContainer(ResultTree) is { } container)
+            container.Focus();
+        else
+            ResultTree.Focus();
+    }
+
+    private static TreeViewItem? FindSelectedContainer(ItemsControl parent)
+    {
+        for (var i = 0; i < parent.Items.Count; i++)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromIndex(i) is not TreeViewItem tvi)
+                continue;
+            if (tvi.IsSelected)
+                return tvi;
+            if (FindSelectedContainer(tvi) is { } found)
+                return found;
+        }
+        return null;
     }
 
     /// <summary>ダブルクリックで通常タブへ昇格（プレビューでなく確定して開く）。</summary>
