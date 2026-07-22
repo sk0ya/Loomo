@@ -158,16 +158,25 @@ public partial class ShellWindow {
             _stageResizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _stageResizeTimer.Tick += (_, _) => {
                 _stageResizeTimer!.Stop();
-                if (!_stageActive)
-                    return;
-                var size = StageVirtualSize();
-                if (Math.Abs(size.Width - _stageBuiltSize.Width) > 1
-                    || Math.Abs(size.Height - _stageBuiltSize.Height) > 1)
-                    RebuildStage();
+                RebuildStageIfResized();
             };
         }
         _stageResizeTimer.Stop();
         _stageResizeTimer.Start();
+    }
+    /// <summary>
+    /// 舞台の再構築（袖ミニチュアの再描画を含む強制 UpdateLayout）は、サイドバー／ペインスプリッターの
+    /// ドラッグ中に呼ぶと GridSplitter のマウスキャプチャを奪ってドラッグが分断される
+    /// （§ScheduleLayoutWings と同種の不具合、192166d）。ドラッグ中はスキップし、DragCompleted 側から
+    /// 後追いで呼び直す。
+    /// </summary>
+    private void RebuildStageIfResized() {
+        if (!_stageActive || _paneSplitterDragging)
+            return;
+        var size = StageVirtualSize();
+        if (Math.Abs(size.Width - _stageBuiltSize.Width) > 1
+            || Math.Abs(size.Height - _stageBuiltSize.Height) > 1)
+            RebuildStage();
     }
     private bool IsSessionEnabled(PaneKind kind) => _enabledSessions.Contains(kind);
     private bool IsShownInMain(PaneKind kind) {

@@ -136,6 +136,7 @@ public partial class ShellWindow : Window {
             _paneSplitterDragging = false;
             PaneLayoutDebugLog.Log($"SidebarSplitter DragCompleted -> SidebarColumn.Width={SidebarColumn.Width}");
             ScheduleLayoutWings();
+            RebuildStageIfResized();
         };
         if (PaneLayoutDebugLog.Enabled) {
             DependencyPropertyDescriptor.FromProperty(ColumnDefinition.WidthProperty, typeof(ColumnDefinition))
