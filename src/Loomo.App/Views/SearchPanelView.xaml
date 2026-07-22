@@ -166,6 +166,16 @@
                                   IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Symbol, Mode=TwoWay}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 「詳細」トグル：検索フォルダー・include/exclude glob 行の表示/非表示（既定は畳んで
+                         設定欄の縦幅を詰める）。すでに絞り込み中（SearchRoot が既定と違う／glob 入力済み）なら
+                         トグルの状態に関わらず該当行が自動で出るので、ここは「何も絞り込んでいないときに
+                         新しく設定したい」場合の開閉だけを担う。矢印アイコンだと「すべて展開/折りたたみ」の
+                         2つの矢印アイコンと並んで紛らわしく用途も伝わらなかったため、文字ラベルにする
+                         （モード切替ボタンと同じ文字トグルの体裁）。 -->
+                    <ToggleButton Content="詳細" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="検索フォルダー・含める/除外する glob を表示"
+                                  IsChecked="{Binding IsAdvancedVisible, Mode=TwoWay}" />
                     <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
                             ToolTip="すべて展開" Click="OnExpandAll">
                         <Path Width="11" Height="11" Stretch="Uniform"
@@ -185,9 +195,10 @@
                  空＝ワークスペース全体。マルチルート時は先頭に対象フォルダーの表示名を付けて指定する
                  （例: フォルダー名/src。結果ツリーのフォルダー見出しと同じ表記）。入力中はサブフォルダの
                  補完候補をポップアップ表示し（Ctrl+Space でも呼び出せる）、↺ で FolderTree のルートへ戻す。
-                 ターミナル検索時は隠す。 -->
+                 ターミナル・クラス・シンボル検索時は隠す。「詳細」トグルが畳んでいる間は既定ルート
+                 （絞り込み無し）でも隠れる——ShowRootRow が ShowSearchRoot とトグル状態/絞り込み中かを束ねる。 -->
             <Grid Margin="0,0,0,4"
-                  Visibility="{Binding ShowSearchRoot, Converter={StaticResource BoolToVis}}">
+                  Visibility="{Binding ShowRootRow, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -310,9 +321,10 @@
                        Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
                        Visibility="{Binding StatusMessage, Converter={StaticResource NonEmptyToVis}}" />
 
-            <!-- include/exclude glob も grep 専用。テキスト検索時のみ表示。 -->
+            <!-- include/exclude glob も grep 専用。テキスト検索時のみ、かつ「詳細」トグルが開いている
+                 （または既に入力済みで絞り込み中の）ときだけ表示（ShowGlobRow）。 -->
             <Grid Margin="0,4,0,0"
-                  Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}">
+                  Visibility="{Binding ShowGlobRow, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />

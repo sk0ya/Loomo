@@ -87,6 +87,21 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// LSP のワークスペースシンボル検索は接続中の言語サーバー基準で、フォルダー絞り込みの概念が無い）。</summary>
     public bool ShowSearchRoot => Scope is not (SearchScope.Terminal or SearchScope.Class or SearchScope.Symbol);
 
+    /// <summary>検索フォルダー・include/exclude glob（「詳細」欄）を常時表示するか。既定は畳んで
+    /// クエリ欄と結果の間を詰める（設定行がかなりの縦幅を取っていたため）。既に何か絞り込んでいる
+    /// （<see cref="CanResetSearchRoot"/> または include/exclude が入力済み）ときは、トグルの状態に関わらず
+    /// 該当行を出す——絞り込み中であることを黙って隠さないため。</summary>
+    [ObservableProperty] private bool _isAdvancedVisible;
+
+    /// <summary>include/exclude glob のどちらかに入力があるか（詳細欄の自動表示判定に使う）。</summary>
+    public bool HasIncludeExclude => !string.IsNullOrEmpty(IncludeGlob) || !string.IsNullOrEmpty(ExcludeGlob);
+
+    /// <summary>検索フォルダー行を表示するか。</summary>
+    public bool ShowRootRow => ShowSearchRoot && (IsAdvancedVisible || CanResetSearchRoot);
+
+    /// <summary>include/exclude glob 行を表示するか。</summary>
+    public bool ShowGlobRow => Scope == SearchScope.Text && (IsAdvancedVisible || HasIncludeExclude);
+
     /// <summary>フォルダパス補完（インテリセンス）が辿るワークスペースフォルダー一覧
     /// （マルチルート時は各フォルダー配下を「フォルダー名/…」として提示する）。</summary>
     public IReadOnlyList<string> WorkspaceFolders => _workspace.Folders;
@@ -183,19 +198,39 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         ScheduleSearch();
     }
 
-    partial void OnIncludeGlobChanged(string value) => ScheduleSearch();
-    partial void OnExcludeGlobChanged(string value) => ScheduleSearch();
+    partial void OnIncludeGlobChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasIncludeExclude));
+        OnPropertyChanged(nameof(ShowGlobRow));
+        ScheduleSearch();
+    }
+
+    partial void OnExcludeGlobChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasIncludeExclude));
+        OnPropertyChanged(nameof(ShowGlobRow));
+        ScheduleSearch();
+    }
 
     partial void OnSearchRootChanged(string value)
     {
         OnPropertyChanged(nameof(CanResetSearchRoot));
+        OnPropertyChanged(nameof(ShowRootRow));
         ScheduleSearch();
+    }
+
+    partial void OnIsAdvancedVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowRootRow));
+        OnPropertyChanged(nameof(ShowGlobRow));
     }
 
     partial void OnScopeChanged(SearchScope value)
     {
         OnPropertyChanged(nameof(QueryPlaceholder));
         OnPropertyChanged(nameof(ShowSearchRoot));
+        OnPropertyChanged(nameof(ShowRootRow));
+        OnPropertyChanged(nameof(ShowGlobRow));
         OnPropertyChanged(nameof(HighlightUseRegex));
         OnPropertyChanged(nameof(HighlightCaseSensitive));
         OnPropertyChanged(nameof(CanReplace));
