@@ -131,53 +131,55 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- ツールバー（すべて展開／すべて閉じる）。見出し（"SEARCH"）はホストするペインの
-             タイトルバー側が持つ（サイドバー専用パネルではなく舞台ペインとして表示するため）。 -->
-        <Grid DockPanel.Dock="Top">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                        VerticalAlignment="Center" Margin="0,0,6,0">
-                <Button Width="24" Padding="0" Margin="0" Style="{StaticResource FolderBarButton}"
-                        ToolTip="すべて展開" Click="OnExpandAll">
-                    <Path Width="11" Height="11" Stretch="Uniform"
-                          Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
-                          Data="M1,2 L5,5.5 L9,2 M1,6 L5,9.5 L9,6" />
-                </Button>
-                <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
-                        ToolTip="すべて閉じる" Click="OnCollapseAll">
-                    <Path Width="11" Height="11" Stretch="Uniform"
-                          Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
-                          Data="M1,5.5 L5,2 L9,5.5 M1,9.5 L5,6 L9,9.5" />
-                </Button>
-            </StackPanel>
-        </Grid>
-
         <!-- クエリ＋オプション -->
         <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6">
-            <!-- 検索モード切替（検索ワード欄の上）。テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、
-                 ターミナル＝アクティブなターミナル内テキスト。Scope 列挙を EnumToBool で束ね、3択セグメントとして
-                 相互排他に振る舞わせる（既に選択中のボタンを押しても外れない＝ConvertBack が DoNothing）。 -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <ToggleButton Content="テキスト" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="ファイルの中身を grep"
-                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Text, Mode=TwoWay}" />
-                <ToggleButton Content="ファイル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="ファイル名で曖昧検索"
-                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=FileName, Mode=TwoWay}" />
-                <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="アクティブなターミナル内を検索"
-                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
-                <ToggleButton Content="クラス" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="クラス名でワークスペース横断検索（言語サーバー・接続中のコードタブが対象）"
-                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Class, Mode=TwoWay}" />
-                <ToggleButton Content="シンボル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
-                              Style="{StaticResource SearchToggle}"
-                              ToolTip="シンボル名でワークスペース横断検索（言語サーバー・接続中のコードタブが対象）"
-                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Symbol, Mode=TwoWay}" />
-            </StackPanel>
+            <!-- 検索モード切替（検索ワード欄の上）＋ツールバー（すべて展開／すべて閉じる）を同じ行に。
+                 テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、ターミナル＝アクティブなターミナル内テキスト。
+                 Scope 列挙を EnumToBool で束ね、3択セグメントとして相互排他に振る舞わせる（既に選択中のボタンを
+                 押しても外れない＝ConvertBack が DoNothing）。見出し（"SEARCH"）はホストするペインのタイトルバー側が
+                 持つ（サイドバー専用パネルではなく舞台ペインとして表示するため）。 -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <ToggleButton Content="テキスト" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="ファイルの中身を grep"
+                                  IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Text, Mode=TwoWay}" />
+                    <ToggleButton Content="ファイル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="ファイル名で曖昧検索"
+                                  IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=FileName, Mode=TwoWay}" />
+                    <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="アクティブなターミナル内を検索"
+                                  IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
+                    <ToggleButton Content="クラス" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="クラス名でワークスペース横断検索（言語サーバー・接続中のコードタブが対象）"
+                                  IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Class, Mode=TwoWay}" />
+                    <ToggleButton Content="シンボル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="シンボル名でワークスペース横断検索（言語サーバー・接続中のコードタブが対象）"
+                                  IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Symbol, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
+                            ToolTip="すべて展開" Click="OnExpandAll">
+                        <Path Width="11" Height="11" Stretch="Uniform"
+                              Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                              Data="M1,2 L5,5.5 L9,2 M1,6 L5,9.5 L9,6" />
+                    </Button>
+                    <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
+                            ToolTip="すべて閉じる" Click="OnCollapseAll">
+                        <Path Width="11" Height="11" Stretch="Uniform"
+                              Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                              Data="M1,5.5 L5,2 L9,5.5 M1,9.5 L5,6 L9,9.5" />
+                    </Button>
+                </StackPanel>
+            </Grid>
 
             <!-- 検索の開始フォルダー（編集可・テキストで指定）。既定は FolderTree の表示ルート。
                  空＝ワークスペース全体。マルチルート時は先頭に対象フォルダーの表示名を付けて指定する
@@ -244,6 +246,8 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0">
                     <TextBox x:Name="QueryBox" Padding="6,4" FontSize="{DynamicResource Fs13}"
@@ -255,8 +259,17 @@
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
                                Visibility="{Binding Text, ElementName=QueryBox, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
+                <!-- 大小区別／正規表現は内容検索（grep）専用なのでテキスト検索時のみ表示。検索ワード欄と同じ行に置く。 -->
+                <ToggleButton Grid.Column="1" Content="Aa" Width="30" Height="26" Margin="4,0,0,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="大文字小文字を区別" IsChecked="{Binding CaseSensitive, Mode=TwoWay}"
+                              Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}" />
+                <ToggleButton Grid.Column="2" Content=".*" Width="30" Height="26" Margin="4,0,0,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="正規表現として扱う" IsChecked="{Binding UseRegex, Mode=TwoWay}"
+                              Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}" />
                 <!-- 置換欄の表示/非表示トグル。テキスト検索のみ（ファイル名／ターミナルには置換の概念が無い）。 -->
-                <ToggleButton Grid.Column="1" Content="⇄" Width="26" Height="26" Margin="4,0,0,0"
+                <ToggleButton Grid.Column="3" Content="⇄" Width="26" Height="26" Margin="4,0,0,0"
                               FontSize="{DynamicResource Fs12}" Cursor="Hand"
                               Style="{StaticResource SearchToggle}"
                               ToolTip="置換欄の表示/非表示"
@@ -287,20 +300,9 @@
                         Click="OnReplaceAllClick" />
             </Grid>
 
-            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                <!-- 大小区別／正規表現は内容検索（grep）専用なのでテキスト検索時のみ表示。 -->
-                <StackPanel Orientation="Horizontal"
-                            Visibility="{Binding Scope, Converter={StaticResource EnumToVis}, ConverterParameter=Text}">
-                    <ToggleButton Content="Aa" Width="30" Height="22" FontSize="{DynamicResource Fs11}" Cursor="Hand"
-                                  Style="{StaticResource SearchToggle}"
-                                  ToolTip="大文字小文字を区別" IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
-                    <ToggleButton Content=".*" Width="30" Height="22" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
-                                  Style="{StaticResource SearchToggle}"
-                                  ToolTip="正規表現として扱う" IsChecked="{Binding UseRegex, Mode=TwoWay}" />
-                </StackPanel>
-                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
-                           VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
-            </StackPanel>
+            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                       Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
+                       Visibility="{Binding StatusMessage, Converter={StaticResource NonEmptyToVis}}" />
 
             <!-- include/exclude glob も grep 専用。テキスト検索時のみ表示。 -->
             <Grid Margin="0,4,0,0"
