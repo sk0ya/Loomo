@@ -364,10 +364,14 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Path Grid.Column="0" Width="13" Height="13" Stretch="Uniform"
-                              VerticalAlignment="Center" Margin="0,0,5,0"
-                              Fill="{DynamicResource FgDim}"
-                              Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,12 L1,12 Z" />
+                        <Path Grid.Column="0" Data="{Binding IconGeometry}"
+                              Stroke="{Binding IconBrush}"
+                              StrokeThickness="1.5"
+                              StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Width="14" Height="14" Stretch="Uniform"
+                              VerticalAlignment="Center" Margin="0,0,5,0" />
                         <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <ContentPresenter Grid.Column="2" Content="{Binding}"
@@ -375,22 +379,31 @@
                     </Grid>
                 </HierarchicalDataTemplate>
 
-                <!-- ファイル見出し：ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。 -->
+                <!-- ファイル見出し：ファイルアイコン＋ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。 -->
                 <HierarchicalDataTemplate DataType="{x:Type vm:SearchFileGroup}" ItemsSource="{Binding Matches}">
                     <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
                           MouseLeftButtonUp="OnRowClick">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
+                        <Path Grid.Column="0" Data="{Binding IconGeometry}"
+                              Stroke="{Binding IconBrush}"
+                              StrokeThickness="1.5"
+                              StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Width="14" Height="14" Stretch="Uniform"
+                              VerticalAlignment="Center" Margin="0,0,5,0" />
+                        <TextBlock Grid.Column="1" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
                                    views:SearchHighlightBehavior.Text="{Binding FileName}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                         <!-- このファイル内の一致だけをまとめて置換する。置換欄を出しているとき、
                              かつ一致行を持つグループ（ファイル名検索のヒットには出さない）だけ表示する。 -->
-                        <Button Grid.Column="1" Content="置換" Height="18" Padding="6,0" Margin="4,0,0,0"
+                        <Button Grid.Column="2" Content="置換" Height="18" Padding="6,0" Margin="4,0,0,0"
                                 FontSize="{DynamicResource Fs10}" Style="{StaticResource FolderBarButton}"
                                 ToolTip="このファイル内の一致をすべて置換する（元に戻せません）"
                                 Click="OnReplaceInGroupClick">
@@ -401,7 +414,7 @@
                                 </MultiBinding>
                             </Button.Visibility>
                         </Button>
-                        <ContentPresenter Grid.Column="2" Content="{Binding}"
+                        <ContentPresenter Grid.Column="3" Content="{Binding}"
                                           ContentTemplate="{StaticResource CountBadge}" />
                     </Grid>
                 </HierarchicalDataTemplate>

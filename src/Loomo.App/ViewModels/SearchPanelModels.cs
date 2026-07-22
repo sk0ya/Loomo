@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Editor.Core.Lsp;
 using sk0ya.Loomo.Core.Abstractions;
@@ -70,12 +71,17 @@ public sealed partial class SearchFileGroup : ObservableObject
         FullPath = fullPath;
         RelativePath = relativePath;
         Matches = new ObservableCollection<SearchMatchItem>(matches);
+        var iconKind = FileIcons.Classify(fullPath, isDirectory: false);
+        IconGeometry = FileIcons.GeometryFor(iconKind);
+        IconBrush = FileIcons.BrushFor(iconKind);
     }
 
     [ObservableProperty] private bool _isExpanded = true;
     public string FullPath { get; }
     public string RelativePath { get; }
     public ObservableCollection<SearchMatchItem> Matches { get; }
+    public Geometry IconGeometry { get; }
+    public Brush IconBrush { get; }
     public int Count => Matches.Count;
     public string FileName => Segment(afterSlash: true);
     public string FolderPath => Segment(afterSlash: false);
@@ -101,6 +107,8 @@ public sealed partial class SearchFolderNode : ObservableObject
     public string Name { get; private set; }
     public string RelativePath { get; }
     public ObservableCollection<object> Children { get; } = new();
+    public Geometry IconGeometry { get; } = FileIcons.GeometryFor(FileIconKind.Folder);
+    public Brush IconBrush { get; } = FileIcons.BrushFor(FileIconKind.Folder);
     public int Count => Children.Sum(child => child switch
     {
         SearchFolderNode folder => folder.Count,
