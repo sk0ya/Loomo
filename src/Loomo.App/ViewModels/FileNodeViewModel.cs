@@ -49,6 +49,12 @@ public sealed partial class FileNodeViewModel : ObservableObject
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isSelected;
 
+    /// <summary>複数選択（Ctrl/Shift+クリック）に含まれているか。ネイティブ TreeView は単一選択しか
+    /// 持たないため、見た目のハイライトだけを担う別プロパティ（選択集合そのものは View 層＝
+    /// FolderTreeView.MultiSelect.cs が持つ）。<see cref="IsSelected"/>（ネイティブ・キーボード移動用の
+    /// 「現在地」）とは独立に true/false になる。</summary>
+    [ObservableProperty] private bool _isMultiSelected;
+
     // git の差分マーク。XAML 側の DataTrigger が種別ごとに表示文字・色を割り当てる。
     [ObservableProperty] private GitChangeKind _gitStatus;
 

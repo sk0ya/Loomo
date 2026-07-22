@@ -31,6 +31,11 @@ public partial class FolderTreeView
             && FindAncestorTreeViewItem(src)?.DataContext is FileNodeViewModel node
             ? node
             : null;
+
+        // Ctrl/Shift 修飾があれば複数選択集合を更新する。ネイティブの単一選択（IsSelected／
+        // SelectedItem＝キーボード移動の現在地）はそのまま素通りさせる（e.Handled はしない）。
+        if (_dragCandidate is not null)
+            ApplySelectionModifiers(_dragCandidate);
     }
 
     private void OnTreePreviewMouseMove(object sender, MouseEventArgs e)

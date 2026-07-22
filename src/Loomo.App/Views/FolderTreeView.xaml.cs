@@ -132,6 +132,11 @@ public partial class FolderTreeView : UserControl
         if (FindAncestor<ToggleButton>(source) is not null)
             return;
 
+        // Ctrl/Shift+クリックは複数選択の操作なので、フォルダ開閉・ファイルのプレビュー表示は
+        // 起こさない（選択集合の更新だけで済ませる。既に PreviewMouseLeftButtonDown 側で処理済み）。
+        if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
+            return;
+
         if (FindAncestorTreeViewItem(source)?.DataContext is not FileNodeViewModel node)
             return;
 
@@ -161,11 +166,11 @@ public partial class FolderTreeView : UserControl
             switch (e.Key)
             {
                 case Key.C:
-                    SetClipboardFiles(node, move: false);
+                    SetClipboardFiles(CurrentSelection(node), move: false);
                     e.Handled = true;
                     return;
                 case Key.X:
-                    SetClipboardFiles(node, move: true);
+                    SetClipboardFiles(CurrentSelection(node), move: true);
                     e.Handled = true;
                     return;
                 case Key.V:
@@ -179,6 +184,11 @@ public partial class FolderTreeView : UserControl
         // Shift は N（前のヒット）や G（末尾）の判定に使うので許容する。
         if ((e.KeyboardDevice.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
             return;
+
+        // 素の移動キーは複数選択を解除して単一選択のキーボード移動へ戻す（Explorer 等と同じ）。
+        // Delete/F2/Escape は現在の複数選択を活かしたいので対象外。
+        if (_multiSelected.Count > 0 && e.Key is Key.J or Key.K or Key.H or Key.L or Key.Enter or Key.G)
+            ClearMultiSelection();
 
         switch (e.Key)
         {
@@ -233,7 +243,7 @@ public partial class FolderTreeView : UserControl
                 break;
 
             case Key.Delete:
-                DeleteNode(tree.SelectedItem as FileNodeViewModel);
+                DeleteNodes(CurrentSelection(tree.SelectedItem as FileNodeViewModel));
                 e.Handled = true;
                 break;
 

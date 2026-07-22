@@ -378,6 +378,12 @@
                                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}" />
                                             <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
                                         </Trigger>
+                                        <!-- 複数選択（Ctrl/Shift+クリック）。ネイティブの IsSelected とは別の
+                                             DataContext 側プロパティなので DataTrigger で見る。 -->
+                                        <DataTrigger Binding="{Binding IsMultiSelected}" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                                        </DataTrigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Setter.Value>

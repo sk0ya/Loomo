@@ -18,11 +18,15 @@ public partial class FolderTreeView
     // ===== ファイル操作（コンテキストメニュー／F2・Delete） =====
 
     // 右クリックした項目を選択しておく（後続の操作対象を直感的にする）。空き領域なら何もしない。
+    // 複数選択中に、その集合に含まれる項目を右クリックしたときは集合を保ったまま（一括操作の対象に
+    // するため）。集合の外を右クリックしたときは単一選択に戻す（Explorer 等と同じ挙動）。
     private void OnTreeRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is DependencyObject source
             && FindAncestorTreeViewItem(source) is { } item)
         {
+            if (item.DataContext is FileNodeViewModel node && !_multiSelected.Contains(node))
+                ClearMultiSelection();
             item.IsSelected = true;
             item.Focus();
         }
@@ -98,27 +102,27 @@ public partial class FolderTreeView
         }
     }
 
-    private void OnDeleteClick(object sender, RoutedEventArgs e) => DeleteNode(ContextNode(sender));
+    private void OnDeleteClick(object sender, RoutedEventArgs e) => DeleteNodes(CurrentSelection(ContextNode(sender)));
 
-    private void DeleteNode(FileNodeViewModel? node)
+    /// <summary>1件または複数件（<see cref="CurrentSelection"/>）をまとめてゴミ箱へ送る。
+    /// 確認は1回だけ（複数件のときは件数をまとめて表示）。</summary>
+    private void DeleteNodes(IReadOnlyList<FileNodeViewModel> nodes)
     {
-        if (node is null || DataContext is not FolderTreeViewModel vm)
+        if (nodes.Count == 0 || DataContext is not FolderTreeViewModel vm)
             return;
 
-        var kind = node.IsDirectory ? "フォルダー" : "ファイル";
-        var confirm = MessageBox.Show(
-            $"{kind}「{node.Name}」をゴミ箱へ移動しますか？",
-            "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        var message = nodes.Count == 1
+            ? $"{(nodes[0].IsDirectory ? "フォルダー" : "ファイル")}「{nodes[0].Name}」をゴミ箱へ移動しますか？"
+            : $"選択した {nodes.Count} 件をゴミ箱へ移動しますか？";
+        var confirm = MessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.OK)
             return;
 
-        try
+        ClearMultiSelection();
+        foreach (var node in nodes)
         {
-            vm.DeleteEntry(node);
-        }
-        catch (InvalidOperationException ex)
-        {
-            ShowError(ex.Message);
+            try { vm.DeleteEntry(node); }
+            catch (InvalidOperationException ex) { ShowError(ex.Message); }
         }
     }
 
@@ -289,19 +293,23 @@ public partial class FolderTreeView
     // Windows のファイルドロップリスト形式でクリップボードに載せる（エクスプローラーと相互運用可能）。
     // 切り取りは「Preferred DropEffect」に Move を入れて区別し、貼り付け成功時に一度だけ消える。
 
-    private void OnCopyClick(object sender, RoutedEventArgs e) => SetClipboardFiles(ContextNode(sender), move: false);
+    private void OnCopyClick(object sender, RoutedEventArgs e) => SetClipboardFiles(CurrentSelection(ContextNode(sender)), move: false);
 
-    private void OnCutClick(object sender, RoutedEventArgs e) => SetClipboardFiles(ContextNode(sender), move: true);
+    private void OnCutClick(object sender, RoutedEventArgs e) => SetClipboardFiles(CurrentSelection(ContextNode(sender)), move: true);
 
-    private static void SetClipboardFiles(FileNodeViewModel? node, bool move)
+    /// <summary>1件または複数件のパスを Windows のファイルドロップリスト形式でクリップボードへ載せる
+    /// （エクスプローラーと相互運用可能）。</summary>
+    private static void SetClipboardFiles(IReadOnlyList<FileNodeViewModel> nodes, bool move)
     {
-        if (node is null)
+        if (nodes.Count == 0)
             return;
 
         try
         {
             var data = new DataObject();
-            data.SetFileDropList(new System.Collections.Specialized.StringCollection { node.FullPath });
+            var list = new System.Collections.Specialized.StringCollection();
+            foreach (var n in nodes) list.Add(n.FullPath);
+            data.SetFileDropList(list);
             // Preferred DropEffect: Copy=5 / Move=2。切り取りだけ Move を入れる。
             var effect = move ? DragDropEffects.Move : DragDropEffects.Copy;
             data.SetData("Preferred DropEffect", new MemoryStream(BitConverter.GetBytes((int)effect)));
