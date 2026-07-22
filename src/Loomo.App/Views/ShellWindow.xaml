@@ -477,6 +477,10 @@
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                   Data="M2.5,3.5 H13.5 M2.5,6.5 H9.5 M2.5,9.5 H8 M9.5,9 L13.5,11.5 L9.5,14 Z" />
                         </Button>
+                        <!-- タブ一覧（あふれた時の導線も兼ねる）。ドロップダウンから直接アクティブ化できる -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
+                                Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
+                                Tag="Terminal" Click="OnTabOverflowClick" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
                                       PanningMode="HorizontalOnly"
@@ -574,6 +578,10 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnEditorNewTab" />
+                        <!-- タブ一覧（あふれた時の導線も兼ねる）。ドロップダウンから直接アクティブ化できる -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
+                                Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
+                                Tag="Editor" Click="OnTabOverflowClick" />
                         <ScrollViewer x:Name="EditorTabStripScrollViewer"
                                       HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
@@ -747,6 +755,10 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnBrowserNewTab" />
+                        <!-- タブ一覧（あふれた時の導線も兼ねる）。ドロップダウンから直接アクティブ化できる -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
+                                Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
+                                Tag="Browser" Click="OnTabOverflowClick" />
                         <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Disabled"
                                       PanningMode="HorizontalOnly"
@@ -1231,6 +1243,21 @@
                      FindReferencesResult イベントを発火するだけなので、ホスト側でこのポップアップに
                      一覧表示し、クリックで該当ファイル・行へジャンプする（ShellWindow.References.cs）。
                      ※「まず配線だけ最小実装」段階。見た目は後で詰める。 -->
+                <!-- タブ帯の「▾」から開く、あふれた分も含む全タブ一覧。クリックで即アクティブ化。
+                     PlacementTarget はクリックされたボタンへ code-behind が都度差し替える（3帯共用）。 -->
+                <Popup x:Name="TabOverflowPopup" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="4" Padding="4"
+                            MinWidth="200" MaxWidth="360">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                        </Border.Effect>
+                        <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="TabOverflowPopupList" />
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
+
                 <Popup x:Name="ReferencesPopup" PlacementTarget="{Binding ElementName=PaneHost}"
                        Placement="Center" StaysOpen="False" AllowsTransparency="True">
                     <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"

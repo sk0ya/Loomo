@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン項目の別ウィンドウ切り離し。Editor は同一ファイルの複製＋双方向テキスト同期、 Terminal/Browser は同期なしの新規スピンオフ。ウィンドウ管理・タブ結合は <see cref="DetachedWindowManager"/>。 状態はワークスペースのスナップショットへ保存し、切替・再起動時に復元する。</summary>
 public partial class ShellWindow {
@@ -171,14 +173,148 @@ public partial class ShellWindow {
         }
     }
     private void OnPaneTabPreviewMouseMove(object sender, MouseEventArgs e) {
+        if (_paneTabReordering) {
+            HandlePaneTabReorderMove(e);
+            return;
+        }
         if (!_paneTabDragArmed || e.LeftButton != MouseButtonState.Pressed)
             return;
         var pos = e.GetPosition(this);
-        if (Math.Abs(pos.X - _paneTabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
-            && Math.Abs(pos.Y - _paneTabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        var dx = Math.Abs(pos.X - _paneTabDragStart.X);
+        var dy = Math.Abs(pos.Y - _paneTabDragStart.Y);
+        if (dx < SystemParameters.MinimumHorizontalDragDistance && dy < SystemParameters.MinimumVerticalDragDistance)
             return;
         _paneTabDragArmed = false;
+        // ほぼ水平のドラッグだけ並べ替えとして扱う。縦方向にも動いた場合は既存の切り離し（別ウィンドウ化）を優先する
+        // ―― 切り離しは既存のドキュメント化済み機能なので、その発火条件を極力変えないため。
+        if (dy <= PaneTabReorderVerticalTolerance && dx >= SystemParameters.MinimumHorizontalDragDistance
+            && sender is ItemsControl host) {
+            StartPaneTabReorder(_paneTabDragId, host);
+            return;
+        }
         StartPaneTabTearOff(_paneTabDragId, sender as UIElement);
+    }
+    private const double PaneTabReorderVerticalTolerance = 6.0;
+    private bool _paneTabReordering;
+    private ItemsControl? _paneTabReorderHost;
+    private Guid _paneTabReorderId;
+    private void StartPaneTabReorder(Guid id, ItemsControl host) {
+        _paneTabReordering = true;
+        _paneTabReorderHost = host;
+        _paneTabReorderId = id;
+        host.PreviewMouseLeftButtonUp += OnPaneTabReorderMouseUp;
+        Mouse.Capture(host);
+    }
+    private void HandlePaneTabReorderMove(MouseEventArgs e) {
+        if (e.LeftButton != MouseButtonState.Pressed) {
+            EndPaneTabReorder();
+            return;
+        }
+        if (_paneTabReorderHost is not { } host)
+            return;
+        var pos = e.GetPosition(host);
+        if (pos.X < 0 || pos.Y < 0 || pos.X > host.ActualWidth || pos.Y > host.ActualHeight)
+            return;
+        if (VisualTreeHelper.HitTest(host, pos)?.VisualHit is not { } hit)
+            return;
+        if (ResolvePaneTabId(hit) is not { } targetId || targetId == _paneTabReorderId)
+            return;
+        MovePaneTab(_paneTabReorderId, targetId);
+    }
+    private void OnPaneTabReorderMouseUp(object sender, MouseButtonEventArgs e) => EndPaneTabReorder();
+    private void EndPaneTabReorder() {
+        if (_paneTabReorderHost is { } host)
+            host.PreviewMouseLeftButtonUp -= OnPaneTabReorderMouseUp;
+        if (Mouse.Captured is not null)
+            Mouse.Capture(null);
+        var wasReordering = _paneTabReordering;
+        _paneTabReordering = false;
+        _paneTabReorderHost = null;
+        if (wasReordering)
+            SaveActiveWorkspaceSnapshot();
+    }
+    /// <summary>タブ帯上のドラッグ並べ替え。コードビハインドの実体リスト（<see cref="_editorTabs"/> 等、
+    /// タブ切替・ワークスペース復元が位置参照する）と ViewModel 側の <see cref="TabsViewModel"/> 表示用
+    /// コレクションの両方を同じ並びに保つ。</summary>
+    private void MovePaneTab(Guid draggedId, Guid targetId) {
+        if (TryReorderList(_editorTabs, t => t.Id, draggedId, targetId, out var index)) {
+            MoveObservableTab(_vm.Tabs.EditorTabs, draggedId, index);
+            return;
+        }
+        if (TryReorderList(_terminalTabs, t => t.Id, draggedId, targetId, out index)) {
+            MoveObservableTab(_vm.Tabs.TerminalTabs, draggedId, index);
+            return;
+        }
+        if (TryReorderList(_browserTabs, t => t.Id, draggedId, targetId, out index))
+            MoveObservableTab(_vm.Tabs.BrowserTabs, draggedId, index);
+    }
+    private static bool TryReorderList<T>(List<T> list, Func<T, Guid> idOf, Guid draggedId, Guid targetId, out int newIndex) {
+        newIndex = -1;
+        var oldIndex = list.FindIndex(t => idOf(t) == draggedId);
+        if (oldIndex < 0)
+            return false;
+        var targetIndex = list.FindIndex(t => idOf(t) == targetId);
+        if (targetIndex < 0 || targetIndex == oldIndex)
+            return false;
+        var item = list[oldIndex];
+        list.RemoveAt(oldIndex);
+        list.Insert(targetIndex, item);
+        newIndex = targetIndex;
+        return true;
+    }
+    private static void MoveObservableTab(ObservableCollection<TabEntryViewModel> tabs, Guid id, int newIndex) {
+        var oldIndex = -1;
+        for (var i = 0; i < tabs.Count; i++) {
+            if (tabs[i].Id == id) { oldIndex = i; break; }
+        }
+        if (oldIndex >= 0 && oldIndex != newIndex)
+            tabs.Move(oldIndex, newIndex);
+    }
+    /// <summary>タブ帯の「▾」：あふれて見えなくなったタブも含む全件を一覧表示し、クリックで直接アクティブ化する。</summary>
+    private void OnTabOverflowClick(object sender, RoutedEventArgs e) {
+        if (sender is not FrameworkElement { Tag: string kind } button)
+            return;
+        var tabs = kind switch {
+            "Terminal" => _vm.Tabs.TerminalTabs,
+            "Editor" => _vm.Tabs.EditorTabs,
+            "Browser" => _vm.Tabs.BrowserTabs,
+            _ => null,
+        };
+        if (tabs is null)
+            return;
+        BuildTabOverflowPopup(kind, tabs);
+        TabOverflowPopup.PlacementTarget = button;
+        TabOverflowPopup.IsOpen = true;
+    }
+    private void BuildTabOverflowPopup(string kind, ObservableCollection<TabEntryViewModel> tabs) {
+        TabOverflowPopupList.Children.Clear();
+        if (tabs.Count == 0) {
+            TabOverflowPopupList.Children.Add(new TextBlock {
+                Text = "タブがありません", FontSize = UiFontManager.Scaled(12), Margin = new Thickness(10, 6, 10, 6),
+                Foreground = (Brush)FindResource("FgDim"),
+            });
+            return;
+        }
+        foreach (var tab in tabs) {
+            var captured = tab;
+            var content = new TextBlock {
+                Text = tab.Title, TextTrimming = TextTrimming.CharacterEllipsis,
+                FontWeight = tab.IsActive ? FontWeights.SemiBold : FontWeights.Normal,
+            };
+            var row = new Button {
+                Style = (Style)FindResource("BranchMenuItem"), FontSize = UiFontManager.Scaled(12),
+                ToolTip = tab.FilePath ?? tab.Title, Content = content, HorizontalContentAlignment = HorizontalAlignment.Left,
+            };
+            row.Click += (_, _) => {
+                TabOverflowPopup.IsOpen = false;
+                switch (kind) {
+                    case "Terminal": ActivateTerminalTab(captured.Id); break;
+                    case "Editor": ActivateEditorTab(captured.Id); break;
+                    case "Browser": ActivateBrowserTab(captured.Id); break;
+                }
+            };
+            TabOverflowPopupList.Children.Add(row);
+        }
     }
     private void StartPaneTabTearOff(Guid id, UIElement? source) {
         if (source is null || BuildTearOffFactory(id) is not { } factory)
