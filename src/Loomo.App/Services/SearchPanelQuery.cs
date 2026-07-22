@@ -71,4 +71,55 @@ public sealed class SearchPanelQuery
         File.WriteAllText(fullPath, result);
         return count;
     }
+
+    /// <summary>1件（<paramref name="line"/>・<paramref name="column"/>で指定した一致、ともに1始まり）だけを
+    /// 置換して書き戻す。ディスク上の現在の内容を読み直してから、その行の中でその列にある一致を探して
+    /// 置換する（検索実行後に内容がずれて見つからなければ何もせず false を返す＝安全側）。
+    /// 不正な正規表現（<paramref name="useRegex"/> 時）も false。</summary>
+    public bool ReplaceOneInFile(string fullPath, string query, string replacement, bool caseSensitive, bool useRegex,
+        int line, int column)
+    {
+        string text;
+        try { text = File.ReadAllText(fullPath); }
+        catch { return false; }
+
+        var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
+        var pattern = useRegex ? query : Regex.Escape(query);
+        Regex regex;
+        try { regex = new Regex(pattern, options); }
+        catch { return false; }
+
+        var lineInfo = FindLine(text, line);
+        if (lineInfo is not { } found) return false;
+
+        // 一致行の検索は grep 実行時と同じく行単位（ContentSearchHit.Column も行内オフセットのため）。
+        var match = regex.Matches(found.Text).FirstOrDefault(m => m.Index + 1 == column);
+        if (match is null) return false;
+
+        var absoluteIndex = found.Start + match.Index;
+        var replacementText = useRegex ? match.Result(replacement) : replacement;
+        var result = text.Remove(absoluteIndex, match.Length).Insert(absoluteIndex, replacementText);
+        File.WriteAllText(fullPath, result);
+        return true;
+    }
+
+    /// <summary>1始まりの行番号から、その行の開始オフセット（行末の改行文字は含まない範囲のテキスト）を返す。
+    /// 行が存在しなければ null。</summary>
+    private static (int Start, string Text)? FindLine(string text, int lineNumber)
+    {
+        var start = 0;
+        var current = 1;
+        while (true)
+        {
+            var newlineIndex = text.IndexOf('\n', start);
+            var end = newlineIndex < 0 ? text.Length : newlineIndex;
+            var trimmedEnd = end > start && text[end - 1] == '\r' ? end - 1 : end;
+            if (current == lineNumber)
+                return (start, text[start..trimmedEnd]);
+            if (newlineIndex < 0)
+                return null;
+            start = newlineIndex + 1;
+            current++;
+        }
+    }
 }

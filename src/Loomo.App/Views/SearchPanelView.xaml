@@ -277,11 +277,13 @@
                               IsChecked="{Binding IsReplaceVisible, Mode=TwoWay}" />
             </Grid>
 
-            <!-- 置換欄：入力＋「すべて置換」。ファイル単位の置換は結果ツリーの各ファイル見出しから。 -->
+            <!-- 置換欄：入力＋「置換」（選択中の1件→次の一致へ）＋「すべて置換」。
+                 ファイル単位の置換は結果ツリーの各ファイル見出しから。 -->
             <Grid Margin="0,4,0,0"
                   Visibility="{Binding IsReplaceVisible, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0">
@@ -294,7 +296,11 @@
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
                                Visibility="{Binding Text, ElementName=ReplaceBox, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
-                <Button Grid.Column="1" Content="すべて置換" Height="26" Padding="8,0" Margin="4,0,0,0"
+                <Button Grid.Column="1" Content="置換" Height="26" Padding="8,0" Margin="4,0,0,0"
+                        FontSize="{DynamicResource Fs11}" Style="{StaticResource FolderBarButton}"
+                        ToolTip="選択中の1件（未選択なら先頭の一致）を置換して、次の一致へ選択を移す（元に戻せません）"
+                        Click="OnReplaceSelectedClick" />
+                <Button Grid.Column="2" Content="すべて置換" Height="26" Padding="8,0" Margin="4,0,0,0"
                         FontSize="{DynamicResource Fs11}" Style="{StaticResource FolderBarButton}"
                         ToolTip="現在の検索結果すべてに置換を適用する（元に戻せません）"
                         Click="OnReplaceAllClick" />
@@ -381,7 +387,9 @@
                     </Grid>
                 </HierarchicalDataTemplate>
 
-                <!-- ファイル見出し：ファイルアイコン＋ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。 -->
+                <!-- ファイル見出し：ファイルアイコン＋ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。
+                     行にボタンを常設すると（件数バッジと合わせて）幅の狭いペインで見切れるので出さない
+                     （一致行と同じく、置換は右クリックメニューから。OnFileContextMenuOpened が開くたびに可否を判定する）。 -->
                 <HierarchicalDataTemplate DataType="{x:Type vm:SearchFileGroup}" ItemsSource="{Binding Matches}">
                     <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
                           MouseLeftButtonUp="OnRowClick">
@@ -389,8 +397,12 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <Grid.ContextMenu>
+                            <ContextMenu Opened="OnFileContextMenuOpened">
+                                <MenuItem Header="置換" Tag="ReplaceFileMenu" Click="OnReplaceInGroupClick" />
+                            </ContextMenu>
+                        </Grid.ContextMenu>
                         <Path Grid.Column="0" Data="{Binding IconGeometry}"
                               Stroke="{Binding IconBrush}"
                               StrokeThickness="1.5"
@@ -403,32 +415,40 @@
                                    views:SearchHighlightBehavior.Text="{Binding FileName}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                        <!-- このファイル内の一致だけをまとめて置換する。置換欄を出しているとき、
-                             かつ一致行を持つグループ（ファイル名検索のヒットには出さない）だけ表示する。 -->
-                        <Button Grid.Column="2" Content="置換" Height="18" Padding="6,0" Margin="4,0,0,0"
-                                FontSize="{DynamicResource Fs10}" Style="{StaticResource FolderBarButton}"
-                                ToolTip="このファイル内の一致をすべて置換する（元に戻せません）"
-                                Click="OnReplaceInGroupClick">
-                            <Button.Visibility>
-                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
-                                    <Binding Path="DataContext.IsReplaceVisible" RelativeSource="{RelativeSource AncestorType=UserControl}" />
-                                    <Binding Path="ShowCount" />
-                                </MultiBinding>
-                            </Button.Visibility>
-                        </Button>
-                        <ContentPresenter Grid.Column="3" Content="{Binding}"
+                        <ContentPresenter Grid.Column="2" Content="{Binding}"
                                           ContentTemplate="{StaticResource CountBadge}" />
                     </Grid>
                 </HierarchicalDataTemplate>
                 <DataTemplate DataType="{x:Type vm:SearchMatchItem}">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Line}" FontSize="{DynamicResource Fs11}" MinWidth="34" Opacity="0.6" />
-                        <TextBlock FontSize="{DynamicResource Fs11}" FontFamily="Consolas" TextTrimming="CharacterEllipsis"
+                    <!-- 右クリックで1件だけ置換できる（項目は置換欄を出しているときだけ見せる。
+                         OnMatchContextMenuOpened が開くたびに可否を判定する）。置換済みは一覧から消さず、
+                         取り消し線で示す（次々処理していく途中で一覧が消えたり並び直ったりしないように）。 -->
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.ContextMenu>
+                            <ContextMenu Opened="OnMatchContextMenuOpened">
+                                <MenuItem Header="置換" Tag="ReplaceOneMenu" Click="OnReplaceOneContextClick" />
+                            </ContextMenu>
+                        </Grid.ContextMenu>
+                        <TextBlock x:Name="LineNumText" Grid.Column="0" Text="{Binding Line}"
+                                   FontSize="{DynamicResource Fs11}" MinWidth="34" Opacity="0.6" />
+                        <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="{DynamicResource Fs11}"
+                                   FontFamily="Consolas" TextTrimming="CharacterEllipsis"
                                    views:SearchHighlightBehavior.Text="{Binding Preview}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.UseRegex="{Binding DataContext.HighlightUseRegex, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                    </StackPanel>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsReplaced}" Value="True">
+                            <Setter TargetName="PreviewText" Property="TextDecorations" Value="Strikethrough" />
+                            <Setter TargetName="PreviewText" Property="Opacity" Value="0.5" />
+                            <Setter TargetName="LineNumText" Property="Opacity" Value="0.35" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </TreeView.Resources>
         </TreeView>

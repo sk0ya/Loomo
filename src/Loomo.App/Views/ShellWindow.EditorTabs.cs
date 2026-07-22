@@ -98,6 +98,23 @@ public partial class ShellWindow {
         if (ReferenceEquals(_editorSupport.Source, tab))
             await UpdateEditorSupportAsync();
     }
+    /// <summary>検索パネルの置換で書き換わったファイルが開いているタブを読み直す。アクティブタブが
+    /// 含まれていれば検索ハイライトも新しい内容で引き直す（置換済みの箇所は一致しなくなるので下線が
+    /// 消える＝古い表示のまま「まだ一致している」ように見えるのを防ぐ）。</summary>
+    private async Task ReloadEditorTabsAfterReplaceAsync(IReadOnlyList<string> paths, string highlightTerm) {
+        var activeAffected = false;
+        foreach (var path in paths) {
+            var tab = _editorTabs.FirstOrDefault(t =>
+                string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
+            if (tab is null || !tab.IsRealized)
+                continue;
+            await ReloadExistingTabIfChangedAsync(tab);
+            if (ReferenceEquals(tab, _activeEditorTab))
+                activeAffected = true;
+        }
+        if (activeAffected)
+            _activeEditorTab?.Control.HighlightSearch(highlightTerm);
+    }
     private async Task RefreshOpenEditorTabsFromDiskAsync() {
         foreach (var tab in _editorTabs.ToArray()) {
             if (tab.IsRealized)

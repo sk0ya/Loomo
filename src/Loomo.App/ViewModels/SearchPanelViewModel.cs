@@ -228,14 +228,40 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         return list;
     }
 
+    /// <summary>置換でディスク上の内容を書き換えたファイル（複数可）。開いているエディタタブがあれば
+    /// 読み直させ、検索ハイライトを新しい内容に合わせて更新させるため（置換した箇所の下線が消えたことを
+    /// はっきり見せる＝見た目が古いまま「まだ一致している」ように誤解させない）。ShellWindow が購読する。</summary>
+    public event EventHandler<IReadOnlyList<string>>? FilesReplacedOnDisk;
+
     /// <summary>1ファイル内の一致をすべて置換する。置換後は最新状態を反映するため再検索する。
     /// 実際に置換できた件数を返す（クエリが空なら何もせず0）。</summary>
     public int ReplaceInFile(SearchFileGroup group)
     {
         if (string.IsNullOrEmpty(Query)) return 0;
         var count = _searchQuery.ReplaceInFile(group.FullPath, Query, ReplaceText, CaseSensitive, UseRegex);
-        if (count > 0) ScheduleSearch();
+        if (count > 0)
+        {
+            ScheduleSearch();
+            FilesReplacedOnDisk?.Invoke(this, new[] { group.FullPath });
+        }
         return count;
+    }
+
+    /// <summary>1件（右クリックメニュー・「置換」ボタン）だけを置換する。一覧からは消さず、その項目を
+    /// 「置換済み」にする（<see cref="SearchMatchItem.IsReplaced"/>、表示は取り消し線）。次々処理していく
+    /// 操作の途中で一覧が消えたり並び直ったりしないよう、あえて再検索しない。
+    /// 成功したら true（クエリが空・ターミナル一致・対象が見つからない＝内容がずれた場合は false）。</summary>
+    public bool ReplaceOne(SearchMatchItem match)
+    {
+        if (string.IsNullOrEmpty(Query) || match.IsTerminal) return false;
+        var ok = _searchQuery.ReplaceOneInFile(match.FullPath, Query, ReplaceText, CaseSensitive, UseRegex,
+            match.Line, match.Column);
+        if (ok)
+        {
+            match.IsReplaced = true;
+            FilesReplacedOnDisk?.Invoke(this, new[] { match.FullPath });
+        }
+        return ok;
     }
 
     /// <summary>現在の結果に含まれる全ファイルへ置換を適用する。
@@ -245,12 +271,17 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (string.IsNullOrEmpty(Query)) return (0, 0);
         var files = 0;
         var matches = 0;
+        var changedPaths = new List<string>();
         foreach (var g in AllFileGroups())
         {
             var n = _searchQuery.ReplaceInFile(g.FullPath, Query, ReplaceText, CaseSensitive, UseRegex);
-            if (n > 0) { files++; matches += n; }
+            if (n > 0) { files++; matches += n; changedPaths.Add(g.FullPath); }
         }
-        if (matches > 0) ScheduleSearch();
+        if (matches > 0)
+        {
+            ScheduleSearch();
+            FilesReplacedOnDisk?.Invoke(this, changedPaths);
+        }
         return (files, matches);
     }
 
@@ -504,7 +535,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// エディタで全マッチをハイライトする検索ワード。Editor の <c>HighlightSearch</c> は
     /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名／ターミナルでは空）。
     /// </summary>
-    private string HighlightTerm => Scope == SearchScope.Text && !UseRegex ? Query : "";
+    public string HighlightTerm => Scope == SearchScope.Text && !UseRegex ? Query : "";
 
     public void Preview(SearchMatchItem match)
     {

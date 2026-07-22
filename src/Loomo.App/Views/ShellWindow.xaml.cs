@@ -197,6 +197,8 @@ public partial class ShellWindow : Window {
             _activeEditorTab?.Control.HighlightSearch(h.Highlight);
         };
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
+        vm.SearchPanel.FilesReplacedOnDisk += async (_, paths) =>
+            await ReloadEditorTabsAfterReplaceAsync(paths, vm.SearchPanel.HighlightTerm);
         vm.SearchPanel.TerminalSearchProvider = (query, caseSensitive) => {
             if (_activeTerminalTab?.View is not { } view || string.IsNullOrWhiteSpace(query))
                 return Array.Empty<TerminalSearchHit>();

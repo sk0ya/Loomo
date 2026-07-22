@@ -17,7 +17,7 @@ public readonly record struct SymbolSearchResult(bool HasConnection, IReadOnlyLi
     public static readonly SymbolSearchResult NoConnection = new(false, Array.Empty<LspSymbolInformation>());
 }
 
-public sealed class SearchMatchItem
+public sealed partial class SearchMatchItem : ObservableObject
 {
     public SearchMatchItem(ContentSearchHit hit)
     {
@@ -62,6 +62,10 @@ public sealed class SearchMatchItem
     public string LineText { get; }
     public string Preview => LineText.TrimStart();
     public bool IsExpanded { get; set; }
+
+    /// <summary>この場でもう置換した（1件だけ置換・置換して次へ）。一覧からは消さず取り消し線で示す
+    /// （置換のたびに一覧が消えたり並び直ったりすると、次々処理していく操作の邪魔になるため）。</summary>
+    [ObservableProperty] private bool _isReplaced;
 }
 
 public sealed partial class SearchFileGroup : ObservableObject

@@ -394,7 +394,7 @@ public partial class SearchPanelView : UserControl
     // ViewModel 側は実際の置換とファイルI/Oだけを持ち、確認ダイアログ・結果通知は他の一括操作
     // （FolderTree の削除等）と同じくここ（View 層）で行う。
 
-    /// <summary>このファイル内の一致をまとめて置換する（ファイル見出しの「置換」ボタン）。</summary>
+    /// <summary>このファイル内の一致をまとめて置換する（ファイル見出しの右クリックメニュー「置換」）。</summary>
     private void OnReplaceInGroupClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SearchFileGroup group } || Vm is not { } vm)
@@ -409,6 +409,95 @@ public partial class SearchPanelView : UserControl
             return;
 
         vm.ReplaceInFile(group);
+    }
+
+    /// <summary>ファイル見出しの右クリックメニューを開くたび、「置換」項目の表示可否を決める
+    /// （置換欄を出しているとき、かつ一致行を持つグループ＝ファイル名検索のヒットには出さない）。</summary>
+    private void OnFileContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu cm || Vm is not { } vm)
+            return;
+        var group = (cm.PlacementTarget as FrameworkElement)?.DataContext as SearchFileGroup;
+        var show = vm.IsReplaceVisible && group is { Count: > 0 };
+        foreach (var item in cm.Items)
+            if (item is MenuItem { Tag: "ReplaceFileMenu" } menuItem)
+                menuItem.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>この1件だけを置換する（一致行の右クリックメニュー「置換」）。確認ダイアログは無し
+    /// （1件だけの操作は取り消しの心理的コストが低いので、ファイル一括／すべて置換とは違い都度確認しない）。</summary>
+    private void OnReplaceOneContextClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: SearchMatchItem match } } })
+            ReplaceOneCore(match);
+    }
+
+    /// <summary>一致行の右クリックメニューを開くたび、「置換」項目の表示可否を決める
+    /// （置換欄を出しているときだけ＝インラインの「置換」ボタンと同じ条件）。</summary>
+    private void OnMatchContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu cm || Vm is not { } vm)
+            return;
+        foreach (var item in cm.Items)
+            if (item is MenuItem { Tag: "ReplaceOneMenu" } menuItem)
+                menuItem.Visibility = vm.IsReplaceVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>選択中の1件（未選択・すでに置換済みなら先頭の未置換）を置換して、次の未置換の一致へ
+    /// 選択を移す（「すべて置換」の左の「置換」ボタン。Ctrl+H 系の「置換」＝1件ずつ進める操作に相当）。
+    /// 置換しても一覧からは消えない（<see cref="SearchPanelViewModel.ReplaceOne"/>）ので、次の対象は
+    /// そのまま同じ一覧から素直に探せる。</summary>
+    private void OnReplaceSelectedClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+            return;
+
+        var pending = vm.AllFileGroups().SelectMany(g => g.Matches).Where(m => !m.IsReplaced).ToList();
+        if (pending.Count == 0)
+            return;
+
+        var current = ResultTree.SelectedItem as SearchMatchItem;
+        var index = current is not null ? pending.IndexOf(current) : -1;
+        var target = index >= 0 ? pending[index] : pending[0];
+        var targetIndex = pending.IndexOf(target);
+        var next = targetIndex + 1 < pending.Count ? pending[targetIndex + 1] : null;
+
+        if (!ReplaceOneCore(target))
+            return;
+
+        if (next is not null && FindContainerForData(ResultTree, next) is { } container)
+        {
+            container.IsSelected = true;
+            container.BringIntoView();
+        }
+    }
+
+    /// <summary>1件だけ置換する共通処理（インラインボタン・コンテキストメニュー・「置換」ボタンで共有）。
+    /// 成功したら true。内容がずれて対象が見つからなければトーストで知らせ false。</summary>
+    private bool ReplaceOneCore(SearchMatchItem match)
+    {
+        if (Vm is not { } vm)
+            return false;
+        if (vm.ReplaceOne(match))
+            return true;
+        ToastService.Error("置換できませんでした（内容が変わった可能性があります）");
+        return false;
+    }
+
+    /// <summary>結果ツリーから、指定のデータ項目（参照が一致するもの）を表示しているコンテナを探す
+    /// （「置換して次へ」で次の一致へ選択を移すため）。未生成のコンテナ（未展開の配下）は見つからない。</summary>
+    private static TreeViewItem? FindContainerForData(ItemsControl parent, object data)
+    {
+        for (var i = 0; i < parent.Items.Count; i++)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromIndex(i) is not TreeViewItem tvi)
+                continue;
+            if (ReferenceEquals(tvi.DataContext, data))
+                return tvi;
+            if (FindContainerForData(tvi, data) is { } found)
+                return found;
+        }
+        return null;
     }
 
     /// <summary>現在の検索結果すべてに置換を適用する（「すべて置換」ボタン）。</summary>
