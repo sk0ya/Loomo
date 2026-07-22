@@ -4,8 +4,6 @@ public partial class ShellWindow : Window {
     private readonly EditorService _editor;
     private readonly BrowserService _browser;
     private readonly IWorkspaceService _workspace;
-    private readonly IWorkspaceSearchService _search;
-    private readonly PaletteSearchCoordinator _paletteSearch;
     private readonly CommandPaletteViewController _paletteView;
     private readonly TabIconService _tabIcons;
     private readonly AiSettings _settings;
@@ -80,7 +78,7 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, IWorkspaceSearchService search, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -93,20 +91,12 @@ public partial class ShellWindow : Window {
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
-        _search = search;
-        _paletteSearch = new PaletteSearchCoordinator(search);
         _tabIcons = tabIcons;
         _settings = settings;
         _appearance = new ShellAppearanceCoordinator(settings, () =>
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
-        _paletteView = new CommandPaletteViewController(
-            PaletteList, PalettePreviewHost, PalettePreviewColumn, PaletteBox, PaletteInput, _appearance,
-            new Dictionary<PaletteMode, Button> {
-                [PaletteMode.All] = PaletteModeAll, [PaletteMode.File] = PaletteModeFile,
-                [PaletteMode.Grep] = PaletteModeGrep, [PaletteMode.Class] = PaletteModeClass,
-                [PaletteMode.Symbol] = PaletteModeSymbol, [PaletteMode.Terminal] = PaletteModeTerminal,
-                [PaletteMode.Command] = PaletteModeCommand });
+        _paletteView = new CommandPaletteViewController(PaletteList, PaletteBox);
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
         var editorSupportWebView = new EditorSupportWebViewController( EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties, EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested, editorSupportViewFactory);
         _editorSupport = new EditorSupportController(editorSupportWebView);
@@ -221,10 +211,19 @@ public partial class ShellWindow : Window {
             view.SelectMatch(new TerminalMatch(h.LineIndex, h.Column, h.Length, h.LineText));
             view.FocusTerminal();
         };
+        vm.SearchPanel.SymbolSearchProvider = async (query, isClass, ct) => {
+            var managers = WorkspaceSymbolSearch.ConnectedManagers(
+                _activeEditorTab, _editorTabs, _codeSupport, GetLspManager);
+            if (managers.Count == 0)
+                return SymbolSearchResult.NoConnection;
+            var symbols = await WorkspaceSymbolSearch.MergeAsync(managers, query, isClass, ct);
+            return new SymbolSearchResult(true, symbols);
+        };
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;
         vm.FolderTree.SearchInFolderRequested += (_, path) => {
             vm.SearchPanel.SetSearchRoot(path);
-            vm.RevealSearchPanel();
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
+            FocusPane(PaneKind.Search);
         };
         vm.FolderTree.CurrentRootChanged += (_, root) => vm.SearchPanel.SetDefaultRoot(root);
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);

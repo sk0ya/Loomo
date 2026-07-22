@@ -2,7 +2,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
-    xmlns:views="clr-namespace:sk0ya.Loomo.App.Views"
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
@@ -162,34 +161,6 @@
             </Button>
         </Grid>
 
-        <!-- 常時表示の絞り込み欄。ここに入力するとツリーがその場で絞り込まれる（VM の
-             SearchFilter に直結、ロジックは「/」検索と共有）。「/」検索（下部、n/N 一致移動つき）
-             とは別物として併存させる。 -->
-        <Grid DockPanel.Dock="Top" Margin="8,0,6,6">
-            <TextBox x:Name="FilterBox" Padding="6,4"
-                     FontSize="{DynamicResource Fs12}"
-                     Background="{DynamicResource Bg}"
-                     Foreground="{DynamicResource Fg}"
-                     BorderBrush="{DynamicResource Border}"
-                     BorderThickness="1"
-                     CaretBrush="{DynamicResource Fg}"
-                     Text="{Binding SearchFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     PreviewKeyDown="OnFilterBoxKeyDown" />
-            <TextBlock Text="フィルター"
-                       IsHitTestVisible="False"
-                       FontSize="{DynamicResource Fs12}"
-                       Foreground="{DynamicResource FgDim}"
-                       VerticalAlignment="Center"
-                       Margin="8,0,0,0"
-                       Visibility="{Binding Text, ElementName=FilterBox, Converter={StaticResource EmptyToVis}}" />
-            <Button Content="✕" Padding="0" Width="18" Height="18"
-                    HorizontalAlignment="Right" Margin="0,0,3,0"
-                    Style="{StaticResource ExplorerIconButton}"
-                    Click="OnClearFilterBoxClick"
-                    ToolTip="フィルターを解除"
-                    Visibility="{Binding Text, ElementName=FilterBox, Converter={StaticResource NonEmptyToVis}}" />
-        </Grid>
-
         <!-- 表示ルートの切替（単一フォルダー時のみ）。操作ボタンの行とは分け、ツリーの直上に
              専用行として置く。候補はワークスペースルート＋ピン留めフォルダ。複数フォルダー時は
              フォルダーごとの見出し行（ツリー内、下の ItemTemplate）が同じ役割を持つので隠す。 -->
@@ -225,38 +196,6 @@
                        Margin="0,1,8,0"
                        TextTrimming="CharacterEllipsis" />
         </StackPanel>
-
-        <Border x:Name="SearchBar" DockPanel.Dock="Bottom"
-                Visibility="Collapsed"
-                Background="{DynamicResource Bg}"
-                BorderBrush="{DynamicResource Accent}"
-                BorderThickness="0,1,0,0"
-                Padding="6,3">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="/"
-                           Foreground="{DynamicResource FgDim}"
-                           VerticalAlignment="Center"
-                           Margin="0,0,4,0"
-                           FontFamily="Consolas" />
-                <TextBox x:Name="SearchBox" Grid.Column="1"
-                         Background="Transparent" BorderThickness="0"
-                         Foreground="{DynamicResource Fg}"
-                         CaretBrush="{DynamicResource Fg}"
-                         VerticalContentAlignment="Center"
-                         TextChanged="OnSearchTextChanged"
-                         PreviewKeyDown="OnSearchKeyDown" />
-                <TextBlock x:Name="SearchStatus" Grid.Column="2"
-                           Foreground="{DynamicResource FgDim}"
-                           VerticalAlignment="Center"
-                           Margin="6,0,0,0"
-                           FontSize="{DynamicResource Fs11}" />
-            </Grid>
-        </Border>
 
         <Grid>
             <TreeView x:Name="FileTree" ItemsSource="{Binding Nodes}" Background="Transparent" BorderThickness="0"
@@ -472,9 +411,7 @@
                                       Stretch="Uniform"
                                       VerticalAlignment="Center"
                                       Margin="0,0,7,0" />
-                                <TextBlock x:Name="GitName"
-                                           views:SearchHighlightBehavior.Text="{Binding Name}"
-                                           views:SearchHighlightBehavior.Query="{Binding DataContext.SearchFilter, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                <TextBlock x:Name="GitName" Text="{Binding Name}" />
                             </StackPanel>
                             <!-- 複数フォルダーワークスペースの見出し行（ワークスペースフォルダー自身）だけ、
                                  通常の行（アイコン＋名前）の代わりにこのフォルダー専用の ComboBox を出す。

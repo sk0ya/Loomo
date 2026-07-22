@@ -369,7 +369,8 @@ public enum PaneKind
     Git,
     Diff,
     Trace,
-    Debug
+    Debug,
+    Search
 }
 
 /// <summary>

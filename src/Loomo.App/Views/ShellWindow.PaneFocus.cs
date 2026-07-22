@@ -198,6 +198,9 @@ public partial class ShellWindow {
             case PaneKind.Debug:
                 FocusFirstFocusable(DebugPane);
                 break;
+            case PaneKind.Search:
+                SearchPaneHost.Focus();
+                break;
         }
         RecordTrailPane(kind);
     }

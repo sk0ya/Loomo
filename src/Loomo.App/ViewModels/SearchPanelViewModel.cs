@@ -6,13 +6,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Editor.Core.Lsp;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>
-/// サイドバー Search パネルの ViewModel。クエリ・オプション（大小区別／正規表現／include・exclude glob）で
+/// 検索ペイン（Editor/Terminal 等と同格の舞台ペイン、<see cref="Services.PaneKind.Search"/>）の
+/// ViewModel。クエリ・オプション（大小区別／正規表現／include・exclude glob）で
 /// <see cref="IWorkspaceSearchService.GrepAsync"/>（内容検索）または <see cref="IWorkspaceSearchService.FindFilesAsync"/>
 /// （ファイル名検索）またはアクティブなターミナル内検索を走らせ、結果をファイル別にグルーピングして保持する。
 /// <see cref="Scope"/> でモードを切り替える。
@@ -41,6 +43,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>アクティブなターミナル内テキストを検索する供給口（ShellWindow が実ターミナルを束ねる）。
     /// 引数＝(クエリ, 大小区別)、戻り＝一致一覧。未設定／ターミナル無しのときは null。</summary>
     public Func<string, bool, IReadOnlyList<TerminalSearchHit>>? TerminalSearchProvider { get; set; }
+
+    /// <summary>クラス／シンボル検索（LSP ワークスペースシンボル）の供給口
+    /// （ShellWindow が接続中の言語サーバーへ橋渡しする）。引数＝(クエリ, isClass, キャンセル)。
+    /// 未設定のときは「言語サーバーが未接続」として扱う。</summary>
+    public Func<string, bool, CancellationToken, Task<SymbolSearchResult>>? SymbolSearchProvider { get; set; }
 
     [ObservableProperty] private string _query = "";
     [ObservableProperty] private bool _caseSensitive;
@@ -76,8 +83,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public bool CanResetSearchRoot
         => !string.Equals(Normalize(SearchRoot), Normalize(_defaultRoot), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>フォルダー欄を表示するか（ターミナル検索では対象外）。</summary>
-    public bool ShowSearchRoot => Scope != SearchScope.Terminal;
+    /// <summary>フォルダー欄を表示するか（ターミナル・クラス・シンボル検索では対象外——
+    /// LSP のワークスペースシンボル検索は接続中の言語サーバー基準で、フォルダー絞り込みの概念が無い）。</summary>
+    public bool ShowSearchRoot => Scope is not (SearchScope.Terminal or SearchScope.Class or SearchScope.Symbol);
 
     /// <summary>フォルダパス補完（インテリセンス）が辿るワークスペースフォルダー一覧
     /// （マルチルート時は各フォルダー配下を「フォルダー名/…」として提示する）。</summary>
@@ -100,6 +108,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     {
         SearchScope.FileName => "ファイル名で検索",
         SearchScope.Terminal => "ターミナル内を検索",
+        SearchScope.Class => "クラス名で検索（ワークスペース横断）",
+        SearchScope.Symbol => "シンボル名で検索（ワークスペース横断）",
         _ => "検索ワード（ファイル内を grep）",
     };
 
@@ -362,6 +372,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
                 case SearchScope.Terminal:
                     RunTerminalSearch();
                     break;
+                case SearchScope.Class:
+                    await RunSymbolSearchAsync(isClass: true, ct);
+                    break;
+                case SearchScope.Symbol:
+                    await RunSymbolSearchAsync(isClass: false, ct);
+                    break;
                 default:
                     await RunGrepAsync(ct);
                     break;
@@ -419,6 +435,59 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         // ターミナルはフォルダー階層を持たないので、ルート直下の単一グループとして並べる。
         ReplaceResults(_treeMapper.Map(new[] { new SearchFileGroup("", "ターミナル", items) }));
         StatusMessage = hits.Count > max ? $"{max}+ 件" : $"{hits.Count} 件";
+    }
+
+    /// <summary>接続中の言語サーバーへワークスペースシンボル検索を投げ、ファイル別にグルーピングして
+    /// 結果へ反映する。供給口（<see cref="SymbolSearchProvider"/>）は ShellWindow が接続中のLSPマネージャーへ
+    /// 橋渡しする（コード編集タブが1つも開いていない／未接続なら「言語サーバーが未接続」と表示する）。</summary>
+    private async Task RunSymbolSearchAsync(bool isClass, CancellationToken ct)
+    {
+        var label = isClass ? "クラス" : "シンボル";
+        if (SymbolSearchProvider is not { } provider)
+        {
+            ReplaceResults(Array.Empty<object>());
+            StatusMessage = "言語サーバーが未接続です（対象コードのファイルを開いてください）";
+            return;
+        }
+
+        var result = await provider(Query, isClass, ct);
+        if (ct.IsCancellationRequested) return;
+
+        if (!result.HasConnection)
+        {
+            ReplaceResults(Array.Empty<object>());
+            StatusMessage = "言語サーバーが未接続です（対象コードのファイルを開いてください）";
+            return;
+        }
+        if (result.Symbols.Count == 0)
+        {
+            ReplaceResults(Array.Empty<object>());
+            StatusMessage = $"一致なし（{label}）";
+            return;
+        }
+
+        const int max = 500;
+        var groups = result.Symbols.Take(max)
+            .Select(ToSymbolMatch)
+            .Where(m => m is not null)
+            .GroupBy(m => m!.Value.FullPath, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SearchFileGroup(g.Key, ToRelative(g.Key),
+                g.Select(m => SearchMatchItem.ForSymbol(m!.Value.FullPath, ToRelative(m!.Value.FullPath), m!.Value.Line, m!.Value.Column, m!.Value.Preview))))
+            .ToList();
+        ReplaceResults(_treeMapper.Map(groups));
+        StatusMessage = result.Symbols.Count > max ? $"{max}+ 件" : $"{result.Symbols.Count} 件";
+    }
+
+    /// <summary>1シンボルをファイルパス・ジャンプ位置・表示テキストへ変換する。ローカルパスへ解決できない
+    /// （<see cref="CodeEditorSupport.TryUriToLocalPath"/> が null を返す）シンボルは除外する。</summary>
+    private static (string FullPath, int Line, int Column, string Preview)? ToSymbolMatch(LspSymbolInformation symbol)
+    {
+        var path = CodeEditorSupport.TryUriToLocalPath(symbol.Location?.Uri);
+        if (path is null) return null;
+        var line = (symbol.Location?.Range?.Start?.Line ?? 0) + 1;
+        var column = (symbol.Location?.Range?.Start?.Character ?? 0) + 1;
+        var preview = string.IsNullOrEmpty(symbol.ContainerName) ? symbol.Name : $"{symbol.Name}  ·  {symbol.ContainerName}";
+        return (path, line, column, preview);
     }
 
     /// <summary>組み上がった結果ツリーを UI の <see cref="Results"/> へ一括反映する（UI スレッド）。

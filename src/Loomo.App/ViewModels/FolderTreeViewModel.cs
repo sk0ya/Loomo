@@ -29,16 +29,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private string? _workspaceRoot;
     // ツリーに表示中のルート。ピン留めフォルダへの切替で _workspaceRoot 配下のフォルダになり得る。
     private string? _currentRoot;
-    // ピン留めフォルダ（正規化済みフルパス）。バックグラウンドのフィルタ構築からも参照されるため、
-    // 変更時はインスタンスごと差し替える（enumeration 中の変更による例外を避ける）。
+    // ピン留めフォルダ（正規化済みフルパス）。変更時はインスタンスごと差し替える
+    // （enumeration 中の変更による例外を避ける）。
     private HashSet<string> _pinnedPaths = new(StringComparer.OrdinalIgnoreCase);
     // LoadRoot / ピン解除での選択肢再構築中に、ComboBox からの選択変更（SelectedRootOption）で
     // 表示切替・保存イベントが多重発火しないよう抑止するフラグ。
     private bool _suppressRootSelection;
     // ファイル監視（デバウンス・UIスレッドへのディスパッチ込み）。実体は DebouncedFolderWatcher。
     private DebouncedFolderWatcher? _watcher;
-    // 進行中のフィルタ（デバウンス＋バックグラウンド構築）を、後続の入力で打ち切るためのトークン。
-    private CancellationTokenSource? _filterCts;
     // 進行中の git 状態読込（バックグラウンドの git プロセス起動）を、後続のルート切替・更新で
     // 打ち切るためのトークン。ワークスペース切替が git の同期起動で固まらないようにする。
     private CancellationTokenSource? _gitLoadCts;
@@ -54,7 +52,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private bool _suppressFoldersChangedReaction;
 
     /// <summary>テスト用：進行中の git 状態読込＋ツリー反映が完了するまで待つ
-    /// （非フィルタ時はこの完了で <see cref="Nodes"/> が投入済みになる）。</summary>
+    /// （この完了で <see cref="Nodes"/> が投入済みになる）。</summary>
     internal Task WhenTreeLoadedAsync() => _gitLoadTask;
 
     /// <summary>複数フォルダーワークスペースか（true のとき <see cref="Nodes"/> はフォルダーごとの
@@ -72,11 +70,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     [ObservableProperty]
     private string _filterStatus = "";
-
-    // インクリメンタル検索（/）のクエリ。空でなければツリーを名前一致でフィルタする。
-    // ヒットしたファイルへ至るフォルダだけを残し、自動展開して中身を見せる。
-    [ObservableProperty]
-    private string _searchFilter = "";
 
     [ObservableProperty]
     private bool _hasVisibleNodes;
@@ -146,10 +139,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 発火し、ShellWindow が Git ペインを前面に出して、そのパスの履歴（git log -- path）に絞る。
     // 引数は対象のフルパス。
     public event EventHandler<string>? GitHistoryRequested;
-
-    // バックグラウンドのフィルタ構築が Nodes に反映され終わったタイミング。
-    // View 側が先頭ヒットの選択・件数表示を行うために購読する。
-    public event EventHandler? FilterCompleted;
 
     // FolderTree の「現在のファイルを選択」ボタン／ショートカット。ShellWindow が購読し、
     // エディタでアクティブなファイルをツリーで展開・選択する（同期）。
@@ -229,16 +218,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     partial void OnShowChangedOnlyChanged(bool value) => RefreshWorkspace();
 
-    // フィルタ文字の変更はツリーの再構築だけでよい（git 状態の再取得は不要）。
-    // 文字入力を止めないよう、再構築はデバウンス＋バックグラウンドで行う（ScheduleFilter）。
-    // ハイライト用の SearchFilter バインドは即時更新されるので、入力の手応えは保たれる。
-    partial void OnSearchFilterChanged(string value) => ScheduleFilter(value);
-
-    private bool IsFiltering => !string.IsNullOrEmpty(SearchFilter);
-
-    private bool MatchesFilter(string name)
-        => name.Contains(SearchFilter, StringComparison.OrdinalIgnoreCase);
-
     private void RefreshWorkspace()
     {
         if (_multiRootStates.Count == 0 && _currentRoot is null) return;
@@ -256,23 +235,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         if (_currentRoot is null)
         {
-            _filterCts?.Cancel();
             Nodes.Clear();
             HasVisibleNodes = false;
             EmptyMessage = "フォルダを開いてください";
             return;
         }
 
-        // フィルタ中の再構築は重い（全階層の列挙＋git）ため、バックグラウンドへ回す。
-        // 既存表示は ScheduleFilter が完了するまで残し、ちらつきを防ぐ。
-        if (IsFiltering)
-        {
-            ScheduleFilter(SearchFilter);
-            return;
-        }
-
-        // 非フィルタ時はトップレベルのみ（遅延読込）なので同期で十分軽い。
-        _filterCts?.Cancel();
+        // トップレベルのみ（遅延読込）なので同期で十分軽い。
         ReconcileChildren(Nodes, _currentRoot, _currentRoot);
 
         HasVisibleNodes = Nodes.Count > 0;
@@ -427,9 +396,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         if (_currentRoot is null)
             return "フォルダを開いてください";
 
-        if (IsFiltering)
-            return $"「{SearchFilter}」に一致する項目はありません";
-
         if (ShowChangedOnly && !_gitState.IsGitRepository)
             return "Git リポジトリではありません";
 
@@ -547,8 +513,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// の展開・フォーカス状態は保たれる）。その後、フォルダーごとに Git 状態の読込・監視を開始する。</summary>
     private void RebuildMultiRootNodes()
     {
-        _filterCts?.Cancel();
-
         var desired = new List<FileNodeViewModel>();
         foreach (var folder in _workspace.Folders)
         {

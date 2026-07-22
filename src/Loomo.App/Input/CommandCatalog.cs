@@ -58,6 +58,8 @@ public static class CommandCatalog
         new CommandDescriptor("pane.split.vertical", CatPane, "ペインを左右に分割", "Ctrl+W V"),
         new CommandDescriptor("pane.split.horizontal", CatPane, "ペインを上下に分割", "Ctrl+W S"),
         new CommandDescriptor("pane.split.closeView", CatPane, "分割ビューを畳む", "Ctrl+W Q"),
+        // 検索だけは VS Code 流に既定キーを与える（全文検索の起点なので毎回使う）。
+        new CommandDescriptor("pane.search", CatPane, "検索を開く", "Ctrl+Shift+F"),
 
         // ===== セッション（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
@@ -68,8 +70,6 @@ public static class CommandCatalog
 
         // ===== サイドバー（既定未割当。設定画面でキーを与えられる） =====
         new CommandDescriptor("sidebar.explorer", CatSidebar, "エクスプローラを開く", null),
-        // 検索だけは VS Code 流に既定キーを与える（全文検索の起点なので毎回使う）。
-        new CommandDescriptor("sidebar.search", CatSidebar, "検索を開く", "Ctrl+Shift+F"),
         new CommandDescriptor("sidebar.tabs", CatSidebar, "タブ一覧を開く", null),
         new CommandDescriptor("sidebar.sessions", CatSidebar, "AIセッションを開く", null),
         new CommandDescriptor("sidebar.git", CatSidebar, "Git を開く", null),

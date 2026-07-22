@@ -131,9 +131,9 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- 見出し＋ツールバー（すべて展開／すべて閉じる）。 -->
+        <!-- ツールバー（すべて展開／すべて閉じる）。見出し（"SEARCH"）はホストするペインの
+             タイトルバー側が持つ（サイドバー専用パネルではなく舞台ペインとして表示するため）。 -->
         <Grid DockPanel.Dock="Top">
-            <TextBlock Style="{StaticResource PanelHeader}" Text="検索" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                         VerticalAlignment="Center" Margin="0,0,6,0">
                 <Button Width="24" Padding="0" Margin="0" Style="{StaticResource FolderBarButton}"
@@ -169,6 +169,14 @@
                               Style="{StaticResource SearchToggle}"
                               ToolTip="アクティブなターミナル内を検索"
                               IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
+                <ToggleButton Content="クラス" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="クラス名でワークスペース横断検索（言語サーバー・接続中のコードタブが対象）"
+                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Class, Mode=TwoWay}" />
+                <ToggleButton Content="シンボル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="シンボル名でワークスペース横断検索（言語サーバー・接続中のコードタブが対象）"
+                              IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Symbol, Mode=TwoWay}" />
             </StackPanel>
 
             <!-- 検索の開始フォルダー（編集可・テキストで指定）。既定は FolderTree の表示ルート。

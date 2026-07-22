@@ -16,7 +16,7 @@ public partial class ShellWindow {
     private bool _wingDragArmed;
     private static readonly PaneKind[] StageOrder =
     [
-        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug,
+        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.Search,
     ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
     private void ToggleDisplayMode() {

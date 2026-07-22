@@ -8,18 +8,11 @@ public partial class ShellWindow {
             if (e.Key == Key.Escape) {
                 CloseCommandPalette(refocus: true);
                 e.Handled = true;
-            } else if (MatchesPaletteOpenGesture(e)) {
-                CyclePaletteMode();
-                e.Handled = true;
             }
             return;
         }
         _keyboard?.HandlePreviewKeyDown(e);
     }
-    private bool MatchesPaletteOpenGesture(KeyEventArgs e)
-        => _keybindings.For("palette.open") is { Count: 1 } seq
-           && sk0ya.Loomo.App.Input.KeyChord.FromEvent(e) is { } chord
-           && chord.Equals(seq.First);
     private const double ResizeStepRatio = 0.08;
     private void ResizeFocusedPane(DropZone direction) {
         if (_zoomedPane is not null || _focusedRegion is not { } region)

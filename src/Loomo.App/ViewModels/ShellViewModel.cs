@@ -12,7 +12,6 @@ public enum SidebarPanel
     Appearance,
     Git,
     Pegboard,
-    Search,
     Problems
 }
 
@@ -179,20 +178,9 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
 
-    /// <summary>ActivityBar の検索アイコン。grep（全文検索）パネルを開く。</summary>
-    [RelayCommand]
-    private void ShowSearch() => Activate(SidebarPanel.Search);
-
     /// <summary>ActivityBar の診断アイコン。開いているエディタタブの診断（エラー/警告）一覧を開く。</summary>
     [RelayCommand]
     private void ShowProblems() => Activate(SidebarPanel.Problems);
-
-    /// <summary>検索パネルを開く（トグルせず必ず開く）。フォルダーツリーの「このフォルダーで検索」用。</summary>
-    public void RevealSearchPanel()
-    {
-        ActivePanel = SidebarPanel.Search;
-        IsSidebarVisible = true;
-    }
 
     /// <summary>エクスプローラを開く（トグルせず必ず開く）。エディタの現在ファイルをツリーで
     /// 選択・表示する「同期」機能用。</summary>

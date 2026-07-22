@@ -15,32 +15,12 @@ namespace sk0ya.Loomo.App.Views;
 
 public partial class FolderTreeView : UserControl
 {
-    // 直近の検索（/）のクエリと、ヒット集合内の現在位置（n/N で巡回）。
-    // ヒット集合はツリー更新で無効化されるため、巡回のたびにクエリから再計算する。
-    private string _searchQuery = "";
-    private readonly List<FileNodeViewModel> _matches = new();
-    private int _matchIndex = -1;
-
-    // 検索開始時の選択（パス）。Esc キャンセルでフィルタを解除し、元の位置へ戻すために退避する。
-    // フィルタはツリーを作り直すためインスタンスは無効化される。パスで復元する。
-    private string? _selectionBeforeSearchPath;
-
     // gg（先頭へ）の 1 つ目の g を受け取った状態。
     private bool _pendingG;
 
     public FolderTreeView()
     {
         InitializeComponent();
-        // DataContext はXAML側で後から差し込まれるため、差し替えに追従して購読する。
-        DataContextChanged += OnDataContextChanged;
-    }
-
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (e.OldValue is FolderTreeViewModel oldVm)
-            oldVm.FilterCompleted -= OnFilterCompleted;
-        if (e.NewValue is FolderTreeViewModel newVm)
-            newVm.FilterCompleted += OnFilterCompleted;
     }
 
     /// <summary>ツリー本体へキーボードフォーカスを移す。未選択なら先頭ノードを選んでフォーカスする。</summary>
@@ -48,30 +28,6 @@ public partial class FolderTreeView : UserControl
     {
         if (!EnsureSelection(FileTree))
             FileTree.Focus();
-    }
-
-    // 常時表示の絞り込み欄。Esc で解除してツリーへフォーカスを戻し、Enter でツリーへフォーカスを移す。
-    private void OnFilterBoxKeyDown(object sender, KeyEventArgs e)
-    {
-        switch (e.Key)
-        {
-            case Key.Escape:
-                FilterBox.Text = "";
-                FocusTree();
-                e.Handled = true;
-                break;
-
-            case Key.Enter:
-                FocusTree();
-                e.Handled = true;
-                break;
-        }
-    }
-
-    private void OnClearFilterBoxClick(object sender, RoutedEventArgs e)
-    {
-        FilterBox.Text = "";
-        FilterBox.Focus();
     }
 
     // 「フォルダーをワークスペースに追加」ボタン。選んだフォルダーをマルチルートワークスペースへ
@@ -147,8 +103,7 @@ public partial class FolderTreeView : UserControl
     }
 
     // Vim 風キーボード操作:
-    //   j/k 上下移動、h 折りたたみ/親へ、l 展開/ファイルを開く、
-    //   / 検索、n/N 次/前のヒット、gg 先頭、G 末尾。
+    //   j/k 上下移動、h 折りたたみ/親へ、l 展開/ファイルを開く、gg 先頭、G 末尾。
     private void OnTreeKeyDown(object sender, KeyEventArgs e)
     {
         if (sender is not TreeView tree)
@@ -221,12 +176,6 @@ public partial class FolderTreeView : UserControl
                 e.Handled = true;
                 break;
 
-            case Key.N:
-                // N（Shift+n）は前のヒット、n は次のヒットへ。
-                MoveMatch((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0 ? -1 : 1, focusTree: true);
-                e.Handled = true;
-                break;
-
             case Key.G:
                 if ((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
                     GoToEdge(last: true);          // G で末尾へ
@@ -246,30 +195,12 @@ public partial class FolderTreeView : UserControl
                 DeleteNodes(CurrentSelection(tree.SelectedItem as FileNodeViewModel));
                 e.Handled = true;
                 break;
-
-            case Key.Escape:
-                // フィルタ適用中（/ を確定した後）なら Esc で解除し、選択中のファイルを全ツリーで再表示する。
-                if (DataContext is FolderTreeViewModel vm && !string.IsNullOrEmpty(vm.SearchFilter))
-                {
-                    var selected = (tree.SelectedItem as FileNodeViewModel)?.FullPath;
-                    ClearFilter();
-                    if (selected is not null)
-                        RevealPath(selected);
-                    e.Handled = true;
-                }
-                break;
         }
     }
 
-    // ツリーへの直接の文字入力（type-ahead 検索）は vim キーと競合するため無効化し、
-    // "/" だけはインクリメンタル検索の起動に使う。
+    // ツリーへの直接の文字入力（type-ahead 検索）は vim キーと競合するため無効化する。
     private void OnTreePreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        if (e.Text == "/")
-            OpenSearch();
-
-        e.Handled = true;
-    }
+        => e.Handled = true;
 
     private void Activate(FileNodeViewModel node)
     {
@@ -279,7 +210,7 @@ public partial class FolderTreeView : UserControl
 
     // ===== ヘルパー =====
 
-    // 展開済みノードを表示順（深さ優先）で列挙する。検索・gg/G の対象範囲。
+    // 展開済みノードを表示順（深さ優先）で列挙する。gg/G の対象範囲。
     private static IEnumerable<FileNodeViewModel> VisibleNodes(IEnumerable<FileNodeViewModel> nodes)
     {
         foreach (var node in nodes)
@@ -291,9 +222,20 @@ public partial class FolderTreeView : UserControl
         }
     }
 
+    private void GoToEdge(bool last)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var all = VisibleNodes(vm.Nodes).ToList();
+        if (all.Count == 0)
+            return;
+
+        SelectAndReveal(last ? all[^1] : all[0], focus: true);
+    }
+
     // 遅延読込ツリーで指定パスを上から順に展開し、たどり着いたノードを選択・表示する。
-    // フィルタ解除後（全ツリーは未展開）に元の選択を復元するため、また ShellWindow から
-    // エディタの現在ファイルをツリーへ同期表示するために使う。
+    // ShellWindow からエディタの現在ファイルをツリーへ同期表示するために使う。
     public void RevealPath(string fullPath)
     {
         if (DataContext is FolderTreeViewModel vm)

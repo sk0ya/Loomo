@@ -71,6 +71,7 @@
         <StreamGeometry x:Key="PaneIcon.Diff">M5,2.5 V7.5 M2.5,5 H7.5 M8.5,11.5 H13.5</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Ai">M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Debug">M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.Search">M6.8,2.5 A4.3,4.3 0 1 0 6.8,11.1 A4.3,4.3 0 1 0 6.8,2.5 M9.9,9.9 L13.5,13.5</StreamGeometry>
 
         <!-- タイトルバーのペイン表示トグル：表示中＝アクセント色／非表示＝グレーの線画アイコン。
              IsChecked とツールチップは code-behind の UpdatePaneToggleStates が実状態へ同期する。 -->
@@ -198,8 +199,6 @@
                 <StackPanel>
                     <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
                             Command="{Binding ShowExplorerCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="🔍" ToolTip="検索（全文検索 / grep）"
-                            Command="{Binding ShowSearchCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="⚠" ToolTip="診断（開いているファイルのエラー/警告）"
                             Command="{Binding ShowProblemsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
@@ -369,6 +368,10 @@
                                 <ToggleButton Style="{StaticResource PaneToggle}" Tag="Browser" Click="OnTogglePaneVisibility">
                                     <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Browser}" />
                                 </ToggleButton>
+                                <!-- 検索：虫眼鏡 -->
+                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Search" Click="OnTogglePaneVisibility">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Search}" />
+                                </ToggleButton>
                                 <!-- Git：ブランチ分岐 -->
                                 <ToggleButton Style="{StaticResource PaneToggle}" Tag="Git" Click="OnTogglePaneVisibility">
                                     <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Git}" />
@@ -433,8 +436,6 @@
                 <Grid x:Name="SidebarContainer" Grid.Column="0">
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
-                    <views:SearchPanelView DataContext="{Binding SearchPanel}"
-                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Search}" />
                     <views:ProblemsPanelView DataContext="{Binding Problems}"
                                              Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Problems}" />
                     <views:TabsView DataContext="{Binding Tabs}"
@@ -945,6 +946,20 @@
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
                 </DockPanel>
 
+                <!-- 検索 : ペイン化（全文検索/ファイル名/ターミナル内検索。エディタ等と同格の舞台ペイン）。
+                     ヘッダーツールバーは持たず、モード切替・オプションは SearchPanelView 内蔵。 -->
+                <DockPanel x:Name="SearchPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="Search" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="SEARCH" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
+                                Tag="Search" Click="OnHidePane" />
+                    </DockPanel>
+                    <views:SearchPanelView x:Name="SearchPaneHost" DataContext="{Binding SearchPanel}" />
+                </DockPanel>
+
                 <!-- Diff : セッションペイン（AI変更レビュー＋Git作業ツリー差分） -->
                 <DockPanel x:Name="DiffPane" Background="{DynamicResource Panel}">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
@@ -1296,97 +1311,42 @@
                         <Grid Margin="6">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <!-- モード切替チップ（クリックで切替＝マウス操作。Ctrl+Shift+P 連打でも巡回）。検索ボックスの上。 -->
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,4">
-                                <StackPanel.Resources>
-                                    <Style x:Key="PaletteModeChip" TargetType="Button">
-                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-                                        <Setter Property="Background" Value="Transparent" />
-                                        <Setter Property="BorderThickness" Value="1" />
-                                        <Setter Property="BorderBrush" Value="Transparent" />
-                                        <Setter Property="Padding" Value="8,2" />
-                                        <Setter Property="Margin" Value="0,0,4,0" />
-                                        <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
-                                        <Setter Property="Cursor" Value="Hand" />
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" CornerRadius="3"
-                                                            BorderBrush="{TemplateBinding BorderBrush}"
-                                                            BorderThickness="{TemplateBinding BorderThickness}"
-                                                            Padding="{TemplateBinding Padding}">
-                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
-                                    </Style>
-                                </StackPanel.Resources>
-                                <Button x:Name="PaletteModeAll" Style="{StaticResource PaletteModeChip}"
-                                        Content="すべて" Click="OnPaletteModeClick" Tag="All" />
-                                <Button x:Name="PaletteModeFile" Style="{StaticResource PaletteModeChip}"
-                                        Content="ファイル" Click="OnPaletteModeClick" Tag="File" />
-                                <Button x:Name="PaletteModeGrep" Style="{StaticResource PaletteModeChip}"
-                                        Content="テキスト" Click="OnPaletteModeClick" Tag="Grep" />
-                                <Button x:Name="PaletteModeClass" Style="{StaticResource PaletteModeChip}"
-                                        Content="クラス" Click="OnPaletteModeClick" Tag="Class" />
-                                <Button x:Name="PaletteModeSymbol" Style="{StaticResource PaletteModeChip}"
-                                        Content="シンボル" Click="OnPaletteModeClick" Tag="Symbol" />
-                                <Button x:Name="PaletteModeTerminal" Style="{StaticResource PaletteModeChip}"
-                                        Content="ターミナル" Click="OnPaletteModeClick" Tag="Terminal" />
-                                <Button x:Name="PaletteModeCommand" Style="{StaticResource PaletteModeChip}"
-                                        Content="コマンド" Click="OnPaletteModeClick" Tag="Command" />
-                            </StackPanel>
-                            <TextBox x:Name="PaletteInput" Grid.Row="1" Margin="4,0,4,4" Padding="6,4" FontSize="{DynamicResource Fs13}"
+                            <TextBox x:Name="PaletteInput" Grid.Row="0" Margin="4,0,4,4" Padding="6,4" FontSize="{DynamicResource Fs13}"
                                      Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                                      TextChanged="OnPaletteTextChanged" PreviewKeyDown="OnPaletteInputKeyDown" />
-                            <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" MinWidth="300" />
-                                    <ColumnDefinition x:Name="PalettePreviewColumn" Width="0" MinWidth="0" />
-                                </Grid.ColumnDefinitions>
-                                <ListBox x:Name="PaletteList" Grid.Column="0" Margin="4,0,4,4" BorderThickness="0"
-                                         Background="Transparent" Foreground="{DynamicResource Fg}"
-                                         HorizontalContentAlignment="Stretch"
-                                         SelectionChanged="OnPaletteSelectionChanged"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                         VirtualizingPanel.ScrollUnit="Item">
-                                    <ListBox.ItemContainerStyle>
-                                        <Style TargetType="ListBoxItem">
-                                            <Setter Property="Padding" Value="6,3" />
-                                            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPaletteItemClick" />
-                                        </Style>
-                                    </ListBox.ItemContainerStyle>
-                                    <ListBox.ItemTemplate>
-                                        <!-- タイトルを主役にして横幅いっぱいに使い、カテゴリ（種別・位置）は右端に淡色で添える。
-                                             タイトルは一致文字だけ Accent＋太字で強調する（PaletteHighlight）。 -->
-                                        <DataTemplate>
-                                            <DockPanel LastChildFill="True">
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="{DynamicResource Fs11}"
-                                                           Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Category}" FontSize="{DynamicResource Fs11}"
-                                                           Foreground="{DynamicResource FgDim}" Margin="10,0,0,0" MaxWidth="300"
-                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
-                                                           VerticalAlignment="Center"
-                                                           views:PaletteHighlight.Text="{Binding Title}"
-                                                           views:PaletteHighlight.Query="{Binding TitleMatch}" />
-                                            </DockPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                                <Border Grid.Column="1" Margin="4,0,4,4" Background="{DynamicResource Bg}"
-                                        BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="3">
-                                    <!-- プレビュー本体は読み取り専用の VimEditorControl をコードから流し込む
-                                         （ShellWindow.CommandPalette.cs / EnsurePreviewEditor）。 -->
-                                    <Border x:Name="PalettePreviewHost" ClipToBounds="True" />
-                                </Border>
-                            </Grid>
+                            <ListBox x:Name="PaletteList" Grid.Row="1" Margin="4,0,4,4" BorderThickness="0"
+                                     Background="Transparent" Foreground="{DynamicResource Fg}"
+                                     HorizontalContentAlignment="Stretch"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.ScrollUnit="Item">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="6,3" />
+                                        <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPaletteItemClick" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <!-- タイトルを主役にして横幅いっぱいに使い、カテゴリ（種別・位置）は右端に淡色で添える。
+                                         タイトルは一致文字だけ Accent＋太字で強調する（PaletteHighlight）。 -->
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Category}" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource FgDim}" Margin="10,0,0,0" MaxWidth="300"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"
+                                                       views:PaletteHighlight.Text="{Binding Title}"
+                                                       views:PaletteHighlight.Query="{Binding TitleMatch}" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Grid>
                     </Border>
                 </Grid>
