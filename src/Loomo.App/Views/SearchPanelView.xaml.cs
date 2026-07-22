@@ -343,6 +343,49 @@ public partial class SearchPanelView : UserControl
         }
     }
 
+    // ===== 置換 =====
+    // ViewModel 側は実際の置換とファイルI/Oだけを持ち、確認ダイアログ・結果通知は他の一括操作
+    // （FolderTree の削除等）と同じくここ（View 層）で行う。
+
+    /// <summary>このファイル内の一致をまとめて置換する（ファイル見出しの「置換」ボタン）。</summary>
+    private void OnReplaceInGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SearchFileGroup group } || Vm is not { } vm)
+            return;
+        if (group.Count == 0)
+            return;
+
+        var confirm = MessageBox.Show(
+            $"「{group.FileName}」内の {group.Count} 件を置換しますか？\nこの操作は元に戻せません。",
+            "置換の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK)
+            return;
+
+        vm.ReplaceInFile(group);
+    }
+
+    /// <summary>現在の検索結果すべてに置換を適用する（「すべて置換」ボタン）。</summary>
+    private void OnReplaceAllClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+            return;
+
+        var groups = vm.AllFileGroups();
+        var matchCount = groups.Sum(g => g.Count);
+        if (matchCount == 0)
+            return;
+
+        var confirm = MessageBox.Show(
+            $"{groups.Count} ファイルの {matchCount} 件を置換しますか？\nこの操作は元に戻せません。",
+            "置換の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK)
+            return;
+
+        var (files, matches) = vm.ReplaceAll();
+        MessageBox.Show($"{files} ファイルの {matches} 件を置換しました。",
+            "Loomo", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     /// <summary>クエリ欄のキー操作。Down で先頭ファイルへ移動、Esc でクエリをクリア（結果とエディタのハイライトも消える）。</summary>
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {

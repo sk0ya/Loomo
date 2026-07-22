@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -43,5 +44,31 @@ public sealed class SearchPanelQuery
         var roots = await Task.Run(() => _mapper.Map(groups), cancellationToken);
         var status = groups.Count == 0 ? "一致なし" : $"{groups.Count} ファイル";
         return new SearchPanelResult(roots, status);
+    }
+
+    /// <summary>1ファイル内の <paramref name="query"/> の全一致を <paramref name="replacement"/> へ置換して
+    /// 書き戻す。ディスク上の現在の内容を読み直してから置換する（検索実行時点の LineText はキャッシュなので、
+    /// その後の編集を踏まえて安全に反映するため）。一致が0件ならファイルには触れない。実際に置換した件数を返す。
+    /// 不正な正規表現（<paramref name="useRegex"/> 時）は何もせず0を返す。</summary>
+    public int ReplaceInFile(string fullPath, string query, string replacement, bool caseSensitive, bool useRegex)
+    {
+        string text;
+        try { text = File.ReadAllText(fullPath); }
+        catch { return 0; }
+
+        var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
+        var pattern = useRegex ? query : Regex.Escape(query);
+        Regex regex;
+        try { regex = new Regex(pattern, options); }
+        catch { return 0; }
+
+        var count = regex.Matches(text).Count;
+        if (count == 0) return 0;
+
+        // 正規表現モードは置換文字列の $1 等の後方参照を活かす。リテラルモードは MatchEvaluator を使い、
+        // 置換文字列に $ が含まれていても特殊解釈させない（そのまま挿入する）。
+        var result = useRegex ? regex.Replace(text, replacement) : regex.Replace(text, _ => replacement);
+        File.WriteAllText(fullPath, result);
+        return count;
     }
 }

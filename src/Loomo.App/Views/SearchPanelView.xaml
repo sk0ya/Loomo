@@ -233,14 +233,50 @@
             </Grid>
 
             <Grid>
-                <TextBox x:Name="QueryBox" Padding="6,4" FontSize="{DynamicResource Fs13}"
-                         Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                         BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                         Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         PreviewKeyDown="OnQueryKeyDown" />
-                <TextBlock Text="{Binding QueryPlaceholder}" IsHitTestVisible="False" FontSize="{DynamicResource Fs13}"
-                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
-                           Visibility="{Binding Text, ElementName=QueryBox, Converter={StaticResource EmptyToVis}}" />
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <TextBox x:Name="QueryBox" Padding="6,4" FontSize="{DynamicResource Fs13}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PreviewKeyDown="OnQueryKeyDown" />
+                    <TextBlock Text="{Binding QueryPlaceholder}" IsHitTestVisible="False" FontSize="{DynamicResource Fs13}"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Text, ElementName=QueryBox, Converter={StaticResource EmptyToVis}}" />
+                </Grid>
+                <!-- 置換欄の表示/非表示トグル。テキスト検索のみ（ファイル名／ターミナルには置換の概念が無い）。 -->
+                <ToggleButton Grid.Column="1" Content="⇄" Width="26" Height="26" Margin="4,0,0,0"
+                              FontSize="{DynamicResource Fs12}" Cursor="Hand"
+                              Style="{StaticResource SearchToggle}"
+                              ToolTip="置換欄の表示/非表示"
+                              Visibility="{Binding CanReplace, Converter={StaticResource BoolToVis}}"
+                              IsChecked="{Binding IsReplaceVisible, Mode=TwoWay}" />
+            </Grid>
+
+            <!-- 置換欄：入力＋「すべて置換」。ファイル単位の置換は結果ツリーの各ファイル見出しから。 -->
+            <Grid Margin="0,4,0,0"
+                  Visibility="{Binding IsReplaceVisible, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <TextBox x:Name="ReplaceBox" Padding="6,4" FontSize="{DynamicResource Fs13}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             ToolTip="置換後の文字列（正規表現モードでは $1 等の後方参照可）"
+                             Text="{Binding ReplaceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Text="置換後の文字列" IsHitTestVisible="False" FontSize="{DynamicResource Fs13}"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Text, ElementName=ReplaceBox, Converter={StaticResource EmptyToVis}}" />
+                </Grid>
+                <Button Grid.Column="1" Content="すべて置換" Height="26" Padding="8,0" Margin="4,0,0,0"
+                        FontSize="{DynamicResource Fs11}" Style="{StaticResource FolderBarButton}"
+                        ToolTip="現在の検索結果すべてに置換を適用する（元に戻せません）"
+                        Click="OnReplaceAllClick" />
             </Grid>
 
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
@@ -338,12 +374,26 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
                                    views:SearchHighlightBehavior.Text="{Binding FileName}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                        <ContentPresenter Grid.Column="1" Content="{Binding}"
+                        <!-- このファイル内の一致だけをまとめて置換する。置換欄を出しているとき、
+                             かつ一致行を持つグループ（ファイル名検索のヒットには出さない）だけ表示する。 -->
+                        <Button Grid.Column="1" Content="置換" Height="18" Padding="6,0" Margin="4,0,0,0"
+                                FontSize="{DynamicResource Fs10}" Style="{StaticResource FolderBarButton}"
+                                ToolTip="このファイル内の一致をすべて置換する（元に戻せません）"
+                                Click="OnReplaceInGroupClick">
+                            <Button.Visibility>
+                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
+                                    <Binding Path="DataContext.IsReplaceVisible" RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                    <Binding Path="ShowCount" />
+                                </MultiBinding>
+                            </Button.Visibility>
+                        </Button>
+                        <ContentPresenter Grid.Column="2" Content="{Binding}"
                                           ContentTemplate="{StaticResource CountBadge}" />
                     </Grid>
                 </HierarchicalDataTemplate>

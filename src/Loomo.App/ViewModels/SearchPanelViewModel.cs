@@ -53,6 +53,15 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索範囲（テキスト grep / ファイル名 / ターミナル）。</summary>
     [ObservableProperty] private SearchScope _scope = SearchScope.Text;
 
+    /// <summary>置換欄の入力（テキスト検索のみ）。1件（ファイル単位）／全置換のどちらも、その時点でのこの値を使う。</summary>
+    [ObservableProperty] private string _replaceText = "";
+
+    /// <summary>置換欄（入力＋「すべて置換」・ファイルごとの「置換」ボタン）を表示しているか。</summary>
+    [ObservableProperty] private bool _isReplaceVisible;
+
+    /// <summary>置換機能を出せるか（テキスト grep のときだけ。ファイル名／ターミナル検索には無い）。</summary>
+    public bool CanReplace => Scope == SearchScope.Text;
+
     /// <summary>検索の開始フォルダー。単一ルートはワークスペースルートからの相対パス（'/' 区切り）。
     /// マルチルートは先頭にワークスペースフォルダーの表示名を付けた「フォルダー名/相対パス」
     /// （結果ツリーのフォルダー見出しと同じ表記・<see cref="EffectiveSearchRoot"/> で解決する）。
@@ -179,10 +188,60 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowSearchRoot));
         OnPropertyChanged(nameof(HighlightUseRegex));
         OnPropertyChanged(nameof(HighlightCaseSensitive));
+        OnPropertyChanged(nameof(CanReplace));
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
         if (value != SearchScope.Text)
+        {
             ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
+            IsReplaceVisible = false;
+        }
         ScheduleSearch();
+    }
+
+    [RelayCommand]
+    private void ToggleReplace() => IsReplaceVisible = !IsReplaceVisible;
+
+    /// <summary>現在の結果ツリーに含まれる全ファイルグループ（フォルダー節点をたどって集める）。
+    /// 全置換の対象集合・確認ダイアログの件数計算に使う（表示専用の <see cref="Results"/> と違い平坦なリスト）。</summary>
+    public IReadOnlyList<SearchFileGroup> AllFileGroups()
+    {
+        var list = new List<SearchFileGroup>();
+        void Walk(IEnumerable<object> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                if (node is SearchFileGroup g) list.Add(g);
+                else if (node is SearchFolderNode f) Walk(f.Children);
+            }
+        }
+        Walk(Results);
+        return list;
+    }
+
+    /// <summary>1ファイル内の一致をすべて置換する。置換後は最新状態を反映するため再検索する。
+    /// 実際に置換できた件数を返す（クエリが空なら何もせず0）。</summary>
+    public int ReplaceInFile(SearchFileGroup group)
+    {
+        if (string.IsNullOrEmpty(Query)) return 0;
+        var count = _searchQuery.ReplaceInFile(group.FullPath, Query, ReplaceText, CaseSensitive, UseRegex);
+        if (count > 0) ScheduleSearch();
+        return count;
+    }
+
+    /// <summary>現在の結果に含まれる全ファイルへ置換を適用する。
+    /// (置換したファイル数, 置換した件数の合計) を返す（クエリが空なら (0, 0)）。</summary>
+    public (int Files, int Matches) ReplaceAll()
+    {
+        if (string.IsNullOrEmpty(Query)) return (0, 0);
+        var files = 0;
+        var matches = 0;
+        foreach (var g in AllFileGroups())
+        {
+            var n = _searchQuery.ReplaceInFile(g.FullPath, Query, ReplaceText, CaseSensitive, UseRegex);
+            if (n > 0) { files++; matches += n; }
+        }
+        if (matches > 0) ScheduleSearch();
+        return (files, matches);
     }
 
     /// <summary>検索ワードをクリアする（結果もエディタのハイライトも消える）。Esc・ワークスペース切替時に使う。</summary>
