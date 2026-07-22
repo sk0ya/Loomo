@@ -15,8 +15,8 @@
     <PackageReference Include="JsonSchema.Net" Version="9.2.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
     <!-- CSV/TSV の EditorSupport 表示（Vim キーバインド付きグリッド）。名前空間は VGrid.*
-         1.0.2: 全選択コーナーを含むヘッダーのテーマが、埋め込み先でもコントロールのスコープで効く -->
-    <PackageReference Include="VGrid.Editor" Version="1.0.2" />
+         1.0.3: セル編集後の列幅調整とグリッド描画のパフォーマンス改善 -->
+    <PackageReference Include="VGrid.Editor" Version="1.0.3" />
     <!-- Office の読み取り専用プレビュー（EditorSupport）。どちらも MIT。
          ClosedXML: .xlsx を読んで HTML テーブルへ（Services/ExcelEditorSupport.cs）。
          Mammoth:   .docx を意味的な HTML へ変換（Services/WordEditorSupport.cs）。 -->
