@@ -23,7 +23,7 @@ public enum DebugSessionKind { Launch, Attach }
 /// マネージャへそのまま委譲する。</summary>
 public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSession, IDisposable
 {
-    private readonly DebugViewModel _manager;
+    private readonly DebugManagerViewModelBase _manager;
     private readonly Dispatcher _dispatcher;
     private CancellationTokenSource? _cts;
 
@@ -49,7 +49,7 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     public event Action<string, int>? FramePreviewRequested;
     public event Action<string, int>? FrameActivated;
 
-    internal DebugSessionViewModel(IDebugService debug, DebugViewModel manager, string displayName)
+    internal DebugSessionViewModel(IDebugService debug, DebugManagerViewModelBase manager, string displayName)
     {
         DebugService = debug;
         _manager = manager;
