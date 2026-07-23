@@ -94,8 +94,14 @@ public sealed class TerminalService : ITerminalService
             StandardErrorEncoding = Encoding.UTF8,
         };
         // -NoProfile: プロファイル読込を避け予測可能に。-NonInteractive: プロンプトで固まらない。
+        // -ExecutionPolicy Bypass: システムポリシーが Restricted/AllSigned だと Node 付属の
+        // npx.ps1 / npm.ps1（未署名シム）が「デジタル署名されていません」で実行不能になり、
+        // 型チェック（npx tsc）や vitest/jest 実行が全滅するため。実行ポリシーはセキュリティ境界では
+        // なく（コマンド安全性は BlockedCommandPatterns 側が担う）、非対話ランナーの互換性を優先する。
         psi.ArgumentList.Add("-NoProfile");
         psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-ExecutionPolicy");
+        psi.ArgumentList.Add("Bypass");
         psi.ArgumentList.Add("-Command");
         psi.ArgumentList.Add(Utf8Preamble + command);
 
