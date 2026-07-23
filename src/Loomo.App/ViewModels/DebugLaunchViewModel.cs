@@ -17,7 +17,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// 起動構成（対象・引数・環境変数等）とプロファイルは全セッション共有の「入り口」なので 1 個のままだが、
 /// 「開始」は必ず<b>新しいセッション</b>を作る（既存セッションは止めない）。続行/ステップ/中断/停止/再起動は
 /// <see cref="DebugViewModel.ActiveSession"/>（今デバッグペインに表示中のセッション）に対して行う。</summary>
-public sealed partial class DebugLaunchViewModel : ObservableObject
+public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConfigurationOwner
 {
     private readonly DebugViewModel _manager;
     private readonly IWorkspaceService _workspace;

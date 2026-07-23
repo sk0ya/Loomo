@@ -19,17 +19,18 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
 {
     private static readonly HashSet<string> WatchedLaunchProperties = new(StringComparer.Ordinal)
     {
-        nameof(DebugLaunchViewModel.TargetProgram), nameof(DebugLaunchViewModel.BuildFirst),
-        nameof(DebugLaunchViewModel.LaunchArgs), nameof(DebugLaunchViewModel.LaunchEnv),
-        nameof(DebugLaunchViewModel.JustMyCode), nameof(DebugLaunchViewModel.BreakOnAllExceptions),
-        nameof(DebugLaunchViewModel.BreakOnUncaughtExceptions),
+        nameof(ILaunchConfigurationOwner.TargetProgram), nameof(ILaunchConfigurationOwner.BuildFirst),
+        nameof(ILaunchConfigurationOwner.LaunchArgs), nameof(ILaunchConfigurationOwner.LaunchEnv),
+        nameof(ILaunchConfigurationOwner.JustMyCode), nameof(ILaunchConfigurationOwner.BreakOnAllExceptions),
+        nameof(ILaunchConfigurationOwner.BreakOnUncaughtExceptions),
     };
 
     private readonly IWorkspaceService _workspace;
     private readonly DebugLaunchProfileStore _store;
+    private readonly Func<string, IEnumerable<DebugProjectDiscovery.ProjectEntry>> _discoverProjects;
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _saveDebounce;
-    private DebugLaunchViewModel? _launch;
+    private ILaunchConfigurationOwner? _launch;
 
     /// <summary>ApplySelectedProfileToLaunch 中は Launch.PropertyChanged による保存を止める（読み込み⇄保存の無限往復防止）。</summary>
     private bool _applying;
@@ -51,10 +52,14 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
 
     internal bool CanDeleteSelectedProfile => Profiles.Count > 1 && SelectedProfile is not null;
 
-    internal DebugProfilesViewModel(IWorkspaceService workspace, DebugLaunchProfileStore store)
+    /// <param name="discoverProjects">起動プロジェクト候補の探索（フォルダー → 候補列。テスト除外は呼び出し側）。
+    /// 省略時は csproj 探索（dotnet 用の従来挙動）。TS 側は package.json 探索を渡す。</param>
+    internal DebugProfilesViewModel(IWorkspaceService workspace, DebugLaunchProfileStore store,
+        Func<string, IEnumerable<DebugProjectDiscovery.ProjectEntry>>? discoverProjects = null)
     {
         _workspace = workspace;
         _store = store;
+        _discoverProjects = discoverProjects ?? (folder => DebugProjectDiscovery.Discover(folder).Where(p => !p.IsTest));
         _dispatcher = Dispatcher.CurrentDispatcher;
         _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveCurrentToSelectedProfile(); };
@@ -72,8 +77,8 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
         if (_launch is not null) _launch.PropertyChanged -= OnLaunchPropertyChanged;
     }
 
-    /// <summary>Launch と接続する。<c>DebugViewModel</c> が Profiles/Launch 両方を構築した直後に 1 回だけ呼ぶ。</summary>
-    internal void AttachLaunch(DebugLaunchViewModel launch)
+    /// <summary>Launch と接続する。マネージャ VM が Profiles/Launch 両方を構築した直後に 1 回だけ呼ぶ。</summary>
+    internal void AttachLaunch(ILaunchConfigurationOwner launch)
     {
         _launch = launch;
         _launch.PropertyChanged += OnLaunchPropertyChanged;
@@ -169,7 +174,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
         var folders = _workspace.Folders;
         foreach (var folder in folders)
         {
-            var entries = DebugProjectDiscovery.Discover(folder).Where(p => !p.IsTest);
+            var entries = _discoverProjects(folder);
             if (folders.Count <= 1)
             {
                 foreach (var p in entries) AvailableProjects.Add(p);
