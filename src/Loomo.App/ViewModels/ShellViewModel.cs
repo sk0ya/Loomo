@@ -11,8 +11,7 @@ public enum SidebarPanel
     Settings,
     Appearance,
     Git,
-    Pegboard,
-    Problems
+    Pegboard
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -47,7 +46,6 @@ public sealed partial class ShellViewModel : ObservableObject
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
     public SearchPanelViewModel SearchPanel { get; }
-    public ProblemsPanelViewModel Problems { get; }
     public DebugViewModel Debug { get; }
     /// <summary>ウィンドウ最下部の軌跡（操作ログ）バー。クリックで通過した地点へ戻る。</summary>
     public TrailViewModel Trail { get; }
@@ -84,7 +82,6 @@ public sealed partial class ShellViewModel : ObservableObject
         TraceSessionViewModel traceSession,
         PegboardViewModel pegboard,
         SearchPanelViewModel searchPanel,
-        ProblemsPanelViewModel problems,
         DebugViewModel debug,
         TrailViewModel trail)
     {
@@ -107,7 +104,6 @@ public sealed partial class ShellViewModel : ObservableObject
         TraceSession = traceSession;
         Pegboard = pegboard;
         SearchPanel = searchPanel;
-        Problems = problems;
         Debug = debug;
         Trail = trail;
 
@@ -177,10 +173,6 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
     [RelayCommand]
     private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
-
-    /// <summary>ActivityBar の診断アイコン。開いているエディタタブの診断（エラー/警告）一覧を開く。</summary>
-    [RelayCommand]
-    private void ShowProblems() => Activate(SidebarPanel.Problems);
 
     /// <summary>エクスプローラを開く（トグルせず必ず開く）。エディタの現在ファイルをツリーで
     /// 選択・表示する「同期」機能用。</summary>

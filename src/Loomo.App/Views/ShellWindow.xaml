@@ -199,8 +199,6 @@
                 <StackPanel>
                     <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
                             Command="{Binding ShowExplorerCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="⚠" ToolTip="診断（開いているファイルのエラー/警告）"
-                            Command="{Binding ShowProblemsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
                             Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
@@ -436,8 +434,6 @@
                 <Grid x:Name="SidebarContainer" Grid.Column="0">
                     <views:FolderTreeView DataContext="{Binding FolderTree}"
                                           Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
-                    <views:ProblemsPanelView DataContext="{Binding Problems}"
-                                             Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Problems}" />
                     <views:TabsView DataContext="{Binding Tabs}"
                                     Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Tabs}" />
                     <views:GitPanelView DataContext="{Binding GitPanel}"
