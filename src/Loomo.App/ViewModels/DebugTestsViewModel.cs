@@ -14,7 +14,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>テストエクスプローラのサブ ViewModel。ソース走査でテストを自動収集し、<c>dotnet test</c>（TRX）の結果で
 /// 各行のステータスを更新する。全実行/クラス実行/個別実行と、状態・名前による絞り込みを持つ。</summary>
-public sealed partial class DebugTestsViewModel : ObservableObject, IDisposable
+public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplorer, IDisposable
 {
     private readonly IWorkspaceService _workspace;
     private readonly ITerminalService _terminal;

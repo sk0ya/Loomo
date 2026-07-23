@@ -22,7 +22,7 @@ public partial class DebugTestsView : UserControl
         {
             if (d is TreeViewItem item)
             {
-                if (DataContext is DebugTestsViewModel vm && item.DataContext is TestItemViewModel t)
+                if (DataContext is ITestExplorer vm && item.DataContext is TestItemViewModel t)
                     vm.NavigateToTestSource(t);
                 return;
             }

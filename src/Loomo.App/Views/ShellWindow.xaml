@@ -1183,6 +1183,9 @@
                                 <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
                                         FontSize="{DynamicResource Fs11}" Content="✔ 型チェック" ToolTip="npx tsc --noEmit を実行"
                                         Command="{Binding TsIde.Launch.TypeCheckCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
+                                        FontSize="{DynamicResource Fs11}" Content="🧪 テスト" ToolTip="vitest / jest を実行"
+                                        Command="{Binding TsIde.Tests.TestCommand}" />
                                 <CheckBox Content="先にチェック" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="{DynamicResource Fs11}"
                                           Foreground="{DynamicResource Fg}" IsChecked="{Binding TsIde.Launch.BuildFirst, Mode=TwoWay}"
                                           ToolTip="開始前に tsc 型チェックを実行する（エラーがあれば起動中止）" />

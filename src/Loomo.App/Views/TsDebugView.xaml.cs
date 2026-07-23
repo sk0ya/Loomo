@@ -18,9 +18,11 @@ namespace sk0ya.Loomo.App.Views;
 public partial class TsDebugView : UserControl
 {
     // タブのインデックス（XAML の並び順と一致させる）。
-    // 並び：構成0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / スレッド6 / ブレークポイント7 / イミディエイト8。
+    // 並び：構成0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / テスト6 / スレッド7 /
+    //       ブレークポイント8 / イミディエイト9。
     private const int OutputTab = 1;
     private const int VariablesTab = 3;
+    private const int TestTab = 6;
 
     private INotifyCollectionChanged? _observed;
     private DebugManagerViewModelBase? _vm;
@@ -101,6 +103,15 @@ public partial class TsDebugView : UserControl
 
     // 実行系コマンド（開始/アタッチ/型チェック）押下で「出力」タブを即表示する。
     private void OnOutputRequested() => DebugTabs.SelectedIndex = OutputTab;
+
+    // テストタブを開いたら（まだ一覧が無ければ）バックグラウンド収集を起こす保険。e.Source で内側の
+    // 選択イベント（TreeView/ListBox の SelectionChanged のバブリング）を弾く。
+    private void OnDebugTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, DebugTabs) && DebugTabs.SelectedIndex == TestTab
+            && DataContext is TsDebugViewModel vm)
+            vm.Tests.EnsureTestsDiscovered();
+    }
 
     private void OnOutputChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

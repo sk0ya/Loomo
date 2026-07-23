@@ -19,6 +19,7 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
     public TsDebugAttachViewModel Attach { get; }
     public TsDebugLaunchViewModel Launch { get; }
     public DebugProfilesViewModel Profiles { get; }
+    public TsDebugTestsViewModel Tests { get; }
 
     public TsDebugViewModel(JsDebugSessionFactory sessionFactory, IWorkspaceService workspace, ITerminalService terminal,
         DebugLaunchProfileStore profileStore)
@@ -29,6 +30,7 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
         Profiles = new DebugProfilesViewModel(workspace, profileStore, TsProjectDiscovery.Discover);
         Launch = new TsDebugLaunchViewModel(this, workspace, terminal, Attach, Profiles);
         Profiles.AttachLaunch(Launch);
+        Tests = new TsDebugTestsViewModel(workspace, terminal, this);
     }
 
     /// <summary>型チェック対象＝tsconfig.json のあるディレクトリを解決する。無ければ null（理由はコンソールへ）。</summary>
@@ -43,6 +45,7 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
     public override void Dispose()
     {
         base.Dispose();
+        Tests.Dispose();
         Profiles.Dispose();
     }
 }

@@ -63,12 +63,12 @@
         </Style>
     </UserControl.Resources>
 
-    <!-- TS IDE ペインのタブシェル。dotnet 用 DebugView のクローンから「テスト」（Phase 2）と「モジュール」
-         （js-debug 非対応）を除いた 9 タブ構成。ヘッダ（TS IDE ラベル・状態・デバッグツールバー）はホスト
+    <!-- TS IDE ペインのタブシェル。dotnet 用 DebugView のクローンから「モジュール」（js-debug 非対応）を
+         除いた 10 タブ構成（テストは vitest / jest）。ヘッダ（TS IDE ラベル・状態・デバッグツールバー）はホスト
          （ペインヘッダ）側が出す。DataContext は TsDebugViewModel（ファサード）。 -->
     <DockPanel>
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
-                    Margin="6,0,6,6" SelectedIndex="0">
+                    Margin="6,0,6,6" SelectedIndex="0" SelectionChanged="OnDebugTabChanged">
 
             <!-- 0 構成 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
@@ -178,7 +178,12 @@
                 </Grid>
             </TabItem>
 
-            <!-- 6 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
+            <!-- 6 テスト（vitest / jest。ビューは dotnet 版と共有） -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="テスト">
+                <v:DebugTestsView DataContext="{Binding Tests}" />
+            </TabItem>
+
+            <!-- 7 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="スレッド">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.Threads}" SelectedItem="{Binding Inspection.SelectedThread, Mode=TwoWay}"
@@ -203,12 +208,12 @@
                 </Grid>
             </TabItem>
 
-            <!-- 7 ブレークポイント -->
+            <!-- 8 ブレークポイント -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="ブレークポイント">
                 <v:DebugBreakpointsView DataContext="{Binding Breakpoints}" />
             </TabItem>
 
-            <!-- 8 イミディエイト -->
+            <!-- 9 イミディエイト -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="イミディエイト">
                 <v:DebugImmediateView DataContext="{Binding Inspection}" />
             </TabItem>

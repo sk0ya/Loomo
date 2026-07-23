@@ -39,6 +39,18 @@ public sealed partial class TestItemViewModel : ObservableObject
         MethodName = method + (paren >= 0 ? fullyQualifiedName[paren..] : "");
     }
 
+    /// <summary>名前解釈を伴わない明示コンストラクタ（TypeScript 側用）。dot 区切りの FQN 規約に乗らない
+    /// テスト（グループ＝ファイル、葉＝テストタイトル）でも同じ行 VM／同じテストビューを使えるようにする。</summary>
+    public TestItemViewModel(string fullyQualifiedName, string className, string methodName,
+        string displayName, string filterExpression)
+    {
+        FullyQualifiedName = fullyQualifiedName;
+        ClassName = className;
+        MethodName = methodName;
+        DisplayName = displayName;
+        FilterExpression = filterExpression;
+    }
+
     /// <summary>完全名（テオリはケースごとに引数付き）。TRX の testName と一致させて結果を突き合わせる。</summary>
     public string FullyQualifiedName { get; }
 
