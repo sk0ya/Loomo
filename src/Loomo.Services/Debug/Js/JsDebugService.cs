@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Debug;
@@ -40,6 +41,10 @@ public sealed class JsDebugService : IDebugService
         public readonly TaskCompletionSource RequestSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Ended;
     }
+
+    /// <summary>ANSI エスケープ（CSI カラー等・OSC）。vite 等は js-debug 配下でも色付きで出力するため、
+    /// 表示前に除去する（WPF のテキストは ANSI を解釈せず <c>[32m</c> のようなゴミが残る）。</summary>
+    private static readonly Regex AnsiEscapePattern = new(@"\x1b(\[[0-9;?]*[ -/]*[@-~]|\].*?(\x07|\x1b\\))", RegexOptions.Compiled);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private JsDebugServerProcess? _server;
@@ -166,6 +171,11 @@ public sealed class JsDebugService : IDebugService
         var skipFiles = config.JustMyCode ? new[] { "<node_internals>/**" } : Array.Empty<string>();
         var env = config.Environment is { Count: > 0 } e ? e : null;
 
+        // VS Code の node 既定と同じ制限。これが無いと js-debug がワークスペース外（グローバル npm の
+        // 内部モジュール等）のソースマップ解決まで試み、.map 未同梱の "Could not read source map" 警告が
+        // コンソールへ流れる。
+        var sourceMapLocations = new[] { workDir.Replace('\\', '/') + "/**", "!**/node_modules/**" };
+
         if (TsLaunchTarget.TryParseChromeUrl(config.Program, out var url))
         {
             return new
@@ -194,6 +204,7 @@ public sealed class JsDebugService : IDebugService
                 skipFiles,
                 console = "internalConsole",   // 出力を output イベントで受け取る
                 sourceMaps = true,
+                resolveSourceMapLocations = sourceMapLocations,
             };
         }
 
@@ -210,6 +221,7 @@ public sealed class JsDebugService : IDebugService
             skipFiles,
             console = "internalConsole",
             sourceMaps = true,
+            resolveSourceMapLocations = sourceMapLocations,
         };
     }
 
@@ -316,17 +328,29 @@ public sealed class JsDebugService : IDebugService
     {
         if (command != "startDebugging") return true;   // runInTerminal 等は internalConsole 運用なので来ない想定
 
-        var session = new ChildSession();
-        lock (_childLock) _children.Add(session);
-
-        // configuration と request 種別（launch/attach）を取り出して子セッションを開始する。
+        // configuration と request 種別（launch/attach）を取り出す。
         string childRequest = args.ValueKind == JsonValueKind.Object &&
                               args.TryGetProperty("request", out var r) ? r.GetString() ?? "attach" : "attach";
         JsonElement config = args.ValueKind == JsonValueKind.Object &&
                              args.TryGetProperty("configuration", out var c) ? c.Clone() : default;
+
+        // スクリプト名なしの一時子プロセス（node -p / -e。構成名が "[pid]" のみ）は<b>そもそもデバッグ対象にしない</b>：
+        // startDebugging を success:false で断る → 子セッション（TCP 接続・initialize・終了判定への参加）を作らない。
+        // 例：rollup は Windows で process.report を node -p の別プロセスで取るため（rollup/dist/native.js）、
+        // その子に attach すると巨大な JSON レポート＋"undefined" が流れてしまう（プロセス自体は走り続けるだけ）。
+        if (IsNamelessInlineChild(config)) return false;
+
+        var session = new ChildSession();
+        lock (_childLock) _children.Add(session);
         _ = Task.Run(() => StartChildSessionAsync(session, childRequest, config));
         return true;
     }
+
+    /// <summary>構成名がスクリプト名を持たない一時 node（"[pid]" 形式のみ。node -p / -e など）か。</summary>
+    private static bool IsNamelessInlineChild(JsonElement config)
+        => config.ValueKind == JsonValueKind.Object &&
+           config.TryGetProperty("name", out var name) &&
+           name.GetString() is { } n && Regex.IsMatch(n, @"^\[\d+\]$");
 
     /// <summary>子セッション：同じサーバへ追加の TCP 接続を張り、initialize → startDebugging の configuration を
     /// そのまま launch/attach として送る。停止イベント・ブレークポイントの実体はこちら側。</summary>
@@ -529,6 +553,7 @@ public sealed class JsDebugService : IDebugService
                 {
                     var category = body.TryGetProperty("category", out var c) ? c.GetString() : "console";
                     var text = body.TryGetProperty("output", out var o) ? o.GetString() : null;
+                    if (!string.IsNullOrEmpty(text)) text = AnsiEscapePattern.Replace(text, "");
                     if (!string.IsNullOrEmpty(text) && category != "telemetry")
                         Emit(MapCategory(category), text!.TrimEnd('\n'));
                 }

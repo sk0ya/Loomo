@@ -103,10 +103,20 @@
                                                 CommandParameter="{Binding}" />
                                         <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                                    FontFamily="Consolas" VerticalAlignment="Center" Margin="8,0,0,0" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Command}" FontSize="{DynamicResource Fs11}"
-                                                   FontFamily="Consolas" Foreground="{DynamicResource FgDim}"
-                                                   VerticalAlignment="Center" Margin="12,0,0,0"
-                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Command}" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
+                                            <!-- 種別バッジ：この行を▶で実行したときの起動手段（ブラウザ=複合Chrome / Node=pwa-node / テスト）。 -->
+                                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                                    BorderThickness="1" CornerRadius="2" Padding="4,0" VerticalAlignment="Center"
+                                                    Visibility="{Binding HasKindBadge, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="このスクリプトの起動手段（ブラウザ=開発サーバー＋Chromeデバッグ / Node=Nodeデバッガ / テスト）">
+                                                <TextBlock Text="{Binding KindBadge}" FontSize="{DynamicResource Fs10}"
+                                                           Foreground="{DynamicResource FgDim}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Command}" FontSize="{DynamicResource Fs11}"
+                                                       FontFamily="Consolas" Foreground="{DynamicResource FgDim}"
+                                                       VerticalAlignment="Center" Margin="6,0,0,0"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Command}" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

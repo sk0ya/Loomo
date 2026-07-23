@@ -72,8 +72,11 @@ public class TsProjectDiscoveryTests : IDisposable
 
         var entries = TsProjectDiscovery.ReadScriptEntries(pkg);
 
-        Assert.Equal(new[] { new TsScriptEntry("dev", "vite"), new TsScriptEntry("build", "tsc && vite build") },
-            entries.ToArray());
+        Assert.Equal(new[]
+        {
+            new TsScriptEntry("dev", "vite", TsScriptKind.FrontendDevServer),
+            new TsScriptEntry("build", "tsc && vite build", TsScriptKind.BuildOrTool),
+        }, entries.ToArray());
     }
 
     [Fact]

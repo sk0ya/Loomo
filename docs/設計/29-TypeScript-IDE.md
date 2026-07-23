@@ -52,6 +52,18 @@ vscode-js-debug は npm 未公開。GitHub Releases の `js-debug-dap-v*.tar.gz`
 5. 終了：親へ disconnect（terminateDebuggee=launch のみ true）→ 全接続とサーバプロセスを破棄。
    **js-debug は terminated 後の disconnect に応答しない**ので 2 秒タイムアウトで破棄続行（実測）。
 
+**出力の衛生（コンソールノイズ対策）**：
+- `resolveSourceMapLocations:["<cwd>/**","!**/node_modules/**"]` を launch 引数に付ける（VS Code 既定と同値）。
+  無いと js-debug がワークスペース外（グローバル npm の内部モジュール等）のソースマップまで解決を試み、
+  `.map` 未同梱の "Could not read source map …" 警告がコンソールへ流れる。
+- **ANSI エスケープ除去**：`output` イベントのテキストは表示前に CSI/OSC を除去（WPF は ANSI 非解釈で
+  `[32m` 等のゴミが残るため）。vite 等の色付き出力を素のテキストにする。
+- **スクリプト名なしの一時 node（"[pid]" 形式のみ）は attach しない**：`startDebugging` を `success:false` で断り、
+  子セッション自体を作らない（`IsNamelessInlineChild`）。rollup が Windows で `process.report` を `node -p` の
+  別プロセスで取る（`rollup/dist/native.js`）ため、その子に attach すると巨大な JSON レポート＋"undefined" が
+  流れる。プロセス自体はデバッグしないだけで走り続ける。フロント分類ルーティング（29.3）でフロントは Chrome へ
+  回るため、この経路自体が通常発火しなくなった＝主に安全網。
+
 制限（v1）：js-debug は modules リクエスト非対応（モジュールタブ無し）、gotoTargets 非対応
 （次のステートメント設定無し）。複数子が同時に停止した場合の表示は「最後に停止した子」に寄る近似。
 実機検証は `JsDebugServiceIntegrationTests`（launch→BP 停止→検査→評価→続行→出力→終了の全シーケンス＋
@@ -60,16 +72,29 @@ npm スクリプト launch の出力・自然終了。node/js-debug 未導入環
 ### 起動構成
 
 - **日常導線は「スクリプト」タブ（npm スクリプト一覧）**：検出した package.json の scripts を
-  名前＋実体コマンドで一覧表示し、行の ▶ かダブルクリックで即デバッグ実行（`RunScriptCommand` が
-  `TargetProgram` を `npm:名前` に切り替えてから開始 → プロファイルにも保存され、ヘッダの「▶ 開始」は
-  **同じスクリプトの再実行**になる）。パッケージコンボは package.json が複数のときだけ表示（構成タブと
-  選択共有）。dotnet 風の 3 モード編集・プロファイル管理は「構成」タブ（末尾）に残す上級者向け。
-- **実行対象が未設定なら npm モードが既定**：検出スクリプトから `dev` → `start` → 先頭の優先順で
-  自動適用（`ApplyNpmDefaultIfEmpty` / `TsProjectDiscovery.PickDefaultScript`。ワークスペース切替・
-  プロファイル切替でも再評価）。
+  名前＋実体コマンド＋**種別バッジ**で一覧表示し、行の ▶ かダブルクリックで即デバッグ実行。
+  実行手段は**スクリプトの実体コマンドの分類**（`TsScriptClassifier`）で振り分ける：
+  **フロント開発サーバー**（`vite`/`next dev`/`ng serve` 等）は**ブラウザ（Chrome）複合起動**へ、
+  それ以外（Node ランタイム・テスト・ビルド）は **npm（pwa-node）**へ（`RunScriptCommand`）。
+  パッケージコンボは package.json が複数のときだけ表示（構成タブと選択共有）。dotnet 風の 3 モード編集・
+  プロファイル管理は「構成」タブ（末尾）に残す上級者向け。
+- **なぜ振り分けるか**：フロント開発サーバーのアプリコードは**ブラウザ**で動くので、vite の Node プロセスに
+  pwa-node を当ててもデバッグにならず（バンドラを覗くだけ）、rollup の `node -p` 子プロセス等のノイズだけ増える。
+  ブラウザ側を実際にデバッグできるのは pwa-chrome。逆に Node ランタイム／テストは pwa-node が正しい。
+  「ターミナルで十分なこと」をデバッガ経由で劣化させないための分類。
+- **実行対象が未設定なら種別で既定を振り分け**：既定スクリプト（`dev` → `start` → 先頭）を選び、
+  フロント開発サーバーなら Chrome モード（URL はフレームワーク既定ポート）、それ以外は npm モード
+  （`ApplyDefaultTargetIfEmpty` / `PickDefaultScriptEntry`。ワークスペース切替・プロファイル切替でも再評価）。
+- **フロント複合起動**（`PrepareFrontendServerAsync`）：Chrome ターゲットの「▶ 開始」は
+  ①フロント開発サーバースクリプトを**可視ターミナルで起動**（長時間プロセスはデバッガ配下に入れない）→
+  ②**ポート固定注入**（P2：空きポートを選び vite は `--port N --strictPort`、next/ng 等は `--port N` を
+  `npm run <s> -- …` で注入。可視ターミナル出力は購読できないのでポートを決定論化して vite の自動ずらし
+  5173→5174→… を封じる。フラグ方言の無いフレームワークは注入せず URL のポートを信じる P1 フォールバック）→
+  ③そのポートが listen するまで TCP で待つ（`DevServerPortUtil`、既定30秒）→ ④実効ポートで **pwa-chrome** を launch。
+  直近に立てた同一スクリプトのサーバーが生きていれば再利用（二重起動を避ける）。
 - **3 モード**：プログラム（.ts/.js。TS 直接実行は Node 23.6+ の型ストリッピング依存）、**npm スクリプト**
   （`runtimeExecutable:"npm"`）、**ブラウザ**（`chrome:URL` → `type:"pwa-chrome"` launch、webRoot=パッケージ
-  ディレクトリ。開発サーバーは別途起動しておく前提）。プロファイル（`DebugLaunchProfile.TargetProgram`）には
+  ディレクトリ）。プロファイル（`DebugLaunchProfile.TargetProgram`）には
   `TsLaunchTarget` の **`npm:スクリプト名` / `chrome:URL`** エンコードで格納（レコード形は dotnet と共用、
   保存先は別ファイル `%APPDATA%/Loomo/tsLaunchProfiles.json`）。
 - `JustMyCode` → `skipFiles:["<node_internals>/**"]`。例外フィルタは js-debug の `all`/`uncaught`。

@@ -6,8 +6,22 @@ using System.Text.Json;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>npm スクリプト 1 件（名前と実体コマンド）。スクリプトタブの一覧表示用。</summary>
-public sealed record TsScriptEntry(string Name, string Command);
+/// <summary>npm スクリプト 1 件（名前・実体コマンド・分類）。スクリプトタブの一覧表示用。
+/// <see cref="Kind"/> は実体コマンドから <see cref="TsScriptClassifier"/> が判定する（起動手段の振り分け・種別バッジ）。</summary>
+public sealed record TsScriptEntry(string Name, string Command, TsScriptKind Kind)
+{
+    /// <summary>種別バッジのラベル（スクリプトタブ表示用）。デバッグ対象外は空。</summary>
+    public string KindBadge => Kind switch
+    {
+        TsScriptKind.FrontendDevServer => "ブラウザ",
+        TsScriptKind.NodeRuntime => "Node",
+        TsScriptKind.Test => "テスト",
+        _ => "",
+    };
+
+    /// <summary>種別バッジを表示するか（Unknown / ビルド系は出さない）。</summary>
+    public bool HasKindBadge => KindBadge.Length > 0;
+}
 
 /// <summary>ワークスペース内の package.json を検出し、npm スクリプトを読むヘルパ（TS IDE ペインの
 /// パッケージ選択コンボ／スクリプトタブ一覧用）。<see cref="DebugProjectDiscovery"/> の TS 版で、
@@ -46,7 +60,11 @@ public static class TsProjectDiscovery
                 return Array.Empty<TsScriptEntry>();
             return scripts.EnumerateObject()
                 .Where(p => p.Value.ValueKind == JsonValueKind.String)
-                .Select(p => new TsScriptEntry(p.Name, p.Value.GetString() ?? ""))
+                .Select(p =>
+                {
+                    var cmd = p.Value.GetString() ?? "";
+                    return new TsScriptEntry(p.Name, cmd, TsScriptClassifier.Classify(cmd));
+                })
                 .ToList();
         }
         catch

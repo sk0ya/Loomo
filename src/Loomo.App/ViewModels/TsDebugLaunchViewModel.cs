@@ -18,8 +18,11 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// dotnet 側の <see cref="DebugLaunchViewModel"/> に相当し、ヘッダの TS デバッグツールバーの窓口。
 /// 実行対象は「プログラム（.ts/.js ファイル）」「npm スクリプト」「ブラウザ（Chrome）」の 3 モードで、プロファイル
 /// （<see cref="ILaunchConfigurationOwner.TargetProgram"/>）には <see cref="TsLaunchTarget"/> の
-/// <c>npm:スクリプト名</c> / <c>chrome:URL</c> エンコードで区別して格納する。未設定なら検出した npm スクリプト
-/// （dev → start → 先頭）を既定にする（<see cref="ApplyNpmDefaultIfEmpty"/>）。「開始」は必ず新しいセッションを作る。</summary>
+/// <c>npm:スクリプト名</c> / <c>chrome:URL</c> エンコードで区別して格納する。未設定なら検出した既定スクリプト
+/// （dev → start → 先頭）を、その<b>実体コマンドの分類</b>（<see cref="TsScriptClassifier"/>）で振り分けて既定にする
+/// （<see cref="ApplyDefaultTargetIfEmpty"/>）：フロント開発サーバーはブラウザ（Chrome）モード、それ以外は npm モード。
+/// フロントの「開始」は<b>可視ターミナルでサーバー起動 → ポート確定 → pwa-chrome</b>の複合起動になる
+/// （<see cref="PrepareFrontendServerAsync"/>）。「開始」は必ず新しいセッションを作る。</summary>
 public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchConfigurationOwner
 {
     private readonly TsDebugViewModel _manager;
@@ -186,17 +189,49 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
             or nameof(DebugProfilesViewModel.SelectedProfile))
         {
             ReloadScripts();
-            ApplyNpmDefaultIfEmpty();
+            ApplyDefaultTargetIfEmpty();
         }
     }
 
-    /// <summary>実行対象が未設定（新規の「既定」プロファイル等）なら npm モードを既定にする。
-    /// スクリプトは検出候補から dev → start → 先頭の優先順で選ぶ（候補が無ければ何もしない）。</summary>
-    internal void ApplyNpmDefaultIfEmpty()
+    /// <summary>実行対象が未設定（新規の「既定」プロファイル等）なら、既定スクリプト（dev → start → 先頭）を選び、
+    /// その<b>実体コマンドの分類</b>で振り分けて既定にする：フロント開発サーバーなら Chrome モード
+    /// （URL はフレームワークの既定ポート）、それ以外は npm モード。候補が無ければ何もしない。</summary>
+    internal void ApplyDefaultTargetIfEmpty()
     {
         if (!string.IsNullOrWhiteSpace(TargetProgram)) return;
-        if (TsProjectDiscovery.PickDefaultScript(AvailableScripts) is { } script)
-            TargetProgram = TsLaunchTarget.FormatNpmScript(script);
+        if (PickDefaultScriptEntry() is not { } entry) return;
+
+        if (entry.Kind == TsScriptKind.FrontendDevServer)
+        {
+            var port = TsScriptClassifier.DefaultPort(TsScriptClassifier.DetectFramework(entry.Command));
+            TargetProgram = TsLaunchTarget.FormatChromeUrl($"http://localhost:{port}");
+            _savedNpmScript = entry.Name;   // モードを npm に戻したとき元スクリプトが出るように・複合起動のサーバー指定に使う
+        }
+        else
+        {
+            TargetProgram = TsLaunchTarget.FormatNpmScript(entry.Name);
+        }
+    }
+
+    /// <summary>既定スクリプト（dev → start → 先頭）を実体コマンド付きで選ぶ。候補が空なら null。</summary>
+    private TsScriptEntry? PickDefaultScriptEntry()
+        => ScriptItems.Count == 0 ? null
+        : ScriptItems.FirstOrDefault(s => s.Name == "dev")
+        ?? ScriptItems.FirstOrDefault(s => s.Name == "start")
+        ?? ScriptItems[0];
+
+    /// <summary>複合起動で実際に走らせるフロント開発サーバースクリプトを選ぶ。直近の意図（<see cref="_savedNpmScript"/>）が
+    /// フロント種ならそれを優先し、無ければ dev → start → 最初のフロント種。フロント種が無ければ null（＝複合しない）。</summary>
+    private TsScriptEntry? PickFrontendDevScript()
+    {
+        var frontend = ScriptItems.Where(s => s.Kind == TsScriptKind.FrontendDevServer).ToList();
+        if (frontend.Count == 0) return null;
+        if (!string.IsNullOrEmpty(_savedNpmScript) &&
+            frontend.FirstOrDefault(s => s.Name == _savedNpmScript) is { } hinted)
+            return hinted;
+        return frontend.FirstOrDefault(s => s.Name == "dev")
+            ?? frontend.FirstOrDefault(s => s.Name == "start")
+            ?? frontend[0];
     }
 
     /// <summary>選択中パッケージ（未選択なら最初に見つかった package.json）の npm スクリプト一覧を読み直す。</summary>
@@ -302,6 +337,10 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         var program = ResolveTarget();
         if (program is null) return;
 
+        // フロント（Chrome）は複合起動：可視ターミナルでサーバーを立て、応答したらそのポートで Chrome を launch。
+        program = await PrepareFrontendServerAsync(program);
+        if (program is null) return;
+
         var session = _manager.CreateSession(BuildDisplayName(program), DebugSessionKind.Launch);
         await session.DebugService.SetExceptionBreakpointsAsync(CurrentExceptionFilterIds(), CancellationToken.None);
         await LaunchIntoAsync(session, program);
@@ -313,7 +352,17 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     private Task RunScript(TsScriptEntry? entry)
     {
         if (entry is null) return Task.CompletedTask;
-        TargetProgram = TsLaunchTarget.FormatNpmScript(entry.Name);
+        // 既定選択と同じ振り分け：フロント開発サーバーは Chrome（複合起動）、それ以外は npm（pwa-node）。
+        if (entry.Kind == TsScriptKind.FrontendDevServer)
+        {
+            var port = TsScriptClassifier.DefaultPort(TsScriptClassifier.DetectFramework(entry.Command));
+            _savedNpmScript = entry.Name;   // 複合起動で走らせるサーバースクリプトの指定
+            TargetProgram = TsLaunchTarget.FormatChromeUrl($"http://localhost:{port}");
+        }
+        else
+        {
+            TargetProgram = TsLaunchTarget.FormatNpmScript(entry.Name);
+        }
         return StartAsync();
     }
 
@@ -323,6 +372,8 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         _manager.RequestOutput();
         if (!await PreflightTypeCheckAsync()) return;
         var program = ResolveTarget();
+        if (program is null) return;
+        program = await PrepareFrontendServerAsync(program);
         if (program is null) return;
         await LaunchIntoAsync(session, program);
     }
@@ -387,6 +438,70 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
             iSession.Append(DebugOutputCategory.Important, $"デバッグ起動でエラー: {ex.Message}");
         }
     }
+
+    /// <summary>直近の複合起動で立てた開発サーバーのポート（0=未起動）。同じスクリプトで生きていれば再利用する。</summary>
+    private int _devServerPort;
+    /// <summary>そのとき走らせた npm スクリプト名（再利用判定用）。</summary>
+    private string? _devServerScript;
+
+    /// <summary>フロント（Chrome）ターゲットの複合起動準備。可視ターミナルでフロント開発サーバーを立て
+    /// （ポートは空きを選んで<b>固定注入</b>＝vite の自動ポートずらしを封じる）、そのポートが listen したら
+    /// Chrome の実効ターゲット（ポート差し替え済み <c>chrome:URL</c>）を返す。Chrome 以外・複合対象外はそのまま返す。
+    /// サーバー起動に失敗したら null（呼び出し側は起動中止）。</summary>
+    private async Task<string?> PrepareFrontendServerAsync(string program)
+    {
+        if (!TsLaunchTarget.TryParseChromeUrl(program, out var url)) return program;   // Chrome 以外はそのまま
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return program;
+
+        // このパッケージのフロント開発サーバースクリプトを探す。無ければ複合しない（外部サーバー前提で Chrome だけ）。
+        if (PickFrontendDevScript() is not { } devScript) return program;
+
+        var framework = TsScriptClassifier.DetectFramework(devScript.Command);
+        var basePort = uri.Port > 0 ? uri.Port : TsScriptClassifier.DefaultPort(framework);
+
+        // 前回の複合サーバーが同じスクリプトでまだ生きていれば再利用（二重起動を避ける）。
+        if (_devServerPort > 0 && _devServerScript == devScript.Name &&
+            await DevServerPortUtil.IsListeningAsync(_devServerPort, CancellationToken.None))
+            return TsLaunchTarget.FormatChromeUrl(WithPort(uri, _devServerPort));
+
+        // 空きポートを選び、フレームワーク方言でポート固定注入。方言が無ければ注入せず URL のポートを信じる（P1）。
+        var pin = TsScriptClassifier.PinnedPortArgs(framework, DevServerPortUtil.FindFreePort(basePort));
+        var port = pin.Length > 0 ? ExtractPort(pin, basePort) : basePort;
+        var dir = PreferredPackageDir() ?? _workspace.RootPath;
+        var command = pin.Length > 0
+            ? $"Set-Location \"{dir}\"; npm run {devScript.Name} -- {pin}"
+            : $"Set-Location \"{dir}\"; npm run {devScript.Name}";
+
+        _manager.Append(DebugOutputCategory.Important, $"開発サーバーを起動: npm run {devScript.Name}（localhost:{port}）");
+        if (!_terminal.TryRunInVisibleTerminal(command))
+        {
+            _manager.Append(DebugOutputCategory.Important,
+                "可視ターミナルが接続されていないため開発サーバーを起動できません。ターミナルを開いてから再試行してください。");
+            return null;
+        }
+
+        _manager.Append(DebugOutputCategory.Important, $"サーバーの応答を待っています（localhost:{port}）…");
+        if (!await DevServerPortUtil.WaitUntilListeningAsync(port, timeoutMs: 30000, CancellationToken.None))
+        {
+            _manager.Append(DebugOutputCategory.Important,
+                $"開発サーバーが localhost:{port} で応答しませんでした（起動失敗かポート競合）。ターミナルの出力を確認してください。");
+            return null;
+        }
+
+        _devServerPort = port;
+        _devServerScript = devScript.Name;
+        return TsLaunchTarget.FormatChromeUrl(WithPort(uri, port));
+    }
+
+    /// <summary>ポート固定注入文字列（"--port 5175 --strictPort" 等）から実効ポートを取り出す。無ければ既定。</summary>
+    private static int ExtractPort(string pinArgs, int fallback)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(pinArgs, @"--port\s+(\d+)");
+        return m.Success && int.TryParse(m.Groups[1].Value, out var p) ? p : fallback;
+    }
+
+    /// <summary>URL のポートだけ差し替えて文字列化する。</summary>
+    private static string WithPort(Uri uri, int port) => new UriBuilder(uri) { Port = port }.Uri.ToString();
 
     /// <summary>作業ディレクトリ＝選択中パッケージのディレクトリ（npm run の実行場所・Chrome の webRoot）。
     /// 未選択ならプログラムのあるディレクトリ、それも無ければワークスペースルート。</summary>
