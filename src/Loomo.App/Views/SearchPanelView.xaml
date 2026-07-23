@@ -58,12 +58,22 @@
         </Style>
 
         <!-- テーマ対応の TreeViewItem（既定の Windows 配色を使わせない）。ホバー＝Border、選択＝Accent。
-             グループは既定で展開（IsExpanded=True）。一致行は子を持たないので矢印は畳む。 -->
+             グループは既定で展開（IsExpanded=True）。一致行は子を持たないので矢印は畳む。
+             子リスト（ItemsPresenter のパネル）も VirtualizingStackPanel にして、展開中の配下も
+             見えている分しかコンテナを作らせない（結果ツリー全体の UI 仮想化はこれと
+             ResultTree 側の設定の両方があって初めて効く）。 -->
         <Style x:Key="SearchTreeItem" TargetType="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="4,2" />
+            <Setter Property="ItemsPanel">
+                <Setter.Value>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
@@ -352,14 +362,29 @@
             </Grid>
         </StackPanel>
 
-        <!-- 結果：ファイル別グルーピング。選択でプレビュー、Enter/ダブルクリックで通常タブ。 -->
+        <!-- 結果：ファイル別グルーピング。選択でプレビュー、Enter/ダブルクリックで通常タブ。
+             UI 仮想化を明示的に有効化する：TreeView は既定で仮想化が効かず（既定スタイルが
+             CanContentScroll=false）、最大1000件のヒット行のコンテナ生成が1回の同期レイアウトで
+             UI スレッドを占有し、デバウンス再検索のたびに入力やウィンドウ操作を巻き込んでいた。
+             CanContentScroll=True＋VirtualizingStackPanel（各階層は SearchTreeItem 側）で
+             見えている行しか生成させない。ScrollUnit=Pixel で行単位スクロールのガタつきも避ける。
+             Recycling は既存コンテナを使い回す（IsExpanded・ハイライトは全部バインド経由なので安全）。 -->
         <TreeView x:Name="ResultTree" BorderThickness="0" Background="Transparent"
                   ItemsSource="{Binding Results}"
                   ItemContainerStyle="{StaticResource SearchTreeItem}"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  ScrollViewer.CanContentScroll="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  VirtualizingPanel.ScrollUnit="Pixel"
                   SelectedItemChanged="OnResultSelectionChanged"
                   MouseDoubleClick="OnResultDoubleClick"
                   PreviewKeyDown="OnResultKeyDown">
+            <TreeView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                </ItemsPanelTemplate>
+            </TreeView.ItemsPanel>
             <TreeView.Resources>
                 <!-- Foreground は明示せず TreeViewItem から継承させる（選択時に AccentFg へ切り替わる）。 -->
                 <!-- 件数バッジ（右端・VS Code 流のピル）。フォルダー／ファイル共通で使う。 -->

@@ -557,8 +557,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     }
 
     /// <summary>組み上がった結果ツリーを UI の <see cref="Results"/> へ一括反映する（UI スレッド）。
-    /// 重いツリー構築は <see cref="BuildResultTree"/> で済ませてあるので、ここはトップレベル節点を
-    /// 並べ替え済みで足すだけ（件数が少なく入力をほぼ妨げない）。</summary>
+    /// 重いツリー構築は <see cref="SearchPanelQuery"/>（バックグラウンドの <see cref="SearchResultTreeMapper.Map"/>）で
+    /// 済ませてあるので、ここはトップレベル節点を並べ替え済みで足すだけ。配下の描画コストは
+    /// View 側（SearchPanelView の結果ツリー）の UI 仮想化が抑える。</summary>
     private void ReplaceResults(IReadOnlyList<object> roots)
     {
         Results.Clear();
