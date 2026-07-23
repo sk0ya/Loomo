@@ -2,7 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- TS 構成：起動構成（プログラム/npm スクリプトの 2 モード・引数/環境変数）・例外オプション・
+    <!-- TS 構成：起動構成（プログラム/npm スクリプト/ブラウザの 3 モード・引数/環境変数）・例外オプション・
          ポートへのアタッチ・アダプタ未導入の案内。操作（開始/型チェック/ステップ/中断・再起動/停止）は
          ペインヘッダのデバッグツールバー側。DataContext は TsDebugViewModel（ファサード）。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

@@ -55,12 +55,15 @@ node/js-debug 未導入環境では検証せずパス）。
 
 ### 起動構成
 
-- **2 モード**：プログラム（.ts/.js。TS 直接実行は Node 23.6+ の型ストリッピング依存）と **npm スクリプト**
-  （`runtimeExecutable:"npm"`）。プロファイル（`DebugLaunchProfile.TargetProgram`）には `TsLaunchTarget` の
-  **`npm:スクリプト名`** エンコードで格納（レコード形は dotnet と共用、保存先は別ファイル
-  `%APPDATA%/Loomo/tsLaunchProfiles.json`）。
+- **3 モード**：プログラム（.ts/.js。TS 直接実行は Node 23.6+ の型ストリッピング依存）、**npm スクリプト**
+  （`runtimeExecutable:"npm"`）、**ブラウザ**（`chrome:URL` → `type:"pwa-chrome"` launch、webRoot=パッケージ
+  ディレクトリ。開発サーバーは別途起動しておく前提）。プロファイル（`DebugLaunchProfile.TargetProgram`）には
+  `TsLaunchTarget` の **`npm:スクリプト名` / `chrome:URL`** エンコードで格納（レコード形は dotnet と共用、
+  保存先は別ファイル `%APPDATA%/Loomo/tsLaunchProfiles.json`）。
 - `JustMyCode` → `skipFiles:["<node_internals>/**"]`。例外フィルタは js-debug の `all`/`uncaught`。
-- アタッチは**ポート指定**（`node --inspect` 既定 9229。`DebugAttachConfig.Port` を追加）。プロセス列挙は Phase 2。
+- アタッチは**ポート指定**（`node --inspect` 既定 9229。`DebugAttachConfig.Port` を追加）＋
+  **node プロセス列挙**（`TsNodeProcessEnumerator`：WMI `Get-CimInstance Win32_Process` を非表示 pwsh で叩き、
+  コマンドラインの `--inspect(-brk)?(=host:port)?` からポートを推定。一覧選択でポート欄へ反映）。
 - `BuildFirst` は「開始前に tsc 型チェック」（エラーで起動中止。tsconfig 無しなら何もしない）。
 
 ## 29.4 VM / ビュー（`Loomo.App`）
@@ -74,18 +77,34 @@ node/js-debug 未導入環境では検証せずパス）。
   `Set-Location <tsconfigのdir>; npx tsc --noEmit --pretty false` を実行し `ReportBuildOutput(output, dir)` へ。
   §28 と同じ `ProblemsViewModel`/`DebugProblemsView` を第 2 インスタンスで使う（MSBuild 正規表現が tsc の
   `path(line,col): error TS1234: msg` にそのままマッチ）。
-- `TsDebugView`：§28 `DebugView` のクローンで 9 タブ（構成0/出力1/問題2/変数3/自動4/コールスタック5/
-  スレッド6/ブレークポイント7/イミディエイト8）。テストタブは Phase 2。サブビュー
-  （変数/問題/ブレークポイント/イミディエイト）は同型 VM のため**そのまま流用**。
-  `TsDebugConfigView`：未導入バー・プロファイル管理・パッケージコンボ・モードラジオ・npm スクリプトコンボ・
-  例外チェック・ポートアタッチ。
+- `TsDebugView`：§28 `DebugView` のクローンで 10 タブ（構成0/出力1/問題2/変数3/自動4/コールスタック5/
+  テスト6/スレッド7/ブレークポイント8/イミディエイト9）。サブビュー
+  （変数/問題/テスト/ブレークポイント/イミディエイト）は同型 VM のため**そのまま流用**。
+  `TsDebugConfigView`：未導入バー・プロファイル管理・パッケージコンボ・3 モードラジオ・npm スクリプトコンボ・
+  URL 欄・例外チェック・node プロセス一覧＋ポートアタッチ。
+- **テストタブ（vitest / jest）**：`TsTestDiscovery` が `*.test.ts`/`*.spec.ts` 系から
+  `describe`/`it`/`test` の第 1 引数を波かっこ深度近似で拾い（入れ子 describe は「a &gt; b &gt; タイトル」に連結、
+  行番号付き＝ダブルクリックでジャンプ）、`TsTestRunner` が package.json からランナー判定
+  （devDependencies → scripts.test）して `npx vitest run --reporter=json` / `npx jest --json` を実行、
+  **jest 互換 JSON を 1 本のパーサ**で反映（実 vitest で形状検証済み）。グループ＝ファイル、全実行は
+  パッケージごと、ファイル/1 件実行は `-t 葉タイトル`（PowerShell シングルクォート）。VM は
+  `TsDebugTestsViewModel`（dotnet 版と**同名メンバー**にして `DebugTestsView` を共有、コードビハインドの
+  結合は `ITestExplorer` で吸収）。テストソース監視（`TestSourceWatcher` のパターン/無視ディレクトリを
+  パラメータ化）で自動再収集。
+- **自動変数（Autos）**：`AutosExtractor` に TS/JS キーワード集合を追加（`console` 等のノイズ除外・
+  テンプレートリテラルの空白化）。停止フレームの拡張子で言語を自動選択。
 - ペイン配管（新 PaneKind の接点）：`_paneElements`／`TsIdePane`（DebugPane クローン、ツールバーは
   ビルドの代わりに型チェック）／`PaneLabel`・`TrailLogic`「TS IDE」／`PaneIcon.TsIde`（六角形＋虫）＋
   `TsIdePaneToggle`／`StageOrder`／`FocusPane`／ステージ復元・`LoadEnabledSessions`・スナップショット復元の
   非適用時除去（`_tsIdePaneApplicable`、`StageModeCoordinator.TsIdePaneApplicable`）。
 
-## 29.5 Phase 2（今回やらない）
+## 29.5 Phase 2 の実施状況（2026-07-23）
 
-vitest/jest テストタブ（`DebugTestsViewModel` の TS 版）・ブラウザ（pwa-chrome）デバッグ・
-Node プロセス列挙アタッチ・アタッチポート永続化・多重子セッション（cluster）・
-`AutosExtractor` の TS キーワード最適化（v1 は C# 版流用——キーワードがほぼ重なるため実害小）。
+**実装済み**：vitest/jest テストタブ・ブラウザ（pwa-chrome）デバッグ・Node プロセス列挙アタッチ・
+`AutosExtractor` の TS キーワード対応（いずれも 29.3〜29.4 に記載）。
+
+**意図的に見送り**：
+- **多重子セッション（cluster / child_process）**：2 個目以降の `startDebugging` は受理応答＋コンソール告知のみ。
+  複数子接続のスレッド/停止イベントの統合は複雑さに見合わない（典型的な TS 開発では単一プロセス）。
+  必要になったら「子ごとに別 `DebugSessionViewModel`」方向で設計し直す。
+- **アタッチポートの永続化**：プロセス列挙（ポート自動検出）で手入力がほぼ不要になったため保留。
