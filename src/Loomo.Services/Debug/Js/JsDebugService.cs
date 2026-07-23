@@ -19,23 +19,37 @@ namespace sk0ya.Loomo.Services.Debug.Js;
 /// 3. 同じサーバへ<b>2 本目の TCP 接続</b>（子セッション）を張り、initialize → その configuration をそのまま
 ///    launch/attach として送る。<b>停止・スレッド・変数・ブレークポイントの実体は子セッション側</b>。
 ///
-/// そのためデバッグ対象向けリクエスト（stackTrace / variables / setBreakpoints 等）は子接続があれば子へ、
-/// まだ無ければ親へルーティングする。出力は親子両方から拾い、terminated はどちら由来でも終了処理へ集約する。
-/// cluster / child_process による 2 個目以降の <c>startDebugging</c> は v1 では受理応答のみ（既知の制限、
-/// コンソールに告知を出す）。セッション開始シーケンス（initialize → launch を await せず initialized で
+/// 子セッションは<b>複数</b>持てる（npm 経由の起動は npm-cli 用と実体 node 用で startDebugging が 2 回来るし、
+/// cluster / child_process でも増える）。デバッグ対象向けリクエスト（stackTrace / variables 等）は
+/// 「最後に停止イベントを上げた子」（無ければ最新の子、それも無ければ親）へルーティングし、
+/// setBreakpoints は全接続へ送る。出力は全接続から拾い、終了は「親の terminated / 切断」または
+/// 「全子セッションの終了」で確定する（1 子の終了では終わらない——npm や cluster の主プロセスが残るため）。
+/// セッション開始シーケンス（initialize → launch を await せず initialized で
 /// configurationDone）は <see cref="NetcoredbgDebugService"/> と同じ流儀。
 /// </summary>
 public sealed class JsDebugService : IDebugService
 {
+    /// <summary>子セッション 1 本（startDebugging 1 回分の TCP 接続）。reverse request 受理時に
+    /// 同期でリストへ登録し（終了判定のレース防止）、接続確立後に Conn/Tcp が埋まる。</summary>
+    private sealed class ChildSession
+    {
+        public TcpClient? Tcp;
+        public DapConnection? Conn;
+        public Action<string, JsonElement>? EventHandler;
+        public Action? ClosedHandler;
+        public readonly TaskCompletionSource RequestSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Ended;
+    }
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private JsDebugServerProcess? _server;
     private TcpClient? _parentTcp;
     private DapConnection? _parent;
-    private TcpClient? _childTcp;
-    private DapConnection? _child;
+    private readonly object _childLock = new();
+    private readonly List<ChildSession> _children = new();
+    private DapConnection? _activeChild;   // 最後に stopped を上げた子（検査・ステップの送り先）
     private int? _exitCode;
     private DebugSessionState _state = DebugSessionState.Idle;
-    private bool _childStarted;
 
     /// <summary>ソースパス（絶対）→ ブレークポイント（1 始まりの行＋条件）。起動時の構成フェーズで再送する。</summary>
     private readonly Dictionary<string, IReadOnlyList<DebugBreakpoint>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
@@ -50,11 +64,9 @@ public sealed class JsDebugService : IDebugService
     private bool _attached;
 
     /// <summary>親接続に launch/attach を書き終えたシグナル。構成フェーズはこれを待ってから configurationDone を
-    /// 送る（netcoredbg と同じ順序保証。js-debug は寛容だが、同じ流儀で安全側に倒す）。</summary>
+    /// 送る（netcoredbg と同じ順序保証。js-debug は寛容だが、同じ流儀で安全側に倒す）。子は
+    /// <see cref="ChildSession.RequestSent"/> が同役。</summary>
     private TaskCompletionSource? _parentRequestSent;
-
-    /// <summary>子接続に launch/attach（startDebugging の configuration）を書き終えたシグナル。同上。</summary>
-    private TaskCompletionSource? _childRequestSent;
 
     /// <summary>自然終了時の後始末（接続・サーバプロセスの破棄）を追跡するタスク。</summary>
     private Task? _teardownTask;
@@ -75,14 +87,30 @@ public sealed class JsDebugService : IDebugService
     public event EventHandler? Continued;
     public event EventHandler<DebugExited>? Exited;
 
-    /// <summary>デバッグ対象向けリクエストの送り先。子（実体）が立っていれば子、まだなら親。</summary>
-    private DapConnection? ActiveConn => _child ?? _parent;
+    /// <summary>デバッグ対象向けリクエストの送り先。最後に停止した子 → 最新の生きている子 → 親の順。</summary>
+    private DapConnection? ActiveConn
+    {
+        get
+        {
+            if (_activeChild is { IsOpen: true } a) return a;
+            lock (_childLock)
+            {
+                for (var i = _children.Count - 1; i >= 0; i--)
+                    if (!_children[i].Ended && _children[i].Conn is { IsOpen: true } c) return c;
+            }
+            return _parent;
+        }
+    }
 
-    /// <summary>ブレークポイント送信の対象接続（親子両方。vscode も全セッションへ送る）。</summary>
+    /// <summary>ブレークポイント送信の対象接続（親＋全子。vscode も全セッションへ送る）。</summary>
     private IEnumerable<DapConnection> BreakpointConns()
     {
         if (_parent is { IsOpen: true } p) yield return p;
-        if (_child is { IsOpen: true } c) yield return c;
+        List<DapConnection> children;
+        lock (_childLock)
+            children = _children.Where(s => !s.Ended && s.Conn is { IsOpen: true })
+                .Select(s => s.Conn!).ToList();
+        foreach (var c in children) yield return c;
     }
 
     public Task StartAsync(DebugLaunchConfig config, CancellationToken ct)
@@ -219,7 +247,6 @@ public sealed class JsDebugService : IDebugService
 
             _exitCode = null;
             _attached = attaching;
-            _childStarted = false;
             SetState(DebugSessionState.Launching);
 
             try
@@ -281,36 +308,36 @@ public sealed class JsDebugService : IDebugService
         }
     }
 
-    /// <summary>親接続への reverse request。<c>startDebugging</c> が来たら子セッションを別 TCP 接続で開始する。
+    /// <summary>reverse request（親・子どちらの接続からも来る）。<c>startDebugging</c> が来るたびに
+    /// 子セッションを別 TCP 接続で開始する（npm 経由は npm-cli 用＋実体 node 用の 2 回、cluster 等ではさらに増える）。
+    /// 終了判定（全子終了）とのレースを避けるため、リストへの登録はこの場で同期的に行う。
     /// DAP 読み取りスレッド上なのでブロックせず Task へ逃がす。</summary>
     private bool OnParentReverseRequest(string command, JsonElement args)
     {
         if (command != "startDebugging") return true;   // runInTerminal 等は internalConsole 運用なので来ない想定
 
-        if (_childStarted)
-        {
-            // cluster / child_process の追加ターゲット。v1 では最初の 1 本だけデバッグする（既知の制限）。
-            Emit(DebugOutputCategory.Console,
-                "追加の子プロセスのデバッグ要求を受けましたが、現在は最初の 1 プロセスのみデバッグします。");
-            return true;
-        }
-        _childStarted = true;
+        var session = new ChildSession();
+        lock (_childLock) _children.Add(session);
 
         // configuration と request 種別（launch/attach）を取り出して子セッションを開始する。
         string childRequest = args.ValueKind == JsonValueKind.Object &&
                               args.TryGetProperty("request", out var r) ? r.GetString() ?? "attach" : "attach";
         JsonElement config = args.ValueKind == JsonValueKind.Object &&
                              args.TryGetProperty("configuration", out var c) ? c.Clone() : default;
-        _ = Task.Run(() => StartChildSessionAsync(childRequest, config));
+        _ = Task.Run(() => StartChildSessionAsync(session, childRequest, config));
         return true;
     }
 
-    /// <summary>子セッション：同じサーバへ 2 本目の TCP 接続を張り、initialize → startDebugging の configuration を
+    /// <summary>子セッション：同じサーバへ追加の TCP 接続を張り、initialize → startDebugging の configuration を
     /// そのまま launch/attach として送る。停止イベント・ブレークポイントの実体はこちら側。</summary>
-    private async Task StartChildSessionAsync(string requestCommand, JsonElement configuration)
+    private async Task StartChildSessionAsync(ChildSession session, string requestCommand, JsonElement configuration)
     {
         var server = _server;
-        if (server is not { IsRunning: true }) return;
+        if (server is not { IsRunning: true })
+        {
+            MarkChildEnded(session, "サーバ停止中の子セッション要求");
+            return;
+        }
 
         try
         {
@@ -318,12 +345,13 @@ public sealed class JsDebugService : IDebugService
             await tcp.ConnectAsync("127.0.0.1", server.Port);
             var stream = tcp.GetStream();
             var child = new DapConnection(stream, stream, label: "js-child");
-            _childTcp = tcp;
-            _child = child;
-            _childRequestSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            child.EventReceived += OnChildEvent;
-            child.Closed += OnChildClosed;
-            child.ReverseRequestHandler = OnParentReverseRequest;   // 孫の startDebugging も同じ制限告知
+            session.Tcp = tcp;
+            session.Conn = child;
+            session.EventHandler = (evt, body) => OnChildEvent(session, evt, body);
+            session.ClosedHandler = () => MarkChildEnded(session, "子セッション接続の切断");
+            child.EventReceived += session.EventHandler;
+            child.Closed += session.ClosedHandler;
+            child.ReverseRequestHandler = OnParentReverseRequest;   // 孫の startDebugging も同じ経路で実体化
             child.Start();
 
             await child.SendRequestAsync("initialize", new
@@ -341,13 +369,29 @@ public sealed class JsDebugService : IDebugService
             // launch/attach（configuration そのまま）。応答は configurationDone 後 —— await しない（親と同じ流儀）。
             object? argsObj = configuration.ValueKind == JsonValueKind.Object ? (object)configuration : new { };
             var requestTask = child.SendRequestAsync(requestCommand, argsObj, CancellationToken.None);
-            _childRequestSent.TrySetResult();
+            session.RequestSent.TrySetResult();
             await requestTask;
         }
         catch (Exception ex)
         {
             Emit(DebugOutputCategory.Important, $"子デバッグセッションの開始に失敗しました: {ex.Message}");
+            MarkChildEnded(session, "子セッションの開始失敗");
         }
+    }
+
+    /// <summary>子セッションの終了（terminated / 接続断 / 開始失敗）を記録し、全子が終わっていれば
+    /// セッション全体を終了する。1 子の終了では終わらない（npm / cluster の主プロセスが残っているため）。</summary>
+    private void MarkChildEnded(ChildSession session, string reason)
+    {
+        bool allEnded;
+        lock (_childLock)
+        {
+            if (session.Ended) return;
+            session.Ended = true;
+            allEnded = _children.All(s => s.Ended);
+        }
+        if (ReferenceEquals(_activeChild, session.Conn)) _activeChild = null;
+        if (allEnded) Finish(reason);
     }
 
     public async Task StopAsync(CancellationToken ct = default)
@@ -365,16 +409,19 @@ public sealed class JsDebugService : IDebugService
     private async Task StopCoreAsync()
     {
         _parentRequestSent?.TrySetResult();
-        _childRequestSent?.TrySetResult();
         _tempBreakpoints.Clear();
 
         var parent = _parent;
-        var child = _child;
         var parentTcp = _parentTcp;
-        var childTcp = _childTcp;
         var server = _server;
-        _parent = null; _child = null; _parentTcp = null; _childTcp = null; _server = null;
-        _childStarted = false;
+        List<ChildSession> children;
+        lock (_childLock)
+        {
+            children = _children.ToList();
+            _children.Clear();
+        }
+        _parent = null; _parentTcp = null; _server = null;
+        _activeChild = null;
         if (parent is null && server is null) return;
 
         if (parent is not null)
@@ -382,10 +429,14 @@ public sealed class JsDebugService : IDebugService
             parent.EventReceived -= OnParentEvent;
             parent.Closed -= OnParentClosed;
         }
-        if (child is not null)
+        foreach (var c in children)
         {
-            child.EventReceived -= OnChildEvent;
-            child.Closed -= OnChildClosed;
+            c.RequestSent.TrySetResult();
+            if (c.Conn is { } conn)
+            {
+                if (c.EventHandler is { } eh) conn.EventReceived -= eh;
+                if (c.ClosedHandler is { } ch) conn.Closed -= ch;
+            }
         }
 
         if (parent is { IsOpen: true })
@@ -401,27 +452,62 @@ public sealed class JsDebugService : IDebugService
         }
 
         JsDebugLog.Write("StopCore: disposing connections");
-        child?.Dispose();
+        foreach (var c in children)
+        {
+            c.Conn?.Dispose();
+            try { c.Tcp?.Dispose(); } catch { }
+        }
         parent?.Dispose();
-        try { childTcp?.Dispose(); } catch { }
         try { parentTcp?.Dispose(); } catch { }
         JsDebugLog.Write("StopCore: disposing server");
         server?.Dispose();
         JsDebugLog.Write("StopCore: done");
     }
 
-    private void OnParentEvent(string evt, JsonElement body) => OnDapEvent(evt, body, isChild: false);
-    private void OnChildEvent(string evt, JsonElement body) => OnDapEvent(evt, body, isChild: true);
-
-    private void OnDapEvent(string evt, JsonElement body, bool isChild)
+    private void OnParentEvent(string evt, JsonElement body)
     {
         switch (evt)
         {
             case "initialized":
                 // 構成フェーズ：記憶しているブレークポイントを全ソース分送ってから configurationDone。
-                _ = ConfigureAsync(isChild);
+                _ = ConfigureConnectionAsync(_parent, _parentRequestSent?.Task);
                 break;
+            case "terminated":
+                // 親の terminated＝js-debug が全ターゲット終了を確定した合図。
+                Finish("terminated イベント（親）");
+                break;
+            default:
+                HandleCommonEvent(evt, body);
+                break;
+        }
+    }
 
+    private void OnChildEvent(ChildSession session, string evt, JsonElement body)
+    {
+        switch (evt)
+        {
+            case "initialized":
+                _ = ConfigureConnectionAsync(session.Conn, session.RequestSent.Task);
+                break;
+            case "terminated":
+                // この子の終了。全子が終わったときだけセッション終了（MarkChildEnded 内で判定）。
+                MarkChildEnded(session, "terminated イベント（子）");
+                break;
+            case "stopped":
+                _activeChild = session.Conn;   // 以降の検査・ステップはこの子へ
+                HandleCommonEvent(evt, body);
+                break;
+            default:
+                HandleCommonEvent(evt, body);
+                break;
+        }
+    }
+
+    /// <summary>親・子共通のイベント処理（stopped / continued / output / exited）。</summary>
+    private void HandleCommonEvent(string evt, JsonElement body)
+    {
+        switch (evt)
+        {
             case "stopped":
                 if (body.ValueKind == JsonValueKind.Object)
                 {
@@ -453,20 +539,10 @@ public sealed class JsDebugService : IDebugService
                     body.TryGetProperty("exitCode", out var ec) && ec.ValueKind == JsonValueKind.Number)
                     _exitCode = ec.GetInt32();
                 break;
-
-            case "terminated":
-                // 子（実体）の終了はセッション終了。親の terminated も同じ扱い。
-                Finish($"terminated イベント（{(isChild ? "子" : "親")}）");
-                break;
         }
     }
 
     private void OnParentClosed() => Finish("アダプタ接続の切断");
-    private void OnChildClosed()
-    {
-        // 子接続が落ちた＝対象プロセス終了とみなす（親は生きていても対象はもう居ない）。
-        Finish("子セッション接続の切断");
-    }
 
     /// <summary>セッション終了の確定処理（イベント or 接続断から）。多重発火は状態で抑止。</summary>
     private void Finish(string reason)
@@ -787,17 +863,15 @@ public sealed class JsDebugService : IDebugService
     }
 
     /// <summary>構成フェーズ：記憶している全ブレークポイント・例外ブレークを送り、最後に configurationDone を送る。
-    /// 親・子どちらの initialized からも呼ばれる（それぞれ自分の接続に対して行う）。</summary>
-    private async Task ConfigureAsync(bool isChild)
+    /// 親・各子どちらの initialized からも呼ばれる（それぞれ自分の接続に対して行う）。</summary>
+    private async Task ConfigureConnectionAsync(DapConnection? conn, Task? requestSent)
     {
-        var conn = isChild ? _child : _parent;
         if (conn is null) return;
 
         // launch/attach が書かれるまで待つ（順序保証。netcoredbg と同じ流儀）。
-        var requestSent = isChild ? _childRequestSent : _parentRequestSent;
         if (requestSent is not null)
         {
-            try { await requestSent.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+            try { await requestSent.WaitAsync(TimeSpan.FromSeconds(10)); }
             catch { /* タイムアウトでも configurationDone は送る */ }
         }
 

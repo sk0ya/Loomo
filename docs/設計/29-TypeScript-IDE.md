@@ -40,18 +40,22 @@ vscode-js-debug は npm 未公開。GitHub Releases の `js-debug-dap-v*.tar.gz`
    stdout の listening 行から実ポートをパース。競合レースなし）。1 セッション 1 プロセス。
 2. 親接続（TCP）：initialize → launch/attach（`type:"pwa-node"`）。launch は **await しない**
    （応答は configurationDone の後。§28 と同じ流儀）。
-3. js-debug が親へ reverse request **`startDebugging`**（`__pendingTargetId` 入り configuration）を送る →
-   **同一ポートへ 2 本目の TCP 接続**（子セッション）→ initialize → configuration をそのまま launch/attach →
-   子の initialized で記憶済み BP＋例外フィルタ＋configurationDone。
-4. **停止・スレッド・変数・BP の実体は子セッション側**。対象向けリクエストは子があれば子へ、まだなら親へ
-   （`ActiveConn`）。setBreakpoints は親子両方へ。出力は親子両方から。terminated/接続断はどちら由来でも終了処理へ。
+3. js-debug が reverse request **`startDebugging`**（`__pendingTargetId` 入り configuration）を送ってくる**たびに**
+   **同一ポートへ追加の TCP 接続**（子セッション、`ChildSession` のリスト）→ initialize → configuration を
+   そのまま launch/attach → その子の initialized で記憶済み BP＋例外フィルタ＋configurationDone。
+   **子は複数**（npm 経由の起動は npm-cli 用＋実体 node 用で必ず 2 回来る。cluster / child_process でも増える。
+   1 本しか実体化しないと実体プロセスがデバッガ待ちで永久に走らない——npm run が「失敗」して見えた実障害）。
+4. **停止・スレッド・変数・BP の実体は子セッション側**。対象向けリクエストは「最後に stopped を上げた子」→
+   最新の生きている子 → 親の順（`ActiveConn`）。setBreakpoints は親＋全子へ。出力は全接続から。
+   終了確定は「親の terminated / 切断」または「**全子**の終了」（1 子の終了では終わらない。
+   startDebugging 受理時に同期でリスト登録して終了判定とのレースを防ぐ）。
 5. 終了：親へ disconnect（terminateDebuggee=launch のみ true）→ 全接続とサーバプロセスを破棄。
    **js-debug は terminated 後の disconnect に応答しない**ので 2 秒タイムアウトで破棄続行（実測）。
 
-制限（v1）：2 個目以降の `startDebugging`（cluster / child_process）は受理応答＋コンソール告知のみ。
-js-debug は modules リクエスト非対応（モジュールタブ無し）、gotoTargets 非対応（次のステートメント設定無し）。
-実機検証は `JsDebugServiceIntegrationTests`（launch→BP 停止→検査→評価→続行→出力→終了の全シーケンス。
-node/js-debug 未導入環境では検証せずパス）。
+制限（v1）：js-debug は modules リクエスト非対応（モジュールタブ無し）、gotoTargets 非対応
+（次のステートメント設定無し）。複数子が同時に停止した場合の表示は「最後に停止した子」に寄る近似。
+実機検証は `JsDebugServiceIntegrationTests`（launch→BP 停止→検査→評価→続行→出力→終了の全シーケンス＋
+npm スクリプト launch の出力・自然終了。node/js-debug 未導入環境では検証せずパス）。
 
 ### 起動構成
 

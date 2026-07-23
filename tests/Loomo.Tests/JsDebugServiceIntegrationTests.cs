@@ -16,6 +16,43 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public sealed class JsDebugServiceIntegrationTests
 {
+    /// <summary>npm スクリプトモード（runtimeExecutable=npm）の launch が通ることの統合確認。
+    /// スクリプト経由でも子セッションが成立し、console 出力と自然終了が観測できること。</summary>
+    [Fact]
+    public async Task Launch_npm_script_outputs_and_exits()
+    {
+        if (!JsDebugAdapterLocator.IsInstalled) return;   // 未導入環境ではスキップ相当
+
+        var dir = Directory.CreateTempSubdirectory("loomo-jsdbg-npm-test-").FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(dir, "app.js"),
+                "console.log('npm-dev-ok: ' + (2 + 3));\n");
+            await File.WriteAllTextAsync(Path.Combine(dir, "package.json"),
+                """{ "name": "npmtest", "scripts": { "dev": "node app.js" } }""");
+
+            var service = new JsDebugService();
+            var exited = new TaskCompletionSource<DebugExited>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var output = new List<DebugOutput>();
+            service.Exited += (_, e) => exited.TrySetResult(e);
+            service.Output += (_, e) => { lock (output) output.Add(e); };
+
+            await service.StartAsync(new DebugLaunchConfig("npm:dev", WorkingDirectory: dir), CancellationToken.None);
+
+            var exit = await exited.Task.WaitAsync(TimeSpan.FromSeconds(60));
+            string all;
+            lock (output) all = string.Join("\n", output.ConvertAll(o => $"[{o.Category}] {o.Text.TrimEnd()}"));
+            Assert.True(exit.ExitCode is null or 0, $"exitCode={exit.ExitCode}\n--- output ---\n{all}");
+            Assert.True(all.Contains("npm-dev-ok: 5"), $"出力に npm-dev-ok が無い:\n--- output ---\n{all}");
+
+            await service.StopAsync();
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
     [Fact]
     public async Task Launch_breakpoint_inspect_continue_exit()
     {
