@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -38,8 +40,10 @@ public sealed class ProblemItemViewModel
     public string Code { get; }
     public string Message { get; }
 
-    public string FileName => System.IO.Path.GetFileName(FilePath);
-    public string Location => $"{Code} · {FileName}:{Line1}:{Column1}";
+    public string FileName => Path.GetFileName(FilePath);
+    public string LineColumn => $"{Line1}:{Column1}";
+    /// <summary>行のツールチップ（メッセージ全文＋コード＋位置）。</summary>
+    public string ToolTipText => $"{Message}\n{Code} · {FileName}:{Line1}:{Column1}";
     public string SeverityGlyph => Severity switch
     {
         ProblemSeverity.Error => "✕",
@@ -47,10 +51,37 @@ public sealed class ProblemItemViewModel
     };
 }
 
+/// <summary>「問題」ツリーのファイル見出し（SEARCH ペインの結果ツリーと同じファイル別グルーピング）。
+/// 配下にそのファイルの診断行を持ち、開閉状態は更新をまたいでパスで引き継がれる。</summary>
+public sealed partial class ProblemFileGroup : ObservableObject
+{
+    public ProblemFileGroup(string filePath, string relativeDir, IReadOnlyList<ProblemItemViewModel> items)
+    {
+        FilePath = filePath;
+        RelativeDir = relativeDir;
+        Items = items;
+        ErrorCount = items.Count(i => i.Severity == ProblemSeverity.Error);
+        WarningCount = items.Count - ErrorCount;
+    }
+
+    public string FilePath { get; }
+    public string FileName => Path.GetFileName(FilePath);
+    /// <summary>ワークスペース相対のディレクトリ（表示用。ルート直下は空、マルチルート時はフォルダー名前置）。</summary>
+    public string RelativeDir { get; }
+    public IReadOnlyList<ProblemItemViewModel> Items { get; }
+    public int ErrorCount { get; }
+    public int WarningCount { get; }
+    public bool HasErrors => ErrorCount > 0;
+    public bool HasWarnings => WarningCount > 0;
+
+    [ObservableProperty] private bool _isExpanded = true;
+}
+
 /// <summary>IDE（デバッグ）ペインの「問題」タブ。ビルド系コマンド（<c>dotnet build</c> / <c>dotnet test</c>）の
-/// 出力からエラー/警告を抽出して一覧表示する（エディタの LSP 診断は波線で見えるので扱わない——ここは
-/// ワークスペース全体の「本物の」ビルド結果）。デバッグセッションには依存しない（全セッション共有のサブ VM）。
-/// 流し込みは各ビルド実行箇所が <see cref="IDebugSession.ReportBuildOutput"/> 経由で行う。</summary>
+/// 出力からエラー/警告を抽出し、ファイル別ツリー（<see cref="Groups"/>）で表示する（エディタの LSP 診断は
+/// 波線で見えるので扱わない——ここはワークスペース全体の「本物の」ビルド結果）。デバッグセッションには
+/// 依存しない（全セッション共有のサブ VM）。流し込みは各ビルド実行箇所が
+/// <see cref="IDebugSession.ReportBuildOutput"/> 経由で行う。</summary>
 public sealed partial class ProblemsViewModel : ObservableObject
 {
     /// <summary>MSBuild の診断行：<c>path(line,col): error|warning CODE: message [proj.csproj]</c>。
@@ -59,14 +90,18 @@ public sealed partial class ProblemsViewModel : ObservableObject
         @"^\s*(?<file>.+?)\((?<line>\d+),(?<col>\d+)\)\s*:\s*(?<sev>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<msg>.*?)(\s*\[[^\[\]]+\])?\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    /// <summary>全診断のフラット一覧（エラー→警告、次いでファイル名→行の順）。</summary>
-    public ObservableCollection<ProblemItemViewModel> Items { get; } = new();
+    private readonly IWorkspaceService? _workspace;
+
+    public ProblemsViewModel(IWorkspaceService? workspace = null) => _workspace = workspace;
+
+    /// <summary>ファイル別のツリー（エラーを含むファイルが先、次いでファイル名順。配下は行順）。</summary>
+    public ObservableCollection<ProblemFileGroup> Groups { get; } = new();
 
     [ObservableProperty] private bool _hasItems;
     [ObservableProperty] private int _errorCount;
     [ObservableProperty] private int _warningCount;
 
-    /// <summary>行クリックでその位置へジャンプする要求。ShellWindow が購読する。</summary>
+    /// <summary>行クリック（または Enter）でその位置へジャンプする要求。ShellWindow が購読する。</summary>
     public event Action<ProblemItemViewModel>? OpenRequested;
 
     [RelayCommand]
@@ -75,9 +110,30 @@ public sealed partial class ProblemsViewModel : ObservableObject
         if (item is not null) OpenRequested?.Invoke(item);
     }
 
-    /// <summary>ビルド系コマンドの出力全文からエラー/警告を抽出して一覧を丸ごと差し替える。
-    /// 診断行が 1 つも無ければ空になる（＝ビルドがきれいという正しい状態）。</summary>
-    public void SetFromBuildOutput(string output) => ReplaceItems(ParseBuildOutput(output));
+    /// <summary>ビルド系コマンドの出力全文からエラー/警告を抽出してツリーを丸ごと作り直す
+    /// （診断行が 1 つも無ければ空＝ビルドがきれいという正しい状態）。ファイルの開閉状態はパスで引き継ぐ。</summary>
+    public void SetFromBuildOutput(string output)
+    {
+        var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
+        var items = ParseBuildOutput(output);
+
+        Groups.Clear();
+        var groups = items
+            .GroupBy(i => i.FilePath, System.StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ProblemFileGroup(g.Key, ToRelativeDir(g.Key),
+                g.OrderBy(i => i.Line1).ThenBy(i => i.Column1).ToList()))
+            .OrderByDescending(g => g.HasErrors)
+            .ThenBy(g => g.FileName, System.StringComparer.OrdinalIgnoreCase);
+        foreach (var g in groups)
+        {
+            if (expanded.TryGetValue(g.FilePath, out var e)) g.IsExpanded = e;
+            Groups.Add(g);
+        }
+
+        HasItems = Groups.Count > 0;
+        ErrorCount = Groups.Sum(g => g.ErrorCount);
+        WarningCount = Groups.Sum(g => g.WarningCount);
+    }
 
     /// <summary>MSBuild 診断行のパース（テスト用に分離）。同一診断の再掲（サマリ節・マルチターゲット）は除く。</summary>
     internal static List<ProblemItemViewModel> ParseBuildOutput(string output)
@@ -103,19 +159,25 @@ public sealed partial class ProblemsViewModel : ObservableObject
         return items;
     }
 
-    private void ReplaceItems(IReadOnlyList<ProblemItemViewModel> items)
+    /// <summary>見出しに添えるワークスペース相対ディレクトリ。ルート直下は空、マルチルート時は
+    /// 「フォルダー名/相対パス」（SEARCH の結果ツリーと同じ表記）。ワークスペース外はフルパスのまま。</summary>
+    private string ToRelativeDir(string filePath)
     {
-        var ordered = items
-            .OrderBy(i => i.Severity)
-            .ThenBy(i => i.FileName, System.StringComparer.OrdinalIgnoreCase)
-            .ThenBy(i => i.Line1)
-            .ToList();
-
-        Items.Clear();
-        foreach (var i in ordered) Items.Add(i);
-
-        HasItems = Items.Count > 0;
-        ErrorCount = Items.Count(i => i.Severity == ProblemSeverity.Error);
-        WarningCount = Items.Count(i => i.Severity == ProblemSeverity.Warning);
+        var dir = Path.GetDirectoryName(filePath) ?? "";
+        var folders = _workspace?.Folders;
+        if (folders is null || folders.Count == 0) return dir;
+        foreach (var folder in folders)
+        {
+            if (!dir.StartsWith(folder, System.StringComparison.OrdinalIgnoreCase)) continue;
+            var rel = Path.GetRelativePath(folder, dir);
+            if (rel == ".") rel = "";
+            if (folders.Count > 1)
+            {
+                var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder));
+                rel = rel.Length == 0 ? name : $"{name}{Path.DirectorySeparatorChar}{rel}";
+            }
+            return rel.Replace(Path.DirectorySeparatorChar, '/');
+        }
+        return dir;
     }
 }

@@ -9,7 +9,7 @@
         <SolidColorBrush x:Key="ProblemsError" Color="#E06C75" />
         <SolidColorBrush x:Key="ProblemsWarning" Color="#E5C07B" />
 
-        <!-- 重要度で色分けするグリフのスタイル（既定=FgDim=Information/Hint）。 -->
+        <!-- 重要度で色分けするグリフのスタイル。 -->
         <Style x:Key="ProblemSeverityGlyph" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Style.Triggers>
@@ -21,11 +21,92 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- テーマ対応の TreeViewItem（SEARCH ペインの結果ツリーと同じ流儀：既定の Windows 配色を使わせない。
+             ホバー＝Border、選択＝Accent。子リストも VirtualizingStackPanel にして見えている分しか
+             コンテナを作らせない——大量エラーのビルドでも UI スレッドを占有しないように）。 -->
+        <Style x:Key="ProblemsTreeItem" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="ItemsPanel">
+                <Setter.Value>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+                            <Border x:Name="Bd" Grid.Row="0" Background="Transparent" CornerRadius="3">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander" Grid.Column="0"
+                                                  ClickMode="Press" Focusable="False"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" Width="13" Height="14">
+                                                    <Path x:Name="Arrow" Width="8" Height="8" Stretch="Uniform"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Arrow" Property="RenderTransform">
+                                                            <Setter.Value>
+                                                                <RotateTransform Angle="90" CenterX="4" CenterY="4" />
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                    <ContentPresenter x:Name="PART_Header" Grid.Column="1" ContentSource="Header"
+                                                      Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                                                      HorizontalAlignment="Stretch" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="1" Margin="11,0,0,0">
+                                <ItemsPresenter x:Name="ItemsHost" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
-    <!-- 問題（Problems）：ビルド系コマンド（dotnet build / dotnet test）出力から抽出したエラー/警告の一覧。
-         抽出は ProblemsViewModel（流し込みは各ビルド実行箇所の IDebugSession.ReportBuildOutput）が行い、
-         ここは表示専用（DataContext は ProblemsViewModel）。行クリックで該当位置へジャンプする。 -->
+    <!-- 問題（Problems）：ビルド系コマンド（dotnet build / dotnet test）出力から抽出したエラー/警告を
+         SEARCH の結果ツリーと同じファイル別ツリーで表示する。抽出は ProblemsViewModel（流し込みは各ビルド
+         実行箇所の IDebugSession.ReportBuildOutput）が行い、ここは表示専用（DataContext は ProblemsViewModel）。
+         行クリック／Enter で該当位置へジャンプ（矢印キーの選択移動だけでは飛ばない＝フォーカスを奪わない）。 -->
     <Grid Margin="0,4,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -33,7 +114,8 @@
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" HorizontalAlignment="Right" Margin="0,0,4,4"
-                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}">
+                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                   Visibility="{Binding HasItems, Converter={StaticResource BoolToVis}}">
             <Run Text="✕" Foreground="{StaticResource ProblemsError}" />
             <Run Text="{Binding ErrorCount, Mode=OneWay}" />
             <Run Text="   ▲" Foreground="{StaticResource ProblemsWarning}" />
@@ -43,30 +125,74 @@
         <Border Grid.Row="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="1">
             <Grid>
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding Items}" Margin="2">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:ProblemItemViewModel}">
-                                <Button Style="{StaticResource BranchMenuItem}" HorizontalAlignment="Stretch"
-                                        Margin="2,1" ToolTip="{Binding Message}"
-                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding SeverityGlyph}" Width="16" VerticalAlignment="Top"
-                                                   FontSize="{DynamicResource Fs11}"
-                                                   Style="{StaticResource ProblemSeverityGlyph}" />
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
-                                                       Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
-                                            <TextBlock Text="{Binding Location}" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="{DynamicResource FgDim}" Margin="0,1,0,0" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <TreeView x:Name="Tree" BorderThickness="0" Background="Transparent"
+                          ItemsSource="{Binding Groups}"
+                          ItemContainerStyle="{StaticResource ProblemsTreeItem}"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.CanContentScroll="True"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Pixel"
+                          PreviewKeyDown="OnTreeKeyDown">
+                    <TreeView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel />
+                        </ItemsPanelTemplate>
+                    </TreeView.ItemsPanel>
+                    <TreeView.Resources>
+                        <!-- ファイル見出し：ファイル名（強調）＋相対ディレクトリ（薄く）＋右端に ✕/▲ 件数。
+                             行のどこをクリックしても配下を開閉する。 -->
+                        <HierarchicalDataTemplate DataType="{x:Type vm:ProblemFileGroup}" ItemsSource="{Binding Items}">
+                            <Grid Background="Transparent" ToolTip="{Binding FilePath}"
+                                  MouseLeftButtonUp="OnGroupRowClick">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding FileName}" FontSize="{DynamicResource Fs12}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding RelativeDir}" FontSize="{DynamicResource Fs11}"
+                                           Foreground="{DynamicResource FgDim}" Margin="8,0,6,0"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,6,0"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{StaticResource ProblemsError}"
+                                           Visibility="{Binding HasErrors, Converter={StaticResource BoolToVis}}">
+                                    <Run Text="✕" /><Run Text="{Binding ErrorCount, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" Margin="0,0,2,0"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{StaticResource ProblemsWarning}"
+                                           Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
+                                    <Run Text="▲" /><Run Text="{Binding WarningCount, Mode=OneWay}" />
+                                </TextBlock>
+                            </Grid>
+                        </HierarchicalDataTemplate>
+
+                        <!-- 診断行：グリフ・メッセージ（1行・省略・全文はツールチップ）・コード（薄く）・行:列。 -->
+                        <DataTemplate DataType="{x:Type vm:ProblemItemViewModel}">
+                            <Grid Background="Transparent" ToolTip="{Binding ToolTipText}"
+                                  MouseLeftButtonUp="OnProblemRowClick">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding SeverityGlyph}" FontSize="{DynamicResource Fs11}"
+                                           VerticalAlignment="Center" Style="{StaticResource ProblemSeverityGlyph}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Message}" FontSize="{DynamicResource Fs12}"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Text="{Binding Code}" FontSize="{DynamicResource Fs10}"
+                                           Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3" Text="{Binding LineColumn}" FontSize="{DynamicResource Fs10}"
+                                           Foreground="{DynamicResource FgDim}" FontFamily="Consolas"
+                                           Margin="6,0,2,0" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </TreeView.Resources>
+                </TreeView>
 
                 <TextBlock Margin="10,20" TextWrapping="Wrap" TextAlignment="Center"
                            HorizontalAlignment="Center" VerticalAlignment="Center"

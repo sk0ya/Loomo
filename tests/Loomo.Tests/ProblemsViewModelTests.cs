@@ -69,21 +69,54 @@ public class ProblemsViewModelTests
     }
 
     [Fact]
-    public void SetFromBuildOutput_orders_errors_first_and_counts()
+    public void SetFromBuildOutput_groups_by_file_errors_first_and_counts()
     {
         var vm = new ProblemsViewModel();
         vm.SetFromBuildOutput(string.Join("\n",
             @"C:\src\B.cs(3,1): warning CS0219: 未使用 [C:\src\P.csproj]",
-            @"C:\src\A.cs(9,1): error CS1002: ; が必要です [C:\src\P.csproj]"));
+            @"C:\src\A.cs(9,1): error CS1002: ; が必要です [C:\src\P.csproj]",
+            @"C:\src\A.cs(2,1): warning CS0168: 未使用 [C:\src\P.csproj]"));
 
         Assert.True(vm.HasItems);
         Assert.Equal(1, vm.ErrorCount);
-        Assert.Equal(1, vm.WarningCount);
-        Assert.Equal(ProblemSeverity.Error, vm.Items[0].Severity);   // エラーが先頭
+        Assert.Equal(2, vm.WarningCount);
+        Assert.Equal(2, vm.Groups.Count);
+        Assert.Equal("A.cs", vm.Groups[0].FileName);            // エラーを含むファイルが先
+        Assert.Equal(2, vm.Groups[0].Items.Count);
+        Assert.Equal(2, vm.Groups[0].Items[0].Line1);           // 配下は行順
+        Assert.True(vm.Groups[0].HasErrors);
+        Assert.False(vm.Groups[1].HasErrors);
 
         // きれいなビルド出力で空に戻る。
         vm.SetFromBuildOutput("    0 個の警告\n    0 エラー");
         Assert.False(vm.HasItems);
-        Assert.Empty(vm.Items);
+        Assert.Empty(vm.Groups);
+    }
+
+    [Fact]
+    public void SetFromBuildOutput_preserves_expansion_state_by_path()
+    {
+        var vm = new ProblemsViewModel();
+        var output = @"C:\src\A.cs(9,1): error CS1002: ; が必要です [C:\src\P.csproj]";
+        vm.SetFromBuildOutput(output);
+        Assert.True(vm.Groups[0].IsExpanded);                   // 既定は展開
+
+        vm.Groups[0].IsExpanded = false;
+        vm.SetFromBuildOutput(output);                          // 再ビルド相当
+        Assert.False(vm.Groups[0].IsExpanded);                  // 畳んだ状態を引き継ぐ
+    }
+
+    [Fact]
+    public void Group_relative_dir_uses_workspace_root()
+    {
+        var ws = new FakeWorkspaceService();
+        ws.OpenFolder(@"C:\src");
+        var vm = new ProblemsViewModel(ws);
+        vm.SetFromBuildOutput(string.Join("\n",
+            @"C:\src\Sub\Deep\A.cs(1,1): error CS1002: ; が必要です [C:\src\P.csproj]",
+            @"C:\src\B.cs(1,1): error CS1002: ; が必要です [C:\src\P.csproj]"));
+
+        Assert.Equal("Sub/Deep", vm.Groups.First(g => g.FileName == "A.cs").RelativeDir);
+        Assert.Equal("", vm.Groups.First(g => g.FileName == "B.cs").RelativeDir);   // ルート直下は空
     }
 }

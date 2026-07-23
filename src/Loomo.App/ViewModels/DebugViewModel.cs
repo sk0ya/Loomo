@@ -105,7 +105,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
     // --- サブ ViewModel（機能ごと。Inspection 以外は全セッション共有） ---
     /// <summary>「問題」タブ（ビルド系コマンド出力のエラー/警告の抽出）。デバッグセッションに依存しない。
     /// 流し込みは各ビルド実行箇所が <see cref="ReportBuildOutput"/> で行う。</summary>
-    public ProblemsViewModel Problems { get; } = new();
+    public ProblemsViewModel Problems { get; }
     public DebugBreakpointsViewModel Breakpoints { get; }
     public DebugAttachViewModel Attach { get; }
     public DebugTestsViewModel Tests { get; }
@@ -140,6 +140,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
         _sessionFactory = sessionFactory;
         _adapterProbe = sessionFactory.Create();
 
+        Problems = new ProblemsViewModel(workspace);
         Breakpoints = new DebugBreakpointsViewModel(() => Sessions.Select(s => s.DebugService), this);
         Attach = new DebugAttachViewModel(this);
         Tests = new DebugTestsViewModel(workspace, terminal, testDiscovery, this);
