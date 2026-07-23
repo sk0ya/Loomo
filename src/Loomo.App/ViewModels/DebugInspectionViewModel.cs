@@ -125,7 +125,8 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         if (idx < 0 || idx >= lines.Length) return;
         var prev = idx > 0 ? lines[idx - 1] : null;
 
-        foreach (var expr in AutosExtractor.ExtractCandidates(lines[idx], prev))
+        foreach (var expr in AutosExtractor.ExtractCandidates(lines[idx], prev,
+                     AutosExtractor.LanguageForPath(frame.SourcePath)))
         {
             var value = await _debug.EvaluateAsync(expr, frame.Id);
             if (AutosExtractor.LooksLikeValue(value))

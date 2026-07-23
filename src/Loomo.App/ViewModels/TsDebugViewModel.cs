@@ -26,7 +26,7 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
         : base(sessionFactory, workspace)
     {
         _workspace = workspace;
-        Attach = new TsDebugAttachViewModel(this);
+        Attach = new TsDebugAttachViewModel(this, terminal);
         Profiles = new DebugProfilesViewModel(workspace, profileStore, TsProjectDiscovery.Discover);
         Launch = new TsDebugLaunchViewModel(this, workspace, terminal, Attach, Profiles);
         Profiles.AttachLaunch(Launch);

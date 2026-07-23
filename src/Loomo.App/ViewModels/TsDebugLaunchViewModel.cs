@@ -60,44 +60,52 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
 
     // --- 起動モード（TargetProgram のエンコードを構成タブ向けに分解した派生プロパティ） ---
 
-    /// <summary>モード切替時にもう一方のモードの入力値を保持しておく（切替で消えないように）。</summary>
+    private enum LaunchMode { Program, Npm, Chrome }
+
+    /// <summary>モード切替時に他モードの入力値を保持しておく（切替で消えないように）。</summary>
     private string _savedProgramPath = "";
     private string _savedNpmScript = "";
+    private string _savedChromeUrl = "";
 
-    /// <summary>npm スクリプトモードか（false = プログラムファイルモード）。</summary>
-    public bool IsNpmMode
+    private LaunchMode CurrentMode =>
+        TsLaunchTarget.TryParseNpmScript(TargetProgram, out _) ? LaunchMode.Npm
+        : TsLaunchTarget.TryParseChromeUrl(TargetProgram, out _) ? LaunchMode.Chrome
+        : LaunchMode.Program;
+
+    /// <summary>3 モードのラジオボタン用（true が来た側へ切り替える。false は無視——別ラジオの true が処理する）。</summary>
+    public bool IsProgramMode { get => CurrentMode == LaunchMode.Program; set { if (value) SwitchTo(LaunchMode.Program); } }
+    public bool IsNpmMode { get => CurrentMode == LaunchMode.Npm; set { if (value) SwitchTo(LaunchMode.Npm); } }
+    public bool IsChromeMode { get => CurrentMode == LaunchMode.Chrome; set { if (value) SwitchTo(LaunchMode.Chrome); } }
+
+    private void SwitchTo(LaunchMode mode)
     {
-        get => TsLaunchTarget.TryParseNpmScript(TargetProgram, out _);
-        set
+        if (mode == CurrentMode) return;
+        SaveCurrentModeValue();
+        TargetProgram = mode switch
         {
-            if (value == IsNpmMode) return;
-            if (value)
-            {
-                _savedProgramPath = TargetProgram;
-                var script = string.IsNullOrEmpty(_savedNpmScript)
-                    ? AvailableScripts.FirstOrDefault() ?? "start" : _savedNpmScript;
-                TargetProgram = TsLaunchTarget.FormatNpmScript(script);
-            }
-            else
-            {
-                TsLaunchTarget.TryParseNpmScript(TargetProgram, out var script);
-                _savedNpmScript = script;
-                TargetProgram = _savedProgramPath;
-            }
-        }
+            LaunchMode.Npm => TsLaunchTarget.FormatNpmScript(string.IsNullOrEmpty(_savedNpmScript)
+                ? AvailableScripts.FirstOrDefault() ?? "start" : _savedNpmScript),
+            LaunchMode.Chrome => TsLaunchTarget.FormatChromeUrl(string.IsNullOrEmpty(_savedChromeUrl)
+                ? "http://localhost:5173" : _savedChromeUrl),
+            _ => _savedProgramPath,
+        };
     }
 
-    public bool IsProgramMode
+    private void SaveCurrentModeValue()
     {
-        get => !IsNpmMode;
-        set => IsNpmMode = !value;
+        switch (CurrentMode)
+        {
+            case LaunchMode.Npm: TsLaunchTarget.TryParseNpmScript(TargetProgram, out _savedNpmScript); break;
+            case LaunchMode.Chrome: TsLaunchTarget.TryParseChromeUrl(TargetProgram, out _savedChromeUrl); break;
+            default: _savedProgramPath = TargetProgram; break;
+        }
     }
 
     /// <summary>プログラムモードの実行ファイルパス（.ts/.js。ワークスペース相対可）。</summary>
     public string ProgramPath
     {
-        get => IsNpmMode ? _savedProgramPath : TargetProgram;
-        set { if (!IsNpmMode) TargetProgram = value; else _savedProgramPath = value; }
+        get => CurrentMode == LaunchMode.Program ? TargetProgram : _savedProgramPath;
+        set { if (CurrentMode == LaunchMode.Program) TargetProgram = value; else _savedProgramPath = value; }
     }
 
     /// <summary>npm モードのスクリプト名。</summary>
@@ -106,8 +114,19 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         get => TsLaunchTarget.TryParseNpmScript(TargetProgram, out var s) ? s : _savedNpmScript;
         set
         {
-            if (IsNpmMode) TargetProgram = TsLaunchTarget.FormatNpmScript(value ?? "");
+            if (CurrentMode == LaunchMode.Npm) TargetProgram = TsLaunchTarget.FormatNpmScript(value ?? "");
             else _savedNpmScript = value ?? "";
+        }
+    }
+
+    /// <summary>ブラウザモードの URL（開発サーバー等。Chrome を js-debug が起動して接続する）。</summary>
+    public string ChromeUrl
+    {
+        get => TsLaunchTarget.TryParseChromeUrl(TargetProgram, out var u) ? u : _savedChromeUrl;
+        set
+        {
+            if (CurrentMode == LaunchMode.Chrome) TargetProgram = TsLaunchTarget.FormatChromeUrl(value ?? "");
+            else _savedChromeUrl = value ?? "";
         }
     }
 
@@ -115,8 +134,10 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     {
         OnPropertyChanged(nameof(IsNpmMode));
         OnPropertyChanged(nameof(IsProgramMode));
+        OnPropertyChanged(nameof(IsChromeMode));
         OnPropertyChanged(nameof(ProgramPath));
         OnPropertyChanged(nameof(NpmScript));
+        OnPropertyChanged(nameof(ChromeUrl));
     }
 
     internal TsDebugLaunchViewModel(TsDebugViewModel manager, IWorkspaceService workspace, ITerminalService terminal,
@@ -274,6 +295,16 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
             return TargetProgram;
         }
 
+        if (TsLaunchTarget.TryParseChromeUrl(TargetProgram, out var url))
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out _))
+            {
+                _manager.Append(DebugOutputCategory.Important, $"URL を指定してください（例: http://localhost:5173）。");
+                return null;
+            }
+            return TargetProgram;
+        }
+
         var path = TargetProgram.Trim();
         if (path.Length == 0)
         {
@@ -311,19 +342,20 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         }
     }
 
-    /// <summary>作業ディレクトリ＝選択中パッケージのディレクトリ（npm run の実行場所）。未選択なら
-    /// プログラムのあるディレクトリ、それも無ければワークスペースルート。</summary>
+    /// <summary>作業ディレクトリ＝選択中パッケージのディレクトリ（npm run の実行場所・Chrome の webRoot）。
+    /// 未選択ならプログラムのあるディレクトリ、それも無ければワークスペースルート。</summary>
     private string? ResolveWorkingDirectory(string program)
     {
         if (SelectedPackageJsonPath() is { } pkg) return Path.GetDirectoryName(pkg);
-        if (!TsLaunchTarget.TryParseNpmScript(program, out _)) return Path.GetDirectoryName(program);
+        if (!TsLaunchTarget.TryParseNpmScript(program, out _) && !TsLaunchTarget.TryParseChromeUrl(program, out _))
+            return Path.GetDirectoryName(program);
         return _workspace.RootPath;
     }
 
     private static string BuildDisplayName(string program)
-        => TsLaunchTarget.TryParseNpmScript(program, out var script)
-            ? $"npm run {script}"
-            : Path.GetFileNameWithoutExtension(program);
+        => TsLaunchTarget.TryParseNpmScript(program, out var script) ? $"npm run {script}"
+        : TsLaunchTarget.TryParseChromeUrl(program, out var url) ? url
+        : Path.GetFileNameWithoutExtension(program);
 
     private bool CanStop() => _manager.IsBusy;
 

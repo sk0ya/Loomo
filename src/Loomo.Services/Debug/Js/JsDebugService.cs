@@ -88,7 +88,9 @@ public sealed class JsDebugService : IDebugService
     public Task StartAsync(DebugLaunchConfig config, CancellationToken ct)
     {
         var workDir = config.WorkingDirectory
-            ?? (TsLaunchTarget.TryParseNpmScript(config.Program, out _) ? null : Path.GetDirectoryName(config.Program))
+            ?? (TsLaunchTarget.TryParseNpmScript(config.Program, out _) ||
+                TsLaunchTarget.TryParseChromeUrl(config.Program, out _)
+                ? null : Path.GetDirectoryName(config.Program))
             ?? Environment.CurrentDirectory;
 
         return BeginSessionAsync(
@@ -101,6 +103,8 @@ public sealed class JsDebugService : IDebugService
             {
                 if (TsLaunchTarget.TryParseNpmScript(config.Program, out var script))
                     return string.IsNullOrWhiteSpace(script) ? "npm スクリプト名が空です。" : null;
+                if (TsLaunchTarget.TryParseChromeUrl(config.Program, out var url))
+                    return Uri.TryCreate(url, UriKind.Absolute, out _) ? null : $"URL が不正です: {url}";
                 return File.Exists(config.Program) ? null : $"実行対象が見つかりません: {config.Program}";
             },
             ct: ct);
@@ -126,12 +130,26 @@ public sealed class JsDebugService : IDebugService
             ct: ct);
     }
 
-    /// <summary>launch 引数を組み立てる。<c>npm:スクリプト名</c> は npm run へ、それ以外はファイル実行へ。
+    /// <summary>launch 引数を組み立てる。<c>npm:スクリプト名</c> は npm run へ、<c>chrome:URL</c> は
+    /// Chrome 起動（pwa-chrome、webRoot=作業ディレクトリ）へ、それ以外はファイル実行へ。
     /// TS は Node の型ストリッピング（23.6+）と js-debug のソースマップ解決に任せる。</summary>
     private static object BuildLaunchArguments(DebugLaunchConfig config, string workDir)
     {
         var skipFiles = config.JustMyCode ? new[] { "<node_internals>/**" } : Array.Empty<string>();
         var env = config.Environment is { Count: > 0 } e ? e : null;
+
+        if (TsLaunchTarget.TryParseChromeUrl(config.Program, out var url))
+        {
+            return new
+            {
+                name = "Loomo Chrome Debug",
+                type = "pwa-chrome",
+                request = "launch",
+                url,
+                webRoot = workDir,
+                sourceMaps = true,
+            };
+        }
 
         if (TsLaunchTarget.TryParseNpmScript(config.Program, out var script))
         {

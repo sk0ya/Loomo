@@ -50,7 +50,7 @@
                           DisplayMemberPath="Name" Margin="0,0,0,4"
                           ToolTip="対象パッケージ（package.json。自動検出=最初に見つかったもの）" />
 
-                <!-- 実行対象の 2 モード：プログラム（.ts/.js ファイル）または npm スクリプト。 -->
+                <!-- 実行対象の 3 モード：プログラム（.ts/.js ファイル）/ npm スクリプト / ブラウザ（Chrome）。 -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <RadioButton Content="プログラム" GroupName="TsLaunchMode" FontSize="{DynamicResource Fs11}"
                                  Foreground="{DynamicResource Fg}" IsChecked="{Binding Launch.IsProgramMode, Mode=TwoWay}"
@@ -59,6 +59,10 @@
                                  Foreground="{DynamicResource Fg}" Margin="12,0,0,0"
                                  IsChecked="{Binding Launch.IsNpmMode, Mode=TwoWay}"
                                  ToolTip="package.json の scripts を npm run で実行" />
+                    <RadioButton Content="ブラウザ" GroupName="TsLaunchMode" FontSize="{DynamicResource Fs11}"
+                                 Foreground="{DynamicResource Fg}" Margin="12,0,0,0"
+                                 IsChecked="{Binding Launch.IsChromeMode, Mode=TwoWay}"
+                                 ToolTip="Chrome を起動して URL のフロントエンドコードをデバッグ（開発サーバーは別途起動しておく）" />
                 </StackPanel>
 
                 <!-- プログラムモード：実行ファイルパス。 -->
@@ -79,6 +83,18 @@
                           Text="{Binding Launch.NpmScript, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                           Visibility="{Binding Launch.IsNpmMode, Converter={StaticResource BoolToVis}}"
                           ToolTip="npm run で実行するスクリプト名（候補は選択中パッケージの scripts）" />
+
+                <!-- ブラウザモード：デバッグ対象 URL（webRoot は選択中パッケージのディレクトリ）。 -->
+                <Grid Visibility="{Binding Launch.IsChromeMode, Converter={StaticResource BoolToVis}}">
+                    <TextBox x:Name="UrlBox" Padding="6,4" FontSize="{DynamicResource Fs12}" FontFamily="Consolas"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             Text="{Binding Launch.ChromeUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Chrome で開く URL（開発サーバーは事前に起動しておく）" />
+                    <TextBlock Text="URL（例: http://localhost:5173）" IsHitTestVisible="False" FontSize="{DynamicResource Fs12}"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Text, ElementName=UrlBox, Converter={StaticResource EmptyToVis}}" />
+                </Grid>
 
                 <!-- 起動引数（プログラムモードのみ。npm モードのスクリプト引数は scripts 側に書く）。 -->
                 <Grid Margin="0,4,0,0" Visibility="{Binding Launch.IsProgramMode, Converter={StaticResource BoolToVis}}">
@@ -135,6 +151,52 @@
                     <StackPanel>
                         <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                    Text="node --inspect（既定ポート 9229）で起動済みのプロセスに接続します。停止はデタッチのみで、対象プロセスは終了しません。" />
+
+                        <!-- 実行中の node プロセス一覧（inspect ポートを検出できたものが上。選択でポート欄へ反映）。 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="実行中の node プロセス" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                            <Button Content="更新" Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0"
+                                    Margin="8,0,0,0" Command="{Binding Attach.RefreshProcessesCommand}" />
+                            <TextBlock Text="取得中…" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Visibility="{Binding Attach.IsEnumeratingProcesses, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                        <Grid Margin="0,4,0,0">
+                            <ListBox ItemsSource="{Binding Attach.Processes}"
+                                     SelectedItem="{Binding Attach.SelectedProcess, Mode=TwoWay}"
+                                     Height="110" Background="{DynamicResource Bg}"
+                                     BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                                     MouseDoubleClick="OnProcessDoubleClick"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Display}" FontSize="{DynamicResource Fs11}" FontFamily="Consolas"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding CommandLine}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="node プロセスが見つかりません" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding Attach.HasEnumerated}" Value="True" />
+                                                    <Condition Binding="{Binding Attach.Processes.Count}" Value="0" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <TextBlock Text="ポート:" Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs11}"
                                        VerticalAlignment="Center" />
@@ -143,7 +205,8 @@
                                      BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
                                      Text="{Binding Attach.AttachPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Content="⮌ アタッチ" Style="{StaticResource FlatButton}" Height="24" Padding="12,0"
-                                    Margin="8,0,0,0" Command="{Binding Attach.AttachCommand}" />
+                                    Margin="8,0,0,0" Command="{Binding Attach.AttachCommand}"
+                                    ToolTip="入力ポートへ接続（一覧のダブルクリックでも可）" />
                         </StackPanel>
                     </StackPanel>
                 </Border>

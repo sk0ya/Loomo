@@ -39,4 +39,16 @@ public class TsLaunchTargetTests
         Assert.True(TsLaunchTarget.TryParseNpmScript("npm:", out var script));
         Assert.Equal("", script);
     }
+
+    [Fact]
+    public void Chrome_url_roundtrip_and_disjoint_from_npm()
+    {
+        var stored = TsLaunchTarget.FormatChromeUrl("http://localhost:5173");
+        Assert.Equal("chrome:http://localhost:5173", stored);
+        Assert.True(TsLaunchTarget.TryParseChromeUrl(stored, out var url));
+        Assert.Equal("http://localhost:5173", url);
+        Assert.False(TsLaunchTarget.TryParseNpmScript(stored, out _));
+        Assert.False(TsLaunchTarget.TryParseChromeUrl("npm:dev", out _));
+        Assert.False(TsLaunchTarget.TryParseChromeUrl(@"src\index.ts", out _));
+    }
 }
