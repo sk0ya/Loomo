@@ -111,11 +111,13 @@ public sealed partial class ProblemsViewModel : ObservableObject
     }
 
     /// <summary>ビルド系コマンドの出力全文からエラー/警告を抽出してツリーを丸ごと作り直す
-    /// （診断行が 1 つも無ければ空＝ビルドがきれいという正しい状態）。ファイルの開閉状態はパスで引き継ぐ。</summary>
-    public void SetFromBuildOutput(string output)
+    /// （診断行が 1 つも無ければ空＝ビルドがきれいという正しい状態）。ファイルの開閉状態はパスで引き継ぐ。
+    /// <paramref name="baseDir"/> は相対パス診断の絶対化基準（MSBuild は絶対パスを出すので null で可、
+    /// tsc は cwd 相対を出すので実行ディレクトリを渡す）。</summary>
+    public void SetFromBuildOutput(string output, string? baseDir = null)
     {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
-        var items = ParseBuildOutput(output);
+        var items = ParseBuildOutput(output, baseDir);
 
         Groups.Clear();
         var groups = items
@@ -135,8 +137,9 @@ public sealed partial class ProblemsViewModel : ObservableObject
         WarningCount = Groups.Sum(g => g.WarningCount);
     }
 
-    /// <summary>MSBuild 診断行のパース（テスト用に分離）。同一診断の再掲（サマリ節・マルチターゲット）は除く。</summary>
-    internal static List<ProblemItemViewModel> ParseBuildOutput(string output)
+    /// <summary>MSBuild/tsc 診断行のパース（テスト用に分離）。同一診断の再掲（サマリ節・マルチターゲット）は除く。
+    /// tsc（<c>--pretty false</c>）の <c>src/x.ts(7,5): error TS2322: msg</c> も同じ形なのでそのまま拾える。</summary>
+    internal static List<ProblemItemViewModel> ParseBuildOutput(string output, string? baseDir = null)
     {
         var items = new List<ProblemItemViewModel>();
         var seen = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
@@ -146,6 +149,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
             if (!m.Success) continue;
 
             var file = m.Groups["file"].Value.Trim();
+            if (baseDir is not null && !Path.IsPathRooted(file))
+                file = Path.GetFullPath(Path.Combine(baseDir, file));
             var line = int.Parse(m.Groups["line"].Value);
             var col = int.Parse(m.Groups["col"].Value);
             var sev = m.Groups["sev"].Value.StartsWith("e", System.StringComparison.OrdinalIgnoreCase)
