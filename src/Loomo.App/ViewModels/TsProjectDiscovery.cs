@@ -45,6 +45,12 @@ public static class TsProjectDiscovery
         }
     }
 
+    /// <summary>npm モードの既定スクリプトを候補から選ぶ（dev → start → 先頭の優先順）。候補が空なら null。</summary>
+    public static string? PickDefaultScript(IReadOnlyList<string> scripts)
+        => scripts.FirstOrDefault(s => s == "dev")
+        ?? scripts.FirstOrDefault(s => s == "start")
+        ?? scripts.FirstOrDefault();
+
     private static string? ReadPackageName(string packageJsonPath)
     {
         try

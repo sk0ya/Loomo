@@ -16,9 +16,10 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>TypeScript / Node.js デバッグの起動・停止・再起動・ステップ実行・型チェック（tsc）を扱うサブ ViewModel。
 /// dotnet 側の <see cref="DebugLaunchViewModel"/> に相当し、ヘッダの TS デバッグツールバーの窓口。
-/// 実行対象は「プログラム（.ts/.js ファイル）」と「npm スクリプト」の 2 モードで、プロファイル
+/// 実行対象は「プログラム（.ts/.js ファイル）」「npm スクリプト」「ブラウザ（Chrome）」の 3 モードで、プロファイル
 /// （<see cref="ILaunchConfigurationOwner.TargetProgram"/>）には <see cref="TsLaunchTarget"/> の
-/// <c>npm:スクリプト名</c> エンコードで区別して格納する。「開始」は必ず新しいセッションを作る。</summary>
+/// <c>npm:スクリプト名</c> / <c>chrome:URL</c> エンコードで区別して格納する。未設定なら検出した npm スクリプト
+/// （dev → start → 先頭）を既定にする（<see cref="ApplyNpmDefaultIfEmpty"/>）。「開始」は必ず新しいセッションを作る。</summary>
 public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchConfigurationOwner
 {
     private readonly TsDebugViewModel _manager;
@@ -84,7 +85,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         TargetProgram = mode switch
         {
             LaunchMode.Npm => TsLaunchTarget.FormatNpmScript(string.IsNullOrEmpty(_savedNpmScript)
-                ? AvailableScripts.FirstOrDefault() ?? "start" : _savedNpmScript),
+                ? TsProjectDiscovery.PickDefaultScript(AvailableScripts) ?? "start" : _savedNpmScript),
             LaunchMode.Chrome => TsLaunchTarget.FormatChromeUrl(string.IsNullOrEmpty(_savedChromeUrl)
                 ? "http://localhost:5173" : _savedChromeUrl),
             _ => _savedProgramPath,
@@ -168,7 +169,23 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
 
     private void OnProfilesPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(DebugProfilesViewModel.SelectedProject)) ReloadScripts();
+        // SelectedProfile はワークスペース切替（ReloadForWorkspace）とプロファイル切替の両方で変わる。
+        // どちらもスクリプト候補を読み直し、実行対象が未設定なら npm 既定を適用する。
+        if (e.PropertyName is nameof(DebugProfilesViewModel.SelectedProject)
+            or nameof(DebugProfilesViewModel.SelectedProfile))
+        {
+            ReloadScripts();
+            ApplyNpmDefaultIfEmpty();
+        }
+    }
+
+    /// <summary>実行対象が未設定（新規の「既定」プロファイル等）なら npm モードを既定にする。
+    /// スクリプトは検出候補から dev → start → 先頭の優先順で選ぶ（候補が無ければ何もしない）。</summary>
+    internal void ApplyNpmDefaultIfEmpty()
+    {
+        if (!string.IsNullOrWhiteSpace(TargetProgram)) return;
+        if (TsProjectDiscovery.PickDefaultScript(AvailableScripts) is { } script)
+            TargetProgram = TsLaunchTarget.FormatNpmScript(script);
     }
 
     /// <summary>選択中パッケージ（未選択なら最初に見つかった package.json）の npm スクリプト一覧を読み直す。</summary>
