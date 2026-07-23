@@ -55,6 +55,14 @@ node/js-debug 未導入環境では検証せずパス）。
 
 ### 起動構成
 
+- **日常導線は「スクリプト」タブ（npm スクリプト一覧）**：検出した package.json の scripts を
+  名前＋実体コマンドで一覧表示し、行の ▶ かダブルクリックで即デバッグ実行（`RunScriptCommand` が
+  `TargetProgram` を `npm:名前` に切り替えてから開始 → プロファイルにも保存され、ヘッダの「▶ 開始」は
+  **同じスクリプトの再実行**になる）。パッケージコンボは package.json が複数のときだけ表示（構成タブと
+  選択共有）。dotnet 風の 3 モード編集・プロファイル管理は「構成」タブ（末尾）に残す上級者向け。
+- **実行対象が未設定なら npm モードが既定**：検出スクリプトから `dev` → `start` → 先頭の優先順で
+  自動適用（`ApplyNpmDefaultIfEmpty` / `TsProjectDiscovery.PickDefaultScript`。ワークスペース切替・
+  プロファイル切替でも再評価）。
 - **3 モード**：プログラム（.ts/.js。TS 直接実行は Node 23.6+ の型ストリッピング依存）、**npm スクリプト**
   （`runtimeExecutable:"npm"`）、**ブラウザ**（`chrome:URL` → `type:"pwa-chrome"` launch、webRoot=パッケージ
   ディレクトリ。開発サーバーは別途起動しておく前提）。プロファイル（`DebugLaunchProfile.TargetProgram`）には
@@ -77,9 +85,12 @@ node/js-debug 未導入環境では検証せずパス）。
   `Set-Location <tsconfigのdir>; npx tsc --noEmit --pretty false` を実行し `ReportBuildOutput(output, dir)` へ。
   §28 と同じ `ProblemsViewModel`/`DebugProblemsView` を第 2 インスタンスで使う（MSBuild 正規表現が tsc の
   `path(line,col): error TS1234: msg` にそのままマッチ）。
-- `TsDebugView`：§28 `DebugView` のクローンで 10 タブ（構成0/出力1/問題2/変数3/自動4/コールスタック5/
-  テスト6/スレッド7/ブレークポイント8/イミディエイト9）。サブビュー
+- `TsDebugView`：§28 `DebugView` のクローンで 11 タブ（スクリプト0/出力1/問題2/変数3/自動4/コールスタック5/
+  テスト6/スレッド7/ブレークポイント8/イミディエイト9/構成10。出力1・変数3・テスト6 の自動切替インデックスは
+  dotnet 版と共通のまま）。サブビュー
   （変数/問題/テスト/ブレークポイント/イミディエイト）は同型 VM のため**そのまま流用**。
+  スクリプトタブ（インライン）：パッケージコンボ（複数時のみ）＋ `Launch.ScriptItems`（`TsScriptEntry`
+  名前＋コマンド）の一覧、▶/ダブルクリックで `RunScriptCommand`。
   `TsDebugConfigView`：未導入バー・プロファイル管理・パッケージコンボ・3 モードラジオ・npm スクリプトコンボ・
   URL 欄・例外チェック・node プロセス一覧＋ポートアタッチ。
 - **テストタブ（vitest / jest）**：`TsTestDiscovery` が `*.test.ts`/`*.spec.ts` 系から

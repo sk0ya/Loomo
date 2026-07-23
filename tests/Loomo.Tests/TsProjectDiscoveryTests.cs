@@ -64,6 +64,19 @@ public class TsProjectDiscoveryTests : IDisposable
     }
 
     [Fact]
+    public void ReadScriptEntries_returns_name_and_command_skipping_non_strings()
+    {
+        var pkg = WritePackageJson("", """
+            { "name": "x", "scripts": { "dev": "vite", "weird": 123, "build": "tsc && vite build" } }
+            """);
+
+        var entries = TsProjectDiscovery.ReadScriptEntries(pkg);
+
+        Assert.Equal(new[] { new TsScriptEntry("dev", "vite"), new TsScriptEntry("build", "tsc && vite build") },
+            entries.ToArray());
+    }
+
+    [Fact]
     public void PickDefaultScript_prefers_dev_then_start_then_first()
     {
         Assert.Equal("dev", TsProjectDiscovery.PickDefaultScript(new[] { "build", "start", "dev" }));

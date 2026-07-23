@@ -6,8 +6,11 @@ using System.Text.Json;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>npm スクリプト 1 件（名前と実体コマンド）。スクリプトタブの一覧表示用。</summary>
+public sealed record TsScriptEntry(string Name, string Command);
+
 /// <summary>ワークスペース内の package.json を検出し、npm スクリプトを読むヘルパ（TS IDE ペインの
-/// パッケージ選択コンボ／npm スクリプトコンボ用）。<see cref="DebugProjectDiscovery"/> の TS 版で、
+/// パッケージ選択コンボ／スクリプトタブ一覧用）。<see cref="DebugProjectDiscovery"/> の TS 版で、
 /// 候補の型は同じ <see cref="DebugProjectDiscovery.ProjectEntry"/> を使う（FullPath は package.json の絶対パス）。</summary>
 public static class TsProjectDiscovery
 {
@@ -29,6 +32,10 @@ public static class TsProjectDiscovery
 
     /// <summary>package.json の scripts セクションのスクリプト名一覧（定義順）。読めなければ空。</summary>
     public static IReadOnlyList<string> ReadScripts(string packageJsonPath)
+        => ReadScriptEntries(packageJsonPath).Select(e => e.Name).ToList();
+
+    /// <summary>package.json の scripts セクション（名前＋実体コマンド。定義順）。読めなければ空。</summary>
+    public static IReadOnlyList<TsScriptEntry> ReadScriptEntries(string packageJsonPath)
     {
         try
         {
@@ -36,12 +43,15 @@ public static class TsProjectDiscovery
             if (doc.RootElement.ValueKind != JsonValueKind.Object ||
                 !doc.RootElement.TryGetProperty("scripts", out var scripts) ||
                 scripts.ValueKind != JsonValueKind.Object)
-                return Array.Empty<string>();
-            return scripts.EnumerateObject().Select(p => p.Name).ToList();
+                return Array.Empty<TsScriptEntry>();
+            return scripts.EnumerateObject()
+                .Where(p => p.Value.ValueKind == JsonValueKind.String)
+                .Select(p => new TsScriptEntry(p.Name, p.Value.GetString() ?? ""))
+                .ToList();
         }
         catch
         {
-            return Array.Empty<string>();
+            return Array.Empty<TsScriptEntry>();
         }
     }
 

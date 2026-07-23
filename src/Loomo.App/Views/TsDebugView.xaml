@@ -63,16 +63,60 @@
         </Style>
     </UserControl.Resources>
 
-    <!-- TS IDE ペインのタブシェル。dotnet 用 DebugView のクローンから「モジュール」（js-debug 非対応）を
-         除いた 10 タブ構成（テストは vitest / jest）。ヘッダ（TS IDE ラベル・状態・デバッグツールバー）はホスト
+    <!-- TS IDE ペインのタブシェル。TS の日常導線は「スクリプト」タブ（検出した npm scripts の一覧から
+         クリック実行）で、dotnet 風の「構成」（プロファイル・ファイル実行/Chrome・引数/環境変数・アタッチ）は
+         上級者向けとして末尾へ。他タブは dotnet 用 DebugView のクローンから「モジュール」（js-debug 非対応）を
+         除いた構成（テストは vitest / jest）。ヘッダ（TS IDE ラベル・状態・デバッグツールバー）はホスト
          （ペインヘッダ）側が出す。DataContext は TsDebugViewModel（ファサード）。 -->
     <DockPanel>
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
                     Margin="6,0,6,6" SelectedIndex="0" SelectionChanged="OnDebugTabChanged">
 
-            <!-- 0 構成 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
-                <v:TsDebugConfigView />
+            <!-- 0 スクリプト：検出した npm スクリプトの一覧。行の ▶ かダブルクリックで即デバッグ実行。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="スクリプト">
+                <DockPanel Margin="0,4,0,0">
+                    <!-- パッケージ切替（package.json が複数あるモノレポ等のときだけ表示。構成タブと選択を共有）。 -->
+                    <ComboBox DockPanel.Dock="Top" Margin="0,0,0,4"
+                              ItemsSource="{Binding Profiles.AvailableProjects}"
+                              SelectedItem="{Binding Profiles.SelectedProject, Mode=TwoWay}"
+                              DisplayMemberPath="Name"
+                              Visibility="{Binding Launch.HasMultiplePackages, Converter={StaticResource BoolToVis}}"
+                              ToolTip="対象パッケージ（package.json）" />
+                    <Grid>
+                        <ListBox ItemsSource="{Binding Launch.ScriptItems}" Background="{DynamicResource Bg}"
+                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
+                                 HorizontalContentAlignment="Stretch" Grid.IsSharedSizeScope="True"
+                                 MouseDoubleClick="OnScriptDoubleClick"
+                                 ToolTip="▶ かダブルクリックでデバッグ実行（npm run）"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:TsScriptEntry}">
+                                    <Grid Margin="0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="TsScriptName" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Style="{StaticResource SecondaryButton}" Width="24" Height="20"
+                                                Content="▶" FontSize="{DynamicResource Fs11}" ToolTip="このスクリプトをデバッグ実行"
+                                                Command="{Binding DataContext.Launch.RunScriptCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                                                   FontFamily="Consolas" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Command}" FontSize="{DynamicResource Fs11}"
+                                                   FontFamily="Consolas" Foreground="{DynamicResource FgDim}"
+                                                   VerticalAlignment="Center" Margin="12,0,0,0"
+                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Command}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="package.json の scripts が見つかりません" Foreground="{DynamicResource FgDim}"
+                                   FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   IsHitTestVisible="False"
+                                   Visibility="{Binding Launch.HasScripts, Converter={StaticResource InverseBoolToVis}}" />
+                    </Grid>
+                </DockPanel>
             </TabItem>
 
             <!-- 1 出力：テキスト選択できる読み取り専用 RichTextBox（行は Category で色分け）。
@@ -216,6 +260,12 @@
             <!-- 9 イミディエイト -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="イミディエイト">
                 <v:DebugImmediateView DataContext="{Binding Inspection}" />
+            </TabItem>
+
+            <!-- 10 構成（上級者向け：プロファイル管理・ファイル実行/Chrome モード・引数/環境変数・例外・アタッチ）。
+                 日常のスクリプト実行は先頭の「スクリプト」タブ。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
+                <v:TsDebugConfigView />
             </TabItem>
         </TabControl>
     </DockPanel>

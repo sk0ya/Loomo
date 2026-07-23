@@ -53,6 +53,16 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     /// <summary>選択中パッケージの npm スクリプト名一覧（構成タブのコンボ用）。</summary>
     public ObservableCollection<string> AvailableScripts { get; } = new();
 
+    /// <summary>選択中パッケージの npm スクリプト一覧（名前＋実体コマンド。スクリプトタブの一覧用）。</summary>
+    public ObservableCollection<TsScriptEntry> ScriptItems { get; } = new();
+
+    /// <summary>スクリプトが 1 件以上あるか（スクリプトタブの空表示の出し分け）。</summary>
+    public bool HasScripts => ScriptItems.Count > 0;
+
+    /// <summary>ワークスペースに package.json が複数あるか（スクリプトタブのパッケージコンボの出し分け。
+    /// 候補コレクションは先頭に「自動検出」センチネルを含むため 2 超で判定）。</summary>
+    public bool HasMultiplePackages => _profiles.AvailableProjects.Count > 2;
+
     /// <summary>js-debug の導入コマンド（促しバーのボタン用）。node 自体は手動導入。</summary>
     public string AdapterInstallCommand => JsDebugAdapterLocator.InstallCommand;
 
@@ -157,6 +167,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     private void OnSessionStateChanged()
     {
         StartCommand.NotifyCanExecuteChanged();
+        RunScriptCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         RestartCommand.NotifyCanExecuteChanged();
         PauseCommand.NotifyCanExecuteChanged();
@@ -192,9 +203,17 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     internal void ReloadScripts()
     {
         AvailableScripts.Clear();
-        var pkg = SelectedPackageJsonPath();
-        if (pkg is null) return;
-        foreach (var s in TsProjectDiscovery.ReadScripts(pkg)) AvailableScripts.Add(s);
+        ScriptItems.Clear();
+        if (SelectedPackageJsonPath() is { } pkg)
+        {
+            foreach (var e in TsProjectDiscovery.ReadScriptEntries(pkg))
+            {
+                AvailableScripts.Add(e.Name);
+                ScriptItems.Add(e);
+            }
+        }
+        OnPropertyChanged(nameof(HasScripts));
+        OnPropertyChanged(nameof(HasMultiplePackages));
     }
 
     /// <summary>選択中パッケージの package.json 絶対パス（自動検出なら最初の候補）。無ければ null。</summary>
@@ -286,6 +305,16 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         var session = _manager.CreateSession(BuildDisplayName(program), DebugSessionKind.Launch);
         await session.DebugService.SetExceptionBreakpointsAsync(CurrentExceptionFilterIds(), CancellationToken.None);
         await LaunchIntoAsync(session, program);
+    }
+
+    /// <summary>スクリプトタブの行実行。実行対象をそのスクリプト（<c>npm:名前</c>）へ切り替えてから開始する
+    /// （プロファイルにも保存されるので、以降ヘッダの「▶ 開始」は同じスクリプトの再実行になる）。</summary>
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private Task RunScript(TsScriptEntry? entry)
+    {
+        if (entry is null) return Task.CompletedTask;
+        TargetProgram = TsLaunchTarget.FormatNpmScript(entry.Name);
+        return StartAsync();
     }
 
     /// <summary>同じ対象で、既存セッション（同じタブ）へ再度 launch する（Restart 用）。</summary>

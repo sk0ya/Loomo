@@ -18,8 +18,8 @@ namespace sk0ya.Loomo.App.Views;
 public partial class TsDebugView : UserControl
 {
     // タブのインデックス（XAML の並び順と一致させる）。
-    // 並び：構成0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / テスト6 / スレッド7 /
-    //       ブレークポイント8 / イミディエイト9。
+    // 並び：スクリプト0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / テスト6 / スレッド7 /
+    //       ブレークポイント8 / イミディエイト9 / 構成10。
     private const int OutputTab = 1;
     private const int VariablesTab = 3;
     private const int TestTab = 6;
@@ -143,6 +143,21 @@ public partial class TsDebugView : UserControl
             {
                 if (DataContext is DebugManagerViewModelBase { Inspection: { } insp })
                     insp.ActivateFrame(insp.SelectedFrame);
+                return;
+            }
+        }
+    }
+
+    // スクリプトタブのダブルクリック：その行のスクリプトをデバッグ実行（行の ▶ ボタンと同じ）。
+    // 余白のダブルクリックでは発火させない（行＝ListBoxItem 上のときだけ）。
+    private void OnScriptDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        for (var d = e.OriginalSource as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
+        {
+            if (d is ListBoxItem { DataContext: TsScriptEntry entry })
+            {
+                if (DataContext is TsDebugViewModel vm && vm.Launch.RunScriptCommand.CanExecute(entry))
+                    vm.Launch.RunScriptCommand.Execute(entry);
                 return;
             }
         }
