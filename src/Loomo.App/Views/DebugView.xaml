@@ -96,12 +96,17 @@
                 </Border>
             </TabItem>
 
-            <!-- 2 変数（＋ウォッチ） -->
+            <!-- 2 問題：開いているエディタタブの診断（LSP＋ホスト診断）の集約。デバッグセッション非依存。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="問題">
+                <v:DebugProblemsView DataContext="{Binding Problems}" />
+            </TabItem>
+
+            <!-- 3 変数（＋ウォッチ） -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="変数">
                 <v:DebugVariablesView DataContext="{Binding Inspection}" />
             </TabItem>
 
-            <!-- 3 自動（Autos）：停止行とその直前行で使われている変数だけを近似表示する。 -->
+            <!-- 4 自動（Autos）：停止行とその直前行で使われている変数だけを近似表示する。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="自動">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.Autos}" Background="{DynamicResource Bg}"
@@ -148,7 +153,7 @@
                 </Grid>
             </TabItem>
 
-            <!-- 4 コールスタック -->
+            <!-- 5 コールスタック -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="コールスタック">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.CallStack}" SelectedItem="{Binding Inspection.SelectedFrame, Mode=TwoWay}"
@@ -174,12 +179,12 @@
                 </Grid>
             </TabItem>
 
-            <!-- 5 テスト -->
+            <!-- 6 テスト -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="テスト">
                 <v:DebugTestsView DataContext="{Binding Tests}" />
             </TabItem>
 
-            <!-- 6 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
+            <!-- 7 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="スレッド">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.Threads}" SelectedItem="{Binding Inspection.SelectedThread, Mode=TwoWay}"
@@ -204,17 +209,17 @@
                 </Grid>
             </TabItem>
 
-            <!-- 7 ブレークポイント -->
+            <!-- 8 ブレークポイント -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="ブレークポイント">
                 <v:DebugBreakpointsView DataContext="{Binding Breakpoints}" />
             </TabItem>
 
-            <!-- 8 イミディエイト -->
+            <!-- 9 イミディエイト -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="イミディエイト">
                 <v:DebugImmediateView DataContext="{Binding Inspection}" />
             </TabItem>
 
-            <!-- 9 モジュール：ロード済みアセンブリ一覧（停止時に取得、更新で読み直し）。 -->
+            <!-- 10 モジュール：ロード済みアセンブリ一覧（停止時に取得、更新で読み直し）。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="モジュール">
                 <Grid Margin="0,4,0,0">
                     <Grid.RowDefinitions>

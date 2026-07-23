@@ -103,6 +103,9 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
     public bool IsStopped => ActiveSession?.IsStopped ?? false;
 
     // --- サブ ViewModel（機能ごと。Inspection 以外は全セッション共有） ---
+    /// <summary>「問題」タブ（開いている全エディタタブの診断の集約）。デバッグセッションに依存しない。
+    /// 中身の流し込みは ShellWindow.Problems.cs（View層）が行う。</summary>
+    public ProblemsViewModel Problems { get; } = new();
     public DebugBreakpointsViewModel Breakpoints { get; }
     public DebugAttachViewModel Attach { get; }
     public DebugTestsViewModel Tests { get; }

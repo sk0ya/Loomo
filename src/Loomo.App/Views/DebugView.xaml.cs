@@ -10,17 +10,17 @@ using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>IDE（デバッグ）ペインのシェル。タブ（構成/出力/変数/自動/コールスタック/テスト/スレッド/
+/// <summary>IDE（デバッグ）ペインのシェル。タブ（構成/出力/問題/変数/自動/コールスタック/テスト/スレッド/
 /// ブレークポイント/イミディエイト/モジュール）を束ねる。大きなタブはサブビューに分割し、ここは出力コンソールの
 /// ドキュメント追記と、停止/実行・実行系コマンド押下に応じたタブ自動切り替えだけを持つ。</summary>
 public partial class DebugView : UserControl
 {
     // タブのインデックス（XAML の並び順と一致させる）。
-    // 並び：構成0 / 出力1 / 変数2 / 自動3 / コールスタック4 / テスト5 / スレッド6 /
-    //       ブレークポイント7 / イミディエイト8 / モジュール9。
+    // 並び：構成0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / テスト6 / スレッド7 /
+    //       ブレークポイント8 / イミディエイト9 / モジュール10。
     private const int OutputTab = 1;
-    private const int VariablesTab = 2;
-    private const int TestTab = 5;
+    private const int VariablesTab = 3;
+    private const int TestTab = 6;
 
     private INotifyCollectionChanged? _observed;
     private DebugViewModel? _vm;
