@@ -377,15 +377,19 @@ public sealed class JsDebugService : IDebugService
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 // アタッチ時は対象プロセスを巻き込まない（デタッチのみ）。launch 時は終了させる。
                 await parent.SendRequestAsync("disconnect", new { terminateDebuggee = !_attached }, cts.Token);
+                JsDebugLog.Write("StopCore: disconnect ok");
             }
-            catch { /* 既に終了/応答なし。以降の破棄で確実に殺す */ }
+            catch (Exception ex) { JsDebugLog.Write($"StopCore: disconnect failed: {ex.GetType().Name}"); }
         }
 
+        JsDebugLog.Write("StopCore: disposing connections");
         child?.Dispose();
         parent?.Dispose();
         try { childTcp?.Dispose(); } catch { }
         try { parentTcp?.Dispose(); } catch { }
+        JsDebugLog.Write("StopCore: disposing server");
         server?.Dispose();
+        JsDebugLog.Write("StopCore: done");
     }
 
     private void OnParentEvent(string evt, JsonElement body) => OnDapEvent(evt, body, isChild: false);
