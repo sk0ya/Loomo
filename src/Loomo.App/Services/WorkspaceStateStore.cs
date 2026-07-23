@@ -370,7 +370,9 @@ public enum PaneKind
     Diff,
     Trace,
     Debug,
-    Search
+    Search,
+    // 数値で永続化されるため、新メンバーは必ず末尾へ追加する（既存 workspaces.json との互換維持）。
+    TsIde
 }
 
 /// <summary>

@@ -13,6 +13,7 @@ public partial class ShellWindow {
         _paneElements[PaneKind.Trace] = TracePane;
         _paneElements[PaneKind.Debug] = DebugPane;
         _paneElements[PaneKind.Search] = SearchPane;
+        _paneElements[PaneKind.TsIde] = TsIdePane;
         _editorViews = new PaneSplitView( EditorContentHost, id => _editorTabs.FirstOrDefault(t => t.Id == id)?.Control, () => _editorTabs.Where(t => t.IsRealized).Select(t => (FrameworkElement)t.Control), () => (Brush)FindResource("Border"), () => (Brush)FindResource("Accent"), el => el.Focus(), () => SaveActiveWorkspaceSnapshot());
         _terminalViews = new PaneSplitView( TerminalContentHost, id => _terminalTabs.FirstOrDefault(t => t.Id == id)?.View, () => _terminalTabs.Select(t => (FrameworkElement)t.View), () => (Brush)FindResource("Border"), () => (Brush)FindResource("Accent"), el => { if (el is TerminalTabView tv) tv.FocusTerminal(); else el.Focus(); }, () => SaveActiveWorkspaceSnapshot());
     }
@@ -245,6 +246,8 @@ public partial class ShellWindow {
             _root = built;
             if (!_idePaneApplicable && FindLeaf(PaneKind.Debug) is { Hidden: false } dbg)
                 dbg.Hidden = true;
+            if (!_tsIdePaneApplicable && FindLeaf(PaneKind.TsIde) is { Hidden: false } tsDbg)
+                tsDbg.Hidden = true;
             RebuildPaneLayout();
         } else {
             ApplyDefaultLayout();

@@ -11,12 +11,13 @@ public partial class ShellWindow {
     private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
     private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
+    private bool _tsIdePaneApplicable { get => _stageMode.TsIdePaneApplicable; set => _stageMode.TsIdePaneApplicable = value; }
     private const double WingColumnReserve = 210;
     private Point _wingDragStart;
     private bool _wingDragArmed;
     private static readonly PaneKind[] StageOrder =
     [
-        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.Search,
+        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search,
     ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
     private void ToggleDisplayMode() {
@@ -71,6 +72,7 @@ public partial class ShellWindow {
         snapshot ??= StageSnapshot.Default();
         var restoredPane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
             && (requested != PaneKind.Debug || _idePaneApplicable)
+            && (requested != PaneKind.TsIde || _tsIdePaneApplicable)
             ? requested
             : PaneKind.Editor;
         _stageMode.Restore(active: true, overview: snapshot.Overview, pane: restoredPane);
@@ -197,10 +199,14 @@ public partial class ShellWindow {
                 _enabledSessions.Add(kind);
         if (!_idePaneApplicable)
             _enabledSessions.Remove(PaneKind.Debug);
+        if (!_tsIdePaneApplicable)
+            _enabledSessions.Remove(PaneKind.TsIde);
     }
     private void ApplyIdePaneApplicability(IReadOnlyList<string> folders) {
         _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(folders);
         DebugPaneToggle.Visibility = _idePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
+        _tsIdePaneApplicable = ViewModels.TsDebugTargetResolver.HasTypeScriptProject(folders);
+        TsIdePaneToggle.Visibility = _tsIdePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
     }
     private void ToggleSessionEnabled(PaneKind kind) {
         if (_enabledSessions.Contains(kind)) {

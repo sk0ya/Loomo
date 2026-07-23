@@ -47,6 +47,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public PegboardViewModel Pegboard { get; }
     public SearchPanelViewModel SearchPanel { get; }
     public DebugViewModel Debug { get; }
+    /// <summary>TS IDE（TypeScript / Node.js デバッグ）ペインのファサード。</summary>
+    public TsDebugViewModel TsIde { get; }
     /// <summary>ウィンドウ最下部の軌跡（操作ログ）バー。クリックで通過した地点へ戻る。</summary>
     public TrailViewModel Trail { get; }
     /// <summary>右下に積み上げて表示する非モーダルなトースト通知（<see cref="Services.ToastService"/>）。</summary>
@@ -83,6 +85,7 @@ public sealed partial class ShellViewModel : ObservableObject
         PegboardViewModel pegboard,
         SearchPanelViewModel searchPanel,
         DebugViewModel debug,
+        TsDebugViewModel tsIde,
         TrailViewModel trail)
     {
         FolderTree = folderTree;
@@ -105,6 +108,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Pegboard = pegboard;
         SearchPanel = searchPanel;
         Debug = debug;
+        TsIde = tsIde;
         Trail = trail;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。

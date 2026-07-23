@@ -60,7 +60,8 @@ public static class TrailLogic
         PaneKind.Editor => "エディタ", PaneKind.Terminal => "ターミナル",
         PaneKind.Browser => "ブラウザ", PaneKind.EditorSupport => "プレビュー",
         PaneKind.Ai => "AI", PaneKind.Git => "Git", PaneKind.Diff => "Diff",
-        PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", PaneKind.Search => "検索", _ => kind.ToString()
+        PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", PaneKind.Search => "検索",
+        PaneKind.TsIde => "TS IDE", _ => kind.ToString()
     };
 
     public static string PanelDisplayName(SidebarPanel panel) => panel switch

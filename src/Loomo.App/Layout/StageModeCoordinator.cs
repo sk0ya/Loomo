@@ -9,6 +9,7 @@ public sealed class StageModeCoordinator
     public bool Overview { get; set; }
     public PaneKind Pane { get; set; } = PaneKind.Editor;
     public bool IdePaneApplicable { get; set; } = true;
+    public bool TsIdePaneApplicable { get; set; } = true;
     public HashSet<PaneKind> EnabledSessions { get; } = new();
 
     public bool IsOnStage(PaneKind kind) => Active && Pane == kind;

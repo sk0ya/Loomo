@@ -6,7 +6,10 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow
 {
     private void InitializeProblemsWiring()
-        => _vm.Debug.Problems.OpenRequested += OnProblemOpenRequested;
+    {
+        _vm.Debug.Problems.OpenRequested += OnProblemOpenRequested;
+        _vm.TsIde.Problems.OpenRequested += OnProblemOpenRequested;
+    }
 
     private void OnProblemOpenRequested(ProblemItemViewModel item)
         => _ = OpenPathInEditorAsync(item.FilePath, item.Line1, item.Column1);

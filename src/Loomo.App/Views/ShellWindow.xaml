@@ -72,6 +72,7 @@
         <StreamGeometry x:Key="PaneIcon.Ai">M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Debug">M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Search">M6.8,2.5 A4.3,4.3 0 1 0 6.8,11.1 A4.3,4.3 0 1 0 6.8,2.5 M9.9,9.9 L13.5,13.5</StreamGeometry>
+        <StreamGeometry x:Key="PaneIcon.TsIde">M8,1.5 L13.5,4.75 V11.25 L8,14.5 L2.5,11.25 V4.75 Z M8,5.6 C6.9,5.6 6.3,6.6 6.3,8 C6.3,9.5 7,10.6 8,10.6 C9,10.6 9.7,9.5 9.7,8 C9.7,6.6 9.1,5.6 8,5.6 Z M8,5.7 V10.5</StreamGeometry>
 
         <!-- タイトルバーのペイン表示トグル：表示中＝アクセント色／非表示＝グレーの線画アイコン。
              IsChecked とツールチップは code-behind の UpdatePaneToggleStates が実状態へ同期する。 -->
@@ -387,6 +388,12 @@
                                               Click="OnTogglePaneVisibility"
                                               ToolTip="IDE（ビルド・テスト・デバッグ）">
                                     <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Debug}" />
+                                </ToggleButton>
+                                <!-- TS IDE：六角形（Node.js）＋虫。TS/Node プロジェクトが無いワークスペースでは隠す。 -->
+                                <ToggleButton x:Name="TsIdePaneToggle" Style="{StaticResource PaneToggle}" Tag="TsIde"
+                                              Click="OnTogglePaneVisibility"
+                                              ToolTip="TS IDE（TypeScript / Node.js デバッグ）">
+                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.TsIde}" />
                                 </ToggleButton>
                             </StackPanel>
                         </Border>
@@ -1143,6 +1150,79 @@
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <views:DebugView DataContext="{Binding Debug}" />
+                </DockPanel>
+
+                <!-- TS IDE : ペイン化（DAP / vscode-js-debug。TypeScript / Node.js のデバッグ・型チェック） -->
+                <DockPanel x:Name="TsIdePane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="TsIde" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TS IDE" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
+                                Tag="TsIde" Click="OnHidePane" />
+                        <!-- デバッグ構成（プロファイル）切替。編集（パッケージ選択・追加/名前変更/削除）は「構成」タブ側。 -->
+                        <ComboBox DockPanel.Dock="Left" Margin="10,0,0,0" Width="150" VerticalAlignment="Center"
+                                  ItemsSource="{Binding TsIde.Profiles.Profiles}"
+                                  SelectedItem="{Binding TsIde.Profiles.SelectedProfile, Mode=TwoWay}"
+                                  DisplayMemberPath="Name" ToolTip="デバッグ構成" />
+                        <!-- セッション切替：複数のデバッグセッションを同時実行しているときだけ表示する。 -->
+                        <ComboBox DockPanel.Dock="Left" Margin="6,0,0,0" Width="170" VerticalAlignment="Center"
+                                  Visibility="{Binding TsIde.HasMultipleSessions, Converter={StaticResource BoolToVis}}"
+                                  ItemsSource="{Binding TsIde.Sessions}"
+                                  SelectedItem="{Binding TsIde.ActiveSession, Mode=TwoWay}"
+                                  DisplayMemberPath="DisplayName" ToolTip="表示中のデバッグセッション" />
+
+                        <!-- TS デバッグツールバー（IDE ペインと同じ出し分け。テストは Phase 2、ビルドの代わりに型チェック）。 -->
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- 常時：開始・型チェック -->
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource FlatButton}" Height="22" Padding="12,0" Margin="0,1,6,1"
+                                        FontSize="{DynamicResource Fs11}" Content="▶ 開始" ToolTip="デバッグを開始"
+                                        Command="{Binding TsIde.Launch.StartCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
+                                        FontSize="{DynamicResource Fs11}" Content="✔ 型チェック" ToolTip="npx tsc --noEmit を実行"
+                                        Command="{Binding TsIde.Launch.TypeCheckCommand}" />
+                                <CheckBox Content="先にチェック" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="{DynamicResource Fs11}"
+                                          Foreground="{DynamicResource Fg}" IsChecked="{Binding TsIde.Launch.BuildFirst, Mode=TwoWay}"
+                                          ToolTip="開始前に tsc 型チェックを実行する（エラーがあれば起動中止）" />
+                            </StackPanel>
+                            <!-- 停止中のみ：続行・ステップ -->
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding TsIde.IsStopped, Converter={StaticResource BoolToVis}}">
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
+                                        FontSize="{DynamicResource Fs12}" Content="▶" ToolTip="続行 (F5)"
+                                        Command="{Binding TsIde.Launch.ContinueCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
+                                        FontSize="{DynamicResource Fs12}" Content="⤼" ToolTip="ステップオーバー"
+                                        Command="{Binding TsIde.Launch.StepOverCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
+                                        FontSize="{DynamicResource Fs12}" Content="⤷" ToolTip="ステップイン"
+                                        Command="{Binding TsIde.Launch.StepIntoCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,8,1"
+                                        FontSize="{DynamicResource Fs12}" Content="⤴" ToolTip="ステップアウト"
+                                        Command="{Binding TsIde.Launch.StepOutCommand}" />
+                            </StackPanel>
+                            <!-- デバッグ中のみ：中断・再起動・停止 -->
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding TsIde.IsBusy, Converter={StaticResource BoolToVis}}">
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,4,1"
+                                        FontSize="{DynamicResource Fs12}" Content="⏸" ToolTip="すべて中断（一時停止）"
+                                        Command="{Binding TsIde.Launch.PauseCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="8,0" Margin="0,1,8,1"
+                                        FontSize="{DynamicResource Fs12}" Content="⟳" ToolTip="同じ対象で再起動"
+                                        Command="{Binding TsIde.Launch.RestartCommand}" />
+                                <Button Style="{StaticResource SecondaryButton}" Height="22" Padding="10,0" Margin="0,1,6,1"
+                                        FontSize="{DynamicResource Fs11}" Content="■ 停止" ToolTip="デバッグを停止"
+                                        Command="{Binding TsIde.Launch.StopCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <!-- 状態（型チェック/デバッグの進行・結果）。ラベルの右、ツールバーの左を埋める。 -->
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding TsIde.StatusMessage}" VerticalAlignment="Center"
+                                   Margin="10,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <views:TsDebugView DataContext="{Binding TsIde}" />
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->

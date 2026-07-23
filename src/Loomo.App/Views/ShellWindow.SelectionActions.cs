@@ -101,23 +101,31 @@ public partial class ShellWindow {
     }
     private void AddDebugMenuItems(ContextMenu menu, VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path) return;
-        var dbg = _vm.Debug;
+        // ファイルの管轄マネージャ（.ts/.js 系→TS IDE、それ以外→dotnet IDE）へ振り分ける。
+        var mgr = ManagerForPath(path);
         var line0 = control.Caret.Line;  // 0 始まり
         menu.Items.Add(new Separator());
         var editCond = new MenuItem { Header = "ブレークポイントの条件を編集…" };
         editCond.Click += (_, _) => EditBreakpointCondition(path, line0);
         menu.Items.Add(editCond);
-        if (dbg.IsStopped) {
+        if (mgr.IsStopped) {
             var runTo = new MenuItem { Header = "カーソル行まで実行" };
-            runTo.Click += (_, _) => _ = dbg.Launch.RunToCursorAsync(path, line0);
+            runTo.Click += (_, _) => _ = mgr switch {
+                ViewModels.TsDebugViewModel ts => ts.Launch.RunToCursorAsync(path, line0),
+                ViewModels.DebugViewModel d => d.Launch.RunToCursorAsync(path, line0),
+                _ => Task.CompletedTask,
+            };
             menu.Items.Add(runTo);
-            if (dbg.Launch.SupportsSetNextStatement) {
-                var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
-                setNext.Click += (_, _) => _ = dbg.Launch.SetNextStatementAsync(path, line0);
-                menu.Items.Add(setNext);
+            // 次のステートメント設定・特定関数へのステップインは dotnet（netcoredbg）のみ対応。
+            if (mgr is ViewModels.DebugViewModel dbg) {
+                if (dbg.Launch.SupportsSetNextStatement) {
+                    var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
+                    setNext.Click += (_, _) => _ = dbg.Launch.SetNextStatementAsync(path, line0);
+                    menu.Items.Add(setNext);
+                }
+                if (dbg.Launch.SupportsStepInTargets)
+                    menu.Items.Add(BuildStepInTargetsMenu(dbg.Launch));
             }
-            if (dbg.Launch.SupportsStepInTargets)
-                menu.Items.Add(BuildStepInTargetsMenu(dbg.Launch));
         }
     }
     private static MenuItem BuildStepInTargetsMenu(ViewModels.DebugLaunchViewModel dbg) {
@@ -139,7 +147,7 @@ public partial class ShellWindow {
         return parent;
     }
     private void EditBreakpointCondition(string path, int line0) {
-        var bps = _vm.Debug.Breakpoints;
+        var bps = ManagerForPath(path).Breakpoints;
         var current = bps.FindBreakpoint(path, line0)?.Condition ?? "";
         var input = InputDialog.Prompt(this, "ブレークポイントの条件", "条件式（真のとき停止。例: i > 5）。空にすると条件を解除します。", current, allowEmpty: true);
         if (input is null) return;  // キャンセル

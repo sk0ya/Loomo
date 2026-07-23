@@ -39,6 +39,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();
         services.AddSingleton<sk0ya.Loomo.Services.Debug.IDebugSessionFactory,
             sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory>();
+        // TS IDE ペイン用の js-debug 工場。IDebugSessionFactory の既定登録（netcoredbg）は dotnet 用 IDE ペインの
+        // ものなので、こちらは具象型で登録して TsDebugViewModel だけが使う。
+        services.AddSingleton<sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory>();
         services.AddSingleton<ITestDiscoveryService,
             sk0ya.Loomo.Services.Debug.TestDiscoveryService>();
 
@@ -168,6 +171,14 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SearchPanelViewModel>();
         services.AddSingleton<sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore>();
         services.AddSingleton<DebugViewModel>();
+        // TS IDE のプロファイルは dotnet と別ファイル（tsLaunchProfiles.json）に保存する（レコード形は共用）。
+        services.AddSingleton(sp => new TsDebugViewModel(
+            sp.GetRequiredService<sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory>(),
+            sp.GetRequiredService<IWorkspaceService>(),
+            sp.GetRequiredService<ITerminalService>(),
+            new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "Loomo", "tsLaunchProfiles.json"))));
         services.AddSingleton<TrailStore>();
         services.AddSingleton<TrailViewModel>();
         services.AddSingleton<ShellViewModel>();

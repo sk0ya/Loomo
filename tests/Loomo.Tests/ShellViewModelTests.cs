@@ -94,9 +94,14 @@ public class ShellViewModelTests
             new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-launch-profiles.json")));
 
+        var tsIdeVm = new TsDebugViewModel(
+            new sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory(), workspace, new FakeTerminalService(),
+            new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(
+                Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-ts-launch-profiles.json")));
+
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
-            new PegboardViewModel(), searchVm, debugVm,
+            new PegboardViewModel(), searchVm, debugVm, tsIdeVm,
             new TrailViewModel(new TrailStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db"))));
     }
