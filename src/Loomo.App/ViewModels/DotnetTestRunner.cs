@@ -44,6 +44,7 @@ internal static class DotnetTestRunner
             $"--logger \"trx;LogFileName=loomo.trx\" --results-directory \"{ResultsDir}\"",
             CancellationToken.None);
         session.WriteConsole(result.Output);
+        session.ReportBuildOutput(result.Output);  // dotnet test もビルドを含む——コンパイルエラーを「問題」へ
         return File.Exists(trx) ? trx : null;
     }
 

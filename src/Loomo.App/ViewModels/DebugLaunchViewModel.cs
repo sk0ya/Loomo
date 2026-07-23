@@ -222,6 +222,7 @@ public sealed partial class DebugLaunchViewModel : ObservableObject
             var result = await _terminal.RunCommandAsync(
                 $"dotnet build \"{target}\" -c Debug --nologo", CancellationToken.None);
             _manager.WriteConsole(result.Output);
+            _manager.ReportBuildOutput(result.Output);
             _manager.StatusMessage = result.Success ? "ビルド成功" : $"ビルド失敗（{result.ExitCode}）";
             _manager.Append(DebugOutputCategory.Important,
                 result.Success ? "ビルドに成功しました。" : $"ビルドに失敗しました（終了コード {result.ExitCode}）。");

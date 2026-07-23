@@ -103,8 +103,8 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
     public bool IsStopped => ActiveSession?.IsStopped ?? false;
 
     // --- サブ ViewModel（機能ごと。Inspection 以外は全セッション共有） ---
-    /// <summary>「問題」タブ（開いている全エディタタブの診断の集約）。デバッグセッションに依存しない。
-    /// 中身の流し込みは ShellWindow.Problems.cs（View層）が行う。</summary>
+    /// <summary>「問題」タブ（ビルド系コマンド出力のエラー/警告の抽出）。デバッグセッションに依存しない。
+    /// 流し込みは各ビルド実行箇所が <see cref="ReportBuildOutput"/> で行う。</summary>
     public ProblemsViewModel Problems { get; } = new();
     public DebugBreakpointsViewModel Breakpoints { get; }
     public DebugAttachViewModel Attach { get; }
@@ -218,6 +218,9 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
 
     public string? FindBuildTarget() => _findBuildTarget();
 
+    /// <summary>ビルド系コマンドの出力からエラー/警告を抽出して「問題」タブへ反映する。</summary>
+    public void ReportBuildOutput(string output) => Problems.SetFromBuildOutput(output);
+
     public void RequestOutput() => OutputRequested?.Invoke();
 
     // --- アクティブセッションの切替配線 ---
@@ -294,6 +297,7 @@ public sealed partial class DebugViewModel : ObservableObject, IDebugSession, ID
     void IDebugSession.RaiseFrameActivated(string path, int line0) => FrameActivated?.Invoke(path, line0);
     void IDebugSession.RaiseBreakpointsRefreshed(string path) => BreakpointsRefreshed?.Invoke(path);
     void IDebugSession.Append(DebugOutputCategory category, string text) => Append(category, text);
+    void IDebugSession.ReportBuildOutput(string output) => ReportBuildOutput(output);
     string? IDebugSession.FindBuildTarget() => FindBuildTarget();
 
     public void Dispose()

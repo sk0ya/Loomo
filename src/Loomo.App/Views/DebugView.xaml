@@ -96,7 +96,7 @@
                 </Border>
             </TabItem>
 
-            <!-- 2 問題：開いているエディタタブの診断（LSP＋ホスト診断）の集約。デバッグセッション非依存。 -->
+            <!-- 2 問題：ビルド系コマンド出力から抽出したエラー/警告。デバッグセッション非依存。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="問題">
                 <v:DebugProblemsView DataContext="{Binding Problems}" />
             </TabItem>

@@ -39,6 +39,10 @@ internal interface IDebugSession
     /// <summary>複数行のコマンド出力を 1 行ずつコンソールへ流す（末尾 CR を落とし空行は捨てる）。</summary>
     void WriteConsole(string output);
 
+    /// <summary>ビルド系コマンド（<c>dotnet build</c> / <c>dotnet test</c>）の出力全文からエラー/警告を
+    /// 抽出して「問題」タブへ反映する（診断行が無ければ空＝ビルドがきれい）。</summary>
+    void ReportBuildOutput(string output);
+
     /// <summary>実行系コマンド押下時に「出力」タブを即表示する要求を発火する。</summary>
     void RequestOutput();
 

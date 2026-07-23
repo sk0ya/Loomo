@@ -41,6 +41,7 @@ public sealed class DebugTargetResolverMultiFolderTests : IDisposable
         public void CancelSession() { }
         public void Append(DebugOutputCategory category, string text) { }
         public void WriteConsole(string output) { }
+        public void ReportBuildOutput(string output) { }
         public void RequestOutput() { }
         public string? FindBuildTarget() => null;
         public void RaiseExecutionLine(string? path, int line0) { }

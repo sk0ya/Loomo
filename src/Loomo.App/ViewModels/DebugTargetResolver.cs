@@ -159,6 +159,7 @@ internal static class DebugTargetResolver
         var result = await terminal.RunCommandAsync(
             $"dotnet build \"{projectOrSln}\" -c Debug --nologo", CancellationToken.None);
         session.WriteConsole(result.Output);
+        session.ReportBuildOutput(result.Output);
         if (!result.Success)
         {
             session.StatusMessage = $"ビルド失敗（{result.ExitCode}）";

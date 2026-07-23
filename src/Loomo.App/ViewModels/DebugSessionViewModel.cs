@@ -110,6 +110,7 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     internal void NotifyFramePreview(string path, int line0) => FramePreviewRequested?.Invoke(path, line0);
 
     void IDebugSession.Append(DebugOutputCategory category, string text) => Append(category, text);
+    void IDebugSession.ReportBuildOutput(string output) => _manager.ReportBuildOutput(output);
 
     private void Append(DebugOutputCategory category, string text)
     {

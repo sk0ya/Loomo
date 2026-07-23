@@ -23,9 +23,9 @@
         </Style>
     </UserControl.Resources>
 
-    <!-- 問題（Problems）：開いているエディタタブの診断（LSP publishDiagnostics ＋ホスト診断）を集約した一覧。
-         集約自体は ShellWindow.Problems.cs（View層）が行い、ここは表示専用（DataContext は ProblemsViewModel）。
-         行クリックで該当位置へジャンプする。 -->
+    <!-- 問題（Problems）：ビルド系コマンド（dotnet build / dotnet test）出力から抽出したエラー/警告の一覧。
+         抽出は ProblemsViewModel（流し込みは各ビルド実行箇所の IDebugSession.ReportBuildOutput）が行い、
+         ここは表示専用（DataContext は ProblemsViewModel）。行クリックで該当位置へジャンプする。 -->
     <Grid Margin="0,4,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -72,7 +72,7 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                            Visibility="{Binding HasItems, Converter={StaticResource InverseBoolToVis}}"
-                           Text="問題はありません（言語サーバーが接続されたファイルを開くとここに表示されます）" />
+                           Text="問題はありません（ビルド／テストを実行すると結果がここに表示されます）" />
             </Grid>
         </Border>
     </Grid>

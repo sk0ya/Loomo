@@ -148,7 +148,6 @@ public partial class ShellWindow {
     private void RealizeEditorControl(EditorTab tab) {
         var control = BuildEditorControl(tab);
         tab.SetControl(control);
-        EnsureProblemsSubscribed(tab);
         if (tab.Pending is { } snapshot) {
             WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
             tab.Pending = null;
