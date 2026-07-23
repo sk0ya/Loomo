@@ -34,7 +34,18 @@ public static class DebugAdapterCatalog
         "scoop install netcoredbg",
         "https://github.com/Samsung/netcoredbg/releases");
 
-    public static readonly IReadOnlyList<DebugAdapterInfo> Adapters = new[] { Netcoredbg };
+    /// <summary>TypeScript / JavaScript（Node.js）用アダプタ vscode-js-debug。実行ファイルは node で、
+    /// 本体（dapDebugServer.js）は GitHub Releases からのダウンロード —— 導入判定・導入先・インストール
+    /// コマンドの実体は <see cref="Js.JsDebugAdapterLocator"/> が持つ（PATH 判定だけでは足りないため）。</summary>
+    public static readonly DebugAdapterInfo JsDebug = new(
+        "node",
+        "TypeScript / Node.js (vscode-js-debug)",
+        [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
+        [],
+        Js.JsDebugAdapterLocator.InstallCommand,
+        "https://github.com/microsoft/vscode-js-debug/releases");
+
+    public static readonly IReadOnlyList<DebugAdapterInfo> Adapters = new[] { Netcoredbg, JsDebug };
 
     /// <summary>その拡張子に対応するアダプタを返す。無ければ null。</summary>
     public static DebugAdapterInfo? ByExtension(string extension)
