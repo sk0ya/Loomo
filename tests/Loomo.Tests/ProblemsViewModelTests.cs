@@ -107,6 +107,35 @@ public class ProblemsViewModelTests
     }
 
     [Fact]
+    public void ParseBuildOutput_matches_tsc_diagnostics_and_absolutizes_with_baseDir()
+    {
+        // tsc --pretty false は cwd 相対パスで path(line,col): error TSxxxx: message を出す。
+        var output = string.Join("\n",
+            "src/index.ts(7,5): error TS2322: Type 'string' is not assignable to type 'number'.",
+            "src/util.ts(3,10): warning TS6133: 'x' is declared but its value is never read.",
+            "Found 1 error.");
+
+        var items = ProblemsViewModel.ParseBuildOutput(output, baseDir: @"C:\work\app");
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal(ProblemSeverity.Error, items[0].Severity);
+        Assert.Equal("TS2322", items[0].Code);
+        Assert.Equal(@"C:\work\app\src\index.ts", items[0].FilePath);   // baseDir 基準で絶対化
+        Assert.Equal(7, items[0].Line1);
+        Assert.Equal(5, items[0].Column1);
+        Assert.Equal("TS6133", items[1].Code);
+    }
+
+    [Fact]
+    public void ParseBuildOutput_baseDir_keeps_already_rooted_paths()
+    {
+        var items = ProblemsViewModel.ParseBuildOutput(
+            @"C:\abs\a.ts(1,1): error TS1005: ';' expected.", baseDir: @"C:\work\app");
+
+        Assert.Equal(@"C:\abs\a.ts", Assert.Single(items).FilePath);
+    }
+
+    [Fact]
     public void Group_relative_dir_uses_workspace_root()
     {
         var ws = new FakeWorkspaceService();
