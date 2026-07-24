@@ -90,8 +90,21 @@ npm スクリプト launch の出力・自然終了。node/js-debug 未導入環
   ②**ポート固定注入**（P2：空きポートを選び vite は `--port N --strictPort`、next/ng 等は `--port N` を
   `npm run <s> -- …` で注入。可視ターミナル出力は購読できないのでポートを決定論化して vite の自動ずらし
   5173→5174→… を封じる。フラグ方言の無いフレームワークは注入せず URL のポートを信じる P1 フォールバック）→
-  ③そのポートが listen するまで TCP で待つ（`DevServerPortUtil`、既定30秒）→ ④実効ポートで **pwa-chrome** を launch。
+  ③そのポートが listen するまで TCP で待つ（`DevServerPortUtil`、既定30秒）→
+  ④**可視ブラウザペイン（WebView2）をその URL へ出す**（`IBrowserService.ShowAndNavigateAsync`。ペインを
+  可視化・フォーカスして実体化まで待つ＝CDP アタッチ対象のページを作る）→ ⑤**そのペインへ pwa-chrome を attach**。
   直近に立てた同一スクリプトのサーバーが生きていれば再利用（二重起動を避ける）。
+- **なぜ外部 Chrome でなくペインか**：Loomo は「AI/デバッガは<b>見えているペイン</b>を操作する」思想
+  （web_search も可視ブラウザペインを駆動）。`pwa-chrome` の `launch` は外部 Chrome を別窓で開くだけでペインと
+  無関係——それでは「ブラウザペインがあるのに何も動かない」。そこで **WebView2 を CDP でデバッグ**する：
+  - WebView2 生成引数に `--remote-debugging-port=<N>`（`WebViewDebugPort`。共有 UserDataFolder の全 WebView2 は
+    同一引数が必須なので `CreateWebViewCreationProperties` で一括付与＝共有ブラウザプロセス＝1 CDP エンドポイント、
+    127.0.0.1 のみ）。
+  - launch 引数を `pwa-chrome / request:"attach" / port:N / urlFilter:<devUrl>*`（`DebugLaunchConfig.BrowserDebugPort`
+    が渡されたとき。dev アプリのページだけに絞り、他タブ・エディタ支援 WebView を拾わない）。
+  - ペインを出せない環境（ヘッドレス等）は `BrowserDebugPort=null` で**外部 Chrome launch へフォールバック**。
+  - ⚠**実機検証前提**：WebView2 の CDP × js-debug アタッチは環境差が出うる。うまく当たらなくてもペインには
+    アプリが表示される（視聴は成立）ので、最悪はデバッグアタッチのみ不成立という degrade。
 - **3 モード**：プログラム（.ts/.js。TS 直接実行は Node 23.6+ の型ストリッピング依存）、**npm スクリプト**
   （`runtimeExecutable:"npm"`）、**ブラウザ**（`chrome:URL` → `type:"pwa-chrome"` launch、webRoot=パッケージ
   ディレクトリ）。プロファイル（`DebugLaunchProfile.TargetProgram`）には

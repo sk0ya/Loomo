@@ -49,11 +49,13 @@ public partial class ShellWindow {
                 RecordTrailBrowser(view.Source?.ToString(), view.CoreWebView2?.DocumentTitle);
         }
     }
-    private async void NavigateBrowser(string text) {
+    private async void NavigateBrowser(string text) => await NavigateBrowserAsync(text);
+
+    /// <summary>アドレスへ遷移する（実体化まで待つ待機可能版）。タブが無ければ 1 枚作る。</summary>
+    private async Task NavigateBrowserAsync(string text) {
         var address = WorkspaceSessionCoordinator.NormalizeBrowserAddress(text, DefaultBrowserUrl);
         BrowserAddressBox.Text = address;
-        if (_activeBrowserTab is not { } tab)
-            return;
+        var tab = _activeBrowserTab ?? await CreateBrowserTabAsync(address);
         tab.PendingUrl = address;
         await EnsureBrowserRealizedAsync(tab);
         if (tab.View.CoreWebView2 is { } core && tab.PendingUrl is not null) {
@@ -62,6 +64,14 @@ public partial class ShellWindow {
         }
         UpdateBrowserTab(tab);
         SaveActiveWorkspaceSnapshot();
+    }
+
+    /// <summary>ブラウザペインを可視化・フォーカスして URL を開き、CoreWebView2 の実体化まで待つ
+    /// （<see cref="Services.BrowserService.ShowAndNavigateRequested"/> のフック。フロントデバッグの CDP アタッチ前段）。</summary>
+    private async Task ShowBrowserPaneAndNavigateAsync(string url) {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
+        FocusPane(PaneKind.Browser);
+        await NavigateBrowserAsync(url);
     }
     private WebView2CompositionControl? ActiveBrowserView => _activeBrowserTab?.View;
     private BrowserWorkspaceTabs CurrentBrowserWorkspace

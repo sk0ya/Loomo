@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
 using sk0ya.Loomo.Services.Debug.Js;
@@ -28,6 +29,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     private readonly TsDebugViewModel _manager;
     private readonly IWorkspaceService _workspace;
     private readonly ITerminalService _terminal;
+    private readonly IBrowserService _browser;
     private readonly TsDebugAttachViewModel _attach;
     private readonly DebugProfilesViewModel _profiles;
 
@@ -155,11 +157,12 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     }
 
     internal TsDebugLaunchViewModel(TsDebugViewModel manager, IWorkspaceService workspace, ITerminalService terminal,
-        TsDebugAttachViewModel attach, DebugProfilesViewModel profiles)
+        IBrowserService browser, TsDebugAttachViewModel attach, DebugProfilesViewModel profiles)
     {
         _manager = manager;
         _workspace = workspace;
         _terminal = terminal;
+        _browser = browser;
         _attach = attach;
         _profiles = profiles;
         _manager.SessionStateChanged += OnSessionStateChanged;
@@ -334,16 +337,15 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
 
         if (!await PreflightTypeCheckAsync()) return;
 
-        var program = ResolveTarget();
-        if (program is null) return;
+        var target = ResolveTarget();
+        if (target is null) return;
 
-        // フロント（Chrome）は複合起動：可視ターミナルでサーバーを立て、応答したらそのポートで Chrome を launch。
-        program = await PrepareFrontendServerAsync(program);
-        if (program is null) return;
+        // フロント（Chrome）は複合起動：可視ターミナルでサーバーを立て、ペインを dev URL へ出し、そのペインへ CDP アタッチ。
+        if (await PrepareFrontendServerAsync(target) is not { } prepared) return;
 
-        var session = _manager.CreateSession(BuildDisplayName(program), DebugSessionKind.Launch);
+        var session = _manager.CreateSession(BuildDisplayName(prepared.Program), DebugSessionKind.Launch);
         await session.DebugService.SetExceptionBreakpointsAsync(CurrentExceptionFilterIds(), CancellationToken.None);
-        await LaunchIntoAsync(session, program);
+        await LaunchIntoAsync(session, prepared.Program, prepared.BrowserDebugPort);
     }
 
     /// <summary>スクリプトタブの行実行。実行対象をそのスクリプト（<c>npm:名前</c>）へ切り替えてから開始する
@@ -371,11 +373,10 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     {
         _manager.RequestOutput();
         if (!await PreflightTypeCheckAsync()) return;
-        var program = ResolveTarget();
-        if (program is null) return;
-        program = await PrepareFrontendServerAsync(program);
-        if (program is null) return;
-        await LaunchIntoAsync(session, program);
+        var target = ResolveTarget();
+        if (target is null) return;
+        if (await PrepareFrontendServerAsync(target) is not { } prepared) return;
+        await LaunchIntoAsync(session, prepared.Program, prepared.BrowserDebugPort);
     }
 
     /// <summary>実行対象（プロファイル格納形式のまま）を検証・解決する。プログラムモードは相対パスを
@@ -419,7 +420,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         return path;
     }
 
-    private async Task LaunchIntoAsync(DebugSessionViewModel session, string program)
+    private async Task LaunchIntoAsync(DebugSessionViewModel session, string program, int? browserDebugPort = null)
     {
         var iSession = (IDebugSession)session;
         var token = iSession.BeginSession();
@@ -429,7 +430,8 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
                 new DebugLaunchConfig(program, ResolveWorkingDirectory(program),
                     Args: DebugLaunchArgs.ParseArgs(LaunchArgs),
                     Environment: DebugLaunchArgs.ParseEnv(LaunchEnv),
-                    JustMyCode: JustMyCode),
+                    JustMyCode: JustMyCode,
+                    BrowserDebugPort: browserDebugPort),
                 token);
         }
         catch (OperationCanceledException) { /* 停止操作 */ }
@@ -444,17 +446,23 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     /// <summary>そのとき走らせた npm スクリプト名（再利用判定用）。</summary>
     private string? _devServerScript;
 
-    /// <summary>フロント（Chrome）ターゲットの複合起動準備。可視ターミナルでフロント開発サーバーを立て
-    /// （ポートは空きを選んで<b>固定注入</b>＝vite の自動ポートずらしを封じる）、そのポートが listen したら
-    /// Chrome の実効ターゲット（ポート差し替え済み <c>chrome:URL</c>）を返す。Chrome 以外・複合対象外はそのまま返す。
-    /// サーバー起動に失敗したら null（呼び出し側は起動中止）。</summary>
-    private async Task<string?> PrepareFrontendServerAsync(string program)
+    /// <summary>複合起動の解決結果：実効ターゲット（ポート差し替え済み <c>chrome:URL</c> など）と、
+    /// 可視ブラウザペインへ CDP アタッチする場合のポート（外部 Chrome フォールバック時は null）。</summary>
+    private readonly record struct PreparedTarget(string Program, int? BrowserDebugPort);
+
+    /// <summary>フロント（Chrome）ターゲットの複合起動準備。①可視ターミナルでフロント開発サーバーを立て
+    /// （ポートは空きを選んで<b>固定注入</b>＝vite の自動ポートずらしを封じる）→ ②listen したら<b>可視ブラウザペインを
+    /// その URL へ出す</b>（CDP アタッチ対象のページを作る）→ ③ペインの CDP ポートを付けて返す（＝そのペインを
+    /// デバッグ）。Chrome 以外・複合対象外はそのまま返す（ポート null）。ペインを出せなければ外部 Chrome へフォールバック
+    /// （ポート null）。サーバー起動失敗のみ null（呼び出し側は起動中止）。</summary>
+    private async Task<PreparedTarget?> PrepareFrontendServerAsync(string program)
     {
-        if (!TsLaunchTarget.TryParseChromeUrl(program, out var url)) return program;   // Chrome 以外はそのまま
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return program;
+        if (!TsLaunchTarget.TryParseChromeUrl(program, out var url)) return new PreparedTarget(program, null); // Chrome 以外
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return new PreparedTarget(program, null);
 
         // このパッケージのフロント開発サーバースクリプトを探す。無ければ複合しない（外部サーバー前提で Chrome だけ）。
-        if (PickFrontendDevScript() is not { } devScript) return program;
+        if (PickFrontendDevScript() is not { } devScript)
+            return new PreparedTarget(program, await ShowInPaneAsync(url));
 
         var framework = TsScriptClassifier.DetectFramework(devScript.Command);
         var basePort = uri.Port > 0 ? uri.Port : TsScriptClassifier.DefaultPort(framework);
@@ -462,7 +470,10 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         // 前回の複合サーバーが同じスクリプトでまだ生きていれば再利用（二重起動を避ける）。
         if (_devServerPort > 0 && _devServerScript == devScript.Name &&
             await DevServerPortUtil.IsListeningAsync(_devServerPort, CancellationToken.None))
-            return TsLaunchTarget.FormatChromeUrl(WithPort(uri, _devServerPort));
+        {
+            var reuseUrl = WithPort(uri, _devServerPort);
+            return new PreparedTarget(TsLaunchTarget.FormatChromeUrl(reuseUrl), await ShowInPaneAsync(reuseUrl));
+        }
 
         // 空きポートを選び、フレームワーク方言でポート固定注入。方言が無ければ注入せず URL のポートを信じる（P1）。
         var pin = TsScriptClassifier.PinnedPortArgs(framework, DevServerPortUtil.FindFreePort(basePort));
@@ -490,7 +501,26 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
 
         _devServerPort = port;
         _devServerScript = devScript.Name;
-        return TsLaunchTarget.FormatChromeUrl(WithPort(uri, port));
+        var effectiveUrl = WithPort(uri, port);
+        return new PreparedTarget(TsLaunchTarget.FormatChromeUrl(effectiveUrl), await ShowInPaneAsync(effectiveUrl));
+    }
+
+    /// <summary>可視ブラウザペインを URL へ出し、成功したら CDP アタッチ用ポート（WebView2 のリモートデバッグポート）を返す。
+    /// ペインが使えなければ null＝外部 Chrome launch へフォールバック。</summary>
+    private async Task<int?> ShowInPaneAsync(string url)
+    {
+        try
+        {
+            await _browser.ShowAndNavigateAsync(url, CancellationToken.None);
+            _manager.Append(DebugOutputCategory.Important, $"ブラウザペインに表示: {url}（CDP:{WebViewDebugPort.Port} でアタッチ）");
+            return WebViewDebugPort.Port;
+        }
+        catch (Exception ex)
+        {
+            _manager.Append(DebugOutputCategory.Important,
+                $"ブラウザペインを開けませんでした（外部 Chrome で起動します）: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>ポート固定注入文字列（"--port 5175 --strictPort" 等）から実効ポートを取り出す。無ければ既定。</summary>

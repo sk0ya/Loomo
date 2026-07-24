@@ -25,6 +25,8 @@ public class WebSearchToolTests
         public bool IsAvailable => Available;
         public Task<BrowserPageInfo> NavigateAsync(string url, CancellationToken ct)
         { NavigatedUrl = url; return Task.FromResult(new BrowserPageInfo(url, "検索 - Bing")); }
+        public Task ShowAndNavigateAsync(string url, CancellationToken ct)
+        { NavigatedUrl = url; return Task.CompletedTask; }
         public Task<BrowserPageInfo> GetPageInfoAsync(CancellationToken ct)
             => Task.FromResult(new BrowserPageInfo(NavigatedUrl ?? "", ""));
         public Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct)

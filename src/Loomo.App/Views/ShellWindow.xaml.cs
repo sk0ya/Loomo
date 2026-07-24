@@ -36,7 +36,10 @@ public partial class ShellWindow : Window {
     private DispatcherTimer? _editorSupportDebounceTimer;
     private static readonly string EditorSupportPreviewFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2", "preview-page");
     private static readonly string WebViewUserDataFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2");
-    private const string WebViewAdditionalBrowserArguments = "--allow-file-access-from-files";
+    // リモートデバッグポート付き（TS IDE のフロントデバッグがこのペインへ CDP アタッチする。§29）。
+    // 共有 UserDataFolder の全 WebView2 が同一引数である必要があるため、ここで一括付与する。
+    private static readonly string WebViewAdditionalBrowserArguments =
+        "--allow-file-access-from-files " + Services.WebViewDebugPort.Argument;
     private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
         => new() {
             UserDataFolder = WebViewUserDataFolder, AdditionalBrowserArguments = WebViewAdditionalBrowserArguments
@@ -88,6 +91,8 @@ public partial class ShellWindow : Window {
         _terminal = terminal;
         _editor = editor;
         _browser = browser;
+        // フロントデバッグ（TS IDE）が dev URL をペインへ出すためのフック：可視化＋フォーカス＋実体化して遷移。
+        _browser.ShowAndNavigateRequested = url => ShowBrowserPaneAndNavigateAsync(url);
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;

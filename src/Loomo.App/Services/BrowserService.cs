@@ -29,6 +29,13 @@ public sealed class BrowserService : IBrowserService
     /// <summary>操作対象のアクティブな WebView2 を結びつける（UI スレッドから呼ぶ）。</summary>
     public void SetActiveView(WebView2CompositionControl? view) => _view = view;
 
+    /// <summary>ブラウザペインを可視化して URL を開くよう ShellWindow へ要求するフック（ShellWindow が設定）。
+    /// ペインの表示切替はサービスの責務外（ShellWindow のみが持つ）なので、コールバックで委譲する。</summary>
+    public Func<string, Task>? ShowAndNavigateRequested { get; set; }
+
+    public Task ShowAndNavigateAsync(string url, CancellationToken ct)
+        => ShowAndNavigateRequested is { } hook ? hook(url) : NavigateAsync(url, ct);
+
     // WebView2 はスレッドアフィニティを持つため、null 判定であっても UI スレッドで読む
     // （ツール実行は UI スレッドとは限らない）。
     public bool IsAvailable

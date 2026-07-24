@@ -176,6 +176,7 @@ internal static class LoomoServiceCollectionExtensions
             sp.GetRequiredService<sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory>(),
             sp.GetRequiredService<IWorkspaceService>(),
             sp.GetRequiredService<ITerminalService>(),
+            sp.GetRequiredService<IBrowserService>(),
             new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(System.IO.Path.Combine(
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
                 "Loomo", "tsLaunchProfiles.json"))));

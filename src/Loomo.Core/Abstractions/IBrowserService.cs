@@ -5,6 +5,10 @@ public interface IBrowserService
 {
     bool IsAvailable { get; }
     Task<BrowserPageInfo> NavigateAsync(string url, CancellationToken ct);
+    /// <summary>ブラウザペインを<b>可視化・フォーカスして</b>アクティブタブを URL へ遷移させ、CoreWebView2 の実体化まで待つ。
+    /// （閉じている・未実体のペインでも開いて使えるようにする。フロントデバッグの CDP アタッチ前段で使う。）
+    /// ホスト（ShellWindow）が未接続なら通常の <see cref="NavigateAsync"/> にフォールバックする。</summary>
+    Task ShowAndNavigateAsync(string url, CancellationToken ct);
     Task<BrowserPageInfo> GetPageInfoAsync(CancellationToken ct);
     Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct);
     Task<string> GetVisibleTextAsync(CancellationToken ct);

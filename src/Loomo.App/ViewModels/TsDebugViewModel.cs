@@ -22,13 +22,13 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
     public TsDebugTestsViewModel Tests { get; }
 
     public TsDebugViewModel(JsDebugSessionFactory sessionFactory, IWorkspaceService workspace, ITerminalService terminal,
-        DebugLaunchProfileStore profileStore)
+        IBrowserService browser, DebugLaunchProfileStore profileStore)
         : base(sessionFactory, workspace)
     {
         _workspace = workspace;
         Attach = new TsDebugAttachViewModel(this, terminal);
         Profiles = new DebugProfilesViewModel(workspace, profileStore, TsProjectDiscovery.Discover);
-        Launch = new TsDebugLaunchViewModel(this, workspace, terminal, Attach, Profiles);
+        Launch = new TsDebugLaunchViewModel(this, workspace, terminal, browser, Attach, Profiles);
         Profiles.AttachLaunch(Launch);
         Launch.ApplyDefaultTargetIfEmpty();  // 起動時点でワークスペースが開いていれば既定ターゲット（種別で振り分け）を適用
         Tests = new TsDebugTestsViewModel(workspace, terminal, this);

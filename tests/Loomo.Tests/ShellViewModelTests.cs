@@ -96,6 +96,7 @@ public class ShellViewModelTests
 
         var tsIdeVm = new TsDebugViewModel(
             new sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory(), workspace, new FakeTerminalService(),
+            new FakeBrowserService(),
             new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-ts-launch-profiles.json")));
 

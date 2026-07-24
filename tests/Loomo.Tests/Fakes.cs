@@ -94,3 +94,21 @@ internal sealed class FakeAiClientFactory : IAiClientFactory
 {
     public IAiClient ResolveCurrent() => throw new NotSupportedException();
 }
+
+/// <summary>何もしないブラウザサービス（UI 非依存のテスト用）。</summary>
+internal sealed class FakeBrowserService : IBrowserService
+{
+    public bool IsAvailable => false;
+    public Task<BrowserPageInfo> NavigateAsync(string url, CancellationToken ct)
+        => Task.FromResult(new BrowserPageInfo(url, ""));
+    public Task ShowAndNavigateAsync(string url, CancellationToken ct) => Task.CompletedTask;
+    public Task<BrowserPageInfo> GetPageInfoAsync(CancellationToken ct)
+        => Task.FromResult(new BrowserPageInfo("", ""));
+    public Task<IReadOnlyList<BrowserClickable>> ListClickablesAsync(CancellationToken ct)
+        => Task.FromResult((IReadOnlyList<BrowserClickable>)Array.Empty<BrowserClickable>());
+    public Task<string> GetVisibleTextAsync(CancellationToken ct) => Task.FromResult("");
+    public Task<string> EvaluateScriptAsync(string script, CancellationToken ct) => Task.FromResult("");
+    public Task ClickAsync(string selector, CancellationToken ct) => Task.CompletedTask;
+    public Task TypeAsync(string selector, string text, CancellationToken ct) => Task.CompletedTask;
+    public Task<byte[]> CaptureScreenshotAsync(CancellationToken ct) => Task.FromResult(Array.Empty<byte>());
+}

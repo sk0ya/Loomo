@@ -178,6 +178,26 @@ public sealed class JsDebugService : IDebugService
 
         if (TsLaunchTarget.TryParseChromeUrl(config.Program, out var url))
         {
+            // 可視ブラウザペイン（WebView2）の CDP ポートが渡されていれば、外部 Chrome を起動せず
+            // そのペインへ attach してデバッグする（Loomo の「AI/デバッガは見えるペインを操作する」思想）。
+            // urlFilter で dev アプリのページだけにアタッチ対象を絞る（他タブ・エディタ支援 WebView を拾わない）。
+            if (config.BrowserDebugPort is { } cdpPort)
+            {
+                return new
+                {
+                    name = "Loomo Chrome Attach",
+                    type = "pwa-chrome",
+                    request = "attach",
+                    port = cdpPort,
+                    address = "127.0.0.1",
+                    url,
+                    urlFilter = url.TrimEnd('/') + "*",
+                    webRoot = workDir,
+                    sourceMaps = true,
+                };
+            }
+
+            // フォールバック：ペインが使えない場合は従来どおり外部 Chrome を launch。
             return new
             {
                 name = "Loomo Chrome Debug",
