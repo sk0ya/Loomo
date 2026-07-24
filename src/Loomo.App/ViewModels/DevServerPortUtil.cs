@@ -19,11 +19,15 @@ internal static class DevServerPortUtil
     }
 
     private static bool IsPortFree(int port)
+        // dev サーバー（vite 等）は既定で localhost＝IPv6 の ::1 に bind するため、IPv4・IPv6 両方で空いていること。
+        => CanBind(IPAddress.Loopback, port) && CanBind(IPAddress.IPv6Loopback, port);
+
+    private static bool CanBind(IPAddress address, int port)
     {
         try
         {
-            // ループバックに bind できれば空き。TIME_WAIT の取り合いを避けるため ExclusiveAddressUse=true。
-            using var listener = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true };
+            // bind できれば空き。TIME_WAIT の取り合いを避けるため ExclusiveAddressUse=true。
+            using var listener = new TcpListener(address, port) { ExclusiveAddressUse = true };
             listener.Start();
             listener.Stop();
             return true;
@@ -53,10 +57,12 @@ internal static class DevServerPortUtil
 
     private static async Task<bool> CanConnectAsync(int port, CancellationToken ct)
     {
+        // "localhost" で名前解決した全アドレス（::1 と 127.0.0.1）を試す：vite は既定で IPv6 の ::1 に bind するため、
+        // 127.0.0.1 固定だとサーバーが上がっていても検知できない。
         try
         {
             using var client = new TcpClient();
-            await client.ConnectAsync(IPAddress.Loopback, port, ct);
+            await client.ConnectAsync("localhost", port, ct);
             return client.Connected;
         }
         catch

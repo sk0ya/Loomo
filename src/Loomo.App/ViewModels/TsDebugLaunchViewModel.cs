@@ -479,9 +479,11 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         var pin = TsScriptClassifier.PinnedPortArgs(framework, DevServerPortUtil.FindFreePort(basePort));
         var port = pin.Length > 0 ? ExtractPort(pin, basePort) : basePort;
         var dir = PreferredPackageDir() ?? _workspace.RootPath;
+        // npm.cmd を明示（PowerShell では `npm` が npm.ps1 に解決され、シムが `--` セパレータを食って
+        // ポート引数がスクリプトへ渡らない。cmd シムは `--` を保持する）。
         var command = pin.Length > 0
-            ? $"Set-Location \"{dir}\"; npm run {devScript.Name} -- {pin}"
-            : $"Set-Location \"{dir}\"; npm run {devScript.Name}";
+            ? $"Set-Location \"{dir}\"; npm.cmd run {devScript.Name} -- {pin}"
+            : $"Set-Location \"{dir}\"; npm.cmd run {devScript.Name}";
 
         _manager.Append(DebugOutputCategory.Important, $"開発サーバーを起動: npm run {devScript.Name}（localhost:{port}）");
         if (!_terminal.TryRunInVisibleTerminal(command))
