@@ -30,6 +30,18 @@ public class CodeEditorSupportTests
         var range = new LspRange(new LspPosition(2, 3), new LspPosition(4, 5));
         Assert.Equal(expected, CodeEditorSupportAnalysis.CaretInRange(range, line, column));
     }
+
+    [Theory]
+    [InlineData(SymbolKind.Method, true)]
+    [InlineData(SymbolKind.Function, true)]
+    [InlineData(SymbolKind.Constructor, true)]
+    [InlineData(SymbolKind.Field, false)]
+    [InlineData(SymbolKind.Property, false)]
+    [InlineData(SymbolKind.Class, false)]
+    public void Analysis_limits_call_hierarchy_expansion_to_callable_symbols(
+        SymbolKind kind, bool expected)
+        => Assert.Equal(expected, CodeEditorSupportAnalysis.SupportsCallHierarchy((int)kind));
+
     private static OutlineNode Leaf(string name, SymbolKind kind, int line0, int endLine0)
         => new(name, kind, line0, endLine0, line0, 0, System.Array.Empty<OutlineNode>());
 

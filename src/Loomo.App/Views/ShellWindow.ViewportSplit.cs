@@ -163,7 +163,9 @@ public partial class ShellWindow {
         var lspBox = new StrongBox<IEditorLspManager?>(null);
         var control = new VimEditorControl(new VimEditorControlOptions {
             GitServiceFactory = () => new GitDiffProvider(), LspManagerFactory = dispatcher => {
-                var manager = new LspManager(dispatcher);
+                var manager = new LspManager(
+                    dispatcher,
+                    workspaceFoldersProvider: () => _workspace.Folders.ToArray());
                 lspBox.Value = manager;
                 return manager;
             }

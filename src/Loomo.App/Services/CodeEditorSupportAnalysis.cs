@@ -44,6 +44,14 @@ public static class CodeEditorSupportAnalysis
         return line0 != end.Line || col0 <= end.Character;
     }
 
+    /// <summary>
+    /// 呼び出し元/呼び出し先を持つシンボルだけを callHierarchy の展開対象にする。
+    /// Roslyn はフィールド等にも prepareCallHierarchy の項目を返すことがあるが、その項目を
+    /// incomingCalls/outgoingCalls に渡すとサーバー内部例外になるため、呼び出し可能な種別に限定する。
+    /// </summary>
+    public static bool SupportsCallHierarchy(int kind)
+        => (SymbolKind)kind is SymbolKind.Method or SymbolKind.Function or SymbolKind.Constructor;
+
     internal static async Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
         IEditorLspManager lsp, int line0, int col0)
     {
@@ -72,7 +80,7 @@ public static class CodeEditorSupportAnalysis
         {
             var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
             CodeSupportDiag.Log($"  prepareCallHierarchy {prepareSw?.ElapsedMilliseconds ?? 0}ms item={(item is null ? "null" : item.Name)}");
-            if (item is not null)
+            if (item is not null && SupportsCallHierarchy(item.Kind))
             {
                 symbolRange = item.SelectionRange;
                 target = item.Name;
