@@ -1,6 +1,7 @@
 using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -37,6 +38,7 @@ internal sealed class AppBootstrapper
             "Loomo");
         Editor.Core.Lsp.LspServerRegistry.ConfigureDefault(
             Path.Combine(loomoDataDirectory, "lsp-servers.json"));
+        LspServerCatalog.EnsureCSharpDefault(Editor.Core.Lsp.LspServerRegistry.Default);
         Editor.Core.Formatting.FormatterRegistry.ConfigureDefault(
             Path.Combine(loomoDataDirectory, "formatters.json"));
 

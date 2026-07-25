@@ -65,15 +65,20 @@ public sealed class LspManagementService
 
     private LspServerRow ToRow(LspServerEntry e)
     {
-        var info = LspServerCatalog.ByExecutable(e.Server.Executable);
+        var isRoslynDefault = LspServerCatalog.IsRoslynCSharp(e.Extension, e.Server);
+        var isRemovedCSharp = e.Origin == LspServerOrigin.Removed
+            && string.Equals(e.Extension, ".cs", StringComparison.OrdinalIgnoreCase);
+        var server = isRemovedCSharp ? LspServerCatalog.RoslynCSharpDefinition() : e.Server;
+        var origin = isRoslynDefault ? LspServerOrigin.BuiltIn : e.Origin;
+        var info = LspServerCatalog.ByExecutable(server.Executable);
         return new LspServerRow(
             e.Extension,
-            info?.DisplayName ?? e.Server.Executable,
-            e.Server.Executable,
-            e.Server.Args,
-            e.Server.LanguageId,
-            ExecutableResolver.IsOnPath(e.Server.Executable),
-            e.Origin,
+            info?.DisplayName ?? server.Executable,
+            server.Executable,
+            server.Args,
+            server.LanguageId,
+            ExecutableResolver.IsOnPath(server.Executable),
+            origin,
             info?.InstallCommand,
             info?.DocsUrl);
     }
@@ -93,7 +98,16 @@ public sealed class LspManagementService
     public bool Remove(string extension) => _registry.Remove(extension);
 
     /// <summary>ユーザー変更を捨てて組み込み既定へ戻す。</summary>
-    public bool Reset(string extension) => _registry.Reset(extension);
+    public bool Reset(string extension)
+    {
+        var ext = LspServerRegistry.NormalizeExt(extension);
+        if (string.Equals(ext, ".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            _registry.Set(ext, LspServerCatalog.RoslynCSharpDefinition());
+            return true;
+        }
+        return _registry.Reset(ext);
+    }
 
     /// <summary>インストールコマンドを見えるターミナルで実行する。端末未接続なら false。</summary>
     public bool RunInstall(string installCommand) =>

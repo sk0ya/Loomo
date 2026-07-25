@@ -211,7 +211,7 @@
                                             Command="{Binding Lsp.RefreshStatusCommand}" />
                                 </Grid>
                                 <TextBlock Style="{StaticResource FieldHint}"
-                                           Text="言語サーバーは別途インストールが必要です。対象の言語サーバーを入れると、その拡張子で補完・診断・定義ジャンプ等が有効になります。" />
+                                           Text="言語サーバーは別途インストールが必要です。C# は MIT の Roslyn Language Server を .NET グローバルツールとして導入します。対象のサーバーを入れると、補完・診断・定義ジャンプ等が有効になります。" />
 
                                 <ItemsControl ItemsSource="{Binding Lsp.Servers}" Margin="0,8,0,0">
                                     <ItemsControl.ItemTemplate>

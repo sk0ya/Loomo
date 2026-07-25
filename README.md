@@ -22,7 +22,7 @@
 
 ## ビルド
 
-前提: [.NET 9 SDK](https://dotnet.microsoft.com/)（Windows）。
+前提: [.NET 10 SDK](https://dotnet.microsoft.com/)（Windows）。
 
 ```powershell
 dotnet build sk0ya.Loomo.sln

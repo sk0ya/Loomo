@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>sk0ya.Loomo.Services</RootNamespace>
     <AssemblyName>sk0ya.Loomo.Services</AssemblyName>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

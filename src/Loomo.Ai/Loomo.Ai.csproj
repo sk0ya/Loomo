@@ -17,7 +17,7 @@
   <PropertyGroup>
     <RootNamespace>sk0ya.Loomo.Ai</RootNamespace>
     <AssemblyName>sk0ya.Loomo.Ai</AssemblyName>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

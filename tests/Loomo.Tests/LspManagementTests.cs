@@ -32,12 +32,120 @@ public sealed class LspManagementTests : IDisposable
     // ── カタログ ──────────────────────────────────────────────────────────
 
     [Fact]
-    public void Catalog_ByExecutable_FindsKnownServer()
+    public void Catalog_CSharp_UsesRoslynStdioWithTelemetryOff()
     {
-        var info = LspServerCatalog.ByExecutable("csharp-ls");
+        var info = LspServerCatalog.ByExtension(".cs").Single();
         Assert.NotNull(info);
         Assert.Contains(".cs", info!.Extensions);
+        Assert.EndsWith(
+            "Microsoft.CodeAnalysis.LanguageServer.exe",
+            info.Executable,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            $"{Path.DirectorySeparatorChar}.dotnet{Path.DirectorySeparatorChar}tools{Path.DirectorySeparatorChar}.store{Path.DirectorySeparatorChar}",
+            info.Executable,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--stdio", info.Args);
+        Assert.Contains("--telemetryLevel", info.Args);
         Assert.False(string.IsNullOrWhiteSpace(info.InstallCommand));
+        Assert.Contains("dotnet tool update --global roslyn-language-server", info.InstallCommand);
+        Assert.Contains("dotnet tool install --global roslyn-language-server", info.InstallCommand);
+        Assert.Contains(LspServerCatalog.RoslynVersion, info.InstallCommand);
+    }
+
+    [Fact]
+    public void EnsureCSharpDefault_ReplacesOnlyOldBuiltIn()
+    {
+        var registry = LspServerRegistry.Default;
+
+        LspServerCatalog.EnsureCSharpDefault(registry);
+
+        var row = registry.List().Single(e => e.Extension == ".cs");
+        Assert.Equal(LspServerOrigin.Custom, row.Origin);
+        Assert.EndsWith(
+            "Microsoft.CodeAnalysis.LanguageServer.exe",
+            row.Server.Executable,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--stdio", row.Server.Args);
+    }
+
+    [Fact]
+    public void RoslynCSharp_AppearsAsBuiltInAndResetDoesNotRestoreCsharpLs()
+    {
+        var registry = LspServerRegistry.Default;
+        LspServerCatalog.EnsureCSharpDefault(registry);
+        var svc = Service();
+
+        var initial = svc.GetRows().Single(r => r.Extension == ".cs");
+        Assert.Equal(LspServerOrigin.BuiltIn, initial.Origin);
+        Assert.Contains("Roslyn", initial.DisplayName);
+
+        Assert.True(svc.Remove(".cs"));
+        var removed = svc.GetRows().Single(r => r.Extension == ".cs");
+        Assert.Equal(LspServerOrigin.Removed, removed.Origin);
+        Assert.Contains("Roslyn", removed.DisplayName);
+        Assert.Null(LspServerRegistry.Default.GetForExtension(".cs"));
+
+        Assert.True(svc.Reset(".cs"));
+        var restored = LspServerRegistry.Default.GetForExtension(".cs")!;
+        Assert.True(LspServerCatalog.IsRoslynCSharp(".cs", restored));
+        Assert.DoesNotContain("csharp-ls", restored.Executable, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EnsureCSharpDefault_PreservesUserOverride()
+    {
+        var registry = LspServerRegistry.Default;
+        registry.Set(".cs", new LspServerDef("my-csharp-server", ["serve"], "csharp"));
+
+        LspServerCatalog.EnsureCSharpDefault(registry);
+
+        Assert.Equal("my-csharp-server", registry.GetForExtension(".cs")!.Executable);
+    }
+
+    [Fact]
+    public void EnsureCSharpDefault_ReplacesLegacyLoomoPrivateRoslynPath()
+    {
+        var registry = LspServerRegistry.Default;
+        var oldDll = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Loomo", "lsp", "roslyn", "old",
+            "Microsoft.CodeAnalysis.LanguageServer.dll");
+        var oldDotnet = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Loomo", "lsp", "dotnet", "10.0.0", "dotnet.exe");
+        registry.Set(".cs", new LspServerDef(oldDotnet, [oldDll, "--stdio"], "csharp"));
+
+        LspServerCatalog.EnsureCSharpDefault(registry);
+
+        Assert.True(LspServerCatalog.IsRoslynCSharp(
+            ".cs", registry.GetForExtension(".cs")!));
+    }
+
+    [Fact]
+    public void EnsureCSharpDefault_ReplacesExistingGlobalRoslynShim()
+    {
+        var registry = LspServerRegistry.Default;
+        registry.Set(".cs", new LspServerDef(
+            "roslyn-language-server", ["--stdio"], "csharp"));
+
+        LspServerCatalog.EnsureCSharpDefault(registry);
+
+        Assert.True(LspServerCatalog.IsRoslynCSharp(
+            ".cs", registry.GetForExtension(".cs")!));
+    }
+
+    [Fact]
+    public void EnsureCSharpDefault_PreservesDisabledBuiltIn()
+    {
+        var registry = LspServerRegistry.Default;
+        registry.Remove(".cs");
+
+        LspServerCatalog.EnsureCSharpDefault(registry);
+
+        Assert.Null(registry.GetForExtension(".cs"));
+        Assert.Equal(LspServerOrigin.Removed,
+            registry.List().Single(e => e.Extension == ".cs").Origin);
     }
 
     [Fact]

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using Editor.Core.Lsp;
 
 namespace sk0ya.Loomo.Services.Lsp;
 
@@ -26,12 +28,37 @@ public sealed record LspServerInfo(
 /// </summary>
 public static class LspServerCatalog
 {
+    /// <summary>
+    /// Microsoft が MIT で配布する Roslyn Language Server の、Loomo で検証済みの固定版。
+    /// VS Code 拡張の配布物（利用先制限あり）は流用せず、MIT 指定の NuGet パッケージを直接取得する。
+    /// DevKit / XAML Tools は再配布不可の Microsoft 独自 DLL を含むため読み込まない。
+    /// </summary>
+    internal const string RoslynVersion = "5.9.0-1.26303.1";
+    internal static readonly string RoslynExecutable = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".dotnet", "tools", ".store", "roslyn-language-server", RoslynVersion,
+        "roslyn-language-server.win-x64", RoslynVersion, "tools", "net10.0", "win-x64",
+        "Microsoft.CodeAnalysis.LanguageServer.exe");
+
+    internal static readonly string[] RoslynArgs =
+    [
+        "--stdio",
+        "--autoLoadProjects",
+        "--telemetryLevel", "off",
+    ];
+
+    // update は既存ツールを固定版へ揃える。未導入なら失敗後に install する。
+    private const string RoslynInstallCommand =
+        "dotnet tool update --global roslyn-language-server --version " + RoslynVersion
+        + "; if ($LASTEXITCODE -ne 0) { dotnet tool install --global roslyn-language-server --version "
+        + RoslynVersion + " }";
+
     /// <summary>winget 等の Windows 向けを優先した、ベストエフォートのインストールコマンド付きカタログ。</summary>
     public static readonly IReadOnlyList<LspServerInfo> Servers = new[]
     {
-        new LspServerInfo("csharp-ls", "C# (csharp-ls)", [".cs"], "csharp",
-            "dotnet tool install --global csharp-ls", [],
-            "https://github.com/razzmatazz/csharp-language-server"),
+        new LspServerInfo(RoslynExecutable, "C# (Roslyn Language Server)", [".cs"], "csharp",
+            RoslynInstallCommand, RoslynArgs,
+            "https://github.com/dotnet/roslyn"),
         new LspServerInfo("typescript-language-server", "TypeScript / JavaScript",
             [".ts", ".tsx", ".js", ".jsx"], "typescript",
             "npm install -g typescript-language-server typescript", ["--stdio"],
@@ -83,4 +110,46 @@ public static class LspServerCatalog
                 name = name[..^suffix.Length];
         return name.ToLowerInvariant();
     }
+
+    /// <summary>
+    /// Editor パッケージの旧組み込み値（csharp-ls）と、旧Loomo専用配置を
+    /// Roslynグローバルツールへ移行する。
+    /// ユーザーが明示設定した C# サーバーは上書きしない。
+    /// </summary>
+    public static void EnsureCSharpDefault(LspServerRegistry registry)
+    {
+        var row = registry.List().FirstOrDefault(e =>
+            string.Equals(e.Extension, ".cs", StringComparison.OrdinalIgnoreCase));
+        if (row is null)
+            return;
+
+        var isOldBuiltIn = row.Origin == LspServerOrigin.BuiltIn
+            && string.Equals(NormalizeExe(row.Server.Executable), "csharp-ls", StringComparison.Ordinal);
+        var isOldGlobalShim = string.Equals(
+            NormalizeExe(row.Server.Executable), "roslyn-language-server", StringComparison.Ordinal);
+        if (!isOldBuiltIn && !isOldGlobalShim && !IsLegacyLoomoRoslyn(row.Server))
+            return;
+
+        registry.Set(".cs", RoslynCSharpDefinition());
+    }
+
+    private static bool IsLegacyLoomoRoslyn(LspServerDef server) =>
+        NormalizeExe(Path.GetFileName(server.Executable)) == "dotnet"
+        && server.Args.Any(a => a.EndsWith(
+            "Microsoft.CodeAnalysis.LanguageServer.dll",
+            StringComparison.OrdinalIgnoreCase))
+        && server.Args.Any(a => a.Contains(
+            $"{Path.DirectorySeparatorChar}Loomo{Path.DirectorySeparatorChar}lsp{Path.DirectorySeparatorChar}",
+            StringComparison.OrdinalIgnoreCase));
+
+    internal static bool IsRoslynCSharp(string extension, LspServerDef server) =>
+        string.Equals(LspServerRegistry.NormalizeExt(extension), ".cs", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(
+            NormalizeExe(server.Executable),
+            NormalizeExe(RoslynExecutable),
+            StringComparison.Ordinal)
+        && server.Args.SequenceEqual(RoslynArgs, StringComparer.OrdinalIgnoreCase);
+
+    internal static LspServerDef RoslynCSharpDefinition() =>
+        new(RoslynExecutable, RoslynArgs, "csharp");
 }
