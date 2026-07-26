@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Services.Lsp;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナル／エディタのタブ管理（作成・選択・クローズ・プレビュータブ）</summary>
 public partial class ShellWindow {
@@ -113,6 +115,7 @@ public partial class ShellWindow {
         QueueEditorTabHeaderIntoView(id);
         _ = SwitchEditorSupportSourceAsync(tab);
         RecordTrailEditorTab(tab);
+        OnActiveEditorFileChanged(tab);
         SaveActiveWorkspaceSnapshot();
     }
     private void SetActiveEditorTab(EditorTab tab) {
@@ -123,8 +126,27 @@ public partial class ShellWindow {
         QueueEditorTabHeaderIntoView(tab.Id);
         _ = SwitchEditorSupportSourceAsync(tab);
         RecordTrailEditorTab(tab);
-        _vm.LspPrompt.EvaluateForFile(tab.Control.FilePath);
+        OnActiveEditorFileChanged(tab);
     }
+    // アクティブなエディタが指すファイルが変わったときの唯一の評価点。
+    // 以前は ActivateEditorTab / SetActiveEditorTab の二本立てで後者にしか評価が無く、しかも
+    // 新規タブは Activate→LoadFile の順なので評価時点でパスが未設定だった（設計書 §30.6 P3）。
+    // LoadFile の後にもう一度呼べるよう、同じパスの二度目は捨てる。
+    private string? _lastLspPromptPath;
+    private LspPromptInfo? _lastLspPrompt;
+    private void OnActiveEditorFileChanged(EditorTab tab) {
+        var filePath = tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath;
+        if (string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase))
+            return;
+        _lastLspPromptPath = filePath;
+        _lastLspPrompt = _lspManagement.EvaluateForFile(filePath);
+        _vm.LspPrompt.Show(_lastLspPrompt);
+    }
+    /// <summary>促し判定の使い回し（アウトラインの案内も同じ結果を出すため）。</summary>
+    private LspPromptInfo? EvaluateLspPrompt(string? filePath) =>
+        string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase)
+            ? _lastLspPrompt
+            : _lspManagement.EvaluateForFile(filePath);
     private void QueueEditorTabHeaderIntoView(Guid id) {
         Dispatcher.BeginInvoke( new Action(() => ScrollEditorTabHeaderIntoView(id)), DispatcherPriority.Loaded);
     }

@@ -58,7 +58,7 @@ public class ShellViewModelTests
         var sessionsVm = new SessionsViewModel(conversations, aiBar,
             new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager(), new UiFontManager());
-        var lspService = new sk0ya.Loomo.Services.Lsp.LspManagementService(new FakeTerminalService());
+        var lspService = new sk0ya.Loomo.Services.Lsp.LspManagementService(new FakeTerminalService(), new sk0ya.Loomo.Services.Lsp.LspServerTable(null));
         var lspVm = new LspSettingsViewModel(lspService);
         var lspPromptVm = new LspPromptViewModel(lspService, settings, store);
         var formatterVm = new FormatterSettingsViewModel(

@@ -56,8 +56,8 @@ public sealed class AiSettings
     /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
     public AppearanceSettings Appearance { get; set; } = new();
 
-    /// <summary>言語サーバー（LSP）まわりの Loomo 側設定。拡張子→サーバーの対応そのものはエディタ側
-    /// （<c>LspServerRegistry</c>・%APPDATA%/Loomo/lsp-servers.json）が持ち、ここには「促しバーを今後出さない
+    /// <summary>言語サーバー（LSP）まわりの Loomo 側設定。拡張子→サーバーの対応そのものは
+    /// <c>LspServerTable</c>（%APPDATA%/Loomo/lsp-servers.json）が持ち、ここには「促しバーを今後出さない
     /// 拡張子」など Loomo の UI 状態だけを置く。</summary>
     public LspSettings Lsp { get; set; } = new();
 
@@ -180,7 +180,7 @@ public sealed class ProviderConfig
 }
 
 /// <summary>言語サーバー（LSP）に関する Loomo 側の UI 設定。拡張子→サーバーの対応・カスタムサーバーは
-/// エディタの <c>LspServerRegistry</c> が永続化するため、ここは持たない。ファイルを開いたときの
+/// <c>LspServerTable</c> が別ファイルへ永続化するため、ここは持たない。ファイルを開いたときの
 /// 「インストールを促すバー」を今後出さない拡張子の一覧だけを保持する。</summary>
 public sealed class LspSettings
 {

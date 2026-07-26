@@ -39,21 +39,19 @@ public sealed record LspPromptInfo(
     string? DocsUrl);
 
 /// <summary>
-/// Loomo 側の LSP 管理サービス。エディタの <see cref="LspServerRegistry"/>（拡張子→実行ファイルの
-/// 対応表・永続化はホスト指定の場所＝Loomo 配下）を土台に、(1) 各サーバーが PATH 上に導入済みかを検出、
-/// (2) 見えるターミナルでのインストール実行、(3) 追加/削除/既定復帰、(4) ファイルオープン時の促し判定を担う。
-/// 「どの実行ファイルか」はエディタが、「どう入れるか・どう見せるか」は Loomo が持つ、という分担。
+/// Loomo 側の LSP 管理サービス。<see cref="LspServerTable"/>（拡張子→実行ファイルの対応表）の上に、
+/// (1) 各サーバーが PATH 上に導入済みかの検出、(2) 見えるターミナルでのインストール実行、
+/// (3) 追加/削除/既定復帰、(4) ファイルオープン時の促し判定を重ねる。
+///
+/// <para>表は**必ず注入**する。以前あった「注入が無ければ既定の表を作る」コンストラクタは、
+/// 設定画面とエディタが別インスタンスを見る分裂の原因になっていたので削除した（設計書 §30.2.1）。</para>
 /// </summary>
 public sealed class LspManagementService
 {
     private readonly ITerminalService _terminal;
-    private readonly LspServerRegistry _registry;
+    private readonly LspServerTable _registry;
 
-    public LspManagementService(ITerminalService terminal)
-        : this(terminal, LspServerRegistry.Default) { }
-
-    // テスト用に明示注入できるオーバーロード。
-    internal LspManagementService(ITerminalService terminal, LspServerRegistry registry)
+    public LspManagementService(ITerminalService terminal, LspServerTable registry)
     {
         _terminal = terminal;
         _registry = registry;
@@ -63,22 +61,19 @@ public sealed class LspManagementService
     public IReadOnlyList<LspServerRow> GetRows() =>
         _registry.List().Select(ToRow).ToList();
 
+    // Roslyn を「Custom だが BuiltIn として見せる」補正はもう要らない（組み込み表がカタログ由来に
+    // なったので Roslyn は本当に組み込み）。残すと無効化した .cs が BuiltIn に見えてしまう。
     private LspServerRow ToRow(LspServerEntry e)
     {
-        var isRoslynDefault = LspServerCatalog.IsRoslynCSharp(e.Extension, e.Server);
-        var isRemovedCSharp = e.Origin == LspServerOrigin.Removed
-            && string.Equals(e.Extension, ".cs", StringComparison.OrdinalIgnoreCase);
-        var server = isRemovedCSharp ? LspServerCatalog.RoslynCSharpDefinition() : e.Server;
-        var origin = isRoslynDefault ? LspServerOrigin.BuiltIn : e.Origin;
-        var info = LspServerCatalog.ByExecutable(server.Executable);
+        var info = LspServerCatalog.ByExecutable(e.Server.Executable);
         return new LspServerRow(
             e.Extension,
-            info?.DisplayName ?? server.Executable,
-            server.Executable,
-            server.Args,
-            server.LanguageId,
-            ExecutableResolver.IsOnPath(server.Executable),
-            origin,
+            info?.DisplayName ?? e.Server.Executable,
+            e.Server.Executable,
+            e.Server.Args,
+            e.Server.LanguageId,
+            ExecutableResolver.IsOnPath(e.Server.Executable),
+            e.Origin,
             info?.InstallCommand,
             info?.DocsUrl);
     }
@@ -89,7 +84,7 @@ public sealed class LspManagementService
     /// <summary>拡張子にサーバーを割り当て（または置換）して永続化する。</summary>
     public void AddOrUpdate(string extension, string executable, string[] args, string? languageId = null)
     {
-        var ext = LspServerRegistry.NormalizeExt(extension);
+        var ext = LspExtensions.NormalizeExt(extension);
         var langId = string.IsNullOrWhiteSpace(languageId) ? ext.TrimStart('.') : languageId!;
         _registry.Set(ext, new LspServerDef(executable, args ?? [], langId));
     }
@@ -98,16 +93,9 @@ public sealed class LspManagementService
     public bool Remove(string extension) => _registry.Remove(extension);
 
     /// <summary>ユーザー変更を捨てて組み込み既定へ戻す。</summary>
-    public bool Reset(string extension)
-    {
-        var ext = LspServerRegistry.NormalizeExt(extension);
-        if (string.Equals(ext, ".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            _registry.Set(ext, LspServerCatalog.RoslynCSharpDefinition());
-            return true;
-        }
-        return _registry.Reset(ext);
-    }
+    /// <remarks>.cs を Roslyn へ明示的に付け替える特例は不要になった（組み込みが Roslyn なので、
+    /// 素の Reset が Roslyn を復元する）。</remarks>
+    public bool Reset(string extension) => _registry.Reset(extension);
 
     /// <summary>インストールコマンドを見えるターミナルで実行する。端末未接続なら false。</summary>
     public bool RunInstall(string installCommand) =>
@@ -158,11 +146,11 @@ public sealed class LspManagementService
     {
         if (info.InstallCommand is null) return false;
 
-        var ext = LspServerRegistry.NormalizeExt(info.Extension);
+        var ext = LspExtensions.NormalizeExt(info.Extension);
         if (_registry.GetForExtension(ext) is null
             && LspServerCatalog.ByExtension(ext).FirstOrDefault() is { } candidate)
         {
-            _registry.Set(ext, new LspServerDef(candidate.Executable, candidate.Args, candidate.LanguageId));
+            _registry.Set(ext, new LspServerDef(candidate.Executable, candidate.Args, candidate.LanguageIdFor(ext)));
         }
 
         return RunInstall(info.InstallCommand);

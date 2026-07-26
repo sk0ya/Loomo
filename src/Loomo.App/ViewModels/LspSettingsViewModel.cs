@@ -11,7 +11,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>
 /// 設定オーバーレイ「言語サーバー (LSP)」セクションの ViewModel。エディタの拡張子→サーバー対応表
-/// （<c>LspServerRegistry</c>）を一覧化し、各サーバーの導入状況（PATH 検出）を見せ、見えるターミナルでの
+/// （<c>LspServerTable</c>）を一覧化し、各サーバーの導入状況（PATH 検出）を見せ、見えるターミナルでの
 /// インストール・追加・削除・既定復帰を提供する。サーバー対応そのものの永続化はエディタ側が担うため、
 /// ここは表示と操作の橋渡しに徹する。
 /// </summary>
@@ -68,7 +68,7 @@ public sealed partial class LspSettingsViewModel : ObservableObject
         NewExecutable = "";
         NewArgs = "";
         Refresh();
-        Status = $"{LspServerRegistry.NormalizeExt(ext)} → {exe} を追加しました（対象ファイルを開き直すと有効）。";
+        Status = $"{LspExtensions.NormalizeExt(ext)} → {exe} を追加しました。";
     }
 }
 

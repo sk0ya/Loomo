@@ -145,13 +145,13 @@ public partial class ShellWindow {
     }
     private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath, bool fromReadyRetry = false) {
         var seq = _editorSupport.BeginRender();
-        var lsp = GetLspManager(source);
-        var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
+        var lsp = GetLspDocument(source);
+        var ready = lsp is not null && lsp.IsReady && LspMatchesFile(lsp, filePath);
         if (CodeSupportDiag.IsEnabled) {
             if (!fromReadyRetry)
                 _editorSupport.DiagnosticStopwatch = System.Diagnostics.Stopwatch.StartNew();
             CodeSupportDiag.Log( $"enter file={Path.GetFileName(filePath)} ready={ready} " +
-                $"lsp={(lsp is null ? "null" : "ok")} connected={lsp?.IsConnected} docReady={lsp?.IsDocumentReady} " +
+                $"lsp={(lsp is null ? "null" : "ok")} connected={lsp?.IsConnected} docReady={lsp?.IsReady} " +
                 $"match={(lsp is not null && LspMatchesFile(lsp, filePath))} " +
                 $"elapsed={_editorSupport.DiagnosticStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_editorSupport.ReadyAttempts}");
         }
@@ -162,7 +162,7 @@ public partial class ShellWindow {
         }
         if (!ready) {
             _editorSupport.ClearOutline();
-            var prompt = _lspManagement.EvaluateForFile(filePath);
+            var prompt = EvaluateLspPrompt(filePath);
             if (prompt is not null || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks) {
                 ShowCodeView();
                 view.ShowNotice(LspNoticeModel.Build(prompt));
@@ -226,7 +226,7 @@ public partial class ShellWindow {
     }
     private const int CodeColdStructureRetries = 6;
     private static readonly TimeSpan CodeColdStructureRetryDelay = TimeSpan.FromMilliseconds(300);
-    private static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(IEditorLspManager lsp)
+    private static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(ILspDocument lsp)
         => await CodeEditorSupportAnalysis.RequestDocumentSymbolsSafeAsync(lsp);
     private static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
         => CodeEditorSupportAnalysis.CurrentMemberLine1(roots, caret);
@@ -246,10 +246,10 @@ public partial class ShellWindow {
         _editorSupport.OutlineView = view;
         return view;
     }
-    private static bool LspMatchesFile(IEditorLspManager lsp, string filePath)
+    private static bool LspMatchesFile(ILspDocument lsp, string filePath)
         => CodeEditorSupportAnalysis.LspMatchesFile(lsp, filePath);
-    private static Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync( IEditorLspManager lsp, int line0, int col0)
-        => CodeEditorSupportAnalysis.FetchCallPanelsAsync(lsp, line0, col0);
+    private Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync( ILspDocument lsp, int line0, int col0)
+        => CodeEditorSupportAnalysis.FetchCallPanelsAsync(_lspWorkspace, lsp, line0, col0);
     private static IReadOnlyList<string> SplitLines(string? text)
         => CodeEditorSupportAnalysis.SplitLines(text);
     private async Task RefreshCodeCallPanelsAsync() {
@@ -266,8 +266,8 @@ public partial class ShellWindow {
         var filePath = source.Control.FilePath;
         if (filePath is null)
             return;
-        var lsp = GetLspManager(source);
-        if (lsp is null || !lsp.IsConnected || !lsp.IsDocumentReady || !LspMatchesFile(lsp, filePath))
+        var lsp = GetLspDocument(source);
+        if (lsp is null || !lsp.IsReady || !LspMatchesFile(lsp, filePath))
             return;
         var seq = _editorSupport.BeginRender();
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column);
@@ -284,7 +284,7 @@ public partial class ShellWindow {
         var filePath = _editorSupport.Source?.Control.FilePath;
         if (string.IsNullOrEmpty(filePath))
             return;
-        var info = _lspManagement.EvaluateForFile(filePath);
+        var info = EvaluateLspPrompt(filePath);
         if (info is null)
             return; // 既に導入済み等（案内ボタンが古い）：何もしない
         _lspManagement.InstallForPrompt(info);
@@ -310,8 +310,8 @@ public partial class ShellWindow {
         var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
         if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
             return;
-        var lsp = GetLspManager(source);
-        var ready = lsp is not null && lsp.IsConnected && lsp.IsDocumentReady && LspMatchesFile(lsp, filePath);
+        var lsp = GetLspDocument(source);
+        var ready = lsp is not null && lsp.IsReady && LspMatchesFile(lsp, filePath);
         if (!ready) {
             if (_editorSupport.ReadyAttempts == CodeConnectingNoticeGraceTicks)
                 await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);

@@ -41,6 +41,7 @@ public partial class ShellWindow {
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
         tab.Control.LoadFile(path);
+        OnActiveEditorFileChanged(tab);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         UpdateEditorTab(tab);
         RecordTrailEditorTab(tab);
         await UpdateEditorSupportAsync();
@@ -76,6 +77,7 @@ public partial class ShellWindow {
         try { ActivateEditorTab(target.Id); }
         finally { _trailSuppressed = trailSaved; }
         target.Control.LoadFile(path);
+        OnActiveEditorFileChanged(target);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         SetPreviewTab(target);
         UpdateEditorTab(target);
         RecordTrailEditorTab(target);

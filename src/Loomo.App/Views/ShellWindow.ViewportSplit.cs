@@ -153,22 +153,16 @@ public partial class ShellWindow {
             tab.Pending = null;
         }
     }
-    private readonly ConditionalWeakTable<VimEditorControl, StrongBox<IEditorLspManager?>> _editorLspManagers = new();
-    private IEditorLspManager? GetLspManager(EditorTab tab) {
-        if (!tab.IsRealized)
-            return null; // コントロール未実体化＝LSP はまだ存在しない
-        return _editorLspManagers.TryGetValue(tab.Control, out var box) ? box.Value : null;
-    }
+    /// <summary>このタブが今持っている LSP 文書ハンドル。未実体化・対応サーバー無しなら null。
+    /// 文書スコープの問い合わせ（アウトライン・参照）はこれを使い、ワークスペーススコープは
+    /// <c>_lspWorkspace</c> へ直接投げる。</summary>
+    private ILspDocument? GetLspDocument(EditorTab tab) =>
+        tab.IsRealized ? tab.Control.LspDocument : null;
     private VimEditorControl BuildEditorControl(EditorTab tab) {
-        var lspBox = new StrongBox<IEditorLspManager?>(null);
         var control = new VimEditorControl(new VimEditorControlOptions {
-            GitServiceFactory = () => new GitDiffProvider(), LspManagerFactory = dispatcher => {
-                var manager = new LspManager(
-                    dispatcher,
-                    workspaceFoldersProvider: () => _workspace.Folders.ToArray());
-                lspBox.Value = manager;
-                return manager;
-            }
+            GitServiceFactory = () => new GitDiffProvider(),
+            // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
+            LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin
         }) {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };
@@ -199,7 +193,6 @@ public partial class ShellWindow {
         control.CloseTabRequested += (_, _) => CloseActiveEditorTab();
         control.WindowCloseRequested += (_, _) => CloseEditorView();
         WireEditorForDebug(control);
-        _editorLspManagers.AddOrUpdate(control, lspBox);
         return control;
     }
     private void ApplyVimEnabledToOpenEditorTabs() {

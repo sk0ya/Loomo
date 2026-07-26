@@ -13,6 +13,9 @@ public partial class ShellWindow : Window {
     private readonly EditorSupportResolver _editorSupportResolver;
     private readonly CodeEditorSupport _codeSupport;
     private readonly sk0ya.Loomo.Services.Lsp.LspManagementService _lspManagement;
+    // LSP セッションはワークスペース単位でアプリに1つ。タブ経由ではなくここから直接使う（設計書 §30）。
+    private readonly ILspWorkspace _lspWorkspace;
+    private readonly ILspServerAdmin _lspServerAdmin;
     private readonly KeybindingService _keybindings;
     private readonly ShellViewModel _vm;
     private KeyboardDispatcher? _keyboard;
@@ -81,7 +84,7 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, ILspWorkspace lspWorkspace, ILspServerAdmin lspServerAdmin, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -113,6 +116,8 @@ public partial class ShellWindow : Window {
         _editorSupportResolver = editorSupportResolver;
         _codeSupport = codeSupport;
         _lspManagement = lspManagement;
+        _lspWorkspace = lspWorkspace;
+        _lspServerAdmin = lspServerAdmin;
         _git = git;
         _keybindings = keybindings;
         _keyboard = BuildKeyboardDispatcher();
@@ -219,11 +224,8 @@ public partial class ShellWindow : Window {
             view.FocusTerminal();
         };
         vm.SearchPanel.SymbolSearchProvider = async (query, isClass, ct) => {
-            var managers = WorkspaceSymbolSearch.ConnectedManagers(
-                _activeEditorTab, _editorTabs, _codeSupport, GetLspManager);
-            if (managers.Count == 0)
-                return SymbolSearchResult.NoConnection;
-            var symbols = await WorkspaceSymbolSearch.MergeAsync(managers, query, isClass, ct);
+            // タブを1枚も開いていなくても効く：セッションが必要ならサーバーを起こす。
+            var symbols = await WorkspaceSymbolSearch.SearchAsync(_lspWorkspace, query, isClass, ct);
             return new SymbolSearchResult(true, symbols);
         };
         vm.FolderTree.SetInTerminalRequested += OnSetInTerminalRequested;

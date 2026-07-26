@@ -3,7 +3,7 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>コードEditorSupport用のLSP解析。WPF Viewに依存しない。</summary>
 public static class CodeEditorSupportAnalysis
 {
-    public static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(IEditorLspManager lsp)
+    public static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(ILspDocument lsp)
     {
         try { return await lsp.RequestDocumentSymbolsAsync(); }
         catch { return Array.Empty<DocumentSymbol>(); }
@@ -15,9 +15,9 @@ public static class CodeEditorSupportAnalysis
         return member is null ? 0 : member.Line0 + 1;
     }
 
-    public static bool LspMatchesFile(IEditorLspManager lsp, string filePath)
+    public static bool LspMatchesFile(ILspDocument lsp, string filePath)
     {
-        var current = CodeEditorSupport.TryUriToLocalPath(lsp.CurrentUri);
+        var current = lsp.FilePath;
         if (string.IsNullOrEmpty(current))
             return false;
         try
@@ -52,8 +52,13 @@ public static class CodeEditorSupportAnalysis
     public static bool SupportsCallHierarchy(int kind)
         => (SymbolKind)kind is SymbolKind.Method or SymbolKind.Function or SymbolKind.Constructor;
 
+    /// <summary>
+    /// 参照・呼び出し元・呼び出し先をまとめて取る。参照は文書スコープなのでハンドル
+    /// (<paramref name="lsp"/>)、呼び出し階層はワークスペーススコープなので
+    /// <paramref name="workspace"/> へ投げる（設計書 §30.3.1 の責務表どおり）。
+    /// </summary>
     internal static async Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
-        IEditorLspManager lsp, int line0, int col0)
+        ILspWorkspace workspace, ILspDocument lsp, int line0, int col0)
     {
         async Task<List<CallReference>> FetchReferencesAsync()
         {
@@ -78,7 +83,7 @@ public static class CodeEditorSupportAnalysis
 
         try
         {
-            var item = await lsp.PrepareCallHierarchyAsync(line0, col0);
+            var item = await workspace.PrepareCallHierarchyAsync(lsp.Uri, line0, col0);
             CodeSupportDiag.Log($"  prepareCallHierarchy {prepareSw?.ElapsedMilliseconds ?? 0}ms item={(item is null ? "null" : item.Name)}");
             if (item is not null && SupportsCallHierarchy(item.Kind))
             {
@@ -90,7 +95,7 @@ public static class CodeEditorSupportAnalysis
                     var list = new List<CallReference>();
                     try
                     {
-                        foreach (var c in await lsp.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
+                        foreach (var c in await workspace.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
                             if (c?.From is { } from)
                                 list.Add(new CallReference(from.Name ?? "", from.Uri ?? "", from.SelectionRange?.Start?.Line ?? 0));
                     }
@@ -103,7 +108,7 @@ public static class CodeEditorSupportAnalysis
                     var list = new List<CallReference>();
                     try
                     {
-                        foreach (var c in await lsp.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
+                        foreach (var c in await workspace.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
                             if (c?.To is { } to)
                                 list.Add(new CallReference(to.Name ?? "", to.Uri ?? "", to.SelectionRange?.Start?.Line ?? 0));
                     }

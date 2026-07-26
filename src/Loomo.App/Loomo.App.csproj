@@ -7,9 +7,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- 軌跡（操作ログ）の日別永続化（%APPDATA%/Loomo/trail.db、Services/TrailStore.cs） -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <!-- Microsoft.Data.Sqlite の推移参照に含まれる脆弱な 2.1.11 を、修正済み SQLite を使う 3.x へ昇格する。 -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
     <!-- JSON プレビューのスキーマ検証（$schema 解決＋検証、Services/JsonSchemaValidation.cs）。MIT。 -->
     <PackageReference Include="JsonSchema.Net" Version="9.2.2" />

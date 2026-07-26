@@ -39,9 +39,14 @@ public sealed partial class LspPromptViewModel : ObservableObject
     }
 
     /// <summary>アクティブなエディタタブが変わった／ファイルを開いたときに呼ぶ。促すべきならバーを出す。</summary>
-    public void EvaluateForFile(string? filePath)
+    public void EvaluateForFile(string? filePath) => Show(_service.EvaluateForFile(filePath));
+
+    /// <summary>
+    /// 判定済みの結果でバーを更新する。Shell 側は 1 ファイル 1 回だけ判定して
+    /// 促しバーとアウトラインの案内で同じ結果を使い回すので、その入口。
+    /// </summary>
+    public void Show(LspPromptInfo? info)
     {
-        var info = _service.EvaluateForFile(filePath);
         if (info is null)
         {
             Hide();

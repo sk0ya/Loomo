@@ -6,25 +6,39 @@ using Editor.Core.Lsp;
 
 namespace sk0ya.Loomo.Services.Lsp;
 
+/// <summary>サーバーが受け持つ拡張子1件と、そこで名乗る LSP の languageId。</summary>
+public sealed record LspServerTarget(string Extension, string LanguageId);
+
 /// <summary>
-/// 既知の言語サーバー1件分のメタ情報。<see cref="Executable"/> をキーに、エディタの
-/// <c>LspServerRegistry</c>（拡張子→実行ファイルの対応表）と突き合わせて、設定UIに
-/// 「表示名・対象拡張子・インストールコマンド・導入手順URL」を補う。
+/// 既知の言語サーバー1件分。実行ファイル・引数・受け持つ拡張子と languageId・表示名・
+/// インストールコマンド・導入手順URLを**1レコードに**まとめる。
+/// 以前は「実行ファイルはエディタの組み込み表、インストール手順は Loomo のカタログ」と割れていて
+/// 片方だけ更新される事故が起きたので、<see cref="LspServerTable.Builtins"/> はここから導出する。
 /// </summary>
 public sealed record LspServerInfo(
     string Executable,
     string DisplayName,
-    string[] Extensions,
-    string LanguageId,
+    IReadOnlyList<LspServerTarget> Targets,
     string? InstallCommand,
     string[] Args,
-    string? DocsUrl = null);
+    string? DocsUrl = null)
+{
+    /// <summary>受け持つ拡張子（表示・照合用）。</summary>
+    public IReadOnlyList<string> Extensions => Targets.Select(t => t.Extension).ToList();
+
+    /// <summary>代表 languageId（拡張子が判っているときは <see cref="LanguageIdFor"/> を使うこと）。</summary>
+    public string LanguageId => Targets[0].LanguageId;
+
+    /// <summary>この拡張子で名乗る languageId。受け持たない拡張子なら代表値。</summary>
+    public string LanguageIdFor(string extension) =>
+        Targets.FirstOrDefault(t =>
+            string.Equals(t.Extension, extension, StringComparison.OrdinalIgnoreCase))?.LanguageId
+        ?? LanguageId;
+}
 
 /// <summary>
-/// Loomo が知っている言語サーバーのカタログ。エディタの組み込み対応表と同じ実行ファイルを並べ、
-/// 各サーバーの**インストールコマンド**（Loomo から見えるターミナルで実行する用）と導入手順URLを持つ。
-/// 「どの実行ファイルをどの拡張子に割り当てるか」はエディタ側 <c>LspServerRegistry</c> が所有するが、
-/// 「どうやって入れるか」はアプリ＝Loomo の関心なのでここに置く。
+/// Loomo が知っている言語サーバーのカタログ。<see cref="LspServerTable"/> の組み込み既定表はここから
+/// 導出されるので、ここが「どの拡張子をどの実行ファイルがどう名乗って受け持つか」の唯一の出所になる。
 /// </summary>
 public static class LspServerCatalog
 {
@@ -56,32 +70,41 @@ public static class LspServerCatalog
     /// <summary>winget 等の Windows 向けを優先した、ベストエフォートのインストールコマンド付きカタログ。</summary>
     public static readonly IReadOnlyList<LspServerInfo> Servers = new[]
     {
-        new LspServerInfo(RoslynExecutable, "C# (Roslyn Language Server)", [".cs"], "csharp",
+        new LspServerInfo(RoslynExecutable, "C# (Roslyn Language Server)",
+            [new(".cs", "csharp")],
             RoslynInstallCommand, RoslynArgs,
             "https://github.com/dotnet/roslyn"),
         new LspServerInfo("typescript-language-server", "TypeScript / JavaScript",
-            [".ts", ".tsx", ".js", ".jsx"], "typescript",
+            [new(".ts", "typescript"), new(".tsx", "typescriptreact"),
+             new(".js", "javascript"), new(".jsx", "javascriptreact")],
             "npm install -g typescript-language-server typescript", ["--stdio"],
             "https://github.com/typescript-language-server/typescript-language-server"),
-        new LspServerInfo("pylsp", "Python (python-lsp-server)", [".py"], "python",
+        new LspServerInfo("pylsp", "Python (python-lsp-server)",
+            [new(".py", "python")],
             "pip install python-lsp-server", [],
             "https://github.com/python-lsp/python-lsp-server"),
-        new LspServerInfo("rust-analyzer", "Rust (rust-analyzer)", [".rs"], "rust",
+        new LspServerInfo("rust-analyzer", "Rust (rust-analyzer)",
+            [new(".rs", "rust")],
             "rustup component add rust-analyzer", [],
             "https://rust-analyzer.github.io/"),
-        new LspServerInfo("gopls", "Go (gopls)", [".go"], "go",
+        new LspServerInfo("gopls", "Go (gopls)",
+            [new(".go", "go")],
             "go install golang.org/x/tools/gopls@latest", [],
             "https://pkg.go.dev/golang.org/x/tools/gopls"),
-        new LspServerInfo("clangd", "C / C++ (clangd)", [".c", ".cpp", ".h", ".hpp"], "cpp",
+        new LspServerInfo("clangd", "C / C++ (clangd)",
+            [new(".c", "c"), new(".h", "c"), new(".cpp", "cpp"), new(".hpp", "cpp")],
             "winget install --id LLVM.LLVM -e", [],
             "https://clangd.llvm.org/installation"),
-        new LspServerInfo("lua-language-server", "Lua (lua-language-server)", [".lua"], "lua",
+        new LspServerInfo("lua-language-server", "Lua (lua-language-server)",
+            [new(".lua", "lua")],
             "winget install --id LuaLS.lua-language-server -e", [],
             "https://github.com/LuaLS/lua-language-server"),
-        new LspServerInfo("solargraph", "Ruby (solargraph)", [".rb"], "ruby",
+        new LspServerInfo("solargraph", "Ruby (solargraph)",
+            [new(".rb", "ruby")],
             "gem install solargraph", ["stdio"],
             "https://solargraph.org/"),
-        new LspServerInfo("marksman", "Markdown (marksman)", [".md", ".markdown"], "markdown",
+        new LspServerInfo("marksman", "Markdown (marksman)",
+            [new(".md", "markdown"), new(".markdown", "markdown")],
             "winget install --id Artempyanykh.Marksman -e", ["server"],
             "https://github.com/artempyanykh/marksman"),
     };
@@ -96,9 +119,9 @@ public static class LspServerCatalog
     /// <summary>その拡張子に対応するカタログ項目（インストール候補）を返す。無ければ空。</summary>
     public static IReadOnlyList<LspServerInfo> ByExtension(string extension)
     {
-        var ext = extension.StartsWith('.') ? extension : "." + extension;
+        var ext = LspExtensions.NormalizeExt(extension);
         return Servers
-            .Where(s => s.Extensions.Any(e => string.Equals(e, ext, StringComparison.OrdinalIgnoreCase)))
+            .Where(s => s.Targets.Any(t => string.Equals(t.Extension, ext, StringComparison.OrdinalIgnoreCase)))
             .ToList();
     }
 
@@ -112,25 +135,17 @@ public static class LspServerCatalog
     }
 
     /// <summary>
-    /// Editor パッケージの旧組み込み値（csharp-ls）と、旧Loomo専用配置を
-    /// Roslynグローバルツールへ移行する。
-    /// ユーザーが明示設定した C# サーバーは上書きしない。
+    /// 永続化された <c>.cs</c> のユーザー設定が「組み込みが Roslyn になる前の遺物」かどうか。
+    /// 旧 Editor 組み込み値（<c>csharp-ls</c>）・旧グローバルツールのシム（<c>roslyn-language-server</c>）・
+    /// 旧 Loomo 専用配置（<c>%APPDATA%/Loomo/lsp/…dotnet …LanguageServer.dll</c>）が該当する。
+    /// これらを残すと、組み込みを更新してもユーザー設定が勝ち続けて古いサーバーが起動してしまう。
     /// </summary>
-    public static void EnsureCSharpDefault(LspServerRegistry registry)
+    internal static bool IsSupersededCSharpServer(string extension, LspServerDef server)
     {
-        var row = registry.List().FirstOrDefault(e =>
-            string.Equals(e.Extension, ".cs", StringComparison.OrdinalIgnoreCase));
-        if (row is null)
-            return;
-
-        var isOldBuiltIn = row.Origin == LspServerOrigin.BuiltIn
-            && string.Equals(NormalizeExe(row.Server.Executable), "csharp-ls", StringComparison.Ordinal);
-        var isOldGlobalShim = string.Equals(
-            NormalizeExe(row.Server.Executable), "roslyn-language-server", StringComparison.Ordinal);
-        if (!isOldBuiltIn && !isOldGlobalShim && !IsLegacyLoomoRoslyn(row.Server))
-            return;
-
-        registry.Set(".cs", RoslynCSharpDefinition());
+        if (!string.Equals(LspExtensions.NormalizeExt(extension), ".cs", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var exe = NormalizeExe(Path.GetFileName(server.Executable));
+        return exe is "csharp-ls" or "roslyn-language-server" || IsLegacyLoomoRoslyn(server);
     }
 
     private static bool IsLegacyLoomoRoslyn(LspServerDef server) =>
@@ -143,7 +158,7 @@ public static class LspServerCatalog
             StringComparison.OrdinalIgnoreCase));
 
     internal static bool IsRoslynCSharp(string extension, LspServerDef server) =>
-        string.Equals(LspServerRegistry.NormalizeExt(extension), ".cs", StringComparison.OrdinalIgnoreCase)
+        string.Equals(LspExtensions.NormalizeExt(extension), ".cs", StringComparison.OrdinalIgnoreCase)
         && string.Equals(
             NormalizeExe(server.Executable),
             NormalizeExe(RoslynExecutable),

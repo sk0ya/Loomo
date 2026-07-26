@@ -36,9 +36,8 @@ internal sealed class AppBootstrapper
         var loomoDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Loomo");
-        Editor.Core.Lsp.LspServerRegistry.ConfigureDefault(
-            Path.Combine(loomoDataDirectory, "lsp-servers.json"));
-        LspServerCatalog.EnsureCSharpDefault(Editor.Core.Lsp.LspServerRegistry.Default);
+        // 拡張子→言語サーバーの対応表は Loomo が所有する（LspServerTable / DI シングルトン）ので、
+        // エディタ側へ保存先を教える設定はもう要らない。整形の対応表だけがまだエディタ所有（§30.9）。
         Editor.Core.Formatting.FormatterRegistry.ConfigureDefault(
             Path.Combine(loomoDataDirectory, "formatters.json"));
 

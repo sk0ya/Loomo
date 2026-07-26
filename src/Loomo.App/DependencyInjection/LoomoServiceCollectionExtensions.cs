@@ -35,7 +35,7 @@ internal static class LoomoServiceCollectionExtensions
         AddAliasedSingleton<BrowserService, IBrowserService>(services);
         AddAliasedSingleton<UiApprovalService, IApprovalService>(services);
 
-        services.AddSingleton<sk0ya.Loomo.Services.Lsp.LspManagementService>();
+        AddLoomoLsp(services);
         services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();
         services.AddSingleton<sk0ya.Loomo.Services.Debug.IDebugSessionFactory,
             sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory>();
@@ -186,6 +186,25 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<ShellWindow>();
 
         return services;
+    }
+
+    /// <summary>
+    /// LSP の本番配線（設計書 §30）。セッションはワークスペース単位でアプリに1つ、
+    /// 拡張子→サーバーの対応表は**アプリ全体で1インスタンス**。設定画面（<c>LspManagementService</c>）・
+    /// エディタの <c>:Lsp*</c>（<c>ILspServerAdmin</c>）・サーバー解決（<c>LspWorkspaceService</c>）が
+    /// 別々の表を見ていたのが以前の分裂の原因なので、ここで同一インスタンスに束ねる。
+    ///
+    /// <para>テストからも呼べるよう切り出してある — 「テストは表を注入するので本番の配線だけが
+    /// 検証対象外」という穴を塞ぐため（§30.7）。</para>
+    /// </summary>
+    internal static void AddLoomoLsp(IServiceCollection services, string? serverTableStorePath = null)
+    {
+        services.AddSingleton(_ => new sk0ya.Loomo.Services.Lsp.LspServerTable(
+            serverTableStorePath ?? sk0ya.Loomo.Services.Lsp.LspServerTable.DefaultStorePath()));
+        services.AddSingleton<Editor.Core.Lsp.ILspServerAdmin>(sp =>
+            sp.GetRequiredService<sk0ya.Loomo.Services.Lsp.LspServerTable>());
+        AddAliasedSingleton<sk0ya.Loomo.Services.Lsp.LspWorkspaceService, Editor.Core.Lsp.ILspWorkspace>(services);
+        services.AddSingleton<sk0ya.Loomo.Services.Lsp.LspManagementService>();
     }
 
     private static void AddAliasedSingleton<TImplementation, TService>(IServiceCollection services)

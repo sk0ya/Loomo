@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -217,52 +217,32 @@ Terminal auto-injects OSC 133 shell integration into interactive pwsh, and expos
 `TerminalTabView.ShellCommandActivity` public event (command phase + exit code, for human-typed commands
 too) — Loomo's stage-wing activity badges (`ShellWindow.PaneActivity.cs`, 設計書 §24.1) are built on it.
 
-**Loomo owns the LSP session, not the editor** (`docs/設計/30-LSP.md` = §30, the authority; read it before
-touching this). The split is "processes and protocol are workspace-scoped, UI state is view-scoped": Loomo
-implements `Editor.Core.Lsp.ILspWorkspace`, editor controls only hold an `ILspDocument` handle plus popup state.
-`BuildEditorControl` (`ShellWindow.ViewportSplit.cs`) passes `LspWorkspace` + `LspServerAdmin` in
-`VimEditorControlOptions`; the Composer editor (`ShellWindow.Composer.cs`) deliberately stays LSP-less.
+**LSP is enabled.** `BuildEditorControl` (`ShellWindow.ViewportSplit.cs`) passes
+`LspManagerFactory = d => new LspManager(d)` (namespace `Editor.Controls.Lsp`, from `…Defaults`), so the editor
+gets completion / diagnostics / go-to-definition etc. — **only when the matching language server is on `PATH`**.
+The Composer editor (`ShellWindow.Composer.cs`) deliberately stays LSP-less.
 
-`Services/Lsp/` holds the whole session:
-- **`LspServerTable`** — extension→server, the *only* owner of that mapping (moved out of the editor's deleted
-  `LspServerRegistry`). Persists to `%APPDATA%/Loomo/lsp-servers.json` (`{ Overrides, Removed }`). Its **built-in
-  table is derived from `LspServerCatalog`**, which now carries executable + args + per-extension `languageId`
-  + install command + docs URL in one record. Registered in DI as itself *and* as `ILspServerAdmin`, so the
-  settings UI, the editor's `:Lsp*` ex commands and server resolution all read one instance — see `AddLoomoLsp`
-  (`LoomoServiceCollectionExtensions`), which is deliberately callable from tests. `Changed` makes edits apply to
-  open tabs **in place** (no reopen).
-- **`LspClientPool`** — one server per `(executable, workspace root)`, *not* per extension and not per tab, so five
-  `.cs` tabs share one Roslyn. Idle servers linger 5 min before shutdown; a workspace switch (`FoldersChanged`)
-  kills them immediately; crashes reconnect up to 3 times with backoff.
-- **`LspDocumentTable` / `LspDocumentHandle`** — one `didOpen` per URI however many views show it; the first handle
-  is the **writer** and the rest are readers whose `UpdateText` is a no-op; the writer role transfers (re-sending
-  the current text) when it is disposed; `didClose` only at refcount 0; diagnostics fan out to every handle.
-- **`LspWorkspaceService`** — `ILspWorkspace`. Workspace-scope queries (`workspace/symbol`, workspace diagnostics,
-  call/type hierarchy) go here, **not** through a tab. Symbol search works with no editor tab open: it detects the
-  workspace's languages from root project markers (`*.sln`, `package.json`, `Cargo.toml`, …) and starts the server.
-- **`LspManagementService`** — install/management UX over the table: PATH detection (`ExecutableResolver`), running
-  installs in the **visible** terminal, add/remove/reset, and the file-open prompt decision. The table is a required
-  constructor argument — the old "default to a fresh registry" overload is what let three copies diverge.
+The extension→server **mapping** is the editor library's `LspServerRegistry` (built-ins + user changes), but Loomo
+redirects its persistence into its own folder via `LspServerRegistry.ConfigureDefault("%APPDATA%/Loomo/lsp-servers.json")`
+in `App.OnStartup` (before any editor control is built). On top of that mapping Loomo owns the **install/management
+UX** (the actual user-facing feature):
+- `Services/Lsp/LspServerCatalog.cs` — known servers with **install commands** (`dotnet tool …`, `npm i -g …`,
+  `winget …`, etc.) and docs URLs. `LspManagementService` detects whether each executable is on `PATH`
+  (`ExecutableResolver`), runs installs in the **visible** terminal (`ITerminalService.TryRunInVisibleTerminal`),
+  and adds/removes/resets registry entries.
+- Settings overlay has a **言語サーバー (LSP)** category (`LspSettingsViewModel`, `SettingsCategory.Lsp`): per-server
+  rows with install status, an Install button, add/remove/reset.
+- Opening a file whose server is missing shows a dismissible **inline prompt bar** above the editor
+  (`LspPromptViewModel`, evaluated in `SetActiveEditorTab`); "今後表示しない" persists to
+  `AiSettings.Lsp.DismissedPromptExtensions` (settings.json).
 
-**Threading:** `ILspWorkspace`/`ILspDocument` events fire on **background threads**. `LspViewBridge` marshals to the
-editor's dispatcher; any other subscriber must do it itself.
-
-UI on top: the settings overlay's **言語サーバー (LSP)** category (`LspSettingsViewModel`, `SettingsCategory.Lsp`),
-and a dismissible **inline prompt bar** when a file's server is missing (`LspPromptViewModel`). Prompt evaluation has
-exactly one entry point, `OnActiveEditorFileChanged(tab)` in `ShellWindow.Tabs.cs`, called **after** `LoadFile`
-(before the split it ran before the path was set, and only on one of the two activation paths); the outline notice
-reuses the same result via `EvaluateLspPrompt`. "今後表示しない" persists to
-`AiSettings.Lsp.DismissedPromptExtensions` (settings.json).
-
-The editor's `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` are an input frontend that delegates to the injected
-`ILspServerAdmin` — the same table. See Editor `CLAUDE.md` §LSP.
+The editor's own `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` ex commands still work (same registry). See Editor
+`AGENTS.md` §LSP.
 
 **Document formatting (`:Format`) is CLI-backed, not LSP-only.** Many text-LSP servers (e.g. `marksman` for
 Markdown) don't implement `textDocument/formatting`, so the editor also has an extension→CLI-formatter registry
 (`Editor.Core.Formatting.FormatterRegistry`, stdin→stdout). Loomo redirects its persistence into its own folder via
-`FormatterRegistry.ConfigureDefault("%APPDATA%/Loomo/formatters.json")` in `App.OnStartup`. That registry still has
-the host-ownership defect the LSP table was moved out for (`Default` news up an instance per access); the same
-migration is planned but out of scope — see §30.9.
+`FormatterRegistry.ConfigureDefault("%APPDATA%/Loomo/formatters.json")` in `App.OnStartup` (right after the LSP one).
 There are **no built-in default mappings**: a configured CLI formatter wins over LSP; with none configured the editor
 falls back to LSP formatting; and if that's empty too it probes `PATH` for the extension's `KnownFormatters`
 candidates (prettier/dprint/black/…), using and registering the first installed one. Users can also set one explicitly
