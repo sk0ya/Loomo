@@ -54,10 +54,9 @@ public partial class ShellWindow {
         _stageResizeTimer?.Stop();
         DetachPaneElements();
         StageArea.Children.Clear();
-        StageSourceArea.Children.Clear();
         WingStrip.Children.Clear();
         OverviewPanel.Children.Clear();
-        _stageThumbnailHosts.Clear();
+        ClearThumbnailSources();
         OverviewLayer.Visibility = Visibility.Collapsed;
         StageHost.Visibility = Visibility.Collapsed;
         PaneHost.Opacity = 1;
@@ -101,10 +100,9 @@ public partial class ShellWindow {
         _stageResizeTimer?.Stop();
         DetachPaneElements();
         StageArea.Children.Clear();
-        StageSourceArea.Children.Clear();
         WingStrip.Children.Clear();
         OverviewPanel.Children.Clear();
-        _stageThumbnailHosts.Clear();
+        ClearThumbnailSources();
         OverviewLayer.Visibility = Visibility.Collapsed;
         StageHost.Visibility = Visibility.Collapsed;
         PaneHost.Opacity = 1;
@@ -139,9 +137,11 @@ public partial class ShellWindow {
         SetStagePane(next);
         FocusPane(next);
     }
-    private void DetachPaneElements() {
-        foreach (var element in _paneElements.Values)
-            if (element.Parent is Panel parent)
+    private void DetachPaneElements() => DetachPaneElementsExcept(Array.Empty<PaneKind>());
+    /// <summary>ペインを現在の親から外す。<paramref name="keep"/>（＝袖ミニチュアに据え置くもの）は触らない。</summary>
+    private void DetachPaneElementsExcept(IReadOnlyCollection<PaneKind> keep) {
+        foreach (var (kind, element) in _paneElements)
+            if (!keep.Contains(kind) && element.Parent is Panel parent)
                 parent.Children.Remove(element);
     }
     private Size StageVirtualSize() {
@@ -235,18 +235,24 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private IEnumerable<PaneKind> OverviewKinds() => StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
-    private void RebuildStage() {
+    private void RebuildStage()
+        => PaneLayoutDebugLog.Time("RebuildStage", RebuildStageCore);
+    private void RebuildStageCore() {
         if (!_stageActive)
             return;
-        DetachPaneElements();
-        StageArea.Children.Clear();
-        StageSourceArea.Children.Clear();
-        OverviewPanel.Children.Clear();
-        _stageThumbnailHosts.Clear();
-        _stageActivityBadges.Clear();
         var virtualSize = StageVirtualSize();
         _stageBuiltSize = virtualSize;
-        BuildStageThumbnailSources(virtualSize);
+        // 袖ミニチュアは差分で寄せる（据え置けるものは親の付け替えもレイアウトも走らせない）。
+        // 舞台・俯瞰へ出すペインだけを親から外す。
+        SyncThumbnailSources(
+            (_overviewActive
+                ? OverviewKinds()
+                : StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k))).ToList(),
+            StageThumbnailPlanner.SourceSize(virtualSize.Width, CardAspect));
+        DetachPaneElementsExcept(_stageThumbnailHosts.Keys);
+        StageArea.Children.Clear();
+        OverviewPanel.Children.Clear();
+        _stageActivityBadges.Clear();
         if (_overviewActive) {
             OverviewLayer.Visibility = Visibility.Visible;
             foreach (var kind in OverviewKinds())

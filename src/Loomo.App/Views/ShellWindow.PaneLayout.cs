@@ -35,16 +35,15 @@ public partial class ShellWindow {
     private PaneLeaf? FindLeaf(PaneKind kind) => _paneLayout.Find(kind);
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
         => _paneLayout.FindParent(target, current);
-    private void RebuildPaneLayout() {
+    private void RebuildPaneLayout()
+        => PaneLayoutDebugLog.Time("RebuildPaneLayout", RebuildPaneLayoutCore);
+    private void RebuildPaneLayoutCore() {
         PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);
         if (_stageActive) {
             RebuildStage();
             return;
         }
         CaptureLayoutSizes();
-        foreach (var element in _paneElements.Values)
-            if (element.Parent is Panel parent)
-                parent.Children.Remove(element);
         PaneHost.Children.Clear();
         PaneHost.RowDefinitions.Clear();
         PaneHost.ColumnDefinitions.Clear();
@@ -57,15 +56,18 @@ public partial class ShellWindow {
             if (!leaf.Hidden)
                 _enabledSessions.Add(leaf.Kind);
         UpdatePaneToggleStates();
-        if (_zoomedPane is { } zoom) {
-            if (FindLeaf(zoom) is { Hidden: false } && _paneElements.TryGetValue(zoom, out var zoomElement)) {
-                zoomElement.Visibility = Visibility.Visible;
-                PaneHost.Children.Add(zoomElement);
-                ScheduleBrowserRealize(_activeBrowserTab);
-                ScheduleLayoutWings();
-                return;
-            }
+        if (_zoomedPane is { } zoom
+            && !(FindLeaf(zoom) is { Hidden: false } && _paneElements.ContainsKey(zoom)))
             _zoomedPane = null; // 対象が隠れた/消えていたらズーム解除して通常描画へ
+        // 袖ミニチュアに据え置くペインは親から外さない（付け替え自体が高いため）。
+        // ここで確定した _root / _zoomedPane から袖の顔ぶれが決まる。
+        PaneLayoutDebugLog.Time("  detach panes", () => DetachPaneElementsExcept(LayoutWingKinds()));
+        if (_zoomedPane is { } zoomed && _paneElements.TryGetValue(zoomed, out var zoomElement)) {
+            zoomElement.Visibility = Visibility.Visible;
+            PaneHost.Children.Add(zoomElement);
+            ScheduleBrowserRealize(_activeBrowserTab);
+            ScheduleLayoutWings();
+            return;
         }
         var border = (Brush)FindResource("Border");
         var visual = BuildNode(_root, border);

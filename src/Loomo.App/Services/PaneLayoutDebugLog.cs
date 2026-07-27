@@ -52,4 +52,18 @@ internal static class PaneLayoutDebugLog
             catch { /* 診断用。失敗は無視 */ }
         }
     }
+
+    /// <summary>区間の所要時間を計って記録する（ペイン切替の重さの内訳を取るため）。
+    /// 無効時は計測もしない＝ノーオーバーヘッド。</summary>
+    public static void Time(string label, Action body)
+    {
+        if (!Enabled)
+        {
+            body();
+            return;
+        }
+        var sw = Stopwatch.StartNew();
+        try { body(); }
+        finally { Log($"⏱ {label} {sw.Elapsed.TotalMilliseconds:0.0} ms"); }
+    }
 }

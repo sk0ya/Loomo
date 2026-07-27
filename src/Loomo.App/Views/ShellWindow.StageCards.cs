@@ -6,33 +6,77 @@ public partial class ShellWindow {
     private const double CardAspect = 3.0 / 2.0;
     private const double WingRestOpacity = 0.72;
     private double _layoutWingSourceWidth;
+    /// <summary>今の描画元ホストを組んだ仮想幅（0＝未構築）。変わらない限りホストは据え置ける。</summary>
+    private double _thumbnailSourceWidth;
     private bool _layoutWingBuildQueued;
     private bool _layoutWingBuildPending;
-    private void ArrangeThumbnailSource(PaneKind kind, Size virtualSize) {
+    /// <summary>袖に出すペイン（有効だが Main に出ていないもの）。</summary>
+    private IReadOnlyList<PaneKind> LayoutWingKinds()
+        => StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)).ToList();
+    /// <summary>ミニチュアの描画元を <paramref name="sourceSize"/>（= <see cref="StageThumbnailPlanner"/> が
+    /// 決めた固定仮想サイズ。Main 実寸ではない）でレイアウトする。</summary>
+    private void ArrangeThumbnailSource(PaneKind kind, Size sourceSize)
+        => PaneLayoutDebugLog.Time($"  ArrangeThumbnailSource({kind}) {sourceSize.Width:0}x{sourceSize.Height:0}",
+            () => ArrangeThumbnailSourceCore(kind, sourceSize));
+    private void ArrangeThumbnailSourceCore(PaneKind kind, Size sourceSize) {
         var element = _paneElements[kind];
+        var w = Math.Max(sourceSize.Width, 1);
+        var h = Math.Max(sourceSize.Height, 1);
+        var host = new Grid {
+            Width = w, Height = h, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Clip = new RectangleGeometry(new Rect(0, 0, w, h)), };
         if (element.Parent is Panel parent)
             parent.Children.Remove(element);
         element.Visibility = Visibility.Visible;
-        var w = Math.Max(virtualSize.Width, 1);
-        var h = Math.Max(w / CardAspect, 1);
-        var host = new Grid {
-            Width = w, Height = h, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Clip = new RectangleGeometry(new Rect(0, 0, w, h)), };
         host.Children.Add(element);
         StageSourceArea.Children.Add(host);
-        var sourceSize = new Size(w, h);
-        host.Measure(sourceSize);
-        host.Arrange(new Rect(sourceSize));
+        var clamped = new Size(w, h);
+        host.Measure(clamped);
+        host.Arrange(new Rect(clamped));
         host.UpdateLayout();
         _stageThumbnailHosts[kind] = host;
     }
-    private void BuildStageThumbnailSources(Size virtualSize) {
-        var kinds = _overviewActive
-            ? OverviewKinds()
-            : StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k));
-        foreach (var kind in kinds)
-            ArrangeThumbnailSource(kind, virtualSize);
+    /// <summary>描画元ホストを必要な集合へ差分で寄せる。据え置けるものは一切触らない
+    /// （ペインの親を付け替える行為自体が Measure/Arrange と同等に高いため）。</summary>
+    private void SyncThumbnailSources(IReadOnlyCollection<PaneKind> required, Size sourceSize) {
+        var sizeChanged = StageThumbnailPlanner.SourceSizeChanged(_thumbnailSourceWidth, sourceSize.Width);
+        var reusable = sizeChanged
+            ? Array.Empty<PaneKind>()
+            : _stageThumbnailHosts.Keys.Where(IsThumbnailSourceIntact).ToArray();
+        var plan = StageThumbnailPlanner.PlanSources(
+            _stageThumbnailHosts.Keys.ToArray(), reusable, required);
+        PaneLayoutDebugLog.Log(
+            $"SyncThumbnailSources keep={plan.Keep.Count} add={plan.Add.Count} remove={plan.Remove.Count}");
+        foreach (var kind in plan.Remove)
+            ReleaseThumbnailSource(kind);
+        foreach (var kind in plan.Add)
+            ArrangeThumbnailSource(kind, sourceSize);
+        _thumbnailSourceWidth = sourceSize.Width;
     }
-    private void RebuildWings() {
+    /// <summary>ホストが健在で、そのペインを今も抱えているか。他の経路（タイル再構築・ワークスペース
+    /// 切替など）でペインが外されていたら false ＝作り直す。差分の取りこぼしで空のミニチュアが
+    /// 残らないための保険。</summary>
+    private bool IsThumbnailSourceIntact(PaneKind kind)
+        => _stageThumbnailHosts.TryGetValue(kind, out var host)
+        && host.Parent is not null
+        && host.Children.Count == 1
+        && ReferenceEquals(host.Children[0], _paneElements[kind]);
+    private void ReleaseThumbnailSource(PaneKind kind) {
+        if (!_stageThumbnailHosts.Remove(kind, out var host))
+            return;
+        host.Children.Clear();   // ペインは親なしへ戻す（呼び出し側が別の場所へ据える）
+        StageSourceArea.Children.Remove(host);
+    }
+    /// <summary>描画元を全部捨てる（モード切替・ワークスペース切替など、据え置きが成り立たない場面用）。</summary>
+    private void ClearThumbnailSources() {
+        foreach (var host in _stageThumbnailHosts.Values)
+            host.Children.Clear();
+        StageSourceArea.Children.Clear();
+        _stageThumbnailHosts.Clear();
+        _thumbnailSourceWidth = 0;
+    }
+    private void RebuildWings()
+        => PaneLayoutDebugLog.Time("RebuildWings", RebuildWingsCore);
+    private void RebuildWingsCore() {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
         if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)) {
             ScheduleLayoutWings();
@@ -46,17 +90,14 @@ public partial class ShellWindow {
                 WingStrip.Children.Add(BuildSessionCard(kind, WingCardWidth, isOverview: false));
         } else {
             BuildLayoutWingSources();
-            foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
+            foreach (var kind in LayoutWingKinds())
                 WingStrip.Children.Add(BuildLayoutWingCard(kind, WingCardWidth));
         }
     }
     private void BuildLayoutWingSources() {
-        StageSourceArea.Children.Clear();
-        _stageThumbnailHosts.Clear();
-        var virtualSize = new Size(StageSourceArea.ActualWidth, StageSourceArea.ActualHeight);
-        _layoutWingSourceWidth = virtualSize.Width;
-        foreach (var kind in StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)))
-            ArrangeThumbnailSource(kind, virtualSize);
+        _layoutWingSourceWidth = StageSourceArea.ActualWidth;
+        SyncThumbnailSources(
+            LayoutWingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
     }
     private void ScheduleLayoutWings() {
         if (_stageActive)
@@ -65,15 +106,14 @@ public partial class ShellWindow {
             PaneLayoutDebugLog.Log("ScheduleLayoutWings skipped: splitter drag in progress");
             return;
         }
-        var hasWings = StageOrder.Any(k => IsSessionEnabled(k) && !IsShownInMain(k));
+        var hasWings = LayoutWingKinds().Count > 0;
         PaneLayoutDebugLog.Log($"ScheduleLayoutWings hasWings={hasWings} prevWingColumnWidth={WingColumn.Width}", withCaller: true);
         WingColumn.Width = hasWings ? new GridLength(WingColumnReserve) : GridLength.Auto;
         WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
         if (!hasWings) {
             _layoutWingBuildPending = false;
             WingStrip.Children.Clear();
-            StageSourceArea.Children.Clear();
-            _stageThumbnailHosts.Clear();
+            ClearThumbnailSources();
             return;
         }
         _layoutWingBuildPending = true;
@@ -95,8 +135,10 @@ public partial class ShellWindow {
         }));
     }
     private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e) {
+        // 描画元は固定仮想幅で頭打ちなので、そこを超える範囲のリサイズでは組み直さない
+        // （以前はリサイズのたびに全ペインを実寸レイアウトし直していた）。
         if (_stageActive || e.NewSize.Width <= 0
-            || Math.Abs(e.NewSize.Width - _layoutWingSourceWidth) <= 1)
+            || !StageThumbnailPlanner.SourceSizeChanged(_layoutWingSourceWidth, e.NewSize.Width))
             return;
         PaneLayoutDebugLog.Log($"OnStageSourceAreaSizeChanged {_layoutWingSourceWidth:0.#} -> {e.NewSize.Width:0.#}");
         ScheduleLayoutWings();
