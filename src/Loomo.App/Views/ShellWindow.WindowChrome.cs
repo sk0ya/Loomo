@@ -52,7 +52,9 @@ public partial class ShellWindow {
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) {
         if (msg == HorizontalWheelScroll.WM_MOUSEHWHEEL) {
             var delta = (short)(((long)wParam >> 16) & 0xFFFF);
-            if (HorizontalWheelScroll.Handle(wParam) || TryHorizontalScrollEditorSupportWebView(delta)) {
+            // エディタサポートは専用経路が先（カーソルが自分のペイン上のときだけ効く）。ページ側スクリプトの
+            // scrollLeft 代入なので、プレゼン表示のように overflow を殺した状態でも動く＝ネイティブ入力の上位互換。
+            if (TryHorizontalScrollEditorSupportWebView(delta) || HorizontalWheelScroll.Handle(wParam)) {
                 handled = true;
                 return new IntPtr(1);
             }

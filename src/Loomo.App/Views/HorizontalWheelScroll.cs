@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Editor.Controls;
+using Microsoft.Web.WebView2.Wpf;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -11,8 +12,10 @@ namespace sk0ya.Loomo.App.Views;
 /// チルトホイール（横スクロール）対応。WPF は WM_MOUSEHWHEEL を標準では処理しないため、
 /// ウィンドウの WndProc フックから呼び出して水平スクロールを行う。
 /// エディタ（VimEditorControl）は独自キャンバス描画で標準 ScrollViewer を持たないため、
-/// 公開 API の ScrollHorizontalByWheelDelta を直接呼ぶ。それ以外（FolderTree・タブストリップなど
-/// 横にあふれる ScrollViewer）はカーソル直下の ScrollViewer を辿ってスクロールさせる。
+/// 公開 API の ScrollHorizontalByWheelDelta を直接呼ぶ。WebView2（ブラウザペイン・プレビュー）も
+/// 同様に WPF 側の ScrollViewer を持たないので <see cref="WebViewHorizontalWheel"/> で Chromium へ
+/// 入力を送る。それ以外（FolderTree・タブストリップなど横にあふれる ScrollViewer）はカーソル直下の
+/// ScrollViewer を辿ってスクロールさせる。
 /// </summary>
 internal static class HorizontalWheelScroll
 {
@@ -35,6 +38,13 @@ internal static class HorizontalWheelScroll
         // エディタは独自キャンバスで描画され ScrollViewer を持たないので専用 API へ委譲する。
         var editor = FindAncestor<VimEditorControl>(source);
         if (editor is not null && editor.ScrollHorizontalByWheelDelta(delta))
+            return true;
+
+        // WebView2（ブラウザペイン・切り離したプレビュー等）も WPF のツリー上に ScrollViewer を持たない。
+        // スクロールするのは Chromium 側なので、横ホイールの入力そのものを送り込む。
+        // ページ側スクリプトを持つエディタサポートのプレビューは呼び元がこれより先に処理する。
+        var webView = FindAncestor<WebView2CompositionControl>(source);
+        if (webView is not null && WebViewHorizontalWheel.TrySend(webView, delta))
             return true;
 
         var viewer = FindHorizontallyScrollable(source);

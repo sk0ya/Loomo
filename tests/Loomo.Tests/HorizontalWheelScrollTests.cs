@@ -92,6 +92,16 @@ public class HorizontalWheelScrollTests
         });
     }
 
+    [Fact]
+    public void WebView2の内部コントローラへ到達できる()
+    {
+        // ブラウザペインの横スクロールは WebView2 ラッパーの内部コントローラ経由で
+        // HorizontalWheel を送ることで成立している。SDK 更新で内部構造が変わり到達できなくなると
+        // 「無反応に戻る」だけで気付けないので、ここで見張る。
+        Assert.True(WebViewHorizontalWheel.CanResolveSdkMembers,
+            "WebView2 SDK の内部メンバへ到達できない（横ホイールが Chromium へ届かなくなる）");
+    }
+
     private static void RunSta(Action action)
     {
         Exception? exception = null;

@@ -115,6 +115,25 @@ public partial class DetachedPaneWindow : Window
         return false;
     }
 
+    /// <summary>WPF は WM_MOUSEHWHEEL を routed event にしないので、本体ウィンドウと同じくフックで拾う
+    /// （切り離したブラウザ・エディタでもチルトホイールの横スクロールを効かせる）。</summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        if (PresentationSource.FromVisual(this) is HwndSource source)
+            source.AddHook(WndProc);
+    }
+
+    private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == HorizontalWheelScroll.WM_MOUSEHWHEEL && HorizontalWheelScroll.Handle(wParam))
+        {
+            handled = true;
+            return new IntPtr(1);
+        }
+        return IntPtr.Zero;
+    }
+
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 0x0002;
 
