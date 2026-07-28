@@ -1,4 +1,6 @@
 using sk0ya.Loomo.Core.Markdown;
+using sk0ya.Loomo.Core.Files;
+using Editor.Core.Text;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナル／エディタの選択テキストに対する右クリックアクション （「AIに聞く」＝AIバーへ即送信、「ブラウザで調べる」＝内蔵ブラウザでBing検索）。 メニュー項目はライブラリ側の ContextMenuBuilding フックで各コントロールのネイティブメニュー末尾へ 追加する（選択があるときだけ。スタイルはライブラリが自前のメニュー様式に合わせる）。</summary>
@@ -15,6 +17,7 @@ public partial class ShellWindow {
         AddGitMenuItems(e.Menu, control);
         AddDebugMenuItems(e.Menu, control);
         AddMarkdownTableMenuItem(e.Menu, control);
+        AddMarkdownPathRefactorMenuItem(e.Menu, control);
     }
     private static readonly string[] MarkdownExtensions = { ".md", ".markdown" };
     private void AddMarkdownTableMenuItem(ContextMenu menu, VimEditorControl? control) {
@@ -35,6 +38,130 @@ public partial class ShellWindow {
     }
     private static bool IsMarkdownFile(string path)
         => Array.Exists( MarkdownExtensions, ext => string.Equals(Path.GetExtension(path), ext, StringComparison.OrdinalIgnoreCase));
+
+    private void AddMarkdownPathRefactorMenuItem(ContextMenu menu, VimEditorControl? control) {
+        if (control?.FilePath is not { Length: > 0 } documentPath || !IsMarkdownFile(documentPath))
+            return;
+        var lines = control.Text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        if (control.Caret.Line < 0 || control.Caret.Line >= lines.Length
+            || LinkDetector.FindLinkAt(lines[control.Caret.Line], control.Caret.Column)
+                is not { Kind: LinkKind.FilePath } link
+            || !FileLinkResolver.TryResolve(
+                link.Text, documentPath, _workspace.RootPath,
+                out var sourcePath, out _, out _, out var isDirectory))
+            return;
+
+        menu.Items.Add(new Separator());
+        var item = new MenuItem { Header = $"リンク先を移動・参照を更新…（{Path.GetFileName(sourcePath)}）" };
+        item.Click += (_, _) => RefactorMarkdownLocalPath(
+            control, documentPath, link.Text, sourcePath, isDirectory);
+        menu.Items.Add(item);
+    }
+
+    private void RefactorMarkdownLocalPath(
+        VimEditorControl control, string documentPath, string currentDestination,
+        string sourcePath, bool isDirectory) {
+        var destination = InputDialog.Prompt(
+            this,
+            "Markdown リンク先の移動",
+            "この Markdown ファイルからの相対パスを入力してください。\n実体を移動し、同じ実体を指すリンクをすべて更新します。",
+            currentDestination);
+        if (destination is null)
+            return;
+
+        destination = destination.Trim().Replace('\\', '/');
+        var markdownDestination = destination.Replace(" ", "%20", StringComparison.Ordinal);
+        try {
+            if (Path.IsPathRooted(destination))
+                throw new InvalidOperationException("ワークスペース内の相対パスを入力してください。");
+
+            sourcePath = _workspace.ResolvePath(sourcePath);
+            var documentDirectory = Path.GetDirectoryName(documentPath)
+                ?? throw new InvalidOperationException("編集中の Markdown ファイルの場所を取得できません。");
+            var destinationPath = _workspace.ResolvePath(Path.Combine(
+                documentDirectory,
+                Uri.UnescapeDataString(destination).Replace('/', Path.DirectorySeparatorChar)));
+            if (PathsEqual(sourcePath, documentPath))
+                throw new InvalidOperationException("編集中の Markdown ファイル自身はこの操作では移動できません。");
+            if (PathsEqual(sourcePath, destinationPath)) {
+                ToastService.Info("移動先が現在のリンク先と同じです。");
+                return;
+            }
+            if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+                throw new InvalidOperationException("移動先には同名のファイルまたはフォルダーが既にあります。");
+            if (Path.GetDirectoryName(destinationPath) is not { } parent)
+                throw new InvalidOperationException("移動先のフォルダーを取得できません。");
+
+            var oldText = control.Text;
+            var newText = ReplaceDetectedFileLinks(oldText, documentPath, sourcePath, markdownDestination);
+            var createdDirectories = CreateMissingDirectories(parent);
+
+            try {
+                if (isDirectory)
+                    Directory.Move(sourcePath, destinationPath);
+                else
+                    File.Move(sourcePath, destinationPath);
+                control.SetText(newText);
+                control.Save(documentPath);
+            } catch {
+                if (isDirectory && Directory.Exists(destinationPath))
+                    Directory.Move(destinationPath, sourcePath);
+                else if (!isDirectory && File.Exists(destinationPath))
+                    File.Move(destinationPath, sourcePath);
+                control.SetText(oldText);
+                RemoveCreatedDirectories(createdDirectories);
+                throw;
+            }
+
+            _vm.FolderTree.NotifyEntryMoved(sourcePath, destinationPath, isDirectory);
+            ToastService.Success($"リンク先を {destination} へ移動し、参照を更新しました。");
+        } catch (Exception ex) {
+            ToastService.Error($"リンク先を変更できませんでした: {ex.Message}");
+        }
+    }
+
+    private static IReadOnlyList<string> CreateMissingDirectories(string directory) {
+        var missing = new List<string>();
+        for (var current = directory; !Directory.Exists(current); current = Path.GetDirectoryName(current)!) {
+            if (string.IsNullOrWhiteSpace(current))
+                throw new InvalidOperationException("移動先のフォルダーを作成できません。");
+            missing.Add(current);
+        }
+        Directory.CreateDirectory(directory);
+        return missing;
+    }
+
+    private static void RemoveCreatedDirectories(IReadOnlyList<string> directories) {
+        foreach (var directory in directories) {
+            try {
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                    Directory.Delete(directory);
+            } catch {
+                // 元のファイル移動／保存エラーを優先する。
+            }
+        }
+    }
+
+    private string ReplaceDetectedFileLinks(
+        string text, string documentPath, string sourcePath, string destination) {
+        var replacements = new List<(int Start, int Length)>();
+        var offset = 0;
+        foreach (var line in text.Split('\n')) {
+            foreach (var link in LinkDetector.FindLinks(line)) {
+                if (link.Kind == LinkKind.FilePath
+                    && FileLinkResolver.TryResolve(
+                        link.Text, documentPath, _workspace.RootPath,
+                        out var resolved, out _, out _, out _)
+                    && PathsEqual(resolved, sourcePath))
+                    replacements.Add((offset + link.Start, link.End - link.Start));
+            }
+            offset += line.Length + 1;
+        }
+        foreach (var replacement in replacements.OrderByDescending(x => x.Start))
+            text = text.Remove(replacement.Start, replacement.Length)
+                .Insert(replacement.Start, destination);
+        return text;
+    }
     private void EditMarkdownTable(VimEditorControl control) {
         var newline = control.Text.Contains("\r\n") ? "\r\n" : "\n";
         var lines = control.Text.Replace("\r\n", "\n").Split('\n');

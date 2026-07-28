@@ -83,6 +83,13 @@ public sealed partial class FolderTreeViewModel
 
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
 
+    /// <summary>FolderTree 外で行われた移動をツリーと開いているエディタへ通知する。</summary>
+    public void NotifyEntryMoved(string oldPath, string newPath, bool isDirectory)
+    {
+        RefreshWorkspace();
+        EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(oldPath, newPath, isDirectory));
+    }
+
     public void NotifyActivated(string fullPath)
     {
         _workspace.SelectedPath = fullPath;

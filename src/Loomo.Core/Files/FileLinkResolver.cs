@@ -77,7 +77,11 @@ public static class FileLinkResolver
             ((path[0] == '"' && path[^1] == '"') || (path[0] == '\'' && path[^1] == '\'')))
             path = path[1..^1];
 
-        return path.Trim();
+        path = path.Trim();
+        // Markdown のリンク先では空白などが percent-encode される。
+        // LinkDetector は "%20" を含むトークンを Path として検知するため、実在確認の直前に戻す。
+        try { return Uri.UnescapeDataString(path); }
+        catch (UriFormatException) { return path; }
     }
 
     private static bool LooksLikeWindowsDrivePrefix(string path, Match match)

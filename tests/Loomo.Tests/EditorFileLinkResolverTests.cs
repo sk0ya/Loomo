@@ -8,6 +8,25 @@ namespace sk0ya.Loomo.Tests;
 public class EditorFileLinkResolverTests
 {
     [Fact]
+    public void TryResolve_PercentEncodedMarkdownPath()
+    {
+        using var temp = new TempWorkspace();
+        var docs = Directory.CreateDirectory(Path.Combine(temp.Root, "docs")).FullName;
+        var images = Directory.CreateDirectory(Path.Combine(temp.Root, "images")).FullName;
+        var document = Path.Combine(docs, "guide.md");
+        var target = Path.Combine(images, "new image.png");
+        File.WriteAllText(document, "");
+        File.WriteAllText(target, "");
+
+        var ok = FileLinkResolver.TryResolve(
+            "../images/new%20image.png", document, temp.Root,
+            out var fullPath, out _, out _, out _);
+
+        Assert.True(ok);
+        Assert.Equal(target, fullPath);
+    }
+
+    [Fact]
     public void RelativePath_ResolvesAgainstCurrentDocumentDirectory()
     {
         using var temp = new TempWorkspace();
