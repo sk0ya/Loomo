@@ -27,10 +27,18 @@ public class ShellAppearanceCoordinatorTests
     [InlineData("monokai")]
     [InlineData("gruvboxdark")]
     [InlineData("catppuccinmocha")]
+    [InlineData("kanagawa")]
+    [InlineData("rosepine")]
+    [InlineData("everforestdark")]
+    [InlineData("nightowl")]
+    [InlineData("ayudark")]
     [InlineData("highcontrast")]
     [InlineData("light")]
     [InlineData("solarizedlight")]
     [InlineData("catppuccinlatte")]
+    [InlineData("rosepinedawn")]
+    [InlineData("gruvboxlight")]
+    [InlineData("onelight")]
     public void Loomo_defined_editor_themes_are_resolved(string name)
     {
         var theme = ShellAppearanceCoordinator.ResolveEditorTheme(name);
@@ -47,7 +55,9 @@ public class ShellAppearanceCoordinatorTests
         var keys = new[]
         {
             "Dracula", "Dark", "Nord", "TokyoNight", "OneDark", "SolarizedDark", "Monokai",
-            "GruvboxDark", "CatppuccinMocha", "HighContrast", "Light", "SolarizedLight", "CatppuccinLatte",
+            "GruvboxDark", "CatppuccinMocha", "Kanagawa", "RosePine", "EverforestDark", "NightOwl", "AyuDark",
+            "HighContrast", "Light", "SolarizedLight", "CatppuccinLatte",
+            "RosePineDawn", "GruvboxLight", "OneLight",
         };
         var colors = keys
             .Select(k => ShellAppearanceCoordinator.ResolveEditorTheme(k))

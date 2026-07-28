@@ -1,0 +1,34 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (Ayu Dark) =====
+         キーは Palette.Dark.xaml と一対一で対応させること。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FF0B0E14" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FF0F131A" />
+    <SolidColorBrush x:Key="Panel" Color="#FF0B0E14" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF06080D" />
+    <SolidColorBrush x:Key="Border" Color="#FF1E232B" />
+    <SolidColorBrush x:Key="Accent" Color="#FFE6B450" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FFF3CB7B" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF0B0E14" />
+    <SolidColorBrush x:Key="Fg" Color="#FFBFBDB6" />
+    <SolidColorBrush x:Key="FgDim" Color="#FF8A9199" />
+    <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明アンバー） -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80E6B450" />
+    <!-- リストの選択行背景（はっきり見える青。複数選択はこの帯がつながる） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FF1F3A52" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FFAAD94C" />
+    <SolidColorBrush x:Key="Error" Color="#FFF07178" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。Ayu のセマンティック配色。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF8A9199" />
+    <SolidColorBrush x:Key="SymType" Color="#FF59C2FF" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF39BAE6" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFFFB454" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FFD2A6FF" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF73B8FF" />
+    <SolidColorBrush x:Key="SymField" Color="#FFAAD94C" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FFF29668" />
+
+</ResourceDictionary>

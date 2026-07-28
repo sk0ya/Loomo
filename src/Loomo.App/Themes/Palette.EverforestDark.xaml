@@ -1,0 +1,34 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (Everforest Dark / medium) =====
+         キーは Palette.Dark.xaml と一対一で対応させること。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FF2D353B" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FF343F44" />
+    <SolidColorBrush x:Key="Panel" Color="#FF2D353B" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF272E33" />
+    <SolidColorBrush x:Key="Border" Color="#FF3D484D" />
+    <SolidColorBrush x:Key="Accent" Color="#FFA7C080" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FFC0D69B" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF2D353B" />
+    <SolidColorBrush x:Key="Fg" Color="#FFD3C6AA" />
+    <SolidColorBrush x:Key="FgDim" Color="#FF9DA9A0" />
+    <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明イエロー） -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80DBBC7F" />
+    <!-- リストの選択行背景（はっきり見える帯。複数選択はこの帯がつながる） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FF475258" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FFA7C080" />
+    <SolidColorBrush x:Key="Error" Color="#FFE67E80" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。Everforest のセマンティック配色。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF9DA9A0" />
+    <SolidColorBrush x:Key="SymType" Color="#FF83C092" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF7FBBB3" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFDBBC7F" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FFD699B6" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF9DC0D6" />
+    <SolidColorBrush x:Key="SymField" Color="#FFA7C080" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FFE69875" />
+
+</ResourceDictionary>

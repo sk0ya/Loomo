@@ -105,32 +105,51 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new PresetSwatch(nameof(AppTheme.Monokai),         "Monokai",            "#272822", "#66D9EF", "#F8F8F2"),
             new PresetSwatch(nameof(AppTheme.GruvboxDark),     "Gruvbox Dark",       "#282828", "#D79921", "#EBDBB2"),
             new PresetSwatch(nameof(AppTheme.CatppuccinMocha), "Catppuccin Mocha",   "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch(nameof(AppTheme.Kanagawa),        "Kanagawa",           "#1F1F28", "#7E9CD8", "#DCD7BA"),
+            new PresetSwatch(nameof(AppTheme.RosePine),        "Rosé Pine",          "#191724", "#C4A7E7", "#E0DEF4"),
+            new PresetSwatch(nameof(AppTheme.EverforestDark),  "Everforest Dark",    "#2D353B", "#A7C080", "#D3C6AA"),
+            new PresetSwatch(nameof(AppTheme.NightOwl),        "Night Owl",          "#011627", "#82AAFF", "#D6DEEB"),
+            new PresetSwatch(nameof(AppTheme.AyuDark),         "Ayu Dark",           "#0B0E14", "#E6B450", "#BFBDB6"),
             new PresetSwatch(nameof(AppTheme.HighContrast),    "高コントラスト",     "#000000", "#1AEBFF", "#FFFFFF"),
             // 明色系
             new PresetSwatch(nameof(AppTheme.Light),           "ライト",             "#FFFFFF", "#005FB8", "#1F1F1F"),
             new PresetSwatch(nameof(AppTheme.SolarizedLight),  "Solarized Light",    "#FDF6E3", "#1E76B8", "#586E75"),
             new PresetSwatch(nameof(AppTheme.CatppuccinLatte), "Catppuccin Latte",   "#EFF1F5", "#1E66F5", "#4C4F69"),
+            new PresetSwatch(nameof(AppTheme.RosePineDawn),    "Rosé Pine Dawn",     "#FAF4ED", "#907AA9", "#575279"),
+            new PresetSwatch(nameof(AppTheme.GruvboxLight),    "Gruvbox Light",      "#FBF1C7", "#B57614", "#3C3836"),
+            new PresetSwatch(nameof(AppTheme.OneLight),        "One Light",          "#FAFAFA", "#4078F2", "#383A42"),
         };
 
+        // 色相順に並べる（青→紫→赤→橙→黄→緑→水色→無彩色）。同じ色相は明るい方を後ろに置く。
         Accents = new[]
         {
             new AccentSwatch("テーマ既定", ""),
             new AccentSwatch("ブルー",     "#FF0E639C"),
             new AccentSwatch("スカイ",     "#FF2F81F7"),
+            new AccentSwatch("ネイビー",   "#FF1E40AF"),
             new AccentSwatch("インディゴ", "#FF4F46E5"),
             new AccentSwatch("バイオレット","#FF7C3AED"),
+            new AccentSwatch("ラベンダー", "#FFA78BFA"),
             new AccentSwatch("パープル",   "#FF8957E5"),
+            new AccentSwatch("フクシア",   "#FFC026D3"),
             new AccentSwatch("マゼンタ",   "#FFBF4080"),
             new AccentSwatch("ピンク",     "#FFDB2777"),
+            new AccentSwatch("ローズ",     "#FFE11D48"),
             new AccentSwatch("レッド",     "#FFD13438"),
+            new AccentSwatch("コーラル",   "#FFE2725B"),
             new AccentSwatch("オレンジ",   "#FFD9730D"),
             new AccentSwatch("アンバー",   "#FFB45309"),
+            new AccentSwatch("ブロンズ",   "#FF9A6B3F"),
             new AccentSwatch("イエロー",   "#FFCA8A04"),
+            new AccentSwatch("オリーブ",   "#FF6B8E23"),
             new AccentSwatch("ライム",     "#FF65A30D"),
             new AccentSwatch("グリーン",   "#FF2EA043"),
+            new AccentSwatch("フォレスト", "#FF15803D"),
             new AccentSwatch("エメラルド", "#FF10B981"),
             new AccentSwatch("ティール",   "#FF1B9E8F"),
             new AccentSwatch("シアン",     "#FF0891B2"),
+            new AccentSwatch("アクア",     "#FF22D3EE"),
+            new AccentSwatch("スチール",   "#FF4682B4"),
             new AccentSwatch("スレート",   "#FF64748B"),
         };
 
@@ -148,10 +167,18 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new PresetSwatch("Monokai",         "Monokai",          "#272822", "#66D9EF", "#F8F8F2"),
             new PresetSwatch("GruvboxDark",     "Gruvbox Dark",     "#282828", "#FABD2F", "#EBDBB2"),
             new PresetSwatch("CatppuccinMocha", "Catppuccin Mocha", "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch("Kanagawa",        "Kanagawa",         "#1F1F28", "#7E9CD8", "#DCD7BA"),
+            new PresetSwatch("RosePine",        "Rosé Pine",        "#191724", "#C4A7E7", "#E0DEF4"),
+            new PresetSwatch("EverforestDark",  "Everforest Dark",  "#2D353B", "#A7C080", "#D3C6AA"),
+            new PresetSwatch("NightOwl",        "Night Owl",        "#011627", "#82AAFF", "#D6DEEB"),
+            new PresetSwatch("AyuDark",         "Ayu Dark",         "#0B0E14", "#E6B450", "#BFBDB6"),
             new PresetSwatch("HighContrast",    "高コントラスト",   "#000000", "#1AEBFF", "#FFFFFF"),
             new PresetSwatch("Light",           "ライト",           "#FFFFFF", "#005FB8", "#1F1F1F"),
             new PresetSwatch("SolarizedLight",  "Solarized Light",  "#FDF6E3", "#1E76B8", "#586E75"),
             new PresetSwatch("CatppuccinLatte", "Catppuccin Latte", "#EFF1F5", "#1E66F5", "#4C4F69"),
+            new PresetSwatch("RosePineDawn",    "Rosé Pine Dawn",   "#FAF4ED", "#907AA9", "#575279"),
+            new PresetSwatch("GruvboxLight",    "Gruvbox Light",    "#FBF1C7", "#B57614", "#3C3836"),
+            new PresetSwatch("OneLight",        "One Light",        "#FAFAFA", "#4078F2", "#383A42"),
         };
 
         PreviewThemes = new[]
@@ -167,8 +194,16 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new PresetSwatch("Monokai",         "Monokai",          "#272822", "#66D9EF", "#F8F8F2"),
             new PresetSwatch("GruvboxDark",     "Gruvbox Dark",     "#282828", "#FABD2F", "#EBDBB2"),
             new PresetSwatch("CatppuccinMocha", "Catppuccin Mocha", "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch("Kanagawa",        "Kanagawa",         "#1F1F28", "#7E9CD8", "#DCD7BA"),
+            new PresetSwatch("RosePine",        "Rosé Pine",        "#191724", "#C4A7E7", "#E0DEF4"),
+            new PresetSwatch("EverforestDark",  "Everforest Dark",  "#2D353B", "#A7C080", "#D3C6AA"),
+            new PresetSwatch("NightOwl",        "Night Owl",        "#011627", "#82AAFF", "#D6DEEB"),
+            new PresetSwatch("AyuDark",         "Ayu Dark",         "#0B0E14", "#59C2FF", "#BFBDB6"),
             new PresetSwatch("SolarizedLight",  "Solarized Light",  "#FDF6E3", "#268BD2", "#586E75"),
             new PresetSwatch("CatppuccinLatte", "Catppuccin Latte", "#EFF1F5", "#1E66F5", "#4C4F69"),
+            new PresetSwatch("RosePineDawn",    "Rosé Pine Dawn",   "#FAF4ED", "#907AA9", "#575279"),
+            new PresetSwatch("GruvboxLight",    "Gruvbox Light",    "#FBF1C7", "#076678", "#3C3836"),
+            new PresetSwatch("OneLight",        "One Light",        "#FAFAFA", "#4078F2", "#383A42"),
         };
 
         TerminalThemes = new[]
@@ -182,9 +217,17 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new PresetSwatch("Monokai",         "Monokai",          "#272822", "#66D9EF", "#F8F8F2"),
             new PresetSwatch("GruvboxDark",     "Gruvbox Dark",     "#282828", "#FABD2F", "#EBDBB2"),
             new PresetSwatch("CatppuccinMocha", "Catppuccin Mocha", "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch("Kanagawa",        "Kanagawa",         "#1F1F28", "#7E9CD8", "#DCD7BA"),
+            new PresetSwatch("RosePine",        "Rosé Pine",        "#191724", "#C4A7E7", "#E0DEF4"),
+            new PresetSwatch("EverforestDark",  "Everforest Dark",  "#2D353B", "#A7C080", "#D3C6AA"),
+            new PresetSwatch("NightOwl",        "Night Owl",        "#011627", "#82AAFF", "#D6DEEB"),
+            new PresetSwatch("AyuDark",         "Ayu Dark",         "#0B0E14", "#E6B450", "#BFBDB6"),
             new PresetSwatch("Light",           "Light",            "#FFFFFF", "#0037DA", "#1F1F1F"),
             new PresetSwatch("SolarizedLight",  "Solarized Light",  "#FDF6E3", "#268BD2", "#586E75"),
             new PresetSwatch("CatppuccinLatte", "Catppuccin Latte", "#EFF1F5", "#1E66F5", "#4C4F69"),
+            new PresetSwatch("RosePineDawn",    "Rosé Pine Dawn",   "#FAF4ED", "#907AA9", "#575279"),
+            new PresetSwatch("GruvboxLight",    "Gruvbox Light",    "#FBF1C7", "#B57614", "#3C3836"),
+            new PresetSwatch("OneLight",        "One Light",        "#FAFAFA", "#4078F2", "#383A42"),
         };
 
         // 初期選択は背面フィールドへ直接代入（プロパティ setter を介さず OnXxxChanged を発火させない）。

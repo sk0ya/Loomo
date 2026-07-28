@@ -16,6 +16,7 @@ internal static class MarkdownPage
         var css = PreviewCss(styleName);
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
         var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" or "SolarizedLight" or "CatppuccinLatte"
+            or "RosePineDawn" or "GruvboxLight" or "OneLight"
             ? "default" : "dark";
 
         // 描画モード（ページ側 JS が読む）。marp は本文を空のステージにし、生 Markdown を JS へ渡す。
@@ -493,8 +494,16 @@ internal static class MarkdownPage
             "monokai" => "Monokai",
             "gruvboxdark" => "GruvboxDark",
             "catppuccinmocha" => "CatppuccinMocha",
+            "kanagawa" => "Kanagawa",
+            "rosepine" => "RosePine",
+            "everforestdark" => "EverforestDark",
+            "nightowl" => "NightOwl",
+            "ayudark" => "AyuDark",
             "solarizedlight" => "SolarizedLight",
             "catppuccinlatte" => "CatppuccinLatte",
+            "rosepinedawn" => "RosePineDawn",
+            "gruvboxlight" => "GruvboxLight",
+            "onelight" => "OneLight",
             _ => "Dracula",
         };
 
@@ -510,8 +519,16 @@ internal static class MarkdownPage
         "Monokai" => BaseCss("#272822", "#F8F8F2", "#3E3D32", "#49483E", "#66D9EF", "#F92672", "#FD971F", "#75715E", "#A6E22E"),
         "GruvboxDark" => BaseCss("#282828", "#EBDBB2", "#32302F", "#504945", "#83A598", "#FABD2F", "#FE8019", "#A89984", "#B8BB26"),
         "CatppuccinMocha" => BaseCss("#1E1E2E", "#CDD6F4", "#181825", "#313244", "#89B4FA", "#CBA6F7", "#FAB387", "#9399B2", "#A6E3A1"),
+        "Kanagawa" => BaseCss("#1F1F28", "#DCD7BA", "#2A2A37", "#363646", "#7E9CD8", "#957FB8", "#FFA066", "#9C9A8E", "#98BB6C"),
+        "RosePine" => BaseCss("#191724", "#E0DEF4", "#1F1D2E", "#403D52", "#C4A7E7", "#9CCFD8", "#EBBCBA", "#908CAA", "#F6C177"),
+        "EverforestDark" => BaseCss("#2D353B", "#D3C6AA", "#343F44", "#475258", "#7FBBB3", "#A7C080", "#E69875", "#9DA9A0", "#DBBC7F"),
+        "NightOwl" => BaseCss("#011627", "#D6DEEB", "#0B2942", "#1D3B53", "#82AAFF", "#C792EA", "#F78C6C", "#8BA1B1", "#ADDB67"),
+        "AyuDark" => BaseCss("#0B0E14", "#BFBDB6", "#0F131A", "#1E232B", "#59C2FF", "#E6B450", "#F29668", "#8A9199", "#AAD94C"),
         "SolarizedLight" => BaseCss("#FDF6E3", "#586E75", "#EEE8D5", "#DDD6C1", "#268BD2", "#2AA198", "#CB4B16", "#93A1A1", "#6D8A00"),
         "CatppuccinLatte" => BaseCss("#EFF1F5", "#4C4F69", "#E6E9EF", "#CCD0DA", "#1E66F5", "#8839EF", "#D9730D", "#7C7F93", "#40A02B"),
+        "RosePineDawn" => BaseCss("#FAF4ED", "#575279", "#F2E9E1", "#DFD8D0", "#907AA9", "#286983", "#B4637A", "#797593", "#3E7B7F"),
+        "GruvboxLight" => BaseCss("#FBF1C7", "#3C3836", "#F2E5BC", "#D5C4A1", "#076678", "#B57614", "#9D0006", "#7C6F64", "#79740E"),
+        "OneLight" => BaseCss("#FAFAFA", "#383A42", "#F0F0F1", "#D3D3D4", "#4078F2", "#A626A4", "#E45649", "#7C7F8A", "#50A14F"),
         _ => BaseCss("#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"),
     };
 

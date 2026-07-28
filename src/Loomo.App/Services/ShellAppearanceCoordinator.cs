@@ -93,8 +93,16 @@ public sealed class ShellAppearanceCoordinator
         "monokai" => MakeTerminalTheme("#F8F8F2", "#272822", MonokaiAnsiPalette, "#F8F8F0", "#DD57564A"),
         "gruvboxdark" => MakeTerminalTheme("#EBDBB2", "#282828", GruvboxDarkAnsiPalette, "#FABD2F", "#DD665C54"),
         "catppuccinmocha" => MakeTerminalTheme("#CDD6F4", "#1E1E2E", CatppuccinMochaAnsiPalette, "#F5E0DC", "#DD45475A"),
+        "kanagawa" => MakeTerminalTheme("#DCD7BA", "#1F1F28", KanagawaAnsiPalette, "#C8C093", "#DD2D4F67"),
+        "rosepine" => MakeTerminalTheme("#E0DEF4", "#191724", RosePineAnsiPalette, "#E0DEF4", "#DD403D52"),
+        "everforestdark" => MakeTerminalTheme("#D3C6AA", "#2D353B", EverforestDarkAnsiPalette, "#D3C6AA", "#DD475258"),
+        "nightowl" => MakeTerminalTheme("#D6DEEB", "#011627", NightOwlAnsiPalette, "#80A4C2", "#DD1D3B53"),
+        "ayudark" => MakeTerminalTheme("#BFBDB6", "#0B0E14", AyuDarkAnsiPalette, "#E6B450", "#DD1F3A52"),
         "solarizedlight" => MakeTerminalTheme("#586E75", "#FDF6E3", SolarizedLightAnsiPalette, "#586E75", "#FFCFE3EF"),
         "catppuccinlatte" => MakeTerminalTheme("#4C4F69", "#EFF1F5", CatppuccinLatteAnsiPalette, "#DC8A78", "#FFD3DBF5"),
+        "rosepinedawn" => MakeTerminalTheme("#575279", "#FAF4ED", RosePineDawnAnsiPalette, "#575279", "#FFDFDAD9"),
+        "gruvboxlight" => MakeTerminalTheme("#3C3836", "#FBF1C7", GruvboxLightAnsiPalette, "#3C3836", "#FFDCC79A"),
+        "onelight" => MakeTerminalTheme("#383A42", "#FAFAFA", OneLightAnsiPalette, "#4078F2", "#FFD7E4FB"),
         _ => MakeTerminalTheme("#D4D4D4", "#1E1E1E", DarkAnsiPalette, "#5FAFFF", "#DD2E5C8A"),
     };
 
@@ -155,6 +163,31 @@ public sealed class ShellAppearanceCoordinator
         "#45475A", "#F38BA8", "#A6E3A1", "#F9E2AF", "#89B4FA", "#F5C2E7", "#94E2D5", "#BAC2DE",
         "#585B70", "#FFA0BB", "#B8ECB3", "#FFEEC2", "#A6C8FF", "#FFD4F0", "#A8EEE2", "#A6ADC8"
     ];
+    private static readonly string[] KanagawaAnsiPalette =
+    [
+        "#090618", "#C34043", "#76946A", "#C0A36E", "#7E9CD8", "#957FB8", "#6A9589", "#C8C093",
+        "#727169", "#E82424", "#98BB6C", "#E6C384", "#7FB4CA", "#938AA9", "#7AA89F", "#DCD7BA"
+    ];
+    private static readonly string[] RosePineAnsiPalette =
+    [
+        "#26233A", "#EB6F92", "#31748F", "#F6C177", "#9CCFD8", "#C4A7E7", "#EBBCBA", "#E0DEF4",
+        "#6E6A86", "#FF8FAC", "#3E8FB0", "#FFD79A", "#B4E3EA", "#D6C0F0", "#F5D0CE", "#F0EEFF"
+    ];
+    private static readonly string[] EverforestDarkAnsiPalette =
+    [
+        "#343F44", "#E67E80", "#A7C080", "#DBBC7F", "#7FBBB3", "#D699B6", "#83C092", "#D3C6AA",
+        "#859289", "#F08C8E", "#B8CE95", "#E5CB94", "#93C9C1", "#E1AAC4", "#95CDA2", "#E2D8C0"
+    ];
+    private static readonly string[] NightOwlAnsiPalette =
+    [
+        "#011627", "#EF5350", "#22DA6E", "#ADDB67", "#82AAFF", "#C792EA", "#21C7A8", "#D6DEEB",
+        "#575656", "#FF6E67", "#5BFA9E", "#FFEB95", "#A6C4FF", "#DDB2FF", "#7FDBCA", "#FFFFFF"
+    ];
+    private static readonly string[] AyuDarkAnsiPalette =
+    [
+        "#1E232B", "#F07178", "#AAD94C", "#FFB454", "#59C2FF", "#D2A6FF", "#39BAE6", "#BFBDB6",
+        "#6C7380", "#FF8A91", "#C4EE6E", "#FFD173", "#73B8FF", "#DFBFFF", "#95E6CB", "#FCFCFC"
+    ];
     // 明色系ターミナル：白背景でも読めるよう暗色寄りの前景を使う。
     private static readonly string[] SolarizedLightAnsiPalette =
     [
@@ -165,5 +198,20 @@ public sealed class ShellAppearanceCoordinator
     [
         "#5C5F77", "#D20F39", "#40A02B", "#DF8E1D", "#1E66F5", "#EA76CB", "#179299", "#ACB0BE",
         "#6C6F85", "#B4082B", "#2F8020", "#B87415", "#1552CC", "#C25CA9", "#0F7379", "#8C90A1"
+    ];
+    private static readonly string[] RosePineDawnAnsiPalette =
+    [
+        "#575279", "#B4637A", "#286983", "#9A7414", "#56949F", "#907AA9", "#3E7B7F", "#9893A5",
+        "#797593", "#A0576D", "#1F5E77", "#8A6612", "#4A8590", "#7F6B98", "#357071", "#6E6A86"
+    ];
+    private static readonly string[] GruvboxLightAnsiPalette =
+    [
+        "#3C3836", "#9D0006", "#79740E", "#B57614", "#076678", "#8F3F71", "#427B58", "#7C6F64",
+        "#928374", "#CC241D", "#98971A", "#D79921", "#458588", "#B16286", "#689D6A", "#504945"
+    ];
+    private static readonly string[] OneLightAnsiPalette =
+    [
+        "#383A42", "#E45649", "#50A14F", "#C18401", "#4078F2", "#A626A4", "#0184BC", "#A0A1A7",
+        "#696C77", "#CA1243", "#3F8A3E", "#986801", "#2C5FD0", "#8B1F8A", "#016C99", "#5C5F6B"
     ];
 }
