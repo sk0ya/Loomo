@@ -313,15 +313,36 @@ public partial class ShellWindow : Window {
             ApplySidebarVisibility(vm.IsSidebarVisible);
             if (vm.IsSidebarVisible)
                 RecordTrailPanel(vm.ActivePanel);
-        } else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen) && vm.IsSettingsOverlayOpen)
-            EnsureSettingsOverlayCreated();
+        } else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen))
+            ApplySettingsWindowState(vm.IsSettingsOverlayOpen);
+        else if (e.PropertyName == nameof(ShellViewModel.SettingsCategory) && vm.IsSettingsOverlayOpen)
+            _settingsWindow?.Activate();    // 開いたままカテゴリだけ切り替えたとき（IsOpen は変化しない）
         else if (e.PropertyName == nameof(ShellViewModel.ActivePanel))
             RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
     }
-    private void EnsureSettingsOverlayCreated() {
-        if (SettingsOverlayHost.Content is null)
-            SettingsOverlayHost.Content = new SettingsOverlayView();
+
+    /// <summary>設定の独立ウィンドウを VM の開閉状態に追従させる。起動を軽くするため初回オープンまで生成しない。
+    /// ウィンドウ側（✕/Esc/Alt+F4）で閉じられたときは Closed で VM を閉状態へ戻す。</summary>
+    private void ApplySettingsWindowState(bool open) {
+        if (!open) {
+            _settingsWindow?.Close();
+            return;
+        }
+        if (_settingsWindow is null) {
+            _settingsWindow = new SettingsWindow {
+                Owner = this,                                       // 常に本体の手前・本体終了で一緒に閉じる
+                DataContext = _vm,                                  // 中身の SettingsView は同じ ShellViewModel を見る
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            };
+            _settingsWindow.Closed += (_, _) => {
+                _settingsWindow = null;
+                _vm.IsSettingsOverlayOpen = false;
+            };
+            _settingsWindow.Show();
+        }
+        _settingsWindow.Activate();     // 開いている状態でカテゴリを切り替えたときは手前へ
     }
+    private SettingsWindow? _settingsWindow;
     private void ApplySidebarVisibility(bool visible) {
         if (visible) {
             SidebarColumn.MinWidth = 120;

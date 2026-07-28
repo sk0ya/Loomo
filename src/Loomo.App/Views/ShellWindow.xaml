@@ -1371,11 +1371,9 @@
                     </Border>
                 </Popup>
 
-                <!-- 設定の中央オーバーレイ（ActivityBar の ⚙/🎨 で開く）。サイドバーの縦積みを置き換え、
-                     左カテゴリ[AI/外観/エディタ/安全]＋右内容の広い設定画面を中央に被せる。
-                     起動を軽くするため中身は初回オープン時に遅延生成する（code-behind が Content を差し込む）。 -->
-                <ContentControl x:Name="SettingsOverlayHost" Grid.ColumnSpan="4" Panel.ZIndex="150"
-                                Visibility="{Binding IsSettingsOverlayOpen, Converter={StaticResource BoolToVis}}" />
+                <!-- 設定（ActivityBar の ⚙/🎨 で開く）は本体に被せる中央オーバーレイではなく、独立ウィンドウ
+                     （SettingsWindow）で開く。自由に移動・リサイズできるようにするため。生成は初回オープン時
+                     （ShellWindow.xaml.cs の ApplySettingsWindowState）。 -->
 
                 <!-- コマンドパレット：部屋の全操作（移動・表示・タブ・コンポーザ・ペグボード・WS切替）を
                      名前で検索して実行する（Ctrl+Shift+P / Ctrl+W p。ShellWindow.CommandPalette.cs）。 -->
