@@ -70,11 +70,13 @@ public sealed class ShellAppearanceCoordinator
         return clone;
     }
 
+    /// <summary>保存名から配色を解決する。ライブラリ内蔵のプリセットを先に見て、無ければ Loomo 側で定義した
+    /// <see cref="EditorThemePresets"/>（Monokai・明色系など）を探し、どちらにも無ければ既定の Dracula。</summary>
     internal static EditorTheme ResolveEditorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
     {
         "dark" => EditorTheme.Dark, "nord" => EditorTheme.Nord,
         "tokyonight" => EditorTheme.TokyoNight, "onedark" => EditorTheme.OneDark,
-        _ => EditorTheme.Dracula,
+        var other => EditorThemePresets.TryGet(other) ?? EditorTheme.Dracula,
     };
 
     private static void SetOption(VimEditorControl control, string name, bool value)

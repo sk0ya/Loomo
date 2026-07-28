@@ -19,4 +19,40 @@ public class ShellAppearanceCoordinatorTests
     [InlineData("unknown")]
     public void Unknown_editor_theme_uses_Dracula(string? name)
         => Assert.Same(EditorTheme.Dracula, ShellAppearanceCoordinator.ResolveEditorTheme(name));
+
+    /// <summary>ライブラリに無い配色は Loomo 側（EditorThemePresets）で解決される。
+    /// 未知名フォールバック（Dracula）と同じにならないこと＝実際にプリセットが引けていることを確認する。</summary>
+    [Theory]
+    [InlineData("SolarizedDark")]
+    [InlineData("monokai")]
+    [InlineData("gruvboxdark")]
+    [InlineData("catppuccinmocha")]
+    [InlineData("highcontrast")]
+    [InlineData("light")]
+    [InlineData("solarizedlight")]
+    [InlineData("catppuccinlatte")]
+    public void Loomo_defined_editor_themes_are_resolved(string name)
+    {
+        var theme = ShellAppearanceCoordinator.ResolveEditorTheme(name);
+        Assert.NotSame(EditorTheme.Dracula, theme);
+        // 背景・文字色が既定のままなら組み立てに失敗している。
+        Assert.NotEqual(theme.Background.ToString(), theme.Foreground.ToString());
+    }
+
+    /// <summary>設定パネルの選択肢がすべて別々の配色へ解決される（＝キーの綴り違いで既定へ落ちていない）こと。
+    /// 背景だけでは内蔵 Dark と高コントラストがどちらも純黒で衝突するため、キーワード色も併せて見る。</summary>
+    [Fact]
+    public void Every_editor_theme_choice_resolves_to_its_own_theme()
+    {
+        var keys = new[]
+        {
+            "Dracula", "Dark", "Nord", "TokyoNight", "OneDark", "SolarizedDark", "Monokai",
+            "GruvboxDark", "CatppuccinMocha", "HighContrast", "Light", "SolarizedLight", "CatppuccinLatte",
+        };
+        var colors = keys
+            .Select(k => ShellAppearanceCoordinator.ResolveEditorTheme(k))
+            .Select(t => $"{t.Background}/{t.TokenKeyword}")
+            .ToList();
+        Assert.Equal(keys.Length, colors.Distinct().Count());
+    }
 }

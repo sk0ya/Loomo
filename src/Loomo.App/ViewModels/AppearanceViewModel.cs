@@ -134,14 +134,24 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new AccentSwatch("スレート",   "#FF64748B"),
         };
 
-        // 代表色は ShellWindow.ViewportSplit の各プリセット定義（背景／文字／アクセント・カーソル）と一致させる。
+        // 代表色は ShellAppearanceCoordinator.ResolveEditorTheme が返す配色（背景／アクセント／文字）と一致させる。
+        // 先頭5つはライブラリ内蔵、残りは Loomo 側定義（EditorThemePresets）。
         EditorThemes = new[]
         {
-            new PresetSwatch("Dracula",   "Dracula",    "#282A36", "#BD93F9", "#F8F8F2"),
-            new PresetSwatch("Dark",      "Dark",       "#1E1E1E", "#569CD6", "#D4D4D4"),
-            new PresetSwatch("Nord",      "Nord",       "#2E3440", "#88C0D0", "#D8DEE9"),
-            new PresetSwatch("TokyoNight","TokyoNight", "#1A1B26", "#7AA2F7", "#C0CAF5"),
-            new PresetSwatch("OneDark",   "OneDark",    "#282C34", "#61AFEF", "#ABB2BF"),
+            new PresetSwatch("Dracula",         "Dracula",          "#282A36", "#BD93F9", "#F8F8F2"),
+            // ライブラリ内蔵の Dark は背景が純黒（#1E1E1E ではない）。チップも実際の色に合わせる。
+            new PresetSwatch("Dark",            "Dark",             "#000000", "#569CD6", "#FFFFFF"),
+            new PresetSwatch("Nord",            "Nord",             "#2E3440", "#88C0D0", "#D8DEE9"),
+            new PresetSwatch("TokyoNight",      "Tokyo Night",      "#1A1B26", "#7AA2F7", "#C0CAF5"),
+            new PresetSwatch("OneDark",         "One Dark",         "#282C34", "#61AFEF", "#ABB2BF"),
+            new PresetSwatch("SolarizedDark",   "Solarized Dark",   "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch("Monokai",         "Monokai",          "#272822", "#66D9EF", "#F8F8F2"),
+            new PresetSwatch("GruvboxDark",     "Gruvbox Dark",     "#282828", "#FABD2F", "#EBDBB2"),
+            new PresetSwatch("CatppuccinMocha", "Catppuccin Mocha", "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch("HighContrast",    "高コントラスト",   "#000000", "#1AEBFF", "#FFFFFF"),
+            new PresetSwatch("Light",           "ライト",           "#FFFFFF", "#005FB8", "#1F1F1F"),
+            new PresetSwatch("SolarizedLight",  "Solarized Light",  "#FDF6E3", "#1E76B8", "#586E75"),
+            new PresetSwatch("CatppuccinLatte", "Catppuccin Latte", "#EFF1F5", "#1E66F5", "#4C4F69"),
         };
 
         PreviewThemes = new[]
