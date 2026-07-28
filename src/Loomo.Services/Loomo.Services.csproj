@@ -52,7 +52,9 @@
     <!-- 1.0.26: VT未対応だった5項目（色リセット・DECRQSS等）のエミュレーションを実装 -->
     <!-- 1.0.27: 入力/描画の応答性を改善（出力バッチ処理の調整） -->
     <!-- 1.0.28: UI Automation対応（ターミナルサーフェス）、キーバインド設定、カラーテーマカタログを追加 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.28" />
+    <!-- 1.0.29: WSLプロファイル自動検出（無効プロファイルは非表示）、Windows PowerShellへのシェル統合拡張、
+         ハイコントラスト対応、詳細設定のUI公開、描画性能の改善 -->
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.29" />
   </ItemGroup>
 
 </Project>
