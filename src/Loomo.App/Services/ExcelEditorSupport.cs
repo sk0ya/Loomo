@@ -108,7 +108,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
         if (_grid is null)
             return;
 
-        var light = _settings.Theme == AppTheme.Light;
+        var light = _settings.Theme.IsLight();
         if (_appliedLightTheme == light)
             return;
 

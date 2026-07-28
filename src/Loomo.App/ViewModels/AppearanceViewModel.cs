@@ -95,23 +95,43 @@ public sealed partial class AppearanceViewModel : ObservableObject
         // チップの色は各テーマの固定代表色（適用中の配色とは独立に表示）。Key は永続化値／照合に使う。
         Themes = new[]
         {
-            new PresetSwatch(nameof(AppTheme.Dark),         "ダーク",         "#1E1E1E", "#0E639C", "#D4D4D4"),
-            new PresetSwatch(nameof(AppTheme.Light),        "ライト",         "#FFFFFF", "#005FB8", "#1F1F1F"),
-            new PresetSwatch(nameof(AppTheme.SolarizedDark),"Solarized",      "#002B36", "#268BD2", "#93A1A1"),
-            new PresetSwatch(nameof(AppTheme.Nord),         "Nord",           "#2E3440", "#5E81AC", "#D8DEE9"),
-            new PresetSwatch(nameof(AppTheme.HighContrast), "高コントラスト", "#000000", "#1AEBFF", "#FFFFFF"),
+            // 暗色系
+            new PresetSwatch(nameof(AppTheme.Dark),            "ダーク",             "#1E1E1E", "#0E639C", "#D4D4D4"),
+            new PresetSwatch(nameof(AppTheme.SolarizedDark),   "Solarized Dark",     "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch(nameof(AppTheme.Nord),            "Nord",               "#2E3440", "#5E81AC", "#D8DEE9"),
+            new PresetSwatch(nameof(AppTheme.Dracula),         "Dracula",            "#282A36", "#BD93F9", "#F8F8F2"),
+            new PresetSwatch(nameof(AppTheme.TokyoNight),      "Tokyo Night",        "#1A1B26", "#7AA2F7", "#C0CAF5"),
+            new PresetSwatch(nameof(AppTheme.OneDark),         "One Dark",           "#282C34", "#61AFEF", "#ABB2BF"),
+            new PresetSwatch(nameof(AppTheme.Monokai),         "Monokai",            "#272822", "#66D9EF", "#F8F8F2"),
+            new PresetSwatch(nameof(AppTheme.GruvboxDark),     "Gruvbox Dark",       "#282828", "#D79921", "#EBDBB2"),
+            new PresetSwatch(nameof(AppTheme.CatppuccinMocha), "Catppuccin Mocha",   "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch(nameof(AppTheme.HighContrast),    "高コントラスト",     "#000000", "#1AEBFF", "#FFFFFF"),
+            // 明色系
+            new PresetSwatch(nameof(AppTheme.Light),           "ライト",             "#FFFFFF", "#005FB8", "#1F1F1F"),
+            new PresetSwatch(nameof(AppTheme.SolarizedLight),  "Solarized Light",    "#FDF6E3", "#1E76B8", "#586E75"),
+            new PresetSwatch(nameof(AppTheme.CatppuccinLatte), "Catppuccin Latte",   "#EFF1F5", "#1E66F5", "#4C4F69"),
         };
 
         Accents = new[]
         {
             new AccentSwatch("テーマ既定", ""),
             new AccentSwatch("ブルー",     "#FF0E639C"),
-            new AccentSwatch("シアン",     "#FF1B9E8F"),
-            new AccentSwatch("グリーン",   "#FF2EA043"),
+            new AccentSwatch("スカイ",     "#FF2F81F7"),
+            new AccentSwatch("インディゴ", "#FF4F46E5"),
+            new AccentSwatch("バイオレット","#FF7C3AED"),
             new AccentSwatch("パープル",   "#FF8957E5"),
             new AccentSwatch("マゼンタ",   "#FFBF4080"),
+            new AccentSwatch("ピンク",     "#FFDB2777"),
             new AccentSwatch("レッド",     "#FFD13438"),
             new AccentSwatch("オレンジ",   "#FFD9730D"),
+            new AccentSwatch("アンバー",   "#FFB45309"),
+            new AccentSwatch("イエロー",   "#FFCA8A04"),
+            new AccentSwatch("ライム",     "#FF65A30D"),
+            new AccentSwatch("グリーン",   "#FF2EA043"),
+            new AccentSwatch("エメラルド", "#FF10B981"),
+            new AccentSwatch("ティール",   "#FF1B9E8F"),
+            new AccentSwatch("シアン",     "#FF0891B2"),
+            new AccentSwatch("スレート",   "#FF64748B"),
         };
 
         // 代表色は ShellWindow.ViewportSplit の各プリセット定義（背景／文字／アクセント・カーソル）と一致させる。
@@ -126,24 +146,35 @@ public sealed partial class AppearanceViewModel : ObservableObject
 
         PreviewThemes = new[]
         {
-            new PresetSwatch("Dracula",      "Dracula",      "#282A36", "#8BE9FD", "#F8F8F2"),
-            new PresetSwatch("Dark",         "Dark",         "#1E1E1E", "#4FC1FF", "#D4D4D4"),
-            new PresetSwatch("Light",        "Light",        "#FFFFFF", "#0969DA", "#24292F"),
-            new PresetSwatch("GitHub",       "GitHub",       "#FFFFFF", "#CF222E", "#24292F"),
-            new PresetSwatch("Nord",         "Nord",         "#2E3440", "#88C0D0", "#D8DEE9"),
-            new PresetSwatch("TokyoNight",   "TokyoNight",   "#1A1B26", "#7AA2F7", "#C0CAF5"),
-            new PresetSwatch("OneDark",      "OneDark",      "#282C34", "#61AFEF", "#ABB2BF"),
-            new PresetSwatch("SolarizedDark","Solarized",    "#002B36", "#268BD2", "#93A1A1"),
-            new PresetSwatch("Monokai",      "Monokai",      "#272822", "#66D9EF", "#F8F8F2"),
+            new PresetSwatch("Dracula",         "Dracula",          "#282A36", "#8BE9FD", "#F8F8F2"),
+            new PresetSwatch("Dark",            "Dark",             "#1E1E1E", "#4FC1FF", "#D4D4D4"),
+            new PresetSwatch("Light",           "Light",            "#FFFFFF", "#0969DA", "#24292F"),
+            new PresetSwatch("GitHub",          "GitHub",           "#FFFFFF", "#CF222E", "#24292F"),
+            new PresetSwatch("Nord",            "Nord",             "#2E3440", "#88C0D0", "#D8DEE9"),
+            new PresetSwatch("TokyoNight",      "Tokyo Night",      "#1A1B26", "#7AA2F7", "#C0CAF5"),
+            new PresetSwatch("OneDark",         "One Dark",         "#282C34", "#61AFEF", "#ABB2BF"),
+            new PresetSwatch("SolarizedDark",   "Solarized Dark",   "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch("Monokai",         "Monokai",          "#272822", "#66D9EF", "#F8F8F2"),
+            new PresetSwatch("GruvboxDark",     "Gruvbox Dark",     "#282828", "#FABD2F", "#EBDBB2"),
+            new PresetSwatch("CatppuccinMocha", "Catppuccin Mocha", "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch("SolarizedLight",  "Solarized Light",  "#FDF6E3", "#268BD2", "#586E75"),
+            new PresetSwatch("CatppuccinLatte", "Catppuccin Latte", "#EFF1F5", "#1E66F5", "#4C4F69"),
         };
 
         TerminalThemes = new[]
         {
-            new PresetSwatch("Dark",         "Dark",      "#1E1E1E", "#5FAFFF", "#D4D4D4"),
-            new PresetSwatch("Light",        "Light",     "#FFFFFF", "#0037DA", "#1F1F1F"),
-            new PresetSwatch("Dracula",      "Dracula",   "#282A36", "#BD93F9", "#F8F8F2"),
-            new PresetSwatch("Nord",         "Nord",      "#2E3440", "#88C0D0", "#D8DEE9"),
-            new PresetSwatch("SolarizedDark","Solarized", "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch("Dark",            "Dark",             "#1E1E1E", "#5FAFFF", "#D4D4D4"),
+            new PresetSwatch("Dracula",         "Dracula",          "#282A36", "#BD93F9", "#F8F8F2"),
+            new PresetSwatch("Nord",            "Nord",             "#2E3440", "#88C0D0", "#D8DEE9"),
+            new PresetSwatch("SolarizedDark",   "Solarized Dark",   "#002B36", "#268BD2", "#93A1A1"),
+            new PresetSwatch("TokyoNight",      "Tokyo Night",      "#1A1B26", "#7AA2F7", "#C0CAF5"),
+            new PresetSwatch("OneDark",         "One Dark",         "#282C34", "#61AFEF", "#ABB2BF"),
+            new PresetSwatch("Monokai",         "Monokai",          "#272822", "#66D9EF", "#F8F8F2"),
+            new PresetSwatch("GruvboxDark",     "Gruvbox Dark",     "#282828", "#FABD2F", "#EBDBB2"),
+            new PresetSwatch("CatppuccinMocha", "Catppuccin Mocha", "#1E1E2E", "#89B4FA", "#CDD6F4"),
+            new PresetSwatch("Light",           "Light",            "#FFFFFF", "#0037DA", "#1F1F1F"),
+            new PresetSwatch("SolarizedLight",  "Solarized Light",  "#FDF6E3", "#268BD2", "#586E75"),
+            new PresetSwatch("CatppuccinLatte", "Catppuccin Latte", "#EFF1F5", "#1E66F5", "#4C4F69"),
         };
 
         // 初期選択は背面フィールドへ直接代入（プロパティ setter を介さず OnXxxChanged を発火させない）。

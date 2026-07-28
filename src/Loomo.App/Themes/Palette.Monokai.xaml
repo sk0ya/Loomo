@@ -1,0 +1,34 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (Monokai) =====
+         キーは Palette.Dark.xaml と一対一で対応させること。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FF272822" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FF1E1F1C" />
+    <SolidColorBrush x:Key="Panel" Color="#FF272822" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF1B1C18" />
+    <SolidColorBrush x:Key="Border" Color="#FF3E3D32" />
+    <SolidColorBrush x:Key="Accent" Color="#FF66D9EF" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FF8FE7F5" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF1E1F1C" />
+    <SolidColorBrush x:Key="Fg" Color="#FFF8F8F2" />
+    <SolidColorBrush x:Key="FgDim" Color="#FF9E9A85" />
+    <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明イエロー） -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80E6DB74" />
+    <!-- リストの選択行背景（はっきり見えるオリーブ寄りのグレー。複数選択はこの帯がつながる） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FF57564A" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FFA6E22E" />
+    <SolidColorBrush x:Key="Error" Color="#FFF92672" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。Monokai の高彩度配色。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF9E9A85" />
+    <SolidColorBrush x:Key="SymType" Color="#FF66D9EF" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FFA1EFE4" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFE6DB74" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FFA6E22E" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FFFD971F" />
+    <SolidColorBrush x:Key="SymField" Color="#FFAE81FF" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FFFF6188" />
+
+</ResourceDictionary>

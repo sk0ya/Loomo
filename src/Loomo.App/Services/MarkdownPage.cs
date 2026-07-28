@@ -15,7 +15,8 @@ internal static class MarkdownPage
         var t = title != null ? MarkdownRenderer.Encode(title) : "Preview";
         var css = PreviewCss(styleName);
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
-        var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" ? "default" : "dark";
+        var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" or "SolarizedLight" or "CatppuccinLatte"
+            ? "default" : "dark";
 
         // 描画モード（ページ側 JS が読む）。marp は本文を空のステージにし、生 Markdown を JS へ渡す。
         var modeJs = mode == PreviewMode.Marp ? "marp" : "document";
@@ -490,6 +491,10 @@ internal static class MarkdownPage
             "onedark" => "OneDark",
             "solarizeddark" => "SolarizedDark",
             "monokai" => "Monokai",
+            "gruvboxdark" => "GruvboxDark",
+            "catppuccinmocha" => "CatppuccinMocha",
+            "solarizedlight" => "SolarizedLight",
+            "catppuccinlatte" => "CatppuccinLatte",
             _ => "Dracula",
         };
 
@@ -503,6 +508,10 @@ internal static class MarkdownPage
         "OneDark" => BaseCss("#282C34", "#ABB2BF", "#21252B", "#3E4451", "#61AFEF", "#C678DD", "#E5C07B", "#5C6370", "#98C379"),
         "SolarizedDark" => BaseCss("#002B36", "#93A1A1", "#073642", "#586E75", "#268BD2", "#2AA198", "#CB4B16", "#586E75", "#859900"),
         "Monokai" => BaseCss("#272822", "#F8F8F2", "#3E3D32", "#49483E", "#66D9EF", "#F92672", "#FD971F", "#75715E", "#A6E22E"),
+        "GruvboxDark" => BaseCss("#282828", "#EBDBB2", "#32302F", "#504945", "#83A598", "#FABD2F", "#FE8019", "#A89984", "#B8BB26"),
+        "CatppuccinMocha" => BaseCss("#1E1E2E", "#CDD6F4", "#181825", "#313244", "#89B4FA", "#CBA6F7", "#FAB387", "#9399B2", "#A6E3A1"),
+        "SolarizedLight" => BaseCss("#FDF6E3", "#586E75", "#EEE8D5", "#DDD6C1", "#268BD2", "#2AA198", "#CB4B16", "#93A1A1", "#6D8A00"),
+        "CatppuccinLatte" => BaseCss("#EFF1F5", "#4C4F69", "#E6E9EF", "#CCD0DA", "#1E66F5", "#8839EF", "#D9730D", "#7C7F93", "#40A02B"),
         _ => BaseCss("#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"),
     };
 

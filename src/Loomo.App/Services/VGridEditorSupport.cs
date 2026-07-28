@@ -66,7 +66,7 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider
     /// </summary>
     private void ApplyTheme(TsvEditorControl view)
     {
-        var light = _settings.Theme == AppTheme.Light;
+        var light = _settings.Theme.IsLight();
         if (_appliedLightTheme == light)
             return;
 

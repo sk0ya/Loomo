@@ -1,0 +1,35 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (Gruvbox Dark) =====
+         キーは Palette.Dark.xaml と一対一で対応させること。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FF282828" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FF32302F" />
+    <SolidColorBrush x:Key="Panel" Color="#FF282828" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF1D2021" />
+    <SolidColorBrush x:Key="Border" Color="#FF504945" />
+    <SolidColorBrush x:Key="Accent" Color="#FFD79921" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FFFABD2F" />
+    <!-- Accent が明るい黄なので、その上の文字は暗色にする -->
+    <SolidColorBrush x:Key="AccentFg" Color="#FF1D2021" />
+    <SolidColorBrush x:Key="Fg" Color="#FFEBDBB2" />
+    <SolidColorBrush x:Key="FgDim" Color="#FFA89984" />
+    <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明アンバー） -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80FABD2F" />
+    <!-- リストの選択行背景（はっきり見える暖色グレー。複数選択はこの帯がつながる） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FF665C54" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FFB8BB26" />
+    <SolidColorBrush x:Key="Error" Color="#FFFB4934" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。Gruvbox の暖色系アクセント。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FFA89984" />
+    <SolidColorBrush x:Key="SymType" Color="#FF8EC07C" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF83A598" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFFABD2F" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FFD3869B" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FFFE8019" />
+    <SolidColorBrush x:Key="SymField" Color="#FFB8BB26" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FFE0A863" />
+
+</ResourceDictionary>

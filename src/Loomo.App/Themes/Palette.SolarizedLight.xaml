@@ -1,0 +1,36 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (Solarized Light) =====
+         キーは Palette.Dark.xaml と一対一で対応させること。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FFFDF6E3" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FFEEE8D5" />
+    <SolidColorBrush x:Key="Panel" Color="#FFFDF6E3" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FFE6DFC8" />
+    <SolidColorBrush x:Key="Border" Color="#FFDDD6C1" />
+    <!-- 明色テーマなので、Accent 上の白文字が読めるよう Solarized の青より暗く寄せ、
+         ホバーはさらに暗くする（暗色テーマの「明るくする」とは逆向き）。 -->
+    <SolidColorBrush x:Key="Accent" Color="#FF1E76B8" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FF135F97" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Fg" Color="#FF586E75" />
+    <SolidColorBrush x:Key="FgDim" Color="#FF93A1A1" />
+    <!-- 検索ヒット文字の強調背景（明るい背景でも沈まない半透明アンバー） -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80D9A400" />
+    <!-- リストの選択行背景（明背景で文字が読める淡い青。複数選択はこの帯がつながる） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FFCFE3EF" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FF6D8A00" />
+    <SolidColorBrush x:Key="Error" Color="#FFDC322F" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。明背景で読めるよう暗めに寄せた Solarized。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF6E7B7B" />
+    <SolidColorBrush x:Key="SymType" Color="#FF1F8A82" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF1E6FA8" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FF9A7000" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FF5B60B8" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF2176B0" />
+    <SolidColorBrush x:Key="SymField" Color="#FFB1541A" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FF6D8A00" />
+
+</ResourceDictionary>

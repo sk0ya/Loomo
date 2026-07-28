@@ -104,7 +104,7 @@ public partial class MarkdownTableGridWindow : Window
     /// <summary>VGrid.Editor のテーマ辞書をグリッド自身の Resources へマージする（<see cref="VGridEditorSupport"/> と同じ流儀）。</summary>
     private static void ApplyTheme(TsvEditorControl grid, AppTheme theme)
     {
-        var light = theme == AppTheme.Light;
+        var light = theme.IsLight();
         var dict = new ResourceDictionary
         {
             Source = new Uri(
