@@ -64,7 +64,7 @@ internal sealed class PaneSplitView
         }
 
         /// <summary>指定タブを表示する。既に表示中ならそのビューポートへフォーカス、無ければフォーカス中ビューポートへ割り当てる。</summary>
-        public void Activate(Guid tabId)
+        public void Activate(Guid tabId, bool focusControl = true)
         {
             if (_root is null)
             {
@@ -91,7 +91,8 @@ internal sealed class PaneSplitView
                 }
             }
             Rebuild();
-            FocusFocused();
+            if (focusControl)
+                FocusFocused();
         }
 
         /// <summary>フォーカス中ビューポートの隣へ新しいビューポート（newTabId 表示）を挿入し、そこへフォーカスする。</summary>

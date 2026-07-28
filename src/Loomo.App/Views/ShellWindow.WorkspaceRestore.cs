@@ -1,13 +1,16 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース復元時のタブ実体の付け替え（端末／エディタ／ブラウザの Restore・Attach・Detach・GetOrCreate）。切替の入口とスナップショット保存は ShellWindow.Workspaces.cs。</summary>
 public partial class ShellWindow {
-    private void RestoreTerminalTabs(WorkspaceSnapshot workspace) {
+    private void RestoreTerminalTabs(
+        WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
         var terminalWorkspace = GetOrCreateTerminalWorkspace(workspace.Id);
         _activeTerminalWorkspace = terminalWorkspace;
         _terminalTabs = terminalWorkspace.Tabs;
         if (terminalWorkspace.IsInitialized && _terminalTabs.Count > 0) {
             AttachTerminalTabs();
-            ActivateTerminalTab(terminalWorkspace.ActiveTabId ?? _terminalTabs[0].Id);
+            profile?.Lap("terminal.attach");
+            ActivateTerminalTab(
+                terminalWorkspace.ActiveTabId ?? _terminalTabs[0].Id, profile, focusView: false);
             return;
         }
         terminalWorkspace.IsInitialized = true;
@@ -25,15 +28,20 @@ public partial class ShellWindow {
             _vm.Tabs.AddTerminalTab(tab.Id, snapshot.Title ?? tab.View.HeaderTitle, false);
         }
         var active = snapshots.FirstOrDefault(t => t.IsActive) ?? snapshots.First();
-        ActivateTerminalTab(active.Id == Guid.Empty ? _terminalTabs[0].Id : active.Id);
+        ActivateTerminalTab(
+            active.Id == Guid.Empty ? _terminalTabs[0].Id : active.Id,
+            focusView: false);
     }
-    private void RestoreEditorTabs(WorkspaceSnapshot workspace) {
+    private void RestoreEditorTabs(
+        WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
         var editorWorkspace = GetOrCreateEditorWorkspace(workspace.Id);
         _activeEditorWorkspace = editorWorkspace;
         _editorTabs = editorWorkspace.Tabs;
         if (editorWorkspace.IsInitialized && _editorTabs.Count > 0) {
             AttachEditorTabs();
-            ActivateEditorTab(editorWorkspace.ActiveTabId ?? _editorTabs[0].Id);
+            profile?.Lap("editor.attach");
+            ActivateEditorTab(
+                editorWorkspace.ActiveTabId ?? _editorTabs[0].Id, profile, focusView: false);
             return;
         }
         editorWorkspace.IsInitialized = true;
@@ -50,7 +58,9 @@ public partial class ShellWindow {
             _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
         }
         var active = snapshots.FirstOrDefault(t => t.IsActive) ?? snapshots.First();
-        ActivateEditorTab(active.Id == Guid.Empty ? _editorTabs[0].Id : active.Id);
+        ActivateEditorTab(
+            active.Id == Guid.Empty ? _editorTabs[0].Id : active.Id,
+            focusView: false);
     }
     private TerminalWorkspaceTabs GetOrCreateTerminalWorkspace(Guid workspaceId) {
         if (_terminalWorkspaces.TryGetValue(workspaceId, out var terminalWorkspace))

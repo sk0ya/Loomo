@@ -51,19 +51,25 @@ public partial class ShellWindow {
         => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
     private EditorWorkspaceTabs CurrentEditorWorkspace
         => _activeEditorWorkspace ?? _scratchEditorWorkspace;
-    private void ActivateTerminalTab(Guid id) {
+    private void ActivateTerminalTab(
+        Guid id, WorkspaceSwitchProfiler? profile = null, bool focusView = true) {
         var tab = _terminalTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null)
             return;
-        _terminalViews?.Activate(id);
+        _terminalViews?.Activate(id, focusView);
+        profile?.Lap("terminal.views");
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = id;
         _terminal.Attach(tab.View);
+        profile?.Lap("terminal.serviceAttach");
         if (Directory.Exists(tab.View.WorkingDirectory))
             _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
+        profile?.Lap("terminal.cwd");
         _vm.Tabs.ActivateTerminalTab(id);
+        profile?.Lap("terminal.tabVm");
         RecordTrailTerminalTab(tab);
         SaveActiveWorkspaceSnapshot();
+        profile?.Lap("terminal.bookkeeping");
     }
     private void SetActiveTerminalTab(TerminalTab tab) {
         _activeTerminalTab = tab;
@@ -103,20 +109,26 @@ public partial class ShellWindow {
                 SetActiveTerminalTab(ft);
         }
     }
-    private void ActivateEditorTab(Guid id) {
+    private void ActivateEditorTab(
+        Guid id, WorkspaceSwitchProfiler? profile = null, bool focusView = true) {
         var tab = _editorTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null)
             return;
-        _editorViews?.Activate(id);
+        _editorViews?.Activate(id, focusView);
+        profile?.Lap("editor.views");
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = id;
         _editor.Attach(tab.Control);
+        profile?.Lap("editor.serviceAttach");
         _vm.Tabs.ActivateEditorTab(id);
+        profile?.Lap("editor.tabVm");
         QueueEditorTabHeaderIntoView(id);
         _ = SwitchEditorSupportSourceAsync(tab);
+        profile?.Lap("editor.support");
         RecordTrailEditorTab(tab);
         OnActiveEditorFileChanged(tab);
         SaveActiveWorkspaceSnapshot();
+        profile?.Lap("editor.bookkeeping");
     }
     private void SetActiveEditorTab(EditorTab tab) {
         _activeEditorTab = tab;

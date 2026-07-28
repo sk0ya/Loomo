@@ -119,8 +119,10 @@ public partial class ShellWindow {
             _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);
     }
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false) {
+        using var profile = WorkspaceSwitchProfiler.Begin(workspace.Name);
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);
+        profile?.Lap("save");
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
         try {
@@ -128,12 +130,14 @@ public partial class ShellWindow {
             _vm.Trail.EnsureLoaded();
             _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
             _trailLastPaneMode = null;
-            await SwitchWorkspaceCoreAsync(workspace, deferHydration);
+            profile?.Lap("trail");
+            await SwitchWorkspaceCoreAsync(workspace, deferHydration, profile);
         } finally {
             _trailSuppressed = trailSaved;
         }
     }
-    private async Task SwitchWorkspaceCoreAsync(WorkspaceSnapshot workspace, bool deferHydration) {
+    private async Task SwitchWorkspaceCoreAsync(
+        WorkspaceSnapshot workspace, bool deferHydration, WorkspaceSwitchProfiler? profile = null) {
         ClearStageModeForWorkspaceSwitch();
         _vm.SearchPanel.ClearQuery();
         DetachTerminalTabs();
@@ -141,11 +145,13 @@ public partial class ShellWindow {
         DetachBrowserTabs();
         _detached?.CloseAll();
         _activeWorkspace = workspace;
+        profile?.Lap("detach");
         if (!deferHydration) {
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
+        profile?.Lap("folderTree");
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
@@ -153,32 +159,40 @@ public partial class ShellWindow {
         LoadEnabledSessions(workspace.EnabledSessions);
         PrepareStageSnapshot(WorkspaceSessionCoordinator.ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
+        profile?.Lap("viewModels");
         ApplyPaneLayout(workspace.PaneLayout);
         if (_isSpanMaximized)
             ReapplySpanPaneLayout();
         StartupProfiler.Mark("  復元:ApplyPaneLayout");
+        profile?.Lap("paneLayout");
         if (deferHydration) {
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             StartupProfiler.Mark("  復元:初フレーム後に継続");
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
+            profile?.Lap("deferredFolderTree");
         }
-        RestoreTerminalTabs(workspace);
+        RestoreTerminalTabs(workspace, profile);
         StartupProfiler.Mark("  復元:RestoreTerminalTabs");
+        profile?.Lap("terminal");
         if (deferHydration)
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
-        RestoreEditorTabs(workspace);
+        RestoreEditorTabs(workspace, profile);
         StartupProfiler.Mark("  復元:RestoreEditorTabs");
+        profile?.Lap("editor");
         if (deferHydration)
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
         await RestoreBrowserTabsAsync(workspace);
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
+        profile?.Lap("browser");
         CompleteStageSnapshotRestore();
         if (workspace.DetachedWindows.Count > 0)
             Detached.Restore(workspace.DetachedWindows, RestoreDetachedItem);
         StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
+        profile?.Lap("stage");
         SaveActiveWorkspaceSnapshot();
+        profile?.Lap("scheduleSave");
     }
     // スナップショットからワークスペースフォルダー一覧（プライマリ＋追加）を組み立てる。deferHydration 中は
     // _workspace（実サービス）がまだ新ワークスペースへ切り替わっていないことがあるため、スナップショットの
