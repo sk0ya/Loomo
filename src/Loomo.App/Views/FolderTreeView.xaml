@@ -186,7 +186,7 @@
                 <ComboBox MinHeight="24"
                           ItemsSource="{Binding RootOptions}"
                           SelectedItem="{Binding SelectedRootOption, Mode=TwoWay}"
-                          DisplayMemberPath="Label"
+                          DisplayMemberPath="DisplayLabel"
                           ToolTip="{Binding SelectedRootOption.FullPath}" />
             </DockPanel>
             <TextBlock Text="{Binding FilterStatus}"
@@ -423,7 +423,7 @@
                                       Margin="0,1,0,1"
                                       ItemsSource="{Binding RootSwitchOptions}"
                                       SelectedItem="{Binding SelectedRootSwitchOption, Mode=TwoWay}"
-                                      DisplayMemberPath="Label"
+                                      DisplayMemberPath="DisplayLabel"
                                       ToolTip="{Binding FullPath}"
                                       Visibility="Collapsed" />
                         </DockPanel>

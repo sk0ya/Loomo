@@ -60,6 +60,8 @@ public sealed partial class FolderTreeViewModel
 
     private void RefreshRootState(FolderTreeRootState state)
     {
+        RefreshRootOptionAvailability(state.RootOptions);
+        state.Watcher?.Watch(ExistingWatchPath(state.DisplayedPath, state.FolderPath));
         state.GitLoadCts?.Cancel();
         var cts = new CancellationTokenSource();
         state.GitLoadCts = cts;

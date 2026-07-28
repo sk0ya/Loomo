@@ -112,18 +112,25 @@ public sealed class FolderTreePinningTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadRoot_restores_pins_and_tree_root_and_drops_missing_pins()
+    public async Task LoadRoot_preserves_missing_pin_and_shows_missing_state()
     {
         var sut = CreateSut();
         var missing = Path.Combine(_root, "deleted");
 
-        sut.LoadRoot(_root, new[] { _nested, missing }, treeRootPath: _nested);
+        sut.LoadRoot(_root, new[] { _nested, missing }, treeRootPath: missing);
         await sut.WhenTreeLoadedAsync();   // ツリー投入は git 読込の後（バックグラウンド）
 
-        Assert.Single(sut.RootOptions, o => o.IsPinned);   // 消えたピンは捨てる
-        Assert.Equal(Path.GetFullPath(_nested), sut.TreeRootOverride);
-        Assert.Contains(sut.Nodes, n => n.Name == "inner.txt");
+        Assert.Equal(2, sut.RootOptions.Count(o => o.IsPinned));
+        var missingOption = sut.RootOptions.Single(o => PathsEqualForTest(o.FullPath, missing));
+        Assert.True(missingOption.IsMissing);
+        Assert.Contains("(フォルダーなし)", missingOption.DisplayLabel);
+        Assert.Equal(Path.GetFullPath(missing), sut.TreeRootOverride);
+        Assert.Empty(sut.Nodes);
+        Assert.Equal("フォルダーが存在しません", sut.EmptyMessage);
     }
+
+    private static bool PathsEqualForTest(string left, string right)
+        => string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
 
     [Fact]
     public void RootStateChanged_fires_on_pin_unpin_and_switch_but_not_on_load()

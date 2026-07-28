@@ -221,6 +221,15 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void RefreshWorkspace()
     {
         if (_multiRootStates.Count == 0 && _currentRoot is null) return;
+        if (_multiRootStates.Count == 0)
+        {
+            RefreshRootOptionAvailability(RootOptions);
+            if (_currentRoot is not null)
+                StartWatching(_currentRoot);
+        }
+        else
+            foreach (var state in _multiRootStates.Values)
+                RefreshRootOptionAvailability(state.RootOptions);
         // git 状態はバックグラウンドで読み、完了後に ReloadNodes でツリーへ反映する
         // （RefreshGitStateAsync の継続が ReloadNodes を呼ぶ）。
         RefreshGitStateAsync();
@@ -396,6 +405,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         if (_currentRoot is null)
             return "フォルダを開いてください";
 
+        if (!_query.DirectoryExists(_currentRoot))
+            return "フォルダーが存在しません";
+
         if (ShowChangedOnly && !_gitState.IsGitRepository)
             return "Git リポジトリではありません";
 
@@ -408,7 +420,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void StartWatching(string path)
     {
         _watcher ??= new DebouncedFolderWatcher(RefreshWorkspace);
-        _watcher.Watch(path);
+        _watcher.Watch(ExistingWatchPath(path, _workspaceRoot));
     }
 
     // ===== マルチルート（複数ワークスペースフォルダー） =====
@@ -541,6 +553,23 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void StartWatchingRootState(FolderTreeRootState state)
     {
         state.Watcher = new DebouncedFolderWatcher(() => RefreshRootState(state));
-        state.Watcher.Watch(state.DisplayedPath);
+        state.Watcher.Watch(ExistingWatchPath(state.DisplayedPath, state.FolderPath));
+    }
+
+    // ピン先が消えている間は、作成を検知できる最寄りの既存親（ただしワークスペース内）を監視する。
+    private static string ExistingWatchPath(string path, string? workspaceRoot)
+    {
+        var candidate = Path.GetFullPath(path);
+        var boundary = workspaceRoot is null ? null : Path.GetFullPath(workspaceRoot);
+        while (!Directory.Exists(candidate)
+               && boundary is not null
+               && !PathsEqual(candidate, boundary))
+        {
+            var parent = Directory.GetParent(candidate)?.FullName;
+            if (parent is null)
+                break;
+            candidate = parent;
+        }
+        return candidate;
     }
 }

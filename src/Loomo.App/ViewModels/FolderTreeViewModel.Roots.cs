@@ -190,7 +190,7 @@ public sealed partial class FolderTreeViewModel
                 if (string.IsNullOrWhiteSpace(pinnedSub))
                     continue;
                 var subFull = Path.GetFullPath(pinnedSub);
-                if (PathsEqual(subFull, state.FolderPath) || !_query.DirectoryExists(subFull))
+                if (PathsEqual(subFull, state.FolderPath))
                     continue;
                 if (state.RootOptions.Any(o => PathsEqual(o.FullPath, subFull)))
                     continue;
@@ -282,13 +282,13 @@ public sealed partial class FolderTreeViewModel
             RootOptions.Clear();
             RootOptions.Add(new FolderRootOption(_workspaceRoot!, LabelFor(_workspaceRoot!), isPinned: false));
 
-            // 消えたピン・ルートと同一のピンは読み込み時に捨てる（保存時に自然に消える）。
+            // ブランチ切替などで一時的に消えたピンも保持する。存在状態は FolderRootOption が表示する。
             foreach (var pin in pinnedFolders)
             {
                 if (string.IsNullOrWhiteSpace(pin))
                     continue;
                 var full = Path.GetFullPath(pin);
-                if (PathsEqual(full, _workspaceRoot!) || !_query.DirectoryExists(full))
+                if (PathsEqual(full, _workspaceRoot!))
                     continue;
                 if (RootOptions.Any(o => PathsEqual(o.FullPath, full)))
                     continue;
@@ -348,6 +348,7 @@ public sealed partial class FolderTreeViewModel
     private void SetDisplayRoot(string path)
     {
         _currentRoot = Path.GetFullPath(path);
+        RefreshRootOptionAvailability(RootOptions);
         RootLabel = Path.GetFileName(path.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(RootLabel)) RootLabel = path;
 
@@ -365,6 +366,12 @@ public sealed partial class FolderTreeViewModel
         // UI スレッドで git プロセスを同期起動しないので、ワークスペース切替が固まらない。
         RefreshGitStateAsync();
         StartWatching(_currentRoot);
+    }
+
+    private static void RefreshRootOptionAvailability(IEnumerable<FolderRootOption> options)
+    {
+        foreach (var option in options)
+            option.IsMissing = !Directory.Exists(option.FullPath);
     }
 
     // ComboBox の表示名。ワークスペースルートはフォルダ名、ピンはルートからの相対パス
