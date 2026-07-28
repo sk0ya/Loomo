@@ -207,6 +207,7 @@
                       PreviewMouseMove="OnTreePreviewMouseMove"
                       DragOver="OnTreeDragOver"
                       Drop="OnTreeDrop"
+                      SelectedItemChanged="OnTreeSelectedItemChanged"
                       PreviewKeyDown="OnTreeKeyDown"
                       PreviewTextInput="OnTreePreviewTextInput"
                       PreviewMouseRightButtonDown="OnTreeRightButtonDown"

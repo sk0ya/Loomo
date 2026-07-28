@@ -18,15 +18,74 @@ public partial class FolderTreeView : UserControl
     // gg（先頭へ）の 1 つ目の g を受け取った状態。
     private bool _pendingG;
 
+    // キーボード移動（j/k・矢印・gg/G）で選択が変わったときのプレビュー。押しっぱなしのキーリピートで
+    // 通り過ぎる行まで読み込むと重いので、少し落ち着いてから「そのとき選択されている行」を開く。
+    private readonly DispatcherTimer _selectionPreviewTimer =
+        new() { Interval = TimeSpan.FromMilliseconds(120) };
+
+    // プログラムからの選択（エディタの現在ファイル同期・ドロップ後の表示）では自動プレビューしない。
+    private bool _suppressSelectionPreview;
+
     public FolderTreeView()
     {
         InitializeComponent();
+        _selectionPreviewTimer.Tick += (_, _) =>
+        {
+            _selectionPreviewTimer.Stop();
+            PreviewSelectedNode();
+        };
     }
 
-    /// <summary>ツリー本体へキーボードフォーカスを移す。未選択なら先頭ノードを選んでフォーカスする。</summary>
+    /// <summary>ツリー本体へキーボードフォーカスを移す。未選択なら先頭ノードを選んでフォーカスする。
+    /// TreeView 自体にフォーカスしても j/k・矢印キーの移動は効かない（キーボード移動は TreeViewItem
+    /// 側の実装）ので、必ず項目コンテナへ入れる。パネルを開いた直後はコンテナがまだ生成されて
+    /// いないことがあるため、その場合はレイアウト確定後にもう一度試す。</summary>
     public void FocusTree()
     {
-        if (!EnsureSelection(FileTree))
+        if (FocusCurrentItem())
+            return;
+
+        FileTree.Focus();
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => FocusCurrentItem()));
+    }
+
+    // 選択中（無ければ先頭を選んで）の項目コンテナへキーボードフォーカスを入れる。
+    // コンテナが未生成などで入れられなければ false。
+    private bool FocusCurrentItem()
+    {
+        if (!FileTree.IsVisible || FileTree.Items.Count == 0)
+            return false;
+
+        if (FileTree.SelectedItem is FileNodeViewModel selected)
+            return FindContainer(FileTree, selected) is { } container && container.Focus();
+
+        if (FileTree.ItemContainerGenerator.ContainerFromIndex(0) is not TreeViewItem first)
+            return false;
+
+        first.IsSelected = true;
+        return first.Focus();
+    }
+
+    /// <summary>プレビュー表示（ActivateEditorTab → PaneSplitView.FocusFocused）でエディタへ
+    /// 同期的に奪われたキーボードフォーカスをツリーへ戻す。単クリックのプレビューは「まだツリーを
+    /// 操作している」状態なので、続けて j/k や次のクリックで選択を送れるようにする（ダブルクリック／
+    /// Enter の明示的な Activate は対象外＝そのままエディタへ移る）。読み込み直しなどが非同期に走って
+    /// あとからフォーカスを奪い返すことがあるため、アイドル時にもう一度確認する
+    /// （SearchPanelView.RestoreResultTreeFocus と同じ手当て）。</summary>
+    private void RestoreTreeFocus(FileNodeViewModel node)
+    {
+        FocusNode(node);
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => FocusNode(node)));
+    }
+
+    private void FocusNode(FileNodeViewModel node)
+    {
+        if (FileTree.IsKeyboardFocusWithin)
+            return;
+
+        if (FindContainer(FileTree, node) is { } container)
+            container.Focus();
+        else
             FileTree.Focus();
     }
 
@@ -99,7 +158,39 @@ public partial class FolderTreeView : UserControl
         if (node.IsDirectory)
             node.IsExpanded = !node.IsExpanded;
         else if (DataContext is FolderTreeViewModel vm)
+        {
             vm.NotifyPreviewRequested(node.FullPath);
+            // プレビューでエディタがフォーカスを奪うため、ツリーへ戻して選択操作を続けられるようにする。
+            RestoreTreeFocus(node);
+        }
+    }
+
+    /// <summary>キーボード移動で選択が変わったらエディタのプレビュータブを追従させる（単クリックと同じ
+    /// 「まだツリーを操作中」の扱い＝プレビューのあともフォーカスはツリーに残す）。マウス操作中の選択変更は
+    /// <see cref="OnTreeMouseLeftButtonUp"/> 側が出すので二重に開かない。右クリック（メニューを出すための
+    /// 選択）でも開かない。</summary>
+    private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (_suppressSelectionPreview
+            || Mouse.LeftButton == MouseButtonState.Pressed
+            || Mouse.RightButton == MouseButtonState.Pressed)
+            return;
+
+        // 移動中は据え置き、止まったところの行を開く（Start だけでは再スタートしない）。
+        _selectionPreviewTimer.Stop();
+        _selectionPreviewTimer.Start();
+    }
+
+    private void PreviewSelectedNode()
+    {
+        if (FileTree.SelectedItem is not FileNodeViewModel { IsDirectory: false } node
+            || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var hadFocus = FileTree.IsKeyboardFocusWithin;
+        vm.NotifyPreviewRequested(node.FullPath);
+        if (hadFocus)
+            RestoreTreeFocus(node);
     }
 
     // Vim 風キーボード操作:
@@ -254,7 +345,10 @@ public partial class FolderTreeView : UserControl
 
         if (target is not null)
         {
-            SelectAndReveal(target, focus: true);
+            // 同期表示・ドロップ後の表示は「見せるだけ」。プレビューは開かない。
+            _suppressSelectionPreview = true;
+            try { SelectAndReveal(target, focus: true); }
+            finally { _suppressSelectionPreview = false; }
             return;
         }
 

@@ -311,15 +311,26 @@ public partial class ShellWindow : Window {
         if (sender is not ShellViewModel vm) return;
         if (e.PropertyName == nameof(ShellViewModel.IsSidebarVisible)) {
             ApplySidebarVisibility(vm.IsSidebarVisible);
-            if (vm.IsSidebarVisible)
+            if (vm.IsSidebarVisible) {
                 RecordTrailPanel(vm.ActivePanel);
+                QueueSidebarFocus();
+            }
         } else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen))
             ApplySettingsWindowState(vm.IsSettingsOverlayOpen);
         else if (e.PropertyName == nameof(ShellViewModel.SettingsCategory) && vm.IsSettingsOverlayOpen)
             _settingsWindow?.Activate();    // 開いたままカテゴリだけ切り替えたとき（IsOpen は変化しない）
-        else if (e.PropertyName == nameof(ShellViewModel.ActivePanel))
+        else if (e.PropertyName == nameof(ShellViewModel.ActivePanel)) {
             RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
+            QueueSidebarFocus();
+        }
     }
+
+    /// <summary>サイドバーを開いた／パネルを切り替えたら、その中身へキーボードフォーカスを入れる
+    /// （エクスプローラなら選択中の項目へ＝そのまま j/k で動かせる）。表示切替とコンテナ生成が
+    /// 済んでいないと項目へ入れられないので、レイアウト確定後に実行する。起動時は既定値のままで
+    /// PropertyChanged が飛ばないため、この経路はユーザー操作のときだけ通る。</summary>
+    private void QueueSidebarFocus()
+        => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(FocusSidebar));
 
     /// <summary>設定の独立ウィンドウを VM の開閉状態に追従させる。起動を軽くするため初回オープンまで生成しない。
     /// ウィンドウ側（✕/Esc/Alt+F4）で閉じられたときは Closed で VM を閉状態へ戻す。</summary>
