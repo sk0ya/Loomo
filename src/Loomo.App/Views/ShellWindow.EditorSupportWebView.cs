@@ -2,7 +2,10 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow に残る EditorSupport の View イベント配線。</summary>
 public partial class ShellWindow {
     private Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync() => _editorSupport.WebView.EnsureAsync();
-    private void RenderPendingEditorSupportContent(CoreWebView2 core) => _editorSupport.WebView.RenderPending(core);
+    private void RenderPendingEditorSupportContent(CoreWebView2 core) {
+        _editorSupport.WebView.RenderPending(core);
+        _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
+    }
     internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupport.WebView.TryHorizontalScroll(delta);
     private void PostEditorSupportScrollRatio(double ratio) => _editorSupport.WebView.PostScrollRatio(ratio);
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title) {

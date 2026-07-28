@@ -47,6 +47,7 @@ public partial class ShellWindow {
             BrowserAddressBox.Text = view.Source?.ToString() ?? string.Empty;
             if (e.IsSuccess)
                 RecordTrailBrowser(view.Source?.ToString(), view.CoreWebView2?.DocumentTitle);
+            _ = CaptureWebThumbnailAsync(PaneKind.Browser);
         }
     }
     private async void NavigateBrowser(string text) => await NavigateBrowserAsync(text);

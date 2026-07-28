@@ -38,12 +38,19 @@ public partial class ShellWindow {
     /// <summary>描画元ホストを必要な集合へ差分で寄せる。据え置けるものは一切触らない
     /// （ペインの親を付け替える行為自体が Measure/Arrange と同等に高いため）。</summary>
     private void SyncThumbnailSources(IReadOnlyCollection<PaneKind> required, Size sourceSize) {
+        // WebView2CompositionControl はライブ VisualBrush の描画元へ移さない。内部の
+        // GraphicsCaptureSession が強制 SizeChanged 中に CaptureFramePool.Recreate で落ちるため、
+        // Browser / EditorSupport のカードは CapturePreviewAsync の静止画を使う。
+        // 非表示化・親外しより先に現在の WPF 合成結果も写し、初回カードが空になるのを防ぐ。
+        foreach (var kind in required.Where(StageThumbnailPlanner.UsesSnapshotThumbnail))
+            CaptureComposedPaneThumbnail(kind);
+        var liveRequired = required.Where(kind => !StageThumbnailPlanner.UsesSnapshotThumbnail(kind)).ToArray();
         var sizeChanged = StageThumbnailPlanner.SourceSizeChanged(_thumbnailSourceWidth, sourceSize.Width);
         var reusable = sizeChanged
             ? Array.Empty<PaneKind>()
             : _stageThumbnailHosts.Keys.Where(IsThumbnailSourceIntact).ToArray();
         var plan = StageThumbnailPlanner.PlanSources(
-            _stageThumbnailHosts.Keys.ToArray(), reusable, required);
+            _stageThumbnailHosts.Keys.ToArray(), reusable, liveRequired);
         PaneLayoutDebugLog.Log(
             $"SyncThumbnailSources keep={plan.Keep.Count} add={plan.Add.Count} remove={plan.Remove.Count}");
         foreach (var kind in plan.Remove)
@@ -150,12 +157,18 @@ public partial class ShellWindow {
         OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
     }
     private Border BuildSessionCard(PaneKind kind, double width, bool isOverview) {
+        if (StageThumbnailPlanner.UsesSnapshotThumbnail(kind))
+            return BuildCard(kind, width, SnapshotThumbnailBrush(kind), isOverview,
+                () => { SetStagePane(kind); FocusPane(kind); });
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, source, isOverview, () => { SetStagePane(kind); FocusPane(kind); });
+        return BuildCard(kind, width, VisualThumbnailBrush(source), isOverview,
+            () => { SetStagePane(kind); FocusPane(kind); });
     }
     private Border BuildLayoutWingCard(PaneKind kind, double width) {
-        Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, source, isOverview: false, () => {
+        var brush = StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
+            ? SnapshotThumbnailBrush(kind)
+            : VisualThumbnailBrush(_stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind]);
+        return BuildCard(kind, width, brush, isOverview: false, () => {
                 if (_zoomedPane is not null) {
                     if (IsPaneVisible(kind))
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
@@ -189,7 +202,67 @@ public partial class ShellWindow {
             ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
     private PaneKind? TopRowLeftPane()
         => PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind;
-    private Border BuildCard(PaneKind kind, double width, Visual source, bool isOverview, Action onClick) {
+    private static Brush VisualThumbnailBrush(Visual source) {
+        var sourceWidth = source is FrameworkElement sourceElement
+            ? double.IsFinite(sourceElement.Width) && sourceElement.Width > 0
+                ? sourceElement.Width
+                : sourceElement.ActualWidth
+            : 1;
+        var sourceHeight = source is FrameworkElement sourceElement2
+            ? double.IsFinite(sourceElement2.Height) && sourceElement2.Height > 0
+                ? sourceElement2.Height
+                : sourceElement2.ActualHeight
+            : 1;
+        return new VisualBrush(source) {
+            ViewboxUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)),
+            Stretch = Stretch.Uniform,
+            AlignmentX = AlignmentX.Left,
+            AlignmentY = AlignmentY.Top,
+        };
+    }
+    private ImageBrush SnapshotThumbnailBrush(PaneKind kind) {
+        if (_webThumbnailBrushes.TryGetValue(kind, out var existing))
+            return existing;
+        var brush = new ImageBrush {
+            Stretch = Stretch.Uniform,
+            AlignmentX = AlignmentX.Left,
+            AlignmentY = AlignmentY.Top,
+        };
+        _webThumbnailBrushes[kind] = brush;
+        return brush;
+    }
+
+    /// <summary>
+    /// 現在画面へ合成済みのペインを即座にカード画像へ写す。WebView2 の API キャプチャは非同期で、
+    /// 非表示化と競合すると失敗し得るため、これは初回表示を保証する同期フォールバック。
+    /// 元要素を再ペアレントもリサイズもしない。
+    /// </summary>
+    private void CaptureComposedPaneThumbnail(PaneKind kind) {
+        if (!_paneElements.TryGetValue(kind, out var element)
+            || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+            return;
+        try {
+            const double maxWidth = StageThumbnailPlanner.VirtualWidth * 2;
+            var scale = Math.Min(1, maxWidth / element.ActualWidth);
+            var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth * scale));
+            var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight * scale));
+            var drawing = new DrawingVisual();
+            using (var dc = drawing.RenderOpen()) {
+                dc.PushTransform(new ScaleTransform(scale, scale));
+                dc.DrawRectangle(new VisualBrush(element), null,
+                    new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            }
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
+            bitmap.Freeze();
+            SnapshotThumbnailBrush(kind).ImageSource = bitmap;
+        } catch {
+            // 合成面の取得に失敗しても、前回画像または後続の CapturePreviewAsync を使用する。
+        }
+    }
+    private Border BuildCard(PaneKind kind, double width, Brush thumbnail, bool isOverview, Action onClick) {
         var borderBrush = (Brush)FindResource("Border");
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && OnStage(kind);
@@ -197,19 +270,8 @@ public partial class ShellWindow {
         var card = new Border {
             Width = width, Height = height, Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4), CornerRadius = new CornerRadius(6), Background = (Brush)FindResource("Panel"), BorderBrush = onStage ? accent : borderBrush, BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = PaneLabel(kind), Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6), };
         var root = new Grid { ClipToBounds = true };
-        var sourceWidth = source is FrameworkElement sourceElement
-            ? double.IsFinite(sourceElement.Width) && sourceElement.Width > 0
-                ? sourceElement.Width
-                : sourceElement.ActualWidth
-            : width;
-        var sourceHeight = source is FrameworkElement sourceElement2
-            ? double.IsFinite(sourceElement2.Height) && sourceElement2.Height > 0
-                ? sourceElement2.Height
-                : sourceElement2.ActualHeight
-            : height;
         root.Children.Add(new Border {
-            IsHitTestVisible = false, Background = new VisualBrush(source) {
-                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)), Stretch = Stretch.Uniform, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top, }, });
+            IsHitTestVisible = false, Background = thumbnail, });
         root.Children.Add(new Border {
             VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
                 Text = PaneLabel(kind), FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
@@ -248,6 +310,44 @@ public partial class ShellWindow {
                 BeginWingDrag(kind);
         };
         return card;
+    }
+
+    /// <summary>
+    /// WebView2 の現在表示をカード用 PNG として非同期取得する。連続更新は最新だけを採用し、
+    /// 失敗時は前回画像を維持する。実 WebView のサイズ・親・Visibility は一切変更しない。
+    /// </summary>
+    private async Task CaptureWebThumbnailAsync(PaneKind kind) {
+        if (!StageThumbnailPlanner.UsesSnapshotThumbnail(kind))
+            return;
+        var sequence = _webThumbnailCaptureSequences.GetValueOrDefault(kind) + 1;
+        _webThumbnailCaptureSequences[kind] = sequence;
+        // NavigationCompleted 直後や本文差し替え直後の最終描画フレームを待つ。
+        await Task.Delay(80);
+        if (_webThumbnailCaptureSequences.GetValueOrDefault(kind) != sequence)
+            return;
+        var core = kind switch {
+            PaneKind.EditorSupport => _editorSupport.WebView.View?.CoreWebView2,
+            PaneKind.Browser => ActiveBrowserView?.CoreWebView2,
+            _ => null,
+        };
+        if (core is null)
+            return;
+        try {
+            using var stream = new MemoryStream();
+            await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+            if (_webThumbnailCaptureSequences.GetValueOrDefault(kind) != sequence)
+                return;
+            stream.Position = 0;
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            SnapshotThumbnailBrush(kind).ImageSource = image;
+        } catch {
+            // 非表示化・ナビゲーション競合時は取得できないことがある。前回画像をそのまま使う。
+        }
     }
     private Border BuildLiveSlot(PaneKind kind) {
         var element = _paneElements[kind];

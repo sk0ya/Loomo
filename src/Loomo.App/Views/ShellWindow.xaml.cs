@@ -111,6 +111,7 @@ public partial class ShellWindow : Window {
         editorSupportWebView.NavigationCompleted += (_, _) => {
             if (_editorSupport.Source is not null)
                 PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);
+            _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
         };
         _editorSupports = editorSupports;
         _editorSupportResolver = editorSupportResolver;

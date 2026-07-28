@@ -18,6 +18,14 @@ public static class StageThumbnailPlanner
     /// <summary>描画元をレイアウトする固定仮想幅。Main がこれより広くても追従しない。</summary>
     public const double VirtualWidth = 420;
 
+    /// <summary>
+    /// ライブ VisualBrush ではなくスナップショットを使うペイン。
+    /// WebView2CompositionControl は内部で GraphicsCaptureSession を持つため、ミニチュア用ホストへの
+    /// 再ペアレントと強制リサイズを行うと CaptureFramePool.Recreate が失敗することがある。
+    /// </summary>
+    public static bool UsesSnapshotThumbnail(PaneKind kind)
+        => kind is PaneKind.Browser or PaneKind.EditorSupport;
+
     /// <summary>描画元のサイズを決める。<paramref name="availableWidth"/> が仮想幅より狭いときだけ
     /// そちらに合わせる（実際の表示より広く組んでも縮小率が上がるだけで得がない）。</summary>
     public static Size SourceSize(double availableWidth, double cardAspect)

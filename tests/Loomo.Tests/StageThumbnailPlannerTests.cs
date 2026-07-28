@@ -8,6 +8,20 @@ public class StageThumbnailPlannerTests
 {
     private const double CardAspect = 3.0 / 2.0;
 
+    [Theory]
+    [InlineData(PaneKind.Browser)]
+    [InlineData(PaneKind.EditorSupport)]
+    public void WebView_panes_use_snapshot_thumbnails(PaneKind kind)
+        => Assert.True(StageThumbnailPlanner.UsesSnapshotThumbnail(kind));
+
+    [Theory]
+    [InlineData(PaneKind.Editor)]
+    [InlineData(PaneKind.Terminal)]
+    [InlineData(PaneKind.Git)]
+    [InlineData(PaneKind.Diff)]
+    public void Native_panes_keep_live_visual_thumbnails(PaneKind kind)
+        => Assert.False(StageThumbnailPlanner.UsesSnapshotThumbnail(kind));
+
     /// <summary>これが本体の回帰テスト。描画元を Main 実寸で組むと、ペイン 1 枚ごとの
     /// 実寸レイアウトでペイン切替が 100ms を超える（かつミニチュアが点に潰れる）。
     /// 広さが違っても描画元サイズは変わらないこと。</summary>

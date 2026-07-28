@@ -9,6 +9,8 @@ public partial class ShellWindow {
     private DispatcherTimer? _stageResizeTimer;
     private Size _stageBuiltSize;
     private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
+    private readonly Dictionary<PaneKind, ImageBrush> _webThumbnailBrushes = new();
+    private readonly Dictionary<PaneKind, int> _webThumbnailCaptureSequences = new();
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
     private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
     private bool _tsIdePaneApplicable { get => _stageMode.TsIdePaneApplicable; set => _stageMode.TsIdePaneApplicable = value; }
