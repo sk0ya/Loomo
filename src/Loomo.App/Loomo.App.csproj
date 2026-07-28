@@ -49,6 +49,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\Loomo.ico</ApplicationIcon>
+    <!-- 出力先を bin/Debug/ に固定する（TFM のサブフォルダを付けない）。
+         ターゲットフレームワークを上げるたびに出力パスが変わると、タスクバー等の
+         ショートカットが古いフォルダに残った exe を指し続けて「古いアプリが起動する」ため。 -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>

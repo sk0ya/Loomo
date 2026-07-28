@@ -24,8 +24,13 @@ dotnet test                                              # all tests (xUnit)
 dotnet test --filter "FullyQualifiedName~DiffUtil"       # single test class / method
 ```
 
-Requires the .NET 9 SDK on Windows. App and test projects target `net9.0-windows` (WPF);
-`Loomo.Core` and `Loomo.Ai` target plain `net9.0`.
+Requires the Windows .NET SDK matching the projects' `TargetFramework` (each `*.csproj` is the source of
+truth — don't hardcode it here). App and test projects target a `-windows` TFM (WPF); `Loomo.Core` and
+`Loomo.Ai` target the plain one.
+
+The App's output path is **TFM-independent** (`AppendTargetFrameworkToOutputPath=false`), so the exe is always
+`src/Loomo.App/bin/Debug/sk0ya.Loomo.App.exe` — external shortcuts keep working across TFM bumps instead of
+silently launching a stale exe left in the old `bin/Debug/<tfm>/` folder.
 
 ## Architecture
 
