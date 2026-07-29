@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Json.Schema;
 
 namespace sk0ya.Loomo.App.Services;
@@ -49,7 +50,15 @@ public sealed class JsonSchemaValidator
     };
 
     // コンパイル済みスキーマのキャッシュ（鍵: "file:<path>:<mtime>" / "url:<url>"）。
-    private readonly ConcurrentDictionary<string, JsonSchema> _compiled = new();
+    // Json.Schema はモジュール初期化でメタスキーマ一式を構築するため、この型に触れた瞬間に
+    // アセンブリロード＋初期化で ~100ms かかる。本クラスは EditorSupport 経由で DI が起動時に
+    // 生成する（＝JSON を開く前から生成される）ので、コンストラクタでは Json.Schema 型に触れず、
+    // 実際に検証する最初の 1 回まで初期化を遅らせる。
+    private ConcurrentDictionary<string, JsonSchema>? _compiled;
+
+    // 検証はバックグラウンド変換から呼ばれるので、生成の競合で辞書が二重にできないようにする。
+    private ConcurrentDictionary<string, JsonSchema> Compiled
+        => LazyInitializer.EnsureInitialized(ref _compiled);
 
     /// <summary>対象ファイルの本文を、解決できたスキーマで検証する。失敗・スキーマ無しは <see cref="JsonValidationResult.None"/>。</summary>
     public JsonValidationResult Validate(string? filePath, string text)
@@ -207,11 +216,11 @@ public sealed class JsonSchemaValidator
     private JsonSchema CompileLocal(string path)
     {
         var key = "file:" + path + ":" + File.GetLastWriteTimeUtc(path).Ticks;
-        return _compiled.GetOrAdd(key, _ => JsonSchema.FromText(File.ReadAllText(path)));
+        return Compiled.GetOrAdd(key, _ => JsonSchema.FromText(File.ReadAllText(path)));
     }
 
     private JsonSchema CompileRemote(string url)
-        => _compiled.GetOrAdd("url:" + url, _ => JsonSchema.FromText(FetchSchemaText(url)));
+        => Compiled.GetOrAdd("url:" + url, _ => JsonSchema.FromText(FetchSchemaText(url)));
 
     private static string FetchSchemaText(string url)
     {
