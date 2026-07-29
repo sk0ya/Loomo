@@ -89,11 +89,16 @@ public partial class ShellWindow {
         AttachEditorSupportMirrorLinks(view);
         Detached.Detach(item);
     }
-    private void AttachEditorSupportMirrorLinks(DetachedEditorSupportView view)
-        => view.LinkClicked += async (_, href) => {
+    private void AttachEditorSupportMirrorLinks(DetachedEditorSupportView view) {
+        view.LinkClicked += async (_, href) => {
             await HandleEditorSupportLinkClickedAsync(href, view.SourceFilePath);
             Activate();
         };
+        // 切り離した時点の検索ハイライトを引き継ぐ（以降は ApplyEditorSupportSearchHighlight が配る）。
+        var search = _vm.SearchPanel;
+        view.SetSearchHighlight(
+            search.SupportHighlightTerm, search.HighlightCaseSensitive, search.HighlightUseRegex);
+    }
     private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId) {
         var src = _editorTabs.FirstOrDefault(t => t.Id == sourceTabId);
         if (src is null)

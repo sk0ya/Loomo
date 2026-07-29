@@ -208,6 +208,7 @@ public partial class ShellWindow : Window {
             _activeEditorTab?.Control.HighlightSearch(h.Highlight);
         };
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
+        vm.SearchPanel.SupportHighlightChanged += (_, _) => ApplyEditorSupportSearchHighlight();
         vm.SearchPanel.FilesReplacedOnDisk += async (_, paths) =>
             await ReloadEditorTabsAfterReplaceAsync(paths, vm.SearchPanel.HighlightTerm);
         vm.SearchPanel.TerminalSearchProvider = (query, caseSensitive) => {

@@ -107,6 +107,19 @@ public interface IEditorSupportVisualProvider : IEditorSupportProvider
 /// <summary>ビジュアル提供者内の編集結果（エディタ本文へ書き戻す完全なテキスト）。</summary>
 public sealed record EditorSupportContentEdited(string FilePath, string Text);
 
+/// <summary>
+/// 検索パネルの検索ワードに一致する箇所を<b>自分で</b>塗れる提供者（VGrid のグリッド等）。
+/// WebView2 表示はホストがページスクリプトで塗る（<c>EditorSupportSearchHighlight</c>）が、WPF コントロールを
+/// そのまま載せる <see cref="IEditorSupportVisualProvider"/> にはスクリプトを流せないので、この口で条件を
+/// 受け取って自分の描画に反映する。ShellWindow が条件の変化を全提供者へ配る。
+/// </summary>
+public interface IEditorSupportSearchHighlightProvider : IEditorSupportProvider
+{
+    /// <summary>塗る条件を設定する（ワードが空なら消す）。UI スレッドで呼ばれる。
+    /// 表示中でない提供者にも配られるので、条件は保持して次の表示・再読込へ引き継ぐこと。</summary>
+    void ApplySearchHighlight(string term, bool caseSensitive, bool useRegex);
+}
+
 /// <summary>登録された <see cref="IEditorSupportProvider"/> からファイルに対応するものを解決する。</summary>
 public sealed class EditorSupportRegistry
 {
@@ -130,7 +143,16 @@ public sealed class EditorSupportRegistry
         }
 
         _providersByExtension = map;
+        Providers = map.Values.Distinct().ToList();   // 複数拡張子を持つ提供者は1つに畳む
     }
+
+    /// <summary>
+    /// このレジストリに<b>拡張子で登録された</b>提供者の一覧（複数拡張子を持つものは1つに畳む）。
+    /// 表示中かどうかに依らず全員へ配りたいとき（検索ハイライト等）に使う。
+    /// <see cref="EditorSupportResolver"/> がバイナリ判定などで拡張子表から外れて選ぶ提供者
+    /// （Hex 等）はここに含まれない——それらへ配る必要が出たら、この一覧では足りない。
+    /// </summary>
+    public IReadOnlyList<IEditorSupportProvider> Providers { get; }
 
     /// <summary>ファイルに対応する最初の提供者を返す。未対応・パス無しは null。</summary>
     public IEditorSupportProvider? Resolve(string? filePath)

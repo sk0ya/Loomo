@@ -147,6 +147,9 @@ public partial class DetachedPaneWindow : Window
     internal int ItemCount => _items.Count;
     internal bool Contains(DetachedItem item) => _items.Contains(item);
 
+    /// <summary>このウィンドウが抱える項目（ホスト側からの一括操作用。順序は表示順）。</summary>
+    internal IEnumerable<DetachedItem> Items => _items;
+
     /// <summary>項目をこのウィンドウへ追加してアクティブ表示する（実コントロールを再ペアレントする）。</summary>
     internal void AddItem(DetachedItem item)
     {

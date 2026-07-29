@@ -40,6 +40,9 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private string? _mappedFolder;
     private bool _reattachPending;
     private bool _disposed;
+    private string _searchTerm = "";
+    private bool _searchCaseSensitive;
+    private bool _searchUseRegex;
 
     /// <summary>タブ見出しに使う現在のプレビュー題名の変化通知。</summary>
     public event EventHandler<string>? TitleChanged;
@@ -73,6 +76,17 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
             RebuildWebView();
         _reattachPending = false;
         _ = RenderAsync();
+    }
+
+    /// <summary>プレビュー内で塗る検索ワードを設定する（空で消える）。メイン側の EditorSupport と同じ条件を
+    /// ShellWindow が配る。条件は保持しておき、再描画（ナビゲーション完了）のたびに送り直す。</summary>
+    internal void SetSearchHighlight(string? term, bool caseSensitive, bool useRegex)
+    {
+        _searchTerm = term ?? "";
+        _searchCaseSensitive = caseSensitive;
+        _searchUseRegex = useRegex;
+        if (_web?.CoreWebView2 is { } core)
+            EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
 
     private void OnSourceChanged(object? sender, EventArgs e)
@@ -166,6 +180,16 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
                 CoreWebView2HostResourceAccessKind.DenyCors);
         }
         catch { /* 失敗しても mermaid が原文表示になるだけ */ }
+
+        // 検索ハイライト（メイン側の EditorSupport と同じ仕込み）。ページを組み直すたびに条件は消えるので、
+        // ナビゲーション完了で送り直す。
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlight.Script); }
+        catch { /* 失敗しても塗られないだけ */ }
+        core.NavigationCompleted += (_, e) =>
+        {
+            if (e.IsSuccess)
+                EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+        };
 
         // ページ側スクリプトからのメッセージ（リンククリック等）を受ける。WebView2 は再ペアレント時に
         // 作り直される（RebuildWebView）が、その都度この初期化を通るので購読も新しい core に張り直る。

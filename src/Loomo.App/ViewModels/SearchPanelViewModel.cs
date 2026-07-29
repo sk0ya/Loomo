@@ -40,6 +40,10 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>ターミナル一致を選んだ（プレビュー＝単クリック・確定＝Enter/ダブルクリックとも、その箇所へジャンプ）。</summary>
     public event EventHandler<TerminalSearchHit>? TerminalRevealRequested;
 
+    /// <summary>EditorSupport（Markdown プレビュー等）で塗るハイライト条件が変わった。
+    /// ShellWindow がプレビューの WebView へ流す。</summary>
+    public event EventHandler? SupportHighlightChanged;
+
     /// <summary>アクティブなターミナル内テキストを検索する供給口（ShellWindow が実ターミナルを束ねる）。
     /// 引数＝(クエリ, 大小区別)、戻り＝一致一覧。未設定／ターミナル無しのときは null。</summary>
     public Func<string, bool, IReadOnlyList<TerminalSearchHit>>? TerminalSearchProvider { get; set; }
@@ -183,18 +187,21 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     partial void OnQueryChanged(string value)
     {
         OnPropertyChanged(nameof(HighlightQuery));
+        RaiseSupportHighlightChanged();
         ScheduleSearch();
     }
 
     partial void OnCaseSensitiveChanged(bool value)
     {
         OnPropertyChanged(nameof(HighlightCaseSensitive));
+        RaiseSupportHighlightChanged();
         ScheduleSearch();
     }
 
     partial void OnUseRegexChanged(bool value)
     {
         OnPropertyChanged(nameof(HighlightUseRegex));
+        RaiseSupportHighlightChanged();
         ScheduleSearch();
     }
 
@@ -234,6 +241,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(HighlightUseRegex));
         OnPropertyChanged(nameof(HighlightCaseSensitive));
         OnPropertyChanged(nameof(CanReplace));
+        RaiseSupportHighlightChanged();
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
         if (value != SearchScope.Text)
         {
@@ -572,6 +580,23 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名／ターミナルでは空）。
     /// </summary>
     public string HighlightTerm => Scope == SearchScope.Text && !UseRegex ? Query : "";
+
+    /// <summary>
+    /// EditorSupport（Markdown プレビュー等）で塗る検索ワード。プレビューは検索結果一覧に出てこないので、
+    /// テキスト検索の間は結果を選んだかどうかに関わらず現在のクエリを渡し、表示中のページの一致を塗る。
+    /// ページ側は正規表現も塗れるため、リテラル限定の <see cref="HighlightTerm"/>（Editor 用）と違って
+    /// <see cref="UseRegex"/> でも空にしない。ファイル名／ターミナル／クラス／シンボル検索は対象外（空）。
+    /// 正規表現・大小区別の扱いは結果一覧と同じ <see cref="HighlightUseRegex"/> /
+    /// <see cref="HighlightCaseSensitive"/> を使う。
+    /// </summary>
+    public string SupportHighlightTerm => Scope == SearchScope.Text ? Query : "";
+
+    // EditorSupport 側のハイライト条件（ワード・正規表現・大小区別）が変わったことを通知する。
+    private void RaiseSupportHighlightChanged()
+    {
+        OnPropertyChanged(nameof(SupportHighlightTerm));
+        SupportHighlightChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void Preview(SearchMatchItem match)
     {

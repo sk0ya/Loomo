@@ -19,6 +19,12 @@ public sealed class EditorSupportWebViewController : IDisposable
     private string? _pendingMapFolder;
     private string? _loadingPageKey;
     private string? _navigatedUri;
+    private string _searchTerm = "";
+    private bool _searchCaseSensitive;
+    private bool _searchUseRegex;
+    private readonly SemaphoreSlim _findGate = new(1, 1);
+    private string? _appliedFindTerm;          // 今の文書へ実際に適用済みの Find 条件（null＝不明・未適用）
+    private bool _appliedFindCaseSensitive;
 
     public EditorSupportWebViewController(
         Panel host,
@@ -56,6 +62,76 @@ public sealed class EditorSupportWebViewController : IDisposable
         _loadingPageKey = null;
     }
 
+    /// <summary>プレビュー内で塗る検索ワードを設定する（空で消える）。条件は保持しておき、
+    /// ページを組み直すたび（ナビゲーション完了・本文差し替え）に送り直す。</summary>
+    public void SetSearchHighlight(string? term, bool caseSensitive, bool useRegex)
+    {
+        _searchTerm = term ?? "";
+        _searchCaseSensitive = caseSensitive;
+        _searchUseRegex = useRegex;
+        if (View?.CoreWebView2 is { } core)
+            PushSearchHighlight(core);
+    }
+
+    /// <summary>
+    /// 現在の条件をページへ反映する。通常の HTML は注入スクリプト（CSS Custom Highlight API）で塗るが、
+    /// <b>PDF は Chromium 内蔵ビューアの中身</b>でスクリプトが届かないので、WebView2 の Find API
+    /// （＝Ctrl+F と同じページ内検索）を既定 UI 非表示で使う。Find API はリテラル検索なので、
+    /// 正規表現モードのときは PDF を塗らない（誤った位置を塗るより塗らない方を選ぶ）。
+    /// </summary>
+    private void PushSearchHighlight(CoreWebView2 core)
+    {
+        if (!IsPdf(_navigatedUri))
+        {
+            _ = ApplyFindAsync(core, "", false);   // PDF から離れた直後の塗り残しを消す
+            EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+            return;
+        }
+        // Find API はリテラル検索なので正規表現モードでは塗らない（誤った位置を塗るより塗らない方を選ぶ）。
+        _ = ApplyFindAsync(core, _searchUseRegex ? "" : _searchTerm, _searchCaseSensitive);
+    }
+
+    /// <summary>
+    /// Find セッションを目的の条件へ合わせる。<see cref="CoreWebView2Find.StartAsync"/> は非同期なので、
+    /// 打鍵ごとの呼び出しが追い越し合うと「消したはずの語が塗られたまま」になる——<see cref="_findGate"/> で
+    /// 直列化し、適用済みの条件（<see cref="_appliedFindTerm"/>）と同じ要求は捨てて、最後の要求が必ず勝つようにする。
+    /// </summary>
+    private async Task ApplyFindAsync(CoreWebView2 core, string term, bool caseSensitive)
+    {
+        await _findGate.WaitAsync();
+        try
+        {
+            if (_appliedFindTerm == term && (term.Length == 0 || _appliedFindCaseSensitive == caseSensitive))
+                return;
+            if (term.Length == 0)
+            {
+                core.Find.Stop();   // セッションが無ければ何もしない（API 仕様）
+                _appliedFindTerm = "";
+                return;
+            }
+            var options = core.Environment.CreateFindOptions();
+            options.FindTerm = term;
+            options.IsCaseSensitive = caseSensitive;
+            options.ShouldHighlightAllMatches = true;
+            options.SuppressDefaultFindDialog = true;   // 自前の検索パネルがあるので既定の検索バーは出さない
+            await core.Find.StartAsync(options);
+            _appliedFindTerm = term;
+            _appliedFindCaseSensitive = caseSensitive;
+        }
+        catch
+        {
+            // Find API 非対応のランタイム等：塗られないだけ。適用済みは不明になるので次回やり直す。
+            _appliedFindTerm = null;
+        }
+        finally
+        {
+            _findGate.Release();
+        }
+    }
+
+    private static bool IsPdf(string? uri)
+        => uri is not null && uri.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+
     public async Task<WebView2CompositionControl?> EnsureAsync()
     {
         if (View is null)
@@ -85,6 +161,9 @@ public sealed class EditorSupportWebViewController : IDisposable
                 core.Navigate(uri);
                 _navigatedUri = uri;
                 ReadyPageKey = null;
+                // 前のページの鍵を残すと、この URI の読み込み完了で ReadyPageKey がその鍵へ戻ってしまい、
+                // 同じファイルへ戻ったときに「本文差し替えで足りる」と誤判定する（＝URI ページのまま更新されない）。
+                _loadingPageKey = null;
             }
             catch { }
             return;
@@ -92,6 +171,7 @@ public sealed class EditorSupportWebViewController : IDisposable
 
         if (_pendingBody is { } body)
         {
+            _navigatedUri = null;   // 本文差し替えが成り立つのは HTML ページのときだけ（URI ページではない）
             if (_pendingMapFolder is not null)
                 _navigation.UpdatePreviewHost(core, _pendingMapFolder);
             try
@@ -99,6 +179,8 @@ public sealed class EditorSupportWebViewController : IDisposable
                 core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "setBody", html = body }));
             }
             catch { }
+            // 差し替え後の本文へ塗り直す（メッセージは送った順に届くので setBody の後になる）。
+            PushSearchHighlight(core);
             return;
         }
 
@@ -157,6 +239,8 @@ public sealed class EditorSupportWebViewController : IDisposable
             _navigation.ConfigureVirtualHosts(core, null);
             try { await core.AddScriptToExecuteOnDocumentCreatedAsync(HorizontalScrollScript); }
             catch { }
+            try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlight.Script); }
+            catch { }
             _eventsAttached = true;
         }
         return true;
@@ -175,6 +259,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         View = null;
         _initTask = null;
         _eventsAttached = false;
+        _findGate.Dispose();
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -187,6 +272,12 @@ public sealed class EditorSupportWebViewController : IDisposable
         {
             _firstRenderHealed = true;
             RenderPending(core);
+        }
+        // ページを組み直すとページ側の保持状態（と Find セッション）が消えるので、検索ハイライトを送り直す。
+        if (e.IsSuccess && View?.CoreWebView2 is { } loaded)
+        {
+            _appliedFindTerm = null;
+            PushSearchHighlight(loaded);
         }
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
     }

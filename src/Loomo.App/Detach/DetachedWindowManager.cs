@@ -37,6 +37,9 @@ internal sealed class DetachedWindowManager
 
     internal bool IsDragging => _dragItem is not null || _dragFactory is not null;
 
+    /// <summary>全ウィンドウの切り離し項目（ホスト側から種類で絞って一括操作するため）。</summary>
+    internal IEnumerable<DetachedItem> AllItems => _windows.SelectMany(w => w.Items);
+
     /// <summary>項目を新しいフローティングウィンドウで開く（切り離しの入口）。</summary>
     public void Detach(DetachedItem item)
     {
