@@ -154,16 +154,24 @@ public sealed class EditorSupportRegistry
     /// </summary>
     public IReadOnlyList<IEditorSupportProvider> Providers { get; }
 
-    /// <summary>ファイルに対応する最初の提供者を返す。未対応・パス無しは null。</summary>
+    /// <summary>
+    /// ファイルに対応する最初の提供者を返す。未対応・パス無しは null。拡張子は<b>複合サフィックス</b>
+    /// （<c>.pochi.json</c> のような二段）を長い方から順に探す——単純な <see cref="Path.GetExtension"/> だと
+    /// <c>diagram.pochi.json</c> が <c>.json</c> になり、専用の提供者（Pochi）を登録しても汎用の JSON 側が
+    /// 勝ってしまう。ドットの早い位置＝長いサフィックスから見るので、より具体的な登録が常に優先される。
+    /// </summary>
     public IEditorSupportProvider? Resolve(string? filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
             return null;
 
-        var extension = Path.GetExtension(filePath);
-        return string.IsNullOrWhiteSpace(extension)
-            ? null
-            : _providersByExtension.GetValueOrDefault(NormalizeExtension(extension));
+        var name = Path.GetFileName(filePath);
+        for (var i = name.IndexOf('.'); i >= 0; i = name.IndexOf('.', i + 1))
+        {
+            if (_providersByExtension.TryGetValue(name[i..], out var provider))
+                return provider;
+        }
+        return null;
     }
 
     private static string NormalizeExtension(string extension)

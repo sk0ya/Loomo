@@ -86,6 +86,11 @@ public partial class ShellWindow {
         {
             using var doc = System.Text.Json.JsonDocument.Parse(e.WebMessageAsJson);
             var root = doc.RootElement;
+            // ペインに載せた Pochi は type ではなく op（{id, op, …}）で話しかけてくる（ShellWindow.PochiBridge.cs）。
+            if (root.TryGetProperty("op", out var opElement) && sender is CoreWebView2 bridgeCore) {
+                HandlePochiBridgeMessage(bridgeCore, root, opElement.GetString());
+                return;
+            }
             if (!root.TryGetProperty("type", out var typeElement))
                 return;
             switch (typeElement.GetString()) {

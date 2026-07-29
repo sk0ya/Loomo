@@ -75,6 +75,18 @@ public partial class App : Application
         if (ex is null)
             return;
 
+        // Debug.Assert は Debug ビルドでプロセスを即 FailFast させる＝直後に何も書けないので、
+        // 先に %APPDATA%/Loomo/crash.log へ残す（アサートのダイアログが出ない環境では、これだけが
+        // 手掛かりになる）。書き込み自体が失敗してもアサートは必ず出す。
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "crash.log");
+            File.AppendAllText(path,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 未処理例外（{source}）{Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch { }
+
         // ToString() は型・メッセージ・スタックトレース・InnerException 連鎖まで含む。
         System.Diagnostics.Debug.Assert(false, $"未処理例外（{source}）", ex.ToString());
     }

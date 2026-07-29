@@ -57,7 +57,7 @@ public sealed class LoomoServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection().AddLoomoEditorSupport();
 
-        Assert.Equal(17, services.Count(x => x.ServiceType == typeof(IEditorSupportProvider)));
+        Assert.Equal(18, services.Count(x => x.ServiceType == typeof(IEditorSupportProvider)));
         Assert.DoesNotContain(
             new ServiceCollection().AddLoomoPresentation(),
             x => x.ServiceType == typeof(IEditorSupportProvider));

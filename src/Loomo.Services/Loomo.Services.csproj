@@ -45,7 +45,7 @@
     <!-- 1.0.61: initialize で workspaceFolders を通知し、workspace/configuration に正しい配列応答を返す -->
     <!-- 1.0.62: call/type hierarchy の data を保持し、Roslyn の follow-up 要求クラッシュを修正 -->
     <!-- 1.0.65: モード遷移時のカーソル位置同期を修正 -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.65" />
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.67" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
          BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->

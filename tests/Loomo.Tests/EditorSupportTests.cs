@@ -34,7 +34,8 @@ public class EditorSupportTests
             new VGridEditorSupport(new AiSettings()),
             new ExcelEditorSupport(new AiSettings()),
             new WordEditorSupport(new AiSettings()),
-            new BrowserEditorSupport()
+            new BrowserEditorSupport(),
+            new PochiEditorSupport()
         });
     }
 
@@ -107,6 +108,32 @@ public class EditorSupportTests
         var provider = CreateRegistry().Resolve(path);
 
         Assert.IsType<JsonEditorSupport>(provider);
+    }
+
+    [Theory]
+    [InlineData(@"C:\work\diagram.pochi.json")]
+    [InlineData(@"C:\work\図.POCHI.JSON")]
+    public void Resolve_複合拡張子は汎用の拡張子より優先する(string path)
+    {
+        // .pochi.json は Path.GetExtension だと ".json" になるので、素朴な解決だと JSON 側が勝つ。
+        var provider = CreateRegistry().Resolve(path);
+
+        Assert.IsType<PochiEditorSupport>(provider);
+    }
+
+    [Fact]
+    public void PochiSupport_公開ビルドへ対象ファイル付きでナビゲートする()
+    {
+        var support = new PochiEditorSupport();
+
+        Assert.IsAssignableFrom<IEditorSupportUriProvider>(support);
+        Assert.False(support.UsesEditorText);   // 図面はブリッジ（hostDoc）で渡す
+        Assert.Equal("Pochi: diagram.pochi.json", support.DescribeTitle(@"C:\work\diagram.pochi.json"));
+
+        var uri = support.ResolveNavigationUri(@"C:\work\diagram.pochi.json");
+        Assert.StartsWith(PochiEditorSupport.AppUrl, uri);
+        // ファイルごとに URI が変わること＝別の図面へ切り替えたときに再ナビゲートが起きる条件。
+        Assert.NotEqual(uri, support.ResolveNavigationUri(@"C:\work\other.pochi.json"));
     }
 
     [Fact]

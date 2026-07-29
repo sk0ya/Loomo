@@ -241,6 +241,8 @@ public sealed class EditorSupportWebViewController : IDisposable
             catch { }
             try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlight.Script); }
             catch { }
+            try { await core.AddScriptToExecuteOnDocumentCreatedAsync(PochiHostFlagScript); }
+            catch { }
             _eventsAttached = true;
         }
         return true;
@@ -282,6 +284,26 @@ public sealed class EditorSupportWebViewController : IDisposable
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// ペインへ載せた Pochi（<see cref="PochiEditorSupport"/>）へ「WebView2 ホストの中にいる」と先に伝える印。
+    /// Pochi は公開ビルド（リモート）なので、<c>window.chrome.webview</c> がページのモジュール読み込みより
+    /// 一拍遅れて生えることがあり、その場合ブリッジは「web ビルド」と誤認して固定される。この印があれば
+    /// Pochi 側（main.tsx）は chrome.webview の出現を待ってからブリッジを初期化する。他のプレビューページは
+    /// この変数を読まないので無害。
+    /// </summary>
+    private const string PochiHostFlagScript = "window.__pochiHost = true;";
+
+    /// <summary>
+    /// 横ホイールをページへ流すスクリプト。<b>スクロールで動かせる要素があれば scrollLeft を動かし、
+    /// 無ければ合成 wheel イベントを投げる</b>という二段構えなのが要点。
+    ///
+    /// 前者だけだと、<see cref="PochiEditorSupport"/> のキャンバスのように「スクロールコンテナを持たず
+    /// ネイティブ wheel の deltaX を自分で捌いて描画をパンする」作りのページで<b>何も起きない</b>。しかも
+    /// 呼び元（<c>TryHorizontalScroll</c>）は送信できた時点で成功を返して WM_MOUSEHWHEEL を handled に
+    /// するので、汎用のネイティブ入力経路（<see cref="WebViewHorizontalWheel"/>）へも落ちてこない
+    /// ——「ブラウザでは効くのに Loomo のペインでだけ横スクロールが死ぬ」のがこれだった。
+    /// 合成イベントは既定動作を持たないので、スクロールできるページで二重に動く心配は無い。
+    /// </summary>
     private const string HorizontalScrollScript = """
         (() => {
             let mx = 0, my = 0;
@@ -293,14 +315,26 @@ public sealed class EditorSupportWebViewController : IDisposable
                         if (ox === 'auto' || ox === 'scroll') return el;
                     }
                 }
-                return document.scrollingElement || document.documentElement;
+                // 文書ルートは overflowX が visible でも横スクロールするので overflow は見ない。
+                // 逆にあふれていなければ null を返す＝「スクロールでは動かせないページ」として扱う。
+                const root = document.scrollingElement || document.documentElement;
+                return root && root.scrollWidth > root.clientWidth ? root : null;
             }
             window.chrome?.webview?.addEventListener('message', e => {
                 const d = e.data;
-                if (d && d.type === 'hscroll') {
-                    const el = scrollableX(document.elementFromPoint(mx, my));
-                    if (el) el.scrollLeft += d.dx;
+                if (!d || d.type !== 'hscroll') return;
+                const target = document.elementFromPoint(mx, my);
+                const el = scrollableX(target);
+                if (el) {
+                    el.scrollLeft += d.dx;
+                    return;
                 }
+                // ページが自前で wheel を捌く作りのとき用。deltaX の符号は WM_MOUSEHWHEEL と同じ
+                // （正＝右）で、ブラウザが本物の横ホイールで渡すのと揃う。
+                (target ?? document.body)?.dispatchEvent(new WheelEvent('wheel', {
+                    deltaX: d.dx, deltaY: 0, deltaMode: 0,
+                    clientX: mx, clientY: my, bubbles: true, cancelable: true
+                }));
             });
         })();
         """;

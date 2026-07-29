@@ -114,6 +114,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<IEditorSupportProvider, TomlEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, XmlEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, MermaidEditorSupport>();
+        services.AddSingleton<IEditorSupportProvider, PochiEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, ImageEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, VGridEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, ExcelEditorSupport>();
