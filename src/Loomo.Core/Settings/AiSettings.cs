@@ -4,9 +4,9 @@ using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 
-namespace sk0ya.Loomo.Ai;
+namespace sk0ya.Loomo.Core.Settings;
 
-/// <summary>AIプロバイダ設定。appsettings / ユーザー設定からバインドする。</summary>
+/// <summary>Loomo 全体のユーザー設定。settings.json から読み書きする。</summary>
 public sealed class AiSettings
 {
     public const string DefaultLocalModel = "qwen3-4b-q4_k_m";
@@ -97,10 +97,6 @@ public sealed class AiSettings
 
     /// <summary>チャット記法に合わせたシステムプロンプトを組み立てる。Qwen3（ChatML/Hermes tool call）と
     /// Phi-4（JSON 配列 tool call）で tool 呼び出しの記法が異なるため、書式に依存する例文を切り替える。</summary>
-    public string BuildSystemPrompt(AgentProfile? profile, Clients.ChatFormat format)
-        => (profile ?? AgentProfiles.Root).ApplyTo(
-            format == Clients.ChatFormat.Qwen3 ? Qwen3SystemPrompt : SystemPrompt);
-
     /// <summary>既定のシステムプロンプト（設定画面の「デフォルトに戻す」で使用）。
     /// Phi-4-mini 用。架空ツール名への崩れを抑えるため、短い few-shot とファイル編集規律だけを残す。</summary>
     public const string DefaultSystemPrompt =

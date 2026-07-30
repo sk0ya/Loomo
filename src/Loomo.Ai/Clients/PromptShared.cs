@@ -17,7 +17,8 @@ internal static class PromptShared
     /// <paramref name="workspaceFolders"/>[0] がプライマリ（相対パス解決・検索ガイダンスの基準）。</summary>
     public static string SystemText(
         AiSettings settings, AgentProfile? profile, IReadOnlyList<string> workspaceFolders, ChatFormat format)
-        => settings.BuildSystemPrompt(profile, format)
+        => (profile ?? AgentProfiles.Root).ApplyTo(
+                format == ChatFormat.Qwen3 ? AiSettings.Qwen3SystemPrompt : settings.SystemPrompt)
            + SearchGuidance(workspaceFolders.Count > 0 ? workspaceFolders[0] : null)
            + WorkspaceContext.Describe(workspaceFolders);
 

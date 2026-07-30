@@ -10,8 +10,9 @@ using System.Text.Json.Serialization;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
+using sk0ya.Loomo.Core.Settings;
 
-namespace sk0ya.Loomo.Ai;
+namespace sk0ya.Loomo.Services.Settings;
 
 /// <summary>
 /// <see cref="AiSettings"/> を <c>%APPDATA%/Loomo/settings.json</c> に永続化する。
