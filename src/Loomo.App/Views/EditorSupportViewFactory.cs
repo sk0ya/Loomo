@@ -11,7 +11,7 @@ public interface IEditorSupportViewFactory
 public sealed class EditorSupportViewFactory : IEditorSupportViewFactory
 {
     public WebView2CompositionControl Create(CoreWebView2CreationProperties? creationProperties = null)
-        => new()
+        => new LoomoWebView2
         {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
             CreationProperties = creationProperties

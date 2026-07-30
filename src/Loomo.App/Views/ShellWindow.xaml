@@ -433,7 +433,10 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="SidebarColumn" Width="220" MinWidth="120" />   <!-- Sidebar -->
                     <ColumnDefinition x:Name="SidebarSplitterColumn" Width="6" />    <!-- splitter -->
-                    <ColumnDefinition Width="*" />                                   <!-- 動的ペインホスト／ステージ -->
+                    <!-- 動的ペインホスト／ステージ。MinWidth はサイドバー幅ドラッグや袖（固定 210px）の
+                         出現でここが 0 幅まで潰れないための下限（0 幅のタイルは操作不能だし、中の
+                         WebView2 が 0 サイズ配置で落ちる原因にもなる。→ WebViewArrangePolicy）。 -->
+                    <ColumnDefinition Width="*" MinWidth="160" />
                     <ColumnDefinition x:Name="WingColumn" Width="Auto" />            <!-- 袖（ミニチュア）：両モード共通 -->
                 </Grid.ColumnDefinitions>
 

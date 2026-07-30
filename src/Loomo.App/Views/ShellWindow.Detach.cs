@@ -148,7 +148,7 @@ public partial class ShellWindow {
         => CreateBrowserSpinoffItem(sourceTab?.View.Source?.ToString() ?? sourceTab?.PendingUrl);
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         var url = sourceUrl ?? DefaultBrowserUrl;
-        var view = new WebView2CompositionControl {
+        var view = new LoomoWebView2 {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E), CreationProperties = CreateWebViewCreationProperties()
         };
         var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", view, _tabIcons.GetBrowserDefaultIcon(), dispose: () => view.Dispose());

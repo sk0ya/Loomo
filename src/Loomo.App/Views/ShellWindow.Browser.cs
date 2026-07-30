@@ -85,7 +85,7 @@ public partial class ShellWindow {
     private BrowserTab CreateBrowserTab( string url, Guid? requestedId = null, string? requestedTitle = null) {
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
-        var view = new WebView2CompositionControl {
+        var view = new LoomoWebView2 {
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E), Visibility = Visibility.Collapsed, CreationProperties = CreateWebViewCreationProperties()
         };
         view.NavigationCompleted += OnBrowserNavigationCompleted;
