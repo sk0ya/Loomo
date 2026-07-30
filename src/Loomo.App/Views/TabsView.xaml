@@ -4,11 +4,27 @@
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
-        <Style x:Key="TabSectionLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
-            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
-            <Setter Property="Margin" Value="3,8,0,2" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Opacity" Value="0.75" />
+        <!-- エクスプローラ上部に置く「タブ」セクションの見出し（クリックで開閉）。 -->
+        <Style x:Key="TabSectionHeaderToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" Padding="4,3,8,3">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="SidebarTabButton" TargetType="Button">
@@ -125,25 +141,52 @@
         </DataTemplate>
     </UserControl.Resources>
 
+    <!-- エクスプローラ下段。フォルダーツリーとの境目は上の GridSplitter が担う（ShellWindow.xaml）。 -->
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="TABS" />
+        <!-- 見出し：▸/▾ ＋ TABS ＋ 件数。クリックでセクションを開閉する。 -->
+        <ToggleButton DockPanel.Dock="Top" Style="{StaticResource TabSectionHeaderToggle}"
+                      IsChecked="{Binding IsSectionExpanded, Mode=TwoWay}">
+            <DockPanel LastChildFill="True">
+                <Path x:Name="Chevron" DockPanel.Dock="Left" Width="8" Height="8" Margin="2,0,4,0"
+                      VerticalAlignment="Center" Stretch="Uniform"
+                      Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSectionExpanded}" Value="True">
+                                    <Setter Property="RenderTransform">
+                                        <Setter.Value>
+                                            <RotateTransform Angle="90" CenterX="4" CenterY="4" />
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                </Path>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding TotalCount}"
+                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                           Opacity="0.7" VerticalAlignment="Center" Margin="6,0,0,0" />
+                <TextBlock Style="{StaticResource PanelHeader}" Padding="0" Text="TABS"
+                           VerticalAlignment="Center" />
+            </DockPanel>
+        </ToggleButton>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="2,0,3,6">
+        <!-- 折りたたみ時は見出しだけ残す。展開時の高さは行（SidebarTabsRow）が決め、
+             溢れた分はここでスクロールする。 -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="2,0,3,6"
+                      Visibility="{Binding IsSectionExpanded, Converter={StaticResource BoolToVis}}">
+            <!-- 種別の見出し（TERMINAL/EDITOR/BROWSER）は縦幅を食うだけなので置かない。
+                 種別は行頭のアイコンで分かる。並びは エディタ → ブラウザ → ターミナル。 -->
             <StackPanel>
-                <StackPanel Visibility="{Binding TerminalTabs.Count, Converter={StaticResource CountToVis}}">
-                    <TextBlock Style="{StaticResource TabSectionLabel}" Text="TERMINAL" Margin="3,2,0,2" />
-                    <ItemsControl ItemsSource="{Binding TerminalTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
-                </StackPanel>
-
-                <StackPanel Visibility="{Binding EditorTabs.Count, Converter={StaticResource CountToVis}}">
-                    <TextBlock Style="{StaticResource TabSectionLabel}" Text="EDITOR" />
-                    <ItemsControl ItemsSource="{Binding EditorTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
-                </StackPanel>
-
-                <StackPanel Visibility="{Binding BrowserTabs.Count, Converter={StaticResource CountToVis}}">
-                    <TextBlock Style="{StaticResource TabSectionLabel}" Text="BROWSER" />
-                    <ItemsControl ItemsSource="{Binding BrowserTabs}" ItemTemplate="{StaticResource TabEntryTemplate}" />
-                </StackPanel>
+                <ItemsControl ItemsSource="{Binding EditorTabs}" ItemTemplate="{StaticResource TabEntryTemplate}"
+                              Visibility="{Binding EditorTabs.Count, Converter={StaticResource CountToVis}}" />
+                <ItemsControl ItemsSource="{Binding BrowserTabs}" ItemTemplate="{StaticResource TabEntryTemplate}"
+                              Margin="0,3,0,0"
+                              Visibility="{Binding BrowserTabs.Count, Converter={StaticResource CountToVis}}" />
+                <ItemsControl ItemsSource="{Binding TerminalTabs}" ItemTemplate="{StaticResource TabEntryTemplate}"
+                              Margin="0,3,0,0"
+                              Visibility="{Binding TerminalTabs.Count, Converter={StaticResource CountToVis}}" />
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

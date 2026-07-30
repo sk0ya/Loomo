@@ -70,7 +70,7 @@ public static class CommandCatalog
 
         // ===== サイドバー（既定未割当。設定画面でキーを与えられる） =====
         new CommandDescriptor("sidebar.explorer", CatSidebar, "エクスプローラを開く", null),
-        new CommandDescriptor("sidebar.tabs", CatSidebar, "タブ一覧を開く", null),
+        new CommandDescriptor("sidebar.tabs", CatSidebar, "タブセクションを開閉", null),
         new CommandDescriptor("sidebar.sessions", CatSidebar, "AIセッションを開く", null),
         new CommandDescriptor("sidebar.git", CatSidebar, "Git を開く", null),
         new CommandDescriptor("sidebar.pegboard", CatSidebar, "ペグボードを開く", null),

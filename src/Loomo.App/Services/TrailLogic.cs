@@ -67,7 +67,7 @@ public static class TrailLogic
     public static string PanelDisplayName(SidebarPanel panel) => panel switch
     {
         SidebarPanel.Explorer => "エクスプローラ",
-        SidebarPanel.Tabs => "タブ一覧", SidebarPanel.Git => "Gitパネル",
+        SidebarPanel.Git => "Gitパネル",
         SidebarPanel.Pegboard => "ペグボード",
         _ => panel.ToString()
     };

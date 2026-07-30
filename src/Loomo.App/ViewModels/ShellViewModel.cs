@@ -3,11 +3,11 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>サイドバーに表示するパネル種別。</summary>
+/// <summary>サイドバーに表示するパネル種別。
+/// タブ一覧は独立パネルをやめ、エクスプローラ（<see cref="Explorer"/>）内のセクションへ統合した。</summary>
 public enum SidebarPanel
 {
     Explorer,
-    Tabs,
     Settings,
     Appearance,
     Git,
@@ -119,9 +119,15 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowExplorer() => Activate(SidebarPanel.Explorer);
 
-    /// <summary>ActivityBar のタブ一覧アイコン。</summary>
+    /// <summary>ActivityBar のタブ一覧アイコン。タブ一覧はエクスプローラ内のセクションなので、
+    /// エクスプローラを開いてタブセクションを展開する（展開済みなら畳む＝トグル）。</summary>
     [RelayCommand]
-    private void ShowTabs() => Activate(SidebarPanel.Tabs);
+    private void ShowTabs()
+    {
+        var alreadyShown = IsSidebarVisible && ActivePanel == SidebarPanel.Explorer && Tabs.IsSectionExpanded;
+        RevealExplorerPanel();
+        Tabs.IsSectionExpanded = !alreadyShown;
+    }
 
     /// <summary>ActivityBar の設定（歯車）アイコン。中央オーバーレイの設定画面を外観カテゴリで開く
     /// （同じカテゴリで開いていれば閉じる＝トグル）。開くときにローカルのモデル一覧を取得する。</summary>

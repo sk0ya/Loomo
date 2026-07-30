@@ -148,13 +148,22 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public void ShowTabs_switches_panel_and_keeps_open()
+    public void ShowTabs_reveals_explorer_and_toggles_tab_section()
     {
         var sut = CreateSut();
+        sut.Tabs.IsSectionExpanded = false;
 
+        // タブ一覧はエクスプローラ内のセクション：開く＝エクスプローラ＋セクション展開
         sut.ShowTabsCommand.Execute(null);
         Assert.True(sut.IsSidebarVisible);
-        Assert.Equal(SidebarPanel.Tabs, sut.ActivePanel);
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+        Assert.True(sut.Tabs.IsSectionExpanded);
+
+        // 展開済みで再実行 → セクションだけ畳む（サイドバーは開いたまま）
+        sut.ShowTabsCommand.Execute(null);
+        Assert.True(sut.IsSidebarVisible);
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+        Assert.False(sut.Tabs.IsSectionExpanded);
     }
 
     [Fact]

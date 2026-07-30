@@ -200,8 +200,6 @@
                 <StackPanel>
                     <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
                             Command="{Binding ShowExplorerCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="📑" ToolTip="タブ"
-                            Command="{Binding ShowTabsCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
                             Command="{Binding ShowGitCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
@@ -440,12 +438,26 @@
                     <ColumnDefinition x:Name="WingColumn" Width="Auto" />            <!-- 袖（ミニチュア）：両モード共通 -->
                 </Grid.ColumnDefinitions>
 
-                <!-- Sidebar : Explorer / Tabs / Settings を ActivePanel で切替 -->
+                <!-- Sidebar : Explorer / Git / Pegboard を ActivePanel で切替 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="0">
-                    <views:FolderTreeView DataContext="{Binding FolderTree}"
-                                          Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}" />
-                    <views:TabsView DataContext="{Binding Tabs}"
-                                    Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Tabs}" />
+                    <!-- エクスプローラ：タブ一覧（折りたたみ可・上限高さ）とフォルダーツリーを
+                         一つのセクションにまとめる。タブは独立パネルではなくここの上段。 -->
+                    <Grid x:Name="ExplorerSection"
+                          Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" MinHeight="60" /> <!-- フォルダーツリー -->
+                            <RowDefinition Height="Auto" />            <!-- 上下幅のスプリッター -->
+                            <!-- タブセクションの高さ。折りたたみ時は code-behind が Auto（見出しのみ）へ
+                                 落とし、展開時に直前の高さへ戻す（ShellWindow.SidebarSections.cs）。 -->
+                            <RowDefinition x:Name="SidebarTabsRow" Height="200" MinHeight="26" />
+                        </Grid.RowDefinitions>
+                        <views:FolderTreeView Grid.Row="0" DataContext="{Binding FolderTree}" />
+                        <GridSplitter x:Name="SidebarTabsSplitter" Grid.Row="1" Height="5"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                                      Background="{DynamicResource Border}" />
+                        <views:TabsView Grid.Row="2" DataContext="{Binding Tabs}" />
+                    </Grid>
                     <views:GitPanelView DataContext="{Binding GitPanel}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Git}" />
                     <!-- 設定／外観はサイドバーではなく中央オーバーレイ（SettingsOverlayView）で開く。 -->
