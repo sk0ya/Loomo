@@ -26,8 +26,8 @@ public partial class CodeOutlineView : UserControl
         DataContext = _vm;
     }
 
-    /// <summary>アウトラインのメンバー名／↦ クリック：ソース行（1 始まり）へジャンプ。</summary>
-    public event EventHandler<int>? SourceLineActivated;
+    /// <summary>アウトラインのメンバー名／↦ クリック：ソース上のシンボル名へジャンプ。</summary>
+    public event EventHandler<SourceLocationActivatedEventArgs>? SourceLocationActivated;
 
     /// <summary>②パネルの行クリック：別ファイル（または同一ファイル）の該当行を開く（1 始まり）。</summary>
     public event EventHandler<FileLocationActivatedEventArgs>? FileLocationActivated;
@@ -78,10 +78,11 @@ public partial class CodeOutlineView : UserControl
 
     private void OutlineRow_Click(object sender, MouseButtonEventArgs e)
     {
-        // ジャンプは SelectionRange（名前の行）へ。Range.Start（DataLine1）だと C# の doc コメント／属性を
-        // 含む先頭行に着地して数行ずれるため、宣言行に着く JumpLine1 を使う。
+        // Range.Start ではなく SelectionRange.Start を使い、doc コメント／属性の先頭や宣言行の左端ではなく
+        // シンボル名そのものへ着地させる。
         if (sender is FrameworkElement { DataContext: CodeOutlineItem item })
-            SourceLineActivated?.Invoke(this, item.JumpLine1);
+            SourceLocationActivated?.Invoke(
+                this, new SourceLocationActivatedEventArgs(item.JumpLine1, item.JumpColumn0));
     }
 
     private void CallRow_Click(object sender, MouseButtonEventArgs e)
@@ -101,6 +102,19 @@ public partial class CodeOutlineView : UserControl
         if (_vm.NoticeDocsUrl is { Length: > 0 } url)
             OpenDocsRequested?.Invoke(this, url);
     }
+}
+
+/// <summary>アウトラインクリックのジャンプ先（1 始まり行＋0 始まり列）。</summary>
+public sealed class SourceLocationActivatedEventArgs : EventArgs
+{
+    public SourceLocationActivatedEventArgs(int line1, int column0)
+    {
+        Line1 = line1;
+        Column0 = column0;
+    }
+
+    public int Line1 { get; }
+    public int Column0 { get; }
 }
 
 /// <summary>②パネル行クリックのジャンプ先（ローカルパス＋1 始まり行）。</summary>

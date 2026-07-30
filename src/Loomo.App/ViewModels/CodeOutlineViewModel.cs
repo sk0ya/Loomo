@@ -131,6 +131,7 @@ public sealed partial class CodeOutlineViewModel : ObservableObject
             Signature = node.Detail,
             DataLine1 = node.Line0 + 1,      // Range.Start（0 始まり）→ 1 始まり。current ハイライトの一致キー。
             JumpLine1 = node.NameLine0 + 1,  // SelectionRange.Start（名前の行）→ ジャンプ先（宣言行に着地）。
+            JumpColumn0 = node.NameCol0,     // SelectionRange.Start（名前の列）→ シンボル名の先頭に着地。
         };
         foreach (var child in node.Children)
             item.Children.Add(BuildItem(child));
@@ -155,6 +156,9 @@ public sealed partial class CodeOutlineItem : ObservableObject
 
     /// <summary>クリックでジャンプする行（1 始まり・<c>SelectionRange.Start</c>＝名前の行。宣言に着地する）。</summary>
     public int JumpLine1 { get; init; }
+
+    /// <summary>クリックでジャンプする列（0 始まり・<c>SelectionRange.Start.Character</c>＝名前の先頭）。</summary>
+    public int JumpColumn0 { get; init; }
 
     public ObservableCollection<CodeOutlineItem> Children { get; } = new();
     public bool HasChildren => Children.Count > 0;

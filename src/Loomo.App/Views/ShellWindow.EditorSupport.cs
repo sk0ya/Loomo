@@ -238,7 +238,8 @@ public partial class ShellWindow {
         if (_editorSupport.OutlineView is not null)
             return _editorSupport.OutlineView;
         var view = new CodeOutlineView();
-        view.SourceLineActivated += (_, line1) => FocusEditorSupportSource(line1 > 0 ? line1 : null, alignTop: true);
+        view.SourceLocationActivated += (_, e) =>
+            FocusEditorSupportSource(e.Line1 > 0 ? e.Line1 : null, e.Column0, alignTop: true);
         view.FileLocationActivated += (_, e) => _ = OpenPathInEditorAsync(e.Path, e.Line1, column: 0, alignTop: true);
         view.InstallRequested += (_, _) => InstallLspForEditorSupportSource();
         view.OpenLspSettingsRequested += (_, _) => _vm.LspPrompt.OpenSettingsCommand.Execute(null);

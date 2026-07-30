@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Editor.Core.Lsp;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Services.Lsp;
 
@@ -21,6 +22,43 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class CodeOutlineViewTests
 {
+    [Fact]
+    public void アウトラインクリックはシンボル名の行列を通知する()
+    {
+        RunSta(() =>
+        {
+            var view = new CodeOutlineView();
+            var window = new Window { Width = 360, Height = 640, Content = view, ShowInTaskbar = false };
+            try
+            {
+                SourceLocationActivatedEventArgs? activated = null;
+                view.SourceLocationActivated += (_, e) => activated = e;
+                view.ShowOutline(
+                    new[] { new OutlineNode("Bar", SymbolKind.Method, 2, 5, 3, 12, Array.Empty<OutlineNode>()) },
+                    currentLine1: 0,
+                    CallPanels.Empty);
+                window.Show();
+                Pump();
+
+                var rows = new List<Border>();
+                CollectDescendants(view, rows);
+                var row = Assert.Single(rows,
+                    b => b.DataContext is CodeOutlineItem { Name: "Bar" }
+                         && b.Cursor == System.Windows.Input.Cursors.Hand);
+                row.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                    System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                {
+                    RoutedEvent = System.Windows.Input.Mouse.MouseUpEvent,
+                });
+
+                Assert.NotNull(activated);
+                Assert.Equal(4, activated!.Line1);
+                Assert.Equal(12, activated.Column0);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Fact]
     public void ビュー_アウトラインと呼び出しパネルを構築できる()
     {

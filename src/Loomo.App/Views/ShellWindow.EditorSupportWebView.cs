@@ -119,7 +119,7 @@ public partial class ShellWindow {
         } catch {
         }
     }
-    private void FocusEditorSupportSource(int? line, bool alignTop = false) {
+    private void FocusEditorSupportSource(int? line, int column0 = 0, bool alignTop = false) {
         var tab = _editorSupport.Source;
         if (tab is null)
             return;
@@ -127,7 +127,7 @@ public partial class ShellWindow {
             SetStagePane(PaneKind.Editor);
         SetActiveEditorTab(tab);
         if (line is int l) {
-            tab.Control.NavigateTo(l - 1, 0);
+            tab.Control.NavigateTo(l - 1, Math.Max(0, column0));
             if (alignTop)
                 tab.Control.ScrollCursorToTop();
         }
