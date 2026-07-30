@@ -113,6 +113,7 @@ public sealed class AiSettingsStore
         public PersistedEditor? Editor { get; set; }
         public PersistedAppearance? Appearance { get; set; }
         public PersistedKeybindings? Keybindings { get; set; }
+        public PersistedLsp? Lsp { get; set; }
 
         public static PersistedSettings From(AiSettings s) => new()
         {
@@ -128,6 +129,7 @@ public sealed class AiSettingsStore
             Editor = PersistedEditor.From(s.Editor),
             Appearance = PersistedAppearance.From(s.Appearance),
             Keybindings = PersistedKeybindings.From(s.Keybindings),
+            Lsp = PersistedLsp.From(s.Lsp),
         };
 
         public void ApplyTo(AiSettings s)
@@ -145,6 +147,30 @@ public sealed class AiSettingsStore
             Editor?.ApplyTo(s.Editor); // 旧設定（null）は in-memory 既定を維持
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
+            Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
+        }
+    }
+
+    // ===== LSP の UI 設定。促しバーを「今後表示しない」拡張子だけ。平文で保持。 =====
+
+    private sealed class PersistedLsp
+    {
+        /// <summary>促しバーで「今後表示しない」を選んだ拡張子（先頭ドット付き・小文字）。</summary>
+        public List<string> DismissedPromptExtensions { get; set; } = new();
+
+        public static PersistedLsp From(LspSettings l) => new()
+        {
+            DismissedPromptExtensions = l.DismissedPromptExtensions.ToList(),
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(LspSettings l)
+        {
+            l.DismissedPromptExtensions.Clear();
+            if (DismissedPromptExtensions is null) return;
+            foreach (var ext in DismissedPromptExtensions)
+                if (!string.IsNullOrWhiteSpace(ext))
+                    l.DismissedPromptExtensions.Add(ext.Trim().ToLowerInvariant());
         }
     }
 

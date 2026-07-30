@@ -102,8 +102,32 @@ public sealed class LspManagementService
         !string.IsNullOrWhiteSpace(installCommand) && _terminal.TryRunInVisibleTerminal(installCommand);
 
     /// <summary>
+    /// 「言語サーバーが設定されていません」（<see cref="LspPromptKind.NotConfigured"/>）を出してよい拡張子。
+    /// カタログにも対応表にも無い拡張子で無条件に促すと、<c>.png</c> / <c>.zip</c> のように**そもそも言語
+    /// サーバーが存在しえない**ファイルにまで案内が出て邪魔になるため、プログラミング言語のソースだけに絞る
+    /// （カタログにある拡張子は手前の分岐で処理されるので、ここは「LSP はあるが Loomo のカタログに無い言語」
+    /// を拾うための表）。文書・設定・データ形式（.md/.json/.xml/.csv/.yaml …）は Loomo 側に専用の
+    /// EditorSupport 提供者があり LSP 無しでも困らないので、あえて含めない。
+    /// </summary>
+    private static readonly HashSet<string> PromptableSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".m", ".mm",
+        ".cs", ".csx", ".fs", ".fsx", ".vb",
+        ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
+        ".py", ".pyi", ".rb", ".php", ".go", ".rs", ".java", ".kt", ".kts", ".scala", ".groovy",
+        ".swift", ".dart", ".zig", ".hs", ".ex", ".exs", ".erl", ".lua", ".pl", ".pm", ".r", ".jl",
+        ".sql", ".sh", ".bash", ".zsh", ".ps1", ".psm1",
+        ".css", ".scss", ".sass", ".less",
+    };
+
+    /// <summary>この拡張子に言語サーバーが在りうるか（未設定の促しを出してよいか）。</summary>
+    public static bool CanHaveLanguageServer(string extension) =>
+        PromptableSourceExtensions.Contains(LspExtensions.NormalizeExt(extension));
+
+    /// <summary>
     /// 開いたファイルに対して促しバーを出すべきか判定する（出さないときは null）。
-    /// 対応サーバーが在って導入済み → null。在るが未導入 → NotInstalled。未設定の拡張子 → NotConfigured。
+    /// 対応サーバーが在って導入済み → null。在るが未導入 → NotInstalled。
+    /// 未設定の拡張子は、ソースコードとみなせるものだけ NotConfigured（それ以外は null）。
     /// 拡張子の無いファイルは対象外。「今後表示しない」のフィルタは呼び出し側（App）が行う。
     /// </summary>
     public LspPromptInfo? EvaluateForFile(string? filePath)
@@ -133,6 +157,10 @@ public sealed class LspManagementService
                 ext, LspPromptKind.NotInstalled,
                 $"「{ext}」の言語サーバー {candidate.DisplayName} が未設定です。インストールしますか？",
                 candidate.InstallCommand, candidate.DisplayName, candidate.DocsUrl);
+
+        // 画像・書庫・バイナリ等、言語サーバーが存在しえない拡張子では何も出さない。
+        if (!CanHaveLanguageServer(ext))
+            return null;
 
         return new LspPromptInfo(
             ext, LspPromptKind.NotConfigured,

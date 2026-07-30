@@ -239,7 +239,9 @@ UX** (the actual user-facing feature):
   rows with install status, an Install button, add/remove/reset.
 - Opening a file whose server is missing shows a dismissible **inline prompt bar** above the editor
   (`LspPromptViewModel`, evaluated in `SetActiveEditorTab`); "今後表示しない" persists to
-  `AiSettings.Lsp.DismissedPromptExtensions` (settings.json).
+  `AiSettings.Lsp.DismissedPromptExtensions` (settings.json). The "not configured" variant is limited to
+  `LspManagementService.PromptableSourceExtensions` (no prompt for `.png`/`.zip`/… ), and dismissal runs through
+  the shared `LspPromptViewModel.Filter` so the EditorSupport outline notice honors it too (設計 §30.12).
 
 The editor's own `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` ex commands still work (same registry). See Editor
 `AGENTS.md` §LSP.

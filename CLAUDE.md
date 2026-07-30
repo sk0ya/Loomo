@@ -256,8 +256,12 @@ UI on top: the settings overlay's **言語サーバー (LSP)** category (`LspSet
 and a dismissible **inline prompt bar** when a file's server is missing (`LspPromptViewModel`). Prompt evaluation has
 exactly one entry point, `OnActiveEditorFileChanged(tab)` in `ShellWindow.Tabs.cs`, called **after** `LoadFile`
 (before the split it ran before the path was set, and only on one of the two activation paths); the outline notice
-reuses the same result via `EvaluateLspPrompt`. "今後表示しない" persists to
-`AiSettings.Lsp.DismissedPromptExtensions` (settings.json).
+reuses the same result via `EvaluateLspPrompt`. The "not configured" variant is only raised for extensions in
+`LspManagementService.PromptableSourceExtensions` (programming-language sources) — `.png`/`.zip`/`.txt` and other
+files that can't have a language server get **no** prompt. Dismissal ("今後表示しない" → persisted in
+`AiSettings.Lsp.DismissedPromptExtensions` in settings.json; "×" → session-only) is applied by the single shared
+filter `LspPromptViewModel.Filter`, which **both** the bar and `EvaluateLspPrompt` (the outline notice) run through
+— when it lived inside `Show` only, the outline kept showing the notice the user had dismissed.
 
 The editor's `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` are an input frontend that delegates to the injected
 `ILspServerAdmin` — the same table. See Editor `CLAUDE.md` §LSP.

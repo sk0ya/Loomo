@@ -154,11 +154,14 @@ public partial class ShellWindow {
         _lastLspPrompt = _lspManagement.EvaluateForFile(filePath);
         _vm.LspPrompt.Show(_lastLspPrompt);
     }
-    /// <summary>促し判定の使い回し（アウトラインの案内も同じ結果を出すため）。</summary>
+    /// <summary>促し判定の使い回し（アウトラインの案内も同じ結果を出すため）。
+    /// 「今後表示しない／今回は閉じた」の抑止は毎回 <see cref="LspPromptViewModel.Filter"/> を通して適用する
+    /// （キャッシュは素の判定結果なので、バーを閉じた直後の再評価でも抑止が効くようにするため）。</summary>
     private LspPromptInfo? EvaluateLspPrompt(string? filePath) =>
-        string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase)
-            ? _lastLspPrompt
-            : _lspManagement.EvaluateForFile(filePath);
+        _vm.LspPrompt.Filter(
+            string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase)
+                ? _lastLspPrompt
+                : _lspManagement.EvaluateForFile(filePath));
     private void QueueEditorTabHeaderIntoView(Guid id) {
         Dispatcher.BeginInvoke( new Action(() => ScrollEditorTabHeaderIntoView(id)), DispatcherPriority.Loaded);
     }

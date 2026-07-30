@@ -418,3 +418,25 @@ Editor 側の変更 → パッケージのローカル注入 → Loomo 側の追
    Editor 側の削除量がさらに減る。
 3. **アイドル維持時間 5 分** の妥当性（Roslyn の再起動コストとメモリのトレードオフ）。
 4. **ワークスペース切替時**にサーバーを落とすか維持するか（複数ワークスペースを行き来する運用頻度次第）。
+
+---
+
+## §30.12 促しバーの抑止ルール（2026-07-31 修正）
+
+「言語サーバーが設定されていません」の案内が**邪魔**という指摘に対する是正。3点あった。
+
+1. **言語サーバーが存在しえない拡張子にまで出ていた。** `EvaluateForFile` は未設定の拡張子なら無条件に
+   `NotConfigured` を返していたので、`.png` や `.zip` を開いただけで案内が出た。
+   → `LspManagementService.PromptableSourceExtensions`（プログラミング言語のソース拡張子のキュレーション）
+   に含まれる拡張子だけ `NotConfigured` を出す。カタログ／対応表にある拡張子は手前の分岐で処理されるので、
+   この表は「LSP はあるが Loomo のカタログに無い言語」（`.java`/`.kt`/`.swift`…）を拾うためのもの。
+   文書・設定・データ形式（`.md`/`.json`/`.xml`/`.csv`…）は専用の EditorSupport 提供者があるので**入れない**。
+2. **「今後表示しない」が EditorSupport の案内に効いていなかった。** 抑止判定が `LspPromptViewModel.Show`
+   の内部にしか無く、アウトライン側（`EvaluateLspPrompt` → `LspNoticeModel.Build`）は素の判定結果を使って
+   いたため、バーを消しても同じ文言が EditorSupport ペインに出続けた。
+   → 抑止を共有フィルタ `LspPromptViewModel.Filter` に切り出し、**バーとアウトラインの両方**が通す。
+   キャッシュ（`_lastLspPrompt`）は素の判定結果のままにして、参照のたびにフィルタを適用する
+   （そうすると「閉じた直後」の再評価でも抑止が効く。案内は 200ms の再試行ティックで描き直される）。
+3. **「今後表示しない」が再起動で消えていた。** `AiSettings.Lsp` を `AiSettingsStore` の DTO
+   （`PersistedSettings`）が**保存も読込もしていなかった**ため、`DismissedPromptExtensions` はプロセス内
+   だけの状態だった。→ `PersistedLsp` を追加。拡張子は正規化（先頭ドット・小文字）して保持する。

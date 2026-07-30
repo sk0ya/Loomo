@@ -42,6 +42,27 @@ public class AiSettingsStoreTests
     }
 
     [Fact]
+    public void SaveLoad_保持する_LSP促しの今後表示しない拡張子()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new AiSettings();
+            saved.Lsp.DismissedPromptExtensions.Add(".java");
+            new AiSettingsStore(path).Save(saved);
+
+            var loaded = new AiSettings();
+            new AiSettingsStore(path).Load(loaded);
+
+            Assert.Equal([".java"], loaded.Lsp.DismissedPromptExtensions);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Load_migrates_legacy_default_model_to_current_default()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");

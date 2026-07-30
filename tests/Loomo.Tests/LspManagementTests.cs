@@ -131,13 +131,24 @@ public sealed class LspManagementTests : IDisposable
         => Assert.Null(Service().EvaluateForFile("Makefile"));
 
     [Fact]
-    public void Evaluate_UnknownExtension_NotConfigured()
+    public void Evaluate_UnknownSourceExtension_NotConfigured()
     {
-        var info = Service().EvaluateForFile("notes.zzz");
+        // カタログにも対応表にも無いが、言語サーバーが在りうるソース拡張子は促す。
+        var info = Service().EvaluateForFile("Main.java");
         Assert.NotNull(info);
         Assert.Equal(LspPromptKind.NotConfigured, info!.Kind);
         Assert.Null(info.InstallCommand);
     }
+
+    [Theory]
+    [InlineData("logo.png")]      // 画像：言語サーバーは存在しえない
+    [InlineData("photo.JPG")]     // 大文字小文字は無視
+    [InlineData("archive.zip")]
+    [InlineData("app.exe")]
+    [InlineData("notes.zzz")]     // 素性の判らない拡張子も促さない
+    [InlineData("readme.txt")]
+    public void Evaluate_NonSourceExtension_ReturnsNull(string path)
+        => Assert.Null(Service().EvaluateForFile(path));
 
     [Fact]
     public void Evaluate_MappedButNotInstalled_PromptsInstall()
@@ -161,7 +172,7 @@ public sealed class LspManagementTests : IDisposable
     public void InstallForPrompt_NoVisibleTerminal_ReturnsFalse()
     {
         var svc = Service();
-        var info = svc.EvaluateForFile("notes.zzz")!;   // NotConfigured（InstallCommand なし）
+        var info = svc.EvaluateForFile("Main.java")!;   // NotConfigured（InstallCommand なし）
         Assert.False(svc.InstallForPrompt(info));
     }
 }

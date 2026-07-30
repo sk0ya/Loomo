@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Editor.Core.Lsp;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Services.Lsp;
 
@@ -42,19 +43,26 @@ public sealed partial class LspPromptViewModel : ObservableObject
     public void EvaluateForFile(string? filePath) => Show(_service.EvaluateForFile(filePath));
 
     /// <summary>
+    /// 抑止済み（「今後表示しない」／このセッションで閉じた）の促しを null に落とす**共有フィルタ**。
+    /// 促しバーだけでなく EditorSupport の案内（<c>LspNoticeModel</c>）もこれを通す。以前は
+    /// このフィルタが <see cref="Show"/> の中だけにあり、アウトライン側は素の判定結果を使っていたため
+    /// 「今後表示しない」にしても案内が出続けていた。
+    /// </summary>
+    public LspPromptInfo? Filter(LspPromptInfo? info)
+        => info is not null && IsDismissed(info.Extension) ? null : info;
+
+    private bool IsDismissed(string extension) =>
+        _sessionDismissed.Contains(extension) ||
+        _settings.Lsp.DismissedPromptExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 判定済みの結果でバーを更新する。Shell 側は 1 ファイル 1 回だけ判定して
     /// 促しバーとアウトラインの案内で同じ結果を使い回すので、その入口。
     /// </summary>
     public void Show(LspPromptInfo? info)
     {
+        info = Filter(info);
         if (info is null)
-        {
-            Hide();
-            return;
-        }
-
-        if (_sessionDismissed.Contains(info.Extension) ||
-            _settings.Lsp.DismissedPromptExtensions.Contains(info.Extension, StringComparer.OrdinalIgnoreCase))
         {
             Hide();
             return;
@@ -98,9 +106,11 @@ public sealed partial class LspPromptViewModel : ObservableObject
     {
         if (_current is { } info)
         {
-            if (!_settings.Lsp.DismissedPromptExtensions.Contains(info.Extension, StringComparer.OrdinalIgnoreCase))
+            // 永続化する値は正規化（先頭ドット付き・小文字）しておく。
+            var ext = LspExtensions.NormalizeExt(info.Extension);
+            if (!_settings.Lsp.DismissedPromptExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
             {
-                _settings.Lsp.DismissedPromptExtensions.Add(info.Extension);
+                _settings.Lsp.DismissedPromptExtensions.Add(ext);
                 try { _store.Save(_settings); } catch { /* 保存失敗でもバーは閉じる */ }
             }
         }
