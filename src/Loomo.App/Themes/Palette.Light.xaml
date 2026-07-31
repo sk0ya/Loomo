@@ -11,8 +11,9 @@
     <SolidColorBrush x:Key="Border" Color="#FFD4D4D4" />
     <SolidColorBrush x:Key="Accent" Color="#FF005FB8" />
     <SolidColorBrush x:Key="AccentHover" Color="#FF0078D4" />
-    <!-- Accent 背景の上に載るテキスト色（どのテーマでも明色を保つ） -->
-    <SolidColorBrush x:Key="AccentFg" Color="#FFFFFFFF" />
+    <!-- Accent 背景の上に載るテキスト色。ThemeManager.AccentForeground が Accent から作る色と同じ値
+         （純白／純黒だと浮くため、同色相の極端に濃い／淡い色。実行時も同じ規則で作り直す）。 -->
+    <SolidColorBrush x:Key="AccentFg" Color="#FFEBF0F4" />
     <SolidColorBrush x:Key="Fg" Color="#FF1F1F1F" />
     <SolidColorBrush x:Key="FgDim" Color="#FF616161" />
     <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明アンバー） -->

@@ -13,7 +13,7 @@
          明るくすると Accent 上の白文字が読めなくなる。 -->
     <SolidColorBrush x:Key="Accent" Color="#FF4078F2" />
     <SolidColorBrush x:Key="AccentHover" Color="#FF2C5FD0" />
-    <SolidColorBrush x:Key="AccentFg" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF0A1224" />
     <SolidColorBrush x:Key="Fg" Color="#FF383A42" />
     <SolidColorBrush x:Key="FgDim" Color="#FF7C7F8A" />
     <!-- 検索ヒット文字の強調背景（明るい背景でも沈まない半透明アンバー） -->

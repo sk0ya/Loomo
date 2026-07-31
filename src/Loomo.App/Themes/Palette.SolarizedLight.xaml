@@ -13,7 +13,7 @@
          ホバーはさらに暗くする（暗色テーマの「明るくする」とは逆向き）。 -->
     <SolidColorBrush x:Key="Accent" Color="#FF1E76B8" />
     <SolidColorBrush x:Key="AccentHover" Color="#FF135F97" />
-    <SolidColorBrush x:Key="AccentFg" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FFF7F9FA" />
     <SolidColorBrush x:Key="Fg" Color="#FF586E75" />
     <SolidColorBrush x:Key="FgDim" Color="#FF93A1A1" />
     <!-- 検索ヒット文字の強調背景（明るい背景でも沈まない半透明アンバー） -->

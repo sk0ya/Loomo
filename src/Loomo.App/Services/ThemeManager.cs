@@ -94,12 +94,16 @@ public sealed class ThemeManager
             res.Remove(AccentKey);
             res.Remove(AccentHoverKey);
             res.Remove(AccentFgKey);
+            // 文字色はパレット既定のアクセントからも同じ規則で作る（手書き値とカスタム指定で
+            // 見え方が変わらないよう、規則を一本にする）。Remove 済みなのでマージ辞書側が引ける。
+            if (res[AccentKey] is SolidColorBrush palette)
+                res[AccentFgKey] = new SolidColorBrush(AccentForeground(palette.Color));
             return;
         }
 
         res[AccentKey] = new SolidColorBrush(color);
         res[AccentHoverKey] = new SolidColorBrush(Lighten(color, 0.18));
-        res[AccentFgKey] = new SolidColorBrush(ContrastForeground(color));
+        res[AccentFgKey] = new SolidColorBrush(AccentForeground(color));
     }
 
     /// <summary>指定文字列が有効なカラー指定（"#RRGGBB" 等）かどうか。</summary>
@@ -124,11 +128,89 @@ public sealed class ThemeManager
         return Color.FromRgb(Mix(c.R), Mix(c.G), Mix(c.B));
     }
 
-    /// <summary>背景色の相対輝度から、その上に載せる文字色（白/黒）を選ぶ。</summary>
-    private static Color ContrastForeground(Color bg)
+    /// <summary>アクセント背景の上に載せる文字色を作る。純白／純黒はアクセントから浮くため、
+    /// 同じ色相のごく濃い色／ごく淡い色（彩度は抑える）を候補にし、コントラスト比の高い方を採る。
+    /// <see cref="MinContrast"/> に届かない場合だけ、明度を白か黒へ寄せて確保する。</summary>
+    public static Color AccentForeground(Color accent)
     {
-        // sRGB 相対輝度の簡易近似
-        double luminance = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255.0;
-        return luminance > 0.55 ? Color.FromRgb(0x1F, 0x1F, 0x1F) : Colors.White;
+        var (h, s, _) = ToHsl(accent);
+
+        // 濃い側は彩度をしっかり残して色味を出す（0.40/0.12 では黒に近すぎて色が乏しかった）。
+        // 淡い側は同じだけ彩度を上げると濁るので控えめにする。
+        var dark = Pull(h, Math.Min(s, 0.55), 0.16, accent, toward: 0.0);
+        var light = Pull(h, Math.Min(s, 0.28), 0.94, accent, toward: 1.0);
+        return Contrast(accent, dark) >= Contrast(accent, light) ? dark : light;
+    }
+
+    /// <summary>読める明暗差になるまで明度を <paramref name="toward"/>（0=黒 / 1=白）へ寄せる。
+    /// 中間色のアクセントでは端まで寄せても届かないことがあるので、その場合は端の色を返す。</summary>
+    private static Color Pull(double h, double s, double l, Color accent, double toward)
+    {
+        var color = FromHsl(h, s, l);
+        for (var i = 0; i < 24 && Contrast(accent, color) < MinContrast; i++)
+        {
+            l += (toward - l) * 0.25;
+            color = FromHsl(h, s, l);
+        }
+        return color;
+    }
+
+    /// <summary>本文として読める下限（WCAG 2.x の AA、通常サイズ）。</summary>
+    private const double MinContrast = 4.5;
+
+    /// <summary>WCAG 2.x の相対輝度によるコントラスト比（1.0〜21.0）。</summary>
+    public static double Contrast(Color a, Color b)
+    {
+        var (l1, l2) = (Luminance(a), Luminance(b));
+        if (l2 > l1) (l1, l2) = (l2, l1);
+        return (l1 + 0.05) / (l2 + 0.05);
+    }
+
+    private static double Luminance(Color c)
+    {
+        static double Channel(byte v)
+        {
+            var s = v / 255.0;
+            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+    }
+
+    private static (double H, double S, double L) ToHsl(Color c)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+        var l = (max + min) / 2;
+        if (Math.Abs(max - min) < 1e-9) return (0, 0, l);
+
+        var d = max - min;
+        var s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        var h = max == r ? (g - b) / d + (g < b ? 6 : 0)
+              : max == g ? (b - r) / d + 2
+              :            (r - g) / d + 4;
+        return (h * 60, s, l);
+    }
+
+    private static Color FromHsl(double h, double s, double l)
+    {
+        l = Math.Clamp(l, 0, 1);
+        if (s <= 0) return Gray(l);
+
+        var c = (1 - Math.Abs(2 * l - 1)) * s;
+        var x = c * (1 - Math.Abs(h / 60 % 2 - 1));
+        var m = l - c / 2;
+        var (r, g, b) = (h / 60) switch
+        {
+            < 1 => (c, x, 0.0),
+            < 2 => (x, c, 0.0),
+            < 3 => (0.0, c, x),
+            < 4 => (0.0, x, c),
+            < 5 => (x, 0.0, c),
+            _   => (c, 0.0, x),
+        };
+        return Color.FromRgb(Byte(r + m), Byte(g + m), Byte(b + m));
+
+        static Color Gray(double v) => Color.FromRgb(Byte(v), Byte(v), Byte(v));
+        static byte Byte(double v) => (byte)Math.Clamp(Math.Round(v * 255), 0, 255);
     }
 }

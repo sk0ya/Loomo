@@ -11,7 +11,7 @@
     <SolidColorBrush x:Key="Border" Color="#FF6FC3DF" />
     <SolidColorBrush x:Key="Accent" Color="#FF1AEBFF" />
     <SolidColorBrush x:Key="AccentHover" Color="#FF6FE9FF" />
-    <SolidColorBrush x:Key="AccentFg" Color="#FF000000" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF123B3F" />
     <SolidColorBrush x:Key="Fg" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="FgDim" Color="#FFD0D0D0" />
     <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明イエロー） -->

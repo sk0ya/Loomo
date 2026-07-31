@@ -12,7 +12,7 @@
     <SolidColorBrush x:Key="Accent" Color="#FFBD93F9" />
     <SolidColorBrush x:Key="AccentHover" Color="#FFD6ACFF" />
     <!-- Accent が明色なので、その上の文字は背景色寄りの暗色にする -->
-    <SolidColorBrush x:Key="AccentFg" Color="#FF21222C" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF25123F" />
     <SolidColorBrush x:Key="Fg" Color="#FFF8F8F2" />
     <SolidColorBrush x:Key="FgDim" Color="#FF9AA0BE" />
     <!-- 検索ヒット文字の強調背景（選択行・通常行どちらでも読めるよう半透明イエロー） -->
