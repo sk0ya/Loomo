@@ -6,7 +6,7 @@ using Xunit;
 
 namespace sk0ya.Loomo.Tests;
 
-public class AiSettingsStoreTests
+public class SettingsStoreTests
 {
     [Fact]
     public void Load_ignores_legacy_persisted_system_prompt()
@@ -28,10 +28,11 @@ public class AiSettingsStoreTests
 
         try
         {
-            var settings = new AiSettings();
-            new AiSettingsStore(path).Load(settings);
+            var settings = new LoomoSettings();
+            new SettingsStore(path).Load(settings);
 
-            Assert.Equal(AiSettings.DefaultSystemPrompt, settings.SystemPrompt);
+            // systemPrompt / baseUrl / numGpu などの旧フィールドは読み捨て、残りは正しく反映される
+            // （システムプロンプトはユーザー設定ではなく AI 層の SystemPrompts が持つ）。
             Assert.Equal("phi4-mini:latest", settings.Local.Model);
             Assert.Equal(1234, settings.Local.MaxTokens);
         }
@@ -47,12 +48,12 @@ public class AiSettingsStoreTests
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         try
         {
-            var saved = new AiSettings();
+            var saved = new LoomoSettings();
             saved.Lsp.DismissedPromptExtensions.Add(".java");
-            new AiSettingsStore(path).Save(saved);
+            new SettingsStore(path).Save(saved);
 
-            var loaded = new AiSettings();
-            new AiSettingsStore(path).Load(loaded);
+            var loaded = new LoomoSettings();
+            new SettingsStore(path).Load(loaded);
 
             Assert.Equal([".java"], loaded.Lsp.DismissedPromptExtensions);
         }
@@ -77,10 +78,10 @@ public class AiSettingsStoreTests
 
         try
         {
-            var settings = new AiSettings();
-            new AiSettingsStore(path).Load(settings);
+            var settings = new LoomoSettings();
+            new SettingsStore(path).Load(settings);
 
-            Assert.Equal(AiSettings.DefaultLocalModel, settings.Local.Model);
+            Assert.Equal(LoomoSettings.DefaultLocalModel, settings.Local.Model);
         }
         finally
         {
@@ -94,7 +95,7 @@ public class AiSettingsStoreTests
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         try
         {
-            new AiSettingsStore(path).Save(new AiSettings());
+            new SettingsStore(path).Save(new LoomoSettings());
 
             var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
             Assert.False(json.ContainsKey("systemPrompt"));
@@ -115,16 +116,16 @@ public class AiSettingsStoreTests
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         try
         {
-            var saved = new AiSettings();
+            var saved = new LoomoSettings();
             saved.Vim.Enabled = true;
 
-            var store = new AiSettingsStore(path);
+            var store = new SettingsStore(path);
             store.Save(saved);
 
             var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
             Assert.True(json["vim"]!["enabled"]!.GetValue<bool>());
 
-            var loaded = new AiSettings();
+            var loaded = new LoomoSettings();
             store.Load(loaded);
 
             Assert.True(loaded.Vim.Enabled);
@@ -138,7 +139,7 @@ public class AiSettingsStoreTests
     [Fact]
     public void Vim_is_disabled_by_default()
     {
-        Assert.False(new AiSettings().Vim.Enabled);
+        Assert.False(new LoomoSettings().Vim.Enabled);
     }
 
     [Fact]
@@ -147,13 +148,13 @@ public class AiSettingsStoreTests
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         try
         {
-            var saved = new AiSettings();
+            var saved = new LoomoSettings();
             saved.Editor.CollapseUsingsOnOpen = true;
 
-            var store = new AiSettingsStore(path);
+            var store = new SettingsStore(path);
             store.Save(saved);
 
-            var loaded = new AiSettings();
+            var loaded = new LoomoSettings();
             store.Load(loaded);
 
             Assert.True(loaded.Editor.CollapseUsingsOnOpen);
@@ -167,6 +168,6 @@ public class AiSettingsStoreTests
     [Fact]
     public void Collapse_usings_on_open_is_disabled_by_default()
     {
-        Assert.False(new AiSettings().Editor.CollapseUsingsOnOpen);
+        Assert.False(new LoomoSettings().Editor.CollapseUsingsOnOpen);
     }
 }

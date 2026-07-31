@@ -109,7 +109,7 @@ internal static class TranscriptFormatting
 
     /// <summary>このターン/ステップで使うAIの実行構成（モデル・コンテキスト長・実行EP）を進行状況の1行に整形する。
     /// 何のモデル・設定で動いているかを先頭に出して、遅さ等の原因切り分けに使えるようにする。</summary>
-    public static string FormatRunConfig(AiSettings settings)
+    public static string FormatRunConfig(LoomoSettings settings)
     {
         var cfg = settings.Local;
         var model = string.IsNullOrWhiteSpace(cfg.Model) ? "(未設定)" : cfg.Model;

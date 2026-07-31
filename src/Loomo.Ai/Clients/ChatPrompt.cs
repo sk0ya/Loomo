@@ -14,14 +14,13 @@ public static class ChatPrompt
 {
     public static string Build(
         ChatFormat format,
-        AiSettings settings,
         AgentProfile? profile,
         IReadOnlyList<string> workspaceFolders,
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools)
         => format switch
         {
-            ChatFormat.Qwen3 => Qwen3PromptFormatter.Build(settings, profile, workspaceFolders, conversation, tools),
-            _ => Phi4PromptFormatter.Build(settings, profile, workspaceFolders, conversation, tools),
+            ChatFormat.Qwen3 => Qwen3PromptFormatter.Build(profile, workspaceFolders, conversation, tools),
+            _ => Phi4PromptFormatter.Build(profile, workspaceFolders, conversation, tools),
         };
 }

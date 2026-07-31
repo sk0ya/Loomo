@@ -226,11 +226,11 @@ public static class MarkdownPreviewPaths
 /// <summary>Markdown（.md / .markdown）のライブプレビュー。</summary>
 public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly IWorkspaceService _workspace;
     private static readonly string[] Extensions = [".md", ".markdown"];
 
-    public MarkdownEditorSupport(AiSettings settings, IWorkspaceService workspace)
+    public MarkdownEditorSupport(LoomoSettings settings, IWorkspaceService workspace)
     {
         _settings = settings;
         _workspace = workspace;

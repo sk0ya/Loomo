@@ -14,8 +14,8 @@ public class MermaidEditorSupportTests
         var workspace = new FakeWorkspaceService();
         return new(new IEditorSupportProvider[]
         {
-            new MarkdownEditorSupport(new AiSettings(), workspace),
-            new MermaidEditorSupport(new AiSettings())
+            new MarkdownEditorSupport(new LoomoSettings(), workspace),
+            new MermaidEditorSupport(new LoomoSettings())
         });
     }
 
@@ -33,7 +33,7 @@ public class MermaidEditorSupportTests
     [Fact]
     public void DescribeTitle_Mermaidプレフィックスとファイル名()
     {
-        var support = new MermaidEditorSupport(new AiSettings());
+        var support = new MermaidEditorSupport(new LoomoSettings());
 
         Assert.Equal("Mermaid: flow.mmd", support.DescribeTitle(@"C:\work\flow.mmd"));
     }
@@ -41,7 +41,7 @@ public class MermaidEditorSupportTests
     [Fact]
     public void RenderHtml_図ブロックとブートストラップを含む完全なHTMLを生成する()
     {
-        var support = new MermaidEditorSupport(new AiSettings());
+        var support = new MermaidEditorSupport(new LoomoSettings());
         const string path = @"C:\work\flow.mmd";
 
         Assert.IsAssignableFrom<IEditorSupportIncrementalHtmlProvider>(support);
@@ -59,7 +59,7 @@ public class MermaidEditorSupportTests
     [Fact]
     public void RenderBody_生テキストを図ブロックに包みHTMLエスケープする()
     {
-        var support = new MermaidEditorSupport(new AiSettings());
+        var support = new MermaidEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\flow.mmd", "graph LR\n  A-->B");
 
@@ -71,7 +71,7 @@ public class MermaidEditorSupportTests
     [Fact]
     public void RenderBody_空テキストは空の図ブロックにする()
     {
-        var support = new MermaidEditorSupport(new AiSettings());
+        var support = new MermaidEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\flow.mmd", "");
 

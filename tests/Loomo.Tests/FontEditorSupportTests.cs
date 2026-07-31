@@ -14,7 +14,7 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class FontEditorSupportTests
 {
-    private static FontEditorSupport Create() => new(new AiSettings());
+    private static FontEditorSupport Create() => new(new LoomoSettings());
 
     private static EditorSupportRegistry CreateRegistry()
         => new(new IEditorSupportProvider[] { Create() });

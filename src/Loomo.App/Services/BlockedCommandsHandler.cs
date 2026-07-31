@@ -10,11 +10,11 @@ public sealed record SettingsCommandResult(bool Success, string Message);
 /// <summary>危険コマンド設定のリセット・編集・永続化を担当する Command Handler。</summary>
 public sealed class BlockedCommandsHandler
 {
-    private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
+    private readonly LoomoSettings _settings;
+    private readonly SettingsStore _store;
     private readonly IEditorService _editor;
 
-    public BlockedCommandsHandler(AiSettings settings, AiSettingsStore store, IEditorService editor)
+    public BlockedCommandsHandler(LoomoSettings settings, SettingsStore store, IEditorService editor)
     {
         _settings = settings;
         _store = store;

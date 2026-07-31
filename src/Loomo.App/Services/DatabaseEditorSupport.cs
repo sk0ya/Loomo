@@ -275,10 +275,10 @@ public static class ParquetPreviewReader
 /// </summary>
 public sealed class SqliteEditorSupport : IEditorSupportHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".db", ".sqlite", ".sqlite3"];
 
-    public SqliteEditorSupport(AiSettings settings) => _settings = settings;
+    public SqliteEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
@@ -321,10 +321,10 @@ public sealed class SqliteEditorSupport : IEditorSupportHtmlProvider
 /// </summary>
 public sealed class ParquetEditorSupport : IEditorSupportHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".parquet"];
 
-    public ParquetEditorSupport(AiSettings settings) => _settings = settings;
+    public ParquetEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

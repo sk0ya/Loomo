@@ -55,5 +55,5 @@ public sealed class VGridSearchHighlightTests
 
     [Fact]
     public void VGrid提供者は検索ハイライトを受け取れる()
-        => Assert.IsAssignableFrom<IEditorSupportSearchHighlightProvider>(new VGridEditorSupport(new AiSettings()));
+        => Assert.IsAssignableFrom<IEditorSupportSearchHighlightProvider>(new VGridEditorSupport(new LoomoSettings()));
 }

@@ -73,7 +73,7 @@ The agent has **four tools**: `run_powershell` (the workhorse), structured `writ
 - **`run_powershell`** (`Tools/Implementations/TerminalTools.cs`) runs a PowerShell command line and returns
   stdout + exit code. Reads, search, listing, build, test are all expressed as PowerShell
   (`Get-Content` / `Select-String` / `Get-ChildItem` / `dotnet …`); the system prompt
-  (`AiSettings.DefaultSystemPrompt`) tells the model so.
+  (`SystemPrompts.Phi4`) tells the model so.
 - **`write_file{path,content}`** (`Tools/Implementations/WriteFileTool.cs`) creates/overwrites a file, and
   **`edit_file{path,old_string,new_string}`** (`EditFileTool.cs`) does a unique exact-match replace
   (0/multiple matches → clean recoverable error; never a botched in-place edit). Both take the content as its
@@ -122,11 +122,11 @@ against `BlockedCommandPatterns` regexes; a block is returned to the AI as a too
 Approval cards are shown only when `tool.RequiresApproval && !AutoApprove` (all three tools require it).
 `BlockedCommandPatterns` guards shell commands; **file writes via `write_file`/`edit_file` are confined to the
 workspace root by `IWorkspaceService.ResolvePath`** (a `pwsh` `Set-Content` still bypasses that and is only
-guarded by the block list). `SafetySettings` lives on `AiSettings.Safety` and is DI-shared as a singleton.
+guarded by the block list). `SafetySettings` lives on `LoomoSettings.Safety` and is DI-shared as a singleton.
 
 ### AI clients — `Loomo.Ai/Clients/`
 
-`IAiClient` abstracts the provider; `AiClientFactory.ResolveCurrent()` reads the singleton `AiSettings`
+`IAiClient` abstracts the provider; `AiClientFactory.ResolveCurrent()` reads the singleton `LoomoSettings`
 **every turn**, so settings changes apply immediately. The only implemented client is `OnnxGenAiClient`
 (provider `Local`), which drives an **in-process ONNX Runtime GenAI** engine — there is **no HTTP / no
 external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU), pinned in
@@ -169,12 +169,14 @@ shared by the engine's `max_length` and the history-trim budget (`SettingsContex
 model never silently truncates context the trimmer thought it kept.
 
 System prompts are **English instructions / Japanese output** (small local models follow English tool-calling rules
-more reliably). There are now two, picked by `ChatFormat`: `AiSettings.DefaultSystemPrompt` (Phi-4, JSON-array
-tool-call examples) and `AiSettings.Qwen3SystemPrompt` (Hermes `<tool_call>` examples + no-think; restructured
+more reliably). There are now two, picked by `ChatFormat`: `SystemPrompts.Phi4` (Phi-4, JSON-array
+tool-call examples) and `SystemPrompts.Qwen3` (Hermes `<tool_call>` examples + no-think; restructured
 2026-06 into general principles — facts only from tool results, no success claims after errors, complete & verify
 all parts, exact old_string copy). **The Qwen3 prompt's few-shot examples must not name harness seed files**
 (README.md etc.) — that contaminated the capability eval once; `Qwen3PromptFormatterTests` now asserts it.
-`BuildSystemPrompt(profile, format)` chooses.
+Both live in `Loomo.Ai/Clients/SystemPrompts.cs` (with the mode preambles `ChatTurnPreamble` /
+`WorkflowTurnPreamble`) — they are AI-layer assets, **not** user settings, so they are not on `LoomoSettings`;
+`SystemPrompts.Build(format, profile)` chooses and applies the agent profile.
 
 **Model acquisition** — `ModelDownloadService.Catalog` is the source of truth for the downloadable ONNX (CPU int4,
 ORT-GenAI-compatible) models (read it for the current list — don't hardcode model names here, they drift).
@@ -259,7 +261,7 @@ exactly one entry point, `OnActiveEditorFileChanged(tab)` in `ShellWindow.Tabs.c
 reuses the same result via `EvaluateLspPrompt`. The "not configured" variant is only raised for extensions in
 `LspManagementService.PromptableSourceExtensions` (programming-language sources) — `.png`/`.zip`/`.txt` and other
 files that can't have a language server get **no** prompt. Dismissal ("今後表示しない" → persisted in
-`AiSettings.Lsp.DismissedPromptExtensions` in settings.json; "×" → session-only) is applied by the single shared
+`LoomoSettings.Lsp.DismissedPromptExtensions` in settings.json; "×" → session-only) is applied by the single shared
 filter `LspPromptViewModel.Filter`, which **both** the bar and `EvaluateLspPrompt` (the outline notice) run through
 — when it lived inside `Show` only, the outline kept showing the notice the user had dismissed.
 

@@ -437,6 +437,6 @@ Editor 側の変更 → パッケージのローカル注入 → Loomo 側の追
    → 抑止を共有フィルタ `LspPromptViewModel.Filter` に切り出し、**バーとアウトラインの両方**が通す。
    キャッシュ（`_lastLspPrompt`）は素の判定結果のままにして、参照のたびにフィルタを適用する
    （そうすると「閉じた直後」の再評価でも抑止が効く。案内は 200ms の再試行ティックで描き直される）。
-3. **「今後表示しない」が再起動で消えていた。** `AiSettings.Lsp` を `AiSettingsStore` の DTO
+3. **「今後表示しない」が再起動で消えていた。** `LoomoSettings.Lsp` を `SettingsStore` の DTO
    （`PersistedSettings`）が**保存も読込もしていなかった**ため、`DismissedPromptExtensions` はプロセス内
    だけの状態だった。→ `PersistedLsp` を追加。拡張子は正規化（先頭ドット・小文字）して保持する。

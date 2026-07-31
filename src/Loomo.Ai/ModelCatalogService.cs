@@ -17,9 +17,9 @@ namespace sk0ya.Loomo.Ai;
 /// </summary>
 public sealed class ModelCatalogService
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
 
-    public ModelCatalogService(AiSettings settings) => _settings = settings;
+    public ModelCatalogService(LoomoSettings settings) => _settings = settings;
 
     /// <summary>モデル一覧取得に対応するプロバイダか。</summary>
     public static bool Supports(AiProvider provider) => provider is AiProvider.Local;

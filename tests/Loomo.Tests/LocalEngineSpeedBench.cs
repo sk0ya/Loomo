@@ -34,7 +34,7 @@ public sealed class LocalEngineSpeedBench
             return;
 
         var name = Environment.GetEnvironmentVariable("HARNESS_MODEL") is { Length: > 0 } m
-            ? m : AiSettings.DefaultLocalModel;
+            ? m : LoomoSettings.DefaultLocalModel;
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Loomo", "models", name);
         // ONNX はフォルダ、GGUF はフォルダ内の .gguf ファイルを指す（ルータが拡張子で振り分ける）。
@@ -43,7 +43,7 @@ public sealed class LocalEngineSpeedBench
             : root;
         Assert.True(Directory.Exists(modelPath) || File.Exists(modelPath), $"model not found: {modelPath}");
 
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         settings.Local.Model = name;
         settings.Local.ModelPath = modelPath;
 
@@ -54,7 +54,7 @@ public sealed class LocalEngineSpeedBench
         // （decode 速度は prompt 内容に依存しない。prefill tok/s も throughput なので長さ非依存）。
         var convo = new Conversation();
         convo.AddUser("ローカルでLLMを動かす利点と注意点を、日本語の文章で400字程度、詳しく説明してください。箇条書きは使わないでください。");
-        var prompt = ChatPrompt.Build(profile.Format, settings, AgentProfiles.Root, new[] { @"C:\Projects\Loomo" },
+        var prompt = ChatPrompt.Build(profile.Format, AgentProfiles.Root, new[] { @"C:\Projects\Loomo" },
             convo, Array.Empty<ToolDefinition>());
 
         const int budget = 300;

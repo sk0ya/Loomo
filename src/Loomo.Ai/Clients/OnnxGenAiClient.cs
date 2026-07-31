@@ -21,10 +21,10 @@ namespace sk0ya.Loomo.Ai.Clients;
 public sealed class OnnxGenAiClient : IAiClient
 {
     private readonly ILocalInferenceEngine _engine;
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly IWorkspaceService _workspace;
 
-    public OnnxGenAiClient(ILocalInferenceEngine engine, AiSettings settings, IWorkspaceService workspace)
+    public OnnxGenAiClient(ILocalInferenceEngine engine, LoomoSettings settings, IWorkspaceService workspace)
     {
         _engine = engine;
         _settings = settings;
@@ -42,7 +42,7 @@ public sealed class OnnxGenAiClient : IAiClient
     {
         var cfg = _settings.Local;
         var modelProfile = ModelProfiles.Resolve(cfg.Model);
-        var prompt = ChatPrompt.Build(modelProfile.Format, _settings, profile, _workspace.Folders, conversation, tools);
+        var prompt = ChatPrompt.Build(modelProfile.Format, profile, _workspace.Folders, conversation, tools);
         var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
         var maxNewTokens = modelProfile.MaxOutputTokens > 0
             ? Math.Min(cfg.MaxTokens, modelProfile.MaxOutputTokens)

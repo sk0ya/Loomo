@@ -152,10 +152,10 @@ public static class ExcelSheetReader
 /// </summary>
 public sealed class WordEditorSupport : IEditorSupportHtmlProvider, IEditorSupportMarkdownExportProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".docx"];
 
-    public WordEditorSupport(AiSettings settings) => _settings = settings;
+    public WordEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

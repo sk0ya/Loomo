@@ -31,7 +31,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
     private readonly UiApprovalService _approval;
     private readonly WorkflowStore _store;
     private readonly IAiWarmup _warmup;
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly WorkflowToolRunner _toolRunner;
     private readonly IWorkspaceService _workspace;
 
@@ -139,7 +139,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
         UiApprovalService approval,
         WorkflowStore store,
         IAiWarmup warmup,
-        AiSettings settings,
+        LoomoSettings settings,
         WorkflowToolRunner toolRunner,
         IWorkspaceService workspace)
     {

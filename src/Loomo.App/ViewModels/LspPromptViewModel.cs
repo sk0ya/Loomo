@@ -17,8 +17,8 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class LspPromptViewModel : ObservableObject
 {
     private readonly LspManagementService _service;
-    private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
+    private readonly LoomoSettings _settings;
+    private readonly SettingsStore _store;
 
     // このセッション中に「×」で閉じた拡張子（再起動までは抑止、永続はしない）。
     private readonly HashSet<string> _sessionDismissed = new(StringComparer.OrdinalIgnoreCase);
@@ -32,7 +32,7 @@ public sealed partial class LspPromptViewModel : ObservableObject
     /// <summary>「設定を開く」を押したときに、LSP 設定オーバーレイを開くよう Shell へ要求する。</summary>
     public event Action? OpenSettingsRequested;
 
-    public LspPromptViewModel(LspManagementService service, AiSettings settings, AiSettingsStore store)
+    public LspPromptViewModel(LspManagementService service, LoomoSettings settings, SettingsStore store)
     {
         _service = service;
         _settings = settings;

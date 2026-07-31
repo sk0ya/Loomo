@@ -8,7 +8,7 @@ public class ModelCatalogServiceTests
     [Fact]
     public void ResolvePath_returns_empty_for_blank_model_name()
     {
-        var service = new ModelCatalogService(new AiSettings());
+        var service = new ModelCatalogService(new LoomoSettings());
 
         Assert.Equal("", service.ResolvePath("   "));
     }
@@ -23,7 +23,7 @@ public class ModelCatalogServiceTests
             Directory.CreateDirectory(knownModel);
             File.WriteAllText(Path.Combine(knownModel, "genai_config.json"), "{}");
 
-            var settings = new AiSettings();
+            var settings = new LoomoSettings();
             settings.Local.ModelPath = knownModel;
             var service = new ModelCatalogService(settings);
 
@@ -48,7 +48,7 @@ public class ModelCatalogServiceTests
             Directory.CreateDirectory(modelDir);
             File.WriteAllText(Path.Combine(modelDir, "genai_config.json"), "{}");
 
-            var settings = new AiSettings();
+            var settings = new LoomoSettings();
             settings.Local.ModelPath = modelDir;
             var service = new ModelCatalogService(settings);
 

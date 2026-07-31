@@ -14,12 +14,12 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class LspPromptViewModelTests
 {
-    private static (LspPromptViewModel Vm, AiSettings Settings, string SettingsPath) CreateSut()
+    private static (LspPromptViewModel Vm, LoomoSettings Settings, string SettingsPath) CreateSut()
     {
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         var path = Path.Combine(Path.GetTempPath(), $"loomo-lspprompt-{Guid.NewGuid():N}.json");
         var service = new LspManagementService(new FakeTerminalService(), new LspServerTable(null));
-        return (new LspPromptViewModel(service, settings, new AiSettingsStore(path)), settings, path);
+        return (new LspPromptViewModel(service, settings, new SettingsStore(path)), settings, path);
     }
 
     private static LspPromptInfo Info(string ext) =>

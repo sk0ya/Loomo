@@ -33,7 +33,7 @@ public class OnnxGenAiClientTests
     private static async Task<List<AgentEvent>> RunAsync(params AgentEvent[] scripted)
     {
         var client = new OnnxGenAiClient(
-            new FakeInferenceEngine(scripted), new AiSettings(), new FakeWorkspaceService());
+            new FakeInferenceEngine(scripted), new LoomoSettings(), new FakeWorkspaceService());
         var conv = new Conversation();
         conv.AddUser("やあ");
 
@@ -62,9 +62,9 @@ public class OnnxGenAiClientTests
 
     /// <summary>phi4 固有の挙動（greedy 既定サンプリング・Phi-4 プロンプト書式）を検証するテスト用の設定。
     /// 既定モデルは GGUF(Qwen3) に変わったため、phi4 を明示する。</summary>
-    private static AiSettings Phi4Settings()
+    private static LoomoSettings Phi4Settings()
     {
-        var s = new AiSettings();
+        var s = new LoomoSettings();
         s.Local.Model = "phi4-mini";
         return s;
     }
@@ -74,7 +74,7 @@ public class OnnxGenAiClientTests
 
     private static async Task<GenerationRequest> CaptureRequestAsync(
         bool retryDiversify,
-        AiSettings settings,
+        LoomoSettings settings,
         IReadOnlyList<ToolDefinition> tools,
         string userText)
     {
@@ -117,7 +117,7 @@ public class OnnxGenAiClientTests
         Assert.True(retry.Sampling.TopK > 1, "リトライ多様化では候補プールを開くため top_k>1 が必要");
         Assert.NotNull(retry.Sampling.Temperature);
 
-        // 通常時はモデル別プロファイルに委ねる（既定 AiSettings=phi4 未指定＝greedy 相当で top_k を上書きしない）。
+        // 通常時はモデル別プロファイルに委ねる（既定 LoomoSettings=phi4 未指定＝greedy 相当で top_k を上書きしない）。
         var normal = await CaptureRequestAsync(retryDiversify: false);
         Assert.Null(normal.Sampling.TopK);
     }

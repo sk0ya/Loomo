@@ -29,7 +29,7 @@ public class ExcelEditorSupportViewTests
             var path = CreateTwoSheetXlsx();
             try
             {
-                var provider = new ExcelEditorSupport(new AiSettings());
+                var provider = new ExcelEditorSupport(new LoomoSettings());
                 var view = provider.GetOrCreateView();
 
                 // 実アプリに近づけるため一度ウィンドウへ載せて測定・レイアウトさせる。

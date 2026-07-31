@@ -15,11 +15,11 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class JsonEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly JsonSchemaValidator _validator;
     private static readonly string[] Extensions = [".json", ".jsonc"];
 
-    public JsonEditorSupport(AiSettings settings, JsonSchemaValidator validator)
+    public JsonEditorSupport(LoomoSettings settings, JsonSchemaValidator validator)
     {
         _settings = settings;
         _validator = validator;

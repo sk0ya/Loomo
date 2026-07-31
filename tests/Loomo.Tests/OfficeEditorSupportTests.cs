@@ -62,7 +62,7 @@ public class OfficeEditorSupportTests
     public void Excel_UsesEditorTextはfalse_本文非依存()
     {
         // 本文（text）に依存しない：ファイルパスから直接読む。
-        Assert.False(new ExcelEditorSupport(new AiSettings()).UsesEditorText);
+        Assert.False(new ExcelEditorSupport(new LoomoSettings()).UsesEditorText);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class OfficeEditorSupportTests
         var path = CreateDocx("これはテスト段落です。");
         try
         {
-            var html = new WordEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+            var html = new WordEditorSupport(new LoomoSettings()).RenderHtml(path, text: "");
 
             Assert.StartsWith("<!DOCTYPE html>", html);
             Assert.Contains("これはテスト段落です。", html);
@@ -82,7 +82,7 @@ public class OfficeEditorSupportTests
     [Fact]
     public void Word_UsesEditorTextはfalse_本文非依存()
     {
-        Assert.False(new WordEditorSupport(new AiSettings()).UsesEditorText);
+        Assert.False(new WordEditorSupport(new LoomoSettings()).UsesEditorText);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class OfficeEditorSupportTests
         var path = CreateDocx("これはテスト段落です。");
         try
         {
-            var markdown = new WordEditorSupport(new AiSettings()).RenderMarkdown(path, text: "");
+            var markdown = new WordEditorSupport(new LoomoSettings()).RenderMarkdown(path, text: "");
             Assert.Equal("これはテスト段落です。\n", markdown);
         }
         finally { File.Delete(path); }

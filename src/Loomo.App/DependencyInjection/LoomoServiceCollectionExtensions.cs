@@ -23,9 +23,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddLogging();
 
         // 実行中に変更される設定と、それを参照するポリシーはアプリ全体で同じ状態を共有する。
-        services.AddSingleton<AiSettings>();
-        services.AddSingleton<AiSettingsStore>();
-        services.AddSingleton(sp => sp.GetRequiredService<AiSettings>().Safety);
+        services.AddSingleton<LoomoSettings>();
+        services.AddSingleton<SettingsStore>();
+        services.AddSingleton(sp => sp.GetRequiredService<LoomoSettings>().Safety);
         services.AddSingleton<ISafetyPolicy, SafetyPolicy>();
 
         AddAliasedSingleton<WorkspaceService, IWorkspaceService>(services);
@@ -54,7 +54,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<ISubAgentRunner, SubAgentRunner>();
         services.AddSingleton<ITraceSink>(sp =>
         {
-            var obs = sp.GetRequiredService<AiSettings>().Observability;
+            var obs = sp.GetRequiredService<LoomoSettings>().Observability;
             return obs.EnableTracing
                 ? new JsonlTraceSink(maxSessions: obs.MaxSessions)
                 : NullTraceSink.Instance;
@@ -78,7 +78,7 @@ internal static class LoomoServiceCollectionExtensions
         AddAliasedSingleton<LocalInferenceRouter, ILocalInferenceEngine>(services);
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
-        services.AddSingleton(sp => new ModelCatalogService(sp.GetRequiredService<AiSettings>()));
+        services.AddSingleton(sp => new ModelCatalogService(sp.GetRequiredService<LoomoSettings>()));
         services.AddSingleton(sp => new ModelDownloadService(
             sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
 

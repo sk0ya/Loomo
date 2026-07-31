@@ -12,8 +12,8 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class TrailViewModel : ObservableObject
 {
     private readonly Func<DateTime> _now;
-    private readonly AiSettings? _settings;
-    private readonly AiSettingsStore? _settingsStore;
+    private readonly LoomoSettings? _settings;
+    private readonly SettingsStore? _settingsStore;
     private readonly TrailRecordHandler _recorder;
     private readonly TrailHistoryQuery _history;
     private bool _loaded;
@@ -29,7 +29,7 @@ public sealed partial class TrailViewModel : ObservableObject
     /// 記録は常に今日へ積むため、表示リストとは別に保持する。</summary>
 
     public TrailViewModel(TrailStore store, Func<DateTime>? clock = null,
-        AiSettings? settings = null, AiSettingsStore? settingsStore = null)
+        LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
         _settings = settings;
         _settingsStore = settingsStore;

@@ -8,15 +8,15 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>ウィンドウ生成前に必要な、順序依存のアプリ初期化を一か所で実行する。</summary>
 internal sealed class AppBootstrapper
 {
-    private readonly AiSettings _settings;
-    private readonly AiSettingsStore _settingsStore;
+    private readonly LoomoSettings _settings;
+    private readonly SettingsStore _settingsStore;
     private readonly ThemeManager _themeManager;
     private readonly UiFontManager _fontManager;
     private readonly IServiceProvider _services;
 
     public AppBootstrapper(
-        AiSettings settings,
-        AiSettingsStore settingsStore,
+        LoomoSettings settings,
+        SettingsStore settingsStore,
         ThemeManager themeManager,
         UiFontManager fontManager,
         IServiceProvider services)

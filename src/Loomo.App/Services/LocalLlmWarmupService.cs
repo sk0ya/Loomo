@@ -26,7 +26,7 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly LocalInferenceRouter _router;
     private readonly IWorkspaceService _workspace;
     private readonly ToolRegistry _tools;
@@ -104,7 +104,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
     public event Action? StateChanged;
 
     public LocalLlmWarmupService(
-        AiSettings settings, LocalInferenceRouter router, IWorkspaceService workspace, ToolRegistry tools)
+        LoomoSettings settings, LocalInferenceRouter router, IWorkspaceService workspace, ToolRegistry tools)
     {
         _settings = settings;
         _router = router;
@@ -234,7 +234,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
                 // profile は対話セッション既定の Root（AgentOrchestrator.RunTurnAsync と一致）。
                 var modelProfile = ModelProfiles.Resolve(cfg.Model);
                 var prompt = ChatPrompt.Build(
-                    modelProfile.Format, _settings, AgentProfiles.Root, _workspace.Folders, new Conversation(), _tools.Definitions);
+                    modelProfile.Format, AgentProfiles.Root, _workspace.Folders, new Conversation(), _tools.Definitions);
                 var maxLength = ModelProfiles.EffectiveNumCtx(cfg.Model, cfg.NumCtx);
                 var sampling = modelProfile.Sampling;
 

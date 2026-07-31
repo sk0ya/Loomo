@@ -39,7 +39,7 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
     /// <summary>検索条件の連続変化をまとめてから塗り直すまでの猶予。</summary>
     private static readonly TimeSpan RepaintDelay = TimeSpan.FromMilliseconds(160);
 
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private TsvEditorControl? _view;
     private bool? _appliedLightTheme;
     private string? _lastPath;
@@ -58,7 +58,7 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
 
     public event EventHandler<EditorSupportContentEdited>? ContentEdited;
 
-    public VGridEditorSupport(AiSettings settings) => _settings = settings;
+    public VGridEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

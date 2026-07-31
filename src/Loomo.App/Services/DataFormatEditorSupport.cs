@@ -17,10 +17,10 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class YamlEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".yaml", ".yml"];
 
-    public YamlEditorSupport(AiSettings settings) => _settings = settings;
+    public YamlEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
@@ -45,10 +45,10 @@ public sealed class YamlEditorSupport : IEditorSupportIncrementalHtmlProvider
 /// </summary>
 public sealed class TomlEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".toml"];
 
-    public TomlEditorSupport(AiSettings settings) => _settings = settings;
+    public TomlEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

@@ -3,12 +3,12 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>エディタとターミナルへの設定・テーマ適用を一元管理する。</summary>
 public sealed class ShellAppearanceCoordinator
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly Func<Color> _accentColor;
     private readonly Dictionary<VimEditorControl, CancellationTokenSource> _usingFoldRequests = new();
     private readonly object _usingFoldGate = new();
 
-    public ShellAppearanceCoordinator(AiSettings settings, Func<Color> accentColor)
+    public ShellAppearanceCoordinator(LoomoSettings settings, Func<Color> accentColor)
     {
         _settings = settings;
         _accentColor = accentColor;

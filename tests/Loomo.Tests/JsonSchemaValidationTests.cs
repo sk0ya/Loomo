@@ -110,7 +110,7 @@ public class JsonSchemaValidationTests
         try
         {
             File.WriteAllText(Path.Combine(dir, "data.schema.json"), Schema);
-            var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+            var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
             var body = support.RenderBody(Path.Combine(dir, "data.json"), """{ "age": "nope" }""");
 
@@ -131,7 +131,7 @@ public class JsonSchemaValidationTests
         try
         {
             File.WriteAllText(Path.Combine(dir, "data.schema.json"), Schema);
-            var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+            var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
             var body = support.RenderBody(Path.Combine(dir, "data.json"), """{ "name": "x", "age": 2 }""");
 
@@ -150,7 +150,7 @@ public class JsonSchemaValidationTests
         var dir = NewDir();
         try
         {
-            var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+            var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
             var body = support.RenderBody(Path.Combine(dir, "data.json"), """{ "name": "x" }""");
 

@@ -11,7 +11,7 @@ public class LogEditorSupportTests
     private static EditorSupportRegistry CreateRegistry()
         => new(new IEditorSupportProvider[]
         {
-            new LogEditorSupport(new AiSettings()),
+            new LogEditorSupport(new LoomoSettings()),
         });
 
     [Theory]
@@ -27,7 +27,7 @@ public class LogEditorSupportTests
     [Fact]
     public void DescribeTitle_Logプレフィックスとファイル名()
     {
-        var support = new LogEditorSupport(new AiSettings());
+        var support = new LogEditorSupport(new LoomoSettings());
 
         Assert.Equal("Log: app.log", support.DescribeTitle(@"C:\work\app.log"));
         Assert.IsAssignableFrom<IEditorSupportIncrementalHtmlProvider>(support);
@@ -60,7 +60,7 @@ public class LogEditorSupportTests
     [Fact]
     public void RenderHtml_ページシェルとツールバーとタイトルを含む()
     {
-        var support = new LogEditorSupport(new AiSettings());
+        var support = new LogEditorSupport(new LoomoSettings());
 
         var html = support.RenderHtml(@"C:\work\app.log", "INFO hello");
 
@@ -74,7 +74,7 @@ public class LogEditorSupportTests
     [Fact]
     public void RenderBody_各行にレベルクラスを付ける()
     {
-        var support = new LogEditorSupport(new AiSettings());
+        var support = new LogEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\app.log", "[ERROR] boom\nWARN careful\nplain line");
 
@@ -88,7 +88,7 @@ public class LogEditorSupportTests
     [Fact]
     public void RenderBody_HTML特殊文字をエスケープする()
     {
-        var support = new LogEditorSupport(new AiSettings());
+        var support = new LogEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\app.log", "ERROR <script>alert(1)</script>");
 
@@ -99,7 +99,7 @@ public class LogEditorSupportTests
     [Fact]
     public void RenderBody_空テキストは空表示にする()
     {
-        var support = new LogEditorSupport(new AiSettings());
+        var support = new LogEditorSupport(new LoomoSettings());
 
         Assert.Contains("空のファイル", support.RenderBody(@"C:\work\app.log", ""));
         Assert.Contains("空のファイル", support.RenderBody(@"C:\work\app.log", "\n"));

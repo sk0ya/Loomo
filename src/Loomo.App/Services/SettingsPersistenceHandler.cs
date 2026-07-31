@@ -30,10 +30,10 @@ public sealed record SettingsFormState
 /// <summary>設定フォームと永続化モデルの相互変換および保存を担当する。</summary>
 public sealed class SettingsPersistenceHandler
 {
-    private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
+    private readonly LoomoSettings _settings;
+    private readonly SettingsStore _store;
 
-    public SettingsPersistenceHandler(AiSettings settings, AiSettingsStore store)
+    public SettingsPersistenceHandler(LoomoSettings settings, SettingsStore store)
     {
         _settings = settings;
         _store = store;

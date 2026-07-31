@@ -19,7 +19,7 @@ public class Qwen3PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("ファイル一覧を出して");
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), profile: null, workspaceFolders: System.Array.Empty<string>(), conv, Pwsh());
+        var prompt = Qwen3PromptFormatter.Build(profile: null, workspaceFolders: System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.StartsWith("<|im_start|>system\n", prompt);
         Assert.Contains("<tools>\n", prompt);
@@ -42,7 +42,7 @@ public class Qwen3PromptFormatterTests
         // 過適合の回帰ガード：システムプロンプトの few-shot 例に能力ハーネス（AgentCapabilityHarness）の
         // シードファイル名やタスク固有の固有名詞が混入すると、ハーネスが「プロンプトが暗記した名前で通る」
         // 評価になってしまい、汎化性能を測れなくなる。例はハーネスと無関係な名前だけを使うこと。
-        var p = AiSettings.Qwen3SystemPrompt;
+        var p = SystemPrompts.Qwen3;
         foreach (var seedName in new[]
                  { "README.md", "app.py", "util.txt", "config.json", "numbers.txt", "todo.md",
                    "main.py", "hello.txt", "intro.md", "run.ps1", "readme-copy.md" })
@@ -53,7 +53,7 @@ public class Qwen3PromptFormatterTests
     public void System_prompt_keeps_load_bearing_structure()
     {
         // 実測で効果が確認されている構造要素：許可ツール名の列挙・ラベル付き例・編集規律・日本語最終回答。
-        var p = AiSettings.Qwen3SystemPrompt;
+        var p = SystemPrompts.Qwen3;
         Assert.Contains("run_powershell", p);
         Assert.Contains("write_file", p);
         Assert.Contains("edit_file", p);
@@ -73,7 +73,7 @@ public class Qwen3PromptFormatterTests
         var conv = new Conversation();
         conv.AddUser("やあ");
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, System.Array.Empty<ToolDefinition>());
+        var prompt = Qwen3PromptFormatter.Build(null, System.Array.Empty<string>(), conv, System.Array.Empty<ToolDefinition>());
 
         Assert.DoesNotContain("<tools>", prompt);
         Assert.Contains("<|im_start|>system\n", prompt);
@@ -91,7 +91,7 @@ public class Qwen3PromptFormatterTests
         tool.ToolResults.Add(new ToolResultMessage("t1", "成功", IsError: false));
         conv.Messages.Add(tool);
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
+        var prompt = Qwen3PromptFormatter.Build(null, System.Array.Empty<string>(), conv, Pwsh());
 
         Assert.Contains(
             "<|im_start|>assistant\n<tool_call>\n{\"name\":\"run_powershell\",\"arguments\":{\"command\":\"dotnet build\"}}\n</tool_call><|im_end|>\n",
@@ -104,31 +104,30 @@ public class Qwen3PromptFormatterTests
     {
         var conv = new Conversation();
         var user = conv.AddUser("次の文章を英語に翻訳してください。\n\n対象:\nこんにちは");
-        user.RenderPrefix = AiSettings.WorkflowTurnPreamble;
+        user.RenderPrefix = SystemPrompts.WorkflowTurnPreamble;
 
-        var prompt = Qwen3PromptFormatter.Build(new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
+        var prompt = Qwen3PromptFormatter.Build(null, System.Array.Empty<string>(), conv, Pwsh());
 
-        Assert.Contains("<|im_start|>user\n" + AiSettings.WorkflowTurnPreamble + "\n\n次の文章を英語に翻訳してください。", prompt);
+        Assert.Contains("<|im_start|>user\n" + SystemPrompts.WorkflowTurnPreamble + "\n\n次の文章を英語に翻訳してください。", prompt);
     }
 
     [Fact]
     public void Render_prefix_lives_after_the_warmup_prefix_so_kv_sharing_holds()
     {
-        var settings = new AiSettings();
         var tools = Pwsh();
         var root = new[] { "C:\\proj" };
 
         // 暖機（空会話）の system ブロック＝最長共通接頭辞。Qwen3 は末尾に生成開始＋空 think を付ける。
         const string genMarker = "<|im_start|>assistant\n<think>\n\n</think>\n\n";
-        var warmup = Qwen3PromptFormatter.Build(settings, AgentProfiles.Root, root, new Conversation(), tools);
+        var warmup = Qwen3PromptFormatter.Build(AgentProfiles.Root, root, new Conversation(), tools);
         var systemBlock = warmup[..^genMarker.Length];
 
         var conv = new Conversation();
         var user = conv.AddUser("ファイル一覧を出して");
-        user.RenderPrefix = AiSettings.ChatTurnPreamble;
-        var real = Qwen3PromptFormatter.Build(settings, AgentProfiles.Root, root, conv, tools);
+        user.RenderPrefix = SystemPrompts.ChatTurnPreamble;
+        var real = Qwen3PromptFormatter.Build(AgentProfiles.Root, root, conv, tools);
 
-        Assert.StartsWith(systemBlock + "<|im_start|>user\n" + AiSettings.ChatTurnPreamble, real);
+        Assert.StartsWith(systemBlock + "<|im_start|>user\n" + SystemPrompts.ChatTurnPreamble, real);
     }
 
     [Fact]
@@ -139,7 +138,7 @@ public class Qwen3PromptFormatterTests
 
         var conv = new Conversation();
         conv.AddUser("やあ");
-        var prompt = ChatPrompt.Build(profile.Format, new AiSettings(), null, System.Array.Empty<string>(), conv, Pwsh());
+        var prompt = ChatPrompt.Build(profile.Format, null, System.Array.Empty<string>(), conv, Pwsh());
         Assert.StartsWith("<|im_start|>system\n", prompt);
     }
 

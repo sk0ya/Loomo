@@ -25,7 +25,7 @@ public class ShellViewModelTests
             new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
 
         var approval = new UiApprovalService();
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         var orchestrator = new AgentOrchestrator(
             new FakeAiClientFactory(),
             new ToolRegistry(Enumerable.Empty<IAgentTool>()),
@@ -38,7 +38,7 @@ public class ShellViewModelTests
             Path.Combine(Path.GetTempPath(), "loomo-test-sessions"));
 
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
-        var store = new AiSettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
+        var store = new SettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
         var modelCatalog = new ModelCatalogService(settings);
         var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
         var settingsEditor = new FakeEditorService();

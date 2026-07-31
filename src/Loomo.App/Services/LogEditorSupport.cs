@@ -15,10 +15,10 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class LogEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".log"];
 
-    public LogEditorSupport(AiSettings settings) => _settings = settings;
+    public LogEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

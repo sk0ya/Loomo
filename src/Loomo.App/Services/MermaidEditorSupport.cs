@@ -15,10 +15,10 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class MermaidEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".mmd", ".mermaid"];
 
-    public MermaidEditorSupport(AiSettings settings)
+    public MermaidEditorSupport(LoomoSettings settings)
     {
         _settings = settings;
     }

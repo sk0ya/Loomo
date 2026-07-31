@@ -39,15 +39,15 @@ public class DatabaseEditorSupportTests
     [Fact]
     public void DescribeTitle_種別と名前を出す()
     {
-        Assert.Equal("SQLite: data.sqlite", new SqliteEditorSupport(new AiSettings()).DescribeTitle("data.sqlite"));
-        Assert.Equal("Parquet: data.parquet", new ParquetEditorSupport(new AiSettings()).DescribeTitle("data.parquet"));
+        Assert.Equal("SQLite: data.sqlite", new SqliteEditorSupport(new LoomoSettings()).DescribeTitle("data.sqlite"));
+        Assert.Equal("Parquet: data.parquet", new ParquetEditorSupport(new LoomoSettings()).DescribeTitle("data.parquet"));
     }
 
     [Fact]
     public void UsesEditorTextはfalse_本文非依存()
     {
-        Assert.False(new SqliteEditorSupport(new AiSettings()).UsesEditorText);
-        Assert.False(new ParquetEditorSupport(new AiSettings()).UsesEditorText);
+        Assert.False(new SqliteEditorSupport(new LoomoSettings()).UsesEditorText);
+        Assert.False(new ParquetEditorSupport(new LoomoSettings()).UsesEditorText);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class DatabaseEditorSupportTests
         var path = CreateSqlite();
         try
         {
-            var html = new SqliteEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+            var html = new SqliteEditorSupport(new LoomoSettings()).RenderHtml(path, text: "");
 
             Assert.StartsWith("<!DOCTYPE html>", html);
             Assert.Contains("<table>", html);
@@ -73,7 +73,7 @@ public class DatabaseEditorSupportTests
     public void Sqlite_存在しないファイルはエラーページ_例外を投げない()
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".sqlite");   // 作らない
-        var html = new SqliteEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+        var html = new SqliteEditorSupport(new LoomoSettings()).RenderHtml(path, text: "");
         Assert.StartsWith("<!DOCTYPE html>", html);
         Assert.Contains("表示できませんでした", html);
     }
@@ -85,7 +85,7 @@ public class DatabaseEditorSupportTests
         File.WriteAllText(path, "これは SQLite ではありません");
         try
         {
-            var html = new SqliteEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+            var html = new SqliteEditorSupport(new LoomoSettings()).RenderHtml(path, text: "");
             Assert.StartsWith("<!DOCTYPE html>", html);
             Assert.Contains("表示できませんでした", html);
         }
@@ -98,7 +98,7 @@ public class DatabaseEditorSupportTests
         var path = CreateParquet();
         try
         {
-            var html = new ParquetEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+            var html = new ParquetEditorSupport(new LoomoSettings()).RenderHtml(path, text: "");
 
             Assert.StartsWith("<!DOCTYPE html>", html);
             Assert.Contains("<table>", html);
@@ -116,7 +116,7 @@ public class DatabaseEditorSupportTests
         File.WriteAllText(path, "これは Parquet ではありません");
         try
         {
-            var html = new ParquetEditorSupport(new AiSettings()).RenderHtml(path, text: "");
+            var html = new ParquetEditorSupport(new LoomoSettings()).RenderHtml(path, text: "");
             Assert.StartsWith("<!DOCTYPE html>", html);
             Assert.Contains("表示できませんでした", html);
         }
@@ -125,7 +125,7 @@ public class DatabaseEditorSupportTests
 
     private static EditorSupportRegistry BuildRegistry()
     {
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         return new EditorSupportRegistry(new IEditorSupportProvider[]
         {
             new SqliteEditorSupport(settings),

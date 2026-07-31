@@ -10,13 +10,13 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>外観（カラーテーマ・アクセント・各ペインの配色／フォント）の設定パネルの ViewModel。
 /// アプリ全体・エディタ・ターミナル・Markdownプレビューの配色、およびアクセントは、いずれも「色チップ付きの
-/// コンボボックスから選ぶ」同一UIに統一する。選択は共有の <see cref="AiSettings"/>（Singleton）へ書き戻して
+/// コンボボックスから選ぶ」同一UIに統一する。選択は共有の <see cref="LoomoSettings"/>（Singleton）へ書き戻して
 /// 即時適用＋<c>settings.json</c> へ永続化する。アプリ全体テーマは <see cref="ThemeManager"/> 経由、その他の
 /// ペインは <see cref="AppearanceChanged"/> でホスト（ShellWindow）へ即時反映を促す。</summary>
 public sealed partial class AppearanceViewModel : ObservableObject
 {
-    private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
+    private readonly LoomoSettings _settings;
+    private readonly SettingsStore _store;
     private readonly ThemeManager _themeManager;
     private readonly UiFontManager _UiFontManager;
 
@@ -84,7 +84,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// ホスト（ShellWindow）が購読し、開いているタブやプレビューへ即時反映する。</summary>
     public event Action? AppearanceChanged;
 
-    public AppearanceViewModel(AiSettings settings, AiSettingsStore store, ThemeManager themeManager,
+    public AppearanceViewModel(LoomoSettings settings, SettingsStore store, ThemeManager themeManager,
         UiFontManager UiFontManager)
     {
         _settings = settings;

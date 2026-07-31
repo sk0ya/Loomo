@@ -6,7 +6,7 @@ public partial class ShellWindow : Window {
     private readonly IWorkspaceService _workspace;
     private readonly CommandPaletteViewController _paletteView;
     private readonly TabIconService _tabIcons;
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly ShellAppearanceCoordinator _appearance;
     private readonly EditorSupportNavigationService _editorSupportNavigation;
     private readonly EditorSupportRegistry _editorSupports;
@@ -84,7 +84,7 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, AiSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, ILspWorkspace lspWorkspace, ILspServerAdmin lspServerAdmin, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, ILspWorkspace lspWorkspace, ILspServerAdmin lspServerAdmin, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");

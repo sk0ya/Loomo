@@ -5,7 +5,7 @@ namespace sk0ya.Loomo.Core.Agent;
 
 /// <summary>
 /// AI へ送る直前に会話をコンテキスト予算へ収めるポリシー。
-/// 実体（プロバイダ別の予算）は上位層（Ai）が <see cref="AiSettings"/> を見て決める。
+/// 実体（プロバイダ別の予算）は上位層（Ai）が <see cref="LoomoSettings"/> を見て決める。
 /// Core はインターフェースと無加工の既定実装だけを持つ。
 /// </summary>
 public interface IContextWindowPolicy

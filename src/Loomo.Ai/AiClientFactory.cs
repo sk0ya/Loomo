@@ -8,10 +8,10 @@ namespace sk0ya.Loomo.Ai;
 public sealed class AiClientFactory : IAiClientFactory
 {
     private readonly ILocalInferenceEngine _engine;
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly IWorkspaceService _workspace;
 
-    public AiClientFactory(ILocalInferenceEngine engine, AiSettings settings, IWorkspaceService workspace)
+    public AiClientFactory(ILocalInferenceEngine engine, LoomoSettings settings, IWorkspaceService workspace)
     {
         _engine = engine;
         _settings = settings;

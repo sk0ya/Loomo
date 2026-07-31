@@ -29,7 +29,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private readonly EditorSupportRegistry _editorSupports;
     private readonly EditorSupportPipeline _pipeline;
     private readonly IEditorSupportViewFactory _viewFactory;
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly string? _workspaceRoot;
     private readonly VimEditorControl _source;
     private readonly DispatcherTimer _debounce;
@@ -52,7 +52,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
     public DetachedEditorSupportView(
         EditorSupportRegistry editorSupports, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
-        AiSettings settings, string? workspaceRoot, VimEditorControl source)
+        LoomoSettings settings, string? workspaceRoot, VimEditorControl source)
     {
         _editorSupports = editorSupports;
         _pipeline = pipeline;

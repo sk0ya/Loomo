@@ -38,10 +38,10 @@ public class WorkflowViewModelTests
         IAiWarmup warmup,
         WorkflowStore store,
         WorkflowToolRunner? toolRunner = null,
-        AiSettings? settings = null)
+        LoomoSettings? settings = null)
     {
         var approval = new UiApprovalService();
-        settings ??= new AiSettings();
+        settings ??= new LoomoSettings();
         var safety = new SafetyPolicy(settings.Safety);
         var orchestrator = new AgentOrchestrator(
             aiFactory,

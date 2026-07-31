@@ -16,9 +16,8 @@ internal static class PromptShared
     /// 現在フォルダは準安定）。<paramref name="format"/> で tool 呼び出しの記法に合った例文を選ぶ。
     /// <paramref name="workspaceFolders"/>[0] がプライマリ（相対パス解決・検索ガイダンスの基準）。</summary>
     public static string SystemText(
-        AiSettings settings, AgentProfile? profile, IReadOnlyList<string> workspaceFolders, ChatFormat format)
-        => (profile ?? AgentProfiles.Root).ApplyTo(
-                format == ChatFormat.Qwen3 ? AiSettings.Qwen3SystemPrompt : settings.SystemPrompt)
+        AgentProfile? profile, IReadOnlyList<string> workspaceFolders, ChatFormat format)
+        => SystemPrompts.Build(format, profile)
            + SearchGuidance(workspaceFolders.Count > 0 ? workspaceFolders[0] : null)
            + WorkspaceContext.Describe(workspaceFolders);
 

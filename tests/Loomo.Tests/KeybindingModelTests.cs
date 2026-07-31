@@ -103,8 +103,8 @@ public class KeybindingModelTests
     private static (KeybindingService Service, string Path) NewService()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-kb-{Guid.NewGuid():N}.json");
-        var settings = new AiSettings();
-        var store = new AiSettingsStore(path);
+        var settings = new LoomoSettings();
+        var store = new SettingsStore(path);
         return (new KeybindingService(settings, store), path);
     }
 
@@ -186,12 +186,12 @@ public class KeybindingModelTests
         var path = Path.Combine(Path.GetTempPath(), $"loomo-kb-{Guid.NewGuid():N}.json");
         try
         {
-            var store = new AiSettingsStore(path);
-            var first = new KeybindingService(new AiSettings(), store);
+            var store = new SettingsStore(path);
+            var first = new KeybindingService(new LoomoSettings(), store);
             first.Rebind("pane.zoom", KeySequence.TryParse("Ctrl+Alt+Z"));
 
             // 別インスタンスで読み直す（ファイル経由の往復）。
-            var reloaded = new AiSettings();
+            var reloaded = new LoomoSettings();
             store.Load(reloaded);
             var second = new KeybindingService(reloaded, store);
             Assert.Equal(KeySequence.TryParse("Ctrl+Alt+Z"), second.For("pane.zoom"));
@@ -207,8 +207,8 @@ public class KeybindingModelTests
         File.WriteAllText(path, """{ "local": { "model": "phi4-mini" } }""");
         try
         {
-            var settings = new AiSettings();
-            new AiSettingsStore(path).Load(settings);
+            var settings = new LoomoSettings();
+            new SettingsStore(path).Load(settings);
             Assert.Empty(settings.Keybindings.Overrides); // 旧設定は上書き無し＝既定割り当て
         }
         finally { File.Delete(path); }

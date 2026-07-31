@@ -36,7 +36,7 @@ public sealed record SessionActivatedEventArgs(string Id, string Title);
 public sealed partial class AiBarViewModel : ObservableObject
 {
     private readonly AgentOrchestrator _orchestrator;
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly SettingsViewModel _settingsVm;
     private readonly ConversationStore _sessions;
     private readonly IAiWarmup _warmup;
@@ -115,7 +115,7 @@ public sealed partial class AiBarViewModel : ObservableObject
     public AiBarViewModel(
         AgentOrchestrator orchestrator,
         UiApprovalService approval,
-        AiSettings settings,
+        LoomoSettings settings,
         SettingsViewModel settingsVm,
         ConversationStore sessions,
         PromptHistoryStore historyStore,

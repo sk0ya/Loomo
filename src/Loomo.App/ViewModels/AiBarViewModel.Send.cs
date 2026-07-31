@@ -82,7 +82,7 @@ public sealed partial class AiBarViewModel
         try
         {
             await foreach (var ev in _orchestrator.RunTurnAsync(_conversation, text, _currentSessionId, _cts.Token,
-                               turnPreamble: AiSettings.ChatTurnPreamble))
+                               turnPreamble: SystemPrompts.ChatTurnPreamble))
             {
                 switch (ev)
                 {

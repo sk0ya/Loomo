@@ -16,10 +16,10 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class XmlEditorSupport : IEditorSupportIncrementalHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".xml", ".xaml"];
 
-    public XmlEditorSupport(AiSettings settings) => _settings = settings;
+    public XmlEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

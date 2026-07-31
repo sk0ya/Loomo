@@ -21,7 +21,7 @@ public class EditorSupportTests
         var workspace = new FakeWorkspaceService();
         if (workspaceRoot is not null)
             workspace.OpenFolder(workspaceRoot);
-        return new MarkdownEditorSupport(new AiSettings(), workspace);
+        return new MarkdownEditorSupport(new LoomoSettings(), workspace);
     }
 
     private static EditorSupportRegistry CreateRegistry()
@@ -29,11 +29,11 @@ public class EditorSupportTests
         return new(new IEditorSupportProvider[]
         {
             CreateSupport(),
-            new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator()),
+            new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator()),
             new ImageEditorSupport(),
-            new VGridEditorSupport(new AiSettings()),
-            new ExcelEditorSupport(new AiSettings()),
-            new WordEditorSupport(new AiSettings()),
+            new VGridEditorSupport(new LoomoSettings()),
+            new ExcelEditorSupport(new LoomoSettings()),
+            new WordEditorSupport(new LoomoSettings()),
             new BrowserEditorSupport(),
             new PochiEditorSupport()
         });
@@ -139,7 +139,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_オブジェクトを折りたたみツリーのHTMLにする()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
         const string path = @"C:\work\data.json";
 
         Assert.Equal("JSON: data.json", support.DescribeTitle(path));
@@ -156,7 +156,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_配列とネストの件数を表示する()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "items": [1, 2, 3] }""");
 
@@ -167,7 +167,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_コメントと末尾カンマを許容する()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.jsonc", "{ // 設定\n  \"a\": 1, }");
 
@@ -178,7 +178,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_壊れたJSONはエラーと原文を出す()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", "{ \"a\": ");
 
@@ -189,7 +189,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_HTML特殊文字をエスケープする()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "html": "<b>&</b>" }""");
 
@@ -200,7 +200,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_各ノードにJSONパスとコピー導線を埋め込む()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "items": [ { "name": "x" } ] }""");
 
@@ -215,7 +215,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_識別子でないキーはブラケット表記のパスにする()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var body = support.RenderBody(@"C:\work\data.json", """{ "a b": 1 }""");
 
@@ -225,7 +225,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_絞り込み用の検索ボックスをページに出す()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
 
         var html = support.RenderHtml(@"C:\work\data.json", """{ "a": 1 }""");
 
@@ -235,7 +235,7 @@ public class EditorSupportTests
     [Fact]
     public void JsonSupport_各ノードにソース行番号を埋めエディタへ飛べる()
     {
-        var support = new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator());
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
         // 1行目:{ 2行目:name 3行目:nested{ 4行目:deep 5行目:} 6行目:}
         var json = "{\n  \"name\": \"x\",\n  \"nested\": {\n    \"deep\": 1\n  }\n}";
 
@@ -250,7 +250,7 @@ public class EditorSupportTests
     [Fact]
     public void VGridSupport_タイトルはGridプレフィックスとファイル名()
     {
-        var support = new VGridEditorSupport(new AiSettings());
+        var support = new VGridEditorSupport(new LoomoSettings());
 
         Assert.Equal("Grid: data.csv", support.DescribeTitle(@"C:\work\data.csv"));
     }
@@ -269,7 +269,7 @@ public class EditorSupportTests
     public void Registry_同じ拡張子の重複登録は例外にする()
     {
         var workspace = new FakeWorkspaceService();
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
 
         var ex = Assert.Throws<InvalidOperationException>(() => new EditorSupportRegistry(
             new IEditorSupportProvider[]

@@ -27,13 +27,12 @@ public static class Qwen3PromptFormatter
         new() { WriteIndented = false, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static string Build(
-        AiSettings settings,
         AgentProfile? profile,
         IReadOnlyList<string> workspaceFolders,
         Conversation conversation,
         IReadOnlyList<ToolDefinition> tools)
     {
-        var system = PromptShared.SystemText(settings, profile, workspaceFolders, ChatFormat.Qwen3);
+        var system = PromptShared.SystemText(profile, workspaceFolders, ChatFormat.Qwen3);
 
         var sb = new StringBuilder();
 

@@ -794,15 +794,15 @@ public class TrailViewModelTests : IDisposable
     public void Visible_initializes_from_settings_and_defaults_true()
     {
         Assert.True(new TrailViewModel(_store).Visible);   // 設定なし → 既定 true
-        Assert.False(new TrailViewModel(_store, null, new AiSettings { TrailVisible = false }).Visible);
+        Assert.False(new TrailViewModel(_store, null, new LoomoSettings { TrailVisible = false }).Visible);
     }
 
     [Fact]
     public void Hide_turns_off_and_persists_to_settings_store()
     {
-        var settings = new AiSettings { TrailVisible = true };
+        var settings = new LoomoSettings { TrailVisible = true };
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-settings.json");
-        var store = new AiSettingsStore(path);
+        var store = new SettingsStore(path);
         try
         {
             var sut = new TrailViewModel(_store, null, settings, store);
@@ -812,7 +812,7 @@ public class TrailViewModelTests : IDisposable
             Assert.False(sut.Visible);
             Assert.False(settings.TrailVisible);
             // ファイルへ永続化され、読み直しても OFF が残る。
-            var reloaded = new AiSettings();
+            var reloaded = new LoomoSettings();
             store.Load(reloaded);
             Assert.False(reloaded.TrailVisible);
         }

@@ -16,12 +16,12 @@ using sk0ya.Loomo.App.Services;
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>設定パネル（ローカルモデル等）の ViewModel。
-/// 編集内容は共有の <see cref="AiSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
+/// 編集内容は共有の <see cref="LoomoSettings"/>（Singleton）へ書き戻し、保存時にファイルへ永続化する。
 /// 危険コマンド一覧などの長文項目は、狭いサイドバーではなく中央のエディタ領域で
 /// 編集する（<see cref="IEditorService.OpenDocumentAsync"/>。保存=:w 時にコールバックで即時反映）。</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private readonly ModelCatalogService _modelCatalog;
     private readonly ModelDownloadService _modelDownload;
     private readonly Services.IAiWarmup _warmup;
@@ -91,7 +91,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private DownloadableModel _selectedDownloadModel =
         ModelDownloadService.Default;
 
-    public SettingsViewModel(AiSettings settings, AiSettingsStore store,
+    public SettingsViewModel(LoomoSettings settings, SettingsStore store,
         IEditorService editor, ModelCatalogService modelCatalog, ModelDownloadService modelDownload,
         Services.IAiWarmup warmup, ModelFolderPicker modelFolderPicker, BlockedCommandsHandler blockedCommands,
         SettingsPersistenceHandler persistence, SettingsModelChoiceMapper choiceMapper)
@@ -144,7 +144,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (mapped.SelectedDownload is { } download) SelectedDownloadModel = download;
     }
 
-    // 「保存」ボタンは廃止。各項目の変更はその場で共有 AiSettings へ反映し、ファイルへ即永続化する。
+    // 「保存」ボタンは廃止。各項目の変更はその場で共有 LoomoSettings へ反映し、ファイルへ即永続化する。
     partial void OnModelChanged(string value)
     {
         // 一覧から選んだ（または入力した）モデル名に対応するローカルフォルダがあれば ModelPath を追従させる。
@@ -188,7 +188,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnAutoApproveChanged(bool value) => Persist();
     partial void OnRestrictToWorkspaceRootChanged(bool value) => Persist();
 
-    /// <summary>変更を共有 <see cref="AiSettings"/> へ即時反映し、ファイルへ永続化する。
+    /// <summary>変更を共有 <see cref="LoomoSettings"/> へ即時反映し、ファイルへ永続化する。
     /// 「保存」ボタンを廃した代わりに、各項目の変更時に自動で呼ばれる（初期ロード中は抑止）。
     /// 危険コマンド一覧はエディタの保存（:w）時に別途反映するため、ここでは扱わない。</summary>
     private void Persist()

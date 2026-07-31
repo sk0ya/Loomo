@@ -34,13 +34,13 @@ public sealed class AgentCapabilityHarness
     private readonly ITestOutputHelper _out;
     public AgentCapabilityHarness(ITestOutputHelper output) => _out = output;
 
-    /// <summary>計測対象モデルのフォルダ名。環境変数 HARNESS_MODEL で切り替え可（既定は <see cref="AiSettings.DefaultLocalModel"/>）。
+    /// <summary>計測対象モデルのフォルダ名。環境変数 HARNESS_MODEL で切り替え可（既定は <see cref="LoomoSettings.DefaultLocalModel"/>）。
     /// ONNX はフォルダ名（例 <c>qwen3-4b-cpu-int4</c>）、llama.cpp も GGUF を収めたフォルダ名
     /// （例 <c>qwen3-4b-q4_k_m</c>）を渡す。バックエンドは <see cref="LocalInferenceRouter"/> がパスの拡張子で
     /// 振り分けるため、レポート名にはこのクリーンなトークンをそのまま使う。</summary>
     private static string ModelFolderName =>
         Environment.GetEnvironmentVariable("HARNESS_MODEL") is { Length: > 0 } m
-            ? m : AiSettings.DefaultLocalModel;
+            ? m : LoomoSettings.DefaultLocalModel;
 
     private static string ModelRoot =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -94,7 +94,7 @@ public sealed class AgentCapabilityHarness
         try
         {
             Environment.SetEnvironmentVariable("HARNESS_MODEL", null);
-            Assert.Equal(AiSettings.DefaultLocalModel, ModelFolderName);
+            Assert.Equal(LoomoSettings.DefaultLocalModel, ModelFolderName);
         }
         finally
         {
@@ -127,7 +127,7 @@ public sealed class AgentCapabilityHarness
         SeedWorkspace();
 
         // --- 設定（実モデルを指す） ---
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         settings.Local.Model = ModelFolderName;
         settings.Local.ModelPath = ModelPath;
         settings.Local.MaxTokens = 1024;
@@ -169,7 +169,7 @@ public sealed class AgentCapabilityHarness
         {
             var modelProfile = ModelProfiles.Resolve(settings.Local.Model);
             var stablePrompt = ChatPrompt.Build(
-                modelProfile.Format, settings, AgentProfiles.Root, workspace.Folders, new Conversation(), tools.Definitions);
+                modelProfile.Format, AgentProfiles.Root, workspace.Folders, new Conversation(), tools.Definitions);
             var maxLength = ModelProfiles.EffectiveNumCtx(settings.Local.Model, settings.Local.NumCtx);
             using var warmupCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             await engine.WarmableFor(settings.Local.ModelPath!).PrimeAsync(
@@ -463,8 +463,8 @@ public sealed class AgentCapabilityHarness
         var preambleMode = (Environment.GetEnvironmentVariable("HARNESS_PREAMBLE") ?? "none").ToLowerInvariant();
         string? turnPreamble = preambleMode switch
         {
-            "chat" => AiSettings.ChatTurnPreamble,
-            "workflow" => AiSettings.WorkflowTurnPreamble,
+            "chat" => SystemPrompts.ChatTurnPreamble,
+            "workflow" => SystemPrompts.WorkflowTurnPreamble,
             _ => null,
         };
 
@@ -608,7 +608,7 @@ public sealed class AgentCapabilityHarness
         var ws = Path.Combine(Path.GetTempPath(), "loomo-wfchain-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(ws);
 
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         settings.Local.Model = ModelFolderName;
         settings.Local.ModelPath = ModelPath;
         settings.Local.MaxTokens = 1024;
@@ -676,7 +676,7 @@ public sealed class AgentCapabilityHarness
             try
             {
                 await foreach (var ev in orch.RunTurnAsync(convo, prompt, "wfchain-" + label, cts.Token,
-                                   turnPreamble: AiSettings.WorkflowTurnPreamble))
+                                   turnPreamble: SystemPrompts.WorkflowTurnPreamble))
                     rec.Observe(ev);
             }
             catch (Exception ex) { rec.Error = "EXCEPTION: " + ex.Message; }

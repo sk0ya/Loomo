@@ -17,21 +17,21 @@ public sealed record KeybindingRow(
     string? ConflictId);
 
 /// <summary>
-/// コマンド既定（<see cref="CommandCatalog"/>）にユーザー上書き（<see cref="AiSettings.Keybindings"/>）を
+/// コマンド既定（<see cref="CommandCatalog"/>）にユーザー上書き（<see cref="LoomoSettings.Keybindings"/>）を
 /// 重ねて「実効バインド」を解決する中央サービス。キーディスパッチ・コマンドパレット・設定画面が共有する。
-/// 変更は共有 <see cref="AiSettings"/> へ書き戻して即永続化し、<see cref="Changed"/> で購読側へ通知する。
+/// 変更は共有 <see cref="LoomoSettings"/> へ書き戻して即永続化し、<see cref="Changed"/> で購読側へ通知する。
 /// </summary>
 public sealed class KeybindingService
 {
-    private readonly AiSettings _settings;
-    private readonly AiSettingsStore _store;
+    private readonly LoomoSettings _settings;
+    private readonly SettingsStore _store;
 
     /// <summary>実効バインドが変わったとき（再割り当て・リセット）に発火する。</summary>
     public event Action? Changed;
 
     private Dictionary<string, KeySequence> _effective = new();
 
-    public KeybindingService(AiSettings settings, AiSettingsStore store)
+    public KeybindingService(LoomoSettings settings, SettingsStore store)
     {
         _settings = settings;
         _store = store;

@@ -16,9 +16,9 @@ public sealed class SettingsContextWindowPolicy : IContextWindowPolicy
     /// <summary>ツール定義スキーマ等、見積もりに含めていない要素のための安全マージン。</summary>
     private const int SafetyMarginTokens = 2_000;
 
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
 
-    public SettingsContextWindowPolicy(AiSettings settings) => _settings = settings;
+    public SettingsContextWindowPolicy(LoomoSettings settings) => _settings = settings;
 
     public Conversation Fit(Conversation conversation, AgentProfile? profile = null)
     {
@@ -33,7 +33,9 @@ public sealed class SettingsContextWindowPolicy : IContextWindowPolicy
         if (contextLimit <= 0)
             return conversation;
 
-        var systemTokens = TokenEstimator.EstimateText(_settings.BuildSystemPrompt(profile));
+        // システムプロンプトはモデルの記法（ChatFormat）で本文が変わるので、実ターンと同じ書式で見積もる。
+        var format = ModelProfiles.Resolve(cfg.Model).Format;
+        var systemTokens = TokenEstimator.EstimateText(SystemPrompts.Build(format, profile));
         var inputBudget = contextLimit - cfg.MaxTokens - systemTokens - SafetyMarginTokens;
         if (inputBudget <= 0)
             return conversation; // 設定が矛盾している場合はトリムせず素通し（API側のエラーに委ねる）

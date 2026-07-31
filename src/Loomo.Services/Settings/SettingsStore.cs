@@ -15,12 +15,12 @@ using sk0ya.Loomo.Core.Settings;
 namespace sk0ya.Loomo.Services.Settings;
 
 /// <summary>
-/// <see cref="AiSettings"/> を <c>%APPDATA%/Loomo/settings.json</c> に永続化する。
+/// <see cref="LoomoSettings"/> を <c>%APPDATA%/Loomo/settings.json</c> に永続化する。
 /// APIキーは平文保存せず、DPAPI(<see cref="DataProtectionScope.CurrentUser"/>)で暗号化して書き出す。
 /// DPAPI は Windows 専用（本アプリは WPF / Windows 専用なので問題なし）。
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class AiSettingsStore
+public sealed class SettingsStore
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -31,9 +31,9 @@ public sealed class AiSettingsStore
 
     private readonly string _filePath;
 
-    public AiSettingsStore() : this(DefaultPath()) { }
+    public SettingsStore() : this(DefaultPath()) { }
 
-    public AiSettingsStore(string filePath) => _filePath = filePath;
+    public SettingsStore(string filePath) => _filePath = filePath;
 
     public string FilePath => _filePath;
 
@@ -43,7 +43,7 @@ public sealed class AiSettingsStore
 
     /// <summary>保存済み設定を読み込み <paramref name="settings"/> に反映する。
     /// ファイルが無い・壊れている場合は既定値のままにして何もしない。</summary>
-    public void Load(AiSettings settings)
+    public void Load(LoomoSettings settings)
     {
         if (!File.Exists(_filePath)) return;
         PersistedSettings? dto;
@@ -59,7 +59,7 @@ public sealed class AiSettingsStore
     }
 
     /// <summary>現在の設定をファイルへ保存する（APIキーは暗号化）。</summary>
-    public void Save(AiSettings settings)
+    public void Save(LoomoSettings settings)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
         var dto = PersistedSettings.From(settings);
@@ -116,7 +116,7 @@ public sealed class AiSettingsStore
         public PersistedKeybindings? Keybindings { get; set; }
         public PersistedLsp? Lsp { get; set; }
 
-        public static PersistedSettings From(AiSettings s) => new()
+        public static PersistedSettings From(LoomoSettings s) => new()
         {
             Theme = s.Theme,
             AccentColor = s.AccentColor,
@@ -133,7 +133,7 @@ public sealed class AiSettingsStore
             Lsp = PersistedLsp.From(s.Lsp),
         };
 
-        public void ApplyTo(AiSettings s)
+        public void ApplyTo(LoomoSettings s)
         {
             s.Provider = AiProvider.Local;
             s.Theme = Theme;
@@ -377,7 +377,7 @@ public sealed class AiSettingsStore
         public void ApplyTo(ProviderConfig c)
         {
             if (!string.IsNullOrEmpty(Model))
-                c.Model = IsLegacyDefaultModel(Model) ? AiSettings.DefaultLocalModel : Model;
+                c.Model = IsLegacyDefaultModel(Model) ? LoomoSettings.DefaultLocalModel : Model;
             if (!string.IsNullOrEmpty(ModelPath))
                 c.ModelPath = ModelPath;
             c.ApiKey = Unprotect(ApiKeyEnc);

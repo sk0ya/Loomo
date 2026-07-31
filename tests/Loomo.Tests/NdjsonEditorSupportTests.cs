@@ -15,8 +15,8 @@ public class NdjsonEditorSupportTests
     {
         return new(new IEditorSupportProvider[]
         {
-            new JsonEditorSupport(new AiSettings(), new JsonSchemaValidator()),
-            new NdjsonEditorSupport(new AiSettings())
+            new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator()),
+            new NdjsonEditorSupport(new LoomoSettings())
         });
     }
 
@@ -35,7 +35,7 @@ public class NdjsonEditorSupportTests
     [Fact]
     public void DescribeTitle_JSONLプレフィックスとファイル名()
     {
-        var support = new NdjsonEditorSupport(new AiSettings());
+        var support = new NdjsonEditorSupport(new LoomoSettings());
 
         Assert.Equal("JSONL: log.ndjson", support.DescribeTitle(@"C:\work\log.ndjson"));
         Assert.IsAssignableFrom<IEditorSupportIncrementalHtmlProvider>(support);
@@ -44,7 +44,7 @@ public class NdjsonEditorSupportTests
     [Fact]
     public void RenderHtml_各行を1レコードの配列ツリーにする()
     {
-        var support = new NdjsonEditorSupport(new AiSettings());
+        var support = new NdjsonEditorSupport(new LoomoSettings());
 
         var html = support.RenderHtml(@"C:\work\log.ndjson", "{\"a\":1}\n{\"a\":2}\n{\"a\":3}");
 
@@ -58,7 +58,7 @@ public class NdjsonEditorSupportTests
     [Fact]
     public void RenderBody_壊れた行があっても例外を投げずその行だけエラー表示する()
     {
-        var support = new NdjsonEditorSupport(new AiSettings());
+        var support = new NdjsonEditorSupport(new LoomoSettings());
 
         // 2 行目が壊れている。正しい 1・3 行目は描かれ、壊れ行はエラー代替に置き換わる。
         var body = support.RenderBody(@"C:\work\log.ndjson", "{\"a\":1}\n{bad\n{\"a\":3}");
@@ -72,7 +72,7 @@ public class NdjsonEditorSupportTests
     [Fact]
     public void RenderBody_空行は無視する()
     {
-        var support = new NdjsonEditorSupport(new AiSettings());
+        var support = new NdjsonEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\log.ndjson", "{\"a\":1}\n\n  \n{\"a\":2}\n");
 
@@ -82,7 +82,7 @@ public class NdjsonEditorSupportTests
     [Fact]
     public void RenderBody_値のHTML特殊文字をエスケープする()
     {
-        var support = new NdjsonEditorSupport(new AiSettings());
+        var support = new NdjsonEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\log.ndjson", "{\"html\":\"<b>&</b>\"}");
 
@@ -93,7 +93,7 @@ public class NdjsonEditorSupportTests
     [Fact]
     public void RenderBody_空ファイルは空表示にする()
     {
-        var support = new NdjsonEditorSupport(new AiSettings());
+        var support = new NdjsonEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\log.ndjson", "");
 

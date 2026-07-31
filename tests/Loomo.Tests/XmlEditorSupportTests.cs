@@ -12,7 +12,7 @@ public class XmlEditorSupportTests
 {
     private static EditorSupportRegistry CreateRegistry()
     {
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         var workspace = new FakeWorkspaceService();
         return new(new IEditorSupportProvider[]
         {
@@ -39,7 +39,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderHtml_ページシェルとタイトルを含む()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         var html = support.RenderHtml(@"C:\work\config.xml", "<root><item>x</item></root>");
 
@@ -50,7 +50,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderBody_タグ属性テキストを折りたたみツリーにする()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\config.xml", "<root><item id=\"1\">x</item></root>");
 
@@ -65,7 +65,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderBody_子の無い要素は自己終了タグの1行になる()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\config.xml", "<root><item id=\"1\"/></root>");
 
@@ -75,7 +75,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderBody_HTML特殊文字をエスケープする()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         // テキスト内容として文字列 "<b>&</b>" を持つ（XML ソース上はエスケープして書く）。
         var body = support.RenderBody(@"C:\work\config.xml", "<root>&lt;b&gt;&amp;&lt;/b&gt;</root>");
@@ -88,7 +88,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderBody_コメントを表示する()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\config.xml", "<root><!-- メモ --></root>");
 
@@ -99,7 +99,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderBody_壊れたXMLはエラー本文を出し例外を投げない()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\bad.xml", "<a><b>");
 
@@ -111,7 +111,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void RenderBody_空テキストは空表示になる()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         Assert.Contains("空のファイル", support.RenderBody(@"C:\work\config.xml", ""));
         Assert.Contains("空のファイル", support.RenderBody(@"C:\work\config.xml", "   "));
@@ -120,7 +120,7 @@ public class XmlEditorSupportTests
     [Fact]
     public void DescribeTitle_XMLプレフィックスとファイル名()
     {
-        var support = new XmlEditorSupport(new AiSettings());
+        var support = new XmlEditorSupport(new LoomoSettings());
 
         Assert.Equal("XML: config.xml", support.DescribeTitle(@"C:\work\config.xml"));
         Assert.Equal("XML: App.xaml", support.DescribeTitle(@"C:\work\App.xaml"));

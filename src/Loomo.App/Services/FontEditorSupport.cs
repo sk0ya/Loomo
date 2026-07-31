@@ -14,7 +14,7 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class FontEditorSupport : IEditorSupportHtmlProvider
 {
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
     private static readonly string[] Extensions = [".ttf", ".otf", ".woff", ".woff2"];
 
     // base64 は元バイトの約1.33倍へ膨らむため、これを超えるフォントは埋め込まず案内だけ出す。
@@ -23,7 +23,7 @@ public sealed class FontEditorSupport : IEditorSupportHtmlProvider
     // specimen 内で使う CSS 上のフォント名（実ファイルの内部名に依存しない固定名）。
     private const string FontFamily = "LoomoFontPreview";
 
-    public FontEditorSupport(AiSettings settings) => _settings = settings;
+    public FontEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 

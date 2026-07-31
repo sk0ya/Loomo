@@ -13,7 +13,7 @@ public class DataFormatEditorSupportTests
 {
     private static EditorSupportRegistry CreateRegistry()
     {
-        var settings = new AiSettings();
+        var settings = new LoomoSettings();
         var workspace = new FakeWorkspaceService();
         return new(new IEditorSupportProvider[]
         {
@@ -48,7 +48,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void YamlSupport_タイトルはYAMLプレフィックスとファイル名()
     {
-        var support = new YamlEditorSupport(new AiSettings());
+        var support = new YamlEditorSupport(new LoomoSettings());
 
         Assert.Equal("YAML: config.yaml", support.DescribeTitle(@"C:\work\config.yaml"));
         Assert.IsAssignableFrom<IEditorSupportIncrementalHtmlProvider>(support);
@@ -57,7 +57,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void TomlSupport_タイトルはTOMLプレフィックスとファイル名()
     {
-        var support = new TomlEditorSupport(new AiSettings());
+        var support = new TomlEditorSupport(new LoomoSettings());
 
         Assert.Equal("TOML: Cargo.toml", support.DescribeTitle(@"C:\work\Cargo.toml"));
         Assert.IsAssignableFrom<IEditorSupportIncrementalHtmlProvider>(support);
@@ -66,7 +66,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void YamlSupport_キーと値と配列件数を折りたたみツリーにする()
     {
-        var support = new YamlEditorSupport(new AiSettings());
+        var support = new YamlEditorSupport(new LoomoSettings());
         const string yaml = "name: loomo\ncount: 3\nitems:\n  - a\n  - b\n";
 
         var html = support.RenderHtml(@"C:\work\config.yaml", yaml);
@@ -82,7 +82,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void TomlSupport_キーとテーブルと配列件数を折りたたみツリーにする()
     {
-        var support = new TomlEditorSupport(new AiSettings());
+        var support = new TomlEditorSupport(new LoomoSettings());
         const string toml = "name = \"loomo\"\ntags = [\"a\", \"b\", \"c\"]\n[server]\nport = 8080\n";
 
         var html = support.RenderHtml(@"C:\work\Cargo.toml", toml);
@@ -100,7 +100,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void TomlSupport_数値と日時が正しいJSON値になる()
     {
-        var support = new TomlEditorSupport(new AiSettings());
+        var support = new TomlEditorSupport(new LoomoSettings());
         const string toml = "port = 8080\nwhen = 2026-07-04T10:20:30Z\n";
 
         var body = support.RenderBody(@"C:\work\data.toml", toml);
@@ -115,7 +115,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void YamlSupport_壊れた入力はエラー本文を出し例外を投げない()
     {
-        var support = new YamlEditorSupport(new AiSettings());
+        var support = new YamlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\bad.yaml", "a: [1, 2\nb: :::");
 
@@ -126,7 +126,7 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void TomlSupport_壊れた入力はエラー本文を出し例外を投げない()
     {
-        var support = new TomlEditorSupport(new AiSettings());
+        var support = new TomlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\bad.toml", "name = \nfoo = = bar");
 
@@ -137,14 +137,14 @@ public class DataFormatEditorSupportTests
     [Fact]
     public void 空テキストは空表示になる()
     {
-        Assert.Contains("空のファイル", new YamlEditorSupport(new AiSettings()).RenderBody(@"C:\work\config.yaml", ""));
-        Assert.Contains("空のファイル", new TomlEditorSupport(new AiSettings()).RenderBody(@"C:\work\Cargo.toml", "   "));
+        Assert.Contains("空のファイル", new YamlEditorSupport(new LoomoSettings()).RenderBody(@"C:\work\config.yaml", ""));
+        Assert.Contains("空のファイル", new TomlEditorSupport(new LoomoSettings()).RenderBody(@"C:\work\Cargo.toml", "   "));
     }
 
     [Fact]
     public void YamlSupport_HTML特殊文字をエスケープする()
     {
-        var support = new YamlEditorSupport(new AiSettings());
+        var support = new YamlEditorSupport(new LoomoSettings());
 
         var body = support.RenderBody(@"C:\work\config.yaml", "html: \"<b>&</b>\"");
 

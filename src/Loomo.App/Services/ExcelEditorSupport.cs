@@ -28,7 +28,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
 {
     private static readonly string[] Extensions = [".xlsx", ".xlsm"];
 
-    private readonly AiSettings _settings;
+    private readonly LoomoSettings _settings;
 
     private Grid? _view;
     private TsvEditorControl? _grid;
@@ -42,7 +42,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
     private bool _suppressTabEvent;
     private int _updateSeq;
 
-    public ExcelEditorSupport(AiSettings settings) => _settings = settings;
+    public ExcelEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
