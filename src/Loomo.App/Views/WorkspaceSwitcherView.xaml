@@ -73,51 +73,6 @@
             <Setter Property="Margin" Value="5,0,0,0" />
         </Style>
 
-        <!-- フォルダー（プライマリ＋追加ぶん）の開閉ボタン。どの行も開けるが、常に見せるのは
-             マルチルートの行だけ——単一フォルダーの行にも印が出ていると、一覧が同じ印だらけで
-             「束ねている行」が見分けられなくなる。単一の行はホバーで薄く現れる（ピン留めと同じ作法）。 -->
-        <Style x:Key="RowFolderToggle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Padding" Value="4,0" />
-            <Setter Property="Margin" Value="6,0,0,0" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="Transparent" CornerRadius="3"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                             Value="True">
-                    <Setter Property="Opacity" Value="0.55" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsMultiRoot}" Value="True">
-                    <Setter Property="Opacity" Value="1" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-                    <Setter Property="Opacity" Value="1" />
-                    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-                </DataTrigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Opacity" Value="1" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
         <!-- 展開したときにぶら下がるフォルダー行。行の切替クリックとは別物なので Tag で見分ける
              （<c>WorkspaceSwitcherView.FindRow</c> がここで打ち切ってワークスペースを切り替えない）。 -->
         <Style x:Key="FolderRow" TargetType="Border">
@@ -141,16 +96,15 @@
         </Border.Effect>
 
         <DockPanel>
-            <!-- ===== フッター：ここに無いものを足す＋この場発の操作が失敗した理由 =====
-                 ブランチ切替の「＋ 新しいブランチ」と同じ位置づけ（一覧に無いものを作る）。
-                 ワークスペースを増やす／いま開いているワークスペースにフォルダーを足す、の2つ。 -->
+            <!-- ===== フッター：一覧に無いものを足す＋この場発の操作が失敗した理由 =====
+                 ブランチ切替の「＋ 新しいブランチ」と同じ位置づけ。ここはワークスペースの一覧なので
+                 足せるのはワークスペースだけ——いま開いているワークスペースへのフォルダー追加は
+                 一覧に対する操作ではないので置かない（エクスプローラ側の「フォルダーをワークスペースに
+                 追加」ボタンが持ち場）。 -->
             <StackPanel DockPanel.Dock="Bottom">
                 <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
                 <Button Style="{StaticResource BranchMenuItem}" FontSize="{DynamicResource Fs12}"
                         Content="＋ フォルダーを開いてワークスペースにする" Click="OnOpenFolderClick" />
-                <Button Style="{StaticResource BranchMenuItem}" FontSize="{DynamicResource Fs12}"
-                        Content="＋ いまのワークスペースにフォルダーを追加（マルチルート）"
-                        Click="OnAddFolderClick" />
                 <TextBlock x:Name="StatusText" Margin="10,2,10,4" FontSize="{DynamicResource Fs11}"
                            Foreground="#FFE57373" TextWrapping="Wrap"
                            MaxHeight="80" Visibility="Collapsed" />
@@ -161,14 +115,13 @@
                  行の右クリックに集約する（現在のワークスペースの行も一覧に居るので特別扱いは要らない）。
                  ブランチ切替の同期帯にあたる「リポジトリ全体に効く重い操作」はワークスペースには無い。 -->
             <DockPanel DockPanel.Dock="Top" Margin="2,0,2,4">
-                <!-- 各ワークスペースのフォルダー（ルート＋追加ぶん）を一覧全体でまとめて開閉する。
-                     行ごとの「🗂」でも個別に開けるが、どこを見ているかを一望＝パス一覧として
-                     読みたいときはこちら。一覧の見せ方を変えるだけなので絞り込みの隣に置く。 -->
+                <!-- 一覧の表示切替：各ワークスペースのフォルダー（ルート＋マルチルートの追加ぶん）を
+                     行の下に出す＝パス一覧として読むモード。行ごとの開閉ボタンは置かない——行に印が
+                     並ぶわりに、実際に見たいのは「全部のパスを読む」か「読まない」かのどちらかなので。 -->
                 <Button DockPanel.Dock="Right" Style="{StaticResource WorkspaceOpButton}"
                         Margin="4,0,0,0" Height="24"
                         ToolTip="すべてのワークスペースのフォルダー（ルート＋追加ぶん）をまとめて表示／非表示"
-                        Click="OnToggleAllFoldersClick"
-                        Visibility="{Binding HasAnyFolders, Converter={StaticResource BoolToVis}}">
+                        Click="OnToggleAllFoldersClick">
                     <!-- 点灯（表示中＝アクセント色）は中の TextBlock に直接掛ける。ボタンの Foreground を
                          変えても、既定の TextBlock スタイルが Fg を明示指定しているので content には効かない。 -->
                     <TextBlock Text="🗂 パス" FontSize="{DynamicResource Fs12}">
@@ -176,7 +129,7 @@
                             <Style TargetType="TextBlock">
                                 <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding AnyFoldersExpanded}" Value="True">
+                                    <DataTrigger Binding="{Binding ShowFolders}" Value="True">
                                         <Setter Property="Foreground" Value="{DynamicResource Accent}" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -301,32 +254,6 @@
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        ToolTip="ルートフォルダが存在しません（切り替えても内容は復元できません）"
                                        Visibility="{Binding IsMissing, Converter={StaticResource BoolToVis}}" />
-                            <Button DockPanel.Dock="Right" Style="{StaticResource RowFolderToggle}"
-                                    ToolTip="このワークスペースのフォルダー（ルート＋追加ぶん）を開く／閉じる"
-                                    Click="OnRowFoldersClick">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding FolderCountLabel, StringFormat=🗂{0}}"
-                                               FontSize="{DynamicResource Fs10}" VerticalAlignment="Center"
-                                               Foreground="{Binding Foreground,
-                                                   RelativeSource={RelativeSource AncestorType=Button}}" />
-                                    <TextBlock FontSize="{DynamicResource Fs10}" VerticalAlignment="Center"
-                                               Margin="3,0,0,0"
-                                               Foreground="{Binding Foreground,
-                                                   RelativeSource={RelativeSource AncestorType=Button}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="▸" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-                                                        <Setter Property="Text" Value="▾" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                            </Button>
-
                             <!-- 左：名前。パスは行に出さず ToolTip へ（1行1件の密度を優先。同名フォルダの
                                  見分けは ToolTip とフィルタでできる） -->
                             <TextBlock Text="{Binding Label}" FontSize="{DynamicResource Fs12}"
@@ -353,7 +280,9 @@
                              ListBox の項目にはせず、見出し行の下にぶら下げる。右クリックでこの
                              フォルダー1つに効く操作（パスのコピー・エクスプローラ・取り除く）。 -->
                         <ItemsControl ItemsSource="{Binding Folders}" Margin="38,1,0,3"
-                                      Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                      Visibility="{Binding DataContext.ShowFolders,
+                                          RelativeSource={RelativeSource AncestorType=ListBox},
+                                          Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource FolderRow}" ToolTip="{Binding Path}">

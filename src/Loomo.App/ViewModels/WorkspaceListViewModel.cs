@@ -85,20 +85,16 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ToolTip))]
     private int _browserTabCount;
 
-    /// <summary>このワークスペースのフォルダー（プライマリ＋マルチルートの追加ぶん）。行の「🗂」で開閉する。</summary>
+    /// <summary>このワークスペースのフォルダー（プライマリ＋マルチルートの追加ぶん）。
+    /// 出す・出さないは一覧全体の1スイッチ（<see cref="WorkspaceListViewModel.ShowFolders"/>）で決める
+    /// ——行ごとの開閉ボタンは置かない。</summary>
     public ObservableCollection<WorkspaceFolderEntryViewModel> Folders { get; } = new();
-
-    /// <summary>フォルダーを一覧に開いているか（行ごとの状態）。</summary>
-    [ObservableProperty] private bool _isExpanded;
 
     public bool HasFolders => Folders.Count > 0;
 
-    /// <summary>マルチルート（プライマリ以外のフォルダーがある）。この行だけ「🗂n」を常時出す
-    /// ——単一フォルダーの行にも出すと、一覧が同じ印だらけになって意味を失う。</summary>
+    /// <summary>マルチルート（プライマリ以外のフォルダーがある）。フォルダーを出したときに
+    /// 「ルート」の印を添えるかの判定にだけ使う（一覧の行そのものには何も出さない）。</summary>
     public bool IsMultiRoot => Folders.Count > 1;
-
-    /// <summary>「🗂」の横に出す件数。1つだけのときは出さない（数える意味がない）。</summary>
-    public string FolderCountLabel => Folders.Count > 1 ? Folders.Count.ToString() : "";
 
     /// <summary>一覧・タイトルバーに出す名前。</summary>
     public string Label => string.IsNullOrWhiteSpace(CustomName) ? Name : CustomName!;
@@ -122,7 +118,7 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
             if (tabs.Count > 0)
                 lines.Add("開いているタブ: " + string.Join(" / ", tabs));
             if (IsMultiRoot)
-                lines.Add($"フォルダー {Folders.Count}（🗂 で開閉）");
+                lines.Add($"フォルダー {Folders.Count}（🗂 パスで表示）");
             if (IsMissing)
                 lines.Add("⚠ このフォルダは見つかりません");
             return string.Join("\n", lines);
@@ -152,11 +148,8 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         for (var i = 0; i < paths.Count; i++)
             Folders.Add(new WorkspaceFolderEntryViewModel(this, paths[i], isPrimary: i == 0));
 
-        if (!HasFolders)
-            IsExpanded = false;
         OnPropertyChanged(nameof(HasFolders));
         OnPropertyChanged(nameof(IsMultiRoot));
-        OnPropertyChanged(nameof(FolderCountLabel));
         OnPropertyChanged(nameof(ToolTip));
     }
 
@@ -256,39 +249,14 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     [RelayCommand]
     private void ClearFilter() => Filter = "";
 
-    /// <summary>行のマルチルート表示（追加フォルダー）を開閉する。</summary>
+    /// <summary>各ワークスペースのフォルダー（ルート＋マルチルートの追加ぶん）を行の下に出すか
+    /// ＝一覧をパス一覧として読むモード。行ごとの開閉は持たない——行に印が並ぶわりに、実際に
+    /// 見たいのは「全部のパスを読む」か「読まない」かのどちらかなので、一覧全体の1スイッチにする。</summary>
+    [ObservableProperty] private bool _showFolders;
+
+    /// <summary>フォルダー表示の切替（絞り込み欄の隣のボタン）。</summary>
     [RelayCommand]
-    private void ToggleFolders(WorkspaceEntryViewModel? entry)
-    {
-        if (entry is not { HasFolders: true })
-            return;
-
-        entry.IsExpanded = !entry.IsExpanded;
-        UpdateFoldersExpandedState();
-    }
-
-    /// <summary>マルチルートの追加フォルダーを<em>まとめて</em>表示／非表示する（帯のボタン）。
-    /// 1つでも開いていれば全部畳む、そうでなければ全部開く。</summary>
-    [RelayCommand]
-    private void ToggleAllFolders()
-    {
-        var expand = !AnyFoldersExpanded;
-        foreach (var entry in Workspaces.Where(w => w.HasFolders))
-            entry.IsExpanded = expand;
-        UpdateFoldersExpandedState();
-    }
-
-    /// <summary>マルチルートのワークスペースが1つでもあるか（無ければ帯のボタンを出さない）。</summary>
-    public bool HasAnyFolders => Workspaces.Any(w => w.HasFolders);
-
-    /// <summary>追加フォルダーを1つでも開いているか（帯のボタンの点灯とトグルの向き）。</summary>
-    [ObservableProperty] private bool _anyFoldersExpanded;
-
-    private void UpdateFoldersExpandedState()
-    {
-        AnyFoldersExpanded = Workspaces.Any(w => w is { HasFolders: true, IsExpanded: true });
-        OnPropertyChanged(nameof(HasAnyFolders));
-    }
+    private void ToggleFolders() => ShowFolders = !ShowFolders;
 
     /// <summary>追加フォルダーをワークスペースから取り除く（フォルダ自体は消さない）。
     /// アクティブなワークスペースは<em>生きている</em> FolderTree／WorkspaceService を通す必要があるので
@@ -497,7 +465,6 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         if (SelectedWorkspace is null || !Workspaces.Contains(SelectedWorkspace))
             SelectedWorkspace = active;
 
-        UpdateFoldersExpandedState();
         RebuildFiltered();
     }
 

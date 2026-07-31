@@ -5,7 +5,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using Microsoft.Win32;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -34,10 +33,6 @@ public partial class WorkspaceSwitcherView : UserControl
 
     /// <summary>ポップアップを閉じてほしい。実際に閉じるのは Popup を持つ側（ShellWindow）。</summary>
     public event EventHandler? CloseRequested;
-
-    /// <summary>現在のワークスペースへフォルダーを追加したい（マルチルート）。FolderTree を持つ
-    /// ShellWindow 側で処理する。</summary>
-    public event EventHandler<string>? AddFolderRequested;
 
     /// <summary>ワークスペースを一覧から削除したい。確認ダイアログと「最後の1つは消せない」通知は
     /// ShellWindow 側（既存の削除経路）に任せる。</summary>
@@ -106,7 +101,7 @@ public partial class WorkspaceSwitcherView : UserControl
 
     // ===== 一覧 =====
 
-    /// <summary>クリックされた行。行内のボタン（ピン留め・フォルダー開閉）上なら、そちらが処理済みなので
+    /// <summary>クリックされた行。行内のボタン（ピン留め）上なら、そちらが処理済みなので
     /// null を返す。展開したフォルダー行（<c>Tag="folder"</c>）も、ワークスペースの切替対象ではないので同様。</summary>
     private static ListBoxItem? FindRow(object? originalSource)
     {
@@ -175,13 +170,6 @@ public partial class WorkspaceSwitcherView : UserControl
     {
         if (sender is Button { DataContext: WorkspaceEntryViewModel entry })
             Vm?.TogglePinCommand.Execute(entry);
-    }
-
-    /// <summary>マルチルートの追加フォルダーを開閉する（ポップアップは開いたまま）。</summary>
-    private void OnRowFoldersClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: WorkspaceEntryViewModel entry })
-            Vm?.ToggleFoldersCommand.Execute(entry);
     }
 
     // ===== 追加フォルダー行の右クリックメニュー =====
@@ -257,17 +245,9 @@ public partial class WorkspaceSwitcherView : UserControl
 
     // ===== 一覧の表示切替とフッター =====
 
-    /// <summary>フォルダー（パス）の一括表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
+    /// <summary>フォルダー（パス）の表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
     private void OnToggleAllFoldersClick(object sender, RoutedEventArgs e)
-        => Vm?.ToggleAllFoldersCommand.Execute(null);
-
-    private void OnAddFolderClick(object sender, RoutedEventArgs e)
-    {
-        Close();
-        var dlg = new OpenFolderDialog { Title = "ワークスペースに追加するフォルダーを選択" };
-        if (dlg.ShowDialog() == true)
-            AddFolderRequested?.Invoke(this, dlg.FolderName);
-    }
+        => Vm?.ToggleFoldersCommand.Execute(null);
 
     private void OnOpenFolderClick(object sender, RoutedEventArgs e)
     {

@@ -201,12 +201,11 @@ public class WorkspaceListViewModelTests
         Assert.Equal([@"C:\multi", @"C:\shared\lib", @"D:\docs"], entry.Folders.Select(f => f.Path));
         Assert.Equal([true, false, false], entry.Folders.Select(f => f.IsPrimary));
         Assert.Equal("lib", entry.Folders[1].Name);
-        Assert.Equal("3", entry.FolderCountLabel);
     }
 
-    /// <summary>絞り込み欄の隣の「🗂 パス」は一覧全体の開閉。1つでも開いていれば全部畳む。</summary>
+    /// <summary>絞り込み欄の隣の「🗂 パス」は一覧全体の表示切替（行ごとの開閉は持たない）。</summary>
     [Fact]
-    public void Toggling_all_folders_expands_every_multi_root_workspace_then_collapses_them()
+    public void Toggling_folders_shows_every_workspaces_folders_at_once()
     {
         var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
         var storePath = Path.Combine(root, "workspaces.json");
@@ -222,25 +221,20 @@ public class WorkspaceListViewModelTests
         var sut = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
         var multiEntry = sut.Workspaces.Single(w => w.RootPath == @"C:\multi");
         var plainEntry = sut.Workspaces.Single(w => w.RootPath == @"C:\plain");
-        Assert.True(sut.HasAnyFolders);
-        Assert.True(multiEntry.IsMultiRoot);
-        Assert.False(plainEntry.IsMultiRoot);   // ルートだけの行に件数は出さない
-        Assert.Equal("", plainEntry.FolderCountLabel);
-        Assert.False(sut.AnyFoldersExpanded);
+        Assert.False(sut.ShowFolders);
 
-        // まとめて開くとルートだけのワークスペースも開く（パス一覧として読めるように）
-        sut.ToggleAllFoldersCommand.Execute(null);
-        Assert.True(multiEntry.IsExpanded);
-        Assert.True(plainEntry.IsExpanded);
-        Assert.True(sut.AnyFoldersExpanded);
+        // 表示はワークスペースを問わず一括。ルートだけのワークスペースもパスが読める
+        sut.ToggleFoldersCommand.Execute(null);
+        Assert.True(sut.ShowFolders);
+        Assert.Equal([@"C:\multi", @"C:\shared\lib"], multiEntry.Folders.Select(f => f.Path));
+        Assert.Equal([@"C:\plain"], plainEntry.Folders.Select(f => f.Path));
 
-        sut.ToggleAllFoldersCommand.Execute(null);
-        Assert.False(multiEntry.IsExpanded);
-        Assert.False(sut.AnyFoldersExpanded);
+        // 「ルート」の印はマルチルートのときだけ（1つしか無い行では区別にならない）
+        Assert.True(multiEntry.Folders[0].ShowPrimaryTag);
+        Assert.False(plainEntry.Folders[0].ShowPrimaryTag);
 
-        // 行ごとの開閉もボタンの点灯へ反映される
-        sut.ToggleFoldersCommand.Execute(multiEntry);
-        Assert.True(sut.AnyFoldersExpanded);
+        sut.ToggleFoldersCommand.Execute(null);
+        Assert.False(sut.ShowFolders);
     }
 
     /// <summary>非アクティブなワークスペースのフォルダー削除はスナップショットを直接直す
