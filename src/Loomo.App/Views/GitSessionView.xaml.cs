@@ -24,7 +24,11 @@ namespace sk0ya.Loomo.App.Views;
 public partial class GitSessionView : UserControl
 {
     private GitHistoryViewModel? _subscribed;
+    private GitSessionViewModel? _subscribedSession;
     private bool _isRevealingLogRow;
+
+    /// <summary>コミット詳細を隠す直前の高さ。再表示でユーザーがドラッグした高さへ戻すため覚えておく。</summary>
+    private GridLength _commitDetailHeight = new(140);
 
     public GitSessionView()
     {
@@ -45,7 +49,49 @@ public partial class GitSessionView : UserControl
         _subscribed = Vm?.History;
         if (_subscribed is not null)
             _subscribed.PropertyChanged += OnVmPropertyChanged;
+
+        if (_subscribedSession is not null)
+            _subscribedSession.PropertyChanged -= OnSessionPropertyChanged;
+        _subscribedSession = Vm;
+        if (_subscribedSession is not null)
+            _subscribedSession.PropertyChanged += OnSessionPropertyChanged;
+
         RenderCommitDetail();
+        ApplyCommitDetailVisibility();
+    }
+
+    private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GitSessionViewModel.CommitDetailVisible))
+            ApplyCommitDetailVisibility();
+    }
+
+    /// <summary>
+    /// コミット詳細の表示/非表示を反映する。非表示のときは行の高さと MinHeight ごと 0 にして畳む
+    /// （中身を Collapsed にするだけでは行の固定高さが残り、空白の帯が居座るため）。
+    /// </summary>
+    private void ApplyCommitDetailVisibility()
+    {
+        var visible = Vm?.CommitDetailVisible ?? true;
+        if (visible)
+        {
+            CommitDetailSplitterRow.Height = new GridLength(6);
+            CommitDetailRow.MinHeight = 60;
+            CommitDetailRow.Height = _commitDetailHeight;
+            CommitDetailSplitter.Visibility = Visibility.Visible;
+            CommitDetailBox.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            // ドラッグ後の実寸を覚えてから畳む（次の表示で同じ高さに戻す）
+            if (CommitDetailRow.ActualHeight > 0)
+                _commitDetailHeight = new GridLength(CommitDetailRow.ActualHeight);
+            CommitDetailSplitter.Visibility = Visibility.Collapsed;
+            CommitDetailBox.Visibility = Visibility.Collapsed;
+            CommitDetailSplitterRow.Height = new GridLength(0);
+            CommitDetailRow.MinHeight = 0;
+            CommitDetailRow.Height = new GridLength(0);
+        }
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

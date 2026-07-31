@@ -27,6 +27,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private readonly IEditorService _editor;
     private readonly DiffSessionViewModel _diff;
     private readonly GitSessionQuery _query;
+    private readonly LoomoSettings? _settings;
+    private readonly SettingsStore? _settingsStore;
     public GitSessionCommandHandler Commands { get; }
     public GitHistoryViewModel History { get; }
     private bool _loaded;
@@ -47,6 +49,18 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [ObservableProperty] private string _operationLabel = "";
     /// <summary>進行中操作が「スキップ」を持つか（rebase / cherry-pick のみ）。</summary>
     [ObservableProperty] private bool _operationCanSkip;
+
+    /// <summary>下段のコミット詳細（選択コミットの <c>git show --stat</c>）を表示するか。
+    /// Git ペインのタイトル領域のトグルで切り替え、設定へ永続化する。</summary>
+    [ObservableProperty] private bool _commitDetailVisible = true;
+
+    partial void OnCommitDetailVisibleChanged(bool value)
+    {
+        if (_settings is null) return;
+        _settings.GitCommitDetailVisible = value;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
+    }
 
     /// <summary>ブランチ一覧のツリー（ローカル／リモートの見出し、その中を "/" でフォルダ化）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
@@ -95,7 +109,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff,
         GitSessionQuery query, GitSessionCommandHandler commands, GitHistoryViewModel history,
-        GitRootSwitchViewModel rootSwitch)
+        GitRootSwitchViewModel rootSwitch,
+        LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
         _git = git;
         _editor = editor;
@@ -104,6 +119,10 @@ public sealed partial class GitSessionViewModel : ObservableObject
         Commands = commands;
         History = history;
         RootSwitch = rootSwitch;
+        _settings = settings;
+        _settingsStore = settingsStore;
+        // 保存された表示状態を初期反映する（field 直接代入なので OnCommitDetailVisibleChanged＝永続化は走らない）。
+        _commitDetailVisible = settings?.GitCommitDetailVisible ?? true;
         Commands.StatusChanged += (_, status) =>
         {
             IsBusy = status.IsBusy;

@@ -107,6 +107,9 @@ public sealed class SettingsStore
         /// <summary>軌跡バーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? TrailVisible { get; set; }
 
+        /// <summary>Git ペインのコミット詳細の表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
+        public bool? GitCommitDetailVisible { get; set; }
+
         public PersistedProvider Local { get; set; } = new();
         public PersistedSafety Safety { get; set; } = new();
         public PersistedObservability? Observability { get; set; }
@@ -123,6 +126,7 @@ public sealed class SettingsStore
             PaneOpenBehavior = s.PaneOpenBehavior,
             WarmupEnabled = s.WarmupEnabled,
             TrailVisible = s.TrailVisible,
+            GitCommitDetailVisible = s.GitCommitDetailVisible,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
             Observability = PersistedObservability.From(s.Observability),
@@ -141,6 +145,7 @@ public sealed class SettingsStore
             if (PaneOpenBehavior is { } pob) s.PaneOpenBehavior = pob; // 旧設定（null）は既定（Main）を維持
             if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
+            if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持

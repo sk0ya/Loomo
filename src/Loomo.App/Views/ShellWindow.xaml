@@ -870,6 +870,14 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Git" Click="OnHidePane" />
+                        <!-- コミット詳細（下段）の表示/非表示。ペイン内ではなくタイトル領域に置き、
+                             状態は設定へ永続化する（GitSessionViewModel.CommitDetailVisible）。 -->
+                        <ToggleButton DockPanel.Dock="Right" Margin="0,0,6,0" MinHeight="24"
+                                      VerticalAlignment="Center" Content="▤ 詳細"
+                                      Style="{StaticResource ToolbarToggleButton}"
+                                      ToolTip="コミット詳細の表示／非表示"
+                                      IsChecked="{Binding GitSession.CommitDetailVisible, Mode=TwoWay}"
+                                      Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}" />
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
                             <!-- ブランチ切替：タイトルバーと同じコントロール。クリックで一覧ポップアップ→選択でチェックアウト -->
