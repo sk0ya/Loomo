@@ -11,7 +11,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
   </ItemGroup>
