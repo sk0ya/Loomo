@@ -222,6 +222,10 @@ public sealed class EditorSettings
     /// <summary>インデントの深さを示す縦線（Vim <c>indentguides</c>）。既定 OFF。</summary>
     public bool ShowIndentGuides { get; set; }
 
+    /// <summary>C# ファイルを開いたとき、先頭の <c>using</c> 節を閉じて表示する。
+    /// 既定 OFF。クラスやメソッドなど、ほかの折りたたみ範囲には干渉しない。</summary>
+    public bool CollapseUsingsOnOpen { get; set; }
+
     /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
     public bool AutoClosePairs { get; set; }
 

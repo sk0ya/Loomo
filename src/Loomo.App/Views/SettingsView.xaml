@@ -457,6 +457,11 @@
                                 <CheckBox Margin="0,8,0,0" IsChecked="{Binding Settings.ShowIndentGuides}">
                                     <TextBlock Text="インデントガイドを表示する" TextWrapping="Wrap" />
                                 </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.CollapseUsingsOnOpen}"
+                                          ToolTip="C# ファイルを開いたとき、先頭の using 節だけを閉じます。クラスやメソッドは閉じません。">
+                                    <TextBlock Text="C# ファイルを開いたとき using 節を閉じる" TextWrapping="Wrap" />
+                                </CheckBox>
 
                                 <Separator Margin="0,16,0,10" />
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="タブ幅（インデント幅）" Margin="0,0,0,3" />

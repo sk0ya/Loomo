@@ -16,6 +16,7 @@ public sealed record SettingsFormState
     public bool WordWrap { get; init; }
     public bool ShowMinimap { get; init; }
     public bool ShowIndentGuides { get; init; }
+    public bool CollapseUsingsOnOpen { get; init; }
     public bool AutoClosePairs { get; init; }
     public int TabWidth { get; init; }
     public bool UseSpacesForTab { get; init; }
@@ -52,6 +53,7 @@ public sealed class SettingsPersistenceHandler
         WordWrap = _settings.Editor.WordWrap,
         ShowMinimap = _settings.Editor.ShowMinimap,
         ShowIndentGuides = _settings.Editor.ShowIndentGuides,
+        CollapseUsingsOnOpen = _settings.Editor.CollapseUsingsOnOpen,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
         TabWidth = _settings.Editor.TabWidth,
         UseSpacesForTab = _settings.Editor.UseSpacesForTab,
@@ -79,6 +81,7 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.WordWrap = form.WordWrap;
         _settings.Editor.ShowMinimap = form.ShowMinimap;
         _settings.Editor.ShowIndentGuides = form.ShowIndentGuides;
+        _settings.Editor.CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
         _settings.Editor.TabWidth = form.TabWidth > 0 ? form.TabWidth : 2;
         _settings.Editor.UseSpacesForTab = form.UseSpacesForTab;

@@ -38,10 +38,10 @@ public partial class ShellWindow {
         _editorTabs.Add(newTab);
         _vm.Tabs.AddEditorTab(newTab.Id, openPath ?? src?.Control.FilePath, src?.Control.IsModified ?? false, false);
         if (openPath is not null) {
-            newTab.Control.LoadFile(openPath);
+            LoadEditorFile(newTab.Control, openPath);
         } else if (src is not null) {
             if (!string.IsNullOrWhiteSpace(src.Control.FilePath) && File.Exists(src.Control.FilePath) && !src.Control.IsModified)
-                newTab.Control.LoadFile(src.Control.FilePath);
+                LoadEditorFile(newTab.Control, src.Control.FilePath);
             else
                 newTab.Control.SetText(src.Control.Text);
         }
@@ -150,6 +150,7 @@ public partial class ShellWindow {
         tab.SetControl(control);
         if (tab.Pending is { } snapshot) {
             WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
+            _appearance.ApplyUsingFoldingOnOpen(control);
             tab.Pending = null;
         }
     }
@@ -195,6 +196,10 @@ public partial class ShellWindow {
         WireEditorForDebug(control);
         return control;
     }
+    private void LoadEditorFile(VimEditorControl control, string path) {
+        control.LoadFile(path);
+        _appearance.ApplyUsingFoldingOnOpen(control);
+    }
     private void ApplyVimEnabledToOpenEditorTabs() {
         foreach (var tab in _editorTabs)
             if (tab.IsRealized)
@@ -204,6 +209,7 @@ public partial class ShellWindow {
         foreach (var tab in _editorTabs) {
             if (!tab.IsRealized) continue;
             _appearance.ApplyEditorOptions(tab.Control);
+            _appearance.ApplyUsingFoldingOnOpen(tab.Control);
         }
     }
     private void ApplyAppearanceToOpenTabs() {

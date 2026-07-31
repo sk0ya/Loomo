@@ -52,6 +52,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _wordWrap;
     [ObservableProperty] private bool _showMinimap;
     [ObservableProperty] private bool _showIndentGuides;
+    [ObservableProperty] private bool _collapseUsingsOnOpen;
     [ObservableProperty] private bool _autoClosePairs;
     [ObservableProperty] private int _tabWidth;
     [ObservableProperty] private bool _useSpacesForTab;
@@ -119,6 +120,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         HighlightWhitespace = form.HighlightWhitespace; ShowLineNumbers = form.ShowLineNumbers;
         RelativeLineNumbers = form.RelativeLineNumbers; HighlightCurrentLine = form.HighlightCurrentLine;
         WordWrap = form.WordWrap; ShowMinimap = form.ShowMinimap; ShowIndentGuides = form.ShowIndentGuides;
+        CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         AutoClosePairs = form.AutoClosePairs; TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
         ImagePasteAltText = form.ImagePasteAltText;
@@ -169,6 +171,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnWordWrapChanged(bool value) => Persist();
     partial void OnShowMinimapChanged(bool value) => Persist();
     partial void OnShowIndentGuidesChanged(bool value) => Persist();
+    partial void OnCollapseUsingsOnOpenChanged(bool value) => Persist();
     partial void OnAutoClosePairsChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
     partial void OnUseSpacesForTabChanged(bool value) => Persist();
@@ -198,6 +201,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             VimEnabled = VimEnabled, HighlightWhitespace = HighlightWhitespace, ShowLineNumbers = ShowLineNumbers,
             RelativeLineNumbers = RelativeLineNumbers, HighlightCurrentLine = HighlightCurrentLine,
             WordWrap = WordWrap, ShowMinimap = ShowMinimap, ShowIndentGuides = ShowIndentGuides,
+            CollapseUsingsOnOpen = CollapseUsingsOnOpen,
             AutoClosePairs = AutoClosePairs, TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,
             ImagePasteAltText = ImagePasteAltText, AutoApprove = AutoApprove,

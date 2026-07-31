@@ -36,7 +36,7 @@ public partial class ShellWindow {
         if (kind is DetachKind.EditorMirror or DetachKind.EditorMove) {
             var editor = CreateEditorTab().Control;
             if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
-                editor.LoadFile(snapshot.FilePath);
+                LoadEditorFile(editor, snapshot.FilePath);
             if (snapshot.Text is not null) editor.SetText(snapshot.Text);
             var title = string.IsNullOrWhiteSpace(snapshot.FilePath) ? "Untitled" : Path.GetFileName(snapshot.FilePath);
             return new DetachedItem(DetachKind.EditorMove, title, editor, _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose);
@@ -106,7 +106,7 @@ public partial class ShellWindow {
         var srcCtl = src.Control;                 // 未実体化なら実体化
         var mirror = CreateEditorTab().Control;    // 独立コントロール（_editorTabs には加えない＝非永続）
         if (!string.IsNullOrWhiteSpace(srcCtl.FilePath) && File.Exists(srcCtl.FilePath) && !srcCtl.IsModified)
-            mirror.LoadFile(srcCtl.FilePath);
+            LoadEditorFile(mirror, srcCtl.FilePath);
         else
             mirror.SetText(srcCtl.Text);
         var syncing = false;

@@ -40,7 +40,7 @@ public partial class ShellWindow {
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
-        tab.Control.LoadFile(path);
+        LoadEditorFile(tab.Control, path);
         OnActiveEditorFileChanged(tab);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         UpdateEditorTab(tab);
         RecordTrailEditorTab(tab);
@@ -76,7 +76,7 @@ public partial class ShellWindow {
         _trailSuppressed = true;
         try { ActivateEditorTab(target.Id); }
         finally { _trailSuppressed = trailSaved; }
-        target.Control.LoadFile(path);
+        LoadEditorFile(target.Control, path);
         OnActiveEditorFileChanged(target);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         SetPreviewTab(target);
         UpdateEditorTab(target);
@@ -94,7 +94,7 @@ public partial class ShellWindow {
         try { diskText = await File.ReadAllTextAsync(path); }
         catch { return; }   // 読めなければ現状維持（best-effort）
         if (NormalizeEol(diskText) != NormalizeEol(tab.Control.Text)) {
-            tab.Control.LoadFile(path);
+            LoadEditorFile(tab.Control, path);
             UpdateEditorTab(tab);
         }
         if (ReferenceEquals(_editorSupport.Source, tab))

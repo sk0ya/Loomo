@@ -5,6 +5,8 @@ public sealed class ShellAppearanceCoordinator
 {
     private readonly AiSettings _settings;
     private readonly Func<Color> _accentColor;
+    private readonly Dictionary<VimEditorControl, CancellationTokenSource> _usingFoldRequests = new();
+    private readonly object _usingFoldGate = new();
 
     public ShellAppearanceCoordinator(AiSettings settings, Func<Color> accentColor)
     {
@@ -31,6 +33,99 @@ public sealed class ShellAppearanceCoordinator
             FileName = settings.ImagePasteFileName,
             AltText = settings.ImagePasteAltText
         };
+    }
+
+    /// <summary>C# ファイル読込後、LSP が返す imports 範囲だけを閉じる。</summary>
+    public void ApplyUsingFoldingOnOpen(VimEditorControl control)
+    {
+        if (!_settings.Editor.CollapseUsingsOnOpen
+            || !string.Equals(Path.GetExtension(control.FilePath), ".cs", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var filePath = control.FilePath!;
+        CancellationTokenSource? previous;
+        var request = new CancellationTokenSource();
+        lock (_usingFoldGate)
+        {
+            _usingFoldRequests.Remove(control, out previous);
+            _usingFoldRequests[control] = request;
+        }
+        if (previous is not null)
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
+        _ = CloseUsingFoldWhenAvailableAsync(control, filePath, request);
+    }
+
+    private async Task CloseUsingFoldWhenAvailableAsync(
+        VimEditorControl control, string filePath, CancellationTokenSource request)
+    {
+        try
+        {
+            // LSP の完了通知と FoldManager への反映順序はサーバーごとに異なる。
+            // ガターへ実際に現れる既存範囲を最大10秒待ち、それを唯一の真実として閉じる。
+            for (var attempt = 0; attempt < 100; attempt++)
+            {
+                request.Token.ThrowIfCancellationRequested();
+                var closed = await control.Dispatcher.InvokeAsync(
+                    () => TryCloseExistingUsingFold(control, filePath), DispatcherPriority.ContextIdle);
+                if (closed)
+                    return;
+                await Task.Delay(100, request.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            // 表示上の補助なので、LSP 停止・ファイル切替時は開いた表示を維持する。
+        }
+        finally
+        {
+            lock (_usingFoldGate)
+            {
+                if (_usingFoldRequests.TryGetValue(control, out var current) && ReferenceEquals(current, request))
+                    _usingFoldRequests.Remove(control);
+            }
+            request.Dispose();
+        }
+    }
+
+    private bool TryCloseExistingUsingFold(VimEditorControl control, string filePath)
+    {
+        if (!_settings.Editor.CollapseUsingsOnOpen
+            || !string.Equals(control.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var allRanges = control.Engine.CurrentBuffer.Folds.Folds
+            .Select(fold => new Editor.Core.Lsp.LspFoldingRange(fold.StartLine, fold.EndLine))
+            .ToArray();
+        var usingRanges = CSharpUsingFoldMatcher.Find(control.Text, allRanges);
+        if (usingRanges.Count == 0)
+            return false;
+
+        CloseExistingUsingRanges(control, usingRanges);
+        return true;
+    }
+
+    internal static void CloseExistingUsingRanges(
+        VimEditorControl control,
+        IReadOnlyList<Editor.Core.Lsp.LspFoldingRange> usingRanges)
+    {
+        CloseUsingRanges(control.Engine.CurrentBuffer.Folds, usingRanges);
+
+        // FoldManager は Core の状態なので、既存の OptionsChanged 経路で Canvas へ再描画を通知する。
+        control.ExecuteCommand($"set {(control.Engine.Options.Number ? "" : "no")}number");
+    }
+
+    internal static void CloseUsingRanges(
+        Editor.Core.Folds.FoldManager folds,
+        IReadOnlyList<Editor.Core.Lsp.LspFoldingRange> usingRanges)
+    {
+        foreach (var range in usingRanges)
+            folds.CloseFold(range.StartLine);
     }
 
     public void ApplyEditorAppearance(VimEditorControl control)

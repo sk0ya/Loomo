@@ -140,4 +140,33 @@ public class AiSettingsStoreTests
     {
         Assert.False(new AiSettings().Vim.Enabled);
     }
+
+    [Fact]
+    public void Save_and_load_persists_collapse_usings_on_open()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new AiSettings();
+            saved.Editor.CollapseUsingsOnOpen = true;
+
+            var store = new AiSettingsStore(path);
+            store.Save(saved);
+
+            var loaded = new AiSettings();
+            store.Load(loaded);
+
+            Assert.True(loaded.Editor.CollapseUsingsOnOpen);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Collapse_usings_on_open_is_disabled_by_default()
+    {
+        Assert.False(new AiSettings().Editor.CollapseUsingsOnOpen);
+    }
 }

@@ -263,6 +263,7 @@ public sealed class AiSettingsStore
         public bool WordWrap { get; set; }
         public bool ShowMinimap { get; set; }
         public bool ShowIndentGuides { get; set; }
+        public bool CollapseUsingsOnOpen { get; set; }
         public bool AutoClosePairs { get; set; }
         public int TabWidth { get; set; } = 2;
         public bool UseSpacesForTab { get; set; } = true;
@@ -276,6 +277,7 @@ public sealed class AiSettingsStore
             WordWrap = e.WordWrap,
             ShowMinimap = e.ShowMinimap,
             ShowIndentGuides = e.ShowIndentGuides,
+            CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
             AutoClosePairs = e.AutoClosePairs,
             TabWidth = e.TabWidth,
             UseSpacesForTab = e.UseSpacesForTab,
@@ -290,6 +292,7 @@ public sealed class AiSettingsStore
             e.WordWrap = WordWrap;
             e.ShowMinimap = ShowMinimap;
             e.ShowIndentGuides = ShowIndentGuides;
+            e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
             e.AutoClosePairs = AutoClosePairs;
             e.TabWidth = TabWidth > 0 ? TabWidth : 2;
             e.UseSpacesForTab = UseSpacesForTab;
