@@ -127,6 +127,7 @@ public partial class ShellWindow : Window {
         _browserTabs = _scratchBrowserWorkspace.Tabs;
         InitializePanes();
         HookBranchSwitchers();
+        HookWorkspaceSwitcher();
         PreviewMouseDown += OnShellPreviewMouseNavigate;
         SidebarSplitter.Cursor = Cursors.SizeWE;
         SidebarSplitter.MouseEnter += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Accent");

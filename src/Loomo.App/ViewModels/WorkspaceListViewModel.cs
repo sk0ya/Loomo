@@ -7,6 +7,8 @@ using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>切替ポップアップ（<c>WorkspaceSwitcherView</c>）に並ぶ1行。フォルダ名・手で付けた表示名・
+/// ピン留め・最終利用・抱えているタブ数・フォルダの実在を持つ。</summary>
 public sealed partial class WorkspaceEntryViewModel : ObservableObject
 {
     public WorkspaceEntryViewModel(WorkspaceSnapshot snapshot)
@@ -16,24 +18,103 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         _name = string.IsNullOrWhiteSpace(snapshot.Name)
             ? WorkspaceListViewModel.DisplayName(snapshot.RootPath)
             : snapshot.Name;
+        _customName = snapshot.CustomName;
+        _isPinned = snapshot.Pinned;
         _lastUsedUtc = snapshot.LastUsedUtc;
+        ApplyTabCounts(snapshot.TabCounts);
     }
 
     public Guid Id { get; }
     public string RootPath { get; }
 
-    [ObservableProperty] private string _name;
-    [ObservableProperty] private DateTime _lastUsedUtc;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Label))]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private string _name;
+
+    /// <summary>ユーザーが付けた表示名（null ならフォルダ名を出す）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Label))]
+    [NotifyPropertyChangedFor(nameof(HasCustomName))]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private string? _customName;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LastUsedLabel))]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private DateTime _lastUsedUtc;
+
     [ObservableProperty] private bool _isActive;
+    [ObservableProperty] private bool _isPinned;
+
+    /// <summary>ルートフォルダが見つからない（消された・外付けドライブが外れた等）。
+    /// 切り替えても中身が復元できないので、一覧では警告色で出して削除へ誘導する。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private bool _isMissing;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private int _terminalTabCount;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private int _editorTabCount;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToolTip))]
+    private int _browserTabCount;
+
+    /// <summary>一覧・タイトルバーに出す名前。</summary>
+    public string Label => string.IsNullOrWhiteSpace(CustomName) ? Name : CustomName!;
+
+    public bool HasCustomName => !string.IsNullOrWhiteSpace(CustomName);
+
+    public string LastUsedLabel => WorkspaceListViewModel.RelativeTime(LastUsedUtc);
+
+    public string ToolTip
+    {
+        get
+        {
+            var lines = new List<string> { RootPath };
+            if (HasCustomName)
+                lines.Add($"フォルダ名: {Name}");
+            lines.Add($"最終利用: {LastUsedUtc.ToLocalTime():yyyy/M/d HH:mm}（{LastUsedLabel}）");
+            var tabs = new List<string>();
+            if (EditorTabCount > 0) tabs.Add($"エディタ {EditorTabCount}");
+            if (TerminalTabCount > 0) tabs.Add($"ターミナル {TerminalTabCount}");
+            if (BrowserTabCount > 0) tabs.Add($"ブラウザ {BrowserTabCount}");
+            if (tabs.Count > 0)
+                lines.Add("開いているタブ: " + string.Join(" / ", tabs));
+            if (IsMissing)
+                lines.Add("⚠ このフォルダは見つかりません");
+            return string.Join("\n", lines);
+        }
+    }
+
+    internal void ApplyTabCounts(WorkspaceTabCounts counts)
+    {
+        TerminalTabCount = counts.Terminal;
+        EditorTabCount = counts.Editor;
+        BrowserTabCount = counts.Browser;
+    }
+
+    /// <summary>相対時刻の表示は時間の経過だけで変わる（プロパティは変わらない）ので、
+    /// ポップアップを開くたびに更新を促す。</summary>
+    internal void RefreshLastUsedLabel() => OnPropertyChanged(nameof(LastUsedLabel));
 }
 
 public sealed partial class WorkspaceListViewModel : ObservableObject
 {
     private readonly WorkspaceStateStore _store;
     private readonly WorkspaceState _state;
-    private bool _isRefreshingSelection;
 
+    /// <summary>登録されている全ワークスペース（追加順）。表示の並びは <see cref="FilteredWorkspaces"/> が持つ。</summary>
     public ObservableCollection<WorkspaceEntryViewModel> Workspaces { get; } = new();
+
+    /// <summary>一覧に出すぶん。ピン留め→最終利用の新しい順に並べ、<see cref="Filter"/> で絞り込む。
+    /// 要素は <see cref="Workspaces"/> と同じインスタンスなので、選択やバインドは壊れない。</summary>
+    public ObservableCollection<WorkspaceEntryViewModel> FilteredWorkspaces { get; } = new();
 
     public event EventHandler<WorkspaceSnapshot>? WorkspaceActivated;
 
@@ -41,7 +122,16 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     /// ShellWindow がこの Id のキャッシュ済みタブ実体（端末プロセス・WebView2）を破棄するために使う。</summary>
     public event EventHandler<Guid>? WorkspaceRemoved;
 
+    /// <summary>一覧の絞り込み（名前・パスの部分一致、空白区切りは AND）。</summary>
+    [ObservableProperty] private string _filter = "";
+
+    /// <summary>一覧で選択中（＝キーボードのカーソル位置）の行。選択しただけでは切り替わらない
+    /// ——切替は <see cref="ActivateWorkspaceCommand"/>（クリック／Enter）だけで起きる。
+    /// 矢印キーで一覧をたどるたびにワークスペースが切り替わってしまうのを避けるため。</summary>
     [ObservableProperty] private WorkspaceEntryViewModel? _selectedWorkspace;
+
+    /// <summary>現在アクティブな行（タイトルバーのボタン表示に使う）。</summary>
+    [ObservableProperty] private WorkspaceEntryViewModel? _activeEntry;
 
     public WorkspaceListViewModel(WorkspaceStateStore store)
     {
@@ -58,19 +148,13 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             });
         }
 
-        _isRefreshingSelection = true;
-        try
-        {
-            SelectedWorkspace = Workspaces.FirstOrDefault(w => w.IsActive);
-        }
-        finally
-        {
-            _isRefreshingSelection = false;
-        }
+        RefreshEntries();
     }
 
     public WorkspaceSnapshot? ActiveWorkspace =>
         _state.ActiveWorkspaceId is { } id ? FindSnapshot(id) : null;
+
+    partial void OnFilterChanged(string value) => RebuildFiltered();
 
     [RelayCommand]
     private void OpenFolder()
@@ -91,12 +175,58 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             Activate(snapshot);
     }
 
-    partial void OnSelectedWorkspaceChanged(WorkspaceEntryViewModel? value)
+    /// <summary>ピン留めの切替。ピン留めは一覧の並び（上部固定）だけに効き、切替の挙動は変わらない。</summary>
+    [RelayCommand]
+    private void TogglePin(WorkspaceEntryViewModel? entry)
     {
-        if (_isRefreshingSelection || value is null)
+        if (entry is null || FindSnapshot(entry.Id) is not { } snapshot)
             return;
 
-        ActivateWorkspace(value);
+        snapshot.Pinned = !snapshot.Pinned;
+        entry.IsPinned = snapshot.Pinned;
+        _store.Save(_state);
+        RefreshEntries();
+    }
+
+    [RelayCommand]
+    private void ClearFilter() => Filter = "";
+
+    /// <summary>表示名を付け替える（空／フォルダ名と同じなら既定＝フォルダ名に戻す）。
+    /// フォルダ名そのものは変えない。</summary>
+    public void Rename(WorkspaceEntryViewModel? entry, string? name)
+    {
+        if (entry is null || FindSnapshot(entry.Id) is not { } snapshot)
+            return;
+
+        var trimmed = name?.Trim();
+        snapshot.CustomName =
+            string.IsNullOrEmpty(trimmed) || trimmed == DisplayName(snapshot.RootPath) ? null : trimmed;
+        _store.Save(_state);
+        RefreshEntries();
+    }
+
+    /// <summary>ポップアップを開く直前の更新。フォルダの実在確認（消えたワークスペースの警告表示）と
+    /// 相対時刻の振り直しは、ここでだけ行う（保存のたびにディスクを叩かないため）。</summary>
+    public void Refresh()
+    {
+        var probed = false;
+        foreach (var entry in Workspaces)
+        {
+            entry.IsMissing = !string.IsNullOrWhiteSpace(entry.RootPath) && !Directory.Exists(entry.RootPath);
+            entry.RefreshLastUsedLabel();
+
+            // タブ数が索引に無いぶん（この機能より前に書かれた workspaces.json）だけ、詳細から一度だけ
+            // 拾って索引へ載せる。以後は索引にあるので読まない——開くたびに全ワークスペースの
+            // state.json を読みに行くのは重い。
+            if (FindSnapshot(entry.Id) is { IsDetailsLoaded: false, CachedTabCounts: null } stale)
+            {
+                stale.CachedTabCounts = _store.LoadWorkspace(stale.Id)?.TabCounts ?? new WorkspaceTabCounts();
+                probed = true;
+            }
+        }
+        if (probed)
+            _store.Save(_state);
+        RefreshEntries();
     }
 
     /// <summary>ワークスペースを一覧から取り除く（フォルダ自体は削除しない）。アクティブなものを取り除くときは、
@@ -130,6 +260,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         _store.DeleteWorkspace(entry.Id);
         _store.Save(_state);
         RemoveWorkspaceCommand.NotifyCanExecuteChanged();
+        RefreshEntries();
 
         WorkspaceRemoved?.Invoke(this, entry.Id);
     }
@@ -191,6 +322,11 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         var loaded = _store.LoadWorkspace(snapshot.Id);
         if (loaded is not null && !ReferenceEquals(loaded, snapshot))
         {
+            // ピン留め・表示名は索引（workspaces.json）側が正。未読込のあいだに変更されていると
+            // state.json は古いままなので、読み込んだ実体へ引き継いでから差し替える
+            // （さもないと次の保存で索引の値が古い値に戻る）。
+            loaded.Pinned = snapshot.Pinned;
+            loaded.CustomName = snapshot.CustomName;
             var index = _state.Workspaces.FindIndex(w => w.Id == snapshot.Id);
             if (index >= 0) _state.Workspaces[index] = loaded;
             snapshot = loaded;
@@ -210,32 +346,56 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
     private void RefreshEntries()
     {
-        _isRefreshingSelection = true;
-        try
+        WorkspaceEntryViewModel? active = null;
+
+        foreach (var entry in Workspaces)
         {
-            WorkspaceEntryViewModel? active = null;
+            var snapshot = FindSnapshot(entry.Id);
+            if (snapshot is null)
+                continue;
 
-            foreach (var entry in Workspaces)
-            {
-                var snapshot = FindSnapshot(entry.Id);
-                if (snapshot is null)
-                    continue;
+            entry.Name = string.IsNullOrWhiteSpace(snapshot.Name)
+                ? DisplayName(snapshot.RootPath)
+                : snapshot.Name;
+            entry.CustomName = snapshot.CustomName;
+            entry.IsPinned = snapshot.Pinned;
+            entry.LastUsedUtc = snapshot.LastUsedUtc;
+            entry.ApplyTabCounts(snapshot.TabCounts);
+            entry.IsActive = entry.Id == _state.ActiveWorkspaceId;
+            if (entry.IsActive)
+                active = entry;
+        }
 
-                entry.Name = string.IsNullOrWhiteSpace(snapshot.Name)
-                    ? DisplayName(snapshot.RootPath)
-                    : snapshot.Name;
-                entry.LastUsedUtc = snapshot.LastUsedUtc;
-                entry.IsActive = entry.Id == _state.ActiveWorkspaceId;
-                if (entry.IsActive)
-                    active = entry;
-            }
-
+        ActiveEntry = active;
+        if (SelectedWorkspace is null || !Workspaces.Contains(SelectedWorkspace))
             SelectedWorkspace = active;
-        }
-        finally
-        {
-            _isRefreshingSelection = false;
-        }
+
+        RebuildFiltered();
+    }
+
+    /// <summary>絞り込み・並べ替えの結果を <see cref="FilteredWorkspaces"/> へ反映する。
+    /// 中身が同じなら触らない（開いたままのポップアップで選択やスクロールが飛ばないように）。</summary>
+    private void RebuildFiltered()
+    {
+        var terms = Filter.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var next = Workspaces
+            .Where(w => terms.All(t =>
+                w.Label.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                w.RootPath.Contains(t, StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(w => w.IsPinned)
+            .ThenByDescending(w => w.LastUsedUtc)
+            .ToList();
+
+        if (FilteredWorkspaces.SequenceEqual(next))
+            return;
+
+        FilteredWorkspaces.Clear();
+        foreach (var entry in next)
+            FilteredWorkspaces.Add(entry);
+
+        // 絞り込んで選択が候補から外れたら、先頭へ寄せる（Enter がそのまま効くように）。
+        if (SelectedWorkspace is null || !next.Contains(SelectedWorkspace))
+            SelectedWorkspace = next.FirstOrDefault();
     }
 
     internal static string DisplayName(string path)
@@ -243,5 +403,19 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var name = Path.GetFileName(trimmed);
         return string.IsNullOrWhiteSpace(name) ? path : name;
+    }
+
+    /// <summary>最終利用の相対表記（「たった今」「3時間前」…、1か月以上前は日付）。</summary>
+    internal static string RelativeTime(DateTime utc)
+    {
+        var span = DateTime.UtcNow - utc;
+        if (span < TimeSpan.Zero)
+            span = TimeSpan.Zero;
+        if (span.TotalMinutes < 1) return "たった今";
+        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}分前";
+        if (span.TotalDays < 1) return $"{(int)span.TotalHours}時間前";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays}日前";
+        if (span.TotalDays < 30) return $"{(int)(span.TotalDays / 7)}週間前";
+        return utc.ToLocalTime().ToString("yyyy/M/d");
     }
 }

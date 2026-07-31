@@ -1,0 +1,292 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using Microsoft.Win32;
+using sk0ya.Loomo.App.ViewModels;
+
+namespace sk0ya.Loomo.App.Views;
+
+/// <summary>
+/// タイトルバーのワークスペース切替ポップアップの中身。以前は ComboBox 1つで「切り替える」しかできず、
+/// 名前・パス・最後に使った時期が読めない／同名フォルダを見分けられない／整理もできない、という状態だった。
+/// 作りは <see cref="BranchSwitcherView"/>（ブランチ切替）に合わせてある——
+/// 上から「現在のワークスペース帯（いま開いているものだけに効く操作）」「絞り込み」「一覧」「フォルダを開く」。
+///
+/// 帯を一覧の外に固定しているのは、ブランチ側と同じ理由で操作の対象が違うから。名前の変更・フォルダー追加・
+/// エクスプローラ・パスコピーは<em>いま開いている</em>ワークスペースに効き、一覧で選んだ行とは関係がない。
+/// 逆に一覧の行（と右クリック）は、選んだ1件にだけ効く操作に限る。
+///
+/// DataContext は <see cref="WorkspaceListViewModel"/>。永続化を伴う変更（切替・ピン留め・名前・削除）は
+/// VM に委ね、フォルダ選択・名前入力・削除確認のような UI はここ／ShellWindow が持つ。
+/// </summary>
+public partial class WorkspaceSwitcherView : UserControl
+{
+    public WorkspaceSwitcherView()
+    {
+        InitializeComponent();
+    }
+
+    /// <summary>ポップアップを閉じてほしい。実際に閉じるのは Popup を持つ側（ShellWindow）。</summary>
+    public event EventHandler? CloseRequested;
+
+    /// <summary>現在のワークスペースへフォルダーを追加したい（マルチルート）。FolderTree を持つ
+    /// ShellWindow 側で処理する。</summary>
+    public event EventHandler<string>? AddFolderRequested;
+
+    /// <summary>ワークスペースを一覧から削除したい。確認ダイアログと「最後の1つは消せない」通知は
+    /// ShellWindow 側（既存の削除経路）に任せる。</summary>
+    public event EventHandler<WorkspaceEntryViewModel>? RemoveRequested;
+
+    private WorkspaceListViewModel? Vm => DataContext as WorkspaceListViewModel;
+
+    private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>開く直前の初期化。前回の絞り込みが残っていると「ワークスペースが消えた」ように見えるので
+    /// 毎回消し、フォルダの実在と相対時刻を取り直してから、そのまま絞り込めるようフォーカスを入れる。</summary>
+    public void PrepareForOpen()
+    {
+        StatusText.Visibility = Visibility.Collapsed;
+        if (Vm is { } vm)
+        {
+            vm.Filter = "";
+            vm.Refresh();
+            vm.SelectedWorkspace = vm.ActiveEntry;
+        }
+        // ポップアップが開いてレイアウトされた後でないとフォーカスが入らない
+        Dispatcher.BeginInvoke(new Action(() => FilterBox.Focus()),
+            System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private void ShowError(string message)
+    {
+        StatusText.Text = message.Trim();
+        StatusText.Visibility = Visibility.Visible;
+    }
+
+    // ===== 絞り込み欄のキー操作 =====
+
+    /// <summary>Esc で絞り込みを消す（空ならポップアップごと閉じる）。↓ で一覧へ、Enter で選択中を開く。</summary>
+    private void OnFilterKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape:
+                if (Vm is { Filter.Length: > 0 } filtered)
+                    filtered.Filter = "";
+                else
+                    Close();
+                e.Handled = true;
+                break;
+            case Key.Down:
+                FocusList();
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                Activate(Vm?.SelectedWorkspace);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void FocusList()
+    {
+        if (List.Items.Count == 0)
+            return;
+        var index = Math.Max(0, List.SelectedIndex);
+        List.SelectedIndex = index;
+        List.UpdateLayout();
+        (List.ItemContainerGenerator.ContainerFromIndex(index) as ListBoxItem)?.Focus();
+    }
+
+    // ===== 一覧 =====
+
+    /// <summary>クリックされた行。行内のボタン（ピン留め）上なら、そちらが処理済みなので null を返す。</summary>
+    private static ListBoxItem? FindRow(object? originalSource)
+    {
+        var element = originalSource as DependencyObject;
+        while (element is not null and not ListBoxItem)
+        {
+            if (element is Button)
+                return null;
+            // OriginalSource が Run 等の FrameworkContentElement のことがある（VisualTreeHelper だと例外）
+            element = element is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(element)
+                : LogicalTreeHelper.GetParent(element);
+        }
+        return element as ListBoxItem;
+    }
+
+    /// <summary>行のクリック＝そのワークスペースへ切替。ブランチのチェックアウトと違って、
+    /// 切替は失っても困らない（元のワークスペースへ戻すだけ）ので、右クリック経由にはしない。</summary>
+    private void OnListClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FindRow(e.OriginalSource) is not { DataContext: WorkspaceEntryViewModel entry })
+            return;
+
+        e.Handled = true;
+        Activate(entry);
+    }
+
+    private void OnListRightClickSelect(object sender, MouseButtonEventArgs e)
+    {
+        if (FindRow(e.OriginalSource) is { } item)
+            item.IsSelected = true;
+    }
+
+    /// <summary>Enter で切替、Esc で閉じる、先頭で ↑ を押したら絞り込み欄へ戻る。</summary>
+    private void OnListKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                Activate(Vm?.SelectedWorkspace);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                Close();
+                e.Handled = true;
+                break;
+            case Key.Up when List.SelectedIndex <= 0:
+                FilterBox.Focus();
+                FilterBox.CaretIndex = FilterBox.Text.Length;
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void Activate(WorkspaceEntryViewModel? entry)
+    {
+        if (Vm is not { } vm || entry is null)
+            return;
+
+        // 切替は同期的に走って重いので、先にポップアップを畳んでから開始する。
+        Close();
+        vm.ActivateWorkspaceCommand.Execute(entry);
+    }
+
+    private void OnRowPinClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: WorkspaceEntryViewModel entry })
+            Vm?.TogglePinCommand.Execute(entry);
+    }
+
+    // ===== 行の右クリックメニュー =====
+
+    private static WorkspaceEntryViewModel? MenuTarget(object sender)
+        => (sender as FrameworkElement)?.DataContext as WorkspaceEntryViewModel;
+
+    private void OnMenuActivate(object sender, RoutedEventArgs e) => Activate(MenuTarget(sender));
+
+    private void OnMenuTogglePin(object sender, RoutedEventArgs e)
+    {
+        if (MenuTarget(sender) is { } entry)
+            Vm?.TogglePinCommand.Execute(entry);
+    }
+
+    private void OnMenuRename(object sender, RoutedEventArgs e)
+    {
+        if (MenuTarget(sender) is { } entry)
+            Rename(entry);
+    }
+
+    private void OnMenuCopyPath(object sender, RoutedEventArgs e)
+    {
+        if (MenuTarget(sender) is { } entry)
+            CopyPath(entry.RootPath);
+    }
+
+    private void OnMenuReveal(object sender, RoutedEventArgs e)
+    {
+        if (MenuTarget(sender) is { } entry)
+            Reveal(entry.RootPath);
+    }
+
+    private void OnMenuRemove(object sender, RoutedEventArgs e)
+    {
+        if (MenuTarget(sender) is not { } entry)
+            return;
+        Close();
+        RemoveRequested?.Invoke(this, entry);
+    }
+
+    // ===== 現在のワークスペース帯 =====
+
+    private void OnRenameActiveClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm?.ActiveEntry is { } entry)
+            Rename(entry);
+    }
+
+    private void OnRevealActiveClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm?.ActiveEntry is { } entry)
+            Reveal(entry.RootPath);
+    }
+
+    private void OnCopyActivePathClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm?.ActiveEntry is { } entry)
+            CopyPath(entry.RootPath);
+    }
+
+    private void OnAddFolderClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+        var dlg = new OpenFolderDialog { Title = "ワークスペースに追加するフォルダーを選択" };
+        if (dlg.ShowDialog() == true)
+            AddFolderRequested?.Invoke(this, dlg.FolderName);
+    }
+
+    private void OnOpenFolderClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Vm?.OpenFolderCommand.Execute(null);
+    }
+
+    // ===== 共通の小物 =====
+
+    /// <summary>表示名の変更。空にすると既定（フォルダ名）へ戻る＝リセットも同じ入口で行える。</summary>
+    private void Rename(WorkspaceEntryViewModel entry)
+    {
+        if (Vm is not { } vm)
+            return;
+
+        // 透明ポップアップはモーダルダイアログの上に浮くので、出す前に畳む（ブランチ側と同じ作法）。
+        var owner = Window.GetWindow(this);
+        Close();
+        var name = InputDialog.Prompt(owner, "ワークスペースの表示名",
+            $"「{entry.Label}」の表示名を入力してください（空にするとフォルダ名 {entry.Name} に戻ります）",
+            entry.HasCustomName ? entry.Label : "", allowEmpty: true);
+        if (name is null)
+            return;
+
+        vm.Rename(entry, name);
+    }
+
+    private void CopyPath(string path)
+    {
+        try { Clipboard.SetText(path); }
+        catch { /* クリップボードのロック等は無視 */ }
+        Close();
+    }
+
+    private void Reveal(string path)
+    {
+        // 失敗の理由はこのポップアップ内に出すので、成功したときだけ閉じる。
+        if (!Directory.Exists(path))
+        {
+            ShowError($"フォルダが見つかりません: {path}");
+            return;
+        }
+        try
+        {
+            Process.Start("explorer.exe", $"\"{path}\"");
+            Close();
+        }
+        catch (Exception ex) { ShowError(ex.Message); }
+    }
+}

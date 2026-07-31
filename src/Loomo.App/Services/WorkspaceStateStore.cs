@@ -230,11 +230,34 @@ public sealed class WorkspaceSummary
     public string RootPath { get; set; } = "";
     public string Name { get; set; } = "";
     public DateTime LastUsedUtc { get; set; }
+    public bool Pinned { get; set; }
+    public string? CustomName { get; set; }
+
+    /// <summary>切替ポップアップの一覧に出すタブ件数。詳細（state.json）を読まずに出せるよう、
+    /// 索引（workspaces.json）側にも持つ。null は「まだ分からない」＝この項目より前に書かれた
+    /// 索引で、0件と区別する（一覧を開いたときに一度だけ詳細から拾い直す）。</summary>
+    public WorkspaceTabCounts? TabCounts { get; set; }
 
     public static WorkspaceSummary From(WorkspaceSnapshot s) => new()
-        { Id = s.Id, RootPath = s.RootPath, Name = s.Name, LastUsedUtc = s.LastUsedUtc };
+    {
+        Id = s.Id, RootPath = s.RootPath, Name = s.Name, LastUsedUtc = s.LastUsedUtc,
+        Pinned = s.Pinned, CustomName = s.CustomName,
+        // 未読込のままなら索引から復元した値（未確認なら null）をそのまま書き戻す。
+        TabCounts = s.IsDetailsLoaded ? s.TabCounts : s.CachedTabCounts
+    };
     public WorkspaceSnapshot ToSnapshot() => new()
-        { Id = Id, RootPath = RootPath, Name = Name, LastUsedUtc = LastUsedUtc, IsDetailsLoaded = false };
+    {
+        Id = Id, RootPath = RootPath, Name = Name, LastUsedUtc = LastUsedUtc,
+        Pinned = Pinned, CustomName = CustomName, CachedTabCounts = TabCounts, IsDetailsLoaded = false
+    };
+}
+
+/// <summary>ワークスペースが抱えるタブ数（一覧の「何が開きっぱなしか」表示用）。</summary>
+public sealed class WorkspaceTabCounts
+{
+    public int Terminal { get; set; }
+    public int Editor { get; set; }
+    public int Browser { get; set; }
 }
 
 public sealed class WorkspaceState
@@ -248,8 +271,34 @@ public sealed class WorkspaceSnapshot
     [JsonIgnore] public bool IsDetailsLoaded { get; set; } = true;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string RootPath { get; set; } = "";
+
+    /// <summary>フォルダ名。<c>CaptureInto</c> が保存のたびに実フォルダ名で上書きする
+    /// （手で付けた表示名は <see cref="CustomName"/> 側に持つ）。</summary>
     public string Name { get; set; } = "";
+
+    /// <summary>ユーザーが付けた表示名。null／空ならフォルダ名（<see cref="Name"/>）を表示する。
+    /// 同名フォルダのワークスペースを複数開いたときに見分けるためのもの。</summary>
+    public string? CustomName { get; set; }
+
+    /// <summary>切替ポップアップの一覧で上部に固定する（ピン留め）。</summary>
+    public bool Pinned { get; set; }
+
     public DateTime LastUsedUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>詳細（state.json）が未読込のときに一覧へ出すタブ件数。索引から復元した値で、
+    /// null は未確認（この項目より前に書かれた索引）。読込済みなら実体のリスト件数が正なので、
+    /// 読むときは <see cref="TabCounts"/> を使う。</summary>
+    [JsonIgnore] public WorkspaceTabCounts? CachedTabCounts { get; set; }
+
+    /// <summary>一覧表示用のタブ件数。詳細を読み込んでいれば実体から、まだなら索引の値から返す。</summary>
+    [JsonIgnore]
+    public WorkspaceTabCounts TabCounts => IsDetailsLoaded
+        ? new WorkspaceTabCounts
+        {
+            Terminal = TerminalTabs.Count, Editor = EditorTabs.Count, Browser = BrowserTabs.Count
+        }
+        : CachedTabCounts ?? new WorkspaceTabCounts();
+
     public TerminalSnapshot Terminal { get; set; } = new();
     public EditorSnapshot Editor { get; set; } = new();
     public List<TerminalTabSnapshot> TerminalTabs { get; set; } = new();

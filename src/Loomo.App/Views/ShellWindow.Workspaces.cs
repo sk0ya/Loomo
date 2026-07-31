@@ -91,33 +91,6 @@ public partial class ShellWindow {
                 if (tab.IsRealized)
                     tab.Control.Dispose();
     }
-    private void OnCopyWorkspacePathMenuClick(object sender, RoutedEventArgs e) {
-        if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
-            return;
-        try { Clipboard.SetText(entry.RootPath); }
-        catch { /* クリップボードのロック等は無視 */ }
-    }
-    private void OnRevealWorkspaceInExplorerMenuClick(object sender, RoutedEventArgs e) {
-        if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
-            return;
-        try {
-            if (Directory.Exists(entry.RootPath))
-                Process.Start("explorer.exe", $"\"{entry.RootPath}\"");
-        } catch {
-        }
-    }
-    private void OnDeleteWorkspaceMenuClick(object sender, RoutedEventArgs e) {
-        if (sender is not MenuItem { DataContext: WorkspaceEntryViewModel entry })
-            return;
-        if (!_vm.Workspaces.RemoveWorkspaceCommand.CanExecute(entry)) {
-            ToastService.Info("最後のワークスペースは削除できません（常に1つは開いている必要があります）。");
-            return;
-        }
-        var result = MessageBox.Show( this, $"ワークスペース「{entry.Name}」を一覧から削除しますか？\n" +
-            "フォルダ自体は削除されません（タブ・レイアウトの保存状態は失われます）。", "ワークスペースの削除", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (result == MessageBoxResult.OK)
-            _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);
-    }
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false) {
         using var profile = WorkspaceSwitchProfiler.Begin(workspace.Name);
         if (captureCurrent)
