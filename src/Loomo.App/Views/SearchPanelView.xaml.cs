@@ -26,13 +26,19 @@ public partial class SearchPanelView : UserControl
 
     private SearchPanelViewModel? Vm => DataContext as SearchPanelViewModel;
 
+    /// <summary>検索ペインを既に表示済みの状態から舞台へ移した場合も、すぐ検索語を入力できるようにする。</summary>
+    public void FocusQuery()
+    {
+        QueryBox.Focus();
+        QueryBox.SelectAll();
+    }
+
     private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.NewValue is true)
             Dispatcher.BeginInvoke(DispatcherPriority.Input, new System.Action(() =>
             {
-                QueryBox.Focus();
-                QueryBox.SelectAll();
+                FocusQuery();
             }));
     }
 

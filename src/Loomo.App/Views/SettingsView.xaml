@@ -124,7 +124,7 @@
                                               ToolTip="ローカルに配置済み、または Hugging Face から取得できるモデルから選びます（⬇ は未取得）。" />
                                     <Button Grid.Column="1" Style="{StaticResource CaptionButton}"
                                             Width="30" Margin="6,0,0,0" Content="📂"
-                                            ToolTip="任意の場所にある ONNX モデルフォルダ（genai_config.json を含む）を選んで追加します。"
+                                            ToolTip="任意の場所にあるモデルフォルダ（ONNX: genai_config.json／GGUF: *.gguf を含む）を選んで追加します。"
                                             Command="{Binding Settings.BrowseModelCommand}" />
                                 </Grid>
 

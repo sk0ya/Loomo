@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -248,7 +250,36 @@ public sealed partial class GitPanelViewModel : ObservableObject
         _diff = diff;
         RootSwitch = rootSwitch;
         _git.RepositoryChanged += OnRepositoryChanged;
+        Staged.CollectionChanged += OnCommitCandidatesChanged;
+        Changes.CollectionChanged += OnCommitCandidatesChanged;
+        UnversionedFiles.CollectionChanged += OnCommitCandidatesChanged;
     }
+
+    private bool CanCommit() =>
+        IsRepository && !IsBusy && !string.IsNullOrWhiteSpace(CommitMessage)
+        && (Amend || Staged.Count > 0 || Changes.Any(i => i.IsChecked) || UnversionedFiles.Any(i => i.IsChecked));
+
+    private void OnCommitCandidatesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+            foreach (GitChangeItem item in e.OldItems)
+                item.PropertyChanged -= OnCommitCandidatePropertyChanged;
+        if (e.NewItems is not null)
+            foreach (GitChangeItem item in e.NewItems)
+                item.PropertyChanged += OnCommitCandidatePropertyChanged;
+        CommitCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnCommitCandidatePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GitChangeItem.IsChecked))
+            CommitCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnCommitMessageChanged(string value) => CommitCommand.NotifyCanExecuteChanged();
+    partial void OnAmendChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
+    partial void OnIsBusyChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
+    partial void OnIsRepositoryChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
 
     private IDisposable? _live;
 
@@ -420,7 +451,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     /// コミット。ステージ済みはそのまま、ツリーでチェックした作業ツリーのファイルは
     /// コミット直前にステージしてから含める。amend はメッセージ修正だけでも成立する。
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanCommit))]
     private async Task CommitAsync()
     {
         if (string.IsNullOrWhiteSpace(CommitMessage))

@@ -172,10 +172,14 @@ public partial class ShellWindow {
             case PaneKind.Terminal:
                 if (_terminalViews is { } tv) tv.FocusFocused();
                 else _activeTerminalTab?.View.FocusTerminal();
+                SyncActiveFromViewport(kind);
                 break;
             case PaneKind.Editor:
                 if (_editorViews is { } ev) ev.FocusFocused();
                 else _activeEditorTab?.Control.Focus();
+                // ステージ再構築では表示中のビューポートと _activeEditorTab がずれることがある。
+                // 共有ステータスバーや EditorSupport も、実際にフォーカスしたタブへ揃える。
+                SyncActiveFromViewport(kind);
                 break;
             case PaneKind.EditorSupport:
                 _editorSupport.WebView.View?.Focus();
@@ -202,7 +206,7 @@ public partial class ShellWindow {
                 FocusFirstFocusable(TsIdePane);
                 break;
             case PaneKind.Search:
-                SearchPaneHost.Focus();
+                SearchPaneHost.FocusQuery();
                 break;
         }
         RecordTrailPane(kind);

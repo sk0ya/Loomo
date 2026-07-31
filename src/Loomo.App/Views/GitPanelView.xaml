@@ -384,8 +384,7 @@
                 <Button Content="✓ コミット" Style="{StaticResource FlatButton}"
                         HorizontalAlignment="Stretch"
                         ToolTip="チェックしたファイルだけをコミットします。"
-                        Command="{Binding CommitCommand}"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                        Command="{Binding CommitCommand}" />
             </StackPanel>
 
             <!-- 実行結果メッセージ -->

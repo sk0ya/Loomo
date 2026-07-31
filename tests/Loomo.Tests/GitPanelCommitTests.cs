@@ -85,6 +85,34 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task コミット可能な条件に応じてコマンドの有効状態が変わる()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "candidate.txt"), "candidate");
+        var editor = new FakeEditorService();
+        var journal = new FileChangeJournal();
+        var files = new DiffFileGateway();
+        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
+            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(vm.CommitCommand.CanExecute(null));
+        vm.CommitMessage = "candidate";
+        Assert.False(vm.CommitCommand.CanExecute(null));
+
+        var item = Assert.Single(vm.UnversionedFiles);
+        item.IsChecked = true;
+        Assert.True(vm.CommitCommand.CanExecute(null));
+
+        item.IsChecked = false;
+        Assert.False(vm.CommitCommand.CanExecute(null));
+        vm.Amend = true;
+        Assert.True(vm.CommitCommand.CanExecute(null));
+        vm.IsBusy = true;
+        Assert.False(vm.CommitCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void ディレクトリのチェックは配下へ伝播し親は一部選択を表す()
     {
         var a = new GitChangeItem(new GitChangeEntry("src/a.cs", null, '.', 'M', false, false), false);
