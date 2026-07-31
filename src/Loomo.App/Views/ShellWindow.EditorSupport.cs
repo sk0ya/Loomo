@@ -274,11 +274,10 @@ public partial class ShellWindow {
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column);
         if (!_editorSupport.IsLatestRender(seq))
             return;
-        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
-        var currentLine1 = member is null ? 0 : member.Line0 + 1; // current を付け替える行（1 始まり）
         _editorSupport.CurrentSymbolRange = symbolRange;
         _editorSupport.CurrentCaret = (caret.Line, caret.Column);
-        _editorSupport.OutlineView?.SetCurrentAndPanels(currentLine1, panels);
+        // current は CaretMoved 時点で即時更新済み。遅い LSP 解析の完了後は②だけを差し替える。
+        _editorSupport.OutlineView?.SetPanels(panels);
     }
     private void InstallLspForEditorSupportSource()
     {
@@ -323,7 +322,17 @@ public partial class ShellWindow {
     private void ScheduleCodeCallPanelsRefresh()
         => _editorSupport.ScheduleCaretRefresh(RefreshCodeCallPanelsAsync);
     private void EditorSupportSource_CaretMoved(object? sender, CaretInfo e)
-        => ScheduleCodeCallPanelsRefresh();
+    {
+        // current 表示はアウトラインの純ロジックだけで決まる。150ms のデバウンスや
+        // references/callHierarchy の応答を待たず、キャレット移動と同時に付け替える。
+        if (_editorSupport.OutlineRoots is { } roots
+            && ReferenceEquals(_editorSupport.OutlineSource, _editorSupport.Source))
+        {
+            var member = CodeOutline.FindEnclosing(roots, e.Line, e.Column);
+            _editorSupport.OutlineView?.SetCurrent(member is null ? 0 : member.Line0 + 1);
+        }
+        ScheduleCodeCallPanelsRefresh();
+    }
     private void ToggleMarkdownTaskCheckbox(int lineIndex) {
         var source = _editorSupport.Source;
         if (source is null)

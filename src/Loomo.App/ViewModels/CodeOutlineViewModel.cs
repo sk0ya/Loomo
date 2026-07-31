@@ -84,6 +84,18 @@ public sealed partial class CodeOutlineViewModel : ObservableObject
         ApplyPanels(panels);
     }
 
+    /// <summary>
+    /// キャレット追従の current ハイライトだけを即時更新する。LSP の呼び出し解析完了を待たせないための入口。
+    /// </summary>
+    internal void SetCurrent(int currentLine1)
+        => ApplyCurrent(currentLine1);
+
+    /// <summary>
+    /// LSP 呼び出し解析の完了後に②パネルだけを差し替える。current ハイライトには触れない。
+    /// </summary>
+    internal void SetPanels(CallPanels panels)
+        => ApplyPanels(panels);
+
     /// <summary>案内（未接続／未導入）を表示する。</summary>
     internal void ShowNotice(LspNoticeModel.Notice notice)
     {

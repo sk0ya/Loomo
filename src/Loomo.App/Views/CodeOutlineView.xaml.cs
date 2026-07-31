@@ -52,6 +52,14 @@ public partial class CodeOutlineView : UserControl
     internal void SetCurrentAndPanels(int currentLine1, CallPanels panels)
         => _vm.SetCurrentAndPanels(currentLine1, panels);
 
+    /// <summary>キャレット移動時に current ハイライトだけを即時更新する。</summary>
+    internal void SetCurrent(int currentLine1)
+        => _vm.SetCurrent(currentLine1);
+
+    /// <summary>LSP 解析完了後に②パネルだけを差し替える。</summary>
+    internal void SetPanels(CallPanels panels)
+        => _vm.SetPanels(panels);
+
     /// <summary>言語サーバー未接続／未導入の案内を表示する。</summary>
     internal void ShowNotice(LspNoticeModel.Notice notice)
         => _vm.ShowNotice(notice);
@@ -83,6 +91,18 @@ public partial class CodeOutlineView : UserControl
         if (sender is FrameworkElement { DataContext: CodeOutlineItem item })
             SourceLocationActivated?.Invoke(
                 this, new SourceLocationActivatedEventArgs(item.JumpLine1, item.JumpColumn0));
+    }
+
+    /// <summary>
+    /// マウスで直接クリックした項目は既に表示範囲内にあるため、選択時に WPF が発行する
+    /// <see cref="FrameworkElement.RequestBringIntoView"/> を止める。これを外側の ScrollViewer が
+    /// 処理すると、深いノードを全幅表示しようとして EditorSupport が不要に右へスクロールする。
+    /// キーボード操作等の表示要求はそのまま通す。
+    /// </summary>
+    private void OutlineItem_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        if (Mouse.LeftButton == MouseButtonState.Pressed)
+            e.Handled = true;
     }
 
     private void CallRow_Click(object sender, MouseButtonEventArgs e)

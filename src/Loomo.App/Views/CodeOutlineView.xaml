@@ -172,7 +172,12 @@
                     <TreeView.ItemContainerStyle>
                         <!-- 選択ハイライト無しのツリー項目（上の Resources 参照）。既定テンプレートの選択帯が
                              テーマから浮く問題への対処。行の状態（current/ホバー）は ItemTemplate 側が描く。 -->
-                        <Style TargetType="TreeViewItem" BasedOn="{StaticResource OutlineTreeItem}" />
+                        <Style TargetType="TreeViewItem" BasedOn="{StaticResource OutlineTreeItem}">
+                            <!-- クリックした深い項目を WPF が横方向まで BringIntoView して、
+                                 外側 ScrollViewer を右へ流す既定動作を抑える。 -->
+                            <EventSetter Event="RequestBringIntoView"
+                                         Handler="OutlineItem_RequestBringIntoView" />
+                        </Style>
                     </TreeView.ItemContainerStyle>
                     <TreeView.ItemTemplate>
                         <HierarchicalDataTemplate DataType="{x:Type vm:CodeOutlineItem}"

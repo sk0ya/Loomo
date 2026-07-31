@@ -60,6 +60,38 @@ public class CodeOutlineViewTests
     }
 
     [Fact]
+    public void CurrentだけをLSPパネルと独立して更新できる()
+    {
+        RunSta(() =>
+        {
+            var vm = new CodeOutlineViewModel();
+            vm.ShowOutline(
+                new[]
+                {
+                    new OutlineNode("Foo", SymbolKind.Class, 0, 10, 0, 6,
+                        new[]
+                        {
+                            new OutlineNode("Bar", SymbolKind.Method, 2, 5, 2, 4,
+                                Array.Empty<OutlineNode>()),
+                        }),
+                },
+                currentLine1: 1,
+                CallPanels.Empty);
+
+            var foo = Assert.Single(vm.Roots);
+            var bar = Assert.Single(foo.Children);
+            Assert.True(foo.IsCurrent);
+            Assert.False(bar.IsCurrent);
+
+            vm.SetCurrent(currentLine1: 3);
+
+            Assert.False(foo.IsCurrent);
+            Assert.True(bar.IsCurrent);
+            Assert.All(vm.Sections, section => Assert.Empty(section.Rows));
+        });
+    }
+
+    [Fact]
     public void ビュー_アウトラインと呼び出しパネルを構築できる()
     {
         RunSta(() =>
