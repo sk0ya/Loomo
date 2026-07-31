@@ -97,8 +97,9 @@ public partial class FolderTreeView : UserControl
             return;
 
         var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "ワークスペースに追加するフォルダーを選択" };
-        if (dlg.ShowDialog(OwnerWindow) == true)
-            vm.AddFolderToWorkspace(dlg.FolderName);
+        if (dlg.ShowDialog(OwnerWindow) == true && !vm.AddFolderToWorkspace(dlg.FolderName))
+            Services.ToastService.Info(
+                $"「{Path.GetFileName(dlg.FolderName.TrimEnd('\\', '/'))}」は追加しませんでした（既にワークスペースに含まれるフォルダーです）。");
     }
 
     private void OnTreeMouseDoubleClick(object sender, MouseButtonEventArgs e)

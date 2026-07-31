@@ -72,6 +72,57 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="5,0,0,0" />
         </Style>
+
+        <!-- マルチルート（追加フォルダー）の開閉ボタン。追加フォルダーが無い行には出さない
+             （右側の項目なので、出ない行があっても名前の左端はずれない）。 -->
+        <Style x:Key="RowFolderToggle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasFolders}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 展開したときにぶら下がるフォルダー行。行の切替クリックとは別物なので Tag で見分ける
+             （<c>WorkspaceSwitcherView.FindRow</c> がここで打ち切ってワークスペースを切り替えない）。 -->
+        <Style x:Key="FolderRow" TargetType="Border">
+            <Setter Property="Tag" Value="folder" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="4,1" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
@@ -141,22 +192,12 @@
                      PreviewKeyDown="OnListKeyDown">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="4,2" />
+                        <!-- ホバー／選択の塗りは DataTemplate 側の見出し行だけに付ける（ここで塗ると、
+                             展開したフォルダー行まで一緒に光って「行が1件」に見えなくなる）。 -->
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="b" Background="Transparent" CornerRadius="3"
-                                            Padding="{TemplateBinding Padding}">
-                                        <ContentPresenter />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                                        </Trigger>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
+                                    <ContentPresenter />
                                 </ControlTemplate>
                             </Setter.Value>
                         </Setter>
@@ -179,6 +220,24 @@
 
                 <ListBox.ItemTemplate>
                     <DataTemplate>
+                      <StackPanel>
+                        <!-- 見出し行（ワークスペース本体）。ホバー／選択の塗りはこの行だけ。 -->
+                        <Border Padding="4,2" CornerRadius="3">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                     Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                     Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource Border}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                         <DockPanel ToolTip="{Binding ToolTip}" Background="Transparent">
                             <!-- ピン留めトグル（留めている行は常時、それ以外はホバーで浮く） -->
                             <Button DockPanel.Dock="Left" Style="{StaticResource RowPinButton}"
@@ -202,7 +261,8 @@
                                 </Ellipse.Style>
                             </Ellipse>
 
-                            <!-- 右側：最終利用と、抱えているタブ数（0 の種別は出さない） -->
+                            <!-- 右側：最終利用と、抱えているタブ数（0 の種別は出さない）、
+                                 マルチルートなら追加フォルダーの開閉ボタン -->
                             <TextBlock DockPanel.Dock="Right" Text="{Binding LastUsedLabel}"
                                        FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}"
                                        VerticalAlignment="Center" Margin="8,0,2,0" />
@@ -223,6 +283,31 @@
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        ToolTip="ルートフォルダが存在しません（切り替えても内容は復元できません）"
                                        Visibility="{Binding IsMissing, Converter={StaticResource BoolToVis}}" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource RowFolderToggle}"
+                                    ToolTip="このワークスペースのフォルダー（マルチルート）を開く／閉じる"
+                                    Click="OnRowFoldersClick">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Folders.Count, StringFormat=🗂{0}}"
+                                               FontSize="{DynamicResource Fs10}" VerticalAlignment="Center"
+                                               Foreground="{Binding Foreground,
+                                                   RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    <TextBlock FontSize="{DynamicResource Fs10}" VerticalAlignment="Center"
+                                               Margin="3,0,0,0"
+                                               Foreground="{Binding Foreground,
+                                                   RelativeSource={RelativeSource AncestorType=Button}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="▸" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                        <Setter Property="Text" Value="▾" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Button>
 
                             <!-- 左：名前。パスは行に出さず ToolTip へ（1行1件の密度を優先。同名フォルダの
                                  見分けは ToolTip とフィルタでできる） -->
@@ -244,6 +329,39 @@
                                 </TextBlock.Style>
                             </TextBlock>
                         </DockPanel>
+                        </Border>
+
+                        <!-- 開いたときのフォルダー行（プライマリ以外）。切替の対象ではないので
+                             ListBox の項目にはせず、見出し行の下にぶら下げる。右クリックでこの
+                             フォルダー1つに効く操作（パスのコピー・エクスプローラ・取り除く）。 -->
+                        <ItemsControl ItemsSource="{Binding Folders}" Margin="38,1,0,3"
+                                      Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource FolderRow}" ToolTip="{Binding Path}">
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="パスをコピー" Click="OnFolderMenuCopyPath" />
+                                                <MenuItem Header="エクスプローラで開く" Click="OnFolderMenuReveal" />
+                                                <Separator />
+                                                <MenuItem Header="ワークスペースから取り除く（フォルダは消えません）"
+                                                          Click="OnFolderMenuRemove" />
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Left" Text="↳" Margin="0,0,5,0"
+                                                       FontSize="{DynamicResource Fs10}"
+                                                       Foreground="{DynamicResource FgDim}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Path}" FontSize="{DynamicResource Fs10}"
+                                                       Foreground="{DynamicResource FgDim}"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>

@@ -126,12 +126,21 @@ public sealed partial class FolderTreeViewModel
             _workspace.RemoveFolder(node.RootKey);
     }
 
+    /// <summary>ワークスペースからフォルダーをパス指定で取り除く（切替ポップアップのフォルダー行から）。
+    /// プライマリ（先頭）は取り除かれない（<c>WorkspaceService.RemoveFolder</c> 側の判定）。</summary>
+    public void RemoveFolderFromWorkspace(string path) => _workspace.RemoveFolder(path);
+
     /// <summary>フォルダーをワークスペースへ追加する（「フォルダーをワークスペースに追加」ボタン）。
-    /// 実在しない・既存フォルダーと祖先/子孫関係のパスは WorkspaceService 側で無視される。</summary>
-    public void AddFolderToWorkspace(string path)
+    /// 実在しない・既存フォルダーと祖先/子孫関係のパスは WorkspaceService 側で無視されるので、
+    /// 実際に増えたかどうかを返す（呼び出し側が「無視した理由」を出せるように）。</summary>
+    public bool AddFolderToWorkspace(string path)
     {
-        if (_query.DirectoryExists(path))
-            _workspace.AddFolder(path);
+        if (!_query.DirectoryExists(path))
+            return false;
+
+        var before = _workspace.Folders.Count;
+        _workspace.AddFolder(path);
+        return _workspace.Folders.Count > before;
     }
 
     /// <summary>スナップショット保存用：プライマリ以外のワークスペースフォルダーごとの

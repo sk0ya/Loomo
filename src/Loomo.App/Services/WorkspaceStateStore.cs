@@ -238,17 +238,23 @@ public sealed class WorkspaceSummary
     /// 索引で、0件と区別する（一覧を開いたときに一度だけ詳細から拾い直す）。</summary>
     public WorkspaceTabCounts? TabCounts { get; set; }
 
+    /// <summary>マルチルートの追加フォルダー（プライマリ以外）のパス。一覧の折りたたみ表示用に
+    /// 索引側にも持つ。<see cref="TabCounts"/> と同じく null は未確認（空リストとは別）。</summary>
+    public List<string>? AdditionalFolders { get; set; }
+
     public static WorkspaceSummary From(WorkspaceSnapshot s) => new()
     {
         Id = s.Id, RootPath = s.RootPath, Name = s.Name, LastUsedUtc = s.LastUsedUtc,
         Pinned = s.Pinned, CustomName = s.CustomName,
         // 未読込のままなら索引から復元した値（未確認なら null）をそのまま書き戻す。
-        TabCounts = s.IsDetailsLoaded ? s.TabCounts : s.CachedTabCounts
+        TabCounts = s.IsDetailsLoaded ? s.TabCounts : s.CachedTabCounts,
+        AdditionalFolders = s.IsDetailsLoaded ? s.FolderPaths.ToList() : s.CachedAdditionalFolders
     };
     public WorkspaceSnapshot ToSnapshot() => new()
     {
         Id = Id, RootPath = RootPath, Name = Name, LastUsedUtc = LastUsedUtc,
-        Pinned = Pinned, CustomName = CustomName, CachedTabCounts = TabCounts, IsDetailsLoaded = false
+        Pinned = Pinned, CustomName = CustomName, CachedTabCounts = TabCounts,
+        CachedAdditionalFolders = AdditionalFolders, IsDetailsLoaded = false
     };
 }
 
@@ -298,6 +304,16 @@ public sealed class WorkspaceSnapshot
             Terminal = TerminalTabs.Count, Editor = EditorTabs.Count, Browser = BrowserTabs.Count
         }
         : CachedTabCounts ?? new WorkspaceTabCounts();
+
+    /// <summary>詳細が未読込のときの追加フォルダー（<see cref="CachedTabCounts"/> と同じ扱い）。</summary>
+    [JsonIgnore] public List<string>? CachedAdditionalFolders { get; set; }
+
+    /// <summary>一覧表示用の追加フォルダー（プライマリ以外）。詳細を読み込んでいれば実体から、
+    /// まだなら索引の値から返す。</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> FolderPaths => IsDetailsLoaded
+        ? AdditionalFolders.Select(f => f.FolderPath).Where(p => !string.IsNullOrWhiteSpace(p)).ToList()
+        : CachedAdditionalFolders ?? [];
 
     public TerminalSnapshot Terminal { get; set; } = new();
     public EditorSnapshot Editor { get; set; } = new();

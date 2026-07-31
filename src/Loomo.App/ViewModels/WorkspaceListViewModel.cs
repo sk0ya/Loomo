@@ -7,8 +7,20 @@ using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>マルチルートワークスペースの追加フォルダー1件（一覧の行を開くと下にぶら下がる）。
+/// プライマリ（<see cref="WorkspaceEntryViewModel.RootPath"/>）はワークスペースの行そのものなので、
+/// ここには含めない。</summary>
+public sealed class WorkspaceFolderEntryViewModel(WorkspaceEntryViewModel owner, string path)
+{
+    /// <summary>このフォルダーを持つワークスペース（右クリック操作の対象を引くのに使う）。</summary>
+    public WorkspaceEntryViewModel Owner { get; } = owner;
+
+    public string Path { get; } = path;
+    public string Name { get; } = WorkspaceListViewModel.DisplayName(path);
+}
+
 /// <summary>切替ポップアップ（<c>WorkspaceSwitcherView</c>）に並ぶ1行。フォルダ名・手で付けた表示名・
-/// ピン留め・最終利用・抱えているタブ数・フォルダの実在を持つ。</summary>
+/// ピン留め・最終利用・抱えているタブ数・フォルダの実在・マルチルートの追加フォルダーを持つ。</summary>
 public sealed partial class WorkspaceEntryViewModel : ObservableObject
 {
     public WorkspaceEntryViewModel(WorkspaceSnapshot snapshot)
@@ -22,6 +34,7 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         _isPinned = snapshot.Pinned;
         _lastUsedUtc = snapshot.LastUsedUtc;
         ApplyTabCounts(snapshot.TabCounts);
+        ApplyFolders(snapshot.FolderPaths);
     }
 
     public Guid Id { get; }
@@ -65,6 +78,14 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ToolTip))]
     private int _browserTabCount;
 
+    /// <summary>マルチルートの追加フォルダー（プライマリ以外）。行の「🗂n」で開閉する。</summary>
+    public ObservableCollection<WorkspaceFolderEntryViewModel> Folders { get; } = new();
+
+    /// <summary>追加フォルダーを一覧に開いているか（行ごとの状態）。</summary>
+    [ObservableProperty] private bool _isExpanded;
+
+    public bool HasFolders => Folders.Count > 0;
+
     /// <summary>一覧・タイトルバーに出す名前。</summary>
     public string Label => string.IsNullOrWhiteSpace(CustomName) ? Name : CustomName!;
 
@@ -86,6 +107,8 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
             if (BrowserTabCount > 0) tabs.Add($"ブラウザ {BrowserTabCount}");
             if (tabs.Count > 0)
                 lines.Add("開いているタブ: " + string.Join(" / ", tabs));
+            if (HasFolders)
+                lines.Add($"追加フォルダー {Folders.Count}（🗂 で開閉）");
             if (IsMissing)
                 lines.Add("⚠ このフォルダは見つかりません");
             return string.Join("\n", lines);
@@ -97,6 +120,23 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         TerminalTabCount = counts.Terminal;
         EditorTabCount = counts.Editor;
         BrowserTabCount = counts.Browser;
+    }
+
+    /// <summary>追加フォルダーを反映する。中身が同じなら触らない（開いている一覧の行が
+    /// 保存のたびに作り直されて、開閉やホバーが飛ぶのを避ける）。</summary>
+    internal void ApplyFolders(IReadOnlyList<string> paths)
+    {
+        if (Folders.Select(f => f.Path).SequenceEqual(paths, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        Folders.Clear();
+        foreach (var path in paths)
+            Folders.Add(new WorkspaceFolderEntryViewModel(this, path));
+
+        if (!HasFolders)
+            IsExpanded = false;
+        OnPropertyChanged(nameof(HasFolders));
+        OnPropertyChanged(nameof(ToolTip));
     }
 
     /// <summary>相対時刻の表示は時間の経過だけで変わる（プロパティは変わらない）ので、
@@ -121,6 +161,10 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     /// <summary>ワークスペースを一覧から取り除いた（フォルダ自体は消さない）。引数は取り除いた Id。
     /// ShellWindow がこの Id のキャッシュ済みタブ実体（端末プロセス・WebView2）を破棄するために使う。</summary>
     public event EventHandler<Guid>? WorkspaceRemoved;
+
+    /// <summary>アクティブなワークスペースから追加フォルダーを外してほしい（引数はパス）。
+    /// 生きている FolderTree を持つ ShellWindow 側で <c>IWorkspaceService.RemoveFolder</c> を呼ぶ。</summary>
+    public event EventHandler<string>? FolderRemoveRequested;
 
     /// <summary>一覧の絞り込み（名前・パスの部分一致、空白区切りは AND）。</summary>
     [ObservableProperty] private string _filter = "";
@@ -191,6 +235,37 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     [RelayCommand]
     private void ClearFilter() => Filter = "";
 
+    /// <summary>行のマルチルート表示（追加フォルダー）を開閉する。</summary>
+    [RelayCommand]
+    private void ToggleFolders(WorkspaceEntryViewModel? entry)
+    {
+        if (entry is { HasFolders: true })
+            entry.IsExpanded = !entry.IsExpanded;
+    }
+
+    /// <summary>追加フォルダーをワークスペースから取り除く（フォルダ自体は消さない）。
+    /// アクティブなワークスペースは<em>生きている</em> FolderTree／WorkspaceService を通す必要があるので
+    /// <see cref="FolderRemoveRequested"/> で購読側（ShellWindow）に任せ、スナップショットへの反映は
+    /// 通常の保存経路（<c>CaptureInto</c>）に乗せる。非アクティブなものはここでスナップショットを直接直す。</summary>
+    public void RemoveFolder(WorkspaceFolderEntryViewModel? folder)
+    {
+        if (folder is null || FindSnapshot(folder.Owner.Id) is not { } snapshot)
+            return;
+
+        if (snapshot.Id == _state.ActiveWorkspaceId)
+        {
+            FolderRemoveRequested?.Invoke(this, folder.Path);
+            return;
+        }
+
+        snapshot.AdditionalFolders.RemoveAll(f =>
+            string.Equals(f.FolderPath, folder.Path, StringComparison.OrdinalIgnoreCase));
+        snapshot.CachedAdditionalFolders?.RemoveAll(p =>
+            string.Equals(p, folder.Path, StringComparison.OrdinalIgnoreCase));
+        _store.Save(_state);
+        RefreshEntries();
+    }
+
     /// <summary>表示名を付け替える（空／フォルダ名と同じなら既定＝フォルダ名に戻す）。
     /// フォルダ名そのものは変えない。</summary>
     public void Rename(WorkspaceEntryViewModel? entry, string? name)
@@ -215,12 +290,15 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             entry.IsMissing = !string.IsNullOrWhiteSpace(entry.RootPath) && !Directory.Exists(entry.RootPath);
             entry.RefreshLastUsedLabel();
 
-            // タブ数が索引に無いぶん（この機能より前に書かれた workspaces.json）だけ、詳細から一度だけ
-            // 拾って索引へ載せる。以後は索引にあるので読まない——開くたびに全ワークスペースの
-            // state.json を読みに行くのは重い。
-            if (FindSnapshot(entry.Id) is { IsDetailsLoaded: false, CachedTabCounts: null } stale)
+            // タブ数・追加フォルダーが索引に無いぶん（この機能より前に書かれた workspaces.json）だけ、
+            // 詳細から一度だけ拾って索引へ載せる。以後は索引にあるので読まない——開くたびに
+            // 全ワークスペースの state.json を読みに行くのは重い。
+            if (FindSnapshot(entry.Id) is { IsDetailsLoaded: false } stale
+                && (stale.CachedTabCounts is null || stale.CachedAdditionalFolders is null))
             {
-                stale.CachedTabCounts = _store.LoadWorkspace(stale.Id)?.TabCounts ?? new WorkspaceTabCounts();
+                var details = _store.LoadWorkspace(stale.Id);
+                stale.CachedTabCounts = details?.TabCounts ?? new WorkspaceTabCounts();
+                stale.CachedAdditionalFolders = details?.FolderPaths.ToList() ?? [];
                 probed = true;
             }
         }
@@ -361,6 +439,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             entry.IsPinned = snapshot.Pinned;
             entry.LastUsedUtc = snapshot.LastUsedUtc;
             entry.ApplyTabCounts(snapshot.TabCounts);
+            entry.ApplyFolders(snapshot.FolderPaths);
             entry.IsActive = entry.Id == _state.ActiveWorkspaceId;
             if (entry.IsActive)
                 active = entry;

@@ -104,13 +104,14 @@ public partial class WorkspaceSwitcherView : UserControl
 
     // ===== 一覧 =====
 
-    /// <summary>クリックされた行。行内のボタン（ピン留め）上なら、そちらが処理済みなので null を返す。</summary>
+    /// <summary>クリックされた行。行内のボタン（ピン留め・フォルダー開閉）上なら、そちらが処理済みなので
+    /// null を返す。展開したフォルダー行（<c>Tag="folder"</c>）も、ワークスペースの切替対象ではないので同様。</summary>
     private static ListBoxItem? FindRow(object? originalSource)
     {
         var element = originalSource as DependencyObject;
         while (element is not null and not ListBoxItem)
         {
-            if (element is Button)
+            if (element is Button or FrameworkElement { Tag: "folder" })
                 return null;
             // OriginalSource が Run 等の FrameworkContentElement のことがある（VisualTreeHelper だと例外）
             element = element is Visual or System.Windows.Media.Media3D.Visual3D
@@ -172,6 +173,45 @@ public partial class WorkspaceSwitcherView : UserControl
     {
         if (sender is Button { DataContext: WorkspaceEntryViewModel entry })
             Vm?.TogglePinCommand.Execute(entry);
+    }
+
+    /// <summary>マルチルートの追加フォルダーを開閉する（ポップアップは開いたまま）。</summary>
+    private void OnRowFoldersClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: WorkspaceEntryViewModel entry })
+            Vm?.ToggleFoldersCommand.Execute(entry);
+    }
+
+    // ===== 追加フォルダー行の右クリックメニュー =====
+
+    private static WorkspaceFolderEntryViewModel? FolderTarget(object sender)
+        => (sender as FrameworkElement)?.DataContext as WorkspaceFolderEntryViewModel;
+
+    private void OnFolderMenuCopyPath(object sender, RoutedEventArgs e)
+    {
+        if (FolderTarget(sender) is { } folder)
+            CopyPath(folder.Path);
+    }
+
+    private void OnFolderMenuReveal(object sender, RoutedEventArgs e)
+    {
+        if (FolderTarget(sender) is { } folder)
+            Reveal(folder.Path);
+    }
+
+    private void OnFolderMenuRemove(object sender, RoutedEventArgs e)
+    {
+        if (FolderTarget(sender) is not { } folder)
+            return;
+
+        var owner = Window.GetWindow(this);
+        Close();
+        var answer = MessageBox.Show(owner,
+            $"「{folder.Owner.Label}」からフォルダー {folder.Path} を取り除きますか？\n" +
+            "フォルダ自体は削除されません。", "ワークスペースフォルダーの削除",
+            MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.OK)
+            Vm?.RemoveFolder(folder);
     }
 
     // ===== 行の右クリックメニュー =====

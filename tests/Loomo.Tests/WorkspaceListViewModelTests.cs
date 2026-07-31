@@ -174,6 +174,69 @@ public class WorkspaceListViewModelTests
         Assert.Equal((2, 1, 1), (loaded.TabCounts.Terminal, loaded.TabCounts.Editor, loaded.TabCounts.Browser));
     }
 
+    /// <summary>マルチルートの追加フォルダーは、詳細（state.json）を読まなくても一覧に出せるよう
+    /// 索引側にも載る。行の「🗂n」で開いてパスのコピー等ができる。</summary>
+    [Fact]
+    public void Additional_folders_are_listed_for_workspaces_whose_details_are_not_loaded()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
+        var storePath = Path.Combine(root, "workspaces.json");
+        var store = new WorkspaceStateStore(storePath);
+        var active = new WorkspaceSnapshot { RootPath = @"C:\active" };
+        var multi = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\multi",
+            AdditionalFolders =
+            [
+                new WorkspaceFolderPin { FolderPath = @"C:\shared\lib" },
+                new WorkspaceFolderPin { FolderPath = @"D:\docs" }
+            ]
+        };
+        store.Save(new WorkspaceState { ActiveWorkspaceId = active.Id, Workspaces = [active, multi] });
+
+        var entry = new WorkspaceListViewModel(new WorkspaceStateStore(storePath))
+            .Workspaces.Single(w => w.RootPath == @"C:\multi");
+
+        Assert.True(entry.HasFolders);
+        Assert.Equal([@"C:\shared\lib", @"D:\docs"], entry.Folders.Select(f => f.Path));
+        Assert.Equal("lib", entry.Folders[0].Name);
+    }
+
+    /// <summary>非アクティブなワークスペースのフォルダー削除はスナップショットを直接直す
+    /// （アクティブなものは生きている FolderTree を通すのでイベントに逃がす）。</summary>
+    [Fact]
+    public void Removing_a_folder_edits_the_snapshot_when_the_workspace_is_not_active()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
+        var storePath = Path.Combine(root, "workspaces.json");
+        var store = new WorkspaceStateStore(storePath);
+        var active = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\active",
+            AdditionalFolders = [new WorkspaceFolderPin { FolderPath = @"C:\active-extra" }]
+        };
+        var other = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\other",
+            AdditionalFolders = [new WorkspaceFolderPin { FolderPath = @"C:\shared\lib" }]
+        };
+        store.Save(new WorkspaceState { ActiveWorkspaceId = active.Id, Workspaces = [active, other] });
+
+        var sut = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
+        string? requested = null;
+        sut.FolderRemoveRequested += (_, path) => requested = path;
+
+        sut.RemoveFolder(sut.Workspaces.Single(w => w.RootPath == @"C:\other").Folders.Single());
+
+        Assert.Null(requested);
+        Assert.Empty(new WorkspaceListViewModel(new WorkspaceStateStore(storePath))
+            .Workspaces.Single(w => w.RootPath == @"C:\other").Folders);
+
+        // アクティブなワークスペースぶんは購読側（ShellWindow → WorkspaceService）へ回す
+        sut.RemoveFolder(sut.Workspaces.Single(w => w.RootPath == @"C:\active").Folders.Single());
+        Assert.Equal(@"C:\active-extra", requested);
+    }
+
     /// <summary>この機能より前に書かれた索引にはタブ数が無い。一覧を開いたときに詳細から一度だけ
     /// 拾い直し、索引へ書き戻す（次回以降は詳細を読まない）。</summary>
     [Fact]

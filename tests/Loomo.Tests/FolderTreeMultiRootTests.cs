@@ -43,6 +43,39 @@ public sealed class FolderTreeMultiRootTests : IDisposable
         return (sut, workspace);
     }
 
+    /// <summary>既存フォルダーと祖先/子孫関係のパスは追加されない（ツリーが二重に出るため）。
+    /// 呼び出し側が「無視した」と言えるよう false を返す——黙って何も起きないと壊れて見える。</summary>
+    [Fact]
+    public async Task AddFolderToWorkspace_reports_whether_the_folder_was_actually_added()
+    {
+        var (sut, _) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+        var child = Directory.CreateDirectory(Path.Combine(_primary, "sub")).FullName;
+
+        Assert.True(sut.AddFolderToWorkspace(_secondary));
+        Assert.False(sut.AddFolderToWorkspace(child));      // 既存ルートの配下
+        Assert.False(sut.AddFolderToWorkspace(_secondary)); // 既に含まれている
+        Assert.False(sut.AddFolderToWorkspace(Path.Combine(_primary, "no-such-folder")));
+    }
+
+    [Fact]
+    public async Task RemoveFolderFromWorkspace_drops_an_additional_folder_but_keeps_the_primary()
+    {
+        var (sut, workspace) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+        sut.AddFolderToWorkspace(_secondary);
+        await sut.WhenTreeLoadedAsync();
+
+        sut.RemoveFolderFromWorkspace(_secondary);
+        await sut.WhenTreeLoadedAsync();
+        Assert.Equal([Path.GetFullPath(_primary)], workspace.Folders);
+
+        sut.RemoveFolderFromWorkspace(_primary);
+        Assert.Equal([Path.GetFullPath(_primary)], workspace.Folders);
+    }
+
     [Fact]
     public async Task AddFolder_shows_a_header_node_per_workspace_folder()
     {
