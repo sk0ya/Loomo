@@ -294,8 +294,7 @@
                     <!-- 2行目：同期操作。プル/プッシュは件数を出して対象の有無を見える化する。 -->
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                         <Button Style="{StaticResource SyncButton}" ToolTip="フェッチ（リモートの最新を取得）"
-                                Command="{Binding FetchCommand}"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                                Command="{Binding FetchCommand}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⭮" Style="{StaticResource SyncArrow}" />
                                 <TextBlock Text="フェッチ" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
@@ -303,8 +302,7 @@
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource SyncButton}" ToolTip="プル（リモートの変更を取り込む）"
-                                Command="{Binding PullCommand}"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                                Command="{Binding PullCommand}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="↓" VerticalAlignment="Center">
                                     <TextBlock.Style>
@@ -322,8 +320,7 @@
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource SyncButton}" ToolTip="プッシュ（ローカルの変更を送る）"
-                                Command="{Binding PushCommand}"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                                Command="{Binding PushCommand}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="↑" VerticalAlignment="Center">
                                     <TextBlock.Style>

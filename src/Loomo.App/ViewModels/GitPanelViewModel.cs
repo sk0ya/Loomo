@@ -199,6 +199,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [ObservableProperty] private int _ahead;
     /// <summary>上流より遅れているコミット数（プル対象）。0 なら取り込むものなし。</summary>
     [ObservableProperty] private int _behind;
+    [ObservableProperty] private bool _hasRemote;
+    [ObservableProperty] private bool _hasUpstream;
     [ObservableProperty] private string _commitMessage = "";
     [ObservableProperty] private bool _amend;
     /// <summary>true なら次のコミットに <c>-S</c>（GPG署名）を付ける。署名鍵未設定・gpg 未インストール等の
@@ -278,8 +280,33 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     partial void OnCommitMessageChanged(string value) => CommitCommand.NotifyCanExecuteChanged();
     partial void OnAmendChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
-    partial void OnIsBusyChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
-    partial void OnIsRepositoryChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
+    partial void OnIsBusyChanged(bool value)
+    {
+        CommitCommand.NotifyCanExecuteChanged();
+        FetchCommand.NotifyCanExecuteChanged();
+        PullCommand.NotifyCanExecuteChanged();
+        PushCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnIsRepositoryChanged(bool value)
+    {
+        CommitCommand.NotifyCanExecuteChanged();
+        FetchCommand.NotifyCanExecuteChanged();
+        PullCommand.NotifyCanExecuteChanged();
+        PushCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnHasRemoteChanged(bool value)
+    {
+        FetchCommand.NotifyCanExecuteChanged();
+        PullCommand.NotifyCanExecuteChanged();
+        PushCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnHasUpstreamChanged(bool value)
+    {
+        PullCommand.NotifyCanExecuteChanged();
+        PushCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnAheadChanged(int value) => PushCommand.NotifyCanExecuteChanged();
+    partial void OnBehindChanged(int value) => PullCommand.NotifyCanExecuteChanged();
 
     private IDisposable? _live;
 
@@ -320,6 +347,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
             BranchLabel = "";
             Ahead = 0;
             Behind = 0;
+            HasRemote = false;
+            HasUpstream = false;
             Staged.Clear();
             Changes.Clear();
             UnversionedFiles.Clear();
@@ -331,6 +360,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
         BranchLabel = status.Branch;
         Ahead = status.Ahead;
         Behind = status.Behind;
+        HasUpstream = !string.IsNullOrWhiteSpace(status.Upstream);
+        HasRemote = (await _git.GetRemotesAsync()).Count > 0;
 
         // ライブ更新でチェックが勝手に戻らないよう、作業ツリー側はパス単位で選択状態を引き継ぐ。
         var wasChecked = Changes.Concat(UnversionedFiles)
@@ -404,13 +435,17 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand]
     private Task InitRepositoryAsync() => RunOpAsync("git init", () => _git.InitAsync());
 
-    [RelayCommand]
+    private bool CanFetch() => IsRepository && HasRemote && !IsBusy;
+    private bool CanPull() => IsRepository && HasRemote && HasUpstream && Behind > 0 && !IsBusy;
+    private bool CanPush() => IsRepository && HasRemote && HasUpstream && Ahead > 0 && !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanFetch))]
     private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPull))]
     private Task PullAsync() => RunOpAsync("プル", () => _git.PullAsync());
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPush))]
     private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
 
     [RelayCommand]

@@ -29,17 +29,20 @@ public partial class SearchPanelView : UserControl
     /// <summary>検索ペインを既に表示済みの状態から舞台へ移した場合も、すぐ検索語を入力できるようにする。</summary>
     public void FocusQuery()
     {
-        QueryBox.Focus();
-        QueryBox.SelectAll();
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new System.Action(() =>
+        {
+            Keyboard.ClearFocus();
+            FocusManager.SetFocusedElement(FocusManager.GetFocusScope(QueryBox), QueryBox);
+            QueryBox.Focus();
+            Keyboard.Focus(QueryBox);
+            QueryBox.SelectAll();
+        }));
     }
 
     private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.NewValue is true)
-            Dispatcher.BeginInvoke(DispatcherPriority.Input, new System.Action(() =>
-            {
-                FocusQuery();
-            }));
+            FocusQuery();
     }
 
     /// <summary>フォルダー節点と（一致行を持つ）ファイル見出しは、行のどこをクリックしても開閉する

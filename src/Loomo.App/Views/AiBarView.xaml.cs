@@ -30,7 +30,13 @@ public partial class AiBarView : UserControl
     }
 
     /// <summary>AI 入力欄へキーボードフォーカスを移す（ペイン間ナビゲーション用）。</summary>
-    public void FocusInput() => InputBox.Focus();
+    public void FocusInput() => Dispatcher.BeginInvoke(DispatcherPriority.Input, new System.Action(() =>
+    {
+        Keyboard.ClearFocus();
+        FocusManager.SetFocusedElement(FocusManager.GetFocusScope(InputBox), InputBox);
+        InputBox.Focus();
+        Keyboard.Focus(InputBox);
+    }));
 
     private void AttachViewModel(AiBarViewModel? viewModel)
     {

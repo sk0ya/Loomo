@@ -113,6 +113,37 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     }
 
     [Fact]
+    public void リモート同期コマンドは実行対象があるときだけ有効になる()
+    {
+        var editor = new FakeEditorService();
+        var journal = new FileChangeJournal();
+        var files = new DiffFileGateway();
+        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
+            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
+
+        Assert.False(vm.FetchCommand.CanExecute(null));
+        Assert.False(vm.PullCommand.CanExecute(null));
+        Assert.False(vm.PushCommand.CanExecute(null));
+
+        vm.HasRemote = true;
+        Assert.True(vm.FetchCommand.CanExecute(null));
+        Assert.False(vm.PullCommand.CanExecute(null));
+        Assert.False(vm.PushCommand.CanExecute(null));
+
+        vm.HasUpstream = true;
+        vm.Behind = 1;
+        vm.Ahead = 1;
+        Assert.True(vm.PullCommand.CanExecute(null));
+        Assert.True(vm.PushCommand.CanExecute(null));
+
+        vm.IsBusy = true;
+        Assert.False(vm.FetchCommand.CanExecute(null));
+        Assert.False(vm.PullCommand.CanExecute(null));
+        Assert.False(vm.PushCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void ディレクトリのチェックは配下へ伝播し親は一部選択を表す()
     {
         var a = new GitChangeItem(new GitChangeEntry("src/a.cs", null, '.', 'M', false, false), false);
