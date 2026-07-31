@@ -7,16 +7,23 @@ using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>マルチルートワークスペースの追加フォルダー1件（一覧の行を開くと下にぶら下がる）。
-/// プライマリ（<see cref="WorkspaceEntryViewModel.RootPath"/>）はワークスペースの行そのものなので、
-/// ここには含めない。</summary>
-public sealed class WorkspaceFolderEntryViewModel(WorkspaceEntryViewModel owner, string path)
+/// <summary>ワークスペースが抱えるフォルダー1件（一覧の行を開くと下にぶら下がる）。
+/// プライマリ（<see cref="WorkspaceEntryViewModel.RootPath"/>）も含めて全部並べる——行にパスを出すのを
+/// やめたぶん、開いたときに「このワークスペースが何を見ているか」が全部読めるようにする。</summary>
+public sealed class WorkspaceFolderEntryViewModel(WorkspaceEntryViewModel owner, string path, bool isPrimary)
 {
     /// <summary>このフォルダーを持つワークスペース（右クリック操作の対象を引くのに使う）。</summary>
     public WorkspaceEntryViewModel Owner { get; } = owner;
 
     public string Path { get; } = path;
     public string Name { get; } = WorkspaceListViewModel.DisplayName(path);
+
+    /// <summary>ワークスペースのルート（＝取り除けないフォルダー）。</summary>
+    public bool IsPrimary { get; } = isPrimary;
+
+    /// <summary>「ルート」の印を出すか。単一フォルダーのワークスペースでは出さない
+    /// ——並んでいるのがそれ1つなら、印は全行に付くだけで何も区別しない。</summary>
+    public bool ShowPrimaryTag => IsPrimary && Owner.IsMultiRoot;
 }
 
 /// <summary>切替ポップアップ（<c>WorkspaceSwitcherView</c>）に並ぶ1行。フォルダ名・手で付けた表示名・
@@ -78,13 +85,20 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ToolTip))]
     private int _browserTabCount;
 
-    /// <summary>マルチルートの追加フォルダー（プライマリ以外）。行の「🗂n」で開閉する。</summary>
+    /// <summary>このワークスペースのフォルダー（プライマリ＋マルチルートの追加ぶん）。行の「🗂」で開閉する。</summary>
     public ObservableCollection<WorkspaceFolderEntryViewModel> Folders { get; } = new();
 
-    /// <summary>追加フォルダーを一覧に開いているか（行ごとの状態）。</summary>
+    /// <summary>フォルダーを一覧に開いているか（行ごとの状態）。</summary>
     [ObservableProperty] private bool _isExpanded;
 
     public bool HasFolders => Folders.Count > 0;
+
+    /// <summary>マルチルート（プライマリ以外のフォルダーがある）。この行だけ「🗂n」を常時出す
+    /// ——単一フォルダーの行にも出すと、一覧が同じ印だらけになって意味を失う。</summary>
+    public bool IsMultiRoot => Folders.Count > 1;
+
+    /// <summary>「🗂」の横に出す件数。1つだけのときは出さない（数える意味がない）。</summary>
+    public string FolderCountLabel => Folders.Count > 1 ? Folders.Count.ToString() : "";
 
     /// <summary>一覧・タイトルバーに出す名前。</summary>
     public string Label => string.IsNullOrWhiteSpace(CustomName) ? Name : CustomName!;
@@ -107,8 +121,8 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
             if (BrowserTabCount > 0) tabs.Add($"ブラウザ {BrowserTabCount}");
             if (tabs.Count > 0)
                 lines.Add("開いているタブ: " + string.Join(" / ", tabs));
-            if (HasFolders)
-                lines.Add($"追加フォルダー {Folders.Count}（🗂 で開閉）");
+            if (IsMultiRoot)
+                lines.Add($"フォルダー {Folders.Count}（🗂 で開閉）");
             if (IsMissing)
                 lines.Add("⚠ このフォルダは見つかりません");
             return string.Join("\n", lines);
@@ -122,20 +136,27 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         BrowserTabCount = counts.Browser;
     }
 
-    /// <summary>追加フォルダーを反映する。中身が同じなら触らない（開いている一覧の行が
-    /// 保存のたびに作り直されて、開閉やホバーが飛ぶのを避ける）。</summary>
-    internal void ApplyFolders(IReadOnlyList<string> paths)
+    /// <summary>フォルダー（プライマリ＋追加ぶん）を反映する。中身が同じなら触らない（開いている
+    /// 一覧の行が保存のたびに作り直されて、開閉やホバーが飛ぶのを避ける）。</summary>
+    internal void ApplyFolders(IReadOnlyList<string> additionalPaths)
     {
+        var paths = new List<string>();
+        if (!string.IsNullOrWhiteSpace(RootPath))
+            paths.Add(RootPath);
+        paths.AddRange(additionalPaths);
+
         if (Folders.Select(f => f.Path).SequenceEqual(paths, StringComparer.OrdinalIgnoreCase))
             return;
 
         Folders.Clear();
-        foreach (var path in paths)
-            Folders.Add(new WorkspaceFolderEntryViewModel(this, path));
+        for (var i = 0; i < paths.Count; i++)
+            Folders.Add(new WorkspaceFolderEntryViewModel(this, paths[i], isPrimary: i == 0));
 
         if (!HasFolders)
             IsExpanded = false;
         OnPropertyChanged(nameof(HasFolders));
+        OnPropertyChanged(nameof(IsMultiRoot));
+        OnPropertyChanged(nameof(FolderCountLabel));
         OnPropertyChanged(nameof(ToolTip));
     }
 
@@ -275,7 +296,8 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     /// 通常の保存経路（<c>CaptureInto</c>）に乗せる。非アクティブなものはここでスナップショットを直接直す。</summary>
     public void RemoveFolder(WorkspaceFolderEntryViewModel? folder)
     {
-        if (folder is null || FindSnapshot(folder.Owner.Id) is not { } snapshot)
+        // プライマリ（ルート）は外せない——それはワークスペースそのものを消すことになる。
+        if (folder is null or { IsPrimary: true } || FindSnapshot(folder.Owner.Id) is not { } snapshot)
             return;
 
         if (snapshot.Id == _state.ActiveWorkspaceId)

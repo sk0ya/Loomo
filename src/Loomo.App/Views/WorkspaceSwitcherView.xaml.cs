@@ -14,11 +14,13 @@ namespace sk0ya.Loomo.App.Views;
 /// タイトルバーのワークスペース切替ポップアップの中身。以前は ComboBox 1つで「切り替える」しかできず、
 /// 名前・パス・最後に使った時期が読めない／同名フォルダを見分けられない／整理もできない、という状態だった。
 /// 作りは <see cref="BranchSwitcherView"/>（ブランチ切替）に合わせてある——
-/// 上から「現在のワークスペース帯（いま開いているものだけに効く操作）」「絞り込み」「一覧」「フォルダを開く」。
+/// 上から「絞り込み＋一覧の表示切替」「一覧」「フッター（ここに無いものを足す）」。
 ///
-/// 帯を一覧の外に固定しているのは、ブランチ側と同じ理由で操作の対象が違うから。名前の変更・フォルダー追加・
-/// エクスプローラ・パスコピーは<em>いま開いている</em>ワークスペースに効き、一覧で選んだ行とは関係がない。
-/// 逆に一覧の行（と右クリック）は、選んだ1件にだけ効く操作に限る。
+/// ただしブランチ側の<em>同期帯</em>（フェッチ／プル／プッシュ）にあたるものは置かない。あれは
+/// 「リポジトリ全体に効く、一覧で選んだ行とは無関係な操作」だから固定帯に値するのであって、
+/// パスのコピー・エクスプローラ・名前の変更は<em>1件に効く軽い操作</em>——同じ格で並べると重みが嘘になる。
+/// 1件ぶんの操作は現在のワークスペースぶんも含めて全部行の右クリックへ集約し（現在のワークスペースの行も
+/// 一覧に居るので特別扱いが要らない）、上には一覧の見せ方を変えるものだけを置く。
 ///
 /// DataContext は <see cref="WorkspaceListViewModel"/>。永続化を伴う変更（切替・ピン留め・名前・削除）は
 /// VM に委ね、フォルダ選択・名前入力・削除確認のような UI はここ／ShellWindow が持つ。
@@ -253,27 +255,9 @@ public partial class WorkspaceSwitcherView : UserControl
         RemoveRequested?.Invoke(this, entry);
     }
 
-    // ===== 現在のワークスペース帯 =====
+    // ===== 一覧の表示切替とフッター =====
 
-    private void OnRenameActiveClick(object sender, RoutedEventArgs e)
-    {
-        if (Vm?.ActiveEntry is { } entry)
-            Rename(entry);
-    }
-
-    private void OnRevealActiveClick(object sender, RoutedEventArgs e)
-    {
-        if (Vm?.ActiveEntry is { } entry)
-            Reveal(entry.RootPath);
-    }
-
-    private void OnCopyActivePathClick(object sender, RoutedEventArgs e)
-    {
-        if (Vm?.ActiveEntry is { } entry)
-            CopyPath(entry.RootPath);
-    }
-
-    /// <summary>追加フォルダーの一括表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
+    /// <summary>フォルダー（パス）の一括表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
     private void OnToggleAllFoldersClick(object sender, RoutedEventArgs e)
         => Vm?.ToggleAllFoldersCommand.Execute(null);
 

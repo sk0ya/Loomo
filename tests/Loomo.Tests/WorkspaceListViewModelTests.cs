@@ -174,10 +174,10 @@ public class WorkspaceListViewModelTests
         Assert.Equal((2, 1, 1), (loaded.TabCounts.Terminal, loaded.TabCounts.Editor, loaded.TabCounts.Browser));
     }
 
-    /// <summary>マルチルートの追加フォルダーは、詳細（state.json）を読まなくても一覧に出せるよう
-    /// 索引側にも載る。行の「🗂n」で開いてパスのコピー等ができる。</summary>
+    /// <summary>フォルダー一覧はルート＋追加ぶん。追加ぶんは詳細（state.json）を読まなくても
+    /// 出せるよう索引側にも載る。行の「🗂」で開いてパスのコピー等ができる。</summary>
     [Fact]
-    public void Additional_folders_are_listed_for_workspaces_whose_details_are_not_loaded()
+    public void Folder_list_covers_the_root_and_the_additional_folders()
     {
         var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
         var storePath = Path.Combine(root, "workspaces.json");
@@ -197,12 +197,14 @@ public class WorkspaceListViewModelTests
         var entry = new WorkspaceListViewModel(new WorkspaceStateStore(storePath))
             .Workspaces.Single(w => w.RootPath == @"C:\multi");
 
-        Assert.True(entry.HasFolders);
-        Assert.Equal([@"C:\shared\lib", @"D:\docs"], entry.Folders.Select(f => f.Path));
-        Assert.Equal("lib", entry.Folders[0].Name);
+        Assert.True(entry.IsMultiRoot);
+        Assert.Equal([@"C:\multi", @"C:\shared\lib", @"D:\docs"], entry.Folders.Select(f => f.Path));
+        Assert.Equal([true, false, false], entry.Folders.Select(f => f.IsPrimary));
+        Assert.Equal("lib", entry.Folders[1].Name);
+        Assert.Equal("3", entry.FolderCountLabel);
     }
 
-    /// <summary>帯の「🗂 フォルダー表示」は一覧全体の開閉。1つでも開いていれば全部畳む。</summary>
+    /// <summary>絞り込み欄の隣の「🗂 パス」は一覧全体の開閉。1つでも開いていれば全部畳む。</summary>
     [Fact]
     public void Toggling_all_folders_expands_every_multi_root_workspace_then_collapses_them()
     {
@@ -219,18 +221,24 @@ public class WorkspaceListViewModelTests
 
         var sut = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
         var multiEntry = sut.Workspaces.Single(w => w.RootPath == @"C:\multi");
+        var plainEntry = sut.Workspaces.Single(w => w.RootPath == @"C:\plain");
         Assert.True(sut.HasAnyFolders);
+        Assert.True(multiEntry.IsMultiRoot);
+        Assert.False(plainEntry.IsMultiRoot);   // ルートだけの行に件数は出さない
+        Assert.Equal("", plainEntry.FolderCountLabel);
         Assert.False(sut.AnyFoldersExpanded);
 
+        // まとめて開くとルートだけのワークスペースも開く（パス一覧として読めるように）
         sut.ToggleAllFoldersCommand.Execute(null);
         Assert.True(multiEntry.IsExpanded);
+        Assert.True(plainEntry.IsExpanded);
         Assert.True(sut.AnyFoldersExpanded);
 
         sut.ToggleAllFoldersCommand.Execute(null);
         Assert.False(multiEntry.IsExpanded);
         Assert.False(sut.AnyFoldersExpanded);
 
-        // 行ごとの開閉も帯の点灯へ反映される
+        // 行ごとの開閉もボタンの点灯へ反映される
         sut.ToggleFoldersCommand.Execute(multiEntry);
         Assert.True(sut.AnyFoldersExpanded);
     }
@@ -259,14 +267,22 @@ public class WorkspaceListViewModelTests
         string? requested = null;
         sut.FolderRemoveRequested += (_, path) => requested = path;
 
-        sut.RemoveFolder(sut.Workspaces.Single(w => w.RootPath == @"C:\other").Folders.Single());
+        var otherEntry = sut.Workspaces.Single(w => w.RootPath == @"C:\other");
+        sut.RemoveFolder(otherEntry.Folders.Single(f => !f.IsPrimary));
 
         Assert.Null(requested);
-        Assert.Empty(new WorkspaceListViewModel(new WorkspaceStateStore(storePath))
-            .Workspaces.Single(w => w.RootPath == @"C:\other").Folders);
+        var reloaded = new WorkspaceListViewModel(new WorkspaceStateStore(storePath))
+            .Workspaces.Single(w => w.RootPath == @"C:\other");
+        Assert.Equal([@"C:\other"], reloaded.Folders.Select(f => f.Path));   // ルートだけが残る
+        Assert.False(reloaded.IsMultiRoot);
+
+        // ルートは取り除けない（それはワークスペースそのものを消すこと）
+        sut.RemoveFolder(otherEntry.Folders.Single(f => f.IsPrimary));
+        Assert.Null(requested);
 
         // アクティブなワークスペースぶんは購読側（ShellWindow → WorkspaceService）へ回す
-        sut.RemoveFolder(sut.Workspaces.Single(w => w.RootPath == @"C:\active").Folders.Single());
+        sut.RemoveFolder(sut.Workspaces.Single(w => w.RootPath == @"C:\active")
+            .Folders.Single(f => !f.IsPrimary));
         Assert.Equal(@"C:\active-extra", requested);
     }
 
