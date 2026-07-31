@@ -233,13 +233,9 @@ public sealed class WorkspaceSummary
     public bool Pinned { get; set; }
     public string? CustomName { get; set; }
 
-    /// <summary>切替ポップアップの一覧に出すタブ件数。詳細（state.json）を読まずに出せるよう、
-    /// 索引（workspaces.json）側にも持つ。null は「まだ分からない」＝この項目より前に書かれた
-    /// 索引で、0件と区別する（一覧を開いたときに一度だけ詳細から拾い直す）。</summary>
-    public WorkspaceTabCounts? TabCounts { get; set; }
-
-    /// <summary>マルチルートの追加フォルダー（プライマリ以外）のパス。一覧の折りたたみ表示用に
-    /// 索引側にも持つ。<see cref="TabCounts"/> と同じく null は未確認（空リストとは別）。</summary>
+    /// <summary>マルチルートの追加フォルダー（プライマリ以外）のパス。詳細（state.json）を読まずに
+    /// 一覧へ出せるよう索引（workspaces.json）側にも持つ。null は「まだ分からない」＝この項目より前に
+    /// 書かれた索引で、空リスト（追加フォルダー無し）とは区別する（一覧を開いたときに一度だけ拾い直す）。</summary>
     public List<string>? AdditionalFolders { get; set; }
 
     public static WorkspaceSummary From(WorkspaceSnapshot s) => new()
@@ -247,23 +243,14 @@ public sealed class WorkspaceSummary
         Id = s.Id, RootPath = s.RootPath, Name = s.Name, LastUsedUtc = s.LastUsedUtc,
         Pinned = s.Pinned, CustomName = s.CustomName,
         // 未読込のままなら索引から復元した値（未確認なら null）をそのまま書き戻す。
-        TabCounts = s.IsDetailsLoaded ? s.TabCounts : s.CachedTabCounts,
         AdditionalFolders = s.IsDetailsLoaded ? s.FolderPaths.ToList() : s.CachedAdditionalFolders
     };
     public WorkspaceSnapshot ToSnapshot() => new()
     {
         Id = Id, RootPath = RootPath, Name = Name, LastUsedUtc = LastUsedUtc,
-        Pinned = Pinned, CustomName = CustomName, CachedTabCounts = TabCounts,
+        Pinned = Pinned, CustomName = CustomName,
         CachedAdditionalFolders = AdditionalFolders, IsDetailsLoaded = false
     };
-}
-
-/// <summary>ワークスペースが抱えるタブ数（一覧の「何が開きっぱなしか」表示用）。</summary>
-public sealed class WorkspaceTabCounts
-{
-    public int Terminal { get; set; }
-    public int Editor { get; set; }
-    public int Browser { get; set; }
 }
 
 public sealed class WorkspaceState
@@ -291,21 +278,8 @@ public sealed class WorkspaceSnapshot
 
     public DateTime LastUsedUtc { get; set; } = DateTime.UtcNow;
 
-    /// <summary>詳細（state.json）が未読込のときに一覧へ出すタブ件数。索引から復元した値で、
-    /// null は未確認（この項目より前に書かれた索引）。読込済みなら実体のリスト件数が正なので、
-    /// 読むときは <see cref="TabCounts"/> を使う。</summary>
-    [JsonIgnore] public WorkspaceTabCounts? CachedTabCounts { get; set; }
-
-    /// <summary>一覧表示用のタブ件数。詳細を読み込んでいれば実体から、まだなら索引の値から返す。</summary>
-    [JsonIgnore]
-    public WorkspaceTabCounts TabCounts => IsDetailsLoaded
-        ? new WorkspaceTabCounts
-        {
-            Terminal = TerminalTabs.Count, Editor = EditorTabs.Count, Browser = BrowserTabs.Count
-        }
-        : CachedTabCounts ?? new WorkspaceTabCounts();
-
-    /// <summary>詳細が未読込のときの追加フォルダー（<see cref="CachedTabCounts"/> と同じ扱い）。</summary>
+    /// <summary>詳細（state.json）が未読込のときに一覧へ出す追加フォルダー。索引から復元した値で、
+    /// null は未確認（この項目より前に書かれた索引）。読むときは <see cref="FolderPaths"/> を使う。</summary>
     [JsonIgnore] public List<string>? CachedAdditionalFolders { get; set; }
 
     /// <summary>一覧表示用の追加フォルダー（プライマリ以外）。詳細を読み込んでいれば実体から、

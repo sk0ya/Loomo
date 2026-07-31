@@ -66,11 +66,43 @@
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="RowCount" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="{DynamicResource Fs10}" />
-            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <!-- 行ごとのフォルダー表示トグル。ピン留めと同じ作法で、行にマウスが載ったときだけ薄く現れる
+             （常時出していると、名前より印の方が目立つ一覧になる）。開いた状態は保存しない一時的なもの。 -->
+        <Style x:Key="RowFolderToggle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="Margin" Value="6,0,0,0" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Margin" Value="5,0,0,0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                             Value="True">
+                    <Setter Property="Opacity" Value="0.55" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- 展開したときにぶら下がるフォルダー行。行の切替クリックとは別物なので Tag で見分ける
@@ -116,8 +148,8 @@
                  ブランチ切替の同期帯にあたる「リポジトリ全体に効く重い操作」はワークスペースには無い。 -->
             <DockPanel DockPanel.Dock="Top" Margin="2,0,2,4">
                 <!-- 一覧の表示切替：各ワークスペースのフォルダー（ルート＋マルチルートの追加ぶん）を
-                     行の下に出す＝パス一覧として読むモード。行ごとの開閉ボタンは置かない——行に印が
-                     並ぶわりに、実際に見たいのは「全部のパスを読む」か「読まない」かのどちらかなので。 -->
+                     行の下にまとめて出す＝パス一覧として読むモード。1件だけ見たいときは行のホバーで
+                     現れる「🗂」を使う（どちらも保存しない一時的な表示状態）。 -->
                 <Button DockPanel.Dock="Right" Style="{StaticResource WorkspaceOpButton}"
                         Margin="4,0,0,0" Height="24"
                         ToolTip="すべてのワークスペースのフォルダー（ルート＋追加ぶん）をまとめて表示／非表示"
@@ -232,23 +264,15 @@
                                 </Ellipse.Style>
                             </Ellipse>
 
-                            <!-- 右側：最終利用と、抱えているタブ数（0 の種別は出さない）、
-                                 マルチルートなら追加フォルダーの開閉ボタン -->
+                            <!-- 右側：最終利用と、ホバーで現れるフォルダー表示トグル -->
                             <TextBlock DockPanel.Dock="Right" Text="{Binding LastUsedLabel}"
                                        FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}"
                                        VerticalAlignment="Center" Margin="8,0,2,0" />
-                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource RowCount}"
-                                       Text="{Binding BrowserTabCount, StringFormat=🌐{0}}"
-                                       ToolTip="ブラウザタブ"
-                                       Visibility="{Binding BrowserTabCount, Converter={StaticResource CountToVis}}" />
-                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource RowCount}"
-                                       Text="{Binding TerminalTabCount, StringFormat=▦{0}}"
-                                       ToolTip="ターミナルタブ"
-                                       Visibility="{Binding TerminalTabCount, Converter={StaticResource CountToVis}}" />
-                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource RowCount}"
-                                       Text="{Binding EditorTabCount, StringFormat=✎{0}}"
-                                       ToolTip="エディタタブ"
-                                       Visibility="{Binding EditorTabCount, Converter={StaticResource CountToVis}}" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource RowFolderToggle}"
+                                    Content="🗂" FontSize="{DynamicResource Fs10}"
+                                    Foreground="{DynamicResource FgDim}"
+                                    ToolTip="このワークスペースのフォルダー（ルート＋追加ぶん）を表示／非表示"
+                                    Click="OnRowFoldersClick" />
                             <TextBlock DockPanel.Dock="Right" Text="見つかりません"
                                        FontSize="{DynamicResource Fs10}" Foreground="#FFE57373"
                                        VerticalAlignment="Center" Margin="8,0,0,0"
@@ -280,9 +304,7 @@
                              ListBox の項目にはせず、見出し行の下にぶら下げる。右クリックでこの
                              フォルダー1つに効く操作（パスのコピー・エクスプローラ・取り除く）。 -->
                         <ItemsControl ItemsSource="{Binding Folders}" Margin="38,1,0,3"
-                                      Visibility="{Binding DataContext.ShowFolders,
-                                          RelativeSource={RelativeSource AncestorType=ListBox},
-                                          Converter={StaticResource BoolToVis}}">
+                                      Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource FolderRow}" ToolTip="{Binding Path}">

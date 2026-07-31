@@ -153,27 +153,6 @@ public class WorkspaceListViewModelTests
         Assert.Equal("旧プロジェクト", reloaded.Label);
     }
 
-    [Fact]
-    public void Tab_counts_are_available_for_workspaces_whose_details_are_not_loaded()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
-        var store = new WorkspaceStateStore(Path.Combine(root, "workspaces.json"));
-        var active = new WorkspaceSnapshot { RootPath = @"C:\active" };
-        var other = new WorkspaceSnapshot
-        {
-            RootPath = @"C:\other",
-            EditorTabs = [new EditorTabSnapshot { FilePath = @"C:\other\a.cs" }],
-            TerminalTabs = [new TerminalTabSnapshot(), new TerminalTabSnapshot()],
-            BrowserTabs = [new BrowserTabSnapshot { Url = "https://example.com/" }]
-        };
-        store.Save(new WorkspaceState { ActiveWorkspaceId = active.Id, Workspaces = [active, other] });
-
-        var loaded = store.LoadForStartup().Workspaces.Single(w => w.Id == other.Id);
-
-        Assert.False(loaded.IsDetailsLoaded);
-        Assert.Equal((2, 1, 1), (loaded.TabCounts.Terminal, loaded.TabCounts.Editor, loaded.TabCounts.Browser));
-    }
-
     /// <summary>フォルダー一覧はルート＋追加ぶん。追加ぶんは詳細（state.json）を読まなくても
     /// 出せるよう索引側にも載る。行の「🗂」で開いてパスのコピー等ができる。</summary>
     [Fact]
@@ -226,6 +205,8 @@ public class WorkspaceListViewModelTests
         // 表示はワークスペースを問わず一括。ルートだけのワークスペースもパスが読める
         sut.ToggleFoldersCommand.Execute(null);
         Assert.True(sut.ShowFolders);
+        Assert.True(multiEntry.IsExpanded);
+        Assert.True(plainEntry.IsExpanded);
         Assert.Equal([@"C:\multi", @"C:\shared\lib"], multiEntry.Folders.Select(f => f.Path));
         Assert.Equal([@"C:\plain"], plainEntry.Folders.Select(f => f.Path));
 
@@ -234,6 +215,13 @@ public class WorkspaceListViewModelTests
         Assert.False(plainEntry.Folders[0].ShowPrimaryTag);
 
         sut.ToggleFoldersCommand.Execute(null);
+        Assert.False(sut.ShowFolders);
+        Assert.False(multiEntry.IsExpanded);
+
+        // 行ごとの「🗂」は1行だけ開く（一括の状態は動かさない）
+        sut.ToggleRowFoldersCommand.Execute(multiEntry);
+        Assert.True(multiEntry.IsExpanded);
+        Assert.False(plainEntry.IsExpanded);
         Assert.False(sut.ShowFolders);
     }
 
@@ -280,10 +268,10 @@ public class WorkspaceListViewModelTests
         Assert.Equal(@"C:\active-extra", requested);
     }
 
-    /// <summary>この機能より前に書かれた索引にはタブ数が無い。一覧を開いたときに詳細から一度だけ
-    /// 拾い直し、索引へ書き戻す（次回以降は詳細を読まない）。</summary>
+    /// <summary>この機能より前に書かれた索引には追加フォルダーが無い。一覧を開いたときに詳細から
+    /// 一度だけ拾い直し、索引へ書き戻す（次回以降は詳細を読まない）。</summary>
     [Fact]
-    public void Missing_tab_counts_are_backfilled_from_details_once()
+    public void Missing_folder_lists_are_backfilled_from_details_once()
     {
         var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
         var storePath = Path.Combine(root, "workspaces.json");
@@ -292,26 +280,26 @@ public class WorkspaceListViewModelTests
         var other = new WorkspaceSnapshot
         {
             RootPath = @"C:\other",
-            EditorTabs = [new EditorTabSnapshot { FilePath = @"C:\other\a.cs" }],
-            TerminalTabs = [new TerminalTabSnapshot()]
+            AdditionalFolders = [new WorkspaceFolderPin { FolderPath = @"C:\shared\lib" }]
         };
         store.Save(new WorkspaceState { ActiveWorkspaceId = active.Id, Workspaces = [active, other] });
 
-        // 索引からタブ数の項目を消して「旧形式」を作る（直前のカンマごと落とす）
+        // 索引から追加フォルダーの項目を消して「旧形式」を作る（直前のカンマごと落とす）
         var legacy = System.Text.RegularExpressions.Regex.Replace(
-            File.ReadAllText(storePath), ",\\s*\"tabCounts\":\\s*\\{[^}]*\\}", "");
-        Assert.DoesNotContain("tabCounts", legacy);
+            File.ReadAllText(storePath), @",\s*""additionalFolders"":\s*\[[^\]]*\]", "");
+        Assert.DoesNotContain("additionalFolders", legacy);
         File.WriteAllText(storePath, legacy);
 
         var sut = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
         var entry = sut.Workspaces.Single(w => w.RootPath == @"C:\other");
-        Assert.Equal(0, entry.EditorTabCount);
+        Assert.False(entry.IsMultiRoot);
 
         sut.Refresh();
 
-        Assert.Equal((1, 1), (entry.EditorTabCount, entry.TerminalTabCount));
-        Assert.Contains("tabCounts", File.ReadAllText(storePath));
+        Assert.Equal([@"C:\other", @"C:\shared\lib"], entry.Folders.Select(f => f.Path));
+        Assert.Contains("additionalFolders", File.ReadAllText(storePath));
     }
+
 
     [Fact]
     public void Removing_active_workspace_switches_to_another_and_drops_it()

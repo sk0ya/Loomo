@@ -27,7 +27,7 @@ public sealed class WorkspaceFolderEntryViewModel(WorkspaceEntryViewModel owner,
 }
 
 /// <summary>切替ポップアップ（<c>WorkspaceSwitcherView</c>）に並ぶ1行。フォルダ名・手で付けた表示名・
-/// ピン留め・最終利用・抱えているタブ数・フォルダの実在・マルチルートの追加フォルダーを持つ。</summary>
+/// ピン留め・最終利用・フォルダの実在・ワークスペースのフォルダー一覧を持つ。</summary>
 public sealed partial class WorkspaceEntryViewModel : ObservableObject
 {
     public WorkspaceEntryViewModel(WorkspaceSnapshot snapshot)
@@ -40,7 +40,6 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         _customName = snapshot.CustomName;
         _isPinned = snapshot.Pinned;
         _lastUsedUtc = snapshot.LastUsedUtc;
-        ApplyTabCounts(snapshot.TabCounts);
         ApplyFolders(snapshot.FolderPaths);
     }
 
@@ -73,22 +72,13 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ToolTip))]
     private bool _isMissing;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ToolTip))]
-    private int _terminalTabCount;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ToolTip))]
-    private int _editorTabCount;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ToolTip))]
-    private int _browserTabCount;
-
-    /// <summary>このワークスペースのフォルダー（プライマリ＋マルチルートの追加ぶん）。
-    /// 出す・出さないは一覧全体の1スイッチ（<see cref="WorkspaceListViewModel.ShowFolders"/>）で決める
-    /// ——行ごとの開閉ボタンは置かない。</summary>
+    /// <summary>このワークスペースのフォルダー（プライマリ＋マルチルートの追加ぶん）。</summary>
     public ObservableCollection<WorkspaceFolderEntryViewModel> Folders { get; } = new();
+
+    /// <summary>この行のフォルダーを出しているか。行のホバーで現れる「🗂」と、一覧全体の
+    /// 「🗂 パス」の両方が触る。**その場かぎりの表示状態で、保存はしない**（開きっぱなしを
+    /// 復元したいものではないし、索引に持たせるほどの情報でもない）。</summary>
+    [ObservableProperty] private bool _isExpanded;
 
     public bool HasFolders => Folders.Count > 0;
 
@@ -111,25 +101,12 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
             if (HasCustomName)
                 lines.Add($"フォルダ名: {Name}");
             lines.Add($"最終利用: {LastUsedUtc.ToLocalTime():yyyy/M/d HH:mm}（{LastUsedLabel}）");
-            var tabs = new List<string>();
-            if (EditorTabCount > 0) tabs.Add($"エディタ {EditorTabCount}");
-            if (TerminalTabCount > 0) tabs.Add($"ターミナル {TerminalTabCount}");
-            if (BrowserTabCount > 0) tabs.Add($"ブラウザ {BrowserTabCount}");
-            if (tabs.Count > 0)
-                lines.Add("開いているタブ: " + string.Join(" / ", tabs));
             if (IsMultiRoot)
                 lines.Add($"フォルダー {Folders.Count}（🗂 パスで表示）");
             if (IsMissing)
                 lines.Add("⚠ このフォルダは見つかりません");
             return string.Join("\n", lines);
         }
-    }
-
-    internal void ApplyTabCounts(WorkspaceTabCounts counts)
-    {
-        TerminalTabCount = counts.Terminal;
-        EditorTabCount = counts.Editor;
-        BrowserTabCount = counts.Browser;
     }
 
     /// <summary>フォルダー（プライマリ＋追加ぶん）を反映する。中身が同じなら触らない（開いている
@@ -249,14 +226,26 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     [RelayCommand]
     private void ClearFilter() => Filter = "";
 
-    /// <summary>各ワークスペースのフォルダー（ルート＋マルチルートの追加ぶん）を行の下に出すか
-    /// ＝一覧をパス一覧として読むモード。行ごとの開閉は持たない——行に印が並ぶわりに、実際に
-    /// 見たいのは「全部のパスを読む」か「読まない」かのどちらかなので、一覧全体の1スイッチにする。</summary>
+    /// <summary>一覧をパス一覧として読むモード（絞り込み欄の隣のボタンの状態）。切り替えると
+    /// 全行のフォルダー表示をまとめて合わせる。行ごとの「🗂」で個別に開き直せる。</summary>
     [ObservableProperty] private bool _showFolders;
 
-    /// <summary>フォルダー表示の切替（絞り込み欄の隣のボタン）。</summary>
+    /// <summary>フォルダー表示の一括切替（絞り込み欄の隣のボタン）。</summary>
     [RelayCommand]
-    private void ToggleFolders() => ShowFolders = !ShowFolders;
+    private void ToggleFolders()
+    {
+        ShowFolders = !ShowFolders;
+        foreach (var entry in Workspaces)
+            entry.IsExpanded = ShowFolders;
+    }
+
+    /// <summary>1行ぶんのフォルダー表示切替（行のホバーで現れる「🗂」）。保存しない一時的な状態。</summary>
+    [RelayCommand]
+    private void ToggleRowFolders(WorkspaceEntryViewModel? entry)
+    {
+        if (entry is not null)
+            entry.IsExpanded = !entry.IsExpanded;
+    }
 
     /// <summary>追加フォルダーをワークスペースから取り除く（フォルダ自体は消さない）。
     /// アクティブなワークスペースは<em>生きている</em> FolderTree／WorkspaceService を通す必要があるので
@@ -306,15 +295,12 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             entry.IsMissing = !string.IsNullOrWhiteSpace(entry.RootPath) && !Directory.Exists(entry.RootPath);
             entry.RefreshLastUsedLabel();
 
-            // タブ数・追加フォルダーが索引に無いぶん（この機能より前に書かれた workspaces.json）だけ、
+            // 追加フォルダーが索引に無いぶん（この機能より前に書かれた workspaces.json）だけ、
             // 詳細から一度だけ拾って索引へ載せる。以後は索引にあるので読まない——開くたびに
             // 全ワークスペースの state.json を読みに行くのは重い。
-            if (FindSnapshot(entry.Id) is { IsDetailsLoaded: false } stale
-                && (stale.CachedTabCounts is null || stale.CachedAdditionalFolders is null))
+            if (FindSnapshot(entry.Id) is { IsDetailsLoaded: false, CachedAdditionalFolders: null } stale)
             {
-                var details = _store.LoadWorkspace(stale.Id);
-                stale.CachedTabCounts = details?.TabCounts ?? new WorkspaceTabCounts();
-                stale.CachedAdditionalFolders = details?.FolderPaths.ToList() ?? [];
+                stale.CachedAdditionalFolders = _store.LoadWorkspace(stale.Id)?.FolderPaths.ToList() ?? [];
                 probed = true;
             }
         }
@@ -454,7 +440,6 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             entry.CustomName = snapshot.CustomName;
             entry.IsPinned = snapshot.Pinned;
             entry.LastUsedUtc = snapshot.LastUsedUtc;
-            entry.ApplyTabCounts(snapshot.TabCounts);
             entry.ApplyFolders(snapshot.FolderPaths);
             entry.IsActive = entry.Id == _state.ActiveWorkspaceId;
             if (entry.IsActive)

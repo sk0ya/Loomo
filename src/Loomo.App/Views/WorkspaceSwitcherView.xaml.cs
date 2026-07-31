@@ -101,7 +101,7 @@ public partial class WorkspaceSwitcherView : UserControl
 
     // ===== 一覧 =====
 
-    /// <summary>クリックされた行。行内のボタン（ピン留め）上なら、そちらが処理済みなので
+    /// <summary>クリックされた行。行内のボタン（ピン留め・フォルダー表示）上なら、そちらが処理済みなので
     /// null を返す。展開したフォルダー行（<c>Tag="folder"</c>）も、ワークスペースの切替対象ではないので同様。</summary>
     private static ListBoxItem? FindRow(object? originalSource)
     {
@@ -245,7 +245,14 @@ public partial class WorkspaceSwitcherView : UserControl
 
     // ===== 一覧の表示切替とフッター =====
 
-    /// <summary>フォルダー（パス）の表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
+    /// <summary>1行ぶんのフォルダー表示切替（行のホバーで現れる「🗂」）。</summary>
+    private void OnRowFoldersClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: WorkspaceEntryViewModel entry })
+            Vm?.ToggleRowFoldersCommand.Execute(entry);
+    }
+
+    /// <summary>フォルダー（パス）の一括表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
     private void OnToggleAllFoldersClick(object sender, RoutedEventArgs e)
         => Vm?.ToggleFoldersCommand.Execute(null);
 
