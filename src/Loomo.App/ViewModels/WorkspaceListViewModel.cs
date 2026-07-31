@@ -239,8 +239,34 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     [RelayCommand]
     private void ToggleFolders(WorkspaceEntryViewModel? entry)
     {
-        if (entry is { HasFolders: true })
-            entry.IsExpanded = !entry.IsExpanded;
+        if (entry is not { HasFolders: true })
+            return;
+
+        entry.IsExpanded = !entry.IsExpanded;
+        UpdateFoldersExpandedState();
+    }
+
+    /// <summary>マルチルートの追加フォルダーを<em>まとめて</em>表示／非表示する（帯のボタン）。
+    /// 1つでも開いていれば全部畳む、そうでなければ全部開く。</summary>
+    [RelayCommand]
+    private void ToggleAllFolders()
+    {
+        var expand = !AnyFoldersExpanded;
+        foreach (var entry in Workspaces.Where(w => w.HasFolders))
+            entry.IsExpanded = expand;
+        UpdateFoldersExpandedState();
+    }
+
+    /// <summary>マルチルートのワークスペースが1つでもあるか（無ければ帯のボタンを出さない）。</summary>
+    public bool HasAnyFolders => Workspaces.Any(w => w.HasFolders);
+
+    /// <summary>追加フォルダーを1つでも開いているか（帯のボタンの点灯とトグルの向き）。</summary>
+    [ObservableProperty] private bool _anyFoldersExpanded;
+
+    private void UpdateFoldersExpandedState()
+    {
+        AnyFoldersExpanded = Workspaces.Any(w => w is { HasFolders: true, IsExpanded: true });
+        OnPropertyChanged(nameof(HasAnyFolders));
     }
 
     /// <summary>追加フォルダーをワークスペースから取り除く（フォルダ自体は消さない）。
@@ -449,6 +475,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         if (SelectedWorkspace is null || !Workspaces.Contains(SelectedWorkspace))
             SelectedWorkspace = active;
 
+        UpdateFoldersExpandedState();
         RebuildFiltered();
     }
 

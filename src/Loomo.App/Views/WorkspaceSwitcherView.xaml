@@ -153,6 +153,29 @@
                     <Button Style="{StaticResource WorkspaceOpButton}" Content="⧉ パスをコピー"
                             ToolTip="いま開いているワークスペースのルートフォルダのパスをコピー"
                             Click="OnCopyActivePathClick" />
+
+                    <!-- マルチルートの追加フォルダーを一覧全体でまとめて開閉する。行ごとの「🗂n」でも
+                         個別に開けるが、どのワークスペースが何を束ねているかを一望したいときはこちら。
+                         マルチルートが1つも無ければ出さない。 -->
+                    <Button Style="{StaticResource WorkspaceOpButton}"
+                            ToolTip="すべてのワークスペースの追加フォルダー（マルチルート）をまとめて表示／非表示"
+                            Click="OnToggleAllFoldersClick"
+                            Visibility="{Binding HasAnyFolders, Converter={StaticResource BoolToVis}}">
+                        <!-- 点灯（表示中＝アクセント色）は中の TextBlock に直接掛ける。ボタンの Foreground を
+                             変えても、既定の TextBlock スタイルが Fg を明示指定しているので content には効かない。 -->
+                        <TextBlock Text="🗂 フォルダー表示" FontSize="{DynamicResource Fs12}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AnyFoldersExpanded}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
                 </StackPanel>
             </Border>
 

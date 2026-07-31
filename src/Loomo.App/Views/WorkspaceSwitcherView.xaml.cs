@@ -273,6 +273,10 @@ public partial class WorkspaceSwitcherView : UserControl
             CopyPath(entry.RootPath);
     }
 
+    /// <summary>追加フォルダーの一括表示切替。ポップアップは開いたまま（一覧を見比べるための操作）。</summary>
+    private void OnToggleAllFoldersClick(object sender, RoutedEventArgs e)
+        => Vm?.ToggleAllFoldersCommand.Execute(null);
+
     private void OnAddFolderClick(object sender, RoutedEventArgs e)
     {
         Close();

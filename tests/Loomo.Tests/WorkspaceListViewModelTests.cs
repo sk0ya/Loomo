@@ -202,6 +202,39 @@ public class WorkspaceListViewModelTests
         Assert.Equal("lib", entry.Folders[0].Name);
     }
 
+    /// <summary>帯の「🗂 フォルダー表示」は一覧全体の開閉。1つでも開いていれば全部畳む。</summary>
+    [Fact]
+    public void Toggling_all_folders_expands_every_multi_root_workspace_then_collapses_them()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
+        var storePath = Path.Combine(root, "workspaces.json");
+        var store = new WorkspaceStateStore(storePath);
+        var plain = new WorkspaceSnapshot { RootPath = @"C:\plain" };
+        var multi = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\multi",
+            AdditionalFolders = [new WorkspaceFolderPin { FolderPath = @"C:\shared\lib" }]
+        };
+        store.Save(new WorkspaceState { ActiveWorkspaceId = plain.Id, Workspaces = [plain, multi] });
+
+        var sut = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
+        var multiEntry = sut.Workspaces.Single(w => w.RootPath == @"C:\multi");
+        Assert.True(sut.HasAnyFolders);
+        Assert.False(sut.AnyFoldersExpanded);
+
+        sut.ToggleAllFoldersCommand.Execute(null);
+        Assert.True(multiEntry.IsExpanded);
+        Assert.True(sut.AnyFoldersExpanded);
+
+        sut.ToggleAllFoldersCommand.Execute(null);
+        Assert.False(multiEntry.IsExpanded);
+        Assert.False(sut.AnyFoldersExpanded);
+
+        // 行ごとの開閉も帯の点灯へ反映される
+        sut.ToggleFoldersCommand.Execute(multiEntry);
+        Assert.True(sut.AnyFoldersExpanded);
+    }
+
     /// <summary>非アクティブなワークスペースのフォルダー削除はスナップショットを直接直す
     /// （アクティブなものは生きている FolderTree を通すのでイベントに逃がす）。</summary>
     [Fact]
