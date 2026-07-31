@@ -1472,9 +1472,10 @@
                          スクラブ中／過去日表示中はその時間帯を HH:00 で表す。クリックで日付（カレンダー）と
                          時間帯（HH:00）を1つのポップアップから即トグルして選ぶ。選択はリアルタイムでバーへ
                          反映し、フォーカスを外すと閉じる。最新地点へは右クリックメニュー「最新に戻る」。 -->
+                    <!-- 文字色は FlatButton 既定（AccentFg）に任せる。ここで FgDim を指定すると
+                         アクセント地に沈んで日付が読めない。 -->
                     <Button x:Name="TrailDateTimeButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
                             Padding="8,1" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
-                            Foreground="{DynamicResource FgDim}"
                             Content="{Binding Trail.DateTimeLabel}"
                             ToolTip="クリックで日付と時間帯を選んでその軌跡へ移動（選択はすぐ反映・フォーカスを外すと閉じる）"
                             Click="OnTrailDateTimeClick" />
@@ -1546,8 +1547,10 @@
                                                     </Setter>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <!-- 背景は SelectionBg（アクセントではない）なので、文字は Fg。
+                                                                 AccentFg を載せると暗背景×暗文字になって消える。 -->
                                                             <Setter Property="Background" Value="{DynamicResource SelectionBg}" />
-                                                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                                                             <Setter Property="FontWeight" Value="SemiBold" />
                                                         </DataTrigger>
                                                     </Style.Triggers>

@@ -270,13 +270,19 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
         border.SetValue(Border.BorderThicknessProperty, new Thickness(0, 0, 1, 0));
         border.SetResourceReference(Border.BorderBrushProperty, "Border");
 
-        var content = new System.Windows.FrameworkElementFactory(typeof(ContentPresenter));
-        content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        // ContentPresenter だと、文字列 Content から作られる TextBlock が暗黙の TextBlock スタイル
+        // （Controls.xaml の Foreground=Fg）を受けてしまい、ListBoxItem 側の Foreground が文字へ
+        // 届かない（選択タブが AccentFg にならない）。シート名は常に文字列なので TextBlock を直接置き、
+        // Foreground をテンプレートバインドする。
+        var content = new System.Windows.FrameworkElementFactory(typeof(TextBlock));
+        content.SetValue(TextBlock.TextProperty, new TemplateBindingExtension(ContentControl.ContentProperty));
+        content.SetValue(TextBlock.ForegroundProperty, new TemplateBindingExtension(Control.ForegroundProperty));
+        content.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
         border.AppendChild(content);
 
         var template = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = border };
 
-        // 選択タブ：Accent 背景＋AccentFg 文字（Foreground は継承で ContentPresenter の文字へ届く）。
+        // 選択タブ：Accent 背景＋AccentFg 文字。
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
         selected.Setters.Add(new Setter(Border.BackgroundProperty, new DynamicResourceExtension("Accent"), "bd"));
         selected.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("AccentFg")));

@@ -167,7 +167,7 @@ public partial class ShellWindow {
             _dragGhost = new Border {
                 Background = MakeTranslucent((Brush)FindResource("Accent"), 0.9), CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 5, 10, 5), IsHitTestVisible = false, Effect = new System.Windows.Media.Effects.DropShadowEffect {
                     BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5, Color = Colors.Black
-                }, Child = new TextBlock { Foreground = Brushes.White, FontSize = UiFontManager.Scaled(12), FontWeight = FontWeights.SemiBold }
+                }, Child = new TextBlock { Foreground = (Brush)FindResource("AccentFg"), FontSize = UiFontManager.Scaled(12), FontWeight = FontWeights.SemiBold }
             };
             DragGhostLayer.Children.Add(_dragGhost);
         }

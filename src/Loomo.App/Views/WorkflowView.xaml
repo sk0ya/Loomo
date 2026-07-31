@@ -433,8 +433,10 @@
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                     <Style.Triggers>
+                                                        <!-- 実行中の丸は Accent 塗りなので、文字色もアクセント連動（白直書きだと
+                                                             明るいアクセントのテーマで読めない）。完了／失敗は固定の緑・赤なので白のまま。 -->
                                                         <DataTrigger Binding="{Binding Status}" Value="Running">
-                                                            <Setter Property="Foreground" Value="White" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding Status}" Value="Done">
                                                             <Setter Property="Foreground" Value="White" />

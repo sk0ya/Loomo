@@ -22,7 +22,11 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -57,7 +61,11 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -289,7 +297,11 @@
                                                                   ContentSource="Header"
                                                                   Margin="{TemplateBinding Padding}"
                                                                   HorizontalAlignment="Stretch"
-                                                                  VerticalAlignment="Center" />
+                                                                  VerticalAlignment="Center">
+                                                    <ContentPresenter.Resources>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                                    </ContentPresenter.Resources>
+                                                </ContentPresenter>
                                             </Grid>
                                         </Border>
 
@@ -475,10 +487,12 @@
                                 <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="GitName" Property="Foreground" Value="#E2C08D" />
                             </DataTrigger>
-                            <!-- 選択中は Accent 背景に git 色名が低コントラストになるため、名前だけ白へ戻す。
+                            <!-- 選択中は Accent 背景に git 色名が低コントラストになるため、名前だけ
+                                 アクセント上の文字色（AccentFg）へ戻す。白の直書きだと明るいアクセントの
+                                 テーマ（Monokai/Ayu など）で読めなくなる。
                                  トリガは後勝ちなので、上の状態色より優先される（右端バッジの色はそのまま）。 -->
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter TargetName="GitName" Property="Foreground" Value="#FFFFFFFF" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="{DynamicResource AccentFg}" />
                             </DataTrigger>
                         </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>

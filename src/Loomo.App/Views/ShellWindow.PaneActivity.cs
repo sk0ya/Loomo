@@ -67,16 +67,20 @@ public partial class ShellWindow {
             case PaneActivityKind.Running:
                 chip.Visibility = Visibility.Visible;
                 chip.Background = (Brush)FindResource("Accent");
+                // アクセント塗りの上なので文字色もテーマ連動（白固定だと明るいアクセントで読めない）。
+                label.Foreground = (Brush)FindResource("AccentFg");
                 label.Text = "● 実行中";
                 break;
             case PaneActivityKind.Failed:
                 chip.Visibility = Visibility.Visible;
                 chip.Background = PaneActivityFailedBrush;
+                label.Foreground = Brushes.White;   // 固定の赤地
                 label.Text = $"✗ 失敗 {exitCode}";
                 break;
             case PaneActivityKind.Succeeded:
                 chip.Visibility = Visibility.Visible;
                 chip.Background = PaneActivitySucceededBrush;
+                label.Foreground = Brushes.White;   // 固定の緑地
                 label.Text = "✓ 完了";
                 break;
             default:

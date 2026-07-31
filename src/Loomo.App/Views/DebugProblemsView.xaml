@@ -75,7 +75,11 @@
                                     </ToggleButton>
                                     <ContentPresenter x:Name="PART_Header" Grid.Column="1" ContentSource="Header"
                                                       Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
-                                                      HorizontalAlignment="Stretch" />
+                                                      HorizontalAlignment="Stretch">
+                                        <ContentPresenter.Resources>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                        </ContentPresenter.Resources>
+                                    </ContentPresenter>
                                 </Grid>
                             </Border>
                             <Border Grid.Row="1" Margin="11,0,0,0">

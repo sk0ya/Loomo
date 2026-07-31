@@ -30,6 +30,16 @@
         <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
     </Style>
 
+    <!-- テンプレート内の ContentPresenter が文字列 Content から作る TextBlock は、上の暗黙 TextBlock
+         スタイル（Foreground=Fg）を受ける。スタイルの Setter は継承より強いので、コントロール側で
+         設定した Foreground（選択中の AccentFg など）は文字まで届かない＝指定が黙って無視される。
+         テンプレートの ContentPresenter.Resources にこれを置くと、最も近い Control（＝そのコントロール
+         自身）の Foreground を継いで、指定どおりの文字色になる。 -->
+    <Style x:Key="ContentText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="Foreground"
+                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Control}}}" />
+    </Style>
+
     <Style TargetType="ToolTip">
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="Background" Value="{DynamicResource BgAlt}" />
@@ -45,7 +55,11 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter />
+                        <ContentPresenter>
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                 </ControlTemplate>
             </Setter.Value>
@@ -64,7 +78,11 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}"
                             CornerRadius="4" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -96,7 +114,11 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="4" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -125,7 +147,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -148,7 +174,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="10,3">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -156,7 +186,7 @@
                         </Trigger>
                         <Trigger Property="Tag" Value="active">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource Accent}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -179,7 +209,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -198,7 +232,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -250,7 +288,11 @@
                                   StrokeLineJoin="Round" Data="M1,5 L4,8.5 L9,1.5" />
                         </Border>
                         <ContentPresenter Grid.Column="1" VerticalAlignment="Center"
-                                          RecognizesAccessKey="True" />
+                                          RecognizesAccessKey="True">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <!-- ラベルが無いチェックボックス（ツリー行など）では、ボックス右の
@@ -284,7 +326,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
                     <Border x:Name="b" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter />
+                        <ContentPresenter>
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
@@ -466,7 +512,11 @@
                             <ContentPresenter Grid.Column="0"
                                               ContentSource="Header"
                                               VerticalAlignment="Center"
-                                              RecognizesAccessKey="True" />
+                                              RecognizesAccessKey="True">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                             <!-- 右端：サブメニューありは▸、なければショートカット文字列。 -->
                             <TextBlock x:Name="gesture" Grid.Column="1"
                                        Text="{TemplateBinding InputGestureText}"
@@ -684,7 +734,11 @@
                     <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="Center" />
+                                          VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -872,7 +926,11 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -897,7 +955,11 @@
                     <Border x:Name="Bg" Background="Transparent" BorderBrush="Transparent"
                             BorderThickness="1" CornerRadius="3">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          Margin="4,2" />
+                                          Margin="4,2">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -907,10 +969,11 @@
                         <Trigger Property="IsToday" Value="True">
                             <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource Accent}" />
                         </Trigger>
-                        <!-- 選択日：選択行と同じ背景 -->
+                        <!-- 選択日：選択行と同じ背景。文字は Fg（SelectionBg は Accent ではないので
+                             AccentFg を載せると暗背景×暗文字になり消える）。 -->
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SelectionBg}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                         </Trigger>
                         <!-- 前後の月の日 -->
                         <Trigger Property="IsInactive" Value="True">
@@ -941,7 +1004,11 @@
                 <ControlTemplate TargetType="CalendarButton">
                     <Border x:Name="Bg" Background="Transparent" CornerRadius="3">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          Margin="6,4" />
+                                          Margin="6,4">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -949,7 +1016,7 @@
                         </Trigger>
                         <Trigger Property="HasSelectedDays" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SelectionBg}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                         </Trigger>
                         <Trigger Property="IsInactive" Value="True">
                             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -1139,7 +1206,11 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="3" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
