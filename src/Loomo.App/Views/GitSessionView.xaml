@@ -108,8 +108,20 @@
             <Setter Property="Background" Value="{DynamicResource BgAlt}" />
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
-            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Padding" Value="6,1" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <!-- 見出し文字は ContentTemplate で明示的に Fs11 を指定する。ContentPresenter が
+                 文字列から起こす TextBlock には App 既定の暗黙 TextBlock スタイル（Fs13）が効いて
+                 しまい、上の FontSize（継承値）に勝つ＝見出しだけ本文と同じ大きさになって
+                 ヘッダー行が無駄に高くなるため。 -->
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="GridViewColumnHeader">
