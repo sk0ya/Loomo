@@ -404,22 +404,30 @@ public sealed partial class FolderTreeViewModel
             : relative;
     }
 
+    private static IEnumerable<FileNodeViewModel> Walk(IEnumerable<FileNodeViewModel> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            yield return node;
+            foreach (var child in Walk(node.Children))
+                yield return child;
+        }
+    }
+
     // ピン状態の変化を、読込済みノードの IsPinned（コンテキストメニューの出し分け）へ反映する。
     private void RefreshPinMarks()
     {
-        static IEnumerable<FileNodeViewModel> Walk(IEnumerable<FileNodeViewModel> nodes)
-        {
-            foreach (var node in nodes)
-            {
-                yield return node;
-                foreach (var child in Walk(node.Children))
-                    yield return child;
-            }
-        }
-
         foreach (var node in Walk(Nodes))
             if (node.IsDirectory && node.FullPath.Length > 0)
                 node.IsPinned = IsPinnedPath(node.FullPath);
+    }
+
+    // テーマの明暗が変わるとアイコンの配色が入れ替わるので、読込済みノードに引き直させる。
+    // アイコン自体は DynamicResource ではなく描画済みの DrawingImage なので、自動では追随しない。
+    private void RefreshIcons()
+    {
+        foreach (var node in Walk(Nodes))
+            node.RefreshIcon();
     }
 
     private static bool PathsEqual(string a, string b)

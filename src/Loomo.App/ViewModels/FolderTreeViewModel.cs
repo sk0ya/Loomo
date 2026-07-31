@@ -153,6 +153,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _fileCommands = fileCommands;
         _query = query;
         _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
+        // アプリと同じ寿命の ViewModel なので購読は解除しない。
+        FileIcons.PaletteChanged += (_, _) => RefreshIcons();
     }
 
     // AddFolder/RemoveFolder（および RemoveFolder で単一フォルダーへ戻った場合）に反応する。

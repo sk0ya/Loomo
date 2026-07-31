@@ -421,14 +421,10 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Path Grid.Column="0" Data="{Binding IconGeometry}"
-                              Stroke="{Binding IconBrush}"
-                              StrokeThickness="1.5"
-                              StrokeLineJoin="Round"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              Width="14" Height="14" Stretch="Uniform"
-                              VerticalAlignment="Center" Margin="0,0,5,0" />
+                        <!-- 色ちがいの線 数本でできているので DrawingImage を 1 要素で描く（FileIcons）。 -->
+                        <Image Grid.Column="0" Source="{Binding IconImage}"
+                               Width="16" Height="16"
+                               VerticalAlignment="Center" Margin="0,0,5,0" />
                         <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <ContentPresenter Grid.Column="2" Content="{Binding}"
@@ -452,14 +448,10 @@
                                 <MenuItem Header="置換" Tag="ReplaceFileMenu" Click="OnReplaceInGroupClick" />
                             </ContextMenu>
                         </Grid.ContextMenu>
-                        <Path Grid.Column="0" Data="{Binding IconGeometry}"
-                              Stroke="{Binding IconBrush}"
-                              StrokeThickness="1.5"
-                              StrokeLineJoin="Round"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              Width="14" Height="14" Stretch="Uniform"
-                              VerticalAlignment="Center" Margin="0,0,5,0" />
+                        <!-- 色ちがいの線 数本でできているので DrawingImage を 1 要素で描く（FileIcons）。 -->
+                        <Image Grid.Column="0" Source="{Binding IconImage}"
+                               Width="16" Height="16"
+                               VerticalAlignment="Center" Margin="0,0,5,0" />
                         <TextBlock Grid.Column="1" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
                                    views:SearchHighlightBehavior.Text="{Binding FileName}"
                                    views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"

@@ -34,10 +34,14 @@ public sealed partial class FileNodeViewModel : ObservableObject
     /// を呼び、表示中サブフォルダーを切替える。</summary>
     [ObservableProperty] private FolderRootOption? _selectedRootSwitchOption;
 
-    // 拡張子から分類したベクターアイコン。形状は種別ごと、色はカテゴリ（コード/設定/マークアップ/
-    // 画像/フォルダ/既定）で割り当てる。テーマに依らず一定（ファイル種別の色は固定が分かりやすい）。
-    public Geometry IconGeometry { get; }
-    public Brush IconBrush { get; }
+    // 拡張子・ファイル名から引いたベクターアイコン（FileIcons）。実体はアイコン種別ごとの共有
+    // インスタンスなので、都度引いてもコストは配列参照ぶんしかない。フォルダーは開閉で絵が変わり、
+    // 配色はテーマの明暗で入れ替わるため、保持せず引き当て直す。
+    private readonly int _iconIndex;
+
+    public ImageSource IconImage => IsDirectory
+        ? FileIcons.FolderImage(IsExpanded)
+        : FileIcons.ImageFor(_iconIndex);
 
     // HTML ファイルだけ「ブラウザで開く」コンテキストメニューを出すための判定。
     public bool IsHtml => !IsDirectory
@@ -105,9 +109,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         // 呼んでしまう（不要な再切替・RootStateChanged の多重発火）。
         _selectedRootSwitchOption = selectedRootSwitchOption;
 
-        var iconKind = FileIcons.Classify(fullPath, isDirectory);
-        IconGeometry = FileIcons.GeometryFor(iconKind);
-        IconBrush = FileIcons.BrushFor(iconKind);
+        _iconIndex = FileIcons.IndexFor(fullPath, isDirectory);
 
         if (isDirectory) Children.Add(Placeholder); // 遅延読込用ダミー
     }
@@ -120,6 +122,9 @@ public sealed partial class FileNodeViewModel : ObservableObject
         IsGitRepository = _owner.IsGitRepositoryFor(RootKey);
     }
 
+    /// <summary>テーマの明暗が変わってアイコンの配色が入れ替わったとき、引き直させる。</summary>
+    public void RefreshIcon() => OnPropertyChanged(nameof(IconImage));
+
     private static readonly FileNodeViewModel Placeholder = new();
     private FileNodeViewModel()
     {
@@ -128,12 +133,14 @@ public sealed partial class FileNodeViewModel : ObservableObject
         IsDirectory = false;
         RootKey = "";
         _owner = null!;
-        IconGeometry = FileIcons.GeometryFor(FileIconKind.Document);
-        IconBrush = FileIcons.BrushFor(FileIconKind.Document);
+        _iconIndex = FileIconData.DefaultFileIndex;
     }
 
     partial void OnIsExpandedChanged(bool value)
     {
+        // フォルダーは開閉で絵が変わる
+        if (IsDirectory) OnPropertyChanged(nameof(IconImage));
+
         if (value && IsDirectory && !_loaded)
         {
             _loaded = true;

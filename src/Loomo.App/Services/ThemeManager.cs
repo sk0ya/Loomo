@@ -46,6 +46,10 @@ public sealed class ThemeManager
 
     private static void ApplyPalette(AppTheme theme)
     {
+        // ファイル種別アイコンは DynamicResource を経由しない（描画済みの DrawingImage なので）ため、
+        // 明暗どちらの配色を使うかをここで教える。切り替わった場合はツリー側が引き直す。
+        ViewModels.FileIcons.UseLightPalette = theme.IsLight();
+
         var app = Application.Current;
         if (app is null) return;
 

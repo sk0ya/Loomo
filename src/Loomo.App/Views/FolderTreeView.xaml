@@ -414,16 +414,12 @@
                                        VerticalAlignment="Center"
                                        Visibility="Collapsed" />
                             <StackPanel x:Name="NormalRow" DockPanel.Dock="Left" Orientation="Horizontal">
-                                <Path Data="{Binding IconGeometry}"
-                                      Stroke="{Binding IconBrush}"
-                                      StrokeThickness="1.5"
-                                      StrokeLineJoin="Round"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,7,0" />
+                                <!-- 1 個のアイコンが色ちがいの線 数本でできているため、Path ではなく
+                                     DrawingImage（FileIcons が凍結して使い回す）を 1 要素で描く。 -->
+                                <Image Source="{Binding IconImage}"
+                                       Width="16" Height="16"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
                                 <TextBlock x:Name="GitName" Text="{Binding Name}" />
                             </StackPanel>
                             <!-- 複数フォルダーワークスペースの見出し行（ワークスペースフォルダー自身）だけ、
