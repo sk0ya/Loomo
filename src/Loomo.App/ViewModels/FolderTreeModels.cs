@@ -3,7 +3,7 @@ using sk0ya.Loomo.Core.Agent;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-// 「ターミナルにセット」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
+// 「ターミナルへ送る」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
 public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
 
 /// <summary>「AIワークフロー」コンテキストメニューからの実行要求。<see cref="Input"/> は構造化された実行入力。</summary>

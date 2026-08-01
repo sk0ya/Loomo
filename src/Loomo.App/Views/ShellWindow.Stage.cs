@@ -135,10 +135,9 @@ public partial class ShellWindow {
         UpdateModeButtons();
         RebuildPaneLayout();
         FocusPane(_stagePane);
-        if (IsPaneVisible(PaneKind.Terminal))
-            MarkPaneActivitySeen(PaneKind.Terminal);
-        if (IsPaneVisible(PaneKind.Ai))
-            MarkPaneActivitySeen(PaneKind.Ai);
+        foreach (var kind in new[] { PaneKind.Terminal, PaneKind.Debug, PaneKind.TsIde, PaneKind.Ai })
+            if (IsPaneVisible(kind))
+                MarkPaneActivitySeen(kind);
         SaveActiveWorkspaceSnapshot();
     }
     private void SetStagePane(PaneKind kind) {

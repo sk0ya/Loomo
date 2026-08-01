@@ -368,7 +368,8 @@
                                     <MenuItem Header="ブラウザで開く" Click="OnOpenInBrowserClick"
                                               Visibility="{Binding IsHtml, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
-                                    <MenuItem Header="ターミナルにセット" Click="OnSetInTerminalClick" />
+                                    <MenuItem Header="ターミナルへ送る" Click="OnSetInTerminalClick"
+                                              ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
                                     <!-- Git リポジトリ配下のときだけ：Git 系操作をまとめる。履歴表示は
                                          ファイル・フォルダ両方（Git ペインをそのパスの履歴に絞る）、Git Blame は
                                          ファイルのみ（エディタ VimEditorControl のネイティブ :Gblame をトリガー）。 -->

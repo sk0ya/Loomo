@@ -1,14 +1,19 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。Terminal と AI の長い処理を
+/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。Terminal / IDE / TS IDE / AI の長い処理を
 /// 袖・俯瞰カードのバッジで知らせ、ペインを見ていない間も実行中／承認待ち／完了／失敗を
 /// 目の端で追えるようにする。未確認結果は対象ペインが舞台に立つと消える。</summary>
 public partial class ShellWindow {
-    private enum PaneActivityKind { None, Running, Approval, Succeeded, Failed }
+    private enum PaneActivityKind { None, Running, Stopped, Approval, Succeeded, Failed }
     private sealed class TerminalActivityState {
         public bool Running;
         public int? UnseenExitCode;
     }
     private readonly Dictionary<Guid, TerminalActivityState> _terminalActivity = new();
+    private sealed class IdeActivityState {
+        public bool TaskWasRunning;
+        public PaneActivityKind UnseenCompletion;
+    }
+    private readonly Dictionary<PaneKind, IdeActivityState> _ideActivity = new();
     private readonly Dictionary<PaneKind, (Border Chip, TextBlock Label)> _stageActivityBadges = new();
     private PaneActivityKind _aiUnseenCompletion;
 
@@ -27,6 +32,34 @@ public partial class ShellWindow {
         _vm.AiBar.Workflow.Approvals.CollectionChanged += (_, _) =>
             UpdatePaneActivityBadge(PaneKind.Ai);
     }
+    private void HookIdeActivity(PaneKind kind, DebugManagerViewModelBase manager) {
+        var state = new IdeActivityState { TaskWasRunning = manager.IsTaskRunning };
+        _ideActivity[kind] = state;
+        manager.PropertyChanged += (_, e) => {
+            if (e.PropertyName is nameof(DebugManagerViewModelBase.IsTaskRunning)
+                or nameof(DebugManagerViewModelBase.IsBusy)
+                or nameof(DebugManagerViewModelBase.IsStopped)
+                or nameof(DebugManagerViewModelBase.StatusMessage))
+                OnIdeActivityChanged(kind, manager, state);
+        };
+        manager.SessionStateChanged += () => OnIdeActivityChanged(kind, manager, state);
+    }
+    private void OnIdeActivityChanged(PaneKind kind, DebugManagerViewModelBase manager, IdeActivityState state) {
+        if (state.TaskWasRunning && !manager.IsTaskRunning)
+            state.UnseenCompletion = IsPaneWatched(kind)
+                ? PaneActivityKind.None
+                : IsFailedTaskStatus(manager.StatusMessage)
+                    ? PaneActivityKind.Failed
+                    : PaneActivityKind.Succeeded;
+        if (manager.IsTaskRunning)
+            state.UnseenCompletion = PaneActivityKind.None;
+        state.TaskWasRunning = manager.IsTaskRunning;
+        UpdatePaneActivityBadge(kind);
+    }
+    private static bool IsFailedTaskStatus(string status)
+        => status.Contains("失敗", StringComparison.Ordinal)
+           || status.Contains("エラー", StringComparison.Ordinal)
+           || status.Contains("中断", StringComparison.Ordinal);
 
     private void OnAiActivityChanged(bool chatChanged) {
         if (chatChanged && !_vm.AiBar.IsBusy && _vm.AiBar.LastRunSucceeded is { } chatSucceeded)
@@ -70,20 +103,20 @@ public partial class ShellWindow {
         }
         UpdatePaneActivityBadge(PaneKind.Terminal);
     }
-    private bool IsTerminalPaneWatched()
+    private bool IsPaneWatched(PaneKind kind)
         => _stageActive
-            ? _stagePane == PaneKind.Terminal && !_overviewActive
-            : IsPaneVisible(PaneKind.Terminal);
-    private bool IsAiPaneWatched()
-        => _stageActive
-            ? _stagePane == PaneKind.Ai && !_overviewActive
-            : IsPaneVisible(PaneKind.Ai);
+            ? _stagePane == kind && !_overviewActive
+            : IsPaneVisible(kind);
+    private bool IsTerminalPaneWatched() => IsPaneWatched(PaneKind.Terminal);
+    private bool IsAiPaneWatched() => IsPaneWatched(PaneKind.Ai);
     private void MarkPaneActivitySeen(PaneKind kind) {
         if (kind == PaneKind.Terminal) {
             foreach (var state in _terminalActivity.Values)
                 state.UnseenExitCode = null;
         } else if (kind == PaneKind.Ai) {
             _aiUnseenCompletion = PaneActivityKind.None;
+        } else if (_ideActivity.TryGetValue(kind, out var ideState)) {
+            ideState.UnseenCompletion = PaneActivityKind.None;
         } else {
             return;
         }
@@ -109,6 +142,7 @@ public partial class ShellWindow {
         var exitCode = 0;
         var activity = kind switch {
             PaneKind.Terminal => AggregateTerminalActivity(out exitCode),
+            PaneKind.Debug or PaneKind.TsIde => AggregateIdeActivity(kind),
             PaneKind.Ai => AggregateAiActivity(),
             _ => PaneActivityKind.None,
         };
@@ -119,7 +153,18 @@ public partial class ShellWindow {
                 chip.Background = (Brush)FindResource("Accent");
                 // アクセント塗りの上なので文字色もテーマ連動（白固定だと明るいアクセントで読めない）。
                 label.Foreground = (Brush)FindResource("AccentFg");
-                label.Text = "● 実行中";
+                label.Text = kind switch {
+                    PaneKind.Debug or PaneKind.TsIde when GetIdeManager(kind).IsTaskRunning
+                        => $"● {GetIdeTaskLabel(GetIdeManager(kind).StatusMessage)}",
+                    PaneKind.Debug or PaneKind.TsIde => "● デバッグ中",
+                    _ => "● 実行中",
+                };
+                break;
+            case PaneActivityKind.Stopped:
+                chip.Visibility = Visibility.Visible;
+                chip.Background = (Brush)FindResource("Accent");
+                label.Foreground = (Brush)FindResource("AccentFg");
+                label.Text = "● 停止中";
                 break;
             case PaneActivityKind.Approval:
                 chip.Visibility = Visibility.Visible;
@@ -131,7 +176,7 @@ public partial class ShellWindow {
                 chip.Visibility = Visibility.Visible;
                 chip.Background = PaneActivityFailedBrush;
                 label.Foreground = Brushes.White;   // 固定の赤地
-                label.Text = $"✗ 失敗 {exitCode}";
+                label.Text = kind == PaneKind.Terminal ? $"✗ 失敗 {exitCode}" : "✗ 失敗";
                 break;
             case PaneActivityKind.Succeeded:
                 chip.Visibility = Visibility.Visible;
@@ -143,6 +188,24 @@ public partial class ShellWindow {
                 chip.Visibility = Visibility.Collapsed;
                 break;
         }
+    }
+    private DebugManagerViewModelBase GetIdeManager(PaneKind kind)
+        => kind == PaneKind.Debug ? _vm.Debug : _vm.TsIde;
+    private PaneActivityKind AggregateIdeActivity(PaneKind kind) {
+        var manager = GetIdeManager(kind);
+        if (manager.IsTaskRunning)
+            return PaneActivityKind.Running;
+        if (manager.Sessions.Any(s => s.IsBusy))
+            return manager.Sessions.Any(s => s.IsStopped)
+                ? PaneActivityKind.Stopped
+                : PaneActivityKind.Running;
+        return _ideActivity.TryGetValue(kind, out var state)
+            ? state.UnseenCompletion
+            : PaneActivityKind.None;
+    }
+    private static string GetIdeTaskLabel(string status) {
+        var label = status.Trim().TrimEnd('…', '.');
+        return string.IsNullOrWhiteSpace(label) ? "実行中" : label;
     }
     private PaneActivityKind AggregateAiActivity() {
         if (_vm.AiBar.IsBusy || _vm.AiBar.Workflow.IsRunning) {
@@ -160,7 +223,7 @@ public partial class ShellWindow {
     private static readonly Brush PaneActivityFailedBrush =
         new SolidColorBrush(Color.FromRgb(0xD9, 0x53, 0x4D));
     private void AttachActivityBadge(Grid cardRoot, PaneKind kind, bool isOverview) {
-        if (kind is not (PaneKind.Terminal or PaneKind.Ai))
+        if (kind is not (PaneKind.Terminal or PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai))
             return;
         var label = new TextBlock {
             FontSize = isOverview ? 12 : 11, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, };
