@@ -165,6 +165,7 @@ public partial class ShellWindow : Window {
                     PaneLayoutDebugLog.Log($"WingColumn.Width -> {WingColumn.Width}", withCaller: true));
         }
         InitializeSidebarSections();
+        HookAiActivity();
         vm.PropertyChanged += OnShellPropertyChanged;
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;

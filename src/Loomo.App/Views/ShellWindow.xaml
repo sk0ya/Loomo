@@ -1467,7 +1467,7 @@
                     <Button x:Name="TrailDateTimeButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}"
                             Padding="8,1" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
                             Content="{Binding Trail.DateTimeLabel}"
-                            ToolTip="クリックで日付と時間帯を選んでその軌跡へ移動（選択はすぐ反映・フォーカスを外すと閉じる）"
+                            ToolTip="軌跡（作業履歴）を日付・時間帯からたどる。地点を選ぶと、そのときの画面配置へ戻れます"
                             Click="OnTrailDateTimeClick" />
                     <Popup x:Name="TrailDateTimePopup" PlacementTarget="{Binding ElementName=TrailDateTimeButton}"
                            Placement="Top" StaysOpen="True" AllowsTransparency="True">

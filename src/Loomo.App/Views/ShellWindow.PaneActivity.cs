@@ -1,13 +1,50 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。OSC133 シェル統合 （sk0ya.Terminal.Controls 1.0.8 の <see cref="TerminalTabView.ShellCommandActivity"/>）で 可視ターミナルのコマンド実行を検知し、実行中／未確認の成功・失敗を袖・俯瞰カードの バッジで知らせる。長いビルドを袖に置いたまま、終わったことを目の端で気づける。 未確認の結果はターミナルが舞台に立つ（＝目に入る）と消える。</summary>
+/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。Terminal と AI の長い処理を
+/// 袖・俯瞰カードのバッジで知らせ、ペインを見ていない間も実行中／承認待ち／完了／失敗を
+/// 目の端で追えるようにする。未確認結果は対象ペインが舞台に立つと消える。</summary>
 public partial class ShellWindow {
-    private enum PaneActivityKind { None, Running, Succeeded, Failed }
+    private enum PaneActivityKind { None, Running, Approval, Succeeded, Failed }
     private sealed class TerminalActivityState {
         public bool Running;
         public int? UnseenExitCode;
     }
     private readonly Dictionary<Guid, TerminalActivityState> _terminalActivity = new();
     private readonly Dictionary<PaneKind, (Border Chip, TextBlock Label)> _stageActivityBadges = new();
+    private PaneActivityKind _aiUnseenCompletion;
+
+    private void HookAiActivity() {
+        _vm.AiBar.PropertyChanged += (_, e) => {
+            if (e.PropertyName is nameof(AiBarViewModel.IsBusy)
+                or nameof(AiBarViewModel.StatusText)
+                or nameof(AiBarViewModel.LastRunSucceeded))
+                OnAiActivityChanged(chatChanged: true);
+        };
+        _vm.AiBar.Workflow.PropertyChanged += (_, e) => {
+            if (e.PropertyName is nameof(WorkflowViewModel.IsRunning)
+                or nameof(WorkflowViewModel.RunStatus))
+                OnAiActivityChanged(chatChanged: false);
+        };
+        _vm.AiBar.Workflow.Approvals.CollectionChanged += (_, _) =>
+            UpdatePaneActivityBadge(PaneKind.Ai);
+    }
+
+    private void OnAiActivityChanged(bool chatChanged) {
+        if (chatChanged && !_vm.AiBar.IsBusy && _vm.AiBar.LastRunSucceeded is { } chatSucceeded)
+            _aiUnseenCompletion = IsAiPaneWatched()
+                ? PaneActivityKind.None
+                : chatSucceeded ? PaneActivityKind.Succeeded : PaneActivityKind.Failed;
+        else if (!chatChanged && !_vm.AiBar.Workflow.IsRunning
+                 && !string.IsNullOrWhiteSpace(_vm.AiBar.Workflow.RunStatus))
+            _aiUnseenCompletion = IsAiPaneWatched()
+                ? PaneActivityKind.None
+                : _vm.AiBar.Workflow.RunStatus == "完了しました。"
+                    ? PaneActivityKind.Succeeded
+                    : PaneActivityKind.Failed;
+
+        if (_vm.AiBar.IsBusy || _vm.AiBar.Workflow.IsRunning)
+            _aiUnseenCompletion = PaneActivityKind.None;
+        UpdatePaneActivityBadge(PaneKind.Ai);
+    }
     private void HookTerminalActivity(TerminalTab tab)
         => tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
     private void ForgetTerminalActivity(Guid tabId) {
@@ -37,11 +74,19 @@ public partial class ShellWindow {
         => _stageActive
             ? _stagePane == PaneKind.Terminal && !_overviewActive
             : IsPaneVisible(PaneKind.Terminal);
+    private bool IsAiPaneWatched()
+        => _stageActive
+            ? _stagePane == PaneKind.Ai && !_overviewActive
+            : IsPaneVisible(PaneKind.Ai);
     private void MarkPaneActivitySeen(PaneKind kind) {
-        if (kind != PaneKind.Terminal)
+        if (kind == PaneKind.Terminal) {
+            foreach (var state in _terminalActivity.Values)
+                state.UnseenExitCode = null;
+        } else if (kind == PaneKind.Ai) {
+            _aiUnseenCompletion = PaneActivityKind.None;
+        } else {
             return;
-        foreach (var state in _terminalActivity.Values)
-            state.UnseenExitCode = null;
+        }
         UpdatePaneActivityBadge(kind);
     }
     private PaneActivityKind AggregateTerminalActivity(out int exitCode) {
@@ -58,11 +103,16 @@ public partial class ShellWindow {
             : PaneActivityKind.None;
     }
     private void UpdatePaneActivityBadge(PaneKind kind) {
-        if (kind != PaneKind.Terminal
-            || !_stageActivityBadges.TryGetValue(kind, out var badge))
+        if (!_stageActivityBadges.TryGetValue(kind, out var badge))
             return;
         var (chip, label) = badge;
-        switch (AggregateTerminalActivity(out var exitCode))
+        var exitCode = 0;
+        var activity = kind switch {
+            PaneKind.Terminal => AggregateTerminalActivity(out exitCode),
+            PaneKind.Ai => AggregateAiActivity(),
+            _ => PaneActivityKind.None,
+        };
+        switch (activity)
         {
             case PaneActivityKind.Running:
                 chip.Visibility = Visibility.Visible;
@@ -70,6 +120,12 @@ public partial class ShellWindow {
                 // アクセント塗りの上なので文字色もテーマ連動（白固定だと明るいアクセントで読めない）。
                 label.Foreground = (Brush)FindResource("AccentFg");
                 label.Text = "● 実行中";
+                break;
+            case PaneActivityKind.Approval:
+                chip.Visibility = Visibility.Visible;
+                chip.Background = (Brush)FindResource("Accent");
+                label.Foreground = (Brush)FindResource("AccentFg");
+                label.Text = "● 承認待ち";
                 break;
             case PaneActivityKind.Failed:
                 chip.Visibility = Visibility.Visible;
@@ -88,12 +144,23 @@ public partial class ShellWindow {
                 break;
         }
     }
+    private PaneActivityKind AggregateAiActivity() {
+        if (_vm.AiBar.IsBusy || _vm.AiBar.Workflow.IsRunning) {
+            var waitingApproval = _vm.AiBar.IsBusy
+                ? _vm.AiBar.StatusText.Contains("承認待ち", StringComparison.Ordinal)
+                : _vm.AiBar.Workflow.Approvals.Count > 0;
+            return waitingApproval
+                ? PaneActivityKind.Approval
+                : PaneActivityKind.Running;
+        }
+        return _aiUnseenCompletion;
+    }
     private static readonly Brush PaneActivitySucceededBrush =
         new SolidColorBrush(Color.FromRgb(0x2E, 0x9E, 0x5B));
     private static readonly Brush PaneActivityFailedBrush =
         new SolidColorBrush(Color.FromRgb(0xD9, 0x53, 0x4D));
     private void AttachActivityBadge(Grid cardRoot, PaneKind kind, bool isOverview) {
-        if (kind != PaneKind.Terminal)
+        if (kind is not (PaneKind.Terminal or PaneKind.Ai))
             return;
         var label = new TextBlock {
             FontSize = isOverview ? 12 : 11, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, };

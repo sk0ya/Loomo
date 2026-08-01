@@ -58,6 +58,7 @@ public sealed partial class AiBarViewModel
         WarmupCompletionTotalText = "";
         WarmupCompletionStages.Clear();
         IsBusy = true;
+        LastRunSucceeded = null;
         SetStatus("考え中…");
 
         // トレース（§20）と保存が同じIDを共有するよう、ターン開始前にセッションIDを確定する。
@@ -74,6 +75,7 @@ public sealed partial class AiBarViewModel
         var loggedThinking = false;
         var loggedResponse = false;
         var aiCallCount = 0;
+        var runSucceeded = false;
         var rawStream = new StringBuilder();   // 現在のAI呼び出しの揮発性ライブ出力（進捗プレビュー専用）
 
         log.Append(ActivityKind.Config, TranscriptFormatting.FormatRunConfig(_settings));
@@ -203,6 +205,7 @@ public sealed partial class AiBarViewModel
                         break;
 
                     case TurnCompleted:
+                        runSucceeded = true;
                         log.Append(ActivityKind.Complete, $"回答が完了しました。合計 {FormatDuration(turnClock.Elapsed)} かかりました。");
                         break;
                 }
@@ -228,6 +231,7 @@ public sealed partial class AiBarViewModel
             activity.Header = $"進行状況 ({FormatDuration(turnClock.Elapsed)})";
             FinishTimedEntry(ref assistant, ref assistantClock, "エージェント");
             FinishTimedEntry(ref thinking, ref thinkingClock, "💭 思考");
+            LastRunSucceeded = runSucceeded;
             IsBusy = false;
             ClearStatus();
             _cts?.Dispose();
@@ -360,4 +364,3 @@ public sealed partial class AiBarViewModel
         clock = null;
     }
 }
-

@@ -107,6 +107,10 @@ public sealed partial class AiBarViewModel : ObservableObject
     /// 経過秒を併記して、止まっているのではなく動作中だと分かるようにする。</summary>
     [ObservableProperty] private string _statusText = "";
 
+    /// <summary>直前のチャット実行結果。袖の活動バッジが、AIペインを見ていない間の完了／失敗を
+    /// 通知するために使う。実行前は null、正常な <c>TurnCompleted</c> で true、それ以外は false。</summary>
+    [ObservableProperty] private bool? _lastRunSucceeded;
+
     private string _statusPhase = "";                 // 経過秒を除いたフェーズ説明
     private readonly Stopwatch _statusClock = new();   // 処理開始からの経過時間
     private readonly DispatcherTimer _statusTimer;     // 経過秒の表示を更新する

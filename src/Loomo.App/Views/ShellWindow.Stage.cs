@@ -137,6 +137,8 @@ public partial class ShellWindow {
         FocusPane(_stagePane);
         if (IsPaneVisible(PaneKind.Terminal))
             MarkPaneActivitySeen(PaneKind.Terminal);
+        if (IsPaneVisible(PaneKind.Ai))
+            MarkPaneActivitySeen(PaneKind.Ai);
         SaveActiveWorkspaceSnapshot();
     }
     private void SetStagePane(PaneKind kind) {
