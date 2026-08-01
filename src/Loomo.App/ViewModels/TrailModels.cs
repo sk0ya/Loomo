@@ -204,7 +204,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
             };
             var body = location is null ? $"{Glyph} {name}" : $"{Glyph} {name}\n{location}";
             var mode = Mode == DisplayMode.Solo
-                ? $"ソロ · {StagePane?.ToString() ?? "不明"}"
+                ? $"集中 · {StagePane?.ToString() ?? "不明"}"
                 : "レイアウト";
             return $"{body}\n{mode}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
         }
@@ -227,4 +227,3 @@ public sealed partial class TrailHourViewModel : ObservableObject
     /// <see cref="TrailViewModel"/> が現在地の変化に合わせて更新する（§27.7.2）。</summary>
     [ObservableProperty] private bool _isSelected;
 }
-

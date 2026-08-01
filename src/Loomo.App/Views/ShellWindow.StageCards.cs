@@ -341,7 +341,7 @@ public partial class ShellWindow {
         var onStage = isOverview && OnStage(kind);
         var height = Math.Round(width / CardAspect);
         var card = new Border {
-            Width = width, Height = height, Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4), CornerRadius = new CornerRadius(6), Background = (Brush)FindResource("Panel"), BorderBrush = onStage ? accent : borderBrush, BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = PaneLabel(kind), Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6), };
+            Width = width, Height = height, Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4), CornerRadius = new CornerRadius(6), Background = (Brush)FindResource("Panel"), BorderBrush = onStage ? accent : borderBrush, BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = isOverview ? PaneLabel(kind) : $"{PaneLabel(kind)} — クリックで舞台へ", Clip =new RectangleGeometry(new Rect(0, 0, width, height), 6, 6), };
         var root = new Grid { ClipToBounds = true };
         if (livePreview is not null)
             root.Children.Add(livePreview);
@@ -350,7 +350,8 @@ public partial class ShellWindow {
                 IsHitTestVisible = false, Background = thumbnail, });
         root.Children.Add(new Border {
             VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
-                Text = PaneLabel(kind), FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
+                Text = PaneLabel(kind), TextTrimming = TextTrimming.CharacterEllipsis,
+                FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
         card.Child = root;
         AttachActivityBadge(root, kind, isOverview);
         var rest = isOverview ? 1.0 : WingRestOpacity;

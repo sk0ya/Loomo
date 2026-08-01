@@ -261,132 +261,117 @@
                 <!-- ウィンドウ操作ボタン＋ペイン表示トグル（キャプション領域だがクリック可能にする） -->
                 <StackPanel x:Name="WindowControlsPanel" Orientation="Horizontal" HorizontalAlignment="Right"
                             WindowChrome.IsHitTestVisibleInChrome="True">
-                    <!-- ソロ⇄レイアウト切替（ShellWindow.Stage.cs / Ctrl+Shift+T）。チェック＝ソロ。 -->
-                    <ToggleButton x:Name="StageModeToggle" Style="{StaticResource PaneToggle}"
-                                  ToolTip="ソロ⇄レイアウトを切替（ソロ＝1ペインを舞台に＋袖でライブ待機）"
-                                  Click="OnToggleStageMode">
-                        <Path Style="{StaticResource PaneToggleIcon}"
-                              Data="M2,3 H10.5 V13 H2 Z M12,3 H14 V6.5 H12 Z M12,9.5 H14 V13 H12 Z" />
-                    </ToggleButton>
-
-                    <!-- レイアウト（自由タイル配置）の保存・切替。レイアウトモード中だけ表示（ShellWindow.Layouts.cs）。 -->
-                    <Button x:Name="LayoutButton" Height="24" Margin="2,0,0,0" Padding="8,0"
-                            Style="{StaticResource BranchMenuItem}" Visibility="Collapsed"
-                            ToolTip="レイアウトを保存・切替（Ctrl+T で巡回）" Click="OnLayoutMenuClick"
-                            WindowChrome.IsHitTestVisibleInChrome="True">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="📐" VerticalAlignment="Center" Margin="0,0,5,0" />
-                            <TextBlock Text="レイアウト:" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs12}"
-                                       VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock x:Name="LayoutButtonLabel" Text="（未保存）" FontSize="{DynamicResource Fs12}"
-                                       VerticalAlignment="Center" MaxWidth="160" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
-                                       VerticalAlignment="Center" Margin="5,1,0,0" />
-                        </StackPanel>
-                    </Button>
-                    <Popup x:Name="LayoutPopup" PlacementTarget="{Binding ElementName=LayoutButton}"
-                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="4" Padding="4"
-                                MinWidth="260" MaxWidth="380" Margin="0,2,8,8">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
-                            </Border.Effect>
-                            <DockPanel>
-                                <!-- フッター：レイアウト名入力＋保存 -->
-                                <StackPanel DockPanel.Dock="Bottom">
-                                    <Border Height="1" Background="{DynamicResource Border}" Margin="2,4" />
-                                    <DockPanel LastChildFill="True" Margin="4,2">
-                                        <Button DockPanel.Dock="Right" Content="＋ 保存"
-                                                Style="{StaticResource FlatButton}" Padding="10,3" Margin="6,0,0,0"
-                                                Click="OnLayoutSaveClick"
-                                                ToolTip="現在のタイル配置を保存（名前未入力なら自動命名）" />
-                                        <TextBox x:Name="LayoutNameInput" VerticalContentAlignment="Center"
-                                                 Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-                                                 BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
-                                                 ToolTip="レイアウト名" />
-                                    </DockPanel>
-                                </StackPanel>
-                                <!-- 保存レイアウトの一覧（code-behind の BuildLayoutPopup が構築） -->
-                                <StackPanel x:Name="LayoutPopupList" />
-                            </DockPanel>
-                        </Border>
-                    </Popup>
-
-                    <!-- 現在のメインペイン（左上／ソロの舞台）を示すヘッダー。ホバーで直下に縦並びの
-                         ペイントグルを出す。アイコン・ツールチップは code-behind の UpdatePaneToggleStates が
-                         現在のメインペインへ同期する。開くのは OnMainPaneMouseEnter、閉じるのは開いている間の
-                         DispatcherTimer 監視（IsMouseNearPaneTogglePopup）。 -->
-                    <Button x:Name="MainPaneButton" Height="36" Padding="6,0"
+                    <!-- 表示対象と並べ方を1か所にまとめたビュー・スイッチャー。 -->
+                    <Button x:Name="MainPaneButton" Height="36" Padding="9,0"
                             Style="{StaticResource BranchMenuItem}" Foreground="{DynamicResource Fg}"
-                            MouseEnter="OnMainPaneMouseEnter"
-                            WindowChrome.IsHitTestVisibleInChrome="True">
+                            ToolTip="画面の並べ方とメイン画面を変更"
+                            Click="OnMainPaneClick" WindowChrome.IsHitTestVisibleInChrome="True">
                         <StackPanel Orientation="Horizontal">
                             <Path x:Name="MainPaneIcon" Style="{StaticResource PaneToggleIcon}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            <TextBlock x:Name="DisplayModeLabel" Text="分割"
+                                       FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" Margin="7,0,0,0" />
+                            <TextBlock x:Name="MainPaneLabelSeparator" Text="·" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" Margin="5,0" />
+                            <TextBlock x:Name="MainPaneLabel" Text="エディタ" FontSize="{DynamicResource Fs12}"
+                                       VerticalAlignment="Center" MaxWidth="90" TextTrimming="CharacterEllipsis" />
                             <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
-                                       VerticalAlignment="Center" Margin="4,1,0,0" />
+                                       VerticalAlignment="Center" Margin="6,1,0,0" />
                         </StackPanel>
                     </Button>
+
                     <Popup x:Name="PaneTogglePopup" PlacementTarget="{Binding ElementName=MainPaneButton}"
-                           Placement="Bottom" StaysOpen="True" AllowsTransparency="True">
-                        <!-- 開いている間は DispatcherTimer がマウスの画面座標を監視し、ヘッダー（MainPaneButton）と
-                             枠（PaneTogglePopupRoot）の画面矩形を一定スラック分ふくらませた範囲から出たら閉じる
-                             （OpenPaneTogglePopup / IsMouseNearPaneToggle）。透明な当たり判定レイヤーは使わない
-                             （下の UI へのクリックを奪わず、かつスラックを自由に広げられる）。スラック量は
-                             PaneTogglePopupHoverSlackPx。 -->
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                         <Border x:Name="PaneTogglePopupRoot" Background="{DynamicResource Panel}"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
-                                Margin="0,0,8,8">
+                                Width="420" Margin="0,2,8,8" Padding="4">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
                             </Border.Effect>
-                            <!-- 縦並びのペイン表示トグル。アクセント色＝表示中／グレー＝非表示。 -->
-                            <StackPanel x:Name="PaneToggleBar" Orientation="Vertical">
-                                <!-- ターミナル：プロンプト >_ -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Terminal" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Terminal}" />
-                                </ToggleButton>
-                                <!-- エディタ：ペン -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Editor" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Editor}" />
-                                </ToggleButton>
-                                <!-- エディタサポート：開いた本（プレビュー） -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="EditorSupport" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.EditorSupport}" />
-                                </ToggleButton>
-                                <!-- ブラウザ：地球儀 -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Browser" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Browser}" />
-                                </ToggleButton>
-                                <!-- 検索：虫眼鏡 -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Search" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Search}" />
-                                </ToggleButton>
-                                <!-- Git：ブランチ分岐 -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Git" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Git}" />
-                                </ToggleButton>
-                                <!-- Diff：＋／− -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Diff" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Diff}" />
-                                </ToggleButton>
-                                <!-- AI：スパーク -->
-                                <ToggleButton Style="{StaticResource PaneToggle}" Tag="Ai" Click="OnTogglePaneVisibility">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Ai}" />
-                                </ToggleButton>
-                                <!-- IDE：虫（ビルド・テスト・デバッグ／DAP）。C# プロジェクトが無いワークスペースでは隠す。 -->
-                                <ToggleButton x:Name="DebugPaneToggle" Style="{StaticResource PaneToggle}" Tag="Debug"
-                                              Click="OnTogglePaneVisibility"
-                                              ToolTip="IDE（ビルド・テスト・デバッグ）">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.Debug}" />
-                                </ToggleButton>
-                                <!-- TS IDE：六角形（Node.js）＋虫。TS/Node プロジェクトが無いワークスペースでは隠す。 -->
-                                <ToggleButton x:Name="TsIdePaneToggle" Style="{StaticResource PaneToggle}" Tag="TsIde"
-                                              Click="OnTogglePaneVisibility"
-                                              ToolTip="TS IDE（TypeScript / Node.js デバッグ）">
-                                    <Path Style="{StaticResource PaneToggleIcon}" Data="{StaticResource PaneIcon.TsIde}" />
-                                </ToggleButton>
+                            <!-- 行の文法を全セクションで揃える：[● 現在印 6px][8][アイコン 16px][7][ラベル]。
+                                 見出しは PopupSectionLabel、区切りは見出しが担うので罫線は引かない。 -->
+                            <StackPanel>
+                                <!-- 表示モードは2択なのでセグメント（1つの枠を2分割）にする。選択中だけ面で塗る。 -->
+                                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
+                                        Padding="2" Margin="2,2,2,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button x:Name="SplitModeChoice" Grid.Column="0"
+                                                Style="{StaticResource BranchMenuItem}" Click="OnChooseSplitMode"
+                                                HorizontalContentAlignment="Center" Padding="6,4"
+                                                ToolTip="複数の画面を自由に並べて表示する">
+                                            <DockPanel>
+                                                <Path x:Name="SplitModeIcon" Width="15" Height="13" Stretch="Uniform"
+                                                      StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                      Data="M0.5,0.5 H6 V12.5 H0.5 Z M8,0.5 H13.5 V12.5 H8 Z" />
+                                                <TextBlock x:Name="SplitModeText" Text="分割" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </Button>
+                                        <Button x:Name="ConcentratedModeChoice" Grid.Column="1"
+                                                Style="{StaticResource BranchMenuItem}" Click="OnChooseConcentratedMode"
+                                                HorizontalContentAlignment="Center" Padding="6,4"
+                                                ToolTip="1つの画面を大きく表示し、ほかは右側で待機させる">
+                                            <DockPanel>
+                                                <Path x:Name="ConcentratedModeIcon" Width="15" Height="13" Stretch="Uniform"
+                                                      StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                      Data="M0.5,0.5 H9 V12.5 H0.5 Z M11,0.5 H13.5 V5.5 H11 Z M11,7.5 H13.5 V12.5 H11 Z" />
+                                                <TextBlock x:Name="ConcentratedModeText" Text="集中" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+
+                                <!-- いま選んでいるモードの説明とショートカット。2択それぞれに副題を付けると
+                                     セグメントが横に潰れるので、選択中の1行だけをここに出す。 -->
+                                <TextBlock x:Name="ModeDescription" Foreground="{DynamicResource FgDim}"
+                                           FontSize="{DynamicResource Fs10}" Margin="10,6,10,0" TextWrapping="Wrap" />
+
+                                <TextBlock Text="画面" Style="{StaticResource PopupSectionLabel}" />
+                                <TextBlock Text="クリックでメインに。目のマークで部屋に出す／しまう"
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
+                                           Margin="10,0,10,4" TextWrapping="Wrap" />
+                                <UniformGrid x:Name="MainPaneChoices" Columns="2" />
+
+                                <!-- 配置は分割表示のときだけ意味を持つので、集中表示ではセクションごと畳む。 -->
+                                <StackPanel x:Name="LayoutSection">
+                                    <DockPanel Margin="0,16,0,2">
+                                        <Button x:Name="LayoutSaveToggle" DockPanel.Dock="Right" Content="＋ 現在の配置を保存"
+                                                Style="{StaticResource BranchMenuItem}" Padding="8,2"
+                                                FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}"
+                                                Margin="0,0,4,0" Click="OnLayoutSaveToggle"
+                                                ToolTip="いまのタイル配置に名前を付けて残す" />
+                                        <TextBlock Text="配置" Style="{StaticResource PopupSectionLabel}" Margin="10,0,6,0"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock x:Name="LayoutCycleHint" Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs10}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <TextBlock x:Name="LayoutEmptyHint" Text="保存した配置はまだありません"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                               Margin="12,5,10,2" Visibility="Collapsed" />
+                                    <UniformGrid x:Name="LayoutPopupList" Columns="2" Margin="0,3,0,0" />
+                                    <DockPanel x:Name="LayoutSaveRow" LastChildFill="True" Margin="11,6,7,2"
+                                               Visibility="Collapsed">
+                                        <Button DockPanel.Dock="Right" Content="保存"
+                                                Style="{StaticResource FlatButton}" Padding="10,3" Margin="6,0,0,0"
+                                                Click="OnLayoutSaveClick" ToolTip="現在の配置を名前を付けて保存" />
+                                        <Grid>
+                                            <TextBox x:Name="LayoutNameInput" VerticalContentAlignment="Center"
+                                                     Padding="6,2" Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                                     BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                                     KeyDown="OnLayoutNameKeyDown" ToolTip="配置名（空欄なら自動命名）" />
+                                            <TextBlock Text="配置名（空欄なら自動）" Margin="8,0" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                       IsHitTestVisible="False"
+                                                       Visibility="{Binding Text, ElementName=LayoutNameInput, Converter={StaticResource EmptyToVis}}" />
+                                        </Grid>
+                                    </DockPanel>
+                                </StackPanel>
+
                             </StackPanel>
                         </Border>
                     </Popup>
@@ -1328,11 +1313,11 @@
                 <Thumb x:Name="WingSplitter" Grid.Column="3"
                        HorizontalAlignment="Stretch" Panel.ZIndex="2"
                        Style="{StaticResource PaneResizeThumb}" Visibility="Collapsed"
-                       ToolTip="ドラッグで袖幅を変更／ダブルクリックで既定幅へ戻す" />
+                       ToolTip="ドラッグで右側の画面一覧の幅を変更／ダブルクリックで既定幅へ戻す" />
                 <DockPanel x:Name="WingHost" Grid.Column="4" Margin="0,8,10,10" Visibility="Collapsed">
                     <Button x:Name="OverviewButton" DockPanel.Dock="Top" Style="{StaticResource FlatButton}"
-                            Padding="8,4" Margin="0,0,0,8" Content="⊞ 俯瞰"
-                            ToolTip="全セッションを一望（クリックでダイブ／Ctrl+W z）"
+                            Padding="8,4" Margin="0,0,0,8" Content="⊞ すべての画面"
+                            ToolTip="すべての画面を一覧表示（Ctrl+W z）"
                             Click="OnToggleOverview" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">

@@ -67,7 +67,7 @@ public partial class ShellWindow {
         if (_trailSuppressed)
             return;
         var label = mode == DisplayMode.Solo
-            ? $"ソロ · {TrailLogic.PaneDisplayName(stagePane ?? PaneKind.Editor)}"
+            ? $"集中 · {TrailLogic.PaneDisplayName(stagePane ?? PaneKind.Editor)}"
             : "レイアウト変更";
         RecordTrail((recordMode, recordStagePane, layout) =>
             _vm.Trail.RecordLayout(layoutKey, label, recordMode, recordStagePane, layout));

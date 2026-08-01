@@ -71,9 +71,9 @@ public partial class ShellWindow {
     private List<PaletteCommand> BuildPaletteCommands() {
         var list = new List<PaletteCommand>();
         string? Sc(string id) => _keybindings.For(id)?.Format();
-        list.Add(new("ステージ", _stageActive ? "ステージモードを解除（タイル表示へ）" : "ステージモードへ（舞台＋袖）", () => { if (_stageActive) ExitStageMode(); else EnterStageMode(); }));
+        list.Add(new("並べ方", _stageActive ? "分割にする（複数の画面を並べる）" : "集中にする（1つを大きく表示）", () => { if (_stageActive) ExitStageMode(); else EnterStageMode(); }));
         if (_stageActive)
-            list.Add(new("ステージ", _overviewActive ? "俯瞰を閉じる" : "俯瞰（全カードを一望）", ToggleOverview, "Ctrl+W z"));
+            list.Add(new("並べ方", _overviewActive ? "すべての画面の一覧を閉じる" : "すべての画面を一覧表示", ToggleOverview, "Ctrl+W z"));
         foreach (var kind in StageOrder) {
             var target = kind;
             list.Add(new("移動", $"{PaneLabel(target)} へ", () => { SetPaneVisible(target, true); FocusPane(target); }));

@@ -746,6 +746,14 @@
 
     <!-- ノード表示：現在ブランチは ✓＋アクセント色で目立たせる（✓ は現在行にだけ出して幅を取らない）。
          リモートとフォルダは淡色 -->
+    <!-- ポップアップ内のセクション見出し。罫線の代わりにこれだけで区切るので、上の余白を広めに取る。 -->
+    <Style x:Key="PopupSectionLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs10}" />
+        <!-- 上の余白は行ピッチ（約29px）より明確に広くないとグループに見えない。 -->
+        <Setter Property="Margin" Value="10,16,10,2" />
+    </Style>
+
     <!-- ブランチポップアップの行（新規作成ボタン等）。ホバーで背景を付ける素のメニュー風ボタン。
          ShellWindow（TitleBarBranchButton の基底）と BranchSwitcherView が共用する。 -->
     <Style x:Key="BranchMenuItem" TargetType="Button">

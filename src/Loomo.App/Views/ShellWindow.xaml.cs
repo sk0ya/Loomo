@@ -130,6 +130,7 @@ public partial class ShellWindow : Window {
         InitializePanes();
         HookBranchSwitchers();
         HookWorkspaceSwitcher();
+        HookPaneMenu();
         PreviewMouseDown += OnShellPreviewMouseNavigate;
         SidebarSplitter.Cursor = Cursors.SizeWE;
         SidebarSplitter.MouseEnter += (_, _) => SidebarSplitter.Background = (Brush)FindResource("Accent");

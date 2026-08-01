@@ -26,6 +26,25 @@ public partial class ShellWindow {
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search,
     ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
+    /// <summary>表示モードの UI 名。「表示」は付けない——ヘッダーやセグメントでは常にモード名として
+    /// 並ぶので、両方に付くと字数だけ増えて読み分けの助けにならない。</summary>
+    private static string DisplayModeName(bool stageActive) => stageActive ? "集中" : "分割";
+    // モード切替は「まだ選んでいる途中」の操作（切り替えてからメイン画面を選び直すことが多い）なので
+    // ポップアップは閉じず、中身だけ作り直す。閉じるのは行き先を決める操作（メイン画面・配置）だけ。
+    private void OnChooseConcentratedMode(object sender, RoutedEventArgs e) {
+        if (!_stageActive) {
+            BeginTrailLayoutChange();
+            EnterStageMode();
+        }
+        RefreshOpenPaneMenu();
+    }
+    private void OnChooseSplitMode(object sender, RoutedEventArgs e) {
+        if (_stageActive) {
+            BeginTrailLayoutChange();
+            ExitStageMode();
+        }
+        RefreshOpenPaneMenu();
+    }
     private void ToggleDisplayMode() {
         BeginTrailLayoutChange();
         if (_stageActive)
@@ -67,7 +86,6 @@ public partial class ShellWindow {
         StageHost.Visibility = Visibility.Collapsed;
         PaneHost.Opacity = 1;
         PaneHost.IsHitTestVisible = true;
-        PaneToggleBar.Visibility = Visibility.Visible;
         UpdateModeButtons();
     }
     private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot) {
@@ -114,7 +132,6 @@ public partial class ShellWindow {
         StageHost.Visibility = Visibility.Collapsed;
         PaneHost.Opacity = 1;
         PaneHost.IsHitTestVisible = true;
-        PaneToggleBar.Visibility = Visibility.Visible;
         UpdateModeButtons();
         RebuildPaneLayout();
         FocusPane(_stagePane);
@@ -123,9 +140,9 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private void SetStagePane(PaneKind kind) {
+        BeginTrailLayoutChange();   // 舞台を差し替える *前* の配置キーを捕まえないと軌跡に点が残らない
         if (!_stageMode.Select(kind))
             return;
-        BeginTrailLayoutChange();
         RebuildStage();
         if (kind == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
@@ -219,9 +236,8 @@ public partial class ShellWindow {
     }
     private void ApplyIdePaneApplicability(IReadOnlyList<string> folders) {
         _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(folders);
-        DebugPaneToggle.Visibility = _idePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
         _tsIdePaneApplicable = ViewModels.TsDebugTargetResolver.HasTypeScriptProject(folders);
-        TsIdePaneToggle.Visibility = _tsIdePaneApplicable ? Visibility.Visible : Visibility.Collapsed;
+        RefreshOpenPaneMenu();   // 行の集合が変わるので、開いていれば作り直す
     }
     private void ToggleSessionEnabled(PaneKind kind) {
         if (_enabledSessions.Contains(kind)) {
