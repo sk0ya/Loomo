@@ -10,8 +10,10 @@ EditorSupport / Browser / Git / Diff / Trace / Debug / Search / TsIde / **Ai** �
 the `PaneKind` enum in `WorkspaceStateStore.cs`; don't trust a count written in prose) are freely tiled,
 dragged, soloed onto a stage, detached into their own windows, and fully restored down to caret line and
 scroll ratio; a full-width rail at the bottom (軌跡, §27) records the **human's** navigation so any past
-point can be revisited. An **AI agent is one of those nine panes** — it answers natural-language prompts
-by calling **four tools** that drive the same Terminal / Editor the human uses.
+point can be revisited. An **AI agent is one of those panes** — it answers natural-language prompts by
+calling **four tools**, which open their results in the human's Editor and drive the visible Browser pane;
+shell commands are the exception, running in a separate process because the visible Terminal is
+human-only (see 「Working with the sk0ya control libraries」).
 
 **Do not read the AI agent as the product.** The design doc says the opposite in its own words: §23 is
 titled 「**非AI機能**」, §24 is 「部屋（Room）としての完成度 … **AIに依存しない、道具としての進化**」, and §27
