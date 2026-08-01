@@ -9,14 +9,10 @@ public class StageThumbnailPlannerTests
     private const double CardAspect = 3.0 / 2.0;
 
     [Theory]
-    [InlineData(PaneKind.Browser)]
-    [InlineData(PaneKind.EditorSupport)]
-    public void WebView_panes_use_snapshot_thumbnails(PaneKind kind)
-        => Assert.True(StageThumbnailPlanner.UsesSnapshotThumbnail(kind));
-
-    [Theory]
     [InlineData(PaneKind.Editor)]
     [InlineData(PaneKind.Terminal)]
+    [InlineData(PaneKind.Browser)]
+    [InlineData(PaneKind.EditorSupport)]
     [InlineData(PaneKind.Git)]
     [InlineData(PaneKind.Diff)]
     public void Native_panes_keep_live_visual_thumbnails(PaneKind kind)

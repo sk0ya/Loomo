@@ -11,6 +11,7 @@ public partial class ShellWindow {
     private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
     private readonly Dictionary<PaneKind, ImageBrush> _webThumbnailBrushes = new();
     private readonly Dictionary<PaneKind, int> _webThumbnailCaptureSequences = new();
+    private readonly Dictionary<bool, LoomoWebView2> _browserLivePreviews = new();
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
     private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
     private bool _tsIdePaneApplicable { get => _stageMode.TsIdePaneApplicable; set => _stageMode.TsIdePaneApplicable = value; }

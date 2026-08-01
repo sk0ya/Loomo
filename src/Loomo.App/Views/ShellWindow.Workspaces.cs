@@ -270,6 +270,8 @@ public partial class ShellWindow {
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
         _detached?.CloseAll();
+        foreach (var preview in _browserLivePreviews.Values)
+            preview.Dispose();
         _editorSupport.WebView.Dispose();
         foreach (var workspace in _editorWorkspaces.Values)
             foreach (var tab in workspace.Tabs)

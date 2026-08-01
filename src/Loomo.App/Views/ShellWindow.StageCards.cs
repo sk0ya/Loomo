@@ -40,13 +40,13 @@ public partial class ShellWindow {
     private void SyncThumbnailSources(IReadOnlyCollection<PaneKind> required, Size sourceSize) {
         // WebView2CompositionControl はライブ VisualBrush の描画元へ移さない。内部の
         // GraphicsCaptureSession が強制 SizeChanged 中に CaptureFramePool.Recreate で落ちるため、
-        // Browser / EditorSupport のカードは CapturePreviewAsync の静止画を使う。
-        // 非表示化・親外しより先に現在の WPF 合成結果も写し、初回カードが空になるのを防ぐ。
+        // Browser は本体を移動せず、カード専用 WebView2 でライブ表示する。
         foreach (var kind in required.Where(kind =>
                      StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
                      && SnapshotThumbnailNeedsSeed(kind)))
             CaptureComposedPaneThumbnail(kind);
-        var liveRequired = required.Where(kind => !StageThumbnailPlanner.UsesSnapshotThumbnail(kind)).ToArray();
+        var liveRequired = required.Where(kind => kind != PaneKind.Browser
+                                                  && !StageThumbnailPlanner.UsesSnapshotThumbnail(kind)).ToArray();
         var sizeChanged = StageThumbnailPlanner.SourceSizeChanged(_thumbnailSourceWidth, sourceSize.Width);
         var reusable = sizeChanged
             ? Array.Empty<PaneKind>()
@@ -166,11 +166,28 @@ public partial class ShellWindow {
         if (StageThumbnailPlanner.UsesSnapshotThumbnail(kind))
             return BuildCard(kind, width, SnapshotThumbnailBrush(kind), isOverview,
                 () => { SetStagePane(kind); FocusPane(kind); });
+        if (kind == PaneKind.Browser)
+            return BuildLiveBrowserCard(kind, width, isOverview,
+                () => { SetStagePane(kind); FocusPane(kind); });
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
         return BuildCard(kind, width, VisualThumbnailBrush(source), isOverview,
             () => { SetStagePane(kind); FocusPane(kind); });
     }
     private Border BuildLayoutWingCard(PaneKind kind, double width) {
+        if (kind == PaneKind.Browser)
+            return BuildLiveBrowserCard(kind, width, isOverview: false, () => {
+                if (_zoomedPane is not null) {
+                    if (IsPaneVisible(kind))
+                        ZoomPane(kind);
+                    return;
+                }
+                if (IsPaneVisible(kind)) {
+                    FocusPane(kind);
+                    return;
+                }
+                PlacePaneByBehavior(kind);
+                FocusPane(kind);
+            });
         var brush = StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
             ? SnapshotThumbnailBrush(kind)
             : VisualThumbnailBrush(_stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind]);
@@ -227,6 +244,50 @@ public partial class ShellWindow {
             AlignmentY = AlignmentY.Top,
         };
     }
+    private Border BuildLiveBrowserCard(PaneKind kind, double width, bool isOverview, Action onClick) {
+        if (!_browserLivePreviews.TryGetValue(isOverview, out var view)) {
+            view = new LoomoWebView2 {
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
+                CreationProperties = CreateWebViewCreationProperties(),
+                IsHitTestVisible = false,
+            };
+            _browserLivePreviews[isOverview] = view;
+        }
+        switch (view.Parent) {
+            case Panel panel:
+                panel.Children.Remove(view);
+                break;
+            case Decorator decorator:
+                decorator.Child = null;
+                break;
+        }
+        var scale = width / StageThumbnailPlanner.VirtualWidth;
+        view.Width = width;
+        view.Height = width / CardAspect;
+        view.RenderTransform = Transform.Identity;
+        view.Visibility = Visibility.Visible;
+        var preview = new Grid { IsHitTestVisible = false, ClipToBounds = true };
+        preview.Children.Add(view);
+        _ = UpdateBrowserLivePreviewAsync(view, ActiveBrowserView?.Source, scale);
+        return BuildCard(kind, width, Brushes.Transparent, isOverview, onClick, preview);
+    }
+    private async Task UpdateBrowserLivePreviewAsync(LoomoWebView2 view, Uri? source, double scale) {
+        if (source is null)
+            return;
+        try {
+            await view.EnsureCoreWebView2Async();
+            view.ZoomFactor = Math.Clamp(scale, 0.1, 1.0);
+            if (view.Source != source)
+                view.Source = source;
+        } catch {
+            // 袖プレビューの失敗はBrowser本体の操作を妨げない。
+        }
+    }
+    private void UpdateBrowserLivePreviews(Uri? source) {
+        foreach (var preview in _browserLivePreviews.Values)
+            _ = UpdateBrowserLivePreviewAsync(
+                preview, source, preview.Width / StageThumbnailPlanner.VirtualWidth);
+    }
     private ImageBrush SnapshotThumbnailBrush(PaneKind kind) {
         if (_webThumbnailBrushes.TryGetValue(kind, out var existing))
             return existing;
@@ -273,7 +334,8 @@ public partial class ShellWindow {
             // 合成面の取得に失敗しても、前回画像または後続の CapturePreviewAsync を使用する。
         }
     }
-    private Border BuildCard(PaneKind kind, double width, Brush thumbnail, bool isOverview, Action onClick) {
+    private Border BuildCard(PaneKind kind, double width, Brush thumbnail, bool isOverview, Action onClick,
+        UIElement? livePreview = null) {
         var borderBrush = (Brush)FindResource("Border");
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && OnStage(kind);
@@ -281,8 +343,11 @@ public partial class ShellWindow {
         var card = new Border {
             Width = width, Height = height, Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4), CornerRadius = new CornerRadius(6), Background = (Brush)FindResource("Panel"), BorderBrush = onStage ? accent : borderBrush, BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = PaneLabel(kind), Clip = new RectangleGeometry(new Rect(0, 0, width, height), 6, 6), };
         var root = new Grid { ClipToBounds = true };
-        root.Children.Add(new Border {
-            IsHitTestVisible = false, Background = thumbnail, });
+        if (livePreview is not null)
+            root.Children.Add(livePreview);
+        else
+            root.Children.Add(new Border {
+                IsHitTestVisible = false, Background = thumbnail, });
         root.Children.Add(new Border {
             VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
                 Text = PaneLabel(kind), FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });

@@ -20,11 +20,11 @@ public static class StageThumbnailPlanner
 
     /// <summary>
     /// ライブ VisualBrush ではなくスナップショットを使うペイン。
-    /// WebView2CompositionControl は内部で GraphicsCaptureSession を持つため、ミニチュア用ホストへの
-    /// 再ペアレントと強制リサイズを行うと CaptureFramePool.Recreate が失敗することがある。
+    /// Browser は同じ URL を表示する袖専用 WebView2、EditorSupport は他ペインと同じ
+    /// VisualBrush を使うため、現在は該当なし。
     /// </summary>
     public static bool UsesSnapshotThumbnail(PaneKind kind)
-        => kind is PaneKind.Browser or PaneKind.EditorSupport;
+        => false;
 
     /// <summary>描画元のサイズを決める。袖の最大幅より常に大きい固定サイズを使い、
     /// ウィンドウ幅にかかわらずサムネイルが拡大表示されないようにする。</summary>
