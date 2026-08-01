@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Loomo（ルーモ）is a C# / WPF desktop app that is a **workspace you work *in* — a 部屋 (room)**.
 Name = Loom (織機) × Room. The primary occupant is the **human**: panes (Terminal / Editor /
-EditorSupport / Browser / Git / Diff / Trace / Debug / **Ai** — `PaneKind`, 9 kinds) are freely tiled,
+EditorSupport / Browser / Git / Diff / Trace / Debug / Search / TsIde / **Ai** — the authoritative list is
+the `PaneKind` enum in `WorkspaceStateStore.cs`; don't trust a count written in prose) are freely tiled,
 dragged, soloed onto a stage, detached into their own windows, and fully restored down to caret line and
 scroll ratio; a full-width rail at the bottom (軌跡, §27) records the **human's** navigation so any past
 point can be revisited. An **AI agent is one of those nine panes** — it answers natural-language prompts
