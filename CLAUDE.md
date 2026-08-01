@@ -4,11 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Loomo（ルーモ）is a C# / WPF (.NET 9) desktop AI-agent app for driving a local dev workspace.
-An agent answers natural-language prompts by calling **tools** (function calling) that operate the
-**Terminal**, **Editor**, and **FolderTree** UI panes. Name = Loom (織機) × Room. Solution file:
-`sk0ya.Loomo.sln`. All root namespaces / assembly names are `sk0ya.Loomo.*`; project folders drop the
-prefix (`Loomo.Core`, `Loomo.Ai`, `Loomo.Services`, `Loomo.App`, `Loomo.Tests`).
+Loomo（ルーモ）is a C# / WPF desktop app that is a **workspace you work *in* — a 部屋 (room)**.
+Name = Loom (織機) × Room. The primary occupant is the **human**: panes (Terminal / Editor /
+EditorSupport / Browser / Git / Diff / Trace / Debug / **Ai** — `PaneKind`, 9 kinds) are freely tiled,
+dragged, soloed onto a stage, detached into their own windows, and fully restored down to caret line and
+scroll ratio; a full-width rail at the bottom (軌跡, §27) records the **human's** navigation so any past
+point can be revisited. An **AI agent is one of those nine panes** — it answers natural-language prompts
+by calling **four tools** that drive the same Terminal / Editor the human uses.
+
+**Do not read the AI agent as the product.** The design doc says the opposite in its own words: §23 is
+titled 「**非AI機能**」, §24 is 「部屋（Room）としての完成度 … **AIに依存しない、道具としての進化**」, and §27
+explicitly scopes 軌跡 to 「**人間の**ナビゲーション」 (tracing the *AI* is §20's separate job). So the App
+layer dwarfing `Loomo.Core` is **by design** — that mass *is* the room, not scope creep around an agent.
+Judge a change by 「場所としての信頼」(peripheral vision, material flow between panes, completeness of
+restoration), not by how much AI is in it. The room chapters are §23 / §24 / §26 / §27.
+
+Solution file: `sk0ya.Loomo.sln`. All root namespaces / assembly names are `sk0ya.Loomo.*`; project folders
+drop the prefix (`Loomo.Core`, `Loomo.Ai`, `Loomo.Services`, `Loomo.App`, `Loomo.Tests`).
 
 The authoritative design doc is `docs/設計/` (Japanese; start at `docs/設計/README.md` for the index + §→file
 map). It was split out of the old single `docs/設計書.md` (now a thin redirect), but section numbers (§N) are
