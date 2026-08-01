@@ -85,10 +85,10 @@ public static class WorkspaceSessionCoordinator
 
     private static void RestoreEditorViewState(VimEditorControl editor, EditorTabSnapshot snapshot)
     {
-        if (snapshot.CaretLine > 0 || snapshot.CaretColumn > 0)
-            editor.NavigateTo(snapshot.CaretLine, snapshot.CaretColumn);
-        if (snapshot.ScrollRatio is { } ratio and > 0)
+        // 0 行・0 列、先頭スクロールも明示的な保存状態。現在値がたまたま初期値と同じことへ依存しない。
+        editor.NavigateTo(Math.Max(0, snapshot.CaretLine), Math.Max(0, snapshot.CaretColumn));
+        if (snapshot.ScrollRatio is { } ratio && double.IsFinite(ratio))
             editor.Dispatcher.BeginInvoke(
-                new Action(() => editor.ScrollToVerticalRatio(ratio)), DispatcherPriority.Loaded);
+                new Action(() => editor.ScrollToVerticalRatio(Math.Clamp(ratio, 0, 1))), DispatcherPriority.Loaded);
     }
 }

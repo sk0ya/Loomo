@@ -11,6 +11,7 @@ public partial class ShellWindow {
             profile?.Lap("terminal.attach");
             ActivateTerminalTab(
                 terminalWorkspace.ActiveTabId ?? _terminalTabs[0].Id, profile, focusView: false);
+            _terminalViews?.Restore(workspace.TerminalViewLayout, _terminalTabs.Select(t => t.Id));
             return;
         }
         terminalWorkspace.IsInitialized = true;
@@ -31,6 +32,7 @@ public partial class ShellWindow {
         ActivateTerminalTab(
             active.Id == Guid.Empty ? _terminalTabs[0].Id : active.Id,
             focusView: false);
+        _terminalViews?.Restore(workspace.TerminalViewLayout, _terminalTabs.Select(t => t.Id));
     }
     private void RestoreEditorTabs(
         WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
@@ -42,6 +44,7 @@ public partial class ShellWindow {
             profile?.Lap("editor.attach");
             ActivateEditorTab(
                 editorWorkspace.ActiveTabId ?? _editorTabs[0].Id, profile, focusView: false);
+            _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
             return;
         }
         editorWorkspace.IsInitialized = true;
@@ -61,6 +64,7 @@ public partial class ShellWindow {
         ActivateEditorTab(
             active.Id == Guid.Empty ? _editorTabs[0].Id : active.Id,
             focusView: false);
+        _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
     }
     private TerminalWorkspaceTabs GetOrCreateTerminalWorkspace(Guid workspaceId) {
         if (_terminalWorkspaces.TryGetValue(workspaceId, out var terminalWorkspace))

@@ -64,7 +64,8 @@ LSP の**セッション（プロセス・プロトコル・ワークスペー�
   → `VimEngineServices.cs:36` の `new LspServerRegistry()` は **storePath = null ＝完全メモリ内**。
   つまり `:LspAdd` は保存されず、`:LspList` は Loomo の JSON を読んでもいない。
   `LspServerRegistry.ConfigureDefault` の効果も及ばない。
-- 同じ構造が整形にもある（`FormatterManagementService.cs:39` の `FormatterRegistry.Default`）。
+- **当時は**同じ構造が整形にもあった（旧 `FormatterManagementService.cs:39` の
+  `FormatterRegistry.Default`）。後続で解消済み（§30.13）。
 - `AppBootstrapper.cs:41` の `EnsureCSharpDefault(LspServerRegistry.Default)` は使い捨てインスタンスへの
   書き込みだが、`Set` が JSON に保存するので**偶然動いている**だけ。
 
@@ -236,8 +237,8 @@ LSP の文書同期は1 URI につき1本しか成立しないので、規則を
 - `:LspAdd`/`:LspRemove`/`:LspList`/`:LspReset` は Ex コマンドとして残すが、
   ホストが注入した `ILspServerAdmin` へ委譲する。未注入なら「利用できません」と返す。
   → **第二の所有者が消えるので §30.2.1 の分裂はクラスごと消滅する。**
-- 整形（`FormatterRegistry`）も同じ構造の欠陥を持つが、**本作業のスコープ外**。
-  LSP 側を先行して型を作り、後続で同型の移管を行う（§30.9）。
+- 整形（`FormatterRegistry`）も当時は同じ構造の欠陥を持っていたが、**このLSP移管作業のスコープ外**とした。
+  後続の移管は §30.13 で完了。
 
 ---
 
@@ -367,11 +368,13 @@ Editor 側の変更 → パッケージのローカル注入 → Loomo 側の追
 
 ## §30.8 非目標（今回やらないこと）
 
-- 整形（`FormatterRegistry`）の同型移管 — 同じ欠陥があるが、LSP で型を確立してから後続で行う。
+- 整形（`FormatterRegistry`）の同型移管 — この計画時点では未着手。現在は §30.13 で完了。
 - LSP をエージェントツールとして公開すること（`ILspWorkspace` が単一の入口になるので**後から容易**になる、
   というのが今回の副次的な狙い）。
 - LSP クライアント実装（`LspClient`/`LspProcess`）の Loomo への移設 — Editor 側の部品として再利用する。
 - セマンティックトークン・インレイヒントの描画仕様の変更 — ビュー側は現状維持。
+
+> **完了追記（2026-08-01）**：上記で非目標だった整形レジストリの同型移管は、後続作業として §30.13 で完了した。
 
 ---
 
@@ -440,3 +443,17 @@ Editor 側の変更 → パッケージのローカル注入 → Loomo 側の追
 3. **「今後表示しない」が再起動で消えていた。** `LoomoSettings.Lsp` を `SettingsStore` の DTO
    （`PersistedSettings`）が**保存も読込もしていなかった**ため、`DismissedPromptExtensions` はプロセス内
    だけの状態だった。→ `PersistedLsp` を追加。拡張子は正規化（先頭ドット・小文字）して保持する。
+
+---
+
+## §30.13 FormatterRegistry のホスト所有（2026-08-01 完了）
+
+LSP 移管後も残っていた整形側の分裂を解消した。Loomo の DI がアプリ共有の
+`VimEngineServices` と、その `Formatters` を同じシングルトンとして所有する。
+
+- `FormatterManagementService` は `FormatterRegistry.Default` を都度取得せず、共有インスタンスを
+  コンストラクタで受け取る。
+- 全 `VimEditorControl` に同じ `VimEngineServices` を渡すため、`:FmtSet` / `:FmtRemove` / 自動検出による登録と
+  設定画面の適用・解除が即座に同じ表へ反映される。
+- 永続化先は従来どおり `%APPDATA%/Loomo/formatters.json`。静的 `ConfigureDefault` による起動順依存は廃止した。
+- 本番 DI 自体を `FormatterWiringTests` で検証し、「設定だけ別インスタンス」の回帰を防ぐ。

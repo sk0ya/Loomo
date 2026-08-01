@@ -42,7 +42,9 @@ public partial class ShellWindow {
         // GraphicsCaptureSession が強制 SizeChanged 中に CaptureFramePool.Recreate で落ちるため、
         // Browser / EditorSupport のカードは CapturePreviewAsync の静止画を使う。
         // 非表示化・親外しより先に現在の WPF 合成結果も写し、初回カードが空になるのを防ぐ。
-        foreach (var kind in required.Where(StageThumbnailPlanner.UsesSnapshotThumbnail))
+        foreach (var kind in required.Where(kind =>
+                     StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
+                     && SnapshotThumbnailNeedsSeed(kind)))
             CaptureComposedPaneThumbnail(kind);
         var liveRequired = required.Where(kind => !StageThumbnailPlanner.UsesSnapshotThumbnail(kind)).ToArray();
         var sizeChanged = StageThumbnailPlanner.SourceSizeChanged(_thumbnailSourceWidth, sourceSize.Width);
@@ -232,6 +234,11 @@ public partial class ShellWindow {
         _webThumbnailBrushes[kind] = brush;
         return brush;
     }
+
+    /// <summary>同期 RenderTargetBitmap は初回の空カード回避にだけ使う。いったん画像を得た後は
+    /// WebView2 の非同期 CapturePreview 更新を再利用し、分割ドラッグ完了時の UI 停止を避ける。</summary>
+    private bool SnapshotThumbnailNeedsSeed(PaneKind kind)
+        => !_webThumbnailBrushes.TryGetValue(kind, out var brush) || brush.ImageSource is null;
 
     /// <summary>
     /// 現在画面へ合成済みのペインを即座にカード画像へ写す。WebView2 の API キャプチャは非同期で、

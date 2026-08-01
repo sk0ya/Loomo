@@ -36,7 +36,7 @@ internal static class LoomoServiceCollectionExtensions
         AddAliasedSingleton<UiApprovalService, IApprovalService>(services);
 
         AddLoomoLsp(services);
-        services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();
+        AddLoomoFormatting(services);
         services.AddSingleton<sk0ya.Loomo.Services.Debug.IDebugSessionFactory,
             sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory>();
         // TS IDE ペイン用の js-debug 工場。IDebugSessionFactory の既定登録（netcoredbg）は dotnet 用 IDE ペインの
@@ -206,6 +206,21 @@ internal static class LoomoServiceCollectionExtensions
             sp.GetRequiredService<sk0ya.Loomo.Services.Lsp.LspServerTable>());
         AddAliasedSingleton<sk0ya.Loomo.Services.Lsp.LspWorkspaceService, Editor.Core.Lsp.ILspWorkspace>(services);
         services.AddSingleton<sk0ya.Loomo.Services.Lsp.LspManagementService>();
+    }
+
+    /// <summary>
+    /// 整形レジストリの本番配線。Loomo が <see cref="Editor.Core.Engine.VimEngineServices"/> を所有し、
+    /// 設定画面と全エディタタブへ同じ <see cref="Editor.Core.Formatting.FormatterRegistry"/> を渡す。
+    /// </summary>
+    internal static void AddLoomoFormatting(IServiceCollection services, string? formatterStorePath = null)
+    {
+        services.AddSingleton(_ => Editor.Core.Engine.VimEngineServices.CreateApplication(
+            formatterStorePath ?? System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "Loomo", "formatters.json")));
+        services.AddSingleton(sp =>
+            sp.GetRequiredService<Editor.Core.Engine.VimEngineServices>().Formatters);
+        services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();
     }
 
     private static void AddAliasedSingleton<TImplementation, TService>(IServiceCollection services)

@@ -91,7 +91,7 @@ public partial class ShellWindow {
         if (_stagePane == PaneKind.EditorSupport)
             _ = UpdateEditorSupportAsync();
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
-            if (_stageActive)
+            if (_stageActive && !_overviewActive)
                 FocusPane(_stagePane);
         }));
     }

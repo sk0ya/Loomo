@@ -373,6 +373,40 @@ public class WorkspaceListViewModelTests
     }
 
     [Fact]
+    public void Workspace_state_round_trips_active_pane_and_internal_view_splits()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
+        var editorTab = Guid.NewGuid();
+        var terminalTab = Guid.NewGuid();
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = @"C:\work",
+            Mode = DisplayMode.Layout,
+            ActivePane = PaneKind.Terminal,
+            EditorViewLayout = new ViewportNodeSnapshot { TabId = editorTab, IsFocused = true },
+            TerminalViewLayout = new ViewportNodeSnapshot
+            {
+                Orientation = "Columns",
+                Children =
+                [
+                    new ViewportNodeSnapshot { TabId = terminalTab, Weight = 2, IsFocused = true },
+                    new ViewportNodeSnapshot { TabId = Guid.NewGuid(), Weight = 1 }
+                ]
+            }
+        };
+        var store = new WorkspaceStateStore(path);
+        store.Save(new WorkspaceState { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        var loaded = store.LoadWorkspace(workspace.Id)!;
+        Assert.Equal(PaneKind.Terminal, loaded.ActivePane);
+        Assert.Equal(editorTab, loaded.EditorViewLayout?.TabId);
+        Assert.Equal("Columns", loaded.TerminalViewLayout?.Orientation);
+        Assert.Equal(2, loaded.TerminalViewLayout?.Children.Count);
+        Assert.Equal(2, loaded.TerminalViewLayout?.Children[0].Weight);
+        Assert.True(loaded.TerminalViewLayout?.Children[0].IsFocused);
+    }
+
+    [Fact]
     public void Workspace_state_round_trips_detached_windows_per_workspace()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");

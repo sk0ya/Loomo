@@ -62,7 +62,8 @@ public class ShellViewModelTests
         var lspVm = new LspSettingsViewModel(lspService);
         var lspPromptVm = new LspPromptViewModel(lspService, settings, store);
         var formatterVm = new FormatterSettingsViewModel(
-            new sk0ya.Loomo.Services.Formatting.FormatterManagementService(new FakeTerminalService()));
+            new sk0ya.Loomo.Services.Formatting.FormatterManagementService(
+                new FakeTerminalService(), new Editor.Core.Formatting.FormatterRegistry()));
         var keyboardVm = new KeybindingsViewModel(new sk0ya.Loomo.App.Input.KeybindingService(settings, store));
 
         var workspaceStore = new WorkspaceStateStore(

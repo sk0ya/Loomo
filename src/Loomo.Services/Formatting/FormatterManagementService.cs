@@ -35,11 +35,9 @@ public sealed class FormatterManagementService
     private readonly ITerminalService _terminal;
     private readonly FormatterRegistry _registry;
 
-    public FormatterManagementService(ITerminalService terminal)
-        : this(terminal, FormatterRegistry.Default) { }
-
-    // テスト用に明示注入できるオーバーロード。
-    internal FormatterManagementService(ITerminalService terminal, FormatterRegistry registry)
+    /// <summary>ホストが所有する共有レジストリを受け取る。設定画面と全エディタタブの
+    /// <c>:Fmt*</c> / <c>:Format</c> が、必ず同じインスタンスを見るための所有境界。</summary>
+    public FormatterManagementService(ITerminalService terminal, FormatterRegistry registry)
     {
         _terminal = terminal;
         _registry = registry;

@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Layout;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ペイン内分割のビューポート管理。1つのペイン
@@ -52,6 +53,29 @@ internal sealed class PaneSplitView
         public Guid? FocusedTabId => _focused?.TabId;
         public Guid? FocusedViewportId => _focused?.Id;
         public bool IsShown(Guid tabId) => Leaves().Any(l => l.TabId == tabId);
+
+        /// <summary>現在の分割・比率・表示タブ・フォーカス葉を永続化用へ写す。</summary>
+        public ViewportNodeSnapshot? Capture()
+        {
+            CaptureSizes();
+            return CaptureNode(_root);
+        }
+
+        /// <summary>有効なタブだけで分割木を復元する。壊れた/旧スナップショットは false で通常の1枚表示へ戻す。</summary>
+        public bool Restore(ViewportNodeSnapshot? snapshot, IEnumerable<Guid> validTabIds)
+        {
+            var valid = validTabIds.ToHashSet();
+            var restored = RestoreNode(snapshot, valid);
+            restored = ViewportTree.Normalize(restored);
+            if (restored is null)
+                return false;
+            _root = restored;
+            _focused = Leaves().FirstOrDefault(l => l.RestoreFocused) ?? Leaves().FirstOrDefault();
+            foreach (var leaf in Leaves())
+                leaf.RestoreFocused = false;
+            Rebuild();
+            return true;
+        }
 
         /// <summary>木を捨ててコンテンツホストを空にする（ワークスペース切替時）。コントロールは破棄しない。</summary>
         public void Reset()
@@ -386,6 +410,36 @@ internal sealed class PaneSplitView
 
         private ViewLeaf? FindLeafByTab(Guid tabId) => Leaves().FirstOrDefault(l => l.TabId == tabId);
         private ViewLeaf? FindLeafById(Guid id) => Leaves().FirstOrDefault(l => l.Id == id);
+
+        private ViewportNodeSnapshot? CaptureNode(ViewNode? node) => node switch
+        {
+            ViewLeaf leaf => new ViewportNodeSnapshot {
+                Weight = leaf.Weight, TabId = leaf.TabId, IsFocused = ReferenceEquals(leaf, _focused)
+            },
+            ViewSplit split => new ViewportNodeSnapshot {
+                Weight = split.Weight,
+                Orientation = split.Orientation.ToString(),
+                Children = split.Children.Select(CaptureNode).Where(n => n is not null).Select(n => n!).ToList()
+            },
+            _ => null
+        };
+
+        private static ViewNode? RestoreNode(ViewportNodeSnapshot? snapshot, HashSet<Guid> valid)
+        {
+            if (snapshot is null)
+                return null;
+            if (snapshot.TabId is { } tabId)
+                return valid.Contains(tabId)
+                    ? new ViewLeaf { TabId = tabId, Weight = snapshot.Weight, RestoreFocused = snapshot.IsFocused }
+                    : null;
+            if (!Enum.TryParse<SplitKind>(snapshot.Orientation, out var orientation))
+                return null;
+            var split = new ViewSplit { Orientation = orientation, Weight = snapshot.Weight };
+            foreach (var child in snapshot.Children)
+                if (RestoreNode(child, valid) is { } restored)
+                    split.Children.Add(restored);
+            return split;
+        }
 
         private static void AddTrack(Grid grid, bool columns, GridLength length, double min = 0)
         {

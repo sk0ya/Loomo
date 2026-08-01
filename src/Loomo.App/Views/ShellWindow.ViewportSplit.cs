@@ -163,7 +163,8 @@ public partial class ShellWindow {
         var control = new VimEditorControl(new VimEditorControlOptions {
             GitServiceFactory = () => new GitDiffProvider(),
             // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
-            LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin
+            LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin,
+            EngineServices = _editorEngineServices
         }) {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };

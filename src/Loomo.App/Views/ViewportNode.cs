@@ -25,6 +25,8 @@ internal sealed class ViewLeaf : ViewNode
     public Guid Id { get; } = Guid.NewGuid();
     /// <summary>このビューポートが表示しているタブ。</summary>
     public Guid TabId { get; set; }
+    /// <summary>スナップショット復元の組み立て中だけ使うフォーカス印。</summary>
+    public bool RestoreFocused { get; set; }
     /// <summary>コントロールを内包する枠（フォーカス時にアクセント枠を出す）。再構築で再利用する。</summary>
     public Border Container { get; } = new() { BorderThickness = new Thickness(0), Focusable = false };
 }

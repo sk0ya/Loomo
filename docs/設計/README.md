@@ -23,7 +23,7 @@ Loomo はローカル開発ワークスペースを **「部屋（Room）」** �
 | [27-軌跡.md](27-軌跡.md) | §27 軌跡（Thread Rail） | 軌跡バーの正本（記録・復元・永続化・既知の不具合） |
 | [28-デバッグ実行.md](28-デバッグ実行.md) | §28 デバッグ実行（IDEペイン） | DAP（netcoredbg）連携・起動構成・ビルド/テスト統合の正本 |
 | [29-TypeScript-IDE.md](29-TypeScript-IDE.md) | §29 TypeScript IDE（TS IDEペイン） | DAP（vscode-js-debug）連携・親子セッション・npm/tsc 統合の正本 |
-| [30-LSP.md](30-LSP.md) | §30 LSP アーキテクチャ | LSP セッションのワークスペース所有（`ILspWorkspace`/`ILspDocument`・プール・参照カウント）の正本。**実装済み** |
+| [30-LSP.md](30-LSP.md) | §30 LSP／Formatter 所有境界 | LSP セッションのワークスペース所有（`ILspWorkspace`/`ILspDocument`・プール・参照カウント）と、共有 `FormatterRegistry` のホスト所有（§30.13）の正本。**実装済み** |
 
 関連：背景知見は [`../エージェントループ知見.md`](../エージェントループ知見.md)（実測ベースの落とし穴・診断手順）。
 

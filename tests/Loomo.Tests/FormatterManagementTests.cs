@@ -9,25 +9,25 @@ namespace sk0ya.Loomo.Tests;
 
 /// <summary>
 /// Loomo の整形フォーマッタ管理（カタログ・PATH 検出・適用/解除・カスタム追加削除）の検証。
-/// エディタの共有レジストリ（FormatterRegistry.Default）はテスト毎に一時パスへ向け直して隔離する。
+/// ホスト所有の共有レジストリをテスト毎に一時パスへ向けて隔離する。
 /// </summary>
 public sealed class FormatterManagementTests : IDisposable
 {
     private readonly string _storePath;
+    private readonly FormatterRegistry _registry;
 
     public FormatterManagementTests()
     {
         _storePath = Path.Combine(Path.GetTempPath(), "loomo-fmt-test-" + Guid.NewGuid().ToString("N") + ".json");
-        FormatterRegistry.ConfigureDefault(_storePath);
+        _registry = new FormatterRegistry(_storePath);
     }
 
     public void Dispose()
     {
-        FormatterRegistry.ConfigureDefault(null);
         try { File.Delete(_storePath); } catch { }
     }
 
-    private static FormatterManagementService Service() => new(new FakeTerminalService());
+    private FormatterManagementService Service() => new(new FakeTerminalService(), _registry);
 
     // ── カタログ ──────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ public sealed class FormatterManagementTests : IDisposable
 
         var row = svc.GetRows().First(r => r.Executable == "prettier");
         Assert.True(row.Configured);
-        Assert.Equal("prettier", FormatterRegistry.Default.GetForExtension(".ts")!.Executable);
+        Assert.Equal("prettier", _registry.GetForExtension(".ts")!.Executable);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class FormatterManagementTests : IDisposable
         svc.Unapply(info);
 
         Assert.False(svc.GetRows().First(r => r.Executable == "prettier").Configured);
-        Assert.Null(FormatterRegistry.Default.GetForExtension(".ts"));
+        Assert.Null(_registry.GetForExtension(".ts"));
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public sealed class FormatterManagementTests : IDisposable
         svc.Apply(FormatterCatalog.ByExecutable("dprint")!);
         svc.Unapply(FormatterCatalog.ByExecutable("prettier")!);
 
-        Assert.Equal("dprint", FormatterRegistry.Default.GetForExtension(".md")!.Executable);
+        Assert.Equal("dprint", _registry.GetForExtension(".md")!.Executable);
     }
 
     // ── カスタム追加 / 削除 ───────────────────────────────────────────────

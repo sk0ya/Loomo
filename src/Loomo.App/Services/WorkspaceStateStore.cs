@@ -315,6 +315,13 @@ public sealed class WorkspaceSnapshot
     /// </summary>
     public PaneNodeSnapshot? PaneLayout { get; set; }
 
+    /// <summary>Editor / Terminal ペイン内部の分割木。各リーフは表示中タブとフォーカス位置を持つ。</summary>
+    public ViewportNodeSnapshot? EditorViewLayout { get; set; }
+    public ViewportNodeSnapshot? TerminalViewLayout { get; set; }
+
+    /// <summary>レイアウトモードで最後に操作していたメインペイン。ソロでは <see cref="Stage"/> が正本。</summary>
+    public PaneKind? ActivePane { get; set; }
+
     /// <summary>表示モード（ソロ／レイアウト）。null の旧データは復元時に <see cref="Stage"/> から移行する。</summary>
     public DisplayMode? Mode { get; set; }
 
@@ -430,6 +437,16 @@ public sealed class PaneNodeSnapshot
     public string? Orientation { get; set; }
     /// <summary>スプリットの子（行なら上→下、列なら左→右の順）。</summary>
     public List<PaneNodeSnapshot> Children { get; set; } = new();
+}
+
+/// <summary>Editor / Terminal のペイン内分割を永続化するノード。</summary>
+public sealed class ViewportNodeSnapshot
+{
+    public double Weight { get; set; } = 1;
+    public Guid? TabId { get; set; }
+    public bool IsFocused { get; set; }
+    public string? Orientation { get; set; }
+    public List<ViewportNodeSnapshot> Children { get; set; } = new();
 }
 
 /// <summary>セッションの表示モード。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>

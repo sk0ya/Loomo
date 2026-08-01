@@ -160,6 +160,7 @@ public partial class ShellWindow {
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
         profile?.Lap("browser");
         CompleteStageSnapshotRestore();
+        RestoreActivePane(workspace);
         if (workspace.DetachedWindows.Count > 0)
             Detached.Restore(workspace.DetachedWindows, RestoreDetachedItem);
         StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
@@ -253,6 +254,10 @@ public partial class ShellWindow {
         snapshot.ScratchLayout = _scratchLayout;
         snapshot.ActiveLayoutIndex = _activeLayoutIndex;
         snapshot.LayoutDirty = _layoutDirty;
+        snapshot.EditorViewLayout = _editorViews?.Capture();
+        snapshot.TerminalViewLayout = _terminalViews?.Capture();
+        // サイドバーへ一時的にフォーカスしていても、最後のメインペインという現在地は失わない。
+        snapshot.ActivePane = _stageActive ? _stagePane : _focusedRegion?.Pane ?? snapshot.ActivePane;
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot) {
             snapshot.PaneLayout = ToSnapshot(savedRoot);
         } else {

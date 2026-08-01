@@ -211,4 +211,18 @@ public partial class ShellWindow {
         }
         RecordTrailPane(kind);
     }
+
+    /// <summary>ワークスペース復元の最後に、見えている場所と内部の現在地を同じペインへ揃える。</summary>
+    private void RestoreActivePane(WorkspaceSnapshot workspace) {
+        var target = _stageActive ? _stagePane : workspace.ActivePane;
+        if (target is not { } pane || !_paneElements.ContainsKey(pane))
+            return;
+        if (!_stageActive && !IsPaneVisible(pane))
+            return;
+        if (_overviewActive) {
+            _focusedRegion = FocusTarget.Of(pane);
+            return;
+        }
+        FocusPane(pane);
+    }
 }

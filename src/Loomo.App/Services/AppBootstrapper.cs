@@ -1,4 +1,3 @@
-using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Services.Lsp;
@@ -32,14 +31,6 @@ internal sealed class AppBootstrapper
     {
         _settingsStore.Load(_settings);
         StartupProfiler.Mark("設定ロード完了");
-
-        var loomoDataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Loomo");
-        // 拡張子→言語サーバーの対応表は Loomo が所有する（LspServerTable / DI シングルトン）ので、
-        // エディタ側へ保存先を教える設定はもう要らない。整形の対応表だけがまだエディタ所有（§30.9）。
-        Editor.Core.Formatting.FormatterRegistry.ConfigureDefault(
-            Path.Combine(loomoDataDirectory, "formatters.json"));
 
         _themeManager.Apply(_settings.Theme, _settings.AccentColor);
         _fontManager.Apply(UiFontManager.Effective(_settings.Appearance.UiFontSize));
