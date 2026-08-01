@@ -10,13 +10,13 @@ namespace sk0ya.Loomo.App.Layout;
 /// <item>ペイン 1 枚ごとに実寸の Measure/Arrange/UpdateLayout が走り、ペイン切替 1 回が 100ms を超える。
 /// コストはほぼ面積比で効く（実測：Git ペイン単体で 780 幅 25ms → 1433 幅 54ms）。</item>
 /// </list>
-/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=420 は袖 220px で約 0.52 倍＝
-/// 内容を判別しやすくしつつ、舞台を圧迫しすぎない縮尺。</para>
+/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=560 は最大袖カード 550px より
+/// 常に大きいため、袖表示が元の描画より拡大されることはない。</para>
 /// </summary>
 public static class StageThumbnailPlanner
 {
     /// <summary>描画元をレイアウトする固定仮想幅。Main がこれより広くても追従しない。</summary>
-    public const double VirtualWidth = 420;
+    public const double VirtualWidth = 560;
 
     /// <summary>
     /// ライブ VisualBrush ではなくスナップショットを使うペイン。
@@ -26,8 +26,8 @@ public static class StageThumbnailPlanner
     public static bool UsesSnapshotThumbnail(PaneKind kind)
         => kind is PaneKind.Browser or PaneKind.EditorSupport;
 
-    /// <summary>描画元のサイズを決める。<paramref name="availableWidth"/> が仮想幅より狭いときだけ
-    /// そちらに合わせる（実際の表示より広く組んでも縮小率が上がるだけで得がない）。</summary>
+    /// <summary>描画元のサイズを決める。袖の最大幅より常に大きい固定サイズを使い、
+    /// ウィンドウ幅にかかわらずサムネイルが拡大表示されないようにする。</summary>
     public static Size SourceSize(double availableWidth, double cardAspect)
     {
         var width = ResolveWidth(availableWidth);
@@ -35,14 +35,11 @@ public static class StageThumbnailPlanner
         return new Size(Math.Max(width, 1), Math.Max(width / aspect, 1));
     }
 
-    /// <summary>幅の変化が描画元サイズを変えるかどうか。仮想幅で頭打ちになるので、
-    /// 420 を超える範囲でのウィンドウ／スプリッタのリサイズでは作り直さなくてよい。</summary>
+    /// <summary>描画元は固定サイズなので、未構築のときだけ構築が必要。</summary>
     public static bool SourceSizeChanged(double previousWidth, double newWidth)
-        => previousWidth <= 0                                   // まだ一度も組んでいない
-        || Math.Abs(ResolveWidth(previousWidth) - ResolveWidth(newWidth)) > 1;
+        => previousWidth <= 0;
 
-    private static double ResolveWidth(double availableWidth)
-        => availableWidth > 0 ? Math.Min(VirtualWidth, availableWidth) : VirtualWidth;
+    private static double ResolveWidth(double availableWidth) => VirtualWidth;
 
     /// <summary>描画元ホストの作り直しを最小化する差分。<see cref="Keep"/> は一切触らない
     /// （＝親の付け替えもレイアウトも走らない）。</summary>

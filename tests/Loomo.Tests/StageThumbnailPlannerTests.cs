@@ -42,17 +42,17 @@ public class StageThumbnailPlannerTests
     {
         var size = StageThumbnailPlanner.SourceSize(1433, CardAspect);
 
-        Assert.Equal(420, size.Width);
-        Assert.Equal(280, size.Height);
+        Assert.Equal(560, size.Width);
+        Assert.Equal(560 / CardAspect, size.Height);
     }
 
     [Fact]
-    public void Available_width_narrower_than_the_virtual_width_wins()
+    public void Available_width_never_makes_the_source_smaller_than_the_widest_card()
     {
         var size = StageThumbnailPlanner.SourceSize(300, CardAspect);
 
-        Assert.Equal(300, size.Width);
-        Assert.Equal(200, size.Height);
+        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Width);
+        Assert.True(size.Width > 550);
     }
 
     [Theory]
@@ -71,8 +71,8 @@ public class StageThumbnailPlannerTests
     {
         var size = StageThumbnailPlanner.SourceSize(420, 0);
 
-        Assert.Equal(420, size.Width);
-        Assert.Equal(420, size.Height);
+        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Width);
+        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Height);
     }
 
     /// <summary>仮想幅で頭打ちになる範囲のリサイズでは、袖を作り直さない
@@ -85,11 +85,11 @@ public class StageThumbnailPlannerTests
     }
 
     [Fact]
-    public void Resizing_across_the_virtual_width_changes_the_source_size()
+    public void Resizing_does_not_change_the_fixed_source_size()
     {
-        Assert.True(StageThumbnailPlanner.SourceSizeChanged(300, 1400));
-        Assert.True(StageThumbnailPlanner.SourceSizeChanged(1400, 300));
-        Assert.True(StageThumbnailPlanner.SourceSizeChanged(300, 360));
+        Assert.False(StageThumbnailPlanner.SourceSizeChanged(300, 1400));
+        Assert.False(StageThumbnailPlanner.SourceSizeChanged(1400, 300));
+        Assert.False(StageThumbnailPlanner.SourceSizeChanged(300, 360));
     }
 
     [Fact]
