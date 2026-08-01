@@ -38,8 +38,8 @@ public class StageThumbnailPlannerTests
     {
         var size = StageThumbnailPlanner.SourceSize(1433, CardAspect);
 
-        Assert.Equal(560, size.Width);
-        Assert.Equal(560 / CardAspect, size.Height);
+        Assert.Equal(800, size.Width);
+        Assert.Equal(800 / CardAspect, size.Height);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class StageThumbnailPlannerTests
         var size = StageThumbnailPlanner.SourceSize(300, CardAspect);
 
         Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Width);
-        Assert.True(size.Width > 550);
+        Assert.True(size.Width > 790);
     }
 
     [Theory]

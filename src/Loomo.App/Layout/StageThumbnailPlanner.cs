@@ -10,13 +10,13 @@ namespace sk0ya.Loomo.App.Layout;
 /// <item>ペイン 1 枚ごとに実寸の Measure/Arrange/UpdateLayout が走り、ペイン切替 1 回が 100ms を超える。
 /// コストはほぼ面積比で効く（実測：Git ペイン単体で 780 幅 25ms → 1433 幅 54ms）。</item>
 /// </list>
-/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=560 は最大袖カード 550px より
+/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=800 は最大袖カード 790px より
 /// 常に大きいため、袖表示が元の描画より拡大されることはない。</para>
 /// </summary>
 public static class StageThumbnailPlanner
 {
     /// <summary>描画元をレイアウトする固定仮想幅。Main がこれより広くても追従しない。</summary>
-    public const double VirtualWidth = 560;
+    public const double VirtualWidth = 800;
 
     /// <summary>
     /// ライブ VisualBrush ではなくスナップショットを使うペイン。

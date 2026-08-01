@@ -17,7 +17,7 @@ public partial class ShellWindow {
     private bool _tsIdePaneApplicable { get => _stageMode.TsIdePaneApplicable; set => _stageMode.TsIdePaneApplicable = value; }
     private const double DefaultWingWidth = 250;
     private const double MinWingWidth = 180;
-    private const double MaxWingWidth = 560;
+    private const double MaxWingWidth = 800;
     private double _wingWidth = DefaultWingWidth;
     private Point _wingDragStart;
     private bool _wingDragArmed;
