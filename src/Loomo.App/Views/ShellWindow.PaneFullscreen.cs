@@ -14,6 +14,7 @@ public partial class ShellWindow {
     private GridLength _fullscreenSidebarWidth;
     private double _fullscreenSidebarMinWidth;
     private GridLength _fullscreenSidebarSplitterWidth;
+    private GridLength _fullscreenWingSplitterWidth;
     private GridLength _fullscreenWingWidth;
     private Thickness _fullscreenStageMargin;
     private void TogglePaneFullscreen() {
@@ -48,6 +49,7 @@ public partial class ShellWindow {
         _fullscreenSidebarWidth = SidebarColumn.Width;
         _fullscreenSidebarMinWidth = SidebarColumn.MinWidth;
         _fullscreenSidebarSplitterWidth = SidebarSplitterColumn.Width;
+        _fullscreenWingSplitterWidth = WingSplitterColumn.Width;
         _fullscreenWingWidth = WingColumn.Width;
         _fullscreenStageMargin = StageArea.Margin;
         ActivityBarColumn.Width = new GridLength(0);
@@ -55,6 +57,7 @@ public partial class ShellWindow {
         SidebarColumn.MinWidth = 0;
         SidebarColumn.Width = new GridLength(0);
         SidebarSplitterColumn.Width = new GridLength(0);
+        WingSplitterColumn.Width = new GridLength(0);
         WingColumn.Width = new GridLength(0);
         StageArea.Margin = new Thickness(0);
         _overviewActive = false;
@@ -75,6 +78,7 @@ public partial class ShellWindow {
         SidebarColumn.MinWidth = _fullscreenSidebarMinWidth;
         SidebarColumn.Width = _fullscreenSidebarWidth;
         SidebarSplitterColumn.Width = _fullscreenSidebarSplitterWidth;
+        WingSplitterColumn.Width = _fullscreenWingSplitterWidth;
         WingColumn.Width = _fullscreenWingWidth;
         StageArea.Margin = _fullscreenStageMargin;
         _zoomedPane = _fullscreenPreviousZoomedPane;

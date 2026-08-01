@@ -142,6 +142,19 @@ public partial class ShellWindow : Window {
             ScheduleLayoutWings();
             RebuildStageIfResized();
         };
+        WingSplitter.MouseDoubleClick += (_, e) => {
+            SetWingWidth(DefaultWingWidth);
+            e.Handled = true;
+        };
+        WingSplitter.DragStarted += (_, _) => _paneSplitterDragging = true;
+        WingSplitter.DragDelta += (_, e) => {
+            _wingWidth = Math.Clamp(_wingWidth - e.HorizontalChange, MinWingWidth, MaxWingWidth);
+            WingColumn.Width = new GridLength(_wingWidth);
+        };
+        WingSplitter.DragCompleted += (_, _) => {
+            _paneSplitterDragging = false;
+            SetWingWidth(_wingWidth);
+        };
         if (PaneLayoutDebugLog.Enabled) {
             DependencyPropertyDescriptor.FromProperty(ColumnDefinition.WidthProperty, typeof(ColumnDefinition))
                 ?.AddValueChanged(SidebarColumn, (_, _) =>

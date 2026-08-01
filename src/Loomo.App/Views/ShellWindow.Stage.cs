@@ -14,7 +14,10 @@ public partial class ShellWindow {
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
     private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
     private bool _tsIdePaneApplicable { get => _stageMode.TsIdePaneApplicable; set => _stageMode.TsIdePaneApplicable = value; }
-    private const double WingColumnReserve = 210;
+    private const double DefaultWingWidth = 250;
+    private const double MinWingWidth = 180;
+    private const double MaxWingWidth = 420;
+    private double _wingWidth = DefaultWingWidth;
     private Point _wingDragStart;
     private bool _wingDragArmed;
     private static readonly PaneKind[] StageOrder =
@@ -68,6 +71,7 @@ public partial class ShellWindow {
     }
     private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot) {
         ClearStageModeForWorkspaceSwitch();
+        _wingWidth = Math.Clamp(snapshot?.WingWidth ?? DefaultWingWidth, MinWingWidth, MaxWingWidth);
         if (!solo)
             return;
         snapshot ??= StageSnapshot.Default();
@@ -152,8 +156,16 @@ public partial class ShellWindow {
         var hostW = StageHost.ActualWidth > 0 ? StageHost.ActualWidth : PaneHost.ActualWidth;
         var hostH = StageHost.ActualHeight > 0 ? StageHost.ActualHeight : PaneHost.ActualHeight;
         return new Size(
-            Math.Max(hostW - WingColumnReserve - 16, 480),   // 16 ≒ StageArea の左右マージン
+            Math.Max(hostW - _wingWidth - 16, 480),          // 16 ≒ StageArea の左右マージン
             Math.Max(hostH - 18, 320));                      // 18 ≒ 上下マージン
+    }
+    private void SetWingWidth(double width) {
+        _wingWidth = Math.Clamp(width, MinWingWidth, MaxWingWidth);
+        if (WingHost.Visibility == Visibility.Visible)
+            WingColumn.Width = new GridLength(_wingWidth);
+        RebuildWings();
+        RebuildStageIfResized();
+        SaveActiveWorkspaceSnapshot();
     }
     private void OnStageHostSizeChanged(object sender, SizeChangedEventArgs e) {
         if (!_stageActive)

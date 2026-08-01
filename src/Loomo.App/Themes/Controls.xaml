@@ -593,6 +593,33 @@
         <Setter Property="Padding" Value="10,3" />
     </Style>
 
+    <!-- ペイン境界のリサイズつまみ。6px の操作領域は透明のまま確保し、通常時はテーマの
+         Border で 1px、ホバー／ドラッグ時だけ Accent の 2px 線として見せる。 -->
+    <Style x:Key="PaneResizeThumb" TargetType="Thumb">
+        <Setter Property="Cursor" Value="SizeWE" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Grip" Width="1" HorizontalAlignment="Center"
+                                Background="{DynamicResource Border}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Grip" Property="Width" Value="2" />
+                            <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Grip" Property="Width" Value="2" />
+                            <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Field label（設定フォーム用） ===== -->
     <Style x:Key="FieldLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />

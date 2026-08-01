@@ -491,6 +491,8 @@ public sealed class StageSnapshot
     public PaneKind? Pane { get; set; }
     /// <summary>俯瞰（全カード一望）レイヤを開いたまま離れたか。</summary>
     public bool Overview { get; set; }
+    /// <summary>袖の幅。null は旧データで、既定幅を使用する。</summary>
+    public double? WingWidth { get; set; }
 }
 
 public sealed class TerminalSnapshot

@@ -1,15 +1,15 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ソロモード（舞台＋袖＋俯瞰）のカード／ミニチュア描画。袖・俯瞰カードの描画元の アレンジ、ライブ縮小カード（VisualBrush）、舞台スロットの生成。モード制御は ShellWindow.Stage.cs。</summary>
 public partial class ShellWindow {
-    private const double WingCardWidth = 180;
     private const double OverviewCardWidth = 320;
     private const double CardAspect = 3.0 / 2.0;
-    private const double WingRestOpacity = 0.72;
+    private const double WingRestOpacity = 0.90;
     private double _layoutWingSourceWidth;
     /// <summary>今の描画元ホストを組んだ仮想幅（0＝未構築）。変わらない限りホストは据え置ける。</summary>
     private double _thumbnailSourceWidth;
     private bool _layoutWingBuildQueued;
     private bool _layoutWingBuildPending;
+    private double CurrentWingCardWidth => Math.Max(150, _wingWidth - 10);
     /// <summary>袖に出すペイン（有効だが Main に出ていないもの）。</summary>
     private IReadOnlyList<PaneKind> LayoutWingKinds()
         => StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)).ToList();
@@ -96,11 +96,11 @@ public partial class ShellWindow {
         WingStrip.Children.Clear();
         if (_stageActive) {
             foreach (var kind in StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k)))
-                WingStrip.Children.Add(BuildSessionCard(kind, WingCardWidth, isOverview: false));
+                WingStrip.Children.Add(BuildSessionCard(kind, CurrentWingCardWidth, isOverview: false));
         } else {
             BuildLayoutWingSources();
             foreach (var kind in LayoutWingKinds())
-                WingStrip.Children.Add(BuildLayoutWingCard(kind, WingCardWidth));
+                WingStrip.Children.Add(BuildLayoutWingCard(kind, CurrentWingCardWidth));
         }
     }
     private void BuildLayoutWingSources() {
@@ -117,8 +117,10 @@ public partial class ShellWindow {
         }
         var hasWings = LayoutWingKinds().Count > 0;
         PaneLayoutDebugLog.Log($"ScheduleLayoutWings hasWings={hasWings} prevWingColumnWidth={WingColumn.Width}", withCaller: true);
-        WingColumn.Width = hasWings ? new GridLength(WingColumnReserve) : GridLength.Auto;
+        WingColumn.Width = hasWings ? new GridLength(_wingWidth) : GridLength.Auto;
+        WingSplitterColumn.Width = hasWings ? new GridLength(6) : new GridLength(0);
         WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
+        WingSplitter.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
         if (!hasWings) {
             _layoutWingBuildPending = false;
             WingStrip.Children.Clear();
@@ -156,6 +158,8 @@ public partial class ShellWindow {
         if (WingHost is null)
             return;
         WingHost.Visibility = WingStrip.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        WingSplitter.Visibility = WingHost.Visibility;
+        WingSplitterColumn.Width = WingHost.Visibility == Visibility.Visible ? new GridLength(6) : new GridLength(0);
         OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
     }
     private Border BuildSessionCard(PaneKind kind, double width, bool isOverview) {

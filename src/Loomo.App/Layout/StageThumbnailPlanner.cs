@@ -10,8 +10,8 @@ namespace sk0ya.Loomo.App.Layout;
 /// <item>ペイン 1 枚ごとに実寸の Measure/Arrange/UpdateLayout が走り、ペイン切替 1 回が 100ms を超える。
 /// コストはほぼ面積比で効く（実測：Git ペイン単体で 780 幅 25ms → 1433 幅 54ms）。</item>
 /// </list>
-/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=420 は袖 180px で 0.43 倍＝
-/// 内容が判別できる縮尺として実機検証済みの値。</para>
+/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=420 は袖 220px で約 0.52 倍＝
+/// 内容を判別しやすくしつつ、舞台を圧迫しすぎない縮尺。</para>
 /// </summary>
 public static class StageThumbnailPlanner
 {
