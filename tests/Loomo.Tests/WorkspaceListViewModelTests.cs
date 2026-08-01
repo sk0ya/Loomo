@@ -8,6 +8,25 @@ namespace sk0ya.Loomo.Tests;
 public class WorkspaceListViewModelTests
 {
     [Fact]
+    public void New_workspace_starts_in_concentrated_mode()
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var store = new WorkspaceStateStore(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json"));
+        var sut = new WorkspaceListViewModel(store);
+        WorkspaceSnapshot? activated = null;
+        sut.WorkspaceActivated += (_, snapshot) => activated = snapshot;
+
+        sut.ActivateFolder(dir.FullName);
+
+        Assert.NotNull(activated);
+        Assert.Equal(DisplayMode.Solo, activated.Mode);
+        Assert.True(activated.Stage?.IsActive);
+        Assert.Equal(PaneKind.Editor, activated.Stage?.Pane);
+    }
+
+    [Fact]
     public void Activating_current_workspace_does_not_raise_activation_event()
     {
         var dir = Directory.CreateDirectory(Path.Combine(

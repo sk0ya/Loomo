@@ -299,19 +299,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <Button x:Name="SplitModeChoice" Grid.Column="0"
-                                                Style="{StaticResource BranchMenuItem}" Click="OnChooseSplitMode"
-                                                HorizontalContentAlignment="Center" Padding="6,4"
-                                                ToolTip="複数の画面を自由に並べて表示する">
-                                            <DockPanel>
-                                                <Path x:Name="SplitModeIcon" Width="15" Height="13" Stretch="Uniform"
-                                                      StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
-                                                      Data="M0.5,0.5 H6 V12.5 H0.5 Z M8,0.5 H13.5 V12.5 H8 Z" />
-                                                <TextBlock x:Name="SplitModeText" Text="分割" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            </DockPanel>
-                                        </Button>
-                                        <Button x:Name="ConcentratedModeChoice" Grid.Column="1"
+                                        <Button x:Name="ConcentratedModeChoice" Grid.Column="0"
                                                 Style="{StaticResource BranchMenuItem}" Click="OnChooseConcentratedMode"
                                                 HorizontalContentAlignment="Center" Padding="6,4"
                                                 ToolTip="1つの画面を大きく表示し、ほかは右側で待機させる">
@@ -320,6 +308,18 @@
                                                       StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
                                                       Data="M0.5,0.5 H9 V12.5 H0.5 Z M11,0.5 H13.5 V5.5 H11 Z M11,7.5 H13.5 V12.5 H11 Z" />
                                                 <TextBlock x:Name="ConcentratedModeText" Text="集中" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </Button>
+                                        <Button x:Name="SplitModeChoice" Grid.Column="1"
+                                                Style="{StaticResource BranchMenuItem}" Click="OnChooseSplitMode"
+                                                HorizontalContentAlignment="Center" Padding="6,4"
+                                                ToolTip="複数の画面を自由に並べて表示する">
+                                            <DockPanel>
+                                                <Path x:Name="SplitModeIcon" Width="15" Height="13" Stretch="Uniform"
+                                                      StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                      Data="M0.5,0.5 H6 V12.5 H0.5 Z M8,0.5 H13.5 V12.5 H8 Z" />
+                                                <TextBlock x:Name="SplitModeText" Text="分割" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
                                         </Button>

@@ -361,7 +361,12 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
                 RootPath = fullPath,
                 Name = DisplayName(fullPath),
                 LastUsedUtc = DateTime.UtcNow,
-                Terminal = new TerminalSnapshot { WorkingDirectory = fullPath }
+                Terminal = new TerminalSnapshot { WorkingDirectory = fullPath },
+                Mode = DisplayMode.Solo,
+                Stage = new StageSnapshot {
+                    IsActive = true,
+                    Pane = PaneKind.Editor
+                }
             };
             _state.Workspaces.Add(snapshot);
             Workspaces.Insert(0, new WorkspaceEntryViewModel(snapshot));
