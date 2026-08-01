@@ -1311,7 +1311,7 @@
                      VisualBrush の描画元になるだけで自身は不可視（Opacity 0／最背面／ヒットテスト無効）。
                      StageHost の表示状態に依らず常にアレンジさせたいので、StageHost の外（列2）に常設する
                      （レイアウトモードで Main に出ていない有効セッションのミニチュアを描くため）。 -->
-                <Grid x:Name="StageSourceArea" Grid.Column="2" Margin="10,8,6,10"
+                <Grid x:Name="StageSourceArea" Grid.Column="2" Grid.ColumnSpan="3" Margin="10,8,6,10"
                       SizeChanged="OnStageSourceAreaSizeChanged"
                       Opacity="0" IsHitTestVisible="False" Panel.ZIndex="-1" />
 
