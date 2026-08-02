@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Editor.Core.Lsp;
 using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -16,12 +17,14 @@ public enum ProblemSeverity
     Warning,
 }
 
+public enum ProblemSource { Build, Lsp }
+
 /// <summary>「問題」一覧の1件。<c>dotnet build</c> / <c>dotnet test</c> 出力の MSBuild 診断行
 /// （<c>path(line,col): error CS1002: …</c>）をパースしたもの。</summary>
 public sealed class ProblemItemViewModel
 {
     public ProblemItemViewModel(string filePath, int line1, int column1, ProblemSeverity severity,
-        string code, string message)
+        string code, string message, ProblemSource source = ProblemSource.Build)
     {
         FilePath = filePath;
         Line1 = line1;
@@ -29,6 +32,7 @@ public sealed class ProblemItemViewModel
         Severity = severity;
         Code = code;
         Message = message;
+        Source = source;
     }
 
     public string FilePath { get; }
@@ -39,11 +43,13 @@ public sealed class ProblemItemViewModel
     /// <summary>診断コード（CS1002 / MSB3027 / MC3000 など）。</summary>
     public string Code { get; }
     public string Message { get; }
+    public ProblemSource Source { get; }
+    public string SourceLabel => Source == ProblemSource.Lsp ? "LSP" : "Build";
 
     public string FileName => Path.GetFileName(FilePath);
     public string LineColumn => $"{Line1}:{Column1}";
     /// <summary>行のツールチップ（メッセージ全文＋コード＋位置）。</summary>
-    public string ToolTipText => $"{Message}\n{Code} · {FileName}:{Line1}:{Column1}";
+    public string ToolTipText => $"{Message}\n{SourceLabel} · {Code} · {FileName}:{Line1}:{Column1}";
     public string SeverityGlyph => Severity switch
     {
         ProblemSeverity.Error => "✕",
@@ -91,6 +97,9 @@ public sealed partial class ProblemsViewModel : ObservableObject
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly IWorkspaceService? _workspace;
+    private IReadOnlyList<ProblemItemViewModel> _buildItems = [];
+    private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _lspItems =
+        new(System.StringComparer.OrdinalIgnoreCase);
 
     public ProblemsViewModel(IWorkspaceService? workspace = null) => _workspace = workspace;
 
@@ -116,8 +125,37 @@ public sealed partial class ProblemsViewModel : ObservableObject
     /// tsc は cwd 相対を出すので実行ディレクトリを渡す）。</summary>
     public void SetFromBuildOutput(string output, string? baseDir = null)
     {
+        _buildItems = ParseBuildOutput(output, baseDir);
+        Rebuild();
+    }
+
+    public void SetLspDiagnostics(string uri, IReadOnlyList<LspDiagnostic> diagnostics)
+    {
+        if (!TryGetFilePath(uri, out var filePath)) return;
+        var items = diagnostics
+            .Where(d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning)
+            .Select(d => new ProblemItemViewModel(filePath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
+                d.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
+                string.IsNullOrWhiteSpace(d.Source) ? "LSP" : d.Source!, d.Message, ProblemSource.Lsp))
+            .ToList();
+        if (items.Count == 0) _lspItems.Remove(filePath); else _lspItems[filePath] = items;
+        Rebuild();
+    }
+
+    public void ClearLspDiagnostics()
+    {
+        if (_lspItems.Count == 0) return;
+        _lspItems.Clear();
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
-        var items = ParseBuildOutput(output, baseDir);
+        var items = _buildItems.Concat(_lspItems.Values.SelectMany(x => x))
+            .GroupBy(i => $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Severity}|{i.Code}|{i.Message}",
+                System.StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderBy(i => i.Source).First()).ToList();
 
         Groups.Clear();
         var groups = items
@@ -135,6 +173,14 @@ public sealed partial class ProblemsViewModel : ObservableObject
         HasItems = Groups.Count > 0;
         ErrorCount = Groups.Sum(g => g.ErrorCount);
         WarningCount = Groups.Sum(g => g.WarningCount);
+    }
+
+    private static bool TryGetFilePath(string uri, out string filePath)
+    {
+        filePath = "";
+        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || !parsed.IsFile) return false;
+        filePath = Path.GetFullPath(parsed.LocalPath);
+        return true;
     }
 
     /// <summary>MSBuild/tsc 診断行のパース（テスト用に分離）。同一診断の再掲（サマリ節・マルチターゲット）は除く。

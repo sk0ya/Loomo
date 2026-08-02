@@ -9,7 +9,21 @@ public partial class ShellWindow
     {
         _vm.Debug.Problems.OpenRequested += OnProblemOpenRequested;
         _vm.TsIde.Problems.OpenRequested += OnProblemOpenRequested;
+        _lspWorkspace.DiagnosticsPublished += OnLspDiagnosticsPublished;
+        _workspace.FoldersChanged += OnProblemWorkspaceFoldersChanged;
     }
+
+    private void OnLspDiagnosticsPublished(string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
+        => Dispatcher.BeginInvoke(new Action(() => {
+            _vm.Debug.Problems.SetLspDiagnostics(uri, diagnostics);
+            _vm.TsIde.Problems.SetLspDiagnostics(uri, diagnostics);
+        }));
+
+    private void OnProblemWorkspaceFoldersChanged(object? sender, EventArgs e)
+        => Dispatcher.BeginInvoke(new Action(() => {
+            _vm.Debug.Problems.ClearLspDiagnostics();
+            _vm.TsIde.Problems.ClearLspDiagnostics();
+        }));
 
     private void OnProblemOpenRequested(ProblemItemViewModel item)
         => _ = OpenPathInEditorAsync(item.FilePath, item.Line1, item.Column1);

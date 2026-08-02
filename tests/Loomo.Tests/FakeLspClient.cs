@@ -33,6 +33,7 @@ internal sealed class FakeLspClient : ILspClient
     public bool SupportsRangeFormatting => true;
     public bool SupportsSemanticTokens => true;
     public bool SupportsSelectionRange => true;
+    public bool SupportsDocumentDiagnostics { get; set; }
     public bool SupportsWorkspaceDiagnostics { get; set; } = true;
     public SemanticTokensLegend? SemanticTokensLegend => null;
 
@@ -83,6 +84,8 @@ internal sealed class FakeLspClient : ILspClient
     }
 
     public List<LspSymbolInformation> WorkspaceSymbols { get; } = [];
+    public IReadOnlyList<LspDiagnostic>? DocumentDiagnostics { get; set; } = [];
+    public int DocumentDiagnosticRequestCount;
 
     public Task<IReadOnlyList<LspSymbolInformation>> GetWorkspaceSymbolsAsync(string query, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<LspSymbolInformation>>(WorkspaceSymbols);
@@ -101,6 +104,13 @@ internal sealed class FakeLspClient : ILspClient
     public Task<IReadOnlyList<LspCodeAction>> GetCodeActionsAsync(string uri, LspRange range, CancellationToken ct = default) => Empty<LspCodeAction>();
     public Task<IReadOnlyList<InlayHint>> GetInlayHintsAsync(string uri, LspRange range, CancellationToken ct = default) => Empty<InlayHint>();
     public Task<SemanticToken[]?> GetSemanticTokensAsync(string uri, CancellationToken ct = default) => Task.FromResult<SemanticToken[]?>(null);
+    public Task<LspDocumentDiagnosticReport?> GetDocumentDiagnosticsAsync(string uri, CancellationToken ct = default)
+    {
+        Interlocked.Increment(ref DocumentDiagnosticRequestCount);
+        return Task.FromResult(DocumentDiagnostics is null
+            ? null
+            : new LspDocumentDiagnosticReport(DocumentDiagnostics, null, Unchanged: false));
+    }
     public Task<LspWorkspaceDiagnosticResult?> GetWorkspaceDiagnosticsAsync(CancellationToken ct = default) => Task.FromResult<LspWorkspaceDiagnosticResult?>(null);
     public Task<CallHierarchyItem?> PrepareCallHierarchyAsync(string uri, LspPosition pos, CancellationToken ct = default) => Task.FromResult<CallHierarchyItem?>(null);
     public Task<CallHierarchyIncomingCall[]?> GetIncomingCallsAsync(CallHierarchyItem item, CancellationToken ct = default) => Task.FromResult<CallHierarchyIncomingCall[]?>(null);

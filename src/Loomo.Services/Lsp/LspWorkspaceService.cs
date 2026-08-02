@@ -47,7 +47,8 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
             _pool,
             ext => _servers.GetForExtension(ext),
             ResolveRoot,
-            Log);
+            Log,
+            (uri, diagnostics) => DiagnosticsPublished?.Invoke(uri, diagnostics));
 
         _pool.DiagnosticsPublished += OnDiagnosticsPublished;
         _pool.ClientDied += pooled => _ = _documents.OnClientDiedAsync(pooled);

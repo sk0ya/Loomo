@@ -31,17 +31,20 @@ internal sealed class LspDocumentTable
     private readonly Func<string, LspServerDef?> _resolveServer;
     private readonly Func<string, string> _resolveRoot;
     private readonly Action<string> _log;
+    private readonly Action<string, IReadOnlyList<LspDiagnostic>> _diagnosticsPublished;
 
     public LspDocumentTable(
         LspClientPool pool,
         Func<string, LspServerDef?> resolveServer,
         Func<string, string> resolveRoot,
-        Action<string> log)
+        Action<string> log,
+        Action<string, IReadOnlyList<LspDiagnostic>> diagnosticsPublished)
     {
         _pool = pool;
         _resolveServer = resolveServer;
         _resolveRoot = resolveRoot;
         _log = log;
+        _diagnosticsPublished = diagnosticsPublished;
     }
 
     /// <summary>
@@ -97,6 +100,15 @@ internal sealed class LspDocumentTable
         LspDocumentEntry? entry;
         lock (_gate) entry = _docs.GetValueOrDefault(uri);
         entry?.PublishDiagnostics(diagnostics);
+    }
+
+    internal void OnPulledDiagnostics(LspDocumentEntry entry, IReadOnlyList<LspDiagnostic> diagnostics)
+    {
+        lock (_gate)
+            if (!_docs.TryGetValue(entry.Uri, out var current) || !ReferenceEquals(current, entry))
+                return;
+        entry.PublishDiagnostics(diagnostics);
+        _diagnosticsPublished(entry.Uri, diagnostics);
     }
 
     /// <summary>
@@ -248,6 +260,7 @@ internal sealed class LspDocumentEntry
     public IReadOnlyList<LspDiagnostic> Diagnostics { get; private set; } = [];
 
     private int _version = 1;
+    private CancellationTokenSource? _diagnosticPull;
 
     public LspDocumentEntry(
         LspDocumentTable table,
@@ -300,22 +313,26 @@ internal sealed class LspDocumentEntry
         Text = text;
         if (!Opened || !Client.IsRunning) return;
         _ = Client.Client.ChangeDocumentAsync(Uri, Interlocked.Increment(ref _version), text);
+        ScheduleDiagnosticsPull();
     }
 
     public void MarkOpened()
     {
         Opened = true;
         NotifyState("LSP: ready");
+        ScheduleDiagnosticsPull();
     }
 
     public void MarkClosed()
     {
+        CancelDiagnosticsPull();
         Opened = false;
         NotifyState(null);
     }
 
     public void MarkDisconnected(string? message)
     {
+        CancelDiagnosticsPull();
         Opened = false;
         NotifyState(message);
     }
@@ -334,6 +351,37 @@ internal sealed class LspDocumentEntry
     {
         Diagnostics = diagnostics;
         foreach (var h in Snapshot()) h.RaiseDiagnostics(diagnostics);
+    }
+
+    private void ScheduleDiagnosticsPull()
+    {
+        if (!Client.Client.SupportsDocumentDiagnostics) return;
+        var next = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _diagnosticPull, next);
+        previous?.Cancel();
+        previous?.Dispose();
+        var client = Client;
+        var version = Volatile.Read(ref _version);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(300, next.Token);
+                var report = await client.Client.GetDocumentDiagnosticsAsync(Uri, next.Token);
+                if (report is null || report.Unchanged || next.IsCancellationRequested ||
+                    !ReferenceEquals(Client, client) || Volatile.Read(ref _version) != version)
+                    return;
+                Table.OnPulledDiagnostics(this, report.Diagnostics);
+            }
+            catch (OperationCanceledException) { }
+        });
+    }
+
+    private void CancelDiagnosticsPull()
+    {
+        var cts = Interlocked.Exchange(ref _diagnosticPull, null);
+        cts?.Cancel();
+        cts?.Dispose();
     }
 
     private void NotifyState(string? message)

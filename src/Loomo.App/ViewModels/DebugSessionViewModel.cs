@@ -26,6 +26,7 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     private readonly DebugManagerViewModelBase _manager;
     private readonly Dispatcher _dispatcher;
     private CancellationTokenSource? _cts;
+    private Stopwatch? _sessionClock;
 
     public Guid SessionId { get; } = Guid.NewGuid();
     public IDebugService DebugService { get; }
@@ -88,6 +89,7 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     {
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        _sessionClock = Stopwatch.StartNew();
         return _cts.Token;
     }
 
@@ -153,7 +155,22 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
         => Dispatch(() => { ExecutionLineChanged?.Invoke(null, -1); Inspection.Clear(); });
 
     private void OnDebugExited(object? sender, DebugExited e)
-        => Dispatch(() => { ExecutionLineChanged?.Invoke(null, -1); Inspection.Clear(); });
+        => Dispatch(() =>
+        {
+            _sessionClock?.Stop();
+            var elapsed = _sessionClock?.Elapsed;
+            var code = e.ExitCode is { } value ? $"終了コード {value}" : "終了コード不明";
+            var duration = elapsed is { } time ? $"、実行時間 {FormatDuration(time)}" : "";
+            Append(DebugOutputCategory.Important, $"セッション終了（{code}{duration}）");
+            StatusMessage = e.ExitCode is 0 or null ? "終了" : $"終了（コード {e.ExitCode}）";
+            ExecutionLineChanged?.Invoke(null, -1);
+            Inspection.Clear();
+        });
+
+    private static string FormatDuration(TimeSpan elapsed)
+        => elapsed.TotalMinutes >= 1
+            ? $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}"
+            : $"{elapsed.TotalSeconds:0.0}秒";
 
     private void OnStateChanged(object? sender, DebugSessionState state)
         => Dispatch(() =>

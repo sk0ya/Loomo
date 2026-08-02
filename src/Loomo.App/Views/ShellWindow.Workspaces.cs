@@ -269,6 +269,8 @@ public partial class ShellWindow {
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
+        _lspWorkspace.DiagnosticsPublished -= OnLspDiagnosticsPublished;
+        _workspace.FoldersChanged -= OnProblemWorkspaceFoldersChanged;
         _detached?.CloseAll();
         foreach (var preview in _browserLivePreviews.Values)
             preview.Dispose();

@@ -224,6 +224,34 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         Assert.Equal(diagnostics, first.CurrentDiagnostics);
     }
 
+    [Fact]
+    public async Task PullDiagnostics_AfterTextChangeReachDocumentAndWorkspaceSubscribers()
+    {
+        var path = Write("A.cs");
+        using var document = _sut.OpenDocument(path, "class A {}")!;
+        await Settle();
+        var client = Clients[0];
+        client.SupportsDocumentDiagnostics = true;
+        client.DocumentDiagnostics =
+        [
+            new LspDiagnostic(
+                new LspRange(new LspPosition(0, 6), new LspPosition(0, 7)),
+                "識別子が必要です", DiagnosticSeverity.Error, "compiler")
+        ];
+        IReadOnlyList<LspDiagnostic>? received = null;
+        string? publishedUri = null;
+        document.DiagnosticsChanged += diagnostics => received = diagnostics;
+        _sut.DiagnosticsPublished += (uri, _) => publishedUri = uri;
+
+        document.UpdateText("class # {}");
+        await Settle(600);
+
+        Assert.Equal(1, client.DocumentDiagnosticRequestCount);
+        Assert.Equal("識別子が必要です", Assert.Single(received!).Message);
+        Assert.Equal(document.Uri, publishedUri);
+        Assert.Equal(received, document.CurrentDiagnostics);
+    }
+
     // ── ワークスペーススコープ ─────────────────────────────────────────────
 
     [Fact]

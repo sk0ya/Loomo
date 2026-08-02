@@ -1,4 +1,5 @@
 using sk0ya.Loomo.App.ViewModels;
+using Editor.Core.Lsp;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -147,5 +148,31 @@ public class ProblemsViewModelTests
 
         Assert.Equal("Sub/Deep", vm.Groups.First(g => g.FileName == "A.cs").RelativeDir);
         Assert.Equal("", vm.Groups.First(g => g.FileName == "B.cs").RelativeDir);   // ルート直下は空
+    }
+
+    [Fact]
+    public void Lsp_diagnostics_are_merged_cleared_and_identify_their_source()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(@"C:\src\A.cs(2,3): warning CS0168: unused [C:\src\P.csproj]");
+        var uri = new Uri(@"C:\src\B.cs").AbsoluteUri;
+
+        vm.SetLspDiagnostics(uri,
+        [
+            new(new(new(4, 6), new(4, 8)), "型が見つかりません", DiagnosticSeverity.Error, "csharp"),
+            new(new(new(0, 0), new(0, 1)), "ヒント", DiagnosticSeverity.Hint, "csharp"),
+        ]);
+
+        Assert.Equal(1, vm.ErrorCount);
+        Assert.Equal(1, vm.WarningCount);
+        var lsp = Assert.Single(vm.Groups.Single(g => g.FileName == "B.cs").Items);
+        Assert.Equal(5, lsp.Line1);
+        Assert.Equal(7, lsp.Column1);
+        Assert.Equal(ProblemSource.Lsp, lsp.Source);
+        Assert.Equal("LSP", lsp.SourceLabel);
+
+        vm.SetLspDiagnostics(uri, []);
+        Assert.DoesNotContain(vm.Groups, g => g.FileName == "B.cs");
+        Assert.Single(vm.Groups);
     }
 }

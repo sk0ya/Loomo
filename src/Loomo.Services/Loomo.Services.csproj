@@ -45,7 +45,8 @@
     <!-- 1.0.61: initialize で workspaceFolders を通知し、workspace/configuration に正しい配列応答を返す -->
     <!-- 1.0.62: call/type hierarchy の data を保持し、Roslyn の follow-up 要求クラッシュを修正 -->
     <!-- 1.0.65: モード遷移時のカーソル位置同期を修正 -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.68" />
+    <!-- 1.0.70: pull diagnostics APIを追加し、Roslynの編集中診断を問題ペインへ反映 -->
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.70" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
          BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->
@@ -54,7 +55,8 @@
     <!-- 1.0.28: UI Automation対応（ターミナルサーフェス）、キーバインド設定、カラーテーマカタログを追加 -->
     <!-- 1.0.29: WSLプロファイル自動検出（無効プロファイルは非表示）、Windows PowerShellへのシェル統合拡張、
          ハイコントラスト対応、詳細設定のUI公開、描画性能の改善 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.29" />
+    <!-- 1.0.30: 内部入力ProxyをAutomationのControlビューから除外し、実表示Surfaceのフォーカスを正しく公開 -->
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.30" />
   </ItemGroup>
 
 </Project>
