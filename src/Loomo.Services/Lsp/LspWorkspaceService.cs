@@ -60,6 +60,9 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
     public event Action<string, IReadOnlyList<LspDiagnostic>>? DiagnosticsPublished;
     public event Action? ServerStateChanged;
 
+    public IReadOnlyList<LspServerRuntimeStatus> ServerStatuses => _pool.Statuses;
+    public bool RestartServer(string executable) => _pool.Restart(executable);
+
     public ILspDocument? OpenDocument(string filePath, string initialText)
         => _disposed ? null : _documents.Open(filePath, initialText);
 
@@ -273,9 +276,12 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
     }
 
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "editor-lsp-debug.log");
+    private static readonly bool DiagnosticLogEnabled = string.Equals(
+        Environment.GetEnvironmentVariable("SK0YA_EDITOR_IDE_DIAG"), "1", StringComparison.Ordinal);
 
     private static void Log(string message)
     {
+        if (!DiagnosticLogEnabled) return;
         try { File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n"); }
         catch { }
     }

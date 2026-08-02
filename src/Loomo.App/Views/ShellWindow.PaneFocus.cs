@@ -1,18 +1,26 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: フォーカス追跡と方向移動（Ctrl+W h/j/k/l）。フォーカス領域の記録、隣接領域の探索、 ビューポート/サイドバー/ペインへのフォーカス適用、ペイン/サイドバー矩形の取得。 キー入口・リサイズモードは ShellWindow.PaneNavigation.cs。</summary>
 public partial class ShellWindow {
+    private readonly Dictionary<PaneKind, WeakReference<IInputElement>> _lastPaneFocus = new();
+    private WeakReference<IInputElement>? _lastSidebarFocus;
+
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
         if (e.NewFocus is not DependencyObject d)
             return;
         if (FindPaneOf(d) is { } kind) {
+            if (kind is PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai or PaneKind.Git or PaneKind.Diff or PaneKind.Trace
+                && e.NewFocus is not System.Windows.Controls.Primitives.ButtonBase)
+                _lastPaneFocus[kind] = new WeakReference<IInputElement>(e.NewFocus);
             if (ViewsFor(kind) is { } views && views.SetFocusedFromElement(d) is { } viewId)
                 _focusedRegion = FocusTarget.Viewport(kind, viewId);
             else
                 _focusedRegion = FocusTarget.Of(kind);
             RecordTrailPane(kind);
-        } else if (IsWithin(d, SidebarContainer))
+        } else if (IsWithin(d, SidebarContainer)) {
             _focusedRegion = FocusTarget.Sidebar;
+            _lastSidebarFocus = new WeakReference<IInputElement>(e.NewFocus);
+        }
     }
     private static bool IsWithin(DependencyObject element, DependencyObject ancestor) {
         for (var current = element; current is not null; current = GetAnyParent(current))
@@ -139,6 +147,8 @@ public partial class ShellWindow {
         if (view is null)
             return;
         _focusedRegion = FocusTarget.Sidebar;
+        if (TryRestoreFocus(_lastSidebarFocus, SidebarContainer))
+            return;
         if (view is FolderTreeView tree)
             tree.FocusTree();           // Explorer は中身のツリーへ直接フォーカス（先頭未選択なら選ぶ）
         else
@@ -168,6 +178,13 @@ public partial class ShellWindow {
         if (_stageActive && kind != _stagePane)
             SetStagePane(kind);
         _focusedRegion = FocusTarget.Of(kind);
+        if (_paneElements.TryGetValue(kind, out var pane) &&
+            _lastPaneFocus.TryGetValue(kind, out var previous) && TryRestoreFocus(previous, pane))
+        {
+            SyncActiveFromViewport(kind);
+            RecordTrailPane(kind);
+            return;
+        }
         switch (kind) {
             case PaneKind.Terminal:
                 if (_terminalViews is { } tv) tv.FocusFocused();
@@ -210,6 +227,15 @@ public partial class ShellWindow {
                 break;
         }
         RecordTrailPane(kind);
+    }
+
+    private static bool TryRestoreFocus(WeakReference<IInputElement>? reference, DependencyObject owner)
+    {
+        if (reference?.TryGetTarget(out var target) != true || target is not DependencyObject d ||
+            target is not UIElement { IsVisible: true, IsEnabled: true })
+            return false;
+        if (!IsWithin(d, owner)) return false;
+        return target.Focus();
     }
 
     /// <summary>ワークスペース復元の最後に、見えている場所と内部の現在地を同じペインへ揃える。</summary>

@@ -970,6 +970,7 @@ public sealed class JsDebugService : IDebugService
         SetState(DebugSessionState.Stopped);
         await ClearTempBreakpointsAsync();
         string? sourcePath = null;
+        string? exceptionName = null, exceptionMessage = null;
         int line = 0;
         try
         {
@@ -983,11 +984,23 @@ public sealed class JsDebugService : IDebugService
                     sourcePath = frames[0].SourcePath;
                     line = frames[0].Line;
                 }
+                if (reason.Equals("exception", StringComparison.OrdinalIgnoreCase))
+                {
+                    var info = await conn.SendRequestAsync("exceptionInfo", new { threadId });
+                    if (info is { ValueKind: JsonValueKind.Object } ex)
+                    {
+                        exceptionName = ex.TryGetProperty("exceptionId", out var id) ? id.GetString() : null;
+                        exceptionMessage = ex.TryGetProperty("description", out var desc) ? desc.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(exceptionMessage) && ex.TryGetProperty("details", out var details) &&
+                            details.ValueKind == JsonValueKind.Object && details.TryGetProperty("message", out var message))
+                            exceptionMessage = message.GetString();
+                    }
+                }
             }
         }
         catch { /* スタック取得失敗時は位置不明のまま通知 */ }
 
-        Stopped?.Invoke(this, new DebugStopped(sourcePath, line, reason, threadId));
+        Stopped?.Invoke(this, new DebugStopped(sourcePath, line, reason, threadId, exceptionName, exceptionMessage));
     }
 
     private static DebugOutputCategory MapCategory(string? category) => category switch

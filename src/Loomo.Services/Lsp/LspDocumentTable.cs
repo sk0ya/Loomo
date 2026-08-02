@@ -111,6 +111,8 @@ internal sealed class LspDocumentTable
         _diagnosticsPublished(entry.Uri, diagnostics);
     }
 
+    internal void MarkServerReady(PooledLspClient client) => _pool.MarkReady(client);
+
     /// <summary>
     /// サーバーがクラッシュした。そのサーバーが担っていた文書を、作り直したプロセスへ
     /// 透過的に載せ替える（再初期化 → 最新テキストで <c>didOpen</c> をリプレイ）。
@@ -233,6 +235,9 @@ internal sealed class LspDocumentTable
         }
         if (!last) return;
 
+        // URI単位スナップショットの所有者が消えたので、Problems側にも空を配って古い項目を残さない。
+        _diagnosticsPublished(entry.Uri, []);
+
         _ = Task.Run(async () =>
         {
             await CloseOnServerAsync(entry);
@@ -260,6 +265,7 @@ internal sealed class LspDocumentEntry
     public IReadOnlyList<LspDiagnostic> Diagnostics { get; private set; } = [];
 
     private int _version = 1;
+    public int Version => Volatile.Read(ref _version);
     private CancellationTokenSource? _diagnosticPull;
 
     public LspDocumentEntry(
@@ -368,6 +374,17 @@ internal sealed class LspDocumentEntry
             {
                 await Task.Delay(300, next.Token);
                 var report = await client.Client.GetDocumentDiagnosticsAsync(Uri, next.Token);
+                // ContentModified / ServerCancelled はクライアント層で null になる。失敗として
+                // 診断を消さず、同じ文書版・同じ接続世代の間だけ静かに1回再試行する。
+                if (report is null && !next.IsCancellationRequested && ReferenceEquals(Client, client) &&
+                    Volatile.Read(ref _version) == version)
+                {
+                    await Task.Delay(300, next.Token);
+                    report = await client.Client.GetDocumentDiagnosticsAsync(Uri, next.Token);
+                }
+                if (report is not null && !next.IsCancellationRequested && ReferenceEquals(Client, client) &&
+                    Volatile.Read(ref _version) == version)
+                    Table.MarkServerReady(client);
                 if (report is null || report.Unchanged || next.IsCancellationRequested ||
                     !ReferenceEquals(Client, client) || Volatile.Read(ref _version) != version)
                     return;

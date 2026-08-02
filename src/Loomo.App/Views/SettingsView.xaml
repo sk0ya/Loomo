@@ -225,7 +225,14 @@
                                                     <TextBlock Text="{Binding CommandText}" FontFamily="Cascadia Mono, Consolas"
                                                                FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                                    <TextBlock Text="{Binding RuntimeDetail}" FontSize="{DynamicResource Fs10}"
+                                                               Foreground="{DynamicResource FgDim}" TextWrapping="Wrap"
+                                                               Visibility="{Binding RuntimeDetail, Converter={StaticResource NonEmptyToVis}}" />
                                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                        <Button Content="再試行" Style="{StaticResource FlatButton}"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
+                                                                Command="{Binding RetryCommand}"
+                                                                Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}" />
                                                         <Button Content="インストール" Style="{StaticResource FlatButton}"
                                                                 FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
                                                                 Command="{Binding InstallCommand}"

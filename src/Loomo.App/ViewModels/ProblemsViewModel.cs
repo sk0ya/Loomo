@@ -19,12 +19,15 @@ public enum ProblemSeverity
 
 public enum ProblemSource { Build, Lsp }
 
+public enum ProblemScope { Workspace, CurrentFile }
+
 /// <summary>「問題」一覧の1件。<c>dotnet build</c> / <c>dotnet test</c> 出力の MSBuild 診断行
 /// （<c>path(line,col): error CS1002: …</c>）をパースしたもの。</summary>
 public sealed class ProblemItemViewModel
 {
     public ProblemItemViewModel(string filePath, int line1, int column1, ProblemSeverity severity,
-        string code, string message, ProblemSource source = ProblemSource.Build)
+        string code, string message, ProblemSource source = ProblemSource.Build,
+        int? endLine1 = null, int? endColumn1 = null)
     {
         FilePath = filePath;
         Line1 = line1;
@@ -33,12 +36,16 @@ public sealed class ProblemItemViewModel
         Code = code;
         Message = message;
         Source = source;
+        EndLine1 = endLine1 ?? line1;
+        EndColumn1 = endColumn1 ?? column1;
     }
 
     public string FilePath { get; }
     /// <summary>1始まりの行/列（MSBuild 出力のまま）。</summary>
     public int Line1 { get; }
     public int Column1 { get; }
+    public int EndLine1 { get; }
+    public int EndColumn1 { get; }
     public ProblemSeverity Severity { get; }
     /// <summary>診断コード（CS1002 / MSB3027 / MC3000 など）。</summary>
     public string Code { get; }
@@ -100,24 +107,79 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private IReadOnlyList<ProblemItemViewModel> _buildItems = [];
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _lspItems =
         new(System.StringComparer.OrdinalIgnoreCase);
+    private string? _navigationKey;
 
     public ProblemsViewModel(IWorkspaceService? workspace = null) => _workspace = workspace;
 
-    /// <summary>ファイル別のツリー（エラーを含むファイルが先、次いでファイル名順。配下は行順）。</summary>
-    public ObservableCollection<ProblemFileGroup> Groups { get; } = new();
+    /// <summary>ファイル別のツリー（エラーを含むファイルが先、次いでファイル名順。配下は行順）。
+    /// 更新時はコレクションを一括交換し、1000件でもUIへAdd通知を1000回送らない。</summary>
+    private ObservableCollection<ProblemFileGroup> _groups = new();
+    public ObservableCollection<ProblemFileGroup> Groups
+    {
+        get => _groups;
+        private set => SetProperty(ref _groups, value);
+    }
 
     [ObservableProperty] private bool _hasItems;
     [ObservableProperty] private int _errorCount;
     [ObservableProperty] private int _warningCount;
+    [ObservableProperty] private bool _showErrors = true;
+    [ObservableProperty] private bool _showWarnings = true;
+    [ObservableProperty] private bool _showBuild = true;
+    [ObservableProperty] private bool _showLsp = true;
+    [ObservableProperty] private ProblemScope _scope;
+    [ObservableProperty] private string? _currentFilePath;
+
+    partial void OnShowErrorsChanged(bool value) => Rebuild();
+    partial void OnShowWarningsChanged(bool value) => Rebuild();
+    partial void OnShowBuildChanged(bool value) => Rebuild();
+    partial void OnShowLspChanged(bool value) => Rebuild();
+    partial void OnScopeChanged(ProblemScope value) => Rebuild();
+    partial void OnCurrentFilePathChanged(string? value)
+    {
+        if (Scope == ProblemScope.CurrentFile) Rebuild();
+    }
 
     /// <summary>行クリック（または Enter）でその位置へジャンプする要求。ShellWindow が購読する。</summary>
     public event Action<ProblemItemViewModel>? OpenRequested;
+    /// <summary>該当位置を開き、Editor所有のCode Action候補UIを表示する要求。</summary>
+    public event Action<ProblemItemViewModel>? QuickFixRequested;
 
     [RelayCommand]
     private void Open(ProblemItemViewModel? item)
     {
-        if (item is not null) OpenRequested?.Invoke(item);
+        if (item is null) return;
+        _navigationKey = NavigationKey(item);
+        OpenRequested?.Invoke(item);
     }
+
+    [RelayCommand]
+    private void QuickFix(ProblemItemViewModel? item)
+    {
+        if (item is null) return;
+        _navigationKey = NavigationKey(item);
+        QuickFixRequested?.Invoke(item);
+    }
+
+    [RelayCommand]
+    private void Next() => Move(1);
+
+    [RelayCommand]
+    private void Previous() => Move(-1);
+
+    private void Move(int delta)
+    {
+        var items = Groups.SelectMany(g => g.Items).ToList();
+        if (items.Count == 0) return;
+        var current = _navigationKey is null ? -1 : items.FindIndex(i => NavigationKey(i) == _navigationKey);
+        var next = current < 0
+            ? (delta > 0 ? 0 : items.Count - 1)
+            : (current + delta + items.Count) % items.Count;
+        Open(items[next]);
+    }
+
+    private static string NavigationKey(ProblemItemViewModel item) =>
+        $"{item.FilePath}|{item.Line1}|{item.Column1}|{item.EndLine1}|{item.EndColumn1}|{item.Severity}|{item.Code}|{item.Message}";
 
     /// <summary>ビルド系コマンドの出力全文からエラー/警告を抽出してツリーを丸ごと作り直す
     /// （診断行が 1 つも無ければ空＝ビルドがきれいという正しい状態）。ファイルの開閉状態はパスで引き継ぐ。
@@ -136,7 +198,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
             .Where(d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning)
             .Select(d => new ProblemItemViewModel(filePath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
                 d.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
-                string.IsNullOrWhiteSpace(d.Source) ? "LSP" : d.Source!, d.Message, ProblemSource.Lsp))
+                string.IsNullOrWhiteSpace(d.Code) ? (string.IsNullOrWhiteSpace(d.Source) ? "LSP" : d.Source!) : d.Code!,
+                d.Message, ProblemSource.Lsp, d.Range.End.Line + 1, d.Range.End.Character + 1))
             .ToList();
         if (items.Count == 0) _lspItems.Remove(filePath); else _lspItems[filePath] = items;
         Rebuild();
@@ -153,26 +216,41 @@ public sealed partial class ProblemsViewModel : ObservableObject
     {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
         var items = _buildItems.Concat(_lspItems.Values.SelectMany(x => x))
-            .GroupBy(i => $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Severity}|{i.Code}|{i.Message}",
+            // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、
+            // Build を隠しただけで代表に選ばれた Build 項目と一緒に LSP 項目まで消してはならない。
+            .Where(IsVisible)
+            .GroupBy(i => $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.EndLine1}|{i.EndColumn1}|{i.Severity}|{i.Code}|{i.Message}",
                 System.StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.OrderBy(i => i.Source).First()).ToList();
+            .Select(g => g.OrderBy(i => i.Source).First())
+            .ToList();
 
-        Groups.Clear();
         var groups = items
             .GroupBy(i => i.FilePath, System.StringComparer.OrdinalIgnoreCase)
             .Select(g => new ProblemFileGroup(g.Key, ToRelativeDir(g.Key),
                 g.OrderBy(i => i.Line1).ThenBy(i => i.Column1).ToList()))
             .OrderByDescending(g => g.HasErrors)
             .ThenBy(g => g.FileName, System.StringComparer.OrdinalIgnoreCase);
+        var replacement = new ObservableCollection<ProblemFileGroup>();
         foreach (var g in groups)
         {
             if (expanded.TryGetValue(g.FilePath, out var e)) g.IsExpanded = e;
-            Groups.Add(g);
+            replacement.Add(g);
         }
+        Groups = replacement;
 
         HasItems = Groups.Count > 0;
         ErrorCount = Groups.Sum(g => g.ErrorCount);
         WarningCount = Groups.Sum(g => g.WarningCount);
+    }
+
+    private bool IsVisible(ProblemItemViewModel item)
+    {
+        if (item.Severity == ProblemSeverity.Error ? !ShowErrors : !ShowWarnings) return false;
+        if (item.Source == ProblemSource.Build ? !ShowBuild : !ShowLsp) return false;
+        return Scope != ProblemScope.CurrentFile ||
+            (!string.IsNullOrWhiteSpace(CurrentFilePath) &&
+             string.Equals(Path.GetFullPath(item.FilePath), Path.GetFullPath(CurrentFilePath),
+                 System.StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool TryGetFilePath(string uri, out string filePath)

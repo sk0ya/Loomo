@@ -20,6 +20,8 @@ internal sealed class FakeLspClient : ILspClient
     public int InitializeCount;
     public IReadOnlyList<string>? LastWorkspaceFolders;
     public bool Disposed;
+    public bool KeepRunningAfterDispose;
+    public bool RaiseExitedOnDispose;
 
     public FakeLspClient(string executable, string root)
     {
@@ -124,7 +126,8 @@ internal sealed class FakeLspClient : ILspClient
     public void Dispose()
     {
         Disposed = true;
-        IsRunning = false;
+        if (!KeepRunningAfterDispose) IsRunning = false;
+        if (RaiseExitedOnDispose) Exited?.Invoke();
     }
 
     private static Task<IReadOnlyList<T>> Empty<T>() => Task.FromResult<IReadOnlyList<T>>([]);

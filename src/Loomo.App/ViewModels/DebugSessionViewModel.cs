@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using sk0ya.Loomo.Core.Debug;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -27,6 +28,9 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     private readonly Dispatcher _dispatcher;
     private CancellationTokenSource? _cts;
     private Stopwatch? _sessionClock;
+    private bool _firstStopReported;
+    private bool _userStopRequested;
+    private bool _reachedRunning;
 
     public Guid SessionId { get; } = Guid.NewGuid();
     public IDebugService DebugService { get; }
@@ -90,10 +94,18 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
         _sessionClock = Stopwatch.StartNew();
+        _firstStopReported = false;
+        _userStopRequested = false;
+        _reachedRunning = false;
+        IdeQualityDiagnosticLog.Write("debug.start.requested", $"session={SessionId} name={DisplayName} kind={Kind}");
         return _cts.Token;
     }
 
-    void IDebugSession.CancelSession() => _cts?.Cancel();
+    void IDebugSession.CancelSession()
+    {
+        _userStopRequested = true;
+        _cts?.Cancel();
+    }
 
     // 出力タブへの切替・ブレークポイントガター再同期はセッション非依存（マネージャ／Breakpoints VM が持つ）ため未使用。
     void IDebugSession.RequestOutput() { }
@@ -138,18 +150,45 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     private void OnStopped(object? sender, DebugStopped e)
         => Dispatch(async () =>
         {
+            if (!_firstStopReported)
+            {
+                _firstStopReported = true;
+                IdeQualityDiagnosticLog.Write("debug.first-stop",
+                    $"session={SessionId} elapsedMs={_sessionClock?.ElapsedMilliseconds ?? 0} reason={e.Reason} path={e.SourcePath} line={e.Line}");
+            }
+            var reasonText = NormalizeStopReason(e);
+            StatusMessage = reasonText;
             if (!string.IsNullOrEmpty(e.SourcePath) && e.Line > 0)
             {
                 Append(DebugOutputCategory.Important,
-                    $"停止（{e.Reason}）: {Path.GetFileName(e.SourcePath)}:{e.Line}");
+                    $"{reasonText}: {Path.GetFileName(e.SourcePath)}:{e.Line}");
                 ExecutionLineChanged?.Invoke(e.SourcePath, e.Line - 1);  // DAP 1始まり → エディタ 0始まり
             }
             else
             {
-                Append(DebugOutputCategory.Important, $"停止（{e.Reason}）");
+                Append(DebugOutputCategory.Important, reasonText);
             }
             await Inspection.OnStoppedAsync();
         });
+
+    internal static string NormalizeStopReason(DebugStopped stopped)
+    {
+        if (stopped.Reason.Equals("exception", StringComparison.OrdinalIgnoreCase))
+        {
+            var name = string.IsNullOrWhiteSpace(stopped.ExceptionName) ? "例外" : stopped.ExceptionName;
+            return string.IsNullOrWhiteSpace(stopped.ExceptionMessage)
+                ? $"例外停止: {name}"
+                : $"例外停止: {name} — {stopped.ExceptionMessage}";
+        }
+        var reason = stopped.Reason switch
+        {
+            "breakpoint" => "ブレークポイント",
+            "step" => "ステップ完了",
+            "pause" => "一時停止",
+            _ => stopped.Reason,
+        };
+        return $"停止: {reason}";
+    }
 
     private void OnContinued(object? sender, EventArgs e)
         => Dispatch(() => { ExecutionLineChanged?.Invoke(null, -1); Inspection.Clear(); });
@@ -159,10 +198,13 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
         {
             _sessionClock?.Stop();
             var elapsed = _sessionClock?.Elapsed;
-            var code = e.ExitCode is { } value ? $"終了コード {value}" : "終了コード不明";
+            var outcome = DebugSessionOutcome.Classify(e.ExitCode, e.Reason, _userStopRequested, _reachedRunning);
+            var code = outcome.Summary;
             var duration = elapsed is { } time ? $"、実行時間 {FormatDuration(time)}" : "";
             Append(DebugOutputCategory.Important, $"セッション終了（{code}{duration}）");
-            StatusMessage = e.ExitCode is 0 or null ? "終了" : $"終了（コード {e.ExitCode}）";
+            StatusMessage = $"{code} — {outcome.NextAction}";
+            IdeQualityDiagnosticLog.Write("debug.ended",
+                $"session={SessionId} elapsedMs={elapsed?.TotalMilliseconds ?? 0:0} code={e.ExitCode?.ToString() ?? "unknown"} reason={e.Reason}");
             ExecutionLineChanged?.Invoke(null, -1);
             Inspection.Clear();
         });
@@ -175,6 +217,12 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     private void OnStateChanged(object? sender, DebugSessionState state)
         => Dispatch(() =>
         {
+            if (state == DebugSessionState.Running && _sessionClock is not null)
+            {
+                _reachedRunning = true;
+                IdeQualityDiagnosticLog.Write("debug.adapter-ready",
+                    $"session={SessionId} elapsedMs={_sessionClock.ElapsedMilliseconds}");
+            }
             IsBusy = state is DebugSessionState.Launching or DebugSessionState.Running or DebugSessionState.Stopped;
             IsStopped = state is DebugSessionState.Stopped;
             if (state is DebugSessionState.Idle or DebugSessionState.Terminated or DebugSessionState.Failed)
@@ -189,7 +237,9 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
                 DebugSessionState.Running => "実行中",
                 DebugSessionState.Stopped => "停止中（ブレークポイント）",
                 DebugSessionState.Terminated => "終了",
-                DebugSessionState.Failed => "失敗",
+                DebugSessionState.Failed => _reachedRunning
+                    ? "adapter切断 — adapterを再起動して再試行してください。"
+                    : "起動失敗 — 構成とadapterの導入状況を確認して再試行してください。",
                 _ => StatusMessage,
             };
         });

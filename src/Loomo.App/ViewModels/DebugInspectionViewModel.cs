@@ -39,6 +39,7 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
 
     /// <summary>選択中フレーム（変更で変数を読み直す）。</summary>
     [ObservableProperty] private DebugFrameViewModel? _selectedFrame;
+    private long _frameInspectionGeneration;
 
     /// <summary>停止時：コールスタックを取得し、先頭フレームを選ぶ（→変数読込）。</summary>
     public async Task LoadStackAsync()
@@ -59,7 +60,8 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
 
     partial void OnSelectedFrameChanged(DebugFrameViewModel? value)
     {
-        _ = LoadFrameInspectionAsync(value);
+        var generation = Interlocked.Increment(ref _frameInspectionGeneration);
+        _ = LoadFrameInspectionAsync(value, generation);
         // フレームを選んだら、そのソース位置をエディタにプレビュー表示する（フォーカスは奪わない）。
         if (value is { HasSource: true, SourcePath: { } p })
             _session.RaiseFramePreview(p, value.Line - 1);  // DAP 1始まり → エディタ 0始まり
@@ -73,12 +75,13 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
     }
 
     /// <summary>選択フレームのスコープ（Locals 等）をトップ階層に並べ、ウォッチも評価し直す。</summary>
-    private async Task LoadFrameInspectionAsync(DebugFrameViewModel? frame)
+    private async Task LoadFrameInspectionAsync(DebugFrameViewModel? frame, long generation)
     {
         Variables.Clear();
         if (frame is null) return;
 
         var scopes = await _debug.GetScopesAsync(frame.Id);
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
         Func<int, string, string, Task<string?>>? setVar =
             _debug.SupportsSetVariable ? (cr, n, v) => _debug.SetVariableAsync(cr, n, v) : null;
         foreach (var s in scopes)
@@ -92,8 +95,9 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         }
         if (Variables.Count > 0) Variables[0].IsExpanded = true;  // Locals を既定で開く
 
-        await LoadAutosAsync(frame);
-        await RefreshWatchesAsync(frame.Id);
+        await LoadAutosAsync(frame, generation);
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+        await RefreshWatchesAsync(frame.Id, generation);
     }
 
     // --- 変数 ---
@@ -111,7 +115,7 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
 
     /// <summary>自動変数を読み直す。停止行とその直前行のソースから識別子を拾い、フレーム文脈で評価し、
     /// 値が取れたものだけ並べる（VS の「自動」をアダプタ非依存に近似）。</summary>
-    private async Task LoadAutosAsync(DebugFrameViewModel? frame)
+    private async Task LoadAutosAsync(DebugFrameViewModel? frame, long generation)
     {
         Autos.Clear();
         HasAutos = false;
@@ -129,6 +133,7 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
                      AutosExtractor.LanguageForPath(frame.SourcePath)))
         {
             var value = await _debug.EvaluateAsync(expr, frame.Id);
+            if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
             if (AutosExtractor.LooksLikeValue(value))
                 Autos.Add(new WatchItemViewModel(expr) { Value = value });
         }
@@ -143,10 +148,14 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
     /// <summary>ウォッチ追加欄。</summary>
     [ObservableProperty] private string _watchExpression = "";
 
-    private async Task RefreshWatchesAsync(int frameId)
+    private async Task RefreshWatchesAsync(int frameId, long generation)
     {
         foreach (var w in Watches)
-            w.Value = await _debug.EvaluateAsync(w.Expression, frameId);
+        {
+            var value = await _debug.EvaluateAsync(w.Expression, frameId);
+            if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+            w.Value = value;
+        }
     }
 
     private bool CanAddWatch() => !string.IsNullOrWhiteSpace(WatchExpression);
@@ -158,7 +167,12 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         Watches.Add(item);
         WatchExpression = "";
         if (_session.IsStopped && SelectedFrame is { } f)
-            item.Value = await _debug.EvaluateAsync(item.Expression, f.Id);
+        {
+            var generation = Volatile.Read(ref _frameInspectionGeneration);
+            var value = await _debug.EvaluateAsync(item.Expression, f.Id);
+            if (generation == Volatile.Read(ref _frameInspectionGeneration))
+                item.Value = value;
+        }
     }
 
     [RelayCommand]
@@ -173,7 +187,9 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
     public async Task<string?> EvaluateDataTipAsync(string expression)
     {
         if (!_session.IsStopped || SelectedFrame is not { } f || string.IsNullOrWhiteSpace(expression)) return null;
+        var generation = Volatile.Read(ref _frameInspectionGeneration);
         var value = await _debug.EvaluateAsync(expression, f.Id);
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return null;
         return AutosExtractor.LooksLikeValue(value) ? value : null;
     }
 
@@ -231,7 +247,11 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         const int max = 500;
         if (ImmediateLog.Count > max) ImmediateLog.RemoveAt(0);
         // 副作用で変数が変わり得るので検査ペインを更新する。
-        if (SelectedFrame is { } f) await LoadFrameInspectionAsync(f);
+        if (SelectedFrame is { } f)
+        {
+            var generation = Interlocked.Increment(ref _frameInspectionGeneration);
+            await LoadFrameInspectionAsync(f, generation);
+        }
     }
 
     [RelayCommand]
@@ -267,6 +287,7 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
     /// <summary>続行・終了時に検査内容を片付ける。</summary>
     public void Clear()
     {
+        Interlocked.Increment(ref _frameInspectionGeneration);
         CallStack.Clear();
         Variables.Clear();
         Autos.Clear();

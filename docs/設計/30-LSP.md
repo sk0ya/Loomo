@@ -325,9 +325,9 @@ Editor 側の変更 → パッケージのローカル注入 → Loomo 側の追
 - [x] 促しバーの評価を `OnActiveEditorFileChanged(tab)` の1点へ集約し、`LoadFile` の**後**に呼ぶ。
       同じパスの二度目は捨てる。判定結果はアウトラインの案内（`EvaluateLspPrompt`）と共用。
 - [x] `LspSettingsViewModel` の「開き直すと有効」文言を削除（その場で反映されるため）。
-- [ ] **Problems ペイン** — 対象実装が存在しなかった。現状の `ShellWindow.Problems.cs` は IDE ペインの
-      ビルド出力タブの配線のみで、LSP 診断の集約パネルは未実装。03-UIとレイアウト.md §26 にその旨と、
-      作るときは `DiagnosticsPublished` を購読することを追記した。
+- [x] **Problems ペイン**（2026-08-02）— `ILspWorkspace.DiagnosticsPublished`を背景スレッドから購読し、
+      DispatcherへマーシャリングしてBuild/LSPを発生源付きで統合する。Roslynのpull diagnosticsは変更後300msで
+      取得し、文書版の古い応答を破棄する。空のfull reportで古い項目を消し、`unchanged`／取得失敗では維持する。
 
 ### P4. 検証
 

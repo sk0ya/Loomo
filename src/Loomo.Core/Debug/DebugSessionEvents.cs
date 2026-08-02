@@ -25,4 +25,5 @@ public sealed record DebugOutput(DebugOutputCategory Category, string Text);
 /// <summary>セッション終了の通知。</summary>
 public sealed record DebugExited(int? ExitCode, string? Reason);
 /// <summary>デバッガが停止した位置の通知。Line は1始まり。</summary>
-public sealed record DebugStopped(string? SourcePath, int Line, string Reason, int ThreadId);
+public sealed record DebugStopped(string? SourcePath, int Line, string Reason, int ThreadId,
+    string? ExceptionName = null, string? ExceptionMessage = null);

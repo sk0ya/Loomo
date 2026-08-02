@@ -175,4 +175,98 @@ public class ProblemsViewModelTests
         Assert.DoesNotContain(vm.Groups, g => g.FileName == "B.cs");
         Assert.Single(vm.Groups);
     }
+
+    [Fact]
+    public void Filters_apply_severity_source_and_current_file_without_losing_backing_items()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(string.Join("\n",
+            @"C:\src\A.cs(1,1): error CS1001: build error [C:\src\P.csproj]",
+            @"C:\src\B.cs(2,1): warning CS1002: build warning [C:\src\P.csproj]"));
+        vm.SetLspDiagnostics(new Uri(@"C:\src\A.cs").AbsoluteUri,
+        [
+            new(new(new(2, 0), new(2, 1)), "lsp warning", DiagnosticSeverity.Warning, "csharp"),
+        ]);
+
+        vm.ShowBuild = false;
+        Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSource.Lsp, vm.Groups[0].Items[0].Source);
+
+        vm.ShowBuild = true;
+        vm.ShowWarnings = false;
+        Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSeverity.Error, vm.Groups[0].Items[0].Severity);
+
+        vm.ShowWarnings = true;
+        vm.CurrentFilePath = @"C:\src\B.cs";
+        vm.Scope = ProblemScope.CurrentFile;
+        Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal("B.cs", vm.Groups[0].FileName);
+
+        vm.Scope = ProblemScope.Workspace;
+        Assert.Equal(3, vm.Groups.SelectMany(g => g.Items).Count());
+    }
+
+    [Fact]
+    public void Source_filter_keeps_lsp_copy_of_a_deduplicated_build_problem()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(@"C:\src\A.cs(1,1): error CS1001: same message [C:\src\P.csproj]");
+        vm.SetLspDiagnostics(new Uri(@"C:\src\A.cs").AbsoluteUri,
+        [
+            new(new(new(0, 0), new(0, 1)), "same message", DiagnosticSeverity.Error, "CS1001"),
+        ]);
+
+        vm.ShowBuild = false;
+
+        var item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSource.Lsp, item.Source);
+    }
+
+    [Fact]
+    public void Next_and_previous_wrap_in_visible_order()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(string.Join("\n",
+            @"C:\src\A.cs(1,1): error CS1001: first [C:\src\P.csproj]",
+            @"C:\src\A.cs(2,1): error CS1002: second [C:\src\P.csproj]"));
+        var opened = new List<string>();
+        vm.OpenRequested += item => opened.Add(item.Code);
+
+        vm.NextCommand.Execute(null);
+        vm.NextCommand.Execute(null);
+        vm.NextCommand.Execute(null);
+        vm.PreviousCommand.Execute(null);
+
+        Assert.Equal(["CS1001", "CS1002", "CS1001", "CS1002"], opened);
+    }
+
+    [Fact]
+    public void QuickFix_requests_editor_owned_code_actions_for_the_problem()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(@"C:\src\A.cs(4,2): error CS1001: broken [C:\src\P.csproj]");
+        ProblemItemViewModel? requested = null;
+        vm.QuickFixRequested += item => requested = item;
+        var item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
+
+        vm.QuickFixCommand.Execute(item);
+
+        Assert.Same(item, requested);
+    }
+
+    [Fact]
+    public void Thousand_diagnostics_replace_the_collection_with_one_property_notification()
+    {
+        var vm = new ProblemsViewModel();
+        var groupsChanged = 0;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Groups)) groupsChanged++; };
+        var output = string.Join("\n", Enumerable.Range(1, 1000).Select(i =>
+            $@"C:\src\File{i}.cs(1,1): error CS1001: problem {i} [C:\src\P.csproj]"));
+
+        vm.SetFromBuildOutput(output);
+
+        Assert.Equal(1000, vm.Groups.Count);
+        Assert.Equal(1, groupsChanged);
+    }
 }

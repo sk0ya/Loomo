@@ -28,6 +28,10 @@ internal sealed class PooledLspClient
     public DateTime? IdleSince;
 
     public bool IsRunning => Client.IsRunning;
+    public LspServerRuntimeState State { get; set; } = LspServerRuntimeState.Starting;
+    public string? LastError { get; set; }
+    public int ReconnectAttempt { get; set; }
+    public bool ReconnectRequested { get; set; }
 }
 
 /// <summary>
@@ -87,6 +91,34 @@ internal sealed class LspClientPool : IDisposable
         get { lock (_gate) return _clients.Values.Where(c => c.IsRunning).ToList(); }
     }
 
+    public IReadOnlyList<LspServerRuntimeStatus> Statuses
+    {
+        get
+        {
+            lock (_gate)
+                return _clients.Values.Select(c => new LspServerRuntimeStatus(
+                    c.Executable, c.Root, c.State, c.LastError, c.ReconnectAttempt)).ToList();
+        }
+    }
+
+    /// <summary>診断応答など、プロジェクト読込後の実要求へ応答できた時点でreadyへ進める。</summary>
+    public void MarkReady(PooledLspClient client)
+    {
+        bool changed = false;
+        lock (_gate)
+        {
+            var key = (client.Executable, client.Root);
+            if (_clients.TryGetValue(key, out var current) && ReferenceEquals(current, client) &&
+                current.State == LspServerRuntimeState.ProjectLoading)
+            {
+                current.State = LspServerRuntimeState.Ready;
+                current.LastError = null;
+                changed = true;
+            }
+        }
+        if (changed) NotifyStateChanged();
+    }
+
     /// <summary>
     /// <paramref name="def"/> と <paramref name="root"/> に対応するクライアントを取得（無ければ起動）し、
     /// 参照カウントを1増やす。起動に失敗したら null。
@@ -126,6 +158,33 @@ internal sealed class LspClientPool : IDisposable
         }
     }
 
+    /// <summary>設定UIからの手動再起動。クラッシュ時と同じClientDied経路で文書を再送する。</summary>
+    public bool Restart(string executable)
+    {
+        List<PooledLspClient> targets;
+        lock (_gate)
+        {
+            targets = _clients.Where(x => x.Key.Executable.Equals(executable, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Value).ToList();
+            if (targets.Count == 0) return false;
+            foreach (var target in targets)
+            {
+                target.State = LspServerRuntimeState.Reconnecting;
+                target.LastError = null;
+                // Dispose に伴う Exited と、このメソッドの明示的な ClientDied を二重処理しない。
+                target.ReconnectRequested = true;
+            }
+            _reconnectAttempts[executable] = 0;
+        }
+        NotifyStateChanged();
+        foreach (var target in targets)
+        {
+            SafeDispose(target);
+            ClientDied?.Invoke(target);
+        }
+        return true;
+    }
+
     /// <summary>
     /// クラッシュしたクライアントを同じキーで作り直す。試行上限（3回）を超えた・すでに誰かが
     /// 作り直していた場合は null。参照カウントは死んだ個体から引き継ぐ。
@@ -134,38 +193,59 @@ internal sealed class LspClientPool : IDisposable
     public async Task<PooledLspClient?> ReconnectAsync(PooledLspClient dead, LspServerDef def)
     {
         int attempts;
+        bool giveUp = false;
         lock (_gate)
         {
             if (_disposed) return null;
             var key = (def.Executable, dead.Root);
-            if (_clients.TryGetValue(key, out var alive) && alive.IsRunning)
+            if (_clients.TryGetValue(key, out var alive) && !ReferenceEquals(alive, dead) && alive.IsRunning)
                 return alive;   // 通常の再オープンが先に立て直していた
 
             attempts = _reconnectAttempts.GetValueOrDefault(def.Executable);
+            dead.State = LspServerRuntimeState.Reconnecting;
+            dead.ReconnectAttempt = attempts + 1;
             if (attempts >= MaxReconnectAttempts)
             {
+                dead.State = LspServerRuntimeState.Failed;
+                dead.LastError = $"{attempts}回の再接続に失敗しました。";
                 _log($"[LSP] {def.Executable}: giving up after {attempts} reconnect attempts");
-                return null;
+                giveUp = true;
             }
-            _reconnectAttempts[def.Executable] = attempts + 1;
+            else
+            {
+                _reconnectAttempts[def.Executable] = attempts + 1;
+            }
         }
+
+        NotifyStateChanged();
+        if (giveUp) return null;
 
         await Task.Delay(500 * (int)Math.Pow(3, attempts));
 
+        PooledLspClient? created;
         lock (_gate)
         {
             if (_disposed) return null;
             var key = (def.Executable, dead.Root);
-            if (_clients.TryGetValue(key, out var current) && current.IsRunning)
+            if (_clients.TryGetValue(key, out var current) && !ReferenceEquals(current, dead) && current.IsRunning)
                 return current;
 
-            var created = Create(def, dead.Root);
-            if (created is null) return null;
-            created.RefCount = dead.RefCount;
-            _clients[key] = created;
-            _log($"[LSP] Process restarted: {def.Executable} (attempt {attempts + 1})");
-            return created;
+            created = Create(def, dead.Root);
+            if (created is null)
+            {
+                dead.State = LspServerRuntimeState.Failed;
+                dead.LastError = $"{def.Executable} を起動できませんでした。";
+            }
+            else
+            {
+                created.RefCount = dead.RefCount;
+                created.ReconnectAttempt = attempts + 1;
+                _clients[key] = created;
+                _log($"[LSP] Process restarted: {def.Executable} (attempt {attempts + 1})");
+            }
         }
+        NotifyStateChanged();
+        return created;
     }
 
     /// <summary>ワークスペース切替時。全サーバーを即時終了する。</summary>
@@ -179,7 +259,7 @@ internal sealed class LspClientPool : IDisposable
             _reconnectAttempts.Clear();
         }
         foreach (var c in doomed) SafeDispose(c);
-        if (doomed.Count > 0) StateChanged?.Invoke();
+        if (doomed.Count > 0) NotifyStateChanged();
     }
 
     // ── 内部 ────────────────────────────────────────────────────────────────
@@ -206,9 +286,18 @@ internal sealed class LspClientPool : IDisposable
             Client = client,
             Ready = Task.FromResult(false),
         };
+        pooled.State = LspServerRuntimeState.Starting;
         pooled.Ready = InitializeAsync(pooled, root);
 
-        client.DiagnosticsChanged += (_, e) => DiagnosticsPublished?.Invoke(e.Uri, e.Diagnostics);
+        client.DiagnosticsChanged += (_, e) =>
+        {
+            if (pooled.State == LspServerRuntimeState.ProjectLoading)
+            {
+                pooled.State = LspServerRuntimeState.Ready;
+                NotifyStateChanged();
+            }
+            DiagnosticsPublished?.Invoke(e.Uri, e.Diagnostics);
+        };
         client.Exited += () => OnClientExited(pooled);
         _log($"[LSP] Process started: {def.Executable} (root={root})");
         return pooled;
@@ -218,42 +307,54 @@ internal sealed class LspClientPool : IDisposable
     {
         try
         {
+            pooled.State = LspServerRuntimeState.Initializing;
+            NotifyStateChanged();
             var rootUri = new Uri(Path.GetFullPath(root)).AbsoluteUri;
             var folders = _workspaceFolders();
             _log($"[LSP] initialize rootUri={rootUri} workspaceFolders=" +
                  (folders is { Count: > 0 } ? string.Join(" | ", folders) : "(fallback)"));
             await pooled.Client.InitializeAsync(rootUri, folders);
+            pooled.State = LspServerRuntimeState.ProjectLoading;
+            pooled.LastError = null;
             _log("[LSP] initialize OK");
             lock (_gate) _reconnectAttempts[pooled.Executable] = 0;   // 正常初期化＝健全に戻った証拠
-            StateChanged?.Invoke();
+            NotifyStateChanged();
             return true;
         }
         catch (Exception ex)
         {
+            pooled.State = LspServerRuntimeState.Failed;
+            pooled.LastError = ex.Message;
             _log($"[LSP] initialize failed: {ex.Message}");
-            StateChanged?.Invoke();
+            NotifyStateChanged();
             return false;
         }
     }
 
     private void OnClientExited(PooledLspClient pooled)
     {
+        if (pooled.ReconnectRequested) return;
         bool tracked;
         lock (_gate)
         {
             var key = (pooled.Executable, pooled.Root);
             tracked = _clients.TryGetValue(key, out var current) && ReferenceEquals(current, pooled);
-            if (tracked) _clients.Remove(key);
         }
         if (!tracked) return;   // すでに置き換え済み・破棄済みの個体からの遅れたイベント
 
         _log($"[LSP] {pooled.Executable} exited unexpectedly");
+        pooled.State = LspServerRuntimeState.Reconnecting;
+        pooled.LastError = "言語サーバープロセスが予期せず終了しました。";
         // 応答待ちの要求を解決しておく（LspProcess.Dispose だけが _pending をキャンセルする）。
         // これをしないとクラッシュ時に飛んでいた hover/completion が永久に待ち続ける。
         SafeDispose(pooled);
-        StateChanged?.Invoke();
+        NotifyStateChanged();
         ClientDied?.Invoke(pooled);
     }
+
+    /// <summary>購読側がプールへ再入しても、_gate 内でデッドロックしないよう非同期通知する。</summary>
+    private void NotifyStateChanged()
+        => ThreadPool.QueueUserWorkItem(_ => StateChanged?.Invoke());
 
     private void SweepIdle()
     {
@@ -275,7 +376,7 @@ internal sealed class LspClientPool : IDisposable
             _log($"[LSP] {c.Executable}: idle for {IdleTimeout.TotalMinutes:0} min, shutting down");
             SafeDispose(c);
         }
-        if (doomed.Count > 0) StateChanged?.Invoke();
+        if (doomed.Count > 0) NotifyStateChanged();
     }
 
     private static void SafeDispose(PooledLspClient c)

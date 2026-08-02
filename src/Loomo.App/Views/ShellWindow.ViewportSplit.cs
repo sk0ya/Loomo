@@ -186,6 +186,7 @@ public partial class ShellWindow {
         control.LinkClicked += OnEditorLinkClicked;
         control.FileLinkClicked += OnEditorFileLinkClicked;
         control.FindReferencesResult += OnEditorFindReferencesResult;
+        control.WorkspaceEditRequested += OnEditorWorkspaceEditRequested;
         control.ContextMenuBuilding += OnEditorContextMenuBuilding;
         control.BlameCommitClicked += (_, e) => ShowBlameCommitDiff(control, e.Blame);
         control.SplitRequested += (_, e) => SplitEditorView(e.Vertical ? SplitKind.Columns : SplitKind.Rows, e.FilePath);
@@ -196,6 +197,61 @@ public partial class ShellWindow {
         control.WindowCloseRequested += (_, _) => CloseEditorView();
         WireEditorForDebug(control);
         return control;
+    }
+    private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {
+        var root = _activeWorkspace?.RootPath;
+        if (string.IsNullOrWhiteSpace(root)) {
+            e.Error = "ワークスペースが開かれていません。";
+            return;
+        }
+        var rootPrefix = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        try {
+            var plans = new List<(string Path, IReadOnlyList<Editor.Core.Lsp.LspTextEdit> Edits,
+                int? Version, List<VimEditorControl> Open, string? DiskText, System.Text.Encoding? Encoding)>();
+            foreach (var (uri, edits) in e.Changes) {
+                var path = Path.GetFullPath(new Uri(uri).LocalPath);
+                if (!path.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"ワークスペース外の文書は編集できません: {path}");
+
+                int? expectedVersion = null;
+                e.DocumentVersions?.TryGetValue(uri, out expectedVersion);
+                var open = _editorTabs
+                    .Where(tab => tab.IsRealized && string.Equals(Path.GetFullPath(tab.Control.FilePath ?? ""), path, StringComparison.OrdinalIgnoreCase))
+                    .Select(tab => tab.Control)
+                    .ToList();
+                if (open.Count > 0) {
+                    foreach (var editor in open) {
+                        if (expectedVersion is not null && editor.LspDocument?.Version is { } actual && actual != expectedVersion)
+                            throw new InvalidOperationException($"{path}: 文書版が一致しません（要求 {expectedVersion} / 現在 {actual}）。");
+                        _ = VimEditorControl.ApplyTextEdits(editor.Text, edits); // 全文書を先に検証し、途中適用を避ける
+                    }
+                    plans.Add((path, edits, expectedVersion, open, null, null));
+                    continue;
+                }
+                if (expectedVersion is not null)
+                    throw new InvalidOperationException($"{path}: 文書版 {expectedVersion} を検証できません。ファイルを開いて再度実行してください。");
+                string original;
+                System.Text.Encoding encoding;
+                using (var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true)) {
+                    original = reader.ReadToEnd();
+                    encoding = reader.CurrentEncoding;
+                }
+                var updated = VimEditorControl.ApplyTextEdits(original, edits);
+                plans.Add((path, edits, null, [], updated, encoding));
+            }
+            foreach (var plan in plans) {
+                // 読み取り側を先に同期し、LSPへdidChangeを送るwriterは最後に1回だけ適用する。
+                foreach (var editor in plan.Open.OrderBy(editor => editor.LspDocument?.IsWriter == true))
+                    if (!editor.TryApplyLspTextEdits(plan.Edits, expectedVersion: null, out var error))
+                        throw new InvalidOperationException($"{plan.Path}: {error}");
+                if (plan.DiskText is not null)
+                    File.WriteAllText(plan.Path, plan.DiskText, plan.Encoding!);
+            }
+            e.Handled = true;
+        }
+        catch (Exception ex) {
+            e.Error = ex.Message;
+        }
     }
     private void LoadEditorFile(VimEditorControl control, string path) {
         control.LoadFile(path);

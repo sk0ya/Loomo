@@ -36,6 +36,7 @@ public static class CommandCatalog
     private const string CatSidebar = "サイドバー";
     private const string CatTab = "タブ";
     private const string CatStage = "セッション";
+    private const string CatProblems = "問題";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new[]
     {
@@ -60,6 +61,10 @@ public static class CommandCatalog
         new CommandDescriptor("pane.split.closeView", CatPane, "分割ビューを畳む", "Ctrl+W Q"),
         // 検索だけは VS Code 流に既定キーを与える（全文検索の起点なので毎回使う）。
         new CommandDescriptor("pane.search", CatPane, "検索を開く", "Ctrl+Shift+F"),
+
+        // ===== 問題 =====
+        new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),
+        new CommandDescriptor("problems.previous", CatProblems, "前の問題へ移動", "Shift+F8"),
 
         // ===== セッション（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),

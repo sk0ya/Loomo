@@ -9,6 +9,8 @@ public partial class ShellWindow
     {
         _vm.Debug.Problems.OpenRequested += OnProblemOpenRequested;
         _vm.TsIde.Problems.OpenRequested += OnProblemOpenRequested;
+        _vm.Debug.Problems.QuickFixRequested += OnProblemQuickFixRequested;
+        _vm.TsIde.Problems.QuickFixRequested += OnProblemQuickFixRequested;
         _lspWorkspace.DiagnosticsPublished += OnLspDiagnosticsPublished;
         _workspace.FoldersChanged += OnProblemWorkspaceFoldersChanged;
     }
@@ -25,6 +27,26 @@ public partial class ShellWindow
             _vm.TsIde.Problems.ClearLspDiagnostics();
         }));
 
-    private void OnProblemOpenRequested(ProblemItemViewModel item)
-        => _ = OpenPathInEditorAsync(item.FilePath, item.Line1, item.Column1);
+    private async void OnProblemOpenRequested(ProblemItemViewModel item)
+    {
+        await OpenPathInEditorAsync(item.FilePath, item.Line1, item.Column1);
+        SelectProblemRange(item);
+    }
+
+    private async void OnProblemQuickFixRequested(ProblemItemViewModel item)
+    {
+        await OpenPathInEditorAsync(item.FilePath, item.Line1, item.Column1);
+        SelectProblemRange(item);
+        if (_activeEditorTab is { IsRealized: true } tab &&
+            string.Equals(tab.Control.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase))
+            tab.Control.ExecuteCommand("CodeAction");
+    }
+
+    private void SelectProblemRange(ProblemItemViewModel item)
+    {
+        if (_activeEditorTab is not { IsRealized: true } tab ||
+            !string.Equals(tab.Control.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase)) return;
+        tab.Control.SelectRange(item.Line1 - 1, item.Column1 - 1,
+            item.EndLine1 - 1, item.EndColumn1 - 1);
+    }
 }

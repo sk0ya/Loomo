@@ -34,6 +34,7 @@ internal sealed class LspDocumentHandle : ILspDocument
 
     /// <summary>このハンドルがテキストの正本か。表示専用の2枚目以降は false（§30.3.4）。</summary>
     public bool IsWriter { get; internal set; }
+    public int? Version => _entry.Version;
 
     public IReadOnlyList<LspDiagnostic> CurrentDiagnostics => _entry.Diagnostics;
 
@@ -41,6 +42,7 @@ internal sealed class LspDocumentHandle : ILspDocument
     public bool ServerSupportsRangeFormatting => _entry.Client.Client.SupportsRangeFormatting;
     public bool ServerSupportsSelectionRange => _entry.Client.Client.SupportsSelectionRange;
     public bool ServerSupportsWorkspaceDiagnostics => _entry.Client.Client.SupportsWorkspaceDiagnostics;
+    public IReadOnlyList<string> CompletionTriggerCharacters => _entry.Client.Client.CompletionTriggerCharacters;
 
     public event Action<IReadOnlyList<LspDiagnostic>>? DiagnosticsChanged;
     public event Action? StateChanged;

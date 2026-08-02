@@ -148,6 +148,8 @@ public partial class ShellWindow {
     private LspPromptInfo? _lastLspPrompt;
     private void OnActiveEditorFileChanged(EditorTab tab) {
         var filePath = tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath;
+        _vm.Debug.Problems.CurrentFilePath = filePath;
+        _vm.TsIde.Problems.CurrentFilePath = filePath;
         if (string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase))
             return;
         _lastLspPromptPath = filePath;

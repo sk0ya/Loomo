@@ -129,6 +129,75 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         Assert.Equal([_root, second], Clients[0].LastWorkspaceFolders);
     }
 
+    [Fact]
+    public async Task Runtime_status_distinguishes_project_loading_and_ready()
+    {
+        using var document = _sut.OpenDocument(Write("A.cs"), "class A {}")!;
+        await Settle();
+
+        var loading = Assert.Single(_sut.ServerStatuses);
+        Assert.Equal("fake-cs-server", loading.Executable);
+        Assert.Equal(LspServerRuntimeState.ProjectLoading, loading.State);
+
+        Clients[0].PublishDiagnostics(document.Uri, []);
+        await Settle();
+
+        Assert.Equal(LspServerRuntimeState.Ready, Assert.Single(_sut.ServerStatuses).State);
+    }
+
+    [Fact]
+    public async Task Pull_diagnostics_null_is_retried_once_without_clearing_existing_items()
+    {
+        using var document = _sut.OpenDocument(Write("A.cs"), "class A {}")!;
+        await Settle();
+        Clients[0].SupportsDocumentDiagnostics = true;
+        Clients[0].DocumentDiagnostics = null;
+        var existing = new[] { new LspDiagnostic(new(new(0, 0), new(0, 1)), "existing", DiagnosticSeverity.Error) };
+        Clients[0].PublishDiagnostics(document.Uri, existing);
+
+        document.UpdateText("class A { broken }");
+        await Task.Delay(900);
+
+        Assert.Equal(2, Clients[0].DocumentDiagnosticRequestCount);
+        Assert.Equal(existing, document.CurrentDiagnostics);
+    }
+
+    [Fact]
+    public async Task Manual_restart_reuses_crash_recovery_and_replays_open_documents()
+    {
+        using var document = _sut.OpenDocument(Write("A.cs"), "class A {}")!;
+        await Settle();
+        // 実プロセスはDispose直後もしばらくIsRunning=trueになり得る。
+        Clients[0].KeepRunningAfterDispose = true;
+        Clients[0].RaiseExitedOnDispose = true;
+
+        Assert.True(_sut.RestartServer("fake-cs-server"));
+        await Task.Delay(700);
+        await Settle();
+
+        Assert.Equal(2, Clients.Length);
+        Assert.Equal(1, Clients[1].CountOf("didOpen"));
+        Assert.True(document.IsReady);
+    }
+
+    [Fact]
+    public async Task Closing_last_handle_publishes_empty_snapshot_to_clear_problems()
+    {
+        var document = _sut.OpenDocument(Write("A.cs"), "class A {}")!;
+        await Settle();
+        IReadOnlyList<LspDiagnostic>? published = null;
+        _sut.DiagnosticsPublished += (uri, diagnostics) =>
+        {
+            if (uri == document.Uri) published = diagnostics;
+        };
+
+        document.Dispose();
+        await Settle();
+
+        Assert.NotNull(published);
+        Assert.Empty(published!);
+    }
+
     // ── 参照カウントと書き手の一意化（§30.3.4） ─────────────────────────────
 
     [Fact]
@@ -250,6 +319,7 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         Assert.Equal("識別子が必要です", Assert.Single(received!).Message);
         Assert.Equal(document.Uri, publishedUri);
         Assert.Equal(received, document.CurrentDiagnostics);
+        Assert.Equal(LspServerRuntimeState.Ready, Assert.Single(_sut.ServerStatuses).State);
     }
 
     // ── ワークスペーススコープ ─────────────────────────────────────────────

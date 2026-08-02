@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Editor.Core.Lsp;
@@ -18,6 +19,8 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class LspSettingsViewModel : ObservableObject
 {
     private readonly LspManagementService _service;
+    private readonly LspWorkspaceService? _workspace;
+    private readonly Dispatcher _dispatcher;
 
     public ObservableCollection<LspServerRowViewModel> Servers { get; } = new();
 
@@ -28,20 +31,36 @@ public sealed partial class LspSettingsViewModel : ObservableObject
     [ObservableProperty] private string _newExecutable = "";
     [ObservableProperty] private string _newArgs = "";
 
-    public LspSettingsViewModel(LspManagementService service)
+    public LspSettingsViewModel(LspManagementService service, LspWorkspaceService? workspace = null)
     {
         _service = service;
+        _workspace = workspace;
+        _dispatcher = Dispatcher.CurrentDispatcher;
+        if (_workspace is not null)
+            _workspace.ServerStateChanged += OnServerStateChanged;
     }
 
     /// <summary>設定オーバーレイを開いたとき（およびインストール後）に呼ぶ。一覧と導入状況を取り直す。</summary>
     public void Refresh()
     {
         Servers.Clear();
+        var runtime = _workspace?.ServerStatuses
+            .GroupBy(s => s.Executable, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.State).First(), StringComparer.OrdinalIgnoreCase);
         foreach (var row in _service.GetRows())
-            Servers.Add(new LspServerRowViewModel(row, _service, OnRowChanged, SetStatus));
+        {
+            LspServerRuntimeStatus? status = null;
+            runtime?.TryGetValue(row.Executable, out status);
+            Servers.Add(new LspServerRowViewModel(row, _service, OnRowChanged, SetStatus, status, _workspace));
+        }
     }
 
     private void OnRowChanged() => Refresh();
+    private void OnServerStateChanged()
+    {
+        if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished) return;
+        _ = _dispatcher.InvokeAsync(Refresh);
+    }
     private void SetStatus(string message) => Status = message;
 
     [RelayCommand]
@@ -81,12 +100,15 @@ public sealed partial class LspServerRowViewModel : ObservableObject
     private readonly Action<string> _setStatus;
 
     public LspServerRowViewModel(LspServerRow row, LspManagementService service,
-        Action refresh, Action<string> setStatus)
+        Action refresh, Action<string> setStatus, LspServerRuntimeStatus? runtime = null,
+        LspWorkspaceService? workspace = null)
     {
         _row = row;
         _service = service;
         _refresh = refresh;
         _setStatus = setStatus;
+        Runtime = runtime;
+        Workspace = workspace;
     }
 
     public string Extension => _row.Extension;
@@ -98,9 +120,27 @@ public sealed partial class LspServerRowViewModel : ObservableObject
     public bool Installed => _row.Installed;
     public bool IsRemoved => _row.Origin == LspServerOrigin.Removed;
     public bool IsCustom => _row.Origin == LspServerOrigin.Custom;
+    public LspServerRuntimeStatus? Runtime { get; }
+    private LspWorkspaceService? Workspace { get; }
+    public bool CanRetry => Runtime is not null;
 
     /// <summary>状況バッジ文言。</summary>
-    public string StatusBadge => IsRemoved ? "無効" : Installed ? "導入済み" : "未導入";
+    public string StatusBadge => IsRemoved ? "未構成" : !Installed ? "未導入" : Runtime?.State switch
+    {
+        LspServerRuntimeState.Starting => "起動中",
+        LspServerRuntimeState.Initializing => "初期化中",
+        LspServerRuntimeState.ProjectLoading => "プロジェクト読込中",
+        LspServerRuntimeState.Ready => "ready",
+        LspServerRuntimeState.Reconnecting => "再接続中",
+        LspServerRuntimeState.Stopped => "停止",
+        LspServerRuntimeState.Failed => "失敗",
+        _ => "導入済み（停止）",
+    };
+
+    public string RuntimeDetail => Runtime is null ? "" :
+        $"root: {Runtime.Root}" +
+        (Runtime.ReconnectAttempt > 0 ? $" / 再試行 {Runtime.ReconnectAttempt}" : "") +
+        (string.IsNullOrWhiteSpace(Runtime.LastError) ? "" : $" / {Runtime.LastError}");
 
     /// <summary>由来ラベル（組み込み/カスタム）。</summary>
     public string OriginLabel => _row.Origin switch
@@ -166,5 +206,17 @@ public sealed partial class LspServerRowViewModel : ObservableObject
         if (_row.DocsUrl is null) return;
         try { Process.Start(new ProcessStartInfo(_row.DocsUrl) { UseShellExecute = true }); }
         catch { /* 既定ブラウザが開けない環境では無視 */ }
+    }
+
+    [RelayCommand]
+    private void Retry()
+    {
+        if (Workspace?.RestartServer(Executable) == true)
+        {
+            _setStatus($"{DisplayName} を再起動しています。開いている文書は自動的に再送されます。");
+            _refresh();
+        }
+        else
+            _setStatus($"{DisplayName} は停止中です。対象ファイルを開くと起動します。");
     }
 }
