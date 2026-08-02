@@ -87,10 +87,10 @@ public partial class ShellWindow {
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
-        list.Add(new("コンポーザ", "本文をペグボードへピン", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
-        list.Add(new("ペグボード", "クリップボードから追加", () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
-        list.Add(new("ペグボード", "エディタの選択をピン", PinEditorSelectionToPegboard));
-        list.Add(new("ペグボード", "ブラウザのURLをピン", PinBrowserUrlToPegboard));
+        list.Add(new("コンポーザ", "本文をペグボードへ残す", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
+        list.Add(new("ペグボード", "クリップボードを残す", () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
+        list.Add(new("ペグボード", "エディタの選択を残す", PinEditorSelectionToPegboard));
+        list.Add(new("ペグボード", "ブラウザのURLを残す", PinBrowserUrlToPegboard));
         list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null), Sc("sidebar.explorer"), "sidebar.explorer"));
         list.Add(new("サイドバー", "タブセクションを開閉", () => _vm.ShowTabsCommand.Execute(null), Sc("sidebar.tabs"), "sidebar.tabs"));
         list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null), Sc("sidebar.git"), "sidebar.git"));

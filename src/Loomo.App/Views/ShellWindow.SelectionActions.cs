@@ -3,7 +3,7 @@ using sk0ya.Loomo.Core.Files;
 using Editor.Core.Text;
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ターミナル／エディタの選択テキストに対する右クリックアクション （「AIに聞く」＝AIバーへ即送信、「ブラウザで調べる」＝内蔵ブラウザでBing検索）。 メニュー項目はライブラリ側の ContextMenuBuilding フックで各コントロールのネイティブメニュー末尾へ 追加する（選択があるときだけ。スタイルはライブラリが自前のメニュー様式に合わせる）。</summary>
+/// <summary>ShellWindow: ターミナル／エディタの選択テキストに対する右クリックアクション （「AIへ送る」＝AIバーへ即送信、「ブラウザへ送る」＝内蔵ブラウザでBing検索）。 素材を別のペインへ渡す操作はすべて「〜へ送る」で揃える（設計書 §23.3 の共通語彙）。 メニュー項目はライブラリ側の ContextMenuBuilding フックで各コントロールのネイティブメニュー末尾へ 追加する（選択があるときだけ。スタイルはライブラリが自前のメニュー様式に合わせる）。</summary>
 public partial class ShellWindow {
     private const int MaxSearchQueryLength = 300;
     private void OnEditorContextMenuBuilding(object? sender, EditorContextMenuBuildingEventArgs e) {
@@ -287,13 +287,15 @@ public partial class ShellWindow {
             return;
         menu.Items.Add(new Separator());
         var ask = new MenuItem {
-            Header = "AIに聞く", IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
+            Header = "AIへ送る", ToolTip = "選択テキストについてAIに尋ねる",
+            IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
         ask.Click += (_, _) => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
             _vm.AiBar.AskAbout(selectedText);
         };
         menu.Items.Add(ask);
-        var search = new MenuItem { Header = "ブラウザで調べる" };
+        var search = new MenuItem {
+            Header = "ブラウザへ送る", ToolTip = "選択テキストをブラウザペインで検索する", };
         search.Click += (_, _) => _ = SearchSelectionInBrowserAsync(selectedText);
         menu.Items.Add(search);
         AddWorkflowMenuItems(menu, selectedText);
@@ -330,7 +332,8 @@ public partial class ShellWindow {
         if (workflows.Count == 0)
             return;
         var parent = new MenuItem {
-            Header = "AIワークフロー", IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
+            Header = "AIワークフローへ送る", ToolTip = "選択テキストを入力にしてワークフローを実行する",
+            IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
         foreach (var wf in workflows) {
             var id = wf.Id;
             var item = new MenuItem { Header = wf.Name };

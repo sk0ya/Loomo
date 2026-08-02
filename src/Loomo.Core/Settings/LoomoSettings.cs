@@ -27,7 +27,7 @@ public sealed class LoomoSettings
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 
-    /// <summary>「機能をペインに前面表示する」ときの配置の振る舞い（「AIに聞く」「ブラウザで調べる」
+    /// <summary>「機能をペインに前面表示する」ときの配置の振る舞い（「AIへ送る」「ブラウザへ送る」
     /// 「差分を開く」等の共通経路）。既定は <see cref="PaneOpenBehavior.Main"/>（左上と入れ替え＝従来動作）。</summary>
     public PaneOpenBehavior PaneOpenBehavior { get; set; } = PaneOpenBehavior.Main;
 

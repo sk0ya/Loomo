@@ -405,7 +405,7 @@
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="ペインの表示方法（AIの結果・ブラウザ・差分などを出す位置）" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding Appearance.PaneOpenBehaviors}" SelectedItem="{Binding Appearance.SelectedPaneOpenBehavior}"
                                           DisplayMemberPath="Name"
-                                          ToolTip="「AIに聞く」「ブラウザで調べる」「差分を開く」などで、結果を表示するペインを出す位置を選びます。メイン=左上と入れ替え（従来）／サブ=右上と入れ替え／ループ=サブに表示し、サブから操作したときはサブをメインへ繰り上げます。" />
+                                          ToolTip="「AIへ送る」「ブラウザへ送る」「差分を開く」などで、結果を表示するペインを出す位置を選びます。メイン=左上と入れ替え（従来）／サブ=右上と入れ替え／ループ=サブに表示し、サブから操作したときはサブをメインへ繰り上げます。" />
 
                                 <Separator Margin="0,16,0,8" />
                                 <CheckBox IsChecked="{Binding Trail.Visible}"

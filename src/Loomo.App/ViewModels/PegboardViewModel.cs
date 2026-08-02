@@ -61,17 +61,17 @@ public sealed partial class PegboardViewModel : ObservableObject
     /// <summary>「開く」要求。url→ブラウザ / file→エディタ等の振り分けは ShellWindow が担う。</summary>
     public event EventHandler<PegboardItemVm>? OpenRequested;
 
-    /// <summary>「ブラウザのURLをピン」要求。表示中 URL の取得は ShellWindow が担う。</summary>
+    /// <summary>「ブラウザのURLを残す」要求。表示中 URL の取得は ShellWindow が担う。</summary>
     public event EventHandler? BrowserPinRequested;
 
-    /// <summary>「エディタの選択をピン」要求。選択テキストの取得は ShellWindow が担う。</summary>
+    /// <summary>「エディタの選択を残す」要求。選択テキストの取得は ShellWindow が担う。</summary>
     public event EventHandler? EditorSelectionPinRequested;
 
     /// <summary>「ターミナルへ送る」要求（素材の流れ）。送信先の解決は ShellWindow が担う。</summary>
     public event EventHandler<PegboardItemVm>? SendToTerminalRequested;
 
-    /// <summary>「コンポーザへ挿入」要求（素材の流れ）。挿入は ShellWindow が担う。</summary>
-    public event EventHandler<PegboardItemVm>? InsertToComposerRequested;
+    /// <summary>「コンポーザへ送る」要求（素材の流れ）。追記は ShellWindow が担う。</summary>
+    public event EventHandler<PegboardItemVm>? SendToComposerRequested;
 
     [ObservableProperty] private string _emptyMessage = "";
 
@@ -134,11 +134,11 @@ public sealed partial class PegboardViewModel : ObservableObject
         return "text";
     }
 
-    /// <summary>ブラウザで表示中のページをピンする（URL 取得は ShellWindow 側）。</summary>
+    /// <summary>ブラウザで表示中のページを残す（URL 取得は ShellWindow 側）。</summary>
     [RelayCommand]
     private void PinBrowserUrl() => BrowserPinRequested?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>エディタの選択テキストをピンする（選択の取得は ShellWindow 側）。</summary>
+    /// <summary>エディタの選択テキストを残す（選択の取得は ShellWindow 側）。</summary>
     [RelayCommand]
     private void PinEditorSelection() => EditorSelectionPinRequested?.Invoke(this, EventArgs.Empty);
 
@@ -146,9 +146,9 @@ public sealed partial class PegboardViewModel : ObservableObject
     [RelayCommand]
     private void SendToTerminal(PegboardItemVm item) => SendToTerminalRequested?.Invoke(this, item);
 
-    /// <summary>アイテムをコンポーザ本文の末尾へ挿入する。</summary>
+    /// <summary>アイテムをコンポーザ本文の末尾へ送る。</summary>
     [RelayCommand]
-    private void InsertToComposer(PegboardItemVm item) => InsertToComposerRequested?.Invoke(this, item);
+    private void SendToComposer(PegboardItemVm item) => SendToComposerRequested?.Invoke(this, item);
 
     [RelayCommand]
     private void Copy(PegboardItemVm item)
@@ -190,5 +190,5 @@ public sealed partial class PegboardViewModel : ObservableObject
     private void UpdateEmptyMessage()
         => EmptyMessage = Items.Count > 0
             ? ""
-            : "まだ何もありません。「クリップボードから追加」や ブラウザの「URLをピン」で、スニペット・URL・ファイルパスを貼っておけます。";
+            : "まだ何もありません。「クリップボードを残す」や「ブラウザのURLを残す」で、スニペット・URL・ファイルパスを置いておけます。";
 }

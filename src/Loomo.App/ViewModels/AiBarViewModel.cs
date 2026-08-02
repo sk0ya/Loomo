@@ -289,7 +289,7 @@ public sealed partial class AiBarViewModel : ObservableObject
             SendCommand.Execute(null);
     }
 
-    /// <summary>ターミナル/エディタの「AIに聞く」から呼ばれる。選択テキストについて尋ねるプロンプトを
+    /// <summary>ターミナル/エディタの「AIへ送る」から呼ばれる。選択テキストについて尋ねるプロンプトを
     /// 現在のセッションへ即送信する（誤字脱字チェックと違いセッションは閉じない）。処理中・暖機中・
     /// 空テキストのときは何もしない。</summary>
     public void AskAbout(string selectedText)

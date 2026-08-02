@@ -7,7 +7,7 @@ public partial class ShellWindow {
         _vm.Pegboard.BrowserPinRequested += (_, _) => PinBrowserUrlToPegboard();
         _vm.Pegboard.EditorSelectionPinRequested += (_, _) => PinEditorSelectionToPegboard();
         _vm.Pegboard.SendToTerminalRequested += (_, item) => SendPegboardItemToTerminal(item);
-        _vm.Pegboard.InsertToComposerRequested += (_, item) => InsertIntoComposer(item.Content);
+        _vm.Pegboard.SendToComposerRequested += (_, item) => InsertIntoComposer(item.Content);
     }
     private void PinBrowserUrlToPegboard() {
         if (_activeBrowserTab?.View.Source?.ToString() is { Length: > 0 } url)

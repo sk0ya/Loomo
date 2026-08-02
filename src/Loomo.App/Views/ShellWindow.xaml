@@ -551,8 +551,8 @@
                                            Margin="2,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
                                 <!-- 組み立てたコマンドを道具掛けへ（§23.3 素材の流れ：作業台→ペグボード） -->
                                 <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderToolButton}"
-                                        Content="📌 ペグボードへ" Margin="8,0,0,0"
-                                        ToolTip="本文をペグボードにピンして再利用する"
+                                        Content="＋ ペグボードへ残す" Margin="8,0,0,0"
+                                        ToolTip="本文をペグボードへ残して再利用する"
                                         Click="OnComposerPinToPegboard" />
                             </DockPanel>
                             <Border x:Name="ComposerEditorHost" Background="{DynamicResource Panel}" />

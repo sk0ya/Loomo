@@ -125,11 +125,11 @@ public class ComposerPegboardTests
         PegboardItemVm? toComposer = null;
         var editorPin = 0;
         vm.SendToTerminalRequested += (_, i) => toTerminal = i;
-        vm.InsertToComposerRequested += (_, i) => toComposer = i;
+        vm.SendToComposerRequested += (_, i) => toComposer = i;
         vm.EditorSelectionPinRequested += (_, _) => editorPin++;
 
         vm.SendToTerminalCommand.Execute(item);
-        vm.InsertToComposerCommand.Execute(item);
+        vm.SendToComposerCommand.Execute(item);
         vm.PinEditorSelectionCommand.Execute(null);
 
         Assert.Same(item, toTerminal);

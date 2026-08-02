@@ -36,17 +36,17 @@
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="ペグボード" />
 
         <!-- 追加操作（サイドバーパネルの流儀＝SessionsView と同じ FlatButton 縦積み） -->
-        <Button DockPanel.Dock="Top" Margin="10,2,10,2" Content="＋ クリップボードから追加"
+        <Button DockPanel.Dock="Top" Margin="10,2,10,2" Content="＋ クリップボードを残す"
                 Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
-                ToolTip="クリップボードのテキストをカードとして貼る（URL・ファイルパスは自動判別）"
+                ToolTip="クリップボードのテキストをカードとして残す（URL・ファイルパスは自動判別）"
                 Command="{Binding AddFromClipboardCommand}" />
-        <Button DockPanel.Dock="Top" Margin="10,0,10,2" Content="📌 ブラウザのURLをピン"
+        <Button DockPanel.Dock="Top" Margin="10,0,10,2" Content="＋ ブラウザのURLを残す"
                 Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
-                ToolTip="ブラウザペインで表示中のページを貼る"
+                ToolTip="ブラウザペインで表示中のページを残す"
                 Command="{Binding PinBrowserUrlCommand}" />
-        <Button DockPanel.Dock="Top" Margin="10,0,10,8" Content="📌 エディタの選択をピン"
+        <Button DockPanel.Dock="Top" Margin="10,0,10,8" Content="＋ エディタの選択を残す"
                 Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
-                ToolTip="アクティブなエディタで選択中のテキストを貼る"
+                ToolTip="アクティブなエディタで選択中のテキストを残す"
                 Command="{Binding PinEditorSelectionCommand}" />
 
         <Grid>
@@ -62,11 +62,13 @@
                                  ContextMenu は placement 先（カード）の DataContext＝アイテムを継承する -->
                             <Border.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="ターミナルへ送る（入力のみ・複数行はコンポーザへ）"
+                                    <MenuItem Header="ターミナルへ送る"
+                                              ToolTip="入力欄に置くだけで実行はしない（複数行はコンポーザへ）"
                                               Command="{Binding PlacementTarget.Tag.SendToTerminalCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                               CommandParameter="{Binding}" />
-                                    <MenuItem Header="コンポーザへ挿入"
-                                              Command="{Binding PlacementTarget.Tag.InsertToComposerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    <MenuItem Header="コンポーザへ送る"
+                                              ToolTip="コンポーザの本文末尾へ追記する"
+                                              Command="{Binding PlacementTarget.Tag.SendToComposerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                               CommandParameter="{Binding}" />
                                     <Separator />
                                     <MenuItem Header="コピー"
