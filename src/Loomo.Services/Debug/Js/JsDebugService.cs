@@ -443,8 +443,11 @@ public sealed class JsDebugService : IDebugService
         await _gate.WaitAsync(ct);
         try
         {
+            var wasActive = _state is DebugSessionState.Launching or DebugSessionState.Running or DebugSessionState.Stopped;
             await StopCoreAsync();
             SetState(DebugSessionState.Idle);
+            if (wasActive)
+                Exited?.Invoke(this, new DebugExited(_exitCode, "stop request"));
         }
         finally { _gate.Release(); }
     }

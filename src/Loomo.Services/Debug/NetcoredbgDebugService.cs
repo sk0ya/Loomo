@@ -224,10 +224,15 @@ public sealed class NetcoredbgDebugService : IDebugService
         await _gate.WaitAsync(ct);
         try
         {
+            var wasActive = _state is DebugSessionState.Launching or DebugSessionState.Running or DebugSessionState.Stopped;
             await StopCoreAsync();
             // 手動停止では terminated イベントが Finish() に届かない（StopCoreAsync が購読解除済み）。
             // 状態を待機へ戻して StateChanged を発火させないと、IsBusy が true のまま固定され再実行できない。
             SetState(DebugSessionState.Idle);
+            // 終了要約は Exited を正本として組み立てる。Idle を先に通知することで、ViewModel 側に
+            // 最後に残る表示も「待機中」ではなく、ユーザー停止などの終了分類になる。
+            if (wasActive)
+                Exited?.Invoke(this, new DebugExited(_exitCode, "stop request"));
         }
         finally { _gate.Release(); }
     }
