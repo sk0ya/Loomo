@@ -457,3 +457,74 @@ LSP 移管後も残っていた整形側の分裂を解消した。Loomo の DI 
   設定画面の適用・解除が即座に同じ表へ反映される。
 - 永続化先は従来どおり `%APPDATA%/Loomo/formatters.json`。静的 `ConfigureDefault` による起動順依存は廃止した。
 - 本番 DI 自体を `FormatterWiringTests` で検証し、「設定だけ別インスタンス」の回帰を防ぐ。
+
+---
+
+## §30.14 サーバー由来 URI の正規化 —— `LspUri`（2026-08-03 修正）
+
+**症状**：TypeScript で `RenameSymbol` が必ず失敗し（`ワークスペース外の文書は編集できません: C:\c:\…`）、
+`.ts` の診断（波線）も出ていなかった。C# では両方とも正常。補完・ホバー・アウトラインだけは効く。
+
+**原因**：サーバーごとに file URI の綴りが違う。Roslyn は `file:///c:/work/a.cs`、
+**`vscode-uri` 系（typescript-language-server・VS Code 本体）はドライブのコロンを百分率符号化して
+`file:///c%3A/work/a.ts` を返す**（実測済み。rename / references / publishDiagnostics すべてこの形）。
+.NET はこの形を DOS パスと認識できず、`new Uri(uri).LocalPath` が `/c:/work/a.ts` を返す。結果：
+
+| 経路 | 起きること |
+| --- | --- |
+| rename / コードアクション | 「編集中のファイル自身」に当たらず全部が他ファイル扱い → ホストが `Path.GetFullPath` して `C:\c:\…` → ルート外判定で失敗 |
+| publishDiagnostics | `LspDocumentTable` の URI 照合が外れ、診断が丸ごと捨てられる（tsserver は pull 診断非対応なので push が唯一の経路） |
+| 参照一覧 / 定義ジャンプ / 呼び出し階層 / 問題パネル | 開けないパスになる |
+
+補完・ホバーが無事だったのは、**こちらが送った URI をそのまま使う往復リクエスト**だから。
+
+**対処**：変換点を1つに畳んだ。`Editor.Core.Lsp.LspUri`（`Normalize` / `TryToLocalPath` /
+`MatchesPath` / `FromPath` / `Comparer`）を追加し、
+
+- **Editor**：`LspClient` がサーバーから受け取る URI を**プロトコル境界で** `Normalize`
+  （定義・参照・シンボル検索・階層・publishDiagnostics・workspace edit のキー、`LspWorkspaceDiagnosticParser`）。
+  消費側（`VimEditorControl` の現在バッファ照合・参照一覧、`LspViewBridge` の定義ジャンプ）も `LspUri` 経由に統一。
+- **Loomo**：`LspDocumentTable`（`Find` / `OnDiagnostics` は引く前に `Normalize`）、
+  `LspWorkspaceService.ClientForUri`、`CodeEditorSupport.TryUriToLocalPath`、`ProblemsViewModel`、
+  そして workspace edit の対象解決を `LspWorkspaceEditPaths.ResolveInWorkspace`（ShellWindow から切り出し・テスト可能）へ。
+
+**不変条件**：サーバー由来の URI は `new Uri(uri).LocalPath` で直接パスにしない。必ず `LspUri` を通す。
+URI をキーにする辞書は `LspUri.Comparer`（大文字小文字無視。ドライブ文字の大小がサーバーで揺れる）。
+
+回帰テスト：`LspUriTests`（Editor.Core）、`LspProtocolTests` の workspace edit キー正規化（Editor.Controls）、
+`LspWorkspaceEditPathsTests` / `LspWorkspaceServiceTests.Diagnostics_ReachTheDocumentEvenWhenTheServerEncodesTheDriveColon`
+/ `CodeEditorSupportTests` / `ProblemsViewModelTests`（Loomo）。
+実機（typescript-language-server 5.3.0 + Mindoodle/frontend）でも rename が編集中バッファに当たることを確認済み。
+必要パッケージ：`sk0ya.Editor.Controls` **1.0.74**。
+
+---
+
+## §30.15 サーバー起動は PATH 解決後のフルパスで（2026-08-03 修正）
+
+**症状**：「言語サーバーへの接続待ちです」から一向に進まない。言語サーバーのプロセスは1つも立っていない。
+
+**原因**：**「導入済み」の判定と、実際の起動でパス解決が食い違っていた。**
+
+- 判定（`ExecutableResolver.IsOnPath`）は PATHEXT を総当たりするので、npm のグローバル導入
+  （`typescript-language-server.cmd`。`.exe` は無い）を「導入済み」と正しく認識する。
+- 起動（`LspClientPool` → `new LspClient(def.Executable, …)` → `Process.Start`）は**素の名前**を渡していた。
+  `UseShellExecute=false` の `CreateProcess` は拡張子なしの名前に `.exe` しか補完しないため、
+  `.cmd`/`.bat` シムは **`Win32Exception`（指定されたファイルが見つかりません）で起動できない**。
+
+その結果 `LspClientPool.Create` が null を返し、`LspDocumentTable.Open` も null。エディタは LSP 文書を
+持てないので、案内は「導入済みだが接続待ち」（`LspNoticeModel.Build(prompt: null)`）のまま止まる。
+**失敗はログに落ちるだけで UI には出ない**ので、待てば繋がるように見えるのが最悪だった。
+（拡張子→サーバーの割り当てにフルパスの上書きが入っていた間は動いていたため、
+上書きを消した時点＝組み込みの素の名前に戻った時点から再現するようになったと見られる。）
+
+**対処**：
+- `ExecutableResolver.Resolve(executable)` を追加（`IsOnPath` はこれに委譲）。**判定と起動が同じ解決を通る。**
+- `LspClientPool` の既定 connect は `ExecutableResolver.Resolve(def.Executable) ?? def.Executable` で起動する。
+  フルパスなら `CreateProcess` が `.cmd`/`.bat` をコマンドインタプリタ経由で起動できる。
+- 起動失敗を握り潰さない：`_startFailures` に理由を残し、`Statuses` が
+  `LspServerRuntimeState.Failed` として返す（設定画面の言語サーバー行に出る）。
+
+回帰テスト：`ExecutableResolverTests`（`.cmd` シム／`.exe` 補完／拡張子つき指定／絶対パス／未導入）、
+`LspWorkspaceServiceTests.FailedProcessStart_IsVisibleAsAFailedServerInsteadOfSilence`。
+実機確認：`%APPDATA%\npm\typescript-language-server.cmd` を解決先として起動 → initialize 成功・
+documentSymbol 5件（＝アウトラインが出る状態）。

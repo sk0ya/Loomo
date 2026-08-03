@@ -294,6 +294,51 @@ public sealed class LspWorkspaceServiceTests : IDisposable
     }
 
     [Fact]
+    public void FailedProcessStart_IsVisibleAsAFailedServerInsteadOfSilence()
+    {
+        // 起動失敗はログに落ちるだけで、UI には「接続待ち」しか出なかった（実機で踏んだ：
+        // npm の .cmd シムを素の名前で起動しようとして毎回 Win32Exception）。
+        using var sut = new LspWorkspaceService(_workspace, _servers,
+            (_, _) => throw new System.ComponentModel.Win32Exception(2, "指定されたファイルが見つかりません。"));
+
+        Assert.Null(sut.OpenDocument(Write("A.cs"), "class A {}"));
+
+        var status = Assert.Single(sut.ServerStatuses);
+        Assert.Equal("fake-cs-server", status.Executable);
+        Assert.Equal(LspServerRuntimeState.Failed, status.State);
+        Assert.Contains("起動に失敗", status.LastError);
+    }
+
+    [Fact]
+    public async Task Diagnostics_ReachTheDocumentEvenWhenTheServerEncodesTheDriveColon()
+    {
+        // typescript-language-server は didOpen で送った "file:///C:/…" ではなく
+        // "file:///c%3A/…" で publishDiagnostics を返す。URI を素の文字列で引いていた頃は
+        // ここで取りこぼし、TypeScript だけ波線が一切出なかった。
+        var path = Write("A.cs");
+        using var document = _sut.OpenDocument(path, "class A {}")!;
+        await Settle();
+
+        IReadOnlyList<LspDiagnostic>? received = null;
+        document.DiagnosticsChanged += d => received = d;
+
+        var diagnostics = new[]
+        {
+            new LspDiagnostic(new LspRange(new LspPosition(0, 0), new LspPosition(0, 1)),
+                "boom", DiagnosticSeverity.Error),
+        };
+        Clients[0].PublishDiagnostics(EncodeDriveColon(document.Uri), diagnostics);
+
+        Assert.Same(diagnostics, received);
+        Assert.Equal(diagnostics, document.CurrentDiagnostics);
+    }
+
+    /// <summary>"file:///C:/x" → "file:///c%3A/x"（vscode-uri 系サーバーの綴り）。</summary>
+    private static string EncodeDriveColon(string uri) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            uri, @"^file:///([A-Za-z]):", m => $"file:///{m.Groups[1].Value.ToLowerInvariant()}%3A");
+
+    [Fact]
     public async Task PullDiagnostics_AfterTextChangeReachDocumentAndWorkspaceSubscribers()
     {
         var path = Write("A.cs");

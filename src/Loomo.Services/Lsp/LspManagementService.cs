@@ -193,13 +193,25 @@ public sealed class LspManagementService
 /// （例: <c>%USERPROFILE%\.dotnet\tools</c>）を、Loomo を再起動せずに「導入済み」と認識できるようにするため。</summary>
 public static class ExecutableResolver
 {
-    public static bool IsOnPath(string executable)
+    public static bool IsOnPath(string executable) => Resolve(executable) is not null;
+
+    /// <summary>
+    /// PATH 上の実体を**フルパスで**返す（見つからなければ null）。
+    ///
+    /// <para><b>起動にはこれを使うこと。</b><see cref="System.Diagnostics.Process"/> は
+    /// <c>UseShellExecute=false</c> のとき、拡張子なしの名前に <c>.exe</c> しか補完しない。
+    /// npm のグローバル導入（<c>typescript-language-server.cmd</c>）や winget のシムは <c>.cmd</c>/<c>.bat</c>
+    /// なので、「導入済み」と判定できても素の名前では起動できず、
+    /// 「言語サーバーへの接続待ちです」から永久に進まなくなる（2026-08-03 実機で発生）。
+    /// フルパスなら CreateProcess が <c>.cmd</c>/<c>.bat</c> をコマンドインタプリタ経由で起動できる。</para>
+    /// </summary>
+    public static string? Resolve(string executable)
     {
-        if (string.IsNullOrWhiteSpace(executable)) return false;
+        if (string.IsNullOrWhiteSpace(executable)) return null;
 
         // パス区切りを含むなら相対/絶対パス指定として直接確認。
         if (executable.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0)
-            return File.Exists(executable);
+            return File.Exists(executable) ? executable : null;
 
         var pathExts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM")
             .Split(';', StringSplitOptions.RemoveEmptyEntries);
@@ -208,18 +220,23 @@ public static class ExecutableResolver
         {
             try
             {
-                if (Path.HasExtension(executable) && File.Exists(Path.Combine(dir, executable)))
-                    return true;
+                if (Path.HasExtension(executable))
+                {
+                    var exact = Path.Combine(dir, executable);
+                    if (File.Exists(exact)) return exact;
+                }
                 foreach (var ext in pathExts)
-                    if (File.Exists(Path.Combine(dir, executable + ext)))
-                        return true;
+                {
+                    var candidate = Path.Combine(dir, executable + ext);
+                    if (File.Exists(candidate)) return candidate;
+                }
             }
             catch
             {
                 // 不正な PATH 要素（無効な文字等）は読み飛ばす。
             }
         }
-        return false;
+        return null;
     }
 
     /// <summary>プロセス PATH ＋ レジストリの最新 Machine/User PATH を統合し、重複を除いて返す。

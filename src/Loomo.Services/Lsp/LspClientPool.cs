@@ -56,6 +56,8 @@ internal sealed class LspClientPool : IDisposable
 
     private readonly object _gate = new();
     private readonly Dictionary<(string Executable, string Root), PooledLspClient> _clients = new();
+    /// <summary>起動に失敗した (実行ファイル, ルート) と、その理由。設定画面へ出すために保持する。</summary>
+    private readonly Dictionary<(string Executable, string Root), string> _startFailures = new();
     private readonly Dictionary<string, int> _reconnectAttempts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<IReadOnlyList<string>> _workspaceFolders;
     private readonly Func<LspServerDef, string, ILspClient> _connect;
@@ -79,8 +81,11 @@ internal sealed class LspClientPool : IDisposable
         Func<LspServerDef, string, ILspClient>? connect = null)
     {
         _workspaceFolders = workspaceFolders;
+        // 起動は必ず PATH 解決後のフルパスで。素の名前だと .cmd/.bat シム（npm -g / winget）が
+        // 起動できず、UI は「接続待ち」のまま永久に進まない（ExecutableResolver.Resolve 参照）。
         _connect = connect ?? ((def, root) =>
-            new Editor.Controls.Lsp.LspClient(def.Executable, def.Args, root));
+            new Editor.Controls.Lsp.LspClient(
+                ExecutableResolver.Resolve(def.Executable) ?? def.Executable, def.Args, root));
         _log = log;
         _idleSweep = new Timer(_ => SweepIdle(), null, SweepInterval, SweepInterval);
     }
@@ -91,13 +96,24 @@ internal sealed class LspClientPool : IDisposable
         get { lock (_gate) return _clients.Values.Where(c => c.IsRunning).ToList(); }
     }
 
+    /// <summary>
+    /// 稼働中のサーバーに加え、**起動そのものに失敗した組み合わせ**も <see cref="LspServerRuntimeState.Failed"/>
+    /// として返す。起動失敗はログへ落ちるだけで、UI 側には「接続待ち」しか出ない期間があった。
+    /// </summary>
     public IReadOnlyList<LspServerRuntimeStatus> Statuses
     {
         get
         {
             lock (_gate)
-                return _clients.Values.Select(c => new LspServerRuntimeStatus(
-                    c.Executable, c.Root, c.State, c.LastError, c.ReconnectAttempt)).ToList();
+                return
+                [
+                    .. _clients.Values.Select(c => new LspServerRuntimeStatus(
+                        c.Executable, c.Root, c.State, c.LastError, c.ReconnectAttempt)),
+                    .. _startFailures
+                        .Where(f => !_clients.ContainsKey(f.Key))
+                        .Select(f => new LspServerRuntimeStatus(
+                            f.Key.Executable, f.Key.Root, LspServerRuntimeState.Failed, f.Value, 0)),
+                ];
         }
     }
 
@@ -275,8 +291,11 @@ internal sealed class LspClientPool : IDisposable
         catch (Exception ex)
         {
             _log($"[LSP] Failed to start {def.Executable}: {ex.Message}");
+            lock (_gate) _startFailures[(def.Executable, root)] = $"起動に失敗しました: {ex.Message}";
+            NotifyStateChanged();
             return null;
         }
+        lock (_gate) _startFailures.Remove((def.Executable, root));
 
         var pooled = new PooledLspClient
         {
