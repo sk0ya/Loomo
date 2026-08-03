@@ -164,6 +164,19 @@ public partial class ShellWindow {
             string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase)
                 ? _lastLspPrompt
                 : _lspManagement.EvaluateForFile(filePath));
+    /// <summary>このファイルの言語サーバーが起動・初期化に失敗しているか（案内に理由を出すため）。
+    /// 促し（未導入／未設定）は <see cref="EvaluateLspPrompt"/> の担当で、こちらは
+    /// 「導入も設定も済んでいるのに繋がらない」場合だけを見る。状態の出所は LSP セッション
+    /// （<c>LspWorkspaceService.ServerStatuses</c>）— 促し判定は対応表と PATH しか見ないので判らない。</summary>
+    private LspServerFailure? EvaluateLspFailure(string? filePath) {
+        if (string.IsNullOrEmpty(filePath))
+            return null;
+        var ext = LspExtensions.NormalizeExt(Path.GetExtension(filePath));
+        if (ext.Length == 0 || _lspManagement.ResolveServerFor(ext) is not { } server)
+            return null;
+        return LspNoticeModel.FindFailure(
+            _lspWorkspace.ServerStatuses, ext, server.Executable, server.DisplayName);
+    }
     private void QueueEditorTabHeaderIntoView(Guid id) {
         Dispatcher.BeginInvoke( new Action(() => ScrollEditorTabHeaderIntoView(id)), DispatcherPriority.Loaded);
     }

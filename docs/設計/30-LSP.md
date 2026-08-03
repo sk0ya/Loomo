@@ -528,3 +528,109 @@ URI をキーにする辞書は `LspUri.Comparer`（大文字小文字無視。�
 `LspWorkspaceServiceTests.FailedProcessStart_IsVisibleAsAFailedServerInsteadOfSilence`。
 実機確認：`%APPDATA%\npm\typescript-language-server.cmd` を解決先として起動 → initialize 成功・
 documentSymbol 5件（＝アウトラインが出る状態）。
+
+---
+
+## §30.16 「黙って繋がらない」を潰す（2026-08-03 修正）
+
+§30.14 / §30.15 と同じ日の実測で残っていた4件。共通しているのは
+**「繋がらないのに、繋がらない理由がどこにも出ない」**こと。
+
+### 30.16.1 C# は既定のままでは絶対に繋がらなかった（カタログの自己矛盾）
+
+カタログの C# 実行ファイルは `%USERPROFILE%\.dotnet\tools\.store\…\Microsoft.CodeAnalysis.LanguageServer.exe`
+という**ツールストア深部のフルパス**だった。ところがこの綴りは PATH 上に無く、導入判定
+（`ExecutableResolver.IsOnPath`）が常に「未導入」を返す。しかも同じカタログのインストールコマンドが入れる
+`dotnet tool install --global roslyn-language-server` が作るのは
+`%USERPROFILE%\.dotnet\tools\roslyn-language-server.cmd`（このディレクトリは PATH 上）＝**別の綴り**。
+つまり**案内どおり入れても「未導入」のまま**で、既定の状態から C# が繋がることはなかった。
+
+対処：既定の実行ファイルを**グローバルツールのシム名** `roslyn-language-server` にした。シムは `%*` を
+実体へそのまま渡すので `RoslynArgs`（`--stdio --autoLoadProjects --telemetryLevel off`）はそのまま効き、
+起動は §30.15 の `ExecutableResolver.Resolve` が `.cmd` をフルパスへ解決する。版を含むフルパスを既定に
+持つこと自体が誤りだった（ツールを更新した時点で存在しないパスになる）。
+
+既存利用者への影響：`.cs` の**上書き**は元々「組み込みと違う綴り」だけが残る仕組みなので、今回の変更で
+壊れる設定は無い。念のため旧組み込みの綴り（ストア深部フルパス）も `IsSupersededCSharpServer` の対象に加え、
+上書きとして残っていたら捨てて組み込みへ戻す。シム名 `roslyn-language-server` の上書きも従来どおり畳む
+（**今はそれ自体が組み込み**なので抱える意味が無く、`Args` の欠けた古い綴りだけが残る）。
+
+### 30.16.2 失敗の理由がどこにも出ない
+
+`LspNoticeModel.Build` は「未導入 / 接続待ち」の2状態しか持たず、**プロセスが起動できなくても
+initialize に失敗しても「言語サーバーへの接続待ちです」**と出続けていた（待てば繋がるように見える）。
+
+対処：状態の出所を分けた。促し（未導入／未設定）は対応表と PATH しか見ないので**起動の失敗は判らない**。
+失敗は LSP セッション側にしか無い（`LspWorkspaceService.ServerStatuses` ＝ §30.15 で `Failed` を残すようにした
+`LspClientPool.Statuses`）。そこで
+
+- `LspNoticeModel.FindFailure(statuses, ext, executable, displayName)`（純ロジック）で
+  「この拡張子の担当サーバーが `Failed` か」を判定し、`LspNoticeModel.Build(prompt, failure)` が
+  **失敗した事実＋理由（`LastError`）＋「LSP 設定を開く」**を返す（`Notice.IsFailure`）。
+- 拡張子→担当サーバーの解決は `LspManagementService.ResolveServerFor(ext)` に置いた（対応表の所有者は1つ）。
+- Shell 側は既存の1点（`EvaluateLspPrompt` の隣＝`ShellWindow.Tabs.cs`）に `EvaluateLspFailure` を足し、
+  **促しが無いときだけ**引く。促しがあるならそちらが具体的（インストール導線つき）なので優先。
+  失敗は待っても解消しないので、待機文言の猶予（`CodeConnectingNoticeGraceTicks`）を待たずに出す。
+
+促しバー（`LspPromptViewModel`）と「今後表示しない」フィルタの経路は変えていない（§30.12 のまま）。
+**再起動ボタンは案内に置かなかった**：起動そのものに失敗した場合はプールにクライアントが居らず
+`LspClientPool.Restart` が false を返す（＝押しても何も起きない）ため、既存の設定画面の行（状況バッジ＋
+再試行）へ誘導する形にした。`ShellWindow` の `_lspWorkspace` は、この実行時状態がエディタへ渡す
+`ILspWorkspace` に載っていない Loomo 側の概念なので、実装型（`LspWorkspaceService`）で受けている。
+
+### 30.16.3 リセットが取り返しのつかない操作だった
+
+`LspServerTable.Reset` / `Remove` は `%APPDATA%/Loomo/lsp-servers.json` の上書きを消すだけで、
+直前の内容がどこにも残らなかった（これで「動いていた割り当て」を失う事故が起きた）。
+
+対処：`Save()` が書き込む**直前に**現行ファイルを `lsp-servers.backup.json`（`BackupPathFor`）へ複製する。
+1世代のみ・複製失敗は無視（保険であって前提条件ではない）。世代を積む仕掛けは設定1つに対して過剰なので作らない。
+
+### 30.16.4 促し対象なのにカタログ候補が無い拡張子
+
+`PromptableSourceExtensions` にあるのにカタログに候補が無いと、案内は「設定で追加できます」しか出せない。
+実測で穴だったもののうち、根拠の取れたものだけ足した：
+
+- `.mts` / `.cts`（languageId `typescript`）、`.mjs` / `.cjs`（`javascript`）を
+  typescript-language-server のターゲットへ追加。根拠は VS Code 組み込みの言語定義
+  （`extensions/typescript-basics`＝`.ts/.cts/.mts`、`extensions/javascript`＝`.js/.mjs/.cjs`）。
+  どちらも同じ tsserver が受ける。
+- `.svelte` → `svelteserver`（npm `svelte-language-server`、`--stdio`）を新規追加。
+- 併せて `CodeEditorSupport.CodeExtensions`（EditorSupport のコードアウトライン対象）にも
+  `.mts/.cts/.mjs/.cjs` を足した。サーバーを割り当てても構造アウトラインに来ないと片手落ちになるため。
+- **`.vue` は足さなかった**：公式の `@vue/language-server` は `initializationOptions`
+  （`typescript.tsdk` のパス、`vue.hybridMode`）が要り、`LspServerDef`（実行ファイル＋引数＋languageId）では
+  表現できない。入れれば「起動はするが動かない」になるので、`initializationOptions` を持てるように
+  なるまで保留（それ自体が別の設計判断）。
+
+---
+
+## §30.17 使用箇所ポップアップは呼び出したビューに紐づける（2026-08-03 修正）
+
+**症状**：「使用箇所」（Find References）の一覧が、エディタ分割や検出元の位置と無関係な場所に、
+読んでいるコードを覆う形で出る。
+
+**原因**：`ReferencesPopup` が `PlacementTarget=PaneHost` ＋ `Placement=Center`、つまり
+**ペイン領域全体の中央**固定だった。結果の出どころ（イベントを発火したエディタビュー）と
+表示位置に関係が無く、分割時は操作していない側の上に出る。
+
+**対処**：配置を純ロジック `ReferencesPopupPlacement`（`Place` / `OffsetFrom`）へ切り出し、
+`ShellWindow.References.cs` の `PlaceReferencesPopup` が
+
+- 基準を **`FindReferencesResult` の `sender`**（＝いま操作しているエディタビュー。分割・切り離しを
+  問わず正しい。`_activeEditorTab` より正確）に取り、`PlacementMode.Relative` ＋ オフセットで置く。
+- 置き方は「そのビューの**下端に沿わせる**（左端揃え）」。一覧はクリックしてジャンプするための
+  一時表示なので、キャレット周辺を覆いにくい下側へ寄せる。ビューより背が高ければ上端から。
+- ウィンドウのクライアント領域でクランプし、画面外・ウィンドウ外に出さない。
+  ポップアップ自体がウィンドウより大きいときは左上を優先する。
+- 実寸は開く前に `Popup.Child` を測って求める（件数で高さが変わるため）。
+
+**用途による出し分け**：同じポップアップはワークスペース診断（`TitlePrefix == "DIAGNOSTICS"`）や
+呼び出し階層でも使う。これらも「いま見ているビュー」を基準にするのが自然なので**同じ扱い**にし、
+基準ビューが取れないとき（エディタを1枚も開いていない診断など）だけ `PaneHost` を基準にした
+——ただし中央固定には戻さず、同じ計算でペイン領域の下端に出す。テーマ・フォントスケールの
+使い方（`{DynamicResource …}` / `UiFontManager.Scaled`）は変更していない。
+
+回帰テスト：`ReferencesPopupPlacementTests`（呼び出したビュー内に収まる／操作していない側の分割を
+覆わない／下端寄せ／狭いビューでは上端から／ウィンドウ外へ出ない／相対オフセット換算）。
+実機での見た目確認は未実施（アプリ起動中でビルド出力がロックされうるため）。

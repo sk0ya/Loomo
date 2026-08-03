@@ -57,6 +57,10 @@ public class CodeEditorSupportTests
     [InlineData(@"C:\work\main.go")]
     [InlineData(@"C:\work\lib.rs")]
     [InlineData(@"C:\work\UPPER.CS")]   // 大文字小文字は無視
+    [InlineData(@"C:\work\esm.mts")]    // ESM/CJS 明示（§30.16.4）
+    [InlineData(@"C:\work\cjs.cts")]
+    [InlineData(@"C:\work\esm.mjs")]
+    [InlineData(@"C:\work\cjs.cjs")]
     public void CanHandle_コード拡張子は対象(string path)
     {
         Assert.True(new CodeEditorSupport().CanHandle(path));
@@ -431,5 +435,80 @@ public class CodeEditorSupportTests
         Assert.False(notice.ShowInstall);
         Assert.False(notice.ShowDocs);
         Assert.False(notice.ShowSettings);
+        Assert.False(notice.IsFailure);
+    }
+
+    // ---- 起動に失敗したサーバー（§30.16.2）----
+
+    private static LspServerRuntimeStatus Failed(string executable, string? error) =>
+        new(executable, @"C:\work", LspServerRuntimeState.Failed, error, 0);
+
+    [Fact]
+    public void Notice_起動失敗は接続待ちではなく事実と理由を出す()
+    {
+        var failure = LspNoticeModel.FindFailure(
+            [Failed("roslyn-language-server", "起動に失敗しました: 指定されたファイルが見つかりません。")],
+            ".cs", "roslyn-language-server", "C# (Roslyn Language Server)");
+        Assert.NotNull(failure);
+
+        var notice = LspNoticeModel.Build(prompt: null, failure);
+
+        Assert.True(notice.IsFailure);
+        Assert.DoesNotContain("接続待ち", notice.Message);
+        Assert.Contains("起動できませんでした", notice.Message);
+        Assert.Contains("指定されたファイルが見つかりません", notice.Message);   // 理由
+        Assert.Contains(".cs", notice.Message);
+        Assert.Equal("C# (Roslyn Language Server)", notice.ServerName);
+        Assert.True(notice.ShowSettings);       // 再起動・割り当て変更への導線
+        Assert.False(notice.ShowInstall);       // 導入済みなので入れ直しは促さない
+        Assert.False(notice.ShowDocs);
+    }
+
+    [Fact]
+    public void Notice_理由が無い失敗でも失敗として出す()
+    {
+        var failure = LspNoticeModel.FindFailure(
+            [Failed("zls", null)], ".zig", "zls", null);
+
+        var notice = LspNoticeModel.Build(prompt: null, failure);
+
+        Assert.True(notice.IsFailure);
+        Assert.Contains("zls", notice.Message);   // 表示名が無ければ実行ファイル名
+        Assert.DoesNotContain("理由:", notice.Message);
+    }
+
+    [Fact]
+    public void Notice_未導入の促しがあるときは従来どおり促しを優先する()
+    {
+        var prompt = new LspPromptInfo(
+            ".rs", LspPromptKind.NotInstalled, "rust-analyzer が見つかりません。",
+            "rustup component add rust-analyzer", "rust-analyzer", null);
+        var failure = new LspServerFailure(".rs", "rust-analyzer", "rust-analyzer", "起動に失敗");
+
+        var notice = LspNoticeModel.Build(prompt, failure);
+
+        Assert.False(notice.IsFailure);
+        Assert.True(notice.ShowInstall);
+        Assert.Equal(prompt.Message, notice.Message);
+    }
+
+    [Fact]
+    public void FindFailure_他のサーバーや失敗していない状態は拾わない()
+    {
+        var statuses = new[]
+        {
+            Failed("typescript-language-server", "起動に失敗"),
+            new LspServerRuntimeStatus("roslyn-language-server", @"C:\work",
+                LspServerRuntimeState.ProjectLoading, null, 0),
+        };
+
+        // 別サーバーの失敗は .cs の案内に持ち込まない。
+        Assert.Null(LspNoticeModel.FindFailure(statuses, ".cs", "roslyn-language-server", "C#"));
+        // 実行ファイル未解決（未設定の拡張子）も拾わない。
+        Assert.Null(LspNoticeModel.FindFailure(statuses, ".cs", null, null));
+        Assert.Null(LspNoticeModel.FindFailure(null, ".cs", "roslyn-language-server", "C#"));
+        // 大文字小文字は無視（設定の綴り揺れ）。
+        Assert.NotNull(LspNoticeModel.FindFailure(
+            statuses, ".ts", "TypeScript-Language-Server", "TypeScript / JavaScript"));
     }
 }

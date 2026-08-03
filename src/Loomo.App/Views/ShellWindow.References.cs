@@ -3,8 +3,56 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private void OnEditorFindReferencesResult(object? sender, FindReferencesResultEventArgs e) {
         BuildReferencesPopup(e.Items, $"{e.TitlePrefix} ({e.Items.Count}) — {e.SymbolName}");
+        // 出どころ（イベントを発火したエディタビュー）に紐づけて置く。sender は分割・切り離しを問わず
+        // 「いま操作しているビュー」そのものなので、_activeEditorTab より正確。
+        PlaceReferencesPopup(sender as FrameworkElement);
         ReferencesPopup.IsOpen = true;
     }
+    /// <summary>
+    /// ポップアップを <paramref name="source"/>（呼び出し元のエディタビュー）に紐づけて配置する。
+    /// 基準ビューが取れない場合（ワークスペース診断でエディタを1枚も開いていない等）は
+    /// ペイン領域そのものを基準にする＝同じ計算で「領域の下端」に出る（従来の中央固定ではない）。
+    /// </summary>
+    private void PlaceReferencesPopup(FrameworkElement? source) {
+        var target = source is { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 } ? source : PaneHost;
+        var host = Window.GetWindow(target);
+        if (host is null || target.ActualWidth <= 0 || target.ActualHeight <= 0) {
+            // 参照できる矩形が無い：従来どおりペイン領域の中央へ（配置の失敗で一覧を出さないのは論外）。
+            ReferencesPopup.PlacementTarget = PaneHost;
+            ReferencesPopup.Placement = PlacementMode.Center;
+            ReferencesPopup.HorizontalOffset = 0;
+            ReferencesPopup.VerticalOffset = 0;
+            return;
+        }
+        var origin = target.TransformToAncestor(host).Transform(new Point(0, 0));
+        var targetRect = new Rect(origin, new Size(target.ActualWidth, target.ActualHeight));
+        var windowRect = new Rect(0, 0, host.ActualWidth, host.ActualHeight);
+        var offset = ReferencesPopupPlacement.OffsetFrom(
+            MeasureReferencesPopup(targetRect), targetRect, windowRect);
+
+        ReferencesPopup.PlacementTarget = target;
+        ReferencesPopup.Placement = PlacementMode.Relative;
+        ReferencesPopup.HorizontalOffset = offset.X;
+        ReferencesPopup.VerticalOffset = offset.Y;
+    }
+    /// <summary>
+    /// 開く前のポップアップ実寸。中身（件数）で高さが変わるので、その都度測る。
+    /// 測る前に**幅の上限を基準ビューに合わせて詰める**（詰めないと省略記号付きの長い行で必ず
+    /// 上限 760 に張り付き、狭い分割では反対側を覆う）。
+    /// </summary>
+    private Size MeasureReferencesPopup(Rect targetRect) {
+        if (ReferencesPopup.Child is not FrameworkElement child)
+            return ReferencesPopupFallbackSize;
+        child.MaxWidth = ReferencesPopupPlacement.MaxWidthIn(
+            targetRect, ReferencesPopupPreferredMaxWidth, ReferencesPopupFallbackSize.Width);
+        child.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = child.DesiredSize;
+        return size.Width > 0 && size.Height > 0 ? size : ReferencesPopupFallbackSize;
+    }
+    /// <summary>XAML の <c>MaxWidth</c> と同じ「広げてよい上限」。ビューが狭ければここから詰める。</summary>
+    private const double ReferencesPopupPreferredMaxWidth = 760;
+    /// <summary>測定できなかったときの見積り。幅は XAML の <c>MinWidth</c>＝一覧として読める下限。</summary>
+    private static readonly Size ReferencesPopupFallbackSize = new(460, 380);
     private void BuildReferencesPopup(IReadOnlyList<FindReferenceItem> items, string title) {
         ReferencesPopupTitle.Text = title;
         ReferencesPopupList.Children.Clear();

@@ -29,7 +29,11 @@ public sealed class CodeEditorSupport
     /// </summary>
     private static readonly HashSet<string> CodeExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".cs", ".csx", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".kt",
+        // ESM/CJS 明示の拡張子（.mts/.cts/.mjs/.cjs）も同じ tsserver が受け持つ（§30.16.4）。
+        ".cs", ".csx", ".ts", ".mts", ".cts", ".tsx", ".js", ".mjs", ".cjs", ".jsx",
+        // カタログに svelteserver を入れた以上、アウトラインもここで受ける（片手落ちにしない）。
+        ".svelte",
+        ".py", ".go", ".rs", ".java", ".kt",
         ".cpp", ".cc", ".cxx", ".c", ".h", ".hpp", ".rb", ".php", ".swift", ".scala", ".lua", ".dart",
     };
 
@@ -355,10 +359,23 @@ internal static class CallPanelModel
 }
 
 /// <summary>
+/// 起動・初期化に失敗している言語サーバー1件（案内に「事実と理由」を出すための純データ）。
+/// </summary>
+/// <param name="Extension">対象拡張子（案内文言に出す）。</param>
+/// <param name="Executable">実行ファイル（<see cref="LspServerRuntimeStatus.Executable"/> と突き合わせた結果）。</param>
+/// <param name="DisplayName">カタログの表示名（無ければ実行ファイル名）。</param>
+/// <param name="Detail">失敗理由（<see cref="LspServerRuntimeStatus.LastError"/>）。取れなければ null。</param>
+internal sealed record LspServerFailure(
+    string Extension, string Executable, string? DisplayName, string? Detail);
+
+/// <summary>
 /// 言語サーバー未接続／未対応時の案内（<see cref="LspManagementService.EvaluateForFile"/> の結果）を、
-/// 表示に必要な純モデルへ整形する。<paramref name="prompt"/> が非 null（未導入／未設定）なら対応サーバー名・
-/// インストールコマンド・「インストール」/「導入手順」ボタンの出し分けを、null（＝導入済みだが接続待ち）なら
-/// 待機文言のみを返す。ビュー（<see cref="Views.CodeOutlineView"/>）がこのモデルからボタンを配置する。
+/// 表示に必要な純モデルへ整形する。<c>prompt</c> が非 null（未導入／未設定）なら対応サーバー名・
+/// インストールコマンド・「インストール」/「導入手順」ボタンの出し分けを、null なら
+/// <c>failure</c>（起動・初期化に失敗）の有無で「失敗した事実と理由」か待機文言かを返す。
+/// ビュー（<see cref="Views.CodeOutlineView"/>）がこのモデルからボタンを配置する。
+/// <para>以前は状態が「未導入 / 接続待ち」の2つしか無く、**プロセスが起動できなかった場合でも
+/// 「接続待ちです」と出続けていた**（待てば繋がるように見えるのが最悪だった。設計書 §30.15 参照）。</para>
 /// </summary>
 internal static class LspNoticeModel
 {
@@ -369,7 +386,8 @@ internal static class LspNoticeModel
     /// <param name="Extension">対象拡張子（インストールボタンの再判定ヒント）。</param>
     /// <param name="ShowInstall">「インストール」ボタンを出すか（コマンドがあるとき）。</param>
     /// <param name="ShowDocs">「導入手順」ボタンを出すか（コマンド無し・URL ありのとき）。</param>
-    /// <param name="ShowSettings">「LSP 設定を開く」ボタンを出すか（prompt 非 null のとき常に）。</param>
+    /// <param name="ShowSettings">「LSP 設定を開く」ボタンを出すか（prompt 非 null／失敗のとき）。</param>
+    /// <param name="IsFailure">起動・初期化に失敗した旨の案内か（待機文言と区別する）。</param>
     internal sealed record Notice(
         string Message,
         string? ServerName,
@@ -378,10 +396,36 @@ internal static class LspNoticeModel
         string? Extension,
         bool ShowInstall,
         bool ShowDocs,
-        bool ShowSettings);
+        bool ShowSettings,
+        bool IsFailure = false);
 
-    public static Notice Build(LspPromptInfo? prompt)
+    /// <summary>
+    /// 実行時状態の一覧から、<paramref name="executable"/> の**失敗**を拾う。ワークスペースルートごとに
+    /// 行が立つので最初の1件を採る。失敗していなければ null（＝従来どおりの待機文言）。
+    /// </summary>
+    public static LspServerFailure? FindFailure(
+        IReadOnlyList<LspServerRuntimeStatus>? statuses,
+        string? extension, string? executable, string? displayName)
     {
+        if (statuses is null || string.IsNullOrEmpty(extension) || string.IsNullOrEmpty(executable))
+            return null;
+
+        foreach (var status in statuses)
+        {
+            if (status.State != LspServerRuntimeState.Failed) continue;
+            if (!string.Equals(status.Executable, executable, StringComparison.OrdinalIgnoreCase)) continue;
+            return new LspServerFailure(
+                extension, executable, displayName,
+                string.IsNullOrWhiteSpace(status.LastError) ? null : status.LastError);
+        }
+        return null;
+    }
+
+    public static Notice Build(LspPromptInfo? prompt, LspServerFailure? failure = null)
+    {
+        if (prompt is null && failure is not null)
+            return BuildFailure(failure);
+
         if (prompt is null)
             return new Notice(
                 "言語サーバーへの接続待ちです。解析が完了すると、クラス・メソッド等の構造アウトラインと" +
@@ -399,5 +443,29 @@ internal static class LspNoticeModel
             ShowInstall: hasCommand,
             ShowDocs: !hasCommand && hasDocs,
             ShowSettings: true);
+    }
+
+    /// <summary>
+    /// 起動・初期化に失敗したときの案内。待つ意味は無いので待機文言は出さず、失敗した事実と理由、
+    /// そして「LSP 設定を開く」（そこに再起動＝再試行と割り当ての変更がある）への導線を出す。
+    /// </summary>
+    private static Notice BuildFailure(LspServerFailure failure)
+    {
+        var name = string.IsNullOrEmpty(failure.DisplayName) ? failure.Executable : failure.DisplayName!;
+        var message =
+            $"「{failure.Extension}」の言語サーバー {name} を起動できませんでした。"
+            + (failure.Detail is null ? "" : $"\n理由: {failure.Detail}")
+            + "\nLSP 設定から再起動（再試行）するか、別のサーバーを割り当ててください。";
+
+        return new Notice(
+            message,
+            name,
+            InstallCommand: null,
+            DocsUrl: null,
+            failure.Extension,
+            ShowInstall: false,
+            ShowDocs: false,
+            ShowSettings: true,
+            IsFailure: true);
     }
 }

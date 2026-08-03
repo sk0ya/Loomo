@@ -48,6 +48,17 @@ public sealed class LspServerTable : ILspServerAdmin
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Loomo", "lsp-servers.json");
 
+    /// <summary>
+    /// 書き換え直前の内容を退避する先（<c>lsp-servers.backup.json</c>）。
+    /// <see cref="Reset"/>/<see cref="Remove"/> は「動いていた割り当て」を戻せないまま消す操作で、
+    /// 実際にそれで事故になった（2026-08-03）。書き込みのたびに**直前の1世代**をここへ複製するので、
+    /// 消してしまっても中身を見て手で戻せる。世代を積むような仕掛けにはしない（設定1つに履歴は過剰）。
+    /// </summary>
+    public static string BackupPathFor(string storePath) =>
+        Path.Combine(
+            Path.GetDirectoryName(storePath) ?? "",
+            Path.GetFileNameWithoutExtension(storePath) + ".backup.json");
+
     /// <summary>拡張子の対応が変わった（Set/Remove/Reset）。ワークスペースがその場で開き直すために購読する。</summary>
     public event Action<string>? Changed;
 
@@ -197,6 +208,7 @@ public sealed class LspServerTable : ILspServerAdmin
         {
             var dir = Path.GetDirectoryName(_storePath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            BackupExisting();
             var dto = new StoreDto
             {
                 Overrides = new Dictionary<string, LspServerDef>(_overrides, StringComparer.OrdinalIgnoreCase),
@@ -207,6 +219,17 @@ public sealed class LspServerTable : ILspServerAdmin
         catch
         {
             // 保存失敗（ロック・ディスク不足）でコマンドを落とさない。
+        }
+    }
+
+    /// <summary>上書きする前の内容を <see cref="BackupPathFor"/> へ複製する（取り返しのつく Reset にするため）。</summary>
+    private void BackupExisting()
+    {
+        if (_storePath is null || !File.Exists(_storePath)) return;
+        try { File.Copy(_storePath, BackupPathFor(_storePath), overwrite: true); }
+        catch
+        {
+            // 退避に失敗しても保存自体は続ける（バックアップは保険であって前提条件ではない）。
         }
     }
 }

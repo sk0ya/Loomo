@@ -37,14 +37,6 @@ public sealed class LspManagementTests : IDisposable
         var info = LspServerCatalog.ByExtension(".cs").Single();
         Assert.NotNull(info);
         Assert.Contains(".cs", info!.Extensions);
-        Assert.EndsWith(
-            "Microsoft.CodeAnalysis.LanguageServer.exe",
-            info.Executable,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            $"{Path.DirectorySeparatorChar}.dotnet{Path.DirectorySeparatorChar}tools{Path.DirectorySeparatorChar}.store{Path.DirectorySeparatorChar}",
-            info.Executable,
-            StringComparison.OrdinalIgnoreCase);
         Assert.Contains("--stdio", info.Args);
         Assert.Contains("--telemetryLevel", info.Args);
         Assert.False(string.IsNullOrWhiteSpace(info.InstallCommand));
@@ -80,6 +72,62 @@ public sealed class LspManagementTests : IDisposable
         var info = LspServerCatalog.ByExtension(".ts").FirstOrDefault();
         Assert.NotNull(info);
         Assert.Equal("typescript-language-server", info!.Executable);
+    }
+
+    /// <summary>
+    /// カタログの自己矛盾（案内どおり入れても「未導入」のまま）の回帰。実行ファイル名は
+    /// **インストールコマンドが PATH 上に作る名前**でなければならない。C# はここが
+    /// ツールストア深部のフルパスになっていて、<c>ExecutableResolver</c> が永久に見つけられなかった。
+    /// </summary>
+    [Fact]
+    public void カタログの実行ファイル名はPATHで解決できる素の名前である()
+    {
+        Assert.All(LspServerCatalog.Servers, info =>
+            Assert.Equal(-1, info.Executable.IndexOfAny(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar])));
+    }
+
+    [Fact]
+    public void CSharpの既定はインストール案内が作るシム名を指す()
+    {
+        var info = LspServerCatalog.ByExtension(".cs").Single();
+
+        // dotnet グローバルツールは %USERPROFILE%\.dotnet\tools\<ツール名>.cmd を作る（PATH 上）。
+        Assert.Equal("roslyn-language-server", info.Executable);
+        Assert.Contains($"dotnet tool update --global {info.Executable}", info.InstallCommand);
+        Assert.Contains($"dotnet tool install --global {info.Executable}", info.InstallCommand);
+    }
+
+    /// <summary>促し対象なのにカタログ候補が無く「設定で追加できます」しか出せなかった拡張子の穴（§30.16.4）。</summary>
+    [Theory]
+    [InlineData(".mts", "typescript-language-server", "typescript")]
+    [InlineData(".cts", "typescript-language-server", "typescript")]
+    [InlineData(".mjs", "typescript-language-server", "javascript")]
+    [InlineData(".cjs", "typescript-language-server", "javascript")]
+    [InlineData(".svelte", "svelteserver", "svelte")]
+    public void カタログはESM_CJSとSvelteも受け持つ(string ext, string executable, string languageId)
+    {
+        var info = LspServerCatalog.ByExtension(ext).Single();
+
+        Assert.Equal(executable, info.Executable);
+        Assert.Equal(languageId, info.LanguageIdFor(ext));
+        Assert.False(string.IsNullOrWhiteSpace(info.InstallCommand));
+        Assert.False(string.IsNullOrWhiteSpace(info.DocsUrl));
+    }
+
+    [Fact]
+    public void ResolveServerFor_割り当てられた実行ファイルと表示名を返す()
+    {
+        var svc = Service();
+
+        var resolved = svc.ResolveServerFor(".cs");
+        Assert.NotNull(resolved);
+        Assert.Equal("roslyn-language-server", resolved!.Value.Executable);
+        Assert.Contains("Roslyn", resolved.Value.DisplayName);
+
+        svc.Remove(".cs");
+        Assert.Null(svc.ResolveServerFor(".cs"));   // 無効化した拡張子には担当サーバーが居ない
+        Assert.Null(svc.ResolveServerFor(""));
     }
 
     // ── PATH 検出 ─────────────────────────────────────────────────────────

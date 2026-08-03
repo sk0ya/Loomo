@@ -81,6 +81,20 @@ public sealed class LspManagementService
     /// <summary>実行ファイルが PATH 上に在る（=導入済み）か。</summary>
     public bool IsInstalled(string executable) => ExecutableResolver.IsOnPath(executable);
 
+    /// <summary>
+    /// この拡張子に割り当てられているサーバーの実行ファイルと表示名。無効化・未設定なら null。
+    /// 「起動に失敗したのはどのサーバーか」を実行時状態（<c>LspServerRuntimeStatus.Executable</c>）と
+    /// 突き合わせるために使う。
+    /// </summary>
+    public (string Executable, string DisplayName)? ResolveServerFor(string? extension)
+    {
+        if (string.IsNullOrWhiteSpace(extension)) return null;
+        var def = _registry.GetForExtension(extension);
+        if (def is null) return null;
+        var info = LspServerCatalog.ByExecutable(def.Executable);
+        return (def.Executable, info?.DisplayName ?? def.Executable);
+    }
+
     /// <summary>拡張子にサーバーを割り当て（または置換）して永続化する。</summary>
     public void AddOrUpdate(string extension, string executable, string[] args, string? languageId = null)
     {

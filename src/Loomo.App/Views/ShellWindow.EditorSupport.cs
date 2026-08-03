@@ -163,9 +163,13 @@ public partial class ShellWindow {
         if (!ready) {
             _editorSupport.ClearOutline();
             var prompt = EvaluateLspPrompt(filePath);
-            if (prompt is not null || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks) {
+            // 未導入・未設定でないのに繋がらない＝起動／初期化に失敗している可能性がある。
+            // 失敗は待っても解消しないので、猶予（CodeConnectingNoticeGraceTicks）を待たずに理由を出す。
+            var failure = prompt is null ? EvaluateLspFailure(filePath) : null;
+            if (prompt is not null || failure is not null
+                || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks) {
                 ShowCodeView();
-                view.ShowNotice(LspNoticeModel.Build(prompt));
+                view.ShowNotice(LspNoticeModel.Build(prompt, failure));
             }
             ScheduleCodeReadyRetry();
             return;

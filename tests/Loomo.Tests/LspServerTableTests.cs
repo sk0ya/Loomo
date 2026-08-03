@@ -64,9 +64,7 @@ public sealed class LspServerTableTests : IDisposable
     {
         var table = InMemory();
 
-        Assert.EndsWith(
-            "Microsoft.CodeAnalysis.LanguageServer.exe",
-            table.GetForExtension(".cs")!.Executable, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("roslyn-language-server", table.GetForExtension(".cs")!.Executable);
         Assert.Equal("typescript-language-server", table.GetForExtension(".tsx")!.Executable);
         // 同じ実行ファイルでも拡張子ごとに languageId は違う。
         Assert.Equal("typescript", table.GetForExtension(".ts")!.LanguageId);
@@ -190,6 +188,115 @@ public sealed class LspServerTableTests : IDisposable
         Assert.Equal(LspServerOrigin.BuiltIn, table.List().Single(e => e.Extension == ".cs").Origin);
         Assert.DoesNotContain("Overrides\": {\n    \".cs\"", File.ReadAllText(StorePath));
     }
+
+    [Fact]
+    public void Load_DropsTheLegacyRoslynToolStorePath()
+    {
+        // 旧組み込み（版を含むツールストア深部のフルパス）。PATH 上に無く、ツール更新で消える綴り。
+        var legacy = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".dotnet", "tools", ".store", "roslyn-language-server", "5.9.0-1.26303.1",
+            "roslyn-language-server.win-x64", "5.9.0-1.26303.1", "tools", "net10.0", "win-x64",
+            "Microsoft.CodeAnalysis.LanguageServer.exe");
+        WriteStore(JsonSerializer.Serialize(new
+        {
+            Overrides = new Dictionary<string, object>
+            {
+                [".cs"] = new { Executable = legacy, Args = new[] { "--stdio" }, LanguageId = "csharp" },
+            },
+            Removed = Array.Empty<string>(),
+        }));
+
+        var table = new LspServerTable(StorePath);
+
+        Assert.Equal("roslyn-language-server", table.GetForExtension(".cs")!.Executable);
+        Assert.Equal(LspServerOrigin.BuiltIn, table.List().Single(e => e.Extension == ".cs").Origin);
+    }
+
+    [Fact]
+    public void Load_引数を変えたシム名の上書きは残す()
+    {
+        // 既定がシム名（roslyn-language-server）になった以上、「シム名＋独自の引数」は正当な上書き。
+        // 実行ファイル名だけで畳むと、設定 UI から登録できてそのセッションでは効くのに次回起動で
+        // 黙って消える＝ユーザー設定のサイレントロスになる（レビュー指摘 R4）。
+        WriteStore(JsonSerializer.Serialize(new
+        {
+            Overrides = new Dictionary<string, object>
+            {
+                [".cs"] = new
+                {
+                    Executable = "roslyn-language-server",
+                    Args = new[] { "--stdio", "--logLevel", "Trace" },
+                    LanguageId = "csharp",
+                },
+            },
+            Removed = Array.Empty<string>(),
+        }));
+
+        var table = new LspServerTable(StorePath);
+
+        var def = table.GetForExtension(".cs")!;
+        Assert.Equal("roslyn-language-server", def.Executable);
+        Assert.Contains("Trace", def.Args);
+        Assert.Equal(LspServerOrigin.Custom, table.List().Single(e => e.Extension == ".cs").Origin);
+    }
+
+    [Fact]
+    public void Load_組み込みと同一の上書きは畳んで組み込みへ戻す()
+    {
+        // 引数まで既定と同じなら上書きとして抱える意味が無い（組み込みの更新が届かなくなるだけ）。
+        WriteStore(JsonSerializer.Serialize(new
+        {
+            Overrides = new Dictionary<string, object>
+            {
+                [".cs"] = new
+                {
+                    Executable = "roslyn-language-server",
+                    Args = new[] { "--stdio", "--autoLoadProjects", "--telemetryLevel", "off" },
+                    LanguageId = "csharp",
+                },
+            },
+            Removed = Array.Empty<string>(),
+        }));
+
+        var table = new LspServerTable(StorePath);
+
+        Assert.Equal(LspServerOrigin.BuiltIn, table.List().Single(e => e.Extension == ".cs").Origin);
+    }
+
+    // ── 破壊的操作のバックアップ（§30.16.3） ───────────────────────────────
+
+    [Fact]
+    public void Reset_直前の割り当てをバックアップへ残す()
+    {
+        var table = new LspServerTable(StorePath);
+        table.Set(".cs", new LspServerDef("my-working-server", ["--stdio"], "csharp"));
+
+        Assert.True(table.Reset(".cs"));   // 「動いていた割り当て」が消える操作
+
+        var backup = LspServerTable.BackupPathFor(StorePath);
+        Assert.True(File.Exists(backup), "リセット前の内容が復旧可能な形で残っていない");
+        Assert.Contains("my-working-server", File.ReadAllText(backup));
+        // 本体からは消えている（バックアップは本体の代わりではない）。
+        Assert.DoesNotContain("my-working-server", File.ReadAllText(StorePath));
+    }
+
+    [Fact]
+    public void Remove_も直前の内容をバックアップへ残す()
+    {
+        var table = new LspServerTable(StorePath);
+        table.Set(".zig", new LspServerDef("zls", ["--stdio"], "zig"));
+
+        Assert.True(table.Remove(".zig"));
+
+        Assert.Contains("zls", File.ReadAllText(LspServerTable.BackupPathFor(StorePath)));
+    }
+
+    [Fact]
+    public void BackupPathFor_保存先の隣に置く()
+        => Assert.Equal(
+            Path.Combine(_dir, "lsp-servers.backup.json"),
+            LspServerTable.BackupPathFor(StorePath));
 
     [Fact]
     public void Load_KeepsAGenuineUserOverride()

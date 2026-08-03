@@ -1359,8 +1359,12 @@
                     </Border>
                 </Popup>
 
+                <!-- 配置は呼び出し元のエディタビュー基準でコードから決める（ShellWindow.References.cs の
+                     PlaceReferencesPopup / ReferencesPopupPlacement）。ここでの PlacementTarget/Placement は
+                     結果が来る前の初期値にすぎない。以前はペイン領域全体の中央固定で、分割時に操作して
+                     いない側を覆っていた。 -->
                 <Popup x:Name="ReferencesPopup" PlacementTarget="{Binding ElementName=PaneHost}"
-                       Placement="Center" StaysOpen="False" AllowsTransparency="True">
+                       Placement="Relative" StaysOpen="False" AllowsTransparency="True">
                     <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="1" CornerRadius="4" Padding="4"
                             MinWidth="460" MaxWidth="760">
