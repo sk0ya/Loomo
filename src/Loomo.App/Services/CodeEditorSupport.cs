@@ -82,8 +82,10 @@ public sealed class CodeEditorSupport
             return null;
         // 絶対 URI（Windows の rooted パス C:\… も file URI として解釈される）は file スキームだけ受け、
         // untitled:/http: 等の飛べないスキームは null（＝ジャンプ不可）にする。
-        if (Uri.TryCreate(uri, UriKind.Absolute, out var u))
-            return u.IsFile ? u.LocalPath : null;
+        // 変換自体は LspUri に委ねる（tsserver 系が返す "file:///c%3A/…" を素の Uri.LocalPath で
+        // 変換すると "/c:/…" になり、どのファイルにも当たらなくなるため）。
+        if (Uri.TryCreate(uri, UriKind.Absolute, out _))
+            return LspUri.TryToLocalPath(uri);
         return uri; // 絶対 URI でない＝相対パス等の素の文字列としてそのまま返す
     }
 

@@ -158,8 +158,9 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         if (_documents.Find(uri) is { } entry && entry.Client.IsRunning)
             return entry.Client.Client;
 
-        if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || !parsed.IsFile) return null;
-        var def = _servers.GetForExtension(Path.GetExtension(parsed.LocalPath));
+        var localPath = LspUri.TryToLocalPath(uri);
+        if (localPath is null) return null;
+        var def = _servers.GetForExtension(Path.GetExtension(localPath));
         if (def is null) return null;
         return _pool.Running.FirstOrDefault(c =>
             string.Equals(c.Executable, def.Executable, StringComparison.OrdinalIgnoreCase))?.Client;

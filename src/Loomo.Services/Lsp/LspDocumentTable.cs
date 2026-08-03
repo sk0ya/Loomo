@@ -91,14 +91,18 @@ internal sealed class LspDocumentTable
     /// <summary>URI から開いている文書を引く（呼び出し階層などが所属サーバーを知るため）。</summary>
     public LspDocumentEntry? Find(string uri)
     {
-        lock (_gate) return _docs.GetValueOrDefault(uri);
+        var key = LspUri.Normalize(uri);
+        lock (_gate) return _docs.GetValueOrDefault(key);
     }
 
-    /// <summary><c>publishDiagnostics</c> を該当文書の全ハンドルへ配る。</summary>
+    /// <summary><c>publishDiagnostics</c> を該当文書の全ハンドルへ配る。
+    /// URI はサーバーごとに綴りが違う（ドライブ文字の大小、コロンの <c>%3A</c> 符号化）ので、
+    /// 引く前に <see cref="LspUri.Normalize"/> を通す。ここが外れると診断が丸ごと消える。</summary>
     public void OnDiagnostics(string uri, IReadOnlyList<LspDiagnostic> diagnostics)
     {
+        var key = LspUri.Normalize(uri);
         LspDocumentEntry? entry;
-        lock (_gate) entry = _docs.GetValueOrDefault(uri);
+        lock (_gate) entry = _docs.GetValueOrDefault(key);
         entry?.PublishDiagnostics(diagnostics);
     }
 
@@ -245,7 +249,7 @@ internal sealed class LspDocumentTable
         });
     }
 
-    private static string PathToUri(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;
+    private static string PathToUri(string path) => LspUri.FromPath(path);
 }
 
 /// <summary>1 URI ぶんの状態。テキストの正本・版番号・診断・ハンドル一覧を持つ。</summary>

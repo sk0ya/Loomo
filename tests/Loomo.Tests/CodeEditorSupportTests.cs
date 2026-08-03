@@ -163,8 +163,18 @@ public class CodeEditorSupportTests
     }
 
     [Fact]
+    public void TryUriToLocalPath_ドライブのコロンが符号化されていても復元する()
+    {
+        // tsserver 系（vscode-uri）は "file:///c%3A/…" を返す。素の Uri.LocalPath だと
+        // "/c:/work/App.ts" になり、アウトラインからのジャンプが全て外れていた。
+        Assert.Equal(@"c:\work\App.ts",
+            CodeEditorSupport.TryUriToLocalPath("file:///c%3A/work/App.ts"), ignoreCase: true);
+    }
+
+    [Fact]
     public void DisplayFileName_URIからファイル名だけ取り出す()
     {
+        Assert.Equal("App.ts", CodeEditorSupport.DisplayFileName("file:///c%3A/work/App.ts"));
         Assert.Equal("Foo.cs", CodeEditorSupport.DisplayFileName("file:///C:/work/Foo.cs"));
         Assert.Equal("Foo.cs", CodeEditorSupport.DisplayFileName(@"C:\work\Foo.cs"));
         Assert.Equal("", CodeEditorSupport.DisplayFileName(null));

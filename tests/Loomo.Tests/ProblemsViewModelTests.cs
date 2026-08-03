@@ -177,6 +177,23 @@ public class ProblemsViewModelTests
     }
 
     [Fact]
+    public void Lsp_diagnostics_land_on_the_right_file_when_the_server_encodes_the_drive_colon()
+    {
+        // tsserver 系の "file:///c%3A/src/App.ts"。Uri.LocalPath 直読みだと "/c:/src/App.ts" →
+        // GetFullPath で "C:\c:\src\App.ts" となり、問題パネルの行から飛べなくなる。
+        var vm = new ProblemsViewModel();
+
+        vm.SetLspDiagnostics("file:///c%3A/src/App.ts",
+        [
+            new(new(new(2, 0), new(2, 4)), "型が合いません", DiagnosticSeverity.Error, "ts"),
+        ]);
+
+        var group = Assert.Single(vm.Groups);
+        Assert.Equal("App.ts", group.FileName);
+        Assert.Equal(@"c:\src\App.ts", Assert.Single(group.Items).FilePath, ignoreCase: true);
+    }
+
+    [Fact]
     public void Filters_apply_severity_source_and_current_file_without_losing_backing_items()
     {
         var vm = new ProblemsViewModel();

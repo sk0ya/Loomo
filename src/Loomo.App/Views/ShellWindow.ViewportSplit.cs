@@ -204,14 +204,11 @@ public partial class ShellWindow {
             e.Error = "ワークスペースが開かれていません。";
             return;
         }
-        var rootPrefix = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         try {
             var plans = new List<(string Path, IReadOnlyList<Editor.Core.Lsp.LspTextEdit> Edits,
                 int? Version, List<VimEditorControl> Open, string? DiskText, System.Text.Encoding? Encoding)>();
             foreach (var (uri, edits) in e.Changes) {
-                var path = Path.GetFullPath(new Uri(uri).LocalPath);
-                if (!path.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException($"ワークスペース外の文書は編集できません: {path}");
+                var path = LspWorkspaceEditPaths.ResolveInWorkspace(uri, root);
 
                 int? expectedVersion = null;
                 e.DocumentVersions?.TryGetValue(uri, out expectedVersion);

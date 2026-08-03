@@ -256,8 +256,10 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private static bool TryGetFilePath(string uri, out string filePath)
     {
         filePath = "";
-        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || !parsed.IsFile) return false;
-        filePath = Path.GetFullPath(parsed.LocalPath);
+        // Uri.LocalPath 直読みは不可（tsserver 系の "file:///c%3A/…" が "/c:/…" になる）。
+        var local = LspUri.TryToLocalPath(uri);
+        if (local is null) return false;
+        filePath = Path.GetFullPath(local);
         return true;
     }
 
