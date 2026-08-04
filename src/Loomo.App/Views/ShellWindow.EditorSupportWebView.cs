@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Core.Files;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow に残る EditorSupport の View イベント配線。</summary>
 public partial class ShellWindow {
@@ -144,6 +146,7 @@ public partial class ShellWindow {
                 if (e.MenuItems[i].Name is "back" or "forward")
                     e.MenuItems.RemoveAt(i);
             }
+            EditorSupportContextLink.RemoveBuiltInOpenInNewWindow(e.MenuItems);
             var item = core.Environment.CreateContextMenuItem( "エディタへフォーカス", null, CoreWebView2ContextMenuItemKind.Command);
             item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => FocusEditorSupportSource(null));
             e.MenuItems.Insert(0, item);
@@ -151,7 +154,26 @@ public partial class ShellWindow {
             back.IsEnabled = _editorSupport.History.CanGoBack;
             back.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => _ = EditorSupportGoBackAsync());
             e.MenuItems.Insert(1, back);
+            // リンク上での右クリックか（＝生 href の取得）は非同期でしか分からないので、メニュー表示を待たせる。
+            _ = AddEditorSupportLinkMenuItemAsync(core, e, e.GetDeferral(), _editorSupport.Source?.Control.FilePath);
         } catch {
+        }
+    }
+    /// <summary>右クリックがリンク上なら「別ウィンドウで開く」を足す。宛先の振り分け（URL＝ブラウザ／
+    /// ファイル＝エディタ）はクリック時（<see cref="HandleEditorSupportLinkClickedAsync"/>）と同じ解決を使う。</summary>
+    private async Task AddEditorSupportLinkMenuItemAsync( CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e, CoreWebView2Deferral deferral, string? sourcePath) {
+        try {
+            var href = await EditorSupportContextLink.ReadHrefAsync(core);
+            var target = LinkOpenTargetResolver.Resolve(href, sourcePath, _workspace.RootPath);
+            if (DescribeOpenLinkInWindow(target) is not { } header)
+                return;
+            var item = core.Environment.CreateContextMenuItem(header, null, CoreWebView2ContextMenuItemKind.Command);
+            item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => OpenLinkTargetInDetachedWindow(target));
+            e.MenuItems.Insert(0, item);
+        } catch {
+            // メニューを組めなくても表示は続ける（deferral は必ず完了させる）。
+        } finally {
+            deferral.Complete();
         }
     }
 }

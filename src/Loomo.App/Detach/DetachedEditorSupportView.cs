@@ -57,6 +57,14 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     /// <summary>プレビュー本文のリンククリック（href）。振り分けはメインウィンドウ側が行う。</summary>
     public event EventHandler<string>? LinkClicked;
 
+    /// <summary>
+    /// 右クリックしたリンク（生 href。リンク上でなければ null）に対する「別ウィンドウで開く」項目を
+    /// ホストへ問い合わせる。宛先の解決（URL＝ブラウザ／ファイル＝エディタ）と切り離しウィンドウの生成は
+    /// メインウィンドウ側の担当なので、この複製は見出しと実行を受け取ってメニューへ載せるだけにする。
+    /// null を返せば項目を出さない。
+    /// </summary>
+    internal Func<string?, (string Header, Action Open)?>? LinkWindowMenu { get; set; }
+
     public DetachedEditorSupportView(
         EditorSupportResolver resolver, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
         LoomoSettings settings, string? workspaceRoot, VimEditorControl source)
@@ -254,6 +262,11 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         // ナビゲーション完了で送り直す。
         try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlight.Script); }
         catch { /* 失敗しても塗られないだけ */ }
+
+        // 右クリック位置のリンク（生 href）を拾う仕込みと、それを使う「別ウィンドウで開く」項目。
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportContextLink.Script); }
+        catch { /* 失敗しても項目が出ないだけ */ }
+        core.ContextMenuRequested += OnContextMenuRequested;
         core.NavigationCompleted += (_, e) =>
         {
             if (e.IsSuccess)
@@ -284,6 +297,33 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
             }
         }
         catch { /* 壊れたメッセージは無視 */ }
+    }
+
+    /// <summary>リンク上での右クリックか（＝生 href の取得）は非同期でしか分からないので、
+    /// deferral でメニュー表示を待たせてから項目を足す。</summary>
+    private void OnContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
+    {
+        if (sender is not CoreWebView2 core || LinkWindowMenu is null)
+            return;
+        EditorSupportContextLink.RemoveBuiltInOpenInNewWindow(e.MenuItems);
+        _ = AddLinkMenuItemAsync(core, e, e.GetDeferral());
+    }
+
+    private async Task AddLinkMenuItemAsync(
+        CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e, CoreWebView2Deferral deferral)
+    {
+        try
+        {
+            var href = await EditorSupportContextLink.ReadHrefAsync(core);
+            if (LinkWindowMenu?.Invoke(href) is not { } menu)
+                return;
+            var item = core.Environment.CreateContextMenuItem(
+                menu.Header, null, CoreWebView2ContextMenuItemKind.Command);
+            item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(menu.Open);
+            e.MenuItems.Insert(0, item);
+        }
+        catch { /* 項目を出せなくても既定のメニューは出す */ }
+        finally { deferral.Complete(); }
     }
 
     /// <summary>プレビューの相対パス画像用に、preview 仮想ホストを表示中ファイルのフォルダへ張り替える。</summary>

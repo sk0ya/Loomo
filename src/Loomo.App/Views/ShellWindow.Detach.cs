@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン項目の別ウィンドウ切り離し。Editor は同一ファイルの複製＋双方向テキスト同期、 Terminal/Browser は同期なしの新規スピンオフ。ウィンドウ管理・タブ結合は <see cref="DetachedWindowManager"/>。 状態はワークスペースのスナップショットへ保存し、切替・再起動時に復元する。</summary>
@@ -94,10 +95,47 @@ public partial class ShellWindow {
             await HandleEditorSupportLinkClickedAsync(href, view.SourceFilePath);
             Activate();
         };
+        // 右クリックした本文中リンクを、さらに別ウィンドウで開く（メイン側の EditorSupport と同じ動線）。
+        view.LinkWindowMenu = href => {
+            var target = LinkOpenTargetResolver.Resolve(href, view.SourceFilePath, _workspace.RootPath);
+            return DescribeOpenLinkInWindow(target) is { } header
+                ? (header, (Action)(() => OpenLinkTargetInDetachedWindow(target)))
+                : null;
+        };
         // 切り離した時点の検索ハイライトを引き継ぐ（以降は ApplyEditorSupportSearchHighlight が配る）。
         var search = _vm.SearchPanel;
         view.SetSearchHighlight(
             search.SupportHighlightTerm, search.HighlightCaseSensitive, search.HighlightUseRegex);
+    }
+    /// <summary>リンク先のファイルを別ウィンドウのエディタで開く。メインのタブは増やさない独立コントロールで、
+    /// 追従元も持たないので <see cref="DetachKind.EditorMove"/>（複製なし）として扱う＝復元も同じファイルを開き直す。</summary>
+    private void OpenPathInDetachedWindow(string fullPath, int line = 0, int column = 0) {
+        if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
+            return;
+        var control = CreateEditorTab().Control;
+        LoadEditorFile(control, fullPath);
+        if (line > 0) {
+            try { control.NavigateTo(line - 1, column > 0 ? column - 1 : 0); }
+            catch { /* 行番号が本文より後ろなら内部でクランプ */ }
+        }
+        Detached.Detach(new DetachedItem( DetachKind.EditorMove, Path.GetFileName(fullPath), control, _tabIcons.GetFileIcon(fullPath), dispose: control.Dispose));
+    }
+    /// <summary>リンク先の URL を別ウィンドウのブラウザで開く（同期なしのスピンオフ）。</summary>
+    private void OpenUrlInDetachedWindow(string url) {
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+        Detached.Detach(CreateBrowserSpinoffItem(url));
+    }
+    /// <summary>解決済みリンク先を種別に応じた別ウィンドウで開く（エディタ／EditorSupport の右クリック共通）。</summary>
+    private void OpenLinkTargetInDetachedWindow(LinkOpenTarget target) {
+        switch (target.Kind) {
+            case LinkOpenTargetKind.Url:
+                OpenUrlInDetachedWindow(target.Value);
+                break;
+            case LinkOpenTargetKind.File:
+                OpenPathInDetachedWindow(target.Value, target.Line, target.Column);
+                break;
+        }
     }
     private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId) {
         var src = _editorTabs.FirstOrDefault(t => t.Id == sourceTabId);

@@ -13,12 +13,42 @@ public partial class ShellWindow {
             return;
         }
         AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
+        AddOpenLinkInWindowMenuItem(e.Menu, control);
         AddRunScriptMenuItem(e.Menu, control);
         AddGitMenuItems(e.Menu, control);
         AddDebugMenuItems(e.Menu, control);
         AddMarkdownTableMenuItem(e.Menu, control);
         AddMarkdownPathRefactorMenuItem(e.Menu, control);
     }
+    /// <summary>右クリック位置（＝キャレット位置。エディタは右クリックでキャレットを移す）にリンクがあれば
+    /// 「別ウィンドウで開く」を足す。URL はブラウザの、ファイルはエディタの切り離しウィンドウで開く
+    /// ——素材を別の面へ渡す既存の動線（切り離し）に、本文中のリンクからも入れるようにする。</summary>
+    private void AddOpenLinkInWindowMenuItem(ContextMenu menu, VimEditorControl? control) {
+        if (control is null)
+            return;
+        var lines = control.Text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        if (control.Caret.Line < 0 || control.Caret.Line >= lines.Length
+            || LinkDetector.FindLinkAt(lines[control.Caret.Line], control.Caret.Column) is not { } link)
+            return;
+        var target = LinkOpenTargetResolver.Resolve(link.Text, control.FilePath, _workspace.RootPath);
+        if (DescribeOpenLinkInWindow(target) is not { } header)
+            return;
+        menu.Items.Add(new Separator());
+        var item = new MenuItem { Header = header, ToolTip = target.Value };
+        item.Click += (_, _) => OpenLinkTargetInDetachedWindow(target);
+        menu.Items.Add(item);
+    }
+    /// <summary>「別ウィンドウで開く」項目の見出し。括弧に宛先（ファイル名／ホスト名）を出して、
+    /// どこが開くのかをメニューの時点で見せる。開けない宛先（未解決・フォルダー・mailto: 等）なら null。</summary>
+    private static string? DescribeOpenLinkInWindow(LinkOpenTarget target) => target.Kind switch {
+        LinkOpenTargetKind.Url => $"リンク先を別ウィンドウで開く（{UrlHost(target.Value)}）",
+        LinkOpenTargetKind.File => $"リンク先を別ウィンドウで開く（{Path.GetFileName(target.Value)}）",
+        _ => null,
+    };
+    private static string UrlHost(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host is { Length: > 0 } host
+            ? host
+            : "ブラウザ";
     private static readonly string[] MarkdownExtensions = { ".md", ".markdown" };
     private void AddMarkdownTableMenuItem(ContextMenu menu, VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path || !IsMarkdownFile(path))

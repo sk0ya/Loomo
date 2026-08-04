@@ -351,6 +351,8 @@ public sealed class EditorSupportWebViewController : IDisposable
             catch { }
             try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlight.Script); }
             catch { }
+            try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportContextLink.Script); }
+            catch { }
             try { await core.AddScriptToExecuteOnDocumentCreatedAsync(PochiHostFlagScript); }
             catch { }
             _eventsAttached = true;
