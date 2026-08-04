@@ -41,12 +41,6 @@ public partial class ShellWindow {
         if (sender is FrameworkElement { Tag: Guid id })
             ActivateEditorTab(id);
     }
-    private void OnEditorTabClosed(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: Guid id }) {
-            CloseEditorTab(id);
-            SaveActiveWorkspaceSnapshot();
-        }
-    }
     private TerminalWorkspaceTabs CurrentTerminalWorkspace
         => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
     private EditorWorkspaceTabs CurrentEditorWorkspace

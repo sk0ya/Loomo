@@ -40,6 +40,33 @@ public sealed partial class TabEntryViewModel : ObservableObject
     [ObservableProperty] private bool _isActive;
     [ObservableProperty] private ImageSource? _icon;
 
+    /// <summary>ファイル種別アイコン（<see cref="FileIcons"/>）の索引。テーマの明暗が変わると同じ絵を
+    /// 別配色で引き直す必要があるため、描画済みの <see cref="Icon"/> とは別に覚えておく。
+    /// favicon を出すブラウザタブのように種別アイコンを使わないものは -1。</summary>
+    public int IconIndex { get; private set; } = -1;
+
+    /// <summary>種別アイコンを索引で差し替える（索引と描画済みの絵を必ず同時に更新する）。</summary>
+    public void SetFileIcon(int index)
+    {
+        IconIndex = index;
+        Icon = FileIcons.ImageFor(index);
+    }
+
+    /// <summary>種別アイコンではない絵（ブラウザの favicon）を直接与える。以後この行はテーマ切替で
+    /// 引き直さない。</summary>
+    public void SetCustomIcon(ImageSource? icon)
+    {
+        IconIndex = -1;
+        Icon = icon;
+    }
+
+    /// <summary>テーマの明暗が変わってアイコンの配色が入れ替わったとき、引き直させる。</summary>
+    public void RefreshIcon()
+    {
+        if (IconIndex >= 0)
+            Icon = FileIcons.ImageFor(IconIndex);
+    }
+
     /// <summary>プレビュータブ（FolderTree の単クリックで開き、編集するまで確定しない）。タイトルを斜体で表示する。</summary>
     [ObservableProperty] private bool _isPreview;
 
@@ -51,6 +78,9 @@ public sealed partial class TabEntryViewModel : ObservableObject
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
 public sealed partial class TabsViewModel : ObservableObject
 {
+    /// <summary>ターミナルのタブに出す絵は PowerShell（.ps1）のアイコンを流用する。</summary>
+    private static readonly int TerminalIconIndex = FileIcons.IndexFor("terminal.ps1", isDirectory: false);
+
     private readonly TabIconService _icons;
 
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
@@ -84,19 +114,27 @@ public sealed partial class TabsViewModel : ObservableObject
         TerminalTabs.CollectionChanged += OnTabCollectionChanged;
         EditorTabs.CollectionChanged += OnTabCollectionChanged;
         BrowserTabs.CollectionChanged += OnTabCollectionChanged;
+        // アプリと同じ寿命なので解除は要らない（フォルダーツリーと同じ扱い）。
+        FileIcons.PaletteChanged += (_, _) => RefreshIcons();
     }
 
     private void OnTabCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         => OnPropertyChanged(nameof(TotalCount));
 
+    /// <summary>テーマの明暗が入れ替わったので、種別アイコンを新しい配色で引き直す
+    /// （favicon を出しているブラウザタブは対象外）。</summary>
+    private void RefreshIcons()
+    {
+        foreach (var tab in EditorTabs) tab.RefreshIcon();
+        foreach (var tab in BrowserTabs) tab.RefreshIcon();
+        foreach (var tab in TerminalTabs) tab.RefreshIcon();
+    }
+
     public void AddTerminalTab(Guid id, string? title, bool isActive)
     {
-        TerminalTabs.Add(new TabEntryViewModel(
-            id,
-            TabEntryKind.Terminal,
-            TerminalTitle(title),
-            isActive,
-            _icons.GetTerminalIcon()));
+        var tab = new TabEntryViewModel(id, TabEntryKind.Terminal, TerminalTitle(title), isActive);
+        tab.SetFileIcon(TerminalIconIndex);
+        TerminalTabs.Add(tab);
     }
 
     public void UpdateTerminalTab(Guid id, string? title)
@@ -105,7 +143,7 @@ public sealed partial class TabsViewModel : ObservableObject
         if (tab is null) return;
 
         tab.Title = TerminalTitle(title);
-        tab.Icon = _icons.GetTerminalIcon();
+        tab.SetFileIcon(TerminalIconIndex);
     }
 
     public void ActivateTerminalTab(Guid id)
@@ -129,15 +167,11 @@ public sealed partial class TabsViewModel : ObservableObject
         if (isModified)
             title += " *";
 
-        var tab = new TabEntryViewModel(
-            id,
-            TabEntryKind.Editor,
-            title,
-            isActive,
-            _icons.GetFileIcon(path))
+        var tab = new TabEntryViewModel(id, TabEntryKind.Editor, title, isActive)
         {
             FilePath = RealFilePath(path),
         };
+        tab.SetFileIcon(FileIconIndexFor(path));
 
         var previewIndex = IndexOfPreviewEditorTab();
         if (previewIndex >= 0)
@@ -158,9 +192,16 @@ public sealed partial class TabsViewModel : ObservableObject
             title += " *";
 
         tab.Title = title;
-        tab.Icon = _icons.GetFileIcon(path);
+        tab.SetFileIcon(FileIconIndexFor(path));
         tab.FilePath = RealFilePath(path);
     }
+
+    /// <summary>エディタタブの種別アイコン。フォルダーツリー・検索結果とまったく同じ引き方をするので、
+    /// 同じファイルはどこに出ても同じ絵になる。</summary>
+    private static int FileIconIndexFor(string? path)
+        => string.IsNullOrWhiteSpace(path)
+            ? FileIconData.DefaultFileIndex
+            : FileIcons.IndexFor(path, isDirectory: false);
 
     /// <summary>AddEditorTab/UpdateEditorTab の path 引数は Untitled=null・仮想ドキュメント=タイトル文字列・
     /// 実ファイル=絶対パスを兼用しているため、絶対パスの場合だけ実ファイルとして扱う。</summary>
@@ -249,7 +290,7 @@ public sealed partial class TabsViewModel : ObservableObject
                ?? BrowserTabs.FirstOrDefault(t => t.Id == id);
 
         if (tab is not null)
-            tab.Icon = icon;
+            tab.SetCustomIcon(icon);
     }
 
     private static string BrowserTitle(string? title)

@@ -1,92 +1,54 @@
 using System.Collections.Concurrent;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Web.WebView2.Core;
+using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
+/// <summary>タブ（サイドバーの TABS・各ペインのタブ列・切り離しウィンドウ）へ出すアイコン。
+///
+/// ファイル種別のアイコンはフォルダーツリー・検索結果とまったく同じ <see cref="FileIcons"/>（Catppuccin の
+/// 線画）を引く。以前は Windows のシェルアイコン（SHGetFileInfo）だったが、同じ .cs がツリーでは線画・
+/// タブではラスタの別絵になり、テーマの明暗にも追従しなかった。
+///
+/// ブラウザだけは「種別」ではなく「どのサイトか」が意味を持つので favicon を使い、取れないときだけ
+/// 線画の地球儀へ落とす。</summary>
 public sealed class TabIconService
 {
-    private const uint ShgfiIcon = 0x000000100;
-    private const uint ShgfiUseFileAttributes = 0x000000010;
-    private const uint ShgfiSmallIcon = 0x000000001;
+    /// <summary>ターミナルのタブに出す絵は PowerShell（.ps1）のアイコンを流用する。</summary>
+    private static readonly int TerminalIconIndex = FileIcons.IndexFor("terminal.ps1", isDirectory: false);
 
-    private const uint FileAttributeNormal = 0x00000080;
-    private const uint FileAttributeDirectory = 0x00000010;
+    /// <summary>favicon が取れないときの地球儀（凍結済みなので 1 個を使い回す）。</summary>
+    private static readonly ImageSource FallbackBrowserIcon = CreateFallbackBrowserIcon();
 
-    private readonly ConcurrentDictionary<string, ImageSource> _shellIconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Lazy<Task<ImageSource>>> _browserIconCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ImageSource _defaultFileIcon;
-    private readonly ImageSource _defaultBrowserIcon;
-    private readonly string _terminalExecutablePath;
 
-    public TabIconService()
-    {
-        _defaultFileIcon = LoadShellIcon(".txt", useFileAttributes: true, fileAttributes: FileAttributeNormal) ?? CreateFallbackDocumentIcon();
-        _defaultBrowserIcon = LoadBrowserFallbackIcon() ?? _defaultFileIcon;
-        _terminalExecutablePath = ResolveTerminalExecutablePath();
-    }
-
-    public ImageSource GetTerminalIcon()
-        => GetShellIcon(_terminalExecutablePath, useFileAttributes: false) ?? _defaultFileIcon;
+    public ImageSource GetTerminalIcon() => FileIcons.ImageFor(TerminalIconIndex);
 
     public ImageSource GetFileIcon(string? path)
     {
-        var key = string.IsNullOrWhiteSpace(path)
-            ? "__file:default"
-            : NormalizePathKey(path);
+        if (string.IsNullOrWhiteSpace(path))
+            return FileIcons.ImageFor(FileIconData.DefaultFileIndex);
 
-        return _shellIconCache.GetOrAdd(key, _ =>
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                return _defaultFileIcon;
-
-            if (Directory.Exists(path))
-                return LoadShellIcon(path, useFileAttributes: true, fileAttributes: FileAttributeDirectory) ?? _defaultFileIcon;
-
-            return File.Exists(path)
-                ? LoadShellIcon(path, useFileAttributes: false, fileAttributes: FileAttributeNormal) ?? _defaultFileIcon
-                : LoadShellIcon(path, useFileAttributes: true, fileAttributes: FileAttributeNormal) ?? _defaultFileIcon;
-        });
+        return FileIcons.ImageFor(FileIcons.IndexFor(path, Directory.Exists(path)));
     }
 
-    public ImageSource GetBrowserDefaultIcon() => _defaultBrowserIcon;
+    public ImageSource GetBrowserDefaultIcon() => FallbackBrowserIcon;
 
     public Task<ImageSource> GetBrowserIconAsync(CoreWebView2? coreWebView2, string? pageUrl)
     {
         if (coreWebView2 is null)
-            return Task.FromResult(_defaultBrowserIcon);
+            return Task.FromResult(FallbackBrowserIcon);
 
         var cacheKey = GetBrowserCacheKey(coreWebView2.FaviconUri, pageUrl);
         if (string.IsNullOrWhiteSpace(cacheKey))
-            return Task.FromResult(_defaultBrowserIcon);
+            return Task.FromResult(FallbackBrowserIcon);
 
         return _browserIconCache.GetOrAdd(cacheKey, _ =>
             new Lazy<Task<ImageSource>>(() => LoadBrowserIconAsync(coreWebView2), LazyThreadSafetyMode.ExecutionAndPublication))
             .Value;
-    }
-
-    private static string ResolveTerminalExecutablePath()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps", "pwsh.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64", "WindowsPowerShell", "v1.0", "powershell.exe")
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        return "pwsh.exe";
     }
 
     private static string? GetBrowserCacheKey(string? faviconUri, string? pageUrl)
@@ -97,63 +59,16 @@ public sealed class TabIconService
         return string.IsNullOrWhiteSpace(pageUrl) ? null : pageUrl.Trim();
     }
 
-    private static string NormalizePathKey(string path)
-    {
-        try
-        {
-            return Path.GetFullPath(path, Environment.CurrentDirectory);
-        }
-        catch
-        {
-            return path.Trim();
-        }
-    }
-
-    private static ImageSource? LoadShellIcon(string path, bool useFileAttributes, uint fileAttributes)
-    {
-        var info = new SHFILEINFO();
-        var flags = ShgfiIcon | ShgfiSmallIcon | (useFileAttributes ? ShgfiUseFileAttributes : 0);
-        var result = SHGetFileInfo(path, fileAttributes, ref info, (uint)Marshal.SizeOf<SHFILEINFO>(), flags);
-        if (result == IntPtr.Zero || info.hIcon == IntPtr.Zero)
-            return null;
-
-        try
-        {
-            var source = Imaging.CreateBitmapSourceFromHIcon(
-                info.hIcon,
-                Int32Rect.Empty,
-                BitmapSizeOptions.FromWidthAndHeight(16, 16));
-            source.Freeze();
-            return source;
-        }
-        finally
-        {
-            DestroyIcon(info.hIcon);
-        }
-    }
-
-    private ImageSource? GetShellIcon(string path, bool useFileAttributes)
-    {
-        if (_shellIconCache.TryGetValue(path, out var cached))
-            return cached;
-
-        var icon = LoadShellIcon(path, useFileAttributes, FileAttributeNormal);
-        if (icon is not null)
-            _shellIconCache[path] = icon;
-
-        return icon;
-    }
-
     private static async Task<ImageSource> LoadBrowserIconAsync(CoreWebView2 coreWebView2)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(coreWebView2.FaviconUri))
-                return LoadBrowserFallbackIcon() ?? CreateFallbackDocumentIcon();
+                return FallbackBrowserIcon;
 
             await using var stream = await coreWebView2.GetFaviconAsync(CoreWebView2FaviconImageFormat.Png);
             if (stream is null)
-                return LoadBrowserFallbackIcon() ?? CreateFallbackDocumentIcon();
+                return FallbackBrowserIcon;
 
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
@@ -165,44 +80,8 @@ public sealed class TabIconService
         }
         catch
         {
-            return LoadBrowserFallbackIcon() ?? CreateFallbackDocumentIcon();
+            return FallbackBrowserIcon;
         }
-    }
-
-    private static ImageSource? LoadBrowserFallbackIcon()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe")
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-                return LoadShellIcon(candidate, useFileAttributes: false, fileAttributes: FileAttributeNormal);
-        }
-
-        return CreateFallbackBrowserIcon();
-    }
-
-    private static ImageSource CreateFallbackDocumentIcon()
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4));
-        brush.Freeze();
-
-        var accent = new SolidColorBrush(Color.FromRgb(0x9D, 0x9D, 0x9D));
-        accent.Freeze();
-
-        var group = new DrawingGroup();
-        group.Children.Add(new GeometryDrawing(null, new Pen(accent, 1.2),
-            Geometry.Parse("M4,1.5 H10 L13,4.5 V14.5 H4 Z M10,1.5 V5 H13")));
-        group.Children.Add(new GeometryDrawing(null, new Pen(brush, 1.2),
-            Geometry.Parse("M5.5,7.5 H11.5 M5.5,10 H11.5")));
-
-        var image = new DrawingImage(group);
-        image.Freeze();
-        return image;
     }
 
     private static ImageSource CreateFallbackBrowserIcon()
@@ -221,22 +100,4 @@ public sealed class TabIconService
         image.Freeze();
         return image;
     }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct SHFILEINFO
-    {
-        public IntPtr hIcon;
-        public int iIcon;
-        public uint dwAttributes;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        public string szDisplayName;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
-        public string szTypeName;
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
 }

@@ -596,27 +596,30 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
+                                        <!-- ×ボタンは置かない：閉じるのは中クリック／サイドバーの TABS から。 -->
                                         <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
                                                 Margin="0" Background="Transparent"
                                                 BorderBrush="Transparent" BorderThickness="0,0,0,2"
                                                 Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
-                                                        Padding="8,0,4,0" HorizontalContentAlignment="Left"
-                                                        Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
-                                                        Click="OnEditorTabSelected">
-                                                    <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                            <Button Style="{StaticResource TabStripButton}"
+                                                    Padding="8,0,8,0" HorizontalContentAlignment="Left"
+                                                    Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
+                                                    Click="OnEditorTabSelected">
+                                                <!-- 幅が詰まったときにタイトルだけを省略記号にするため Grid（横 StackPanel
+                                                     だと子に無限幅が渡り、省略されずに切れる） -->
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <!-- フォルダーツリー・TABS と同じ FileIcons の線画 -->
+                                                    <Image Grid.Column="0" Source="{Binding Icon}" Width="16" Height="16"
+                                                           Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock x:Name="TabTitle" Grid.Column="1" Text="{Binding Title}"
+                                                               FontSize="{DynamicResource Fs12}" VerticalAlignment="Center"
                                                                TextTrimming="CharacterEllipsis" />
-                                                </Button>
-                                                <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
-                                                        Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
-                                                        Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
-                                                        Click="OnEditorTabClosed" />
-                                            </Grid>
+                                                </Grid>
+                                            </Button>
                                         </Border>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
