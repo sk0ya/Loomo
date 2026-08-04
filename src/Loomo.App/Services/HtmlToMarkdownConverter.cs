@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using sk0ya.Loomo.Core.Markdown;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -236,7 +237,8 @@ internal static class HtmlToMarkdownConverter
                     sb.Append(RenderInline(el));
                     break;
                 }
-                sb.Append('[').Append(RenderInline(el)).Append("](").Append(hrefAttr.Value).Append(')');
+                sb.Append('[').Append(RenderInline(el)).Append("](")
+                  .Append(MarkdownLinkParser.EncodeDestination(hrefAttr.Value)).Append(')');
                 break;
             case "img":
                 var src = (string?)el.Attribute("src") ?? string.Empty;
@@ -249,7 +251,8 @@ internal static class HtmlToMarkdownConverter
                     sb.Append('[').Append(alt.Length > 0 ? "画像: " + InlineEscape(alt) : "画像").Append(']');
                     break;
                 }
-                sb.Append("![").Append(InlineEscape(alt)).Append("](").Append(src).Append(')');
+                sb.Append("![").Append(InlineEscape(alt)).Append("](")
+                  .Append(MarkdownLinkParser.EncodeDestination(src)).Append(')');
                 break;
             default:
                 // p/div 等、インライン文脈（表セル・リスト項目内など）に出てきたブロックタグは

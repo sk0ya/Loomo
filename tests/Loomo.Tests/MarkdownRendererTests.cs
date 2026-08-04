@@ -408,4 +408,45 @@ public class MarkdownRendererTests
         Assert.Contains("<a href=\"#real-heading\">Real Heading</a>", body);
     }
 
+    [Fact]
+    public void Link_DestinationWithBalancedParens_IsKeptWhole()
+    {
+        var body = MarkdownRenderer.RenderToBody("[aa](aa(bb)_cc.md)");
+
+        Assert.Contains("<a href=\"aa(bb)_cc.md\">aa</a>", body);
+        Assert.DoesNotContain("_cc.md)", body);
+    }
+
+    [Fact]
+    public void Image_DestinationWithBalancedParens_IsKeptWhole()
+    {
+        var body = MarkdownRenderer.RenderToBody("![alt](img(1).png)");
+
+        Assert.Contains("<img src=\"img(1).png\" alt=\"alt\">", body);
+    }
+
+    [Fact]
+    public void Link_AngleBracketDestination_AllowsSpaces()
+    {
+        var body = MarkdownRenderer.RenderToBody("[aa](<a (b) c.md>)");
+
+        Assert.Contains("<a href=\"a (b) c.md\">aa</a>", body);
+    }
+
+    [Fact]
+    public void Link_TitleIsNotPartOfHref()
+    {
+        var body = MarkdownRenderer.RenderToBody("[aa](a(b).md \"title\")");
+
+        Assert.Contains("<a href=\"a(b).md\">aa</a>", body);
+    }
+
+    [Fact]
+    public void BadgeStyle_ImageInsideLink_StillNests()
+    {
+        var body = MarkdownRenderer.RenderToBody("[![alt](badge(1).svg)](https://example.com/a(b))");
+
+        Assert.Contains("<a href=\"https://example.com/a(b)\"><img src=\"badge(1).svg\" alt=\"alt\"></a>", body);
+    }
+
 }

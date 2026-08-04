@@ -89,4 +89,36 @@ public class HtmlToMarkdownConverterTests
         Assert.Contains("テキスト", md);
         Assert.DoesNotContain("<", md);
     }
+
+    [Fact]
+    public void 括弧を含むhrefは読み直せる形で書き出す()
+    {
+        var md = HtmlToMarkdownConverter.Convert(
+            "<p><a href=\"aa(bb)_cc.md\">リンク</a></p>");
+
+        Assert.Equal("[リンク](aa(bb)_cc.md)\n", md);
+        Assert.Equal("aa(bb)_cc.md",
+            sk0ya.Loomo.Core.Markdown.MarkdownLinkParser.FindAll(md)[0].Destination);
+    }
+
+    [Fact]
+    public void 空白や不釣り合いな括弧を含むhrefは山括弧で囲む()
+    {
+        var md = HtmlToMarkdownConverter.Convert(
+            "<p><a href=\"a (b.md\">リンク</a></p>");
+
+        Assert.Equal("[リンク](<a (b.md>)\n", md);
+        Assert.Equal("a (b.md",
+            sk0ya.Loomo.Core.Markdown.MarkdownLinkParser.FindAll(md)[0].Destination);
+    }
+
+    [Fact]
+    public void 括弧を含む画像srcも読み直せる形で書き出す()
+    {
+        var md = HtmlToMarkdownConverter.Convert(
+            "<p><img src=\"img(1).png\" alt=\"図\" /></p>");
+
+        Assert.Equal("![図](img(1).png)\n", md);
+    }
+
 }

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Editor.Core.Syntax;
+using sk0ya.Loomo.Core.Markdown;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -459,10 +460,11 @@ internal static class MarkdownRenderer
         }
 
         text = CodeSpanRe.Replace(text, m => Stash($"<code>{Encode(m.Groups[1].Value)}</code>"));
-        text = ImageRe.Replace(text, m =>
-            Stash($"<img src=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value, allowData: true))}\" alt=\"{Encode(m.Groups[1].Value)}\">"));
-        text = LinkRe.Replace(text, m =>
-            Stash($"<a href=\"{EncodeAttribute(SanitizeUrl(m.Groups[2].Value))}\">{Encode(m.Groups[1].Value)}</a>"));
+        // 画像を先に処理する（バッジ記法 [![alt](badge.svg)](url) のようにリンクの内側へ入るため、
+        // 画像は入れ子も含めて拾う）。宛先は「最初の ')' まで」ではなく釣り合った括弧まで読む
+        // （[aa](aa(bb)_cc.md) の宛先は aa(bb)_cc.md）——MarkdownLinkParser が唯一の解析口。
+        text = ReplaceLinks(text, MarkdownLinkParser.FindImages(text), Stash);
+        text = ReplaceLinks(text, MarkdownLinkParser.FindAll(text), Stash);
         // 脚注参照 [^id]：未定義の id はそのまま地の文として残す（GFM の緩い挙動に合わせる）。
         text = FootnoteRefRe.Replace(text, m =>
         {
@@ -494,6 +496,26 @@ internal static class MarkdownRenderer
             text = text.Replace($"\x01{i}\x01", spans[i]);
 
         return text;
+    }
+
+    /// <summary>解析済みのインラインリンク／画像を HTML へ差し替える（生成 HTML は番兵へ退避）。</summary>
+    private static string ReplaceLinks(
+        string text, IReadOnlyList<MarkdownInlineLink> links, Func<string, string> stash)
+    {
+        if (links.Count == 0) return text;
+
+        var sb = new StringBuilder(text.Length);
+        var pos = 0;
+        foreach (var link in links)
+        {
+            sb.Append(text, pos, link.Start - pos);
+            sb.Append(stash(link.IsImage
+                ? $"<img src=\"{EncodeAttribute(SanitizeUrl(link.Destination, allowData: true))}\" alt=\"{Encode(link.Text)}\">"
+                : $"<a href=\"{EncodeAttribute(SanitizeUrl(link.Destination))}\">{Encode(link.Text)}</a>"));
+            pos = link.Start + link.Length;
+        }
+        sb.Append(text, pos, text.Length - pos);
+        return sb.ToString();
     }
 
     // 地の文に裸で書かれた http(s) URL をリンク化する（GFM の autolink 相当）。すでに [text](url) や
@@ -688,8 +710,6 @@ internal static class MarkdownRenderer
     private static readonly Regex TaskItemRe = new(@"^\[([ xX])\][ \t]+(.*)$", RegexOptions.Compiled);
     private static readonly Regex TableSepRe = new(@"^\|?[\s\-:\|]+\|?$", RegexOptions.Compiled);
     private static readonly Regex CodeSpanRe = new(@"`([^`]+)`", RegexOptions.Compiled);
-    private static readonly Regex ImageRe = new(@"!\[([^\]]*)\]\(([^\)]+)\)", RegexOptions.Compiled);
-    private static readonly Regex LinkRe = new(@"\[([^\]]+)\]\(([^\)]+)\)", RegexOptions.Compiled);
     // 脚注参照 [^id]（画像・リンクと違い直後に "(" は続かないため、上記2つと衝突しない）。
     private static readonly Regex FootnoteRefRe = new(@"\[\^([^\]\s]+)\]", RegexOptions.Compiled);
     // 脚注定義 [^id]: 説明（行頭限定）。
