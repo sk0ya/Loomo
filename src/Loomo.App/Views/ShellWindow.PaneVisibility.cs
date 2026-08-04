@@ -218,7 +218,7 @@ public partial class ShellWindow {
                 _spanSavedRoot = AddLeafAtBottom(savedRoot, NewLeaf(kind));
         }
         if (kind == PaneKind.EditorSupport && visible)
-            _ = UpdateEditorSupportAsync();
+            InvalidateEditorSupport();
         _zoomedPane = null; // 表示構成が変わるのでズームは解除する
         _root = Normalize(_root);
         MarkLayoutDirty();

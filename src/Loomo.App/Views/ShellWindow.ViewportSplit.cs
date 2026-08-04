@@ -182,7 +182,7 @@ public partial class ShellWindow {
             if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
         };
-        control.MarkdownPreviewRequested += async (_, _) => await OpenEditorSupportAsync(tab);
+        control.MarkdownPreviewRequested += (_, _) => OpenEditorSupport(tab);
         control.LinkClicked += OnEditorLinkClicked;
         control.FileLinkClicked += OnEditorFileLinkClicked;
         control.FindReferencesResult += OnEditorFindReferencesResult;

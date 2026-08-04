@@ -112,7 +112,7 @@ public partial class ShellWindow {
             return;
         RebuildStage();
         if (_stagePane == PaneKind.EditorSupport)
-            _ = UpdateEditorSupportAsync();
+            InvalidateEditorSupport();
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
             if (_stageActive && !_overviewActive)
                 FocusPane(_stagePane);
@@ -146,7 +146,7 @@ public partial class ShellWindow {
             return;
         RebuildStage();
         if (kind == PaneKind.EditorSupport)
-            _ = UpdateEditorSupportAsync();
+            InvalidateEditorSupport();
         MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
         SaveActiveWorkspaceSnapshot();
     }

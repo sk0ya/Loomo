@@ -1,13 +1,43 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。</summary>
+/// <summary>
+/// ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。
+/// 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。
+/// <para>
+/// 更新の入口は <see cref="InvalidateEditorSupport"/> ただ一つで、実際の描画は
+/// <see cref="EditorSupportUpdateLoop"/> が同時1本に直列化する。描画は最後に
+/// <see cref="EditorSupportFrame"/> を1個組み立て、<see cref="ApplyEditorSupportFrame"/> が
+/// 同期で丸ごと適用する——<b>await をまたいで UI をバラバラに書かない</b>のがこのファイルの規約。
+/// （以前はタイトル・ヘッダー・ビジュアル・WebView を別々に書いていたため、追い越された描画が
+/// 中途半端な状態を残して「固まったように見える」ことがあった。）
+/// </para>
+/// </summary>
 public partial class ShellWindow {
-    private async Task OpenEditorSupportAsync(EditorTab sourceTab) {
-        await SwitchEditorSupportSourceAsync(sourceTab, force: true);
+    private EditorSupportUpdateLoop? _editorSupportLoop;
+    /// <summary>次の描画でページ全体を組み直す（本文差し替えを使わない）。ナビゲーション失敗・
+    /// 応答なし・差し替え先ページ喪失からの復帰で立てる一度きりのフラグ。</summary>
+    private bool _editorSupportForceFullPage;
+    private EditorSupportUpdateLoop EditorSupportLoop => _editorSupportLoop ??= new EditorSupportUpdateLoop(
+        CanRenderEditorSupport, RenderEditorSupportAsync,
+        ex => CodeSupportDiag.Log($"render failed: {ex}"));
+    /// <summary>EditorSupport の再描画を要求する唯一の入口。描けない状態なら要求は保持され、
+    /// 可視化された時点で必ず1回描かれる（取りこぼさない）。</summary>
+    private void InvalidateEditorSupport(
+        EditorSupportUpdateReason reason = EditorSupportUpdateReason.Content)
+        => EditorSupportLoop.Invalidate(reason);
+    /// <summary>いま中身を描いてよいか。可視表現の境界判定は <see cref="EditorSupportRenderPolicy"/> に一元化してある。</summary>
+    private bool CanRenderEditorSupport()
+        => _editorSupport.Source is not null
+           && EditorSupportRenderPolicy.ShouldRender(
+               _stageActive && _stagePane == PaneKind.EditorSupport,
+               IsPaneVisible(PaneKind.EditorSupport),
+               IsEditorSupportInThumbnail());
+    private void OpenEditorSupport(EditorTab sourceTab) {
+        SwitchEditorSupportSource(sourceTab, force: true);
         if (_stageActive)
             SetStagePane(PaneKind.EditorSupport);   // ソロは舞台へ立てる
         else
             ShowEditorSupportPane();                 // タイルは Editor の右隣へ開く
-        await UpdateEditorSupportAsync();
+        InvalidateEditorSupport();
         RecordTrailPreview(sourceTab);
     }
     private async void OnEditorSupportBack(object sender, RoutedEventArgs e) => await EditorSupportGoBackAsync();
@@ -30,7 +60,7 @@ public partial class ShellWindow {
         if (EditorSupportBackButton is not null)
             EditorSupportBackButton.IsEnabled = _editorSupport.History.CanGoBack;
     }
-    private async Task SwitchEditorSupportSourceAsync(EditorTab sourceTab, bool force = false) {
+    private void SwitchEditorSupportSource(EditorTab sourceTab, bool force = false) {
         if (!_editorSupport.TryChangeSource(sourceTab, force, out var previous))
             return;
         if (previous is not null) {
@@ -38,33 +68,35 @@ public partial class ShellWindow {
             previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;
         }
         StopCodeReadyRetry();
+        _editorSupport.DiagnosticStopwatch = null;   // 追従元が変わったので計測もやり直し
         UpdateEditorSupportNavAffordances();
         sourceTab.Control.ViewportScrolled += EditorSupportSource_ViewportScrolled;
         sourceTab.Control.CaretMoved += EditorSupportSource_CaretMoved;
         UpdateEditorSupportPinToggle();
-        await UpdateEditorSupportAsync();
+        InvalidateEditorSupport();
     }
-    private async void OnToggleEditorSupportPin(object sender, RoutedEventArgs e) {
+    private void OnToggleEditorSupportPin(object sender, RoutedEventArgs e) {
         _editorSupport.IsPinned = EditorSupportPinToggle.IsChecked == true;
         UpdateEditorSupportPinToggle();
         if (_editorSupport.IsPinned) {
             if (_editorSupport.Source is null && _activeEditorTab is not null)
-                await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
+                SwitchEditorSupportSource(_activeEditorTab, force: true);
             return;
         }
         if (_activeEditorTab is not null)
-            await SwitchEditorSupportSourceAsync(_activeEditorTab, force: true);
+            SwitchEditorSupportSource(_activeEditorTab, force: true);
     }
-    private async void OnToggleEditorSupportSlideMode(object sender, RoutedEventArgs e) {
+    private void OnToggleEditorSupportSlideMode(object sender, RoutedEventArgs e) {
         _settings.Appearance.MarkdownSlideMode = EditorSupportSlideToggle.IsChecked == true;
-        await UpdateEditorSupportAsync();
+        InvalidateEditorSupport();
     }
     private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e) {
         var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null)
             return;
-        var provider = _editorSupports.Resolve(filePath);
+        // 解決は描画と同じ Resolver を通す（Registry を直に引くと Hex/コードのフォールバックが抜け落ちる）。
+        var provider = _editorSupportResolver.Resolve(filePath).Provider;
         var result = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
             filePath, source.Control.Text, _workspace.RootPath ?? string.Empty, null,
             _settings.Appearance.MarkdownPreviewTheme));
@@ -77,88 +109,143 @@ public partial class ShellWindow {
             return; // ビジュアル提供者（CSV/TSV グリッド等）や対応の無いファイルは開ける HTML が無い。
         await OpenEditorSupportSnapshotInBrowserAsync(html, result.MapFolder, result.Title);
     }
+    private void UpdateEditorSupportHeaderButtons(bool showSlide, bool showOpenInBrowser, bool showExport) {
+        EditorSupportSlideToggle.Visibility = showSlide ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportOpenInBrowserButton.Visibility = showOpenInBrowser ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportExportButton.Visibility = showExport ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void UpdateEditorSupportPinToggle() {
         EditorSupportPinToggle.IsChecked = _editorSupport.IsPinned;
         EditorSupportPinToggle.ToolTip = _editorSupport.IsPinned
             ? "ピン留めを解除してアクティブなエディタに追従"
             : "現在のサポート対象にピン留め";
     }
-    private void UpdateEditorSupportHeaderButtons(bool showSlide, bool showOpenInBrowser, bool showExport) {
-        EditorSupportSlideToggle.Visibility = showSlide ? Visibility.Visible : Visibility.Collapsed;
-        EditorSupportOpenInBrowserButton.Visibility = showOpenInBrowser ? Visibility.Visible : Visibility.Collapsed;
-        EditorSupportExportButton.Visibility = showExport ? Visibility.Visible : Visibility.Collapsed;
-    }
     private void ScheduleEditorSupportUpdate() {
         if (_editorSupport.Source is null)
             return;
         if (_editorSupportDebounceTimer is null) {
             _editorSupportDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-            _editorSupportDebounceTimer.Tick += async (s, _) => {
+            _editorSupportDebounceTimer.Tick += (s, _) => {
                 ((DispatcherTimer)s!).Stop();
-                await UpdateEditorSupportAsync();
+                InvalidateEditorSupport();
             };
         }
         _editorSupportDebounceTimer.Stop();
         _editorSupportDebounceTimer.Start();
     }
-    private async Task UpdateEditorSupportAsync() {
+
+    // ===== 描画：フレームを1個組み立てて一括適用する =====
+
+    /// <summary>
+    /// 1回分の描画。<see cref="EditorSupportUpdateLoop"/> からのみ呼ばれる（同時に1本だけ）。
+    /// 途中の <c>ct</c> 確認は「UI へ書く直前」に置くこと——書いた後に捨てると中途半端な表示が残る。
+    /// </summary>
+    private async Task RenderEditorSupportAsync(EditorSupportUpdateReason reason, CancellationToken ct) {
         var source = _editorSupport.Source;
         if (source is null)
             return;
         var filePath = source.Control.FilePath;
         var selection = _editorSupportResolver.Resolve(filePath);
-        var provider = selection.Provider;
-        var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
-            return;
         if (selection.Kind == EditorSupportKind.Code && filePath is not null) {
-            UpdateEditorSupportHeaderButtons(showSlide: false, showOpenInBrowser: false, showExport: false);
-            await UpdateCodeEditorSupportAsync(source, filePath);
+            // キャレット移動だけなら②パネルの差し替えで足りる（構造ツリーは作り直さない＝折りたたみを保つ）。
+            if (reason == EditorSupportUpdateReason.Caret && _editorSupport.OutlineRoots is not null) {
+                await RefreshCodeCallPanelsAsync(source, filePath, ct);
+                return;
+            }
+            await RenderCodeEditorSupportAsync(source, filePath, ct);
             return;
         }
-        var seq = _editorSupport.BeginRender();
-        var content = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
-            filePath,
-            source.Control.Text,
-            _workspace.RootPath ?? string.Empty,
-            _editorSupport.WebView.ReadyPageKey,
-            _settings.Appearance.MarkdownPreviewTheme));
-        if (!_editorSupport.IsLatestRender(seq))
-            return;
-        UpdateEditorSupportHeaderButtons(content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport);
-        if (content.VisualProvider is { } visual && filePath is not null)
-        {
-            EditorSupportTitle.Text = content.Title;
-            await _editorSupport.ShowVisualAsync(EditorSupportContentHost, visual, filePath,
-                source.Control.Text, EditorSupportVisual_ContentEdited);
-            return;
-        }
-        HideEditorSupportVisual();
-        _editorSupport.WebView.SetPending( content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
-        EditorSupportTitle.Text = content.Title;
-        var view = await EnsureEditorSupportViewAsync();
-        if (view?.CoreWebView2 is null)
-            return;
-        if (!_editorSupport.IsLatestRender(seq))
-            return;
-        RenderPendingEditorSupportContent(view.CoreWebView2);
+        await RenderProviderEditorSupportAsync(source, filePath, selection.Provider, ct);
     }
-    private async Task UpdateCodeEditorSupportAsync(EditorTab source, string filePath, bool fromReadyRetry = false) {
-        var seq = _editorSupport.BeginRender();
+    private async Task RenderProviderEditorSupportAsync(
+        EditorTab source, string? filePath, IEditorSupportProvider? provider, CancellationToken ct) {
+        // WebView2 を使う提供者のときだけ、<b>組み立てより先に</b>用意する。以前は pending を積んでから
+        // Ensure を await していたので、その await で追い越されると「差し替えた pending が誰にも
+        // 描かれない」状態が残った。ビジュアル提供者（CSV グリッド・画像・Hex）では WebView2 を作らない。
+        WebView2CompositionControl? view = null;
+        string? readyPageKey = null;
+        if (provider is not IEditorSupportVisualProvider) {
+            view = await EnsureEditorSupportViewAsync();
+            ct.ThrowIfCancellationRequested();
+            // 復帰要求が出ていれば本文差し替えを使わせない（必ず html が組み上がる＝1回で収束する）。
+            readyPageKey = _editorSupportForceFullPage ? null : _editorSupport.WebView.ReadyPageKey;
+        }
+        var text = source.Control.Text;
+        var content = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
+            filePath, text, _workspace.RootPath ?? string.Empty, readyPageKey,
+            _settings.Appearance.MarkdownPreviewTheme));
+        ct.ThrowIfCancellationRequested();
+        EditorSupportFrameContent body;
+        if (content.VisualProvider is { } visual && filePath is not null) {
+            // 重い読み込み・パースは提供者側に済ませてから載せる（載せてから await しない）。
+            await _editorSupport.PrepareVisualAsync(visual, filePath, text, EditorSupportVisual_ContentEdited);
+            ct.ThrowIfCancellationRequested();
+            body = new EditorSupportFrameContent.VisualContent(visual, filePath, text);
+        } else {
+            body = new EditorSupportFrameContent.WebContent(
+                content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
+        }
+        // フラグを下ろすのは実際にフレームを適用する直前。ここより前で下ろすと、中断された描画が
+        // 復帰要求を食い潰して、やり直しが本文差し替えへ戻ってしまう（＝復帰しないまま固まる）。
+        _editorSupportForceFullPage = false;
+        ApplyEditorSupportFrame(
+            new EditorSupportFrame(
+                content.Title, content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport, body),
+            view);
+    }
+    /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期・途中 return なし。</b></summary>
+    private void ApplyEditorSupportFrame(EditorSupportFrame frame, WebView2CompositionControl? view = null) {
+        UpdateEditorSupportHeaderButtons(frame.ShowSlide, frame.ShowOpenInBrowser, frame.ShowExport);
+        EditorSupportTitle.Text = frame.Title;
+        switch (frame.Content) {
+            case EditorSupportFrameContent.VisualContent visual:
+                _editorSupport.MountVisual(EditorSupportContentHost, visual.Provider);
+                break;
+            case EditorSupportFrameContent.OutlineContent outline:
+                var outlineView = EnsureCodeOutlineView();
+                ShowEditorSupportVisual(outlineView);
+                outlineView.ShowOutline(outline.Roots, outline.CurrentLine1, outline.Panels);
+                break;
+            case EditorSupportFrameContent.PanelsContent panels:
+                if (_editorSupport.OutlineView is not { } shown)
+                    break;   // 構造がまだ出ていないなら②だけ差し替えても意味が無い
+                if (panels.CurrentLine1 is int current)
+                    shown.SetCurrentAndPanels(current, panels.Panels);
+                else
+                    shown.SetPanels(panels.Panels);
+                break;
+            case EditorSupportFrameContent.NoticeContent notice:
+                var noticeView = EnsureCodeOutlineView();
+                ShowEditorSupportVisual(noticeView);
+                noticeView.ShowNotice(notice.Notice);
+                break;
+            case EditorSupportFrameContent.WebContent web:
+                HideEditorSupportVisual();
+                if (view?.CoreWebView2 is not { } core)
+                    break;
+                if (_editorSupport.WebView.Show(core, web) == EditorSupportPageApplyResult.NeedsFullPage) {
+                    // 差し替え先のページが（別ファイルへの遷移・読み込み失敗で）もう無い。
+                    // 黙って捨てると古い表示のまま固まるので、ページ全体で組み直す。
+                    _editorSupportForceFullPage = true;
+                    InvalidateEditorSupport();
+                    break;
+                }
+                _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
+                break;
+        }
+    }
+    private static EditorSupportFrame CodeFrame(string title, EditorSupportFrameContent content)
+        => new(title, ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false, content);
+    private async Task RenderCodeEditorSupportAsync(EditorTab source, string filePath, CancellationToken ct) {
         var lsp = GetLspDocument(source);
         var ready = lsp is not null && lsp.IsReady && LspMatchesFile(lsp, filePath);
+        var title = _codeSupport.DescribeTitle(filePath);
         if (CodeSupportDiag.IsEnabled) {
-            if (!fromReadyRetry)
-                _editorSupport.DiagnosticStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _editorSupport.DiagnosticStopwatch ??= System.Diagnostics.Stopwatch.StartNew();
             CodeSupportDiag.Log( $"enter file={Path.GetFileName(filePath)} ready={ready} " +
                 $"lsp={(lsp is null ? "null" : "ok")} connected={lsp?.IsConnected} docReady={lsp?.IsReady} " +
                 $"match={(lsp is not null && LspMatchesFile(lsp, filePath))} " +
                 $"elapsed={_editorSupport.DiagnosticStopwatch?.ElapsedMilliseconds ?? 0}ms retryTick={_editorSupport.ReadyAttempts}");
-        }
-        var view = EnsureCodeOutlineView();
-        void ShowCodeView() {
-            ShowEditorSupportVisual(view);
-            EditorSupportTitle.Text = _codeSupport.DescribeTitle(filePath);
         }
         if (!ready) {
             _editorSupport.ClearOutline();
@@ -168,64 +255,65 @@ public partial class ShellWindow {
             var failure = prompt is null ? EvaluateLspFailure(filePath) : null;
             if (prompt is not null || failure is not null
                 || _editorSupport.ReadyAttempts >= CodeConnectingNoticeGraceTicks) {
-                ShowCodeView();
-                view.ShowNotice(LspNoticeModel.Build(prompt, failure));
+                ct.ThrowIfCancellationRequested();
+                ApplyEditorSupportFrame(CodeFrame(title,
+                    new EditorSupportFrameContent.NoticeContent(LspNoticeModel.Build(prompt, failure))));
             }
             ScheduleCodeReadyRetry();
             return;
         }
-        ShowCodeView();
         StopCodeReadyRetry();
         CodeSupportDiag.Log($"ready reached after {_editorSupport.DiagnosticStopwatch?.ElapsedMilliseconds ?? 0}ms");
+        var text = source.Control.Text;
+        var caret = source.Control.Caret;
         var symbolsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
         CodeSupportDiag.Log($"documentSymbols {symbolsSw?.ElapsedMilliseconds ?? 0}ms count={symbols.Count}");
-        if (!_editorSupport.IsLatestRender(seq))
-            return;
-        var caret = source.Control.Caret;
-        var roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
+        ct.ThrowIfCancellationRequested();
+        var roots = CodeEditorSupport.ToOutline(symbols, SplitLines(text));
         if (roots.Count > 0) {
-            var currentLine1 = CurrentMemberLine1(roots, caret);
+            // 構造だけ先に出す（②呼び出し解析は待たない）。
             _editorSupport.SetOutline(source, roots);
-            _editorSupport.CurrentSymbolRange = null;                       // ②は未取得（この後 SetCurrentAndPanels で埋める）
+            _editorSupport.CurrentSymbolRange = null;   // ②は未取得（この後の PanelsContent で埋める）
             _editorSupport.CurrentCaret = (caret.Line, caret.Column);
-            view.ShowOutline(roots, currentLine1, CallPanels.Empty);   // 構造だけ先に（②は待たない）
+            ApplyEditorSupportFrame(CodeFrame(title, new EditorSupportFrameContent.OutlineContent(
+                roots, CurrentMemberLine1(roots, caret), CallPanels.Empty)));
             LogOutlineShown("structure");
         } else {
-            view.ShowNotice(LspNoticeModel.Build(null));
+            ApplyEditorSupportFrame(CodeFrame(title,
+                new EditorSupportFrameContent.NoticeContent(LspNoticeModel.Build(null))));
         }
         var panelsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
         CodeSupportDiag.Log( $"callPanels {panelsSw?.ElapsedMilliseconds ?? 0}ms " +
             $"in={panels.Incoming.Count} out={panels.Outgoing.Count} refs={panels.References.Count}");
-        if (!_editorSupport.IsLatestRender(seq))
-            return;
+        ct.ThrowIfCancellationRequested();
         if (roots.Count > 0) {
-            var currentLine1 = CurrentMemberLine1(roots, caret);
             _editorSupport.CurrentSymbolRange = symbolRange;
             _editorSupport.CurrentCaret = (caret.Line, caret.Column);
-            view.SetCurrentAndPanels(currentLine1, panels);
+            // 構造ツリーは作り直さず current 付替え＋②差し替えだけ（折りたたみを保つ）。
+            ApplyEditorSupportFrame(CodeFrame(title, new EditorSupportFrameContent.PanelsContent(
+                CurrentMemberLine1(roots, caret), panels)));
             LogOutlineShown("panels");
             return;
         }
-        for (var attempt = 0; attempt < CodeColdStructureRetries; attempt++)
-        {
+        // コールドスタート：サーバーがまだ解析途中で構造が空のことがあるので、少し待って取り直す。
+        for (var attempt = 0; attempt < CodeColdStructureRetries; attempt++) {
             symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
-            if (!_editorSupport.IsLatestRender(seq))
-                return;
-            roots = CodeEditorSupport.ToOutline(symbols, SplitLines(source.Control.Text));
+            ct.ThrowIfCancellationRequested();
+            roots = CodeEditorSupport.ToOutline(symbols, SplitLines(text));
             if (roots.Count > 0)
                 break;
-            await Task.Delay(CodeColdStructureRetryDelay);
-            if (!_editorSupport.IsLatestRender(seq))
-                return;
+            await Task.Delay(CodeColdStructureRetryDelay, ct);
         }
         CodeSupportDiag.Log($"cold structure refetch count={roots.Count}");
-        var current = CurrentMemberLine1(roots, caret);
         _editorSupport.SetOutline(source, roots);
         _editorSupport.CurrentSymbolRange = symbolRange;
         _editorSupport.CurrentCaret = (caret.Line, caret.Column);
-        view.ShowOutline(roots, current, panels);
+        ct.ThrowIfCancellationRequested();
+        ApplyEditorSupportFrame(CodeFrame(title, roots.Count > 0
+            ? new EditorSupportFrameContent.OutlineContent(roots, CurrentMemberLine1(roots, caret), panels)
+            : new EditorSupportFrameContent.NoticeContent(LspNoticeModel.Build(null))));
         LogOutlineShown(roots.Count > 0 ? "cold-structure+panels" : "empty");
     }
     private const int CodeColdStructureRetries = 6;
@@ -257,31 +345,20 @@ public partial class ShellWindow {
         => CodeEditorSupportAnalysis.FetchCallPanelsAsync(_lspWorkspace, lsp, line0, col0);
     private static IReadOnlyList<string> SplitLines(string? text)
         => CodeEditorSupportAnalysis.SplitLines(text);
-    private async Task RefreshCodeCallPanelsAsync() {
-        var source = _editorSupport.Source;
-        if (source is null)
-            return;
-        var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
-            return;
+    /// <summary>キャレット移動に伴う②呼び出しパネルだけの差し替え。current は CaretMoved 時点で即時更新済み。</summary>
+    private async Task RefreshCodeCallPanelsAsync(EditorTab source, string filePath, CancellationToken ct) {
         var caret = source.Control.Caret;
         if (!_editorSupport.ShouldRefreshCallPanels(source, caret))
-            return;
-        var roots = _editorSupport.OutlineRoots!;
-        var filePath = source.Control.FilePath;
-        if (filePath is null)
             return;
         var lsp = GetLspDocument(source);
         if (lsp is null || !lsp.IsReady || !LspMatchesFile(lsp, filePath))
             return;
-        var seq = _editorSupport.BeginRender();
         var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column);
-        if (!_editorSupport.IsLatestRender(seq))
-            return;
+        ct.ThrowIfCancellationRequested();
         _editorSupport.CurrentSymbolRange = symbolRange;
         _editorSupport.CurrentCaret = (caret.Line, caret.Column);
-        // current は CaretMoved 時点で即時更新済み。遅い LSP 解析の完了後は②だけを差し替える。
-        _editorSupport.OutlineView?.SetPanels(panels);
+        ApplyEditorSupportFrame(CodeFrame(_codeSupport.DescribeTitle(filePath),
+            new EditorSupportFrameContent.PanelsContent(CurrentLine1: null, panels)));
     }
     private void InstallLspForEditorSupportSource()
     {
@@ -300,7 +377,9 @@ public partial class ShellWindow {
         => _editorSupport.ScheduleReadyRetry(CodeReadyRetryInterval, CodeReadyRetry_Tick);
     private void StopCodeReadyRetry()
         => _editorSupport.StopReadyRetry();
-    private async void CodeReadyRetry_Tick(object? sender, EventArgs e) {
+    /// <summary>言語サーバーの準備待ちポーリング。<b>自分では描かず</b>ループへ要求を投げるだけなので、
+    /// 描画の入れ子（tick が await 中に次の tick が走って解析要求が積み上がる）が起きない。</summary>
+    private void CodeReadyRetry_Tick(object? sender, EventArgs e) {
         var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
         if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _editorSupport.OutlineRoots is not null) {
@@ -311,20 +390,14 @@ public partial class ShellWindow {
             StopCodeReadyRetry(); // サーバーが来ない：案内のまま諦める（ペイン再オープンで再試行される）
             return;
         }
-        var onStage = _stageActive && _stagePane == PaneKind.EditorSupport;
-        if (!EditorSupportRenderPolicy.ShouldRender( onStage, IsPaneVisible(PaneKind.EditorSupport), IsEditorSupportInThumbnail()))
-            return;
         var lsp = GetLspDocument(source);
         var ready = lsp is not null && lsp.IsReady && LspMatchesFile(lsp, filePath);
-        if (!ready) {
-            if (_editorSupport.ReadyAttempts == CodeConnectingNoticeGraceTicks)
-                await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
-            return;
-        }
-        await UpdateCodeEditorSupportAsync(source, filePath, fromReadyRetry: true);
+        // 準備できた瞬間と、猶予を過ぎて案内を出す一度だけ描き直す（毎 tick 投げると無駄に組み直す）。
+        if (ready || _editorSupport.ReadyAttempts == CodeConnectingNoticeGraceTicks)
+            InvalidateEditorSupport();
     }
     private void ScheduleCodeCallPanelsRefresh()
-        => _editorSupport.ScheduleCaretRefresh(RefreshCodeCallPanelsAsync);
+        => _editorSupport.ScheduleCaretRefresh(() => InvalidateEditorSupport(EditorSupportUpdateReason.Caret));
     private void EditorSupportSource_CaretMoved(object? sender, CaretInfo e)
     {
         // current 表示はアウトラインの純ロジックだけで決まる。150ms のデバウンスや

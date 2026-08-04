@@ -330,7 +330,7 @@ public partial class ShellWindow {
             return;   // 消えたファイルはそっと何もしない（ブランチ切替等で戻ることもある）
         await OpenFileInNewEditorTabAsync(entry.Target);
         if (_activeEditorTab is { } tab)
-            await OpenEditorSupportAsync(tab);
+            OpenEditorSupport(tab);
     }
     private void JumpToBrowser(TrailEntryViewModel entry) {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);

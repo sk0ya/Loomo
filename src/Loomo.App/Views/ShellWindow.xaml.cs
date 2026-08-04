@@ -116,6 +116,7 @@ public partial class ShellWindow : Window {
                 PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);
             _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
         };
+        editorSupportWebView.ReloadRequested += OnEditorSupportReloadRequested;
         _editorSupports = editorSupports;
         _editorSupportResolver = editorSupportResolver;
         _codeSupport = codeSupport;

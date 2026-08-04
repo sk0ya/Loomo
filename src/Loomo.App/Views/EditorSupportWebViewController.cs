@@ -1,8 +1,45 @@
 namespace sk0ya.Loomo.App.Views;
 
+/// <summary>いま WebView2 に載せているページの同一性。URI 直開きと生成 HTML の両方を1つで表す。</summary>
+internal sealed record EditorSupportPageId(string? Uri, string? PageKey);
+
+/// <summary>ページ読み込みの状態。</summary>
+internal enum EditorSupportPageStatus
+{
+    /// <summary>何も載せていない。</summary>
+    Idle,
+
+    /// <summary>ナビゲート要求済み・完了待ち。</summary>
+    Loading,
+
+    /// <summary>読み込み完了。本文差し替え（setBody）が成り立つのはこの状態のときだけ。</summary>
+    Ready,
+
+    /// <summary>失敗・中断・応答なし。同一性は必ず捨てられ、次の要求は必ず作り直しになる。</summary>
+    Failed,
+}
+
+/// <summary><see cref="EditorSupportWebViewController.Show"/> の結果。</summary>
+internal enum EditorSupportPageApplyResult
+{
+    /// <summary>要求どおり反映した（ナビゲート・本文差し替え・同一ページなので据え置き）。</summary>
+    Applied,
+
+    /// <summary>本文差し替えを頼まれたが差し替え先のページがもう無い。呼び元がページ全体を組み直すこと。</summary>
+    NeedsFullPage,
+}
+
 /// <summary>EditorSupport 用 WebView2 の生成、描画状態、ナビゲーション、スクロール転送を管理する。</summary>
 public sealed class EditorSupportWebViewController : IDisposable
 {
+    /// <summary>
+    /// ナビゲート要求から <c>NavigationCompleted</c> を待つ上限。これを過ぎたら
+    /// <see cref="EditorSupportPageStatus.Failed"/> にして <see cref="ReloadRequested"/> を上げる。
+    /// WebView2 の完了イベントは（プロセス落ち・不正 URI・描画中断などで）<b>来ないことがある</b>。
+    /// 以前は来なければ状態が <c>Loading</c> のまま固まり、同じページを二度と読み直さなかった。
+    /// </summary>
+    private static readonly TimeSpan NavigationWatchdog = TimeSpan.FromSeconds(12);
+
     private readonly Panel _host;
     private readonly EditorSupportNavigationService _navigation;
     private readonly Func<CoreWebView2CreationProperties> _creationProperties;
@@ -12,13 +49,10 @@ public sealed class EditorSupportWebViewController : IDisposable
     private Task<bool>? _initTask;
     private bool _eventsAttached;
     private bool _firstRenderHealed;
-    private string? _pendingHtml;
-    private string? _pendingBody;
-    private string? _pendingPageKey;
-    private string? _pendingUri;
-    private string? _pendingMapFolder;
-    private string? _loadingPageKey;
-    private string? _navigatedUri;
+    private EditorSupportPageId? _pageId;
+    private EditorSupportPageStatus _status = EditorSupportPageStatus.Idle;
+    private EditorSupportPageId? _lastFailedId;   // 同じページの二度目の失敗で再試行を打ち切るための記憶
+    private DispatcherTimer? _watchdog;
     private string _searchTerm = "";
     private bool _searchCaseSensitive;
     private bool _searchUseRegex;
@@ -44,22 +78,28 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     public WebView2CompositionControl? View { get; private set; }
     public IEditorSupportViewFactory ViewFactory => _viewFactory;
-    public string? ReadyPageKey { get; private set; }
+
+    /// <summary>
+    /// 本文差し替えで更新できるページの鍵。<b>読み込みが完了しているときだけ</b>返す。
+    /// <c>Loading</c>／<c>Failed</c>／<c>Idle</c> では null＝呼び元は必ずページ全体を組み立てる。
+    /// </summary>
+    public string? ReadyPageKey
+        => _status == EditorSupportPageStatus.Ready ? _pageId?.PageKey : null;
+
     public event EventHandler? NavigationCompleted;
 
-    public void SetPending(string? html, string? body, string? uri, string? mapFolder, string? pageKey)
-    {
-        _pendingHtml = html;
-        _pendingBody = body;
-        _pendingUri = uri;
-        _pendingMapFolder = mapFolder;
-        _pendingPageKey = pageKey;
-    }
+    /// <summary>
+    /// 表示が行き詰まったので描き直してほしい（ナビゲーション失敗・応答なし・初回描画の取りこぼし）。
+    /// ホストは EditorSupport の更新ループへ <c>Invalidate</c> を投げ、ページ全体を組み直す。
+    /// </summary>
+    public event EventHandler? ReloadRequested;
 
     public void ResetPageState()
     {
-        ReadyPageKey = null;
-        _loadingPageKey = null;
+        StopWatchdog();
+        _pageId = null;
+        _lastFailedId = null;
+        _status = EditorSupportPageStatus.Idle;
     }
 
     /// <summary>プレビュー内で塗る検索ワードを設定する（空で消える）。条件は保持しておき、
@@ -81,7 +121,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     /// </summary>
     private void PushSearchHighlight(CoreWebView2 core)
     {
-        if (!IsPdf(_navigatedUri))
+        if (!IsPdf(_pageId?.Uri))
         {
             _ = ApplyFindAsync(core, "", false);   // PDF から離れた直後の塗り残しを消す
             EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
@@ -150,57 +190,127 @@ public sealed class EditorSupportWebViewController : IDisposable
         return View;
     }
 
-    public void RenderPending(CoreWebView2 core)
+    /// <summary>
+    /// 完成したフレームの WebView 部分を反映する。<b>遷移はすべてここ1か所</b>で、
+    /// 失敗経路（例外・ナビゲーション失敗・応答なし）は必ず <see cref="Fail"/> を通って
+    /// ページの同一性を捨てる——「ガードが立ったままで二度と読み直さない」を構造的に潰すため。
+    /// </summary>
+    internal EditorSupportPageApplyResult Show(CoreWebView2 core, EditorSupportFrameContent.WebContent content)
     {
-        if (_pendingUri is { } uri)
-        {
-            if (string.Equals(uri, _navigatedUri, StringComparison.OrdinalIgnoreCase))
-                return;
-            try
-            {
-                core.Navigate(uri);
-                _navigatedUri = uri;
-                ReadyPageKey = null;
-                // 前のページの鍵を残すと、この URI の読み込み完了で ReadyPageKey がその鍵へ戻ってしまい、
-                // 同じファイルへ戻ったときに「本文差し替えで足りる」と誤判定する（＝URI ページのまま更新されない）。
-                _loadingPageKey = null;
-            }
-            catch { }
-            return;
-        }
+        if (content.Uri is { } uri)
+            return ShowUri(core, uri);
+        if (content.Body is { } body)
+            return PatchBody(core, body, content.MapFolder, content.PageKey);
+        if (content.Html is { } html)
+            return ShowHtml(core, html, content.MapFolder, content.PageKey);
+        return EditorSupportPageApplyResult.Applied;   // 表示するものが無い（呼び元が組み立てていない）
+    }
 
-        if (_pendingBody is { } body)
+    private EditorSupportPageApplyResult ShowUri(CoreWebView2 core, string uri)
+    {
+        // 再ナビゲートを省けるのは「その URI を読み<b>終えている</b>」ときだけ。
+        // Loading/Failed は必ずやり直す（以前は「ナビゲートを投げた」だけで省いていたため、
+        // 失敗した PDF などがガードに引っかかって永久に読み直されなかった）。
+        if (_status == EditorSupportPageStatus.Ready
+            && string.Equals(_pageId?.Uri, uri, StringComparison.OrdinalIgnoreCase))
         {
-            _navigatedUri = null;   // 本文差し替えが成り立つのは HTML ページのときだけ（URI ページではない）
-            if (_pendingMapFolder is not null)
-                _navigation.UpdatePreviewHost(core, _pendingMapFolder);
-            try
-            {
-                core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "setBody", html = body }));
-            }
-            catch { }
-            // 差し替え後の本文へ塗り直す（メッセージは送った順に届くので setBody の後になる）。
             PushSearchHighlight(core);
-            return;
+            return EditorSupportPageApplyResult.Applied;
         }
 
-        if (_pendingHtml is null)
-            return;
-        _navigatedUri = null;
-        if (_pendingMapFolder is not null)
-            _navigation.UpdatePreviewHost(core, _pendingMapFolder);
-        ReadyPageKey = null;
-        _loadingPageKey = _pendingPageKey;
+        BeginLoad(new EditorSupportPageId(uri, null));
+        try { core.Navigate(uri); }
+        catch { Fail(); }
+        return EditorSupportPageApplyResult.Applied;
+    }
 
-        if (_navigation.TryWritePage(_pendingHtml, out var pageUrl))
+    private EditorSupportPageApplyResult PatchBody(
+        CoreWebView2 core, string body, string? mapFolder, string? pageKey)
+    {
+        // 本文差し替えが成り立つのは「この本文が想定していたページが、いま読み込み済みで載っている」ときだけ。
+        // 組み立て中（await 中）に別のページへ遷移していたら、投げても何も起きずに古い表示のまま固まる。
+        if (_status != EditorSupportPageStatus.Ready
+            || _pageId is not { PageKey: { } current }
+            || pageKey is null
+            || current != pageKey)
+            return EditorSupportPageApplyResult.NeedsFullPage;
+
+        if (mapFolder is not null)
+            _navigation.UpdatePreviewHost(core, mapFolder);
+        try
+        {
+            core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "setBody", html = body }));
+        }
+        catch
+        {
+            Fail();
+            return EditorSupportPageApplyResult.NeedsFullPage;
+        }
+        // 差し替え後の本文へ塗り直す（メッセージは送った順に届くので setBody の後になる）。
+        PushSearchHighlight(core);
+        return EditorSupportPageApplyResult.Applied;
+    }
+
+    private EditorSupportPageApplyResult ShowHtml(
+        CoreWebView2 core, string html, string? mapFolder, string? pageKey)
+    {
+        if (mapFolder is not null)
+            _navigation.UpdatePreviewHost(core, mapFolder);
+
+        BeginLoad(new EditorSupportPageId(null, pageKey));
+
+        if (_navigation.TryWritePage(html, out var pageUrl))
         {
             try { core.Navigate(pageUrl); }
-            catch { _loadingPageKey = null; }
-            return;
+            catch { Fail(); }
+            return EditorSupportPageApplyResult.Applied;
         }
-        try { core.NavigateToString(_pendingHtml); }
-        catch { _loadingPageKey = null; }
+        try { core.NavigateToString(html); }
+        catch { Fail(); }
+        return EditorSupportPageApplyResult.Applied;
     }
+
+    private void BeginLoad(EditorSupportPageId id)
+    {
+        if (_lastFailedId is not null && _lastFailedId != id)
+            _lastFailedId = null;   // 別のページへ移った：前のページの失敗記憶は持ち越さない
+        _pageId = id;
+        _status = EditorSupportPageStatus.Loading;
+        StartWatchdog();
+    }
+
+    /// <summary>読み込みが成立しなかった。<b>同一性を必ず捨てる</b>ので、次の要求は必ず作り直しになる。</summary>
+    private void Fail()
+    {
+        StopWatchdog();
+        _pageId = null;
+        _status = EditorSupportPageStatus.Failed;
+    }
+
+    private void StartWatchdog()
+    {
+        _watchdog ??= CreateWatchdog();
+        _watchdog.Stop();
+        _watchdog.Start();
+    }
+
+    private DispatcherTimer CreateWatchdog()
+    {
+        var timer = new DispatcherTimer { Interval = NavigationWatchdog };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_status != EditorSupportPageStatus.Loading)
+                return;
+            var attempted = _pageId;
+            Fail();
+            if (ShouldRetryAfterFailure(attempted))
+                ReloadRequested?.Invoke(this, EventArgs.Empty);
+        };
+        return timer;
+    }
+
+    private void StopWatchdog() => _watchdog?.Stop();
 
     public bool TryHorizontalScroll(int delta)
     {
@@ -250,6 +360,9 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     public void Dispose()
     {
+        StopWatchdog();
+        _watchdog = null;
+        ResetPageState();
         if (View is not null)
             View.NavigationCompleted -= OnNavigationCompleted;
         if (_eventsAttached && View?.CoreWebView2 is { } core)
@@ -261,20 +374,24 @@ public sealed class EditorSupportWebViewController : IDisposable
         View = null;
         _initTask = null;
         _eventsAttached = false;
+        _firstRenderHealed = false;   // 次に張り直すビューでも初回描画の取りこぼしを直す
         _findGate.Dispose();
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (!e.IsSuccess && _navigatedUri is not null)
-            _navigatedUri = null;
+        StopWatchdog();
+        var attempted = _pageId;
         if (e.IsSuccess)
-            ReadyPageKey = _loadingPageKey;
-        if (!_firstRenderHealed && View?.CoreWebView2 is { } core)
         {
-            _firstRenderHealed = true;
-            RenderPending(core);
+            _status = EditorSupportPageStatus.Ready;
+            _lastFailedId = null;
         }
+        else
+        {
+            Fail();
+        }
+
         // ページを組み直すとページ側の保持状態（と Find セッション）が消えるので、検索ハイライトを送り直す。
         if (e.IsSuccess && View?.CoreWebView2 is { } loaded)
         {
@@ -282,6 +399,32 @@ public sealed class EditorSupportWebViewController : IDisposable
             PushSearchHighlight(loaded);
         }
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
+
+        // WebView2 は最初のページを載せても描画が出てこないことがある（コンポジション初期化との競合）。
+        // 一度だけ組み直しを頼んで実描画を確定させる。二度目以降はフラグで止まる。
+        if (!_firstRenderHealed)
+        {
+            _firstRenderHealed = true;
+            ReloadRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        // 失敗したまま放置すると空白のページが残るので組み直しを頼む（同一性は Fail で捨ててある）。
+        if (!e.IsSuccess && ShouldRetryAfterFailure(attempted))
+            ReloadRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 失敗したページを組み直させてよいか。<b>同じページの二度目の失敗では false</b>——
+    /// 開けない PDF などを相手に「失敗 → 再ナビゲート → また失敗」を延々と繰り返さないため。
+    /// 別のページを要求すれば（<see cref="BeginLoad"/>）記憶は消え、また一度だけやり直す。
+    /// </summary>
+    private bool ShouldRetryAfterFailure(EditorSupportPageId? failed)
+    {
+        if (_lastFailedId == failed)
+            return false;
+        _lastFailedId = failed;
+        return true;
     }
 
     /// <summary>

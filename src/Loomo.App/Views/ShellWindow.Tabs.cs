@@ -123,7 +123,7 @@ public partial class ShellWindow {
         _vm.Tabs.ActivateEditorTab(id);
         profile?.Lap("editor.tabVm");
         QueueEditorTabHeaderIntoView(id);
-        _ = SwitchEditorSupportSourceAsync(tab);
+        SwitchEditorSupportSource(tab);
         profile?.Lap("editor.support");
         RecordTrailEditorTab(tab);
         OnActiveEditorFileChanged(tab);
@@ -136,7 +136,7 @@ public partial class ShellWindow {
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(tab.Id);
         QueueEditorTabHeaderIntoView(tab.Id);
-        _ = SwitchEditorSupportSourceAsync(tab);
+        SwitchEditorSupportSource(tab);
         RecordTrailEditorTab(tab);
         OnActiveEditorFileChanged(tab);
     }

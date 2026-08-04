@@ -2,9 +2,11 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow に残る EditorSupport の View イベント配線。</summary>
 public partial class ShellWindow {
     private Task<WebView2CompositionControl?> EnsureEditorSupportViewAsync() => _editorSupport.WebView.EnsureAsync();
-    private void RenderPendingEditorSupportContent(CoreWebView2 core) {
-        _editorSupport.WebView.RenderPending(core);
-        _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
+    /// <summary>WebView2 側が行き詰まった（ナビゲーション失敗・応答なし・初回描画の取りこぼし）ときの復帰。
+    /// ページ全体を組み直させる——本文差し替えでは、そもそも土台が無いので直らない。</summary>
+    private void OnEditorSupportReloadRequested(object? sender, EventArgs e) {
+        _editorSupportForceFullPage = true;
+        InvalidateEditorSupport();
     }
     internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupport.WebView.TryHorizontalScroll(delta);
     /// <summary>検索パネルの条件を EditorSupport（プレビュー）のハイライトへ流す。プレビューの一致は

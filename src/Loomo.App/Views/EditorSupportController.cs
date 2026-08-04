@@ -5,7 +5,6 @@ internal sealed class EditorSupportController
 {
     private FrameworkElement? _visual;
     private readonly HashSet<IEditorSupportVisualProvider> _editSubscribed = new();
-    private int _renderSequence;
     private DispatcherTimer? _caretTimer;
     private DispatcherTimer? _readyTimer;
 
@@ -25,9 +24,6 @@ internal sealed class EditorSupportController
     public int ReadyAttempts { get; private set; }
     public Stopwatch? DiagnosticStopwatch { get; set; }
     public CodeOutlineView? OutlineView { get; set; }
-
-    public int BeginRender() => ++_renderSequence;
-    public bool IsLatestRender(int sequence) => sequence == _renderSequence;
 
     public void SetOutline(EditorTab source, IReadOnlyList<OutlineNode> roots)
     {
@@ -56,17 +52,18 @@ internal sealed class EditorSupportController
             || previous.Col != caret.Column;
     }
 
-    public void ScheduleCaretRefresh(Func<Task> refresh)
+    /// <summary>キャレット移動をデバウンスして再描画要求へ変える。要求を投げるだけで自分では描かない。</summary>
+    public void ScheduleCaretRefresh(Action requestRefresh)
     {
         if (OutlineRoots is null)
             return;
         if (_caretTimer is null)
         {
             _caretTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
-            _caretTimer.Tick += async (_, _) =>
+            _caretTimer.Tick += (_, _) =>
             {
                 _caretTimer.Stop();
-                await refresh();
+                requestRefresh();
             };
         }
         _caretTimer.Stop();
@@ -95,8 +92,13 @@ internal sealed class EditorSupportController
         ReadyAttempts = 0;
     }
 
-    public async Task ShowVisualAsync(
-        Panel host,
+    /// <summary>
+    /// ビジュアル提供者の中身を先に整える（購読・ビュー生成・本文反映）。<b>ホストへは載せない。</b>
+    /// 載せてから <c>UpdateAsync</c> を待つと、その間ペインには新しいファイルの題名で
+    /// 前のファイルの中身が出てしまうので、読み込み・パースを済ませてから
+    /// <see cref="MountVisual"/> で一気に差し替える。
+    /// </summary>
+    public async Task PrepareVisualAsync(
         IEditorSupportVisualProvider provider,
         string filePath,
         string text,
@@ -104,10 +106,13 @@ internal sealed class EditorSupportController
     {
         if (_editSubscribed.Add(provider))
             provider.ContentEdited += contentEdited;
-        var view = provider.GetOrCreateView();
-        ShowVisual(host, view);
+        provider.GetOrCreateView();
         await provider.UpdateAsync(filePath, provider.UsesEditorText ? text : string.Empty);
     }
+
+    /// <summary>整え終わった提供者のビューをペインへ載せる（同期・フレーム適用の一部）。</summary>
+    public void MountVisual(Panel host, IEditorSupportVisualProvider provider)
+        => ShowVisual(host, provider.GetOrCreateView());
 
     public void ShowVisual(Panel host, FrameworkElement view)
     {

@@ -44,7 +44,7 @@ public partial class ShellWindow {
         OnActiveEditorFileChanged(tab);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         UpdateEditorTab(tab);
         RecordTrailEditorTab(tab);
-        await UpdateEditorSupportAsync();
+        InvalidateEditorSupport();
         SaveActiveWorkspaceSnapshot();
     }
     private async Task OpenFileInPreviewTabAsync(string path) {
@@ -81,7 +81,7 @@ public partial class ShellWindow {
         SetPreviewTab(target);
         UpdateEditorTab(target);
         RecordTrailEditorTab(target);
-        await UpdateEditorSupportAsync();
+        InvalidateEditorSupport();
         SaveActiveWorkspaceSnapshot();
     }
     private async Task ReloadExistingTabIfChangedAsync(EditorTab tab) {
@@ -98,7 +98,7 @@ public partial class ShellWindow {
             UpdateEditorTab(tab);
         }
         if (ReferenceEquals(_editorSupport.Source, tab))
-            await UpdateEditorSupportAsync();
+            InvalidateEditorSupport();
     }
     /// <summary>検索パネルの置換で書き換わったファイルが開いているタブを読み直す。アクティブタブが
     /// 含まれていれば検索ハイライトも新しい内容で引き直す（置換済みの箇所は一致しなくなるので下線が
