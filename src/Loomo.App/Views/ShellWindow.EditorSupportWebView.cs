@@ -11,17 +11,17 @@ public partial class ShellWindow {
     internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupport.WebView.TryHorizontalScroll(delta);
     /// <summary>検索パネルの条件を EditorSupport（プレビュー）のハイライトへ流す。プレビューの一致は
     /// 検索結果一覧に出てこないので、エディタ側だけ塗ると「ヒットしたのにプレビューのどこか分からない」
-    /// ままになる。WebView2 表示（本体＋切り離した複製）と、自分で塗るビジュアル提供者（VGrid のグリッド等）の
-    /// 両方へ配る。ビジュアル提供者は表示中でなくても条件を保持して次の表示へ引き継ぐので、全提供者へ渡す。</summary>
+    /// ままになる。WebView2 表示（本体＋切り離した複製）と、自分で塗るビジュアル表示（VGrid のグリッド等）の
+    /// 両方へ配る。表示インスタンスは表示面ごとに <c>EditorSupportVisualHost</c> が持ち、条件を覚えて
+    /// <b>あとから作られた実体にも</b>適用するので、ここは各ホストへ1回ずつ渡すだけでよい。</summary>
     private void ApplyEditorSupportSearchHighlight() {
         var search = _vm.SearchPanel;
         var (term, caseSensitive, useRegex) =
             (search.SupportHighlightTerm, search.HighlightCaseSensitive, search.HighlightUseRegex);
         _editorSupport.WebView.SetSearchHighlight(term, caseSensitive, useRegex);
+        _editorSupport.Visuals.SetSearchHighlight(term, caseSensitive, useRegex);
         foreach (var mirror in Detached.AllItems.Select(i => i.Content).OfType<DetachedEditorSupportView>())
             mirror.SetSearchHighlight(term, caseSensitive, useRegex);
-        foreach (var provider in _editorSupports.Providers.OfType<IEditorSupportSearchHighlightProvider>())
-            provider.ApplySearchHighlight(term, caseSensitive, useRegex);
     }
     private void PostEditorSupportScrollRatio(double ratio) => _editorSupport.WebView.PostScrollRatio(ratio);
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title) {

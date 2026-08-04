@@ -61,15 +61,14 @@ public sealed class EditorSupportPipeline
     {
         var filePath = context.FilePath;
         var text = provider?.UsesEditorText == false ? string.Empty : context.Text;
+        // ビジュアル表示は HTML を持たない。表示インスタンスの生成・載せ替えは呼び元（表示面）の役目で、
+        // 表示面ごとに実体を作れるので切り離しウィンドウでも同じ提供者をそのまま使える
+        // （以前ここで返していた「複製に未対応です」の代替ページは不要になった）。
         if (provider is IEditorSupportVisualProvider visualProvider && filePath is not null)
         {
-            var title = visualProvider.DescribeTitle(filePath);
             return new EditorSupportResult(
-                title,
-                MarkdownRenderer.RenderToHtml(
-                    "## Editor Support\n\nこの種類のプレビューは別ウィンドウでの複製に未対応です。",
-                    title, context.PreviewTheme),
-                null, null, null, null,
+                visualProvider.DescribeTitle(filePath),
+                null, null, null, null, null,
                 ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false,
                 VisualProvider: visualProvider);
         }

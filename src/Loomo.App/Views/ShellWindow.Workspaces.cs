@@ -275,6 +275,7 @@ public partial class ShellWindow {
         foreach (var preview in _browserLivePreviews.Values)
             preview.Dispose();
         _editorSupport.WebView.Dispose();
+        _editorSupport.Visuals.Dispose();
         foreach (var workspace in _editorWorkspaces.Values)
             foreach (var tab in workspace.Tabs)
                 if (tab.IsRealized)

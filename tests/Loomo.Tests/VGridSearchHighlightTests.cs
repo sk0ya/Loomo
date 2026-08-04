@@ -54,6 +54,26 @@ public sealed class VGridSearchHighlightTests
     }
 
     [Fact]
-    public void VGrid提供者は検索ハイライトを受け取れる()
-        => Assert.IsAssignableFrom<IEditorSupportSearchHighlightProvider>(new VGridEditorSupport(new LoomoSettings()));
+    public void VGridの表示インスタンスは検索ハイライトを受け取れる()
+        => RunSta(() =>
+        {
+            // 塗る口は提供者（工場）ではなく表示インスタンス側にある。表示面ごとに実体が分かれた以上、
+            // 条件は実体へ配らないと「複製窓のグリッドだけ塗られない」が起きる。
+            using var visual = new VGridEditorSupport(new LoomoSettings()).CreateVisual();
+            Assert.IsAssignableFrom<IEditorSupportSearchHighlightTarget>(visual);
+        });
+
+    private static void RunSta(Action action)
+    {
+        Exception? ex = null;
+        var thread = new System.Threading.Thread(() =>
+        {
+            try { action(); }
+            catch (Exception e) { ex = e; }
+        });
+        thread.SetApartmentState(System.Threading.ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (ex is not null) throw ex;
+    }
 }

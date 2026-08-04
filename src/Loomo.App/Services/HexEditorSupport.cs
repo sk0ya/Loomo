@@ -23,19 +23,6 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public sealed class HexEditorSupport : IEditorSupportVisualProvider
 {
-    /// <summary>メモリへ読み込むバイト数の上限。超えたら先頭だけ読みキャプションに注記する。</summary>
-    private const long MaxLoadBytes = 64L * 1024 * 1024;
-
-    private Grid? _view;
-    private ListBox? _list;
-    private TextBlock? _caption;
-    private Button? _copyPathButton;
-    private Button? _copyButton;
-    private string? _filePath;
-
-    // 読み取り専用なので編集の書き戻しは無い（購読は受けるが発火しない）。
-    public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
-
     // 拡張子では解決させない（フォールバック専用）。registry には登録しない。
     public IReadOnlyCollection<string> SupportedExtensions => Array.Empty<string>();
 
@@ -44,11 +31,29 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
 
     public string DescribeTitle(string filePath) => $"Hex: {Path.GetFileName(filePath)}";
 
-    public FrameworkElement GetOrCreateView()
-    {
-        if (_view is not null)
-            return _view;
+    public IEditorSupportVisual CreateVisual() => new HexVisual();
+}
 
+/// <summary>Hex ダンプの表示インスタンス1つぶん（ビューと読み込み状態）。</summary>
+public sealed class HexVisual : IEditorSupportVisual
+{
+    /// <summary>メモリへ読み込むバイト数の上限。超えたら先頭だけ読みキャプションに注記する。</summary>
+    private const long MaxLoadBytes = 64L * 1024 * 1024;
+
+    private readonly Grid _view;
+    private readonly ListBox _list;
+    private readonly TextBlock _caption;
+    private Button? _copyPathButton;
+    private Button? _copyButton;
+    private string? _filePath;
+
+    // 読み取り専用なので編集の書き戻しは無い（購読は受けるが発火しない）。
+    public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
+
+    public FrameworkElement View => _view;
+
+    public HexVisual()
+    {
         _list = new ListBox
         {
             SelectionMode = SelectionMode.Extended,
@@ -103,15 +108,28 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
         Grid.SetRow(_list, 1);
         _view.Children.Add(_caption);
         Grid.SetRow(_caption, 2);
-
-        return _view;
     }
 
-    public Task UpdateAsync(string filePath, string text)
+    /// <summary>
+    /// 読み込みは<b>スレッドプールで</b>行う。以前はここが UI スレッドの同期 IO で、
+    /// 大きなバイナリを開くとその間アプリ全体が止まっていた。UI へ触るのは戻り値の反映関数だけ。
+    /// </summary>
+    public async Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct)
     {
-        GetOrCreateView();
-        _filePath = filePath;
+        var loaded = await Task.Run(() => Load(filePath), ct);
+        ct.ThrowIfCancellationRequested();
+        return () =>
+        {
+            _filePath = filePath;
+            _list.ItemsSource = loaded.Lines;
+            _caption.Text = loaded.Caption;
+        };
+    }
 
+    private sealed record Loaded(HexDumpLines? Lines, string Caption);
+
+    private static Loaded Load(string filePath)
+    {
         try
         {
             var info = new FileInfo(filePath);
@@ -139,25 +157,22 @@ public sealed class HexEditorSupport : IEditorSupportVisualProvider
                     Array.Resize(ref bytes, offset);
             }
 
-            _list!.ItemsSource = bytes.Length == 0 ? null : new HexDumpLines(bytes);
-
             var truncated = total > bytes.Length;
-            _caption!.Text = bytes.Length == 0
-                ? $"{Path.GetFileName(filePath)}  （空のファイル）"
-                : truncated
-                    ? $"{Path.GetFileName(filePath)}  {FormatBytes(total)}  先頭 {FormatBytes(bytes.Length)} を表示"
-                    : $"{Path.GetFileName(filePath)}  {FormatBytes(total)}";
+            return new Loaded(
+                bytes.Length == 0 ? null : new HexDumpLines(bytes),
+                bytes.Length == 0
+                    ? $"{Path.GetFileName(filePath)}  （空のファイル）"
+                    : truncated
+                        ? $"{Path.GetFileName(filePath)}  {FormatBytes(total)}  先頭 {FormatBytes(bytes.Length)} を表示"
+                        : $"{Path.GetFileName(filePath)}  {FormatBytes(total)}");
         }
         catch (Exception ex)
         {
-            if (_list is not null)
-                _list.ItemsSource = null;
-            if (_caption is not null)
-                _caption.Text = $"{Path.GetFileName(filePath)}  読み込み失敗: {ex.Message}";
+            return new Loaded(null, $"{Path.GetFileName(filePath)}  読み込み失敗: {ex.Message}");
         }
-
-        return Task.CompletedTask;
     }
+
+    public void Dispose() { }
 
     private FrameworkElement CreateToolbar()
     {

@@ -1,6 +1,7 @@
 using sk0ya.Loomo.App.Services;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -68,15 +69,18 @@ public class EditorSupportPipelineTests
     }
 
     [Fact]
-    public async Task Visual_provider_is_returned_without_view_creation()
+    public async Task Visual_provider_is_returned_without_creating_a_visual()
     {
         var provider = new VisualProvider();
 
         var result = await new EditorSupportPipeline().PrepareAsync(provider, Context());
 
+        // パイプラインは「どの提供者か」を返すだけ。表示インスタンスの生成は表示面（ペイン・複製窓）の役目で、
+        // ここで作ってしまうと表示面ごとに実体を持てなくなる。
         Assert.Same(provider, result.VisualProvider);
         Assert.Equal("Visual", result.Title);
-        Assert.Contains("別ウィンドウでの複製に未対応", result.Html);
+        Assert.Equal(0, provider.CreatedVisuals);
+        Assert.Null(result.Html);   // ビジュアル表示は HTML を持たない
     }
 
     private static EditorSupportContext Context(string? readyPageKey = null) => new(
@@ -130,14 +134,22 @@ public class EditorSupportPipelineTests
 
     private sealed class VisualProvider : IEditorSupportVisualProvider
     {
+        public int CreatedVisuals { get; private set; }
         public IReadOnlyCollection<string> SupportedExtensions => [".test"];
-        public event EventHandler<EditorSupportContentEdited>? ContentEdited
-        {
-            add { }
-            remove { }
-        }
         public string DescribeTitle(string filePath) => "Visual";
-        public FrameworkElement GetOrCreateView() => throw new InvalidOperationException();
-        public Task UpdateAsync(string filePath, string text) => Task.CompletedTask;
+        public IEditorSupportVisual CreateVisual()
+        {
+            CreatedVisuals++;
+            return new StubVisual();
+        }
+    }
+
+    private sealed class StubVisual : IEditorSupportVisual
+    {
+        public FrameworkElement View { get; } = new Grid();
+        public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
+        public Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct)
+            => Task.FromResult<Action>(() => { });
+        public void Dispose() { }
     }
 }

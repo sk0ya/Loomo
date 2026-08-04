@@ -4,14 +4,26 @@ namespace sk0ya.Loomo.App.Views;
 internal sealed class EditorSupportController
 {
     private FrameworkElement? _visual;
-    private readonly HashSet<IEditorSupportVisualProvider> _editSubscribed = new();
     private DispatcherTimer? _caretTimer;
     private DispatcherTimer? _readyTimer;
 
-    internal EditorSupportController() => WebView = null!;
-    public EditorSupportController(EditorSupportWebViewController webView) => WebView = webView;
+    internal EditorSupportController()
+    {
+        WebView = null!;
+        Visuals = new EditorSupportVisualHost();
+    }
+    public EditorSupportController(
+        EditorSupportWebViewController webView,
+        EventHandler<EditorSupportContentEdited> contentEdited)
+    {
+        WebView = webView;
+        Visuals = new EditorSupportVisualHost(contentEdited);
+    }
 
     public EditorSupportWebViewController WebView { get; }
+
+    /// <summary>このペインが持つビジュアル表示インスタンス群（提供者ごとに1つ）。</summary>
+    public EditorSupportVisualHost Visuals { get; }
     public EditorSupportPipeline Pipeline { get; } = new();
     public EditorTab? Source { get; private set; }
     public bool IsPinned { get; set; }
@@ -93,26 +105,25 @@ internal sealed class EditorSupportController
     }
 
     /// <summary>
-    /// ビジュアル提供者の中身を先に整える（購読・ビュー生成・本文反映）。<b>ホストへは載せない。</b>
-    /// 載せてから <c>UpdateAsync</c> を待つと、その間ペインには新しいファイルの題名で
-    /// 前のファイルの中身が出てしまうので、読み込み・パースを済ませてから
-    /// <see cref="MountVisual"/> で一気に差し替える。
+    /// ビジュアル提供者の中身を先に整える。<b>ホストへは載せない</b>——載せてから読み込みを待つと、
+    /// その間ペインには新しいファイルの題名で前のファイルの中身が出てしまう。
+    /// 戻り値は UI へ反映する関数で、<see cref="MountVisual"/> の直後に同期で呼ぶ。
     /// </summary>
-    public async Task PrepareVisualAsync(
+    public async Task<(IEditorSupportVisual Visual, Action Apply)> PrepareVisualAsync(
         IEditorSupportVisualProvider provider,
         string filePath,
         string text,
-        EventHandler<EditorSupportContentEdited> contentEdited)
+        CancellationToken ct)
     {
-        if (_editSubscribed.Add(provider))
-            provider.ContentEdited += contentEdited;
-        provider.GetOrCreateView();
-        await provider.UpdateAsync(filePath, provider.UsesEditorText ? text : string.Empty);
+        var visual = Visuals.GetOrCreate(provider);
+        var apply = await visual.PrepareAsync(
+            filePath, provider.UsesEditorText ? text : string.Empty, ct);
+        return (visual, apply);
     }
 
-    /// <summary>整え終わった提供者のビューをペインへ載せる（同期・フレーム適用の一部）。</summary>
-    public void MountVisual(Panel host, IEditorSupportVisualProvider provider)
-        => ShowVisual(host, provider.GetOrCreateView());
+    /// <summary>整え終わった表示インスタンスをペインへ載せる（同期・フレーム適用の一部）。</summary>
+    public void MountVisual(Panel host, IEditorSupportVisual visual)
+        => ShowVisual(host, visual.View);
 
     public void ShowVisual(Panel host, FrameworkElement view)
     {

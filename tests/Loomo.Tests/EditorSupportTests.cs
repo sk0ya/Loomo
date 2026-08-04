@@ -385,8 +385,8 @@ public class EditorSupportTests
 
             try
             {
-                var support = new ImageEditorSupport();
-                var view = support.GetOrCreateView();
+                var support = new ImageVisual();
+                var view = support.View;
                 var window = new Window
                 {
                     Width = 360,
@@ -398,7 +398,9 @@ public class EditorSupportTests
 
                 window.Show();
                 WpfLayoutTestHost.PumpDispatcher();
-                support.UpdateAsync(imagePath, "").GetAwaiter().GetResult();
+                support.PrepareAsync(imagePath, "", CancellationToken.None)
+                       .GetAwaiter().GetResult()
+                       .Invoke();
                 WpfLayoutTestHost.PumpDispatcher();
                 WpfLayoutTestHost.PumpDispatcher();
 

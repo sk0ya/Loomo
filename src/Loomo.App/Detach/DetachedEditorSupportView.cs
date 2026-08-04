@@ -15,8 +15,12 @@ namespace sk0ya.Loomo.App.Detach;
 /// <summary>
 /// EditorSupport（Markdown プレビュー等）の切り離し複製。追従元エディタの本文編集をデバウンスして
 /// <b>専用の WebView2</b> へ、メイン表示と同じ <see cref="EditorSupportPipeline"/> で再描画する。
-/// CSV グリッド等のビジュアル提供者・コード構造
-/// アウトラインは共有ビューが単一親制約に反するため、この複製では案内表示にとどめる（既知の制限）。
+/// <para>
+/// CSV グリッド・画像・Hex のようなビジュアル表示も<b>この複製で表示できる</b>。表示インスタンスは
+/// 表示面ごとに作られる（<see cref="EditorSupportVisualHost"/>）ので、ペイン本体と同じ提供者を
+/// 同時に使っても WPF の単一親制約に触れない。以前は提供者がビューを1つしか持てず、
+/// この複製では「複製に未対応です」と出すしかなかった。
+/// </para>
 /// <para>
 /// タブをウィンドウ間で移動すると WebView2 のコンポジションビジュアルが元ウィンドウのコンポジタに紐づいた
 /// まま新ウィンドウへ移らず<b>空表示</b>になる。これを避けるため、再ペアレント（Unloaded→Loaded）を検出したら
@@ -26,17 +30,20 @@ namespace sk0ya.Loomo.App.Detach;
 internal sealed class DetachedEditorSupportView : Grid, IDisposable
 {
     internal string? SourceFilePath => _source.FilePath;
-    private readonly EditorSupportRegistry _editorSupports;
+    private readonly EditorSupportResolver _resolver;
     private readonly EditorSupportPipeline _pipeline;
     private readonly IEditorSupportViewFactory _viewFactory;
     private readonly LoomoSettings _settings;
     private readonly string? _workspaceRoot;
     private readonly VimEditorControl _source;
     private readonly DispatcherTimer _debounce;
+    private readonly EditorSupportVisualHost _visuals;
 
     private WebView2CompositionControl? _web;
+    private FrameworkElement? _mountedVisual;
     private Task<bool>? _initTask;
     private int _renderSeq;
+    private CancellationTokenSource? _renderCts;
     private string? _mappedFolder;
     private bool _reattachPending;
     private bool _disposed;
@@ -51,10 +58,11 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     public event EventHandler<string>? LinkClicked;
 
     public DetachedEditorSupportView(
-        EditorSupportRegistry editorSupports, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
+        EditorSupportResolver resolver, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
         LoomoSettings settings, string? workspaceRoot, VimEditorControl source)
     {
-        _editorSupports = editorSupports;
+        _resolver = resolver;
+        _visuals = new EditorSupportVisualHost(OnVisualContentEdited);
         _pipeline = pipeline;
         _viewFactory = viewFactory;
         _settings = settings;
@@ -87,6 +95,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _searchUseRegex = useRegex;
         if (_web?.CoreWebView2 is { } core)
             EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+        _visuals.SetSearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
 
     private void OnSourceChanged(object? sender, EventArgs e)
@@ -112,12 +121,40 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private async Task RenderAsync()
     {
         var seq = ++_renderSeq;
+        _renderCts?.Cancel();
+        _renderCts?.Dispose();
+        var cts = _renderCts = new CancellationTokenSource();
+        var ct = cts.Token;
+
+        var theme = _settings.Appearance.MarkdownPreviewTheme;
+        var filePath = _source.FilePath;
+        // 解決は本体と同じ Resolver を通す（Registry を直に引くと Hex/コードのフォールバックが抜ける）。
+        var selection = string.IsNullOrEmpty(filePath) ? null : _resolver.Resolve(filePath);
+
+        // ビジュアル表示（CSV グリッド・画像・Hex）は WebView2 を使わないので先に分岐する。
+        if (selection?.Provider is IEditorSupportVisualProvider visualProvider && filePath is not null)
+        {
+            try
+            {
+                var visual = _visuals.GetOrCreate(visualProvider);
+                var apply = await visual.PrepareAsync(
+                    filePath, visualProvider.UsesEditorText ? _source.Text : string.Empty, ct);
+                if (seq != _renderSeq)
+                    return;
+                TitleChanged?.Invoke(this, visualProvider.DescribeTitle(filePath));
+                MountVisual(visual.View);
+                apply();
+            }
+            catch (OperationCanceledException) { }
+            catch { /* 表示できなければ前の表示のまま */ }
+            return;
+        }
+
+        HideVisual();
         var view = await EnsureWebAsync();
         if (view?.CoreWebView2 is not { } core || seq != _renderSeq)
             return;
 
-        var theme = _settings.Appearance.MarkdownPreviewTheme;
-        var filePath = _source.FilePath;
         if (string.IsNullOrEmpty(filePath))
         {
             Navigate(core, MarkdownRenderer.RenderToHtml(
@@ -125,8 +162,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
             return;
         }
 
-        var provider = _editorSupports.Resolve(filePath);
-        var result = await _pipeline.PrepareAsync(provider, new EditorSupportContext(
+        var result = await _pipeline.PrepareAsync(selection?.Provider, new EditorSupportContext(
             filePath, _source.Text, _workspaceRoot ?? string.Empty, null, theme));
         if (seq != _renderSeq)
             return;
@@ -142,6 +178,39 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         UpdatePreviewHost(core, result.MapFolder);
         if (result.Html is { } html)
             Navigate(core, html);
+    }
+
+    /// <summary>ビジュアル表示を載せて WebView2 を隠す（複製ウィンドウ側の表示切替）。</summary>
+    private void MountVisual(FrameworkElement view)
+    {
+        if (!ReferenceEquals(_mountedVisual, view))
+        {
+            if (_mountedVisual is not null)
+                Children.Remove(_mountedVisual);
+            Children.Add(view);
+            _mountedVisual = view;
+        }
+        view.Visibility = Visibility.Visible;
+        if (_web is not null)
+            _web.Visibility = Visibility.Collapsed;
+    }
+
+    private void HideVisual()
+    {
+        if (_mountedVisual is not null)
+            _mountedVisual.Visibility = Visibility.Collapsed;
+        if (_web is not null)
+            _web.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>複製側のグリッド編集も追従元エディタへ書き戻す（本体ペインと同じ扱い）。</summary>
+    private void OnVisualContentEdited(object? sender, EditorSupportContentEdited e)
+    {
+        if (!string.Equals(_source.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (_source.Text == e.Text)
+            return;
+        _source.SetText(e.Text);
     }
 
     private static void Navigate(CoreWebView2 core, string html)
@@ -239,6 +308,11 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _disposed = true;
         _source.BufferChanged -= OnSourceChanged;
         _debounce.Stop();
+        _renderCts?.Cancel();
+        _renderCts?.Dispose();
+        _renderCts = null;
+        _visuals.Dispose();
+        _mountedVisual = null;
         if (_web is not null)
         {
             _viewFactory.Dispose(_web);

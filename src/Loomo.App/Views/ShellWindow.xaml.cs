@@ -110,7 +110,7 @@ public partial class ShellWindow : Window {
         _paletteView = new CommandPaletteViewController(PaletteList, PaletteBox);
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
         var editorSupportWebView = new EditorSupportWebViewController( EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties, EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested, editorSupportViewFactory);
-        _editorSupport = new EditorSupportController(editorSupportWebView);
+        _editorSupport = new EditorSupportController(editorSupportWebView, EditorSupportVisual_ContentEdited);
         editorSupportWebView.NavigationCompleted += (_, _) => {
             if (_editorSupport.Source is not null)
                 PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);

@@ -16,22 +16,6 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
     private static readonly string[] Extensions =
         [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".tif", ".tiff"];
 
-    private Grid? _view;
-    private ScrollViewer? _scroll;
-    private Grid? _imageSurface;
-    private Image? _image;
-    private TextBlock? _caption;
-    private TextBlock? _emptyState;
-    private TextBlock? _zoomLabel;
-    private Slider? _zoomSlider;
-    private Button? _copyButton;
-    private Button? _saveButton;
-    private Button? _copyPathButton;
-    private ImageZoomController? _zoom;
-    private string? _filePath;
-
-    public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
-
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
     // 画像はファイルパスから直接読む。エディタ本文（巨大バイナリの文字列化）は不要。
@@ -39,11 +23,32 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
 
     public string DescribeTitle(string filePath) => $"Image: {Path.GetFileName(filePath)}";
 
-    public FrameworkElement GetOrCreateView()
-    {
-        if (_view is not null)
-            return _view;
+    public IEditorSupportVisual CreateVisual() => new ImageVisual();
+}
 
+/// <summary>画像プレビューの表示インスタンス1つぶん（ビュー・ズーム状態・読み込み済みビットマップ）。</summary>
+public sealed class ImageVisual : IEditorSupportVisual
+{
+    private readonly Grid _view;
+    private readonly ScrollViewer _scroll;
+    private readonly Grid _imageSurface;
+    private readonly Image _image;
+    private readonly TextBlock _caption;
+    private readonly TextBlock _emptyState;
+    private TextBlock? _zoomLabel;
+    private Slider? _zoomSlider;
+    private Button? _copyButton;
+    private Button? _saveButton;
+    private Button? _copyPathButton;
+    private readonly ImageZoomController _zoom;
+    private string? _filePath;
+
+    public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
+
+    public FrameworkElement View => _view;
+
+    public ImageVisual()
+    {
         _image = new Image
         {
             Stretch = Stretch.Fill,
@@ -113,28 +118,33 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
 
         SetActionsEnabled(false);
         SetCaption("未読み込み");
-        return _view;
     }
 
-    public Task UpdateAsync(string filePath, string text)
+    /// <summary>
+    /// デコードは<b>スレッドプールで</b>行う（以前は UI スレッドで同期にデコードしていた）。
+    /// <see cref="BitmapImage"/> は <see cref="System.Windows.Freezable.Freeze"/> 済みなら
+    /// 別スレッドで作ってもそのまま UI へ渡せる。
+    /// </summary>
+    public async Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct)
     {
-        GetOrCreateView();
-        _filePath = filePath;
-
-        try
+        var (bitmap, error) = await Task.Run(() => Decode(filePath), ct);
+        ct.ThrowIfCancellationRequested();
+        return () =>
         {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(filePath, UriKind.Absolute);
-            bitmap.EndInit();
-            bitmap.Freeze();
+            _filePath = filePath;
+            if (bitmap is null)
+            {
+                _zoom.Clear();
+                _emptyState.Text = "画像を読み込めませんでした。";
+                _emptyState.Visibility = Visibility.Visible;
+                SetActionsEnabled(false);
+                SetCaption($"{Path.GetFileName(filePath)}  読み込み失敗: {error}");
+                return;
+            }
 
-            _zoom!.SetBitmap(bitmap);
-            if (_emptyState is not null)
-                _emptyState.Visibility = Visibility.Collapsed;
-
-            if (_view?.IsLoaded == true)
+            _zoom.SetBitmap(bitmap);
+            _emptyState.Visibility = Visibility.Collapsed;
+            if (_view.IsLoaded)
             {
                 _view.UpdateLayout();
                 _zoom.UpdateSurfaceMinimumSize();
@@ -143,22 +153,28 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             _zoom.QueueFitZoom();
             SetActionsEnabled(true);
             UpdateCaptionDetails();
+        };
+    }
+
+    private static (BitmapImage? Bitmap, string? Error) Decode(string filePath)
+    {
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;   // ここでメモリへ複製＝以降ファイルに依存しない
+            bitmap.UriSource = new Uri(filePath, UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();                                  // 凍結すれば UI スレッドへ渡せる
+            return (bitmap, null);
         }
         catch (Exception ex)
         {
-            _zoom?.Clear();
-            if (_emptyState is not null)
-            {
-                _emptyState.Text = "画像を読み込めませんでした。";
-                _emptyState.Visibility = Visibility.Visible;
-            }
-
-            SetActionsEnabled(false);
-            SetCaption($"{Path.GetFileName(filePath)}  読み込み失敗: {ex.Message}");
+            return (null, ex.Message);
         }
-
-        return Task.CompletedTask;
     }
+
+    public void Dispose() => _zoom.ZoomChanged -= UpdateCaptionDetails;
 
     private FrameworkElement CreateToolbar()
     {
@@ -190,10 +206,10 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
         };
 
         var left = new StackPanel { Orientation = Orientation.Horizontal };
-        left.Children.Add(MakeButton("−", () => _zoom?.ZoomOut(), "縮小 (Ctrl+ホイール)"));
-        left.Children.Add(MakeButton("+", () => _zoom?.ZoomIn(), "拡大 (Ctrl+ホイール)"));
-        left.Children.Add(MakeButton("1:1", () => _zoom?.ActualSize(), "等倍"));
-        left.Children.Add(MakeButton("⛶", () => _zoom?.FitToWindow(), "全体表示"));
+        left.Children.Add(MakeButton("−", () => _zoom.ZoomOut(), "縮小 (Ctrl+ホイール)"));
+        left.Children.Add(MakeButton("+", () => _zoom.ZoomIn(), "拡大 (Ctrl+ホイール)"));
+        left.Children.Add(MakeButton("1:1", () => _zoom.ActualSize(), "等倍"));
+        left.Children.Add(MakeButton("⛶", () => _zoom.FitToWindow(), "全体表示"));
         left.Children.Add(_zoomSlider);
         left.Children.Add(_zoomLabel);
         left.Children.Add(CreateSeparator());
@@ -252,7 +268,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
 
     private void CopyImage()
     {
-        var bitmap = _zoom?.Bitmap;
+        var bitmap = _zoom.Bitmap;
         if (bitmap is null)
             return;
 
@@ -319,15 +335,11 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
         if (_zoomSlider is not null) _zoomSlider.IsEnabled = enabled;
     }
 
-    private void SetCaption(string text)
-    {
-        if (_caption is not null)
-            _caption.Text = text;
-    }
+    private void SetCaption(string text) => _caption.Text = text;
 
     private void UpdateCaptionDetails()
     {
-        var bitmap = _zoom?.Bitmap;
+        var bitmap = _zoom.Bitmap;
         if (bitmap is null || string.IsNullOrEmpty(_filePath))
             return;
 
@@ -343,7 +355,7 @@ public sealed class ImageEditorSupport : IEditorSupportVisualProvider
             $"{Path.GetFileName(_filePath)}  " +
             $"{bitmap.PixelWidth} x {bitmap.PixelHeight}px  " +
             (size is { } s ? $"{FormatBytes(s)}  " : "") +
-            $"{Math.Round(_zoom!.Zoom * 100):0}%");
+            $"{Math.Round(_zoom.Zoom * 100):0}%");
     }
 
     private static string FormatBytes(long bytes)

@@ -176,11 +176,11 @@ public partial class ShellWindow {
             _settings.Appearance.MarkdownPreviewTheme));
         ct.ThrowIfCancellationRequested();
         EditorSupportFrameContent body;
-        if (content.VisualProvider is { } visual && filePath is not null) {
-            // 重い読み込み・パースは提供者側に済ませてから載せる（載せてから await しない）。
-            await _editorSupport.PrepareVisualAsync(visual, filePath, text, EditorSupportVisual_ContentEdited);
+        if (content.VisualProvider is { } visualProvider && filePath is not null) {
+            // 重い読み込み・パースは表示インスタンス側で済ませてから載せる（載せてから await しない）。
+            var (visual, apply) = await _editorSupport.PrepareVisualAsync(visualProvider, filePath, text, ct);
             ct.ThrowIfCancellationRequested();
-            body = new EditorSupportFrameContent.VisualContent(visual, filePath, text);
+            body = new EditorSupportFrameContent.VisualContent(visual, apply);
         } else {
             body = new EditorSupportFrameContent.WebContent(
                 content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
@@ -199,7 +199,8 @@ public partial class ShellWindow {
         EditorSupportTitle.Text = frame.Title;
         switch (frame.Content) {
             case EditorSupportFrameContent.VisualContent visual:
-                _editorSupport.MountVisual(EditorSupportContentHost, visual.Provider);
+                _editorSupport.MountVisual(EditorSupportContentHost, visual.Visual);
+                visual.Apply();
                 break;
             case EditorSupportFrameContent.OutlineContent outline:
                 var outlineView = EnsureCodeOutlineView();
@@ -267,10 +268,19 @@ public partial class ShellWindow {
         var text = source.Control.Text;
         var caret = source.Control.Caret;
         var symbolsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
-        var symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
-        CodeSupportDiag.Log($"documentSymbols {symbolsSw?.ElapsedMilliseconds ?? 0}ms count={symbols.Count}");
+        var symbols = await RequestDocumentSymbolsSafeAsync(lsp!, ct);
+        CodeSupportDiag.Log($"documentSymbols {symbolsSw?.ElapsedMilliseconds ?? 0}ms count={symbols.Symbols.Count} timedOut={symbols.TimedOut}");
         ct.ThrowIfCancellationRequested();
-        var roots = CodeEditorSupport.ToOutline(symbols, SplitLines(text));
+        // 無応答は「シンボルが無い」ではない。理由を出して打ち切る（黙って待ち続けない・空で誤魔化さない）。
+        if (symbols.TimedOut && symbols.Symbols.Count == 0) {
+            _editorSupport.ClearOutline();
+            ApplyEditorSupportFrame(CodeFrame(title, new EditorSupportFrameContent.NoticeContent(
+                LspNoticeModel.BuildTimeout(
+                    Path.GetExtension(filePath), CodeEditorSupportAnalysis.RequestTimeout))));
+            LogOutlineShown("timeout");
+            return;
+        }
+        var roots = CodeEditorSupport.ToOutline(symbols.Symbols, SplitLines(text));
         if (roots.Count > 0) {
             // 構造だけ先に出す（②呼び出し解析は待たない）。
             _editorSupport.SetOutline(source, roots);
@@ -284,7 +294,7 @@ public partial class ShellWindow {
                 new EditorSupportFrameContent.NoticeContent(LspNoticeModel.Build(null))));
         }
         var panelsSw = CodeSupportDiag.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
-        var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column);
+        var (panels, symbolRange) = await FetchCallPanelsAsync(lsp!, caret.Line, caret.Column, ct);
         CodeSupportDiag.Log( $"callPanels {panelsSw?.ElapsedMilliseconds ?? 0}ms " +
             $"in={panels.Incoming.Count} out={panels.Outgoing.Count} refs={panels.References.Count}");
         ct.ThrowIfCancellationRequested();
@@ -298,10 +308,13 @@ public partial class ShellWindow {
             return;
         }
         // コールドスタート：サーバーがまだ解析途中で構造が空のことがあるので、少し待って取り直す。
+        // 無応答（期限切れ）になったら打ち切る——応答しないサーバーへ6回×8秒を投げても無駄に遅くなるだけ。
         for (var attempt = 0; attempt < CodeColdStructureRetries; attempt++) {
-            symbols = await RequestDocumentSymbolsSafeAsync(lsp!);
+            symbols = await RequestDocumentSymbolsSafeAsync(lsp!, ct);
             ct.ThrowIfCancellationRequested();
-            roots = CodeEditorSupport.ToOutline(symbols, SplitLines(text));
+            if (symbols.TimedOut)
+                break;
+            roots = CodeEditorSupport.ToOutline(symbols.Symbols, SplitLines(text));
             if (roots.Count > 0)
                 break;
             await Task.Delay(CodeColdStructureRetryDelay, ct);
@@ -318,8 +331,8 @@ public partial class ShellWindow {
     }
     private const int CodeColdStructureRetries = 6;
     private static readonly TimeSpan CodeColdStructureRetryDelay = TimeSpan.FromMilliseconds(300);
-    private static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(ILspDocument lsp)
-        => await CodeEditorSupportAnalysis.RequestDocumentSymbolsSafeAsync(lsp);
+    private static Task<DocumentSymbolsResult> RequestDocumentSymbolsSafeAsync(ILspDocument lsp, CancellationToken ct)
+        => CodeEditorSupportAnalysis.RequestDocumentSymbolsSafeAsync(lsp, ct);
     private static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
         => CodeEditorSupportAnalysis.CurrentMemberLine1(roots, caret);
     private void LogOutlineShown(string phase) {
@@ -341,8 +354,9 @@ public partial class ShellWindow {
     }
     private static bool LspMatchesFile(ILspDocument lsp, string filePath)
         => CodeEditorSupportAnalysis.LspMatchesFile(lsp, filePath);
-    private Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync( ILspDocument lsp, int line0, int col0)
-        => CodeEditorSupportAnalysis.FetchCallPanelsAsync(_lspWorkspace, lsp, line0, col0);
+    private Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
+        ILspDocument lsp, int line0, int col0, CancellationToken ct)
+        => CodeEditorSupportAnalysis.FetchCallPanelsAsync(_lspWorkspace, lsp, line0, col0, ct);
     private static IReadOnlyList<string> SplitLines(string? text)
         => CodeEditorSupportAnalysis.SplitLines(text);
     /// <summary>キャレット移動に伴う②呼び出しパネルだけの差し替え。current は CaretMoved 時点で即時更新済み。</summary>
@@ -353,7 +367,7 @@ public partial class ShellWindow {
         var lsp = GetLspDocument(source);
         if (lsp is null || !lsp.IsReady || !LspMatchesFile(lsp, filePath))
             return;
-        var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column);
+        var (panels, symbolRange) = await FetchCallPanelsAsync(lsp, caret.Line, caret.Column, ct);
         ct.ThrowIfCancellationRequested();
         _editorSupport.CurrentSymbolRange = symbolRange;
         _editorSupport.CurrentCaret = (caret.Line, caret.Column);

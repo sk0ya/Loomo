@@ -86,20 +86,50 @@ public interface IEditorSupportUriProvider : IEditorSupportProvider
 }
 
 /// <summary>
-/// WPF コントロールをそのまま EditorSupport ペインへ表示する提供者（CSV/TSV グリッド等）。
-/// ビューは提供者側が1つ保持して使い回す（ペインは1枚なので同時表示は常に1つ）。
+/// WPF コントロールをそのまま EditorSupport ペインへ表示する提供者（CSV/TSV グリッド・画像・Hex 等）。
+/// <b>提供者自身は状態を持たない工場</b>で、表示の実体は <see cref="IEditorSupportVisual"/> が持つ。
+/// <para>
+/// 以前は提供者がビューを1つだけ抱えていた（<c>GetOrCreateView</c>）。WPF の単一親制約により
+/// そのビューは同時に1か所へしか載せられず、切り離しウィンドウでの複製が<b>原理的に不可能</b>で、
+/// 「この種類のプレビューは複製に未対応です」という逃げが必要だった。表示ごとに実体を作る形に
+/// することで、ペイン本体・切り離しウィンドウが同じ提供者を同時に使える。
+/// </para>
 /// </summary>
 public interface IEditorSupportVisualProvider : IEditorSupportProvider
 {
-    /// <summary>ペインへ載せるビューを生成（初回）または再利用して返す。UI スレッドで呼ばれる。</summary>
-    FrameworkElement GetOrCreateView();
+    /// <summary>
+    /// 表示インスタンスを<b>新しく</b>作る。呼ぶたびに独立した実体を返すこと（使い回さない）。
+    /// ビューの組み立てを含むので UI スレッドで呼ばれる。
+    /// </summary>
+    IEditorSupportVisual CreateVisual();
+}
 
-    /// <summary>エディタの現在テキストをビューへ反映する。UI スレッドで呼ばれる。</summary>
-    Task UpdateAsync(string filePath, string text);
+/// <summary>
+/// ビジュアル提供者の表示インスタンス1つぶん。ビューと、その表示状態を所有する。
+/// <para>
+/// <b>重い処理と UI 反映を分けるのがこの契約の要点。</b>以前の <c>UpdateAsync</c> は
+/// 「UI スレッドで呼ばれる」としか決まっておらず、非同期である必要も無かったため、
+/// Hex と画像は<b>UI スレッドで同期にファイルを読んで整形して</b>いた（大きなバイナリで実際に固まる）。
+/// <see cref="PrepareAsync"/> はバックグラウンドで走る前提とし、UI へ触れるのは
+/// その戻り値である「反映関数」だけ、と分けることで、重い処理を UI スレッドへ書けなくする。
+/// </para>
+/// </summary>
+public interface IEditorSupportVisual : IDisposable
+{
+    /// <summary>ペインへ載せるコントロール。コンストラクタで組み立て済み（UI スレッド）。</summary>
+    FrameworkElement View { get; }
 
     /// <summary>
-    /// ビュー内での編集をエディタ本文へ書き戻すための通知（編集できない提供者は発火しなくてよい）。
-    /// ShellWindow が購読し、追従中のエディタタブのテキストを差し替える。UI スレッドで発火する。
+    /// 読み込み・パース・整形をここで済ませる。<b>UI スレッドを触ってはいけない</b>
+    /// （重い処理は <see cref="Task.Run(Action)"/> 等でスレッドプールへ外すこと）。
+    /// 戻り値は「<see cref="View"/> への反映」で、UI スレッドで同期に高々1回だけ呼ばれる。
+    /// 追い越されたときは呼ばれないので、反映関数の中で外部へ副作用を出さないこと。
+    /// </summary>
+    Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct);
+
+    /// <summary>
+    /// ビュー内での編集をエディタ本文へ書き戻すための通知（編集できない実装は発火しなくてよい）。
+    /// ホストが購読し、追従中のエディタタブのテキストを差し替える。UI スレッドで発火する。
     /// </summary>
     event EventHandler<EditorSupportContentEdited>? ContentEdited;
 }
@@ -108,15 +138,15 @@ public interface IEditorSupportVisualProvider : IEditorSupportProvider
 public sealed record EditorSupportContentEdited(string FilePath, string Text);
 
 /// <summary>
-/// 検索パネルの検索ワードに一致する箇所を<b>自分で</b>塗れる提供者（VGrid のグリッド等）。
+/// 検索パネルの検索ワードに一致する箇所を<b>自分で</b>塗れる表示インスタンス（VGrid のグリッド等）。
 /// WebView2 表示はホストがページスクリプトで塗る（<c>EditorSupportSearchHighlight</c>）が、WPF コントロールを
-/// そのまま載せる <see cref="IEditorSupportVisualProvider"/> にはスクリプトを流せないので、この口で条件を
-/// 受け取って自分の描画に反映する。ShellWindow が条件の変化を全提供者へ配る。
+/// そのまま載せる <see cref="IEditorSupportVisual"/> にはスクリプトを流せないので、この口で条件を
+/// 受け取って自分の描画に反映する。条件の保持と配布は <c>EditorSupportVisualHost</c> の役目
+/// （＝まだ作られていない実体にも、作られた時点で現在の条件が渡る）。
 /// </summary>
-public interface IEditorSupportSearchHighlightProvider : IEditorSupportProvider
+public interface IEditorSupportSearchHighlightTarget
 {
-    /// <summary>塗る条件を設定する（ワードが空なら消す）。UI スレッドで呼ばれる。
-    /// 表示中でない提供者にも配られるので、条件は保持して次の表示・再読込へ引き継ぐこと。</summary>
+    /// <summary>塗る条件を設定する（ワードが空なら消す）。UI スレッドで呼ばれる。</summary>
     void ApplySearchHighlight(string term, bool caseSensitive, bool useRegex);
 }
 

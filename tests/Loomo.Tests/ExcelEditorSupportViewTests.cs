@@ -29,15 +29,15 @@ public class ExcelEditorSupportViewTests
             var path = CreateTwoSheetXlsx();
             try
             {
-                var provider = new ExcelEditorSupport(new LoomoSettings());
-                var view = provider.GetOrCreateView();
+                var visual = new ExcelEditorSupport(new LoomoSettings()).CreateVisual();
+                var view = visual.View;
 
                 // 実アプリに近づけるため一度ウィンドウへ載せて測定・レイアウトさせる。
                 var window = new Window { Width = 480, Height = 320, Content = view, ShowInTaskbar = false };
                 try
                 {
                     window.Show();
-                    PumpUntil(provider.UpdateAsync(path, text: ""));
+                    PumpUntil(ApplyPrepared(visual, path));
 
                     // タブ帯はトップ Grid の直下の ListBox（グリッド内部の CommandPalette 等の
                     // ListBox と取り違えないよう直子から取る）。
@@ -127,6 +127,13 @@ public class ExcelEditorSupportViewTests
         while (!task.IsCompleted)
             PumpDispatcher();
         task.GetAwaiter().GetResult(); // 例外を観測
+    }
+
+    /// <summary>読み込み（バックグラウンド）→ 反映（UI スレッド）という本番と同じ二段で表示させる。</summary>
+    private static async Task ApplyPrepared(IEditorSupportVisual visual, string path)
+    {
+        var apply = await visual.PrepareAsync(path, text: "", CancellationToken.None);
+        apply();
     }
 
     private static void PumpDispatcher()

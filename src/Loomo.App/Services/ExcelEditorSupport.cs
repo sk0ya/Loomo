@@ -30,18 +30,6 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
 
     private readonly LoomoSettings _settings;
 
-    private Grid? _view;
-    private TsvEditorControl? _grid;
-    private ListBox? _tabStrip;
-    private TextBlock? _message;
-    private bool? _appliedLightTheme;
-
-    private string? _lastPath;
-    private IReadOnlyList<ExcelSheet> _sheets = Array.Empty<ExcelSheet>();
-    private TsvDocument?[] _docs = Array.Empty<TsvDocument?>();
-    private bool _suppressTabEvent;
-    private int _updateSeq;
-
     public ExcelEditorSupport(LoomoSettings settings) => _settings = settings;
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
@@ -49,14 +37,35 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
     // .xlsx は ZIP バイナリ。エディタ本文は使わず、ファイルパスから直接読む。
     public bool UsesEditorText => false;
 
+    public string DescribeTitle(string filePath) => $"Excel: {Path.GetFileName(filePath)}";
+
+    public IEditorSupportVisual CreateVisual() => new ExcelVisual(_settings);
+}
+
+/// <summary>Excel プレビューの表示インスタンス1つぶん（シートタブ帯＋1つのグリッド）。</summary>
+public sealed class ExcelVisual : IEditorSupportVisual
+{
+    private readonly LoomoSettings _settings;
+
+    private readonly Grid _view;
+    private readonly TsvEditorControl _grid;
+    private readonly ListBox _tabStrip;
+    private readonly TextBlock _message;
+    private bool? _appliedLightTheme;
+
+    private string? _lastPath;
+    private IReadOnlyList<ExcelSheet> _sheets = Array.Empty<ExcelSheet>();
+    private TsvDocument?[] _docs = Array.Empty<TsvDocument?>();
+    private bool _suppressTabEvent;
+
     // 読み取り専用なので書き戻しは無い（購読は受けるが発火しない）。
     public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
 
-    public string DescribeTitle(string filePath) => $"Excel: {Path.GetFileName(filePath)}";
+    public FrameworkElement View => _view;
 
-    public FrameworkElement GetOrCreateView()
+    public ExcelVisual(LoomoSettings settings)
     {
-        if (_view is null)
+        _settings = settings;
         {
             _grid = new TsvEditorControl { IsVimModeEnabled = true };
 
@@ -97,7 +106,6 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
         }
 
         ApplyTheme();
-        return _view;
     }
 
     /// <summary>
@@ -105,9 +113,6 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
     /// </summary>
     private void ApplyTheme()
     {
-        if (_grid is null)
-            return;
-
         var light = _settings.Theme.IsLight();
         if (_appliedLightTheme == light)
             return;
@@ -122,32 +127,31 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
         _appliedLightTheme = light;
     }
 
-    public async Task UpdateAsync(string filePath, string text)
+    public async Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct)
     {
-        GetOrCreateView();
-
         // 同じファイルを再表示する要求（サムネイル再描画など）は読み直さない。
         if (filePath == _lastPath && _sheets.Count > 0)
-            return;
-
-        var seq = ++_updateSeq;
+            return ApplyTheme;   // テーマ追従だけ（中身は据え置き）
 
         IReadOnlyList<ExcelSheet> sheets;
         try
         {
             // ClosedXML の読み込み（IO＋パース）は UI スレッドから外す。
-            sheets = await Task.Run(() => ExcelSheetReader.Read(filePath));
+            sheets = await Task.Run(() => ExcelSheetReader.Read(filePath), ct);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            if (seq == _updateSeq)
-                ShowMessage($"このファイルを表示できませんでした：{ex.Message}");
-            return;
+            return () => ShowMessage($"このファイルを表示できませんでした：{ex.Message}");
         }
 
-        if (seq != _updateSeq)
-            return; // 後続の更新が最新を描く
+        ct.ThrowIfCancellationRequested();
+        return () => Show(filePath, sheets);
+    }
 
+    private void Show(string filePath, IReadOnlyList<ExcelSheet> sheets)
+    {
+        ApplyTheme();
         _lastPath = filePath;
         _sheets = sheets;
         _docs = new TsvDocument?[sheets.Count];
@@ -163,11 +167,10 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
         ShowSheet(0);
     }
 
+    public void Dispose() => _tabStrip.SelectionChanged -= OnTabSelectionChanged;
+
     private void PopulateTabs(IReadOnlyList<ExcelSheet> sheets)
     {
-        if (_tabStrip is null)
-            return;
-
         _suppressTabEvent = true;
         _tabStrip.Items.Clear();
         foreach (var sheet in sheets)
@@ -181,7 +184,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
 
     private void OnTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressTabEvent || _tabStrip is null)
+        if (_suppressTabEvent)
             return;
         var index = _tabStrip.SelectedIndex;
         if (index >= 0)
@@ -190,7 +193,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
 
     private void ShowSheet(int index)
     {
-        if (_grid is null || index < 0 || index >= _sheets.Count)
+        if (index < 0 || index >= _sheets.Count)
             return;
 
         var doc = _docs[index] ??= BuildDocument(_lastPath ?? string.Empty, _sheets[index]);
@@ -233,21 +236,16 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
 
     private void ShowMessage(string text)
     {
-        if (_message is null || _grid is null)
-            return;
         _message.Text = text;
         _message.Visibility = Visibility.Visible;
         _grid.Visibility = Visibility.Collapsed;
-        if (_tabStrip is not null)
-            _tabStrip.Visibility = Visibility.Collapsed;
+        _tabStrip.Visibility = Visibility.Collapsed;
     }
 
     private void HideMessage()
     {
-        if (_message is not null)
-            _message.Visibility = Visibility.Collapsed;
-        if (_grid is not null)
-            _grid.Visibility = Visibility.Visible;
+        _message.Visibility = Visibility.Collapsed;
+        _grid.Visibility = Visibility.Visible;
     }
 
     private static ItemsPanelTemplate HorizontalPanelTemplate()

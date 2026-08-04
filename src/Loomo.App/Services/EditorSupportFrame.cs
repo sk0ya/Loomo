@@ -36,11 +36,13 @@ internal abstract record EditorSupportFrameContent
         string? MapFolder,
         string? PageKey) : EditorSupportFrameContent;
 
-    /// <summary>WPF コントロールをそのまま載せる提供者（CSV グリッド・画像・Hex 等）。</summary>
+    /// <summary>
+    /// WPF コントロールをそのまま載せる表示（CSV グリッド・画像・Hex 等）。
+    /// <paramref name="Apply"/> は読み込み済みの内容をビューへ反映する関数で、載せた直後に同期で呼ぶ。
+    /// </summary>
     internal sealed record VisualContent(
-        IEditorSupportVisualProvider Provider,
-        string FilePath,
-        string Text) : EditorSupportFrameContent;
+        IEditorSupportVisual Visual,
+        Action Apply) : EditorSupportFrameContent;
 
     /// <summary>コード構造アウトライン（＋②呼び出しパネル）。</summary>
     internal sealed record OutlineContent(

@@ -1,12 +1,59 @@
 namespace sk0ya.Loomo.App.Services;
 
+/// <summary>documentSymbols の取得結果。無応答（期限切れ）を「シンボルが無い」と区別するための旗を持つ。</summary>
+internal sealed record DocumentSymbolsResult(IReadOnlyList<DocumentSymbol> Symbols, bool TimedOut)
+{
+    public static DocumentSymbolsResult Empty { get; } = new(Array.Empty<DocumentSymbol>(), false);
+}
+
 /// <summary>コードEditorSupport用のLSP解析。WPF Viewに依存しない。</summary>
 public static class CodeEditorSupportAnalysis
 {
-    public static async Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsSafeAsync(ILspDocument lsp)
+    /// <summary>
+    /// LSP 要求1件あたりの応答上限。言語サーバーが黙ったとき、<c>await</c> は<b>永久に戻らない</b>——
+    /// 描画がその場で止まり、ペインは古い内容を抱えたまま「固まる」。期限を切ることで、
+    /// 応答が無くても描画は必ず完了し、案内表示へ落ちる。
+    /// </summary>
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
+
+    /// <summary>
+    /// LSP 要求に上限時間とキャンセルを被せる。期限切れは <paramref name="fallback"/> を返し、
+    /// 要求そのものは放置する（後から返ってきても誰も見ないので捨てられる）。
+    /// キャンセルは <see cref="OperationCanceledException"/> として上へ伝える
+    /// （＝新しい描画に追い越された、というシグナル）。
+    /// </summary>
+    private static Task<(T? Value, bool TimedOut)> WithLimitAsync<T>(
+        Task<T> request, CancellationToken ct, string label)
+        => WithLimitAsync(request, RequestTimeout, ct, label);
+
+    /// <summary>上限時間を明示する版（テストが 8 秒待たずに検証できるようにするための口）。</summary>
+    internal static async Task<(T? Value, bool TimedOut)> WithLimitAsync<T>(
+        Task<T> request, TimeSpan limit, CancellationToken ct, string label)
     {
-        try { return await lsp.RequestDocumentSymbolsAsync(); }
-        catch { return Array.Empty<DocumentSymbol>(); }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var timeout = Task.Delay(limit, linked.Token);
+        var finished = await Task.WhenAny(request, timeout);
+        if (ReferenceEquals(finished, request))
+        {
+            linked.Cancel();   // 待機中の Task.Delay を畳む（タイマーを残さない）
+            return (await request, false);
+        }
+        ct.ThrowIfCancellationRequested();
+        CodeSupportDiag.Log($"  {label}: timeout after {limit.TotalSeconds:0}s");
+        return (default, true);
+    }
+
+    internal static async Task<DocumentSymbolsResult> RequestDocumentSymbolsSafeAsync(
+        ILspDocument lsp, CancellationToken ct)
+    {
+        try
+        {
+            var (symbols, timedOut) = await WithLimitAsync(
+                lsp.RequestDocumentSymbolsAsync(), ct, "documentSymbols");
+            return new DocumentSymbolsResult(symbols ?? Array.Empty<DocumentSymbol>(), timedOut);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return DocumentSymbolsResult.Empty; }
     }
 
     public static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
@@ -58,18 +105,22 @@ public static class CodeEditorSupportAnalysis
     /// <paramref name="workspace"/> へ投げる（設計書 §30.3.1 の責務表どおり）。
     /// </summary>
     internal static async Task<(CallPanels Panels, LspRange? SymbolRange)> FetchCallPanelsAsync(
-        ILspWorkspace workspace, ILspDocument lsp, int line0, int col0)
+        ILspWorkspace workspace, ILspDocument lsp, int line0, int col0, CancellationToken ct)
     {
+        // ここの4本（references / prepare / incoming / outgoing）はすべて上限時間つき。
+        // 1本でも応答が返らないと②パネルが永久に埋まらず、描画も終わらない。
         async Task<List<CallReference>> FetchReferencesAsync()
         {
             var list = new List<CallReference>();
             try
             {
-                foreach (var r in await lsp.RequestReferencesAsync(line0, col0)
-                         ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
+                var (refs, _) = await WithLimitAsync(
+                    lsp.RequestReferencesAsync(line0, col0), ct, "references");
+                foreach (var r in refs ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
                     if (r is not null)
                         list.Add(new CallReference("", r.Uri ?? "", r.Range?.Start?.Line ?? 0));
             }
+            catch (OperationCanceledException) { throw; }
             catch { }
             return list;
         }
@@ -83,7 +134,8 @@ public static class CodeEditorSupportAnalysis
 
         try
         {
-            var item = await workspace.PrepareCallHierarchyAsync(lsp.Uri, line0, col0);
+            var (item, _) = await WithLimitAsync(
+                workspace.PrepareCallHierarchyAsync(lsp.Uri, line0, col0), ct, "prepareCallHierarchy");
             CodeSupportDiag.Log($"  prepareCallHierarchy {prepareSw?.ElapsedMilliseconds ?? 0}ms item={(item is null ? "null" : item.Name)}");
             if (item is not null && SupportsCallHierarchy(item.Kind))
             {
@@ -95,10 +147,13 @@ public static class CodeEditorSupportAnalysis
                     var list = new List<CallReference>();
                     try
                     {
-                        foreach (var c in await workspace.GetIncomingCallsAsync(item) ?? Array.Empty<CallHierarchyIncomingCall>())
+                        var (calls, _) = await WithLimitAsync(
+                            workspace.GetIncomingCallsAsync(item), ct, "incomingCalls");
+                        foreach (var c in calls ?? Array.Empty<CallHierarchyIncomingCall>())
                             if (c?.From is { } from)
                                 list.Add(new CallReference(from.Name ?? "", from.Uri ?? "", from.SelectionRange?.Start?.Line ?? 0));
                     }
+                    catch (OperationCanceledException) { throw; }
                     catch { }
                     return list;
                 }
@@ -108,10 +163,13 @@ public static class CodeEditorSupportAnalysis
                     var list = new List<CallReference>();
                     try
                     {
-                        foreach (var c in await workspace.GetOutgoingCallsAsync(item) ?? Array.Empty<CallHierarchyOutgoingCall>())
+                        var (calls, _) = await WithLimitAsync(
+                            workspace.GetOutgoingCallsAsync(item), ct, "outgoingCalls");
+                        foreach (var c in calls ?? Array.Empty<CallHierarchyOutgoingCall>())
                             if (c?.To is { } to)
                                 list.Add(new CallReference(to.Name ?? "", to.Uri ?? "", to.SelectionRange?.Start?.Line ?? 0));
                     }
+                    catch (OperationCanceledException) { throw; }
                     catch { }
                     return list;
                 }
@@ -125,6 +183,7 @@ public static class CodeEditorSupportAnalysis
                 CodeSupportDiag.Log($"  incoming+outgoing {callsSw?.ElapsedMilliseconds ?? 0}ms");
             }
         }
+        catch (OperationCanceledException) { throw; }
         catch { }
 
         var refsSw = CodeSupportDiag.IsEnabled ? Stopwatch.StartNew() : null;

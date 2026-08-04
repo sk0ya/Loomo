@@ -449,6 +449,25 @@ internal static class LspNoticeModel
     /// 起動・初期化に失敗したときの案内。待つ意味は無いので待機文言は出さず、失敗した事実と理由、
     /// そして「LSP 設定を開く」（そこに再起動＝再試行と割り当ての変更がある）への導線を出す。
     /// </summary>
+    /// <summary>
+    /// 言語サーバーが期限内に応答しなかったときの案内。<b>「シンボルが無い」と区別する</b>ため
+    /// 専用の文言にする——無応答を空アウトラインとして出すと、解析が終わったのに何も無いのか、
+    /// そもそも返事が来ていないのかが利用者に判別できない。
+    /// </summary>
+    public static Notice BuildTimeout(string? extension, TimeSpan limit)
+        => new(
+            $"言語サーバーが {limit.TotalSeconds:0} 秒以内に応答しませんでした。\n"
+            + "解析に時間がかかっているか、サーバーが停止している可能性があります。\n"
+            + "ファイルを編集するか再度開くとやり直します。直らなければ LSP 設定から再起動してください。",
+            ServerName: null,
+            InstallCommand: null,
+            DocsUrl: null,
+            extension,
+            ShowInstall: false,
+            ShowDocs: false,
+            ShowSettings: true,
+            IsFailure: true);
+
     private static Notice BuildFailure(LspServerFailure failure)
     {
         var name = string.IsNullOrEmpty(failure.DisplayName) ? failure.Executable : failure.DisplayName!;

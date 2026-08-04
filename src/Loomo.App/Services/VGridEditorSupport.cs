@@ -27,11 +27,28 @@ namespace sk0ya.Loomo.App.Services;
 /// 書き戻しのエコー（SetText → BufferChanged → 再パース）は正規化テキスト比較で抑止し、
 /// グリッドのカーソル・Undo 履歴を保つ。
 /// </summary>
-public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSupportSearchHighlightProvider
+public sealed class VGridEditorSupport : IEditorSupportVisualProvider
+{
+    private static readonly string[] Extensions = [".csv", ".tsv"];
+
+    private readonly LoomoSettings _settings;
+
+    public VGridEditorSupport(LoomoSettings settings) => _settings = settings;
+
+    public IReadOnlyCollection<string> SupportedExtensions => Extensions;
+
+    public string DescribeTitle(string filePath) => $"Grid: {Path.GetFileName(filePath)}";
+
+    public IEditorSupportVisual CreateVisual() => new VGridVisual(_settings);
+}
+
+/// <summary>
+/// CSV/TSV グリッドの表示インスタンス1つぶん（グリッド・追従状態・書き戻し・検索ハイライト）。
+/// </summary>
+public sealed class VGridVisual : IEditorSupportVisual, IEditorSupportSearchHighlightTarget
 {
     /// <summary>グリッド編集をエディタ本文へまとめて書き戻すまでの猶予。</summary>
     private static readonly TimeSpan WriteBackDelay = TimeSpan.FromMilliseconds(500);
-    private static readonly string[] Extensions = [".csv", ".tsv"];
 
     /// <summary>検索ハイライトを塗るセル数の上限（巨大な CSV で通知の嵐にならないように）。</summary>
     private const int MaxHighlightedCells = 5000;
@@ -40,13 +57,12 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
     private static readonly TimeSpan RepaintDelay = TimeSpan.FromMilliseconds(160);
 
     private readonly LoomoSettings _settings;
-    private TsvEditorControl? _view;
+    private readonly TsvEditorControl _view;
     private bool? _appliedLightTheme;
     private string? _lastPath;
     private string? _lastText;
     private string _newline = Environment.NewLine;
     private bool _trailingNewline;
-    private int _updateSeq;
     private DocumentWatcher? _watcher;
     private TsvDocument? _document;
     private DispatcherTimer? _writeBackTimer;
@@ -58,17 +74,13 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
 
     public event EventHandler<EditorSupportContentEdited>? ContentEdited;
 
-    public VGridEditorSupport(LoomoSettings settings) => _settings = settings;
+    public FrameworkElement View => _view;
 
-    public IReadOnlyCollection<string> SupportedExtensions => Extensions;
-
-    public string DescribeTitle(string filePath) => $"Grid: {Path.GetFileName(filePath)}";
-
-    public FrameworkElement GetOrCreateView()
+    public VGridVisual(LoomoSettings settings)
     {
-        _view ??= new TsvEditorControl { IsVimModeEnabled = true };
-        ApplyTheme(_view);
-        return _view;
+        _settings = settings;
+        _view = new TsvEditorControl { IsVimModeEnabled = true };
+        ApplyTheme();
     }
 
     /// <summary>
@@ -76,7 +88,7 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
     /// アプリ全体ではなくビューへスコープすることで、Loomo 側のテーマキーと衝突しない
     /// （ヘッダー背景も VGrid.Editor 1.0.1 から要素ツリー解決になり、このスコープで届く）。
     /// </summary>
-    private void ApplyTheme(TsvEditorControl view)
+    private void ApplyTheme()
     {
         var light = _settings.Theme.IsLight();
         if (_appliedLightTheme == light)
@@ -87,32 +99,29 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
             Source = new Uri(
                 $"pack://application:,,,/VGrid.Editor;component/Themes/{(light ? "LightTheme" : "DarkTheme")}.xaml")
         };
-        view.Resources.MergedDictionaries.Clear(); // ここで入れたテーマ辞書だけが入っている
-        view.Resources.MergedDictionaries.Add(dict);
+        _view.Resources.MergedDictionaries.Clear(); // ここで入れたテーマ辞書だけが入っている
+        _view.Resources.MergedDictionaries.Add(dict);
         _appliedLightTheme = light;
     }
 
-    public async Task UpdateAsync(string filePath, string text)
+    public async Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct)
     {
-        if (_view is null)
-            return;
-
         // 内容が変わっていなければ再パースしない。書き戻し直後のエコー（SetText → BufferChanged）も
         // ここで吸収され、グリッドのカーソル・Undo 履歴・編集状態が保たれる。
         if (filePath == _lastPath
             && VGridTextSync.NormalizeForCompare(text) == VGridTextSync.NormalizeForCompare(_lastText ?? ""))
-            return;
-
-        var seq = ++_updateSeq;
-        _writeBackTimer?.Stop();   // エディタ側の変更が勝つ。未送信のグリッド編集は破棄される
+            return ApplyTheme;   // テーマ追従だけ（中身は据え置き）
 
         // パースとオブジェクト構築は CPU バウンドなので UI スレッドから外す（TsvFileService.LoadAsync と同じ流儀）。
-        var document = await Task.Run(() => VGridTextSync.BuildDocument(filePath, text));
+        var document = await Task.Run(() => VGridTextSync.BuildDocument(filePath, text), ct);
+        ct.ThrowIfCancellationRequested();
+        return () => Show(filePath, text, document);
+    }
 
-        // 待っている間に新しい更新が始まっていたら古い結果は捨てる。
-        if (seq != _updateSeq || _view is null)
-            return;
-
+    private void Show(string filePath, string text, TsvDocument document)
+    {
+        ApplyTheme();
+        _writeBackTimer?.Stop();   // エディタ側の変更が勝つ。未送信のグリッド編集は破棄される
         _watcher?.Detach();
 
         var history = new CommandHistory();
@@ -148,6 +157,13 @@ public sealed class VGridEditorSupport : IEditorSupportVisualProvider, IEditorSu
         // 塗り直しの控えは前のドキュメントのセルなので捨てる（もう表示されていない）。
         _highlightedCells.Clear();
         RepaintSearchHighlight();
+    }
+
+    public void Dispose()
+    {
+        _writeBackTimer?.Stop();
+        _repaintTimer?.Stop();
+        _watcher?.Detach();
     }
 
     /// <summary>

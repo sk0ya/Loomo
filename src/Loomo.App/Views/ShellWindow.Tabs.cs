@@ -123,6 +123,7 @@ public partial class ShellWindow {
         _vm.Tabs.ActivateEditorTab(id);
         profile?.Lap("editor.tabVm");
         QueueEditorTabHeaderIntoView(id);
+        SyncEditorStatusBar(tab);
         SwitchEditorSupportSource(tab);
         profile?.Lap("editor.support");
         RecordTrailEditorTab(tab);
@@ -136,9 +137,45 @@ public partial class ShellWindow {
         _editor.Attach(tab.Control);
         _vm.Tabs.ActivateEditorTab(tab.Id);
         QueueEditorTabHeaderIntoView(tab.Id);
+        SyncEditorStatusBar(tab);
         SwitchEditorSupportSource(tab);
         RecordTrailEditorTab(tab);
         OnActiveEditorFileChanged(tab);
+    }
+    /// <summary>
+    /// 分割しても下端に1つだけ出す共有ステータスバー（<c>EditorSharedStatusBar</c>）を、いま活性化した
+    /// エディタの状態（ファイル名・行数・モード・カーソル）へ合わせる。
+    /// <para>
+    /// バーは全エディタで共有され、内容は<b>どのコントロールも自分の都合で</b>書き込む
+    /// （<c>VimEditorControl.SyncStatusBar</c> に「自分が現在のエディタか」の判定は無い）。
+    /// エディタ側が自発的に押し出すのはキーボードフォーカス取得時だけなので、
+    /// <b>サイドバーのタブ一覧をクリックして切り替えると</b>——フォーカスは一覧に残るので——誰も押し出さず、
+    /// 前のタブのファイル名・行数が残ったままになる（1つ遅れ）。
+    /// </para>
+    /// <para>
+    /// さらに、活性化の最中は再ペアレント・レイアウト・実体化が走り、その過程で<b>裏になった
+    /// コントロール</b>が <c>UpdateAll</c> 経由でバーを書き戻す。そのため活性化直後に1回押すだけでは
+    /// 上書きされる（実測）。落ち着いてから（Background 優先度）もう一度、<b>その時点でもまだ
+    /// アクティブなら</b>押し直す。
+    /// </para>
+    /// <para>
+    /// 呼び出しは <see cref="ActivateEditorTab"/> と <see cref="SetActiveEditorTab"/> の両方に要る
+    /// （活性化の経路が2本あり、片方にしか無いと同じ「1つ遅れ」が別経路で復活する。設計書 §30.6 P3 と同じ轍）。
+    /// </para>
+    /// <para>
+    /// 本来の直し方は Editor パッケージ側で「共有バーの持ち主」を持たせ、持ち主以外の書き込みを
+    /// 届かせないこと。ここはホスト側から押し戻しているだけなので、活性化と無関係な非同期処理
+    /// （裏タブの外部変更検知など）が後から書き戻す余地は残る。
+    /// </para>
+    /// </summary>
+    private void SyncEditorStatusBar(EditorTab tab) {
+        if (!tab.IsRealized)
+            return;
+        tab.Control.SyncStatusBar();
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
+            if (ReferenceEquals(_activeEditorTab, tab) && tab.IsRealized)
+                tab.Control.SyncStatusBar();
+        }));
     }
     // アクティブなエディタが指すファイルが変わったときの唯一の評価点。
     // 以前は ActivateEditorTab / SetActiveEditorTab の二本立てで後者にしか評価が無く、しかも
