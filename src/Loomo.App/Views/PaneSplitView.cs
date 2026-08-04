@@ -54,6 +54,9 @@ internal sealed class PaneSplitView
         public Guid? FocusedViewportId => _focused?.Id;
         public bool IsShown(Guid tabId) => Leaves().Any(l => l.TabId == tabId);
 
+        /// <summary>指定 Id のビューポートがまだ存在するか（覚えておいた戻り先の生存確認に使う）。</summary>
+        public bool HasViewport(Guid viewportId) => viewportId != default && FindLeafById(viewportId) is not null;
+
         /// <summary>現在の分割・比率・表示タブ・フォーカス葉を永続化用へ写す。</summary>
         public ViewportNodeSnapshot? Capture()
         {

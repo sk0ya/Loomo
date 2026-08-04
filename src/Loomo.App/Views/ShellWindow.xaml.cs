@@ -357,13 +357,16 @@ public partial class ShellWindow : Window {
         => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(FocusSidebar));
 
     /// <summary>設定の独立ウィンドウを VM の開閉状態に追従させる。起動を軽くするため初回オープンまで生成しない。
-    /// ウィンドウ側（✕/Esc/Alt+F4）で閉じられたときは Closed で VM を閉状態へ戻す。</summary>
+    /// ウィンドウ側（✕/Esc/Alt+F4）で閉じられたときは Closed で VM を閉状態へ戻す。
+    /// 開く直前の内部フォーカスを控え、閉じたらそこへ戻す（設計書 §31.8。放っておくと本体の再アクティブ化で
+    /// ブラウザペインの WebView2 がフォーカスを取り、入力先が直前の場所と食い違う）。</summary>
     private void ApplySettingsWindowState(bool open) {
         if (!open) {
             _settingsWindow?.Close();
             return;
         }
         if (_settingsWindow is null) {
+            CaptureFocusReturnOrigin();
             _settingsWindow = new SettingsWindow {
                 Owner = this,                                       // 常に本体の手前・本体終了で一緒に閉じる
                 DataContext = _vm,                                  // 中身の SettingsView は同じ ShellViewModel を見る
@@ -372,6 +375,7 @@ public partial class ShellWindow : Window {
             _settingsWindow.Closed += (_, _) => {
                 _settingsWindow = null;
                 _vm.IsSettingsOverlayOpen = false;
+                RestoreFocusReturnOrigin();
             };
             _settingsWindow.Show();
         }

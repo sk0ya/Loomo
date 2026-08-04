@@ -4,6 +4,11 @@ public partial class ShellWindow {
     private readonly Dictionary<PaneKind, WeakReference<IInputElement>> _lastPaneFocus = new();
     private WeakReference<IInputElement>? _lastSidebarFocus;
 
+    /// <summary>最後に「ペイン／サイドバーの内部」が持っていたキーボードフォーカス（位置と要素の対）。
+    /// アクティビティバーのボタンや本体外のウィンドウは内部ではないので更新しない。設定ウィンドウを
+    /// 挟んだあとの戻り先の起点になる（設計書 §31.8）。</summary>
+    private (FocusTarget Target, WeakReference<IInputElement> Element)? _lastInnerFocus;
+
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
         if (e.NewFocus is not DependencyObject d)
@@ -16,18 +21,85 @@ public partial class ShellWindow {
                 _focusedRegion = FocusTarget.Viewport(kind, viewId);
             else
                 _focusedRegion = FocusTarget.Of(kind);
+            _lastInnerFocus = (_focusedRegion.Value, new WeakReference<IInputElement>(e.NewFocus));
             RecordTrailPane(kind);
         } else if (IsWithin(d, SidebarContainer)) {
             _focusedRegion = FocusTarget.Sidebar;
             _lastSidebarFocus = new WeakReference<IInputElement>(e.NewFocus);
+            _lastInnerFocus = (FocusTarget.Sidebar, _lastSidebarFocus);
         }
     }
-    private static bool IsWithin(DependencyObject element, DependencyObject ancestor) {
-        for (var current = element; current is not null; current = GetAnyParent(current))
-            if (ReferenceEquals(current, ancestor))
-                return true;
-        return false;
+
+    // ===== 設定ウィンドウ（本体の外で入力を受ける面）を挟んだときのフォーカス復帰（設計書 §31.8） =====
+
+    private FocusReturnOrigin? _focusReturnOrigin;
+    private WeakReference<IInputElement>? _focusReturnElement;
+
+    /// <summary>設定ウィンドウを開く直前の「最後の内部フォーカス」を控える。開く操作自体が
+    /// アクティビティバーのボタンへフォーカスを移していることがあるので、現在のフォーカスではなく
+    /// <see cref="_lastInnerFocus"/>（ペイン／サイドバー内部に最後にあった位置）を使う。
+    /// 開いている間の内部フォーカス変化では更新しない——閉じる過程で本体が再アクティブ化されるときの
+    /// 横取りまで拾ってしまい、直そうとしている状態そのものを起点にしてしまうため。</summary>
+    private void CaptureFocusReturnOrigin() {
+        if (_lastInnerFocus is not { } last) {
+            _focusReturnOrigin = null;
+            _focusReturnElement = null;
+            return;
+        }
+        _focusReturnOrigin = new FocusReturnOrigin(last.Target.Pane, last.Target.ViewportId);
+        _focusReturnElement = last.Element;
     }
+
+    /// <summary>設定ウィンドウを閉じたあと、控えておいた場所へフォーカスを戻す。
+    /// 本体が再アクティブ化される過程で WebView2（ブラウザペイン）が非同期にフォーカスを取りにいくため、
+    /// その後で実行されるよう <see cref="DispatcherPriority.Background"/> へ回してから適用する。</summary>
+    private void RestoreFocusReturnOrigin() {
+        var origin = _focusReturnOrigin;
+        var element = _focusReturnElement;
+        _focusReturnOrigin = null;
+        _focusReturnElement = null;
+        if (origin is null || Dispatcher.HasShutdownStarted || !IsLoaded)
+            return;     // 本体ごと終了する経路（Owner が閉じて一緒に閉じた）では戻す先が無い
+        Dispatcher.BeginInvoke(DispatcherPriority.Background,
+            new Action(() => ApplyFocusReturn(origin.Value, element)));
+    }
+
+    /// <summary>戻り先を <see cref="FocusReturnPolicy"/> に決めさせて適用する（判断は純ロジック側）。</summary>
+    private void ApplyFocusReturn(FocusReturnOrigin origin, WeakReference<IInputElement>? element) {
+        var target = FocusReturnElement.ResolveLive(element, this);
+        var paneAvailable = origin.Pane is { } pane && IsPaneFocusableNow(pane);
+        var viewportAlive = origin.Pane is { } vpPane && origin.ViewportId != default
+            && ViewsFor(vpPane)?.HasViewport(origin.ViewportId) == true;
+        var sidebarVisible = _vm.IsSidebarVisible && SidebarContainer.IsVisible;
+
+        var decision = FocusReturnPolicy.Decide(origin, target is not null, paneAvailable, viewportAlive, sidebarVisible);
+        if (decision.Kind == FocusReturnKind.Element) {
+            if (target!.Focus()) {
+                if (origin.Pane is { } focusedPane)
+                    SyncActiveFromViewport(focusedPane);
+                return;
+            }
+            // 要素は残っていたがフォーカスを受け取らなかった。要素なしとして決め直す。
+            decision = FocusReturnPolicy.Decide(origin, false, paneAvailable, viewportAlive, sidebarVisible);
+        }
+        switch (decision.Kind) {
+            case FocusReturnKind.Viewport when decision.Pane is { } viewportPane:
+                ApplyFocusTarget(FocusTarget.Viewport(viewportPane, decision.ViewportId));
+                break;
+            case FocusReturnKind.Pane when decision.Pane is { } panePane:
+                FocusPane(panePane);
+                break;
+            case FocusReturnKind.Sidebar:
+                FocusSidebar();
+                break;
+        }
+    }
+
+    /// <summary>そのペインへ今フォーカスを戻せるか（舞台中は表に出し直せるので可）。</summary>
+    private bool IsPaneFocusableNow(PaneKind kind)
+        => _paneElements.ContainsKey(kind) && (_stageActive || IsPaneVisible(kind));
+    private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
+        => FocusReturnElement.IsWithin(element, ancestor);
     private void OnWindowDeactivated(object? sender, EventArgs e)
         => _keyboard?.Reset();
     private PaneKind? FindPaneOf(DependencyObject element) {
