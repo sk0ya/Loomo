@@ -1,0 +1,23 @@
+﻿<Project>
+
+  <!-- 実行環境を win-x64 に固定する（ソリューション全体に横展開）。
+
+       RID 未指定の framework-dependent ビルドでは、NuGet パッケージのネイティブ資産
+       （runtimes/<rid>/native/…）が全 RID 分そのまま出力へコピーされ、実行時に deps.json の
+       runtimeTargets から現在の RID に合うものだけがロードされる。Loomo は Windows 専用の
+       WPF アプリなのに、ONNX Runtime GenAI / LLamaSharp / SQLitePCLRaw が 1 パッケージで
+       全プラットフォームを同梱する作りのため、android の .aar や ios の .xcframework.zip、
+       linux-arm64 の libonnxruntime-genai.so（単体 192MB）まで出力されて runtimes/ だけで
+       862MB あった（App と Tests でそれぞれ）。RID を固定すると win-x64 の分だけが出力ルート
+       直下へ平坦にコピーされる。 -->
+  <PropertyGroup>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- RID 指定は自己完結（ランタイム同梱）を意味しない。既定に頼らず明示する。 -->
+    <SelfContained>false</SelfContained>
+    <!-- 出力先に RID のサブフォルダを付けない。Loomo.App は AppendTargetFrameworkToOutputPath=false で
+         exe のパスを bin/Debug/ に固定しており（タスクバー等のショートカットが古い exe を指さないため）、
+         RID を付けると bin/Debug/win-x64/ へずれて同じ事故が起きる。 -->
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+</Project>

@@ -47,6 +47,15 @@ The App's output path is **TFM-independent** (`AppendTargetFrameworkToOutputPath
 `src/Loomo.App/bin/Debug/sk0ya.Loomo.App.exe` — external shortcuts keep working across TFM bumps instead of
 silently launching a stale exe left in the old `bin/Debug/<tfm>/` folder.
 
+**RID の固定** — the root `Directory.Build.props` pins `RuntimeIdentifier=win-x64` (+ `SelfContained=false`,
+`AppendRuntimeIdentifierToOutputPath=false`) for **every** project in the repo. Without a RID, the SDK copies each
+package's native assets for *all* RIDs into the output and lets `deps.json` pick at run time — and because
+ONNX Runtime GenAI / LLamaSharp / SQLitePCLRaw each ship every platform in one package, that meant android `.aar`,
+iOS `.xcframework.zip` and a 192MB `linux-arm64/libonnxruntime-genai.so` in a Windows-only WPF app
+(`runtimes/` alone was 862MB in App *and* in Tests). With the RID pinned, win-x64 natives land flat in the output
+root (LLamaSharp keeps its own `runtimes/win-x64/native/{avx,avx2,avx512,noavx}/` layout, which its loader needs).
+`AppendRuntimeIdentifierToOutputPath=false` is what keeps the exe path stable — same reason as the TFM setting above.
+
 ## Architecture
 
 Strict one-way dependency: **App → Services/Ai → Core**. `Loomo.Core` is UI-independent (no WPF) and
@@ -146,7 +155,8 @@ guarded by the block list). `SafetySettings` lives on `LoomoSettings.Safety` and
 (provider `Local`), which drives an **in-process ONNX Runtime GenAI** engine — there is **no HTTP / no
 external server** (Ollama was fully removed). The package is `Microsoft.ML.OnnxRuntimeGenAI` (CPU), pinned in
 `src/Loomo.Ai/Loomo.Ai.csproj` (see there for the exact version); the native runtime DLLs flow to the App output
-under `runtimes/win-x64/native/`. (It was bumped at one point to load newer ONNX builds — some int4 models'
+**root** (`onnxruntime.dll` / `onnxruntime-genai.dll`) — the RID is pinned solution-wide, see 「RID の固定」 in ## Commands.
+(It was bumped at one point to load newer ONNX builds — some int4 models'
 `GatherBlockQuantized` carries a `bits` attribute that the older native ORT rejected; the decode-loop API was
 unchanged across the bump.)
 
