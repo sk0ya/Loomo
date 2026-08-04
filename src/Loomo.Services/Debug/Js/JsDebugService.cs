@@ -925,8 +925,13 @@ public sealed class JsDebugService : IDebugService
 
         foreach (var path in _breakpoints.Keys.ToList())
         {
+            // 1 ソースの失敗は他に波及させないが、黙って飲み込まない（netcoredbg 側と同じ理由）。
             try { await PushSourceBreakpointsAsync(conn, path, CancellationToken.None); }
-            catch { /* 1 ソースの失敗は他に波及させない */ }
+            catch (Exception ex)
+            {
+                Emit(DebugOutputCategory.Important,
+                    $"ブレークポイントを設定できませんでした（{Path.GetFileName(path)}）: {ex.Message}");
+            }
         }
         try { await SendExceptionBreakpointsAsync(conn, CancellationToken.None); }
         catch { /* 例外フィルタ未対応でも続行 */ }
@@ -934,33 +939,18 @@ public sealed class JsDebugService : IDebugService
         catch { /* 送れなくても続行 */ }
     }
 
-    /// <summary>あるソースの永続＋一時ブレークポイントを合わせて 1 回の setBreakpoints で送る。</summary>
+    /// <summary>あるソースの永続＋一時ブレークポイントを合わせて 1 回の setBreakpoints で送る。
+    /// 組み立ては netcoredbg 側と同じ <see cref="DapBreakpointPayload"/>（任意項目は null を書かず省略）。</summary>
     private Task PushSourceBreakpointsAsync(DapConnection conn, string path, CancellationToken ct)
     {
         var persistent = _breakpoints.TryGetValue(path, out var list)
             ? list : (IReadOnlyList<DebugBreakpoint>)Array.Empty<DebugBreakpoint>();
         var temp = _tempBreakpoints.TryGetValue(path, out var set) ? set : null;
 
-        var items = persistent.Where(b => b.Enabled).Select(b => new
-        {
-            line = b.Line,
-            condition = string.IsNullOrWhiteSpace(b.Condition) ? null : b.Condition,
-            hitCondition = string.IsNullOrWhiteSpace(b.HitCondition) ? null : b.HitCondition,
-            logMessage = string.IsNullOrWhiteSpace(b.LogMessage) ? null : b.LogMessage,
-        }).ToList();
-
-        if (temp is { Count: > 0 })
-        {
-            var have = new HashSet<int>(items.Select(i => i.line));
-            foreach (var l in temp)
-                if (have.Add(l))
-                    items.Add(new { line = l, condition = (string?)null, hitCondition = (string?)null, logMessage = (string?)null });
-        }
-
         return conn.SendRequestAsync("setBreakpoints", new
         {
             source = new { path, name = Path.GetFileName(path) },
-            breakpoints = items.ToArray(),
+            breakpoints = DapBreakpointPayload.Build(persistent, temp),
         }, ct);
     }
 

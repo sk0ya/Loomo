@@ -775,8 +775,14 @@ public sealed class NetcoredbgDebugService : IDebugService
 
         foreach (var path in _breakpoints.Keys)
         {
+            // 1 ソースの失敗は他に波及させない。ただし黙って飲み込まない——ここで失敗すると
+            // 「ブレークポイントは一覧に出ているのに止まらない」という説明のつかない状態になる。
             try { await PushSourceBreakpointsAsync(client, path, CancellationToken.None); }
-            catch { /* 1 ソースの失敗は他に波及させない */ }
+            catch (Exception ex)
+            {
+                Emit(DebugOutputCategory.Important,
+                    $"ブレークポイントを設定できませんでした（{Path.GetFileName(path)}）: {ex.Message}");
+            }
         }
         try { await SendExceptionBreakpointsAsync(client, CancellationToken.None); }
         catch { /* 例外フィルタ未対応でも続行 */ }
@@ -795,33 +801,17 @@ public sealed class NetcoredbgDebugService : IDebugService
     }
 
     /// <summary>有効な永続行＋一時行を condition/hitCondition/logMessage 付きで送る（無効行は除外。
-    /// 一時行は条件なし。永続行と重なる一時行は永続を優先して重複させない）。</summary>
+    /// 一時行は条件なし。永続行と重なる一時行は永続を優先して重複させない）。
+    /// 任意項目を null で書くと netcoredbg がリクエストごと拒否するため、組み立ては
+    /// <see cref="DapBreakpointPayload"/> に一本化している。</summary>
     private static Task SendBreakpointsAsync(
         DapProtocolClient client, string path, IReadOnlyList<DebugBreakpoint> bps,
         IReadOnlyCollection<int>? tempLines, CancellationToken ct)
-    {
-        var items = bps.Where(b => b.Enabled).Select(b => new
-        {
-            line = b.Line,
-            condition = string.IsNullOrWhiteSpace(b.Condition) ? null : b.Condition,
-            hitCondition = string.IsNullOrWhiteSpace(b.HitCondition) ? null : b.HitCondition,
-            logMessage = string.IsNullOrWhiteSpace(b.LogMessage) ? null : b.LogMessage,
-        }).ToList();
-
-        if (tempLines is { Count: > 0 })
-        {
-            var have = new HashSet<int>(items.Select(i => i.line));
-            foreach (var l in tempLines)
-                if (have.Add(l))
-                    items.Add(new { line = l, condition = (string?)null, hitCondition = (string?)null, logMessage = (string?)null });
-        }
-
-        return client.SendRequestAsync("setBreakpoints", new
+        => client.SendRequestAsync("setBreakpoints", new
         {
             source = new { path, name = Path.GetFileName(path) },
-            breakpoints = items.ToArray(),
+            breakpoints = DapBreakpointPayload.Build(bps, tempLines),
         }, ct);
-    }
 
     private Task SendExceptionBreakpointsAsync(DapProtocolClient client, CancellationToken ct)
         => client.SendRequestAsync("setExceptionBreakpoints", new { filters = _exceptionFilters.ToArray() }, ct);
