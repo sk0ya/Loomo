@@ -270,6 +270,8 @@ public partial class ShellWindow {
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
         _lspWorkspace.DiagnosticsPublished -= OnLspDiagnosticsPublished;
+        // 外さないと、閉じたあとにサーバーが applyEdit を投げてきたとき死んだ Dispatcher を叩く。
+        _lspWorkspace.ApplyEditRequested -= OnLspServerApplyEditRequested;
         _workspace.FoldersChanged -= OnProblemWorkspaceFoldersChanged;
         _detached?.CloseAll();
         foreach (var preview in _browserLivePreviews.Values)

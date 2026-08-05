@@ -164,7 +164,10 @@ public partial class ShellWindow {
             GitServiceFactory = () => new GitDiffProvider(),
             // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
             LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin,
-            EngineServices = _editorEngineServices
+            EngineServices = _editorEngineServices,
+            // 「名前の変更」は Loomo の「リファクタリング」サブメニューに入れる（§32）。
+            // これを渡さないとコントロール側の "Rename Symbol" と2つ並ぶ。
+            HostProvidesRenameMenuItem = true
         }) {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };
@@ -199,19 +202,33 @@ public partial class ShellWindow {
         return control;
     }
     private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {
-        var root = _activeWorkspace?.RootPath;
-        if (string.IsNullOrWhiteSpace(root)) {
-            e.Error = "ワークスペースが開かれていません。";
-            return;
-        }
+        e.Error = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations);
+        e.Handled = e.Error is null;
+    }
+    /// <summary>workspace edit をワークスペースへ適用する。成功なら null、失敗ならユーザーへ出す文言を返す。
+    /// 検証は全ファイルぶん先に済ませてから書き込む（途中まで適用された壊れた状態を作らない）。
+    /// ファイル操作は本文の編集より**先**に行う——新規作成されたファイルへの編集が続くため
+    /// （「クラスに抽出」「型をファイルへ移動」がこの形）。</summary>
+    private string? ApplyLspWorkspaceEdit(
+        IReadOnlyDictionary<string, IReadOnlyList<Editor.Core.Lsp.LspTextEdit>> changes,
+        IReadOnlyDictionary<string, int?>? documentVersions,
+        IReadOnlyList<Editor.Core.Lsp.LspFileOperation>? fileOperations) {
+        // マルチルート（プライマリ＋追加フォルダー）の全件で判定する。プライマリだけを見ていた頃は、
+        // あとから追加したフォルダーのファイルが「ワークスペース外」になり編集ごと失敗していた。
+        // 正本は _workspace.Folders——LSP のサーバー自身もこの一覧で initialize されている。
+        var folders = _workspace.Folders;
+        if (folders.Count == 0)
+            return "ワークスペースが開かれていません。";
         try {
+            if (fileOperations is { Count: > 0 })
+                ApplyLspFileOperations(fileOperations, folders);
             var plans = new List<(string Path, IReadOnlyList<Editor.Core.Lsp.LspTextEdit> Edits,
                 int? Version, List<VimEditorControl> Open, string? DiskText, System.Text.Encoding? Encoding)>();
-            foreach (var (uri, edits) in e.Changes) {
-                var path = LspWorkspaceEditPaths.ResolveInWorkspace(uri, root);
+            foreach (var (uri, edits) in changes) {
+                var path = LspWorkspaceEditPaths.ResolveInWorkspace(uri, folders);
 
                 int? expectedVersion = null;
-                e.DocumentVersions?.TryGetValue(uri, out expectedVersion);
+                documentVersions?.TryGetValue(uri, out expectedVersion);
                 var open = _editorTabs
                     .Where(tab => tab.IsRealized && string.Equals(Path.GetFullPath(tab.Control.FilePath ?? ""), path, StringComparison.OrdinalIgnoreCase))
                     .Select(tab => tab.Control)
@@ -244,10 +261,46 @@ public partial class ShellWindow {
                 if (plan.DiskText is not null)
                     File.WriteAllText(plan.Path, plan.DiskText, plan.Encoding!);
             }
-            e.Handled = true;
+            return null;
         }
         catch (Exception ex) {
-            e.Error = ex.Message;
+            return ex.Message;
+        }
+    }
+    /// <summary>workspace edit のファイル操作（作成・改名・削除）。対象はワークスペース内に限る
+    /// （<see cref="LspWorkspaceEditPaths.ResolveInWorkspace"/>）。</summary>
+    private void ApplyLspFileOperations(
+        IReadOnlyList<Editor.Core.Lsp.LspFileOperation> operations, IReadOnlyList<string> folders) {
+        foreach (var operation in operations) {
+            var path = LspWorkspaceEditPaths.ResolveInWorkspace(operation.Uri, folders);
+            switch (operation.Kind) {
+                case Editor.Core.Lsp.LspFileOperationKind.Create:
+                    if (File.Exists(path)) {
+                        if (operation.IgnoreIfExists) break;
+                        if (!operation.Overwrite)
+                            throw new InvalidOperationException($"{path}: すでに存在します。");
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    File.WriteAllText(path, "");
+                    break;
+                case Editor.Core.Lsp.LspFileOperationKind.Rename:
+                    var destination = LspWorkspaceEditPaths.ResolveInWorkspace(
+                        operation.NewUri ?? throw new InvalidOperationException("改名先が指定されていません。"), folders);
+                    if (File.Exists(destination) && !operation.Overwrite) {
+                        if (operation.IgnoreIfExists) break;
+                        throw new InvalidOperationException($"{destination}: すでに存在します。");
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Move(path, destination, operation.Overwrite);
+                    break;
+                case Editor.Core.Lsp.LspFileOperationKind.Delete:
+                    if (!File.Exists(path)) {
+                        if (operation.IgnoreIfNotExists) break;
+                        throw new InvalidOperationException($"{path}: 存在しません。");
+                    }
+                    File.Delete(path);
+                    break;
+            }
         }
     }
     private void LoadEditorFile(VimEditorControl control, string path) {

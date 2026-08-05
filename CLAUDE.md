@@ -333,6 +333,25 @@ via the editor's `:FmtSet <ext> <cmd>` / `:FmtList` / `:FmtRemove` ex commands. 
 - Settings overlay has an **整形 (Formatter)** category (`FormatterSettingsViewModel`, `SettingsCategory.Formatter`):
   per-formatter rows with install/apply status, Install / 適用 / 手順 / 解除 buttons, and a custom add form.
 
+**Refactoring is host-driven too** (`docs/設計/32-リファクタリング.md` = §32, the authority). The editor's right-click
+menu gets a 「リファクタリング」 submenu built by `ShellWindow.Refactoring.cs`; candidates come from
+`textDocument/codeAction` with `only: ["refactor"]` over the **selection** (caret when there's none — extract-method
+never appears for a bare position), populated lazily on `SubmenuOpened` so a right-click alone never hits the server.
+Applying goes down **three** paths, all of which had to exist before any refactoring worked: edit-carrying actions
+apply directly; `data`-only actions are `codeAction/resolve`d first (**Roslyn is always this**); command actions go
+through `workspace/executeCommand` and come back as a server-initiated `workspace/applyEdit` (**tsserver is this**) —
+that one fires on the LSP read thread and blocks the server until the host answers, so `ShellWindow` marshals with
+`Dispatcher.Invoke` and the UI must stay in `await` (never block) for it not to deadlock. All of it converges on
+`ShellWindow.ApplyLspWorkspaceEdit`, which does **file operations (create→rename→delete) before text edits** —
+`LspWorkspaceEdit.FileOperations` used to be dropped, which is why 「クラスに抽出」 silently did nothing.
+Candidate grouping/localization is a pure function in `Services/Refactoring/RefactoringMenu.cs` (kind first, title
+prefix as fallback for servers that declare no kind; unknown titles are shown **verbatim**, never guessed at).
+
+**「シグネチャの変更」 is not an LSP feature** — no server exposes it as a code action — so C# gets a host-side
+implementation (`Services/Refactoring/CSharpSignature*.cs`, `ChangeSignatureDialog`): call sites come from the
+language server's `textDocument/references` (no second MSBuildWorkspace), the rewrite is Roslyn **syntax API only**.
+It aborts whole rather than half-applying when any reference is a method group / `nameof` / attribute.
+
 Reflecting over these assemblies via the shell tends to hallucinate — dump API to a file and Grep it, or use
 `MetadataLoadContext`. The Terminal library source is at `C:\Projects\Terminal` (ConPTY, OSC133 shell
 integration; see its `AGENT_API_SPEC.md`).

@@ -60,6 +60,10 @@
          ハイコントラスト対応、詳細設定のUI公開、描画性能の改善 -->
     <!-- 1.0.30: 内部入力ProxyをAutomationのControlビューから除外し、実表示Surfaceのフォーカスを正しく公開 -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.30" />
+    <!-- C# の「シグネチャの変更」用（§32.5）。LSP に無いリファクタリングなので構文木で自前に書き換える。
+         使うのは構文 API だけ（MSBuildWorkspace ではない）——意味解決と呼び出し元の列挙は、
+         すでに動いている言語サーバー（textDocument/references）に任せる。 -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
   </ItemGroup>
 
 </Project>

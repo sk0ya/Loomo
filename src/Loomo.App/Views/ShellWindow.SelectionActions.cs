@@ -13,6 +13,7 @@ public partial class ShellWindow {
             return;
         }
         AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
+        AddRefactorMenuItems(e.Menu, control);
         AddOpenLinkInWindowMenuItem(e.Menu, control);
         AddRunScriptMenuItem(e.Menu, control);
         AddGitMenuItems(e.Menu, control);

@@ -43,6 +43,8 @@ internal sealed class LspDocumentHandle : ILspDocument
     public bool ServerSupportsSelectionRange => _entry.Client.Client.SupportsSelectionRange;
     public bool ServerSupportsWorkspaceDiagnostics => _entry.Client.Client.SupportsWorkspaceDiagnostics;
     public IReadOnlyList<string> CompletionTriggerCharacters => _entry.Client.Client.CompletionTriggerCharacters;
+    public IReadOnlyList<string> ServerCodeActionKinds => _entry.Client.Client.CodeActionKinds;
+    public bool ServerSupportsCodeActionResolve => _entry.Client.Client.SupportsCodeActionResolve;
 
     public event Action<IReadOnlyList<LspDiagnostic>>? DiagnosticsChanged;
     public event Action? StateChanged;
@@ -94,6 +96,22 @@ internal sealed class LspDocumentHandle : ILspDocument
         var pos = new LspPosition(line, character);
         return _entry.Client.Client.GetCodeActionsAsync(Uri, new LspRange(pos, pos));
     }
+
+    public Task<IReadOnlyList<LspCodeAction>> RequestCodeActionsAsync(
+        LspRange range, IReadOnlyList<string>? only, CancellationToken ct = default) =>
+        IsReady
+            ? _entry.Client.Client.GetCodeActionsAsync(Uri, range, only, CurrentDiagnostics, ct)
+            : Empty<LspCodeAction>();
+
+    public Task<LspCodeAction?> ResolveCodeActionAsync(LspCodeAction action, CancellationToken ct = default) =>
+        IsReady
+            ? _entry.Client.Client.ResolveCodeActionAsync(action, ct)
+            : Task.FromResult<LspCodeAction?>(null);
+
+    public Task<bool> ExecuteCommandAsync(LspCodeActionCommand command, CancellationToken ct = default) =>
+        IsReady
+            ? _entry.Client.Client.ExecuteCommandAsync(command, ct)
+            : Task.FromResult(false);
 
     public Task<IReadOnlyList<LspTextEdit>> RequestFormattingAsync(int tabSize, bool insertSpaces) =>
         IsReady

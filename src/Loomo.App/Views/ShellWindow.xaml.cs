@@ -185,6 +185,7 @@ public partial class ShellWindow : Window {
         HookIdeActivity(PaneKind.Debug, _vm.Debug);
         HookIdeActivity(PaneKind.TsIde, _vm.TsIde);
         InitializeProblemsWiring();
+        InitializeRefactoringWiring();
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
         Closed += OnClosed;
