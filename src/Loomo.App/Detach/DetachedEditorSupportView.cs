@@ -34,7 +34,8 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private readonly EditorSupportPipeline _pipeline;
     private readonly IEditorSupportViewFactory _viewFactory;
     private readonly LoomoSettings _settings;
-    private readonly string? _workspaceRoot;
+    /// <summary>相対パスの解決基準。切り離した時点で対象ファイルを担当していたワークスペースフォルダー。</summary>
+    private readonly string? _baseFolder;
     private readonly VimEditorControl _source;
     private readonly DispatcherTimer _debounce;
     private readonly EditorSupportVisualHost _visuals;
@@ -67,14 +68,14 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
     public DetachedEditorSupportView(
         EditorSupportResolver resolver, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
-        LoomoSettings settings, string? workspaceRoot, VimEditorControl source)
+        LoomoSettings settings, string? baseFolder, VimEditorControl source)
     {
         _resolver = resolver;
         _visuals = new EditorSupportVisualHost(OnVisualContentEdited);
         _pipeline = pipeline;
         _viewFactory = viewFactory;
         _settings = settings;
-        _workspaceRoot = workspaceRoot;
+        _baseFolder = baseFolder;
         _source = source;
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -171,7 +172,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         }
 
         var result = await _pipeline.PrepareAsync(selection?.Provider, new EditorSupportContext(
-            filePath, _source.Text, _workspaceRoot ?? string.Empty, null, theme));
+            filePath, _source.Text, _baseFolder ?? string.Empty, null, theme));
         if (seq != _renderSeq)
             return;
 

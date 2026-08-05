@@ -31,7 +31,7 @@ public readonly record struct LinkOpenTarget(LinkOpenTargetKind Kind, string Val
 /// </summary>
 public static class LinkOpenTargetResolver
 {
-    public static LinkOpenTarget Resolve(string? href, string? sourceDocumentPath, string? workspaceRoot)
+    public static LinkOpenTarget Resolve(string? href, string? sourceDocumentPath, string? baseFolder)
     {
         if (string.IsNullOrWhiteSpace(href))
             return LinkOpenTarget.None;
@@ -48,7 +48,7 @@ public static class LinkOpenTargetResolver
         }
 
         if (!FileLinkResolver.TryResolve(
-                target, sourceDocumentPath, workspaceRoot,
+                target, sourceDocumentPath, baseFolder,
                 out var fullPath, out var line, out var column, out var isDirectory))
             return LinkOpenTarget.None;
 

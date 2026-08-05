@@ -58,7 +58,7 @@ public class EditorSupportControllerTests
         var pipeline = new EditorSupportPipeline();
 
         var content = await pipeline.PrepareAsync(null, new EditorSupportContext(
-            FilePath: null, Text: "", WorkspaceRoot: "", ReadyPageKey: null,
+            FilePath: null, Text: "", BaseFolder: "", ReadyPageKey: null,
             PreviewTheme: "dark"));
 
         Assert.Equal("Editor Support", content.Title);

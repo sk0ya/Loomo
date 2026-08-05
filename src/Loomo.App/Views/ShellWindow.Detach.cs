@@ -45,7 +45,7 @@ public partial class ShellWindow {
         if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
             var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
             if (source is null) return null;
-            var view = new DetachedEditorSupportView(_editorSupportResolver, _editorSupport.Pipeline, _editorSupport.WebView.ViewFactory, _settings, _workspace.RootPath, source.Control);
+            var view = new DetachedEditorSupportView(_editorSupportResolver, _editorSupport.Pipeline, _editorSupport.WebView.ViewFactory, _settings, _workspace.FolderForOrPrimary(snapshot.FilePath), source.Control);
             var item = new DetachedItem(kind, $"Preview: {Path.GetFileName(snapshot.FilePath)}", view, dispose: view.Dispose);
             view.TitleChanged += (_, title) => item.Title = title;
             AttachEditorSupportMirrorLinks(view);
@@ -81,7 +81,7 @@ public partial class ShellWindow {
         var source = (_editorSupport.Source ?? _activeEditorTab)?.Control;
         if (source is null)
             return;
-        var view = new DetachedEditorSupportView(_editorSupportResolver, _editorSupport.Pipeline, _editorSupport.WebView.ViewFactory, _settings, _workspace.RootPath, source);
+        var view = new DetachedEditorSupportView(_editorSupportResolver, _editorSupport.Pipeline, _editorSupport.WebView.ViewFactory, _settings, _workspace.FolderForOrPrimary(source.FilePath), source);
         var title = string.IsNullOrWhiteSpace(source.FilePath)
             ? "Preview"
             : $"Preview: {Path.GetFileName(source.FilePath!)}";
@@ -97,7 +97,8 @@ public partial class ShellWindow {
         };
         // 右クリックした本文中リンクを、さらに別ウィンドウで開く（メイン側の EditorSupport と同じ動線）。
         view.LinkWindowMenu = href => {
-            var target = LinkOpenTargetResolver.Resolve(href, view.SourceFilePath, _workspace.RootPath);
+            var target = LinkOpenTargetResolver.Resolve(
+                href, view.SourceFilePath, _workspace.FolderForOrPrimary(view.SourceFilePath));
             return DescribeOpenLinkInWindow(target) is { } header
                 ? (header, (Action)(() => OpenLinkTargetInDetachedWindow(target)))
                 : null;

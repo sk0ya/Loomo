@@ -143,7 +143,7 @@ public sealed class EditorService : IEditorService
         var dialog = new SaveFileDialog
         {
             Filter = "すべてのファイル (*.*)|*.*",
-            InitialDirectory = _workspace.RootPath,
+            InitialDirectory = _workspace.PrimaryFolder,
             FileName = "Untitled.txt",
         };
         return dialog.ShowDialog() == true ? dialog.FileName : null;

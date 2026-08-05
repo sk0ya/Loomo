@@ -18,7 +18,7 @@ public sealed class WorkspaceServiceMultiFolderTests
         service.OpenFolder(Primary);
 
         Assert.Equal(new[] { Primary }, service.Folders);
-        Assert.Equal(Primary, service.RootPath);
+        Assert.Equal(Primary, service.PrimaryFolder);
     }
 
     [Fact]
@@ -29,7 +29,7 @@ public sealed class WorkspaceServiceMultiFolderTests
         service.AddFolder(Secondary);
 
         Assert.Equal(new[] { Primary, Secondary }, service.Folders);
-        Assert.Equal(Primary, service.RootPath);
+        Assert.Equal(Primary, service.PrimaryFolder);
     }
 
     [Fact]

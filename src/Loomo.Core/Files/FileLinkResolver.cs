@@ -5,7 +5,10 @@ using System.Text.RegularExpressions;
 
 namespace sk0ya.Loomo.Core.Files;
 
-/// <summary>エディタ内リンクを既存ファイルまたはディレクトリへ解決する。</summary>
+/// <summary>エディタ内リンクを既存ファイルまたはディレクトリへ解決する。
+/// <c>baseFolder</c> は相対リンクの最後の手がかり（文書のフォルダーで見つからなかったときの基準）。
+/// マルチルートでは<b>その文書を担当するワークスペースフォルダー</b>を渡すこと
+/// （<c>IWorkspaceService.FolderForOrPrimary</c>）——プライマリを固定で渡すと追加フォルダーで外れる。</summary>
 public static class FileLinkResolver
 {
     private static readonly Regex TrailingLineColumn =
@@ -14,7 +17,7 @@ public static class FileLinkResolver
     public static bool TryResolve(
         string? target,
         string? currentDocumentPath,
-        string? workspaceRoot,
+        string? baseFolder,
         out string fullPath,
         out int line,
         out int column,
@@ -38,7 +41,7 @@ public static class FileLinkResolver
                 int.TryParse(match.Groups[2].Value, out column);
         }
 
-        foreach (var candidate in CandidatePaths(path, currentDocumentPath, workspaceRoot))
+        foreach (var candidate in CandidatePaths(path, currentDocumentPath, baseFolder))
         {
             string full;
             try
@@ -90,7 +93,7 @@ public static class FileLinkResolver
     private static IEnumerable<string> CandidatePaths(
         string path,
         string? currentDocumentPath,
-        string? workspaceRoot)
+        string? baseFolder)
     {
         if (Path.IsPathRooted(path))
         {
@@ -107,7 +110,7 @@ public static class FileLinkResolver
                 yield return Path.Combine(currentDirectory, path);
         }
 
-        if (!string.IsNullOrWhiteSpace(workspaceRoot))
-            yield return Path.Combine(workspaceRoot, path);
+        if (!string.IsNullOrWhiteSpace(baseFolder))
+            yield return Path.Combine(baseFolder, path);
     }
 }

@@ -29,7 +29,7 @@ public partial class ShellWindow {
         var target = dialog.FileName;
         try {
             var portable = await _editorSupport.Pipeline.RenderPortableHtmlAsync(provider,
-                new EditorSupportContext(filePath, text, _workspace.RootPath ?? string.Empty, null,
+                new EditorSupportContext(filePath, text, _workspace.FolderForOrPrimary(filePath) ?? string.Empty, null,
                     _settings.Appearance.MarkdownPreviewTheme), sourceDir, assetsDir);
             if (portable is null)
                 return;
@@ -75,7 +75,7 @@ public partial class ShellWindow {
         var text = source.Control.Text;
         try {
             var markdown = await _editorSupport.Pipeline.RenderMarkdownAsync(provider,
-                new EditorSupportContext(filePath, text, _workspace.RootPath ?? string.Empty, null,
+                new EditorSupportContext(filePath, text, _workspace.FolderForOrPrimary(filePath) ?? string.Empty, null,
                     _settings.Appearance.MarkdownPreviewTheme));
             if (markdown is null)
                 return;

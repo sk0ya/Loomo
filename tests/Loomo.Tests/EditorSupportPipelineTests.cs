@@ -86,7 +86,7 @@ public class EditorSupportPipelineTests
     private static EditorSupportContext Context(string? readyPageKey = null) => new(
         FilePath: Path.Combine("workspace", "document.test"),
         Text: "content",
-        WorkspaceRoot: "workspace",
+        BaseFolder: "workspace",
         ReadyPageKey: readyPageKey,
         PreviewTheme: "dark");
 

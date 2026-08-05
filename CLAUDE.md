@@ -217,23 +217,32 @@ download button + folder picker. `ModelCatalogService` enumerates local ONNX mod
 run non-thinking). Context management is trim-only (no summarization/compaction). The `IBrowserService` /
 Copilot remnants are unused by the agent.
 
-### Multi-root workspaces — ask the workspace, don't compare against `RootPath`
+### Multi-root workspaces — ask the workspace, don't compare against one folder
 
 A Loomo workspace is a **set of folders** (`IWorkspaceService.Folders`; primary + any added later), not one root.
 This has been the single most repeated defect in the codebase — 19 production files carry a 「マルチルート」 comment
-because each one learned it separately. The two failure modes, both of which shipped: comparing against
-`RootPath` alone (files in added folders are silently treated as "outside the workspace" — that broke rename,
-refactoring and signature-change), and prefix-matching without a separator (`C:\work\app2` counted as inside
-`C:\work\app`).
+because each one learned it separately. Three failure modes, all of which shipped: comparing against the primary
+folder alone (files in added folders are silently treated as "outside the workspace" — that broke rename,
+refactoring and signature-change); prefix-matching without a separator (`C:\work\app2` counted as inside
+`C:\work\app`); and resolving relative paths against the primary (a `.md` in an added folder got the *primary* as
+its base, so `../assets/img.png` in a preview and root-relative links silently stopped resolving).
 
 So the questions live on the interface with **one** implementation (`Loomo.Core/Files/WorkspacePaths.cs`, wired
 as default interface methods so test doubles behave identically):
 `workspace.Contains(path)` — may I touch it / is it in scope; `workspace.FolderFor(path)` — which folder owns it
-(language-server root, per-folder state, display base); `workspace.ToDisplayPath(path)` — the list-view spelling
-(folder name is prefixed only when there is more than one folder). **Don't hand-roll `StartsWith` against a root**,
-and reach for `RootPath` only when the *primary specifically* is required (relative-path base, terminal cwd,
-snapshot identity, default git target). `WorkspaceService.AddFolder` refuses ancestor/descendant folders — that
-invariant is what lets the LSP pool key on a per-folder root without overlapping (§32.4.3).
+(language-server root, per-folder state); `workspace.FolderForOrPrimary(path)` — the **base to resolve against**
+(owning folder, falling back to primary when the path is unknown or outside); `workspace.ToDisplayPath(path)` —
+the list-view spelling (folder name is prefixed only when there is more than one folder). **Don't hand-roll
+`StartsWith` against a root**, and reach for **`PrimaryFolder`** only when the *primary specifically* is required
+(relative-path base, terminal cwd, snapshot identity, default git target). It was called `RootPath` until §32.10.1;
+the rename is the point — the old name read as "the workspace root" at every call site, which is exactly the
+mistake. `WorkspaceService.AddFolder` refuses ancestor/descendant folders — that invariant is what lets the LSP
+pool key on a per-folder root without overlapping (§32.4.3).
+
+Other `RootPath`s in the tree are **different concepts, deliberately left alone**: `WorkspaceSnapshot.RootPath`
+(and its `WorkspaceSummary` / `WorkspaceEntryViewModel` mirrors) is a persisted JSON field, `GitService.RootPath`
+is the Git target repo, `DebugLaunchProfileStore`'s is a JSON key. Being able to tell `_workspace.PrimaryFolder`
+from `_activeWorkspace?.RootPath` at a glance is the win.
 
 ### Persistence
 

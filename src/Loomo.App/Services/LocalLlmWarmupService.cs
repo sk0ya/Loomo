@@ -120,7 +120,7 @@ public sealed class LocalLlmWarmupService : IDisposable, IAiWarmup
         // 起動時は保存済みワークスペースの復元で RootChanged がすぐ来る。root 未確定のまま暖機すると、
         // 直後に root 入りプレフィックスで再暖機になり UI 上「2回走った」ように見えるため、
         // root が既にある場合だけここで始め、通常は RootChanged まで待つ。
-        if (!string.IsNullOrWhiteSpace(_workspace.RootPath))
+        if (!string.IsNullOrWhiteSpace(_workspace.PrimaryFolder))
             RequestWarmup();
     }
 

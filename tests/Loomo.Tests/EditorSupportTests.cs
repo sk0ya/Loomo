@@ -566,6 +566,24 @@ public class MarkdownPreviewPathsTests
         Assert.Equal(@"C:\work\docs", folder);
         Assert.Equal("https://preview.loomo/", baseHref);
     }
+
+    /// <summary>マルチルート：基準はプライマリではなく<b>そのファイルを担当するフォルダー</b>。
+    /// プライマリ固定だと追加フォルダーのファイルは常に「基準外」に落ち、
+    /// <c>../assets/img.png</c> のような上への相対画像が解決できなくなる（実際にそうなっていた）。</summary>
+    [Fact]
+    public void 追加フォルダーのファイルはそのフォルダーを基準にする()
+    {
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(@"C:\work");
+        workspace.AddFolder(@"D:\shared\lib");
+        var support = new MarkdownEditorSupport(new LoomoSettings(), workspace);
+        var file = @"D:\shared\lib\docs\README.md";
+
+        // PageContextKey は base href をそのまま含むので、基準の選び方がここに出る。
+        var key = support.PageContextKey(file, "# hello");
+
+        Assert.Contains("https://preview.loomo/docs/", key);
+    }
 }
 
 /// <summary>

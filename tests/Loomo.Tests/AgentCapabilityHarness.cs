@@ -786,7 +786,7 @@ public sealed class AgentCapabilityHarness
         private string? _selectedPath;
         public HeadlessWorkspace(string root) => _root = Path.GetFullPath(root);
         public IReadOnlyList<string> Folders => new[] { _root };
-        public string? RootPath => _root;
+        public string? PrimaryFolder => _root;
         public string? SelectedPath
         {
             get => _selectedPath;
@@ -798,7 +798,7 @@ public sealed class AgentCapabilityHarness
                 SelectionChanged?.Invoke(this, value);
             }
         }
-        public void OpenFolder(string rootPath) => RootChanged?.Invoke(this, RootPath);
+        public void OpenFolder(string rootPath) => RootChanged?.Invoke(this, PrimaryFolder);
         public void AddFolder(string path) { }
         public void RemoveFolder(string path) { }
         public Task<IReadOnlyList<FileNode>> ListAsync(string path, CancellationToken ct = default)

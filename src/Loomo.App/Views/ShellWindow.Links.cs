@@ -18,7 +18,9 @@ public partial class ShellWindow {
         if (string.IsNullOrWhiteSpace(e.Path))
             return;
         var currentPath = (sender as VimEditorControl)?.FilePath;
-        if (!FileLinkResolver.TryResolve( e.Path, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory)) {
+        // 相対リンクの基準はそのファイルを担当するフォルダー（追加フォルダーのファイルをプライマリ基準で
+        // 解決すると、ルート相対のリンクが黙って外れる）。
+        if (!FileLinkResolver.TryResolve( e.Path, currentPath, _workspace.FolderForOrPrimary(currentPath), out var fullPath, out var line, out var column, out var isDirectory)) {
             e.Handled = true;
             if (sender is VimEditorControl editor)
                 editor.ShowStatusMessage($"ファイルが存在しません: {e.Path}");
@@ -110,7 +112,7 @@ public partial class ShellWindow {
             return;
         }
         var currentPath = sourcePath ?? _editorSupport.Source?.Control.FilePath;
-        if (!FileLinkResolver.TryResolve( href, currentPath, _workspace.RootPath, out var fullPath, out var line, out var column, out var isDirectory))
+        if (!FileLinkResolver.TryResolve( href, currentPath, _workspace.FolderForOrPrimary(currentPath), out var fullPath, out var line, out var column, out var isDirectory))
             return;
         if (isDirectory) {
             _workspace.SelectedPath = fullPath;

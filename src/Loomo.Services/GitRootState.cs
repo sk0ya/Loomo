@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Services;
 
 /// <summary>
 /// Git 操作の対象フォルダー（<see cref="IWorkspaceService.Folders"/> のいずれか1つ）を保持する。
-/// 明示選択が無ければプライマリ（<see cref="IWorkspaceService.RootPath"/>）。マルチルートで Git パネル／
+/// 明示選択が無ければプライマリ（<see cref="IWorkspaceService.PrimaryFolder"/>）。マルチルートで Git パネル／
 /// セッションが「今どのリポジトリを見ているか」を切り替えられるようにする単一の真実源
 /// （<see cref="GitCommandRunner"/> 等の下位サービスはすべてこれ経由でワークディレクトリを決める）。
 /// </summary>
@@ -27,7 +27,7 @@ public sealed class GitRootState
     public event EventHandler? Changed;
 
     /// <summary>現在の Git 操作対象フォルダー。明示選択が無い／無効になったらプライマリ。</summary>
-    public string? CurrentRoot => _explicitRoot ?? _workspace.RootPath;
+    public string? CurrentRoot => _explicitRoot ?? _workspace.PrimaryFolder;
 
     /// <summary>対象フォルダーを明示的に切り替える。<paramref name="path"/> がワークスペースフォルダーで
     /// なければ無視する。プライマリを指定した場合は「明示選択なし」と同じ扱いにする（<see cref="OpenFolder"/>
@@ -59,7 +59,7 @@ public sealed class GitRootState
         if (string.IsNullOrWhiteSpace(path))
             return null;
         var full = Path.GetFullPath(path);
-        if (string.Equals(full, _workspace.RootPath, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(full, _workspace.PrimaryFolder, StringComparison.OrdinalIgnoreCase))
             return null;
         return _workspace.Folders.Any(f => string.Equals(f, full, StringComparison.OrdinalIgnoreCase))
             ? full

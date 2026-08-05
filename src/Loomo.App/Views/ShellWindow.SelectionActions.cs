@@ -31,7 +31,8 @@ public partial class ShellWindow {
         if (control.Caret.Line < 0 || control.Caret.Line >= lines.Length
             || LinkDetector.FindLinkAt(lines[control.Caret.Line], control.Caret.Column) is not { } link)
             return;
-        var target = LinkOpenTargetResolver.Resolve(link.Text, control.FilePath, _workspace.RootPath);
+        var target = LinkOpenTargetResolver.Resolve(
+            link.Text, control.FilePath, _workspace.FolderForOrPrimary(control.FilePath));
         if (DescribeOpenLinkInWindow(target) is not { } header)
             return;
         menu.Items.Add(new Separator());
@@ -78,7 +79,7 @@ public partial class ShellWindow {
             || LinkDetector.FindLinkAt(lines[control.Caret.Line], control.Caret.Column)
                 is not { Kind: LinkKind.FilePath } link
             || !FileLinkResolver.TryResolve(
-                link.Text, documentPath, _workspace.RootPath,
+                link.Text, documentPath, _workspace.FolderForOrPrimary(documentPath),
                 out var sourcePath, out _, out _, out var isDirectory))
             return;
 
@@ -181,7 +182,7 @@ public partial class ShellWindow {
             foreach (var link in LinkDetector.FindLinks(line)) {
                 if (link.Kind == LinkKind.FilePath
                     && FileLinkResolver.TryResolve(
-                        link.Text, documentPath, _workspace.RootPath,
+                        link.Text, documentPath, _workspace.FolderForOrPrimary(documentPath),
                         out var resolved, out _, out _, out _)
                     && PathsEqual(resolved, sourcePath))
                     replacements.Add((offset + link.Start, link.End - link.Start));

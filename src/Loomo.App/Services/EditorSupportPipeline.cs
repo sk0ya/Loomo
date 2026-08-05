@@ -4,7 +4,10 @@ namespace sk0ya.Loomo.App.Services;
 public sealed record EditorSupportContext(
     string? FilePath,
     string Text,
-    string WorkspaceRoot,
+    /// <summary>相対パス（画像・リンク）の解決基準。マルチルートではその<b>ファイルを担当する</b>
+    /// ワークスペースフォルダー（<c>IWorkspaceService.FolderForOrPrimary</c>）。プライマリ固定にすると
+    /// 追加フォルダーのファイルで <c>../assets/…</c> が解決できなくなる。</summary>
+    string BaseFolder,
     string? ReadyPageKey,
     string PreviewTheme);
 
@@ -84,7 +87,7 @@ public sealed class EditorSupportPipeline
         if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
         {
             var title = htmlProvider.DescribeTitle(filePath);
-            var mapFolder = MarkdownPreviewPaths.Resolve(context.WorkspaceRoot, filePath).MapFolder;
+            var mapFolder = MarkdownPreviewPaths.Resolve(context.BaseFolder, filePath).MapFolder;
             var incremental = htmlProvider as IEditorSupportIncrementalHtmlProvider;
             var pageKey = incremental?.PageContextKey(filePath, text);
             string? html = null;

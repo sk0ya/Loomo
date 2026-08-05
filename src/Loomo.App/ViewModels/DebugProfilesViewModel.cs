@@ -160,7 +160,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
     /// 複数フォルダー時は全フォルダーを走査し、候補の相対パスにフォルダー名を前置して区別する。</summary>
     private void ReloadForWorkspace()
     {
-        var root = _workspace.RootPath;
+        var root = _workspace.PrimaryFolder;
         Profiles.Clear();
         AvailableProjects.Clear();
         AvailableProjects.Add(DebugProjectDiscovery.AutoDetect);
@@ -197,7 +197,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
 
     private void PersistAll()
     {
-        var root = _workspace.RootPath;
+        var root = _workspace.PrimaryFolder;
         if (root is null) return;
         _store.Save(root, Profiles.Select(p => p.Model).ToList(), SelectedProfile?.Id);
     }

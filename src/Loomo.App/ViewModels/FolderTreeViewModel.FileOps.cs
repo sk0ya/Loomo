@@ -158,7 +158,7 @@ public sealed partial class FolderTreeViewModel
     /// ワークスペースルート、複数フォルダー時はそのフォルダー自身のパス）。</summary>
     private string? FolderRootFor(string rootKey)
         => _multiRootStates.Count == 0
-            ? _workspace.RootPath
+            ? _workspace.PrimaryFolder
             : _multiRootStates.TryGetValue(rootKey, out var state) ? state.FolderPath : null;
 
     /// <summary>指定ファイルの Git Blame 表示を要求する（ShellWindow がエディタペインでファイルを開き、

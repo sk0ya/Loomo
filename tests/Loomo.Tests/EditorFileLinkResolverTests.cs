@@ -79,7 +79,7 @@ public class EditorFileLinkResolverTests
         var ok = FileLinkResolver.TryResolve(
             target + ":12:4",
             currentDocumentPath: null,
-            workspaceRoot: null,
+            baseFolder: null,
             out var fullPath,
             out var line,
             out var column,

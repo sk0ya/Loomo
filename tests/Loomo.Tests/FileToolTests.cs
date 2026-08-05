@@ -269,7 +269,7 @@ public class FileToolTests : IDisposable
     private sealed class DenyingWorkspace : IWorkspaceService
     {
         public System.Collections.Generic.IReadOnlyList<string> Folders { get; } = new[] { "C:\\root" };
-        public string? RootPath => "C:\\root";
+        public string? PrimaryFolder => "C:\\root";
         public string? SelectedPath { get; set; }
         public void OpenFolder(string rootPath) { }
         public void AddFolder(string path) { }

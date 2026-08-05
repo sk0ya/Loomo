@@ -7,7 +7,7 @@ namespace sk0ya.Loomo.Services;
 
 /// <summary>
 /// git CLI を独立した非対話プロセスで実行する Git クライアントサービス。
-/// ワークスペースルート（<see cref="IWorkspaceService.RootPath"/>）をリポジトリとして扱う。
+/// ワークスペースのプライマリフォルダー（<see cref="IWorkspaceService.PrimaryFolder"/>）をリポジトリとして扱う。
 /// 表示ターミナルには一切流さない（AI と同様、人間のターミナルを汚さない方針）。
 /// 認証プロンプト・エディタ起動で固まらないよう GIT_TERMINAL_PROMPT=0 / GIT_EDITOR=true を強制する
 /// （rebase --continue 等のメッセージ編集は既定メッセージのまま確定される）。

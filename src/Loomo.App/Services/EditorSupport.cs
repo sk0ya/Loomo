@@ -223,20 +223,24 @@ public sealed class EditorSupportRegistry
 public static class MarkdownPreviewPaths
 {
     /// <summary>
-    /// ファイルがワークスペースルート配下なら、ルートをマップ先にして base href をファイルの
+    /// ファイルが基準フォルダー配下なら、そのフォルダーをマップ先にして base href をファイルの
     /// フォルダ位置（例: https://preview.loomo/docs/）にする。これで <c>../assets/img.png</c> のように
-    /// ルート内で上のフォルダへ遡る画像も解決できる。ルート未設定・ルート外（別ドライブ含む）は
+    /// 基準内で上のフォルダへ遡る画像も解決できる。基準未設定・基準外（別ドライブ含む）は
     /// 従来どおりファイルのフォルダをマップ先にする。
+    ///
+    /// <para><paramref name="baseFolder"/> はマルチルートではその<b>ファイルを担当する</b>
+    /// ワークスペースフォルダー（<c>IWorkspaceService.FolderForOrPrimary</c>）。プライマリ固定だと
+    /// 追加フォルダーのファイルが常に「基準外」に落ちて、上へ遡る画像が解決できない。</para>
     /// </summary>
-    public static (string MapFolder, string BaseHref) Resolve(string? workspaceRoot, string filePath)
+    public static (string MapFolder, string BaseHref) Resolve(string? baseFolder, string filePath)
     {
         var fileDir = Path.GetDirectoryName(filePath) ?? "";
         var hostRoot = $"https://{MarkdownRenderer.PreviewVirtualHost}/";
 
-        if (string.IsNullOrWhiteSpace(workspaceRoot) || fileDir.Length == 0)
+        if (string.IsNullOrWhiteSpace(baseFolder) || fileDir.Length == 0)
             return (fileDir, hostRoot);
 
-        var rel = Path.GetRelativePath(workspaceRoot, fileDir);
+        var rel = Path.GetRelativePath(baseFolder, fileDir);
         var outsideRoot = rel == ".."
             || rel.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
             || Path.IsPathRooted(rel); // 別ドライブだと GetRelativePath は絶対パスを返す
@@ -249,7 +253,7 @@ public static class MarkdownPreviewPaths
             : hostRoot + string.Join('/',
                 rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                    .Select(Uri.EscapeDataString)) + "/";
-        return (workspaceRoot, href);
+        return (baseFolder, href);
     }
 }
 
@@ -275,7 +279,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
         var title = DescribeTitle(filePath);
         var theme = _settings.Appearance.MarkdownPreviewTheme;
         // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
-        var baseHref = MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref;
+        var baseHref = MarkdownPreviewPaths.Resolve(_workspace.FolderForOrPrimary(filePath), filePath).BaseHref;
         // marp 文書だけスライド表示。生 Markdown をページへ渡して marp-core が描く（本文は空のステージ）。
         return IsMarp(text)
             ? MarkdownPage.BuildPage("", title, theme, baseHref, PreviewMode.Marp, marpMarkdown: text, presentation: Presentation)
@@ -294,7 +298,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
             "\n",
             filePath,
             _settings.Appearance.MarkdownPreviewTheme,
-            MarkdownPreviewPaths.Resolve(_workspace.RootPath, filePath).BaseHref,
+            MarkdownPreviewPaths.Resolve(_workspace.FolderForOrPrimary(filePath), filePath).BaseHref,
             IsMarp(text) ? "marp" : "document",
             Presentation);
 

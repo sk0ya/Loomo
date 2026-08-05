@@ -410,7 +410,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
                 "実行対象を指定してください（.ts/.js ファイル、または npm スクリプト）。");
             return null;
         }
-        if (!Path.IsPathRooted(path) && _workspace.RootPath is { } root)
+        if (!Path.IsPathRooted(path) && _workspace.PrimaryFolder is { } root)
             path = Path.GetFullPath(Path.Combine(root, path));
         if (!File.Exists(path))
         {
@@ -478,7 +478,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         // 空きポートを選び、フレームワーク方言でポート固定注入。方言が無ければ注入せず URL のポートを信じる（P1）。
         var pin = TsScriptClassifier.PinnedPortArgs(framework, DevServerPortUtil.FindFreePort(basePort));
         var port = pin.Length > 0 ? ExtractPort(pin, basePort) : basePort;
-        var dir = PreferredPackageDir() ?? _workspace.RootPath;
+        var dir = PreferredPackageDir() ?? _workspace.PrimaryFolder;
         // npm.cmd を明示（PowerShell では `npm` が npm.ps1 に解決され、シムが `--` セパレータを食って
         // ポート引数がスクリプトへ渡らない。cmd シムは `--` を保持する）。
         var command = pin.Length > 0
@@ -542,7 +542,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         if (SelectedPackageJsonPath() is { } pkg) return Path.GetDirectoryName(pkg);
         if (!TsLaunchTarget.TryParseNpmScript(program, out _) && !TsLaunchTarget.TryParseChromeUrl(program, out _))
             return Path.GetDirectoryName(program);
-        return _workspace.RootPath;
+        return _workspace.PrimaryFolder;
     }
 
     private static string BuildDisplayName(string program)

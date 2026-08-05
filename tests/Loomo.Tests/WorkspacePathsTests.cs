@@ -94,7 +94,7 @@ public sealed class WorkspaceServiceQueriesTests
     private sealed class Stub : IWorkspaceService
     {
         public IReadOnlyList<string> Folders { get; init; } = [];
-        public string? RootPath => Folders.Count > 0 ? Folders[0] : null;
+        public string? PrimaryFolder => Folders.Count > 0 ? Folders[0] : null;
         public string? SelectedPath { get; set; }
         public void OpenFolder(string rootPath) { }
         public void AddFolder(string path) { }
@@ -134,5 +134,25 @@ public sealed class WorkspaceServiceQueriesTests
         Assert.Equal("src/a.cs", Workspace(@"C:\work\app").ToDisplayPath(@"C:\work\app\src\a.cs"));
         Assert.Equal("app/src/a.cs",
             Workspace(@"C:\work\app", @"D:\shared\lib").ToDisplayPath(@"C:\work\app\src\a.cs"));
+    }
+
+    /// <summary>相対リンク・プレビューの base href の基準は「そのファイルを担当するフォルダー」。
+    /// ここでプライマリを固定で使っていたため、追加フォルダーのファイルでは
+    /// <c>../assets/img.png</c> のような上への相対参照が黙って解決できなくなっていた。</summary>
+    [Fact]
+    public void FolderForOrPrimary_は担当フォルダーを基準にする()
+        => Assert.Equal(@"D:\shared\lib",
+            Workspace(@"C:\work\app", @"D:\shared\lib").FolderForOrPrimary(@"D:\shared\lib\docs\a.md"));
+
+    /// <summary>基準が決まらない（ワークスペース外・パス不明）ときだけプライマリへ倒す。
+    /// 「基準なし」で解決を諦めるより、プライマリ基準で出した方が使える。</summary>
+    [Fact]
+    public void FolderForOrPrimary_は決まらなければプライマリへ倒す()
+    {
+        var workspace = Workspace(@"C:\work\app", @"D:\shared\lib");
+
+        Assert.Equal(@"C:\work\app", workspace.FolderForOrPrimary(@"E:\elsewhere\x.md"));
+        Assert.Equal(@"C:\work\app", workspace.FolderForOrPrimary(null));
+        Assert.Null(Workspace().FolderForOrPrimary(@"E:\elsewhere\x.md"));
     }
 }

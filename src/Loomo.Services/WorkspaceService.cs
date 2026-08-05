@@ -22,7 +22,7 @@ public sealed class WorkspaceService : IWorkspaceService
 
     public IReadOnlyList<string> Folders => _folders;
 
-    public string? RootPath => _folders.Count > 0 ? _folders[0] : null;
+    public string? PrimaryFolder => _folders.Count > 0 ? _folders[0] : null;
 
     public string? SelectedPath
     {
@@ -43,7 +43,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         _folders.Clear();
         _folders.Add(Path.GetFullPath(rootPath));
-        RootChanged?.Invoke(this, RootPath);
+        RootChanged?.Invoke(this, PrimaryFolder);
         FoldersChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -98,7 +98,7 @@ public sealed class WorkspaceService : IWorkspaceService
 
     public string ResolvePath(string path)
     {
-        var root = RootPath ?? Environment.CurrentDirectory;
+        var root = PrimaryFolder ?? Environment.CurrentDirectory;
         var full = string.IsNullOrWhiteSpace(path)
             ? Path.GetFullPath(root)
             : Path.IsPathRooted(path)

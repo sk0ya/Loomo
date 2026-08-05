@@ -33,7 +33,7 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
     private readonly List<string> _folders = new();
 
     public IReadOnlyList<string> Folders => _folders;
-    public string? RootPath => _folders.Count > 0 ? _folders[0] : null;
+    public string? PrimaryFolder => _folders.Count > 0 ? _folders[0] : null;
     public string? SelectedPath { get; set; }
 
     public void OpenFolder(string rootPath)

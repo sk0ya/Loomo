@@ -96,7 +96,7 @@ internal static class DebugTargetResolver
     public static async Task<string?> ResolveProgramAsync(IWorkspaceService workspace, ITerminalService terminal,
         IDebugSession session, string targetProgram, bool buildFirst, string? explicitProjectPath = null)
     {
-        var root = workspace.RootPath;
+        var root = workspace.PrimaryFolder;
 
         // 明示指定があればそれを優先（相対はワークスペース基準）。
         if (!string.IsNullOrWhiteSpace(targetProgram))
