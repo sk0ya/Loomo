@@ -2,18 +2,40 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Core.Files;
 
-/// <summary>エディタ内リンクを既存ファイルまたはディレクトリへ解決する。
-/// <c>baseFolder</c> は相対リンクの最後の手がかり（文書のフォルダーで見つからなかったときの基準）。
-/// マルチルートでは<b>その文書を担当するワークスペースフォルダー</b>を渡すこと
-/// （<c>IWorkspaceService.FolderForOrPrimary</c>）——プライマリを固定で渡すと追加フォルダーで外れる。</summary>
+/// <summary>エディタ内リンクを既存ファイルまたはディレクトリへ解決する。</summary>
 public static class FileLinkResolver
 {
     private static readonly Regex TrailingLineColumn =
         new(@":(\d+)(?::(\d+))?$", RegexOptions.Compiled);
 
+    /// <summary>
+    /// ワークスペースの中でリンクを解決する。<b>ホストはこちらを使うこと。</b>
+    ///
+    /// <para>基準フォルダーは <paramref name="currentDocumentPath"/> から導くので、
+    /// 「文書 A のリンクを文書 B の基準で解決する」という食い違いを書けない。
+    /// 下の <c>baseFolder</c> 版は基準を呼ぶ側が決める素の関数で、そこにプライマリを
+    /// 固定で渡していたのが §32.10.1 の不具合（追加フォルダーのファイルで
+    /// ルート相対リンクが黙って外れる）だった。</para>
+    /// </summary>
+    public static bool TryResolve(
+        IWorkspaceService workspace,
+        string? target,
+        string? currentDocumentPath,
+        out string fullPath,
+        out int line,
+        out int column,
+        out bool isDirectory)
+        => TryResolve(
+            target, currentDocumentPath, workspace.FolderForOrPrimary(currentDocumentPath),
+            out fullPath, out line, out column, out isDirectory);
+
+    /// <summary>基準フォルダーを明示して解決する素の関数。
+    /// <paramref name="baseFolder"/> は相対リンクの最後の手がかり（文書のフォルダーで
+    /// 見つからなかったときの基準）。ワークスペースを持てる場所では上の overload を使うこと。</summary>
     public static bool TryResolve(
         string? target,
         string? currentDocumentPath,

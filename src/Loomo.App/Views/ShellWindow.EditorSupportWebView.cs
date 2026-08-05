@@ -164,8 +164,7 @@ public partial class ShellWindow {
     private async Task AddEditorSupportLinkMenuItemAsync( CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e, CoreWebView2Deferral deferral, string? sourcePath) {
         try {
             var href = await EditorSupportContextLink.ReadHrefAsync(core);
-            var target = LinkOpenTargetResolver.Resolve(
-                href, sourcePath, _workspace.FolderForOrPrimary(sourcePath));
+            var target = LinkOpenTargetResolver.Resolve(_workspace, href, sourcePath);
             if (DescribeOpenLinkInWindow(target) is not { } header)
                 return;
             var item = core.Environment.CreateContextMenuItem(header, null, CoreWebView2ContextMenuItemKind.Command);

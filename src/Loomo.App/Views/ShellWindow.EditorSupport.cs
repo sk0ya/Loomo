@@ -97,8 +97,8 @@ public partial class ShellWindow {
             return;
         // 解決は描画と同じ Resolver を通す（Registry を直に引くと Hex/コードのフォールバックが抜け落ちる）。
         var provider = _editorSupportResolver.Resolve(filePath).Provider;
-        var result = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
-            filePath, source.Control.Text, _workspace.FolderForOrPrimary(filePath) ?? string.Empty, null,
+        var result = await _editorSupport.Pipeline.PrepareAsync(provider, EditorSupportContext.For(
+            _workspace, filePath, source.Control.Text, null,
             _settings.Appearance.MarkdownPreviewTheme));
         if (result.Uri is { } uri)
         {
@@ -171,8 +171,8 @@ public partial class ShellWindow {
             readyPageKey = _editorSupportForceFullPage ? null : _editorSupport.WebView.ReadyPageKey;
         }
         var text = source.Control.Text;
-        var content = await _editorSupport.Pipeline.PrepareAsync(provider, new EditorSupportContext(
-            filePath, text, _workspace.FolderForOrPrimary(filePath) ?? string.Empty, readyPageKey,
+        var content = await _editorSupport.Pipeline.PrepareAsync(provider, EditorSupportContext.For(
+            _workspace, filePath, text, readyPageKey,
             _settings.Appearance.MarkdownPreviewTheme));
         ct.ThrowIfCancellationRequested();
         EditorSupportFrameContent body;

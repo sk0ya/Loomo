@@ -239,6 +239,14 @@ the rename is the point — the old name read as "the workspace root" at every c
 mistake. `WorkspaceService.AddFolder` refuses ancestor/descendant folders — that invariant is what lets the LSP
 pool key on a per-folder root without overlapping (§32.4.3).
 
+**Don't pick the base folder at the call site** — pass the workspace and let the function derive it, so a
+document's base can't be taken from a different document (§32.10.2). The seams:
+`FileLinkResolver.TryResolve(workspace, target, currentDocumentPath, out …)`,
+`LinkOpenTargetResolver.Resolve(workspace, href, sourceDocumentPath)`, and
+`EditorSupportContext.For(workspace, filePath, text, readyPageKey, theme)`. The `baseFolder`-taking overloads
+still exist as the primitives underneath, but hosts (`ShellWindow`, detached views) call the workspace ones —
+that is what makes this testable at all, since `ShellWindow` partials have no seam to inject a workspace into.
+
 Other `RootPath`s in the tree are **different concepts, deliberately left alone**: `WorkspaceSnapshot.RootPath`
 (and its `WorkspaceSummary` / `WorkspaceEntryViewModel` mirrors) is a persisted JSON field, `GitService.RootPath`
 is the Git target repo, `DebugLaunchProfileStore`'s is a JSON key. Being able to tell `_workspace.PrimaryFolder`

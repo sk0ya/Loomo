@@ -5,11 +5,20 @@ public sealed record EditorSupportContext(
     string? FilePath,
     string Text,
     /// <summary>相対パス（画像・リンク）の解決基準。マルチルートではその<b>ファイルを担当する</b>
-    /// ワークスペースフォルダー（<c>IWorkspaceService.FolderForOrPrimary</c>）。プライマリ固定にすると
-    /// 追加フォルダーのファイルで <c>../assets/…</c> が解決できなくなる。</summary>
+    /// ワークスペースフォルダー。自分で詰めず <see cref="EditorSupportContext.For"/> を使うこと。</summary>
     string BaseFolder,
     string? ReadyPageKey,
-    string PreviewTheme);
+    string PreviewTheme)
+{
+    /// <summary>ワークスペースから組み立てる。<b>ホストはこちらを使うこと。</b>
+    /// <see cref="BaseFolder"/> を <paramref name="filePath"/> から導くので、
+    /// 「別のファイルの基準で描く」食い違いを書けない（§32.10.1）。</summary>
+    public static EditorSupportContext For(
+        IWorkspaceService workspace, string? filePath, string text,
+        string? readyPageKey, string previewTheme)
+        => new(filePath, text, workspace.FolderForOrPrimary(filePath) ?? string.Empty,
+            readyPageKey, previewTheme);
+}
 
 /// <summary>Provider の形式に依存せず View 層へ渡せる表示結果。</summary>
 public sealed record EditorSupportResult(

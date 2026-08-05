@@ -112,6 +112,94 @@ public class EditorFileLinkResolverTests
         Assert.True(isDirectory);
     }
 
+    // ── マルチルート：基準は「その文書を担当するフォルダー」 ──────────────────────
+    //
+    // ワークスペースを受ける overload は基準を currentDocumentPath から導くので、
+    // 呼ぶ側が基準を取り違えられない。ここでは同じ相対パス src/Program.cs を
+    // プライマリと追加フォルダーの両方に置いて、**どちらを掴むか**で判定する
+    // （プライマリ固定に戻ると、存在はするので解決自体は成功し、別のファイルが開く）。
+
+    [Fact]
+    public void ワークスペース版_追加フォルダーの文書はそのフォルダーを基準にする()
+    {
+        using var temp = new TempWorkspace();
+        var (workspace, primary, added) = TwoFolderWorkspace(temp);
+        var document = temp.Write("added", "docs", "README.md", "# docs");
+        var decoy = temp.Write("primary", "src", "Program.cs", "// primary");
+        var expected = temp.Write("added", "src", "Program.cs", "// added");
+
+        var ok = FileLinkResolver.TryResolve(
+            workspace, Path.Combine("src", "Program.cs"), document,
+            out var fullPath, out _, out _, out _);
+
+        Assert.True(ok);
+        Assert.Equal(Path.GetFullPath(expected), fullPath);
+        Assert.NotEqual(Path.GetFullPath(decoy), fullPath);
+    }
+
+    [Fact]
+    public void ワークスペース版_プライマリの文書はプライマリを基準にする()
+    {
+        using var temp = new TempWorkspace();
+        var (workspace, _, _) = TwoFolderWorkspace(temp);
+        var document = temp.Write("primary", "docs", "README.md", "# docs");
+        var expected = temp.Write("primary", "src", "Program.cs", "// primary");
+        temp.Write("added", "src", "Program.cs", "// added");
+
+        var ok = FileLinkResolver.TryResolve(
+            workspace, Path.Combine("src", "Program.cs"), document,
+            out var fullPath, out _, out _, out _);
+
+        Assert.True(ok);
+        Assert.Equal(Path.GetFullPath(expected), fullPath);
+    }
+
+    /// <summary>ワークスペース外の文書は基準が決まらないのでプライマリへ倒す
+    /// （解決を諦めるより、プライマリ基準で開ける方が使える）。</summary>
+    [Fact]
+    public void ワークスペース版_ワークスペース外の文書はプライマリへ倒す()
+    {
+        using var temp = new TempWorkspace();
+        var (workspace, _, _) = TwoFolderWorkspace(temp);
+        var outside = temp.Write("outside", "note.md", "# note");
+        var expected = temp.Write("primary", "src", "Program.cs", "// primary");
+
+        var ok = FileLinkResolver.TryResolve(
+            workspace, Path.Combine("src", "Program.cs"), outside,
+            out var fullPath, out _, out _, out _);
+
+        Assert.True(ok);
+        Assert.Equal(Path.GetFullPath(expected), fullPath);
+    }
+
+    [Fact]
+    public void ワークスペース版_リンク種別の振り分けも同じ基準を使う()
+    {
+        using var temp = new TempWorkspace();
+        var (workspace, _, _) = TwoFolderWorkspace(temp);
+        var document = temp.Write("added", "docs", "README.md", "# docs");
+        temp.Write("primary", "src", "Program.cs", "// primary");
+        var expected = temp.Write("added", "src", "Program.cs", "// added");
+
+        var target = LinkOpenTargetResolver.Resolve(
+            workspace, Path.Combine("src", "Program.cs"), document);
+
+        Assert.Equal(LinkOpenTargetKind.File, target.Kind);
+        Assert.Equal(Path.GetFullPath(expected), target.Value);
+    }
+
+    /// <summary>プライマリ＋追加フォルダーの 2 フォルダーワークスペース。</summary>
+    private static (FakeWorkspaceService Workspace, string Primary, string Added) TwoFolderWorkspace(
+        TempWorkspace temp)
+    {
+        var primary = Directory.CreateDirectory(Path.Combine(temp.Root, "primary")).FullName;
+        var added = Directory.CreateDirectory(Path.Combine(temp.Root, "added")).FullName;
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(primary);
+        workspace.AddFolder(added);
+        return (workspace, primary, added);
+    }
+
     private sealed class TempWorkspace : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "loomo-editor-link-" + Guid.NewGuid().ToString("N"));

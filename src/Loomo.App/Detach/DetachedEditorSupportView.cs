@@ -34,8 +34,10 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private readonly EditorSupportPipeline _pipeline;
     private readonly IEditorSupportViewFactory _viewFactory;
     private readonly LoomoSettings _settings;
-    /// <summary>相対パスの解決基準。切り離した時点で対象ファイルを担当していたワークスペースフォルダー。</summary>
-    private readonly string? _baseFolder;
+    /// <summary>相対パスの解決基準を描画のたびに問い直すためのワークスペース。切り離した時点の
+    /// 基準を握らないこと——このビューはソースのエディタに追従するので、対象ファイルが別の
+    /// ワークスペースフォルダーへ変わることがある。</summary>
+    private readonly IWorkspaceService _workspace;
     private readonly VimEditorControl _source;
     private readonly DispatcherTimer _debounce;
     private readonly EditorSupportVisualHost _visuals;
@@ -68,14 +70,14 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
     public DetachedEditorSupportView(
         EditorSupportResolver resolver, EditorSupportPipeline pipeline, IEditorSupportViewFactory viewFactory,
-        LoomoSettings settings, string? baseFolder, VimEditorControl source)
+        LoomoSettings settings, IWorkspaceService workspace, VimEditorControl source)
     {
         _resolver = resolver;
         _visuals = new EditorSupportVisualHost(OnVisualContentEdited);
         _pipeline = pipeline;
         _viewFactory = viewFactory;
         _settings = settings;
-        _baseFolder = baseFolder;
+        _workspace = workspace;
         _source = source;
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -171,8 +173,8 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
             return;
         }
 
-        var result = await _pipeline.PrepareAsync(selection?.Provider, new EditorSupportContext(
-            filePath, _source.Text, _baseFolder ?? string.Empty, null, theme));
+        var result = await _pipeline.PrepareAsync(selection?.Provider, EditorSupportContext.For(
+            _workspace, filePath, _source.Text, null, theme));
         if (seq != _renderSeq)
             return;
 

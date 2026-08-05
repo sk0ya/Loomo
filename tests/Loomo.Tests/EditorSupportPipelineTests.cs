@@ -83,6 +83,44 @@ public class EditorSupportPipelineTests
         Assert.Null(result.Html);   // ビジュアル表示は HTML を持たない
     }
 
+    // ── EditorSupportContext.For：基準フォルダーの決定を1箇所に閉じる ──────────────
+    //
+    // 以前は各呼び出し元が BaseFolder に何を詰めるか自分で決めていて、全員が
+    // プライマリ固定を詰めていた（追加フォルダーのファイルで ../assets/… が壊れる）。
+    // 詰め方を For に閉じたので、ここが基準の決定を代表して押さえる。
+
+    [Fact]
+    public void For_は担当フォルダーを基準にする()
+    {
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(@"C:\work\app");
+        workspace.AddFolder(@"D:\shared\lib");
+
+        var context = EditorSupportContext.For(
+            workspace, @"D:\shared\lib\docs\README.md", "# hi", null, "dark");
+
+        Assert.Equal(@"D:\shared\lib", context.BaseFolder);
+    }
+
+    [Fact]
+    public void For_は基準が決まらなければプライマリへ倒す()
+    {
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(@"C:\work\app");
+        workspace.AddFolder(@"D:\shared\lib");
+
+        Assert.Equal(@"C:\work\app",
+            EditorSupportContext.For(workspace, @"E:\elsewhere\x.md", "", null, "dark").BaseFolder);
+        // Untitled タブ（パス無し）でも空文字で通す——描画側は「基準なし」として扱える。
+        Assert.Equal(@"C:\work\app",
+            EditorSupportContext.For(workspace, null, "", null, "dark").BaseFolder);
+    }
+
+    [Fact]
+    public void For_はワークスペース未オープンなら空文字になる()
+        => Assert.Equal("",
+            EditorSupportContext.For(new FakeWorkspaceService(), @"C:\x\a.md", "", null, "dark").BaseFolder);
+
     private static EditorSupportContext Context(string? readyPageKey = null) => new(
         FilePath: Path.Combine("workspace", "document.test"),
         Text: "content",

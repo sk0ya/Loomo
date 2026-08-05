@@ -1,4 +1,5 @@
 using System;
+using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Core.Files;
 
@@ -31,6 +32,14 @@ public readonly record struct LinkOpenTarget(LinkOpenTargetKind Kind, string Val
 /// </summary>
 public static class LinkOpenTargetResolver
 {
+    /// <summary>ワークスペースの中で振り分ける。<b>ホストはこちらを使うこと</b>——
+    /// 基準フォルダーは <paramref name="sourceDocumentPath"/> から導くので取り違えようがない
+    /// （§32.10.1）。</summary>
+    public static LinkOpenTarget Resolve(
+        IWorkspaceService workspace, string? href, string? sourceDocumentPath)
+        => Resolve(href, sourceDocumentPath, workspace.FolderForOrPrimary(sourceDocumentPath));
+
+    /// <summary>基準フォルダーを明示して振り分ける素の関数。</summary>
     public static LinkOpenTarget Resolve(string? href, string? sourceDocumentPath, string? baseFolder)
     {
         if (string.IsNullOrWhiteSpace(href))
