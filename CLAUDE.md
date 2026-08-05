@@ -217,6 +217,24 @@ download button + folder picker. `ModelCatalogService` enumerates local ONNX mod
 run non-thinking). Context management is trim-only (no summarization/compaction). The `IBrowserService` /
 Copilot remnants are unused by the agent.
 
+### Multi-root workspaces — ask the workspace, don't compare against `RootPath`
+
+A Loomo workspace is a **set of folders** (`IWorkspaceService.Folders`; primary + any added later), not one root.
+This has been the single most repeated defect in the codebase — 19 production files carry a 「マルチルート」 comment
+because each one learned it separately. The two failure modes, both of which shipped: comparing against
+`RootPath` alone (files in added folders are silently treated as "outside the workspace" — that broke rename,
+refactoring and signature-change), and prefix-matching without a separator (`C:\work\app2` counted as inside
+`C:\work\app`).
+
+So the questions live on the interface with **one** implementation (`Loomo.Core/Files/WorkspacePaths.cs`, wired
+as default interface methods so test doubles behave identically):
+`workspace.Contains(path)` — may I touch it / is it in scope; `workspace.FolderFor(path)` — which folder owns it
+(language-server root, per-folder state, display base); `workspace.ToDisplayPath(path)` — the list-view spelling
+(folder name is prefixed only when there is more than one folder). **Don't hand-roll `StartsWith` against a root**,
+and reach for `RootPath` only when the *primary specifically* is required (relative-path base, terminal cwd,
+snapshot identity, default git target). `WorkspaceService.AddFolder` refuses ancestor/descendant folders — that
+invariant is what lets the LSP pool key on a per-folder root without overlapping (§32.4.3).
+
 ### Persistence
 
 `%APPDATA%/Loomo/` holds `settings.json` (provider/model/`modelPath`/MaxTokens + Safety; legacy

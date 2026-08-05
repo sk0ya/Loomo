@@ -295,20 +295,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private string ToRelativeDir(string filePath)
     {
         var dir = Path.GetDirectoryName(filePath) ?? "";
-        var folders = _workspace?.Folders;
-        if (folders is null || folders.Count == 0) return dir;
-        foreach (var folder in folders)
-        {
-            if (!dir.StartsWith(folder, System.StringComparison.OrdinalIgnoreCase)) continue;
-            var rel = Path.GetRelativePath(folder, dir);
-            if (rel == ".") rel = "";
-            if (folders.Count > 1)
-            {
-                var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder));
-                rel = rel.Length == 0 ? name : $"{name}{Path.DirectorySeparatorChar}{rel}";
-            }
-            return rel.Replace(Path.DirectorySeparatorChar, '/');
-        }
-        return dir;
+        // 表記の規則は WorkspacePaths が正本（SEARCH の結果ツリーと同じ）。以前ここは
+        // 区切り文字を付けずに前方一致していたので、C:\work\app2 を C:\work\app 配下と誤認していた。
+        return _workspace is null ? dir : _workspace.ToDisplayPath(dir);
     }
 }

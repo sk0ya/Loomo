@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.Services.Search;
 
@@ -148,10 +149,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             if (!Directory.Exists(candidate))
                 continue;
 
-            var withinRoot = candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
-                || candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                || candidate.StartsWith(rootFull + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-            if (withinRoot)
+            if (WorkspacePaths.IsWithin(rootFull, candidate))
                 return candidate;
         }
         return null;

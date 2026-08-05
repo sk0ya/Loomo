@@ -165,24 +165,10 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     /// <summary>フルパスを含むワークスペースフォルダー（マルチルートの各ルート）を返す。
     /// どれにも属さなければプライマリフォルダーへ退避する。</summary>
+    /// <summary>そのパスを担当するワークスペースフォルダー。どれにも属さなければプライマリへ倒す
+    /// （検索結果の表示基準が無くなるより、プライマリ基準で出す方が読める）。</summary>
     private string? FindOwningFolder(string fullPath)
-    {
-        string full;
-        try { full = System.IO.Path.GetFullPath(fullPath).TrimEnd('\\', '/'); }
-        catch { return _workspace.RootPath; }
-
-        foreach (var folder in _workspace.Folders)
-        {
-            string root;
-            try { root = System.IO.Path.GetFullPath(folder).TrimEnd('\\', '/'); }
-            catch { continue; }
-            if (full.Equals(root, StringComparison.OrdinalIgnoreCase)
-                || full.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                || full.StartsWith(root + System.IO.Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                return folder;
-        }
-        return _workspace.RootPath;
-    }
+        => _workspace.FolderFor(fullPath) ?? _workspace.RootPath;
 
     partial void OnQueryChanged(string value)
     {

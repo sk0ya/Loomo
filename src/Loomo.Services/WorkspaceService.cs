@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Files;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Safety;
 
@@ -49,7 +50,9 @@ public sealed class WorkspaceService : IWorkspaceService
     public void AddFolder(string path)
     {
         var full = Path.GetFullPath(path);
-        if (_folders.Any(f => IsWithin(f, full) || IsWithin(full, f)))
+        // 祖先/子孫関係の重複は足さない（この不変条件があるので、フォルダーごとに
+        // 言語サーバーを立てても担当範囲が重ならない。§32.4.3）。
+        if (_folders.Any(f => WorkspacePaths.IsWithin(f, full) || WorkspacePaths.IsWithin(full, f)))
             return;
 
         _folders.Add(full);
@@ -104,20 +107,10 @@ public sealed class WorkspaceService : IWorkspaceService
 
         // 設計書 §10: ツールのアクセスはワークスペースフォルダー配下に限定（パストラバーサル防止）。
         // マルチルート：プライマリ以外に AddFolder で追加したフォルダー配下も許可対象に含める。
-        if (_safety.RestrictToWorkspaceRoot && _folders.Count > 0 && !_folders.Any(f => IsWithin(f, full)))
+        if (_safety.RestrictToWorkspaceRoot && _folders.Count > 0 && !WorkspacePaths.Contains(_folders, full))
             throw new UnauthorizedAccessException(
                 $"ワークスペースフォルダー外へのアクセスは許可されていません: {full}");
 
         return full;
-    }
-
-    /// <summary><paramref name="candidate"/> が <paramref name="root"/> と同一またはその配下か。</summary>
-    private static bool IsWithin(string root, string candidate)
-    {
-        var rootFull = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var c = Path.GetFullPath(candidate);
-        return c.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
-            || c.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.Services;
 
@@ -74,10 +75,5 @@ public sealed class GitRootState
     }
 
     private static bool IsWithin(string root, string candidate)
-    {
-        var rootFull = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        return candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase)
-            || candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
+        => WorkspacePaths.IsWithin(root, candidate);
 }
