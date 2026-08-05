@@ -59,7 +59,7 @@ internal sealed class LspClientPool : IDisposable
     /// <summary>起動に失敗した (実行ファイル, ルート) と、その理由。設定画面へ出すために保持する。</summary>
     private readonly Dictionary<(string Executable, string Root), string> _startFailures = new();
     private readonly Dictionary<string, int> _reconnectAttempts = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Func<IReadOnlyList<string>> _workspaceFolders;
+    private readonly Func<string, IReadOnlyList<string>> _foldersForRoot;
     private readonly Func<LspServerDef, string, ILspClient> _connect;
     private readonly Action<string> _log;
     private readonly Timer _idleSweep;
@@ -74,13 +74,19 @@ internal sealed class LspClientPool : IDisposable
     /// <summary><c>publishDiagnostics</c>。背景スレッド発火。</summary>
     public event Action<string, IReadOnlyList<LspDiagnostic>>? DiagnosticsPublished;
 
+    /// <summary>サーバー起点の <c>workspace/applyEdit</c>。<b>背景スレッドで発火し、
+    /// 購読側が戻るまでサーバーは応答を待って止まっている</b>（§32.3）。</summary>
+    public event EventHandler<LspApplyEditEventArgs>? ApplyEditRequested;
+
     /// <param name="connect">実サーバーへの接続を作る。テストは差し替えてプロセスを起動せずに検証する。</param>
+    /// <param name="foldersForRoot">そのルートで <c>initialize</c> に載せる workspaceFolders。
+    /// ルート1件を返す（複数渡すと Roslyn の抽出系が壊れる。§32.4.4）。</param>
     public LspClientPool(
-        Func<IReadOnlyList<string>> workspaceFolders,
+        Func<string, IReadOnlyList<string>> foldersForRoot,
         Action<string> log,
         Func<LspServerDef, string, ILspClient>? connect = null)
     {
-        _workspaceFolders = workspaceFolders;
+        _foldersForRoot = foldersForRoot;
         // 起動は必ず PATH 解決後のフルパスで。素の名前だと .cmd/.bat シム（npm -g / winget）が
         // 起動できず、UI は「接続待ち」のまま永久に進まない（ExecutableResolver.Resolve 参照）。
         _connect = connect ?? ((def, root) =>
@@ -317,6 +323,7 @@ internal sealed class LspClientPool : IDisposable
             }
             DiagnosticsPublished?.Invoke(e.Uri, e.Diagnostics);
         };
+        client.ApplyEditRequested += (_, e) => ApplyEditRequested?.Invoke(this, e);
         client.Exited += () => OnClientExited(pooled);
         _log($"[LSP] Process started: {def.Executable} (root={root})");
         return pooled;
@@ -329,7 +336,10 @@ internal sealed class LspClientPool : IDisposable
             pooled.State = LspServerRuntimeState.Initializing;
             NotifyStateChanged();
             var rootUri = new Uri(Path.GetFullPath(root)).AbsoluteUri;
-            var folders = _workspaceFolders();
+            // workspaceFolders は**このサーバーのルート1件だけ**。全フォルダーを渡すと
+            // Roslyn の抽出系リファクタリングが返らなくなる（§32.4.4 の実測）。
+            // フォルダーが増えたぶんはサーバーが増える（LspWorkspaceService.ResolveRoot）。
+            var folders = _foldersForRoot(root);
             _log($"[LSP] initialize rootUri={rootUri} workspaceFolders=" +
                  (folders is { Count: > 0 } ? string.Join(" | ", folders) : "(fallback)"));
             await pooled.Client.InitializeAsync(rootUri, folders);

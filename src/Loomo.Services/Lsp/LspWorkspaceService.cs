@@ -42,7 +42,7 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         _servers = servers;
         _folderSignature = CurrentFolders();
 
-        _pool = new LspClientPool(CurrentFolders, Log, connect);
+        _pool = new LspClientPool(FoldersForRoot, Log, connect);
         _documents = new LspDocumentTable(
             _pool,
             ext => _servers.GetForExtension(ext),
@@ -51,6 +51,7 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
             (uri, diagnostics) => DiagnosticsPublished?.Invoke(uri, diagnostics));
 
         _pool.DiagnosticsPublished += OnDiagnosticsPublished;
+        _pool.ApplyEditRequested += (_, e) => ApplyEditRequested?.Invoke(this, e);
         _pool.ClientDied += pooled => _ = _documents.OnClientDiedAsync(pooled);
         _pool.StateChanged += () => ServerStateChanged?.Invoke();
         _servers.Changed += ext => _ = _documents.ReopenExtensionAsync(ext);
@@ -59,6 +60,12 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
 
     public event Action<string, IReadOnlyList<LspDiagnostic>>? DiagnosticsPublished;
     public event Action? ServerStateChanged;
+
+    /// <summary>サーバー起点の <c>workspace/applyEdit</c>。コマンド型リファクタリング
+    /// （tsserver の「関数へ抽出」等）の編集はこの経路でしか返ってこない。
+    /// <b>背景スレッドで発火し、購読側が戻るまでサーバーは待っている</b>——
+    /// 購読側は UI スレッドへマーシャルしてよいが、そこで LSP 応答を待ってはならない。</summary>
+    public event EventHandler<LspApplyEditEventArgs>? ApplyEditRequested;
 
     public IReadOnlyList<LspServerRuntimeStatus> ServerStatuses => _pool.Statuses;
     public bool RestartServer(string executable) => _pool.Restart(executable);
@@ -235,23 +242,35 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
     ];
 
     /// <summary>
-    /// このファイルを担当するサーバーのワークスペースルート。プールのキーの一部なので、
-    /// **ワークスペース内のどのファイルでも同じ値**でなければならない — そうでないとフォルダーごとに
-    /// プロセスが増える。
+    /// このファイルを担当するサーバーのワークスペースルート＝**そのファイルを含むワークスペース
+    /// フォルダー**。プールのキーの一部なので、同じフォルダーのファイルは同じ値になり、
+    /// フォルダー1つにつきサーバー1本になる。
     ///
-    /// <para>そこでマルチルートでも常に**プライマリフォルダー**を返し、実フォルダー一覧は
-    /// <c>initialize</c> の <c>workspaceFolders</c> で全件渡す（37b2858 の挙動）。1本のサーバーが
-    /// 全ルートを見る構成なので、含んでいるフォルダーをルートに選ぶと同じフォルダー集合を担当する
-    /// プロセスが2本立つだけになる（実機で確認済み）。フォルダー未オープン時だけファイルの
-    /// ディレクトリへフォールバックする。</para>
+    /// <para><b>以前は常にプライマリを返し、実フォルダー一覧を <c>initialize</c> の
+    /// <c>workspaceFolders</c> で全件渡していた（1本で全ルートを見る構成）。これをやめた理由は実測</b>
+    /// ——同じファイル・同じ範囲でも <c>workspaceFolders</c> が2件あると Roslyn が
+    /// 「メソッドの抽出」を返さなくなる（[Loomo] なら5秒で2件、[Loomo, AimAssist] だと120秒待っても
+    /// 0件。§32.4.4）。構文だけで済むリファクタリングは出るのに、データフロー解析を要するものだけが
+    /// 落ちるため、原因が非常に見えにくい。</para>
+    ///
+    /// <para>フォルダー同士が祖先/子孫にならないことは <see cref="IWorkspaceService.AddFolder"/> が
+    /// 保証しているので、フォルダーごとにルートを分けても担当範囲は重ならない
+    /// （§30.0-6 が禁じた「含んでいるフォルダーをルートに選ぶ」には当たらない）。
+    /// どのフォルダーにも属さない場合と未オープン時はファイルのディレクトリへフォールバックする。</para>
     /// </summary>
     private string ResolveRoot(string filePath)
     {
+        if (_workspace.FolderFor(filePath) is { } folder) return Path.GetFullPath(folder);
+
         var folders = _workspace.Folders;
         return folders.Count > 0
             ? Path.GetFullPath(folders[0])
             : Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? Environment.CurrentDirectory;
     }
+
+    /// <summary><c>initialize</c> で通知するフォルダー。**そのサーバーのルート1件だけ**にする
+    /// （複数渡すと Roslyn の抽出系リファクタリングが返らなくなる。<see cref="ResolveRoot"/> 参照）。</summary>
+    private static string[] FoldersForRoot(string root) => [root];
 
     private string[] CurrentFolders() => _workspace.Folders.ToArray();
 

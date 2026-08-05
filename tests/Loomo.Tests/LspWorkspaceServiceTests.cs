@@ -86,12 +86,17 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         Assert.Contains(Clients, c => c.Executable == "fake-py-server");
     }
 
+    /// <summary>
+    /// ワークスペースフォルダーごとにサーバーを1本立てる。以前は1本へ全フォルダーを渡していたが、
+    /// <c>workspaceFolders</c> が2件以上あると **Roslyn がデータフロー解析を要する
+    /// リファクタリング（メソッドの抽出）を返さなくなる**（設計書 §32.4.4 の実測。
+    /// [Loomo] なら5秒で2件、[Loomo, AimAssist] なら120秒待っても0件）。
+    /// 構文だけのリファクタリングは出るので気付きにくい。
+    /// </summary>
     [Fact]
-    public async Task MultiRoot_StillSharesOneServerAcrossFolders()
+    public async Task MultiRoot_StartsOneServerPerFolder()
     {
-        // 1本のサーバーが initialize で全フォルダーを受け取るので、フォルダーごとにプロセスを
-        // 立てると同じ担当範囲の重複になる（実機で踏んだ）。ルートは常にプライマリ。
-        var second = Path.Combine(_root, "sub2");
+        var second = Path.Combine(Path.GetTempPath(), "loomo-lsp-ws2-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(second);
         _workspace.AddFolder(second);
 
@@ -102,9 +107,25 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         using var b = _sut.OpenDocument(inSecond, "class B {}")!;
         await Settle();
 
+        Assert.Equal(2, Clients.Length);
+        Assert.Contains(Clients, c => c.Root == _root);
+        Assert.Contains(Clients, c => c.Root == second);
+        // 各サーバーは自分のルートだけを受け取る。
+        Assert.All(Clients, c => Assert.Equal([c.Root], c.LastWorkspaceFolders));
+
+        Directory.Delete(second, recursive: true);
+    }
+
+    /// <summary>同じフォルダー内なら、何枚開いてもサーバーは1本のまま（§30 の本来の目的）。</summary>
+    [Fact]
+    public async Task SameFolder_StillSharesOneServer()
+    {
+        using var a = _sut.OpenDocument(Write("A.cs"), "class A {}")!;
+        using var b = _sut.OpenDocument(Write("B.cs"), "class B {}")!;
+        await Settle();
+
         Assert.Single(Clients);
         Assert.Equal(_root, Clients[0].Root);
-        Assert.Equal([_root, second], Clients[0].LastWorkspaceFolders);
     }
 
     [Fact]
@@ -116,17 +137,21 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         Assert.True(_sut.IsServerAvailableFor(".cs"));
     }
 
+    /// <summary><c>initialize</c> に載せるのは**そのサーバーのルート1件だけ**。
+    /// 他のワークスペースフォルダーを混ぜてはいけない（§32.4.4）。</summary>
     [Fact]
-    public async Task Initialize_PassesEveryWorkspaceFolder()
+    public async Task Initialize_PassesOnlyItsOwnRoot()
     {
-        var second = Path.Combine(_root, "sub2");
+        var second = Path.Combine(Path.GetTempPath(), "loomo-lsp-ws3-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(second);
         _workspace.AddFolder(second);
 
         using var a = _sut.OpenDocument(Write("A.cs"), "class A {}")!;
         await Settle();
 
-        Assert.Equal([_root, second], Clients[0].LastWorkspaceFolders);
+        Assert.Equal([_root], Clients[0].LastWorkspaceFolders);
+
+        Directory.Delete(second, recursive: true);
     }
 
     [Fact]

@@ -41,6 +41,15 @@ internal sealed class FakeLspClient : ILspClient
 
     public event EventHandler<DiagnosticsChangedEventArgs>? DiagnosticsChanged;
     public event Action? Exited;
+    public event EventHandler<LspApplyEditEventArgs>? ApplyEditRequested;
+
+    /// <summary>サーバー起点の <c>workspace/applyEdit</c> を模す。ホストが適用したかを返す。</summary>
+    public bool RaiseApplyEdit(LspWorkspaceEdit edit, string? label = null)
+    {
+        var args = new LspApplyEditEventArgs(edit, label);
+        ApplyEditRequested?.Invoke(this, args);
+        return args.Applied;
+    }
 
     /// <summary>サーバーのクラッシュを模す。</summary>
     public void Kill()

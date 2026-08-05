@@ -49,7 +49,7 @@
     <!-- 1.0.74: サーバー由来 file URI の正規化（LspUri。tsserver の "file:///c%3A/…" で rename/診断が壊れていた） -->
     <!-- 1.0.75: LSP要求の60秒タイムアウト（無応答サーバーでの永久待ちを解消）＋Rename Symbolダイアログの
          テーマ追従・自動サイズ（ボタン見切れの修正） -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.76" />
+    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.77" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
          BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->
