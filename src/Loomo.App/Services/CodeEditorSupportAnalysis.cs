@@ -57,8 +57,12 @@ public static class CodeEditorSupportAnalysis
     }
 
     public static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, CaretInfo caret)
+        => CurrentMemberLine1(roots, caret.Line, caret.Column);
+
+    /// <summary>キャレット位置の型を持ち込まずに呼べる版（描画本体はエディタの型に依存しない）。</summary>
+    public static int CurrentMemberLine1(IReadOnlyList<OutlineNode> roots, int line0, int col0)
     {
-        var member = CodeOutline.FindEnclosing(roots, caret.Line, caret.Column);
+        var member = CodeOutline.FindEnclosing(roots, line0, col0);
         return member is null ? 0 : member.Line0 + 1;
     }
 

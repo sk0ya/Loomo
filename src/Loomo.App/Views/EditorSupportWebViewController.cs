@@ -46,12 +46,10 @@ public sealed class EditorSupportWebViewController : IDisposable
     private readonly EventHandler<CoreWebView2WebMessageReceivedEventArgs> _messageReceived;
     private readonly EventHandler<CoreWebView2ContextMenuRequestedEventArgs> _contextMenuRequested;
     private readonly IEditorSupportViewFactory _viewFactory;
+    /// <summary>いま何が載っているかの判断は全部こちら（テストできる形に切り出してある）。</summary>
+    private readonly EditorSupportPageState _page = new();
     private Task<bool>? _initTask;
     private bool _eventsAttached;
-    private bool _firstRenderHealed;
-    private EditorSupportPageId? _pageId;
-    private EditorSupportPageStatus _status = EditorSupportPageStatus.Idle;
-    private EditorSupportPageId? _lastFailedId;   // 同じページの二度目の失敗で再試行を打ち切るための記憶
     private DispatcherTimer? _watchdog;
     private string _searchTerm = "";
     private bool _searchCaseSensitive;
@@ -83,8 +81,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     /// 本文差し替えで更新できるページの鍵。<b>読み込みが完了しているときだけ</b>返す。
     /// <c>Loading</c>／<c>Failed</c>／<c>Idle</c> では null＝呼び元は必ずページ全体を組み立てる。
     /// </summary>
-    public string? ReadyPageKey
-        => _status == EditorSupportPageStatus.Ready ? _pageId?.PageKey : null;
+    public string? ReadyPageKey => _page.ReadyPageKey;
 
     public event EventHandler? NavigationCompleted;
 
@@ -97,9 +94,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     public void ResetPageState()
     {
         StopWatchdog();
-        _pageId = null;
-        _lastFailedId = null;
-        _status = EditorSupportPageStatus.Idle;
+        _page.Reset();
     }
 
     /// <summary>プレビュー内で塗る検索ワードを設定する（空で消える）。条件は保持しておき、
@@ -121,7 +116,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     /// </summary>
     private void PushSearchHighlight(CoreWebView2 core)
     {
-        if (!IsPdf(_pageId?.Uri))
+        if (!IsPdf(_page.CurrentUri))
         {
             _ = ApplyFindAsync(core, "", false);   // PDF から離れた直後の塗り残しを消す
             EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
@@ -208,11 +203,7 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     private EditorSupportPageApplyResult ShowUri(CoreWebView2 core, string uri)
     {
-        // 再ナビゲートを省けるのは「その URI を読み<b>終えている</b>」ときだけ。
-        // Loading/Failed は必ずやり直す（以前は「ナビゲートを投げた」だけで省いていたため、
-        // 失敗した PDF などがガードに引っかかって永久に読み直されなかった）。
-        if (_status == EditorSupportPageStatus.Ready
-            && string.Equals(_pageId?.Uri, uri, StringComparison.OrdinalIgnoreCase))
+        if (_page.IsShowing(uri))
         {
             PushSearchHighlight(core);
             return EditorSupportPageApplyResult.Applied;
@@ -227,12 +218,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     private EditorSupportPageApplyResult PatchBody(
         CoreWebView2 core, string body, string? mapFolder, string? pageKey)
     {
-        // 本文差し替えが成り立つのは「この本文が想定していたページが、いま読み込み済みで載っている」ときだけ。
-        // 組み立て中（await 中）に別のページへ遷移していたら、投げても何も起きずに古い表示のまま固まる。
-        if (_status != EditorSupportPageStatus.Ready
-            || _pageId is not { PageKey: { } current }
-            || pageKey is null
-            || current != pageKey)
+        if (!_page.CanPatchBody(pageKey))
             return EditorSupportPageApplyResult.NeedsFullPage;
 
         if (mapFolder is not null)
@@ -272,10 +258,7 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     private void BeginLoad(EditorSupportPageId id)
     {
-        if (_lastFailedId is not null && _lastFailedId != id)
-            _lastFailedId = null;   // 別のページへ移った：前のページの失敗記憶は持ち越さない
-        _pageId = id;
-        _status = EditorSupportPageStatus.Loading;
+        _page.BeginLoad(id);
         StartWatchdog();
     }
 
@@ -283,8 +266,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     private void Fail()
     {
         StopWatchdog();
-        _pageId = null;
-        _status = EditorSupportPageStatus.Failed;
+        _page.Fail();
     }
 
     private void StartWatchdog()
@@ -300,11 +282,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            if (_status != EditorSupportPageStatus.Loading)
-                return;
-            var attempted = _pageId;
-            Fail();
-            if (ShouldRetryAfterFailure(attempted))
+            if (_page.WatchdogFired() == EditorSupportPageAction.RequestReload)
                 ReloadRequested?.Invoke(this, EventArgs.Empty);
         };
         return timer;
@@ -376,23 +354,14 @@ public sealed class EditorSupportWebViewController : IDisposable
         View = null;
         _initTask = null;
         _eventsAttached = false;
-        _firstRenderHealed = false;   // 次に張り直すビューでも初回描画の取りこぼしを直す
+        _page.ResetFirstRenderHealing();   // 次に張り直すビューでも初回描画の取りこぼしを直す
         _findGate.Dispose();
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         StopWatchdog();
-        var attempted = _pageId;
-        if (e.IsSuccess)
-        {
-            _status = EditorSupportPageStatus.Ready;
-            _lastFailedId = null;
-        }
-        else
-        {
-            Fail();
-        }
+        var action = _page.Completed(e.IsSuccess);
 
         // ページを組み直すとページ側の保持状態（と Find セッション）が消えるので、検索ハイライトを送り直す。
         if (e.IsSuccess && View?.CoreWebView2 is { } loaded)
@@ -402,31 +371,8 @@ public sealed class EditorSupportWebViewController : IDisposable
         }
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
 
-        // WebView2 は最初のページを載せても描画が出てこないことがある（コンポジション初期化との競合）。
-        // 一度だけ組み直しを頼んで実描画を確定させる。二度目以降はフラグで止まる。
-        if (!_firstRenderHealed)
-        {
-            _firstRenderHealed = true;
+        if (action == EditorSupportPageAction.RequestReload)
             ReloadRequested?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
-        // 失敗したまま放置すると空白のページが残るので組み直しを頼む（同一性は Fail で捨ててある）。
-        if (!e.IsSuccess && ShouldRetryAfterFailure(attempted))
-            ReloadRequested?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>
-    /// 失敗したページを組み直させてよいか。<b>同じページの二度目の失敗では false</b>——
-    /// 開けない PDF などを相手に「失敗 → 再ナビゲート → また失敗」を延々と繰り返さないため。
-    /// 別のページを要求すれば（<see cref="BeginLoad"/>）記憶は消え、また一度だけやり直す。
-    /// </summary>
-    private bool ShouldRetryAfterFailure(EditorSupportPageId? failed)
-    {
-        if (_lastFailedId == failed)
-            return false;
-        _lastFailedId = failed;
-        return true;
     }
 
     /// <summary>

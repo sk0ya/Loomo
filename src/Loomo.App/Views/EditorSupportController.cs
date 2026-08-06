@@ -51,17 +51,17 @@ internal sealed class EditorSupportController
         CurrentCaret = null;
     }
 
-    public bool ShouldRefreshCallPanels(EditorTab source, CaretInfo caret)
+    public bool ShouldRefreshCallPanels(EditorTab source, int caretLine, int caretColumn)
     {
         if (OutlineRoots is null || !ReferenceEquals(OutlineSource, source))
             return false;
         if (CurrentSymbolRange is { } range
-            && CodeEditorSupportAnalysis.CaretInRange(range, caret.Line, caret.Column))
+            && CodeEditorSupportAnalysis.CaretInRange(range, caretLine, caretColumn))
             return false;
         return CurrentSymbolRange is not null
             || CurrentCaret is not { } previous
-            || previous.Line != caret.Line
-            || previous.Col != caret.Column;
+            || previous.Line != caretLine
+            || previous.Col != caretColumn;
     }
 
     /// <summary>キャレット移動をデバウンスして再描画要求へ変える。要求を投げるだけで自分では描かない。</summary>
