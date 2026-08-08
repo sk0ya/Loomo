@@ -109,6 +109,10 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _visuals.SetSearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
 
+    /// <summary>いまの設定で描き直す（プレビュー表示トグルの切替など、追従元の本文が変わらない更新）。
+    /// これが無いと複製は次の打鍵まで古い表示のままで、本体ペインと食い違って見える。</summary>
+    internal void Refresh() => _ = RenderAsync();
+
     private void OnSourceChanged(object? sender, EventArgs e)
     {
         _debounce.Stop();

@@ -29,6 +29,8 @@ public sealed record EditorSupportResult(
     string? MapFolder,
     string? PageKey,
     bool ShowSlide,
+    /// <summary>アウトライン（見出し一覧）の表示トグルをヘッダーへ出すか（Markdown プレビューのみ）。</summary>
+    bool ShowOutline,
     bool ShowOpenInBrowser,
     bool ShowExport,
     IEditorSupportVisualProvider? VisualProvider = null);
@@ -81,7 +83,7 @@ public sealed class EditorSupportPipeline
             return new EditorSupportResult(
                 visualProvider.DescribeTitle(filePath),
                 null, null, null, null, null,
-                ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false,
+                ShowSlide: false, ShowOutline: false, ShowOpenInBrowser: false, ShowExport: false,
                 VisualProvider: visualProvider);
         }
 
@@ -90,7 +92,7 @@ public sealed class EditorSupportPipeline
             return new EditorSupportResult(
                 uriProvider.DescribeTitle(filePath), null, null,
                 uriProvider.ResolveNavigationUri(filePath), null, null,
-                ShowSlide: false, ShowOpenInBrowser: true, ShowExport: false);
+                ShowSlide: false, ShowOutline: false, ShowOpenInBrowser: true, ShowExport: false);
         }
 
         if (provider is IEditorSupportHtmlProvider htmlProvider && filePath is not null)
@@ -118,6 +120,9 @@ public sealed class EditorSupportPipeline
 
             return new EditorSupportResult(title, html, body, null, mapFolder, pageKey,
                 ShowSlide: provider is MarkdownEditorSupport,
+                // アウトラインは通常ドキュメント表示のトグル。marp スライドでは効かないので出さない
+                // （出すと「押せるのに何も起きないボタン」になる）。
+                ShowOutline: provider is MarkdownEditorSupport && !MarkdownRenderer.IsMarpDocument(text),
                 ShowOpenInBrowser: true,
                 ShowExport: true);
         }
@@ -129,6 +134,6 @@ public sealed class EditorSupportPipeline
                 "## Editor Support\n\nこのファイルに対応するサポートはありません。",
                 fallbackTitle, context.PreviewTheme),
             null, null, null, null,
-            ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false);
+            ShowSlide: false, ShowOutline: false, ShowOpenInBrowser: false, ShowExport: false);
     }
 }

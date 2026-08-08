@@ -19,6 +19,7 @@ namespace sk0ya.Loomo.App.Services;
 internal sealed record EditorSupportFrame(
     string Title,
     bool ShowSlide,
+    bool ShowOutline,
     bool ShowOpenInBrowser,
     bool ShowExport,
     EditorSupportFrameContent Content);

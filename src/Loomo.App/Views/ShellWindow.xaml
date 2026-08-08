@@ -686,6 +686,14 @@
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M8,2 L14,8 M10,4 L5,9 L4,13 L8,12 L13,7 M8,12 L4,16" />
                         </ToggleButton>
+                        <!-- アウトライン（見出し一覧）：Markdown プレビューの右端に固定表示。見出しの無い文書では出ない -->
+                        <ToggleButton x:Name="EditorSupportOutlineToggle" DockPanel.Dock="Right"
+                                      Style="{StaticResource PaneToggle}" Width="30" Height="24"
+                                      ToolTip="アウトライン（見出し一覧）を表示（Markdownプレビューのみ／クリックでその見出しへ移動）"
+                                      Click="OnToggleEditorSupportOutline">
+                            <Path Style="{StaticResource PaneToggleIcon}"
+                                  Data="M3,4 H13 M3,7.5 H10 M3,11 H12 M3,14.5 H8" />
+                        </ToggleButton>
                         <!-- 発表モード（marp:true 文書のみ）：1枚ずつ表示。OFF は全スライドを縦並びで表示 -->
                         <ToggleButton x:Name="EditorSupportSlideToggle" DockPanel.Dock="Right"
                                       Style="{StaticResource PaneToggle}" Width="30" Height="24"

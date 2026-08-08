@@ -283,30 +283,42 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
         // marp 文書だけスライド表示。生 Markdown をページへ渡して marp-core が描く（本文は空のステージ）。
         return IsMarp(text)
             ? MarkdownPage.BuildPage("", title, theme, baseHref, PreviewMode.Marp, marpMarkdown: text, presentation: Presentation)
-            : MarkdownPage.BuildPage(MarkdownRenderer.RenderToBody(text), title, theme, baseHref, PreviewMode.Document);
+            : MarkdownPage.BuildPage(MarkdownRenderer.RenderToBody(text), title, theme, baseHref, PreviewMode.Document,
+                                     outline: Outline);
     }
 
     public string RenderBody(string filePath, string text)
         => IsMarp(text) ? text                                 // ページ側 marp-core が描画する生 Markdown
                         : MarkdownRenderer.RenderToBody(text);
 
-    // ページの体裁が変わる要素（対象ファイル・テーマ・base href・描画モード・発表/縦並び）を鍵にする。本文
-    // そのものは含めない＝同じファイルを同じモードで編集している間は本文差し替えで更新できる。モードや
-    // 発表/縦並びが切り替われば鍵が変わってフル再構築する（ページ構造が変わるため）。
+    // ページの体裁が変わる要素（対象ファイル・テーマ・base href・描画モード・発表/縦並び・アウトライン）を
+    // 鍵にする。本文そのものは含めない＝同じファイルを同じモードで編集している間は本文差し替えで更新できる。
+    // モードや発表/縦並び・アウトライン表示が切り替われば鍵が変わってフル再構築する（ページ構造が変わるため）。
+    //
+    // ただし<b>そのモードで効かない設定は鍵に入れない</b>。発表/縦並びは marp だけ、アウトラインは通常
+    // ドキュメントだけに効くので、無関係な側まで鍵へ入れるとページの中身が1バイトも変わらないのに
+    // フル再構築が走る——marp を発表中にアウトラインを押すとスライドが1枚目へ戻る、が実際にそれだった。
     public string PageContextKey(string filePath, string text)
-        => string.Join(
+    {
+        var marp = IsMarp(text);
+        return string.Join(
             "\n",
             filePath,
             _settings.Appearance.MarkdownPreviewTheme,
             MarkdownPreviewPaths.Resolve(_workspace.FolderForOrPrimary(filePath), filePath).BaseHref,
-            IsMarp(text) ? "marp" : "document",
-            Presentation);
+            marp ? "marp" : "document",
+            marp && Presentation,
+            !marp && Outline);
+    }
 
     // marp 文書か（フロントマターに marp:true）。これだけがスライド表示になる。非 marp は常に通常ドキュメント。
     private static bool IsMarp(string text) => MarkdownRenderer.IsMarpDocument(text);
 
     // 発表（1枚ずつ）／縦並び全表示のトグル。marp 文書にのみ効く。
     private bool Presentation => _settings.Appearance.MarkdownSlideMode;
+
+    // アウトライン（見出し一覧）の表示トグル。通常ドキュメント表示にのみ効く（marp は一覧にしない）。
+    private bool Outline => _settings.Appearance.MarkdownOutlineVisible;
 }
 
 /// <summary>

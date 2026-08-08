@@ -584,6 +584,92 @@ public class MarkdownPreviewPathsTests
 
         Assert.Contains("https://preview.loomo/docs/", key);
     }
+
+    // ── アウトライン（見出し一覧）の表示切替 ────────────────────────────────
+    //
+    // 一覧そのものはページ側 JS が本文の見出しから組む（本文差し替えのたびに組み直せる）ので、
+    // C# 側の責務は「ページへ ON/OFF を焼き込む」と「切替でページを組み直させる」の2つだけ。
+
+    [Fact]
+    public void MarkdownSupport_アウトライン設定はページへ焼き込まれる()
+    {
+        var settings = new LoomoSettings();
+        var support = new MarkdownEditorSupport(settings, new FakeWorkspaceService());
+        const string path = @"C:\work\README.md";
+
+        Assert.Contains("outlineEnabled = false", support.RenderHtml(path, "# 見出し"));
+
+        settings.Appearance.MarkdownOutlineVisible = true;
+        var html = support.RenderHtml(path, "# 見出し");
+        Assert.Contains("outlineEnabled = true", html);
+        Assert.Contains(".loomo-outline-panel", html);   // 幅・配色はページの CSS が持つ
+    }
+
+    /// <summary>アウトライン表示は<b>ページ構造</b>を変えるので鍵に含める。含めないと切替が
+    /// 本文差し替え（setBody）で流れてしまい、ボタンを押しても一覧が出ない／消えない。</summary>
+    [Fact]
+    public void MarkdownSupport_アウトラインの切替でページの鍵が変わる()
+    {
+        var settings = new LoomoSettings();
+        var support = new MarkdownEditorSupport(settings, new FakeWorkspaceService());
+        const string path = @"C:\work\README.md";
+
+        var off = support.PageContextKey(path, "# 見出し");
+        settings.Appearance.MarkdownOutlineVisible = true;
+
+        Assert.NotEqual(off, support.PageContextKey(path, "# 見出し"));
+    }
+
+    /// <summary>効かないモードの設定を鍵に入れると、ページの中身が1バイトも変わらないのに
+    /// フル再構築が走る（marp を発表中にアウトラインを押すとスライドが1枚目へ戻っていた）。</summary>
+    [Fact]
+    public void MarkdownSupport_効かないモードの設定はページの鍵を変えない()
+    {
+        var settings = new LoomoSettings();
+        var support = new MarkdownEditorSupport(settings, new FakeWorkspaceService());
+        const string path = @"C:\work\deck.md";
+        const string marp = "---\nmarp: true\n---\n\n# スライド";
+        const string plain = "# 見出し";
+
+        var marpBefore = support.PageContextKey(path, marp);
+        var plainBefore = support.PageContextKey(path, plain);
+
+        // アウトラインは通常ドキュメントだけに効く＝marp の鍵は動かない。
+        settings.Appearance.MarkdownOutlineVisible = true;
+        Assert.Equal(marpBefore, support.PageContextKey(path, marp));
+        Assert.NotEqual(plainBefore, support.PageContextKey(path, plain));
+
+        // 発表モードは marp だけに効く＝通常ドキュメントの鍵は動かない。
+        plainBefore = support.PageContextKey(path, plain);
+        settings.Appearance.MarkdownSlideMode = true;
+        Assert.NotEqual(marpBefore, support.PageContextKey(path, marp));
+        Assert.Equal(plainBefore, support.PageContextKey(path, plain));
+    }
+
+    [Fact]
+    public async Task Pipeline_アウトライントグルはMarkdownプレビューにだけ出す()
+    {
+        var settings = new LoomoSettings();
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(@"C:\work");
+        var pipeline = new EditorSupportPipeline();
+
+        var markdown = await pipeline.PrepareAsync(
+            new MarkdownEditorSupport(settings, workspace),
+            EditorSupportContext.For(workspace, @"C:\work\README.md", "# 見出し", null, "Dracula"));
+        var json = await pipeline.PrepareAsync(
+            new JsonEditorSupport(settings, new JsonSchemaValidator()),
+            EditorSupportContext.For(workspace, @"C:\work\package.json", "{}", null, "Dracula"));
+        // marp スライドではアウトラインを組まないので、押せるのに何も起きないボタンを出さない。
+        var deck = await pipeline.PrepareAsync(
+            new MarkdownEditorSupport(settings, workspace),
+            EditorSupportContext.For(
+                workspace, @"C:\work\deck.md", "---\nmarp: true\n---\n\n# スライド", null, "Dracula"));
+
+        Assert.True(markdown.ShowOutline);
+        Assert.False(json.ShowOutline);
+        Assert.False(deck.ShowOutline);
+    }
 }
 
 /// <summary>

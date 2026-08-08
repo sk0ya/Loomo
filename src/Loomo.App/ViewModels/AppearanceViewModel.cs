@@ -406,6 +406,17 @@ public sealed partial class AppearanceViewModel : ObservableObject
         PersistAppearance(message);
     }
 
+    /// <summary>
+    /// 設定オーバーレイ<b>の外</b>で変えた外観設定を保存する（EditorSupport ヘッダーのアウトライン／
+    /// 発表モードのトグル）。これが無いと値は共有シングルトンの中だけに残り、次に誰かが別の外観設定を
+    /// 保存したときに<b>ついでに</b>書かれる——つまり「再起動で戻ることもあるし残ることもある」になる。
+    /// 状態メッセージは出さない（オーバーレイを開いていないので誰も読まない）。
+    /// </summary>
+    public void SaveOutsideOverlay()
+    {
+        try { _store.Save(_settings); } catch { /* 保存失敗でも in-memory は反映済み */ }
+    }
+
     /// <summary>外観（エディタ/プレビュー/ターミナル）の変更を保存し、ホストへ即時反映を促す。</summary>
     private void PersistAppearance(string message)
     {

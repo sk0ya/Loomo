@@ -10,7 +10,8 @@ internal static class MarkdownPage
 {
     internal static string BuildPage(
         string body, string? title, string styleName, string? baseHref = null,
-        PreviewMode mode = PreviewMode.Document, string? marpMarkdown = null, bool presentation = false)
+        PreviewMode mode = PreviewMode.Document, string? marpMarkdown = null, bool presentation = false,
+        bool outline = false)
     {
         var t = title != null ? MarkdownRenderer.Encode(title) : "Preview";
         var css = PreviewCss(styleName);
@@ -23,6 +24,9 @@ internal static class MarkdownPage
         var modeJs = mode == PreviewMode.Marp ? "marp" : "document";
         // presentation=発表（1枚ずつ・キー送り）／既定は縦並びで全スライド表示（スクロール）。
         var presentationJs = presentation ? "true" : "false";
+        // アウトライン（見出し一覧）を出すか。実際の組み立ては本文の見出しからページ側 JS が行う
+        // （本文差し替えのたびに組み直せる＝C# が同じ一覧を二重に埋め込まなくてよい）。
+        var outlineJs = outline ? "true" : "false";
         var bodyClass = presentation ? " class=\"loomo-present\""
                       : mode == PreviewMode.Marp ? " class=\"loomo-vertical\""
                       : "";
@@ -193,6 +197,82 @@ internal static class MarkdownPage
                     document.head.appendChild(s);
                 }
 
+                // --- アウトライン（見出し一覧）：右端に固定表示し、クリックでその見出しへ飛ぶ ---
+                // 一覧は<b>本文の見出しから組む</b>。本文差し替え（applyBody）で body.innerHTML ごと
+                // 消えるので、描画のたびに組み直す（mermaid と同じ扱い）。見出しが1つも無い文書では
+                // 出さない＝幅も空けない（ON のままでも邪魔にならない）。
+                const outlineEnabled = {{outlineJs}};
+                let outlineEntries = [];   // { a, el } の並び（本文順）
+                let outlineScheduled = false;
+
+                function buildOutline() {
+                    outlineEntries = [];
+                    const previous = document.querySelector('.loomo-outline-panel');
+                    // 編集中は本文差し替えのたびにここへ来る。一覧自体のスクロール位置は引き継ぐ
+                    // ——引き継がないと、長い文書で一覧を下へ送ってから打鍵するたび先頭へ戻ってしまう。
+                    const keptScroll = previous ? previous.scrollTop : 0;
+                    if (previous) previous.remove();
+                    // marp（スライド）は見出しがスライドの中身なので一覧にしない。
+                    const headings = outlineEnabled && !isMarp
+                        ? Array.prototype.slice.call(
+                            document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]'))
+                        : [];
+                    if (!headings.length) {
+                        document.body.classList.remove('loomo-outline');
+                        return;
+                    }
+                    const levels = headings.map(h => Number(h.tagName.slice(1)));
+                    const minLevel = Math.min.apply(null, levels);
+                    const panel = document.createElement('aside');
+                    panel.className = 'loomo-outline-panel';
+                    const heading = document.createElement('div');
+                    heading.className = 'loomo-outline-title';
+                    heading.textContent = 'アウトライン';
+                    panel.appendChild(heading);
+                    const nav = document.createElement('nav');
+                    for (let i = 0; i < headings.length; i++) {
+                        const h = headings[i];
+                        const a = document.createElement('a');
+                        a.href = '#' + h.id;                     // クリックは本文リンクと同じ経路で自前スクロール
+                        a.className = 'outline-h' + levels[i];
+                        a.style.paddingLeft = (12 + (levels[i] - minLevel) * 12) + 'px';
+                        // 見出しの中にあるパーマリンク（#）を落とした文字だけを拾う。
+                        const clone = h.cloneNode(true);
+                        const anchor = clone.querySelector('.heading-anchor');
+                        if (anchor) anchor.remove();
+                        a.textContent = (clone.textContent || '').trim();
+                        a.title = a.textContent;
+                        // 飛び先は href の解決（＝同じ id の<b>最初</b>の要素）ではなく、この項目が指す
+                        // 見出し要素そのもの。見出し id は正規化しただけで一意化されていないので、
+                        // 同名の見出しが2つある文書（「## まとめ」が複数など）だと href では常に
+                        // 1つ目へ飛んでしまい、後ろの節へは一覧から辿れなくなる。
+                        a.addEventListener('click', ev => {
+                            ev.preventDefault();
+                            ev.stopPropagation();   // 本文リンクの振り分け（ホストへ postMessage）へ流さない
+                            h.scrollIntoView();
+                        });
+                        nav.appendChild(a);
+                        outlineEntries.push({ a, el: h });
+                    }
+                    panel.appendChild(nav);
+                    document.body.appendChild(panel);
+                    panel.scrollTop = keptScroll;
+                    document.body.classList.add('loomo-outline');
+                    updateOutlineActive();
+                }
+
+                // いま画面の上端にある見出しを強調する（本文をスクロールした先が一覧上で分かる）。
+                function updateOutlineActive() {
+                    if (!outlineEntries.length) return;
+                    let active = 0;
+                    for (let i = 0; i < outlineEntries.length; i++) {
+                        if (outlineEntries[i].el.getBoundingClientRect().top <= 80) active = i;
+                        else break;
+                    }
+                    for (let i = 0; i < outlineEntries.length; i++)
+                        outlineEntries[i].a.classList.toggle('active', i === active);
+                }
+
                 // フル再ナビゲートせず本文だけ差し替える（編集ごとのページ再読込＝チカチカを防ぐ）。
                 // 高さが変わるのでスクロールを最後の比率へ貼り直し、mermaid を描き直す。
                 function applyBody(html) {
@@ -208,6 +288,7 @@ internal static class MarkdownPage
                     lightboxImg = null;
                     document.documentElement.style.overflow = '';
                     renderMermaid();
+                    buildOutline();   // 一覧も新しい本文の見出しで組み直す（高さ比較より前＝比較が最終レイアウトを見る）
                     if (document.documentElement.scrollHeight === prevScrollHeight)
                         window.scrollTo(0, prevScrollY);
                     else
@@ -260,6 +341,7 @@ internal static class MarkdownPage
                         else updateIndicator();
                     } else {
                         renderMermaid();
+                        buildOutline();
                     }
                 }
                 if (document.readyState === 'loading')
@@ -299,6 +381,14 @@ internal static class MarkdownPage
                             ratio: lastRatio
                         });
                     });
+                }, { passive: true });
+
+                // アウトラインの強調はホスト起因のスクロール（suppressScrollMessage 中）でも更新したいので、
+                // 上のエコー抑止とは別に間引く。
+                window.addEventListener('scroll', () => {
+                    if (!outlineEnabled || outlineScheduled) return;
+                    outlineScheduled = true;
+                    requestAnimationFrame(() => { outlineScheduled = false; updateOutlineActive(); });
                 }, { passive: true });
 
                 // --- クリップボードへコピー（https://page.loomo は secure context なので Clipboard API 可。失敗時は退避） ---
@@ -421,7 +511,10 @@ internal static class MarkdownPage
                 // おらず到達不能ページに飛んでしまう（フラグメントは常に「今の文書」宛のはずが base 起点で
                 // 解決されてしまう）。location.hash の代入は base の影響を受けないため安全に使える。
                 function scrollToFragment(href) {
-                    const id = decodeURIComponent(href.slice(1));
+                    let id = href.slice(1);
+                    // 見出し id は生の文字（% を含みうる）なので復号に失敗することがある。例外を投げると
+                    // preventDefault 済みのクリックが何も起こさずに終わるので、失敗したら生のまま使う。
+                    try { id = decodeURIComponent(id); } catch (e) {}
                     if (!id) return;
                     const target = document.getElementById(id) || document.getElementsByName(id)[0];
                     if (target) target.scrollIntoView();
@@ -557,7 +650,11 @@ internal static class MarkdownPage
     {
         return $$"""
             * { box-sizing: border-box; margin: 0; padding: 0; }
-            html { color-scheme: {{ColorScheme(bg)}}; scrollbar-color: {{border}} transparent; scrollbar-width: thin; }
+            html {
+                color-scheme: {{ColorScheme(bg)}}; scrollbar-color: {{border}} transparent; scrollbar-width: thin;
+                /* アウトラインの幅。ペインは狭いことが多いので画面幅にも上限を掛ける */
+                --outline-w: min(240px, 38vw);
+            }
             ::-webkit-scrollbar { width: 12px; height: 12px; }
             ::-webkit-scrollbar-track { background: transparent; }
             ::-webkit-scrollbar-thumb {
@@ -694,6 +791,34 @@ internal static class MarkdownPage
             nav.toc li { margin: 2px 0; }
             nav.toc a { color: {{fg}}; }
             nav.toc a:hover { color: {{link}}; }
+
+            /* アウトライン（見出し一覧）：ヘッダーのトグルで表示。ページ右端に固定し、本文の右余白を空ける。
+               見出しの無い文書では JS が body の class を付けない＝余白も空かない。 */
+            body.loomo-outline { padding-right: calc(var(--outline-w) + 24px); }
+            .loomo-outline-panel {
+                position: fixed; top: 0; right: 0; bottom: 0; width: var(--outline-w);
+                background: {{panel}}; border-left: 1px solid {{border}};
+                overflow-y: auto; padding: 12px 0 24px; font-size: 12px; z-index: 5;
+            }
+            .loomo-outline-title {
+                color: {{muted}}; font-size: 11px; letter-spacing: .08em;
+                padding: 0 12px 6px; border-bottom: 1px solid {{border}}; margin-bottom: 6px;
+            }
+            .loomo-outline-panel nav { display: flex; flex-direction: column; }
+            .loomo-outline-panel a {
+                color: {{fg}}; padding: 3px 12px; line-height: 1.4; text-decoration: none;
+                border-left: 2px solid transparent;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }
+            .loomo-outline-panel a:hover { color: {{link}}; background: {{bg}}; text-decoration: none; }
+            .loomo-outline-panel a.active { color: {{link}}; border-left-color: {{link}}; }
+            .loomo-outline-panel a.outline-h1 { font-weight: 600; }
+            /* PDF エクスポート（PrintToPdfAsync＝表示のまま印刷）には持ち込まない。position:fixed は
+               全ページに焼き付き、右余白のぶん本文が細く潰れる。 */
+            @media print {
+                body.loomo-outline { padding-right: 24px; }
+                .loomo-outline-panel { display: none; }
+            }
 
             /* 画像クリックのライトボックス（拡大表示・ホイールで拡大縮小・ドラッグで移動） */
             .loomo-lightbox {

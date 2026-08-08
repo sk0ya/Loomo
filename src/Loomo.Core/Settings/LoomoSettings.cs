@@ -212,6 +212,13 @@ public sealed class AppearanceSettings
     /// </summary>
     public bool MarkdownSlideMode { get; set; }
 
+    /// <summary>
+    /// Markdown プレビューに<b>アウトライン（見出し一覧）</b>を出すか。既定 OFF。ページ右端に固定表示し、
+    /// 項目クリックでその見出しへ飛ぶ。見出しが無い文書では ON でも出さない（幅を空けない）。
+    /// marp スライド表示（<see cref="MarkdownSlideMode"/> の対象文書）には効かない。
+    /// </summary>
+    public bool MarkdownOutlineVisible { get; set; }
+
     /// <summary>ターミナルの配色テーマ（背景/文字色のプリセット）。<c>Dark / Light / Dracula / Nord / SolarizedDark</c>。</summary>
     public string TerminalTheme { get; set; } = "Dark";
 

@@ -148,7 +148,8 @@ internal sealed class EditorSupportRenderFlow
         }
         _host.ClearFullPageRequest();
         apply(new EditorSupportFrame(
-            content.Title, content.ShowSlide, content.ShowOpenInBrowser, content.ShowExport, body));
+            content.Title, content.ShowSlide, content.ShowOutline,
+            content.ShowOpenInBrowser, content.ShowExport, body));
     }
 
     private async Task RenderCodeAsync(
@@ -277,7 +278,8 @@ internal sealed class EditorSupportRenderFlow
     }
 
     private static EditorSupportFrame CodeFrame(string title, EditorSupportFrameContent content)
-        => new(title, ShowSlide: false, ShowOpenInBrowser: false, ShowExport: false, content);
+        => new(title, ShowSlide: false, ShowOutline: false,
+               ShowOpenInBrowser: false, ShowExport: false, content);
 
     private static int CurrentMemberLine1(
         IReadOnlyList<OutlineNode> roots, EditorSupportRenderRequest request)

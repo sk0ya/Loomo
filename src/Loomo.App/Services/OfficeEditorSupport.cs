@@ -13,7 +13,7 @@ namespace sk0ya.Loomo.App.Services;
 
 /// <summary>
 /// Office 系の読み取り専用プレビューで共有する体裁。HTML 提供者（Word）はフル HTML 文書の組み立てを
-/// <see cref="MarkdownPage.BuildPage(string, string?, string, string?, PreviewMode, string?, bool)"/> に相乗り
+/// <see cref="MarkdownPage.BuildPage"/> に相乗り
 /// させ（テーマ別 CSS・スクロールバーが得られる）、本文側だけに効く小さな <c>&lt;style&gt;</c> を差し込む。
 /// </summary>
 internal static class OfficePreview

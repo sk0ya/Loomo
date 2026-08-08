@@ -95,7 +95,23 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     }
     private void OnToggleEditorSupportSlideMode(object sender, RoutedEventArgs e) {
         _settings.Appearance.MarkdownSlideMode = EditorSupportSlideToggle.IsChecked == true;
+        ApplyEditorSupportPreviewToggle();
+    }
+    /// <summary>アウトライン（見出し一覧）の表示切替。ページ構造が変わるので描き直す
+    /// （鍵に入っているので本文差し替えではなくフル再構築になる）。</summary>
+    private void OnToggleEditorSupportOutline(object sender, RoutedEventArgs e) {
+        _settings.Appearance.MarkdownOutlineVisible = EditorSupportOutlineToggle.IsChecked == true;
+        ApplyEditorSupportPreviewToggle();
+    }
+    /// <summary>ヘッダーのプレビュー表示トグル（アウトライン・発表モード）を反映する共通処理。
+    /// <b>保存まで含める</b>のがここの要点——設定を書き換えるだけでは共有シングルトンの中にしか残らず、
+    /// 次に誰かが別の外観設定を保存したときについでに書かれる（＝再起動で戻るか残るかが運任せになる）。
+    /// 切り離した複製ウィンドウも同じ設定で描いているので一緒に描き直す（本体と食い違わせない）。</summary>
+    private void ApplyEditorSupportPreviewToggle() {
+        _vm.Appearance.SaveOutsideOverlay();
         InvalidateEditorSupport();
+        foreach (var mirror in Detached.AllItems.Select(i => i.Content).OfType<DetachedEditorSupportView>())
+            mirror.Refresh();
     }
     private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e) {
         var source = _editorSupport.Source;
@@ -116,10 +132,16 @@ public partial class ShellWindow : IEditorSupportRenderHost {
             return; // ビジュアル提供者（CSV/TSV グリッド等）や対応の無いファイルは開ける HTML が無い。
         await OpenEditorSupportSnapshotInBrowserAsync(html, result.MapFolder, result.Title);
     }
-    private void UpdateEditorSupportHeaderButtons(bool showSlide, bool showOpenInBrowser, bool showExport) {
+    private void UpdateEditorSupportHeaderButtons(
+        bool showSlide, bool showOutline, bool showOpenInBrowser, bool showExport) {
         EditorSupportSlideToggle.Visibility = showSlide ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportOutlineToggle.Visibility = showOutline ? Visibility.Visible : Visibility.Collapsed;
         EditorSupportOpenInBrowserButton.Visibility = showOpenInBrowser ? Visibility.Visible : Visibility.Collapsed;
         EditorSupportExportButton.Visibility = showExport ? Visibility.Visible : Visibility.Collapsed;
+        // 押した状態は設定が真実（アプリ再起動後も持ち越す）。トグルの見た目は毎フレームここで設定へ揃える
+        // ——起動直後は設定が ON でもボタンだけ OFF に見える、という食い違いを起こさないため。
+        EditorSupportSlideToggle.IsChecked = _settings.Appearance.MarkdownSlideMode;
+        EditorSupportOutlineToggle.IsChecked = _settings.Appearance.MarkdownOutlineVisible;
     }
     private void UpdateEditorSupportPinToggle() {
         EditorSupportPinToggle.IsChecked = _editorSupport.IsPinned;
@@ -164,7 +186,8 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期・途中 return なし。</b></summary>
     private void ApplyEditorSupportFrame(EditorSupportFrame frame) {
         var view = _editorSupport.WebView.View;
-        UpdateEditorSupportHeaderButtons(frame.ShowSlide, frame.ShowOpenInBrowser, frame.ShowExport);
+        UpdateEditorSupportHeaderButtons(
+            frame.ShowSlide, frame.ShowOutline, frame.ShowOpenInBrowser, frame.ShowExport);
         EditorSupportTitle.Text = frame.Title;
         switch (frame.Content) {
             case EditorSupportFrameContent.VisualContent visual:

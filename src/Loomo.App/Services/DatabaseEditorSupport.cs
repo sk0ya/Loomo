@@ -13,7 +13,7 @@ namespace sk0ya.Loomo.App.Services;
 
 /// <summary>
 /// テーブル形式（SQLite・Parquet）の読み取り専用プレビューで共有する体裁とテーブル HTML の組み立て。
-/// Office 系（<see cref="OfficePreview"/>）と同じく本文を <see cref="MarkdownPage.BuildPage(string, string?, string)"/>
+/// Office 系（<see cref="OfficePreview"/>）と同じく本文を <see cref="MarkdownPage.BuildPage"/>
 /// へ相乗りさせ（テーマ別 CSS・スクロールバーが得られる）、本文側だけに効く小さな <c>&lt;style&gt;</c> を差し込む。
 /// エラーページは <see cref="OfficePreview.ErrorPage"/> をそのまま流用する。
 /// </summary>
