@@ -48,17 +48,20 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         RecordTrailPreview(sourceTab);
     }
     private async void OnEditorSupportBack(object sender, RoutedEventArgs e) => await EditorSupportGoBackAsync();
+    /// <summary>マウスの戻る/進むボタン。ウィンドウ全体で受けるので、ポインタ下のペインを見て配る
+    /// （判定は <see cref="MouseNavigationPolicy"/>）。宛先を見ずに EditorSupport へ流していたころは、
+    /// ブラウザペインの上で押した「戻る」もここで Handled になって効かなかった。</summary>
     private void OnShellPreviewMouseNavigate(object sender, MouseButtonEventArgs e) {
-        if (e.ChangedButton == MouseButton.XButton1) {
-            e.Handled = true;
-            _ = EditorSupportGoBackAsync();
-        } else if (e.ChangedButton == MouseButton.XButton2) {
-            e.Handled = true;
-            _ = EditorSupportGoForwardAsync();
-        }
+        var pane = e.OriginalSource is DependencyObject source ? FindPaneOf(source) : null;
+        if (MouseNavigationPolicy.Resolve(e.ChangedButton, pane) is not { } command)
+            return;
+        e.Handled = true;
+        if (command.Target == MouseNavigationTarget.Browser)
+            BrowserNavigateHistory(command.Back);
+        else
+            _ = EditorSupportNavigateHistoryAsync(command.Back);
     }
     private Task EditorSupportGoBackAsync() => EditorSupportNavigateHistoryAsync(back: true);
-    private Task EditorSupportGoForwardAsync() => EditorSupportNavigateHistoryAsync(back: false);
     private async Task EditorSupportNavigateHistoryAsync(bool back) {
         await _editorSupport.NavigateHistoryAsync(back, _editorTabs, tab => ActivateEditorTab(tab.Id), path => OpenFileInNewEditorTabAsync(path));
         UpdateEditorSupportNavAffordances();

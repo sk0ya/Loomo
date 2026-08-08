@@ -1,15 +1,19 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ブラウザペイン（タブ管理・ナビゲーション・WebView2 遅延実体化）</summary>
 public partial class ShellWindow {
-    private void OnBrowserBack(object sender, RoutedEventArgs e) {
-        var view = ActiveBrowserView;
-        if (view?.CanGoBack == true)
-            view.GoBack();
-    }
-    private void OnBrowserForward(object sender, RoutedEventArgs e) {
-        var view = ActiveBrowserView;
-        if (view?.CanGoForward == true)
+    private void OnBrowserBack(object sender, RoutedEventArgs e) => BrowserNavigateHistory(back: true);
+    private void OnBrowserForward(object sender, RoutedEventArgs e) => BrowserNavigateHistory(back: false);
+    /// <summary>アクティブタブの履歴を1つ進退する。ツールバーのボタンと
+    /// マウスの戻る/進むボタン（<see cref="OnShellPreviewMouseNavigate"/>）の共通の口。</summary>
+    private void BrowserNavigateHistory(bool back) {
+        if (ActiveBrowserView is not { } view)
+            return;
+        if (back) {
+            if (view.CanGoBack)
+                view.GoBack();
+        } else if (view.CanGoForward) {
             view.GoForward();
+        }
     }
     private void OnBrowserReload(object sender, RoutedEventArgs e)
         => ActiveBrowserView?.CoreWebView2?.Reload();
