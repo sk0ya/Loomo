@@ -274,8 +274,6 @@ public partial class ShellWindow {
         _lspWorkspace.ApplyEditRequested -= OnLspServerApplyEditRequested;
         _workspace.FoldersChanged -= OnProblemWorkspaceFoldersChanged;
         _detached?.CloseAll();
-        foreach (var preview in _browserLivePreviews.Values)
-            preview.Dispose();
         _editorSupport.WebView.Dispose();
         _editorSupport.Visuals.Dispose();
         foreach (var workspace in _editorWorkspaces.Values)

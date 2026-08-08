@@ -19,9 +19,10 @@ public static class StageThumbnailPlanner
     public const double VirtualWidth = 800;
 
     /// <summary>
-    /// ライブ VisualBrush ではなくスナップショットを使うペイン。
-    /// Browser は同じ URL を表示する袖専用 WebView2、EditorSupport は他ペインと同じ
-    /// VisualBrush を使うため、現在は該当なし。
+    /// ライブ VisualBrush ではなくスナップショットを使うペイン。WebView2 を抱える Browser /
+    /// EditorSupport も他ペインと同じ VisualBrush で縮小表示できるようになったため、現在は該当なし。
+    /// （Browser は一時期、袖専用 WebView2 に同じ URL を読ませていた。それは縮小表示ではなく
+    /// 二重読み込みで、同じページの音声が二重に鳴っていたのでやめた。）
     /// </summary>
     public static bool UsesSnapshotThumbnail(PaneKind kind)
         => false;
