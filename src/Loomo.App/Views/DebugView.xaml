@@ -104,20 +104,23 @@
             <TabItem x:Name="ExecutionTab" Style="{StaticResource DebugTabItem}" Header="実行">
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="220" MinWidth="150" />
-                        <ColumnDefinition Width="6" />
+                        <ColumnDefinition x:Name="ProjectColumn" Width="220" MinWidth="28" />
+                        <ColumnDefinition x:Name="ProjectSplitterColumn" Width="6" />
                         <ColumnDefinition Width="*" MinWidth="260" />
                     </Grid.ColumnDefinitions>
 
                     <Border Grid.Column="0" Background="{DynamicResource Bg}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1">
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="プロジェクト" Foreground="{DynamicResource FgDim}"
-                                       FontSize="{DynamicResource Fs11}" Margin="6,6,6,3" />
-                            <TextBlock DockPanel.Dock="Top" Text="クリック／Enter／ダブルクリックでデバッグ開始"
-                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
-                                       TextWrapping="Wrap" Margin="6,0,6,5" />
-                            <Grid>
+                        <Grid>
+                            <Grid x:Name="ProjectPaneContent">
+                                <DockPanel>
+                                    <!-- 見出し行。右端の開閉ボタンと重ならないよう余白を確保する。 -->
+                                    <TextBlock DockPanel.Dock="Top" Text="プロジェクト" Foreground="{DynamicResource FgDim}"
+                                               FontSize="{DynamicResource Fs11}" Margin="6,6,30,3" />
+                                    <TextBlock DockPanel.Dock="Top" Text="クリック／Enter／ダブルクリックでデバッグ開始"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
+                                               TextWrapping="Wrap" Margin="6,0,6,5" />
+                                    <Grid>
                                 <ListBox ItemsSource="{Binding Profiles.AvailableProjects}"
                                          SelectedItem="{Binding Profiles.SelectedProject, Mode=TwoWay}"
                                          Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Fg}"
@@ -173,11 +176,25 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
+                                    </Grid>
+                                </DockPanel>
                             </Grid>
-                        </DockPanel>
+                            <!-- 折りたたみ中も、何のペインか分かるよう見出しを残す。 -->
+                            <TextBlock x:Name="ProjectPaneRail" Text="プロジェクト" Visibility="Collapsed"
+                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                <TextBlock.LayoutTransform>
+                                    <RotateTransform Angle="90" />
+                                </TextBlock.LayoutTransform>
+                            </TextBlock>
+                            <Button x:Name="ProjectPaneToggle" Content="‹" Style="{StaticResource SecondaryButton}"
+                                    Width="24" Height="22" Padding="0" HorizontalAlignment="Right"
+                                    VerticalAlignment="Top" Margin="0,4,3,0" Panel.ZIndex="2"
+                                    Click="OnProjectPaneToggleClick" ToolTip="プロジェクト領域を折りたたむ" />
+                        </Grid>
                     </Border>
 
-                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    <GridSplitter x:Name="ProjectSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
                     <Border Grid.Column="2" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"

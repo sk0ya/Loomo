@@ -23,6 +23,8 @@ public partial class DebugView : UserControl
 
     private INotifyCollectionChanged? _observed;
     private DebugViewModel? _vm;
+    private bool _projectPaneExpanded = true;
+    private double _expandedProjectPaneWidth = 220;
 
     public DebugView()
     {
@@ -137,6 +139,34 @@ public partial class DebugView : UserControl
         {
             vm.Launch.RunProjectCommand.Execute(project);
             e.Handled = true;
+        }
+    }
+
+    private void OnProjectPaneToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (_projectPaneExpanded)
+        {
+            if (ProjectColumn.ActualWidth > 40)
+                _expandedProjectPaneWidth = ProjectColumn.ActualWidth;
+            _projectPaneExpanded = false;
+            ProjectPaneContent.Visibility = Visibility.Collapsed;
+            ProjectSplitter.Visibility = Visibility.Collapsed;
+            ProjectSplitterColumn.Width = new GridLength(0);
+            ProjectColumn.Width = new GridLength(28);
+            ProjectPaneRail.Visibility = Visibility.Visible;
+            ProjectPaneToggle.Content = "›";
+            ProjectPaneToggle.ToolTip = "プロジェクト領域を展開";
+        }
+        else
+        {
+            _projectPaneExpanded = true;
+            ProjectPaneContent.Visibility = Visibility.Visible;
+            ProjectSplitter.Visibility = Visibility.Visible;
+            ProjectSplitterColumn.Width = new GridLength(6);
+            ProjectColumn.Width = new GridLength(Math.Max(170, _expandedProjectPaneWidth));
+            ProjectPaneRail.Visibility = Visibility.Collapsed;
+            ProjectPaneToggle.Content = "‹";
+            ProjectPaneToggle.ToolTip = "プロジェクト領域を折りたたむ";
         }
     }
 
