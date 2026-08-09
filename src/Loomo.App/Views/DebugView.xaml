@@ -61,48 +61,166 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 実行タブのプロジェクト一覧。選択状態を主役にし、行の右端にだけ実行ボタンを出す。 -->
+        <Style x:Key="ProjectTabItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="2,1" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Panel}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
-    <!-- ヘッダ（IDE ラベル・状態・デバッグツールバー）はホスト（ペインヘッダ）側が出す。タブより上には
-         何も置かず、操作はヘッダー、構成（起動構成・例外・アタッチ）は先頭の「構成」タブに収める。
-         大きなタブはサブビューに分割（構成/変数/テスト/ブレークポイント/イミディエイト）。
-         DataContext は DebugViewModel（ファサード）。 -->
+    <!-- ヘッダ（IDE ラベル・状態・デバッグツールバー）はホスト（ペインヘッダ）側が出す。日常の起動は
+         「実行」タブ、停止中の変数・スレッド等は「デバッグ」タブ、詳細設定は「構成」タブにまとめる。 -->
     <DockPanel>
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
                     Margin="6,0,6,6" SelectedIndex="0" SelectionChanged="OnDebugTabChanged">
 
-            <!-- 0 構成 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
-                <v:DebugConfigView />
+            <!-- 0 実行：プロジェクト一覧と直近の出力を同じ画面に置く。 -->
+            <TabItem x:Name="ExecutionTab" Style="{StaticResource DebugTabItem}" Header="実行">
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220" MinWidth="150" />
+                        <ColumnDefinition Width="6" />
+                        <ColumnDefinition Width="*" MinWidth="260" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="{DynamicResource Bg}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="プロジェクト" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" Margin="6,6,6,3" />
+                            <TextBlock DockPanel.Dock="Top" Text="クリック／Enter／ダブルクリックでデバッグ開始"
+                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
+                                       TextWrapping="Wrap" Margin="6,0,6,5" />
+                            <Grid>
+                                <ListBox ItemsSource="{Binding Profiles.AvailableProjects}"
+                                         SelectedItem="{Binding Profiles.SelectedProject, Mode=TwoWay}"
+                                         Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Fg}"
+                                         ItemContainerStyle="{StaticResource ProjectTabItem}"
+                                         HorizontalContentAlignment="Stretch"
+                                         MouseDoubleClick="OnProjectDoubleClick" KeyDown="OnProjectKeyDown"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding DisplayName}" FontSize="{DynamicResource Fs12}"
+                                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding FullPath}" />
+                                                <Button Grid.Column="1" Content="▶" Width="22" Height="20" Padding="0"
+                                                        Margin="4,0,0,0" VerticalAlignment="Center"
+                                                        FontSize="{DynamicResource Fs10}"
+                                                        Command="{Binding DataContext.Launch.RunProjectCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}" ToolTip="このプロジェクトをデバッグ実行">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock Text="C# プロジェクトが見つかりません" Foreground="{DynamicResource FgDim}"
+                                           FontSize="{DynamicResource Fs11}" TextAlignment="Center" TextWrapping="Wrap"
+                                           Margin="10,0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Profiles.AvailableProjects.Count}" Value="1">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </DockPanel>
+                    </Border>
+
+                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                  Background="{DynamicResource Border}" />
+
+                    <Border Grid.Column="2" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="4,2,4,2">
+                                <Button DockPanel.Dock="Left" Content="▶ 実行" Style="{StaticResource FlatButton}"
+                                        Height="22" Padding="9,0" Margin="0,2,8,2"
+                                        Command="{Binding Launch.RunSelectedProjectCommand}" ToolTip="選択中のプロジェクトをデバッグ実行" />
+                                <Button DockPanel.Dock="Right" Content="クリア" Style="{StaticResource SecondaryButton}"
+                                        Height="22" Padding="8,0" Margin="0,2,0,2" Click="OnClearOutputClick" />
+                                <TextBlock DockPanel.Dock="Left" Text="出力" Foreground="{DynamicResource FgDim}"
+                                           FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <RichTextBox x:Name="ConsoleBox" IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                                         IsDocumentEnabled="True" Background="Transparent" Padding="6,4"
+                                         Foreground="{DynamicResource Fg}" BorderThickness="0"
+                                         FontFamily="Consolas" FontSize="{DynamicResource Fs12}"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <RichTextBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="コピー" Command="Copy" />
+                                        <MenuItem Header="すべて選択" Command="SelectAll" />
+                                    </ContextMenu>
+                                </RichTextBox.ContextMenu>
+                            </RichTextBox>
+                        </DockPanel>
+                    </Border>
+                </Grid>
             </TabItem>
 
-            <!-- 1 出力：テキスト選択できる読み取り専用 RichTextBox（行は Category で色分け）。
-                 ドキュメントの構築・追記・末尾スクロールはコードビハインド（Output コレクションを写す）。 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="出力">
-                <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                        BorderThickness="1" Margin="0,4,0,0">
-                    <RichTextBox x:Name="ConsoleBox" IsReadOnly="True" IsReadOnlyCaretVisible="True"
-                                 IsDocumentEnabled="True" Background="Transparent" Padding="6,4"
-                                 Foreground="{DynamicResource Fg}" BorderThickness="0"
-                                 FontFamily="Consolas" FontSize="{DynamicResource Fs12}"
-                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <RichTextBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="コピー" Command="Copy" />
-                                <MenuItem Header="すべて選択" Command="SelectAll" />
-                            </ContextMenu>
-                        </RichTextBox.ContextMenu>
-                    </RichTextBox>
-                </Border>
-            </TabItem>
-
-            <!-- 2 問題：ビルド系コマンド出力から抽出したエラー/警告。デバッグセッション非依存。 -->
+            <!-- 1 問題：ビルド系コマンド出力から抽出したエラー/警告。デバッグセッション非依存。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="問題">
                 <v:DebugProblemsView DataContext="{Binding Problems}" />
             </TabItem>
 
-            <!-- 3 変数（＋ウォッチ） -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="変数">
+            <!-- 2 デバッグ検査：セッション中だけ表示し、変数・スレッド等の詳細タブをここへまとめる。 -->
+            <TabItem x:Name="DebugTabItem" Style="{StaticResource DebugTabItem}" Header="デバッグ"
+                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                <TabControl x:Name="InspectionTabs" Style="{StaticResource DebugTabControl}" SelectedIndex="0">
+
+            <!-- 変数（＋ウォッチ） -->
+            <TabItem x:Name="VariablesTabItem" Style="{StaticResource DebugTabItem}" Header="変数">
                 <v:DebugVariablesView DataContext="{Binding Inspection}" />
             </TabItem>
 
@@ -179,12 +297,7 @@
                 </Grid>
             </TabItem>
 
-            <!-- 6 テスト -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="テスト">
-                <v:DebugTestsView DataContext="{Binding Tests}" />
-            </TabItem>
-
-            <!-- 7 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
+            <!-- 6 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="スレッド">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.Threads}" SelectedItem="{Binding Inspection.SelectedThread, Mode=TwoWay}"
@@ -260,6 +373,19 @@
                                FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding Inspection.HasModules, Converter={StaticResource InverseBoolToVis}}" />
                 </Grid>
+            </TabItem>
+
+                </TabControl>
+            </TabItem>
+
+            <!-- 3 テスト -->
+            <TabItem x:Name="TestsTabItem" Style="{StaticResource DebugTabItem}" Header="テスト">
+                <v:DebugTestsView DataContext="{Binding Tests}" />
+            </TabItem>
+
+            <!-- 4 構成（起動構成・例外・アタッチ）。普段の実行は「実行」タブから行う。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
+                <v:DebugConfigView />
             </TabItem>
         </TabControl>
     </DockPanel>

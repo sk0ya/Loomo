@@ -71,6 +71,8 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
         StepIntoCommand.NotifyCanExecuteChanged();
         StepOutCommand.NotifyCanExecuteChanged();
         BuildTargetCommand.NotifyCanExecuteChanged();
+        RunProjectCommand.NotifyCanExecuteChanged();
+        RunSelectedProjectCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnBreakOnAllExceptionsChanged(bool value) => _ = ApplyExceptionFiltersAsync();
@@ -132,7 +134,24 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
 
     /// <summary>デバッグを開始する。既存セッションは止めず、常に<b>新しいセッション</b>を作って始める。</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private async Task StartAsync()
+    private Task StartAsync() => StartCoreAsync(null);
+
+    /// <summary>「実行」タブのプロジェクト行から起動する。構成に保存された実行対象を一時的に上書きし、
+    /// 行で選んだプロジェクトの出力 DLL を起動する。</summary>
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private Task RunProject(DebugProjectDiscovery.ProjectEntry? project)
+    {
+        if (project is null) return Task.CompletedTask;
+        _profiles.SelectedProject = project;
+        return StartCoreAsync(ReferenceEquals(project, DebugProjectDiscovery.AutoDetect)
+            ? null
+            : project.FullPath);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private Task RunSelectedProject() => RunProject(_profiles.SelectedProject);
+
+    private async Task StartCoreAsync(string? projectOverride)
     {
         _manager.RequestOutput();  // 押下時に即「出力」へ
         _manager.Refresh();
@@ -149,7 +168,7 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
         await _manager.WaitForAllIdleAsync();
 
         var program = await DebugTargetResolver.ResolveProgramAsync(
-            _workspace, _terminal, _manager, TargetProgram, BuildFirst, _profiles.SelectedProjectPath);
+            _workspace, _terminal, _manager, TargetProgram, BuildFirst, projectOverride ?? _profiles.SelectedProjectPath);
         if (program is null) return;
 
         var session = _manager.CreateSession(BuildDisplayName(program), DebugSessionKind.Launch);

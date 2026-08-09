@@ -10,17 +10,16 @@ using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>IDE（デバッグ）ペインのシェル。タブ（構成/出力/問題/変数/自動/コールスタック/テスト/スレッド/
-/// ブレークポイント/イミディエイト/モジュール）を束ねる。大きなタブはサブビューに分割し、ここは出力コンソールの
+/// <summary>IDE（デバッグ）ペインのシェル。タブ（実行/問題/デバッグ/テスト/構成）を束ね、デバッグタブ内に
+/// 変数・自動・コールスタック・スレッド・ブレークポイント・イミディエイト・モジュールを配置する。実行タブはプロジェクト一覧と出力を持ち、ここは出力コンソールの
 /// ドキュメント追記と、停止/実行・実行系コマンド押下に応じたタブ自動切り替えだけを持つ。</summary>
 public partial class DebugView : UserControl
 {
-    // タブのインデックス（XAML の並び順と一致させる）。
-    // 並び：構成0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / テスト6 / スレッド7 /
-    //       ブレークポイント8 / イミディエイト9 / モジュール10。
-    private const int OutputTab = 1;
-    private const int VariablesTab = 3;
-    private const int TestTab = 6;
+    // 外側タブのインデックス（XAML の並び順と一致させる）。
+    // 並び：実行0 / 問題1 / デバッグ2 / テスト3 / 構成4。
+    private const int OutputTab = 0;
+    private const int DebugTab = 2;
+    private const int TestTab = 3;
 
     private INotifyCollectionChanged? _observed;
     private DebugViewModel? _vm;
@@ -82,13 +81,24 @@ public partial class DebugView : UserControl
         ConsoleBox.Document.Blocks.Add(new Paragraph(run) { Margin = new Thickness(0) });
     }
 
-    // ブレークポイント等で停止したら「変数」へ、続行したら「出力」へ自動で切り替える。
+    // ブレークポイント等で停止したら「デバッグ＞変数」へ、続行したら「実行」へ自動で切り替える。
     // 開始/ビルド/テスト押下時の「出力」表示は OutputRequested（押下と同期）で行う。
     // Output はセッション切替で参照先の ObservableCollection ごと差し替わるので、そのたびに購読と表示を作り直す。
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DebugViewModel.IsStopped) && _vm is not null)
-            DebugTabs.SelectedIndex = _vm.IsStopped ? VariablesTab : OutputTab;
+        {
+            if (_vm.IsStopped)
+            {
+                DebugTabs.SelectedIndex = DebugTab;
+                InspectionTabs.SelectedIndex = 0;
+            }
+            else
+                DebugTabs.SelectedIndex = OutputTab;
+        }
+
+        if (e.PropertyName == nameof(DebugViewModel.IsBusy) && _vm is not null && !_vm.IsBusy)
+            DebugTabs.SelectedIndex = OutputTab;
 
         if (e.PropertyName == nameof(DebugViewModel.Output) && _vm is not null)
         {
@@ -99,16 +109,45 @@ public partial class DebugView : UserControl
         }
     }
 
-    // 実行系コマンド（開始/アタッチ/ビルド/テスト）押下で「出力」タブを即表示する。
+    // 実行系コマンド（開始/アタッチ/ビルド/テスト）押下で「実行」タブを即表示する。
     private void OnOutputRequested() => DebugTabs.SelectedIndex = OutputTab;
+
+    private void OnClearOutputClick(object sender, RoutedEventArgs e) => _vm?.ClearOutput();
+
+    // プロジェクト一覧のダブルクリック：行の ▶ と同じく、そのプロジェクトをデバッグ実行する。
+    private void OnProjectDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        for (var d = e.OriginalSource as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
+        {
+            if (d is ListBoxItem { DataContext: DebugProjectDiscovery.ProjectEntry project })
+            {
+                if (DataContext is DebugViewModel vm && vm.Launch.RunProjectCommand.CanExecute(project))
+                    vm.Launch.RunProjectCommand.Execute(project);
+                return;
+            }
+        }
+    }
+
+    private void OnProjectKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        if (sender is ListBox { SelectedItem: DebugProjectDiscovery.ProjectEntry project }
+            && DataContext is DebugViewModel vm
+            && vm.Launch.RunProjectCommand.CanExecute(project))
+        {
+            vm.Launch.RunProjectCommand.Execute(project);
+            e.Handled = true;
+        }
+    }
 
     private void OnOutputChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         switch (e.Action)
         {
             case NotifyCollectionChangedAction.Add:
+                var atBottom = IsConsoleAtBottom;
                 foreach (DebugOutputLine l in e.NewItems!) AppendConsoleLine(l);
-                ConsoleBox.ScrollToEnd();
+                if (atBottom) ConsoleBox.ScrollToEnd();
                 break;
             case NotifyCollectionChangedAction.Remove:
                 // VM の 2000 行キャップ（先頭から除去）をドキュメントにも反映する。
@@ -122,8 +161,12 @@ public partial class DebugView : UserControl
         }
     }
 
+    private bool IsConsoleAtBottom
+        => ConsoleBox.ExtentHeight <= ConsoleBox.ViewportHeight
+        || ConsoleBox.VerticalOffset + ConsoleBox.ViewportHeight >= ConsoleBox.ExtentHeight - 4;
+
     // テストタブを開いたら（まだ一覧が無ければ）バックグラウンド収集を起こす保険。e.Source で内側の
-    // 選択イベント（TreeView/ListBox の SelectionChanged のバブリング）を弾く。
+    // 選択イベント（TreeView/ListBox/検査タブの SelectionChanged のバブリング）を弾く。
     private void OnDebugTabChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ReferenceEquals(e.OriginalSource, DebugTabs) && DebugTabs.SelectedIndex == TestTab
