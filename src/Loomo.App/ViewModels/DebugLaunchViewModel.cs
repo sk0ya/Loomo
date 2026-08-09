@@ -219,7 +219,7 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
             await _manager.WaitForAllIdleAsync();
             _manager.StatusMessage = "ビルド中…";
             _manager.Append(DebugOutputCategory.Important, $"ビルド: {Path.GetFileName(target)}");
-            var result = await _terminal.RunCommandAsync(
+            var result = await _terminal.RunCommandInVisibleTerminalAsync(
                 $"dotnet build \"{target}\" -c Debug --nologo", CancellationToken.None);
             _manager.WriteConsole(result.Output);
             _manager.ReportBuildOutput(result.Output);

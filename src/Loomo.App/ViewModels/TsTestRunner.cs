@@ -72,7 +72,7 @@ internal static class TsTestRunner
 
         var command = BuildCommand(runner, packageDir, fileScope, testName, resultFile);
         session.Append(DebugOutputCategory.Important, label);
-        var result = await terminal.RunCommandAsync(command, CancellationToken.None);
+        var result = await terminal.RunCommandInVisibleTerminalAsync(command, CancellationToken.None);
         session.WriteConsole(result.Output);
         if (!File.Exists(resultFile))
         {

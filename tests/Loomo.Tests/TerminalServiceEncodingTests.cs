@@ -92,4 +92,21 @@ public sealed class TerminalServiceEncodingTests
             try { File.Delete(tmp); } catch { /* 後始末失敗は無視 */ }
         }
     }
+
+    /// <summary>npm/vitest の ANSI カラー制御コードは WPF のテキスト表示では解釈されず、
+    /// <c>[1m</c>/<c>[39m</c> のようなゴミとして見えるため、戻り値から除去する。</summary>
+    [Fact]
+    public async Task Ansi_color_sequences_are_removed_from_output()
+    {
+        var svc = new TerminalService();
+        var result = await svc.RunCommandAsync(
+            "$esc=[char]27; Write-Output ($esc + '[1m色付き' + $esc + '[39m通常')",
+            CancellationToken.None);
+
+        Assert.True(result.Success, result.Output);
+        Assert.Contains("色付き通常", result.Output);
+        Assert.DoesNotContain("[1m", result.Output);
+        Assert.DoesNotContain("[39m", result.Output);
+        Assert.DoesNotContain('\x1b', result.Output);
+    }
 }

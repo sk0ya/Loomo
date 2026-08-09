@@ -42,10 +42,6 @@ public sealed class JsDebugService : IDebugService
         public bool Ended;
     }
 
-    /// <summary>ANSI エスケープ（CSI カラー等・OSC）。vite 等は js-debug 配下でも色付きで出力するため、
-    /// 表示前に除去する（WPF のテキストは ANSI を解釈せず <c>[32m</c> のようなゴミが残る）。</summary>
-    private static readonly Regex AnsiEscapePattern = new(@"\x1b(\[[0-9;?]*[ -/]*[@-~]|\].*?(\x07|\x1b\\))", RegexOptions.Compiled);
-
     private readonly SemaphoreSlim _gate = new(1, 1);
     private JsDebugServerProcess? _server;
     private TcpClient? _parentTcp;
@@ -578,7 +574,7 @@ public sealed class JsDebugService : IDebugService
                 {
                     var category = body.TryGetProperty("category", out var c) ? c.GetString() : "console";
                     var text = body.TryGetProperty("output", out var o) ? o.GetString() : null;
-                    if (!string.IsNullOrEmpty(text)) text = AnsiEscapePattern.Replace(text, "");
+                    if (!string.IsNullOrEmpty(text)) text = TerminalTextSanitizer.RemoveAnsiEscapes(text);
                     if (!string.IsNullOrEmpty(text) && category != "telemetry")
                         Emit(MapCategory(category), text!.TrimEnd('\n'));
                 }

@@ -82,6 +82,8 @@ internal sealed class FakeTerminalService : ITerminalService
     public bool IsExecuting => false;
     public Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
         => Task.FromResult(new CommandResult(command, "", 0, CurrentDirectory, true));
+    public Task<CommandResult> RunCommandInVisibleTerminalAsync(string command, CancellationToken ct)
+        => RunCommandAsync(command, ct);
     public void SetWorkingDirectory(string path) { }
     public bool TryRunInVisibleTerminal(string command) => false;
 #pragma warning disable CS0067 // テストでは発火させないイベント

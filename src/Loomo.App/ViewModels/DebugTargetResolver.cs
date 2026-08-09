@@ -156,7 +156,7 @@ internal static class DebugTargetResolver
     {
         session.StatusMessage = "ビルド中…";
         session.Append(DebugOutputCategory.Important, $"{label}: {Path.GetFileName(projectOrSln)}");
-        var result = await terminal.RunCommandAsync(
+        var result = await terminal.RunCommandInVisibleTerminalAsync(
             $"dotnet build \"{projectOrSln}\" -c Debug --nologo", CancellationToken.None);
         session.WriteConsole(result.Output);
         session.ReportBuildOutput(result.Output);

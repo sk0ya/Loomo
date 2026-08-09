@@ -7,6 +7,10 @@ public interface ITerminalService
 {
     /// <summary>コマンドを実行し結果を待つ。</summary>
     Task<CommandResult> RunCommandAsync(string command, CancellationToken ct);
+    /// <summary>コマンドを可視ターミナルの PTY で実行し、画面表示と結果取得を両立する。
+    /// 未接続時の既定実装は通常の非表示実行へフォールバックする。</summary>
+    Task<CommandResult> RunCommandInVisibleTerminalAsync(string command, CancellationToken ct)
+        => RunCommandAsync(command, ct);
     /// <summary>作業ディレクトリを設定。</summary>
     void SetWorkingDirectory(string path);
     /// <summary>コマンドを可視ターミナルへ送って実行する。未接続なら false。</summary>

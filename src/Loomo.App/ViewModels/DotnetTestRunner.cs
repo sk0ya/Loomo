@@ -39,7 +39,7 @@ internal static class DotnetTestRunner
 
         var filterArg = filterExpr is null ? "" : $" --filter \"{filterExpr}\"";
         session.Append(DebugOutputCategory.Important, label);
-        var result = await terminal.RunCommandAsync(
+        var result = await terminal.RunCommandInVisibleTerminalAsync(
             $"$env:DOTNET_CLI_UI_LANGUAGE='en'; dotnet test \"{target}\"{filterArg} --nologo {BuildRedirect} " +
             $"--logger \"trx;LogFileName=loomo.trx\" --results-directory \"{ResultsDir}\"",
             CancellationToken.None);

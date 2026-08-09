@@ -76,6 +76,38 @@ public sealed class TerminalService : ITerminalService
         }
     }
 
+    /// <summary>可視ターミナルの PTY で実行する。TerminalControl が ANSI を解釈して描画するため、
+    /// npm/vitest 等の色・カーソル制御を文字列として表示しない。AI ツールはこの経路を使わず、
+    /// <see cref="RunCommandAsync"/> の非表示プロセス経路を使う。</summary>
+    public async Task<CommandResult> RunCommandInVisibleTerminalAsync(string command, CancellationToken ct)
+    {
+        if (_view is not { } view)
+            return await RunCommandAsync(command, ct);
+
+        IsExecuting = true;
+        try
+        {
+            var result = await view.RunCommandAsync(command, ct);
+            TrackChdir(command);
+            var mapped = new CommandResult(command, result.Output, result.ExitCode, _cwd,
+                result.Completed && result.ExitCode == 0);
+            CommandExecuted?.Invoke(this, mapped);
+            return mapped;
+        }
+        catch (OperationCanceledException)
+        {
+            return new CommandResult(command, "", -1, _cwd, false);
+        }
+        catch (Exception ex)
+        {
+            return new CommandResult(command, $"可視ターミナルでの実行に失敗しました: {ex.Message}", -1, _cwd, false);
+        }
+        finally
+        {
+            IsExecuting = false;
+        }
+    }
+
     /// <summary>独立した PowerShell プロセスで**非対話**実行し、stdout/stderr/exit を取得する。
     /// 端末ペインには表示されない（AI の実行は人間のターミナルに流さない）。cwd は現在値を引き継ぎ、
     /// <c>cd</c> は <see cref="TrackChdir"/> で追従する。</summary>
@@ -134,12 +166,14 @@ public sealed class TerminalService : ITerminalService
         catch (OperationCanceledException)
         {
             TryKill(proc);
-            lock (sync) return new CommandResult(command, sb.ToString(), -1, _cwd, false);
+            lock (sync) return new CommandResult(
+                command, TerminalTextSanitizer.RemoveAnsiEscapes(sb.ToString()), -1, _cwd, false);
         }
 
         TrackChdir(command);
         var exit = proc.ExitCode;
-        lock (sync) return new CommandResult(command, sb.ToString(), exit, _cwd, exit == 0);
+        lock (sync) return new CommandResult(
+            command, TerminalTextSanitizer.RemoveAnsiEscapes(sb.ToString()), exit, _cwd, exit == 0);
     }
 
     /// <summary>子 PowerShell の入出力を UTF-8 に固定するプリアンブル（コマンドの前置句）。

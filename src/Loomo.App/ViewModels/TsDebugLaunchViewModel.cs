@@ -424,7 +424,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         {
             _manager.StatusMessage = $"実行中: npm run {entry.Name}";
             _manager.Append(DebugOutputCategory.Important, $"実行: npm run {entry.Name}");
-            var result = await _terminal.RunCommandAsync(command, CancellationToken.None);
+            var result = await _terminal.RunCommandInVisibleTerminalAsync(command, CancellationToken.None);
             _manager.WriteConsole(result.Output);
             if (entry.Kind == TsScriptKind.BuildOrTool)
                 _manager.ReportBuildOutput(result.Output, baseDir: dir);
@@ -677,7 +677,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         _manager.StatusMessage = "型チェック中…";
         _manager.Append(DebugOutputCategory.Important, $"型チェック: {dir}");
         // tsc の診断パスは cwd 相対のため、Set-Location してから実行し dir を基準に絶対化する。
-        var result = await _terminal.RunCommandAsync(
+        var result = await _terminal.RunCommandInVisibleTerminalAsync(
             $"Set-Location {PowerShellQuote(dir)}; npx --no-install tsc --noEmit --pretty false", CancellationToken.None);
         _manager.WriteConsole(result.Output);
         _manager.ReportBuildOutput(result.Output, baseDir: dir);
