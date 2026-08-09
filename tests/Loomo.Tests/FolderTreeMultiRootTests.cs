@@ -194,6 +194,76 @@ public sealed class FolderTreeMultiRootTests : IDisposable
         Assert.True(restoredSut.IsPinnedPath(nestedInSecondary));
     }
 
+    // 回帰：複数フォルダー時にプライマリのサブフォルダーへ付けたピン留め・ルート切替は、
+    // 保存用プロパティ（プライマリぶん）へ出てこなければならない。単一フォルダー時のフィールド
+    // （RootOptions/_currentRoot）は複数フォルダー化した時点で更新されなくなるため、そちらを
+    // 読んでいると LoadRoot 当時のピンが保存され、以後のピン留めが復元されない。
+    [Fact]
+    public async Task Pinning_inside_the_primary_while_multi_root_is_captured_for_the_snapshot()
+    {
+        var nestedInPrimary = Path.Combine(_primary, "nested");
+        Directory.CreateDirectory(nestedInPrimary);
+
+        var (sut, workspace) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+        workspace.AddFolder(_secondary);
+        await sut.WhenTreeLoadedAsync();
+
+        sut.PinFolder(nestedInPrimary);
+        Assert.Equal(Path.GetFullPath(nestedInPrimary), Assert.Single(sut.PinnedFolders));
+        Assert.Null(sut.TreeRootOverride);   // まだ切替えていない
+
+        var primaryHeader = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_primary));
+        sut.SwitchRootOption(primaryHeader, sut.RootOptionsFor(primaryHeader).Single(o => o.IsPinned));
+        await sut.WhenTreeLoadedAsync();
+
+        Assert.Equal(Path.GetFullPath(nestedInPrimary), sut.TreeRootOverride);
+
+        // 解除も同じ経路で保存へ反映される（外すと復活する、の逆側）。
+        sut.UnpinFolder(nestedInPrimary);
+        await sut.WhenTreeLoadedAsync();
+        Assert.Empty(sut.PinnedFolders);
+        Assert.Null(sut.TreeRootOverride);
+    }
+
+    // 回帰：複数フォルダー時に付けたプライマリのピン留め・表示中サブフォルダーが、
+    // スナップショット（PinnedFolders / TreeRootOverride / AdditionalFolders）を経由して復元される。
+    [Fact]
+    public async Task Primary_pins_made_while_multi_root_survive_a_snapshot_round_trip()
+    {
+        var nestedInPrimary = Path.Combine(_primary, "nested");
+        Directory.CreateDirectory(nestedInPrimary);
+
+        var (sut, workspace) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+        workspace.AddFolder(_secondary);
+        await sut.WhenTreeLoadedAsync();
+
+        sut.PinFolder(nestedInPrimary);
+        var primaryHeader = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_primary));
+        sut.SwitchRootOption(primaryHeader, sut.RootOptionsFor(primaryHeader).Single(o => o.IsPinned));
+        await sut.WhenTreeLoadedAsync();
+
+        // ShellWindow.CaptureInto と同じ組み合わせで保存する。
+        var pinnedFolders = sut.PinnedFolders.ToList();
+        var treeRootPath = sut.TreeRootOverride;
+        var additional = sut.CaptureAdditionalFolders().ToList();
+
+        var (restoredSut, restoredWorkspace) = CreateSut();
+        restoredSut.LoadRoot(_primary, pinnedFolders, treeRootPath);
+        await restoredSut.WhenTreeLoadedAsync();
+        restoredSut.RestoreAdditionalFolders(additional);
+        await restoredSut.WhenTreeLoadedAsync();
+
+        Assert.Equal(new[] { Path.GetFullPath(_primary), Path.GetFullPath(_secondary) },
+            restoredWorkspace.Folders);
+        Assert.True(restoredSut.IsPinnedPath(nestedInPrimary));
+        var restoredHeader = restoredSut.Nodes.Single(n => n.RootKey == Path.GetFullPath(_primary));
+        Assert.Equal(Path.GetFullPath(nestedInPrimary), restoredHeader.FullPath);
+    }
+
     [Fact]
     public void RestoreAdditionalFolders_does_not_fire_RootStateChanged()
     {

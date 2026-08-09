@@ -196,15 +196,35 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         SelectRootOption(initial ?? RootOptions[0]);
     }
 
-    /// <summary>スナップショット保存用のピン一覧（フルパス）。</summary>
+    /// <summary>保存・復元でプライマリフォルダーの正本になる状態。複数フォルダー時はフォルダーごとの
+    /// 状態（<see cref="_multiRootStates"/>）が正本で、単一フォルダー時のフィールド
+    /// （<see cref="RootOptions"/>/<see cref="_currentRoot"/>）は LoadRoot 当時のまま止まっている
+    /// ——そちらを保存すると、複数フォルダー化した後のピン留め・ルート切替が保存されない。</summary>
+    private FolderTreeRootState? PrimaryRootState
+        => _multiRootStates.Count > 0 && _workspaceRoot is not null
+           && _multiRootStates.TryGetValue(_workspaceRoot, out var state)
+            ? state
+            : null;
+
+    /// <summary>スナップショット保存用のピン一覧（フルパス）。プライマリフォルダーぶん
+    /// （プライマリ以外は <see cref="CaptureAdditionalFolders"/> 側）。</summary>
     public IReadOnlyList<string> PinnedFolders
-        => RootOptions.Where(o => o.IsPinned).Select(o => o.FullPath).ToList();
+        => (PrimaryRootState is { } primary ? primary.RootOptions : (IEnumerable<FolderRootOption>)RootOptions)
+            .Where(o => o.IsPinned).Select(o => o.FullPath).ToList();
 
     /// <summary>表示中ルートがワークスペースルートと異なるときだけそのパス（保存用）。</summary>
     public string? TreeRootOverride
-        => _workspaceRoot is null || _currentRoot is null || PathsEqual(_currentRoot, _workspaceRoot)
-            ? null
-            : _currentRoot;
+    {
+        get
+        {
+            if (PrimaryRootState is { } primary)
+                return PathsEqual(primary.DisplayedPath, primary.FolderPath) ? null : primary.DisplayedPath;
+
+            return _workspaceRoot is null || _currentRoot is null || PathsEqual(_currentRoot, _workspaceRoot)
+                ? null
+                : _currentRoot;
+        }
+    }
 
     [RelayCommand]
     private void Refresh()
