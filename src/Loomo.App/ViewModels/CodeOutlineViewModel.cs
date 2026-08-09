@@ -126,7 +126,7 @@ public sealed partial class CodeOutlineViewModel : ObservableObject
         {
             var section = new CodeCallSection(s.Title, s.TotalCount, s.Overflow);
             foreach (var r in s.Rows)
-                section.Rows.Add(new CodeCallRow(r.Symbol, r.FileName, r.Line1, r.Path));
+                section.Rows.Add(new CodeCallRow(r.Symbol, r.FileName, r.Line1, r.Path, r.Column0));
             Sections.Add(section);
         }
     }
@@ -205,18 +205,21 @@ public sealed class CodeCallSection
 /// <summary>②呼び出し解析の 1 行（ジャンプ先付き）。</summary>
 public sealed class CodeCallRow
 {
-    public CodeCallRow(string symbol, string fileName, int line1, string? path)
+    public CodeCallRow(string symbol, string fileName, int line1, string? path, int column0 = 0)
     {
         Symbol = symbol;
         FileName = fileName;
         Line1 = line1;
         Path = path;
+        Column0 = column0;
     }
 
     public string Symbol { get; }
     public bool HasSymbol => Symbol.Length > 0;
     public string FileName { get; }
     public int Line1 { get; }
+    /// <summary>ジャンプ先列（0 始まり）。対象が行頭にない場合もシンボル位置へ着地させる。</summary>
+    public int Column0 { get; }
     /// <summary>「Foo.cs:42」の表示ラベル。</summary>
     public string Location => $"{FileName}:{Line1}";
 

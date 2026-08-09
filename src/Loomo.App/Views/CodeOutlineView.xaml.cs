@@ -108,7 +108,8 @@ public partial class CodeOutlineView : UserControl
     private void CallRow_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: CodeCallRow row } && row.CanJump)
-            FileLocationActivated?.Invoke(this, new FileLocationActivatedEventArgs(row.Path!, row.Line1));
+            FileLocationActivated?.Invoke(this,
+                new FileLocationActivatedEventArgs(row.Path!, row.Line1, row.Column0));
     }
 
     private void Install_Click(object sender, RoutedEventArgs e)
@@ -137,15 +138,17 @@ public sealed class SourceLocationActivatedEventArgs : EventArgs
     public int Column0 { get; }
 }
 
-/// <summary>②パネル行クリックのジャンプ先（ローカルパス＋1 始まり行）。</summary>
+/// <summary>②パネル行クリックのジャンプ先（ローカルパス＋1 始まり行＋0 始まり列）。</summary>
 public sealed class FileLocationActivatedEventArgs : EventArgs
 {
-    public FileLocationActivatedEventArgs(string path, int line1)
+    public FileLocationActivatedEventArgs(string path, int line1, int column0 = 0)
     {
         Path = path;
         Line1 = line1;
+        Column0 = column0;
     }
 
     public string Path { get; }
     public int Line1 { get; }
+    public int Column0 { get; }
 }

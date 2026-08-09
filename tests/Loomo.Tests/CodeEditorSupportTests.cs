@@ -211,12 +211,13 @@ public class CodeEditorSupportTests
     public void Build_呼び出し元行はシンボル名とファイル名と行1始まりとパスを持つ()
     {
         var result = CallPanelModel.Build(MakePanels(
-            incoming: new[] { new CallReference("Caller", "file:///C:/work/Foo.cs", 41) }));
+            incoming: new[] { new CallReference("Caller", "file:///C:/work/Foo.cs", 41, 7) }));
 
         var row = Assert.Single(result.Sections[0].Rows);
         Assert.Equal("Caller", row.Symbol);
         Assert.Equal("Foo.cs", row.FileName);
         Assert.Equal(42, row.Line1);                  // 0 始まり(41) → 1 始まり(42)
+        Assert.Equal(7, row.Column0);                 // 行頭ではなく LSP のシンボル列へジャンプ
         Assert.Equal(@"C:\work\Foo.cs", row.Path);    // ジャンプ用ローカルパス
     }
 

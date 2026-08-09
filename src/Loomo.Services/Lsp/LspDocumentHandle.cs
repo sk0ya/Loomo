@@ -7,6 +7,18 @@ using Editor.Core.Lsp;
 namespace sk0ya.Loomo.Services.Lsp;
 
 /// <summary>
+/// LSP 文書の参照検索で、宣言自身を結果へ含めるか指定するための Loomo 拡張口。
+/// <see cref="ILspDocument.RequestReferencesAsync(int, int)"/> は Editor.Controls 側の
+/// 既定値（宣言を含める）をそのまま使うため、EditorSupport の「使用箇所」ではこれを使って
+/// 宣言を除外する。
+/// </summary>
+public interface ILspReferenceQuery
+{
+    Task<IReadOnlyList<LspLocation>> RequestReferencesAsync(
+        int line, int character, bool includeDeclaration, CancellationToken ct = default);
+}
+
+/// <summary>
 /// 1ビューぶんの文書ハンドル。文書スコープの要求を、そのとき文書が載っているサーバーへ素通しする。
 /// <see cref="Dispose"/> は「このビューぶんの参照を手放す」だけで、<c>didClose</c> が飛ぶのは
 /// 最後のハンドルが消えたとき（<see cref="LspDocumentTable"/> が判断する）。
@@ -14,7 +26,7 @@ namespace sk0ya.Loomo.Services.Lsp;
 /// <para><b>スレッド:</b> イベントは背景スレッド（JSON-RPC 読み取りスレッド）で発火する。
 /// ディスパッチャへのマーシャリングは購読側の責務。</para>
 /// </summary>
-internal sealed class LspDocumentHandle : ILspDocument
+internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
 {
     private readonly LspDocumentEntry _entry;
     private int _disposed;
@@ -86,8 +98,13 @@ internal sealed class LspDocumentHandle : ILspDocument
             : Task.FromResult<LspWorkspaceEdit?>(null);
 
     public Task<IReadOnlyList<LspLocation>> RequestReferencesAsync(int line, int character) =>
+        RequestReferencesAsync(line, character, includeDeclaration: true);
+
+    public Task<IReadOnlyList<LspLocation>> RequestReferencesAsync(
+        int line, int character, bool includeDeclaration, CancellationToken ct = default) =>
         IsReady
-            ? _entry.Client.Client.GetReferencesAsync(Uri, new LspPosition(line, character))
+            ? _entry.Client.Client.GetReferencesAsync(
+                Uri, new LspPosition(line, character), includeDeclaration, ct)
             : Empty<LspLocation>();
 
     public Task<IReadOnlyList<LspCodeAction>> RequestCodeActionsAsync(int line, int character)

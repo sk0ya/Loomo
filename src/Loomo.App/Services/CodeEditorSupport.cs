@@ -110,7 +110,8 @@ public sealed class CodeEditorSupport
 /// <param name="Symbol">シンボル名（呼び出し元/先の関数名。使用箇所は空でよい）。</param>
 /// <param name="Uri">対象の <c>Uri</c>（<c>file://</c> URI か、ローカルパス）。</param>
 /// <param name="Line0">対象行（0 始まり。呼び出しは <c>SelectionRange.Start.Line</c>、使用箇所は <c>Range.Start.Line</c>）。</param>
-internal sealed record CallReference(string Symbol, string Uri, int Line0);
+/// <param name="Column0">対象列（0 始まり。行頭ではなく対象シンボルへ着地するために保持する）。</param>
+internal sealed record CallReference(string Symbol, string Uri, int Line0, int Column0 = 0);
 
 /// <summary>②呼び出し解析の 3 パネル（呼び出し元 / 呼び出し先 / 使用箇所）。</summary>
 /// <param name="Incoming">呼び出し元（このメンバーを呼ぶ側）。</param>
@@ -317,7 +318,8 @@ internal static class CallPanelModel
     /// <param name="FileName">表示用ファイル名。</param>
     /// <param name="Line1">表示・ジャンプ用の行（1 始まり）。</param>
     /// <param name="Path">ジャンプ先ローカルパス（変換できなければ null＝ジャンプ不可）。</param>
-    internal sealed record Row(string Symbol, string FileName, int Line1, string? Path);
+    /// <param name="Column0">ジャンプ先列（0 始まり）。</param>
+    internal sealed record Row(string Symbol, string FileName, int Line1, string? Path, int Column0 = 0);
 
     /// <summary>1 セクション分の表示モデル（見出し＋総件数＋表示行＋超過数）。</summary>
     /// <param name="Title">見出し（「呼び出し元」等）。</param>
@@ -352,7 +354,8 @@ internal static class CallPanelModel
                 it.Symbol,
                 CodeEditorSupport.DisplayFileName(it.Uri),
                 it.Line0 + 1, // 0 始まり(LSP) → 1 始まり(表示・ジャンプ)
-                CodeEditorSupport.TryUriToLocalPath(it.Uri)));
+                CodeEditorSupport.TryUriToLocalPath(it.Uri),
+                it.Column0));
         }
         return new Section(title, items.Count, rows, Math.Max(0, items.Count - MaxRows));
     }

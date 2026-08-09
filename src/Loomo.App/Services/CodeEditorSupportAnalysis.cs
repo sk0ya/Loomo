@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Services.Lsp;
+
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>documentSymbols の取得結果。無応答（期限切れ）を「シンボルが無い」と区別するための旗を持つ。</summary>
@@ -118,11 +120,17 @@ public static class CodeEditorSupportAnalysis
             var list = new List<CallReference>();
             try
             {
-                var (refs, _) = await WithLimitAsync(
-                    lsp.RequestReferencesAsync(line0, col0), ct, "references");
+                // Editor.Controls の ILspDocument は宣言自身を含める既定値になっている。
+                // 「使用箇所」では宣言を件数・行として見せない（宣言だけのシンボルで
+                // CodeSnippets.cs:88 のような偽の使用箇所が出るのを防ぐ）。
+                var request = lsp is ILspReferenceQuery referenceQuery
+                    ? referenceQuery.RequestReferencesAsync(line0, col0, includeDeclaration: false, ct)
+                    : lsp.RequestReferencesAsync(line0, col0);
+                var (refs, _) = await WithLimitAsync(request, ct, "references");
                 foreach (var r in refs ?? (IReadOnlyList<LspLocation>)Array.Empty<LspLocation>())
                     if (r is not null)
-                        list.Add(new CallReference("", r.Uri ?? "", r.Range?.Start?.Line ?? 0));
+                        list.Add(new CallReference(
+                            "", r.Uri ?? "", r.Range?.Start?.Line ?? 0, r.Range?.Start?.Character ?? 0));
             }
             catch (OperationCanceledException) { throw; }
             catch { }
@@ -155,7 +163,10 @@ public static class CodeEditorSupportAnalysis
                             workspace.GetIncomingCallsAsync(item), ct, "incomingCalls");
                         foreach (var c in calls ?? Array.Empty<CallHierarchyIncomingCall>())
                             if (c?.From is { } from)
-                                list.Add(new CallReference(from.Name ?? "", from.Uri ?? "", from.SelectionRange?.Start?.Line ?? 0));
+                                list.Add(new CallReference(
+                                    from.Name ?? "", from.Uri ?? "",
+                                    from.SelectionRange?.Start?.Line ?? 0,
+                                    from.SelectionRange?.Start?.Character ?? 0));
                     }
                     catch (OperationCanceledException) { throw; }
                     catch { }
@@ -171,7 +182,10 @@ public static class CodeEditorSupportAnalysis
                             workspace.GetOutgoingCallsAsync(item), ct, "outgoingCalls");
                         foreach (var c in calls ?? Array.Empty<CallHierarchyOutgoingCall>())
                             if (c?.To is { } to)
-                                list.Add(new CallReference(to.Name ?? "", to.Uri ?? "", to.SelectionRange?.Start?.Line ?? 0));
+                                list.Add(new CallReference(
+                                    to.Name ?? "", to.Uri ?? "",
+                                    to.SelectionRange?.Start?.Line ?? 0,
+                                    to.SelectionRange?.Start?.Character ?? 0));
                     }
                     catch (OperationCanceledException) { throw; }
                     catch { }

@@ -1,4 +1,5 @@
 using Editor.Core.Lsp;
+using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -8,7 +9,7 @@ namespace sk0ya.Loomo.Tests;
 /// 「呼び出し階層と参照が何を返すか」の3点だけ。残りの口は呼ばれたら落とす——
 /// 黙って空を返すと、テストが通っているのに実際は別経路を見ていた、が起こる。
 /// </summary>
-internal sealed class FakeLspDocument : ILspDocument
+internal sealed class FakeLspDocument : ILspDocument, ILspReferenceQuery
 {
     private readonly TaskCompletionSource<IReadOnlyList<DocumentSymbol>>? _pendingSymbols;
     private readonly IReadOnlyList<DocumentSymbol>? _symbols;
@@ -31,6 +32,7 @@ internal sealed class FakeLspDocument : ILspDocument
     public IReadOnlyList<DocumentSymbol>? LaterSymbols { get; set; }
 
     public IReadOnlyList<LspLocation> References { get; set; } = [];
+    public bool? LastIncludeDeclaration { get; private set; }
 
     public string Uri { get; }
     public string FilePath { get; }
@@ -55,6 +57,13 @@ internal sealed class FakeLspDocument : ILspDocument
 
     public Task<IReadOnlyList<LspLocation>> RequestReferencesAsync(int line, int character)
         => Task.FromResult(References);
+
+    public Task<IReadOnlyList<LspLocation>> RequestReferencesAsync(
+        int line, int character, bool includeDeclaration, CancellationToken ct = default)
+    {
+        LastIncludeDeclaration = includeDeclaration;
+        return Task.FromResult(References);
+    }
 
     public void UpdateText(string text) { }
     public void Dispose() { }

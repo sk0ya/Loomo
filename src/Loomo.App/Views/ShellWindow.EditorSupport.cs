@@ -240,7 +240,8 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         var view = new CodeOutlineView();
         view.SourceLocationActivated += (_, e) =>
             FocusEditorSupportSource(e.Line1 > 0 ? e.Line1 : null, e.Column0, alignTop: true);
-        view.FileLocationActivated += (_, e) => _ = OpenPathInEditorAsync(e.Path, e.Line1, column: 0, alignTop: true);
+        view.FileLocationActivated += (_, e) =>
+            _ = OpenPathInEditorAsync(e.Path, e.Line1, column: e.Column0 + 1, alignTop: true);
         view.InstallRequested += (_, _) => InstallLspForEditorSupportSource();
         view.OpenLspSettingsRequested += (_, _) => _vm.LspPrompt.OpenSettingsCommand.Execute(null);
         view.OpenDocsRequested += (_, url) => _ = OpenUrlInBrowserAsync(url, null);

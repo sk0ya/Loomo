@@ -188,6 +188,13 @@ public partial class ShellWindow {
         control.MarkdownPreviewRequested += (_, _) => OpenEditorSupport(tab);
         control.LinkClicked += OnEditorLinkClicked;
         control.FileLinkClicked += OnEditorFileLinkClicked;
+        // LSP の定義ジャンプが別ファイルを返した場合、Editor.Controls はこのイベントを発火する。
+        // ここを購読しないと同一ファイル内のジャンプだけ動き、別ファイルの定義へ移動できない。
+        // Editor.Controls の位置は 0 始まり、OpenPathInEditorAsync は 1 始まりなので変換する。
+        control.OpenFileRequested += (_, e) => _ = OpenPathInEditorAsync(
+            e.FilePath,
+            e.Line > 0 ? e.Line + 1 : 0,
+            e.Column > 0 ? e.Column + 1 : 0);
         control.FindReferencesResult += OnEditorFindReferencesResult;
         control.WorkspaceEditRequested += OnEditorWorkspaceEditRequested;
         control.ContextMenuBuilding += OnEditorContextMenuBuilding;

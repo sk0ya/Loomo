@@ -92,6 +92,27 @@ public class EditorSupportRenderFlowTests
     }
 
     [Fact]
+    public async Task 使用箇所の検索は宣言自身を含めない()
+    {
+        var lsp = new FakeLspDocument(File, [Method("Foo", 10)])
+        {
+            References =
+            [
+                new LspLocation(
+                    new Uri(File).AbsoluteUri,
+                    new LspRange(new LspPosition(20, 4), new LspPosition(20, 7)))
+            ]
+        };
+        var (flow, _) = Flow(new FakeHost());
+
+        var frames = await Render(flow, Request(lsp));
+
+        Assert.False(lsp.LastIncludeDeclaration);
+        var panels = Assert.IsType<EditorSupportFrameContent.PanelsContent>(frames[1].Content);
+        Assert.Single(panels.Panels.References);
+    }
+
+    [Fact]
     public async Task 無応答は空アウトラインではなく期限切れの案内にする()
     {
         // 「シンボルが無い」と「返事が来ていない」を同じ空表示にすると、利用者に区別がつかない。
