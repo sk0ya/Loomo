@@ -28,19 +28,27 @@ public static class WorkspaceSessionCoordinator
         // `https://C:\notes\a.html` という Uri に載らない文字列を作ってしまう（＝遷移で例外）。
         if (TryLocalPathUri(address) is { } fileUri)
             return fileUri;
+        // 空白を含むものはホスト名になり得ないので、ローカル判定より先に検索語として抜く
+        // （「localhost is down」のような文が `http://localhost is down` になって遷移で弾かれていた）。
+        if (address.Contains(' '))
+            return SearchUrl(address);
         var isLocal = address.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
                       || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase)
                       // `devbox:3000` のような社内・開発サーバー（ドット無しホスト＋ポート）も
                       // ホストとして扱う。ドット判定だけだと検索へ流れて、どこへも行けなくなる。
                       || (!address.Contains('.') && HasPortSuffix(address));
-        // ホスト名に見えないものは検索語として扱う。空白を含む文字列だけでなく、ドットの無い
-        // 一語（「loomo」等）も——https://loomo へ行っても名前が引けず、ただの失敗ページになる。
-        if (!isLocal && (address.Contains(' ') || !address.Contains('.')))
-            return $"https://www.google.com/search?q={Uri.EscapeDataString(address)}";
+        // ホスト名に見えないものは検索語として扱う。ドットの無い一語（「loomo」等）も——
+        // https://loomo へ行っても名前が引けず、ただの失敗ページになる。
+        if (!isLocal && !address.Contains('.'))
+            return SearchUrl(address);
         // 名前が引ける保証のない社内ホストは http：この形（ドット無し＋ポート）で待っているのは
         // ほぼ開発サーバーで、https だと証明書以前に接続できない。
         return (isLocal ? "http://" : "https://") + address;
     }
+
+    /// <summary>アドレスを検索語として扱うときの遷移先。</summary>
+    private static string SearchUrl(string address)
+        => $"https://www.google.com/search?q={Uri.EscapeDataString(address)}";
 
     /// <summary><c>ホスト:数字</c>（パス・クエリが続いてもよい）の形か。</summary>
     private static bool HasPortSuffix(string address)

@@ -172,6 +172,27 @@ public class BrowserLibraryTests
     }
 
     [Fact]
+    public void Store_caps_the_snapshot_it_was_given_not_just_the_saved_copy()
+    {
+        // 保存用のコピーだけ切り詰めると、呼び出し側が持ち続ける実体が無制限に伸び、
+        // 候補検索も履歴一覧も毎回その全長を歩くことになる。
+        var path = TempFile();
+        var snapshot = new BrowserLibrarySnapshot {
+            History = {
+                new BrowserHistoryEntry { Url = "https://a.example/", LastVisitedUtc = DateTime.UtcNow.AddHours(-2) },
+                new BrowserHistoryEntry { Url = "https://b.example/", LastVisitedUtc = DateTime.UtcNow.AddHours(-1) },
+                new BrowserHistoryEntry { Url = "https://c.example/", LastVisitedUtc = DateTime.UtcNow },
+            },
+        };
+
+        new BrowserLibraryStore(path, maxHistory: 2).Save(snapshot);
+
+        Assert.Equal(2, snapshot.History.Count);
+        Assert.DoesNotContain(snapshot.History, e => e.Url == "https://a.example/");
+        File.Delete(path);
+    }
+
+    [Fact]
     public void Broken_file_loads_as_empty_instead_of_throwing()
     {
         var path = TempFile();
@@ -305,6 +326,9 @@ public class BrowserLibraryTests
     [InlineData("loomo とは")]
     [InlineData("wpf")]
     [InlineData("devbox:notaport")]   // 「ホスト:数字」でなければ従来どおり検索語
+    // ローカル判定より空白判定が先。ここを逆にすると `http://localhost is down` になって遷移で弾かれる。
+    [InlineData("localhost is down")]
+    [InlineData("127.0.0.1 not reachable")]
     public void Address_without_a_dot_becomes_a_search(string input)
         => Assert.StartsWith("https://www.google.com/search?q=",
             WorkspaceSessionCoordinator.NormalizeBrowserAddress(input, "https://home/"));

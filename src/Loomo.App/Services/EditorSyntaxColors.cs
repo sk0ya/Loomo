@@ -14,9 +14,14 @@ internal static class EditorSyntaxColors
     /// <summary>配色が変わった（設定でエディタテーマを変えた）。購読側は色を付け直す。</summary>
     internal static event Action? Changed;
 
+    /// <summary>配色を差し替えた回数。<b>表示している間だけ購読する</b>側（静的イベントを掴んだままだと
+    /// ビューがプロセスの最後まで生き残るため）が、「離れている間に色が変わったか」を判定するのに使う。</summary>
+    internal static int Generation { get; private set; }
+
     internal static void Apply(EditorTheme theme)
     {
         _theme = theme;
+        Generation++;
         Changed?.Invoke();
     }
 

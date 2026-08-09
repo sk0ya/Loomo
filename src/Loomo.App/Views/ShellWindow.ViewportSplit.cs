@@ -191,10 +191,12 @@ public partial class ShellWindow {
         // LSP の定義ジャンプが別ファイルを返した場合、Editor.Controls はこのイベントを発火する。
         // ここを購読しないと同一ファイル内のジャンプだけ動き、別ファイルの定義へ移動できない。
         // Editor.Controls の位置は 0 始まり、OpenPathInEditorAsync は 1 始まりなので変換する。
+        // 「位置なし」は負値だけ——0 は 1 行目・1 桁目という正当な位置で、ここを > 0 で弾くと
+        // ファイル先頭に宣言されたシンボルへのジャンプだけキャレットが動かない。
         control.OpenFileRequested += (_, e) => _ = OpenPathInEditorAsync(
             e.FilePath,
-            e.Line > 0 ? e.Line + 1 : 0,
-            e.Column > 0 ? e.Column + 1 : 0);
+            e.Line >= 0 ? e.Line + 1 : 0,
+            e.Column >= 0 ? e.Column + 1 : 0);
         control.FindReferencesResult += OnEditorFindReferencesResult;
         control.WorkspaceEditRequested += OnEditorWorkspaceEditRequested;
         control.ContextMenuBuilding += OnEditorContextMenuBuilding;

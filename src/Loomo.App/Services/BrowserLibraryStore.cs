@@ -82,15 +82,13 @@ public sealed class BrowserLibraryStore
 
     public void Save(BrowserLibrarySnapshot snapshot)
     {
-        var trimmed = new BrowserLibrarySnapshot
-        {
-            Bookmarks = snapshot.Bookmarks,
-            History = BrowserLibrary.Trim(snapshot.History, MaxHistory),
-        };
+        // 上限は渡された snapshot 自体に反映する（保存用のコピーだけ切り詰めると、呼び出し側が
+        // 持ち続けている実体は際限なく伸び、候補検索も履歴一覧もその全長を毎回歩くことになる）。
+        snapshot.History = BrowserLibrary.Trim(snapshot.History, MaxHistory);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(trimmed, JsonOptions));
+            File.WriteAllText(_filePath, JsonSerializer.Serialize(snapshot, JsonOptions));
         }
         catch
         {

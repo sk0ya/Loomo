@@ -171,7 +171,8 @@ public partial class FolderTreeView
     }
 
     // Diff ペインへ素材として送る。単体なら「このファイル ↔ クリップボード」、
-    // ファイルを2つ選んでいれば「選んだ順で 左＝先に選んだ方・右＝後」で突き合わせる。
+    // ファイルを2つ選んでいれば左＝先・右＝後で突き合わせる。順序は _multiSelected の並び＝
+    // Ctrl+クリックなら選んだ順、Shift+範囲選択ならツリーの並び順（上が左）。
     private void OnCompareWithClipboardClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: false } node && DataContext is FolderTreeViewModel vm)

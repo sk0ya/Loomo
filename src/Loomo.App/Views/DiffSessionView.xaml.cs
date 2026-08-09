@@ -48,19 +48,47 @@ public partial class DiffSessionView : UserControl
     private ScrollViewer? _rightGutterSv;
     private ScrollViewer? _rightTextSv;
     private bool _syncing;
+    private bool _viewHooked;   // 子コントロールへの購読済みフラグ（Loaded は再ペアレントで再入する）
 
     public DiffSessionView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
-        // エディタの配色を変えたら差分の構文色も付け直す。購読はここで1度だけ（Loaded はペインの
-        // 再ペアレントのたびに走るので、そこで足すと同じハンドラが何重にも積み上がる）。
-        EditorSyntaxColors.Changed += OnEditorSyntaxColorsChanged;
+        Unloaded += OnUnloaded;
+    }
+
+    // ===== エディタ配色の購読 =====
+    // エディタの配色を変えたら差分の構文色も付け直す。ただし購読先は**静的イベント**なので、
+    // コンストラクタで張って外さないと、ペインを作り直しても・別ウィンドウへ切り離しても
+    // このビューがプロセスの最後まで生き残り、配色変更のたびに死んだビューまで組み直してしまう。
+    // そこで「表示されている間だけ購読」し、離れている間に配色が変わっていたら復帰時に付け直す
+    // （Loaded/Unloaded は再ペアレントのたびに走るので、多重購読を防ぐフラグは要る）。
+    private bool _colorsHooked;
+    private int _colorsGeneration = EditorSyntaxColors.Generation;
+
+    private void HookSyntaxColors()
+    {
+        if (!_colorsHooked)
+        {
+            EditorSyntaxColors.Changed += OnEditorSyntaxColorsChanged;
+            _colorsHooked = true;
+        }
+        if (_colorsGeneration != EditorSyntaxColors.Generation)
+            OnEditorSyntaxColorsChanged();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (!_colorsHooked) return;
+        EditorSyntaxColors.Changed -= OnEditorSyntaxColorsChanged;
+        _colorsHooked = false;
+        _colorsGeneration = EditorSyntaxColors.Generation;
     }
 
     private void OnEditorSyntaxColorsChanged()
     {
+        _colorsGeneration = EditorSyntaxColors.Generation;
         ScheduleRebuildUnified();
         ScheduleRebuildSide();
     }
@@ -344,6 +372,12 @@ public partial class DiffSessionView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        HookSyntaxColors();
+        // 以下（自分の子コントロールへの購読）は1度だけ——Loaded はペインの再ペアレントのたびに走り、
+        // 二度目からは同じハンドラが積み上がるだけで、子は同じインスタンスのまま生き続けている。
+        if (_viewHooked) return;
+        _viewHooked = true;
+
         _unifiedSv = InnerScrollViewer(UnifiedBox);
         _leftGutterSv = InnerScrollViewer(LeftGutter);
         _leftTextSv = InnerScrollViewer(LeftTextBox);
