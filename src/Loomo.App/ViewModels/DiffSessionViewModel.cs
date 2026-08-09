@@ -112,9 +112,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         OnPropertyChanged(nameof(IsGitMode));
         OnPropertyChanged(nameof(IsAiMode));
         OnPropertyChanged(nameof(IsCompareMode));
-        // 比較を見ているかどうかで意味が変わる（帯を畳む・比較専用の操作を殺す）。
+        // 比較を見ているかどうかで意味が変わる（帯を畳む・比較専用の操作を殺す・一覧の見出し）。
         OnPropertyChanged(nameof(HasComparison));
         OnPropertyChanged(nameof(CompareCaption));
+        OnPropertyChanged(nameof(FileListHeader));
         _changeCursor = -1;
         if (value != DiffSource.Git)
         {
@@ -130,6 +131,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnSelectedFileChanged(DiffFileItem? value)
     {
         _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
+        // 「今どの比較を見ているか」は選択中の項目が正本（複数ストックできるので、素材を1つ覚えるのでは足りない）。
+        OnPropertyChanged(nameof(HasComparison));
+        OnPropertyChanged(nameof(CompareCaption));
         if (_pendingJumpFile is not null && !ReferenceEquals(value, _pendingJumpFile))
         {
             _pendingJumpFile = null;
@@ -244,24 +248,55 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     // ===== アドホック比較（クリップボード ↔ 選択範囲 など） =====
 
-    private DiffComparison? _comparison;
+    /// <summary>ストックした比較。新しいものが先頭。<b>作るたびに積み増し、閉じるまで残る</b>——
+    /// 見比べたいものは1件とは限らず（案A・案B・保存前後…）、次の比較を作った瞬間に前のが消えるなら
+    /// 「並べて見比べる」ができないため。Git／AI変更へ切り替えても保持するが、永続化はしない。</summary>
+    private readonly List<DiffComparison> _comparisons = new();
 
-    /// <summary>比較の素材が入っているか（左右入替・比較し直しが使えるか）。
+    /// <summary>次の <see cref="RefreshAsync"/> で選び直す比較。一覧の項目は更新のたびに作り直されるので、
+    /// 「どれを選ぶか」は項目ではなく素材そのもので覚える。</summary>
+    private DiffComparison? _pendingCompareSelect;
+
+    /// <summary>今見ている比較（比較モードで、選択中の項目が比較のときだけ）。</summary>
+    private DiffComparison? CurrentComparison
+        => Source == DiffSource.Compare ? SelectedFile?.Comparison : null;
+
+    /// <summary>今見ている比較があるか（左右入替・比較し直し・閉じるが使えるか）。
     /// 素材は Git／AI変更へ切り替えても保持するが、<b>今それを見ていない間は false</b>——
     /// git 差分を見ているときに「左右を入れ替える」が押せると、押した瞬間に見ていた差分が消えるため。</summary>
-    public bool HasComparison => Source == DiffSource.Compare && _comparison is not null;
+    public bool HasComparison => CurrentComparison is not null;
 
     /// <summary>差分本体の上に出す「どちらが左でどちらが右か」の帯。比較を見ていなければ空
     /// （空でないと帯が出たままになり、git 差分を別の何かだと名乗ってしまう）。</summary>
-    public string CompareCaption => HasComparison ? _comparison!.Caption : "";
+    public string CompareCaption => CurrentComparison?.Caption ?? "";
+
+    /// <summary>一覧の見出し。比較モードだけストック数を出す（何件溜まっているかが一目で分かる）。</summary>
+    public string FileListHeader
+        => Source == DiffSource.Compare ? $"比較（{_comparisons.Count}件）" : "変更ファイル";
 
     /// <summary>
-    /// 任意のテキスト2つを比較して表示する（左＝旧・右＝新）。ペインの表示・フォーカスは呼び出し側が行う
-    /// ——「素材を別のペインへ渡す」動線の受け口なので、渡す側が見せ方を決める（設計書 §23.3）。
+    /// 任意のテキスト2つを比較して表示する（左＝旧・右＝新）。<b>今ある比較は消さずに積み増す</b>
+    /// （設計書 §24.5）。ペインの表示・フォーカスは呼び出し側が行う——「素材を別のペインへ渡す」動線の
+    /// 受け口なので、渡す側が見せ方を決める（設計書 §23.3）。
     /// </summary>
-    public void ShowComparison(DiffComparison comparison)
+    public void ShowComparison(DiffComparison comparison) => StockAndShow(comparison, replacing: null);
+
+    /// <summary>比較をストックへ入れて、それを選んだ状態で表示する。</summary>
+    /// <param name="replacing">作り直し（左右入替・再比較）の元。指定するとその<b>同じ位置</b>へ置き換える
+    /// ——先頭へ積み直すと、入れ替えるたびに一覧の中で行が飛んで見失うため。</param>
+    private void StockAndShow(DiffComparison comparison, DiffComparison? replacing)
     {
-        _comparison = comparison;
+        var slot = replacing is null ? -1 : _comparisons.IndexOf(replacing);
+        if (slot >= 0)
+            _comparisons.RemoveAt(slot);
+        // record の値等価で重複を弾く：同じ素材を二度送っても2行に増やさず、既にある方を選び直す。
+        var same = _comparisons.IndexOf(comparison);
+        if (same >= 0)
+            comparison = _comparisons[same];
+        else
+            _comparisons.Insert(slot >= 0 ? slot : 0, comparison);
+
+        _pendingCompareSelect = comparison;
         _loaded = true;
         // Source の変更で走る自動更新は抑止して、下の force 付き1回にまとめる
         // （同じ内容の一覧に見えても本文が変わり得るので、こちらは必ず組み直す）。
@@ -274,15 +309,39 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         {
             _suppressModeChangeRefresh = false;
         }
-        OnPropertyChanged(nameof(HasComparison));
-        OnPropertyChanged(nameof(CompareCaption));
         SetStatus("", isError: false);
         _ = RefreshAsync(force: true);
     }
 
+    /// <summary>ストックした比較を1件閉じる（一覧から消える。ほかの比較は残る）。</summary>
+    [RelayCommand]
+    private void CloseComparison(DiffFileItem? item)
+    {
+        item ??= SelectedFile;
+        if (item?.Comparison is not { } comparison) return;
+        var index = _comparisons.IndexOf(comparison);
+        if (index < 0) return;
+        _comparisons.RemoveAt(index);
+        // 閉じた位置の次（無ければ手前）へ選択を寄せる＝閉じても一覧の同じあたりを見続けられる。
+        _pendingCompareSelect = _comparisons.Count == 0
+            ? null
+            : _comparisons[Math.Min(index, _comparisons.Count - 1)];
+        _ = RefreshAsync(force: true);
+    }
+
+    /// <summary>ストックした比較をすべて閉じる。</summary>
+    [RelayCommand]
+    private void CloseAllComparisons()
+    {
+        if (_comparisons.Count == 0) return;
+        _comparisons.Clear();
+        _pendingCompareSelect = null;
+        _ = RefreshAsync(force: true);
+    }
+
     private DiffFileList LoadComparison()
-        => _comparison is { } comparison
-            ? new DiffFileList(new[] { BuildCompareItem(comparison) }, "")
+        => _comparisons.Count > 0
+            ? new DiffFileList(_comparisons.Select(BuildCompareItem).ToList(), "")
             : new DiffFileList(
                 Array.Empty<DiffFileItem>(),
                 "比較する内容がありません。エディタやターミナルで選択して右クリック →"
@@ -297,7 +356,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             DisplayPath = comparison.DisplayPath,
             Badge = added == 0 && removed == 0 ? "同一" : "比較",
             Stats = $"+{added} −{removed}",
-            IsCompare = true,
+            Comparison = comparison,
             FileIsLeft = comparison.FileIsLeft,
             OldContent = comparison.LeftText,
             NewContent = comparison.RightText,
@@ -337,25 +396,26 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             item.FullPath, FileIsLeft: true));
     }
 
-    /// <summary>左右を入れ替えて比較し直す（どちらを「元」と見るかは見ている人が決める）。</summary>
+    /// <summary>左右を入れ替えて比較し直す（どちらを「元」と見るかは見ている人が決める）。
+    /// 積み増しではなく<b>今見ている比較の置き換え</b>——入れ替えのたびにストックが増えるのは見比べの邪魔。</summary>
     [RelayCommand]
     private void SwapComparison()
     {
-        if (_comparison is { } comparison)
-            ShowComparison(comparison.Swapped());
+        if (CurrentComparison is { } comparison)
+            StockAndShow(comparison.Swapped(), replacing: comparison);
     }
 
     /// <summary>右側だけ今のクリップボードで置き換えて比較し直す（コピーし直したときの一手）。</summary>
     [RelayCommand]
     private void RecompareWithClipboard()
     {
-        if (_comparison is not { } comparison) return;
+        if (CurrentComparison is not { } comparison) return;
         if (ClipboardText.TryGet() is not { } text)
         {
             SetStatus("クリップボードにテキストがありません。", isError: true);
             return;
         }
-        ShowComparison(comparison.WithRight("クリップボード", text));
+        StockAndShow(comparison.WithRight("クリップボード", text), replacing: comparison);
     }
 
     [RelayCommand]
@@ -383,6 +443,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _loaded = true;
         _patchCache.Clear();
         var selectedPath = SelectedFile?.FullPath;
+        // 比較はパスを持たないことがあり、同じパスで複数ストックもできるので、選び直しはパスでは引けない。
+        var keepComparison = _pendingCompareSelect ?? SelectedFile?.Comparison;
 
         var result = Source == DiffSource.Compare
             ? LoadComparison()
@@ -397,18 +459,23 @@ public sealed partial class DiffSessionViewModel : ObservableObject
                 await Conflict.LoadAsync(SelectedFile, LoadDiffAsync);
             return;
         }
+        _pendingCompareSelect = null;
 
         Files.Clear();
         DiffFileItem? reselect = null;
         foreach (var item in items)
         {
             Files.Add(item);
-            if (selectedPath is not null
-                && string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase))
+            var matches = item.Comparison is { } material
+                ? ReferenceEquals(material, keepComparison)
+                : selectedPath is not null
+                    && string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase);
+            if (matches)
                 reselect = item;
         }
 
         EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
+        OnPropertyChanged(nameof(FileListHeader));
 
         SelectedFile = reselect ?? Files.FirstOrDefault();
         if (SelectedFile is null)

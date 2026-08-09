@@ -70,6 +70,15 @@
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         </Style>
 
+        <!-- 一覧の行末に出す「この比較を閉じる」。ストックした比較の行にだけ現れる（幅は予約しない）。 -->
+        <Style x:Key="DiffCloseButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
         <!-- コンフリクトの Ours→Result / Theirs→Result 取り込みボタン（«/» のみ。Rider の merge gutter と同じ最小限の見た目）。 -->
         <Style x:Key="ConflictGutterButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
             <Setter Property="Padding" Value="2,1" />
@@ -342,7 +351,7 @@
             <!-- 変更ファイル一覧 -->
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource FgDim}" Text="変更ファイル" />
+                           Foreground="{DynamicResource FgDim}" Text="{Binding FileListHeader}" />
                 <Grid>
                     <ListBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
                              Background="Transparent" BorderThickness="0"
@@ -366,6 +375,12 @@
                                                       ToolTip="このファイルの現在の内容とクリップボードを比較する" />
                                             <MenuItem Header="パスをコピー" Click="OnCopyFilePath" />
                                             <Separator />
+                                            <!-- ストックした比較だけ「閉じる」で片づける（ほかの比較は残る）。 -->
+                                            <MenuItem Header="この比較を閉じる" Click="OnCloseComparison"
+                                                      ToolTip="この比較を一覧から閉じる（ほかの比較は残る）"
+                                                      Visibility="{Binding IsCompare, Converter={StaticResource BoolToVis}}" />
+                                            <MenuItem Header="比較をすべて閉じる" Click="OnCloseAllComparisons"
+                                                      Visibility="{Binding IsCompare, Converter={StaticResource BoolToVis}}" />
                                             <MenuItem Header="変更を破棄" Click="OnDiscardFile"
                                                       ToolTip="このファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
                                                       Visibility="{Binding CanDiscard, Converter={StaticResource BoolToVis}}" />
@@ -374,6 +389,13 @@
                                                       Visibility="{Binding CanRevert, Converter={StaticResource BoolToVis}}" />
                                         </ContextMenu>
                                     </DockPanel.ContextMenu>
+                                    <!-- ストックした比較は閉じるまで残るので、その場で片づけられる ✕ を行に置く。 -->
+                                    <Button DockPanel.Dock="Right" Content="✕" ToolTip="この比較を閉じる"
+                                            Style="{StaticResource DiffCloseButton}" Margin="6,0,0,0"
+                                            Visibility="{Binding IsCompare, Converter={StaticResource BoolToVis}}"
+                                            Command="{Binding DataContext.CloseComparisonCommand,
+                                                RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}" />
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Stats}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="{DynamicResource Fs11}"

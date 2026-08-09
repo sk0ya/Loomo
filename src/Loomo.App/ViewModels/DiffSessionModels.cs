@@ -61,8 +61,12 @@ public sealed class DiffFileItem
     public string FileName => Path.GetFileName(FullPath);
     public bool IsAi { get; init; }
     public bool IsNew { get; init; }
+    /// <summary>アドホック比較の項目なら、その素材そのもの（ストックに入っている実体を指す）。
+    /// 一覧は更新のたびに作り直されるので、「どの比較か」は表示名やパスではなくこの参照で追う
+    /// ——比較はパスを持たないことがあり、同じファイルの比較を複数ストックすることもあるため。</summary>
+    public DiffComparison? Comparison { get; init; }
     /// <summary>アドホック比較（<see cref="DiffComparison"/>）の項目。Git にも変更ジャーナルにも紐づかない。</summary>
-    public bool IsCompare { get; init; }
+    public bool IsCompare => Comparison is not null;
     /// <summary><see cref="FullPath"/> のファイルの中身が左側にあるか（既定は右＝新側。git 差分と同じ向き）。
     /// 差分の行から実ファイルの行番号を引くとき、どちら側の行番号を読むかを決める。</summary>
     public bool FileIsLeft { get; init; }

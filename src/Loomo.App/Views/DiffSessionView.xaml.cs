@@ -664,6 +664,14 @@ public partial class DiffSessionView : UserControl
         if (Vm is { } vm && ContextItem(sender) is { } item) vm.RevertCommand.Execute(item);
     }
 
+    private void OnCloseComparison(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && ContextItem(sender) is { } item) vm.CloseComparisonCommand.Execute(item);
+    }
+
+    private void OnCloseAllComparisons(object sender, RoutedEventArgs e)
+        => Vm?.CloseAllComparisonsCommand.Execute(null);
+
     // ===== 差分本体の右クリック（この行をエディタで開く／選択範囲を比較） =====
 
     /// <summary>右クリックした行（表示中の形式での <c>DiffRows</c> / <c>SideRows</c> の添字）。-1 は不明。</summary>

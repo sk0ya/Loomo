@@ -1341,6 +1341,11 @@
                                     ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
                                     Command="{Binding DiffSession.RecompareWithClipboardCommand}"
                                     Visibility="{Binding DiffSession.IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                            <!-- 比較はストックされ閉じるまで残る（次の比較を作っても消えない）ので、片づける口をここに置く。 -->
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 比較を閉じる"
+                                    ToolTip="今見ている比較を閉じる（ほかの比較は残る）"
+                                    Command="{Binding DiffSession.CloseComparisonCommand}"
+                                    Visibility="{Binding DiffSession.IsCompareMode, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                     </DockPanel>
                     <views:DiffSessionView x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" />

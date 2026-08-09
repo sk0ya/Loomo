@@ -1,11 +1,135 @@
+using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Diff;
+using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>アドホック比較（クリップボード ↔ 選択範囲など）の素材と、差分本体の行 → ファイル行の対応。</summary>
 public class DiffComparisonTests
 {
+    /// <summary>比較モードは git にも変更ジャーナルにも触らないので、実体のまま組み立ててよい。</summary>
+    private static DiffSessionViewModel CreateSut()
+    {
+        var workspace = new FakeWorkspaceService();
+        var journal = new FileChangeJournal();
+        var git = new GitService(workspace);
+        var files = new DiffFileGateway();
+        return new DiffSessionViewModel(journal, git, new FakeEditorService(), workspace, files,
+            new DiffSessionQuery(journal, git), new DiffSessionCommandHandler(files, journal, git));
+    }
+
+    private static DiffComparison Compare(string name)
+        => new(name, $"{name} の元", "クリップボード", $"{name} の案");
+
+    [Fact]
+    public void 比較は積み増され前の比較は消えない()
+    {
+        var sut = CreateSut();
+
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+
+        Assert.Equal(2, sut.Files.Count);
+        Assert.Equal(new[] { "B ↔ クリップボード", "A ↔ クリップボード" },
+            sut.Files.Select(f => f.DisplayPath));   // 新しいものが上
+        Assert.Equal("B ↔ クリップボード", sut.SelectedFile?.DisplayPath);   // 送った比較を見せる
+        Assert.Equal("比較（2件）", sut.FileListHeader);
+    }
+
+    [Fact]
+    public void 同じ素材を二度送っても二重に並ばない()
+    {
+        var sut = CreateSut();
+
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+        sut.ShowComparison(Compare("A"));   // 中身の同じ比較（別インスタンス）
+
+        Assert.Equal(2, sut.Files.Count);
+        Assert.Equal("A ↔ クリップボード", sut.SelectedFile?.DisplayPath);   // 既にある方へ戻る
+    }
+
+    [Fact]
+    public void 閉じるとその比較だけが一覧から消える()
+    {
+        var sut = CreateSut();
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+
+        sut.CloseComparisonCommand.Execute(sut.Files.Single(f => f.DisplayPath.StartsWith("B")));
+
+        Assert.Equal("A ↔ クリップボード", Assert.Single(sut.Files).DisplayPath);
+        Assert.Equal("A ↔ クリップボード", sut.SelectedFile?.DisplayPath);   // 閉じた位置の隣へ寄る
+    }
+
+    [Fact]
+    public void 最後の比較を閉じると作り方の案内へ戻る()
+    {
+        var sut = CreateSut();
+        sut.ShowComparison(Compare("A"));
+
+        sut.CloseComparisonCommand.Execute(null);   // 引数なし＝今見ている比較
+
+        Assert.Empty(sut.Files);
+        Assert.Null(sut.SelectedFile);
+        Assert.False(sut.HasComparison);
+        Assert.Equal("", sut.CompareCaption);       // 帯を出したままにしない
+        Assert.Contains("比較する内容がありません", sut.EmptyMessage);
+    }
+
+    [Fact]
+    public void 左右入替は積み増しではなく同じ位置の置き換え()
+    {
+        var sut = CreateSut();
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+        sut.SelectedFile = sut.Files.Single(f => f.DisplayPath.StartsWith("A"));
+
+        sut.SwapComparisonCommand.Execute(null);
+
+        Assert.Equal(2, sut.Files.Count);
+        Assert.Equal(new[] { "B ↔ クリップボード", "クリップボード ↔ A" },
+            sut.Files.Select(f => f.DisplayPath));   // A は元の位置のまま入れ替わる
+        Assert.Equal("クリップボード ↔ A", sut.SelectedFile?.DisplayPath);
+    }
+
+    [Fact]
+    public void 見ている比較が帯と比較専用操作の対象になる()
+    {
+        var sut = CreateSut();
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+
+        Assert.Contains("B", sut.CompareCaption);
+
+        sut.SelectedFile = sut.Files.Single(f => f.DisplayPath.StartsWith("A"));
+
+        Assert.True(sut.HasComparison);
+        Assert.Contains("A", sut.CompareCaption);
+
+        // 別のソースへ切り替えれば比較専用の操作は死ぬ（押した瞬間に見ている差分が消えないように）が、素材は残る。
+        sut.IsAiMode = true;
+        Assert.False(sut.HasComparison);
+        Assert.Equal("", sut.CompareCaption);
+        sut.IsCompareMode = true;
+        Assert.Equal(2, sut.Files.Count);
+    }
+
+    [Fact]
+    public void すべて閉じると比較は残らない()
+    {
+        var sut = CreateSut();
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+
+        sut.CloseAllComparisonsCommand.Execute(null);
+
+        Assert.Empty(sut.Files);
+        Assert.Equal("比較（0件）", sut.FileListHeader);
+    }
+
     [Fact]
     public void 左右を入れ替えても出どころのファイルは変わらずファイルの側だけ反転する()
     {
