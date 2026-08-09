@@ -21,6 +21,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private readonly GitService _git;
     private readonly IEditorService _editor;
     private readonly IWorkspaceService _workspace;
+    private readonly DiffFileGateway _files;
     public DiffConflictViewModel Conflict { get; }
     private readonly DiffSessionQuery _query;
     private readonly DiffSessionCommandHandler _commands;
@@ -28,7 +29,13 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     private (string? From, string To)? _commitRange;
 
-    [ObservableProperty] private bool _isGitMode = true;
+    /// <summary>差分の出どころ（Git／AI変更／アドホック比較）。ヘッダーのラジオボタンで切り替わる。</summary>
+    [ObservableProperty] private DiffSource _source = DiffSource.Git;
+    // ラジオボタン用の相互排他プロキシ。true を書いたものへ切り替わり、false 書き込みは無視する
+    // （RadioButton は選択が移るとき旧選択に false を書くので、ここで捨てないと二重に切り替わる）。
+    public bool IsGitMode { get => Source == DiffSource.Git; set { if (value) Source = DiffSource.Git; } }
+    public bool IsAiMode { get => Source == DiffSource.Ai; set { if (value) Source = DiffSource.Ai; } }
+    public bool IsCompareMode { get => Source == DiffSource.Compare; set { if (value) Source = DiffSource.Compare; } }
     private bool _suppressModeChangeRefresh;
     [ObservableProperty] private bool _isSideBySide = true;
     [ObservableProperty] private string _gitTargetLabel = "";
@@ -59,6 +66,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _git = git;
         _editor = editor;
         _workspace = workspace;
+        _files = files;
         _query = query;
         _commands = commands;
         Conflict = new DiffConflictViewModel(files, git, ClearDiffForConflict, SetStatus);
@@ -99,10 +107,16 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
     }
 
-    partial void OnIsGitModeChanged(bool value)
+    partial void OnSourceChanged(DiffSource value)
     {
+        OnPropertyChanged(nameof(IsGitMode));
+        OnPropertyChanged(nameof(IsAiMode));
+        OnPropertyChanged(nameof(IsCompareMode));
+        // 比較を見ているかどうかで意味が変わる（帯を畳む・比較専用の操作を殺す）。
+        OnPropertyChanged(nameof(HasComparison));
+        OnPropertyChanged(nameof(CompareCaption));
         _changeCursor = -1;
-        if (!value)
+        if (value != DiffSource.Git)
         {
             _commitRange = null;
             OnPropertyChanged(nameof(CanOpenCommitInGit));
@@ -228,6 +242,122 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             ?? SelectedFile;
     }
 
+    // ===== アドホック比較（クリップボード ↔ 選択範囲 など） =====
+
+    private DiffComparison? _comparison;
+
+    /// <summary>比較の素材が入っているか（左右入替・比較し直しが使えるか）。
+    /// 素材は Git／AI変更へ切り替えても保持するが、<b>今それを見ていない間は false</b>——
+    /// git 差分を見ているときに「左右を入れ替える」が押せると、押した瞬間に見ていた差分が消えるため。</summary>
+    public bool HasComparison => Source == DiffSource.Compare && _comparison is not null;
+
+    /// <summary>差分本体の上に出す「どちらが左でどちらが右か」の帯。比較を見ていなければ空
+    /// （空でないと帯が出たままになり、git 差分を別の何かだと名乗ってしまう）。</summary>
+    public string CompareCaption => HasComparison ? _comparison!.Caption : "";
+
+    /// <summary>
+    /// 任意のテキスト2つを比較して表示する（左＝旧・右＝新）。ペインの表示・フォーカスは呼び出し側が行う
+    /// ——「素材を別のペインへ渡す」動線の受け口なので、渡す側が見せ方を決める（設計書 §23.3）。
+    /// </summary>
+    public void ShowComparison(DiffComparison comparison)
+    {
+        _comparison = comparison;
+        _loaded = true;
+        // Source の変更で走る自動更新は抑止して、下の force 付き1回にまとめる
+        // （同じ内容の一覧に見えても本文が変わり得るので、こちらは必ず組み直す）。
+        _suppressModeChangeRefresh = true;
+        try
+        {
+            Source = DiffSource.Compare;
+        }
+        finally
+        {
+            _suppressModeChangeRefresh = false;
+        }
+        OnPropertyChanged(nameof(HasComparison));
+        OnPropertyChanged(nameof(CompareCaption));
+        SetStatus("", isError: false);
+        _ = RefreshAsync(force: true);
+    }
+
+    private DiffFileList LoadComparison()
+        => _comparison is { } comparison
+            ? new DiffFileList(new[] { BuildCompareItem(comparison) }, "")
+            : new DiffFileList(
+                Array.Empty<DiffFileItem>(),
+                "比較する内容がありません。エディタやターミナルで選択して右クリック →"
+                + "「Diff へ送る（クリップボードと比較）」から作れます。");
+
+    private static DiffFileItem BuildCompareItem(DiffComparison comparison)
+    {
+        var (added, removed) = DiffUtil.Stat(comparison.LeftText, comparison.RightText);
+        return new DiffFileItem
+        {
+            FullPath = comparison.FilePath,
+            DisplayPath = comparison.DisplayPath,
+            Badge = added == 0 && removed == 0 ? "同一" : "比較",
+            Stats = $"+{added} −{removed}",
+            IsCompare = true,
+            FileIsLeft = comparison.FileIsLeft,
+            OldContent = comparison.LeftText,
+            NewContent = comparison.RightText,
+        };
+    }
+
+    /// <summary>
+    /// 一覧で選んでいるファイルの「今のディスク上の内容」をクリップボードと比較する
+    /// （Git 差分の一覧から、そのファイルとコピーしてきた案をそのまま突き合わせられる）。
+    /// </summary>
+    [RelayCommand]
+    private async Task CompareFileWithClipboardAsync(DiffFileItem? item)
+    {
+        item ??= SelectedFile;
+        if (item is not { FullPath.Length: > 0 })
+        {
+            SetStatus("比較できるファイルが選ばれていません。", isError: true);
+            return;
+        }
+        if (ClipboardText.TryGet() is not { } clipboard)
+        {
+            SetStatus("クリップボードにテキストがありません。", isError: true);
+            return;
+        }
+        string content;
+        try
+        {
+            content = await _files.ReadTextAsync(item.FullPath);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"ファイルを読めませんでした: {ex.Message}", isError: true);
+            return;
+        }
+        ShowComparison(new DiffComparison(
+            Path.GetFileName(item.FullPath), content, "クリップボード", clipboard,
+            item.FullPath, FileIsLeft: true));
+    }
+
+    /// <summary>左右を入れ替えて比較し直す（どちらを「元」と見るかは見ている人が決める）。</summary>
+    [RelayCommand]
+    private void SwapComparison()
+    {
+        if (_comparison is { } comparison)
+            ShowComparison(comparison.Swapped());
+    }
+
+    /// <summary>右側だけ今のクリップボードで置き換えて比較し直す（コピーし直したときの一手）。</summary>
+    [RelayCommand]
+    private void RecompareWithClipboard()
+    {
+        if (_comparison is not { } comparison) return;
+        if (ClipboardText.TryGet() is not { } text)
+        {
+            SetStatus("クリップボードにテキストがありません。", isError: true);
+            return;
+        }
+        ShowComparison(comparison.WithRight("クリップボード", text));
+    }
+
     [RelayCommand]
     private void ClearGitTarget()
     {
@@ -246,17 +376,21 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             CommitOpenInGitRequested?.Invoke(this, hash);
     }
 
-    private async Task RefreshAsync()
+    /// <param name="force">一覧の中身が同じでも組み直す。アドホック比較の作り直しのように、
+    /// 見出しが同じまま本文だけ変わり得るときに使う。</param>
+    private async Task RefreshAsync(bool force = false)
     {
         _loaded = true;
         _patchCache.Clear();
         var selectedPath = SelectedFile?.FullPath;
 
-        var result = await _query.LoadAsync(IsGitMode, _commitRange);
+        var result = Source == DiffSource.Compare
+            ? LoadComparison()
+            : await _query.LoadAsync(IsGitMode, _commitRange);
         var items = result.Items;
         var emptyMessage = result.EmptyMessage;
 
-        if (DiffSessionQuery.SameFiles(items, Files))
+        if (!force && DiffSessionQuery.SameFiles(items, Files))
         {
             EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
             if (IsGitMode && _commitRange is null)
@@ -291,8 +425,35 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     {
         item ??= SelectedFile;
         if (item is null) return;
+        if (item.FullPath.Length == 0)
+        {
+            // アドホック比較で出どころのファイルが無い（クリップボード同士など）。
+            SetStatus("この比較には開けるファイルがありません。", isError: true);
+            return;
+        }
         try { await _editor.OpenFileAsync(item.FullPath); }
         catch (Exception ex) { SetStatus($"エディタで開けませんでした: {ex.Message}", isError: true); }
+    }
+
+    /// <summary>差分本体の行に対応するファイル行をエディタで開くよう要求する（ShellWindow が処理）。
+    /// 行が特定できないときは行番号 0（ファイルを開くだけ）。</summary>
+    public event EventHandler<(string Path, int Line)>? EditorLineOpenRequested;
+
+    /// <summary>
+    /// 差分本体の <paramref name="rowIndex"/> 行目（表示中の形式での添字）が指すファイル行をエディタで開く。
+    /// 出どころのファイルが無い比較では何もしない。
+    /// </summary>
+    public void RequestOpenRowInEditor(int rowIndex)
+    {
+        if (SelectedFile is not { FullPath.Length: > 0 } item)
+        {
+            SetStatus("この比較には開けるファイルがありません。", isError: true);
+            return;
+        }
+        var line = IsSideBySide
+            ? DiffRowLineMapper.LineForSideRow(SideRows, rowIndex, item.FileIsLeft)
+            : DiffRowLineMapper.LineForUnifiedRow(DiffRows, rowIndex, item.FileIsLeft);
+        EditorLineOpenRequested?.Invoke(this, (item.FullPath, line));
     }
 
     /// <summary>AI変更の巻き戻し：新規作成ならファイル削除、変更なら変更前の全文を書き戻す。</summary>
@@ -396,6 +557,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _commands.ClearAiChanges();
         SetStatus("AI変更の記録をクリアしました。", isError: false);
     }
+
+    /// <summary>View（右クリック操作など）からペイン下部の実行結果メッセージを出す。</summary>
+    public void SetStatusMessage(string message, bool isError) => SetStatus(message, isError);
 
     private void SetStatus(string message, bool isError)
     {

@@ -101,7 +101,7 @@ public sealed partial class DiffSessionViewModel
         var rows = new List<DiffRowVm>();
         if (item is null) return rows;
 
-        if (item.IsAi)
+        if (item.UsesInlineContent)
         {
             if (item.OldContent is null || item.NewContent is null)
             {
@@ -129,7 +129,7 @@ public sealed partial class DiffSessionViewModel
         var rows = new List<DiffSideRowVm>();
         if (item is null) return rows;
 
-        if (item.IsAi)
+        if (item.UsesInlineContent)
         {
             if (item.OldContent is null || item.NewContent is null)
             {

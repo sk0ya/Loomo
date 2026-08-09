@@ -264,15 +264,49 @@
             </Border>
         </DataTemplate>
 
+        <!-- 差分本体（左右並び）のメニュー。コピーのほか、読んでいる行からエディタ・AI・比較へ素材を渡す。
+             コンフリクト表示の Ours/Theirs 欄は行番号の意味が違うので、こちらは使わず DiffCopyMenu のまま。 -->
+        <ContextMenu x:Key="DiffSideMenu">
+            <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
+                      CommandTarget="{Binding PlacementTarget,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
+            <MenuItem Header="この行をエディタで開く" Click="OnOpenRowInEditor"
+                      ToolTip="右クリックした行に対応するファイルの行をエディタで開く" />
+            <MenuItem Header="選択範囲をクリップボードと比較" Click="OnCompareSelectionWithClipboard"
+                      ToolTip="差分本体で選択したテキストとクリップボードの内容を比較する" />
+            <Separator />
+            <MenuItem Header="⇄ 左右を入れ替える" Click="OnSwapComparison"
+                      IsEnabled="{Binding PlacementTarget.DataContext.HasComparison,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="クリップボードで再比較" Click="OnRecompareWithClipboard"
+                      ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
+                      IsEnabled="{Binding PlacementTarget.DataContext.HasComparison,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
+
         <!-- 統合表示の本文メニュー（コピー＋選択行の破棄）。破棄は Git・作業ツリー・未ステージの追跡ファイルのみ有効 -->
         <ContextMenu x:Key="DiffUnifiedMenu">
             <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
                       CommandTarget="{Binding PlacementTarget,
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <Separator />
+            <MenuItem Header="この行をエディタで開く" Click="OnOpenRowInEditor"
+                      ToolTip="右クリックした行に対応するファイルの行をエディタで開く" />
+            <MenuItem Header="選択範囲をクリップボードと比較" Click="OnCompareSelectionWithClipboard"
+                      ToolTip="差分本体で選択したテキストとクリップボードの内容を比較する" />
+            <Separator />
             <MenuItem Header="選択した行を破棄" Click="OnDiscardSelectedLines"
                       ToolTip="選択した追加・削除行の変更だけを作業ツリーから取り消す"
                       IsEnabled="{Binding PlacementTarget.DataContext.CanDiscardLines,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
+            <MenuItem Header="⇄ 左右を入れ替える" Click="OnSwapComparison"
+                      IsEnabled="{Binding PlacementTarget.DataContext.HasComparison,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <MenuItem Header="クリップボードで再比較" Click="OnRecompareWithClipboard"
+                      ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
+                      IsEnabled="{Binding PlacementTarget.DataContext.HasComparison,
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
     </UserControl.Resources>
@@ -321,6 +355,25 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel LastChildFill="True" ToolTip="{Binding DisplayPath}">
+                                    <!-- 一覧の右クリック。対象はメニューの配置対象（この DockPanel）の DataContext
+                                         ＝その行のファイル項目（コード側 ContextItem が取り出す）。
+                                         「クリップボードと比較」は、変更一覧にあるファイルの現物と、
+                                         どこかからコピーしてきた案をそのまま突き合わせるための入口。 -->
+                                    <DockPanel.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="エディタで開く" Click="OnOpenFileInEditor" />
+                                            <MenuItem Header="クリップボードと比較" Click="OnCompareFileWithClipboard"
+                                                      ToolTip="このファイルの現在の内容とクリップボードを比較する" />
+                                            <MenuItem Header="パスをコピー" Click="OnCopyFilePath" />
+                                            <Separator />
+                                            <MenuItem Header="変更を破棄" Click="OnDiscardFile"
+                                                      ToolTip="このファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
+                                                      Visibility="{Binding CanDiscard, Converter={StaticResource BoolToVis}}" />
+                                            <MenuItem Header="AI 変更を元に戻す" Click="OnRevertFile"
+                                                      ToolTip="AI が加えた変更を巻き戻す（新規作成なら削除）"
+                                                      Visibility="{Binding CanRevert, Converter={StaticResource BoolToVis}}" />
+                                        </ContextMenu>
+                                    </DockPanel.ContextMenu>
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Stats}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="{DynamicResource Fs11}"
@@ -350,6 +403,23 @@
 
             <!-- 差分本体（統合 / 左右並びを IsSideBySide で切替）。中身は code-behind が FlowDocument を組み立てる -->
             <DockPanel Grid.Column="2">
+
+            <!-- アドホック比較の見出し帯：左右のどちらが何なのかを本文の真上に出す（ファイル名では分からないため）。
+                 比較中でなければ畳む。 -->
+            <Border DockPanel.Dock="Top" Padding="8,3" Background="{DynamicResource Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding CompareCaption}" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding CompareCaption}" FontSize="{DynamicResource Fs11}"
+                           Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis" />
+            </Border>
 
             <!-- ハンク単位ステージ（作業ツリーの追跡済みファイルのみ）。各ハンクをステージ／アンステージできる。 -->
             <Border DockPanel.Dock="Top" Margin="0,0,0,2" Padding="4,3"
@@ -408,7 +478,7 @@
                         </Grid.ColumnDefinitions>
                         <RichTextBox x:Name="LeftGutter" Grid.Column="0" Style="{StaticResource DiffGutterBox}" />
                         <RichTextBox x:Name="LeftTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
-                                     ContextMenu="{StaticResource DiffCopyMenu}"
+                                     ContextMenu="{StaticResource DiffSideMenu}"
                                      VerticalScrollBarVisibility="Hidden" />
                     </Grid>
 
@@ -431,7 +501,7 @@
                         </Grid.ColumnDefinitions>
                         <RichTextBox x:Name="RightGutter" Grid.Column="0" Style="{StaticResource DiffGutterBox}" />
                         <RichTextBox x:Name="RightTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
-                                     ContextMenu="{StaticResource DiffCopyMenu}" />
+                                     ContextMenu="{StaticResource DiffSideMenu}" />
                     </Grid>
                 </Grid>
                 </Grid>

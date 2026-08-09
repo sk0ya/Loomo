@@ -111,6 +111,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ShellWindow が処理する：フォルダはそのフォルダへ cd、ファイルはパスをプロンプトへ入力（未実行）。
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
 
+    // FolderTree の「Diff へ送る」要求（ファイルのみ）。View（コンテキストメニュー）から発火し、
+    // ShellWindow が中身を読んで Diff ペインのアドホック比較として表示する。
+    public event EventHandler<FileCompareRequest>? CompareRequested;
+
     // FolderTree の「このフォルダーで検索」要求（フォルダのみ）。View（コンテキストメニュー）から発火し、
     // ShellWindow が検索パネルを開いて、そのフォルダを検索の開始フォルダーに設定する。
     public event EventHandler<string>? SearchInFolderRequested;

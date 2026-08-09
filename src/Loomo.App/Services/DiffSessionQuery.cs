@@ -42,6 +42,7 @@ public sealed class DiffSessionQuery
             && pair.First.DisplayPath == pair.Second.DisplayPath
             && pair.First.Badge == pair.Second.Badge && pair.First.Stats == pair.Second.Stats
             && pair.First.IsAi == pair.Second.IsAi && pair.First.IsNew == pair.Second.IsNew
+            && pair.First.IsCompare == pair.Second.IsCompare
             && pair.First.IsStaged == pair.Second.IsStaged
             && pair.First.OldContent == pair.Second.OldContent && pair.First.NewContent == pair.Second.NewContent
             && Equals(pair.First.Entry, pair.Second.Entry) && Equals(pair.First.CommitFile, pair.Second.CommitFile));

@@ -12,7 +12,9 @@ public partial class ShellWindow {
             AddBlameCommitMenuItems(e.Menu, control, blame);
             return;
         }
-        AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
+        AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection,
+            BuildDiffSendMenu(CompareEntries(
+                control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection)));
         AddRefactorMenuItems(e.Menu, control);
         AddOpenLinkInWindowMenuItem(e.Menu, control);
         AddRunScriptMenuItem(e.Menu, control);
@@ -312,24 +314,141 @@ public partial class ShellWindow {
         bps.EnsureBreakpoint(path, line0).Condition = input.Trim();
     }
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)
-        => AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection);
-    private void AddSelectionMenuItems(ContextMenu menu, string selectedText, bool hasSelection) {
-        if (!hasSelection || string.IsNullOrWhiteSpace(selectedText))
+        => AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection,
+            BuildDiffSendMenu(CompareEntries(control: null, "ターミナルの選択", e.SelectedText, e.HasSelection)));
+    /// <summary>選択テキストの出どころの呼び名（比較の左右見出しに使う）。</summary>
+    private static string SelectionSourceLabel(VimEditorControl? control)
+        => control?.FilePath is { Length: > 0 } path
+            ? $"選択範囲（{Path.GetFileName(path)}）"
+            : "エディタの選択";
+    /// <summary>選択テキストを他のペインへ渡す項目群。<paramref name="diffItem"/> は
+    /// <see cref="BuildDiffSendMenu"/> が作った「Diffへ送る」1項目で、他の「〜へ送る」と同じ高さに並べる
+    /// （選択が無くてもファイル比較だけは出したいので、この項目だけは選択の有無に依らず受け取る）。</summary>
+    private void AddSelectionMenuItems(
+        ContextMenu menu, string selectedText, bool hasSelection, MenuItem? diffItem) {
+        var hasText = hasSelection && !string.IsNullOrWhiteSpace(selectedText);
+        if (!hasText && diffItem is null)
             return;
         menu.Items.Add(new Separator());
-        var ask = new MenuItem {
-            Header = "AIへ送る", ToolTip = "選択テキストについてAIに尋ねる",
-            IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
-        ask.Click += (_, _) => {
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-            _vm.AiBar.AskAbout(selectedText);
-        };
-        menu.Items.Add(ask);
-        var search = new MenuItem {
-            Header = "ブラウザへ送る", ToolTip = "選択テキストをブラウザペインで検索する", };
-        search.Click += (_, _) => _ = SearchSelectionInBrowserAsync(selectedText);
-        menu.Items.Add(search);
-        AddWorkflowMenuItems(menu, selectedText);
+        if (hasText) {
+            var ask = new MenuItem {
+                Header = "AIへ送る", ToolTip = "選択テキストについてAIに尋ねる",
+                IsEnabled = !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp, };
+            ask.Click += (_, _) => {
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
+                _vm.AiBar.AskAbout(selectedText);
+            };
+            menu.Items.Add(ask);
+            var search = new MenuItem {
+                Header = "ブラウザへ送る", ToolTip = "選択テキストをブラウザペインで検索する", };
+            search.Click += (_, _) => _ = SearchSelectionInBrowserAsync(selectedText);
+            menu.Items.Add(search);
+        }
+        if (diffItem is not null)
+            menu.Items.Add(diffItem);
+        if (hasText)
+            AddWorkflowMenuItems(menu, selectedText);
+    }
+    /// <summary>Diff ペインへ送れる比較の行き先1つぶん。</summary>
+    private readonly record struct CompareEntry(string Label, string ToolTip, Action Run);
+    /// <summary>この右クリックで Diff へ送れる相手を並べる（選択範囲／ファイル全体／保存済みの内容）。</summary>
+    private IReadOnlyList<CompareEntry> CompareEntries(
+        VimEditorControl? control, string sourceLabel, string selectedText, bool hasSelection) {
+        var entries = new List<CompareEntry>();
+        var path = control?.FilePath ?? "";
+        if (hasSelection && !string.IsNullOrWhiteSpace(selectedText))
+            entries.Add(new CompareEntry(
+                "選択範囲とクリップボードを比較",
+                "選択テキストを左、クリップボードの内容を右に置いて Diff ペインで見比べる",
+                () => CompareWithClipboard(sourceLabel, selectedText, path)));
+        if (control is null)
+            return entries;
+        var name = path.Length > 0 ? Path.GetFileName(path) : "エディタの内容";
+        entries.Add(new CompareEntry(
+            "ファイル全体とクリップボードを比較",
+            "エディタの内容を左、クリップボードの内容を右に置いて Diff ペインで見比べる",
+            () => CompareWithClipboard(name, control.Text, path)));
+        if (path.Length > 0 && control.IsModified && File.Exists(path))
+            entries.Add(new CompareEntry(
+                "保存済みの内容と比較（未保存の変更）",
+                "ディスク上の保存済みの内容と、編集中の内容の差分を Diff ペインで見る",
+                () => CompareEditorWithSavedFile(control, path, name)));
+        return entries;
+    }
+    /// <summary>
+    /// 比較の入口を「Diffへ送る」<b>1項目</b>にまとめる。選択範囲とファイルで別々に「Diffへ送る」を出すと、
+    /// 同じ名前が2つ並んでどちらが何を送るのか読めない（設計書 §24.3 の「送る」は宛先1つにつき1項目）。
+    /// 行き先が複数あるときだけ子メニューにし、1つしか無いとき（ターミナル＝ファイルが無い）は平のままにする。
+    /// </summary>
+    private static MenuItem? BuildDiffSendMenu(IReadOnlyList<CompareEntry> entries) {
+        if (entries.Count == 0)
+            return null;
+        if (entries.Count == 1) {
+            var only = entries[0];
+            var flat = new MenuItem { Header = $"Diffへ送る（{only.Label}）", ToolTip = only.ToolTip };
+            flat.Click += (_, _) => only.Run();
+            return flat;
+        }
+        var parent = new MenuItem {
+            Header = "Diffへ送る", ToolTip = "クリップボードや保存済みの内容と Diff ペインで見比べる", };
+        foreach (var entry in entries) {
+            var item = new MenuItem { Header = entry.Label, ToolTip = entry.ToolTip };
+            item.Click += (_, _) => entry.Run();
+            parent.Items.Add(item);
+        }
+        return parent;
+    }
+    private void CompareEditorWithSavedFile(VimEditorControl control, string path, string name) {
+        try {
+            // 右＝編集中のバッファがエディタで見えている版なので、行の対応は右側で引く（既定）。
+            CompareInDiff(new DiffComparison(
+                $"{name}（保存済み）", File.ReadAllText(path), $"{name}（編集中）", control.Text, path));
+        } catch (Exception ex) {
+            ToastService.Error($"保存済みの内容を読めませんでした: {ex.Message}");
+        }
+    }
+    /// <summary>素材を左、今のクリップボードを右に置いて比較する。クリップボードが空なら何もせず知らせる
+    /// （空文字と比べた「全部削除」の差分を見せても意味がないため）。</summary>
+    private void CompareWithClipboard(string leftTitle, string leftText, string filePath) {
+        if (ClipboardText.TryGet() is not { } clipboard) {
+            ToastService.Error("クリップボードにテキストがありません。");
+            return;
+        }
+        // 左がそのファイル由来（選択範囲・ファイル全体）なので、行の対応は左側で引く。
+        CompareInDiff(new DiffComparison(
+            leftTitle, leftText, "クリップボード", clipboard, filePath, FileIsLeft: true));
+    }
+    /// <summary>エクスプローラーからの比較要求：ファイル同士、またはファイルとクリップボードを Diff ペインへ。
+    /// 2ファイルのときは右（新側）を比較の出どころにして、行から飛ぶ先を「新しい方」に揃える。</summary>
+    private void CompareFilesInDiff(FileCompareRequest request) {
+        try {
+            if (BinaryFileDetector.IsBinary(request.LeftPath)
+                || (request.RightPath is { } binaryCheck && BinaryFileDetector.IsBinary(binaryCheck))) {
+                ToastService.Error("バイナリファイルは比較できません。");
+                return;
+            }
+            var leftName = Path.GetFileName(request.LeftPath);
+            var leftText = File.ReadAllText(request.LeftPath);
+            if (request.RightPath is { Length: > 0 } rightPath) {
+                CompareInDiff(new DiffComparison(
+                    leftName, leftText, Path.GetFileName(rightPath), File.ReadAllText(rightPath), rightPath));
+                return;
+            }
+            if (ClipboardText.TryGet() is not { } clipboard) {
+                ToastService.Error("クリップボードにテキストがありません。");
+                return;
+            }
+            CompareInDiff(new DiffComparison(
+                leftName, leftText, "クリップボード", clipboard, request.LeftPath, FileIsLeft: true));
+        } catch (Exception ex) {
+            ToastService.Error($"ファイルを読めませんでした: {ex.Message}");
+        }
+    }
+    /// <summary>比較を Diff ペインへ渡して、そのペインを見えるところへ出す（「〜へ送る」の共通の締め）。</summary>
+    private void CompareInDiff(DiffComparison comparison) {
+        _vm.DiffSession.ShowComparison(comparison);
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
+        FocusPane(PaneKind.Diff);
     }
     private static readonly string[] RunnableScriptExtensions = { ".ps1", ".bat", ".cmd" };
     private void AddRunScriptMenuItem(ContextMenu menu, VimEditorControl? control) {

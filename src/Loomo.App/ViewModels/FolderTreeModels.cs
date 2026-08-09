@@ -6,6 +6,10 @@ namespace sk0ya.Loomo.App.ViewModels;
 // 「ターミナルへ送る」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
 public readonly record struct TerminalSetRequest(string FullPath, bool IsDirectory);
 
+// 「Diff へ送る」要求の対象。RightPath が null なら「クリップボードと比較」（右はクリップボード）、
+// 2つ指定なら「選んだ2ファイルの比較」。左＝旧・右＝新として Diff ペインに並ぶ。
+public readonly record struct FileCompareRequest(string LeftPath, string? RightPath);
+
 /// <summary>「AIワークフロー」コンテキストメニューからの実行要求。<see cref="Input"/> は構造化された実行入力。</summary>
 public readonly record struct WorkflowRunRequest(string WorkflowId, WorkflowRunInput Input);
 

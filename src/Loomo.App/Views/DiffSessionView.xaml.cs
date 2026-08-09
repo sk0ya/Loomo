@@ -153,6 +153,7 @@ public partial class DiffSessionView : UserControl
     private void RebuildUnified()
     {
         _currentMarks.Clear(); // 旧段落は破棄されるのでマーカー参照も捨てる
+        _contextRowIndex = -1; // 行が入れ替わったので、覚えていた右クリック行はもう別の行を指す
         // ページ幅を最長行ぴったりに合わせる（折り返さず、横スクロールの可動域も実内容に一致させる）
         var width = Vm is null ? MinContentWidth : MeasureMaxWidth(Vm.DiffRows.Select(r => r.Text));
         var doc = NewDocument(width);
@@ -165,6 +166,7 @@ public partial class DiffSessionView : UserControl
     private void RebuildSide()
     {
         _currentMarks.Clear(); // 旧段落は破棄されるのでマーカー参照も捨てる
+        _contextRowIndex = -1; // 行が入れ替わったので、覚えていた右クリック行はもう別の行を指す
         // 左右で同じページ幅にして、横スクロールの連動が座標としてぴったり揃うようにする
         var width = Vm is null
             ? MinContentWidth
@@ -201,19 +203,23 @@ public partial class DiffSessionView : UserControl
         return doc;
     }
 
-    /// <summary>最長行の表示幅（px）を測ってページ幅を決める。CJK 全角も正しく測れるよう FormattedText を使う。</summary>
+    /// <summary>最長行の表示幅（px）を測ってページ幅を決める。CJK 全角も正しく測れるよう FormattedText を使う。
+    /// 測るサイズは本文と同じ<b>スケール後</b>のフォントサイズでなければならない——等倍の 12 で測ると、
+    /// UI 文字サイズを上げているときにページ幅が実際より狭くなって本文だけが折り返し、
+    /// 折り返さない行番号ガターと1行ずつずれていく（行番号が信用できなくなる）。</summary>
     private double MeasureMaxWidth(IEnumerable<string> lines)
     {
         var typeface = _monoTypeface ??= new Typeface(
             new FontFamily("Cascadia Mono, Consolas"),
             FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var fontSize = UiFontManager.Scaled(12);
         var max = 0.0;
         foreach (var line in lines)
         {
             if (string.IsNullOrEmpty(line)) continue;
             var ft = new FormattedText(line, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                typeface, 12, Brushes.Black, pixelsPerDip);
+                typeface, fontSize, Brushes.Black, pixelsPerDip);
             if (ft.WidthIncludingTrailingWhitespace > max) max = ft.WidthIncludingTrailingWhitespace;
         }
         return Math.Max(MinContentWidth, max + PageWidthPadding);
@@ -278,6 +284,16 @@ public partial class DiffSessionView : UserControl
         UnifiedBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
         LeftTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
         RightTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
+
+        // 右クリックした「行」を覚える（メニューを開くとキャレット位置には頼れないため、
+        // 押した座標から段落を引く）。「この行をエディタで開く」の対象になる。
+        UnifiedBox.PreviewMouseRightButtonDown += OnBodyRightButtonDown;
+        LeftTextBox.PreviewMouseRightButtonDown += OnBodyRightButtonDown;
+        RightTextBox.PreviewMouseRightButtonDown += OnBodyRightButtonDown;
+        // キーボード（メニューキー／Shift+F10）で開いたときはマウス座標が無いのでキャレット行を対象にする。
+        UnifiedBox.ContextMenuOpening += OnBodyContextMenuOpening;
+        LeftTextBox.ContextMenuOpening += OnBodyContextMenuOpening;
+        RightTextBox.ContextMenuOpening += OnBodyContextMenuOpening;
     }
 
     /// <summary>Shift 押下中のホイールを横スクロールに割り当てる。左右本文はスクロール連動で他方も追従する。</summary>
@@ -540,6 +556,97 @@ public partial class DiffSessionView : UserControl
         if (Vm is { SelectedFile: { } file } vm)
             vm.OpenInEditorCommand.Execute(file);
     }
+
+    /// <summary>右クリックしたメニュー項目が属する行のファイル項目（一覧の行メニュー用）。</summary>
+    private static DiffFileItem? ContextItem(object sender)
+        => sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: DiffFileItem item } } }
+            ? item
+            : null;
+
+    private void OnOpenFileInEditor(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && ContextItem(sender) is { } item) vm.OpenInEditorCommand.Execute(item);
+    }
+
+    private void OnCompareFileWithClipboard(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && ContextItem(sender) is { } item)
+            vm.CompareFileWithClipboardCommand.Execute(item);
+    }
+
+    private void OnCopyFilePath(object sender, RoutedEventArgs e)
+    {
+        if (ContextItem(sender) is not { FullPath.Length: > 0 } item) return;
+        try { Clipboard.SetText(item.FullPath); }
+        catch { /* 他アプリがクリップボードを掴んでいるだけ。無視してよい。 */ }
+    }
+
+    private void OnDiscardFile(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && ContextItem(sender) is { } item) vm.DiscardCommand.Execute(item);
+    }
+
+    private void OnRevertFile(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && ContextItem(sender) is { } item) vm.RevertCommand.Execute(item);
+    }
+
+    // ===== 差分本体の右クリック（この行をエディタで開く／選択範囲を比較） =====
+
+    /// <summary>右クリックした行（表示中の形式での <c>DiffRows</c> / <c>SideRows</c> の添字）。-1 は不明。</summary>
+    private int _contextRowIndex = -1;
+
+    private void OnBodyRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _contextRowIndex = -1;
+        if (sender is not RichTextBox box) return;
+        // 行の右端より外側でも同じ行として拾えるよう snapToText で最寄りの位置を取る。
+        if (box.GetPositionFromPoint(e.GetPosition(box), snapToText: true) is not { } position
+            || position.Paragraph is not { } paragraph)
+            return;
+        _contextRowIndex = IndexOfBlock(box.Document, paragraph);
+    }
+
+    /// <summary>
+    /// キーボードで開いたメニュー（マウス座標が無い＝<c>CursorLeft/Top</c> が負）は、直前の右クリックで
+    /// 覚えた行がそのまま残っていると別ファイルの行を指しかねない。キャレットのある行に取り直す。
+    /// </summary>
+    private void OnBodyContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (e.CursorLeft >= 0 || e.CursorTop >= 0) return;   // マウスで開いた（上で取得済み）
+        _contextRowIndex = sender is RichTextBox box && box.CaretPosition.Paragraph is { } paragraph
+            ? IndexOfBlock(box.Document, paragraph)
+            : -1;
+    }
+
+    private void OnOpenRowInEditor(object sender, RoutedEventArgs e)
+        => Vm?.RequestOpenRowInEditor(_contextRowIndex);
+
+    /// <summary>差分本体で選択したテキストを左に、クリップボードを右に置いて比較し直す。</summary>
+    private void OnCompareSelectionWithClipboard(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var box = (sender as MenuItem)?.Parent is ContextMenu { PlacementTarget: RichTextBox target } ? target : null;
+        var selected = box?.Selection.Text ?? "";
+        if (string.IsNullOrEmpty(selected))
+        {
+            vm.SetStatusMessage("差分本体でテキストを選択してから実行してください。", isError: true);
+            return;
+        }
+        if (ClipboardText.TryGet() is not { } clipboard)
+        {
+            vm.SetStatusMessage("クリップボードにテキストがありません。", isError: true);
+            return;
+        }
+        // 出どころのファイルは付けない：左は差分本体の切れ端で、その1行目は元ファイルの1行目ではないため、
+        // 行番号を引く相手にできない（付けると「この行をエディタで開く」が無関係な行を開く）。
+        vm.ShowComparison(new DiffComparison("差分の選択範囲", selected, "クリップボード", clipboard));
+    }
+
+    private void OnSwapComparison(object sender, RoutedEventArgs e) => Vm?.SwapComparisonCommand.Execute(null);
+
+    private void OnRecompareWithClipboard(object sender, RoutedEventArgs e)
+        => Vm?.RecompareWithClipboardCommand.Execute(null);
 
     // ===== 選択行の破棄（統合表示） =====
 

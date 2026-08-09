@@ -273,10 +273,16 @@ public partial class ShellWindow : Window {
             tab?.Control.ExecuteCommand("Gblame");
         };
         vm.FolderTree.GitHistoryRequested += async (_, fullPath) => await ShowGitHistoryAsync(fullPath);
+        vm.FolderTree.CompareRequested += (_, request) => CompareFilesInDiff(request);
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         vm.GitSession.DiffOpenRequested += (_, _) => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
+        };
+        // 差分本体の行から、その実ファイルの同じ行をエディタで開く（行が特定できないときは 0＝開くだけ）。
+        vm.DiffSession.EditorLineOpenRequested += async (_, target) => {
+            await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);
+            FocusPane(PaneKind.Editor);
         };
         vm.DiffSession.CommitOpenInGitRequested += async (_, hash) => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);

@@ -119,6 +119,17 @@ public sealed partial class FolderTreeViewModel
             SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(node.FullPath, node.IsDirectory));
     }
 
+    /// <summary>Diff ペインでの比較を要求する（ShellWindow が処理）。<paramref name="rightPath"/> が null なら
+    /// 左のファイルとクリップボードの比較。どちらも実在ファイルのときだけ発火する。</summary>
+    public void RequestCompare(string leftPath, string? rightPath)
+    {
+        if (!_fileCommands.FileExists(leftPath))
+            return;
+        if (rightPath is not null && !_fileCommands.FileExists(rightPath))
+            return;
+        CompareRequested?.Invoke(this, new FileCompareRequest(leftPath, rightPath));
+    }
+
     /// <summary>このフォルダーを検索の開始フォルダーにして検索パネルを開くよう要求する（ShellWindow が処理）。
     /// フォルダかつ実在のときだけ発火する。</summary>
     public void RequestSearchInFolder(FileNodeViewModel node)

@@ -170,6 +170,24 @@ public partial class FolderTreeView
             vm.RequestGitHistory(node);
     }
 
+    // Diff ペインへ素材として送る。単体なら「このファイル ↔ クリップボード」、
+    // ファイルを2つ選んでいれば「選んだ順で 左＝先に選んだ方・右＝後」で突き合わせる。
+    private void OnCompareWithClipboardClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: false } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestCompare(node.FullPath, rightPath: null);
+    }
+
+    private void OnCompareSelectedClick(object sender, RoutedEventArgs e)
+    {
+        var files = SelectedFilesForCompare(ContextNode(sender));
+        if (files.Count == 2 && DataContext is FolderTreeViewModel vm)
+            vm.RequestCompare(files[0].FullPath, files[1].FullPath);
+    }
+
+    private IReadOnlyList<FileNodeViewModel> SelectedFilesForCompare(FileNodeViewModel? contextNode)
+        => CurrentSelection(contextNode).Where(n => !n.IsDirectory).ToList();
+
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
@@ -194,6 +212,13 @@ public partial class FolderTreeView
         // 「AI」サブメニューを出すときだけ、入力ありワークフローの一覧を流し込む。
         if (show && DataContext is FolderTreeViewModel treeVm)
             PopulateWorkflowMenu(cm, treeVm, node!);
+
+        // 「選択した2つを Diff で比較」は、ファイルをちょうど2つ選んでいるときだけ出す
+        // （それ以外では何を左右に置くか決まらない）。
+        var twoFiles = SelectedFilesForCompare(node).Count == 2;
+        foreach (var item in cm.Items)
+            if (item is FrameworkElement { Tag: "CompareTwo" } element)
+                element.Visibility = twoFiles ? Visibility.Visible : Visibility.Collapsed;
 
         // 複数フォルダーワークスペースの見出し（ワークスペースフォルダー自身）だけ、
         // そのフォルダー内のピン留め切替候補を流し込む。

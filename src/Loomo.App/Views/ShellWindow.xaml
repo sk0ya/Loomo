@@ -1264,7 +1264,12 @@
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="{DynamicResource Fs12}"
                                                  IsChecked="{Binding DiffSession.IsGitMode}" />
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="AI変更" FontSize="{DynamicResource Fs12}"
-                                                 IsChecked="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBool}}" />
+                                                 IsChecked="{Binding DiffSession.IsAiMode}" />
+                                    <!-- アドホック比較（クリップボード ↔ 選択範囲 など）。素材はエディタ・ターミナル・
+                                         エクスプローラーの右クリックから送られてくる（設計書 §23.3）。 -->
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="比較" FontSize="{DynamicResource Fs12}"
+                                                 ToolTip="クリップボードや選択範囲どうしの比較（右クリックの「Diff へ送る」で作れます）"
+                                                 IsChecked="{Binding DiffSession.IsCompareMode}" />
                                 </StackPanel>
                             </Border>
                             <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く -->
@@ -1322,11 +1327,20 @@
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="元に戻す"
                                     ToolTip="選択中ファイルの AI 変更を巻き戻す（新規作成なら削除）"
                                     Command="{Binding DiffSession.RevertCommand}"
-                                    Visibility="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBoolToVis}}" />
+                                    Visibility="{Binding DiffSession.IsAiMode, Converter={StaticResource BoolToVis}}" />
                             <Button Style="{StaticResource PaneHeaderToolButton}" Content="記録をクリア"
                                     ToolTip="AI変更の記録をすべて消す（ファイル自体は変更しない）"
                                     Command="{Binding DiffSession.ClearAiChangesCommand}"
-                                    Visibility="{Binding DiffSession.IsGitMode, Converter={StaticResource InverseBoolToVis}}" />
+                                    Visibility="{Binding DiffSession.IsAiMode, Converter={StaticResource BoolToVis}}" />
+                            <!-- アドホック比較中だけの操作。どちらを「元」と見るかはその場で決まるので入替を近くに置く。 -->
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇄ 左右入替"
+                                    ToolTip="比較の左右を入れ替える"
+                                    Command="{Binding DiffSession.SwapComparisonCommand}"
+                                    Visibility="{Binding DiffSession.IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="クリップボードで再比較"
+                                    ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
+                                    Command="{Binding DiffSession.RecompareWithClipboardCommand}"
+                                    Visibility="{Binding DiffSession.IsCompareMode, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                     </DockPanel>
                     <views:DiffSessionView x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" />
