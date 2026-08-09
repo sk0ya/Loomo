@@ -354,7 +354,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         {
             FullPath = comparison.FilePath,
             DisplayPath = comparison.DisplayPath,
-            Badge = added == 0 && removed == 0 ? "同一" : "比較",
+            // 一覧自体が比較モードだと分かるため、各項目で「比較」を繰り返さない。
+            Badge = added == 0 && removed == 0 ? "同一" : "",
             Stats = $"+{added} −{removed}",
             Comparison = comparison,
             FileIsLeft = comparison.FileIsLeft,

@@ -389,13 +389,28 @@
                                                       Visibility="{Binding CanRevert, Converter={StaticResource BoolToVis}}" />
                                         </ContextMenu>
                                     </DockPanel.ContextMenu>
-                                    <!-- ストックした比較は閉じるまで残るので、その場で片づけられる ✕ を行に置く。 -->
+                                    <!-- 閉じる ✕ は比較項目へマウスを置いたときだけ見せ、普段の一覧を静かに保つ。 -->
                                     <Button DockPanel.Dock="Right" Content="✕" ToolTip="この比較を閉じる"
-                                            Style="{StaticResource DiffCloseButton}" Margin="6,0,0,0"
-                                            Visibility="{Binding IsCompare, Converter={StaticResource BoolToVis}}"
+                                            Margin="6,0,0,0"
                                             Command="{Binding DataContext.CloseComparisonCommand,
                                                 RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}" />
+                                            CommandParameter="{Binding}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource DiffCloseButton}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsCompare}" Value="True" />
+                                                            <Condition Binding="{Binding IsMouseOver,
+                                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Stats}" FontSize="{DynamicResource Fs11}"
                                                Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="{DynamicResource Fs11}"
