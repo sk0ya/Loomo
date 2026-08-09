@@ -15,7 +15,13 @@ public static class DebugProjectDiscovery
     /// <summary>検出した 1 プロジェクト。<see cref="FullPath"/> は .csproj の絶対パス、
     /// <see cref="RelativePath"/> はワークスペースルートからの相対パス（永続化のキーに使う）。
     /// <see cref="IsTest"/> はテストプロジェクトと判定できたか（一覧からの除外に使う）。</summary>
-    public sealed record ProjectEntry(string Name, string FullPath, string RelativePath, bool IsTest);
+    public sealed record ProjectEntry(string Name, string FullPath, string RelativePath, bool IsTest)
+    {
+        /// <summary>選択コンボ用の表示名。モノレポで同名 package が並んでも場所を見分けられるようにする。</summary>
+        public string DisplayName => string.IsNullOrEmpty(RelativePath) || RelativePath == Name
+            ? Name
+            : $"{Name}  —  {RelativePath.Replace('\\', '/')}";
+    }
 
     /// <summary>「自動検出」を表す実在のセンチネル項目（<c>null</c> は使わない）。WPF の <c>ComboBox.SelectedItem</c>
     /// バインディングは選択値が null だと ItemsSource 中の null 要素へは一致せず「未選択」扱いになり空欄表示に

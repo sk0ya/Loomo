@@ -213,6 +213,15 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
         }
     }
 
+    /// <summary>現在表示中のセッション（または共有出力）のログを消去する。</summary>
+    public void ClearOutput()
+    {
+        if (ActiveSession is { } session)
+            session.Output.Clear();
+        else
+            _fallbackOutput.Clear();
+    }
+
     /// <summary>ビルド系コマンドの出力からエラー/警告を抽出して「問題」タブへ反映する。
     /// <paramref name="baseDir"/> は相対パス診断（tsc）の絶対化基準（dotnet は絶対パスなので null で可）。</summary>
     public void ReportBuildOutput(string output, string? baseDir = null) => Problems.SetFromBuildOutput(output, baseDir);

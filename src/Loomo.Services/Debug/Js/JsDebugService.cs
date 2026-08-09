@@ -194,6 +194,7 @@ public sealed class JsDebugService : IDebugService
                     urlFilter = url.TrimEnd('/') + "*",
                     webRoot = workDir,
                     sourceMaps = true,
+                    resolveSourceMapLocations = sourceMapLocations,
                 };
             }
 
@@ -206,6 +207,7 @@ public sealed class JsDebugService : IDebugService
                 url,
                 webRoot = workDir,
                 sourceMaps = true,
+                resolveSourceMapLocations = sourceMapLocations,
             };
         }
 

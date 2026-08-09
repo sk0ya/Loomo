@@ -47,8 +47,8 @@
                      npm run の実行場所・スクリプト候補・tsc の対象解決に使う。 -->
                 <ComboBox ItemsSource="{Binding Profiles.AvailableProjects}"
                           SelectedItem="{Binding Profiles.SelectedProject, Mode=TwoWay}"
-                          DisplayMemberPath="Name" Margin="0,0,0,4"
-                          ToolTip="対象パッケージ（package.json。自動検出=最初に見つかったもの）" />
+                          DisplayMemberPath="DisplayName" Margin="0,0,0,4"
+                          ToolTip="対象パッケージ（package.json。自動検出=ワークスペース直下を優先）" />
 
                 <!-- 実行対象の 3 モード：プログラム（.ts/.js ファイル）/ npm スクリプト / ブラウザ（Chrome）。 -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">

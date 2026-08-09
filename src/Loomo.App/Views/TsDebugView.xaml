@@ -14,7 +14,7 @@
             <MenuItem Header="コピー" Click="OnCopyItemClick" />
         </ContextMenu>
 
-        <!-- 検査タブ（出力／変数／…／構成）。下線で選択を示すフラットなタブ（DebugView と同じ意匠）。 -->
+        <!-- 実行・診断・デバッグ検査・構成。下線で選択を示すフラットなタブ（DebugView と同じ意匠）。 -->
         <Style x:Key="DebugTabItem" TargetType="TabItem">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
@@ -61,6 +61,39 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- スクリプト一覧はボタンの集合ではなく、選択対象を切り替えるナビゲーションとして見せる。
+             余白は行の内側1箇所だけに持たせる（テンプレート側は素で置く）——入れ子で重ねると
+             1行が高くなり、一画面に載る script が減る。 -->
+        <Style x:Key="ScriptTabItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="Margin" Value="2,1" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Panel}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <!-- TS IDE ペインのタブシェル。TS の日常導線は「スクリプト」タブ（検出した npm scripts の一覧から
@@ -72,95 +105,204 @@
         <TabControl x:Name="DebugTabs" Style="{StaticResource DebugTabControl}"
                     Margin="6,0,6,6" SelectedIndex="0" SelectionChanged="OnDebugTabChanged">
 
-            <!-- 0 スクリプト：検出した npm スクリプトの一覧。行の ▶ かダブルクリックで即デバッグ実行。 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="スクリプト">
-                <DockPanel Margin="0,4,0,0">
-                    <!-- パッケージ切替（package.json が複数あるモノレポ等のときだけ表示。構成タブと選択を共有）。 -->
-                    <ComboBox DockPanel.Dock="Top" Margin="0,0,0,4"
-                              ItemsSource="{Binding Profiles.AvailableProjects}"
-                              SelectedItem="{Binding Profiles.SelectedProject, Mode=TwoWay}"
-                              DisplayMemberPath="Name"
-                              Visibility="{Binding Launch.HasMultiplePackages, Converter={StaticResource BoolToVis}}"
-                              ToolTip="対象パッケージ（package.json）" />
-                    <Grid>
-                        <ListBox ItemsSource="{Binding Launch.ScriptItems}" Background="{DynamicResource Bg}"
-                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
-                                 HorizontalContentAlignment="Stretch" Grid.IsSharedSizeScope="True"
-                                 MouseDoubleClick="OnScriptDoubleClick"
-                                 ToolTip="▶ かダブルクリックでデバッグ実行（npm run）"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:TsScriptEntry}">
-                                    <Grid Margin="0,1">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" SharedSizeGroup="TsScriptName" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0" Style="{StaticResource SecondaryButton}" Width="24" Height="20"
-                                                Content="▶" FontSize="{DynamicResource Fs11}" ToolTip="このスクリプトをデバッグ実行"
-                                                Command="{Binding DataContext.Launch.RunScriptCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
-                                                   FontFamily="Consolas" VerticalAlignment="Center" Margin="8,0,0,0" />
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
-                                            <!-- 種別バッジ：この行を▶で実行したときの起動手段（ブラウザ=複合Chrome / Node=pwa-node / テスト）。 -->
-                                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                                    BorderThickness="1" CornerRadius="2" Padding="4,0" VerticalAlignment="Center"
-                                                    Visibility="{Binding HasKindBadge, Converter={StaticResource BoolToVis}}"
-                                                    ToolTip="このスクリプトの起動手段（ブラウザ=開発サーバー＋Chromeデバッグ / Node=Nodeデバッガ / テスト）">
-                                                <TextBlock Text="{Binding KindBadge}" FontSize="{DynamicResource Fs10}"
-                                                           Foreground="{DynamicResource FgDim}" />
-                                            </Border>
-                                            <TextBlock Text="{Binding Command}" FontSize="{DynamicResource Fs11}"
-                                                       FontFamily="Consolas" Foreground="{DynamicResource FgDim}"
-                                                       VerticalAlignment="Center" Margin="6,0,0,0"
-                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Command}" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock Text="package.json の scripts が見つかりません" Foreground="{DynamicResource FgDim}"
-                                   FontSize="{DynamicResource Fs11}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   IsHitTestVisible="False"
-                                   Visibility="{Binding Launch.HasScripts, Converter={StaticResource InverseBoolToVis}}" />
-                    </Grid>
-                </DockPanel>
+            <!-- 0 実行：普段使うスクリプト一覧と、その結果を同じ画面に置く。 -->
+            <TabItem x:Name="ExecutionTab" Style="{StaticResource DebugTabItem}" Header="実行">
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="ScriptColumn" Width="220" MinWidth="28" />
+                        <ColumnDefinition x:Name="ScriptSplitterColumn" Width="6" />
+                        <ColumnDefinition Width="*" MinWidth="260" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左：実行対象を切り替える縦タブ。コマンド本文は選択時のツールチップで確認する。 -->
+                    <Border Grid.Column="0" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid x:Name="ScriptPaneContent">
+                        <DockPanel>
+                            <!-- 見出し行。折りたたみボタンぶんの余白（右 30）を空けて、一覧の上に被らせない。 -->
+                            <TextBlock DockPanel.Dock="Top" Text="スクリプト" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" Margin="6,6,30,3" />
+                            <ComboBox DockPanel.Dock="Top" Margin="6,0,6,4"
+                                      ItemsSource="{Binding Profiles.AvailableProjects}"
+                                      SelectedItem="{Binding Profiles.SelectedProject, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName"
+                                      Visibility="{Binding Launch.HasMultiplePackages, Converter={StaticResource BoolToVis}}"
+                                      ToolTip="対象 package.json" />
+                            <!-- 一覧と空表示は重ねる（空表示を下端に貼ると、行が数件のとき離れた場所に出て読まれない）。 -->
+                            <Grid>
+                                <ListBox ItemsSource="{Binding Launch.ScriptItems}"
+                                         SelectedItem="{Binding Launch.SelectedScript, Mode=TwoWay}"
+                                         Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Fg}"
+                                         ItemContainerStyle="{StaticResource ScriptTabItem}"
+                                         HorizontalContentAlignment="Stretch"
+                                         MouseDoubleClick="OnScriptDoubleClick"
+                                         KeyDown="OnScriptKeyDown"
+                                         ToolTip="Enter またはダブルクリックで実行（行にカーソルを載せると ▶ が出る）"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:TsScriptEntry}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                                                               FontFamily="Consolas" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Command}" FontSize="{DynamicResource Fs10}"
+                                                               Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Command}" />
+                                                </StackPanel>
+                                                <!-- 種別バッジ。選択行とカーソルを載せた行では同じ場所を ▶ に譲る
+                                                     （並べると常時その幅を取り、名前の表示幅が削られる）。 -->
+                                                <Border Grid.Column="1" Background="{DynamicResource Panel}"
+                                                        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                        CornerRadius="2" Padding="4,1" Margin="0,0,2,0" VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility"
+                                                                    Value="{Binding HasKindBadge, Converter={StaticResource BoolToVis}}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                                             Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                                             Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding KindBadge}" FontSize="{DynamicResource Fs10}"
+                                                               Foreground="{DynamicResource FgDim}" />
+                                                </Border>
+                                                <!-- 行の実行ボタン（npm scripts の定番導線）。選択行とホバー行にだけ出す
+                                                     ——全行に並べると一覧が押しボタンの壁になり、どれが今の対象かも読めない。 -->
+                                                <Button Grid.Column="1" Content="▶" Width="22" Height="20" Padding="0"
+                                                        Margin="0,0,2,0" VerticalAlignment="Center"
+                                                        FontSize="{DynamicResource Fs10}"
+                                                        Command="{Binding DataContext.Launch.RunScriptCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="このスクリプトを実行">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                                             Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                                             Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock Text="{Binding Launch.ScriptsEmptyMessage}"
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                           TextAlignment="Center" TextWrapping="Wrap" Margin="10,0"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding Launch.HasScripts, Converter={StaticResource InverseBoolToVis}}" />
+                            </Grid>
+                        </DockPanel>
+                            </Grid>
+                            <!-- 折りたたみ中の見出し（28px の帯が何の領域か分かるように縦書きで残す）。 -->
+                            <TextBlock x:Name="ScriptPaneRail" Text="スクリプト" Visibility="Collapsed"
+                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                <TextBlock.LayoutTransform>
+                                    <RotateTransform Angle="90" />
+                                </TextBlock.LayoutTransform>
+                            </TextBlock>
+                            <Button x:Name="ScriptPaneToggle" Content="‹" Style="{StaticResource SecondaryButton}"
+                                    Width="24" Height="22" Padding="0" HorizontalAlignment="Right"
+                                    VerticalAlignment="Top" Margin="0,4,3,0" Panel.ZIndex="2"
+                                    Click="OnScriptPaneToggleClick" ToolTip="スクリプト領域を折りたたむ" />
+                        </Grid>
+                    </Border>
+
+                    <GridSplitter x:Name="ScriptSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                  Background="{DynamicResource Border}" />
+
+                    <!-- 右：選択したスクリプトやデバッグの結果。 -->
+                    <Border Grid.Column="2" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="4,2,4,2">
+                                <Button DockPanel.Dock="Left" Content="▶ 実行" Style="{StaticResource FlatButton}"
+                                        Height="22" Padding="9,0" Margin="0,2,8,2"
+                                        Command="{Binding Launch.RunSelectedScriptCommand}"
+                                        ToolTip="選択中のスクリプトを実行（Enter）" />
+                                <Button DockPanel.Dock="Right" Content="クリア" Style="{StaticResource SecondaryButton}"
+                                        Height="22" Padding="8,0" Margin="0,2,0,2"
+                                        Click="OnClearOutputClick" ToolTip="現在の実行結果を消去" />
+                                <!-- 出力の見出しは「今この出力を出しているもの」＝直近に実行した対象。
+                                     選択中スクリプトを出すと、実行後に一覧で別の行を選んだ瞬間に嘘になる。 -->
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
+                                            Margin="4,0,8,0">
+                                    <TextBlock Text="出力" Foreground="{DynamicResource FgDim}"
+                                               FontSize="{DynamicResource Fs11}" Margin="0,0,10,0" />
+                                    <TextBlock Text="{Binding Launch.LastRunLabel}" FontFamily="Consolas"
+                                               Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs11}"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="320"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding Launch.LastRunLabel, Converter={StaticResource NonEmptyToVis}}" />
+                                    <TextBlock Text="未実行" Foreground="{DynamicResource FgDim}"
+                                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
+                                               Visibility="{Binding Launch.LastRunLabel, Converter={StaticResource EmptyToVis}}" />
+                                </StackPanel>
+                            </DockPanel>
+                            <Grid>
+                                <RichTextBox x:Name="ConsoleBox" IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                                             IsDocumentEnabled="True" Background="Transparent" Padding="6,4"
+                                             Foreground="{DynamicResource Fg}" BorderThickness="0"
+                                             FontFamily="Consolas" FontSize="{DynamicResource Fs12}"
+                                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <RichTextBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="コピー" Command="Copy" />
+                                            <MenuItem Header="すべて選択" Command="SelectAll" />
+                                        </ContextMenu>
+                                    </RichTextBox.ContextMenu>
+                                </RichTextBox>
+                                <!-- 件数は bool ではないので EmptyCountToVis（InverseBoolToVis に int を渡すと常時表示になる）。 -->
+                                <TextBlock Text="左の一覧からスクリプトを選び、Enter・ダブルクリック・行の ▶ で実行します"
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="320"
+                                           IsHitTestVisible="False"
+                                           Visibility="{Binding Output.Count, Converter={StaticResource EmptyCountToVis}}" />
+                            </Grid>
+                        </DockPanel>
+                    </Border>
+                </Grid>
             </TabItem>
 
-            <!-- 1 出力：テキスト選択できる読み取り専用 RichTextBox（行は Category で色分け）。
-                 ドキュメントの構築・追記・末尾スクロールはコードビハインド（Output コレクションを写す）。 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="出力">
-                <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                        BorderThickness="1" Margin="0,4,0,0">
-                    <RichTextBox x:Name="ConsoleBox" IsReadOnly="True" IsReadOnlyCaretVisible="True"
-                                 IsDocumentEnabled="True" Background="Transparent" Padding="6,4"
-                                 Foreground="{DynamicResource Fg}" BorderThickness="0"
-                                 FontFamily="Consolas" FontSize="{DynamicResource Fs12}"
-                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <RichTextBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="コピー" Command="Copy" />
-                                <MenuItem Header="すべて選択" Command="SelectAll" />
-                            </ContextMenu>
-                        </RichTextBox.ContextMenu>
-                    </RichTextBox>
-                </Border>
-            </TabItem>
-
-            <!-- 2 問題：tsc 型チェック出力から抽出したエラー/警告。デバッグセッション非依存。 -->
+            <!-- 1 問題：tsc 型チェック出力から抽出したエラー/警告。デバッグセッション非依存。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="問題">
                 <v:DebugProblemsView DataContext="{Binding Problems}" />
             </TabItem>
 
-            <!-- 3 変数（＋ウォッチ） -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="変数">
+            <!-- 2 デバッグ検査：実行中だけ表示し、詳細タブはこの中にまとめる。 -->
+            <TabItem x:Name="DebugTabItem" Style="{StaticResource DebugTabItem}" Header="デバッグ"
+                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                <TabControl x:Name="InspectionTabs" Style="{StaticResource DebugTabControl}" SelectedIndex="0">
+            <!-- 変数（＋ウォッチ） -->
+            <TabItem x:Name="VariablesTabItem" Style="{StaticResource DebugTabItem}" Header="変数">
                 <v:DebugVariablesView DataContext="{Binding Inspection}" />
             </TabItem>
 
-            <!-- 4 自動（Autos）：停止行とその直前行で使われている変数だけを近似表示する。 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="自動">
+            <!-- 3 自動（Autos）：停止行とその直前行で使われている変数だけを近似表示する。 -->
+            <TabItem x:Name="AutosTabItem" Style="{StaticResource DebugTabItem}" Header="自動">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.Autos}" Background="{DynamicResource Bg}"
                              BorderBrush="{DynamicResource Border}" BorderThickness="1" Foreground="{DynamicResource Fg}"
@@ -206,8 +348,8 @@
                 </Grid>
             </TabItem>
 
-            <!-- 5 コールスタック -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="コールスタック">
+            <!-- 4 コールスタック -->
+            <TabItem x:Name="CallStackTabItem" Style="{StaticResource DebugTabItem}" Header="コールスタック">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.CallStack}" SelectedItem="{Binding Inspection.SelectedFrame, Mode=TwoWay}"
                              Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
@@ -232,13 +374,8 @@
                 </Grid>
             </TabItem>
 
-            <!-- 6 テスト（vitest / jest。ビューは dotnet 版と共有） -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="テスト">
-                <v:DebugTestsView DataContext="{Binding Tests}" />
-            </TabItem>
-
-            <!-- 7 スレッド：停止時に実行中スレッドを並べ、選択でアクティブ（コールスタック/ステップの対象）を切替。 -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="スレッド">
+            <!-- 6 スレッド：デバッグセッション中だけ表示。 -->
+            <TabItem x:Name="ThreadsTabItem" Style="{StaticResource DebugTabItem}" Header="スレッド">
                 <Grid Margin="0,4,0,0">
                     <ListBox ItemsSource="{Binding Inspection.Threads}" SelectedItem="{Binding Inspection.SelectedThread, Mode=TwoWay}"
                              Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
@@ -262,18 +399,24 @@
                 </Grid>
             </TabItem>
 
-            <!-- 8 ブレークポイント -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="ブレークポイント">
+            <!-- 7 ブレークポイント：デバッグセッション中だけ表示。 -->
+            <TabItem x:Name="BreakpointsTabItem" Style="{StaticResource DebugTabItem}" Header="ブレークポイント">
                 <v:DebugBreakpointsView DataContext="{Binding Breakpoints}" />
             </TabItem>
 
-            <!-- 9 イミディエイト -->
-            <TabItem Style="{StaticResource DebugTabItem}" Header="イミディエイト">
+            <!-- 8 イミディエイト：デバッグセッション中だけ表示。 -->
+            <TabItem x:Name="ImmediateTabItem" Style="{StaticResource DebugTabItem}" Header="イミディエイト">
                 <v:DebugImmediateView DataContext="{Binding Inspection}" />
             </TabItem>
+                </TabControl>
+            </TabItem>
 
-            <!-- 10 構成（上級者向け：プロファイル管理・ファイル実行/Chrome モード・引数/環境変数・例外・アタッチ）。
-                 日常のスクリプト実行は先頭の「スクリプト」タブ。 -->
+            <!-- 3 テスト（vitest / jest。ビューは dotnet 版と共有） -->
+            <TabItem x:Name="TestsTabItem" Style="{StaticResource DebugTabItem}" Header="テスト">
+                <v:DebugTestsView DataContext="{Binding Tests}" />
+            </TabItem>
+
+            <!-- 4 構成（上級者向け：プロファイル管理・ファイル実行/Chrome モード・引数/環境変数・例外・アタッチ）。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
                 <v:TsDebugConfigView />
             </TabItem>

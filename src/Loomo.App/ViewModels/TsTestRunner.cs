@@ -16,9 +16,9 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <c>--json</c> が同じ形（testResults[].assertionResults[]）を出すので、パーサは 1 本で足りる。</summary>
 internal static class TsTestRunner
 {
-    /// <summary>JSON 結果の出力先（毎回上書き）。<c>%TEMP%/Loomo/test-results/loomo-ts.json</c>。</summary>
+    /// <summary>JSON 結果の出力先ディレクトリ。実行ごとに一意のファイルを作り、モノレポの
+    /// パッケージ間や別セッションの結果が混ざらないようにする。</summary>
     private static readonly string ResultsDir = Path.Combine(Path.GetTempPath(), "Loomo", "test-results");
-    private static readonly string ResultsFile = Path.Combine(ResultsDir, "loomo-ts.json");
 
     /// <summary>結果 1 件。<see cref="Title"/> は describe 連結（"a &gt; b &gt; テスト名"、探索側と同じ形）。</summary>
     internal sealed record TsTestResult(string FilePath, string Title, TestStatus Status, string? Message);
@@ -58,10 +58,11 @@ internal static class TsTestRunner
     public static async Task<string?> RunAsync(ITerminalService terminal, IDebugSession session,
         string runner, string packageDir, string? fileScope, string? testName, string label)
     {
+        var resultFile = Path.Combine(ResultsDir, $"loomo-ts-{Guid.NewGuid():N}.json");
         try
         {
             Directory.CreateDirectory(ResultsDir);
-            if (File.Exists(ResultsFile)) File.Delete(ResultsFile);  // 前回分を残さない
+            SweepStaleResults();
         }
         catch (Exception ex)
         {
@@ -69,22 +70,56 @@ internal static class TsTestRunner
             return null;
         }
 
-        var command = BuildCommand(runner, packageDir, fileScope, testName);
+        var command = BuildCommand(runner, packageDir, fileScope, testName, resultFile);
         session.Append(DebugOutputCategory.Important, label);
         var result = await terminal.RunCommandAsync(command, CancellationToken.None);
         session.WriteConsole(result.Output);
-        return File.Exists(ResultsFile) ? ResultsFile : null;
+        if (!File.Exists(resultFile))
+        {
+            session.Append(DebugOutputCategory.Important,
+                "テスト結果(JSON)が生成されませんでした。依存関係とテストランナーの出力を確認してください。");
+            return null;
+        }
+        return resultFile;
+    }
+
+    /// <summary>読み終えた結果 JSON を消す（実行ごとに一意名で作るので、消さないと溜まり続ける）。</summary>
+    public static void DeleteResults(string jsonPath)
+    {
+        try { File.Delete(jsonPath); }
+        catch { /* 消せなくても実害は無い（次のスイープが拾う） */ }
+    }
+
+    /// <summary>取り残された古い結果 JSON を掃除する。アプリやテストランナーが落ちて
+    /// <see cref="DeleteResults"/> まで届かなかったぶんが、ここで回収される。</summary>
+    private static void SweepStaleResults()
+    {
+        try
+        {
+            var limit = DateTime.UtcNow.AddHours(-1);
+            foreach (var f in Directory.EnumerateFiles(ResultsDir, "loomo-ts-*.json"))
+                if (File.GetLastWriteTimeUtc(f) < limit)
+                    try { File.Delete(f); } catch { /* 使用中なら次回 */ }
+        }
+        catch { /* 掃除に失敗しても実行は続ける */ }
     }
 
     /// <summary>実行コマンドを組み立てる（テスト用に分離）。パッケージディレクトリへ移動してから npx で実行する。</summary>
     internal static string BuildCommand(string runner, string packageDir, string? fileScope, string? testName)
+        => BuildCommand(runner, packageDir, fileScope, testName,
+            Path.Combine(ResultsDir, "loomo-ts-preview.json"));
+
+    private static string BuildCommand(string runner, string packageDir, string? fileScope, string? testName,
+        string resultFile)
     {
         var args = runner == "vitest"
-            ? $"vitest run --reporter=json --outputFile={Q(ResultsFile)}"
-            : $"jest --json --outputFile={Q(ResultsFile)}";
+            ? $"vitest run --reporter=json --outputFile={Q(resultFile)}"
+            : $"jest --json --outputFile={Q(resultFile)}";
         if (fileScope is not null) args += $" {Q(fileScope.Replace('\\', '/'))}";
         if (testName is not null) args += $" -t {Q(testName)}";
-        return $"Set-Location {Q(packageDir)}; npx {args}";
+        // --no-install は、タイプミスや依存未導入時にネットワークへ勝手に出ず、
+        // 「この package の依存が足りない」という失敗をそのまま見せるために付ける。
+        return $"Set-Location {Q(packageDir)}; npx --no-install {args}";
     }
 
     /// <summary>PowerShell のシングルクォート（内部の ' は '' に）。変数展開・バッククォートを無効化する。</summary>

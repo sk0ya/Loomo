@@ -11,21 +11,16 @@ using sk0ya.Loomo.Core.Debug;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>TS IDE（TypeScript / Node.js デバッグ）ペインのシェル。dotnet 用 <see cref="DebugView"/> の
-/// クローンで、タブ（構成/出力/問題/変数/自動/コールスタック/スレッド/ブレークポイント/イミディエイト）を
+/// クローンで、普段の「実行」（スクリプト一覧＋出力）と、デバッグ中だけ現れる検査タブ、問題/テスト/構成を
 /// 束ねる。ここは出力コンソールのドキュメント追記と、停止/実行・実行系コマンド押下に応じたタブ自動切り替え
 /// だけを持つ。DataContext は <see cref="TsDebugViewModel"/>（基底 <see cref="DebugManagerViewModelBase"/>
 /// 経由で扱う）。</summary>
 public partial class TsDebugView : UserControl
 {
-    // タブのインデックス（XAML の並び順と一致させる）。
-    // 並び：スクリプト0 / 出力1 / 問題2 / 変数3 / 自動4 / コールスタック5 / テスト6 / スレッド7 /
-    //       ブレークポイント8 / イミディエイト9 / 構成10。
-    private const int OutputTab = 1;
-    private const int VariablesTab = 3;
-    private const int TestTab = 6;
-
     private INotifyCollectionChanged? _observed;
     private DebugManagerViewModelBase? _vm;
+    private bool _scriptPaneExpanded = true;
+    private double _expandedScriptPaneWidth = 220;
 
     public TsDebugView()
     {
@@ -61,6 +56,11 @@ public partial class TsDebugView : UserControl
         ConsoleBox.ScrollToEnd();
     }
 
+    /// <summary>コンソールが末尾（追従してよい位置）にあるか。スクロールできない短い出力も末尾扱い。</summary>
+    private bool IsConsoleAtBottom
+        => ConsoleBox.ExtentHeight <= ConsoleBox.ViewportHeight
+        || ConsoleBox.VerticalOffset + ConsoleBox.ViewportHeight >= ConsoleBox.ExtentHeight - 4;
+
     // 1 行を色分け（Category）した段落として末尾へ追加する。色はテーマ追従（SetResourceReference）。
     private void AppendConsoleLine(DebugOutputLine line)
     {
@@ -84,13 +84,24 @@ public partial class TsDebugView : UserControl
         ConsoleBox.Document.Blocks.Add(new Paragraph(run) { Margin = new Thickness(0) });
     }
 
-    // ブレークポイント等で停止したら「変数」へ、続行したら「出力」へ自動で切り替える。
-    // 開始/アタッチ/型チェック押下時の「出力」表示は OutputRequested（押下と同期）で行う。
+    // ブレークポイント等で停止したら「変数」へ、続行・終了したら「実行」へ自動で切り替える。
+    // 開始/アタッチ/型チェック押下時も、スクリプト一覧を残した「実行」を表示する。
     // Output はセッション切替で参照先の ObservableCollection ごと差し替わるので、そのたびに購読と表示を作り直す。
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DebugManagerViewModelBase.IsStopped) && _vm is not null)
-            DebugTabs.SelectedIndex = _vm.IsStopped ? VariablesTab : OutputTab;
+        {
+            if (_vm.IsStopped)
+            {
+                SelectTab(DebugTabItem);
+                InspectionTabs.SelectedItem = VariablesTabItem;
+            }
+            else
+                SelectTab(ExecutionTab);
+        }
+
+        if (e.PropertyName == nameof(DebugManagerViewModelBase.IsBusy) && _vm is not null && !_vm.IsBusy)
+            SelectTab(ExecutionTab);
 
         if (e.PropertyName == nameof(DebugManagerViewModelBase.Output) && _vm is not null)
         {
@@ -101,14 +112,20 @@ public partial class TsDebugView : UserControl
         }
     }
 
-    // 実行系コマンド（開始/アタッチ/型チェック）押下で「出力」タブを即表示する。
-    private void OnOutputRequested() => DebugTabs.SelectedIndex = OutputTab;
+    // 実行系コマンド（開始/アタッチ/型チェック）押下で、スクリプト一覧＋出力の「実行」を表示する。
+    private void OnOutputRequested() => SelectTab(ExecutionTab);
+
+    private void SelectTab(TabItem tab)
+    {
+        if (tab.Visibility == Visibility.Visible)
+            DebugTabs.SelectedItem = tab;
+    }
 
     // テストタブを開いたら（まだ一覧が無ければ）バックグラウンド収集を起こす保険。e.Source で内側の
     // 選択イベント（TreeView/ListBox の SelectionChanged のバブリング）を弾く。
     private void OnDebugTabChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ReferenceEquals(e.OriginalSource, DebugTabs) && DebugTabs.SelectedIndex == TestTab
+        if (ReferenceEquals(e.OriginalSource, DebugTabs) && ReferenceEquals(DebugTabs.SelectedItem, TestsTabItem)
             && DataContext is TsDebugViewModel vm)
             vm.Tests.EnsureTestsDiscovered();
     }
@@ -118,8 +135,11 @@ public partial class TsDebugView : UserControl
         switch (e.Action)
         {
             case NotifyCollectionChangedAction.Add:
+                // 追従は「もう末尾を見ているとき」だけ。実行中に上へ遡ってエラーを読んでいる最中に
+                // 新しい行が来るたび末尾へ飛ばされると、長い出力は事実上読めない。
+                var atBottom = IsConsoleAtBottom;
                 foreach (DebugOutputLine l in e.NewItems!) AppendConsoleLine(l);
-                ConsoleBox.ScrollToEnd();
+                if (atBottom) ConsoleBox.ScrollToEnd();
                 break;
             case NotifyCollectionChangedAction.Remove:
                 // VM の 2000 行キャップ（先頭から除去）をドキュメントにも反映する。
@@ -163,6 +183,48 @@ public partial class TsDebugView : UserControl
         }
     }
 
+    private void OnScriptKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        if (sender is ListBox { SelectedItem: TsScriptEntry entry }
+            && DataContext is TsDebugViewModel vm
+            && vm.Launch.RunScriptCommand.CanExecute(entry))
+        {
+            vm.Launch.RunScriptCommand.Execute(entry);
+            e.Handled = true;
+        }
+    }
+
     // インラインタブ（自動・コールスタック）の右クリック「コピー」。
     private void OnCopyItemClick(object sender, RoutedEventArgs e) => DebugItemClipboard.Copy(sender);
+
+    private void OnClearOutputClick(object sender, RoutedEventArgs e) => _vm?.ClearOutput();
+
+    private void OnScriptPaneToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (_scriptPaneExpanded)
+        {
+            if (ScriptColumn.ActualWidth > 40)
+                _expandedScriptPaneWidth = ScriptColumn.ActualWidth;
+            _scriptPaneExpanded = false;
+            ScriptPaneContent.Visibility = Visibility.Collapsed;
+            ScriptSplitter.Visibility = Visibility.Collapsed;
+            ScriptSplitterColumn.Width = new GridLength(0);
+            ScriptColumn.Width = new GridLength(28);
+            ScriptPaneRail.Visibility = Visibility.Visible;
+            ScriptPaneToggle.Content = "›";
+            ScriptPaneToggle.ToolTip = "スクリプト領域を展開";
+        }
+        else
+        {
+            _scriptPaneExpanded = true;
+            ScriptPaneContent.Visibility = Visibility.Visible;
+            ScriptSplitter.Visibility = Visibility.Visible;
+            ScriptSplitterColumn.Width = new GridLength(6);
+            ScriptColumn.Width = new GridLength(Math.Max(170, _expandedScriptPaneWidth));
+            ScriptPaneRail.Visibility = Visibility.Collapsed;
+            ScriptPaneToggle.Content = "‹";
+            ScriptPaneToggle.ToolTip = "スクリプト領域を折りたたむ";
+        }
+    }
 }

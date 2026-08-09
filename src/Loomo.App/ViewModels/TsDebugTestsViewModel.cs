@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -26,6 +27,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
     /// <summary>探索中に来た再収集要求（探索完了後にもう一度走らせる）。</summary>
     private bool _rediscoverRequested;
+    private int _discoveryGeneration;
 
     [ObservableProperty] private string _testSummary = "";
     [ObservableProperty] private bool _hasTestResults;
@@ -115,17 +117,22 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
     }
 
     private void OnWorkspaceRootChanged(object? sender, string? root)
-        => _dispatcher.InvokeAsync(() => { RewatchFolders(); _ = DiscoverTestsAsync(); },
+    {
+        Interlocked.Increment(ref _discoveryGeneration);
+        _ = _dispatcher.InvokeAsync(() => { RewatchFolders(); _ = DiscoverTestsAsync(); },
             DispatcherPriority.Background);
+    }
 
     private void OnWorkspaceFoldersChanged(object? sender, EventArgs e)
-        => _dispatcher.InvokeAsync(() => { RewatchFolders(); _ = DiscoverTestsAsync(); },
+    {
+        Interlocked.Increment(ref _discoveryGeneration);
+        _ = _dispatcher.InvokeAsync(() => { RewatchFolders(); _ = DiscoverTestsAsync(); },
             DispatcherPriority.Background);
+    }
 
     private async Task DiscoverTestsAsync()
     {
-        var folders = _workspace.Folders;
-        if (folders.Count == 0) return;
+        if (_workspace.Folders.Count == 0) return;
         if (IsDiscoveringTests) { _rediscoverRequested = true; return; }
 
         IsDiscoveringTests = true;
@@ -134,10 +141,18 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             do
             {
                 _rediscoverRequested = false;
+                var generation = Volatile.Read(ref _discoveryGeneration);
+                var folders = _workspace.Folders.ToArray();
                 IReadOnlyList<TsTestDiscovery.TsDiscoveredTest> found;
                 try { found = await Task.Run(() => folders.SelectMany(TsTestDiscovery.Discover).ToList()); }
                 catch { found = Array.Empty<TsTestDiscovery.TsDiscoveredTest>(); }
-                await _dispatcher.InvokeAsync(() => ApplyDiscovered(found));
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    if (generation == Volatile.Read(ref _discoveryGeneration))
+                        ApplyDiscovered(found);
+                    else
+                        _rediscoverRequested = true;
+                });
             } while (_rediscoverRequested);
         }
         finally { IsDiscoveringTests = false; }
@@ -292,7 +307,8 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
         var json = await TsTestRunner.RunAsync(_terminal, _session, runner, pkgDir, fileScope, testName, label);
         if (json is null) return false;
-        TsTestRunner.ApplyResults(json, _session, Tests, CreateItem);
+        try { TsTestRunner.ApplyResults(json, _session, Tests, CreateItem); }
+        finally { TsTestRunner.DeleteResults(json); }   // 実行ごとに一意名なので、読んだら消す
         return true;
     }
 

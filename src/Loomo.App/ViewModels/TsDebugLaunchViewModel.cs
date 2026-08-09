@@ -61,8 +61,24 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     /// <summary>選択中パッケージの npm スクリプト一覧（名前＋実体コマンド。スクリプトタブの一覧用）。</summary>
     public ObservableCollection<TsScriptEntry> ScriptItems { get; } = new();
 
+    /// <summary>左側のスクリプトタブで選択中の項目。Enter／実行ボタンの対象。</summary>
+    [ObservableProperty] private TsScriptEntry? _selectedScript;
+
     /// <summary>スクリプトが 1 件以上あるか（スクリプトタブの空表示の出し分け）。</summary>
     public bool HasScripts => ScriptItems.Count > 0;
+
+    /// <summary>直近に実行した対象の表示名（出力ヘッダ用）。<b>選択中スクリプトではなく実行したもの</b>——
+    /// 実行後に一覧で別のスクリプトを選ぶと、出力の見出しだけ別物を名乗ってしまうため。</summary>
+    [ObservableProperty] private string _lastRunLabel = "";
+
+    /// <summary>対象パッケージの package.json を見つけられたか（空表示の文言の出し分け）。</summary>
+    private bool _packageFound;
+
+    /// <summary>スクリプトが無いときに出す理由。「見つかりません」だけだと、package.json を
+    /// 見つけられていないのか scripts が空なのかが分からず、次の手が決まらない。</summary>
+    public string ScriptsEmptyMessage => _packageFound
+        ? "この package.json に scripts がありません"
+        : "package.json が見つかりません";
 
     /// <summary>ワークスペースに package.json が複数あるか（スクリプトタブのパッケージコンボの出し分け。
     /// 候補コレクションは先頭に「自動検出」センチネルを含むため 2 超で判定）。</summary>
@@ -156,6 +172,9 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         OnPropertyChanged(nameof(ChromeUrl));
     }
 
+    partial void OnSelectedScriptChanged(TsScriptEntry? value)
+        => RunSelectedScriptCommand.NotifyCanExecuteChanged();
+
     internal TsDebugLaunchViewModel(TsDebugViewModel manager, IWorkspaceService workspace, ITerminalService terminal,
         IBrowserService browser, TsDebugAttachViewModel attach, DebugProfilesViewModel profiles)
     {
@@ -174,6 +193,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     {
         StartCommand.NotifyCanExecuteChanged();
         RunScriptCommand.NotifyCanExecuteChanged();
+        RunSelectedScriptCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         RestartCommand.NotifyCanExecuteChanged();
         PauseCommand.NotifyCanExecuteChanged();
@@ -242,7 +262,9 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     {
         AvailableScripts.Clear();
         ScriptItems.Clear();
-        if (SelectedPackageJsonPath() is { } pkg)
+        var pkg = SelectedPackageJsonPath();
+        _packageFound = pkg is not null;
+        if (pkg is not null)
         {
             foreach (var e in TsProjectDiscovery.ReadScriptEntries(pkg))
             {
@@ -250,8 +272,10 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
                 ScriptItems.Add(e);
             }
         }
+        SelectedScript = ScriptItems.FirstOrDefault();
         OnPropertyChanged(nameof(HasScripts));
         OnPropertyChanged(nameof(HasMultiplePackages));
+        OnPropertyChanged(nameof(ScriptsEmptyMessage));
     }
 
     /// <summary>選択中パッケージの package.json 絶対パス（自動検出なら最初の候補）。無ければ null。</summary>
@@ -320,6 +344,11 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
 
     private bool CanStart() => !_manager.IsTaskRunning;
 
+    private bool CanRunSelectedScript() => SelectedScript is not null && CanStart();
+
+    [RelayCommand(CanExecute = nameof(CanRunSelectedScript))]
+    private Task RunSelectedScript() => RunScript(SelectedScript);
+
     /// <summary>デバッグを開始する。既存セッションは止めず、常に新しいセッションを作って始める。</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()
@@ -344,16 +373,24 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         if (await PrepareFrontendServerAsync(target) is not { } prepared) return;
 
         var session = _manager.CreateSession(BuildDisplayName(prepared.Program), DebugSessionKind.Launch);
+        LastRunLabel = TsLaunchTarget.TryParseChromeUrl(prepared.Program, out _)
+            && !string.IsNullOrWhiteSpace(_devServerScript)
+            ? $"npm run {_devServerScript} → ブラウザ"
+            : BuildDisplayName(prepared.Program);
+        _manager.Append(DebugOutputCategory.Important, $"実行対象: {LastRunLabel}");
         await session.DebugService.SetExceptionBreakpointsAsync(CurrentExceptionFilterIds(), CancellationToken.None);
         await LaunchIntoAsync(session, prepared.Program, prepared.BrowserDebugPort);
     }
 
-    /// <summary>スクリプトタブの行実行。実行対象をそのスクリプト（<c>npm:名前</c>）へ切り替えてから開始する
-    /// （プロファイルにも保存されるので、以降ヘッダの「▶ 開始」は同じスクリプトの再実行になる）。</summary>
+    /// <summary>スクリプト一覧の行実行。デバッグ対象のスクリプトは対象を切り替えてから開始し、
+    /// ビルド・整形・未知のコマンドはデバッガへ誤って渡さず、実行タブの出力へ結果を集める。</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
     private Task RunScript(TsScriptEntry? entry)
     {
         if (entry is null) return Task.CompletedTask;
+        if (entry.Kind is TsScriptKind.Test or TsScriptKind.BuildOrTool or TsScriptKind.Unknown)
+            return RunScriptInOutputAsync(entry);
+
         // 既定選択と同じ振り分け：フロント開発サーバーは Chrome（複合起動）、それ以外は npm（pwa-node）。
         if (entry.Kind == TsScriptKind.FrontendDevServer)
         {
@@ -366,6 +403,43 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
             TargetProgram = TsLaunchTarget.FormatNpmScript(entry.Name);
         }
         return StartAsync();
+    }
+
+    /// <summary>ビルド／lint／整形など、デバッガを付ける意味がない npm script を実行し、
+    /// stdout/stderr を実行タブの出力へ集める。</summary>
+    private async Task RunScriptInOutputAsync(TsScriptEntry entry)
+    {
+        var dir = PreferredPackageDir() ?? _workspace.PrimaryFolder;
+        if (string.IsNullOrWhiteSpace(dir))
+        {
+            _manager.Append(DebugOutputCategory.Important, "対象 package.json の場所が分からないため、スクリプトを実行できません。");
+            return;
+        }
+
+        var command = $"Set-Location {PowerShellQuote(dir)}; npm.cmd run {PowerShellQuote(entry.Name)}";
+        LastRunLabel = $"npm run {entry.Name}";
+        _manager.RequestOutput();
+        _manager.IsTaskRunning = true;
+        try
+        {
+            _manager.StatusMessage = $"実行中: npm run {entry.Name}";
+            _manager.Append(DebugOutputCategory.Important, $"実行: npm run {entry.Name}");
+            var result = await _terminal.RunCommandAsync(command, CancellationToken.None);
+            _manager.WriteConsole(result.Output);
+            if (entry.Kind == TsScriptKind.BuildOrTool)
+                _manager.ReportBuildOutput(result.Output, baseDir: dir);
+            _manager.StatusMessage = result.Success
+                ? $"完了: npm run {entry.Name}"
+                : $"失敗: npm run {entry.Name}（終了コード {result.ExitCode}）";
+            if (!result.Success)
+                _manager.Append(DebugOutputCategory.Important, $"スクリプトが失敗しました（終了コード {result.ExitCode}）。");
+        }
+        catch (Exception ex)
+        {
+            _manager.StatusMessage = $"失敗: npm run {entry.Name}";
+            _manager.Append(DebugOutputCategory.Important, $"スクリプト実行でエラー: {ex.Message}");
+        }
+        finally { _manager.IsTaskRunning = false; }
     }
 
     /// <summary>同じ対象で、既存セッション（同じタブ）へ再度 launch する（Restart 用）。</summary>
@@ -482,8 +556,8 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         // npm.cmd を明示（PowerShell では `npm` が npm.ps1 に解決され、シムが `--` セパレータを食って
         // ポート引数がスクリプトへ渡らない。cmd シムは `--` を保持する）。
         var command = pin.Length > 0
-            ? $"Set-Location \"{dir}\"; npm.cmd run {devScript.Name} -- {pin}"
-            : $"Set-Location \"{dir}\"; npm.cmd run {devScript.Name}";
+            ? $"Set-Location {PowerShellQuote(dir!)}; npm.cmd run {PowerShellQuote(devScript.Name)} -- {pin}"
+            : $"Set-Location {PowerShellQuote(dir!)}; npm.cmd run {PowerShellQuote(devScript.Name)}";
 
         _manager.Append(DebugOutputCategory.Important, $"開発サーバーを起動: npm run {devScript.Name}（localhost:{port}）");
         if (!_terminal.TryRunInVisibleTerminal(command))
@@ -599,11 +673,12 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     /// <summary>tsc 型チェックの実体。成功（エラーなし）で true。</summary>
     private async Task<bool> RunTypeCheckAsync(string dir)
     {
+        LastRunLabel = "tsc --noEmit";
         _manager.StatusMessage = "型チェック中…";
         _manager.Append(DebugOutputCategory.Important, $"型チェック: {dir}");
         // tsc の診断パスは cwd 相対のため、Set-Location してから実行し dir を基準に絶対化する。
         var result = await _terminal.RunCommandAsync(
-            $"Set-Location \"{dir}\"; npx tsc --noEmit --pretty false", CancellationToken.None);
+            $"Set-Location {PowerShellQuote(dir)}; npx --no-install tsc --noEmit --pretty false", CancellationToken.None);
         _manager.WriteConsole(result.Output);
         _manager.ReportBuildOutput(result.Output, baseDir: dir);
         _manager.StatusMessage = result.Success ? "型チェック成功" : $"型エラーあり（{result.ExitCode}）";
@@ -615,6 +690,9 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     /// <summary>選択中パッケージのディレクトリ（tsconfig 探索の優先場所）。</summary>
     private string? PreferredPackageDir()
         => SelectedPackageJsonPath() is { } pkg ? Path.GetDirectoryName(pkg) : null;
+
+    /// <summary>PowerShell の文字列リテラル。パスや npm script 名に空白・シングルクォートがあっても壊さない。</summary>
+    private static string PowerShellQuote(string value) => "'" + value.Replace("'", "''") + "'";
 
     /// <summary>促しバーの「インストール」。js-debug の導入コマンドを見えるターミナルで実行する。</summary>
     [RelayCommand]

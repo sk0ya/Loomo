@@ -84,6 +84,74 @@ public class TsTestDiscoveryTests
         Assert.Equal("suite > second", tests[1].Title);
         Assert.Equal(10, tests[1].Line1);
     }
+
+    [Fact]
+    public void Ignores_comments_imports_and_string_contents()
+    {
+        var tests = Parse("""
+            // it('not a test', () => {});
+            const text = "describe('also not a suite'); it('not a test')";
+            /* test('not a test', () => {}); */
+            describe('real', () => {
+              it('works', () => {});
+            });
+            """);
+
+        var only = Assert.Single(tests);
+        Assert.Equal("real > works", only.Title);
+        Assert.Equal(5, only.Line1);
+    }
+
+    // 以下 3 件は「文字列マスクの誤爆で、その行より後ろのテストが丸ごと消える」退行の防止。
+    // 偽の文字列開始は次の引用符まで走り、後続の it( の丸かっこまで空白化してしまう。
+
+    [Fact]
+    public void Jsx_text_apostrophe_does_not_swallow_later_tests()
+    {
+        var tests = Parse("""
+            describe('jsx', () => {
+              it('renders', () => {
+                render(<p>it's fine</p>);
+              });
+              it('still found', () => {});
+            });
+            """);
+
+        Assert.Equal(2, tests.Count);
+        Assert.Equal("jsx > renders", tests[0].Title);
+        Assert.Equal("jsx > still found", tests[1].Title);
+    }
+
+    [Fact]
+    public void Regex_literal_containing_a_quote_does_not_swallow_later_tests()
+    {
+        var tests = Parse("""
+            it('escapes', () => {
+              expect(s.replace(/'/g, '')).toBe('');
+            });
+            it('still found', () => {});
+            """);
+
+        Assert.Equal(2, tests.Count);
+        Assert.Equal("escapes", tests[0].Title);
+        Assert.Equal("still found", tests[1].Title);
+    }
+
+    [Fact]
+    public void Division_is_not_mistaken_for_a_regex()
+    {
+        var tests = Parse("""
+            it('divides', () => {
+              const half = total / 2;
+              expect(half).toBe(1);
+            });
+            it('still found', () => {});
+            """);
+
+        Assert.Equal(2, tests.Count);
+        Assert.Equal("divides", tests[0].Title);
+        Assert.Equal("still found", tests[1].Title);
+    }
 }
 
 /// <summary>vitest / jest の JSON 結果パースとコマンド組み立て（<see cref="TsTestRunner"/>）のテスト。</summary>
@@ -122,11 +190,11 @@ public class TsTestRunnerTests
     public void BuildCommand_quotes_and_scopes()
     {
         var all = TsTestRunner.BuildCommand("vitest", @"C:\app", null, null);
-        Assert.StartsWith("Set-Location 'C:\\app'; npx vitest run --reporter=json", all);
+        Assert.StartsWith("Set-Location 'C:\\app'; npx --no-install vitest run --reporter=json", all);
 
         var single = TsTestRunner.BuildCommand("jest", @"C:\my app", @"src\a.test.ts", "it's title");
         Assert.Contains("Set-Location 'C:\\my app'", single);
-        Assert.Contains("npx jest --json", single);
+        Assert.Contains("npx --no-install jest --json", single);
         Assert.Contains("'src/a.test.ts'", single);                // ファイルは / 区切り
         Assert.Contains("-t 'it''s title'", single);               // ' は '' にエスケープ
     }

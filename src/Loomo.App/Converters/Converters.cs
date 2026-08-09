@@ -114,6 +114,18 @@ public sealed class CountToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>コレクション件数が 0 のとき Visible（空のときだけ出す説明・プレースホルダ用）。
+/// 件数を <see cref="InverseBoolToVisibilityConverter"/> へ渡してはいけない——int は決して true にならず、
+/// 「常に表示」になって本文の上に説明が residual として乗り続ける。</summary>
+public sealed class EmptyCountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is int n && n > 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>真偽を、選択状態を表す Tag 値（true→"active"／false→null）へ変換する。
 /// セグメントボタン等で「選択中なら Tag="active" のトリガで強調表示」に使う。</summary>
 public sealed class ActiveTagConverter : IValueConverter

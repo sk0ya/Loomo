@@ -15,11 +15,13 @@ public sealed record TsScriptEntry(string Name, string Command, TsScriptKind Kin
     {
         TsScriptKind.FrontendDevServer => "ブラウザ",
         TsScriptKind.NodeRuntime => "Node",
-        TsScriptKind.Test => "テスト",
+        TsScriptKind.Test => "テスト実行",
+        TsScriptKind.BuildOrTool => "実行",
+        TsScriptKind.Unknown => "コマンド",
         _ => "",
     };
 
-    /// <summary>種別バッジを表示するか（Unknown / ビルド系は出さない）。</summary>
+    /// <summary>種別バッジを表示するか。</summary>
     public bool HasKindBadge => KindBadge.Length > 0;
 }
 
@@ -41,7 +43,13 @@ public static class TsProjectDiscovery
             var relative = Path.GetRelativePath(root, path);
             result.Add(new DebugProjectDiscovery.ProjectEntry(name, path, relative, IsTest: false));
         }
-        return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        // 自動検出は最初の候補を使うため、名前順だとモノレポの子 package を誤って選びやすい。
+        // ワークスペース直下→浅い package→深い package の順を優先し、同じ深さでは名前順にする。
+        return result
+            .OrderBy(p => RelativeDepth(p.RelativePath))
+            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>package.json の scripts セクションのスクリプト名一覧（定義順）。読めなければ空。</summary>
@@ -94,6 +102,9 @@ public static class TsProjectDiscovery
         catch { /* 壊れた package.json はディレクトリ名で代替 */ }
         return null;
     }
+
+    private static int RelativeDepth(string relativePath)
+        => relativePath.Count(c => c is '/' or '\\');
 
     /// <summary>肥大ディレクトリ（node_modules/bin/obj/.git 等）を飛ばした深さ制限の package.json 走査。</summary>
     private static void CollectPackageJson(string dir, int maxDepth, List<string> found)
