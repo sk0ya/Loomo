@@ -214,7 +214,7 @@ public class BrowserLibraryTests
         vm.IsLibraryOpen = true;   // 一覧は開いたときに作り直す
         var entry = Assert.Single(vm.History);
         Assert.Equal("あとから確定したタイトル", entry.DisplayTitle);
-        Assert.Single(new BrowserLibraryStore(path).Load().History.Where(h => h.VisitCount == 1));
+        Assert.Single(new BrowserLibraryStore(path).Load().History, h => h.VisitCount == 1);
         File.Delete(path);
     }
 

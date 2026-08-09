@@ -370,14 +370,17 @@
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="ターミナルへ送る" Click="OnSetInTerminalClick"
                                               ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
-                                    <!-- Diff ペインへ素材として送る（ファイルのみ）。2つ目は Opened で
-                                         「ファイルをちょうど2つ選択中」のときだけ出す。 -->
-                                    <MenuItem Header="Diffへ送る（クリップボードと比較）" Click="OnCompareWithClipboardClick"
-                                              ToolTip="このファイルの内容とクリップボードの内容を Diff ペインで見比べます"
-                                              Visibility="{Binding IsDirectory, Converter={StaticResource InverseBoolToVis}}" />
-                                    <MenuItem Header="選択した2つを Diff で比較" Click="OnCompareSelectedClick" Tag="CompareTwo"
-                                              ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します"
-                                              Visibility="Collapsed" />
+                                    <!-- Editor と同じく Diff の入口は1項目にまとめ、比較対象を子項目で選ぶ。
+                                         2ファイル比較は Opened で「ファイルをちょうど2つ選択中」のときだけ出す。 -->
+                                    <MenuItem Header="Diffへ送る" Tag="DiffMenu"
+                                              ToolTip="クリップボードや選択したファイルと Diff ペインで見比べます"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource InverseBoolToVis}}">
+                                        <MenuItem Header="クリップボードと比較" Click="OnCompareWithClipboardClick"
+                                                  ToolTip="このファイルの内容とクリップボードの内容を Diff ペインで見比べます" />
+                                        <MenuItem Header="選択した2つを比較" Click="OnCompareSelectedClick" Tag="CompareTwo"
+                                                  ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します"
+                                                  Visibility="Collapsed" />
+                                    </MenuItem>
                                     <!-- Git リポジトリ配下のときだけ：Git 系操作をまとめる。履歴表示は
                                          ファイル・フォルダ両方（Git ペインをそのパスの履歴に絞る）、Git Blame は
                                          ファイルのみ（エディタ VimEditorControl のネイティブ :Gblame をトリガー）。 -->

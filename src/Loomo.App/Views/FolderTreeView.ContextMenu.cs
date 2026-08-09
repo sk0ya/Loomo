@@ -216,9 +216,11 @@ public partial class FolderTreeView
         // 「選択した2つを Diff で比較」は、ファイルをちょうど2つ選んでいるときだけ出す
         // （それ以外では何を左右に置くか決まらない）。
         var twoFiles = SelectedFilesForCompare(node).Count == 2;
-        foreach (var item in cm.Items)
-            if (item is FrameworkElement { Tag: "CompareTwo" } element)
-                element.Visibility = twoFiles ? Visibility.Visible : Visibility.Collapsed;
+        var diffMenu = cm.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == "DiffMenu");
+        var compareTwo = diffMenu?.Items.OfType<MenuItem>()
+            .FirstOrDefault(m => (m.Tag as string) == "CompareTwo");
+        if (compareTwo is not null)
+            compareTwo.Visibility = twoFiles ? Visibility.Visible : Visibility.Collapsed;
 
         // 複数フォルダーワークスペースの見出し（ワークスペースフォルダー自身）だけ、
         // そのフォルダー内のピン留め切替候補を流し込む。
@@ -418,4 +420,3 @@ public partial class FolderTreeView
     private static void ShowError(string message)
         => ToastService.Error(message);
 }
-
