@@ -22,6 +22,15 @@ public sealed partial class DiffSessionViewModel
     /// <summary>読込の世代番号。読込中に選択や一覧が変わったとき、古い結果の適用を捨てる。</summary>
     private int _diffLoadVersion;
 
+    /// <summary>差分本体の構文色付けに使う「この差分は何のファイルか」（拡張子で言語を決める）。
+    /// 出どころのファイルが無いアドホック比較では空＝色付けなし。行を組み立てる側でしか分からないので
+    /// ここで持ち、ビューは行の入れ替え時にこれを読む（<see cref="DiffSyntaxHighlighter"/>）。</summary>
+    public string SyntaxFilePath { get; private set; } = "";
+
+    /// <summary>統合表示の各行が git パッチの1文字プレフィックス（<c>+</c>／<c>-</c>／空白）を含むか。
+    /// AI変更・比較は全文2つから組み立てる経路で、行は本文そのもの（プレフィックス無し）。</summary>
+    public bool UnifiedHasPatchPrefix { get; private set; }
+
     /// <summary>
     /// 差分本体を読み込む。全行を組み立ててから、現在の表示と異なるときだけ差し替える
     /// （Clear→await→再追加だと自動更新のたびに空白が見えてチラつくため）。
@@ -36,6 +45,7 @@ public sealed partial class DiffSessionViewModel
             var rows = await BuildSideRowsAsync(item);
             if (version != _diffLoadVersion)
                 return; // より新しい読込が始まっている
+            ApplySyntaxContext(item);
             ReplaceIfChanged(SideRows, rows);
         }
         else
@@ -43,8 +53,19 @@ public sealed partial class DiffSessionViewModel
             var rows = await BuildDiffRowsAsync(item);
             if (version != _diffLoadVersion)
                 return;
+            ApplySyntaxContext(item);
             ReplaceIfChanged(DiffRows, rows);
         }
+    }
+
+    /// <summary>構文色付けの前提（何のファイルか・行にプレフィックスが付くか）を、行の差し替えと<b>同時に</b>
+    /// 切り替える。組み立ての入口で書くと、別ファイルの読込が始まった瞬間に前提だけ先へ進み、まだ前の行を
+    /// 出している最中のビューが「別ファイルの言語」で色を付けてしまう（行が入れ替われば直るが、一瞬化ける）。</summary>
+    private void ApplySyntaxContext(DiffFileItem? item)
+    {
+        SyntaxFilePath = item?.FullPath ?? "";
+        // 左右並びの本文はプレフィックスを剥がした本文そのもの。統合表示だけ git パッチの1文字が付く。
+        UnifiedHasPatchPrefix = !IsSideBySide && item is { UsesInlineContent: false };
     }
 
     /// <summary>同一内容なら再描画しない差し替え（行 VM は record なので値比較）。</summary>

@@ -1,3 +1,4 @@
+using Editor.Core.Syntax;
 using sk0ya.Loomo.App.Services;
 using System;
 using System.Collections.Generic;
@@ -53,6 +54,15 @@ public partial class DiffSessionView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
+        // エディタの配色を変えたら差分の構文色も付け直す。購読はここで1度だけ（Loaded はペインの
+        // 再ペアレントのたびに走るので、そこで足すと同じハンドラが何重にも積み上がる）。
+        EditorSyntaxColors.Changed += OnEditorSyntaxColorsChanged;
+    }
+
+    private void OnEditorSyntaxColorsChanged()
+    {
+        ScheduleRebuildUnified();
+        ScheduleRebuildSide();
     }
 
     private DiffSessionViewModel? Vm => DataContext as DiffSessionViewModel;
@@ -158,8 +168,11 @@ public partial class DiffSessionView : UserControl
         var width = Vm is null ? MinContentWidth : MeasureMaxWidth(Vm.DiffRows.Select(r => r.Text));
         var doc = NewDocument(width);
         if (Vm is not null)
-            foreach (var r in Vm.DiffRows)
-                doc.Blocks.Add(TextParagraph(r.Text, r.Kind));
+        {
+            var syntax = DiffSyntaxHighlighter.ForUnified(Vm.SyntaxFilePath, Vm.UnifiedHasPatchPrefix, Vm.DiffRows);
+            for (var i = 0; i < Vm.DiffRows.Count; i++)
+                doc.Blocks.Add(TextParagraph(Vm.DiffRows[i].Text, Vm.DiffRows[i].Kind, TokensAt(syntax, i)));
+        }
         UnifiedBox.Document = doc;
     }
 
@@ -176,13 +189,18 @@ public partial class DiffSessionView : UserControl
         var leftNo = NewDocument(null);
         var rightNo = NewDocument(null);
         if (Vm is not null)
-            foreach (var s in Vm.SideRows)
+        {
+            var leftSyntax = DiffSyntaxHighlighter.ForSide(Vm.SyntaxFilePath, Vm.SideRows, left: true);
+            var rightSyntax = DiffSyntaxHighlighter.ForSide(Vm.SyntaxFilePath, Vm.SideRows, left: false);
+            for (var i = 0; i < Vm.SideRows.Count; i++)
             {
-                left.Blocks.Add(TextParagraph(s.LeftText, s.LeftKind));
-                right.Blocks.Add(TextParagraph(s.RightText, s.RightKind));
+                var s = Vm.SideRows[i];
+                left.Blocks.Add(TextParagraph(s.LeftText, s.LeftKind, TokensAt(leftSyntax, i)));
+                right.Blocks.Add(TextParagraph(s.RightText, s.RightKind, TokensAt(rightSyntax, i)));
                 leftNo.Blocks.Add(GutterParagraph(s.LeftLine));
                 rightNo.Blocks.Add(GutterParagraph(s.RightLine));
             }
+        }
         LeftTextBox.Document = left;
         RightTextBox.Document = right;
         LeftGutter.Document = leftNo;
@@ -232,28 +250,83 @@ public partial class DiffSessionView : UserControl
         LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
     };
 
-    /// <summary>本文1行。Kind（DiffLineKind 名／SideCellKind 名）で前景・背景を色分けする。</summary>
-    private static Paragraph TextParagraph(string text, string kind)
+    /// <summary>行 <paramref name="index"/> のトークン列（範囲外・色付けしない差分では null）。</summary>
+    private static SyntaxToken[]? TokensAt(IReadOnlyList<SyntaxToken[]?> syntax, int index)
+        => index < syntax.Count ? syntax[index] : null;
+
+    /// <summary>
+    /// 本文1行。Kind（DiffLineKind 名／SideCellKind 名）で前景・背景を色分けする。
+    /// <paramref name="tokens"/> があるときは前景をエディタと同じ構文色に譲り、追加／削除は<b>背景の色</b>で
+    /// 示す（前景まで緑・赤にすると構文色が潰れる。追加/削除の区別は帯・行番号・統合表示の ± が担う）。
+    /// </summary>
+    private static Paragraph TextParagraph(string text, string kind, SyntaxToken[]? tokens = null)
     {
         var p = NewParagraph();
+        p.Background = kind switch
+        {
+            "Added" => AddedBg,
+            "Removed" => RemovedBg,
+            "Empty" => EmptyBg,
+            _ => null,
+        };
+        if (tokens is { Length: > 0 })
+        {
+            p.Inlines.AddRange(SyntaxRuns(text, tokens));
+            return p;
+        }
         var run = new Run(text);
         switch (kind)
         {
-            case "Added":
-                run.Foreground = AddedFg; p.Background = AddedBg; break;
-            case "Removed":
-                run.Foreground = RemovedFg; p.Background = RemovedBg; break;
-            case "Empty":
-                p.Background = EmptyBg; break;
-            case "Gap":
-                run.SetResourceReference(TextElement.ForegroundProperty, "Accent"); break;
-            case "Header":
-                run.SetResourceReference(TextElement.ForegroundProperty, "FgDim"); break;
-            default: // Context
-                run.SetResourceReference(TextElement.ForegroundProperty, "Fg"); break;
+            case "Added": run.Foreground = AddedFg; break;
+            case "Removed": run.Foreground = RemovedFg; break;
+            case "Gap": run.SetResourceReference(TextElement.ForegroundProperty, "Accent"); break;
+            case "Header": run.SetResourceReference(TextElement.ForegroundProperty, "FgDim"); break;
+            default: run.SetResourceReference(TextElement.ForegroundProperty, "Fg"); break; // Context / Empty
         }
         p.Inlines.Add(run);
         return p;
+    }
+
+    /// <summary>本番の色引き（エディタの配色）。行ごとにデリゲートを作らないよう1つを使い回す。</summary>
+    private static readonly Func<TokenKind, Brush?> ThemeForeground = EditorSyntaxColors.Foreground;
+
+    /// <summary>
+    /// 1行をトークンごとの <see cref="Run"/> へ割る。色が同じ区間は1つの Run にまとめる——差分は1ファイル分の
+    /// 行を一度に組むので、記号や識別子のたびに Run を作ると FlowDocument の要素数が跳ね上がる。
+    /// 色を持たない種別（<paramref name="foreground"/> が null を返す）はアプリのテーマ色 <c>Fg</c>。
+    /// 色引きを差し替えられるのはテストのため——共有のエディタ配色（<see cref="EditorTheme"/> の静的な
+    /// ブラシ）は最初に触ったスレッドの持ち物になるので、割り方の検証でそれを初期化させない。
+    /// </summary>
+    internal static List<Run> SyntaxRuns(string text, SyntaxToken[] tokens, Func<TokenKind, Brush?>? foreground = null)
+    {
+        foreground ??= ThemeForeground;
+        // まず行を隙間なく区間へ割る（トークンの間＝色を持たない区間も埋める）
+        var segments = new List<(int Start, int End, Brush? Brush)>();
+        var position = 0;
+        foreach (var token in tokens)
+        {
+            // 重なり・逆順のトークンが来ても行の文字列を壊さないよう、常に「ここまで」以降だけを見る
+            var start = Math.Clamp(token.StartColumn, position, text.Length);
+            var end = Math.Clamp(start + token.Length, start, text.Length);
+            if (end == start) continue;
+            if (start > position) segments.Add((position, start, null));
+            segments.Add((start, end, foreground(token.Kind)));
+            position = end;
+        }
+        if (position < text.Length) segments.Add((position, text.Length, null));
+
+        var runs = new List<Run>();
+        for (var i = 0; i < segments.Count; i++)
+        {
+            var (start, end, brush) = segments[i];
+            while (i + 1 < segments.Count && ReferenceEquals(segments[i + 1].Brush, brush))
+                end = segments[++i].End;   // 同じ色の隣り合う区間は1つの Run にまとめる
+            var run = new Run(text[start..end]);
+            if (brush is not null) run.Foreground = brush;
+            else run.SetResourceReference(TextElement.ForegroundProperty, "Fg");
+            runs.Add(run);
+        }
+        return runs;
     }
 
     private static Paragraph GutterParagraph(string number)

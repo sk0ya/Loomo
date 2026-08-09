@@ -320,6 +320,8 @@ public partial class ShellWindow {
         }
     }
     private void ApplyAppearanceToOpenTabs() {
+        // エディタ以外の面（Diff 本体の構文色）にも同じ配色を配る。エディタだけ塗り替えると色が食い違う。
+        EditorSyntaxColors.Apply(_appearance.BuildEditorTheme());
         foreach (var tab in _editorTabs)
             if (tab.IsRealized)
                 _appearance.ApplyEditorAppearance(tab.Control);

@@ -107,6 +107,7 @@ public partial class ShellWindow : Window {
         _appearance = new ShellAppearanceCoordinator(settings, () =>
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
+        EditorSyntaxColors.Apply(_appearance.BuildEditorTheme()); // Diff 本体の構文色（起動時の1回目）
         _paletteView = new CommandPaletteViewController(PaletteList, PaletteBox);
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
         var editorSupportWebView = new EditorSupportWebViewController( EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties, EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested, editorSupportViewFactory);
