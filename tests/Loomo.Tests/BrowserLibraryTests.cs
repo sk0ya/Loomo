@@ -295,12 +295,16 @@ public class BrowserLibraryTests
     [InlineData("example.com", "https://example.com")]
     [InlineData("localhost:5173", "http://localhost:5173")]
     [InlineData("https://example.com/x", "https://example.com/x")]
+    // ドット無しでもポートが付いていればホスト（社内・開発サーバー）。検索へ流してはいけない。
+    [InlineData("devbox:3000", "http://devbox:3000")]
+    [InlineData("buildserver:8080/status", "http://buildserver:8080/status")]
     public void Address_gets_a_scheme_when_it_looks_like_a_host(string input, string expected)
         => Assert.Equal(expected, WorkspaceSessionCoordinator.NormalizeBrowserAddress(input, "https://home/"));
 
     [Theory]
     [InlineData("loomo とは")]
     [InlineData("wpf")]
+    [InlineData("devbox:notaport")]   // 「ホスト:数字」でなければ従来どおり検索語
     public void Address_without_a_dot_becomes_a_search(string input)
         => Assert.StartsWith("https://www.google.com/search?q=",
             WorkspaceSessionCoordinator.NormalizeBrowserAddress(input, "https://home/"));

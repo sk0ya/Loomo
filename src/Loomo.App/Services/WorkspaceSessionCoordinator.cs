@@ -29,12 +29,29 @@ public static class WorkspaceSessionCoordinator
         if (TryLocalPathUri(address) is { } fileUri)
             return fileUri;
         var isLocal = address.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
-                      || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+                      || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                      // `devbox:3000` のような社内・開発サーバー（ドット無しホスト＋ポート）も
+                      // ホストとして扱う。ドット判定だけだと検索へ流れて、どこへも行けなくなる。
+                      || (!address.Contains('.') && HasPortSuffix(address));
         // ホスト名に見えないものは検索語として扱う。空白を含む文字列だけでなく、ドットの無い
         // 一語（「loomo」等）も——https://loomo へ行っても名前が引けず、ただの失敗ページになる。
         if (!isLocal && (address.Contains(' ') || !address.Contains('.')))
             return $"https://www.google.com/search?q={Uri.EscapeDataString(address)}";
+        // 名前が引ける保証のない社内ホストは http：この形（ドット無し＋ポート）で待っているのは
+        // ほぼ開発サーバーで、https だと証明書以前に接続できない。
         return (isLocal ? "http://" : "https://") + address;
+    }
+
+    /// <summary><c>ホスト:数字</c>（パス・クエリが続いてもよい）の形か。</summary>
+    private static bool HasPortSuffix(string address)
+    {
+        var colon = address.IndexOf(':');
+        if (colon <= 0)
+            return false;
+        var rest = address[(colon + 1)..];
+        var end = rest.IndexOfAny(['/', '?', '#']);
+        var port = end < 0 ? rest : rest[..end];
+        return port.Length is > 0 and <= 5 && port.All(char.IsAsciiDigit);
     }
 
     /// <summary>アドレス欄にそのまま渡してよいスキーム（それ以外の "xxx:" はホスト名か検索語として扱う）。</summary>

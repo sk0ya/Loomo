@@ -205,12 +205,14 @@ internal static class MarkdownPage
                 let outlineEntries = [];   // { a, el } の並び（本文順）
                 let outlineScheduled = false;
 
-                function buildOutline() {
+                // scrollHint は、パネルが既に消えている呼び出し元（applyBody は body ごと差し替えるので、
+                // ここへ来た時点で前のパネルは無い）が控えておいた一覧のスクロール位置。
+                function buildOutline(scrollHint) {
                     outlineEntries = [];
                     const previous = document.querySelector('.loomo-outline-panel');
                     // 編集中は本文差し替えのたびにここへ来る。一覧自体のスクロール位置は引き継ぐ
                     // ——引き継がないと、長い文書で一覧を下へ送ってから打鍵するたび先頭へ戻ってしまう。
-                    const keptScroll = previous ? previous.scrollTop : 0;
+                    const keptScroll = previous ? previous.scrollTop : (scrollHint || 0);
                     if (previous) previous.remove();
                     // marp（スライド）は見出しがスライドの中身なので一覧にしない。
                     const headings = outlineEnabled && !isMarp
@@ -282,13 +284,17 @@ internal static class MarkdownPage
                     // ＝比率→ピクセルの丸めで数 px 飛ぶのを防ぐ。高さが変わった場合のみ比率で貼り直す。
                     const prevScrollY = window.scrollY;
                     const prevScrollHeight = document.documentElement.scrollHeight;
+                    // アウトライン一覧は body 直下なので、この差し替えで消える。位置は先に控えておく
+                    // ——差し替えた後では buildOutline から前のパネルを見つけられず、毎回先頭へ戻る。
+                    const outlinePanel = document.querySelector('.loomo-outline-panel');
+                    const outlineScroll = outlinePanel ? outlinePanel.scrollTop : 0;
                     document.body.innerHTML = html;
                     // 差し替え前の要素は detach 済み。開いたままだと overflow ロックが残るので解除して作り直す。
                     lightboxEl = null;
                     lightboxImg = null;
                     document.documentElement.style.overflow = '';
                     renderMermaid();
-                    buildOutline();   // 一覧も新しい本文の見出しで組み直す（高さ比較より前＝比較が最終レイアウトを見る）
+                    buildOutline(outlineScroll);   // 一覧も新しい本文の見出しで組み直す（高さ比較より前＝比較が最終レイアウトを見る）
                     if (document.documentElement.scrollHeight === prevScrollHeight)
                         window.scrollTo(0, prevScrollY);
                     else

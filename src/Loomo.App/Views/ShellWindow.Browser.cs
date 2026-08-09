@@ -182,8 +182,14 @@ public partial class ShellWindow {
         core.HistoryChanged += (_, _) => UpdateBrowserToolbar(tab);
         core.SourceChanged += (_, _) => {
             // 同一ページ内の遷移（History API）はナビゲーション完了が来ないので、ここで追う。
-            if (ReferenceEquals(_activeBrowserTab, tab) && !BrowserAddressBox.IsKeyboardFocusWithin)
-                SetBrowserAddressText(BrowserUrlOf(tab) ?? string.Empty);
+            if (ReferenceEquals(_activeBrowserTab, tab)) {
+                if (!BrowserAddressBox.IsKeyboardFocusWithin)
+                    SetBrowserAddressText(BrowserUrlOf(tab) ?? string.Empty);
+                // ★の対象（CurrentUrl）も一緒に進める。アドレス欄だけ追うと、題を打ち替えない SPA では
+                // DocumentTitleChanged も来ないので、★の表示と Ctrl+D が前のページのまま取り残される。
+                // 履歴には触らない経路なので、訪問回数が増えることはない。
+                _vm.Browser.SetCurrentPage(BrowserUrlOf(tab), core.DocumentTitle);
+            }
             UpdateBrowserToolbar(tab);
         };
         core.DocumentTitleChanged += (_, _) => {
@@ -216,6 +222,13 @@ public partial class ShellWindow {
             // 実体化できなかったときだけ、自分で開き直す（黙って何も起きないのが一番困る）。
             created.PendingUrl = uri;
             await EnsureBrowserRealizedAsync(created);
+            if (created.View.CoreWebView2 is not null)
+                return;
+            // 2度目も駄目なら、この受け皿は使えない。Handled=true のまま NewWindow を渡さずに抜けると
+            // リンクはどこにも開かず、活性化済みの空白タブだけが残る（＝一番困る結末そのもの）。
+            // 例外時と同じ後始末をして既定動作へ戻す。
+            e.Handled = false;
+            await CloseBrowserTabAsync(created.Id);
         } catch {
             // 受け皿を用意できなければ既定動作に戻す。作りかけのタブは畳む——そうしないと
             // 空白タブが1枚残ったうえに、防ぎたかった素っ気ない別窓まで開く。
