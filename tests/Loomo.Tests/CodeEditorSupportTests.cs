@@ -57,6 +57,7 @@ public class CodeEditorSupportTests
     [InlineData(@"C:\work\main.go")]
     [InlineData(@"C:\work\lib.rs")]
     [InlineData(@"C:\work\UPPER.CS")]   // 大文字小文字は無視
+    [InlineData(@"C:\work\script.csx")] // C# script も Roslyn の対象
     [InlineData(@"C:\work\esm.mts")]    // ESM/CJS 明示（§30.16.4）
     [InlineData(@"C:\work\cjs.cts")]
     [InlineData(@"C:\work\esm.mjs")]

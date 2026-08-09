@@ -109,7 +109,93 @@ public class EditorSupportRenderFlowTests
 
         Assert.False(lsp.LastIncludeDeclaration);
         var panels = Assert.IsType<EditorSupportFrameContent.PanelsContent>(frames[1].Content);
-        Assert.Single(panels.Panels.References);
+        var reference = Assert.Single(panels.Panels.References);
+        Assert.Equal(20, reference.Line0);
+        Assert.Equal(4, reference.Column0); // 使用箇所の実体位置へ着地する
+    }
+
+    [Fact]
+    public async Task 呼び出し元と呼び出し先のシンボル位置をパネルへ渡す()
+    {
+        // 行頭ではなく名前の位置へジャンプできることを、LSP応答からCallReferenceまで通して固定する。
+        var callerRange = new LspRange(
+            new LspPosition(30, 0), new LspPosition(32, 1));
+        var callerSelection = new LspRange(
+            new LspPosition(30, 8), new LspPosition(30, 14));
+        var calleeRange = new LspRange(
+            new LspPosition(40, 0), new LspPosition(42, 1));
+        var calleeSelection = new LspRange(
+            new LspPosition(40, 12), new LspPosition(40, 18));
+        var workspace = new FakeLspWorkspace
+        {
+            HierarchyItem = Hierarchy("Foo", 10, 12),
+            Incoming =
+            [
+                new CallHierarchyIncomingCall(
+                    new CallHierarchyItem(
+                        "Caller", (int)SymbolKind.Method,
+                        new Uri(@"C:\work\Caller.cs").AbsoluteUri,
+                        callerRange, callerSelection),
+                    [])
+            ],
+            Outgoing =
+            [
+                new CallHierarchyOutgoingCall(
+                    new CallHierarchyItem(
+                        "Callee", (int)SymbolKind.Method,
+                        new Uri(@"C:\work\Callee.cs").AbsoluteUri,
+                        calleeRange, calleeSelection),
+                    [])
+            ],
+        };
+        var (flow, _) = Flow(new FakeHost(), workspace);
+
+        var frames = await Render(flow, Request(
+            new FakeLspDocument(File, [Method("Foo", 10)])));
+
+        var panels = Assert.IsType<EditorSupportFrameContent.PanelsContent>(frames[1].Content);
+        var incoming = Assert.Single(panels.Panels.Incoming);
+        Assert.Equal("Caller", incoming.Symbol);
+        Assert.Equal(30, incoming.Line0);
+        Assert.Equal(8, incoming.Column0);
+
+        var outgoing = Assert.Single(panels.Panels.Outgoing);
+        Assert.Equal("Callee", outgoing.Symbol);
+        Assert.Equal(40, outgoing.Line0);
+        Assert.Equal(12, outgoing.Column0);
+    }
+
+    [Fact]
+    public async Task メソッド以外では呼び出し階層を展開しない()
+    {
+        // Roslyn がプロパティにも prepareCallHierarchy の項目を返すことがある。
+        // それを incoming/outgoing へ渡すとサーバー内部例外になるため、C# の回帰として固定する。
+        var workspace = new FakeLspWorkspace
+        {
+            HierarchyItem = new CallHierarchyItem(
+                "Value", (int)SymbolKind.Property, new Uri(File).AbsoluteUri,
+                new LspRange(new LspPosition(10, 0), new LspPosition(12, 1)),
+                new LspRange(new LspPosition(10, 6), new LspPosition(10, 11))),
+            Incoming =
+            [
+                new CallHierarchyIncomingCall(
+                    Hierarchy("Caller", 30, 32), [])
+            ],
+            Outgoing =
+            [
+                new CallHierarchyOutgoingCall(
+                    Hierarchy("Callee", 40, 42), [])
+            ],
+        };
+        var (flow, _) = Flow(new FakeHost(), workspace);
+
+        var frames = await Render(flow, Request(
+            new FakeLspDocument(File, [Method("Value", 10)])));
+
+        var panels = Assert.IsType<EditorSupportFrameContent.PanelsContent>(frames[1].Content);
+        Assert.Null(panels.Panels.Target);
+        Assert.Empty(panels.Panels.Incoming);
+        Assert.Empty(panels.Panels.Outgoing);
     }
 
     [Fact]

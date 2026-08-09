@@ -132,6 +132,47 @@ public class CodeOutlineViewTests
     }
 
     [Fact]
+    public void 呼び出しパネルクリックは行と列を通知する()
+    {
+        RunSta(() =>
+        {
+            var view = new CodeOutlineView();
+            var window = new Window { Width = 360, Height = 640, Content = view, ShowInTaskbar = false };
+            try
+            {
+                FileLocationActivatedEventArgs? activated = null;
+                view.FileLocationActivated += (_, e) => activated = e;
+                view.ShowOutline(
+                    new[] { new OutlineNode("Foo", SymbolKind.Method, 0, 3, 0, 6, Array.Empty<OutlineNode>()) },
+                    currentLine1: 1,
+                    new CallPanels(
+                        new[] { new CallReference("Caller", "file:///C:/work/Caller.cs", 41, 7) },
+                        Array.Empty<CallReference>(),
+                        Array.Empty<CallReference>()));
+                window.Show();
+                Pump();
+
+                var rows = new List<Border>();
+                CollectDescendants(view, rows);
+                var row = Assert.Single(rows,
+                    b => b.DataContext is CodeCallRow { Symbol: "Caller" }
+                         && b.Cursor == System.Windows.Input.Cursors.Hand);
+                row.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                    System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                {
+                    RoutedEvent = System.Windows.Input.Mouse.MouseUpEvent,
+                });
+
+                Assert.NotNull(activated);
+                Assert.Equal(@"C:\work\Caller.cs", activated!.Path);
+                Assert.Equal(42, activated.Line1);
+                Assert.Equal(7, activated.Column0);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
     public void ビュー_未導入案内はインストールと設定ボタンを出す()
     {
         RunSta(() =>
