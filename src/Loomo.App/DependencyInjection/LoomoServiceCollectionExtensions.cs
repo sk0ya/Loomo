@@ -167,6 +167,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();
+        // ブックマーク・履歴はワークスペースをまたぐ資産なので、アプリ単位の1ファイルに持つ。
+        services.AddSingleton<BrowserLibraryStore>();
+        services.AddSingleton<BrowserViewModel>();
         services.AddSingleton<SearchResultTreeMapper>();
         services.AddSingleton<SearchPanelQuery>();
         services.AddSingleton<SearchPanelViewModel>();

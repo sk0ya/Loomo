@@ -82,6 +82,10 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
 
         /// <summary>CoreWebView2 の生成を開始済みか（多重生成・多重ナビゲートの防止）。</summary>
         public bool RealizationStarted { get; set; }
+
+        /// <summary>読み込み中か。タブごとに持つ——ツールバーの「更新／停止」は
+        /// <b>いま見ているタブ</b>の状態を出すので、裏のタブの読み込みに引きずられてはいけない。</summary>
+        public bool IsLoading { get; set; }
     }
 
 internal sealed class TerminalWorkspaceTabs

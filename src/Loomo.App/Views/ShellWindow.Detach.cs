@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Views;
@@ -183,7 +183,7 @@ public partial class ShellWindow {
         return item;
     }
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
-        => CreateBrowserSpinoffItem(sourceTab?.View.Source?.ToString() ?? sourceTab?.PendingUrl);
+        => CreateBrowserSpinoffItem(BrowserUrlOf(sourceTab));
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         var url = sourceUrl ?? DefaultBrowserUrl;
         var view = new LoomoWebView2 {
@@ -196,7 +196,14 @@ public partial class ShellWindow {
     private async Task RealizeSpinoffBrowserAsync(WebView2CompositionControl view, string url, DetachedItem item) {
         try { await view.EnsureCoreWebView2Async(); }
         catch { return; }
-        ConfigureBrowserCore(view.CoreWebView2!);
+        ConfigureBrowserCoreBasics(view.CoreWebView2!);
+        // 切り離した窓の target="_blank" は、素の WebView2 の既定（ツールバーの無い素っ気ない窓）ではなく
+        // もう1枚の切り離しウィンドウで受ける（本体ペインの新しいタブと同じ考え方）。
+        view.CoreWebView2!.NewWindowRequested += (_, e) => {
+            e.Handled = true;
+            var uri = e.Uri;
+            Dispatcher.BeginInvoke(new Action(() => OpenUrlInDetachedWindow(uri)));
+        };
         view.CoreWebView2!.DocumentTitleChanged += (_, _) => {
             var title = view.CoreWebView2?.DocumentTitle;
             item.Title = string.IsNullOrWhiteSpace(title) ? "Browser" : title!;

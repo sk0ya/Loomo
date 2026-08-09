@@ -103,7 +103,10 @@ public class ShellViewModelTests
 
         return new ShellViewModel(folderTree, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
-            new PegboardViewModel(), searchVm, debugVm, tsIdeVm,
+            new PegboardViewModel(),
+            new BrowserViewModel(new BrowserLibraryStore(
+                Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-browser.json"))),
+            searchVm, debugVm, tsIdeVm,
             new TrailViewModel(new TrailStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db"))));
     }

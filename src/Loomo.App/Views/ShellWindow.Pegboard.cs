@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペグボードペイン（設計書 §23.3）のシェル側配線。 アイテムの「開く」を種別に応じて各ペインへ振り分け、変更をワークスペーススナップショットへ保存する。</summary>
 public partial class ShellWindow {
     private void InitializePegboard() {
@@ -10,8 +10,8 @@ public partial class ShellWindow {
         _vm.Pegboard.SendToComposerRequested += (_, item) => InsertIntoComposer(item.Content);
     }
     private void PinBrowserUrlToPegboard() {
-        if (_activeBrowserTab?.View.Source?.ToString() is { Length: > 0 } url)
-            _vm.Pegboard.AddContent(url, type: "url", title: _activeBrowserTab.View.CoreWebView2?.DocumentTitle);
+        if (_activeBrowserTab is { } tab && BrowserUrlOf(tab) is { Length: > 0 } url)
+            _vm.Pegboard.AddContent(url, type: "url", title: tab.View.CoreWebView2?.DocumentTitle);
     }
     private void PinEditorSelectionToPegboard() {
         if (_activeEditorTab?.Control.SelectedText is { Length: > 0 } text)

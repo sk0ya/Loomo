@@ -17,15 +17,51 @@ public static class WorkspaceSessionCoordinator
         var address = text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(address))
             return defaultUrl;
-        if (Uri.TryCreate(address, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme))
+        // スキーム付きの URL はそのまま通す。ただし「絶対 URI として解釈できるか」だけで判断しない——
+        // URI のスキームはドットも数字も許すので、`localhost:5173` はスキーム "localhost" の
+        // 絶対 URI として通ってしまい、そのままではどこへも遷移しない文字列が返っていた。
+        if (KnownSchemes.Contains(SchemeOf(address))
+            && Uri.TryCreate(address, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme))
             return uri.ToString();
-        if (address.Contains(' '))
+        // ローカルパス（`C:\…` と UNC の `\\srv\share\…`）は file: URI へ。スキーム判定を既知の名前に
+        // 絞った副作用で、`C:\notes\a.html` のドライブレターが未知スキーム "C" として素通りし、
+        // `https://C:\notes\a.html` という Uri に載らない文字列を作ってしまう（＝遷移で例外）。
+        if (TryLocalPathUri(address) is { } fileUri)
+            return fileUri;
+        var isLocal = address.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
+                      || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        // ホスト名に見えないものは検索語として扱う。空白を含む文字列だけでなく、ドットの無い
+        // 一語（「loomo」等）も——https://loomo へ行っても名前が引けず、ただの失敗ページになる。
+        if (!isLocal && (address.Contains(' ') || !address.Contains('.')))
             return $"https://www.google.com/search?q={Uri.EscapeDataString(address)}";
-        var scheme = address.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
-                     || address.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            ? "http://"
-            : "https://";
-        return scheme + address;
+        return (isLocal ? "http://" : "https://") + address;
+    }
+
+    /// <summary>アドレス欄にそのまま渡してよいスキーム（それ以外の "xxx:" はホスト名か検索語として扱う）。</summary>
+    private static readonly HashSet<string> KnownSchemes = new(StringComparer.OrdinalIgnoreCase) {
+        "http", "https", "file", "about", "data", "view-source", "ftp", "mailto", "edge", "chrome",
+    };
+
+    /// <summary>先頭の <c>スキーム:</c> 部分（無ければ空文字）。</summary>
+    private static string SchemeOf(string address)
+    {
+        var colon = address.IndexOf(':');
+        return colon > 0 ? address[..colon] : "";
+    }
+
+    /// <summary>ローカルパスなら <c>file:///…</c> を返す（そうでなければ null）。</summary>
+    private static string? TryLocalPathUri(string address)
+    {
+        try
+        {
+            return Path.IsPathRooted(address) && !address.StartsWith('/')
+                ? new Uri(address).AbsoluteUri
+                : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or UriFormatException or NotSupportedException)
+        {
+            return null;   // パスに見えて Uri へ載らないものは、後段の検索語／ホスト名の判定に任せる
+        }
     }
 
     internal static void RestoreEditor(VimEditorControl editor, EditorTabSnapshot snapshot)

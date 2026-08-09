@@ -308,6 +308,7 @@ public partial class ShellWindow : Window {
                 _vm.TraceSession.EnsureLoaded();
         };
         InitializePegboard();
+        InitializeBrowserChrome();
         InitializeTrail();
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
@@ -322,12 +323,12 @@ public partial class ShellWindow : Window {
                 ApplyIdePaneApplicability(System.Array.Empty<string>());
                 PrepareStageSnapshot(solo: true, StageSnapshot.Default());
                 ApplyDefaultLayout();
-                BrowserAddressBox.Text = DefaultBrowserUrl;
+                SetBrowserAddressText(DefaultBrowserUrl);
                 CreateBrowserTab(DefaultBrowserUrl);
                 CompleteStageSnapshotRestore();
             }
         } catch (Exception ex) {
-            BrowserAddressBox.Text = $"WebView2 initialization failed: {ex.Message}";
+            SetBrowserAddressText($"WebView2 initialization failed: {ex.Message}");
         }
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.GitSession.EnsureLoaded()));
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(EnsureDragOverlay));

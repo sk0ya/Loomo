@@ -11,6 +11,10 @@ public partial class ShellWindow {
             }
             return;
         }
+        // ブラウザ専用キー（Ctrl+L/F/D、F5、Alt+←→ 等）はペインにフォーカスがあるときだけ効かせる。
+        // アプリ全体のキーバインドより先に見る——F5 のようにブラウザの慣習が優先されるものがある。
+        if (HandleBrowserKey(e))
+            return;
         _keyboard?.HandlePreviewKeyDown(e);
     }
     private const double ResizeStepRatio = 0.08;

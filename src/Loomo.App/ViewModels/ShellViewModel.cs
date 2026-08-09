@@ -45,6 +45,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public DiffSessionViewModel DiffSession { get; }
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
+    /// <summary>ブラウザペインのツールバー状態・ブックマーク・履歴・ダウンロード（設計書 §21）。</summary>
+    public BrowserViewModel Browser { get; }
     public SearchPanelViewModel SearchPanel { get; }
     public DebugViewModel Debug { get; }
     /// <summary>TS IDE（TypeScript / Node.js デバッグ）ペインのファサード。</summary>
@@ -83,6 +85,7 @@ public sealed partial class ShellViewModel : ObservableObject
         DiffSessionViewModel diffSession,
         TraceSessionViewModel traceSession,
         PegboardViewModel pegboard,
+        BrowserViewModel browser,
         SearchPanelViewModel searchPanel,
         DebugViewModel debug,
         TsDebugViewModel tsIde,
@@ -106,6 +109,7 @@ public sealed partial class ShellViewModel : ObservableObject
         DiffSession = diffSession;
         TraceSession = traceSession;
         Pegboard = pegboard;
+        Browser = browser;
         SearchPanel = searchPanel;
         Debug = debug;
         TsIde = tsIde;

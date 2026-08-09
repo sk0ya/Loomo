@@ -172,6 +172,60 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- ブラウザのブックマーク／履歴／候補の1行（行全体が押せるフラットボタン）。 -->
+        <Style x:Key="BrowserRowButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Row" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ブックマーク／履歴／候補の共通の行テンプレート。見出し＋（違うときだけ）URL の2段。 -->
+        <DataTemplate x:Key="BrowserLinkRow">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Grid.ColumnSpan="2" Style="{StaticResource BrowserRowButton}"
+                        Command="{Binding DataContext.OpenLinkCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                        CommandParameter="{Binding}" ToolTip="{Binding Url}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Glyph}" Foreground="{DynamicResource FgDim}"
+                                   FontSize="{DynamicResource Fs11}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <StackPanel>
+                            <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding SubText}" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding SubText, Converter={StaticResource NonEmptyToVis}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="2" Style="{StaticResource BrowserRowButton}" Content="×"
+                        Foreground="{DynamicResource FgDim}" ToolTip="一覧から削除"
+                        Command="{Binding DataContext.RemoveLinkCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                        CommandParameter="{Binding}" />
+            </Grid>
+        </DataTemplate>
     </Window.Resources>
 
     <!-- 最大化は code-behind で制御：通常は WM_GETMINMAXINFO でワーク領域に制限し、
@@ -795,9 +849,17 @@
                                                 <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
-                                                        Click="OnBrowserTabSelected">
-                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
-                                                               TextTrimming="CharacterEllipsis" />
+                                                        Click="OnBrowserTabSelected" ToolTip="{Binding Title}">
+                                                    <!-- favicon は取得済み（TabIconService）。サイドバーのタブ一覧だけでなく
+                                                         ここにも出す——タブの見分けは文字より絵の方が速い。 -->
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Image Width="14" Height="14" Margin="0,0,5,0"
+                                                               VerticalAlignment="Center" Source="{Binding Icon}"
+                                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
                                                         Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
@@ -815,40 +877,249 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
-                    <Grid DockPanel.Dock="Top" Margin="8,0,8,8">
+                    <Grid DockPanel.Dock="Top" Margin="8,0,8,4">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <!-- 戻る／進むは履歴の有無で活性が変わる（押せるかどうかが見えないと、
+                             行き止まりかページが応答していないのか区別できない）。 -->
                         <Button Grid.Column="0" Style="{StaticResource CaptionButton}" Width="30" Height="28"
-                                ToolTip="戻る" Click="OnBrowserBack">
+                                ToolTip="戻る（Alt+←）" Click="OnBrowserBack"
+                                IsEnabled="{Binding Browser.CanGoBack}">
                             <Path Stretch="Uniform" Width="12" Height="12"
                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                   Data="M7,0 L0,6 L7,12 V8 H12 V4 H7 Z" />
                         </Button>
                         <Button Grid.Column="1" Style="{StaticResource CaptionButton}" Width="30" Height="28"
-                                ToolTip="進む" Click="OnBrowserForward">
+                                ToolTip="進む（Alt+→）" Click="OnBrowserForward"
+                                IsEnabled="{Binding Browser.CanGoForward}">
                             <Path Stretch="Uniform" Width="12" Height="12"
                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                   Data="M5,0 L12,6 L5,12 V8 H0 V4 H5 Z" />
                         </Button>
+                        <!-- 更新／停止は1つのボタン。読み込み中は × に変わる（読み込み中だと分かる印も兼ねる）。 -->
                         <Button Grid.Column="2" Style="{StaticResource CaptionButton}" Width="30" Height="28"
-                                ToolTip="更新" Click="OnBrowserReload">
-                            <Path Stretch="Uniform" Width="13" Height="13"
-                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                  StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  StrokeLineJoin="Round"
-                                  Data="M10.8,4.8 A4.5,4.5 0 1 0 9.6,9.7 M10.8,4.8 V1.2 H7.2" />
+                                Click="OnBrowserReload" ToolTip="更新／読み込み中は停止（F5）">
+                            <Grid>
+                                <Path Stretch="Uniform" Width="13" Height="13"
+                                      Visibility="{Binding Browser.IsLoading, Converter={StaticResource InverseBoolToVis}}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Data="M10.8,4.8 A4.5,4.5 0 1 0 9.6,9.7 M10.8,4.8 V1.2 H7.2" />
+                                <Path Stretch="Uniform" Width="11" Height="11"
+                                      Visibility="{Binding Browser.IsLoading, Converter={StaticResource BoolToVis}}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M1,1 L11,11 M11,1 L1,11" />
+                            </Grid>
                         </Button>
-                        <TextBox x:Name="BrowserAddressBox" Grid.Column="3" MinHeight="28" Margin="6,0"
-                                 VerticalContentAlignment="Center"
-                                 KeyDown="OnBrowserAddressKeyDown" />
-                        <Button Grid.Column="4" Content="Go" Style="{StaticResource FlatButton}"
-                                Padding="10,4" MinHeight="28" Click="OnBrowserGo" />
+                        <Button Grid.Column="3" Style="{StaticResource CaptionButton}" Width="28" Height="28"
+                                Content="⌂" FontSize="{DynamicResource Fs15}" ToolTip="ホーム" Click="OnBrowserHome" />
+
+                        <!-- アドレス欄。打つと履歴・ブックマークから候補が降りる（↑↓で選び Enter で確定）。 -->
+                        <Grid Grid.Column="4" Margin="6,0">
+                            <TextBox x:Name="BrowserAddressBox" MinHeight="28"
+                                     VerticalContentAlignment="Center"
+                                     KeyDown="OnBrowserAddressKeyDown"
+                                     TextChanged="OnBrowserAddressTextChanged"
+                                     LostKeyboardFocus="OnBrowserAddressLostFocus" />
+                            <Popup x:Name="BrowserSuggestPopup" PlacementTarget="{Binding ElementName=BrowserAddressBox}"
+                                   Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
+                                   Width="{Binding ActualWidth, ElementName=BrowserAddressBox}"
+                                   IsOpen="{Binding Browser.IsSuggestionsOpen, Mode=TwoWay}">
+                                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="3" Padding="2"
+                                        DataContext="{Binding Browser}">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                    </Border.Effect>
+                                    <ListBox x:Name="BrowserSuggestList" MaxHeight="260" BorderThickness="0"
+                                             Background="Transparent" ItemsSource="{Binding Suggestions}"
+                                             ItemTemplate="{StaticResource BrowserLinkRow}"
+                                             HorizontalContentAlignment="Stretch"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <!-- 等倍でないときだけ倍率を出す（押すと 100% に戻る）。 -->
+                        <Button Grid.Column="5" Style="{StaticResource CaptionButton}" Height="28" Padding="6,0"
+                                ToolTip="表示倍率を 100% に戻す（Ctrl+0）" Click="OnBrowserZoomReset"
+                                Visibility="{Binding Browser.ShowZoom, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding Browser.ZoomPercent, StringFormat={}{0}%}"
+                                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                        </Button>
+                        <Button Grid.Column="6" Style="{StaticResource CaptionButton}" Width="28" Height="28"
+                                Content="{Binding Browser.BookmarkGlyph}" FontSize="{DynamicResource Fs14}"
+                                ToolTip="{Binding Browser.BookmarkTip}"
+                                Command="{Binding Browser.ToggleBookmarkCommand}" />
+
+                        <!-- ダウンロードは受信中／完了ぶんがあるときだけ出る（無いときは幅も取らない）。 -->
+                        <ToggleButton Grid.Column="7" Style="{StaticResource ToolbarToggleButton}" Height="28"
+                                      Padding="6,0" ToolTip="ダウンロード"
+                                      IsChecked="{Binding Browser.IsDownloadsOpen, Mode=TwoWay}"
+                                      Visibility="{Binding Browser.HasDownloads, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⭳" FontSize="{DynamicResource Fs14}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Browser.DownloadBadge}" Margin="3,0,0,0"
+                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs11}"
+                                           Foreground="{DynamicResource Accent}"
+                                           Visibility="{Binding Browser.DownloadBadge, Converter={StaticResource NonEmptyToVis}}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton Grid.Column="8" Style="{StaticResource ToolbarToggleButton}" Height="28"
+                                      Padding="6,0" Content="☰" ToolTip="ブックマークと履歴"
+                                      IsChecked="{Binding Browser.IsLibraryOpen, Mode=TwoWay}" />
+
+                        <Popup PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True" HorizontalOffset="0"
+                               IsOpen="{Binding Browser.IsDownloadsOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="380"
+                                    DataContext="{Binding Browser}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <DockPanel>
+                                    <DockPanel DockPanel.Dock="Top" Margin="4,2,2,4">
+                                        <TextBlock DockPanel.Dock="Left" Text="ダウンロード"
+                                                   Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                Content="完了ぶんを消す" Foreground="{DynamicResource FgDim}"
+                                                FontSize="{DynamicResource Fs11}" HorizontalAlignment="Right"
+                                                Command="{Binding ClearFinishedDownloadsCommand}" />
+                                    </DockPanel>
+                                    <ItemsControl ItemsSource="{Binding Downloads}" MaxHeight="320">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="6,4" Margin="0,1" CornerRadius="2"
+                                                        Background="{DynamicResource Bg}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding FileName}" FontSize="{DynamicResource Fs12}"
+                                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Url}" />
+                                                        <ProgressBar Height="3" Margin="0,3" Minimum="0" Maximum="100"
+                                                                     Value="{Binding Progress, Mode=OneWay}"
+                                                                     IsIndeterminate="{Binding IsIndeterminate}"
+                                                                     Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}" />
+                                                        <DockPanel>
+                                                            <TextBlock DockPanel.Dock="Left" Text="{Binding StatusText}"
+                                                                       Foreground="{DynamicResource FgDim}"
+                                                                       FontSize="{DynamicResource Fs11}"
+                                                                       VerticalAlignment="Center" />
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <Button Style="{StaticResource BrowserRowButton}" Content="中止"
+                                                                        FontSize="{DynamicResource Fs11}"
+                                                                        Foreground="{DynamicResource FgDim}"
+                                                                        Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"
+                                                                        Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}" />
+                                                                <Button Style="{StaticResource BrowserRowButton}" Content="開く"
+                                                                        FontSize="{DynamicResource Fs11}"
+                                                                        Visibility="{Binding CanOpenFile, Converter={StaticResource BoolToVis}}"
+                                                                        Command="{Binding DataContext.OpenDownloadCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}" />
+                                                                <Button Style="{StaticResource BrowserRowButton}" Content="エディタで"
+                                                                        FontSize="{DynamicResource Fs11}"
+                                                                        Visibility="{Binding CanOpenFile, Converter={StaticResource BoolToVis}}"
+                                                                        Command="{Binding DataContext.OpenDownloadInEditorCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}" />
+                                                                <Button Style="{StaticResource BrowserRowButton}" Content="場所"
+                                                                        FontSize="{DynamicResource Fs11}"
+                                                                        Foreground="{DynamicResource FgDim}"
+                                                                        Visibility="{Binding CanOpenFile, Converter={StaticResource BoolToVis}}"
+                                                                        Command="{Binding DataContext.ShowDownloadInFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}" />
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+
+                        <!-- ブックマークと履歴。行のクリックで開き、× で一覧から消す。 -->
+                        <Popup PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True"
+                               IsOpen="{Binding Browser.IsLibraryOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="420"
+                                    DataContext="{Binding Browser}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel>
+                                        <TextBlock Text="ブックマーク" Margin="4,2" Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs11}" />
+                                        <TextBlock Text="まだありません（☆ かCtrl+D で追加）" Margin="6,2"
+                                                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                   Visibility="{Binding HasBookmarks, Converter={StaticResource InverseBoolToVis}}" />
+                                        <ItemsControl ItemsSource="{Binding Bookmarks}"
+                                                      ItemTemplate="{StaticResource BrowserLinkRow}" />
+                                        <DockPanel Margin="4,8,4,2">
+                                            <TextBlock DockPanel.Dock="Left" Text="履歴"
+                                                       Foreground="{DynamicResource FgDim}"
+                                                       FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                    Content="すべて消す" HorizontalAlignment="Right"
+                                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                    Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}"
+                                                    Command="{Binding ClearHistoryCommand}" />
+                                        </DockPanel>
+                                        <ItemsControl ItemsSource="{Binding History}"
+                                                      ItemTemplate="{StaticResource BrowserLinkRow}" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
                     </Grid>
+
+                    <!-- 読み込み中の細い帯。ページが白いままでも「動いている」ことが見える。 -->
+                    <!-- IsIndeterminate は読み込み中だけ真にする。畳んでもアニメーションは動き続けるので、
+                         真のままにすると何も表示していない間ずっと再描画を呼ぶ。 -->
+                    <ProgressBar DockPanel.Dock="Top" Height="2" BorderThickness="0"
+                                 IsIndeterminate="{Binding Browser.IsLoading}"
+                                 Background="Transparent" Foreground="{DynamicResource Accent}"
+                                 Visibility="{Binding Browser.IsLoading, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- ページ内検索（Ctrl+F）。件数は WebView2 の Find API から。 -->
+                    <Border DockPanel.Dock="Bottom" Background="{DynamicResource Panel}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="6,4"
+                            Visibility="{Binding Browser.IsFindOpen, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="🔍" VerticalAlignment="Center" Margin="2,0,6,0"
+                                       Foreground="{DynamicResource FgDim}" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="24"
+                                    Content="×" ToolTip="閉じる（Esc）" Click="OnBrowserFindClose" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="24"
+                                    Content="▼" ToolTip="次へ（Enter）"
+                                    Command="{Binding Browser.FindNextCommand}" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="24"
+                                    Content="▲" ToolTip="前へ（Shift+Enter）"
+                                    Command="{Binding Browser.FindPreviousCommand}" />
+                            <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0"
+                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                       Text="{Binding Browser.FindLabel}" />
+                            <TextBox x:Name="BrowserFindBox" MinHeight="24" VerticalContentAlignment="Center"
+                                     KeyDown="OnBrowserFindKeyDown"
+                                     Text="{Binding Browser.FindTerm, UpdateSourceTrigger=PropertyChanged, Delay=150}" />
+                        </DockPanel>
+                    </Border>
+
                     <Grid x:Name="BrowserContentHost" />
                 </DockPanel>
 

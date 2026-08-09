@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース切替とスナップショット保存・復元（タブ実体の付け替え）</summary>
 public partial class ShellWindow {
     private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab) {
@@ -233,9 +233,9 @@ public partial class ShellWindow {
             snapshot.Editor.IsModified = s.IsModified;
         }
         snapshot.BrowserTabs = _browserTabs
-            .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(tab.View.Source?.ToString()))
+            .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(BrowserUrlOf(tab)))
             .Select(tab => new BrowserTabSnapshot {
-                Id = tab.Id, Url = tab.View.Source?.ToString(), Title = tab.View.CoreWebView2?.DocumentTitle, IsActive = tab.Id == _activeBrowserTab?.Id
+                Id = tab.Id, Url = BrowserUrlOf(tab), Title = tab.View.CoreWebView2?.DocumentTitle, IsActive = tab.Id == _activeBrowserTab?.Id
             }).ToList();
         snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
