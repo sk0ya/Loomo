@@ -161,7 +161,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     [ObservableProperty] private string _filter = "";
 
     /// <summary>一覧で選択中（＝キーボードのカーソル位置）の行。選択しただけでは切り替わらない
-    /// ——切替は <see cref="ActivateWorkspaceCommand"/>（クリック／Enter）だけで起きる。
+    /// ——切替は明示的な起動操作（クリック／Enter）だけで起きる。
     /// 矢印キーで一覧をたどるたびにワークスペースが切り替わってしまうのを避けるため。</summary>
     [ObservableProperty] private WorkspaceEntryViewModel? _selectedWorkspace;
 
@@ -208,6 +208,36 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         var snapshot = FindSnapshot(entry.Id);
         if (snapshot is not null)
             Activate(snapshot);
+    }
+
+    /// <summary>
+    /// ワークスペース詳細を非同期で読み込んでから切り替える、アプリ本体向けの入口。
+    /// 既存の同期コマンドはテスト・互換用に残し、UIからはこちらを使う。
+    /// </summary>
+    public async Task ActivateWorkspaceAsync(
+        WorkspaceEntryViewModel? entry, CancellationToken ct = default)
+    {
+        if (entry is null)
+            return;
+
+        var snapshot = FindSnapshot(entry.Id);
+        if (snapshot is null)
+            return;
+
+        if (_state.ActiveWorkspaceId == snapshot.Id)
+        {
+            snapshot.LastUsedUtc = DateTime.UtcNow;
+            _store.Save(_state);
+            RefreshEntries();
+            return;
+        }
+
+        var loaded = await _store.LoadWorkspaceAsync(snapshot.Id, ct).ConfigureAwait(true);
+        ct.ThrowIfCancellationRequested();
+        if (loaded is not null && !ReferenceEquals(loaded, snapshot))
+            snapshot = ReplaceWithLoaded(snapshot, loaded);
+
+        ActivateLoaded(snapshot);
     }
 
     /// <summary>ピン留めの切替。ピン留めは一覧の並び（上部固定）だけに効き、切替の挙動は変わらない。</summary>
@@ -406,15 +436,31 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
         var loaded = _store.LoadWorkspace(snapshot.Id);
         if (loaded is not null && !ReferenceEquals(loaded, snapshot))
+            snapshot = ReplaceWithLoaded(snapshot, loaded);
+
+        ActivateLoaded(snapshot);
+    }
+
+    private WorkspaceSnapshot ReplaceWithLoaded(
+        WorkspaceSnapshot indexSnapshot, WorkspaceSnapshot loaded)
+    {
+        // ピン留め・表示名は索引（workspaces.json）側が正。未読込のあいだに変更されていると
+        // state.json は古いままなので、読み込んだ実体へ引き継いでから差し替える。
+        loaded.Pinned = indexSnapshot.Pinned;
+        loaded.CustomName = indexSnapshot.CustomName;
+        var index = _state.Workspaces.FindIndex(w => w.Id == indexSnapshot.Id);
+        if (index >= 0) _state.Workspaces[index] = loaded;
+        return loaded;
+    }
+
+    private void ActivateLoaded(WorkspaceSnapshot snapshot)
+    {
+        if (_state.ActiveWorkspaceId == snapshot.Id)
         {
-            // ピン留め・表示名は索引（workspaces.json）側が正。未読込のあいだに変更されていると
-            // state.json は古いままなので、読み込んだ実体へ引き継いでから差し替える
-            // （さもないと次の保存で索引の値が古い値に戻る）。
-            loaded.Pinned = snapshot.Pinned;
-            loaded.CustomName = snapshot.CustomName;
-            var index = _state.Workspaces.FindIndex(w => w.Id == snapshot.Id);
-            if (index >= 0) _state.Workspaces[index] = loaded;
-            snapshot = loaded;
+            snapshot.LastUsedUtc = DateTime.UtcNow;
+            _store.Save(_state);
+            RefreshEntries();
+            return;
         }
 
         snapshot.LastUsedUtc = DateTime.UtcNow;

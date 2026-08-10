@@ -161,9 +161,9 @@ public partial class WorkspaceSwitcherView : UserControl
         if (Vm is not { } vm || entry is null)
             return;
 
-        // 切替は同期的に走って重いので、先にポップアップを畳んでから開始する。
+        // ポップアップを先に畳み、詳細読込と切替は非同期で開始する。
         Close();
-        vm.ActivateWorkspaceCommand.Execute(entry);
+        _ = vm.ActivateWorkspaceAsync(entry);
     }
 
     private void OnRowPinClick(object sender, RoutedEventArgs e)

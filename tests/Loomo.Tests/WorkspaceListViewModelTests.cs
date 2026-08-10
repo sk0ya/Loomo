@@ -43,6 +43,32 @@ public class WorkspaceListViewModelTests
         Assert.Equal(1, activationCount);
     }
 
+    [Fact]
+    public async Task Async_activation_loads_details_before_raising_activation_event()
+    {
+        var dir1 = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var dir2 = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var storePath = Path.Combine(
+            Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
+        var seed = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
+        seed.ActivateFolder(dir1.FullName);
+        seed.ActivateFolder(dir2.FullName);
+        seed.Persist();
+
+        var sut = new WorkspaceListViewModel(new WorkspaceStateStore(storePath));
+        var target = sut.Workspaces.Single(w => w.RootPath == dir1.FullName);
+        WorkspaceSnapshot? activated = null;
+        sut.WorkspaceActivated += (_, snapshot) => activated = snapshot;
+
+        await sut.ActivateWorkspaceAsync(target);
+
+        Assert.NotNull(activated);
+        Assert.Equal(dir1.FullName, activated.RootPath);
+        Assert.True(activated.IsDetailsLoaded);
+    }
+
     /// <summary>一覧の選択はカーソル移動でしかない（矢印キーで一覧をたどるたびに切り替わっては困る）。
     /// 切替はコマンド＝クリック／Enter だけで起きる。</summary>
     [Fact]

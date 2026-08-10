@@ -1,6 +1,12 @@
 ﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース切替とスナップショット保存・復元（タブ実体の付け替え）</summary>
 public partial class ShellWindow {
+    private readonly object _workspaceSwitchRequestGate = new();
+    private WorkspaceSwitchRequest? _pendingWorkspaceSwitch;
+    private bool _workspaceSwitchLoopRunning;
+    private readonly record struct WorkspaceSwitchRequest(
+        WorkspaceSnapshot Workspace, bool CaptureCurrent);
+
     private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab) {
         switch (tab.Kind) {
             case TabEntryKind.Terminal:
@@ -75,8 +81,57 @@ public partial class ShellWindow {
         _vm.Tabs.UpdateEditorTab(tab.Id, title, tab.Control.IsModified);
         SaveActiveWorkspaceSnapshot();
     }
-    private async void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
-        => await SwitchWorkspaceAsync(workspace, captureCurrent: true);
+    private void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
+        => RequestWorkspaceSwitch(workspace, captureCurrent: true);
+
+    /// <summary>
+    /// 切替要求を最新の1件に畳み、切替本体を1本だけ走らせる。
+    /// ワークスペース切替は途中で別の切替と並行すると、ペインの付け替えと保存が競合するため、
+    /// async void のイベントハンドラから直接実行しない。
+    /// </summary>
+    private void RequestWorkspaceSwitch(WorkspaceSnapshot workspace, bool captureCurrent)
+    {
+        lock (_workspaceSwitchRequestGate)
+        {
+            _pendingWorkspaceSwitch = new WorkspaceSwitchRequest(workspace, captureCurrent);
+            if (_workspaceSwitchLoopRunning)
+                return;
+            _workspaceSwitchLoopRunning = true;
+        }
+
+        _ = ProcessWorkspaceSwitchRequestsAsync();
+    }
+
+    private async Task ProcessWorkspaceSwitchRequestsAsync()
+    {
+        // 要求元のコマンド／クリックへ処理時間を返し、ポップアップを閉じた状態を先に描画させる。
+        await Dispatcher.Yield(DispatcherPriority.Background);
+
+        while (true)
+        {
+            WorkspaceSwitchRequest request;
+            lock (_workspaceSwitchRequestGate)
+            {
+                if (_pendingWorkspaceSwitch is not { } pending)
+                {
+                    _workspaceSwitchLoopRunning = false;
+                    return;
+                }
+
+                request = pending;
+                _pendingWorkspaceSwitch = null;
+            }
+
+            try
+            {
+                await SwitchWorkspaceAsync(request.Workspace, request.CaptureCurrent);
+            }
+            catch (Exception ex)
+            {
+                ToastService.Error($"ワークスペースの切替に失敗しました: {ex.Message}");
+            }
+        }
+    }
     private async void OnWorkspaceRemoved(object? sender, Guid workspaceId) {
         if (_terminalWorkspaces.Remove(workspaceId, out var terminal)) {
             foreach (var tab in terminal.Tabs)
@@ -99,7 +154,7 @@ public partial class ShellWindow {
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
         try {
-            _vm.Trail.SetWorkspace(workspace.Id.ToString());
+            await _vm.Trail.SetWorkspaceAsync(workspace.Id.ToString());
             _vm.Trail.EnsureLoaded();
             _trailLastPane = null;   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
             _trailLastPaneMode = null;
@@ -138,6 +193,8 @@ public partial class ShellWindow {
             ReapplySpanPaneLayout();
         StartupProfiler.Mark("  復元:ApplyPaneLayout");
         profile?.Lap("paneLayout");
+        if (!deferHydration)
+            await Dispatcher.Yield(DispatcherPriority.Background);
         if (deferHydration) {
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             StartupProfiler.Mark("  復元:初フレーム後に継続");
@@ -149,13 +206,11 @@ public partial class ShellWindow {
         RestoreTerminalTabs(workspace, profile);
         StartupProfiler.Mark("  復元:RestoreTerminalTabs");
         profile?.Lap("terminal");
-        if (deferHydration)
-            await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+        await Dispatcher.Yield(DispatcherPriority.Background);
         RestoreEditorTabs(workspace, profile);
         StartupProfiler.Mark("  復元:RestoreEditorTabs");
         profile?.Lap("editor");
-        if (deferHydration)
-            await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+        await Dispatcher.Yield(DispatcherPriority.Background);
         await RestoreBrowserTabsAsync(workspace);
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
         profile?.Lap("browser");

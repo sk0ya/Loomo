@@ -17,6 +17,7 @@ public sealed partial class TrailViewModel : ObservableObject
     private readonly TrailRecordHandler _recorder;
     private readonly TrailHistoryQuery _history;
     private bool _loaded;
+    private int _workspaceLoadVersion;
 
     private bool _followingToday = true;
 
@@ -124,8 +125,51 @@ public sealed partial class TrailViewModel : ObservableObject
             return;
         _workspaceKey = workspaceKey;
         _recorder.SetWorkspace(workspaceKey);
+        Interlocked.Increment(ref _workspaceLoadVersion);
         if (_loaded)
             ReloadForWorkspace();
+    }
+
+    /// <summary>ワークスペース切替用。SQLiteの読込をUIスレッドから外し、結果だけをUIへ反映する。</summary>
+    public async Task SetWorkspaceAsync(string workspaceKey, CancellationToken ct = default)
+    {
+        if (string.Equals(_workspaceKey, workspaceKey, StringComparison.Ordinal))
+            return;
+
+        _workspaceKey = workspaceKey;
+        _recorder.SetWorkspace(workspaceKey);
+        var version = Interlocked.Increment(ref _workspaceLoadVersion);
+        if (!_loaded)
+            return;
+
+        try
+        {
+            var day = Today;
+            var result = await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                var records = _history.LoadDay(workspaceKey, day);
+                var hasAny = records.Count > 0 || _history.HasAny(workspaceKey);
+                return (Records: records, HasAny: hasAny);
+            }, ct).ConfigureAwait(true);
+
+            if (version != _workspaceLoadVersion
+                || !string.Equals(_workspaceKey, workspaceKey, StringComparison.Ordinal))
+                return;
+
+            ApplyRecords(day, result.Records);
+            if (_followingToday)
+                _recorder.SetLatest(day, Entries.Count > 0 ? Entries[^1] : null);
+            HasEntries = result.HasAny;
+        }
+        catch (OperationCanceledException)
+        {
+            // 新しい切替が来た場合は、古い軌跡の読込結果を表示しない。
+        }
+        catch
+        {
+            // DB が読めなくてもメモリ内動作で続行する。
+        }
     }
 
     private void ReloadForWorkspace()
@@ -358,6 +402,16 @@ public sealed partial class TrailViewModel : ObservableObject
     private void LoadInto(DateOnly day)
     {
         var records = _history.LoadDay(_workspaceKey, day);
+        ApplyRecords(day, records);
+        // 今日に戻ったら、以後の記録が表示へも反映されるようデデュープ対象を差し替える。
+        if (_followingToday)
+        {
+            _recorder.SetLatest(Today, Entries.Count > 0 ? Entries[^1] : null);
+        }
+    }
+
+    private void ApplyRecords(DateOnly day, IReadOnlyList<TrailEntryViewModel> records)
+    {
         SetCurrent(-1);
         Entries.Clear();
         foreach (var entry in records) Entries.Add(entry);
@@ -367,11 +421,6 @@ public sealed partial class TrailViewModel : ObservableObject
         OnEntriesChanged();
         if (Entries.Count > 0)
             SetCurrent(Entries.Count - 1);
-        // 今日に戻ったら、以後の記録が表示へも反映されるようデデュープ対象を差し替える。
-        if (_followingToday)
-        {
-            _recorder.SetLatest(today, Entries.Count > 0 ? Entries[^1] : null);
-        }
     }
 
     private bool IsShowingToday() => _followingToday;

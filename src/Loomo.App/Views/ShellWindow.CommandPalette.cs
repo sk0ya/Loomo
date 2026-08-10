@@ -102,7 +102,7 @@ public partial class ShellWindow {
         list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null), Sc("sidebar.sessions"), "sidebar.sessions"));
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive)) {
             var target = workspace;
-            list.Add(new("ワークスペース", $"切替: {target.Name}", () => _vm.Workspaces.ActivateWorkspaceCommand.Execute(target)));
+            list.Add(new("ワークスペース", $"切替: {target.Name}", () => _ = _vm.Workspaces.ActivateWorkspaceAsync(target)));
         }
         return list;
     }

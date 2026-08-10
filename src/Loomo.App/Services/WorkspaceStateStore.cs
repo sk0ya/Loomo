@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -115,6 +117,10 @@ public sealed class WorkspaceStateStore
         }
         catch { return null; }
     }
+
+    /// <summary>ワークスペース詳細をバックグラウンドで読む。JSON の読み込みは UI スレッドで行わない。</summary>
+    public Task<WorkspaceSnapshot?> LoadWorkspaceAsync(Guid id, CancellationToken ct = default)
+        => Task.Run(() => LoadWorkspace(id), ct);
 
     /// <summary>状態を同期でディスクへ書き出す。書込直後の <see cref="Load"/>（別インスタンス含む）が
     /// 確実に最新を読めるよう、あえて同期のまま（read-after-write の耐久性契約）。直列化はソース
