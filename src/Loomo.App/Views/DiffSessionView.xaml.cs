@@ -24,8 +24,6 @@ namespace sk0ya.Loomo.App.Views;
 public partial class DiffSessionView : UserControl
 {
     private const double LineHeight = 16.0;
-    private const double PageWidthPadding = 24.0; // 本文右端の余白（横スクロールの行き過ぎ防止）
-    private const double MinContentWidth = 200.0; // 計測不能時の最小ページ幅
 
     // 本文の最長行を測る等幅タイプフェース（FlowDocument と同じ Cascadia Mono / Consolas）
     private Typeface? _monoTypeface;
@@ -153,6 +151,14 @@ public partial class DiffSessionView : UserControl
     }
 
     /// <summary>
+    /// 自分で読み始めた人を後から引きずらないよう、待っている自動ジャンプを取り下げる。
+    /// 分割構築の間ペインは<b>操作できる</b>ので、大きい差分では「開いた人がスクロールして読み始めた
+    /// 数秒後に、最後のスライスが載った瞬間へ最初の変更へ飛ばされる」が起こり得る。触った時点で
+    /// 行き先はその人が決めている。
+    /// </summary>
+    private void CancelAutoJump() => _autoJumpPending = false;
+
+    /// <summary>
     /// 表示中ビューの組み立て（再構築）が保留中なら、それが終わるまで待ってから最初の変更へジャンプする。
     /// キャッシュ命中で再構築が走らない切替でも、既存の FlowDocument に対して確実にジャンプできる。
     /// </summary>
@@ -161,7 +167,10 @@ public partial class DiffSessionView : UserControl
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (!_autoJumpPending || Vm is null) return;
-            if (Vm.IsSideBySide ? _sideDirty : _unifiedDirty)
+            // 分割構築の途中は、ジャンプ先の段落がまだ存在しないことがあるので最後まで待つ。
+            if (Vm.IsSideBySide
+                ? _sideDirty || _sideBuild is { IsRunning: true }
+                : _unifiedDirty || _unifiedBuild is { IsRunning: true })
             {
                 ScheduleAutoJump(); // 該当ビューの組み立て待ち
                 return;
@@ -188,52 +197,107 @@ public partial class DiffSessionView : UserControl
             DispatcherPriority.Background);
     }
 
+    // ===== 分割構築 =====
+    //
+    // 差分本体は「1行＝1 Paragraph」の FlowDocument で、行数ぶんの構築とレイアウトはどちらも UI スレッド
+    // でしかできない（FlowDocument は DispatcherObject、レイアウトは当然 UI）。全行を一息に組むと、
+    // 2000行で約1.4秒・4000行で約1.9秒そのままペインが固まっていた。
+    //
+    // そこで <see cref="BuildChunkRows"/> 行ずつ組んでは Dispatcher に戻る。戻る＝入力と描画に順番を
+    // 譲るということで、これが「固まらない」の正体。**追記先は既に表示中の文書**にする——組み上げてから
+    // 差し替える方式だと、重い方（レイアウト）が結局最後に一括で来て意味がない。ライブな文書への追記は
+    // スライス当たりの時間が文書の長さによらず一定（4000行まで実測）なので、この形が成り立つ。
+    //
+    // **速くなるのではなく、途中で息継ぎするようになる**（総時間はむしろ2〜3割伸びる）。
+
+    /// <summary>
+    /// 1スライスで組み立てる行数。実 Dispatcher で「入力が何ms待たされるか」を測った結果、
+    /// 4000行の差分で 40行→103ms・100行→135ms・250行→200ms、総時間は逆に 5.9秒・3.5秒・2.8秒。
+    /// スライスを細かくしてもレイアウト1回ぶんの固定費（約90ms）は消えず、総時間だけが伸びるので、
+    /// 「引っかかりを感じない範囲でいちばん粗く」の 100 を採る。
+    /// </summary>
+    private const int BuildChunkRows = 100;
+
+    private ChunkedDocumentBuild? _unifiedBuild;
+    private ChunkedDocumentBuild? _sideBuild;
+
+    /// <summary>
+    /// 分割構築の残りを今すぐ組み切る。<b>行を添字で指してくる操作の直前に呼ぶ</b>——ジャンプ先の段落が
+    /// まだ組まれていないと、その操作が黙って何も起きないため。
+    /// </summary>
+    private void FlushBuilds()
+    {
+        _unifiedBuild?.Finish();
+        _sideBuild?.Finish();
+    }
+
+    /// <summary>1スライス進め、残りがあれば Dispatcher に戻って続きを予約する
+    /// （戻る＝入力と描画に順番を譲る）。</summary>
+    private void Pump(ChunkedDocumentBuild build)
+    {
+        build.Step(BuildChunkRows);
+        if (!build.IsRunning) return;
+        Dispatcher.BeginInvoke(new Action(() => Pump(build)), DispatcherPriority.Background);
+    }
+
     private void RebuildUnified()
     {
+        _unifiedBuild?.Cancel(); // 予約済みスライスは、これから捨てる文書のぶんなので走らせない
         _currentMarks.Clear(); // 旧段落は破棄されるのでマーカー参照も捨てる
         _contextRowIndex = -1; // 行が入れ替わったので、覚えていた右クリック行はもう別の行を指す
-        // ページ幅を最長行ぴったりに合わせる（折り返さず、横スクロールの可動域も実内容に一致させる）
-        var width = Vm is null ? MinContentWidth : MeasureMaxWidth(Vm.DiffRows.Select(r => r.Text));
-        var doc = NewDocument(width);
-        if (Vm is not null)
-        {
-            var syntax = DiffSyntaxHighlighter.ForUnified(Vm.SyntaxFilePath, Vm.UnifiedHasPatchPrefix, Vm.DiffRows);
-            for (var i = 0; i < Vm.DiffRows.Count; i++)
-                doc.Blocks.Add(TextParagraph(Vm.DiffRows[i].Text, Vm.DiffRows[i].Kind, TokensAt(syntax, i)));
-        }
+        // スライスの合間に VM が行を入れ替えても組み立てが混ざらないよう、材料はここで写し取る。
+        // 字句解析は VM が行の組み立てと同時に（UI スレッド外で）済ませている。ここは割り付けるだけ。
+        var rows = Vm?.DiffRows.ToList() ?? [];
+        var syntax = Vm?.UnifiedSyntax ?? DiffSyntaxHighlighter.None;
+        // ページ幅を最長行ぴったりに合わせる（折り返さず、横スクロールの可動域も実内容に一致させる）。
+        // 全行ぶんを先に決めておく＝追記で幅が動かないので、途中で本文が組み直されない。
+        var doc = NewDocument(MeasureMaxWidth(rows.Select(r => r.Text)));
         UnifiedBox.Document = doc;
+
+        _unifiedBuild = new ChunkedDocumentBuild(rows.Count, (start, end) =>
+        {
+            for (var i = start; i < end; i++)
+                doc.Blocks.Add(TextParagraph(rows[i].Text, rows[i].Kind, TokensAt(syntax, i)));
+        });
+        Pump(_unifiedBuild);
     }
 
     private void RebuildSide()
     {
+        _sideBuild?.Cancel(); // 予約済みスライスは、これから捨てる文書のぶんなので走らせない
         _currentMarks.Clear(); // 旧段落は破棄されるのでマーカー参照も捨てる
         _contextRowIndex = -1; // 行が入れ替わったので、覚えていた右クリック行はもう別の行を指す
+        var rows = Vm?.SideRows.ToList() ?? [];
+        var leftSyntax = Vm?.SideSyntaxLeft ?? DiffSyntaxHighlighter.None;
+        var rightSyntax = Vm?.SideSyntaxRight ?? DiffSyntaxHighlighter.None;
         // 左右で同じページ幅にして、横スクロールの連動が座標としてぴったり揃うようにする
-        var width = Vm is null
-            ? MinContentWidth
-            : MeasureMaxWidth(Vm.SideRows.SelectMany(s => new[] { s.LeftText, s.RightText }));
+        var width = MeasureMaxWidth(rows.SelectMany(s => new[] { s.LeftText, s.RightText }));
         var left = NewDocument(width);
         var right = NewDocument(width);
         var leftNo = NewDocument(null);
         var rightNo = NewDocument(null);
-        if (Vm is not null)
+        LeftTextBox.Document = left;
+        RightTextBox.Document = right;
+        LeftGutter.Document = leftNo;
+        RightGutter.Document = rightNo;
+
+        // 本文2つと行番号ガター2つは**同じスライスで一緒に**伸ばす。片方だけ先に伸びると、
+        // 縦スクロール連動が「まだその行が無い側」を掴んで左右がずれる。
+        _sideBuild = new ChunkedDocumentBuild(rows.Count, (start, end) =>
         {
-            var leftSyntax = DiffSyntaxHighlighter.ForSide(Vm.SyntaxFilePath, Vm.SideRows, left: true);
-            var rightSyntax = DiffSyntaxHighlighter.ForSide(Vm.SyntaxFilePath, Vm.SideRows, left: false);
-            for (var i = 0; i < Vm.SideRows.Count; i++)
+            for (var i = start; i < end; i++)
             {
-                var s = Vm.SideRows[i];
+                var s = rows[i];
                 left.Blocks.Add(TextParagraph(s.LeftText, s.LeftKind, TokensAt(leftSyntax, i)));
                 right.Blocks.Add(TextParagraph(s.RightText, s.RightKind, TokensAt(rightSyntax, i)));
                 leftNo.Blocks.Add(GutterParagraph(s.LeftLine));
                 rightNo.Blocks.Add(GutterParagraph(s.RightLine));
             }
-        }
-        LeftTextBox.Document = left;
-        RightTextBox.Document = right;
-        LeftGutter.Document = leftNo;
-        RightGutter.Document = rightNo;
-        RecomputeSideBlocks();
+        });
+        Pump(_sideBuild);
+
+        // 中央ゲターの帯は行の添字×行高で置くので、文書がまだ伸びている途中でも正しい位置に出せる。
+        RecomputeSideBlocks(rows);
         PositionCenterGutter();
     }
 
@@ -252,23 +316,15 @@ public partial class DiffSessionView : UserControl
     /// <summary>最長行の表示幅（px）を測ってページ幅を決める。CJK 全角も正しく測れるよう FormattedText を使う。
     /// 測るサイズは本文と同じ<b>スケール後</b>のフォントサイズでなければならない——等倍の 12 で測ると、
     /// UI 文字サイズを上げているときにページ幅が実際より狭くなって本文だけが折り返し、
-    /// 折り返さない行番号ガターと1行ずつずれていく（行番号が信用できなくなる）。</summary>
+    /// 折り返さない行番号ガターと1行ずつずれていく（行番号が信用できなくなる）。
+    /// 全行を実測すると行数ぶん重いので、絞り込みは <see cref="MonospacePageWidth"/> に任せる。</summary>
     private double MeasureMaxWidth(IEnumerable<string> lines)
     {
         var typeface = _monoTypeface ??= new Typeface(
             new FontFamily("Cascadia Mono, Consolas"),
             FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-        var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var fontSize = UiFontManager.Scaled(12);
-        var max = 0.0;
-        foreach (var line in lines)
-        {
-            if (string.IsNullOrEmpty(line)) continue;
-            var ft = new FormattedText(line, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                typeface, fontSize, Brushes.Black, pixelsPerDip);
-            if (ft.WidthIncludingTrailingWhitespace > max) max = ft.WidthIncludingTrailingWhitespace;
-        }
-        return Math.Max(MinContentWidth, max + PageWidthPadding);
+        return MonospacePageWidth.Measure(
+            lines, typeface, UiFontManager.Scaled(12), VisualTreeHelper.GetDpi(this).PixelsPerDip);
     }
 
     private static Paragraph NewParagraph() => new()
@@ -387,6 +443,14 @@ public partial class DiffSessionView : UserControl
         if (_rightTextSv is not null) _rightTextSv.ScrollChanged += OnSideScrollChanged;
         CenterGutter.SizeChanged += (_, _) => PositionCenterGutter();
 
+        // 分割構築の途中でも本文は操作できるので、自分で読み始めた合図があれば自動ジャンプは取り下げる。
+        foreach (var box in new[] { UnifiedBox, LeftTextBox, RightTextBox })
+        {
+            box.PreviewMouseWheel += (_, _) => CancelAutoJump();
+            box.PreviewMouseDown += (_, _) => CancelAutoJump();
+            box.PreviewKeyDown += (_, _) => CancelAutoJump();
+        }
+
         // Shift+ホイールで横スクロール（FlowDocumentScrollViewer は既定で横ホイールを扱わない）
         UnifiedBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
         LeftTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
@@ -488,11 +552,9 @@ public partial class DiffSessionView : UserControl
     private static readonly Brush BlockHover = Frozen("#80FFC107");
 
     /// <summary>SideRows から変更ブロック（連続する非文脈行の範囲）を求めて <see cref="_sideBlocks"/> に貯める。</summary>
-    private void RecomputeSideBlocks()
+    private void RecomputeSideBlocks(IReadOnlyList<DiffSideRowVm> rows)
     {
         _sideBlocks.Clear();
-        if (Vm is null) return;
-        var rows = Vm.SideRows;
         var i = 0;
         while (i < rows.Count)
         {
@@ -595,6 +657,10 @@ public partial class DiffSessionView : UserControl
     /// <summary>表示中（統合 / 左右）の本文で指定行へスクロールし、その行をはっきりマークする。</summary>
     private void ScrollToRow(int index)
     {
+        // 指定行の段落がまだ組まれていないとジャンプが黙って空振りするので、その場で組み切る。
+        // 続けてレイアウトも通す——下の GetCharacterRect は行の位置が計算済みでないと空の矩形を返す。
+        FlushBuilds();
+        UpdateLayout();
         ClearCurrentMarks();
         if (Vm is { IsSideBySide: true })
         {

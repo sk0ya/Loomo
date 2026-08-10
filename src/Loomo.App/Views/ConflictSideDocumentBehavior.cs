@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Controls;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -41,8 +42,6 @@ public static class ConflictSideDocumentBehavior
     private static readonly Brush TheirsDistinctBg = Freeze("#1FE57373");
     private static readonly Brush TheirsDistinctFg = Freeze("#FFE57373");
 
-    private const double PageWidthPadding = 24.0; // 本文右端の余白（横スクロールの行き過ぎ防止）
-    private const double MinContentWidth = 200.0; // 計測不能時の最小ページ幅
     private const double FontSizePx = 12.0;
     private static readonly Typeface MonoTypeface = new(
         new FontFamily("Cascadia Mono, Consolas"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
@@ -70,17 +69,7 @@ public static class ConflictSideDocumentBehavior
     }
 
     private static double MeasureMaxWidth(IEnumerable<string> lines)
-    {
-        var max = 0.0;
-        foreach (var line in lines)
-        {
-            if (string.IsNullOrEmpty(line)) continue;
-            var ft = new FormattedText(line, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                MonoTypeface, FontSizePx, Brushes.Black, 1.0);
-            if (ft.WidthIncludingTrailingWhitespace > max) max = ft.WidthIncludingTrailingWhitespace;
-        }
-        return Math.Max(MinContentWidth, max + PageWidthPadding);
-    }
+        => MonospacePageWidth.Measure(lines, MonoTypeface, FontSizePx, pixelsPerDip: 1.0);
 
     private static FlowDocument NewDocument(double? pageWidth = null)
     {

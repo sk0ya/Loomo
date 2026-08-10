@@ -5,8 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Documents;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Editor.Core.Syntax;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Services;
@@ -22,14 +25,26 @@ public sealed partial class DiffSessionViewModel
     /// <summary>読込の世代番号。読込中に選択や一覧が変わったとき、古い結果の適用を捨てる。</summary>
     private int _diffLoadVersion;
 
-    /// <summary>差分本体の構文色付けに使う「この差分は何のファイルか」（拡張子で言語を決める）。
-    /// 出どころのファイルが無いアドホック比較では空＝色付けなし。行を組み立てる側でしか分からないので
-    /// ここで持ち、ビューは行の入れ替え時にこれを読む（<see cref="DiffSyntaxHighlighter"/>）。</summary>
-    public string SyntaxFilePath { get; private set; } = "";
+    /// <summary>統合表示の各行と1対1の構文トークン列（色付けしない差分では空）。ビューは行の入れ替え時に
+    /// これを読んで <see cref="Run"/> を割る。<b>行と必ず同時に差し替える</b>——別々に置くと、次のファイルの
+    /// 読込が始まった瞬間に前提だけ先へ進み、まだ前の行を出している最中のビューが「別ファイルの言語」で
+    /// 色を付けてしまう（行が入れ替われば直るが、一瞬化ける）。</summary>
+    public IReadOnlyList<SyntaxToken[]?> UnifiedSyntax { get; private set; } = DiffSyntaxHighlighter.None;
 
-    /// <summary>統合表示の各行が git パッチの1文字プレフィックス（<c>+</c>／<c>-</c>／空白）を含むか。
-    /// AI変更・比較は全文2つから組み立てる経路で、行は本文そのもの（プレフィックス無し）。</summary>
-    public bool UnifiedHasPatchPrefix { get; private set; }
+    /// <summary>左右並び表示の左側（旧）の構文トークン列。<see cref="UnifiedSyntax"/> と同じ約束。</summary>
+    public IReadOnlyList<SyntaxToken[]?> SideSyntaxLeft { get; private set; } = DiffSyntaxHighlighter.None;
+
+    /// <summary>左右並び表示の右側（新）の構文トークン列。<see cref="UnifiedSyntax"/> と同じ約束。</summary>
+    public IReadOnlyList<SyntaxToken[]?> SideSyntaxRight { get; private set; } = DiffSyntaxHighlighter.None;
+
+    /// <summary>統合表示の組み立て結果（行＋その行の構文トークン）。行と色付けを一組で運ぶための器。</summary>
+    private sealed record UnifiedContent(List<DiffRowVm> Rows, IReadOnlyList<SyntaxToken[]?> Syntax);
+
+    /// <summary>左右並び表示の組み立て結果（行＋左右それぞれの構文トークン）。</summary>
+    private sealed record SideContent(
+        List<DiffSideRowVm> Rows,
+        IReadOnlyList<SyntaxToken[]?> LeftSyntax,
+        IReadOnlyList<SyntaxToken[]?> RightSyntax);
 
     /// <summary>
     /// 差分本体を読み込む。全行を組み立ててから、現在の表示と異なるときだけ差し替える
@@ -42,30 +57,21 @@ public sealed partial class DiffSessionViewModel
         await LoadHunksAsync(item, version);
         if (IsSideBySide)
         {
-            var rows = await BuildSideRowsAsync(item);
+            var content = await BuildSideContentAsync(item);
             if (version != _diffLoadVersion)
                 return; // より新しい読込が始まっている
-            ApplySyntaxContext(item);
-            ReplaceIfChanged(SideRows, rows);
+            SideSyntaxLeft = content.LeftSyntax;
+            SideSyntaxRight = content.RightSyntax;
+            ReplaceIfChanged(SideRows, content.Rows);
         }
         else
         {
-            var rows = await BuildDiffRowsAsync(item);
+            var content = await BuildUnifiedContentAsync(item);
             if (version != _diffLoadVersion)
                 return;
-            ApplySyntaxContext(item);
-            ReplaceIfChanged(DiffRows, rows);
+            UnifiedSyntax = content.Syntax;
+            ReplaceIfChanged(DiffRows, content.Rows);
         }
-    }
-
-    /// <summary>構文色付けの前提（何のファイルか・行にプレフィックスが付くか）を、行の差し替えと<b>同時に</b>
-    /// 切り替える。組み立ての入口で書くと、別ファイルの読込が始まった瞬間に前提だけ先へ進み、まだ前の行を
-    /// 出している最中のビューが「別ファイルの言語」で色を付けてしまう（行が入れ替われば直るが、一瞬化ける）。</summary>
-    private void ApplySyntaxContext(DiffFileItem? item)
-    {
-        SyntaxFilePath = item?.FullPath ?? "";
-        // 左右並びの本文はプレフィックスを剥がした本文そのもの。統合表示だけ git パッチの1文字が付く。
-        UnifiedHasPatchPrefix = !IsSideBySide && item is { UsesInlineContent: false };
     }
 
     /// <summary>同一内容なら再描画しない差し替え（行 VM は record なので値比較）。</summary>
@@ -117,61 +123,77 @@ public sealed partial class DiffSessionViewModel
     private const string TooLargeMessage = "（ファイルが大きいため全文を保持していません。差分を表示できません）";
     private const string NoDiffMessage = "（差分はありません）";
 
-    private async Task<List<DiffRowVm>> BuildDiffRowsAsync(DiffFileItem? item)
+    // 差分の組み立て（LCS・パッチ解析・字句解析）は WPF に一切触れない純粋な計算だが、行数に比例して
+    // 重い（数千行で数百ms〜）。UI スレッドで走らせるとその間ペインごと固まるので Task.Run へ逃がす。
+    // 逃がせるのはここまで——この後の FlowDocument 構築とレイアウトは UI スレッドでしかできない。
+
+    private async Task<UnifiedContent> BuildUnifiedContentAsync(DiffFileItem? item)
     {
-        var rows = new List<DiffRowVm>();
-        if (item is null) return rows;
+        if (item is null) return new UnifiedContent(new List<DiffRowVm>(), DiffSyntaxHighlighter.None);
+        var path = item.FullPath;
 
         if (item.UsesInlineContent)
         {
             if (item.OldContent is null || item.NewContent is null)
+                return UnifiedMessage(TooLargeMessage);
+            var (oldText, newText) = (item.OldContent, item.NewContent);
+            return await Task.Run(() =>
             {
-                rows.Add(new DiffRowVm("Header", TooLargeMessage));
-                return rows;
-            }
-            foreach (var line in DiffUtil.Compute(item.OldContent, item.NewContent))
-                rows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
-            return rows;
+                var rows = new List<DiffRowVm>();
+                foreach (var line in DiffUtil.Compute(oldText, newText))
+                    rows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
+                // AI変更・比較は全文2つから組み立てる経路で、行は本文そのもの（パッチの1文字プレフィックス無し）。
+                return new UnifiedContent(
+                    rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: false, rows));
+            });
         }
 
         var text = await GetPatchTextAsync(item, 3);
-        if (text.Length == 0)
+        if (text.Length == 0) return UnifiedMessage(NoDiffMessage);
+        return await Task.Run(() =>
         {
-            rows.Add(new DiffRowVm("Header", NoDiffMessage));
-            return rows;
-        }
-        foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
-            rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw));
-        return rows;
+            var rows = new List<DiffRowVm>();
+            foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
+                rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw));
+            return new UnifiedContent(
+                rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: true, rows));
+        });
     }
 
-    private async Task<List<DiffSideRowVm>> BuildSideRowsAsync(DiffFileItem? item)
+    private async Task<SideContent> BuildSideContentAsync(DiffFileItem? item)
     {
-        var rows = new List<DiffSideRowVm>();
-        if (item is null) return rows;
+        if (item is null)
+            return new SideContent(
+                new List<DiffSideRowVm>(), DiffSyntaxHighlighter.None, DiffSyntaxHighlighter.None);
+        var path = item.FullPath;
 
         if (item.UsesInlineContent)
         {
             if (item.OldContent is null || item.NewContent is null)
-            {
-                rows.Add(SharedRow("Header", TooLargeMessage));
-                return rows;
-            }
+                return SideMessage(TooLargeMessage);
+            var (oldText, newText) = (item.OldContent, item.NewContent);
             // 左右は実際のファイルのように全文を行番号付きで対比する（ハンク折りたたみなし）
-            AddSideRows(rows, SideBySideDiff.Build(DiffUtil.ComputeFull(item.OldContent, item.NewContent)));
-            return rows;
+            return await Task.Run(() =>
+                WithSideSyntax(path, ToSideRows(SideBySideDiff.Build(DiffUtil.ComputeFull(oldText, newText)))));
         }
 
         // 全文コンテキストの diff を取り、git ヘッダ・ハンク見出しを隠してファイルそのものに見せる
         var text = await GetPatchTextAsync(item, FullFileContext);
-        if (text.Length == 0)
-        {
-            rows.Add(SharedRow("Header", NoDiffMessage));
-            return rows;
-        }
-        AddSideRows(rows, SideBySideDiff.FromUnifiedPatch(text, hideChrome: true));
-        return rows;
+        if (text.Length == 0) return SideMessage(NoDiffMessage);
+        return await Task.Run(() =>
+            WithSideSyntax(path, ToSideRows(SideBySideDiff.FromUnifiedPatch(text, hideChrome: true))));
     }
+
+    private static UnifiedContent UnifiedMessage(string message)
+        => new([new DiffRowVm("Header", message)], DiffSyntaxHighlighter.None);
+
+    private static SideContent SideMessage(string message)
+        => new([SharedRow("Header", message)], DiffSyntaxHighlighter.None, DiffSyntaxHighlighter.None);
+
+    private static SideContent WithSideSyntax(string path, List<DiffSideRowVm> rows)
+        => new(rows,
+            DiffSyntaxHighlighter.ForSide(path, rows, left: true),
+            DiffSyntaxHighlighter.ForSide(path, rows, left: false));
 
     // ===== ハンク単位ステージ =====
 
@@ -247,12 +269,14 @@ public sealed partial class DiffSessionViewModel
 
     private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text, "", "");
 
-    private static void AddSideRows(List<DiffSideRowVm> rows, IReadOnlyList<SideBySideRow> source)
+    private static List<DiffSideRowVm> ToSideRows(IReadOnlyList<SideBySideRow> source)
     {
+        var rows = new List<DiffSideRowVm>(source.Count);
         foreach (var row in source)
             rows.Add(new DiffSideRowVm(
                 row.LeftKind.ToString(), row.LeftText, row.RightKind.ToString(), row.RightText,
                 row.LeftLine?.ToString() ?? "", row.RightLine?.ToString() ?? ""));
+        return rows;
     }
 }
 
