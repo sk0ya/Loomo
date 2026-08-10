@@ -221,12 +221,17 @@
                       PreviewMouseRightButtonDown="OnTreeRightButtonDown"
                       Visibility="{Binding HasVisibleNodes, Converter={StaticResource BoolToVis}}">
                 <TreeView.ContextMenu>
-                    <!-- 空き領域での右クリック（ルート直下に作成） -->
+                    <!-- 空き領域での右クリック。対象は「ツリー全体／表示ルート直下」に限る
+                         （項目に効く操作は下の ItemTemplate 側のメニュー）。 -->
                     <ContextMenu>
                         <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
                         <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
                         <Separator />
                         <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
+                        <Separator />
+                        <MenuItem Header="すべて展開" Click="OnExpandAllClick" />
+                        <MenuItem Header="すべて折りたたむ" Click="OnCollapseAllClick" />
+                        <MenuItem Header="更新" Click="OnRefreshClick" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
@@ -353,6 +358,10 @@
                              行全幅をヒットテスト対象にする（無いと背後の TreeView の空白用メニューが出る）。 -->
                         <DockPanel LastChildFill="True" Background="Transparent">
                             <DockPanel.ContextMenu>
+                                <!-- 並びは「作る → 移す → 直す → 開く/送る → フォルダーを見る → 写す →
+                                     Git → ワークスペース → AI」。区切り線は静的に置くだけで、実際の
+                                     出し分け（グループが丸ごと隠れたときに線だけ残さない）は
+                                     OnNodeContextMenuOpened→NormalizeSeparators が行う。 -->
                                 <ContextMenu Opened="OnNodeContextMenuOpened">
                                     <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
                                     <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
@@ -360,13 +369,22 @@
                                     <MenuItem Header="コピー" InputGestureText="Ctrl+C" Click="OnCopyClick" />
                                     <MenuItem Header="切り取り" InputGestureText="Ctrl+X" Click="OnCutClick" />
                                     <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
+                                    <!-- 同じフォルダー内へのコピー＆貼り付けを1手にしたもの（名前は「 - コピー」で一意化）。 -->
+                                    <MenuItem Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicateClick"
+                                              ToolTip="同じフォルダーに「 - コピー」を付けて複製します"
+                                              Visibility="{Binding CanDuplicate, Converter={StaticResource BoolToVis}}" />
                                     <Separator />
                                     <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
                                     <MenuItem Header="削除" InputGestureText="Delete" Click="OnDeleteClick" />
+                                    <!-- 「開く／送る」＝素材を別のペイン・外部アプリへ渡す一群（§24.3 の共通語彙）。 -->
                                     <Separator />
                                     <!-- HTML ファイルのときだけアプリ内ブラウザで開く項目を出す。 -->
                                     <MenuItem Header="ブラウザで開く" Click="OnOpenInBrowserClick"
                                               Visibility="{Binding IsHtml, Converter={StaticResource BoolToVis}}" />
+                                    <!-- ファイルのみ：拡張子の関連付け先（PDF・画像・Office 等）で開く。
+                                         エディタペインで開けない素材の逃げ道。 -->
+                                    <MenuItem Header="既定のアプリで開く" Click="OnOpenWithDefaultAppClick"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource InverseBoolToVis}}" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="ターミナルへ送る" Click="OnSetInTerminalClick"
                                               ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
@@ -381,20 +399,41 @@
                                                   ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します"
                                                   Visibility="Collapsed" />
                                     </MenuItem>
+                                    <!-- フォルダのみ：そのフォルダーを対象にする操作。展開・折りたたみは
+                                         ツールバーのボタン（ツリー全体）に対して「この枝だけ」の版。 -->
+                                    <Separator />
+                                    <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
+                                    <MenuItem Header="配下をすべて展開" Click="OnExpandSubtreeClick"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
+                                    <MenuItem Header="配下をすべて折りたたむ" Click="OnCollapseSubtreeClick"
+                                              Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
+                                    <!-- パスの写し取り。貼り付け先で欲しい形が違う（ターミナル＝フルパス、
+                                         コミットメッセージや AI への指示＝相対パス、検索欄＝名前）ので3種を出す。 -->
+                                    <Separator />
+                                    <MenuItem Header="パスをコピー">
+                                        <MenuItem Header="フルパス" Click="OnCopyPathClick" />
+                                        <MenuItem Header="相対パス" Click="OnCopyRelativePathClick"
+                                                  ToolTip="所属するワークスペースフォルダーからの相対パス" />
+                                        <MenuItem Header="名前" Click="OnCopyNameClick" />
+                                    </MenuItem>
                                     <!-- Git リポジトリ配下のときだけ：Git 系操作をまとめる。履歴表示は
                                          ファイル・フォルダ両方（Git ペインをそのパスの履歴に絞る）、Git Blame は
-                                         ファイルのみ（エディタ VimEditorControl のネイティブ :Gblame をトリガー）。 -->
+                                         ファイルのみ（エディタ VimEditorControl のネイティブ :Gblame をトリガー）。
+                                         .gitignore への追加も Git リポジトリでしか意味を持たないのでここに入れる
+                                         （以前はトップレベルにあり、非 Git のワークスペースでは黙って何もしなかった）。 -->
+                                    <Separator />
                                     <MenuItem Header="Git" Visibility="{Binding CanGitHistory, Converter={StaticResource BoolToVis}}">
                                         <MenuItem Header="履歴を表示" Click="OnGitHistoryClick" />
                                         <MenuItem Header="Git Blame" Click="OnGitBlameClick"
                                                   Visibility="{Binding CanGitBlame, Converter={StaticResource BoolToVis}}" />
+                                        <Separator />
+                                        <!-- ワークスペースフォルダー直下の .gitignore に相対パスを1行追加する。 -->
+                                        <MenuItem Header=".gitignore に追加" Click="OnAddToGitignoreClick"
+                                                  Visibility="{Binding CanAddToGitignore, Converter={StaticResource BoolToVis}}" />
                                     </MenuItem>
-                                    <!-- フォルダのみ：このフォルダーを検索の開始フォルダーにして検索パネルを開く。 -->
-                                    <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"
-                                              Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
-                                    <MenuItem Header="パスをコピー" Click="OnCopyPathClick" />
-                                    <!-- .gitignore ルート直下に相対パスを1行追加する（Git リポジトリでなければ何もしない）。 -->
-                                    <MenuItem Header=".gitignore に追加" Click="OnAddToGitignoreClick" />
+                                    <!-- ワークスペースの構成そのものを変える一群。 -->
+                                    <Separator />
                                     <!-- フォルダのみ：ピン留めするとヘッダの ComboBox（単一フォルダー時）／
                                          見出しの「ピン留めフォルダーへ切替」（複数フォルダー時）から表示できる。 -->
                                     <MenuItem Header="ルートにピン留め" Click="OnPinClick"
@@ -409,9 +448,9 @@
                                     <MenuItem Header="ワークスペースから削除" Click="OnRemoveFromWorkspaceClick"
                                               Visibility="{Binding CanRemoveFromWorkspace, Converter={StaticResource BoolToVis}}" />
                                     <!-- AI 関連（一番下にまとめる）。AIの暖機完了時のみファイルに表示し、
-                                         区切り線・「AI」親メニューとも Opened で出し分ける。
+                                         「AI」親メニューは Opened で出し分ける（区切り線は NormalizeSeparators 任せ）。
                                          AI 操作は「AI」の子メニューとして増やしていく想定。 -->
-                                    <Separator Tag="AiMenu" Visibility="Collapsed" />
+                                    <Separator />
                                     <MenuItem Header="AI" Tag="AiMenu" Visibility="Collapsed">
                                         <MenuItem Header="誤字脱字チェック" Click="OnTypoCheckClick" />
                                         <!-- 入力ありワークフローを Opened 時に動的に流し込む（候補が無ければ区切り線ごと隠す）。 -->

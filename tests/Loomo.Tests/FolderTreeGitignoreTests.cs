@@ -102,6 +102,39 @@ public sealed class FolderTreeGitignoreTests : IDisposable
         Assert.Equal(new[] { "secret.txt" }, lines);
     }
 
+    /// <summary>見出しノード（ワークスペースフォルダー自身）を対象にしても書かない——自分自身への
+    /// 相対パスは "." なので "./" という無意味な行が入り、以後そのフォルダーが丸ごと ignore 扱いに
+    /// 見えてしまう。View 側は CanAddToGitignore で項目を隠すが、入口でも拒む。</summary>
+    [Fact]
+    public async Task ワークスペースフォルダー自身は追加しない()
+    {
+        RunGit(_root, "init");
+        var secondary = Path.Combine(Path.GetTempPath(), $"loomo-gitignore-{Guid.NewGuid():N}-b");
+        Directory.CreateDirectory(secondary);
+        RunGit(secondary, "init");
+        try
+        {
+            var workspace = new sk0ya.Loomo.Services.WorkspaceService(new sk0ya.Loomo.Core.Safety.SafetySettings());
+            var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
+                new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+                new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+            sut.LoadRoot(_root);
+            await sut.WhenTreeLoadedAsync();
+            workspace.AddFolder(secondary);
+            await sut.WhenTreeLoadedAsync();
+
+            var header = sut.Nodes.Single(n => n.RootKey == Path.GetFullPath(secondary));
+            Assert.False(header.CanAddToGitignore);
+            sut.AddToGitignore(header);
+
+            Assert.False(File.Exists(Path.Combine(secondary, ".gitignore")));
+        }
+        finally
+        {
+            try { Directory.Delete(secondary, recursive: true); } catch { /* 一時フォルダの削除失敗は無視 */ }
+        }
+    }
+
     [Fact]
     public async Task Gitリポジトリでなければ何もしない()
     {

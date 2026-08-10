@@ -81,6 +81,31 @@ public sealed partial class FolderTreeViewModel
         return destination;
     }
 
+    /// <summary>ノードを同じフォルダー内へ複製し、複製後のフルパスを返す（同名衝突は貼り付けと同じく
+    /// 「 - コピー」で一意化する）。見出しノード（ワークスペースフォルダー自身）は複製先の親が
+    /// ワークスペース外になり得るので対象外＝null を返す。</summary>
+    public string? DuplicateEntry(FileNodeViewModel node)
+    {
+        if (node.IsWorkspaceFolderRoot)
+            return null;
+        var parent = Path.GetDirectoryName(node.FullPath);
+        return parent is null ? null : PasteEntry(parent, node.FullPath, move: false);
+    }
+
+    /// <summary>「相対パスをコピー」用の、ノードが属するワークスペースフォルダーからの相対パス。
+    /// マルチルートでは所属フォルダーが基準（プライマリ固定にすると、あとから追加したフォルダーの
+    /// ファイルが「..\..\」だらけの使えないパスになる）。どのフォルダーにも属さなければフルパスのまま。
+    /// 基準は表示中ルート（ピン留めで切替わる）ではなくワークスペースフォルダー——ピン留めの状態で
+    /// コピーされるパスが変わると、貼り付け先での意味が変わってしまうため。</summary>
+    public string RelativePathFor(FileNodeViewModel node)
+    {
+        var baseFolder = FolderRootFor(node.RootKey) ?? _workspace.FolderForOrPrimary(node.FullPath);
+        if (baseFolder is null)
+            return node.FullPath;
+        try { return Path.GetRelativePath(baseFolder, node.FullPath); }
+        catch { return node.FullPath; }
+    }
+
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
 
     /// <summary>FolderTree 外で行われた移動をツリーと開いているエディタへ通知する。</summary>
@@ -202,6 +227,9 @@ public sealed partial class FolderTreeViewModel
     {
         var folderRoot = FolderRootFor(node.RootKey);
         if (folderRoot is null || !IsGitRepositoryFor(node.RootKey))
+            return;
+        // ワークスペースフォルダー自身は対象外（相対パスが "." になり、"./" という無意味な行が入る）。
+        if (PathsEqual(folderRoot, node.FullPath))
             return;
 
         if (_fileCommands.AddToGitignore(folderRoot, node.FullPath, node.IsDirectory))

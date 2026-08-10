@@ -34,9 +34,15 @@ public partial class FolderTreeView
 
     // メニュー項目が属する ContextMenu の配置対象から操作対象ノードを得る。
     // 項目の上のメニューならそのノード、ツリー空き領域のメニューなら null（＝ルート対象）。
+    // 子メニュー項目（「Git」＞「履歴を表示」等）の Parent は親 MenuItem なので、ContextMenu まで遡る
+    // ——遡らないと選択中ノード頼みのフォールバックに落ち、親メニューと対象がずれ得る。
     private FileNodeViewModel? ContextNode(object sender)
     {
-        if (sender is MenuItem { Parent: ContextMenu cm })
+        var current = sender as DependencyObject;
+        while (current is MenuItem item)
+            current = item.Parent;
+
+        if (current is ContextMenu cm)
             return cm.PlacementTarget is FrameworkElement { DataContext: FileNodeViewModel node } ? node : null;
         return FileTree.SelectedItem as FileNodeViewModel;
     }
@@ -104,6 +110,29 @@ public partial class FolderTreeView
 
     private void OnDeleteClick(object sender, RoutedEventArgs e) => DeleteNodes(CurrentSelection(ContextNode(sender)));
 
+    // 同じフォルダー内へ複製する（貼り付けと同じ「 - コピー」規則で一意化）。複数選択ならまとめて。
+    private void OnDuplicateClick(object sender, RoutedEventArgs e) => DuplicateNodes(CurrentSelection(ContextNode(sender)));
+
+    private void DuplicateNodes(IReadOnlyList<FileNodeViewModel> nodes)
+    {
+        if (nodes.Count == 0 || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        string? lastCreated = null;
+        foreach (var node in nodes)
+        {
+            try { lastCreated = vm.DuplicateEntry(node) ?? lastCreated; }
+            catch (InvalidOperationException ex) { ShowError(ex.Message); }
+        }
+
+        if (lastCreated is not null)
+        {
+            var reveal = lastCreated;
+            ClearMultiSelection();
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
+        }
+    }
+
     /// <summary>1件または複数件（<see cref="CurrentSelection"/>）をまとめてゴミ箱へ送る。
     /// 確認は1回だけ（複数件のときは件数をまとめて表示）。</summary>
     private void DeleteNodes(IReadOnlyList<FileNodeViewModel> nodes)
@@ -131,6 +160,24 @@ public partial class FolderTreeView
         if (ContextNode(sender) is { IsDirectory: false } node
             && DataContext is FolderTreeViewModel vm)
             vm.RequestOpenInBrowser(node.FullPath);
+    }
+
+    // 拡張子に紐づく既定のアプリで開く（PDF・画像・Office 等、エディタペインで扱えない素材の逃げ道）。
+    // 関連付けが無ければ Windows が「プログラムから開く」を出す。フォルダは「エクスプローラーで表示」と
+    // 同じになるので出さない。
+    private void OnOpenWithDefaultAppClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is not { IsDirectory: false } node || !File.Exists(node.FullPath))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(node.FullPath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ShowError($"既定のアプリで開けませんでした: {ex.Message}");
+        }
     }
 
     private void OnRevealInExplorerClick(object sender, RoutedEventArgs e)
@@ -195,8 +242,33 @@ public partial class FolderTreeView
             vm.RequestSearchInFolder(node);
     }
 
-    // ノードのコンテキストメニューを開くたびに、末尾の「AI」サブメニュー（と区切り線）の表示可否を決める。
-    // AIの暖機が完了（モデルロード済み）していて、対象が実在ファイルのときだけ出す。
+    // ツールバーの「すべて展開／すべて折りたたみ」はツリー全体が対象なので、1つの枝だけを
+    // 開閉したいときの入口をここに置く。
+    private void OnExpandSubtreeClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
+            vm.ExpandSubtree(node);
+    }
+
+    private void OnCollapseSubtreeClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
+            vm.CollapseSubtree(node);
+    }
+
+    // ツリー空き領域のメニュー用（対象はツリー全体）。
+    private void OnExpandAllClick(object sender, RoutedEventArgs e)
+        => (DataContext as FolderTreeViewModel)?.ExpandAllCommand.Execute(null);
+
+    private void OnCollapseAllClick(object sender, RoutedEventArgs e)
+        => (DataContext as FolderTreeViewModel)?.CollapseAllCommand.Execute(null);
+
+    private void OnRefreshClick(object sender, RoutedEventArgs e)
+        => (DataContext as FolderTreeViewModel)?.RefreshCommand.Execute(null);
+
+    // ノードのコンテキストメニューを開くたびに、条件付き項目（AI・2ファイル比較・ピン留め切替）の
+    // 表示可否と中身を決め、最後に区切り線を実際の見え方へ合わせる。
+    // 「AI」サブメニューは、AIの暖機が完了（モデルロード済み）していて対象が実在ファイルのときだけ出す。
     private void OnNodeContextMenuOpened(object sender, RoutedEventArgs e)
     {
         if (sender is not ContextMenu cm)
@@ -227,6 +299,44 @@ public partial class FolderTreeView
         // そのフォルダー内のピン留め切替候補を流し込む。
         if (node is { IsWorkspaceFolderRoot: true } headerNode && DataContext is FolderTreeViewModel vm2)
             PopulateRootSwitchMenu(cm, vm2, headerNode);
+
+        // 区切り線の整形は、上の出し分けをすべて終えた最後に行う（グループが丸ごと隠れたときに
+        // 区切り線だけが残らないようにする）。
+        NormalizeSeparators(cm);
+        foreach (var submenu in cm.Items.OfType<MenuItem>())
+            NormalizeSeparators(submenu);
+    }
+
+    /// <summary>グループ分けの区切り線を、実際に見えている項目に合わせて出し分ける。
+    /// このメニューは項目の多くが条件付き表示（ファイル／フォルダ、Git 配下、ピン留め済み…）なので、
+    /// XAML に区切り線を静的に置くと「区切り線だけが2本続く」「先頭・末尾に区切り線が出る」といった
+    /// 見え方になる（WPF は Separator の表示可否を自動調整しない）。前に可視項目があり、かつ後ろにも
+    /// 可視項目が続く区切り線だけを残す。</summary>
+    internal static void NormalizeSeparators(ItemsControl menu)
+    {
+        Separator? pending = null;
+        var sawVisibleItem = false;
+
+        foreach (var item in menu.Items)
+        {
+            if (item is Separator separator)
+            {
+                // 後ろに可視項目が現れたときだけ出す（先頭・連続・末尾の区切り線はこれで消える）。
+                separator.Visibility = Visibility.Collapsed;
+                pending = sawVisibleItem ? separator : null;
+                continue;
+            }
+
+            if (item is not FrameworkElement { Visibility: Visibility.Visible })
+                continue;
+
+            sawVisibleItem = true;
+            if (pending is not null)
+            {
+                pending.Visibility = Visibility.Visible;
+                pending = null;
+            }
+        }
     }
 
     // 見出しの「ピン留めフォルダーへ切替」サブメニューを、そのフォルダー自身の切替候補
@@ -255,7 +365,8 @@ public partial class FolderTreeView
     }
 
     // 「AI」→「ワークフロー」サブメニューを、入力ありワークフロー一覧で作り直す。
-    // 候補が無ければ区切り線ごと隠す。各項目クリックで当該ノードのパスを {{input}} に実行を要求する。
+    // 候補が無ければ隠す（区切り線は NormalizeSeparators が追随する）。
+    // 各項目クリックで当該ノードのパスを {{input}} に実行を要求する。
     private void PopulateWorkflowMenu(ContextMenu cm, FolderTreeViewModel vm, FileNodeViewModel node)
     {
         var aiMenu = cm.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == "AiMenu");
@@ -263,16 +374,11 @@ public partial class FolderTreeView
             return;
 
         var submenu = aiMenu.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == "AiWorkflowMenu");
-        var separator = aiMenu.Items.OfType<Separator>().FirstOrDefault(s => (s.Tag as string) == "AiWorkflowSep");
         if (submenu is null)
             return;
 
         var workflows = vm.InputWorkflows();
-        var hasAny = workflows.Count > 0;
-
-        submenu.Visibility = hasAny ? Visibility.Visible : Visibility.Collapsed;
-        if (separator is not null)
-            separator.Visibility = hasAny ? Visibility.Visible : Visibility.Collapsed;
+        submenu.Visibility = workflows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         submenu.Items.Clear();
         foreach (var wf in workflows)
@@ -308,13 +414,29 @@ public partial class FolderTreeView
             vm.RemoveFromWorkspace(node);
     }
 
+    // ===== パスをコピー（フルパス／相対パス／名前） =====
+    // 貼り付け先が何かで欲しい形が変わる：ターミナルや外部アプリにはフルパス、コミットメッセージや
+    // AI への指示にはワークスペースからの相対パス、grep や検索欄には名前だけ。3つとも複数選択に対応し、
+    // 1行1件で載せる（行区切りならどこへ貼っても壊れない）。
     private void OnCopyPathClick(object sender, RoutedEventArgs e)
+        => CopyLines(CurrentSelection(ContextNode(sender)).Select(n => n.FullPath));
+
+    private void OnCopyRelativePathClick(object sender, RoutedEventArgs e)
     {
-        if (ContextNode(sender) is { } node)
-        {
-            try { Clipboard.SetText(node.FullPath); }
-            catch { /* クリップボードのロック等は無視 */ }
-        }
+        if (DataContext is FolderTreeViewModel vm)
+            CopyLines(CurrentSelection(ContextNode(sender)).Select(vm.RelativePathFor));
+    }
+
+    private void OnCopyNameClick(object sender, RoutedEventArgs e)
+        => CopyLines(CurrentSelection(ContextNode(sender)).Select(n => n.Name));
+
+    private static void CopyLines(IEnumerable<string> values)
+    {
+        var text = string.Join(Environment.NewLine, values);
+        if (text.Length == 0)
+            return;
+        try { Clipboard.SetText(text); }
+        catch { /* クリップボードのロック等は無視 */ }
     }
 
     // ===== コピー／切り取り／貼り付け =====

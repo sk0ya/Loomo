@@ -205,7 +205,7 @@ public partial class FolderTreeView : UserControl
         var wasPendingG = _pendingG;
         _pendingG = false;
 
-        // Ctrl+C/X/V はコピー／切り取り／貼り付け（下の Ctrl 早期 return より前で処理する）。
+        // Ctrl+C/X/V/D はコピー／切り取り／貼り付け／複製（下の Ctrl 早期 return より前で処理する）。
         if ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0
             && (e.KeyboardDevice.Modifiers & (ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
         {
@@ -222,6 +222,10 @@ public partial class FolderTreeView : UserControl
                     return;
                 case Key.V:
                     PasteInto(node);
+                    e.Handled = true;
+                    return;
+                case Key.D:
+                    DuplicateNodes(CurrentSelection(node));
                     e.Handled = true;
                     return;
             }

@@ -66,6 +66,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGitBlame))]
     [NotifyPropertyChangedFor(nameof(CanGitHistory))]
+    [NotifyPropertyChangedFor(nameof(CanAddToGitignore))]
     private bool _isGitRepository;
 
     /// <summary>「Git」メニュー（Git Blame 等）を出すか（ファイルかつ Git リポジトリ配下）。</summary>
@@ -73,6 +74,14 @@ public sealed partial class FileNodeViewModel : ObservableObject
 
     /// <summary>「Git」メニューを出すか（Git リポジトリ配下。履歴表示はファイル・フォルダ両方に効く）。</summary>
     public bool CanGitHistory => IsGitRepository;
+
+    /// <summary>「Git」＞「.gitignore に追加」を出すか。見出しノード（ワークスペースフォルダー自身）は
+    /// 除く——自分自身への相対パスは "." になり、無意味な行が書かれるだけのため。</summary>
+    public bool CanAddToGitignore => IsGitRepository && !IsWorkspaceFolderRoot;
+
+    /// <summary>「複製」を出すか。見出しノード（ワークスペースフォルダー自身）は除く——複製先が
+    /// 親フォルダー＝ワークスペース外になり得るため。</summary>
+    public bool CanDuplicate => !IsWorkspaceFolderRoot;
 
     // ピン留め済みか（コンテキストメニューの「ピン留め／解除」の出し分け）。
     // ピン状態の変更時は owner（RefreshPinMarks）が読込済みノードへ反映する。
