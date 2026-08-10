@@ -1,4 +1,6 @@
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -9,4 +11,14 @@ namespace sk0ya.Loomo.App.Views;
 public partial class SettingsView : UserControl
 {
     public SettingsView() => InitializeComponent();
+
+    /// <summary>キーボードカテゴリを開いたら検索ボックスにフォーカスを置く。40 件超の一覧なので、
+    /// 開いた直後にやりたいことはほぼ「目的のコマンドを探す」＝すぐ打ち始められるようにする。
+    /// 表示直後はまだレイアウトが済んでいないので、フォーカスは 1 フレーム遅らせる。</summary>
+    private void OnKeyboardSectionVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not true) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input,
+            () => KeybindingSearchBox.Focus());
+    }
 }

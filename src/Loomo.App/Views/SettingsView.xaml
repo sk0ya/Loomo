@@ -64,6 +64,76 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- ショートカット一覧の観点チップ（横並びの小さなピル。選択中はアクセント）。 -->
+        <Style x:Key="FilterChip" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="b" CornerRadius="10" Padding="10,3"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                            <ContentPresenter VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ショートカット 1 行。ホバーで下地を敷き、長い一覧でも視線が行から外れないようにする。 -->
+        <Style x:Key="KeybindingRow" TargetType="Border">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="Margin" Value="0,1" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 行の警告（重複・連鎖の影）。押すと当該キーで絞り込むのでボタンだが、見た目はリンク。
+             色はテーマ非依存の警告色（Git の変更色と同系）。 -->
+        <Style x:Key="WarningLink" TargetType="Button">
+            <Setter Property="Foreground" Value="#E0A030" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <TextBlock x:Name="t" Text="{TemplateBinding Content}"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   FontSize="{TemplateBinding FontSize}"
+                                   TextWrapping="Wrap" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="t" Property="TextDecorations" Value="Underline" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -523,51 +593,160 @@
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
-                            <!-- ===== キーボード ===== -->
-                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Keyboard}">
-                                <TextBlock Style="{StaticResource SectionTitle}" Text="ショートカット" Margin="0,0,0,4" />
+                            <!-- ===== キーボード =====
+                                 コマンドは 40 件超あるので、一覧の前に「探す道具」を置く：検索ボックス
+                                 （名前・Id・キー表記の AND 検索＝キーからの逆引きも兼ねる）と、
+                                 変更済み／未割当／要対処のチップ。件数は見出し右とチップに出す。 -->
+                            <StackPanel x:Name="KeyboardSection" IsVisibleChanged="OnKeyboardSectionVisibleChanged"
+                                        Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Keyboard}">
+                                <Grid>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="ショートカット"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Text="{Binding Keyboard.CountText}"
+                                               FontSize="{DynamicResource Fs11}"
+                                               Foreground="{DynamicResource FgDim}" />
+                                </Grid>
+
+                                <!-- 検索（左に虫眼鏡、空のときだけ説明、入力中だけ ✕） -->
+                                <Grid Margin="0,8,0,0">
+                                    <TextBox x:Name="KeybindingSearchBox" Padding="30,5,26,5"
+                                             Text="{Binding Keyboard.Query, UpdateSourceTrigger=PropertyChanged, Delay=120}" />
+                                    <TextBlock Text="🔍" Margin="9,0,0,0" HorizontalAlignment="Left"
+                                               VerticalAlignment="Center" IsHitTestVisible="False"
+                                               FontSize="{DynamicResource Fs11}"
+                                               Foreground="{DynamicResource FgDim}" />
+                                    <TextBlock Text="コマンド名・キー（例: Ctrl+W）で絞り込み"
+                                               Margin="33,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                               Foreground="{DynamicResource FgDim}"
+                                               Visibility="{Binding Keyboard.Query, Converter={StaticResource EmptyToVis}}" />
+                                    <Button HorizontalAlignment="Right" Margin="0,0,3,0" Width="22" Height="22"
+                                            Style="{StaticResource IconButton}" FontSize="{DynamicResource Fs11}"
+                                            Content="✕" ToolTip="検索を消す"
+                                            Command="{Binding Keyboard.ClearQueryCommand}"
+                                            Visibility="{Binding Keyboard.HasQuery, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+
+                                <!-- 観点チップ（同じ親の中なので RadioButton は自動で 1 グループ） -->
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <RadioButton Style="{StaticResource FilterChip}"
+                                                 Content="{Binding Keyboard.AllChipText}"
+                                                 IsChecked="{Binding Keyboard.Scope, Converter={StaticResource EnumToBool}, ConverterParameter=All}" />
+                                    <RadioButton Style="{StaticResource FilterChip}"
+                                                 Content="{Binding Keyboard.CustomizedChipText}"
+                                                 ToolTip="既定から変更したコマンドだけを表示します。"
+                                                 IsChecked="{Binding Keyboard.Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Customized}" />
+                                    <RadioButton Style="{StaticResource FilterChip}"
+                                                 Content="{Binding Keyboard.UnassignedChipText}"
+                                                 ToolTip="キーが割り当たっていないコマンドだけを表示します。"
+                                                 IsChecked="{Binding Keyboard.Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Unassigned}" />
+                                    <RadioButton Style="{StaticResource FilterChip}"
+                                                 Content="{Binding Keyboard.ProblemChipText}"
+                                                 ToolTip="キーが重複している／連鎖の 1 打目に隠れて発火しないコマンドだけを表示します。"
+                                                 IsChecked="{Binding Keyboard.Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Problem}" />
+                                </StackPanel>
+
                                 <TextBlock Style="{StaticResource FieldHint}"
-                                           Text="行をクリックして新しいキーを押すと割り当てます。連鎖（例 Ctrl+W → H）は続けて 2 打。Esc で取消。" />
+                                           Text="キー欄をクリック（または Tab で移動して Enter）してから、割り当てたいキーを押します。連鎖（例 Ctrl+W → H）は続けて 2 打。Esc で取消。" />
 
                                 <ItemsControl ItemsSource="{Binding Keyboard.RowsView}" Margin="0,8,0,0">
                                     <ItemsControl.GroupStyle>
                                         <GroupStyle>
                                             <GroupStyle.HeaderTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
-                                                               Margin="0,12,0,4"
-                                                               Foreground="{DynamicResource FgDim}" />
+                                                    <TextBlock FontWeight="SemiBold" Margin="6,12,0,4"
+                                                               Foreground="{DynamicResource FgDim}">
+                                                        <Run Text="{Binding Name, Mode=OneWay}" /><Run Text=" " /><Run
+                                                            Text="{Binding ItemCount, Mode=OneWay}" FontWeight="Normal" />
+                                                    </TextBlock>
                                                 </DataTemplate>
                                             </GroupStyle.HeaderTemplate>
                                         </GroupStyle>
                                     </ItemsControl.GroupStyle>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid Margin="0,3">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
-                                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource Fg}" />
-                                                    <TextBlock Text="{Binding ConflictText}" FontSize="{DynamicResource Fs11}"
-                                                               Foreground="#E0A030"
-                                                               Visibility="{Binding HasConflict, Converter={StaticResource BoolToVis}}" />
-                                                </StackPanel>
-                                                <local:KeyCaptureBox Grid.Column="1" VerticalAlignment="Center" />
-                                                <Button Grid.Column="2" Style="{StaticResource IconButton}"
-                                                        Width="28" Height="28" FontSize="{DynamicResource Fs14}" Margin="6,0,0,0"
-                                                        Content="↺" ToolTip="既定に戻す"
-                                                        Command="{Binding ResetCommand}"
-                                                        Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
-                                            </Grid>
+                                            <Border Style="{StaticResource KeybindingRow}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource Fg}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip="{Binding DetailText}" />
+                                                        <TextBlock Text="{Binding DefaultHintText}" FontSize="{DynamicResource Fs11}"
+                                                                   Foreground="{DynamicResource FgDim}"
+                                                                   Visibility="{Binding DefaultHintText, Converter={StaticResource NonEmptyToVis}}" />
+                                                        <!-- 警告はクリックできる：同じキーの行だけに絞って当事者を並べる。 -->
+                                                        <Button Style="{StaticResource WarningLink}"
+                                                                Content="{Binding WarningText}"
+                                                                ToolTip="このキーに関わるコマンドだけを表示します。"
+                                                                Command="{Binding RevealConflictCommand}"
+                                                                Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}" />
+                                                    </StackPanel>
+                                                    <local:KeyCaptureBox Grid.Column="1" VerticalAlignment="Center" />
+                                                    <!-- 操作は固定幅の枠に収める（出入りしても行の桁が動かないように）。 -->
+                                                    <Grid Grid.Column="2" Margin="4,0,0,0" VerticalAlignment="Center">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="26" />
+                                                            <ColumnDefinition Width="26" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Button Grid.Column="0" Style="{StaticResource IconButton}"
+                                                                Width="26" Height="26" FontSize="{DynamicResource Fs14}"
+                                                                Content="↺" ToolTip="既定に戻す"
+                                                                Command="{Binding ResetCommand}"
+                                                                Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
+                                                        <!-- 「未割当にする」は 30 行すべてに常時出すと目に煩いので、
+                                                             その行を触っているとき（ホバー／キーボードフォーカス）だけ出す。
+                                                             枠は固定幅なので、出入りしても桁は動かない。 -->
+                                                        <Button Grid.Column="1"
+                                                                Width="26" Height="26" FontSize="{DynamicResource Fs12}"
+                                                                Content="✕" ToolTip="未割当にする"
+                                                                Command="{Binding ClearCommand}">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Value="False" Binding="{Binding IsUnassigned}" />
+                                                                                <Condition Value="True" Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" />
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </MultiDataTrigger>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Value="False" Binding="{Binding IsUnassigned}" />
+                                                                                <Condition Value="True" Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=Border}}" />
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </MultiDataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                    </Grid>
+                                                </Grid>
+                                            </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
+                                <!-- 空状態：絞りすぎたときに、戻る手段まで出す。 -->
+                                <StackPanel Margin="0,20,0,0"
+                                            Visibility="{Binding Keyboard.HasNoMatch, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="条件に合うコマンドがありません。" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource FgDim}" />
+                                    <Button Style="{StaticResource SecondaryButton}" Margin="0,8,0,0"
+                                            HorizontalAlignment="Center" Content="絞り込みを解除"
+                                            Command="{Binding Keyboard.ClearFiltersCommand}" />
+                                </StackPanel>
+
                                 <Button Style="{StaticResource WideSecondaryButton}" Margin="0,16,0,0"
                                         Content="すべて既定に戻す"
+                                        ToolTip="変更したショートカットが無いときは押せません。"
                                         Command="{Binding Keyboard.ResetAllCommand}" />
                             </StackPanel>
                         </Grid>
