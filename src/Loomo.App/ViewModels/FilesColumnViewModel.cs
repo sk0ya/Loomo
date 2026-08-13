@@ -67,8 +67,20 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private bool _sortDescending;
 
-    /// <summary>名前での絞り込み（部分一致。<c>*.cs</c> のようにワイルドカードも書ける）。</summary>
+    /// <summary>名前での絞り込み（部分一致。<c>*.cs</c> のようにワイルドカードも書ける）。
+    /// 入力欄はツールバーに常設せず、一覧で <c>/</c> を押したときだけ下端に出す。</summary>
     [ObservableProperty] private string _filter = "";
+
+    /// <summary>絞り込みバーを出しているか。効いている間は開いたままにする（閉じると
+    /// 虫食いの一覧を「ファイルが消えた」と読み違える）。</summary>
+    [ObservableProperty] private bool _isFilterBarOpen;
+
+    /// <summary>絞り込みを解除してバーを畳む（Esc）。</summary>
+    public void CloseFilter()
+    {
+        Filter = "";
+        IsFilterBarOpen = false;
+    }
 
     [ObservableProperty] private bool _showHiddenFiles;
 
@@ -268,6 +280,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             ShowHiddenFiles = snapshot.ShowHidden;
         }
         Filter = "";   // 絞り込みは「今この瞬間の道具」なので持ち越さない
+        IsFilterBarOpen = false;
 
         var target = snapshot?.CurrentFolder;
         if (!TryNormalizeFolder(target, out var folder) && !TryNormalizeFolder(fallbackFolder, out folder))

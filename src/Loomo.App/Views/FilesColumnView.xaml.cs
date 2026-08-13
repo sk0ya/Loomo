@@ -205,6 +205,15 @@ public partial class FilesColumnView : UserControl
 
         switch (e.Key)
         {
+            // 「/」で絞り込みバーを開く（エディタの検索と同じ入り方）。
+            case Key.OemQuestion or Key.Divide:
+                OpenFilter();
+                e.Handled = true;
+                break;
+            case Key.Escape when Vm.IsFilterBarOpen:
+                Vm.CloseFilter();
+                e.Handled = true;
+                break;
             case Key.Enter:
                 Vm.OpenEntry(EntryList.SelectedItem as FileEntryViewModel);
                 e.Handled = true;
@@ -287,6 +296,41 @@ public partial class FilesColumnView : UserControl
         => Vm?.OpenEntry(EntryList.SelectedItem as FileEntryViewModel);
 
     private void OnRefreshClick(object sender, RoutedEventArgs e) => Vm?.RefreshCommand.Execute(null);
+
+    // ===== 絞り込み（「/」で開く下端のバー） =====
+
+    private void OpenFilter()
+    {
+        if (Vm is null)
+            return;
+        Vm.IsFilterBarOpen = true;
+        // 出したばかりのバーはまだ配置されていないので、レイアウト後にフォーカスする。
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            FilterBox.Focus();
+            FilterBox.SelectAll();
+        }));
+    }
+
+    private void OnFilterKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Vm is null)
+            return;
+        switch (e.Key)
+        {
+            case Key.Escape:
+                Vm.CloseFilter();
+                FocusList();
+                e.Handled = true;
+                break;
+            case Key.Enter:
+            case Key.Down:
+                // 絞り込みは効かせたまま一覧へ戻る（バーは開いたまま＝効いていることが見える）。
+                FocusList();
+                e.Handled = true;
+                break;
+        }
+    }
 
     private void OnOpenInBrowserClick(object sender, RoutedEventArgs e)
     {
