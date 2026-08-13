@@ -373,6 +373,46 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void カラムを増やすとまだ出ていないサブフォルダーを開く()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "assets"));   // 表示順で先頭に来るフォルダー
+        var pane = CreatePane();
+        Assert.Equal(_root, pane.Columns[0].CurrentFolder);
+
+        pane.ColumnCount = 2;
+        // 同じフォルダーが2枚並ぶのでは並べた意味がないので、表示順の先頭のサブフォルダーを開く。
+        Assert.Equal(Path.Combine(_root, "assets"), pane.Columns[1].CurrentFolder);
+
+        pane.ColumnCount = 4;
+        Assert.Equal(Path.Combine(_root, "docs"), pane.Columns[2].CurrentFolder);
+        Assert.Equal(_sub, pane.Columns[3].CurrentFolder);
+    }
+
+    [Fact]
+    public void サブフォルダーが尽きたら基準と同じ場所を開く()
+    {
+        var pane = CreatePane();
+        pane.Columns[0].Navigate(_sub);   // src の中はファイル1つだけ（サブフォルダー無し）
+
+        pane.ColumnCount = 2;
+
+        Assert.Equal(_sub, pane.Columns[1].CurrentFolder);
+    }
+
+    [Fact]
+    public void 覚えている場所があるカラムは増やしても上書きしない()
+    {
+        var pane = CreatePane();
+        pane.ColumnCount = 2;
+        pane.Columns[1].Navigate(_outside);
+        pane.ColumnCount = 1;
+
+        pane.ColumnCount = 2;   // 戻したら覚えていた場所（4→1→4 の約束）
+
+        Assert.Equal(_outside, pane.Columns[1].CurrentFolder);
+    }
+
+    [Fact]
     public void 操作対象のカラムは常に見えているものになる()
     {
         var pane = CreatePane();
