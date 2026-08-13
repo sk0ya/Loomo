@@ -187,8 +187,7 @@ public partial class FilesColumnView : UserControl
                     e.Handled = true;
                     return;
                 case Key.X:
-                    if (!Vm.IsReadOnly)
-                        FileClipboard.SetFiles(Selection().Select(entry => entry.FullPath), move: true);
+                    FileClipboard.SetFiles(Selection().Select(entry => entry.FullPath), move: true);
                     e.Handled = true;
                     return;
                 case Key.V:
@@ -253,7 +252,6 @@ public partial class FilesColumnView : UserControl
         var selection = Selection();
         var single = selection.Count == 1 ? selection[0] : null;
         var files = selection.Where(entry => !entry.IsDirectory).ToList();
-        var writable = !Vm.IsReadOnly;
         var pinTarget = PinTarget();
 
         foreach (var item in Descendants(menu))
@@ -266,9 +264,6 @@ public partial class FilesColumnView : UserControl
                 "DirOnly" => single is { IsDirectory: true },
                 "Html" => single is { IsHtml: true },
                 "CompareTwo" => files.Count == 2,
-                "Writable" => writable,
-                "WritableSelection" => writable && selection.Count > 0,
-                "WritableSingle" => writable && single is not null,
                 "SearchableDir" => single is { IsDirectory: true } && Vm.CanSearchIn(single.FullPath),
                 "Pinnable" => Vm.CanPin(pinTarget),
                 "Unpinnable" => Vm.IsPinned(pinTarget),
@@ -436,7 +431,7 @@ public partial class FilesColumnView : UserControl
     /// <summary>選択をまとめてゴミ箱へ送る（確認は1回だけ）。</summary>
     private void DeleteEntries(IReadOnlyList<FileEntryViewModel> entries)
     {
-        if (entries.Count == 0 || Vm is null || Vm.IsReadOnly)
+        if (entries.Count == 0 || Vm is null)
             return;
         var message = entries.Count == 1
             ? $"{(entries[0].IsDirectory ? "フォルダー" : "ファイル")}「{entries[0].Name}」をゴミ箱へ移動しますか？"
@@ -456,7 +451,7 @@ public partial class FilesColumnView : UserControl
 
     private void DuplicateEntries(IReadOnlyList<FileEntryViewModel> entries)
     {
-        if (Vm is null || Vm.IsReadOnly)
+        if (Vm is null)
             return;
         foreach (var entry in entries)
         {
@@ -510,7 +505,6 @@ public partial class FilesColumnView : UserControl
     // ===== ドラッグ＆ドロップ =====
     // カラム内・カラム間のドロップで移動、外部（エクスプローラー等）からのドロップでコピー。
     // 修飾キー: Ctrl=コピー強制 / Shift=移動強制。ツリー（FolderTreeView.DragDrop.cs）と同じ規則。
-    // ワークスペース外のカラムへは落とせない（書き込みが許されていないため）。
 
     private void OnListPreviewMouseMove(object sender, MouseEventArgs e)
     {
@@ -584,7 +578,7 @@ public partial class FilesColumnView : UserControl
 
         targetDirectory = Vm.DropTargetFor(EntryAt(e.OriginalSource));
         if (targetDirectory is null)
-            return DragDropEffects.None;   // ワークスペース外のカラムは受けない
+            return DragDropEffects.None;
 
         var sources = e.Data.GetData(DataFormats.FileDrop) as string[] ?? Array.Empty<string>();
         foreach (var source in sources)

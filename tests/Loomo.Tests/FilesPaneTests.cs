@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Tests;
 
 /// <summary>
 /// ファイル一覧（エクスプローラ）ペインの検証。ツリーが不得手な仕事——並べ替え・絞り込み・
-/// 1フォルダーの平らな一覧——が正しく出ること、ワークスペース外は<b>読めるが書けない</b>こと、
+/// 1フォルダーの平らな一覧——が正しく出ること、ワークスペースの外も同じように扱えること、
 /// ピン留めがツリーと同じ一覧になること、復元（§24.4）でカラム構成と現在地が戻ることを見る。
 /// 表示の見た目は対象外。
 /// </summary>
@@ -60,7 +60,7 @@ public sealed class FilesPaneTests : IDisposable
     private FilesColumnViewModel CreateColumn()
     {
         var column = new FilesColumnViewModel(
-            _workspace, new FolderTreeCommandHandler(_workspace), _tree, new FakeFilePlacesProvider());
+            _workspace, FolderTreeCommandHandler.Unconfined(_workspace), _tree, new FakeFilePlacesProvider());
         column.Restore(snapshot: null, fallbackFolder: _root);
         return column;
     }
@@ -68,7 +68,7 @@ public sealed class FilesPaneTests : IDisposable
     private FilesPaneViewModel CreatePane()
     {
         var pane = new FilesPaneViewModel(
-            _workspace, new FolderTreeCommandHandler(_workspace), _tree, new FakeFilePlacesProvider());
+            _workspace, FolderTreeCommandHandler.Unconfined(_workspace), _tree, new FakeFilePlacesProvider());
         pane.Restore(snapshot: null, fallbackFolder: _root);
         return pane;
     }
@@ -185,34 +185,42 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
-    public void ワークスペース外も開けるが読み取り専用になる()
+    public void ワークスペース外も開けて同じように操作できる()
     {
+        // ワークスペース配下への限定はエージェントの手綱であって、人間のファイラの足枷ではない。
         var sut = CreateColumn();
-        Assert.False(sut.IsReadOnly);
-
         sut.Navigate(_outside);
 
         Assert.Equal(_outside, sut.CurrentFolder);
         Assert.Contains(sut.Entries, e => e.Name == "外部.txt");
-        Assert.True(sut.IsReadOnly);
-        Assert.Null(sut.TargetDirectory);                       // 新規作成の行き先にならない
-        Assert.Null(sut.DropTargetFor(null));                   // ドロップも受けない
-        Assert.Throws<InvalidOperationException>(() => sut.CreateEntry("x.txt", isDirectory: false));
-        Assert.Throws<InvalidOperationException>(
-            () => sut.RenameEntry(sut.Entries.First(e => !e.IsDirectory), "y.txt"));
+        Assert.Equal(_outside, sut.TargetDirectory);
+        Assert.Equal(_outside, sut.DropTargetFor(null));
+
+        var created = sut.CreateEntry("新規.txt", isDirectory: false);
+        Assert.True(File.Exists(created));
+
+        var renamed = sut.RenameEntry(sut.Entries.Single(e => e.Name == "新規.txt"), "改名.txt");
+        Assert.True(File.Exists(renamed));
+        Assert.Equal(Path.Combine(_outside, "改名.txt"), renamed);
     }
 
     [Fact]
-    public void ワークスペース外からの取り込みはできる()
+    public void ワークスペースの内と外はどちらへも受け渡しできる()
     {
         var sut = CreateColumn();
         sut.Navigate(_sub);
 
+        // 外 → 中（取り込み）
         var imported = sut.PasteEntry(Path.Combine(_outside, "外部.txt"), move: false);
-
         Assert.Equal(Path.Combine(_sub, "外部.txt"), imported);
         Assert.True(File.Exists(imported));
         Assert.True(File.Exists(Path.Combine(_outside, "外部.txt")));   // コピー元は残る
+
+        // 中 → 外（書き出し）
+        sut.Navigate(_outside);
+        var exported = sut.PasteEntry(Path.Combine(_root, "app.cs"), move: false);
+        Assert.Equal(Path.Combine(_outside, "app.cs"), exported);
+        Assert.True(File.Exists(exported));
     }
 
     [Fact]
@@ -224,7 +232,6 @@ public sealed class FilesPaneTests : IDisposable
         sut.GoUpCommand.Execute(null);
 
         Assert.Equal(_base, sut.CurrentFolder);   // ワークスペースフォルダーの外へ出られる
-        Assert.True(sut.IsReadOnly);
     }
 
     [Fact]
@@ -392,7 +399,7 @@ public sealed class FilesPaneTests : IDisposable
         var snapshot = pane.Capture();
 
         var restored = new FilesPaneViewModel(
-            _workspace, new FolderTreeCommandHandler(_workspace), _tree, new FakeFilePlacesProvider());
+            _workspace, FolderTreeCommandHandler.Unconfined(_workspace), _tree, new FakeFilePlacesProvider());
         restored.Restore(snapshot, _root);
 
         Assert.Equal(2, restored.ColumnCount);

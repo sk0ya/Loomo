@@ -4,12 +4,34 @@ using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>フォルダーツリーから要求されるファイル操作を実行する。</summary>
+/// <summary>フォルダーツリー／ファイル一覧ペインから要求されるファイル操作を実行する。
+///
+/// <para><b>ワークスペース配下への限定は「エージェントの手綱」であって人間の足枷ではない</b>
+/// （設計書 §10 はツールのパストラバーサル防止の話）。ツリーはワークスペースしか映さないので
+/// 既定は限定つき（<see cref="IWorkspaceService.ResolvePath"/> 経由）だが、ファイル一覧ペインは
+/// 外のフォルダーも開けるファイラなので <see cref="Unconfined"/> を使い、エクスプローラーと同じに
+/// 振る舞う。AI の <c>write_file</c>／<c>edit_file</c> は従来どおり ResolvePath を通るので、
+/// エージェント側の防御は変わらない。</para></summary>
 public sealed class FolderTreeCommandHandler
 {
     private readonly IWorkspaceService _workspace;
+    private readonly bool _confineToWorkspace;
 
-    public FolderTreeCommandHandler(IWorkspaceService workspace) => _workspace = workspace;
+    public FolderTreeCommandHandler(IWorkspaceService workspace) : this(workspace, confineToWorkspace: true) { }
+
+    private FolderTreeCommandHandler(IWorkspaceService workspace, bool confineToWorkspace)
+    {
+        _workspace = workspace;
+        _confineToWorkspace = confineToWorkspace;
+    }
+
+    /// <summary>ワークスペース外でも操作できる版（ファイル一覧ペイン用）。</summary>
+    public static FolderTreeCommandHandler Unconfined(IWorkspaceService workspace) => new(workspace, false);
+
+    /// <summary>パスの正規化。限定つきなら <see cref="IWorkspaceService.ResolvePath"/>（ワークスペース外は拒否）、
+    /// 限定なしなら素の絶対パス化。</summary>
+    private string Resolve(string path)
+        => _confineToWorkspace ? _workspace.ResolvePath(path) : Path.GetFullPath(path);
 
     public bool FileExists(string path) => File.Exists(path);
     public bool DirectoryExists(string path) => Directory.Exists(path);
@@ -19,7 +41,7 @@ public sealed class FolderTreeCommandHandler
     public string Create(string parentDirectory, string name, bool isDirectory)
     {
         ValidateName(name);
-        var fullPath = _workspace.ResolvePath(Path.Combine(parentDirectory, name));
+        var fullPath = Resolve(Path.Combine(parentDirectory, name));
         if (File.Exists(fullPath) || Directory.Exists(fullPath))
             throw new InvalidOperationException("同じ名前の項目が既に存在します。");
 
@@ -43,10 +65,10 @@ public sealed class FolderTreeCommandHandler
     public string Rename(string path, string newName, bool isDirectory)
     {
         ValidateName(newName);
-        var oldPath = _workspace.ResolvePath(path);
+        var oldPath = Resolve(path);
         var parent = Path.GetDirectoryName(oldPath)
             ?? throw new InvalidOperationException("親ディレクトリを特定できません。");
-        var newPath = _workspace.ResolvePath(Path.Combine(parent, newName));
+        var newPath = Resolve(Path.Combine(parent, newName));
         if (string.Equals(oldPath, newPath, StringComparison.Ordinal)) return oldPath;
         if (!string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)
             && (File.Exists(newPath) || Directory.Exists(newPath)))
@@ -66,7 +88,7 @@ public sealed class FolderTreeCommandHandler
 
     public void Delete(string path, bool isDirectory)
     {
-        path = _workspace.ResolvePath(path);
+        path = Resolve(path);
         try
         {
             if (isDirectory && Directory.Exists(path))
@@ -86,12 +108,12 @@ public sealed class FolderTreeCommandHandler
         var isDirectory = Directory.Exists(source);
         if (!isDirectory && !File.Exists(source))
             throw new InvalidOperationException("貼り付け元が見つかりません。");
-        var targetDir = _workspace.ResolvePath(targetDirectory);
+        var targetDir = Resolve(targetDirectory);
         if (isDirectory && (PathsEqual(source, targetDir) || IsPathUnder(targetDir, source)))
             throw new InvalidOperationException("フォルダーを自身の中へは貼り付けできません。");
 
         var name = Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var destination = _workspace.ResolvePath(Path.Combine(targetDir, name));
+        var destination = Resolve(Path.Combine(targetDir, name));
         if (move && PathsEqual(source, destination)) return destination;
         destination = EnsureUniqueDestination(destination, isDirectory);
 

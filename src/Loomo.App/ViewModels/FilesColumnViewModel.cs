@@ -11,9 +11,9 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// それぞれ独立に持つ——2つ並べて左から右へ移す、が2カラムの主目的なので、状態を共有させない。
 ///
 /// <para>操作の実体（作成・名前変更・削除・貼り付け）はツリーと同じ <see cref="FolderTreeCommandHandler"/>
-/// に委譲する。書き込みは <see cref="IWorkspaceService.ResolvePath"/> がワークスペース配下に限定するので、
-/// <b>ワークスペース外のフォルダーは読み取り専用</b>（<see cref="IsReadOnly"/>）として扱い、
-/// 書き込み操作はそもそも出さない・呼ばれても手前で断る。</para></summary>
+/// に委譲する。ただしこちらは<b>ワークスペース外でも操作できる版</b>（<c>Unconfined</c>）を使う——
+/// ワークスペース配下への限定はエージェントの手綱（§10）であって、人間のファイラに被せるものではない。
+/// AI のツールは従来どおり <see cref="IWorkspaceService.ResolvePath"/> を通る。</para></summary>
 public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 {
     private readonly IWorkspaceService _workspace;
@@ -59,7 +59,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGoUp))]
-    [NotifyPropertyChangedFor(nameof(IsReadOnly))]
     [NotifyPropertyChangedFor(nameof(CanPinCurrentFolder))]
     private string _currentFolder = "";
 
@@ -99,11 +98,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// <summary>「上へ」が効くか。ワークスペース外も見られるので、親フォルダーがある限り上がれる。</summary>
     public bool CanGoUp => ParentOf(CurrentFolder) is not null;
 
-    /// <summary>現在地がワークスペースの外か。書き込み（作成・名前変更・削除・貼り付け・複製）は
-    /// ここが true のとき断る——<see cref="IWorkspaceService.ResolvePath"/> がどのみち拒むので、
-    /// 例外を投げさせるのではなく、はじめから出さないほうが親切。</summary>
-    public bool IsReadOnly => CurrentFolder.Length > 0 && !_workspace.Contains(CurrentFolder);
-
     /// <summary>現在地をピン留めできるか（ツリーと共有・ワークスペース配下のみ）。</summary>
     public bool CanPinCurrentFolder => CurrentFolder.Length > 0 && _pins.CanPin(CurrentFolder);
 
@@ -136,8 +130,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     // ===== 現在地とナビゲーション =====
 
-    /// <summary>フォルダーを開く（履歴に積む）。ワークスペース外でも実在すれば開ける
-    /// （読み取り専用になる）。</summary>
+    /// <summary>フォルダーを開く（履歴に積む）。ワークスペースの内外を問わず、実在すれば開ける。</summary>
     public void Navigate(string? path)
     {
         if (!TryNormalizeFolder(path, out var target) || PathsEqual(target, CurrentFolder))
@@ -505,14 +498,14 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     // ===== ファイル操作（ツリーと同じ FolderTreeCommandHandler へ委譲） =====
 
-    /// <summary>新規作成の親フォルダー（＝現在地）。書き込めない場所なら null。</summary>
-    public string? TargetDirectory => CurrentFolder.Length > 0 && !IsReadOnly && Directory.Exists(CurrentFolder)
+    /// <summary>新規作成の親フォルダー（＝現在地）。フォルダーを開いていなければ null。</summary>
+    public string? TargetDirectory => CurrentFolder.Length > 0 && Directory.Exists(CurrentFolder)
         ? CurrentFolder
         : null;
 
     public string CreateEntry(string name, bool isDirectory)
     {
-        var parent = TargetDirectory ?? throw new InvalidOperationException(ReadOnlyMessage());
+        var parent = TargetDirectory ?? throw new InvalidOperationException("フォルダーが開かれていません。");
         var created = _commands.Create(parent, name, isDirectory);
         Refresh();
         PendingSelection = created;
@@ -521,7 +514,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     public string RenameEntry(FileEntryViewModel entry, string newName)
     {
-        RequireWritable();
         var oldPath = Path.GetFullPath(entry.FullPath);
         var newPath = _commands.Rename(oldPath, newName, entry.IsDirectory);
         EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(oldPath, newPath, entry.IsDirectory));
@@ -532,7 +524,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     public void DeleteEntry(FileEntryViewModel entry)
     {
-        RequireWritable();
         var path = Path.GetFullPath(entry.FullPath);
         _commands.Delete(path, entry.IsDirectory);
         EntryDeleted?.Invoke(this, path);
@@ -540,14 +531,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>クリップボード／ドロップされた項目を現在地へコピー（move=false）または移動する。
-    /// <b>取り込みは外からでも受ける</b>（貼り付け元はワークスペース外でよい）が、貼り付け先は
-    /// ワークスペース配下に限る。</summary>
+    /// 貼り付け元・貼り付け先ともワークスペースの内外を問わない（エクスプローラーと同じ）。</summary>
     public string PasteEntry(string sourcePath, bool move) => PasteEntry(CurrentFolder, sourcePath, move);
 
     public string PasteEntry(string targetDirectory, string sourcePath, bool move)
     {
-        if (!_workspace.Contains(targetDirectory))
-            throw new InvalidOperationException(ReadOnlyMessage());
         var source = Path.GetFullPath(sourcePath);
         var isDirectory = _commands.DirectoryExists(source);
         var destination = _commands.Paste(targetDirectory, source, move);
@@ -560,7 +548,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     public string DuplicateEntry(FileEntryViewModel entry)
     {
-        RequireWritable();
         var parent = Path.GetDirectoryName(Path.GetFullPath(entry.FullPath))
             ?? throw new InvalidOperationException("親フォルダーを特定できません。");
         var copied = _commands.Paste(parent, Path.GetFullPath(entry.FullPath), move: false);
@@ -568,15 +555,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         PendingSelection = copied;
         return copied;
     }
-
-    private void RequireWritable()
-    {
-        if (IsReadOnly)
-            throw new InvalidOperationException(ReadOnlyMessage());
-    }
-
-    private static string ReadOnlyMessage()
-        => "ワークスペース外のフォルダーは読み取り専用です（ここへは取り込めません）。";
 
     /// <summary>「相対パスをコピー」用。基準は所属するワークスペースフォルダー（マルチルートで
     /// プライマリ固定にすると「..\..\」だらけの使えないパスになる）。外のファイルはフルパスのまま。</summary>
@@ -587,12 +565,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         return owner is null ? full : Path.GetRelativePath(owner, full);
     }
 
-    /// <summary>ドロップ先として妥当なフォルダー。行の上ならそのフォルダー、空き領域なら現在地。
-    /// ワークスペース外へは書き込めないので null（＝受け付けない）。</summary>
+    /// <summary>ドロップ先として妥当なフォルダー。行の上ならそのフォルダー、空き領域なら現在地。</summary>
     public string? DropTargetFor(FileEntryViewModel? entry)
     {
         var target = entry is { IsDirectory: true } ? entry.FullPath : CurrentFolder;
-        return target.Length > 0 && _workspace.Contains(target) && Directory.Exists(target) ? target : null;
+        return target.Length > 0 && Directory.Exists(target) ? target : null;
     }
 
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
