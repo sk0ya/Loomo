@@ -8,9 +8,9 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>ファイル一覧（エクスプローラ）ペイン＝<see cref="PaneKind.Files"/> の容れ物。
 /// <see cref="FilesColumnViewModel"/> を<b>常に4つ</b>持ち、1／2／4カラムで見せる。
 ///
-/// <para>カラムを毎回作り直さないのは、4→1→4 と往復したときに右側のカラムが開いていた場所を
-/// 失わないため（見えていない間も状態は生きている＝「場所としての信頼」）。イベントの購読も
-/// 起動時に1回で済む。</para>
+/// <para>カラムの実体を作り直さないのは、イベントの購読を起動時の1回で済ませるため。
+/// ただし<b>見えていないカラムの現在地は覚えない</b>——隠れている間の状態を持ち回すと、
+/// 増やしたときにどこが出るかが履歴で決まり、読めなくなる。出すたびに今の「場所」から選び直す。</para>
 ///
 /// <para>サイドバーのツリーを置き換えるものではない。ツリーは<b>階層を把握する</b>道具、この面は
 /// <b>集合を処理する</b>道具——2カラムはその延長で、「左のフォルダーから右のフォルダーへ移す」を
@@ -23,12 +23,17 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
     // 復元中はカラムの初期地を推測しない（このあと保存された現在地で上書きするので無駄になる）。
     private bool _restoring;
 
+    private readonly IWorkspaceService _workspace;
+    private readonly IFolderPinStore _pins;
+
     public FilesPaneViewModel(
         IWorkspaceService workspace,
         FolderTreeCommandHandler commands,
         IFolderPinStore pins,
         IFilePlacesProvider places)
     {
+        _workspace = workspace;
+        _pins = pins;
         for (var i = 0; i < MaxColumns; i++)
         {
             var column = new FilesColumnViewModel(workspace, commands, pins, places);
@@ -117,24 +122,27 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         while (Columns.Count < visible)
             Columns.Add(AllColumns[Columns.Count]);
 
-        // 増やしたぶんは、まだ出ていないサブフォルダーを開く（下記）。
+        // 増やしたぶんは、まだ出ていない「場所」を開く（下記）。
         if (!_restoring)
             for (var i = wasVisible; i < Columns.Count; i++)
-                OpenUnshownSubfolder(Columns[i]);
+                OpenUnshownPlace(Columns[i]);
 
         // 隠れたカラムが操作対象のままだと、キー操作の行き先が見えない場所になる。
         if (ActiveColumn is null || !Columns.Contains(ActiveColumn))
             SetActiveColumn(Columns[0]);
     }
 
-    /// <summary>カラムを増やしたときの初期地。<b>まだどのカラムにも出ていないサブフォルダー</b>を
-    /// 先頭から選ぶ——増やした直後に同じフォルダーが2枚並ぶのでは、並べた意味がない。
-    /// 候補は基準カラムの<b>表示順そのまま</b>（絞り込み・並べ替えを反映した `Entries`）から採るので、
-    /// 「今見えている上の方のフォルダー」から順に開く。
+    /// <summary>カラムを増やしたときの初期地。<b>まだどのカラムにも出ていない「場所」</b>を選ぶ——
+    /// 増やした直後に同じフォルダーが2枚並ぶのでは、並べた意味がない。
     ///
-    /// <para>すでに場所を覚えているカラム（前回 4 カラムで開いていた等）はそのままにする——
-    /// 4→1→4 で戻ってきたら同じ場所、という約束を上書きしない。重複しているときだけ動かす。</para></summary>
-    private void OpenUnshownSubfolder(FilesColumnViewModel column)
+    /// <para>優先順は「場所」ポップアップと同じ<b>近い順</b>：
+    /// ①ワークスペースに登録したフォルダー（マルチルート）→ ②ピン留め → ③基準カラムの直下の
+    /// フォルダー（登録もピンも無い1フォルダーのワークスペースでの逃げ道）→ ④基準と同じ場所。
+    /// 2カラム・4カラムを開く動機はたいてい「登録したフォルダーを並べて見る」なので、そこを先頭に置く。</para>
+    ///
+    /// <para>出すたびに選び直す（隠れている間の現在地は覚えない）。増やしたときにどこが出るかは、
+    /// 履歴ではなく今の「場所」の並びだけで決まる。</para></summary>
+    private void OpenUnshownPlace(FilesColumnViewModel column)
     {
         var others = Columns.Where(c => !ReferenceEquals(c, column)).ToList();
         var shown = others
@@ -142,23 +150,20 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             .Where(folder => folder.Length > 0)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // 覚えている場所が他と重なっていないなら、それを尊重する。
-        if (column.CurrentFolder.Length > 0 && !shown.Contains(column.CurrentFolder))
-            return;
-
         var baseColumn = others.FirstOrDefault(c => c.CurrentFolder.Length > 0);
-        if (baseColumn is null)
-            return;
 
-        var candidate = baseColumn.Entries
-            .Where(entry => entry.IsDirectory && !shown.Contains(entry.FullPath))
-            .Select(entry => entry.FullPath)
-            .FirstOrDefault();
+        var candidate = FirstUnshown(_workspace.Folders, shown)
+            ?? FirstUnshown(_pins.AllPins, shown)
+            ?? FirstUnshown(
+                baseColumn?.Entries.Where(e => e.IsDirectory).Select(e => e.FullPath) ?? [], shown)
+            ?? baseColumn?.CurrentFolder;
+
         if (candidate is not null)
             column.Navigate(candidate);
-        else if (column.CurrentFolder.Length == 0)
-            column.Navigate(baseColumn.CurrentFolder);   // 開けるサブフォルダーが無ければ基準と同じ場所
     }
+
+    private static string? FirstUnshown(IEnumerable<string> candidates, HashSet<string> shown)
+        => candidates.FirstOrDefault(path => !shown.Contains(path) && Directory.Exists(path));
 
     /// <summary>操作対象のカラムを切り替える（クリック・フォーカスで View から呼ばれる）。</summary>
     public void SetActiveColumn(FilesColumnViewModel column)
@@ -183,11 +188,10 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             var columns = snapshot?.Columns;
             for (var i = 0; i < AllColumns.Count; i++)
             {
-                // 見えていないカラムには既定の場所（プライマリ）を与えない。与えてしまうと、あとで
-                // 出したときに「ユーザーが開いていた場所」と見分けが付かず、サブフォルダーの
-                // 提案（OpenUnshownSubfolder）が働かなくなる。
-                var restored = columns is not null && i < columns.Count ? columns[i] : null;
-                AllColumns[i].Restore(restored, i < ColumnCount ? fallbackFolder : null);
+                // 見えていないカラムは空にしておく（隠れている間の現在地は持たない）。
+                var visible = i < ColumnCount;
+                var restored = visible && columns is not null && i < columns.Count ? columns[i] : null;
+                AllColumns[i].Restore(restored, visible ? fallbackFolder : null);
             }
         }
         finally
@@ -195,20 +199,23 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             _restoring = false;
         }
 
-        // 保存が無い（初めて開くワークスペース）カラムは全部プライマリへ倒れるので、
-        // ここでも重なりをほどく。覚えている場所は上書きしない。
+        // 保存が無い（初めて開くワークスペース）カラムはプライマリへ倒れて重なるので、ここでほどく。
         for (var i = 1; i < Columns.Count; i++)
-            OpenUnshownSubfolder(Columns[i]);
+            if (Columns[i].CurrentFolder.Length == 0
+                || Columns.Take(i).Any(c => string.Equals(
+                    c.CurrentFolder, Columns[i].CurrentFolder, StringComparison.OrdinalIgnoreCase)))
+                OpenUnshownPlace(Columns[i]);
 
         var active = snapshot?.ActiveColumn ?? 0;
         SetActiveColumn(AllColumns[Math.Clamp(active, 0, Columns.Count - 1)]);
     }
 
+    /// <summary>保存するのは<b>見えているカラムだけ</b>（隠れているカラムの現在地は持たない）。</summary>
     public FilesPaneSnapshot Capture() => new()
     {
         ColumnCount = ColumnCount,
-        ActiveColumn = ActiveColumn is null ? 0 : AllColumns.IndexOf(ActiveColumn),
-        Columns = AllColumns.Select(column => column.Capture()).ToList(),
+        ActiveColumn = ActiveColumn is null ? 0 : Math.Max(0, Columns.IndexOf(ActiveColumn)),
+        Columns = Columns.Select(column => column.Capture()).ToList(),
     };
 
     public void Dispose()

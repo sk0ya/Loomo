@@ -354,7 +354,7 @@ public sealed class FilesPaneTests : IDisposable
     // ===== カラム構成（1／2／4）と復元 =====
 
     [Fact]
-    public void カラム数を変えても実体は使い回され現在地が残る()
+    public void カラム数を変えても実体は使い回される()
     {
         var pane = CreatePane();
         Assert.Equal(1, pane.ColumnCount);
@@ -362,54 +362,65 @@ public sealed class FilesPaneTests : IDisposable
         Assert.Equal(FilesPaneViewModel.MaxColumns, pane.AllColumns.Count);
 
         pane.ColumnCount = 2;
-        Assert.Equal(2, pane.Columns.Count);
-        pane.Columns[1].Navigate(_sub);
-
-        pane.ColumnCount = 1;                       // 右のカラムは見えなくなるが状態は生きている
+        var second = pane.Columns[1];
+        pane.ColumnCount = 1;
         Assert.Single(pane.Columns);
+
         pane.ColumnCount = 4;
         Assert.Equal(4, pane.Columns.Count);
-        Assert.Equal(_sub, pane.Columns[1].CurrentFolder);
+        Assert.Same(second, pane.Columns[1]);   // VM は作り直さない（購読を貼り直さないため）
     }
 
     [Fact]
-    public void カラムを増やすとまだ出ていないサブフォルダーを開く()
+    public void カラムを増やすとワークスペースに登録したフォルダーを先に開く()
     {
-        Directory.CreateDirectory(Path.Combine(_root, "assets"));   // 表示順で先頭に来るフォルダー
+        // 2カラム・4カラムを開く動機は「登録したフォルダーを並べて見る」なので、そこが最優先。
+        _workspace.AddFolder(_outside);
+        _tree.PinFolder(_sub);
         var pane = CreatePane();
         Assert.Equal(_root, pane.Columns[0].CurrentFolder);
 
         pane.ColumnCount = 2;
-        // 同じフォルダーが2枚並ぶのでは並べた意味がないので、表示順の先頭のサブフォルダーを開く。
-        Assert.Equal(Path.Combine(_root, "assets"), pane.Columns[1].CurrentFolder);
+        Assert.Equal(_outside, pane.Columns[1].CurrentFolder);   // ①登録フォルダー
 
         pane.ColumnCount = 4;
-        Assert.Equal(Path.Combine(_root, "docs"), pane.Columns[2].CurrentFolder);
-        Assert.Equal(_sub, pane.Columns[3].CurrentFolder);
+        Assert.Equal(_sub, pane.Columns[2].CurrentFolder);       // ②ピン留め
+        Assert.Equal(Path.Combine(_root, "docs"), pane.Columns[3].CurrentFolder);   // ③直下の逃げ道
     }
 
     [Fact]
-    public void サブフォルダーが尽きたら基準と同じ場所を開く()
+    public void 登録フォルダーもピンも無ければ直下のフォルダーで代える()
     {
         var pane = CreatePane();
-        pane.Columns[0].Navigate(_sub);   // src の中はファイル1つだけ（サブフォルダー無し）
 
         pane.ColumnCount = 2;
 
-        Assert.Equal(_sub, pane.Columns[1].CurrentFolder);
+        Assert.Equal(Path.Combine(_root, "docs"), pane.Columns[1].CurrentFolder);
     }
 
     [Fact]
-    public void 覚えている場所があるカラムは増やしても上書きしない()
+    public void 登録フォルダーが出ていなければそこを開く()
+    {
+        var pane = CreatePane();
+        pane.Columns[0].Navigate(_sub);   // 掘って入った状態
+
+        pane.ColumnCount = 2;
+
+        // ワークスペースフォルダー自身が画面から消えているので、まずそこを出す。
+        Assert.Equal(_root, pane.Columns[1].CurrentFolder);
+    }
+
+    [Fact]
+    public void 隠れていたカラムの現在地は覚えない()
     {
         var pane = CreatePane();
         pane.ColumnCount = 2;
         pane.Columns[1].Navigate(_outside);
         pane.ColumnCount = 1;
 
-        pane.ColumnCount = 2;   // 戻したら覚えていた場所（4→1→4 の約束）
+        pane.ColumnCount = 2;   // 出し直したら履歴ではなく今の「場所」から選び直す
 
-        Assert.Equal(_outside, pane.Columns[1].CurrentFolder);
+        Assert.Equal(Path.Combine(_root, "docs"), pane.Columns[1].CurrentFolder);
     }
 
     [Fact]
@@ -447,6 +458,8 @@ public sealed class FilesPaneTests : IDisposable
         Assert.Equal(_outside, restored.Columns[1].CurrentFolder);   // 外の場所も復元する
         Assert.Equal(FilesSortColumn.Size, restored.Columns[0].SortColumn);
         Assert.Same(restored.AllColumns[1], restored.ActiveColumn);
+        // 見えていないカラムは保存もしない（隠れている間の現在地は持たない）。
+        Assert.Equal(2, snapshot.Columns.Count);
     }
 
     [Fact]
