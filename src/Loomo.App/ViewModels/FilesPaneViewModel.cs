@@ -118,7 +118,13 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         var visible = Math.Clamp(ColumnCount, 1, MaxColumns);
         var wasVisible = Columns.Count;
         while (Columns.Count > visible)
+        {
+            // 畳んだカラムは空にする。古い現在地が残っていると、次に増やしたとき「まだ出ていない場所」の
+            // 判定にその見えない場所が混ざり、どこが出るかが読めなくなる。
+            var removed = Columns[^1];
             Columns.RemoveAt(Columns.Count - 1);
+            removed.Restore(snapshot: null, fallbackFolder: null);
+        }
         while (Columns.Count < visible)
             Columns.Add(AllColumns[Columns.Count]);
 
