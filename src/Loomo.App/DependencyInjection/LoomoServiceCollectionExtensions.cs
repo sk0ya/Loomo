@@ -154,6 +154,10 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<FolderTreeQuery>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
+        // ピン留めの持ち主はツリー1つ。ファイル一覧ペインは interface 越しに同じインスタンスを見る
+        // （具象＋interface の二重登録・§26.10）。
+        services.AddSingleton<IFolderPinStore>(sp => sp.GetRequiredService<FolderTreeViewModel>());
+        services.AddSingleton<IFilePlacesProvider, WindowsFilePlacesProvider>();
         // ファイル一覧ペイン。ツリーと同じ FolderTreeCommandHandler を受け取る（操作の実体は1つ）。
         services.AddSingleton<FilesPaneViewModel>();
         services.AddSingleton<WorkflowToolRunner>();

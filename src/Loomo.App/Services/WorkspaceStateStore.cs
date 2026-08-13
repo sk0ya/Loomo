@@ -367,12 +367,49 @@ public sealed class WorkspaceSnapshot
     public FilesPaneSnapshot? Files { get; set; }
 }
 
-/// <summary>ファイル一覧ペインの復元状態。「開いたまま離れたら開いたまま戻る」（§24.4）の対象は
-/// <b>現在地と並び</b>で、絞り込み文字列は入れない——あれは今この瞬間の道具なので、
-/// 翌日戻ってきて一覧が虫食いになっている方が事故になる。</summary>
+/// <summary>ファイル一覧ペインの復元状態（カラム構成＋カラムごとの現在地）。</summary>
 public sealed class FilesPaneSnapshot
 {
-    /// <summary>表示していたフォルダー（フルパス）。ワークスペース外・消失していれば復元時に捨てる。</summary>
+    /// <summary>表示カラム数（1／2／4）。</summary>
+    public int ColumnCount { get; set; } = 1;
+
+    /// <summary>操作対象だったカラムの位置。</summary>
+    public int ActiveColumn { get; set; }
+
+    /// <summary>カラムごとの状態（見えていないカラムぶんも保存する——4→1→4 と戻したとき、
+    /// 右側が開いていた場所を失わないため）。</summary>
+    public List<FilesColumnSnapshot> Columns { get; set; } = new();
+
+    // ===== 旧形式（1カラムだけだった頃）。読むためだけに残す =====
+    /// <summary>旧・単一カラムの現在地。<see cref="Migrate"/> が <see cref="Columns"/> へ移す。</summary>
+    public string? CurrentFolder { get; set; }
+    public FilesSortColumn SortColumn { get; set; } = FilesSortColumn.Name;
+    public bool SortDescending { get; set; }
+    public bool ShowHidden { get; set; }
+
+    /// <summary>旧形式（カラムを持たない）で保存されたものを、1カラムぶんとして読み直す。</summary>
+    public FilesPaneSnapshot Migrate()
+    {
+        if (Columns.Count > 0 || CurrentFolder is null)
+            return this;
+        Columns.Add(new FilesColumnSnapshot
+        {
+            CurrentFolder = CurrentFolder,
+            SortColumn = SortColumn,
+            SortDescending = SortDescending,
+            ShowHidden = ShowHidden,
+        });
+        return this;
+    }
+}
+
+/// <summary>ファイル一覧ペインの1カラムぶん。「開いたまま離れたら開いたまま戻る」（§24.4）の対象は
+/// <b>現在地と並び</b>で、絞り込み文字列は入れない——あれは今この瞬間の道具なので、
+/// 翌日戻ってきて一覧が虫食いになっている方が事故になる。</summary>
+public sealed class FilesColumnSnapshot
+{
+    /// <summary>表示していたフォルダー（フルパス）。消失していれば復元時に捨てる。
+    /// ワークスペース外でも復元する——外は読み取り専用で見られるため。</summary>
     public string? CurrentFolder { get; set; }
     public FilesSortColumn SortColumn { get; set; } = FilesSortColumn.Name;
     public bool SortDescending { get; set; }

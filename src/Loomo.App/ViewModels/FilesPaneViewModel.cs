@@ -5,565 +5,154 @@ using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>ファイル一覧（エクスプローラ）ペイン＝<see cref="PaneKind.Files"/> の ViewModel。
+/// <summary>ファイル一覧（エクスプローラ）ペイン＝<see cref="PaneKind.Files"/> の容れ物。
+/// <see cref="FilesColumnViewModel"/> を<b>常に4つ</b>持ち、1／2／4カラムで見せる。
 ///
-/// <para>サイドバーのツリー（<see cref="FolderTreeViewModel"/>）を置き換えるものではない。ツリーは
-/// <b>階層を把握する</b>道具で、こちらは<b>集合を処理する</b>道具——1フォルダーぶんを平らに並べ、
-/// サイズ・更新日時・種類で並べ替え、名前で絞り込み、まとめて選んで操作する。ツリーでは出せない
-/// 「さっき触ったのはどれか」「何が重いか」がここで出る。検索がサイドバーとペインの両方に居るのと
-/// 同じ立て付け（設計書 §26.1）。</para>
+/// <para>カラムを毎回作り直さないのは、4→1→4 と往復したときに右側のカラムが開いていた場所を
+/// 失わないため（見えていない間も状態は生きている＝「場所としての信頼」）。イベントの購読も
+/// 起動時に1回で済む。</para>
 ///
-/// <para>操作の実体（作成・名前変更・削除・貼り付け）はツリーと同じ <see cref="FolderTreeCommandHandler"/>
-/// に委譲する。2系統に分かれると片方だけ直る——書き込みがワークスペースフォルダー配下に限定される
-/// （<see cref="IWorkspaceService.ResolvePath"/>）という防御も、共有しているからこそ同じに効く。</para></summary>
+/// <para>サイドバーのツリーを置き換えるものではない。ツリーは<b>階層を把握する</b>道具、この面は
+/// <b>集合を処理する</b>道具——2カラムはその延長で、「左のフォルダーから右のフォルダーへ移す」を
+/// 1画面で完結させるためにある。</para></summary>
 public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
 {
-    private readonly IWorkspaceService _workspace;
-    private readonly FolderTreeCommandHandler _commands;
-    private readonly DebouncedFolderWatcher _watcher;
+    /// <summary>用意するカラムの最大数（＝4カラム表示のときの数）。</summary>
+    public const int MaxColumns = 4;
 
-    // 「戻る／進む」の履歴（フルパス）。ブラウザと同じ規則で、新しい移動は進む側を捨てる。
-    private readonly List<string> _back = new();
-    private readonly List<string> _forward = new();
-
-    // 表示中フォルダーの生の一覧（絞り込み前）。絞り込み・並べ替えの変更で読み直さないために持つ。
-    private List<FileEntryViewModel> _all = new();
-
-    public FilesPaneViewModel(IWorkspaceService workspace, FolderTreeCommandHandler commands)
+    public FilesPaneViewModel(
+        IWorkspaceService workspace,
+        FolderTreeCommandHandler commands,
+        IFolderPinStore pins,
+        IFilePlacesProvider places)
     {
-        _workspace = workspace;
-        _commands = commands;
-        _watcher = new DebouncedFolderWatcher(Refresh);
-        _workspace.FoldersChanged += (_, _) => RefreshWorkspaceFolders();
-        FileIcons.PaletteChanged += (_, _) =>
+        for (var i = 0; i < MaxColumns; i++)
         {
-            foreach (var entry in Entries)
-                entry.RefreshIcon();
-        };
+            var column = new FilesColumnViewModel(workspace, commands, pins, places);
+            // カラムのイベントはペインで束ねて中継する（ShellWindow は列の数を知らなくてよい）。
+            column.FileActivated += (_, path) => FileActivated?.Invoke(this, path);
+            column.FilePreviewRequested += (_, path) => FilePreviewRequested?.Invoke(this, path);
+            column.OpenInBrowserRequested += (_, path) => OpenInBrowserRequested?.Invoke(this, path);
+            column.EntryRenamed += (_, e) => EntryRenamed?.Invoke(this, e);
+            column.EntryDeleted += (_, path) => EntryDeleted?.Invoke(this, path);
+            column.SetInTerminalRequested += (_, request) => SetInTerminalRequested?.Invoke(this, request);
+            column.CompareRequested += (_, request) => CompareRequested?.Invoke(this, request);
+            column.SearchInFolderRequested += (_, path) => SearchInFolderRequested?.Invoke(this, path);
+            column.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
+            column.Activated += (sender, _) => SetActiveColumn((FilesColumnViewModel)sender!);
+            AllColumns.Add(column);
+        }
+        AllColumns[0].IsActive = true;
+        UpdateVisibleColumns();
     }
 
-    public ObservableCollection<FileEntryViewModel> Entries { get; } = new();
+    /// <summary>常に4つある実体。表示するのは先頭から <see cref="ColumnCount"/> 個。</summary>
+    public ObservableCollection<FilesColumnViewModel> AllColumns { get; } = new();
 
-    /// <summary>現在地のパンくず。先頭は所属するワークスペースフォルダー（<see cref="IWorkspaceService.FolderFor"/>）
-    /// で、そこから上へは辿らせない——書き込みがワークスペース外へ出られない以上、見せると行き止まりになる。</summary>
-    public ObservableCollection<FilesBreadcrumb> Breadcrumbs { get; } = new();
+    /// <summary>いま画面に出ているカラム（View はこれを並べる）。</summary>
+    public ObservableCollection<FilesColumnViewModel> Columns { get; } = new();
 
-    /// <summary>ワークスペースフォルダーの一覧（マルチルートのときだけ View に出す切替ボタン）。</summary>
-    public ObservableCollection<FilesBreadcrumb> WorkspaceFolders { get; } = new();
-
+    /// <summary>表示カラム数（1／2／4）。2カラムは左右、4カラムは2×2。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanGoUp))]
-    private string _currentFolder = "";
+    [NotifyPropertyChangedFor(nameof(IsOneColumn))]
+    [NotifyPropertyChangedFor(nameof(IsTwoColumns))]
+    [NotifyPropertyChangedFor(nameof(IsFourColumns))]
+    private int _columnCount = 1;
 
-    [ObservableProperty] private FilesSortColumn _sortColumn = FilesSortColumn.Name;
+    /// <summary>操作対象のカラム（キーボード・ツリーからの「ファイル一覧で表示」の行き先）。</summary>
+    [ObservableProperty] private FilesColumnViewModel? _activeColumn;
 
-    [ObservableProperty] private bool _sortDescending;
+    // ヘッダーのセグメント（1／2／4）用。RadioButton は bool しか見ないので3つに割る。
+    public bool IsOneColumn
+    {
+        get => ColumnCount == 1;
+        set { if (value) ColumnCount = 1; }
+    }
 
-    /// <summary>名前での絞り込み（部分一致。<c>*.cs</c> のようにワイルドカードも書ける）。</summary>
-    [ObservableProperty] private string _filter = "";
+    public bool IsTwoColumns
+    {
+        get => ColumnCount == 2;
+        set { if (value) ColumnCount = 2; }
+    }
 
-    [ObservableProperty] private bool _showHiddenFiles;
+    public bool IsFourColumns
+    {
+        get => ColumnCount == 4;
+        set { if (value) ColumnCount = 4; }
+    }
 
-    [ObservableProperty] private string _statusText = "";
-
-    /// <summary>フォルダーが1つも開かれていない（＝ワークスペース未選択）。View は案内文を出す。</summary>
-    [ObservableProperty] private bool _isEmpty = true;
-
-    [ObservableProperty] private string _emptyMessage = "フォルダーが開かれていません。";
-
-    public bool CanGoBack => _back.Count > 0;
-    public bool CanGoForward => _forward.Count > 0;
-
-    /// <summary>「上へ」が効くか。ワークスペースフォルダー自身まで来たら止まる。</summary>
-    public bool CanGoUp => ParentOf(CurrentFolder) is not null;
-
-    /// <summary>列見出しに出す並べ替えの向き（現在の列だけ ▲▼ が付く）。</summary>
-    public string NameSortMark => MarkFor(FilesSortColumn.Name);
-    public string SizeSortMark => MarkFor(FilesSortColumn.Size);
-    public string ModifiedSortMark => MarkFor(FilesSortColumn.Modified);
-    public string TypeSortMark => MarkFor(FilesSortColumn.Type);
-
-    private string MarkFor(FilesSortColumn column)
-        => SortColumn != column ? "" : SortDescending ? " ▼" : " ▲";
-
-    // ファイルを開く要求（ダブルクリック／Enter）。ShellWindow がエディタタブで開く。
+    // ShellWindow へ中継するカラム由来のイベント（受け口はツリーと同じ・§26.10）。
     public event EventHandler<string>? FileActivated;
-
-    // 単クリックのプレビュー要求（編集するまで確定しないタブ）。ツリーと同じ扱い。
     public event EventHandler<string>? FilePreviewRequested;
-
-    // 名前変更・削除の通知。ShellWindow が開いているエディタタブを追従／クローズさせる
-    // （ツリーと同じ受け口へ流すので、どちらから操作しても結果は同じ）。
+    public event EventHandler<string>? OpenInBrowserRequested;
     public event EventHandler<EntryRenamedEventArgs>? EntryRenamed;
     public event EventHandler<string>? EntryDeleted;
-
-    // 素材の流れ（設計書 §24.3）：ターミナルへ送る／Diff へ送る／このフォルダーで検索／ブラウザで開く。
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
     public event EventHandler<FileCompareRequest>? CompareRequested;
     public event EventHandler<string>? SearchInFolderRequested;
-    public event EventHandler<string>? OpenInBrowserRequested;
-
-    /// <summary>現在地・並べ替え・絞り込みが変わったので保存してほしい（ShellWindow が購読）。</summary>
     public event EventHandler? StateChanged;
 
-    // ===== 現在地とナビゲーション =====
-
-    /// <summary>フォルダーを開く（履歴に積む）。ワークスペース外・存在しないパスは無視する。</summary>
-    public void Navigate(string? path)
+    partial void OnColumnCountChanged(int value)
     {
-        if (!TryNormalizeFolder(path, out var target) || PathsEqual(target, CurrentFolder))
-            return;
-        if (CurrentFolder.Length > 0)
-            _back.Add(CurrentFolder);
-        _forward.Clear();
-        SetFolder(target);
+        UpdateVisibleColumns();
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
-    private void OpenFolder(string? path) => Navigate(path);
-
-    [RelayCommand(CanExecute = nameof(CanGoBack))]
-    private void GoBack()
+    private void SetColumnCount(string? count)
     {
-        if (_back.Count == 0)
-            return;
-        var target = _back[^1];
-        _back.RemoveAt(_back.Count - 1);
-        _forward.Add(CurrentFolder);
-        SetFolder(target);
+        if (int.TryParse(count, out var value) && value is 1 or 2 or 4)
+            ColumnCount = value;
     }
 
-    [RelayCommand(CanExecute = nameof(CanGoForward))]
-    private void GoForward()
+    private void UpdateVisibleColumns()
     {
-        if (_forward.Count == 0)
-            return;
-        var target = _forward[^1];
-        _forward.RemoveAt(_forward.Count - 1);
-        _back.Add(CurrentFolder);
-        SetFolder(target);
+        var visible = Math.Clamp(ColumnCount, 1, MaxColumns);
+        while (Columns.Count > visible)
+            Columns.RemoveAt(Columns.Count - 1);
+        while (Columns.Count < visible)
+            Columns.Add(AllColumns[Columns.Count]);
+
+        // 隠れたカラムが操作対象のままだと、キー操作の行き先が見えない場所になる。
+        if (ActiveColumn is null || !Columns.Contains(ActiveColumn))
+            SetActiveColumn(Columns[0]);
     }
 
-    [RelayCommand(CanExecute = nameof(CanGoUp))]
-    private void GoUp() => Navigate(ParentOf(CurrentFolder));
-
-    /// <summary>項目を開く。フォルダーなら移動、ファイルならエディタへ。</summary>
-    public void OpenEntry(FileEntryViewModel? entry)
+    /// <summary>操作対象のカラムを切り替える（クリック・フォーカスで View から呼ばれる）。</summary>
+    public void SetActiveColumn(FilesColumnViewModel column)
     {
-        if (entry is null)
+        if (!AllColumns.Contains(column))
             return;
-        if (entry.IsDirectory)
-            Navigate(entry.FullPath);
-        else if (File.Exists(entry.FullPath))
-            FileActivated?.Invoke(this, entry.FullPath);
+        ActiveColumn = column;
+        foreach (var candidate in AllColumns)
+            candidate.IsActive = ReferenceEquals(candidate, column);
     }
 
-    /// <summary>そのパスの場所を一覧で開く（ファイルなら親フォルダー＋その行を選ぶ）。
-    /// 選択は View が <see cref="PendingSelection"/> を見て行う。</summary>
-    public void Reveal(string fullPath)
-    {
-        if (string.IsNullOrWhiteSpace(fullPath))
-            return;
-        var full = Path.GetFullPath(fullPath);
-        var folder = Directory.Exists(full) ? full : Path.GetDirectoryName(full);
-        if (folder is null)
-            return;
-        Navigate(folder);
-        PendingSelection = full;
-    }
+    /// <summary>ツリーの「ファイル一覧で表示」などの行き先。操作対象のカラムで開く。</summary>
+    public void Reveal(string fullPath) => (ActiveColumn ?? Columns[0]).Reveal(fullPath);
 
-    /// <summary>View に選ばせたい行（<see cref="Reveal"/> 後に一度だけ使われる）。</summary>
-    [ObservableProperty] private string? _pendingSelection;
-
-    [RelayCommand]
-    private void Refresh() => LoadEntries(preserveSelection: true);
-
-    /// <summary>ワークスペース切替・復元時の入り口。保存してあった現在地へ戻し、無ければ
-    /// プライマリフォルダーを開く。</summary>
+    /// <summary>ワークスペース切替・復元。カラムごとに現在地を戻し、無ければプライマリを開く。</summary>
     public void Restore(FilesPaneSnapshot? snapshot, string? fallbackFolder)
     {
-        _back.Clear();
-        _forward.Clear();
-        NotifyHistoryChanged();
+        ColumnCount = snapshot?.ColumnCount is 1 or 2 or 4 ? snapshot.ColumnCount : 1;
+        var columns = snapshot?.Columns;
+        for (var i = 0; i < AllColumns.Count; i++)
+            AllColumns[i].Restore(columns is not null && i < columns.Count ? columns[i] : null, fallbackFolder);
 
-        if (snapshot is not null)
-        {
-            SortColumn = snapshot.SortColumn;
-            SortDescending = snapshot.SortDescending;
-            ShowHiddenFiles = snapshot.ShowHidden;
-        }
-        Filter = "";   // 絞り込みは「今この瞬間の道具」なので持ち越さない
-
-        var target = snapshot?.CurrentFolder;
-        if (!TryNormalizeFolder(target, out var folder) && !TryNormalizeFolder(fallbackFolder, out folder))
-        {
-            CurrentFolder = "";
-            _all = new List<FileEntryViewModel>();
-            Entries.Clear();
-            _watcher.Watch("");
-            RefreshWorkspaceFolders();
-            UpdateBreadcrumbs();
-            IsEmpty = true;
-            EmptyMessage = "フォルダーが開かれていません。";
-            StatusText = "";
-            return;
-        }
-        SetFolder(folder, raiseStateChanged: false);
+        var active = snapshot?.ActiveColumn ?? 0;
+        SetActiveColumn(AllColumns[Math.Clamp(active, 0, Columns.Count - 1)]);
     }
 
     public FilesPaneSnapshot Capture() => new()
     {
-        CurrentFolder = CurrentFolder.Length > 0 ? CurrentFolder : null,
-        SortColumn = SortColumn,
-        SortDescending = SortDescending,
-        ShowHidden = ShowHiddenFiles,
+        ColumnCount = ColumnCount,
+        ActiveColumn = ActiveColumn is null ? 0 : AllColumns.IndexOf(ActiveColumn),
+        Columns = AllColumns.Select(column => column.Capture()).ToList(),
     };
 
-    private void SetFolder(string folder, bool raiseStateChanged = true)
+    public void Dispose()
     {
-        CurrentFolder = folder;
-        // 表示するのは直下だけなので再帰監視はしない（リポジトリ全体を見張る必要はない）。
-        _watcher.Watch(folder, includeSubdirectories: false);
-        RefreshWorkspaceFolders();
-        UpdateBreadcrumbs();
-        LoadEntries(preserveSelection: false);
-        NotifyHistoryChanged();
-        if (raiseStateChanged)
-            StateChanged?.Invoke(this, EventArgs.Empty);
+        foreach (var column in AllColumns)
+            column.Dispose();
     }
-
-    private void NotifyHistoryChanged()
-    {
-        OnPropertyChanged(nameof(CanGoBack));
-        OnPropertyChanged(nameof(CanGoForward));
-        GoBackCommand.NotifyCanExecuteChanged();
-        GoForwardCommand.NotifyCanExecuteChanged();
-        GoUpCommand.NotifyCanExecuteChanged();
-    }
-
-    /// <summary>現在地の親（ワークスペースフォルダー自身なら null＝これ以上は上がらない）。</summary>
-    private string? ParentOf(string folder)
-    {
-        if (string.IsNullOrEmpty(folder))
-            return null;
-        var owner = _workspace.FolderFor(folder);
-        if (owner is null || PathsEqual(owner, folder))
-            return null;
-        var parent = Path.GetDirectoryName(folder);
-        return parent is not null && _workspace.Contains(parent) ? parent : null;
-    }
-
-    private void UpdateBreadcrumbs()
-    {
-        Breadcrumbs.Clear();
-        if (CurrentFolder.Length == 0)
-            return;
-
-        var owner = _workspace.FolderFor(CurrentFolder) ?? CurrentFolder;
-        var segments = new List<string>();
-        var current = CurrentFolder;
-        while (!PathsEqual(current, owner))
-        {
-            segments.Add(current);
-            var parent = Path.GetDirectoryName(current);
-            if (parent is null || PathsEqual(parent, current))
-                break;
-            current = parent;
-        }
-        segments.Add(owner);
-        segments.Reverse();
-
-        for (var i = 0; i < segments.Count; i++)
-        {
-            var path = segments[i];
-            var name = Path.GetFileName(path.TrimEnd('\\', '/'));
-            Breadcrumbs.Add(new FilesBreadcrumb(
-                string.IsNullOrEmpty(name) ? path : name, path, i == segments.Count - 1));
-        }
-    }
-
-    private void RefreshWorkspaceFolders()
-    {
-        // マルチルートのときだけ意味を持つ行（1フォルダーならパンくずの先頭と同じ情報になる）。
-        var folders = _workspace.Folders;
-        WorkspaceFolders.Clear();
-        if (folders.Count < 2)
-            return;
-        var owner = CurrentFolder.Length > 0 ? _workspace.FolderFor(CurrentFolder) : null;
-        foreach (var folder in folders)
-        {
-            var name = Path.GetFileName(folder.TrimEnd('\\', '/'));
-            WorkspaceFolders.Add(new FilesBreadcrumb(
-                string.IsNullOrEmpty(name) ? folder : name, folder,
-                owner is not null && PathsEqual(owner, folder)));
-        }
-    }
-
-    // ===== 一覧の読み込み・並べ替え・絞り込み =====
-
-    private void LoadEntries(bool preserveSelection)
-    {
-        if (CurrentFolder.Length == 0 || !Directory.Exists(CurrentFolder))
-        {
-            _all = new List<FileEntryViewModel>();
-            ApplyView(preserveSelection);
-            return;
-        }
-
-        var items = new List<FileEntryViewModel>();
-        try
-        {
-            foreach (var path in Directory.EnumerateFileSystemEntries(CurrentFolder))
-            {
-                try
-                {
-                    var info = Directory.Exists(path) ? new DirectoryInfo(path) : (FileSystemInfo)new FileInfo(path);
-                    var isDirectory = info is DirectoryInfo;
-                    var hidden = (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
-                    var size = info is FileInfo file ? file.Length : 0L;
-                    items.Add(new FileEntryViewModel(path, isDirectory, size, info.LastWriteTime, hidden));
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // 読めない項目（別プロセスが消した直後など）はその1件だけ落とす。
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _all = new List<FileEntryViewModel>();
-            ApplyView(preserveSelection);
-            EmptyMessage = "このフォルダーは読み取れません。";
-            IsEmpty = true;
-            return;
-        }
-
-        _all = items;
-        ApplyView(preserveSelection);
-    }
-
-    private void ApplyView(bool preserveSelection)
-    {
-        var arranged = FilesListing.Arrange(_all, SortColumn, SortDescending, Filter, ShowHiddenFiles);
-        if (preserveSelection)
-            Reconcile(arranged);
-        else
-        {
-            Entries.Clear();
-            foreach (var entry in arranged)
-                Entries.Add(entry);
-        }
-
-        var folders = arranged.Count(e => e.IsDirectory);
-        var files = arranged.Count - folders;
-        var hiddenByFilter = _all.Count - arranged.Count;
-        StatusText = CurrentFolder.Length == 0
-            ? ""
-            : $"{folders} フォルダー・{files} ファイル" + (hiddenByFilter > 0 ? $"（{hiddenByFilter} 件を非表示）" : "");
-
-        IsEmpty = CurrentFolder.Length == 0 || arranged.Count == 0;
-        if (CurrentFolder.Length > 0 && arranged.Count == 0)
-            EmptyMessage = _all.Count == 0
-                ? "このフォルダーは空です。"
-                : "絞り込みに一致する項目がありません。";
-    }
-
-    /// <summary>監視更新のとき、同じパスの行は既存インスタンスのまま位置と値だけ直す
-    /// （作り直すと選択とスクロール位置が飛ぶ）。</summary>
-    private void Reconcile(List<FileEntryViewModel> next)
-    {
-        var existing = new Dictionary<string, FileEntryViewModel>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in Entries)
-            existing[entry.FullPath] = entry;
-
-        for (var i = 0; i < next.Count; i++)
-        {
-            var target = next[i];
-            if (existing.TryGetValue(target.FullPath, out var reused))
-            {
-                reused.Size = target.Size;
-                reused.Modified = target.Modified;
-                target = reused;
-            }
-
-            if (i < Entries.Count && ReferenceEquals(Entries[i], target))
-                continue;
-
-            var currentIndex = Entries.IndexOf(target);
-            if (currentIndex >= 0)
-                Entries.Move(currentIndex, i);
-            else
-                Entries.Insert(i, target);
-        }
-
-        while (Entries.Count > next.Count)
-            Entries.RemoveAt(Entries.Count - 1);
-    }
-
-    partial void OnFilterChanged(string value) => ApplyView(preserveSelection: true);
-
-    partial void OnShowHiddenFilesChanged(bool value)
-    {
-        ApplyView(preserveSelection: true);
-        StateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>列見出しのクリック。同じ列なら向きを反転、別の列なら昇順から。</summary>
-    [RelayCommand]
-    private void Sort(string? column)
-    {
-        if (!Enum.TryParse<FilesSortColumn>(column, out var target))
-            return;
-        if (SortColumn == target)
-            SortDescending = !SortDescending;
-        else
-        {
-            SortColumn = target;
-            // 日時・サイズは「大きい／新しい方を見たい」ことが多いので、選んだ直後は降順から。
-            SortDescending = target is FilesSortColumn.Modified or FilesSortColumn.Size;
-        }
-        OnPropertyChanged(nameof(NameSortMark));
-        OnPropertyChanged(nameof(SizeSortMark));
-        OnPropertyChanged(nameof(ModifiedSortMark));
-        OnPropertyChanged(nameof(TypeSortMark));
-        ApplyView(preserveSelection: true);
-        StateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    // ===== ファイル操作（ツリーと同じ FolderTreeCommandHandler へ委譲） =====
-
-    /// <summary>新規作成の親フォルダー（＝現在地）。フォルダー未選択なら null。</summary>
-    public string? TargetDirectory => CurrentFolder.Length > 0 && Directory.Exists(CurrentFolder)
-        ? CurrentFolder
-        : null;
-
-    public string CreateEntry(string name, bool isDirectory)
-    {
-        var parent = TargetDirectory ?? throw new InvalidOperationException("フォルダーが開かれていません。");
-        var created = _commands.Create(parent, name, isDirectory);
-        Refresh();
-        PendingSelection = created;
-        return created;
-    }
-
-    public string RenameEntry(FileEntryViewModel entry, string newName)
-    {
-        var oldPath = Path.GetFullPath(entry.FullPath);
-        var newPath = _commands.Rename(oldPath, newName, entry.IsDirectory);
-        EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(oldPath, newPath, entry.IsDirectory));
-        Refresh();
-        PendingSelection = newPath;
-        return newPath;
-    }
-
-    public void DeleteEntry(FileEntryViewModel entry)
-    {
-        var path = Path.GetFullPath(entry.FullPath);
-        _commands.Delete(path, entry.IsDirectory);
-        EntryDeleted?.Invoke(this, path);
-        Refresh();
-    }
-
-    /// <summary>クリップボード／ドロップされた項目を現在地へコピー（move=false）または移動する。
-    /// 貼り付け先はワークスペース配下に限定され、同名は「 - コピー」で一意化される（ツリーと同じ規則）。</summary>
-    public string PasteEntry(string sourcePath, bool move) => PasteEntry(CurrentFolder, sourcePath, move);
-
-    public string PasteEntry(string targetDirectory, string sourcePath, bool move)
-    {
-        var source = Path.GetFullPath(sourcePath);
-        var isDirectory = _commands.DirectoryExists(source);
-        var destination = _commands.Paste(targetDirectory, source, move);
-        if (move)
-            EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(source, destination, isDirectory));
-        Refresh();
-        PendingSelection = destination;
-        return destination;
-    }
-
-    public string DuplicateEntry(FileEntryViewModel entry)
-    {
-        var parent = Path.GetDirectoryName(Path.GetFullPath(entry.FullPath))
-            ?? throw new InvalidOperationException("親フォルダーを特定できません。");
-        var copied = _commands.Paste(parent, Path.GetFullPath(entry.FullPath), move: false);
-        Refresh();
-        PendingSelection = copied;
-        return copied;
-    }
-
-    /// <summary>「相対パスをコピー」用。基準は所属するワークスペースフォルダー（マルチルートで
-    /// プライマリ固定にすると「..\..\」だらけの使えないパスになる）。</summary>
-    public string RelativePathFor(FileEntryViewModel entry)
-    {
-        var full = Path.GetFullPath(entry.FullPath);
-        var owner = _workspace.FolderFor(full);
-        return owner is null ? full : Path.GetRelativePath(owner, full);
-    }
-
-    /// <summary>外部（Explorer 等）からのドロップ先として妥当なフォルダー。行の上ならそのフォルダー、
-    /// 空き領域なら現在地。</summary>
-    public string? DropTargetFor(FileEntryViewModel? entry)
-        => entry is { IsDirectory: true } ? entry.FullPath : TargetDirectory;
-
-    public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
-
-    public void NotifyPreviewRequested(string fullPath)
-    {
-        if (File.Exists(fullPath))
-            FilePreviewRequested?.Invoke(this, fullPath);
-    }
-
-    public void RequestOpenInBrowser(string fullPath)
-    {
-        if (File.Exists(fullPath))
-            OpenInBrowserRequested?.Invoke(this, fullPath);
-    }
-
-    public void RequestSetInTerminal(FileEntryViewModel entry)
-    {
-        if (_commands.EntryExists(entry.FullPath, entry.IsDirectory))
-            SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(entry.FullPath, entry.IsDirectory));
-    }
-
-    /// <summary>Diff ペインでの比較要求。<paramref name="rightPath"/> が null なら
-    /// クリップボードとの比較（ツリーの「Diff へ送る」と同じ）。</summary>
-    public void RequestCompare(string leftPath, string? rightPath)
-    {
-        if (!File.Exists(leftPath))
-            return;
-        if (rightPath is not null && !File.Exists(rightPath))
-            return;
-        CompareRequested?.Invoke(this, new FileCompareRequest(leftPath, rightPath));
-    }
-
-    public void RequestSearchInFolder(string folder)
-    {
-        if (Directory.Exists(folder))
-            SearchInFolderRequested?.Invoke(this, folder);
-    }
-
-    private bool TryNormalizeFolder(string? path, out string folder)
-    {
-        folder = "";
-        if (string.IsNullOrWhiteSpace(path))
-            return false;
-        string full;
-        try
-        {
-            full = Path.GetFullPath(path);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
-        if (!Directory.Exists(full) || !_workspace.Contains(full))
-            return false;
-        folder = full;
-        return true;
-    }
-
-    private static bool PathsEqual(string a, string b)
-        => string.Equals(
-            a.TrimEnd('\\', '/'), b.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
-
-    public void Dispose() => _watcher.Dispose();
 }

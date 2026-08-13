@@ -13,12 +13,21 @@ namespace sk0ya.Loomo.App.Services;
 public sealed class DebouncedFolderWatcher : IDisposable
 {
     private readonly Action _refresh;
+    // 生成したスレッド（＝UI スレッド）のディスパッチャ。監視の発火はスレッドプールなので、
+    // 再読込は必ずここへ渡す。Application が無い場（テスト）でも直接呼ばないこと——
+    // ObservableCollection を別スレッドから触って落ちる。
+    private readonly System.Windows.Threading.Dispatcher _dispatcher;
     private FileSystemWatcher? _watcher;
     private Timer? _timer;
     private int _refreshQueued;
 
     /// <param name="refresh">変更検知後に UI スレッドで呼ばれる再読込処理。</param>
-    public DebouncedFolderWatcher(Action refresh) => _refresh = refresh;
+    public DebouncedFolderWatcher(Action refresh)
+    {
+        _refresh = refresh;
+        _dispatcher = Application.Current?.Dispatcher
+            ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
+    }
 
     /// <summary>監視先を切り替える（既存の監視・保留中のデバウンスは破棄）。</summary>
     /// <param name="includeSubdirectories">配下まで見るか。ツリー（配下も表示する）は true、
@@ -80,17 +89,10 @@ public sealed class DebouncedFolderWatcher : IDisposable
     {
         _timer ??= new Timer(_ =>
         {
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher is null)
-            {
-                _refresh();
-                return;
-            }
-
             if (Interlocked.Exchange(ref _refreshQueued, 1) == 1)
                 return;
 
-            dispatcher.BeginInvoke(
+            _dispatcher.BeginInvoke(
                 System.Windows.Threading.DispatcherPriority.Background,
                 new Action(() =>
                 {

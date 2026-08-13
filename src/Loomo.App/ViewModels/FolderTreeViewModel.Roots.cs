@@ -12,6 +12,7 @@ using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Files;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -20,8 +21,53 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>FolderTreeViewModel のルート/ピン管理パート：ワークスペースルート（単一フォルダー時）と
 /// ワークスペースフォルダーごと（複数フォルダー時）のピン留めフォルダの切替候補（RootOptions）の
 /// 構築・選択、表示ルートの差し替え、ピンマークの反映。</summary>
-public sealed partial class FolderTreeViewModel
+public sealed partial class FolderTreeViewModel : IFolderPinStore
 {
+    // ===== IFolderPinStore（ファイル一覧ペインと共有する窓口・§26.10） =====
+    // ピンの実体・永続化はここが持ったまま、読み書きの口だけを interface で開ける。
+
+    /// <summary>全ワークスペースフォルダーぶんのピン（マルチルートではフォルダーをまたいで集める）。
+    /// 保存用の <see cref="PinnedFolders"/> はプライマリぶんだけなので別物。</summary>
+    public IReadOnlyList<string> AllPins
+        => (_multiRootStates.Count == 0
+                ? RootOptions.AsEnumerable()
+                : _multiRootStates.Values.SelectMany(state => state.RootOptions))
+            .Where(option => option.IsPinned)
+            .Select(option => option.FullPath)
+            .ToList();
+
+    bool IFolderPinStore.IsPinned(string fullPath) => IsPinnedPath(fullPath);
+
+    /// <summary>ピン留めが実際に効くか。<see cref="PinFolder"/> が黙って何もしない条件
+    /// （実在しない・ワークスペース外・フォルダー自身・既にピン留め済み）をそのまま写したもの。</summary>
+    public bool CanPin(string fullPath)
+    {
+        if (string.IsNullOrEmpty(fullPath))
+            return false;
+        var full = Path.GetFullPath(fullPath);
+        if (!_query.DirectoryExists(full) || IsPinnedPath(full))
+            return false;
+
+        if (_multiRootStates.Count == 0)
+            return _workspaceRoot is not null && !PathsEqual(full, _workspaceRoot)
+                && WorkspacePaths.IsWithin(_workspaceRoot, full);
+
+        var state = ResolveStateForPath(full);
+        return state is not null && !PathsEqual(full, state.FolderPath);
+    }
+
+    void IFolderPinStore.Pin(string fullPath) => PinFolder(fullPath);
+
+    void IFolderPinStore.Unpin(string fullPath) => UnpinFolder(fullPath);
+
+    /// <summary>ピンの増減。実体はルート状態の変更通知と同じ（切替でも飛ぶが、
+    /// 受け側は一覧を引き直すだけなので余分に飛んでも困らない）。</summary>
+    event EventHandler? IFolderPinStore.PinsChanged
+    {
+        add => RootStateChanged += value;
+        remove => RootStateChanged -= value;
+    }
+
     /// <summary>fullPath がピン留め済みか（属するワークスペースフォルダー基準）。</summary>
     public bool IsPinnedPath(string fullPath)
     {

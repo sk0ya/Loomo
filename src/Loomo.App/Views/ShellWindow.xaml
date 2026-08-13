@@ -1261,6 +1261,20 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Files" Click="OnHidePane" />
+                        <!-- カラム数（1／2／4）。2カラムは「左から右へ移す」ためにあるので、
+                             Diff の表示形式トグルと同じ格好でヘッダーに置く（行を増やさない）。 -->
+                        <Border DockPanel.Dock="Left" Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                                Margin="0,0,10,0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource SourceToggle}" Content="1" FontSize="{DynamicResource Fs12}"
+                                             ToolTip="1カラム" IsChecked="{Binding Files.IsOneColumn}" />
+                                <RadioButton Style="{StaticResource SourceToggle}" Content="2" FontSize="{DynamicResource Fs12}"
+                                             ToolTip="2カラム（左右に並べてフォルダー間で移す）"
+                                             IsChecked="{Binding Files.IsTwoColumns}" />
+                                <RadioButton Style="{StaticResource SourceToggle}" Content="4" FontSize="{DynamicResource Fs12}"
+                                             ToolTip="4カラム（2×2）" IsChecked="{Binding Files.IsFourColumns}" />
+                            </StackPanel>
+                        </Border>
                     </DockPanel>
                     <views:FilesPaneView x:Name="FilesPaneHost" DataContext="{Binding Files}" />
                 </DockPanel>

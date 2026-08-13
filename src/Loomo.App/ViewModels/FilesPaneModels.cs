@@ -80,6 +80,25 @@ public sealed partial class FileEntryViewModel : ObservableObject
 /// <summary>パンくずの1区切り（クリックでそのフォルダーへ移動）。</summary>
 public sealed record FilesBreadcrumb(string Name, string FullPath, bool IsLast);
 
+/// <summary>「場所」候補の出どころ。表示の並び順もこの順（近いものから遠いものへ）。</summary>
+public enum FilesPlaceKind
+{
+    /// <summary>ワークスペースフォルダー（プライマリ＋追加）。</summary>
+    WorkspaceFolder,
+    /// <summary>ピン留め。ツリーと共有する（<see cref="IFolderPinStore"/>）。</summary>
+    Pinned,
+    /// <summary>Windows エクスプローラーのクイックアクセス。</summary>
+    QuickAccess,
+    /// <summary>ドライブのルート。</summary>
+    Drive
+}
+
+/// <summary>「場所」ポップアップの1項目。</summary>
+public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind);
+
+/// <summary>「場所」ポップアップの1グループ（見出し＋項目）。</summary>
+public sealed record FilesPlaceGroup(string Name, IReadOnlyList<FilesPlace> Items);
+
 /// <summary>一覧の並べ替え・絞り込み（純関数）。ペインの表示計算はここに閉じるので、
 /// WPF 無しでそのまま検証できる。</summary>
 public static class FilesListing

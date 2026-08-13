@@ -1,4 +1,4 @@
-﻿namespace sk0ya.Loomo.App.Views;
+namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース切替とスナップショット保存・復元（タブ実体の付け替え）</summary>
 public partial class ShellWindow {
     private readonly object _workspaceSwitchRequestGate = new();
@@ -177,9 +177,9 @@ public partial class ShellWindow {
         if (!deferHydration) {
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
-            // ファイル一覧の現在地はワークスペースフォルダー配下かどうかで弾くので、
-            // フォルダー集合が確定した LoadRoot のあとで復元する。
-            _vm.Files.Restore(workspace.Files, workspace.RootPath);
+            // ファイル一覧はパンくずの起点・ピン・書き込み可否をワークスペースのフォルダー集合から
+            // 決めるので、それが確定する LoadRoot のあとで復元する。
+            _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
         profile?.Lap("folderTree");
@@ -203,7 +203,7 @@ public partial class ShellWindow {
             StartupProfiler.Mark("  復元:初フレーム後に継続");
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
-            _vm.Files.Restore(workspace.Files, workspace.RootPath);
+            _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
             profile?.Lap("deferredFolderTree");
         }

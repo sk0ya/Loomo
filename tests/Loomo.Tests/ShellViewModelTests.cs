@@ -101,7 +101,8 @@ public class ShellViewModelTests
             new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-ts-launch-profiles.json")));
 
-        var filesVm = new FilesPaneViewModel(workspace, new FolderTreeCommandHandler(workspace));
+        var filesVm = new FilesPaneViewModel(
+            workspace, new FolderTreeCommandHandler(workspace), folderTree, new FakeFilePlacesProvider());
 
         return new ShellViewModel(folderTree, filesVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
