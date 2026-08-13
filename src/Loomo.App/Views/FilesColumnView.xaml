@@ -394,9 +394,8 @@
                                           ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します" />
                             </MenuItem>
                             <MenuItem Header="このフォルダーで検索" Tag="SearchableDir" Click="OnSearchInFolderClick" />
-                            <!-- ピン留めはツリーと共有（同じ一覧に出る）。 -->
-                            <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick"
-                                      ToolTip="ツリーのピン留めと同じ一覧に追加します" />
+                            <!-- ピンの実体はツリーと同じ（IFolderPinStore）。 -->
+                            <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
                             <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />
                             <Separator />
                             <MenuItem Header="パスをコピー" Tag="Selection">

@@ -259,7 +259,7 @@ public sealed class FilesPaneTests : IDisposable
         sut.LoadPlaces();
 
         Assert.Equal(
-            new[] { "ワークスペース", "ピン留め（ツリーと共有）", "クイックアクセス", "PC" },
+            new[] { "ワークスペース", "ピン留め", "クイックアクセス", "PC" },
             sut.Places.Select(g => g.Name));
         Assert.Equal(_root, sut.Places[0].Items.Single().FullPath);
         Assert.Equal(_sub, sut.Places[1].Items.Single().FullPath);

@@ -237,7 +237,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             .Select(path => new FilesPlace(LabelForPin(path), path, FilesPlaceKind.Pinned))
             .ToList();
         if (pinned.Count > 0)
-            Places.Add(new FilesPlaceGroup("ピン留め（ツリーと共有）", pinned));
+            Places.Add(new FilesPlaceGroup("ピン留め", pinned));
 
         var quickAccess = _places.QuickAccess();
         if (quickAccess.Count > 0)
