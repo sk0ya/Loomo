@@ -30,6 +30,9 @@ public enum SettingsCategory
 public sealed partial class ShellViewModel : ObservableObject
 {
     public FolderTreeViewModel FolderTree { get; }
+    /// <summary>ファイル一覧ペイン（<see cref="Services.PaneKind.Files"/>）。サイドバーのツリーと
+    /// 同居する別の面——階層の把握はツリー、集合の処理はこちら（§26.10）。</summary>
+    public FilesPaneViewModel Files { get; }
     public WorkspaceListViewModel Workspaces { get; }
     public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
@@ -70,6 +73,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ShellViewModel(
         FolderTreeViewModel folderTree,
+        FilesPaneViewModel files,
         WorkspaceListViewModel workspaces,
         AiBarViewModel aiBar,
         TabsViewModel tabs,
@@ -92,6 +96,7 @@ public sealed partial class ShellViewModel : ObservableObject
         TrailViewModel trail)
     {
         FolderTree = folderTree;
+        Files = files;
         Workspaces = workspaces;
         AiBar = aiBar;
         Tabs = tabs;

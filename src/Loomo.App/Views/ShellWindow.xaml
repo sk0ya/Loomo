@@ -72,6 +72,8 @@
         <StreamGeometry x:Key="PaneIcon.Ai">M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Debug">M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Search">M6.8,2.5 A4.3,4.3 0 1 0 6.8,11.1 A4.3,4.3 0 1 0 6.8,2.5 M9.9,9.9 L13.5,13.5</StreamGeometry>
+        <!-- ファイル一覧：フォルダー＋行（＝中身を並べて見る面） -->
+        <StreamGeometry x:Key="PaneIcon.Files">M2,4 H6 L7.5,5.8 H14 V12.5 H2 Z M4.5,8.2 H11.5 M4.5,10.4 H11.5</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.TsIde">M8,1.5 L13.5,4.75 V11.25 L8,14.5 L2.5,11.25 V4.75 Z M8,5.6 C6.9,5.6 6.3,6.6 6.3,8 C6.3,9.5 7,10.6 8,10.6 C9,10.6 9.7,9.5 9.7,8 C9.7,6.6 9.1,5.6 8,5.6 Z M8,5.7 V10.5</StreamGeometry>
 
         <!-- タイトルバーのペイン表示トグル：表示中＝アクセント色／非表示＝グレーの線画アイコン。
@@ -1246,6 +1248,21 @@
                                 Tag="Search" Click="OnHidePane" />
                     </DockPanel>
                     <views:SearchPanelView x:Name="SearchPaneHost" DataContext="{Binding SearchPanel}" />
+                </DockPanel>
+
+                <!-- ファイル一覧 : ペイン化したエクスプローラ（1フォルダーを平らに並べ、並べ替え・絞り込み・
+                     一括操作をする面）。サイドバーのツリーとは役割が違う——ツリーは階層の把握、こちらは
+                     集合の処理（§26.10）。ヘッダーツールバーは FilesPaneView 内蔵。 -->
+                <DockPanel x:Name="FilesPane" Background="{DynamicResource Panel}">
+                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                               Tag="Files" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="FILES" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
+                                Tag="Files" Click="OnHidePane" />
+                    </DockPanel>
+                    <views:FilesPaneView x:Name="FilesPaneHost" DataContext="{Binding Files}" />
                 </DockPanel>
 
                 <!-- Diff : セッションペイン（AI変更レビュー＋Git作業ツリー差分） -->

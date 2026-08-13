@@ -182,7 +182,7 @@ public partial class ShellWindow {
         UpdateMainPaneHeader();
     }
     private static string PaneLabel(PaneKind kind) => kind switch {
-        PaneKind.Terminal => "ターミナル", PaneKind.Editor => "エディタ", PaneKind.EditorSupport => "エディタサポート", PaneKind.Browser => "ブラウザ", PaneKind.Ai => "AI", PaneKind.Git => "Git", PaneKind.Diff => "Diff", PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", PaneKind.Search => "検索", PaneKind.TsIde => "TS IDE", _ => kind.ToString(),
+        PaneKind.Terminal => "ターミナル", PaneKind.Editor => "エディタ", PaneKind.EditorSupport => "エディタサポート", PaneKind.Browser => "ブラウザ", PaneKind.Ai => "AI", PaneKind.Git => "Git", PaneKind.Diff => "Diff", PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", PaneKind.Search => "検索", PaneKind.TsIde => "TS IDE", PaneKind.Files => "ファイル一覧", _ => kind.ToString(),
     };
     private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };
     private int VisibleLeafCount() => AllLeaves().Count(l => !l.Hidden);

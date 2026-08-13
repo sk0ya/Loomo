@@ -22,7 +22,7 @@ public partial class ShellWindow {
     private bool _wingDragArmed;
     private static readonly PaneKind[] StageOrder =
     [
-        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search,
+        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
     ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
     /// <summary>表示モードの UI 名。「表示」は付けない——ヘッダーやセグメントでは常にモード名として

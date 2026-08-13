@@ -236,6 +236,12 @@ public partial class FolderTreeView
     private IReadOnlyList<FileNodeViewModel> SelectedFilesForCompare(FileNodeViewModel? contextNode)
         => CurrentSelection(contextNode).Where(n => !n.IsDirectory).ToList();
 
+    private void OnRevealInFilesPaneClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestRevealInFilesPane(node);
+    }
+
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
@@ -430,63 +436,36 @@ public partial class FolderTreeView
     private void OnCopyNameClick(object sender, RoutedEventArgs e)
         => CopyLines(CurrentSelection(ContextNode(sender)).Select(n => n.Name));
 
-    private static void CopyLines(IEnumerable<string> values)
-    {
-        var text = string.Join(Environment.NewLine, values);
-        if (text.Length == 0)
-            return;
-        try { Clipboard.SetText(text); }
-        catch { /* クリップボードのロック等は無視 */ }
-    }
+    private static void CopyLines(IEnumerable<string> values) => FileClipboard.CopyLines(values);
 
     // ===== コピー／切り取り／貼り付け =====
-    // Windows のファイルドロップリスト形式でクリップボードに載せる（エクスプローラーと相互運用可能）。
-    // 切り取りは「Preferred DropEffect」に Move を入れて区別し、貼り付け成功時に一度だけ消える。
+    // 受け渡しの規則（ファイルドロップリスト・Preferred DropEffect）はファイル一覧ペインと共有する
+    // FileClipboard が持つ。ここは「何を選んでいるか」だけを決める。
 
-    private void OnCopyClick(object sender, RoutedEventArgs e) => SetClipboardFiles(CurrentSelection(ContextNode(sender)), move: false);
+    private void OnCopyClick(object sender, RoutedEventArgs e)
+        => FileClipboard.SetFiles(CurrentSelection(ContextNode(sender)).Select(n => n.FullPath), move: false);
 
-    private void OnCutClick(object sender, RoutedEventArgs e) => SetClipboardFiles(CurrentSelection(ContextNode(sender)), move: true);
-
-    /// <summary>1件または複数件のパスを Windows のファイルドロップリスト形式でクリップボードへ載せる
-    /// （エクスプローラーと相互運用可能）。</summary>
-    private static void SetClipboardFiles(IReadOnlyList<FileNodeViewModel> nodes, bool move)
-    {
-        if (nodes.Count == 0)
-            return;
-
-        try
-        {
-            var data = new DataObject();
-            var list = new System.Collections.Specialized.StringCollection();
-            foreach (var n in nodes) list.Add(n.FullPath);
-            data.SetFileDropList(list);
-            // Preferred DropEffect: Copy=5 / Move=2。切り取りだけ Move を入れる。
-            var effect = move ? DragDropEffects.Move : DragDropEffects.Copy;
-            data.SetData("Preferred DropEffect", new MemoryStream(BitConverter.GetBytes((int)effect)));
-            Clipboard.SetDataObject(data, copy: true);
-        }
-        catch { /* クリップボードのロック等は無視 */ }
-    }
+    private void OnCutClick(object sender, RoutedEventArgs e)
+        => FileClipboard.SetFiles(CurrentSelection(ContextNode(sender)).Select(n => n.FullPath), move: true);
 
     private void OnPasteClick(object sender, RoutedEventArgs e) => PasteInto(ContextNode(sender));
 
     private void PasteInto(FileNodeViewModel? contextNode)
     {
-        if (DataContext is not FolderTreeViewModel vm || !Clipboard.ContainsFileDropList())
+        if (DataContext is not FolderTreeViewModel vm || !FileClipboard.ContainsFiles())
             return;
 
         var targetDir = vm.GetTargetDirectory(contextNode);
         if (targetDir is null)
             return;
 
-        var move = ClipboardPrefersMove();
+        var move = FileClipboard.PrefersMove();
         string? lastPasted = null;
 
         try
         {
-            foreach (var source in Clipboard.GetFileDropList())
-                if (!string.IsNullOrEmpty(source))
-                    lastPasted = vm.PasteEntry(targetDir, source, move);
+            foreach (var source in FileClipboard.GetFiles())
+                lastPasted = vm.PasteEntry(targetDir, source, move);
         }
         catch (InvalidOperationException ex)
         {
@@ -496,33 +475,13 @@ public partial class FolderTreeView
 
         // 切り取り→貼り付け（移動）はエクスプローラー同様、成功後にクリップボードを空にする。
         if (move)
-        {
-            try { Clipboard.Clear(); }
-            catch { /* 無視 */ }
-        }
+            FileClipboard.Clear();
 
         if (lastPasted is not null)
         {
             var reveal = lastPasted;
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
         }
-    }
-
-    // クリップボードが「切り取り」（移動希望）かどうかを Preferred DropEffect から判定する。
-    private static bool ClipboardPrefersMove()
-    {
-        try
-        {
-            if (Clipboard.GetDataObject()?.GetData("Preferred DropEffect") is MemoryStream ms && ms.Length >= 4)
-            {
-                var bytes = new byte[4];
-                _ = ms.Read(bytes, 0, 4);
-                var effect = (DragDropEffects)BitConverter.ToInt32(bytes, 0);
-                return (effect & DragDropEffects.Move) != 0 && (effect & DragDropEffects.Copy) == 0;
-            }
-        }
-        catch { /* 無視 */ }
-        return false;
     }
 
     private void OnAddToGitignoreClick(object sender, RoutedEventArgs e)

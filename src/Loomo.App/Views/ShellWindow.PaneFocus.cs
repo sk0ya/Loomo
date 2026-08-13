@@ -297,6 +297,9 @@ public partial class ShellWindow {
             case PaneKind.Search:
                 SearchPaneHost.FocusQuery();
                 break;
+            case PaneKind.Files:
+                FilesPaneHost.FocusList();
+                break;
         }
         RecordTrailPane(kind);
     }

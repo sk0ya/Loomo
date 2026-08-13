@@ -402,6 +402,10 @@
                                     <!-- フォルダのみ：そのフォルダーを対象にする操作。展開・折りたたみは
                                          ツールバーのボタン（ツリー全体）に対して「この枝だけ」の版。 -->
                                     <Separator />
+                                    <!-- ツリー（階層の把握）から一覧（集合の処理）へ渡す導線（§26.10）。
+                                         フォルダー・ファイルどちらでも効く（ファイルは親フォルダーを開いて選ぶ）。 -->
+                                    <MenuItem Header="ファイル一覧で表示" Click="OnRevealInFilesPaneClick"
+                                              ToolTip="ファイル一覧ペインでこの場所を開きます（並べ替え・絞り込み・一括操作）" />
                                     <MenuItem Header="このフォルダーで検索" Click="OnSearchInFolderClick"
                                               Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="配下をすべて展開" Click="OnExpandSubtreeClick"

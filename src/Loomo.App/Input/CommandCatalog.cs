@@ -61,6 +61,9 @@ public static class CommandCatalog
         new CommandDescriptor("pane.split.closeView", CatPane, "分割ビューを畳む", "Ctrl+W Q"),
         // 検索だけは VS Code 流に既定キーを与える（全文検索の起点なので毎回使う）。
         new CommandDescriptor("pane.search", CatPane, "検索を開く", "Ctrl+Shift+F"),
+        // ファイル一覧は既定キーを与えない（サイドバーのツリーと役割が違うだけで、
+        // 毎回使う起点ではない。割り当てたい人は設定画面から付けられる）。
+        new CommandDescriptor("pane.files", CatPane, "ファイル一覧を開く", null),
 
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),

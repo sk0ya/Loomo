@@ -163,6 +163,14 @@ public sealed partial class FolderTreeViewModel
             SearchInFolderRequested?.Invoke(this, node.FullPath);
     }
 
+    /// <summary>この項目をファイル一覧ペインで開くよう要求する（ShellWindow が処理）。
+    /// フォルダーはそこを開き、ファイルは親フォルダーを開いてその行を選ぶ。</summary>
+    public void RequestRevealInFilesPane(FileNodeViewModel node)
+    {
+        if (_fileCommands.EntryExists(node.FullPath, node.IsDirectory))
+            RevealInFilesPaneRequested?.Invoke(this, node.FullPath);
+    }
+
     /// <summary>指定ファイルの誤字脱字チェックを要求する（ShellWindow が AIバーで処理）。
     /// AI が使える状態（暖機完了）かつ実在ファイルのときだけ発火する。</summary>
     public void RequestTypoCheck(FileNodeViewModel node)

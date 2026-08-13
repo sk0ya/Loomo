@@ -276,6 +276,26 @@ public partial class ShellWindow : Window {
         vm.FolderTree.GitHistoryRequested += async (_, fullPath) => await ShowGitHistoryAsync(fullPath);
         vm.FolderTree.CompareRequested += (_, request) => CompareFilesInDiff(request);
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
+        // ファイル一覧ペイン。素材の行き先（エディタ・ターミナル・Diff・検索・ブラウザ）と
+        // タブ追従はツリーと同じ受け口へ流す——どちらから操作しても結果が同じであるべきなので。
+        vm.Files.FilePreviewRequested += async (_, path) => await OpenFileInPreviewTabAsync(path);
+        vm.Files.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
+        vm.Files.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
+        vm.Files.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);
+        vm.Files.EntryDeleted += (_, path) => OnFolderTreeEntryDeleted(path);
+        vm.Files.SetInTerminalRequested += OnSetInTerminalRequested;
+        vm.Files.CompareRequested += (_, request) => CompareFilesInDiff(request);
+        vm.Files.SearchInFolderRequested += (_, path) => {
+            vm.SearchPanel.SetSearchRoot(path);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
+            FocusPane(PaneKind.Search);
+        };
+        vm.Files.StateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
+        vm.FolderTree.RevealInFilesPaneRequested += (_, path) => {
+            vm.Files.Reveal(path);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files);
+            FocusPane(PaneKind.Files);
+        };
         vm.GitSession.DiffOpenRequested += (_, _) => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);

@@ -154,6 +154,8 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<FolderTreeQuery>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<FolderTreeViewModel>();
+        // ファイル一覧ペイン。ツリーと同じ FolderTreeCommandHandler を受け取る（操作の実体は1つ）。
+        services.AddSingleton<FilesPaneViewModel>();
         services.AddSingleton<WorkflowToolRunner>();
         services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();

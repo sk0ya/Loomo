@@ -21,7 +21,10 @@ public sealed class DebouncedFolderWatcher : IDisposable
     public DebouncedFolderWatcher(Action refresh) => _refresh = refresh;
 
     /// <summary>監視先を切り替える（既存の監視・保留中のデバウンスは破棄）。</summary>
-    public void Watch(string path)
+    /// <param name="includeSubdirectories">配下まで見るか。ツリー（配下も表示する）は true、
+    /// ファイル一覧ペイン（そのフォルダーの直下しか表示しない・§26.10）は false——1フォルダーぶんの
+    /// 表示のためにリポジトリ全体を再帰監視するのは、隠れている間もずっと払う無駄になる。</param>
+    public void Watch(string path, bool includeSubdirectories = true)
     {
         _watcher?.Dispose();
         _watcher = null;
@@ -33,7 +36,7 @@ public sealed class DebouncedFolderWatcher : IDisposable
 
         _watcher = new FileSystemWatcher(path)
         {
-            IncludeSubdirectories = true,
+            IncludeSubdirectories = includeSubdirectories,
             NotifyFilter = NotifyFilters.FileName
                 | NotifyFilters.DirectoryName
                 | NotifyFilters.LastWrite

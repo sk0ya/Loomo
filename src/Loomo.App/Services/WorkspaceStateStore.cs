@@ -362,6 +362,30 @@ public sealed class WorkspaceSnapshot
 
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
+
+    /// <summary>ファイル一覧ペイン（§26.10）の現在地と並べ替え。null の旧データはプライマリフォルダーから始める。</summary>
+    public FilesPaneSnapshot? Files { get; set; }
+}
+
+/// <summary>ファイル一覧ペインの復元状態。「開いたまま離れたら開いたまま戻る」（§24.4）の対象は
+/// <b>現在地と並び</b>で、絞り込み文字列は入れない——あれは今この瞬間の道具なので、
+/// 翌日戻ってきて一覧が虫食いになっている方が事故になる。</summary>
+public sealed class FilesPaneSnapshot
+{
+    /// <summary>表示していたフォルダー（フルパス）。ワークスペース外・消失していれば復元時に捨てる。</summary>
+    public string? CurrentFolder { get; set; }
+    public FilesSortColumn SortColumn { get; set; } = FilesSortColumn.Name;
+    public bool SortDescending { get; set; }
+    public bool ShowHidden { get; set; }
+}
+
+/// <summary>ファイル一覧の並べ替え列。数値で永続化されるため末尾追加のみ可。</summary>
+public enum FilesSortColumn
+{
+    Name,
+    Size,
+    Modified,
+    Type
 }
 
 /// <summary>マルチルートワークスペースの追加フォルダー1件ぶん（<see cref="WorkspaceSnapshot.AdditionalFolders"/>）。
@@ -424,7 +448,10 @@ public enum PaneKind
     Debug,
     Search,
     // 数値で永続化されるため、新メンバーは必ず末尾へ追加する（既存 workspaces.json との互換維持）。
-    TsIde
+    TsIde,
+    /// <summary>ファイル一覧（エクスプローラ）ペイン。サイドバーのツリーとは別物で、
+    /// 1フォルダーぶんを平らに並べて並べ替え・絞り込み・一括操作をする面（§26.10）。</summary>
+    Files
 }
 
 /// <summary>

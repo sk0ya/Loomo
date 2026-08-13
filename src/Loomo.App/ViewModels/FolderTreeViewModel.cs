@@ -119,6 +119,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ShellWindow が検索パネルを開いて、そのフォルダを検索の開始フォルダーに設定する。
     public event EventHandler<string>? SearchInFolderRequested;
 
+    // 「ファイル一覧で表示」要求（§26.10）。ツリー＝階層の把握、一覧＝集合の処理なので、
+    // 見つけた場所をそのまま一覧側へ渡せるようにする。フォルダーはそこを開き、ファイルは
+    // 親フォルダーを開いてその行を選ぶ。
+    public event EventHandler<string>? RevealInFilesPaneRequested;
+
     // 表示ルートが変わったとき（フォルダを開いた・ピンルートへ切替えた）。ShellWindow が購読して
     // 検索パネルの既定の開始フォルダーへ反映する。
     public event EventHandler<string>? CurrentRootChanged;

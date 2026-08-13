@@ -213,11 +213,11 @@ public partial class FolderTreeView : UserControl
             switch (e.Key)
             {
                 case Key.C:
-                    SetClipboardFiles(CurrentSelection(node), move: false);
+                    FileClipboard.SetFiles(CurrentSelection(node).Select(n => n.FullPath), move: false);
                     e.Handled = true;
                     return;
                 case Key.X:
-                    SetClipboardFiles(CurrentSelection(node), move: true);
+                    FileClipboard.SetFiles(CurrentSelection(node).Select(n => n.FullPath), move: true);
                     e.Handled = true;
                     return;
                 case Key.V:
