@@ -327,16 +327,15 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         if (CurrentFolder.Length == 0)
             return;
 
-        // ワークスペース配下なら所属フォルダー名を起点にする（リポジトリの中を見ているときに
-        // C:\ から並べても読めない）。外に出たらドライブから素直に並べる。
-        var anchor = _workspace.FolderFor(CurrentFolder);
+        // 常にドライブから並べる。ここは住所欄なので、まず「フルパスとして読めること」を取る——
+        // ワークスペースフォルダーを起点にすると、先頭が C:\Projects\Loomo なのか
+        // D:\work\Loomo なのか分からないただの名前になる（同名のフォルダーはどこにでもある）。
+        // 狭くて入りきらないぶんは View 側が右端（現在地）へ寄せて見せる。
         var segments = new List<string>();
         var current = CurrentFolder;
         while (true)
         {
             segments.Add(current);
-            if (anchor is not null && PathsEqual(current, anchor))
-                break;
             var parent = Path.GetDirectoryName(current);
             if (string.IsNullOrEmpty(parent) || PathsEqual(parent, current))
                 break;

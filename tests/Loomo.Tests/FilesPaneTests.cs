@@ -235,11 +235,15 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
-    public void パンくずはワークスペース内なら所属フォルダー起点で外ならドライブから並ぶ()
+    public void パンくずはワークスペース内でも常にドライブから並ぶ()
     {
         var sut = CreateColumn();
         sut.Navigate(_sub);
-        Assert.Equal(new[] { Path.GetFileName(_root), "src" }, sut.Breadcrumbs.Select(b => b.Name));
+        // 住所欄なのでフルパスとして読めること優先。先頭はドライブ、末尾が現在地。
+        Assert.Equal(Path.GetPathRoot(_sub), sut.Breadcrumbs[0].Name);
+        Assert.Equal(new[] { Path.GetFileName(_root), "src" },
+                     sut.Breadcrumbs.TakeLast(2).Select(b => b.Name));
+        Assert.Equal(_sub, sut.Breadcrumbs[^1].FullPath);
         Assert.True(sut.Breadcrumbs[^1].IsLast);
 
         sut.Navigate(_outside);

@@ -256,7 +256,7 @@
                      Backspace、更新は監視が自動でやる＋F5、隠し表示は右クリックにある。狭いカラムで
                      まず消えるのはパンくず＝「今どこにいるか」なので、そこを守る。 -->
 
-                <!-- パンくず。ワークスペース配下なら所属フォルダー名が起点、外ならドライブから。
+                <!-- パンくず（住所欄）。常にドライブから並べる＝フルパスとして読める。
                      狭いときは末尾（現在地）が見えるよう右端へ寄せる。 -->
                 <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden"
                               VerticalScrollBarVisibility="Disabled" ScrollChanged="OnBreadcrumbScrollChanged">
