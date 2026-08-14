@@ -50,7 +50,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FileEntryViewModel> Entries { get; } = new();
 
-    /// <summary>現在地のパンくず。ワークスペース配下なら所属フォルダー名から、外ならドライブから並べる。</summary>
+    /// <summary>現在地のパンくず（住所欄）。ワークスペースの内外を問わず、常にドライブから並べる。</summary>
     public ObservableCollection<FilesBreadcrumb> Breadcrumbs { get; } = new();
 
     /// <summary>「場所」ポップアップの中身（ワークスペース／ピン留め／クイックアクセス／PC）。
@@ -225,18 +225,16 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         Places.Clear();
 
-        // ワークスペースとピン留めは名前ではなくフルパスで出す。ここに並ぶのは「自分で選んだ場所」で、
-        // フォルダー名は同じものがどこにでもある——どのドライブのどこかまで見えて初めて選べる。
         var workspaceFolders = _workspace.Folders
             .Where(Directory.Exists)
-            .Select(folder => new FilesPlace(folder, folder, FilesPlaceKind.WorkspaceFolder))
+            .Select(folder => new FilesPlace(NameOf(folder), folder, FilesPlaceKind.WorkspaceFolder))
             .ToList();
         if (workspaceFolders.Count > 0)
             Places.Add(new FilesPlaceGroup("ワークスペース", workspaceFolders));
 
         var pinned = _pins.AllPins
             .Where(Directory.Exists)
-            .Select(path => new FilesPlace(path, path, FilesPlaceKind.Pinned))
+            .Select(path => new FilesPlace(LabelForPin(path), path, FilesPlaceKind.Pinned))
             .ToList();
         if (pinned.Count > 0)
             Places.Add(new FilesPlaceGroup("ピン留め", pinned));
@@ -248,6 +246,16 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var drives = _places.Drives();
         if (drives.Count > 0)
             Places.Add(new FilesPlaceGroup("PC", drives));
+    }
+
+    /// <summary>ピンの表示名。所属ワークスペースフォルダーからの相対パスで、同名フォルダーを区別する。</summary>
+    private string LabelForPin(string path)
+    {
+        var owner = _workspace.FolderFor(path);
+        if (owner is null)
+            return path;
+        var relative = Path.GetRelativePath(owner, path);
+        return _workspace.Folders.Count > 1 ? $"{NameOf(owner)}/{relative.Replace('\\', '/')}" : relative.Replace('\\', '/');
     }
 
     /// <summary>ワークスペース切替・復元時の入り口。保存してあった現在地へ戻し、無ければ

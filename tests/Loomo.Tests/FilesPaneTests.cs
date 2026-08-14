@@ -271,30 +271,6 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
-    public void 場所のワークスペースとピン留めはフルパスで並ぶ()
-    {
-        var sut = CreateColumn();
-        _tree.PinFolder(_sub);
-
-        sut.LoadPlaces();
-
-        // フォルダー名や相対パスでは「どのドライブのどこか」が読めないので、行はフルパスそのもの。
-        Assert.Equal(_root, sut.Places[0].Items.Single().Name);
-        Assert.Equal(_sub, sut.Places[1].Items.Single().Name);
-        // 同じものを二度書かないので、添えるパスは空。
-        Assert.Equal("", sut.Places[1].Items.Single().DisplayPath);
-        // Windows の呼び名で出るクイックアクセスとドライブだけ、所在地を添える。
-        Assert.NotEqual("", sut.Places[2].Items[0].DisplayPath);
-    }
-
-    [Theory]
-    [InlineData(@"C:\Projects\Loomo", @"C:\Projects\Loomo")]
-    [InlineData(@"C:\Users\koya\source\repos\VeryLongProjectName\src\App\ViewModels",
-                @"C:\…\VeryLongProjectName\src\App\ViewModels")]
-    public void 場所のパスは長いときだけ中ほどを省く(string path, string expected)
-        => Assert.Equal(expected, new FilesPlace("x", path, FilesPlaceKind.Pinned).DisplayPath);
-
-    [Fact]
     public void ピン留めはツリーと共有される()
     {
         var sut = CreateColumn();

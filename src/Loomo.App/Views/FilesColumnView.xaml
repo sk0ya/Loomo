@@ -204,28 +204,14 @@
                                             <ItemsControl ItemsSource="{Binding Items}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:FilesPlace}">
-                                                        <!-- ワークスペース・ピン留めは Name 自体がフルパス。
-                                                             クイックアクセスとドライブだけ、Windows の呼び名の
-                                                             隣に所在地を薄く添える（全体はツールチップ）。 -->
                                                         <Button Style="{StaticResource FilesCrumbButton}"
                                                                 Padding="8,3" HorizontalContentAlignment="Left"
                                                                 Click="OnPlaceClick" Tag="{Binding FullPath}"
                                                                 ToolTip="{Binding FullPath}">
-                                                            <StackPanel Orientation="Horizontal">
-                                                                <TextBlock Text="{Binding Name}"
-                                                                           FontSize="{DynamicResource Fs12}"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           MaxWidth="420" />
-                                                                <TextBlock Text="{Binding DisplayPath}"
-                                                                           Foreground="{DynamicResource FgDim}"
-                                                                           FontSize="{DynamicResource Fs10}"
-                                                                           VerticalAlignment="Center"
-                                                                           Margin="8,0,0,0"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           MaxWidth="300"
-                                                                           Visibility="{Binding DisplayPath,
-                                                                                        Converter={StaticResource NonEmptyToVis}}" />
-                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Name}"
+                                                                       FontSize="{DynamicResource Fs12}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxWidth="320" />
                                                         </Button>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

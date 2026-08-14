@@ -94,40 +94,7 @@ public enum FilesPlaceKind
 }
 
 /// <summary>「場所」ポップアップの1項目。</summary>
-public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind)
-{
-    /// <summary>名前の隣に添える所在地。ワークスペースとピン留めは <see cref="Name"/> 自体が
-    /// フルパスなので空（同じものを二度書かない）。クイックアクセスとドライブは Windows 側の
-    /// 呼び名（「ダウンロード」など）が出るので、それがどこかをここで補う。
-    /// 長いときは中ほどを省く——手がかりはドライブと末尾の数段なので、そこを残す。</summary>
-    public string DisplayPath =>
-        string.Equals(Name, FullPath, StringComparison.OrdinalIgnoreCase) ? "" : ShortenPath(FullPath);
-
-    private const int MaxPathChars = 44;
-
-    internal static string ShortenPath(string path)
-    {
-        if (path.Length <= MaxPathChars)
-            return path;
-
-        var root = Path.GetPathRoot(path) ?? "";
-        var segments = path[root.Length..].Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Where(s => s.Length > 0).ToList();
-
-        // 末尾から足せるだけ足す（最低でも2段は見せる——親が違えば別物なので）。
-        var tail = new List<string>();
-        for (var i = segments.Count - 1; i >= 0; i--)
-        {
-            var candidate = string.Join(Path.DirectorySeparatorChar, segments.Skip(i));
-            if (tail.Count >= 2 && root.Length + 2 + candidate.Length > MaxPathChars)
-                break;
-            tail.Insert(0, segments[i]);
-        }
-        return tail.Count == segments.Count
-            ? path
-            : $"{root}…{Path.DirectorySeparatorChar}{string.Join(Path.DirectorySeparatorChar, tail)}";
-    }
-}
+public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind);
 
 /// <summary>「場所」ポップアップの1グループ（見出し＋項目）。</summary>
 public sealed record FilesPlaceGroup(string Name, IReadOnlyList<FilesPlace> Items);
