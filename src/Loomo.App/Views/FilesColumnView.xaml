@@ -183,15 +183,22 @@
         <DockPanel>
             <!-- ツールバー：場所／戻る／進む／上へ／更新 ＋ パンくず ＋ 絞り込み -->
             <DockPanel DockPanel.Dock="Top" Margin="4,3,4,2" LastChildFill="True">
+                <!-- 押すたびに開閉させるための下ごしらえ（実体は code-behind の OnPlacesButtonMouseUp）。
+                     ClickMode は既定の Release のまま——Press にするとボタンがマウスをキャプチャした
+                     まま Popup が開き、Popup 側がキャプチャを取れずに StaysOpen=False（外側クリックで
+                     閉じる）が丸ごと効かなくなる。 -->
                 <ToggleButton x:Name="PlacesButton" DockPanel.Dock="Left" Style="{StaticResource FilesToolToggle}"
                               ToolTip="場所（ワークスペース・ピン留め・クイックアクセス・PC）"
+                              PreviewMouseLeftButtonDown="OnPlacesButtonMouseDown"
+                              PreviewMouseLeftButtonUp="OnPlacesButtonMouseUp"
                               Checked="OnPlacesOpened">
                     <Path Width="13" Height="13" Stretch="Uniform" StrokeThickness="1.4"
                           StrokeLineJoin="Round"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
                           Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,11.5 L1,11.5 Z" />
                 </ToggleButton>
-                <Popup PlacementTarget="{Binding ElementName=PlacesButton}" Placement="Bottom" StaysOpen="False"
+                <Popup x:Name="PlacesPopup"
+                       PlacementTarget="{Binding ElementName=PlacesButton}" Placement="Bottom" StaysOpen="False"
                        AllowsTransparency="True" IsOpen="{Binding IsChecked, ElementName=PlacesButton, Mode=TwoWay}">
                     <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="1" Padding="4" Margin="0,2,0,0">

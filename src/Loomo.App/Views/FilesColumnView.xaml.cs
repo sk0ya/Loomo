@@ -81,6 +81,21 @@ public partial class FilesColumnView : UserControl
 
     private void OnPlacesOpened(object sender, RoutedEventArgs e) => Vm?.LoadPlaces();
 
+    // ポップアップが開いている間、ボタンの押下は Popup のマウスキャプチャに飲まれてボタンまで
+    // 届かない（Popup は自分で閉じる）。ところがその後のマウスアップは届き、それだけでボタンが
+    // Click 扱いになるため、閉じた直後にまた開く＝押しても閉じないトグルになっていた。
+    // 対のダウンを受けていないアップは無視すれば、押すたびに開閉する。
+    private bool _placesButtonPressed;
+
+    private void OnPlacesButtonMouseDown(object sender, MouseButtonEventArgs e) => _placesButtonPressed = true;
+
+    private void OnPlacesButtonMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_placesButtonPressed)
+            e.Handled = true;
+        _placesButtonPressed = false;
+    }
+
     /// <summary>パンくずが幅に収まらないときは末尾（現在地）を見せる。左端から切ると、
     /// 狭いカラムで「今どこにいるか」だけが消えることになる。</summary>
     private void OnBreadcrumbScrollChanged(object sender, ScrollChangedEventArgs e)
