@@ -234,7 +234,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
         var pinned = _pins.AllPins
             .Where(Directory.Exists)
-            .Select(path => new FilesPlace(LabelForPin(path), path, FilesPlaceKind.Pinned))
+            .Select(path => new FilesPlace(NameOf(path), path, FilesPlaceKind.Pinned))
             .ToList();
         if (pinned.Count > 0)
             Places.Add(new FilesPlaceGroup("ピン留め", pinned));
@@ -246,16 +246,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var drives = _places.Drives();
         if (drives.Count > 0)
             Places.Add(new FilesPlaceGroup("PC", drives));
-    }
-
-    /// <summary>ピンの表示名。所属ワークスペースフォルダーからの相対パスで、同名フォルダーを区別する。</summary>
-    private string LabelForPin(string path)
-    {
-        var owner = _workspace.FolderFor(path);
-        if (owner is null)
-            return path;
-        var relative = Path.GetRelativePath(owner, path);
-        return _workspace.Folders.Count > 1 ? $"{NameOf(owner)}/{relative.Replace('\\', '/')}" : relative.Replace('\\', '/');
     }
 
     /// <summary>ワークスペース切替・復元時の入り口。保存してあった現在地へ戻し、無ければ

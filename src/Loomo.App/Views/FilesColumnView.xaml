@@ -204,14 +204,25 @@
                                             <ItemsControl ItemsSource="{Binding Items}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:FilesPlace}">
+                                                        <!-- 名前だけでは同名フォルダーを見分けられないので、
+                                                             実パスを薄く添える（省略形。全体はツールチップ）。 -->
                                                         <Button Style="{StaticResource FilesCrumbButton}"
                                                                 Padding="8,3" HorizontalContentAlignment="Left"
                                                                 Click="OnPlaceClick" Tag="{Binding FullPath}"
                                                                 ToolTip="{Binding FullPath}">
-                                                            <TextBlock Text="{Binding Name}"
-                                                                       FontSize="{DynamicResource Fs12}"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       MaxWidth="320" />
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding Name}"
+                                                                           FontSize="{DynamicResource Fs12}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           MaxWidth="200" />
+                                                                <TextBlock Text="{Binding DisplayPath}"
+                                                                           Foreground="{DynamicResource FgDim}"
+                                                                           FontSize="{DynamicResource Fs10}"
+                                                                           VerticalAlignment="Center"
+                                                                           Margin="8,0,0,0"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           MaxWidth="300" />
+                                                            </StackPanel>
                                                         </Button>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

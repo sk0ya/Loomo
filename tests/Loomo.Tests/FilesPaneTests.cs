@@ -267,6 +267,33 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 場所の各項目はフォルダー名と実パスの両方を持つ()
+    {
+        var sut = CreateColumn();
+        _tree.PinFolder(_sub);
+
+        sut.LoadPlaces();
+
+        // 名前はフォルダー名。どこの何かはパス（DisplayPath）で分かる——
+        // 相対パスだけだと「どのドライブのどこか」が読めない。
+        var workspace = sut.Places[0].Items.Single();
+        Assert.Equal(Path.GetFileName(_root), workspace.Name);
+        Assert.EndsWith(Path.GetFileName(_root), workspace.DisplayPath);
+        Assert.StartsWith(Path.GetPathRoot(_root)!, workspace.DisplayPath);
+
+        var pin = sut.Places[1].Items.Single();
+        Assert.Equal("src", pin.Name);
+        Assert.EndsWith(@"\src", pin.DisplayPath);
+    }
+
+    [Theory]
+    [InlineData(@"C:\Projects\Loomo", @"C:\Projects\Loomo")]
+    [InlineData(@"C:\Users\koya\source\repos\VeryLongProjectName\src\App\ViewModels",
+                @"C:\…\VeryLongProjectName\src\App\ViewModels")]
+    public void 場所のパスは長いときだけ中ほどを省く(string path, string expected)
+        => Assert.Equal(expected, new FilesPlace("x", path, FilesPlaceKind.Pinned).DisplayPath);
+
+    [Fact]
     public void ピン留めはツリーと共有される()
     {
         var sut = CreateColumn();
