@@ -204,8 +204,9 @@
                                             <ItemsControl ItemsSource="{Binding Items}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:FilesPlace}">
-                                                        <!-- 名前だけでは同名フォルダーを見分けられないので、
-                                                             実パスを薄く添える（省略形。全体はツールチップ）。 -->
+                                                        <!-- ワークスペース・ピン留めは Name 自体がフルパス。
+                                                             クイックアクセスとドライブだけ、Windows の呼び名の
+                                                             隣に所在地を薄く添える（全体はツールチップ）。 -->
                                                         <Button Style="{StaticResource FilesCrumbButton}"
                                                                 Padding="8,3" HorizontalContentAlignment="Left"
                                                                 Click="OnPlaceClick" Tag="{Binding FullPath}"
@@ -214,14 +215,16 @@
                                                                 <TextBlock Text="{Binding Name}"
                                                                            FontSize="{DynamicResource Fs12}"
                                                                            TextTrimming="CharacterEllipsis"
-                                                                           MaxWidth="200" />
+                                                                           MaxWidth="420" />
                                                                 <TextBlock Text="{Binding DisplayPath}"
                                                                            Foreground="{DynamicResource FgDim}"
                                                                            FontSize="{DynamicResource Fs10}"
                                                                            VerticalAlignment="Center"
                                                                            Margin="8,0,0,0"
                                                                            TextTrimming="CharacterEllipsis"
-                                                                           MaxWidth="300" />
+                                                                           MaxWidth="300"
+                                                                           Visibility="{Binding DisplayPath,
+                                                                                        Converter={StaticResource NonEmptyToVis}}" />
                                                             </StackPanel>
                                                         </Button>
                                                     </DataTemplate>

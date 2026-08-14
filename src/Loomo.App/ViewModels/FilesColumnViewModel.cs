@@ -225,16 +225,18 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         Places.Clear();
 
+        // ワークスペースとピン留めは名前ではなくフルパスで出す。ここに並ぶのは「自分で選んだ場所」で、
+        // フォルダー名は同じものがどこにでもある——どのドライブのどこかまで見えて初めて選べる。
         var workspaceFolders = _workspace.Folders
             .Where(Directory.Exists)
-            .Select(folder => new FilesPlace(NameOf(folder), folder, FilesPlaceKind.WorkspaceFolder))
+            .Select(folder => new FilesPlace(folder, folder, FilesPlaceKind.WorkspaceFolder))
             .ToList();
         if (workspaceFolders.Count > 0)
             Places.Add(new FilesPlaceGroup("ワークスペース", workspaceFolders));
 
         var pinned = _pins.AllPins
             .Where(Directory.Exists)
-            .Select(path => new FilesPlace(NameOf(path), path, FilesPlaceKind.Pinned))
+            .Select(path => new FilesPlace(path, path, FilesPlaceKind.Pinned))
             .ToList();
         if (pinned.Count > 0)
             Places.Add(new FilesPlaceGroup("ピン留め", pinned));

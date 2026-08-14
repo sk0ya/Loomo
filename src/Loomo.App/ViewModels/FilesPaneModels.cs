@@ -96,10 +96,12 @@ public enum FilesPlaceKind
 /// <summary>「場所」ポップアップの1項目。</summary>
 public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind)
 {
-    /// <summary>名前の隣に添える所在地。名前だけでは「どの Loomo か」が分からない
-    /// （ワークスペースもピンも、同じ名前のフォルダーがどこにでもある）ので、行に実パスを出す。
+    /// <summary>名前の隣に添える所在地。ワークスペースとピン留めは <see cref="Name"/> 自体が
+    /// フルパスなので空（同じものを二度書かない）。クイックアクセスとドライブは Windows 側の
+    /// 呼び名（「ダウンロード」など）が出るので、それがどこかをここで補う。
     /// 長いときは中ほどを省く——手がかりはドライブと末尾の数段なので、そこを残す。</summary>
-    public string DisplayPath => ShortenPath(FullPath);
+    public string DisplayPath =>
+        string.Equals(Name, FullPath, StringComparison.OrdinalIgnoreCase) ? "" : ShortenPath(FullPath);
 
     private const int MaxPathChars = 44;
 

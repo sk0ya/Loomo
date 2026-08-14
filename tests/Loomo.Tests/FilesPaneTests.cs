@@ -267,23 +267,20 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
-    public void 場所の各項目はフォルダー名と実パスの両方を持つ()
+    public void 場所のワークスペースとピン留めはフルパスで並ぶ()
     {
         var sut = CreateColumn();
         _tree.PinFolder(_sub);
 
         sut.LoadPlaces();
 
-        // 名前はフォルダー名。どこの何かはパス（DisplayPath）で分かる——
-        // 相対パスだけだと「どのドライブのどこか」が読めない。
-        var workspace = sut.Places[0].Items.Single();
-        Assert.Equal(Path.GetFileName(_root), workspace.Name);
-        Assert.EndsWith(Path.GetFileName(_root), workspace.DisplayPath);
-        Assert.StartsWith(Path.GetPathRoot(_root)!, workspace.DisplayPath);
-
-        var pin = sut.Places[1].Items.Single();
-        Assert.Equal("src", pin.Name);
-        Assert.EndsWith(@"\src", pin.DisplayPath);
+        // フォルダー名や相対パスでは「どのドライブのどこか」が読めないので、行はフルパスそのもの。
+        Assert.Equal(_root, sut.Places[0].Items.Single().Name);
+        Assert.Equal(_sub, sut.Places[1].Items.Single().Name);
+        // 同じものを二度書かないので、添えるパスは空。
+        Assert.Equal("", sut.Places[1].Items.Single().DisplayPath);
+        // Windows の呼び名で出るクイックアクセスとドライブだけ、所在地を添える。
+        Assert.NotEqual("", sut.Places[2].Items[0].DisplayPath);
     }
 
     [Theory]
