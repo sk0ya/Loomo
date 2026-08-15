@@ -25,6 +25,15 @@ public class MouseNavigationPolicyTests
     }
 
     [Theory]
+    [InlineData(MouseButton.XButton1, true)]
+    [InlineData(MouseButton.XButton2, false)]
+    public void Resolve_ファイル一覧の上はファイル一覧の履歴へ(MouseButton button, bool back)
+    {
+        var command = MouseNavigationPolicy.Resolve(button, PaneKind.Files);
+        Assert.Equal(new MouseNavigationCommand(MouseNavigationTarget.Files, back), command);
+    }
+
+    [Theory]
     [InlineData(PaneKind.Editor)]
     [InlineData(PaneKind.EditorSupport)]
     [InlineData(PaneKind.Terminal)]

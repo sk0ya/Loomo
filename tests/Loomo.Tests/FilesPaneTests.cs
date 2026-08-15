@@ -443,6 +443,21 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void ペイン全体の履歴操作は操作対象カラムへ渡る()
+    {
+        var pane = CreatePane();
+        pane.ColumnCount = 2;
+        pane.Columns[0].Navigate(_sub);
+        pane.Columns[1].Navigate(_outside);
+        pane.SetActiveColumn(pane.Columns[1]);
+
+        pane.NavigateHistory(back: true);
+
+        Assert.Equal(Path.Combine(_root, "docs"), pane.Columns[1].CurrentFolder);
+        Assert.Equal(_sub, pane.Columns[0].CurrentFolder);
+    }
+
+    [Fact]
     public void カラム構成と現在地は保存して戻せる()
     {
         var pane = CreatePane();

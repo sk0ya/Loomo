@@ -5,6 +5,8 @@ public enum MouseNavigationTarget
 {
     /// <summary>ブラウザペインの履歴（ポインタがブラウザペインの上にあるとき）。</summary>
     Browser,
+    /// <summary>ファイル一覧ペインの現在のカラム履歴。</summary>
+    Files,
     /// <summary>EditorSupport のプレビュー履歴（既定）。</summary>
     EditorSupport,
 }
@@ -33,11 +35,15 @@ public static class MouseNavigationPolicy
         };
         if (back is not { } goBack)
             return null;
-        // ブラウザの上ならブラウザの履歴。それ以外（エディタ・ターミナル・ペイン外の余白）は
-        // 従来どおり EditorSupport のプレビュー履歴へ。
-        var target = paneUnderPointer == PaneKind.Browser
-            ? MouseNavigationTarget.Browser
-            : MouseNavigationTarget.EditorSupport;
+        // ブラウザ／ファイル一覧の上では、それぞれのペイン自身の履歴へ。
+        // それ以外（エディタ・ターミナル・ペイン外の余白）は従来どおり
+        // EditorSupport のプレビュー履歴へ。
+        var target = paneUnderPointer switch
+        {
+            PaneKind.Browser => MouseNavigationTarget.Browser,
+            PaneKind.Files => MouseNavigationTarget.Files,
+            _ => MouseNavigationTarget.EditorSupport,
+        };
         return new MouseNavigationCommand(target, goBack);
     }
 }

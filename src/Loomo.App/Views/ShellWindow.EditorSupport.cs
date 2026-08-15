@@ -49,17 +49,23 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     }
     private async void OnEditorSupportBack(object sender, RoutedEventArgs e) => await EditorSupportGoBackAsync();
     /// <summary>マウスの戻る/進むボタン。ウィンドウ全体で受けるので、ポインタ下のペインを見て配る
-    /// （判定は <see cref="MouseNavigationPolicy"/>）。宛先を見ずに EditorSupport へ流していたころは、
-    /// ブラウザペインの上で押した「戻る」もここで Handled になって効かなかった。</summary>
+    /// （判定は <see cref="MouseNavigationPolicy"/>）。</summary>
     private void OnShellPreviewMouseNavigate(object sender, MouseButtonEventArgs e) {
         var pane = e.OriginalSource is DependencyObject source ? FindPaneOf(source) : null;
         if (MouseNavigationPolicy.Resolve(e.ChangedButton, pane) is not { } command)
             return;
         e.Handled = true;
-        if (command.Target == MouseNavigationTarget.Browser)
-            BrowserNavigateHistory(command.Back);
-        else
-            _ = EditorSupportNavigateHistoryAsync(command.Back);
+        switch (command.Target) {
+            case MouseNavigationTarget.Browser:
+                BrowserNavigateHistory(command.Back);
+                break;
+            case MouseNavigationTarget.Files:
+                FilesPaneHost.NavigateHistory(e.OriginalSource as DependencyObject, command.Back);
+                break;
+            default:
+                _ = EditorSupportNavigateHistoryAsync(command.Back);
+                break;
+        }
     }
     private Task EditorSupportGoBackAsync() => EditorSupportNavigateHistoryAsync(back: true);
     private async Task EditorSupportNavigateHistoryAsync(bool back) {

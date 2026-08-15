@@ -33,6 +33,30 @@ public partial class FilesPaneView : UserControl
             _columnViews[0].FocusList();
     }
 
+    /// <summary>マウスの戻る／進むボタンを、ポインタ下のカラムへ渡す。
+    /// ウィンドウの PreviewMouseDown はこの View より先に処理されるため、通常のクリック時の
+    /// 「カラムをアクティブにする」イベントには任せず、ここで明示的に同期する。</summary>
+    public void NavigateHistory(DependencyObject? source, bool back)
+    {
+        var column = FindColumnView(source)?.DataContext as FilesColumnViewModel;
+        if (column is not null)
+            Vm?.SetActiveColumn(column);
+        Vm?.NavigateHistory(back);
+    }
+
+    private static FilesColumnView? FindColumnView(DependencyObject? source)
+    {
+        for (var current = source; current is not null; current = GetAnyParent(current))
+            if (current is FilesColumnView column)
+                return column;
+        return null;
+    }
+
+    private static DependencyObject? GetAnyParent(DependencyObject element)
+        => element is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(element)
+            : LogicalTreeHelper.GetParent(element);
+
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (_boundVm is not null)

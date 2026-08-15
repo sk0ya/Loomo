@@ -182,6 +182,18 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
     /// <summary>ツリーの「ファイル一覧で表示」などの行き先。操作対象のカラムで開く。</summary>
     public void Reveal(string fullPath) => (ActiveColumn ?? Columns[0]).Reveal(fullPath);
 
+    /// <summary>マウスの戻る／進むボタンなど、ペイン全体からの履歴操作を現在のカラムへ渡す。</summary>
+    public void NavigateHistory(bool back)
+    {
+        var column = ActiveColumn ?? Columns.FirstOrDefault();
+        if (column is null)
+            return;
+
+        var command = back ? column.GoBackCommand : column.GoForwardCommand;
+        if (command.CanExecute(null))
+            command.Execute(null);
+    }
+
     /// <summary>ワークスペース切替・復元。カラムごとに現在地を戻し、無ければプライマリを開く。</summary>
     public void Restore(FilesPaneSnapshot? snapshot, string? fallbackFolder)
     {
