@@ -17,8 +17,8 @@
         <Style x:Key="FilesToolButton" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Width" Value="24" />
-            <Setter Property="Height" Value="22" />
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="20" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -44,8 +44,8 @@
         <Style x:Key="FilesToolToggle" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Width" Value="24" />
-            <Setter Property="Height" Value="22" />
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="20" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -73,7 +73,7 @@
         <Style x:Key="FilesCrumbButton" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Padding" Value="4,1" />
+            <Setter Property="Padding" Value="3,0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Template">
@@ -179,7 +179,7 @@
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
-            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="Padding" Value="6,0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Template">
@@ -230,7 +230,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="b" Background="Transparent" CornerRadius="3" Padding="0,1">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="3" Padding="0">
                             <ContentPresenter VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -262,7 +262,7 @@
         </Border.Style>
         <DockPanel>
             <!-- ツールバー：場所／戻る／進む ＋ パンくず ＋ 絞り込み -->
-            <DockPanel DockPanel.Dock="Top" Margin="4,3,4,2" LastChildFill="True">
+            <DockPanel DockPanel.Dock="Top" Margin="4,2,4,1" LastChildFill="True">
                 <!-- 押すたびに開閉させるための下ごしらえ（実体は code-behind の OnPlacesButtonMouseUp）。
                      ClickMode は既定の Release のまま——Press にするとボタンがマウスをキャプチャした
                      まま Popup が開き、Popup 側がキャプチャを取れずに StaysOpen=False（外側クリックで
@@ -325,6 +325,11 @@
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                           Data="M4,2 L10,7 L4,12" />
                 </Button>
+                <!-- 件数は独立したステータス行にせず、ナビゲーション行へ統合して縦幅を節約する。 -->
+                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
+                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
+                           VerticalAlignment="Center" Margin="8,0,2,0"
+                           TextTrimming="CharacterEllipsis" />
                 <!-- パンくず（住所欄）。常にドライブから並べる＝フルパスとして読める。
                      狭いときは末尾（現在地）が見えるよう右端へ寄せる。 -->
                 <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden"
@@ -392,13 +397,6 @@
                 </DockPanel>
             </Border>
 
-            <!-- ステータス（件数） -->
-            <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
-                    Padding="8,2">
-                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource FgDim}"
-                           FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis" />
-            </Border>
-
             <!-- 列見出し -->
             <Grid DockPanel.Dock="Top" Margin="{StaticResource FilesRowInset}">
                 <Grid.ColumnDefinitions>
@@ -434,7 +432,7 @@
                          SelectionMode="Extended"
                          Background="Transparent"
                          BorderThickness="0"
-                         Padding="0,2,0,6"
+                         Padding="0,1,0,4"
                          HorizontalContentAlignment="Stretch"
                          ItemContainerStyle="{StaticResource FilesRow}"
                          AllowDrop="True"
