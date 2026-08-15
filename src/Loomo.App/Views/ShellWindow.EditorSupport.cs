@@ -20,6 +20,7 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow : IEditorSupportRenderHost {
     private EditorSupportUpdateLoop? _editorSupportLoop;
+    private bool _markdownEditMode;
     /// <summary>次の描画でページ全体を組み直す（本文差し替えを使わない）。ナビゲーション失敗・
     /// 応答なし・差し替え先ページ喪失からの復帰で立てる一度きりのフラグ。</summary>
     private bool _editorSupportForceFullPage;
@@ -142,9 +143,14 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         await OpenEditorSupportSnapshotInBrowserAsync(html, result.MapFolder, result.Title);
     }
     private void UpdateEditorSupportHeaderButtons(
-        bool showSlide, bool showOutline, bool showOpenInBrowser, bool showExport) {
+        bool showSlide, bool showOutline, bool showEdit, bool showOpenInBrowser, bool showExport) {
         EditorSupportSlideToggle.Visibility = showSlide ? Visibility.Visible : Visibility.Collapsed;
         EditorSupportOutlineToggle.Visibility = showOutline ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportEditButton.Visibility = showEdit ? Visibility.Visible : Visibility.Collapsed;
+        EditorSupportEditButton.IsChecked = showEdit && _markdownEditMode;
+        EditorSupportEditButton.ToolTip = _markdownEditMode
+            ? "プレビューに戻る"
+            : "Markdownをこの画面で直接編集";
         EditorSupportOpenInBrowserButton.Visibility = showOpenInBrowser ? Visibility.Visible : Visibility.Collapsed;
         EditorSupportExportButton.Visibility = showExport ? Visibility.Visible : Visibility.Collapsed;
         // 押した状態は設定が真実（アプリ再起動後も持ち越す）。トグルの見た目は毎フレームここで設定へ揃える
@@ -195,8 +201,11 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期・途中 return なし。</b></summary>
     private void ApplyEditorSupportFrame(EditorSupportFrame frame) {
         var view = _editorSupport.WebView.View;
+        if (!frame.ShowEdit)
+            _markdownEditMode = false;
         UpdateEditorSupportHeaderButtons(
-            frame.ShowSlide, frame.ShowOutline, frame.ShowOpenInBrowser, frame.ShowExport);
+            frame.ShowSlide, frame.ShowOutline, frame.ShowEdit,
+            frame.ShowOpenInBrowser, frame.ShowExport);
         EditorSupportTitle.Text = frame.Title;
         switch (frame.Content) {
             case EditorSupportFrameContent.VisualContent visual:

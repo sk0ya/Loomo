@@ -144,12 +144,13 @@ internal sealed class EditorSupportRenderFlow
         else
         {
             body = new EditorSupportFrameContent.WebContent(
-                content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey);
+                content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey,
+                content.ShowEdit ? request.Text : null);
         }
         _host.ClearFullPageRequest();
         apply(new EditorSupportFrame(
             content.Title, content.ShowSlide, content.ShowOutline,
-            content.ShowOpenInBrowser, content.ShowExport, body));
+            content.ShowEdit, content.ShowOpenInBrowser, content.ShowExport, body));
     }
 
     private async Task RenderCodeAsync(
@@ -279,6 +280,7 @@ internal sealed class EditorSupportRenderFlow
 
     private static EditorSupportFrame CodeFrame(string title, EditorSupportFrameContent content)
         => new(title, ShowSlide: false, ShowOutline: false,
+               ShowEdit: false,
                ShowOpenInBrowser: false, ShowExport: false, content);
 
     private static int CurrentMemberLine1(

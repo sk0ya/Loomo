@@ -119,9 +119,30 @@ public partial class ShellWindow {
                     if (root.TryGetProperty("line", out var taskLineElement) && taskLineElement.TryGetInt32(out var taskLine))
                         ToggleMarkdownTaskCheckbox(taskLine);
                     break;
+                case "markdownEdited":
+                    if (root.TryGetProperty("text", out var markdownTextElement)
+                        && markdownTextElement.GetString() is { } markdownText)
+                        ApplyMarkdownPreviewEdit(markdownText);
+                    break;
             }
         } catch {
         }
+    }
+    private void OnToggleEditorSupportEdit(object sender, RoutedEventArgs e) {
+        _markdownEditMode = !_markdownEditMode;
+        _editorSupport.WebView.SetMarkdownEditMode(_markdownEditMode);
+        EditorSupportEditButton.IsChecked = _markdownEditMode;
+        EditorSupportEditButton.ToolTip = _markdownEditMode
+            ? "プレビューに戻る"
+            : "Markdownをこの画面で直接編集";
+    }
+    private void ApplyMarkdownPreviewEdit(string text) {
+        var tab = _editorSupport.Source;
+        if (tab?.Control.FilePath is not { } filePath
+            || _editorSupportResolver.Resolve(filePath).Provider is not MarkdownEditorSupport
+            || string.Equals(tab.Control.Text, text, StringComparison.Ordinal))
+            return;
+        tab.Control.SetText(text);
     }
     private void FocusEditorSupportSource(int? line, int column0 = 0, bool alignTop = false) {
         var tab = _editorSupport.Source;

@@ -667,8 +667,11 @@ public class MarkdownPreviewPathsTests
                 workspace, @"C:\work\deck.md", "---\nmarp: true\n---\n\n# スライド", null, "Dracula"));
 
         Assert.True(markdown.ShowOutline);
+        Assert.True(markdown.ShowEdit);
         Assert.False(json.ShowOutline);
+        Assert.False(json.ShowEdit);
         Assert.False(deck.ShowOutline);
+        Assert.True(deck.ShowEdit);
     }
 }
 

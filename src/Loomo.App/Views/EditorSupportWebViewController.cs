@@ -54,6 +54,8 @@ public sealed class EditorSupportWebViewController : IDisposable
     private string _searchTerm = "";
     private bool _searchCaseSensitive;
     private bool _searchUseRegex;
+    private string? _markdownSource;
+    private bool _markdownEditMode;
     private readonly SemaphoreSlim _findGate = new(1, 1);
     private string? _appliedFindTerm;          // 今の文書へ実際に適用済みの Find 条件（null＝不明・未適用）
     private bool _appliedFindCaseSensitive;
@@ -192,6 +194,9 @@ public sealed class EditorSupportWebViewController : IDisposable
     /// </summary>
     internal EditorSupportPageApplyResult Show(CoreWebView2 core, EditorSupportFrameContent.WebContent content)
     {
+        _markdownSource = content.MarkdownSource;
+        if (_markdownSource is null)
+            _markdownEditMode = false;
         if (content.Uri is { } uri)
             return ShowUri(core, uri);
         if (content.Body is { } body)
@@ -226,6 +231,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         try
         {
             core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "setBody", html = body }));
+            PostMarkdownState(core);
         }
         catch
         {
@@ -254,6 +260,30 @@ public sealed class EditorSupportWebViewController : IDisposable
         try { core.NavigateToString(html); }
         catch { Fail(); }
         return EditorSupportPageApplyResult.Applied;
+    }
+
+    /// <summary>Markdownプレビューの同じWebViewをソース編集面へ切り替える。</summary>
+    internal void SetMarkdownEditMode(bool enabled)
+    {
+        _markdownEditMode = enabled && _markdownSource is not null;
+        if (View?.CoreWebView2 is { } core)
+            PostMarkdownState(core);
+    }
+
+    private void PostMarkdownState(CoreWebView2 core)
+    {
+        if (_markdownSource is null)
+            return;
+        try
+        {
+            core.PostWebMessageAsJson(JsonSerializer.Serialize(new
+            {
+                type = "setMarkdownEditMode",
+                enabled = _markdownEditMode,
+                source = _markdownSource
+            }));
+        }
+        catch { }
     }
 
     private void BeginLoad(EditorSupportPageId id)
@@ -368,6 +398,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         {
             _appliedFindTerm = null;
             PushSearchHighlight(loaded);
+            PostMarkdownState(loaded);
         }
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
 

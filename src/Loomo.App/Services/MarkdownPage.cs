@@ -55,6 +55,10 @@ internal static class MarkdownPage
                 let reportScheduled = false;
                 let resizeScheduled = false;
                 let lastRatio = 0;  // 最後に意図したスクロール比率（resize 時の貼り直し基準）
+                let markdownEditMode = false;
+                let markdownSource = '';
+                let latestBodyHtml = null;
+                let richEditTimer = null;
 
                 const mermaidTheme = '{{mermaidTheme}}';
                 const mermaidSrc = 'https://{{MarkdownRenderer.AssetsVirtualHost}}/mermaid.min.js';
@@ -278,6 +282,8 @@ internal static class MarkdownPage
                 // フル再ナビゲートせず本文だけ差し替える（編集ごとのページ再読込＝チカチカを防ぐ）。
                 // 高さが変わるのでスクロールを最後の比率へ貼り直し、mermaid を描き直す。
                 function applyBody(html) {
+                    latestBodyHtml = html;
+                    if (markdownEditMode) return;
                     suppressScrollMessage = true;
                     // 差し替え前の絶対スクロール位置と文書高を控える。高さが変わらない差し替え
                     // （タスクチェックボックスの反転など）では比率変換を挟まず絶対位置をそのまま保つ
@@ -332,11 +338,121 @@ internal static class MarkdownPage
                         if (!d) return;
                         if (d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio);
                         else if (d.type === 'setBody') {
+                            latestBodyHtml = d.html;
                             // marp は d.html に生 Markdown が載る。document は本文 HTML を差し替える。
-                            if (previewMode === 'marp') renderMarp(d.html);
-                            else applyBody(d.html);
+                            if (!markdownEditMode) {
+                                if (previewMode === 'marp') renderMarp(d.html);
+                                else applyBody(d.html);
+                            }
+                        } else if (d.type === 'setMarkdownEditMode') {
+                            markdownSource = typeof d.source === 'string' ? d.source : markdownSource;
+                            setMarkdownEditMode(!!d.enabled);
                         }
                     });
+                }
+
+                // レンダリング済みの本文をその場で編集し、DOMの変更をMarkdownへ戻すモード。
+                // Markdownの見た目を保ったまま編集できるようにし、入力は既存エディターへ同期する。
+                function setMarkdownEditMode(enabled) {
+                    if (enabled === markdownEditMode) return;
+                    if (enabled) {
+                        markdownEditMode = true;
+                        document.body.classList.add('loomo-markdown-editing');
+                        document.body.contentEditable = 'true';
+                        document.body.spellcheck = false;
+                        document.querySelectorAll('button, input, .heading-anchor, .loomo-outline-panel, .loomo-slide-indicator')
+                            .forEach(el => el.contentEditable = 'false');
+                        document.body.focus();
+                        document.body.addEventListener('input', onRichEditInput);
+                        document.body.addEventListener('change', onRichEditInput);
+                        return;
+                    }
+
+                    markdownEditMode = false;
+                    document.body.classList.remove('loomo-markdown-editing');
+                    document.body.removeEventListener('input', onRichEditInput);
+                    document.body.removeEventListener('change', onRichEditInput);
+                    document.body.contentEditable = 'false';
+                    if (previewMode === 'marp') renderMarp(markdownSource);
+                    else if (latestBodyHtml !== null) applyBody(latestBodyHtml);
+                }
+
+                function onRichEditInput() {
+                    if (!markdownEditMode) return;
+                    clearTimeout(richEditTimer);
+                    richEditTimer = setTimeout(() => {
+                        const text = serializeMarkdown(document.body);
+                        if (text === markdownSource) return;
+                        markdownSource = text;
+                        if (window.chrome?.webview)
+                            window.chrome.webview.postMessage({ type: 'markdownEdited', text });
+                    }, 180);
+                }
+
+                function inlineMarkdown(node) {
+                    if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
+                    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+                    const el = node;
+                    if (el.classList.contains('heading-anchor') || el.classList.contains('code-copy-btn')) return '';
+                    if (el.tagName === 'BR') return '  \n';
+                    if (el.tagName === 'IMG') return '![' + (el.alt || '') + '](' + (el.getAttribute('src') || '') + ')';
+                    const inner = Array.from(el.childNodes).map(inlineMarkdown).join('');
+                    if (el.tagName === 'STRONG' || el.tagName === 'B') return '**' + inner + '**';
+                    if (el.tagName === 'EM' || el.tagName === 'I') return '*' + inner + '*';
+                    if (el.tagName === 'DEL' || el.tagName === 'S') return '~~' + inner + '~~';
+                    if (el.tagName === 'CODE' && el.parentElement?.tagName !== 'PRE') return '`' + inner + '`';
+                    if (el.tagName === 'A') return '[' + inner + '](' + (el.getAttribute('href') || '') + ')';
+                    return inner;
+                }
+
+                function blockMarkdown(el, depth) {
+                    const tag = el.tagName;
+                    if (/^H[1-6]$/.test(tag)) return '#'.repeat(Number(tag[1])) + ' ' + inlineMarkdown(el) + '\n\n';
+                    if (tag === 'P') return inlineMarkdown(el).trimEnd() + '\n\n';
+                    if (tag === 'HR') return '---\n\n';
+                    if (tag === 'PRE') return '```\n' + (el.textContent || '').replace(/\n?$/, '\n') + '```\n\n';
+                    if (tag === 'DIV' && el.classList.contains('code-block')) {
+                        const pre = el.querySelector('pre');
+                        const code = pre?.textContent || '';
+                        const lang = pre?.querySelector('code')?.className.match(/language-([^\s]+)/)?.[1] || '';
+                        return '```' + lang + '\n' + code.replace(/\n?$/, '\n') + '```\n\n';
+                    }
+                    if (tag === 'BLOCKQUOTE') {
+                        return Array.from(el.children).map(child => blockMarkdown(child, depth)).join('')
+                            .split('\n').map(line => line ? '> ' + line : '>').join('\n').replace(/(?:>\n){2,}/g, '>\n') + '\n\n';
+                    }
+                    if (tag === 'UL' || tag === 'OL') {
+                        const ordered = tag === 'OL';
+                        let n = ordered ? Number(el.getAttribute('start') || 1) : 0;
+                        return Array.from(el.children).map(li => {
+                            const checkbox = li.querySelector(':scope > input[type="checkbox"]');
+                            const prefix = ordered ? (n++) + '. ' : '- ';
+                            const body = Array.from(li.childNodes).filter(n => n !== checkbox)
+                                .map(n => n.nodeType === Node.ELEMENT_NODE && (n.tagName === 'UL' || n.tagName === 'OL')
+                                    ? '\n' + blockMarkdown(n, depth + 1).split('\n').map(line => line ? '  ' + line : line).join('\n')
+                                    : inlineMarkdown(n)).join('').trim();
+                            const task = checkbox ? '[' + (checkbox.checked ? 'x' : ' ') + '] ' : '';
+                            return prefix + task + body + '\n';
+                        }).join('') + '\n';
+                    }
+                    if (tag === 'TABLE') {
+                        const rows = Array.from(el.querySelectorAll('tr'));
+                        if (!rows.length) return '';
+                        const cells = row => Array.from(row.children).map(c => inlineMarkdown(c).replace(/\|/g, '\\|').trim());
+                        const head = cells(rows[0]);
+                        let out = '| ' + head.join(' | ') + ' |\n| ' + head.map(() => '---').join(' | ') + ' |\n';
+                        out += rows.slice(1).map(row => '| ' + cells(row).join(' | ') + ' |').join('\n');
+                        return out + '\n\n';
+                    }
+                    return inlineMarkdown(el).trimEnd() + '\n\n';
+                }
+
+                function serializeMarkdown(root) {
+                    const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdownSource)?.[0] || '';
+                    const content = Array.from(root.children)
+                        .filter(el => !el.classList.contains('loomo-outline-panel') && !el.classList.contains('loomo-slide-indicator'))
+                        .map(el => blockMarkdown(el, 0)).join('').replace(/\n{3,}/g, '\n\n').trim();
+                    return frontmatter + (content ? content + '\n' : '');
                 }
 
                 // 初期化（モード別）。marp は生 Markdown を描画、document は従来どおり mermaid を描く。
@@ -417,6 +533,7 @@ internal static class MarkdownPage
                 // コードは <pre><code> の textContent から取る（表示中の HTML エンティティは
                 // ブラウザが復元してくれるので、C# 側に生テキストを二重に埋め込む必要が無い）。
                 document.addEventListener('click', e => {
+                    if (markdownEditMode) return;
                     const btn = e.target.closest && e.target.closest('.code-copy-btn');
                     if (!btn) return;
                     const codeEl = btn.parentElement && btn.parentElement.querySelector('pre > code');
@@ -484,7 +601,7 @@ internal static class MarkdownPage
                     document.body.appendChild(lightboxEl);
                 }
                 document.addEventListener('click', e => {
-                    if (isMarp) return;
+                    if (isMarp || markdownEditMode) return;
                     const img = e.target.closest && e.target.closest('img');
                     if (!img || (img.closest && img.closest('a'))) return;
                     if (img === lightboxImg) return;  // ライトボックス内の画像自体のクリック（ドラッグ後の click 含む）は無視
@@ -506,6 +623,10 @@ internal static class MarkdownPage
                 document.addEventListener('change', e => {
                     const cb = e.target.closest && e.target.closest('.task-list-item input[type="checkbox"]');
                     if (!cb || !window.chrome?.webview) return;
+                    if (markdownEditMode) {
+                        onRichEditInput();
+                        return;
+                    }
                     const line = Number(cb.getAttribute('data-line'));
                     if (Number.isFinite(line))
                         window.chrome.webview.postMessage({ type: 'toggleTaskCheckbox', line });
@@ -531,6 +652,7 @@ internal static class MarkdownPage
                 // 同一ページ内アンカー（#見出し 等）だけは上の自前スクロールに任せる。見出しのパーマリンク
                 // （.heading-anchor）はさらに「#見出しid」をクリップボードへコピーする。
                 document.addEventListener('click', e => {
+                    if (markdownEditMode) { e.preventDefault(); return; }
                     const anchor = e.target.closest && e.target.closest('a.heading-anchor');
                     if (anchor) {
                         const href = anchor.getAttribute('href') || '';
@@ -681,6 +803,15 @@ internal static class MarkdownPage
                 line-height: 1.7;
                 padding: 20px 24px 40px;
             }
+            body.loomo-markdown-editing {
+                outline: 1px solid {{link}};
+                outline-offset: -1px;
+                padding: 20px 24px 40px;
+            }
+            body.loomo-markdown-editing .heading-anchor,
+            body.loomo-markdown-editing .code-copy-btn,
+            body.loomo-markdown-editing .loomo-outline-panel { display: none; }
+            body.loomo-markdown-editing [contenteditable="false"] { user-select: none; }
             h1, h2, h3, h4, h5, h6 {
                 color: {{heading}};
                 font-weight: 600;
@@ -867,4 +998,3 @@ internal static class MarkdownPage
             """;
     }
 }
-

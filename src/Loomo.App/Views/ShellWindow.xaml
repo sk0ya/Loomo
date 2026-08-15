@@ -796,6 +796,14 @@
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M2,3 H14 V11 H2 Z M6,13 H10 M8,11 V13" />
                         </ToggleButton>
+                        <!-- Markdownソースをこのプレビュー面で直接編集する（編集内容はエディターへ同期） -->
+                        <ToggleButton x:Name="EditorSupportEditButton" DockPanel.Dock="Right"
+                                Style="{StaticResource PaneToggle}" Width="30" Height="24"
+                                ToolTip="Markdownをこの画面で直接編集"
+                                Click="OnToggleEditorSupportEdit">
+                            <Path Style="{StaticResource PaneToggleIcon}"
+                                  Data="M3,13 L4,10 L11,3 L13,5 L6,12 Z M10,4 L12,6 M3,13 H6" />
+                        </ToggleButton>
                         <Button x:Name="EditorSupportOpenInBrowserButton" DockPanel.Dock="Right"
                                 Style="{StaticResource PaneActionButton}" Width="30" Height="24"
                                 ToolTip="このプレビューを内蔵ブラウザの新規タブで開く"

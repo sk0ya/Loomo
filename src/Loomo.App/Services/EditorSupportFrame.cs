@@ -20,6 +20,7 @@ internal sealed record EditorSupportFrame(
     string Title,
     bool ShowSlide,
     bool ShowOutline,
+    bool ShowEdit,
     bool ShowOpenInBrowser,
     bool ShowExport,
     EditorSupportFrameContent Content);
@@ -35,7 +36,8 @@ internal abstract record EditorSupportFrameContent
         string? Body,
         string? Uri,
         string? MapFolder,
-        string? PageKey) : EditorSupportFrameContent;
+        string? PageKey,
+        string? MarkdownSource) : EditorSupportFrameContent;
 
     /// <summary>
     /// WPF コントロールをそのまま載せる表示（CSV グリッド・画像・Hex 等）。
