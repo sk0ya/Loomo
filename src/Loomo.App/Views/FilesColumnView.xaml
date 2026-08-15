@@ -261,7 +261,7 @@
             </Style>
         </Border.Style>
         <DockPanel>
-            <!-- ツールバー：場所／戻る／進む／上へ／更新 ＋ パンくず ＋ 絞り込み -->
+            <!-- ツールバー：場所／戻る／進む ＋ パンくず ＋ 絞り込み -->
             <DockPanel DockPanel.Dock="Top" Margin="4,3,4,2" LastChildFill="True">
                 <!-- 押すたびに開閉させるための下ごしらえ（実体は code-behind の OnPlacesButtonMouseUp）。
                      ClickMode は既定の Release のまま——Press にするとボタンがマウスをキャプチャした
@@ -325,10 +325,6 @@
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                           Data="M4,2 L10,7 L4,12" />
                 </Button>
-                <!-- 「上へ」「更新」「隠し表示」はツールバーに置かない。上へはパンくず（親を押す）と
-                     Backspace、更新は監視が自動でやる＋F5、隠し表示は右クリックにある。狭いカラムで
-                     まず消えるのはパンくず＝「今どこにいるか」なので、そこを守る。 -->
-
                 <!-- パンくず（住所欄）。常にドライブから並べる＝フルパスとして読める。
                      狭いときは末尾（現在地）が見えるよう右端へ寄せる。 -->
                 <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden"
@@ -504,12 +500,6 @@
                                           ToolTip="所属するワークスペースフォルダーからの相対パス" />
                                 <MenuItem Header="名前" Click="OnCopyNameClick" />
                             </MenuItem>
-                            <!-- ツールバーに置くほど使わない一覧の設定は、ここに畳んでおく。 -->
-                            <Separator />
-                            <MenuItem Header="隠しファイルを表示" IsCheckable="True"
-                                      IsChecked="{Binding ShowHiddenFiles}"
-                                      ToolTip="隠し属性・システム属性のファイル（.git など）も一覧に出します" />
-                            <MenuItem Header="更新" InputGestureText="F5" Click="OnRefreshClick" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>

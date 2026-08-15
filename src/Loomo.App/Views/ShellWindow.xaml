@@ -61,6 +61,44 @@
             </Setter>
         </Style>
 
+        <!-- ファイル一覧のカラム数切替。数字だけでなく分割レイアウトも線画で示す。 -->
+        <Style x:Key="FilesColumnToggle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Border}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ペインの線画アイコン（16x16）。トグルとメインペイン表示ヘッダーで共有する単一ソース。
              code-behind（UpdatePaneToggleStates）は PaneKind→キー名で引いてヘッダーへ流し込む。 -->
         <StreamGeometry x:Key="PaneIcon.Terminal">M2.5,4 L7,8 L2.5,12 M9,12.5 H13.5</StreamGeometry>
@@ -1252,7 +1290,7 @@
 
                 <!-- ファイル一覧 : ペイン化したエクスプローラ（1フォルダーを平らに並べ、並べ替え・絞り込み・
                      一括操作をする面）。サイドバーのツリーとは役割が違う——ツリーは階層の把握、こちらは
-                     集合の処理（§26.10）。ヘッダーツールバーは FilesPaneView 内蔵。 -->
+                     集合の処理（§26.10）。カラム内の操作バーは FilesPaneView、ペイン共通の操作はここに置く。 -->
                 <DockPanel x:Name="FilesPane" Background="{DynamicResource Panel}">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
                                Tag="Files" Cursor="SizeAll"
@@ -1261,20 +1299,50 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Files" Click="OnHidePane" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Command="{Binding Files.ActiveColumn.RefreshCommand}" ToolTip="更新（F5）">
+                            <Path Width="13" Height="13" Stretch="Uniform" StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Data="M11.5,5.2 A4.8,4.8 0 1 0 10.2,10.4 M11.5,5.2 V1.5 H7.8" />
+                        </Button>
+                        <ToggleButton DockPanel.Dock="Right" Margin="0,0,6,0" Width="30" Height="24"
+                                      Style="{StaticResource ToolbarToggleButton}"
+                                      IsChecked="{Binding Files.ActiveColumn.ShowHiddenFiles, Mode=TwoWay}"
+                                      ToolTip="隠しファイルを表示／非表示（隠し属性・システム属性）">
+                            <Path Width="14" Height="14" Stretch="Uniform" StrokeThickness="1.3"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Fill="Transparent"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                  Data="M1,7 C3,2.5 11,2.5 13,7 C11,11.5 3,11.5 1,7 Z M5,7 A2,2 0 1 0 9,7 A2,2 0 1 0 5,7" />
+                        </ToggleButton>
                         <!-- カラム数（1／2／4）。2カラムは「左から右へ移す」ためにあるので、
                              Diff の表示形式トグルと同じ格好でヘッダーに置く（行を増やさない）。 -->
-                        <Border DockPanel.Dock="Left" Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
-                                Margin="0,0,10,0" VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton Style="{StaticResource SourceToggle}" Content="1" FontSize="{DynamicResource Fs12}"
-                                             ToolTip="1カラム" IsChecked="{Binding Files.IsOneColumn}" />
-                                <RadioButton Style="{StaticResource SourceToggle}" Content="2" FontSize="{DynamicResource Fs12}"
-                                             ToolTip="2カラム（左右に並べてフォルダー間で移す）"
-                                             IsChecked="{Binding Files.IsTwoColumns}" />
-                                <RadioButton Style="{StaticResource SourceToggle}" Content="4" FontSize="{DynamicResource Fs12}"
-                                             ToolTip="4カラム（2×2）" IsChecked="{Binding Files.IsFourColumns}" />
-                            </StackPanel>
-                        </Border>
+                         <Border DockPanel.Dock="Right" Background="{DynamicResource BgAlt}"
+                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="5" Padding="2"
+                                 Margin="0,0,6,0" VerticalAlignment="Center">
+                             <StackPanel Orientation="Horizontal">
+                                 <RadioButton Style="{StaticResource FilesColumnToggle}"
+                                              ToolTip="1カラム" IsChecked="{Binding Files.IsOneColumn}">
+                                     <Path Width="14" Height="14" Stretch="Uniform" StrokeThickness="1.2"
+                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                           Data="M2,2 H14 V14 H2 Z" />
+                                 </RadioButton>
+                                 <RadioButton Style="{StaticResource FilesColumnToggle}"
+                                              ToolTip="2カラム（左右に並べてフォルダー間で移す）"
+                                              IsChecked="{Binding Files.IsTwoColumns}">
+                                     <Path Width="14" Height="14" Stretch="Uniform" StrokeThickness="1.2"
+                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                           Data="M2,2 H14 V14 H2 Z M8,2 V14" />
+                                 </RadioButton>
+                                 <RadioButton Style="{StaticResource FilesColumnToggle}"
+                                              ToolTip="4カラム（2×2）" IsChecked="{Binding Files.IsFourColumns}">
+                                     <Path Width="14" Height="14" Stretch="Uniform" StrokeThickness="1.2"
+                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                           Data="M2,2 H14 V14 H2 Z M8,2 V14 M2,8 H14" />
+                                 </RadioButton>
+                             </StackPanel>
+                         </Border>
                     </DockPanel>
                     <views:FilesPaneView x:Name="FilesPaneHost" DataContext="{Binding Files}" />
                 </DockPanel>

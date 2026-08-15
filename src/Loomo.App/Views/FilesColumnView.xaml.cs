@@ -420,8 +420,6 @@ public partial class FilesColumnView : UserControl
     private void OnOpenClick(object sender, RoutedEventArgs e)
         => Vm?.OpenEntry(EntryList.SelectedItem as FileEntryViewModel);
 
-    private void OnRefreshClick(object sender, RoutedEventArgs e) => Vm?.RefreshCommand.Execute(null);
-
     // ===== 絞り込み（「/」で開く下端のバー） =====
 
     private void OpenFilter()
