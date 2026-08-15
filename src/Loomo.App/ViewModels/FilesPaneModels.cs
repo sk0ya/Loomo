@@ -77,7 +77,7 @@ public sealed partial class FileEntryViewModel : ObservableObject
     }
 }
 
-/// <summary>パンくずの1区切り（クリックでそのフォルダーへ移動）。</summary>
+/// <summary>パンくずの1区切り。クリックすると、その階層のフォルダー候補を開く。</summary>
 public sealed record FilesBreadcrumb(string Name, string FullPath, bool IsLast);
 
 /// <summary>「場所」候補の出どころ。表示の並び順もこの順（近いものから遠いものへ）。</summary>

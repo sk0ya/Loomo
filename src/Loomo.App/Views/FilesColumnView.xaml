@@ -94,6 +94,86 @@
             </Setter>
         </Style>
 
+        <!-- パンくずピッカー。標準 TreeViewItem は OS の選択色・矢印・背景を使うため、
+             テーマを切り替えるとポップアップだけ色が浮く。FolderTree と同じパレットで描く。 -->
+        <Style x:Key="FilesBreadcrumbTreeItem" TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+                            <Border x:Name="Bd" Grid.Row="0" Background="Transparent" CornerRadius="3">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander" Grid.Column="0"
+                                                  ClickMode="Press" Focusable="False"
+                                                  IsChecked="{Binding IsExpanded,
+                                                      RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" Width="16" Height="16">
+                                                    <Path x:Name="Arrow" Width="8" Height="8"
+                                                          Stretch="Uniform" HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          Fill="{DynamicResource FgDim}"
+                                                          Data="M0,0 L4,4 L0,8 Z" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Arrow" Property="RenderTransform">
+                                                            <Setter.Value>
+                                                                <RotateTransform Angle="90" CenterX="4" CenterY="4" />
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                    <ContentPresenter x:Name="PART_Header" Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      Margin="{TemplateBinding Padding}"
+                                                      HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="1" Margin="16,0,0,0"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
+                                <ItemsPresenter x:Name="ItemsHost" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                            </Trigger>
+                            <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 列見出し。押すとその列で並べ替え（同じ列を押すと向きが反転）。 -->
         <Style x:Key="FilesColumnHeader" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -263,9 +343,10 @@
                             <DataTemplate DataType="{x:Type vm:FilesBreadcrumb}">
                                 <StackPanel Orientation="Horizontal">
                                     <Button Style="{StaticResource FilesCrumbButton}"
-                                            Command="{Binding DataContext.OpenFolderCommand,
-                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding FullPath}"
+                                            Click="OnBreadcrumbPickerClick"
+                                            PreviewMouseLeftButtonDown="OnBreadcrumbPickerMouseDown"
+                                            PreviewMouseLeftButtonUp="OnBreadcrumbPickerMouseUp"
+                                            Tag="{Binding}"
                                             ToolTip="{Binding FullPath}">
                                         <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                                    TextTrimming="CharacterEllipsis" MaxWidth="160" />
@@ -279,6 +360,19 @@
                     </ItemsControl>
                 </ScrollViewer>
             </DockPanel>
+
+            <!-- パンくず項目を選んだときの VS Code 風ピッカー。兄弟フォルダーをルートにして、
+                 子フォルダーは展開矢印から辿れる。 -->
+            <Popup x:Name="BreadcrumbPickerPopup" Placement="Bottom" StaysOpen="False"
+                   AllowsTransparency="True">
+                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" Padding="3" MaxHeight="420" MinWidth="260">
+                    <TreeView x:Name="BreadcrumbPickerTree" Background="Transparent" BorderThickness="0"
+                              Foreground="{DynamicResource Fg}"
+                              ItemContainerStyle="{StaticResource FilesBreadcrumbTreeItem}"
+                              PreviewMouseLeftButtonDown="OnBreadcrumbPickerPreviewMouseLeftButtonDown" />
+                </Border>
+            </Popup>
 
             <!-- 絞り込みバー。一覧で「/」を押したときだけ出す（常設の入力欄はツールバーの幅を食い、
                  いつも使うものでもない）。エディタと同じく下端に出し、Esc で解除・Enter で一覧へ戻る。

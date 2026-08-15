@@ -16,6 +16,7 @@ public partial class FilesColumnView : UserControl
     // 「内部＝移動」と扱うため、インスタンスではなく型で持つ（ドラッグは同時に1つしか走らない）。
     private static bool _internalDrag;
     private FilesColumnViewModel? _boundVm;
+    private string _breadcrumbPickerSelectionPath = "";
 
     public FilesColumnView()
     {
@@ -84,6 +85,7 @@ public partial class FilesColumnView : UserControl
     // Click 扱いになるため、閉じた直後にまた開く＝押しても閉じないトグルになっていた。
     // 対のダウンを受けていないアップは無視すれば、押すたびに開閉する。
     private bool _placesButtonPressed;
+    private bool _breadcrumbPickerButtonPressed;
 
     private void OnPlacesButtonMouseDown(object sender, MouseButtonEventArgs e) => _placesButtonPressed = true;
 
@@ -94,12 +96,142 @@ public partial class FilesColumnView : UserControl
         _placesButtonPressed = false;
     }
 
+    // Popup は外側クリックを先に受けて閉じるため、同じボタンのマウスアップだけが後から届き、
+    // そのままだと Click が再発火してポップアップを開き直してしまう。
+    private void OnBreadcrumbPickerMouseDown(object sender, MouseButtonEventArgs e)
+        => _breadcrumbPickerButtonPressed = true;
+
+    private void OnBreadcrumbPickerMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_breadcrumbPickerButtonPressed)
+            e.Handled = true;
+        _breadcrumbPickerButtonPressed = false;
+    }
+
     /// <summary>パンくずが幅に収まらないときは末尾（現在地）を見せる。左端から切ると、
     /// 狭いカラムで「今どこにいるか」だけが消えることになる。</summary>
     private void OnBreadcrumbScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (e.ExtentWidthChange != 0 || e.ViewportWidthChange != 0)
             BreadcrumbScroll.ScrollToRightEnd();
+    }
+
+    /// <summary>VS Code のパンくずと同じく、選んだ階層の直下をツリーで開く。
+    /// 現在の次階層は選択状態にする。</summary>
+    private void OnBreadcrumbPickerClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: FilesBreadcrumb breadcrumb } target || Vm is null)
+            return;
+
+        // キーボード操作など、Popup のマウスキャプチャを経由しない場合も同じトグルにする。
+        if (BreadcrumbPickerPopup.IsOpen
+            && ReferenceEquals(BreadcrumbPickerPopup.PlacementTarget, target))
+        {
+            BreadcrumbPickerPopup.IsOpen = false;
+            e.Handled = true;
+            return;
+        }
+
+        if (!Directory.Exists(breadcrumb.FullPath))
+            return;
+
+        var crumbIndex = Vm.Breadcrumbs.IndexOf(breadcrumb);
+        _breadcrumbPickerSelectionPath = crumbIndex >= 0 && crumbIndex + 1 < Vm.Breadcrumbs.Count
+            ? Vm.Breadcrumbs[crumbIndex + 1].FullPath
+            : "";
+        BreadcrumbPickerTree.Items.Clear();
+        foreach (var path in EnumerateDirectories(breadcrumb.FullPath))
+            BreadcrumbPickerTree.Items.Add(CreateBreadcrumbPickerItem(path, _breadcrumbPickerSelectionPath));
+
+        if (BreadcrumbPickerTree.Items.Count == 0)
+            return;
+
+        BreadcrumbPickerPopup.PlacementTarget = target;
+        BreadcrumbPickerPopup.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private TreeViewItem CreateBreadcrumbPickerItem(string path, string currentPath)
+    {
+        var item = new TreeViewItem
+        {
+            Header = CreateBreadcrumbPickerHeader(path),
+            Tag = path,
+            IsSelected = string.Equals(path, currentPath, StringComparison.OrdinalIgnoreCase),
+        };
+        item.Expanded += OnBreadcrumbPickerItemExpanded;
+        if (HasDirectories(path))
+            item.Items.Add(new TreeViewItem { Tag = null, IsHitTestVisible = false });
+        return item;
+    }
+
+    private static StackPanel CreateBreadcrumbPickerHeader(string path)
+    {
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(new Image
+        {
+            Source = FileIcons.FolderImage(open: false),
+            Width = 14,
+            Height = 14,
+            Margin = new Thickness(1, 0, 5, 0),
+        });
+        header.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrEmpty(name) ? path : name,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        return header;
+    }
+
+    private void OnBreadcrumbPickerItemExpanded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not string path
+            || item.Items.Count != 1 || item.Items[0] is not TreeViewItem { Tag: null })
+            return;
+
+        item.Items.Clear();
+        foreach (var child in EnumerateDirectories(path))
+            item.Items.Add(CreateBreadcrumbPickerItem(child, _breadcrumbPickerSelectionPath));
+        e.Handled = true;
+    }
+
+    private void OnBreadcrumbPickerPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source
+            || FindVisualParent<ToggleButton>(source) is not null
+            || FindVisualParent<TreeViewItem>(source) is not { Tag: string path })
+            return;
+
+        Vm?.Navigate(path);
+        BreadcrumbPickerPopup.IsOpen = false;
+        e.Handled = true;
+    }
+
+    private static IEnumerable<string> EnumerateDirectories(string parent)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(parent)
+                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private static bool HasDirectories(string path) => EnumerateDirectories(path).Any();
+
+    private static T? FindVisualParent<T>(DependencyObject source) where T : DependencyObject
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is T match)
+                return match;
+        }
+        return null;
     }
 
     private void OnPlaceClick(object sender, RoutedEventArgs e)
