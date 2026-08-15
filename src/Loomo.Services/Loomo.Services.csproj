@@ -59,7 +59,11 @@
     <!-- 1.0.29: WSLプロファイル自動検出（無効プロファイルは非表示）、Windows PowerShellへのシェル統合拡張、
          ハイコントラスト対応、詳細設定のUI公開、描画性能の改善 -->
     <!-- 1.0.30: 内部入力ProxyをAutomationのControlビューから除外し、実表示Surfaceのフォーカスを正しく公開 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.30" />
+    <!-- 1.0.31: VTパーサの大幅拡充（C1制御/制御文字列、DECID・DSR・xtwinops・termcap問い合わせ、kitty keyboard拡張、
+         OSCカラー/アイコンタイトル、保護セル・二重下線、X10マウス、水平方向の移動と画面編集）、
+         グリフをフォント幅でなくセル数で送るよう修正＋遅延ラップの取りこぼし修正、セルに固定されるインライン画像描画、
+         タブの別ウィンドウ切り離し、貼り付け改行のCR正規化、ConPTY破棄時のデッドロック修正、FlowDocument描画経路の削除 -->
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.31" />
     <!-- C# の「シグネチャの変更」用（§32.5）。LSP に無いリファクタリングなので構文木で自前に書き換える。
          使うのは構文 API だけ（MSBuildWorkspace ではない）——意味解決と呼び出し元の列挙は、
          すでに動いている言語サーバー（textDocument/references）に任せる。 -->
