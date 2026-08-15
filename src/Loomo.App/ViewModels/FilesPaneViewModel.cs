@@ -39,7 +39,6 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             var column = new FilesColumnViewModel(workspace, commands, pins, places);
             // カラムのイベントはペインで束ねて中継する（ShellWindow は列の数を知らなくてよい）。
             column.FileActivated += (_, path) => FileActivated?.Invoke(this, path);
-            column.FilePreviewRequested += (_, path) => FilePreviewRequested?.Invoke(this, path);
             column.OpenInBrowserRequested += (_, path) => OpenInBrowserRequested?.Invoke(this, path);
             column.EntryRenamed += (_, e) => EntryRenamed?.Invoke(this, e);
             column.EntryDeleted += (_, path) => EntryDeleted?.Invoke(this, path);
@@ -91,7 +90,6 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
 
     // ShellWindow へ中継するカラム由来のイベント（受け口はツリーと同じ・§26.10）。
     public event EventHandler<string>? FileActivated;
-    public event EventHandler<string>? FilePreviewRequested;
     public event EventHandler<string>? OpenInBrowserRequested;
     public event EventHandler<EntryRenamedEventArgs>? EntryRenamed;
     public event EventHandler<string>? EntryDeleted;

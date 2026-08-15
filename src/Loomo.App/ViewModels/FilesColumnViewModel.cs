@@ -112,7 +112,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     // ファイルを開く要求（ダブルクリック／Enter）。ペイン経由で ShellWindow がエディタタブで開く。
     public event EventHandler<string>? FileActivated;
-    public event EventHandler<string>? FilePreviewRequested;
     public event EventHandler<EntryRenamedEventArgs>? EntryRenamed;
     public event EventHandler<string>? EntryDeleted;
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
@@ -572,12 +571,6 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     }
 
     public void NotifySelected(string fullPath) => _workspace.SelectedPath = fullPath;
-
-    public void NotifyPreviewRequested(string fullPath)
-    {
-        if (File.Exists(fullPath))
-            FilePreviewRequested?.Invoke(this, fullPath);
-    }
 
     public void RequestOpenInBrowser(string fullPath)
     {

@@ -15,8 +15,6 @@ public partial class FilesColumnView : UserControl
     // Loomo 自身が発生源のドラッグ中フラグ。カラムをまたぐドラッグ（左のカラム → 右のカラム）でも
     // 「内部＝移動」と扱うため、インスタンスではなく型で持つ（ドラッグは同時に1つしか走らない）。
     private static bool _internalDrag;
-    // 単クリックのプレビュー判定：押した行と離した行が同じときだけプレビューする。
-    private FileEntryViewModel? _pressedEntry;
     private FilesColumnViewModel? _boundVm;
 
     public FilesColumnView()
@@ -141,21 +139,6 @@ public partial class FilesColumnView : UserControl
     {
         _dragStart = e.GetPosition(null);
         _dragCandidate = EntryAt(e.OriginalSource);
-        _pressedEntry = _dragCandidate;
-    }
-
-    // 単クリックはプレビュータブで開く（ツリーと同じ扱い。編集するまで確定しない1枚を使い回す）。
-    // 修飾キー付き＝複数選択の操作なので開かない。
-    private void OnListPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        var entry = EntryAt(e.OriginalSource);
-        var pressed = _pressedEntry;
-        _pressedEntry = null;
-        if (entry is null || !ReferenceEquals(entry, pressed) || entry.IsDirectory)
-            return;
-        if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
-            return;
-        Vm?.NotifyPreviewRequested(entry.FullPath);
     }
 
     private void OnListPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -533,7 +516,6 @@ public partial class FilesColumnView : UserControl
 
         var origin = _dragCandidate;
         _dragCandidate = null;
-        _pressedEntry = null;
 
         // 掴んだ行が選択に含まれていれば選択ぜんぶ、含まれなければその1件だけを運ぶ。
         var sources = EntryList.SelectedItems.Contains(origin)

@@ -278,7 +278,6 @@ public partial class ShellWindow : Window {
         vm.FolderTree.RootStateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         // ファイル一覧ペイン。素材の行き先（エディタ・ターミナル・Diff・検索・ブラウザ）と
         // タブ追従はツリーと同じ受け口へ流す——どちらから操作しても結果が同じであるべきなので。
-        vm.Files.FilePreviewRequested += async (_, path) => await OpenFileInPreviewTabAsync(path);
         vm.Files.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
         vm.Files.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         vm.Files.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);

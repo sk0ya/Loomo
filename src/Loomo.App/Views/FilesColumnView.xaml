@@ -353,7 +353,6 @@
                          VirtualizingStackPanel.VirtualizationMode="Recycling"
                          SelectionChanged="OnSelectionChanged"
                          PreviewMouseLeftButtonDown="OnListPreviewMouseLeftButtonDown"
-                         PreviewMouseLeftButtonUp="OnListPreviewMouseLeftButtonUp"
                          PreviewMouseMove="OnListPreviewMouseMove"
                          PreviewMouseRightButtonDown="OnListPreviewMouseRightButtonDown"
                          MouseDoubleClick="OnListMouseDoubleClick"
