@@ -172,10 +172,28 @@ public partial class WorkspaceSwitcherView : UserControl
             Vm?.TogglePinCommand.Execute(entry);
     }
 
+    // ===== 右クリックメニューの対象 =====
+
+    /// <summary>メニュー項目が指している行（＝メニューを開いた要素の DataContext）。
+    /// 開いた先（<see cref="ContextMenu.PlacementTarget"/>）から引く——項目自身の DataContext でも
+    /// 普通は同じものが取れるが、こちらは子メニューや、行の中の別の要素から開いた場合にもずれない
+    /// （<c>FolderTreeView.ContextNode</c> と同じ作法）。子メニュー項目の <c>Parent</c> は
+    /// 親 MenuItem なので ContextMenu まで遡る。</summary>
+    private static object? MenuContext(object sender)
+    {
+        var current = sender as DependencyObject;
+        while (current is MenuItem item)
+            current = item.Parent;
+
+        return current is ContextMenu { PlacementTarget: FrameworkElement target }
+            ? target.DataContext
+            : (sender as FrameworkElement)?.DataContext;
+    }
+
     // ===== 追加フォルダー行の右クリックメニュー =====
 
     private static WorkspaceFolderEntryViewModel? FolderTarget(object sender)
-        => (sender as FrameworkElement)?.DataContext as WorkspaceFolderEntryViewModel;
+        => MenuContext(sender) as WorkspaceFolderEntryViewModel;
 
     private void OnFolderMenuCopyPath(object sender, RoutedEventArgs e)
     {
@@ -207,7 +225,7 @@ public partial class WorkspaceSwitcherView : UserControl
     // ===== 行の右クリックメニュー =====
 
     private static WorkspaceEntryViewModel? MenuTarget(object sender)
-        => (sender as FrameworkElement)?.DataContext as WorkspaceEntryViewModel;
+        => MenuContext(sender) as WorkspaceEntryViewModel;
 
     private void OnMenuActivate(object sender, RoutedEventArgs e) => Activate(MenuTarget(sender));
 

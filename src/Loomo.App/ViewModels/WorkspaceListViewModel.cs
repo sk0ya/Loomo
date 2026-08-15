@@ -406,14 +406,19 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         Activate(snapshot);
     }
 
+    /// <summary>アクティブなワークスペースの現在の状態を書き戻す（ShellWindow の定期保存の受け口）。
+    /// 一覧に無いものは<em>足さない</em>——取り除いたワークスペースを復活させないため。切替は
+    /// 「出ていくワークスペースを捕まえてから」行うので、アクティブなものを一覧から削除すると、
+    /// 削除の<em>後</em>にその捕獲＝この保存が届く。ここで足していたせいで workspaces.json と
+    /// state.json が書き戻り、消したはずのワークスペースが次の起動で戻ってきていた。
+    /// 新しいワークスペースは <see cref="ActivateFolder"/> が先に一覧へ載せるので、足す口はここには要らない。</summary>
     public void SaveSnapshot(WorkspaceSnapshot snapshot)
     {
         var index = _state.Workspaces.FindIndex(w => w.Id == snapshot.Id);
-        if (index >= 0)
-            _state.Workspaces[index] = snapshot;
-        else
-            _state.Workspaces.Add(snapshot);
+        if (index < 0)
+            return;
 
+        _state.Workspaces[index] = snapshot;
         _store.Save(_state);
         RefreshEntries();
     }

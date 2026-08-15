@@ -204,8 +204,19 @@
                                 </ControlTemplate>
                             </Setter.Value>
                         </Setter>
-                        <Setter Property="ContextMenu">
-                            <Setter.Value>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel>
+                        <!-- 見出し行（ワークスペース本体）。ホバー／選択の塗りはこの行だけ。 -->
+                        <Border Padding="4,2" CornerRadius="3">
+                            <!-- 1件に効く操作。**ItemContainerStyle の Setter には置けない**——Style の値は
+                                 全行で共有される1インスタンスで、そこに書いた Click は結線されない（押しても
+                                 ハンドラが呼ばれず、メニューが丸ごと死ぬ）。行のテンプレート内に置けば
+                                 行ごとの実体になり、Click も DataContext も普通に効く。 -->
+                            <Border.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="このワークスペースへ切替" Click="OnMenuActivate" />
                                     <MenuItem Header="ピン留め／解除" Click="OnMenuTogglePin" />
@@ -216,16 +227,7 @@
                                     <Separator />
                                     <MenuItem Header="一覧から削除（フォルダは消えません）" Click="OnMenuRemove" />
                                 </ContextMenu>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                      <StackPanel>
-                        <!-- 見出し行（ワークスペース本体）。ホバー／選択の塗りはこの行だけ。 -->
-                        <Border Padding="4,2" CornerRadius="3">
+                            </Border.ContextMenu>
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="Background" Value="Transparent" />

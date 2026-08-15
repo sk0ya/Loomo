@@ -375,6 +375,33 @@ public class WorkspaceListViewModelTests
         Assert.DoesNotContain(new WorkspaceStateStore(storePath).Load().Workspaces, w => w.Id == active.Id);
     }
 
+    /// <summary>アクティブなワークスペースを削除したとき、切替が「出ていくワークスペースを捕まえて保存する」
+    /// のは削除の<em>後</em>になる。その遅れて届く保存で消したはずのものが復活してはいけない
+    /// （復活すると次の起動で戻ってくる＝「削除できない」に見える）。</summary>
+    [Fact]
+    public void Late_snapshot_save_does_not_resurrect_a_removed_workspace()
+    {
+        var dir1 = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var dir2 = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
+        var storePath = Path.Combine(
+            Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
+        var store = new WorkspaceStateStore(storePath);
+        var sut = new WorkspaceListViewModel(store);
+
+        sut.ActivateFolder(dir1.FullName);
+        sut.ActivateFolder(dir2.FullName); // dir2 が現在のワークスペース
+        var active = sut.Workspaces.Single(w => w.RootPath == dir2.FullName);
+        var outgoing = sut.ActiveWorkspace!;   // ShellWindow が握っている「いま開いている」スナップショット
+
+        sut.RemoveWorkspaceCommand.Execute(active);
+        sut.SaveSnapshot(outgoing);            // 切替の途中で走る定期保存が、削除の後に届く
+
+        Assert.DoesNotContain(sut.Workspaces, w => w.Id == active.Id);
+        Assert.DoesNotContain(new WorkspaceStateStore(storePath).Load().Workspaces, w => w.Id == active.Id);
+    }
+
     [Fact]
     public void Last_workspace_cannot_be_removed()
     {
