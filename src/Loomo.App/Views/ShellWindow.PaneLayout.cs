@@ -27,7 +27,10 @@ public partial class ShellWindow {
         var root = new PaneSplit { Orientation = SplitKind.Rows };
         root.Children.Add(top);
         root.Children.Add(NewLeaf(PaneKind.Terminal));
-        root.Children.Add(NewLeaf(PaneKind.Ai));
+        // AI は既定でしまっておく（EditorSupport と同じく、リーフは残して Hidden にするので
+        // 出したときに元の位置・比率へ戻る）。出す導線は EnsurePaneVisibleOrSwapTopLeft／
+        // ビュー・スイッチャーの目のトグル。
+        root.Children.Add(new PaneLeaf { Kind = PaneKind.Ai, Hidden = true });
         _root = root;
         RebuildPaneLayout();
     }

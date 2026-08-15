@@ -24,6 +24,14 @@ public partial class ShellWindow {
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
     ];
+    /// <summary>新規ワークスペース（保存された有効セッションが無いとき）に部屋へ出しておくペイン。
+    /// <see cref="StageOrder"/> は「並び順」であって「既定の顔ぶれ」ではない——全部入りだと集中モードの
+    /// 袖が初手から11枚になる。IDE / TS IDE / AI / 検索 / ファイル一覧は用があるときに呼ぶ面なので外す
+    /// （ビュー・スイッチャーの目のトグル、コマンドパレット、AI へ送る等の導線から出せる）。</summary>
+    private static readonly PaneKind[] DefaultEnabledSessions =
+    [
+        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff,
+    ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
     /// <summary>表示モードの UI 名。「表示」は付けない——ヘッダーやセグメントでは常にモード名として
     /// 並ぶので、両方に付くと字数だけ増えて読み分けの助けにならない。</summary>
@@ -227,7 +235,7 @@ public partial class ShellWindow {
                 if (_paneElements.ContainsKey(kind))
                     _enabledSessions.Add(kind);
         if (_enabledSessions.Count == 0)
-            foreach (var kind in StageOrder)
+            foreach (var kind in DefaultEnabledSessions)
                 _enabledSessions.Add(kind);
         if (!_idePaneApplicable)
             _enabledSessions.Remove(PaneKind.Debug);
