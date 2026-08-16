@@ -19,6 +19,7 @@ public partial class ShellWindow {
         vm.OpenFileInEditorRequested += (_, path) => _ = OpenFileInNewEditorTabAsync(path);
         vm.FindChanged += (_, _) => _ = ApplyBrowserFindAsync();
         vm.FindStepRequested += (_, step) => StepBrowserFind(step);
+        InitializeBrowserExtras();
     }
 
     // ── アドレス欄 ─────────────────────────────────────────────────────

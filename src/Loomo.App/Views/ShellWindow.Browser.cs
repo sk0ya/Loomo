@@ -61,6 +61,7 @@ public partial class ShellWindow {
                 RecordTrailBrowser(url, view.CoreWebView2?.DocumentTitle);
                 _vm.Browser.RecordVisit(url, view.CoreWebView2?.DocumentTitle);
             }
+            EvaluateBrowserExtensionPrompt(tab);
         }
     }
     private void OnBrowserNavigationStarting(BrowserTab tab, CoreWebView2NavigationStartingEventArgs e) {
@@ -189,6 +190,8 @@ public partial class ShellWindow {
                 // DocumentTitleChanged も来ないので、★の表示と Ctrl+D が前のページのまま取り残される。
                 // 履歴には触らない経路なので、訪問回数が増えることはない。
                 _vm.Browser.SetCurrentPage(BrowserUrlOf(tab), core.DocumentTitle);
+                // ストアは SPA なので、拡張機能ページへの移動はここでしか分からない（§21.5.2）。
+                EvaluateBrowserExtensionPrompt(tab);
             }
             UpdateBrowserToolbar(tab);
         };
@@ -196,9 +199,13 @@ public partial class ShellWindow {
             UpdateBrowserTab(tab);
             // タイトルはナビゲーション完了より後に確定することが多い。履歴の見出しをここで揃える
             // （訪問として数え直さない——同じページを見ているだけ）。
-            if (ReferenceEquals(_activeBrowserTab, tab))
+            if (ReferenceEquals(_activeBrowserTab, tab)) {
                 _vm.Browser.UpdateCurrentTitle(BrowserUrlOf(tab), core.DocumentTitle);
+                // 促しバーの見出しは題から作る。題が確定するのは遷移完了より後。
+                EvaluateBrowserExtensionPrompt(tab);
+            }
         };
+        core.WebMessageReceived += (_, e) => OnBrowserWebMessageReceived(tab, e);
         core.FaviconChanged += OnBrowserFaviconChanged;
         core.DownloadStarting += OnBrowserDownloadStarting;
         core.ContextMenuRequested += (_, e) => OnBrowserContextMenuRequested(core, e);
@@ -296,6 +303,8 @@ public partial class ShellWindow {
         // ★の状態・戻る/進むの活性・読み込み中は「今見ているタブ」のもの。切替のたびに揃える
         // （切り替えただけで訪問回数は増やさない）。
         _vm.Browser.SetCurrentPage(url, tab.View.CoreWebView2?.DocumentTitle);
+        // 促しバーは「いま見ているタブ」のもの（裏のタブがストアでも出さない）。
+        EvaluateBrowserExtensionPrompt(tab);
         UpdateBrowserToolbar(tab);
         tab.View.Focus();
         ScheduleBrowserRealize(tab);

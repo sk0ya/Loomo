@@ -936,6 +936,8 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <!-- 戻る／進むは履歴の有無で活性が変わる（押せるかどうかが見えないと、
                              行き止まりかページが応答していないのか区別できない）。 -->
@@ -1027,6 +1029,14 @@
                         <ToggleButton Grid.Column="8" Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" Content="☰" ToolTip="ブックマークと履歴"
                                       IsChecked="{Binding Browser.IsLibraryOpen, Mode=TwoWay}" />
+                        <ToggleButton x:Name="BrowserExtensionsButton" Grid.Column="9"
+                                      Style="{StaticResource ToolbarToggleButton}" Height="28"
+                                      Padding="6,0" Content="🧩" ToolTip="拡張機能"
+                                      IsChecked="{Binding Browser.IsExtensionsOpen, Mode=TwoWay}" />
+                        <ToggleButton x:Name="BrowserPasswordsButton" Grid.Column="10"
+                                      Style="{StaticResource ToolbarToggleButton}" Height="28"
+                                      Padding="6,0" Content="🔑" ToolTip="保存済みのログイン情報"
+                                      IsChecked="{Binding Browser.IsPasswordsOpen, Mode=TwoWay}" />
 
                         <Popup PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True" HorizontalOffset="0"
@@ -1134,7 +1144,206 @@
                                 </ScrollViewer>
                             </Border>
                         </Popup>
+
+                        <!-- 拡張機能（§21.5.2）。WebView2 は拡張機能のツールバーを描かないので、
+                             一覧・有効/無効・削除・ボタン（ポップアップ UI）はここが受け持つ。 -->
+                        <!-- ボタンは右端にあるので、ポップアップは右揃え（幅ぶん左へずらす）にして
+                             ウィンドウの外へはみ出さないようにする。 -->
+                        <Popup PlacementTarget="{Binding ElementName=BrowserExtensionsButton}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True" HorizontalOffset="-386"
+                               IsOpen="{Binding Browser.IsExtensionsOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="420"
+                                    DataContext="{Binding Browser}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <StackPanel>
+                                    <TextBlock Text="拡張機能" Margin="4,2" Foreground="{DynamicResource FgDim}"
+                                               FontSize="{DynamicResource Fs11}" />
+                                    <TextBlock Text="{Binding ExtensionStatus}" Margin="6,2" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                               Visibility="{Binding ExtensionStatus, Converter={StaticResource NonEmptyToVis}}" />
+                                    <ItemsControl ItemsSource="{Binding Extensions}" MaxHeight="320">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="6,4" Margin="0,1" CornerRadius="2"
+                                                        Background="{DynamicResource Bg}">
+                                                    <DockPanel>
+                                                        <CheckBox DockPanel.Dock="Left" VerticalAlignment="Center"
+                                                                  Margin="0,0,6,0" ToolTip="有効／無効"
+                                                                  IsChecked="{Binding IsEnabled, Mode=TwoWay}" />
+                                                        <Image DockPanel.Dock="Left" Width="16" Height="16"
+                                                               Margin="0,0,6,0" VerticalAlignment="Center"
+                                                               Source="{Binding IconPath}"
+                                                               Visibility="{Binding HasIcon, Converter={StaticResource BoolToVis}}" />
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                Content="削除" FontSize="{DynamicResource Fs11}"
+                                                                Foreground="{DynamicResource FgDim}"
+                                                                Command="{Binding DataContext.RemoveExtensionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                Content="開く" FontSize="{DynamicResource Fs11}"
+                                                                ToolTip="この拡張機能の画面を開く"
+                                                                Visibility="{Binding HasPopup, Converter={StaticResource BoolToVis}}"
+                                                                Command="{Binding DataContext.OpenExtensionPopupCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding SubText}" Foreground="{DynamicResource FgDim}"
+                                                                       FontSize="{DynamicResource Fs11}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       ToolTip="{Binding FolderPath}" />
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <!-- 本線はストアを開いて、そのページで追加すること。 -->
+                                    <Button Margin="4,6,4,2" HorizontalAlignment="Left"
+                                            Style="{StaticResource FlatButton}" Padding="8,3"
+                                            FontSize="{DynamicResource Fs11}" Content="🛒 拡張機能ストアを開く"
+                                            ToolTip="ストアの拡張機能ページで「追加」を押すと、このブラウザに入ります"
+                                            Command="{Binding OpenExtensionStoreCommand}" />
+                                    <!-- 手が別にあるとき用：ストアのページの URL をそのまま貼れる（ID だけでも受ける）。 -->
+                                    <DockPanel Margin="4,4,4,2">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                Content="追加" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0"
+                                                Command="{Binding InstallExtensionCommand}" />
+                                        <TextBox VerticalContentAlignment="Center" MinHeight="24"
+                                                 Text="{Binding ExtensionInput, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsEnabled="{Binding IsExtensionsBusy, Converter={StaticResource InverseBool}}"
+                                                 ToolTip="Chrome ウェブストア／Edge アドオンの URL、または拡張機能 ID">
+                                            <TextBox.InputBindings>
+                                                <KeyBinding Key="Return" Command="{Binding InstallExtensionCommand}" />
+                                            </TextBox.InputBindings>
+                                        </TextBox>
+                                    </DockPanel>
+                                    <DockPanel Margin="4,0,4,2">
+                                        <TextBlock DockPanel.Dock="Left" Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
+                                                   Text="ストアの URL か ID を貼り付け" />
+                                        <Button HorizontalAlignment="Right" Style="{StaticResource BrowserRowButton}"
+                                                Content="フォルダーから追加…" FontSize="{DynamicResource Fs11}"
+                                                Foreground="{DynamicResource FgDim}"
+                                                Command="{Binding InstallExtensionFromFolderCommand}" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+
+                        <!-- 保存済みのログイン情報（§21.5.2）。WebView2 では edge://settings/passwords が
+                             開けず、保存はされるのに二度と見られない——その穴を塞ぐ一覧。 -->
+                        <Popup PlacementTarget="{Binding ElementName=BrowserPasswordsButton}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True" HorizontalOffset="-406"
+                               IsOpen="{Binding Browser.IsPasswordsOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="440"
+                                    DataContext="{Binding Browser}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <StackPanel>
+                                    <DockPanel Margin="4,2">
+                                        <TextBlock DockPanel.Dock="Left" Text="保存済みのログイン情報"
+                                                   Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                Content="すべて削除" HorizontalAlignment="Right"
+                                                Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                Command="{Binding ClearPasswordsCommand}" />
+                                    </DockPanel>
+                                    <TextBox Margin="4,2" MinHeight="24" VerticalContentAlignment="Center"
+                                             Text="{Binding PasswordFilter, UpdateSourceTrigger=PropertyChanged, Delay=120}"
+                                             ToolTip="サイト名・ユーザー名で絞り込む" />
+                                    <TextBlock Text="{Binding PasswordStatus}" Margin="6,2" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                               Visibility="{Binding PasswordStatus, Converter={StaticResource NonEmptyToVis}}" />
+                                    <ItemsControl ItemsSource="{Binding Passwords}" MaxHeight="360">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="6,4" Margin="0,1" CornerRadius="2"
+                                                        Background="{DynamicResource Bg}">
+                                                    <StackPanel>
+                                                        <DockPanel>
+                                                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                    Content="開く" FontSize="{DynamicResource Fs11}"
+                                                                    Foreground="{DynamicResource FgDim}"
+                                                                    Command="{Binding DataContext.OpenPasswordSiteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <TextBlock Text="{Binding Host}" FontSize="{DynamicResource Fs12}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       ToolTip="{Binding Origin}" />
+                                                        </DockPanel>
+                                                        <DockPanel Margin="0,2,0,0">
+                                                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                    Content="{Binding RevealGlyph}" FontSize="{DynamicResource Fs11}"
+                                                                    ToolTip="表示／伏せる"
+                                                                    Command="{Binding DataContext.TogglePasswordRevealCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                    Content="PW" FontSize="{DynamicResource Fs11}"
+                                                                    Foreground="{DynamicResource FgDim}" ToolTip="パスワードをコピー"
+                                                                    Command="{Binding DataContext.CopyPasswordCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                    Content="ID" FontSize="{DynamicResource Fs11}"
+                                                                    Foreground="{DynamicResource FgDim}" ToolTip="ユーザー名をコピー"
+                                                                    Command="{Binding DataContext.CopyUsernameCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <TextBlock FontSize="{DynamicResource Fs11}"
+                                                                       Foreground="{DynamicResource FgDim}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Text="{Binding DisplayUsername}" />
+                                                            <TextBlock Margin="8,0,0,0" FontSize="{DynamicResource Fs11}"
+                                                                       FontFamily="Consolas"
+                                                                       Foreground="{DynamicResource FgDim}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Text="{Binding DisplayPassword}" />
+                                                        </DockPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+
+                        <!-- 拡張機能のボタン（ポップアップ UI）。中身は拡張機能側の chrome-extension:// ページで、
+                             大きさは読み込み後に測って合わせる（manifest は寸法を持たない）。 -->
+                        <Popup x:Name="BrowserExtensionPopup"
+                               PlacementTarget="{Binding ElementName=BrowserExtensionsButton}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="False" HorizontalOffset="-368"
+                               Closed="OnBrowserExtensionPopupClosed">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" Padding="1">
+                                <Border x:Name="BrowserExtensionPopupHost" Width="400" Height="560" />
+                            </Border>
+                        </Popup>
                     </Grid>
+
+                    <!-- 拡張機能ストアの促しバー（§21.5.2）。ストアの拡張機能ページを開いたら出る。
+                         ページ側の「Chrome に追加」を押しても同じ導入へ回る（注入スクリプトが横取りする）。 -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,6"
+                            Visibility="{Binding Browser.IsExtensionPromptVisible, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="22"
+                                    Content="×" ToolTip="閉じる"
+                                    Command="{Binding Browser.DismissExtensionPromptCommand}" />
+                            <Button DockPanel.Dock="Right" Content="このブラウザに追加" Style="{StaticResource FlatButton}"
+                                    FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="8,0,6,0"
+                                    IsEnabled="{Binding Browser.IsExtensionsBusy, Converter={StaticResource InverseBool}}"
+                                    Visibility="{Binding Browser.IsExtensionPromptInstalled, Converter={StaticResource InverseBoolToVis}}"
+                                    Command="{Binding Browser.InstallExtensionFromStoreCommand}" />
+                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}"
+                                       Text="{Binding Browser.ExtensionPromptMessage}" />
+                        </DockPanel>
+                    </Border>
 
                     <!-- 読み込み中の細い帯。ページが白いままでも「動いている」ことが見える。 -->
                     <!-- IsIndeterminate は読み込み中だけ真にする。畳んでもアニメーションは動き続けるので、

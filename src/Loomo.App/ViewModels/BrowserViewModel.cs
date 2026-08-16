@@ -42,10 +42,73 @@ public sealed partial class BrowserDownloadViewModel : ObservableObject
     internal CoreWebView2DownloadOperation? Operation { get; set; }
 }
 
+/// <summary>拡張機能1件（一覧の行）。</summary>
+public sealed partial class BrowserExtensionViewModel : ObservableObject
+{
+    /// <param name="isEnabled">初期値はフィールドへ直接入れる——プロパティ経由で入れると、
+    /// 一覧を作り直しただけで「使う側が切り替えた」通知が飛ぶ。</param>
+    public BrowserExtensionViewModel(bool isEnabled) => _isEnabled = isEnabled;
+
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public string? Version { get; init; }
+    public string? FolderPath { get; init; }
+
+    /// <summary>ボタンを押したときに開くページ（<c>chrome-extension://&lt;ID&gt;/…</c>）。
+    /// 持たない拡張機能（内容スクリプトだけのもの）もある。</summary>
+    public string? PopupUrl { get; init; }
+    public bool HasPopup => PopupUrl is not null;
+
+    /// <summary>一覧に出すアイコン（拡張機能フォルダーの中の画像ファイル）。
+    /// WebView2 に導入済みでもフォルダーの記録が無いもの（Edge に元から入っているもの）は持たない。</summary>
+    public string? IconPath { get; init; }
+    public bool HasIcon => IconPath is not null;
+
+    [ObservableProperty] private bool _isEnabled;
+
+    /// <summary>使う側が有効/無効を切り替えた。シェルが WebView2 へ流す。</summary>
+    internal Action<BrowserExtensionViewModel>? EnabledChanged;
+    partial void OnIsEnabledChanged(bool value) => EnabledChanged?.Invoke(this);
+
+    /// <summary>切り替えが WebView2 側で通らなかったときに表示を戻す。
+    /// <b>通知は起こさない</b>——戻した値でもう一度切り替え要求が飛ぶと堂々巡りになるうえ、
+    /// 戻したことが「使う側の操作」として記録されてしまう。</summary>
+    internal void RevertEnabled(bool value)
+    {
+        var handler = EnabledChanged;
+        EnabledChanged = null;
+        try { IsEnabled = value; }
+        finally { EnabledChanged = handler; }
+    }
+
+    public string SubText => string.IsNullOrEmpty(Version) ? Id : $"{Version} · {Id}";
+}
+
+/// <summary>保存済みログイン情報1件（既定では伏せて出す）。</summary>
+public sealed partial class SavedPasswordViewModel : ObservableObject
+{
+    public required string Origin { get; init; }
+    public required string Host { get; init; }
+    public required string Username { get; init; }
+    public required string Password { get; init; }
+
+    [ObservableProperty] private bool _isRevealed;
+    partial void OnIsRevealedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DisplayPassword));
+        OnPropertyChanged(nameof(RevealGlyph));
+    }
+
+    /// <summary>伏せ字の長さは実際の桁数を晒さない（一覧を覗かれても手掛かりにならないように）。</summary>
+    public string DisplayPassword => IsRevealed ? Password : "••••••••";
+    public string RevealGlyph => IsRevealed ? "🙈" : "👁";
+    public string DisplayUsername => string.IsNullOrEmpty(Username) ? "(ユーザー名なし)" : Username;
+}
+
 /// <summary>
 /// ブラウザペインの状態（設計書 §21）。ツールバーの活性・読み込み中・ズーム・ページ内検索、
 /// ブックマークと訪問履歴（<see cref="BrowserLibraryStore"/>）、アドレス欄の候補、
-/// ダウンロード一覧を持つ。
+/// ダウンロード一覧、拡張機能と保存済みログイン情報の一覧を持つ。
 ///
 /// <para>WebView2 そのものは ShellWindow が持つ（タブの実体・遅延実体化・可視ペインとの結びつきは
 /// シェルの責務）。この VM は<b>見えている状態</b>と<b>覚えておく資産</b>だけを持ち、実行は
@@ -369,5 +432,208 @@ public sealed partial class BrowserViewModel : ObservableObject
         foreach (var done in Downloads.Where(d => !d.IsActive).ToList())
             Downloads.Remove(done);
         NotifyDownloadsChanged();
+    }
+
+    // ── 拡張機能（§21.5.2） ───────────────────────────────────────────
+    public ObservableCollection<BrowserExtensionViewModel> Extensions { get; } = new();
+
+    [ObservableProperty] private bool _isExtensionsOpen;
+    [ObservableProperty] private bool _isExtensionsBusy;
+    [ObservableProperty] private string _extensionStatus = "";
+    [ObservableProperty] private string _extensionInput = "";
+
+    /// <summary>一覧を開いた／導入や削除の後に、WebView2 から今の顔ぶれを取り直す要求。</summary>
+    public event EventHandler? ExtensionsRefreshRequested;
+    /// <summary>ストアの URL か ID から入れる要求。</summary>
+    public event EventHandler<string>? ExtensionInstallRequested;
+    /// <summary>展開済みフォルダーを選んで入れる要求。</summary>
+    public event EventHandler? ExtensionFolderInstallRequested;
+    public event EventHandler<BrowserExtensionViewModel>? ExtensionEnableChanged;
+    public event EventHandler<BrowserExtensionViewModel>? ExtensionRemoveRequested;
+    /// <summary>拡張機能のボタン（ポップアップ UI）を開く要求。</summary>
+    public event EventHandler<BrowserExtensionViewModel>? ExtensionPopupRequested;
+
+    partial void OnIsExtensionsOpenChanged(bool value)
+    {
+        if (value)
+            ExtensionsRefreshRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>シェルが取り直した一覧で差し替える（有効/無効の通知線もここで結び直す）。</summary>
+    public void SetExtensions(IEnumerable<BrowserExtensionViewModel> items)
+    {
+        Extensions.Clear();
+        foreach (var item in items)
+        {
+            item.EnabledChanged = changed => ExtensionEnableChanged?.Invoke(this, changed);
+            Extensions.Add(item);
+        }
+        OnPropertyChanged(nameof(HasExtensions));
+    }
+
+    public bool HasExtensions => Extensions.Count > 0;
+
+    [RelayCommand]
+    private void InstallExtension()
+    {
+        if (!string.IsNullOrWhiteSpace(ExtensionInput))
+            ExtensionInstallRequested?.Invoke(this, ExtensionInput.Trim());
+    }
+
+    [RelayCommand]
+    private void InstallExtensionFromFolder() => ExtensionFolderInstallRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>ストアの拡張機能ページを開いたときの促しバー。<b>ストアを見て入れる</b>のが本線で、
+    /// URL/ID の貼り付けは手が別にあるとき用。ページ側の「Chrome に追加」を押しても同じ道を通る
+    /// （<see cref="ExtensionStoreInstallRequested"/>）。</summary>
+    [ObservableProperty] private bool _isExtensionPromptVisible;
+    [ObservableProperty] private string _extensionPromptMessage = "";
+    [ObservableProperty] private bool _isExtensionPromptInstalled;
+
+    /// <summary>いま見ているストアページの拡張機能を入れる要求（ID はシェルが URL から取り直す）。</summary>
+    public event EventHandler? ExtensionStoreInstallRequested;
+
+    public void ShowExtensionPrompt(string name, bool alreadyInstalled)
+    {
+        ExtensionPromptMessage = alreadyInstalled
+            ? $"「{name}」は追加済みです。"
+            : $"「{name}」を Loomo のブラウザに追加できます。";
+        IsExtensionPromptInstalled = alreadyInstalled;
+        IsExtensionPromptVisible = true;
+    }
+
+    /// <summary>バーを引っ込める（ページが変わった・追加した）。閉じた事実は覚えない。</summary>
+    public void CloseExtensionPrompt() => IsExtensionPromptVisible = false;
+
+    /// <summary>使う側が × で閉じた。<b>こちらだけ覚える</b>——題が後から確定して再評価が走るたびに
+    /// 閉じたバーが戻ってくるのを避ける。</summary>
+    public event EventHandler? ExtensionPromptDismissed;
+
+    [RelayCommand]
+    private void DismissExtensionPrompt()
+    {
+        IsExtensionPromptVisible = false;
+        ExtensionPromptDismissed?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void InstallExtensionFromStore() => ExtensionStoreInstallRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>🧩 の一覧から拡張機能ストアを開く。</summary>
+    [RelayCommand]
+    private void OpenExtensionStore()
+    {
+        IsExtensionsOpen = false;
+        OpenUrlRequested?.Invoke(this, (BrowserExtensionStore.StoreHomeUrl, false));
+    }
+
+    [RelayCommand]
+    private void RemoveExtension(BrowserExtensionViewModel? item)
+    {
+        if (item is not null)
+            ExtensionRemoveRequested?.Invoke(this, item);
+    }
+
+    [RelayCommand]
+    private void OpenExtensionPopup(BrowserExtensionViewModel? item)
+    {
+        if (item?.HasPopup != true)
+            return;
+        IsExtensionsOpen = false;
+        ExtensionPopupRequested?.Invoke(this, item);
+    }
+
+    // ── 保存済みログイン情報（§21.5.2） ───────────────────────────────
+    private IReadOnlyList<SavedPasswordViewModel> _allPasswords = Array.Empty<SavedPasswordViewModel>();
+
+    public ObservableCollection<SavedPasswordViewModel> Passwords { get; } = new();
+
+    [ObservableProperty] private bool _isPasswordsOpen;
+    [ObservableProperty] private string _passwordStatus = "";
+    [ObservableProperty] private string _passwordFilter = "";
+
+    /// <summary>一覧を開いたときに読み込む要求（<b>開くまで復号しない</b>——
+    /// 使いもしない平文をずっと抱えない）。</summary>
+    public event EventHandler? PasswordsRefreshRequested;
+    /// <summary>保存済みログイン情報を全部消す要求（個別削除はプロファイルへの書き込みになるので持たない）。</summary>
+    public event EventHandler? PasswordsClearRequested;
+
+    partial void OnIsPasswordsOpenChanged(bool value)
+    {
+        if (value)
+        {
+            PasswordsRefreshRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        // 閉じたら平文を手放し、次に開いたときは伏せた状態から始める。
+        _allPasswords = Array.Empty<SavedPasswordViewModel>();
+        Passwords.Clear();
+        PasswordFilter = "";
+        OnPropertyChanged(nameof(HasPasswords));
+    }
+
+    partial void OnPasswordFilterChanged(string value) => ApplyPasswordFilter();
+
+    public void SetPasswords(IReadOnlyList<SavedPasswordViewModel> items, string? error)
+    {
+        _allPasswords = items;
+        PasswordStatus = error
+            ?? (items.Count == 0 ? "保存されたログイン情報はまだありません。" : $"{items.Count} 件");
+        ApplyPasswordFilter();
+    }
+
+    private void ApplyPasswordFilter()
+    {
+        var query = PasswordFilter.Trim();
+        Passwords.Clear();
+        foreach (var item in _allPasswords)
+            if (query.Length == 0
+                || item.Host.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.Username.Contains(query, StringComparison.OrdinalIgnoreCase))
+                Passwords.Add(item);
+        OnPropertyChanged(nameof(HasPasswords));
+    }
+
+    public bool HasPasswords => Passwords.Count > 0;
+
+    [RelayCommand]
+    private void TogglePasswordReveal(SavedPasswordViewModel? item)
+    {
+        if (item is not null)
+            item.IsRevealed = !item.IsRevealed;
+    }
+
+    [RelayCommand]
+    private void CopyPassword(SavedPasswordViewModel? item) => CopyToClipboard(item?.Password, "パスワード");
+
+    [RelayCommand]
+    private void CopyUsername(SavedPasswordViewModel? item) => CopyToClipboard(item?.Username, "ユーザー名");
+
+    [RelayCommand]
+    private void OpenPasswordSite(SavedPasswordViewModel? item)
+    {
+        if (item is null)
+            return;
+        IsPasswordsOpen = false;
+        OpenUrlRequested?.Invoke(this, (item.Origin, false));
+    }
+
+    [RelayCommand]
+    private void ClearPasswords() => PasswordsClearRequested?.Invoke(this, EventArgs.Empty);
+
+    private static void CopyToClipboard(string? text, string label)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+        try
+        {
+            Clipboard.SetText(text);
+            ToastService.Success($"{label}をコピーしました。");
+        }
+        catch
+        {
+            // クリップボードを他プロセスが握っている間は失敗する。
+            ToastService.Error($"{label}をコピーできませんでした。");
+        }
     }
 }

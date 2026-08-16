@@ -46,9 +46,13 @@ public partial class ShellWindow : Window {
     // 共有 UserDataFolder の全 WebView2 が同一引数である必要があるため、ここで一括付与する。
     private static readonly string WebViewAdditionalBrowserArguments =
         "--allow-file-access-from-files " + Services.WebViewDebugPort.Argument;
+    // 拡張機能はプロファイル（＝UserDataFolder）単位の設定なので、ここで一度立てれば
+    // ブラウザペインのタブも切り離しウィンドウも同じ顔ぶれになる。既定は false で、
+    // false のままだと AddBrowserExtensionAsync は ERROR_NOT_SUPPORTED で失敗する（§21.5.2）。
     private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
         => new() {
-            UserDataFolder = WebViewUserDataFolder, AdditionalBrowserArguments = WebViewAdditionalBrowserArguments
+            UserDataFolder = WebViewUserDataFolder, AdditionalBrowserArguments = WebViewAdditionalBrowserArguments,
+            AreBrowserExtensionsEnabled = true
         };
     private bool _syncingEditorFromSupport;
     private WorkspaceSnapshot? _activeWorkspace;
