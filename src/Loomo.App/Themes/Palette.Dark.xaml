@@ -8,7 +8,11 @@
     <SolidColorBrush x:Key="Bg" Color="#FF1E1E1E" />
     <SolidColorBrush x:Key="BgAlt" Color="#FF252526" />
     <SolidColorBrush x:Key="Panel" Color="#FF1E1E1E" />
-    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF333333" />
+    <!-- chrome（タイトルバー・ActivityBar・軌跡バー・AIアイコン列）の共通背景。
+         「本体より一段持ち上がった面」に見えるよう、暗色テーマでは Bg より少し明るく、
+         明色テーマでは Bg より少し暗くする（明色で明るくすると白に埋もれるため向きが逆）。
+         差は BgAlt と同程度に抑え、帯として浮くが主張はしない量に留める。 -->
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF373737" />
     <SolidColorBrush x:Key="Border" Color="#FF3C3C3C" />
     <SolidColorBrush x:Key="Accent" Color="#FF0E639C" />
     <SolidColorBrush x:Key="AccentHover" Color="#FF1177BB" />

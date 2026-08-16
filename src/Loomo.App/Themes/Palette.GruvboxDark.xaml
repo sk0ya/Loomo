@@ -7,7 +7,7 @@
     <SolidColorBrush x:Key="Bg" Color="#FF282828" />
     <SolidColorBrush x:Key="BgAlt" Color="#FF32302F" />
     <SolidColorBrush x:Key="Panel" Color="#FF282828" />
-    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF1D2021" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF464140" />
     <SolidColorBrush x:Key="Border" Color="#FF504945" />
     <SolidColorBrush x:Key="Accent" Color="#FFD79921" />
     <SolidColorBrush x:Key="AccentHover" Color="#FFFABD2F" />

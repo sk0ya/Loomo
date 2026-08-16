@@ -7,7 +7,7 @@
     <SolidColorBrush x:Key="Bg" Color="#FFFAFAFA" />
     <SolidColorBrush x:Key="BgAlt" Color="#FFF0F0F1" />
     <SolidColorBrush x:Key="Panel" Color="#FFFAFAFA" />
-    <SolidColorBrush x:Key="ActivityBarBg" Color="#FFE7E7E8" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FFE2E2E4" />
     <SolidColorBrush x:Key="Border" Color="#FFD3D3D4" />
     <!-- 明色テーマなので、ホバーは暗くする（暗色テーマの「明るくする」とは逆向き）。
          明るくすると Accent 上の白文字が読めなくなる。 -->

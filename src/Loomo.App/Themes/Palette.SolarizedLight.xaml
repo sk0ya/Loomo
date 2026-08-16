@@ -7,7 +7,7 @@
     <SolidColorBrush x:Key="Bg" Color="#FFFDF6E3" />
     <SolidColorBrush x:Key="BgAlt" Color="#FFEEE8D5" />
     <SolidColorBrush x:Key="Panel" Color="#FFFDF6E3" />
-    <SolidColorBrush x:Key="ActivityBarBg" Color="#FFE6DFC8" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FFE0D8BE" />
     <SolidColorBrush x:Key="Border" Color="#FFDDD6C1" />
     <!-- 明色テーマなので、Accent 上の白文字が読めるよう Solarized の青より暗く寄せ、
          ホバーはさらに暗くする（暗色テーマの「明るくする」とは逆向き）。 -->
