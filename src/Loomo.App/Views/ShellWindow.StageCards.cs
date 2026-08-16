@@ -86,6 +86,8 @@ public partial class ShellWindow {
         => PaneLayoutDebugLog.Time("RebuildWings", RebuildWingsCore);
     private void RebuildWingsCore() {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
+        if (CollapseWingsForFullscreen())
+            return;
         if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)) {
             ScheduleLayoutWings();
             return;
@@ -107,8 +109,25 @@ public partial class ShellWindow {
         SyncThumbnailSources(
             LayoutWingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
     }
+    /// <summary>F11 の全画面（集中）中は袖を出さない。舞台・通常どちらの再構築経路も最後に袖の
+    /// 幅／表示を組み直すので、そこで畳み直さないと <see cref="TogglePaneFullscreen"/> が
+    /// 0 にした袖幅がそのまま元に戻ってしまう。畳めたら true。
+    /// カードは捨てずに据え置く（通常レイアウトの組み直しは ContextIdle 送りなので、捨てると
+    /// 全画面を抜けた直後の数フレーム、幅だけ戻った空の袖が見える）。</summary>
+    private bool CollapseWingsForFullscreen() {
+        if (!_paneFullscreen)
+            return false;
+        _layoutWingBuildPending = false;
+        WingHost.Visibility = Visibility.Collapsed;
+        WingSplitter.Visibility = Visibility.Collapsed;
+        WingColumn.Width = new GridLength(0);
+        WingSplitterColumn.Width = new GridLength(0);
+        return true;
+    }
     private void ScheduleLayoutWings() {
         if (_stageActive)
+            return;
+        if (CollapseWingsForFullscreen())
             return;
         if (_paneSplitterDragging) {
             PaneLayoutDebugLog.Log("ScheduleLayoutWings skipped: splitter drag in progress");
@@ -155,6 +174,8 @@ public partial class ShellWindow {
     }
     private void UpdateWingHostVisibility() {
         if (WingHost is null)
+            return;
+        if (CollapseWingsForFullscreen())
             return;
         WingHost.Visibility = WingStrip.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         WingSplitter.Visibility = WingHost.Visibility;
