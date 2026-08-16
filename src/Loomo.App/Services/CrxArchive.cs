@@ -29,25 +29,48 @@ public static class CrxArchive
 {
     private static readonly byte[] Magic = "Cr24"u8.ToArray();
 
-    /// <summary>crx を <paramref name="destination"/> へ展開する（中身は事前に空にする）。</summary>
+    /// <summary>展開中の置き場に付ける接尾辞（<c>&lt;ID&gt;.tmp</c>）。
+    /// <see cref="BrowserExtensionStore.CleanOrphanFolders"/> はこれを取り残しと見なさない。</summary>
+    public const string StagingSuffix = ".tmp";
+
+    /// <summary>crx を <paramref name="destination"/> へ展開する（中身は事前に空にする）。
+    ///
+    /// <para><b>展開が済むまで既存の中身に触らない</b>。隣の <c>&lt;destination&gt;.tmp</c> へ出し切ってから
+    /// 置き換える——先に消すと、ダウンロードが途中で切れた crx（ZIP が壊れていて
+    /// <see cref="ZipArchive"/> が投げる）で<b>入れ直しのつもりが今まで動いていた拡張機能を失う</b>ことになる。
+    /// WebView2 には登録されたまま実体だけ消えるので、いちばん困る形の壊れ方をする。</para></summary>
     public static CrxExtractResult Extract(Stream crx, string destination)
     {
         var buffer = ReadAll(crx);
         var (zipOffset, publicKey) = ParseHeader(buffer);
 
-        if (Directory.Exists(destination))
-            Directory.Delete(destination, recursive: true);
-        Directory.CreateDirectory(destination);
-
-        using (var zip = new ZipArchive(
-            new MemoryStream(buffer, zipOffset, buffer.Length - zipOffset, writable: false),
-            ZipArchiveMode.Read))
+        var staging = destination.TrimEnd(Path.DirectorySeparatorChar) + StagingSuffix;
+        try
         {
-            ExtractEntries(zip, destination);
-        }
+            if (Directory.Exists(staging))
+                Directory.Delete(staging, recursive: true);
+            Directory.CreateDirectory(staging);
 
-        if (publicKey is not null)
-            TryWriteManifestKey(destination, publicKey);
+            using (var zip = new ZipArchive(
+                new MemoryStream(buffer, zipOffset, buffer.Length - zipOffset, writable: false),
+                ZipArchiveMode.Read))
+            {
+                ExtractEntries(zip, staging);
+            }
+
+            if (publicKey is not null)
+                TryWriteManifestKey(staging, publicKey);
+
+            if (Directory.Exists(destination))
+                Directory.Delete(destination, recursive: true);
+            Directory.Move(staging, destination);
+        }
+        finally
+        {
+            // 途中で失敗したときの置き場を残さない（消せなくても実害は無い）。
+            try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
         return new CrxExtractResult(destination, publicKey);
     }
 
@@ -68,12 +91,16 @@ public static class CrxArchive
     /// <summary>CRX2: Cr24 | version | 公開鍵長 | 署名長 | 公開鍵 | 署名 | ZIP。</summary>
     private static (int, string?) ParseCrx2(byte[] buffer)
     {
-        var keyLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(8, 4));
-        var signatureLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(12, 4));
+        // 長さは <c>uint</c>。int へ落としてから足すと桁あふれで負になり、範囲検査をすり抜けたまま
+        // MemoryStream の生成で <c>ArgumentOutOfRangeException</c> になる——例外の型が変わるので
+        // <see cref="BrowserExtensionStore.DownloadAsync"/> の Chrome→Edge の乗り換えも効かなくなる
+        // （CRX3 側と同じ用心）。
+        long keyLength = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(8, 4));
+        long signatureLength = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(12, 4));
         var offset = 16 + keyLength + signatureLength;
-        if (keyLength < 0 || signatureLength < 0 || offset > buffer.Length)
+        if (offset > buffer.Length)
             throw new InvalidDataException("crx のヘッダが壊れています。");
-        return (offset, keyLength > 0 ? Convert.ToBase64String(buffer, 16, keyLength) : null);
+        return ((int)offset, keyLength > 0 ? Convert.ToBase64String(buffer, 16, (int)keyLength) : null);
     }
 
     /// <summary>CRX3: Cr24 | version | ヘッダ長 | ヘッダ(protobuf) | ZIP。

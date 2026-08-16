@@ -160,6 +160,13 @@ public partial class ShellWindow {
             return;
         }
         ConfigureBrowserCore(tab, tab.View.CoreWebView2!);
+        // 拡張機能のページ（設定画面）用の仕込みは<b>最初の遷移より先に</b>済ませる——ドキュメント生成時の
+        // 仕込みなので、待たずに navigate すると開いたその画面だけ効かない（§21.5.2）。
+        try {
+            await tab.View.CoreWebView2!.AddScriptToExecuteOnDocumentCreatedAsync(ExtensionPageBridge.Script);
+        } catch {
+            // 仕込めなくても普通のページには影響しない。
+        }
         if (tab.PendingUrl is { } pending) {
             tab.PendingUrl = null;
             TryNavigateBrowserCore(tab.View.CoreWebView2!, pending);

@@ -1164,7 +1164,9 @@
                                     <TextBlock Text="{Binding ExtensionStatus}" Margin="6,2" TextWrapping="Wrap"
                                                Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                                Visibility="{Binding ExtensionStatus, Converter={StaticResource NonEmptyToVis}}" />
-                                    <ItemsControl ItemsSource="{Binding Extensions}" MaxHeight="320">
+                                    <!-- 素の ItemsControl は ScrollViewer を持たない（上の注記と同じ）。 -->
+                                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding Extensions}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <Border Padding="6,4" Margin="0,1" CornerRadius="2"
@@ -1177,10 +1179,19 @@
                                                                Margin="0,0,6,0" VerticalAlignment="Center"
                                                                Source="{Binding IconPath}"
                                                                Visibility="{Binding HasIcon, Converter={StaticResource BoolToVis}}" />
+                                                        <!-- 導入の最中は押させない（展開中のフォルダーの掃除と鉢合わせる）。 -->
                                                         <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
                                                                 Content="削除" FontSize="{DynamicResource Fs11}"
                                                                 Foreground="{DynamicResource FgDim}"
+                                                                IsEnabled="{Binding DataContext.IsExtensionsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBool}}"
                                                                 Command="{Binding DataContext.RemoveExtensionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                        <!-- 設定画面はここが唯一の入口（WebView2 には chrome://extensions が無い）。 -->
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                                Content="設定" FontSize="{DynamicResource Fs11}"
+                                                                ToolTip="この拡張機能の設定画面を新しいタブで開く"
+                                                                Visibility="{Binding HasOptions, Converter={StaticResource BoolToVis}}"
+                                                                Command="{Binding DataContext.OpenExtensionOptionsCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                 CommandParameter="{Binding}" />
                                                         <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
                                                                 Content="開く" FontSize="{DynamicResource Fs11}"
@@ -1201,6 +1212,7 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    </ScrollViewer>
                                     <!-- 本線はストアを開いて、そのページで追加すること。 -->
                                     <Button Margin="4,6,4,2" HorizontalAlignment="Left"
                                             Style="{StaticResource FlatButton}" Padding="8,3"
@@ -1261,7 +1273,10 @@
                                     <TextBlock Text="{Binding PasswordStatus}" Margin="6,2" TextWrapping="Wrap"
                                                Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                                Visibility="{Binding PasswordStatus, Converter={StaticResource NonEmptyToVis}}" />
-                                    <ItemsControl ItemsSource="{Binding Passwords}" MaxHeight="360">
+                                    <!-- 素の ItemsControl は ScrollViewer を持たないので、MaxHeight だけだと
+                                         はみ出した行に辿り着けない（ブックマーク／履歴と同じ包み方にする）。 -->
+                                    <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding Passwords}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <Border Padding="6,4" Margin="0,1" CornerRadius="2"
@@ -1308,6 +1323,7 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    </ScrollViewer>
                                 </StackPanel>
                             </Border>
                         </Popup>

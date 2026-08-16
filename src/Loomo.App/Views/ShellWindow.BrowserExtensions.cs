@@ -12,6 +12,11 @@ public partial class ShellWindow {
     private readonly BrowserExtensionStore _extensionStore = new();
     private LoomoWebView2? _extensionPopupView;
 
+    /// <summary>ポップアップの <c>CoreWebView2</c> に外へ出る道を結ぶ仕事（結ぶのは一度だけ）。
+    /// <b>bool の旗ではなく仕事そのものを覚える</b>——旗だと、仕込みを待っている間に来た2回目が
+    /// 「済んでいる」と読んで先に遷移してしまい、防ぎたかった「最初の1回だけ歯車が効かない」が起きる。</summary>
+    private Task? _extensionPopupBridge;
+
     /// <summary>促しバーを × で閉じられた拡張機能。別のページへ移れば忘れる（その場限りの黙認）。</summary>
     private string? _dismissedStoreExtensionId;
 
@@ -69,7 +74,7 @@ public partial class ShellWindow {
     }
 
     /// <summary>WebView2 が返す拡張機能に、こちらが覚えている出所（フォルダー）を突き合わせて行を作る。
-    /// ボタン（ポップアップ）の有無は manifest からしか分からない——WebView2 は拡張機能の UI を
+    /// ボタン（ポップアップ）と設定画面の有無は manifest からしか分からない——WebView2 は拡張機能の UI を
     /// 描いてくれないので、<b>ホスト側で manifest を読んで自分で開く</b>ほかない。</summary>
     private static BrowserExtensionViewModel BuildExtensionViewModel(
         CoreWebView2BrowserExtension extension, List<BrowserExtensionRecord> records) {
@@ -77,7 +82,6 @@ public partial class ShellWindow {
         var manifest = record?.FolderPath is { Length: > 0 } folder
             ? BrowserExtensionStore.ReadManifest(folder)
             : null;
-        var popup = manifest?.PopupPath;
         return new BrowserExtensionViewModel(extension.IsEnabled) {
             Id = extension.Id,
             // 表示名は WebView2 が返すもの（manifest の __MSG_…__ を解いた地域化済みの名前）を使う。
@@ -85,11 +89,14 @@ public partial class ShellWindow {
             Version = manifest?.Version,
             FolderPath = record?.FolderPath,
             IconPath = ResolveExtensionAsset(record?.FolderPath, manifest?.IconPath),
-            PopupUrl = string.IsNullOrWhiteSpace(popup)
-                ? null
-                : $"chrome-extension://{extension.Id}/{popup.TrimStart('/')}",
+            PopupUrl = ExtensionPageUrl(extension.Id, manifest?.PopupPath),
+            OptionsUrl = ExtensionPageUrl(extension.Id, manifest?.OptionsPath),
         };
     }
+
+    /// <summary>manifest が指すページ（ポップアップ・設定画面）の <c>chrome-extension://</c> URL。</summary>
+    private static string? ExtensionPageUrl(string id, string? path)
+        => string.IsNullOrWhiteSpace(path) ? null : $"chrome-extension://{id}/{path.TrimStart('/')}";
 
     // ── ストアから追加する（本線） ─────────────────────────────────────
     /// <summary>ページの「Chrome に追加」を横取りしてこちらの導入へ回す注入スクリプト。
@@ -157,8 +164,18 @@ public partial class ShellWindow {
     }
 
     /// <summary>ページ側のボタンからの合図を受ける。<b>ID は URL から取り直す</b>——
-    /// ページから渡された値を信用して導入先を決めない。</summary>
+    /// ページから渡された値を信用して導入先を決めない。
+    ///
+    /// <para>合図の<b>出どころも見る</b>（<c>e.Source</c> がストアの拡張機能ページか）。
+    /// この合図はタブの中のどのフレームからも送れるので、見ない場合はストアのページに載った
+    /// 第三者の iframe が<b>クリック無しに導入を起こせる</b>——横取りしているのは
+    /// 「使う側がストアの追加ボタンを押した」という出来事であって、ページからの依頼ではない。</para></summary>
     private void OnBrowserWebMessageReceived(BrowserTab tab, CoreWebView2WebMessageReceivedEventArgs e) {
+        // タブで開いた設定画面も、その中から別のページ（説明ページ・別の設定タブ）を開こうとする。
+        if (ExtensionPageBridge.TryReadOpenRequest(e.WebMessageAsJson, e.Source, out var target)) {
+            OpenExtensionPageInBrowserTab(target);
+            return;
+        }
         try {
             var outer = JsonSerializer.Deserialize<JsonElement>(e.WebMessageAsJson);
             // postMessage(string) は JSON 文字列として届くので、二重に解く。
@@ -175,6 +192,8 @@ public partial class ShellWindow {
         } catch (JsonException) {
             return;   // ページが送る他の web message は素通しする
         }
+        if (!BrowserExtensionStore.TryParseStoreDetail(e.Source, out _, out _))
+            return;
         if (ReferenceEquals(_activeBrowserTab, tab))
             _ = InstallBrowserExtensionFromCurrentPageAsync();
     }
@@ -257,7 +276,7 @@ public partial class ShellWindow {
     private async Task AddExtensionFolderAsync(
         CoreWebView2Profile profile, string folderPath, string? storeId, BrowserExtensionStoreKind? kind) {
         var added = await profile.AddBrowserExtensionAsync(folderPath);
-        _extensionStore.Remember(new BrowserExtensionRecord {
+        var remembered = _extensionStore.Remember(new BrowserExtensionRecord {
             Id = added.Id,
             FolderPath = folderPath,
             StoreId = storeId,
@@ -269,6 +288,11 @@ public partial class ShellWindow {
         // 内容スクリプトは<b>次に読み込むページから</b>入る。開いたままのページで何も起きないのを
         // 「入っていない」と読まれないように、ここで言っておく。
         ToastService.Success($"「{added.Name}」を追加しました。開いているページは再読み込みしてください。");
+        // 出所を書けなかったとき（記録ファイルが壊れている等）は黙らない——拡張機能は動くが、
+        // ボタンも設定画面も出ず、掃除も止まったままになる。
+        if (!remembered)
+            _vm.Browser.ExtensionStatus =
+                "出所を記録できませんでした（browser-extensions.json）。ボタンや設定画面は出ません。";
     }
 
     /// <summary>有効/無効を WebView2 へ流す。<b>通らなかったらチェックを戻す</b>——
@@ -295,7 +319,10 @@ public partial class ShellWindow {
         try {
             await extension.RemoveAsync();
             // 実体フォルダーの後始末は、こちらが展開したものだけ（フォルダー指定のものは残す）。
-            _extensionStore.Forget(item.Id);
+            // <b>導入の最中は掃除しない</b>——記録が書かれるのは登録が済んだ後なので、展開中の
+            // フォルダーが「記録に無い＝取り残し」に見えて、入れている最中のものを消してしまう
+            // （一覧の取り直しと同じ用心。掃除は次に一覧を開いたときに回ってくる）。
+            _extensionStore.Forget(item.Id, cleanFolders: !_vm.Browser.IsExtensionsBusy);
             await RefreshBrowserExtensionsAsync();
             ToastService.Info($"「{item.Name}」を削除しました。");
         } catch (Exception ex) {
@@ -329,15 +356,29 @@ public partial class ShellWindow {
     /// <c>chrome-extension://&lt;ID&gt;/popup.html</c> を<b>こちらのポップアップに載せた WebView2 で開く</b>——
     /// これが無いと Bitwarden や 1Password は「入っているが触れない」ままになる。</summary>
     private void OpenBrowserExtensionPopup(BrowserExtensionViewModel item) {
-        if (item.PopupUrl is not { Length: > 0 } url)
-            return;
+        if (item.PopupUrl is { Length: > 0 } url)
+            _ = OpenBrowserExtensionPopupAsync(url);
+    }
+
+    /// <summary>器を先に出してから中身を読み込む。<b>実体化と仕込みが済むまで遷移させない</b>——
+    /// ポップアップの中の歯車（<see cref="ExtensionPageBridge"/>）はドキュメント生成時の仕込みなので、
+    /// 先に <c>Source</c> を立てて読み込みを始めてしまうと、最初の1回だけ効かない拡張機能ができる。</summary>
+    private async Task OpenBrowserExtensionPopupAsync(string url) {
         var view = _extensionPopupView ??= CreateExtensionPopupView();
         BrowserExtensionPopupHost.Child = view;
         BrowserExtensionPopup.IsOpen = true;
-        if (view.CoreWebView2 is { } core)
-            TryNavigateBrowserCore(core, url);
-        else
-            view.Source = new Uri(url);
+        if (view.CoreWebView2 is null) {
+            try {
+                await view.EnsureCoreWebView2Async();
+            } catch {
+                _vm.Browser.ExtensionStatus = "この拡張機能の画面を開けませんでした。";
+                return;
+            }
+        }
+        if (view.CoreWebView2 is not { } core)
+            return;
+        await (_extensionPopupBridge ??= ConfigureExtensionPopupCoreAsync(core));
+        TryNavigateBrowserCore(core, url);
     }
 
     private LoomoWebView2 CreateExtensionPopupView() {
@@ -348,6 +389,33 @@ public partial class ShellWindow {
         // ポップアップの中身は拡張機能が決める（大きさも中身次第）ので、読み込み後に測って器を合わせる。
         view.NavigationCompleted += async (_, _) => await FitExtensionPopupAsync(view);
         return view;
+    }
+
+    /// <summary>ポップアップの中身から<b>外へ出る道</b>を結ぶ（一度だけ）。ポップアップの歯車やリンクは
+    /// タブを開こうとするので、受け止めないと押しても何も起きない——それが「入っているが設定できない」の
+    /// 正体だった（§21.5.2）。</summary>
+    private async Task ConfigureExtensionPopupCoreAsync(CoreWebView2 core) {
+        core.NewWindowRequested += (_, e) => {
+            e.Handled = true;
+            OpenExtensionPageInBrowserTab(e.Uri);
+        };
+        core.WebMessageReceived += (_, e) => {
+            if (ExtensionPageBridge.TryReadOpenRequest(e.WebMessageAsJson, e.Source, out var target))
+                OpenExtensionPageInBrowserTab(target);
+        };
+        try {
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(ExtensionPageBridge.Script);
+        } catch {
+            // 仕込めなくても、ポップアップ自体は開く（歯車が無反応なままになるだけ）。
+        }
+    }
+
+    /// <summary>拡張機能のページから頼まれた行き先を、部屋のブラウザタブで開く。
+    /// ポップアップは畳む——開いたページの上に小窓が残ると、どちらを見ているのか分からなくなる。</summary>
+    private void OpenExtensionPageInBrowserTab(string url) {
+        BrowserExtensionPopup.IsOpen = false;
+        _vm.Browser.IsExtensionsOpen = false;
+        _ = OpenBrowserLibraryUrlAsync(url, newTab: true);
     }
 
     /// <summary>拡張機能のポップアップの<b>中身が欲しがっている大きさ</b>を測る。
@@ -376,6 +444,10 @@ public partial class ShellWindow {
 
     private async Task FitExtensionPopupAsync(LoomoWebView2 view) {
         if (view.CoreWebView2 is not { } core)
+            return;
+        // 閉じたときの <c>about:blank</c> でも遷移完了は来る。白紙を測ると器が下限（240×120）まで
+        // 縮み、<b>次に開いたポップアップがその小ささで出る</b>（測り直しの開き直しでやっと戻る）。
+        if (!BrowserExtensionPopup.IsOpen || core.Source is null or "" or "about:blank")
             return;
         try {
             var json = await core.ExecuteScriptAsync(PopupMeasureScript);

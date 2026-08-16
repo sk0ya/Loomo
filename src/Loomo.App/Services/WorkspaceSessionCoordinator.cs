@@ -63,8 +63,11 @@ public static class WorkspaceSessionCoordinator
     }
 
     /// <summary>アドレス欄にそのまま渡してよいスキーム（それ以外の "xxx:" はホスト名か検索語として扱う）。</summary>
+    /// <remarks><c>chrome-extension</c> は拡張機能の設定画面・ポップアップの URL（§21.5.2）。
+    /// これが無いと、こちらから開く設定画面がまるごと検索語として Google へ流れる。</remarks>
     private static readonly HashSet<string> KnownSchemes = new(StringComparer.OrdinalIgnoreCase) {
         "http", "https", "file", "about", "data", "view-source", "ftp", "mailto", "edge", "chrome",
+        "chrome-extension",
     };
 
     /// <summary>先頭の <c>スキーム:</c> 部分（無ければ空文字）。</summary>

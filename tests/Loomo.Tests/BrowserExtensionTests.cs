@@ -206,6 +206,40 @@ public class BrowserExtensionTests
             () => CrxArchive.Extract(new MemoryStream(Encoding.ASCII.GetBytes("PK\u0003\u0004not a crx")), destination));
     }
 
+    /// <summary>ダウンロードが途中で切れた crx（ZIP が壊れている）で<b>今まで動いていた実体を失わない</b>。
+    /// 先に消してから展開すると、入れ直しのつもりが WebView2 には登録されたまま実体だけ消える
+    /// ——いちばん困る壊れ方をする。</summary>
+    [Fact]
+    public void 壊れたcrxでは既存の展開済みフォルダーを壊さない()
+    {
+        var destination = Path.Combine(TempDirectory(), "ext");
+        CrxArchive.Extract(
+            new MemoryStream(BuildCrx3(BuildZip(("manifest.json", "{\"name\":\"前の版\"}")), null)), destination);
+        // ZIP の中身だけ切り落とした crx（ヘッダは正しい）。
+        var broken = BuildCrx3(BuildZip(("manifest.json", "{}")).Take(20).ToArray(), null);
+
+        Assert.ThrowsAny<Exception>(() => CrxArchive.Extract(new MemoryStream(broken), destination));
+
+        Assert.Equal("{\"name\":\"前の版\"}", File.ReadAllText(Path.Combine(destination, "manifest.json")));
+        Assert.False(Directory.Exists(destination + CrxArchive.StagingSuffix));   // 置き場を残さない
+    }
+
+    /// <summary>CRX2 の長さは <c>uint</c>。int で足すと桁あふれで範囲検査をすり抜け、例外の型が変わって
+    /// <see cref="BrowserExtensionStore.DownloadAsync"/> の Chrome→Edge の乗り換えが効かなくなる。</summary>
+    [Fact]
+    public void CRX2の桁あふれる長さはInvalidDataExceptionで弾く()
+    {
+        var destination = Path.Combine(TempDirectory(), "ext");
+        var crx = new byte[] { (byte)'C', (byte)'r', (byte)'2', (byte)'4' }
+            .Concat(BitConverter.GetBytes(2u))
+            .Concat(BitConverter.GetBytes(0x7FFFFFFFu))   // 公開鍵長
+            .Concat(BitConverter.GetBytes(0x7FFFFFFFu))   // 署名長（int で足すと負になる）
+            .Concat(BuildZip(("manifest.json", "{}")))
+            .ToArray();
+
+        Assert.Throws<InvalidDataException>(() => CrxArchive.Extract(new MemoryStream(crx), destination));
+    }
+
     // ===== ストアの URL/ID =====
 
     [Theory]
@@ -305,6 +339,22 @@ public class BrowserExtensionTests
         var manifest = BrowserExtensionStore.ReadManifest(directory)!;
 
         Assert.Null(manifest.PopupPath);
+        Assert.Null(manifest.OptionsPath);
+    }
+
+    /// <summary>設定画面は manifest からしか辿れない（WebView2 に chrome://extensions は無い）。
+    /// MV3 の <c>options_ui.page</c> と、古い <c>options_page</c> の両方を読む。</summary>
+    [Fact]
+    public void 設定画面のページを読む()
+    {
+        var mv3 = TempDirectory();
+        File.WriteAllText(Path.Combine(mv3, "manifest.json"),
+            "{\"name\":\"新式\",\"options_ui\":{\"page\":\"dashboard.html\",\"open_in_tab\":true}}");
+        var mv2 = TempDirectory();
+        File.WriteAllText(Path.Combine(mv2, "manifest.json"), "{\"name\":\"旧式\",\"options_page\":\"options.html\"}");
+
+        Assert.Equal("dashboard.html", BrowserExtensionStore.ReadManifest(mv3)!.OptionsPath);
+        Assert.Equal("options.html", BrowserExtensionStore.ReadManifest(mv2)!.OptionsPath);
     }
 
     [Fact]
@@ -369,6 +419,45 @@ public class BrowserExtensionTests
         store.CleanOrphanFolders();
 
         Assert.True(Directory.Exists(folder));
+    }
+
+    /// <summary>「掃除しない」の用心は<b>書く側でも守る</b>。読めない記録を空と見なして書き直すと、
+    /// 記録は readable な嘘（その1件だけ）になり、次の掃除が他の展開済み拡張機能をまとめて消す。</summary>
+    [Fact]
+    public void 記録が壊れているときは書き足さない()
+    {
+        var temp = TempDirectory();
+        var root = Path.Combine(temp, "BrowserExtensions");
+        var store = new BrowserExtensionStore(root, () => new System.Net.Http.HttpClient());
+        var keep = store.FolderFor("keep");
+        Directory.CreateDirectory(keep);
+        var recordPath = Path.Combine(temp, "browser-extensions.json");
+        File.WriteAllText(recordPath, "[{\"id\":\"keep\"");   // 切れた JSON
+
+        Assert.False(store.Remember(new BrowserExtensionRecord { Id = "new", FolderPath = store.FolderFor("new") }));
+        Assert.False(store.Forget("keep"));
+
+        Assert.Equal("[{\"id\":\"keep\"", File.ReadAllText(recordPath));   // 壊れたまま＝嘘の全体像を作らない
+        store.CleanOrphanFolders();
+        Assert.True(Directory.Exists(keep));
+    }
+
+    /// <summary>導入の最中は掃除しない（記録が書かれるのは登録の後なので、展開中のフォルダーが
+    /// 「記録に無い＝取り残し」に見える）。</summary>
+    [Fact]
+    public void 掃除しない削除では展開中のフォルダーを消さない()
+    {
+        var temp = TempDirectory();
+        var store = new BrowserExtensionStore(Path.Combine(temp, "BrowserExtensions"),
+            () => new System.Net.Http.HttpClient());
+        var installing = store.FolderFor("installing");
+        Directory.CreateDirectory(installing);
+        store.Remember(new BrowserExtensionRecord { Id = "abc", FolderPath = store.FolderFor("abc") });
+
+        Assert.True(store.Forget("abc", cleanFolders: false));
+
+        Assert.True(Directory.Exists(installing));
+        Assert.Empty(store.LoadRecords());
     }
 
     /// <summary>置き換えは一時ファイル経由。書き途中の <c>.tmp</c> が残らないことも見ておく。</summary>

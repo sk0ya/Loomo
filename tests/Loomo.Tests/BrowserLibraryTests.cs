@@ -322,6 +322,15 @@ public class BrowserLibraryTests
     public void Address_gets_a_scheme_when_it_looks_like_a_host(string input, string expected)
         => Assert.Equal(expected, WorkspaceSessionCoordinator.NormalizeBrowserAddress(input, "https://home/"));
 
+    /// <summary>拡張機能の設定画面・ポップアップ（§21.5.2）。既知スキームに無いと、開こうとした設定画面が
+    /// まるごと検索語として Google へ流れる。</summary>
+    [Fact]
+    public void Chrome_extension_urls_pass_through()
+        => Assert.Equal(
+            "chrome-extension://cjpalhdlnbpafiamejdnhcphjbkeiagm/dashboard.html",
+            WorkspaceSessionCoordinator.NormalizeBrowserAddress(
+                "chrome-extension://cjpalhdlnbpafiamejdnhcphjbkeiagm/dashboard.html", "https://home/"));
+
     [Theory]
     [InlineData("loomo とは")]
     [InlineData("wpf")]

@@ -26,7 +26,8 @@ public sealed class BrowserExtensionRecord
 }
 
 /// <summary>manifest.json から読む、UI に要るぶんだけ。</summary>
-public sealed record BrowserExtensionManifest(string? Name, string? Version, string? PopupPath, string? IconPath);
+public sealed record BrowserExtensionManifest(
+    string? Name, string? Version, string? PopupPath, string? OptionsPath, string? IconPath);
 
 /// <summary>
 /// 拡張機能の実体（展開済みフォルダー）と出所を管理する。<b>WebView2 への登録は行わない</b>——
@@ -156,9 +157,14 @@ public sealed class BrowserExtensionStore
         return CrxArchive.Extract(new MemoryStream(bytes, writable: false), FolderFor(id));
     }
 
-    /// <summary>manifest.json から名前・版・ポップアップ・アイコンを読む。
+    /// <summary>manifest.json から名前・版・ポップアップ・設定画面・アイコンを読む。
     /// ポップアップは MV3 が <c>action</c>、MV2 が <c>browser_action</c>——どちらも見る
-    /// （新しいものだけ見ると、古い拡張機能のボタンが押しても何も出ないものになる）。</summary>
+    /// （新しいものだけ見ると、古い拡張機能のボタンが押しても何も出ないものになる）。
+    ///
+    /// <para>設定画面（MV3 は <c>options_ui.page</c>、古い形は <c>options_page</c>）も同じ理由で読む。
+    /// WebView2 には <c>chrome://extensions</c> が無く、拡張機能のツールバーも描かれないので、
+    /// <b>manifest から辿るほかに設定画面へ行く道が無い</b>——読まなければ、入れたのに設定できない
+    /// 拡張機能（uBlock Origin のダッシュボードなど）になる。</para></summary>
     public static BrowserExtensionManifest? ReadManifest(string folderPath)
     {
         var path = Path.Combine(folderPath, "manifest.json");
@@ -174,10 +180,12 @@ public sealed class BrowserExtensionStore
             if (node is not JsonObject manifest)
                 return null;
             var action = manifest["action"] as JsonObject ?? manifest["browser_action"] as JsonObject;
+            var optionsUi = manifest["options_ui"] as JsonObject;
             return new BrowserExtensionManifest(
                 Name: manifest["name"]?.GetValue<string>(),
                 Version: manifest["version"]?.GetValue<string>(),
                 PopupPath: action?["default_popup"]?.GetValue<string>(),
+                OptionsPath: optionsUi?["page"]?.GetValue<string>() ?? manifest["options_page"]?.GetValue<string>(),
                 IconPath: LargestIcon(action?["default_icon"]) ?? LargestIcon(manifest["icons"]));
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
@@ -230,8 +238,9 @@ public sealed class BrowserExtensionStore
     public List<BrowserExtensionRecord> LoadRecords() => TryLoadRecords() ?? new List<BrowserExtensionRecord>();
 
     /// <summary>記録を書く。<b>置き換えは一時ファイル経由</b>——書き込みの途中で落ちると
-    /// 切れた JSON が残り、次に読んだときに「記録が無い」と見えてしまう（上の注記のとおり危険）。</summary>
-    public void SaveRecords(IEnumerable<BrowserExtensionRecord> records)
+    /// 切れた JSON が残り、次に読んだときに「記録が無い」と見えてしまう（上の注記のとおり危険）。
+    /// 書けたかを返す（書けなくても導入自体は成立している）。</summary>
+    public bool SaveRecords(IEnumerable<BrowserExtensionRecord> records)
     {
         try
         {
@@ -239,29 +248,43 @@ public sealed class BrowserExtensionStore
             var temporary = _recordPath + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(records.ToList(), JsonOptions));
             File.Move(temporary, _recordPath, overwrite: true);
+            return true;
         }
         catch
         {
-            // 記録できなくても導入は成立している。
+            return false;
         }
     }
 
-    public void Remember(BrowserExtensionRecord record)
+    /// <summary>出所を1件覚える。<b>読めない記録の上に書かない</b>——<see cref="LoadRecords"/> は
+    /// 「読めない」を空として返すので、それを土台にすると<b>この1件だけの記録に置き換わる</b>。
+    /// そうなると他の拡張機能のフォルダーは「記録に無い＝取り残し」に見え、次に一覧を開いた掃除
+    /// （<see cref="CleanOrphanFolders"/>）がまとめて消す——あちらが「読めないときは何もしない」と
+    /// 決めているのに、ここで readable な嘘の全体像を作ってしまうと、その用心ごと無効になる。
+    /// 覚えられたかを返す。</summary>
+    public bool Remember(BrowserExtensionRecord record)
     {
-        var records = LoadRecords();
+        if (TryLoadRecords() is not { } records)
+            return false;
         records.RemoveAll(r => string.Equals(r.Id, record.Id, StringComparison.OrdinalIgnoreCase));
         records.Add(record);
-        SaveRecords(records);
+        return SaveRecords(records);
     }
 
     /// <summary>記録を消し、<b>自分たちが展開したフォルダーだけ</b>を消す。
-    /// 使う側が指定したフォルダーはその人の持ち物なので触らない。</summary>
-    public void Forget(string id)
+    /// 使う側が指定したフォルダーはその人の持ち物なので触らない。
+    /// 記録が読めないときは<b>何もしない</b>（理由は <see cref="Remember"/> と同じ）。</summary>
+    /// <param name="cleanFolders">実体フォルダーの掃除まで行うか。<b>導入の最中は false</b>——
+    /// 記録が書かれるのは登録が済んだ後なので、展開中のフォルダーが取り残しに見える。</param>
+    public bool Forget(string id, bool cleanFolders = true)
     {
-        var records = LoadRecords();
+        if (TryLoadRecords() is not { } records)
+            return false;
         records.RemoveAll(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase));
-        SaveRecords(records);
-        CleanOrphanFolders();
+        var saved = SaveRecords(records);
+        if (cleanFolders)
+            CleanOrphanFolders();
+        return saved;
     }
 
     /// <summary>記録に残っていない展開フォルダーを消す。
@@ -284,6 +307,9 @@ public sealed class BrowserExtensionStore
         foreach (var folder in Directory.GetDirectories(_rootPath))
         {
             if (known.Contains(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar)))
+                continue;
+            // 展開中の置き場（<see cref="CrxArchive"/> が作る `<ID>.tmp`）は取り残しではない。
+            if (folder.EndsWith(CrxArchive.StagingSuffix, StringComparison.OrdinalIgnoreCase))
                 continue;
             try { Directory.Delete(folder, recursive: true); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }

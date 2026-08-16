@@ -59,6 +59,11 @@ public sealed partial class BrowserExtensionViewModel : ObservableObject
     public string? PopupUrl { get; init; }
     public bool HasPopup => PopupUrl is not null;
 
+    /// <summary>設定画面（manifest の <c>options_ui.page</c>／<c>options_page</c>）。
+    /// <b>ここが唯一の入口</b>——WebView2 には <c>chrome://extensions</c> も拡張機能のツールバーも無い。</summary>
+    public string? OptionsUrl { get; init; }
+    public bool HasOptions => OptionsUrl is not null;
+
     /// <summary>一覧に出すアイコン（拡張機能フォルダーの中の画像ファイル）。
     /// WebView2 に導入済みでもフォルダーの記録が無いもの（Edge に元から入っているもの）は持たない。</summary>
     public string? IconPath { get; init; }
@@ -541,6 +546,17 @@ public sealed partial class BrowserViewModel : ObservableObject
             return;
         IsExtensionsOpen = false;
         ExtensionPopupRequested?.Invoke(this, item);
+    }
+
+    /// <summary>設定画面を<b>新しいタブ</b>で開く。ポップアップの器（400×560）には収まらない作りのものが多く
+    /// （uBlock Origin のダッシュボードなど）、設定は腰を据えて触るものなので、部屋のタブとして開く。</summary>
+    [RelayCommand]
+    private void OpenExtensionOptions(BrowserExtensionViewModel? item)
+    {
+        if (item?.OptionsUrl is not { Length: > 0 } url)
+            return;
+        IsExtensionsOpen = false;
+        OpenUrlRequested?.Invoke(this, (url, true));
     }
 
     // ── 保存済みログイン情報（§21.5.2） ───────────────────────────────
