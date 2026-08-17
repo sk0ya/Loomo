@@ -97,6 +97,23 @@ public class SavedPasswordStoreTests
         Assert.Equal("example.com", result.Items.Single(p => p.Username == "taro").Host);
     }
 
+    /// <summary>読んだあとに一時コピーを残さない。SQLite の接続プールを切っていないと、Dispose 後も
+    /// プールがファイルハンドルを抱えたままで削除が失敗し、<c>%TEMP%</c> に<b>資格情報 DB のコピーが
+    /// 溜まり続ける</b>（握りつぶしているので気づけない）。「実体に触らず一時コピーを読む」の要。</summary>
+    [Fact]
+    public void 読んだあとに一時コピーを残さない()
+    {
+        var profile = NewProfile();
+        var key = WriteLocalState(profile);
+        WriteLoginData(profile, ("https://example.com/login", "taro", EncryptV10(key, "ひみつ")));
+        var before = Directory.GetDirectories(Path.GetTempPath(), "loomo-logins-*").Length;
+
+        var result = new SavedPasswordStore(profile).Load();
+
+        Assert.Null(result.Error);
+        Assert.Equal(before, Directory.GetDirectories(Path.GetTempPath(), "loomo-logins-*").Length);
+    }
+
     /// <summary>古い項目は AES ではなく DPAPI で直接暗号化されている。</summary>
     [Fact]
     public void 古いDPAPI形式の項目も読める()

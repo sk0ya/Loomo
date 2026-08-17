@@ -61,17 +61,50 @@ public static class CrxArchive
             if (publicKey is not null)
                 TryWriteManifestKey(staging, publicKey);
 
-            if (Directory.Exists(destination))
-                Directory.Delete(destination, recursive: true);
-            Directory.Move(staging, destination);
+            SwapIn(staging, destination);
         }
         finally
         {
             // 途中で失敗したときの置き場を残さない（消せなくても実害は無い）。
-            try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            TryDeleteDirectory(staging);
         }
         return new CrxExtractResult(destination, publicKey);
+    }
+
+    /// <summary>展開済みの置き場を本番の場所へ入れ替える。既存を<b>先に消さない</b>——同じ拡張機能の
+    /// 入れ直し／更新では WebView2 がそのフォルダーを掴んでいることがあり
+    /// （<see cref="BrowserExtensionStore.CleanOrphanFolders"/> の注記＝実機で確認済み）、
+    /// <c>Directory.Delete(recursive)</c> は<b>消せるところまで消してから</b>投げる。つまり
+    /// 「登録されたまま中身が虫食い」という、このメソッドが避けようとしている壊れ方そのものになる。
+    /// 退避（<c>Move</c>）は成否が全か無かなので、失敗しても既存はそのまま生き残る。
+    /// 退避したフォルダーは記録に無いので、消せなくても次回の <c>CleanOrphanFolders</c> が回収する。</summary>
+    private static void SwapIn(string staging, string destination)
+    {
+        if (!Directory.Exists(destination))
+        {
+            Directory.Move(staging, destination);
+            return;
+        }
+        var retired = destination.TrimEnd(Path.DirectorySeparatorChar) + $".old-{Guid.NewGuid():N}";
+        Directory.Move(destination, retired);
+        try
+        {
+            Directory.Move(staging, destination);
+        }
+        catch
+        {
+            // 入れ替えに失敗したら元へ戻す（今動いている拡張機能を失わせない）。
+            if (!Directory.Exists(destination))
+                Directory.Move(retired, destination);
+            throw;
+        }
+        TryDeleteDirectory(retired);
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     /// <summary>ヘッダを読み、ZIP の開始位置と（あれば）署名の公開鍵を返す。</summary>

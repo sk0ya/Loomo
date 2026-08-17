@@ -224,6 +224,24 @@ public class BrowserExtensionTests
         Assert.False(Directory.Exists(destination + CrxArchive.StagingSuffix));   // 置き場を残さない
     }
 
+    /// <summary>入れ直し（更新）は、既存を丸ごと<b>置き換える</b>——古い版のファイルが残ってはいけない。
+    /// 実装は既存を消さずに退避してから入れ替えるので、退避先（<c>&lt;ID&gt;.old-*</c>）も残さないことまで見る。</summary>
+    [Fact]
+    public void 同じ場所へ入れ直すと古い版のファイルが残らない()
+    {
+        var root = TempDirectory();
+        var destination = Path.Combine(root, "ext");
+        CrxArchive.Extract(new MemoryStream(BuildCrx3(
+            BuildZip(("manifest.json", "{\"name\":\"前の版\"}"), ("old.js", "//古い")), null)), destination);
+
+        CrxArchive.Extract(new MemoryStream(BuildCrx3(
+            BuildZip(("manifest.json", "{\"name\":\"新しい版\"}")), null)), destination);
+
+        Assert.Equal("{\"name\":\"新しい版\"}", File.ReadAllText(Path.Combine(destination, "manifest.json")));
+        Assert.False(File.Exists(Path.Combine(destination, "old.js")));
+        Assert.Equal(new[] { destination }, Directory.GetDirectories(root));   // 退避先も置き場も残さない
+    }
+
     /// <summary>CRX2 の長さは <c>uint</c>。int で足すと桁あふれで範囲検査をすり抜け、例外の型が変わって
     /// <see cref="BrowserExtensionStore.DownloadAsync"/> の Chrome→Edge の乗り換えが効かなくなる。</summary>
     [Fact]

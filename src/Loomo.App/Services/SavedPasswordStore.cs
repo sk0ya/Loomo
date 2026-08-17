@@ -68,16 +68,20 @@ public sealed class SavedPasswordStore(string profileRoot)
         {
             key = ReadMasterKey();
         }
-        catch (Exception ex) when (ex is IOException or JsonException or CryptographicException or FormatException)
+        // UnauthorizedAccessException も受ける。Local State が ACL で読めないとここを素通りし、
+        // 呼び出し元（Task.Run 内の await）から UI スレッドの未処理例外になる＝一覧を開くだけで落ちる。
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or JsonException or CryptographicException or FormatException)
         {
             return SavedPasswordResult.Failed($"暗号鍵を取り出せませんでした: {ex.Message}");
         }
 
-        string? workingCopy = null;
+        // 後始末の対象はコピー先の<b>フォルダー</b>を先に決めておく。CopyDatabase が途中で投げると
+        // 戻り値は受け取れないが、そのときには既に Login Data を書き終えていることがある。
+        var workingDirectory = Path.Combine(Path.GetTempPath(), $"loomo-logins-{Guid.NewGuid():N}");
         try
         {
-            workingCopy = CopyDatabase();
-            return new SavedPasswordResult(ReadLogins(workingCopy, key), null);
+            return new SavedPasswordResult(ReadLogins(CopyDatabase(workingDirectory), key), null);
         }
         catch (Exception ex) when (ex is IOException or SqliteException or UnauthorizedAccessException)
         {
@@ -85,8 +89,7 @@ public sealed class SavedPasswordStore(string profileRoot)
         }
         finally
         {
-            if (workingCopy is not null)
-                TryDeleteDirectory(Path.GetDirectoryName(workingCopy)!);
+            TryDeleteDirectory(workingDirectory);
         }
     }
 
@@ -111,9 +114,8 @@ public sealed class SavedPasswordStore(string profileRoot)
 
     /// <summary>Login Data は稼働中のブラウザが掴んでいるので、読むのは一時コピー。
     /// 併走ファイル（-wal / -shm / -journal）も一緒に持ってこないと、直前の書き込みが欠ける。</summary>
-    private string CopyDatabase()
+    private string CopyDatabase(string directory)
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"loomo-logins-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         var destination = Path.Combine(directory, "Login Data");
         foreach (var suffix in new[] { "", "-wal", "-shm", "-journal" })
@@ -138,10 +140,15 @@ public sealed class SavedPasswordStore(string profileRoot)
     {
         var items = new List<SavedPassword>();
         // 開くのはコピーなので読み書きで開いてよい（WAL を畳むのに書き込みが要る）。
+        // Pooling=false は必須。プールを有効のままだと Dispose 後もプールが接続（＝ファイルハンドル）を
+        // 抱えたままになり、この直後の一時フォルダー削除が IOException で落ちる——つまり
+        // 「実体に触らず一時コピーを読む」はずが、%TEMP% に資格情報 DB のコピーが溜まり続ける
+        // （SqlitePreviewReader も同じ理由で false にしている）。
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
             Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false,
         }.ToString());
         connection.Open();
         using var command = connection.CreateCommand();
