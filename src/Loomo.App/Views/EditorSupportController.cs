@@ -4,6 +4,7 @@ namespace sk0ya.Loomo.App.Views;
 internal sealed class EditorSupportController
 {
     private FrameworkElement? _visual;
+    private IEditorSupportVisual? _mountedVisual;
     private DispatcherTimer? _caretTimer;
     private DispatcherTimer? _readyTimer;
 
@@ -21,6 +22,8 @@ internal sealed class EditorSupportController
     }
 
     public EditorSupportWebViewController WebView { get; }
+
+    public IEditorSupportSettingsVisual? CurrentSettingsVisual => _mountedVisual as IEditorSupportSettingsVisual;
 
     /// <summary>このペインが持つビジュアル表示インスタンス群（提供者ごとに1つ）。</summary>
     public EditorSupportVisualHost Visuals { get; }
@@ -123,10 +126,16 @@ internal sealed class EditorSupportController
 
     /// <summary>整え終わった表示インスタンスをペインへ載せる（同期・フレーム適用の一部）。</summary>
     public void MountVisual(Panel host, IEditorSupportVisual visual)
-        => ShowVisual(host, visual.View);
+    {
+        _mountedVisual = visual;
+        ShowVisual(host, visual.View);
+    }
 
     public void ShowVisual(Panel host, FrameworkElement view)
     {
+        if (_mountedVisual is not null && !ReferenceEquals(_mountedVisual.View, view))
+            _mountedVisual = null;
+
         if (!ReferenceEquals(_visual, view))
         {
             if (_visual is not null)
@@ -141,6 +150,7 @@ internal sealed class EditorSupportController
 
     public void ShowWebView()
     {
+        _mountedVisual = null;
         if (_visual is not null)
             _visual.Visibility = Visibility.Collapsed;
         if (WebView.View is not null)

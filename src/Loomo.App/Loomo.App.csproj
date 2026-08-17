@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Flow の埋め込みタイムライン／インスペクターを .flow EditorSupport で利用する。 -->
+    <PackageReference Include="Flow.Editor" Version="0.1.5" />
     <!-- 軌跡（操作ログ）の日別永続化（%APPDATA%/Loomo/trail.db、Services/TrailStore.cs） -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <!-- Microsoft.Data.Sqlite の推移参照に含まれる脆弱な 2.1.11 を、修正済み SQLite を使う 3.x へ昇格する。 -->

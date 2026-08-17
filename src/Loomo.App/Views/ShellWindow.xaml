@@ -835,6 +835,10 @@
                             <Path Style="{StaticResource PaneActionIcon}"
                                   Data="M8,2 V9 M5,6 L8,9 L11,6 M3,12 H13" />
                         </Button>
+                        <Button x:Name="EditorSupportSettingsButton" DockPanel.Dock="Right"
+                                Style="{StaticResource PaneActionButton}" Width="30" Height="24"
+                                Visibility="Collapsed" Content="⚙" FontSize="14"
+                                ToolTip="LoomoのFlow設定（外観）" Click="OnEditorSupportSettingsClick" />
                         <!-- 前のファイルへ戻る（エディタのファイル履歴。マウスのサイドボタンでも戻る/進む）。
                              右の操作ボタン群の左端（他ボタンと一貫）。 -->
                         <Button x:Name="EditorSupportBackButton" DockPanel.Dock="Right"

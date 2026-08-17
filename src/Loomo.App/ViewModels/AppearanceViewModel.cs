@@ -274,6 +274,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _settings.Theme = theme;
         _themeManager.ApplyTheme(theme);
         Persist("テーマを変更しました");
+        AppearanceChanged?.Invoke();
     }
 
     /// <summary>アクセント：選択を <see cref="AccentColor"/> 経由で適用する（空=テーマ既定）。</summary>
@@ -315,6 +316,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
             _themeManager.ApplyAccentColor(null);
             SyncAccentSelection("");
             Persist("アクセントをテーマ既定に戻しました");
+            AppearanceChanged?.Invoke();
             return;
         }
         if (!ThemeManager.IsValidColor(trimmed))
@@ -330,6 +332,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _themeManager.ApplyAccentColor(trimmed);
         SyncAccentSelection(trimmed);
         Persist("アクセントカラーを変更しました");
+        AppearanceChanged?.Invoke();
     }
 
     /// <summary>コンボボックスの選択を現在のアクセント値に合わせる（一致が無ければ null＝任意指定中）。

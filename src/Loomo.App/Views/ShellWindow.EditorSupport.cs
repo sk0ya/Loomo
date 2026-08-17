@@ -158,6 +158,9 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         EditorSupportSlideToggle.IsChecked = _settings.Appearance.MarkdownSlideMode;
         EditorSupportOutlineToggle.IsChecked = _settings.Appearance.MarkdownOutlineVisible;
     }
+
+    private void OnEditorSupportSettingsClick(object sender, RoutedEventArgs e)
+        => _editorSupport.CurrentSettingsVisual?.OpenSettings();
     private void UpdateEditorSupportPinToggle() {
         EditorSupportPinToggle.IsChecked = _editorSupport.IsPinned;
         EditorSupportPinToggle.ToolTip = _editorSupport.IsPinned
@@ -201,6 +204,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期・途中 return なし。</b></summary>
     private void ApplyEditorSupportFrame(EditorSupportFrame frame) {
         var view = _editorSupport.WebView.View;
+        EditorSupportSettingsButton.Visibility = Visibility.Collapsed;
         if (!frame.ShowEdit)
             _markdownEditMode = false;
         UpdateEditorSupportHeaderButtons(
@@ -210,6 +214,9 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         switch (frame.Content) {
             case EditorSupportFrameContent.VisualContent visual:
                 _editorSupport.MountVisual(EditorSupportContentHost, visual.Visual);
+                EditorSupportSettingsButton.Visibility = visual.Visual is IEditorSupportSettingsVisual
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
                 visual.Apply();
                 break;
             case EditorSupportFrameContent.OutlineContent outline:

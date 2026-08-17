@@ -125,6 +125,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<IEditorSupportProvider, MediaEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, FontEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, LogEditorSupport>();
+        services.AddSingleton<IEditorSupportProvider, FlowEditorSupport>();
         services.AddSingleton<EditorSupportRegistry>();
         services.AddSingleton<EditorSupportResolver>();
         services.AddSingleton<IEditorSupportViewFactory, EditorSupportViewFactory>();

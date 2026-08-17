@@ -134,6 +134,12 @@ public interface IEditorSupportVisual : IDisposable
     event EventHandler<EditorSupportContentEdited>? ContentEdited;
 }
 
+/// <summary>EditorSupportの表示面がホスト側から専用設定画面を開けることを示す。</summary>
+public interface IEditorSupportSettingsVisual
+{
+    void OpenSettings();
+}
+
 /// <summary>ビジュアル提供者内の編集結果（エディタ本文へ書き戻す完全なテキスト）。</summary>
 public sealed record EditorSupportContentEdited(string FilePath, string Text);
 
