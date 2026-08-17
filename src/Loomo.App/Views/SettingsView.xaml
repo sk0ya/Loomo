@@ -484,6 +484,11 @@
                                           DisplayMemberPath="Name"
                                           ToolTip="「AIへ送る」「ブラウザへ送る」「差分を開く」などで、結果を表示するペインを出す位置を選びます。メイン=左上と入れ替え（従来）／サブ=右上と入れ替え／ループ=サブに表示し、サブから操作したときはサブをメインへ繰り上げます。" />
 
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="袖（右端の画面一覧）の列数" Margin="0,10,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.WingColumnChoices}" SelectedItem="{Binding Appearance.SelectedWingColumns}"
+                                          DisplayMemberPath="Name"
+                                          ToolTip="右端に並ぶミニチュア（袖）を何列で並べるかを選びます。2列にすると同じ袖幅で倍の枚数が視界に入り、カード1枚は小さくなります。袖の幅そのものは境界のドラッグで変えられます。" />
+
                                 <Separator Margin="0,16,0,8" />
                                 <CheckBox IsChecked="{Binding Trail.Visible}"
                                           ToolTip="ウィンドウ下部の軌跡（操作ログ）バーの表示/非表示を切り替えます。バーを右クリックしても非表示にできます。">

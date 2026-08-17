@@ -188,6 +188,7 @@ public partial class ShellWindow {
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
         ApplyIdePaneApplicability(WorkspaceFolders(workspace));
         LoadEnabledSessions(workspace.EnabledSessions);
+        _activeWingTab = workspace.ActiveWingTab;
         PrepareStageSnapshot(WorkspaceSessionCoordinator.ResolveSoloMode(workspace), workspace.Stage);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         profile?.Lap("viewModels");
@@ -307,6 +308,7 @@ public partial class ShellWindow {
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
         snapshot.Mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
         snapshot.EnabledSessions = _enabledSessions.ToList();
+        snapshot.ActiveWingTab = _activeWingTab;
         snapshot.Stage = new StageSnapshot {
             IsActive = _stageActive, Pane = _stageActive ? _stagePane : null,
             Overview = _stageActive && _overviewActive, WingWidth = _wingWidth

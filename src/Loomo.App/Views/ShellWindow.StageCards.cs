@@ -9,10 +9,36 @@ public partial class ShellWindow {
     private double _thumbnailSourceWidth;
     private bool _layoutWingBuildQueued;
     private bool _layoutWingBuildPending;
-    private double CurrentWingCardWidth => Math.Max(150, _wingWidth - 10);
-    /// <summary>袖に出すペイン（有効だが Main に出ていないもの）。</summary>
-    private IReadOnlyList<PaneKind> LayoutWingKinds()
-        => StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k)).ToList();
+    /// <summary>袖カードの列間の隙間（2列表示のとき）。</summary>
+    private const double WingCardGap = 6;
+    /// <summary>2列で組むのに要るカード幅の下限。これを割る袖幅では 2列設定でも1列で組む。</summary>
+    private const double MinTwoColumnCardWidth = 80;
+    /// <summary>実際に組む列数（設定「袖の列数」＝1列／2列。設定値が壊れていても 1〜2 に丸める）。
+    /// 2列にしても1枚が細くなりすぎる袖幅（およそ 193px 未満）では<b>1列へ落とす</b>——袖の
+    /// <c>ScrollViewer</c> は横スクロールを持たないので、列幅に収まらないカードはそのまま右端が切れる
+    /// （下限で丸めた幅をそのまま使うと、幅を引き算した意味が無くなる）。</summary>
+    private int WingColumnCount
+        => Math.Clamp(_settings.Appearance.WingColumns, 1, 2) <= 1
+            || TwoColumnCardWidth < MinTwoColumnCardWidth
+            ? 1
+            : 2;
+    /// <summary>2列のときのカード幅。縦スクロールバーぶんと列間の隙間を先に引いてから割る——
+    /// ここを引かないとカードが列幅を超えて右端が切れる（袖の実効幅は袖幅そのものではない）。</summary>
+    private double TwoColumnCardWidth
+        => (_wingWidth - 10 - SystemParameters.VerticalScrollBarWidth - WingCardGap) / 2;
+    /// <summary>袖カードの幅。</summary>
+    private double CurrentWingCardWidth
+        => WingColumnCount <= 1 ? Math.Max(150, _wingWidth - 10) : TwoColumnCardWidth;
+    /// <summary>袖の候補（タブで絞る<b>前</b>）。有効だが Main に出ていないペイン。
+    /// 「袖そのものを出すか」はこちらで判断する——選択中のタブが空でも、ほかのタブにカードが
+    /// あるなら袖ごと畳んではいけない（畳むとタブに戻れなくなる）。</summary>
+    private IReadOnlyList<PaneKind> WingCandidates()
+        => (_stageActive
+            ? StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k))
+            : StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k))).ToList();
+    /// <summary>いま袖に並べるペイン（＝候補のうち選択中のタブぶん）。</summary>
+    private IReadOnlyList<PaneKind> WingKinds()
+        => WingCandidates().Where(InActiveWingTab).ToList();
     /// <summary>ミニチュアの描画元を <paramref name="sourceSize"/>（= <see cref="StageThumbnailPlanner"/> が
     /// 決めた固定仮想サイズ。Main 実寸ではない）でレイアウトする。</summary>
     private void ArrangeThumbnailSource(PaneKind kind, Size sourceSize)
@@ -95,19 +121,49 @@ public partial class ShellWindow {
         if (!_stageActive)
             _layoutWingBuildPending = false;
         WingStrip.Children.Clear();
-        if (_stageActive) {
-            foreach (var kind in StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k)))
-                WingStrip.Children.Add(BuildSessionCard(kind, CurrentWingCardWidth, isOverview: false));
-        } else {
+        if (!_stageActive)
             BuildLayoutWingSources();
-            foreach (var kind in LayoutWingKinds())
-                WingStrip.Children.Add(BuildLayoutWingCard(kind, CurrentWingCardWidth));
+        var width = CurrentWingCardWidth;
+        var cards = WingKinds()
+            .Select(kind => _stageActive
+                ? BuildSessionCard(kind, width, isOverview: false)
+                : BuildLayoutWingCard(kind, width))
+            .ToList();
+        foreach (var row in ArrangeWingRows(cards))
+            WingStrip.Children.Add(row);
+        UpdateWingTabs();
+    }
+    /// <summary>袖カードを列数ぶんずつ横に束ねて行にする（1列ならカードをそのまま積む）。
+    /// 行を自前で組むのは、<c>UniformGrid</c> が行の高さを袖の高さで等分してカードが縦に間延びし、
+    /// <c>WrapPanel</c> は実効幅の 1px 差で3枚目が回り込む／回り込まないが変わるため。</summary>
+    private IEnumerable<UIElement> ArrangeWingRows(IReadOnlyList<Border> cards) {
+        var columns = WingColumnCount;
+        if (columns <= 1)
+            return cards;
+        var rows = new List<UIElement>();
+        for (var i = 0; i < cards.Count; i += columns) {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            for (var j = i; j < Math.Min(i + columns, cards.Count); j++) {
+                if (j > i)
+                    cards[j].Margin = new Thickness(WingCardGap, 4, 0, 4);   // 2枚目以降の左に列間の隙間
+                row.Children.Add(cards[j]);
+            }
+            rows.Add(row);
         }
+        return rows;
+    }
+    /// <summary>袖のタブ（メイン／サブ／すべて）の選択印を現在のタブへ合わせる。</summary>
+    private void UpdateWingTabs() {
+        if (WingMainTab is null || WingSubTab is null || WingAllTab is null)
+            return;
+        WingMainTab.IsChecked = _activeWingTab == WingTab.Main;
+        WingSubTab.IsChecked = _activeWingTab == WingTab.Sub;
+        WingAllTab.IsChecked = _activeWingTab == WingTab.All;
     }
     private void BuildLayoutWingSources() {
         _layoutWingSourceWidth = StageSourceArea.ActualWidth;
         SyncThumbnailSources(
-            LayoutWingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
+            WingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
     }
     /// <summary>F11 の全画面（集中）中は袖を出さない。舞台・通常どちらの再構築経路も最後に袖の
     /// 幅／表示を組み直すので、そこで畳み直さないと <see cref="TogglePaneFullscreen"/> が
@@ -133,7 +189,7 @@ public partial class ShellWindow {
             PaneLayoutDebugLog.Log("ScheduleLayoutWings skipped: splitter drag in progress");
             return;
         }
-        var hasWings = LayoutWingKinds().Count > 0;
+        var hasWings = WingCandidates().Count > 0;   // 選択中のタブが空でも、もう一方に有れば袖は出す
         PaneLayoutDebugLog.Log($"ScheduleLayoutWings hasWings={hasWings} prevWingColumnWidth={WingColumn.Width}", withCaller: true);
         WingColumn.Width = hasWings ? new GridLength(_wingWidth) : GridLength.Auto;
         WingSplitterColumn.Width = hasWings ? new GridLength(6) : new GridLength(0);
@@ -177,7 +233,8 @@ public partial class ShellWindow {
             return;
         if (CollapseWingsForFullscreen())
             return;
-        WingHost.Visibility = WingStrip.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // 選択中のタブが空でも、もう一方にカードがあるなら袖は出したままにする（畳むとタブへ戻れない）。
+        WingHost.Visibility = WingCandidates().Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         WingSplitter.Visibility = WingHost.Visibility;
         WingSplitterColumn.Width = WingHost.Visibility == Visibility.Visible ? new GridLength(6) : new GridLength(0);
         OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;

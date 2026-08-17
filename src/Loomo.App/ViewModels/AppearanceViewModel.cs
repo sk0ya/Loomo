@@ -57,6 +57,13 @@ public sealed partial class AppearanceViewModel : ObservableObject
         new PaneOpenBehaviorChoice(PaneOpenBehavior.Loop, "ループ（サブに表示・サブ起点ならメインへ繰り上げ）"),
     };
 
+    /// <summary>袖（右端のミニチュア一覧）の列数の選択肢。</summary>
+    public IReadOnlyList<WingColumnsChoice> WingColumnChoices { get; } = new[]
+    {
+        new WingColumnsChoice(1, "1列（既定）"),
+        new WingColumnsChoice(2, "2列（枚数優先・カードは小さくなる）"),
+    };
+
     /// <summary>コンボボックスで選択中の各項目。<c>SelectedItem</c> に双方向バインドする。</summary>
     [ObservableProperty] private PresetSwatch _selectedTheme;
     [ObservableProperty] private AccentSwatch? _selectedAccent;
@@ -64,6 +71,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     [ObservableProperty] private PresetSwatch _selectedPreviewTheme;
     [ObservableProperty] private PresetSwatch _selectedTerminalTheme;
     [ObservableProperty] private PaneOpenBehaviorChoice _selectedPaneOpenBehavior;
+    [ObservableProperty] private WingColumnsChoice _selectedWingColumns;
     [ObservableProperty] private FontSizeChoice _selectedFontSize;
 
     /// <summary>アクセントカラーの上書き（"#RRGGBB"）。空ならテーマ既定。コンボボックスと任意指定の入力欄で共有する。</summary>
@@ -240,6 +248,8 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
         _selectedPaneOpenBehavior = PaneOpenBehaviors.FirstOrDefault(c => c.Value == settings.PaneOpenBehavior)
             ?? PaneOpenBehaviors[0];
+        _selectedWingColumns = WingColumnChoices.FirstOrDefault(c => c.Value == ap.WingColumns)
+            ?? WingColumnChoices[0];
 
         // 現在の基準フォントサイズ（未設定なら既定）に最も近いプリセットを選択に反映する。
         var effectiveSize = UiFontManager.Effective(ap.UiFontSize);
@@ -338,6 +348,16 @@ public sealed partial class AppearanceViewModel : ObservableObject
         if (value is null || _settings.PaneOpenBehavior == value.Value) return;
         _settings.PaneOpenBehavior = value.Value;
         Persist("ペインの表示方法を変更しました");
+    }
+
+    /// <summary>袖の列数：選択を即時反映＆永続化する。袖のカードはコードビハインドで幅を決めて組むため、
+    /// <see cref="AppearanceChanged"/> でホスト（ShellWindow）に袖の組み直しを促す。</summary>
+    partial void OnSelectedWingColumnsChanged(WingColumnsChoice value)
+    {
+        if (value is null || _settings.Appearance.WingColumns == value.Value) return;
+        _settings.Appearance.WingColumns = value.Value;
+        Persist($"袖を{value.Value}列表示にしました");
+        AppearanceChanged?.Invoke();
     }
 
     /// <summary>アプリ UI の基準フォントサイズ：選択を即時適用＆永続化する。DynamicResource 参照のため
@@ -469,6 +489,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         public string Name { get; }
 
         public PaneOpenBehaviorChoice(PaneOpenBehavior value, string name) { Value = value; Name = name; }
+    }
+
+    /// <summary>袖の列数の選択肢1つ（コンボボックス用）。<see cref="Value"/> が永続化値（列数）。</summary>
+    public sealed class WingColumnsChoice
+    {
+        public int Value { get; }
+        public string Name { get; }
+
+        public WingColumnsChoice(int value, string name) { Value = value; Name = name; }
     }
 
     /// <summary>アクセントのプリセット1つ。Hex が空文字なら「テーマ既定」。</summary>

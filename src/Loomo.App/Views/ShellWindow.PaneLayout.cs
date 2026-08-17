@@ -65,7 +65,7 @@ public partial class ShellWindow {
             _zoomedPane = null; // 対象が隠れた/消えていたらズーム解除して通常描画へ
         // 袖ミニチュアに据え置くペインは親から外さない（付け替え自体が高いため）。
         // ここで確定した _root / _zoomedPane から袖の顔ぶれが決まる。
-        PaneLayoutDebugLog.Time("  detach panes", () => DetachPaneElementsExcept(LayoutWingKinds()));
+        PaneLayoutDebugLog.Time("  detach panes", () => DetachPaneElementsExcept(WingKinds()));
         if (_zoomedPane is { } zoomed && _paneElements.TryGetValue(zoomed, out var zoomElement)) {
             zoomElement.Visibility = Visibility.Visible;
             PaneHost.Children.Add(zoomElement);

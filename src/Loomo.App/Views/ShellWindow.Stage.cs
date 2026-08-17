@@ -12,6 +12,13 @@ public partial class ShellWindow {
     private readonly Dictionary<PaneKind, ImageBrush> _webThumbnailBrushes = new();
     private readonly Dictionary<PaneKind, int> _webThumbnailCaptureSequences = new();
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
+    /// <summary>袖で選択中のタブ（メイン／サブ／すべて）。所属は固定
+    /// （<see cref="StageModeCoordinator.MainGroup"/>）で、切り替えるのは「どれを見るか」だけ。</summary>
+    private WingTab _activeWingTab {
+        get => _stageMode.ActiveWingTab;
+        set => _stageMode.ActiveWingTab = value;
+    }
+    private bool InActiveWingTab(PaneKind kind) => _stageMode.IsInActiveWingTab(kind);
     private bool _idePaneApplicable { get => _stageMode.IdePaneApplicable; set => _stageMode.IdePaneApplicable = value; }
     private bool _tsIdePaneApplicable { get => _stageMode.TsIdePaneApplicable; set => _stageMode.TsIdePaneApplicable = value; }
     private const double DefaultWingWidth = 250;
@@ -242,6 +249,19 @@ public partial class ShellWindow {
         if (!_tsIdePaneApplicable)
             _enabledSessions.Remove(PaneKind.TsIde);
     }
+    private void OnWingTabClick(object sender, RoutedEventArgs e) {
+        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<WingTab>(tag, out var tab))
+            SelectWingTab(tab);
+    }
+    private void SelectWingTab(WingTab tab) {
+        if (_activeWingTab == tab) {
+            UpdateWingTabs();   // 選択中のタブを押しても選択は外れない（ToggleButton の解除を戻す）
+            return;
+        }
+        _activeWingTab = tab;
+        UpdateWingTabs();       // レイアウトモードの袖組み直しは ContextIdle 送りなので、印だけ先に合わせる
+        RebuildSessionsView();
+    }
     private void ApplyIdePaneApplicability(IReadOnlyList<string> folders) {
         _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(folders);
         _tsIdePaneApplicable = ViewModels.TsDebugTargetResolver.HasTypeScriptProject(folders);
@@ -284,9 +304,7 @@ public partial class ShellWindow {
         // 袖ミニチュアは差分で寄せる（据え置けるものは親の付け替えもレイアウトも走らせない）。
         // 舞台・俯瞰へ出すペインだけを親から外す。
         SyncThumbnailSources(
-            (_overviewActive
-                ? OverviewKinds()
-                : StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k))).ToList(),
+            (_overviewActive ? OverviewKinds().ToList() : WingKinds()),
             StageThumbnailPlanner.SourceSize(virtualSize.Width, CardAspect));
         DetachPaneElementsExcept(_stageThumbnailHosts.Keys);
         StageArea.Children.Clear();

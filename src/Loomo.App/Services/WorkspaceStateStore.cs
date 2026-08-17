@@ -336,6 +336,10 @@ public sealed class WorkspaceSnapshot
     /// この集合がタイル配置より広いほど袖は常時にぎわう。null／空の旧データは全セッション有効として復元する。</summary>
     public List<PaneKind>? EnabledSessions { get; set; }
 
+    /// <summary>袖で選択中のタブ（開いたまま離れたら開いたまま戻る・§24.4）。どのペインが
+    /// どちらのグループかは固定（<c>StageModeCoordinator.MainGroup</c>）なので、保存するのは選択だけ。</summary>
+    public WingTab ActiveWingTab { get; set; }
+
     /// <summary>ソロモード（単一ステージ＋袖＋俯瞰）の表示状態。未保存の旧ワークスペースは既定でソロにする。</summary>
     public StageSnapshot? Stage { get; set; } = StageSnapshot.Default();
 
@@ -517,6 +521,27 @@ public sealed class ViewportNodeSnapshot
     public bool IsFocused { get; set; }
     public string? Orientation { get; set; }
     public List<ViewportNodeSnapshot> Children { get; set; } = new();
+}
+
+/// <summary>ペインの所属グループ。固定（<c>StageModeCoordinator.MainGroup</c>）で、ユーザーは変えない。</summary>
+public enum PaneGroup
+{
+    /// <summary>いつも手元に置く面（エディタ／ターミナル／ブラウザ／Git）。</summary>
+    Main,
+    /// <summary>用があるときに呼ぶ面（エディタサポート／Diff／AI／IDE／TS IDE／検索／ファイル一覧）。</summary>
+    Sub
+}
+
+/// <summary>袖（ミニチュア一覧）のタブ＝「いま袖に並べる顔ぶれ」の選択。並びは UI と同じ順で、
+/// 先頭（＝既定）は「すべて」＝従来どおり全部出す。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
+public enum WingTab
+{
+    /// <summary>グループを問わず、袖に出せるものを全部（既定）。</summary>
+    All,
+    /// <summary><see cref="PaneGroup.Main"/> のペインだけ。</summary>
+    Main,
+    /// <summary><see cref="PaneGroup.Sub"/> のペインだけ。</summary>
+    Sub
 }
 
 /// <summary>セッションの表示モード。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>

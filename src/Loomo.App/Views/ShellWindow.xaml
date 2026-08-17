@@ -1941,8 +1941,9 @@
                 </Grid>
 
                 <!-- 袖（ミニチュア）：ソロでもレイアウトでも右端に常設。生きたまま縮小表示する。
-                     有効だが Main に出ていないセッションだけを並べる（Main に出ている／無効なものは出さない。
-                     有効セッションは Main と袖のどちらかに必ず出る）。構築は ShellWindow.Stage.cs / Wings。 -->
+                     有効だが Main に出ていないセッションを、**選択中のグループ（メイン／サブ）ぶんだけ**並べる
+                     （Main に出ている／無効なものは出さない）。所属は固定＝StageModeCoordinator.MainGroup。
+                     構築は ShellWindow.Stage.cs / Wings。 -->
                 <Thumb x:Name="WingSplitter" Grid.Column="3"
                        HorizontalAlignment="Stretch" Panel.ZIndex="2"
                        Style="{StaticResource PaneResizeThumb}" Visibility="Collapsed"
@@ -1952,8 +1953,31 @@
                             Padding="8,4" Margin="0,0,0,8" Content="⊞ すべての画面"
                             ToolTip="すべての画面を一覧表示（Ctrl+W z）"
                             Click="OnToggleOverview" />
+                    <!-- タブ：袖に並べる顔ぶれの切替（メイン＝常時そばに置く道具／サブ＝用があるとき呼ぶ面／
+                         すべて＝両方を通しで）。所属は固定＝StageModeCoordinator.MainGroup。 -->
+                    <Grid x:Name="WingTabs" DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton x:Name="WingAllTab" Grid.Column="0" Tag="All" Content="すべて"
+                                      IsChecked="True" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
+                                      ToolTip="袖に出せる画面をすべて並べる（既定）"
+                                      Click="OnWingTabClick" />
+                        <ToggleButton x:Name="WingMainTab" Grid.Column="1" Tag="Main" Content="メイン"
+                                      Style="{StaticResource ToolbarToggleButton}" Margin="3,0,3,0"
+                                      ToolTip="エディタ・ターミナル・ブラウザ・Git を袖に並べる"
+                                      Click="OnWingTabClick" />
+                        <ToggleButton x:Name="WingSubTab" Grid.Column="2" Tag="Sub" Content="サブ"
+                                      Style="{StaticResource ToolbarToggleButton}" Margin="3,0,0,0"
+                                      ToolTip="エディタサポート・Diff・AI・IDE・TS IDE・検索・ファイル一覧を袖に並べる"
+                                      Click="OnWingTabClick" />
+                    </Grid>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
+                        <!-- 列数は設定「袖の列数」（1列／2列）。2列のときは ArrangeWingRows が
+                             カードを横に束ねた行を積む（UniformGrid は行高を等分して縦に間延びする）。 -->
                         <StackPanel x:Name="WingStrip" />
                     </ScrollViewer>
                 </DockPanel>
