@@ -40,10 +40,12 @@ public partial class ShellWindow : Window {
     private EditorTab? _previewEditorTab;
     private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
-    private static readonly string EditorSupportPreviewFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2", "preview-page");
-    private static readonly string WebViewUserDataFolder = Path.Combine( Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "WebView2");
+    private static readonly string EditorSupportPreviewFolder = Services.WebViewProfile.PreviewPageFolder;
+    private static readonly string WebViewUserDataFolder = Services.WebViewProfile.UserDataFolder;
     // リモートデバッグポート付き（TS IDE のフロントデバッグがこのペインへ CDP アタッチする。§29）。
     // 共有 UserDataFolder の全 WebView2 が同一引数である必要があるため、ここで一括付与する。
+    // 「同一引数」はプロセスをまたいでも要るので、2つ目の Loomo は先行インスタンスのポートを引き継ぐ
+    // （WebViewDebugPort。引き継がないと 0x8007139F でブラウザ／EditorSupport が丸ごと無反応になる）。
     private static readonly string WebViewAdditionalBrowserArguments =
         "--allow-file-access-from-files " + Services.WebViewDebugPort.Argument;
     // 拡張機能はプロファイル（＝UserDataFolder）単位の設定なので、ここで一度立てれば
@@ -114,6 +116,8 @@ public partial class ShellWindow : Window {
         EditorSyntaxColors.Apply(_appearance.BuildEditorTheme()); // Diff 本体の構文色（起動時の1回目）
         _paletteView = new CommandPaletteViewController(PaletteList, PaletteBox);
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
+        // 落ちたインスタンスが置いていった一時ページの掃除（起動を待たせないよう裏で）。
+        Task.Run(() => _editorSupportNavigation.CleanStalePages(TimeSpan.FromDays(1)));
         var editorSupportWebView = new EditorSupportWebViewController( EditorSupportContentHost, _editorSupportNavigation, CreateWebViewCreationProperties, EditorSupport_WebMessageReceived, EditorSupport_ContextMenuRequested, editorSupportViewFactory);
         _editorSupport = new EditorSupportController(editorSupportWebView, EditorSupportVisual_ContentEdited);
         editorSupportWebView.NavigationCompleted += (_, _) => {

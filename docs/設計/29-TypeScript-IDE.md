@@ -106,7 +106,9 @@ npm スクリプト launch の出力・自然終了。node/js-debug 未導入環
   無関係——それでは「ブラウザペインがあるのに何も動かない」。そこで **WebView2 を CDP でデバッグ**する：
   - WebView2 生成引数に `--remote-debugging-port=<N>`（`WebViewDebugPort`。共有 UserDataFolder の全 WebView2 は
     同一引数が必須なので `CreateWebViewCreationProperties` で一括付与＝共有ブラウザプロセス＝1 CDP エンドポイント、
-    127.0.0.1 のみ）。
+    127.0.0.1 のみ）。**同一引数の縛りはプロセスもまたぐ**ので、2つ目の Loomo は空きポートを選び直さず
+    先行インスタンスの番号を控え（`debug-port`）から引き継ぐ——選び直すと `ERROR_INVALID_STATE (0x8007139F)` で
+    ブラウザペインと EditorSupport が丸ごと死ぬ（§21.5.3）。
   - launch 引数を `pwa-chrome / request:"attach" / port:N / urlFilter:<devUrl>*`（`DebugLaunchConfig.BrowserDebugPort`
     が渡されたとき。dev アプリのページだけに絞り、他タブ・エディタ支援 WebView を拾わない）。
   - ペインを出せない環境（ヘッドレス等）は `BrowserDebugPort=null` で**外部 Chrome launch へフォールバック**。
