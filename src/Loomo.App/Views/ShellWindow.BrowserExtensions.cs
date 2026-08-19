@@ -45,7 +45,7 @@ public partial class ShellWindow {
         if (tab is null)
             return null;
         await EnsureBrowserRealizedAsync(tab);
-        return tab.View.CoreWebView2?.Profile;
+        return tab.View.TryCore()?.Profile;
     }
 
     // ── 拡張機能 ───────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ public partial class ShellWindow {
         }
         // ページ側のボタンの横取りは、バーを閉じられていても続ける（閉じたのは促しであって、
         // ストアの「追加」を押す気が無くなったわけではない）。
-        if (tab.View.CoreWebView2 is { } core)
+        if (tab.View.TryCore() is { } core)
             _ = core.ExecuteScriptAsync(StoreInstallHookScript);
         // 別の拡張機能のページへ移ったら、前のページで閉じたことは忘れる。
         if (string.Equals(_dismissedStoreExtensionId, storeId, StringComparison.OrdinalIgnoreCase))
@@ -158,7 +158,7 @@ public partial class ShellWindow {
     /// <summary>促しバーに出す名前。ストアの題は「uBlock Origin - Chrome ウェブストア」のような形なので、
     /// 区切りの手前だけを採る（取れなければ何も足さない見出しにする）。</summary>
     private static string StoreExtensionName(BrowserTab tab) {
-        var title = tab.View.CoreWebView2?.DocumentTitle ?? "";
+        var title = tab.View.TryCore()?.DocumentTitle ?? "";
         var cut = title.Split([" - ", " – ", " | "], StringSplitOptions.None)[0].Trim();
         return cut.Length > 0 ? cut : "この拡張機能";
     }
@@ -367,7 +367,7 @@ public partial class ShellWindow {
         var view = _extensionPopupView ??= CreateExtensionPopupView();
         BrowserExtensionPopupHost.Child = view;
         BrowserExtensionPopup.IsOpen = true;
-        if (view.CoreWebView2 is null) {
+        if (view.TryCore() is null) {
             try {
                 await view.EnsureCoreWebView2Async();
                 WebViewEnvironment.NoteCreated();
@@ -376,7 +376,7 @@ public partial class ShellWindow {
                 return;
             }
         }
-        if (view.CoreWebView2 is not { } core)
+        if (view.TryCore() is not { } core)
             return;
         await (_extensionPopupBridge ??= ConfigureExtensionPopupCoreAsync(core));
         TryNavigateBrowserCore(core, url);
@@ -444,7 +444,7 @@ public partial class ShellWindow {
         """;
 
     private async Task FitExtensionPopupAsync(LoomoWebView2 view) {
-        if (view.CoreWebView2 is not { } core)
+        if (view.TryCore() is not { } core)
             return;
         // 閉じたときの <c>about:blank</c> でも遷移完了は来る。白紙を測ると器が下限（240×120）まで
         // 縮み、<b>次に開いたポップアップがその小ささで出る</b>（測り直しの開き直しでやっと戻る）。
@@ -484,7 +484,7 @@ public partial class ShellWindow {
     private void OnBrowserExtensionPopupClosed(object? sender, EventArgs e) {
         if (_resizingExtensionPopup)
             return;
-        if (_extensionPopupView?.CoreWebView2 is { } core)
+        if (_extensionPopupView.TryCore() is { } core)
             TryNavigateBrowserCore(core, "about:blank");
     }
 

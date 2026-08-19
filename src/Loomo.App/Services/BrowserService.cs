@@ -45,8 +45,8 @@ public sealed class BrowserService : IBrowserService
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher is null) return false;
             return dispatcher.CheckAccess()
-                ? _view?.CoreWebView2 is not null
-                : dispatcher.Invoke(() => _view?.CoreWebView2 is not null);
+                ? _view.TryCore() is not null
+                : dispatcher.Invoke(() => _view.TryCore() is not null);
         }
     }
 
@@ -210,7 +210,7 @@ public sealed class BrowserService : IBrowserService
         return dispatcher.InvokeAsync(() =>
         {
             ct.ThrowIfCancellationRequested();
-            var core = _view?.CoreWebView2
+            var core = _view.TryCore()
                 ?? throw new InvalidOperationException("ブラウザペインにアクティブなタブがありません。");
             return action(core);
         }).Task.Unwrap();

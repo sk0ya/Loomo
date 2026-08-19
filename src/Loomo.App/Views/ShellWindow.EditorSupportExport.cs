@@ -45,7 +45,7 @@ public partial class ShellWindow {
             return;
         if (!_editorSupport.Pipeline.SupportsHtmlExport(_editorSupports.Resolve(filePath)))
             return;
-        if (_editorSupport.WebView.View?.CoreWebView2 is not { } core)
+        if (_editorSupport.WebView.Core is not { } core)
             return; // まだ描画されていない（ペイン未表示）。
         var dialog = new Microsoft.Win32.SaveFileDialog {
             Title = "PDFとして保存", Filter = "PDF ファイル (*.pdf)|*.pdf", FileName = Path.GetFileNameWithoutExtension(filePath) + ".pdf", };

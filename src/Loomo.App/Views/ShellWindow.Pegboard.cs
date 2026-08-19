@@ -11,7 +11,7 @@ public partial class ShellWindow {
     }
     private void PinBrowserUrlToPegboard() {
         if (_activeBrowserTab is { } tab && BrowserUrlOf(tab) is { Length: > 0 } url)
-            _vm.Pegboard.AddContent(url, type: "url", title: tab.View.CoreWebView2?.DocumentTitle);
+            _vm.Pegboard.AddContent(url, type: "url", title: tab.View.TryCore()?.DocumentTitle);
     }
     private void PinEditorSelectionToPegboard() {
         if (_activeEditorTab?.Control.SelectedText is { Length: > 0 } text)

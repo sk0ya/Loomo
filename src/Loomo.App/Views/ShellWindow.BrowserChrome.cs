@@ -110,7 +110,7 @@ public partial class ShellWindow {
         if (tab is null || !ReferenceEquals(tab, _activeBrowserTab))
             return;
         var vm = _vm.Browser;
-        var core = tab.View.CoreWebView2;
+        var core = tab.View.TryCore();
         vm.CanGoBack = core is not null && core.CanGoBack;
         vm.CanGoForward = core is not null && core.CanGoForward;
         vm.IsLoading = tab.IsLoading;
@@ -158,7 +158,7 @@ public partial class ShellWindow {
     private void CloseBrowserFind() {
         if (!_vm.Browser.IsFindOpen)
             return;
-        try { ActiveBrowserView?.CoreWebView2?.Find.Stop(); } catch { /* 未対応ランタイム */ }
+        try { ActiveBrowserView.TryCore()?.Find.Stop(); } catch { /* 未対応ランタイム */ }
         _vm.Browser.CloseFind();
         ActiveBrowserView?.Focus();
     }
@@ -176,7 +176,7 @@ public partial class ShellWindow {
         }
     }
     private async Task ApplyBrowserFindAsync() {
-        if (ActiveBrowserView?.CoreWebView2 is not { } core)
+        if (ActiveBrowserView.TryCore() is not { } core)
             return;
         var vm = _vm.Browser;
         if (_browserFindUnavailable) {
@@ -204,7 +204,7 @@ public partial class ShellWindow {
         }
     }
     private void StepBrowserFind(int step) {
-        if (ActiveBrowserView?.CoreWebView2 is not { } core || _browserFindUnavailable)
+        if (ActiveBrowserView.TryCore() is not { } core || _browserFindUnavailable)
             return;
         try {
             if (step >= 0)
@@ -422,7 +422,7 @@ public partial class ShellWindow {
     /// <summary>表示中のページを Markdown にしてエディタタブで開く（読む・引用する・貼り直すための素材化）。
     /// 拡張子を .md にしてあるので、そのまま EditorSupport のプレビューにも載る。</summary>
     private async Task SendBrowserPageToEditorAsync() {
-        if (ActiveBrowserView?.CoreWebView2 is not { } core)
+        if (ActiveBrowserView.TryCore() is not { } core)
             return;
         string body;
         try {

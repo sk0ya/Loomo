@@ -184,33 +184,61 @@ public partial class ShellWindow {
     }
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
         => CreateBrowserSpinoffItem(BrowserUrlOf(sourceTab));
+    /// <summary>切り離したブラウザ。<see cref="DetachedItem.Content"/> は差し替えられないので、
+    /// <b>器（Grid）を挟んで</b>中の WebView2 だけを作り直せるようにする——ブラウザプロセスが落ちたら
+    /// コントロールごと作り直すため（§21.5.3。共有プロファイルなので他インスタンスの巻き添えでも落ちる）。</summary>
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         var url = sourceUrl ?? DefaultBrowserUrl;
-        var view = new LoomoWebView2 {
-            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E), CreationProperties = CreateWebViewCreationProperties()
-        };
-        var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", view, _tabIcons.GetBrowserDefaultIcon(), dispose: () => view.Dispose());
-        _ = RealizeSpinoffBrowserAsync(view, url, item);
+        var host = new Grid();
+        var view = CreateBrowserView();
+        view.Visibility = Visibility.Visible;
+        host.Children.Add(view);
+        var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DisposeSpinoffBrowser(host));
+        _ = RealizeSpinoffBrowserAsync(host, view, url, item);
         return item;
     }
-    private async Task RealizeSpinoffBrowserAsync(WebView2CompositionControl view, string url, DetachedItem item) {
+    private static void DisposeSpinoffBrowser(Panel host) {
+        foreach (var view in host.Children.OfType<WebView2CompositionControl>().ToList())
+            try { view.Dispose(); } catch { }
+    }
+    private async Task RealizeSpinoffBrowserAsync(
+        Panel host, WebView2CompositionControl view, string url, DetachedItem item) {
         try { await view.EnsureCoreWebView2Async(); }
         catch { WebViewEnvironment.ReportUnavailable("ブラウザ"); return; }
         WebViewEnvironment.NoteCreated();
-        ConfigureBrowserCoreBasics(view.CoreWebView2!);
+        if (view.TryCore() is not { } core)
+            return;   // 生成直後に落ちた（作り直しは ProcessFailed 経由）
+        ConfigureBrowserCoreBasics(core);
+        core.ProcessFailed += (_, e) => {
+            if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited) {
+                try { view.TryCore()?.Reload(); } catch { }
+                return;
+            }
+            // 落ちる前の行き先を控えてから、器の中身を作り直す（イベント配布中に壊さない）。
+            var last = view.Source?.ToString();
+            Dispatcher.BeginInvoke(new Action(() => RebuildSpinoffBrowser(host, item, last ?? url)));
+        };
         // 切り離した窓の target="_blank" は、素の WebView2 の既定（ツールバーの無い素っ気ない窓）ではなく
         // もう1枚の切り離しウィンドウで受ける（本体ペインの新しいタブと同じ考え方）。
-        view.CoreWebView2!.NewWindowRequested += (_, e) => {
+        core.NewWindowRequested += (_, e) => {
             e.Handled = true;
             var uri = e.Uri;
             Dispatcher.BeginInvoke(new Action(() => OpenUrlInDetachedWindow(uri)));
         };
-        view.CoreWebView2!.DocumentTitleChanged += (_, _) => {
-            var title = view.CoreWebView2?.DocumentTitle;
+        core.DocumentTitleChanged += (_, _) => {
+            var title = view.TryCore()?.DocumentTitle;
             item.Title = string.IsNullOrWhiteSpace(title) ? "Browser" : title!;
         };
         try { view.Source = new Uri(WorkspaceSessionCoordinator.NormalizeBrowserAddress(url, DefaultBrowserUrl)); }
         catch { /* 不正 URL は無視（空ページのまま） */ }
+    }
+    private void RebuildSpinoffBrowser(Panel host, DetachedItem item, string url) {
+        DisposeSpinoffBrowser(host);
+        host.Children.Clear();
+        var view = CreateBrowserView();
+        view.Visibility = Visibility.Visible;
+        host.Children.Add(view);
+        _ = RealizeSpinoffBrowserAsync(host, view, url, item);
     }
     private Point _paneTabDragStart;
     private Guid _paneTabDragId;

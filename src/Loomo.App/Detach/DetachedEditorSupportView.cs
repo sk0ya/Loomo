@@ -104,7 +104,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _searchTerm = term ?? "";
         _searchCaseSensitive = caseSensitive;
         _searchUseRegex = useRegex;
-        if (_web?.CoreWebView2 is { } core)
+        if (_web.TryCore() is { } core)
             EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
         _visuals.SetSearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
@@ -167,7 +167,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
         HideVisual();
         var view = await EnsureWebAsync();
-        if (view?.CoreWebView2 is not { } core || seq != _renderSeq)
+        if (view.TryCore() is not { } core || seq != _renderSeq)
             return;
 
         if (string.IsNullOrEmpty(filePath))
@@ -252,7 +252,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     {
         if (!await _viewFactory.InitializeAsync(web))
             return false;
-        if (web.CoreWebView2 is not { } core)
+        if (web.TryCore() is not { } core)
             return false;
 
         // 同梱アセット（mermaid 等）の配信元を一度だけマップする。
@@ -283,6 +283,19 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         // ページ側スクリプトからのメッセージ（リンククリック等）を受ける。WebView2 は再ペアレント時に
         // 作り直される（RebuildWebView）が、その都度この初期化を通るので購読も新しい core に張り直る。
         core.WebMessageReceived += OnWebMessageReceived;
+        // ブラウザプロセスが落ちたら（プロファイル共有なので他インスタンスの巻き添えでも落ちる。§21.5.3）
+        // この WebView2 は二度と描かない。作り直して描き直す——放っておくと複製だけ空のまま残る。
+        core.ProcessFailed += (_, e) =>
+        {
+            if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited)
+                return;
+            // 自分のイベントを配っている最中にコントロールを壊さない。
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                RebuildWebView();
+                Refresh();
+            }));
+        };
         return true;
     }
 

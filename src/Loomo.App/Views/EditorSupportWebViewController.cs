@@ -460,7 +460,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     {
         if (!await _viewFactory.InitializeAsync(view))
             return false;
-        if (view.CoreWebView2 is not { } core)
+        if (view.TryCore() is not { } core)
             return false;
         if (!_eventsAttached)
         {

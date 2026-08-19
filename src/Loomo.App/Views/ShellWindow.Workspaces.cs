@@ -295,7 +295,7 @@ public partial class ShellWindow {
         snapshot.BrowserTabs = _browserTabs
             .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(BrowserUrlOf(tab)))
             .Select(tab => new BrowserTabSnapshot {
-                Id = tab.Id, Url = BrowserUrlOf(tab), Title = tab.View.CoreWebView2?.DocumentTitle, IsActive = tab.Id == _activeBrowserTab?.Id
+                Id = tab.Id, Url = BrowserUrlOf(tab), Title = tab.View.TryCore()?.DocumentTitle, IsActive = tab.Id == _activeBrowserTab?.Id
             }).ToList();
         snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();

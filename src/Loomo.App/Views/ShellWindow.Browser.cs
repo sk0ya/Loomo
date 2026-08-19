@@ -19,7 +19,7 @@ public partial class ShellWindow {
     }
     /// <summary>更新／停止（読み込み中は停止として働く。ボタンは1つで、絵と説明が入れ替わる）。</summary>
     private void OnBrowserReload(object sender, RoutedEventArgs e) {
-        if (ActiveBrowserView?.CoreWebView2 is not { } core)
+        if (ActiveBrowserView.TryCore() is not { } core)
             return;
         if (_activeBrowserTab?.IsLoading == true)
             core.Stop();
@@ -58,8 +58,8 @@ public partial class ShellWindow {
             if (!BrowserAddressBox.IsKeyboardFocusWithin)
                 SetBrowserAddressText(url ?? string.Empty);
             if (e.IsSuccess) {
-                RecordTrailBrowser(url, view.CoreWebView2?.DocumentTitle);
-                _vm.Browser.RecordVisit(url, view.CoreWebView2?.DocumentTitle);
+                RecordTrailBrowser(url, view.TryCore()?.DocumentTitle);
+                _vm.Browser.RecordVisit(url, view.TryCore()?.DocumentTitle);
             }
             EvaluateBrowserExtensionPrompt(tab);
         }
@@ -83,7 +83,7 @@ public partial class ShellWindow {
         var tab = _activeBrowserTab ?? await CreateBrowserTabAsync(address);
         tab.PendingUrl = address;
         await EnsureBrowserRealizedAsync(tab);
-        if (tab.View.CoreWebView2 is { } core && tab.PendingUrl is not null) {
+        if (tab.View.TryCore() is { } core && tab.PendingUrl is not null) {
             tab.PendingUrl = null;
             if (!TryNavigateBrowserCore(core, address))
                 return;
@@ -119,7 +119,7 @@ public partial class ShellWindow {
         if (tab is null)
             return null;
         // 空文字も「無い」として次の手掛かりへ落とす（Source は遷移の種類によって空で返ることがある）。
-        return Empty(tab.View.CoreWebView2?.Source) ?? Empty(tab.View.Source?.ToString()) ?? Empty(tab.PendingUrl);
+        return Empty(tab.View.TryCore()?.Source) ?? Empty(tab.View.Source?.ToString()) ?? Empty(tab.PendingUrl);
         static string? Empty(string? value) => string.IsNullOrEmpty(value) ? null : value;
     }
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
@@ -135,14 +135,11 @@ public partial class ShellWindow {
     private BrowserTab CreateBrowserTab( string url, Guid? requestedId = null, string? requestedTitle = null, bool navigateSelf = true) {
         var id = requestedId ?? Guid.NewGuid();
         var browserWorkspace = CurrentBrowserWorkspace;
-        var view = new LoomoWebView2 {
-            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E), Visibility = Visibility.Collapsed, CreationProperties = CreateWebViewCreationProperties()
-        };
-        view.NavigationCompleted += OnBrowserNavigationCompleted;
+        var view = CreateBrowserView();
         var tab = new BrowserTab(id, view) {
             PendingUrl = navigateSelf ? WorkspaceSessionCoordinator.NormalizeBrowserAddress(url, DefaultBrowserUrl) : null
         };
-        view.ZoomFactorChanged += (_, _) => UpdateBrowserToolbar(tab);
+        AttachBrowserView(tab, view);
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
         _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {browserWorkspace.NextTabNumber++}", false);
@@ -174,21 +171,75 @@ public partial class ShellWindow {
             }
         }
         WebViewEnvironment.NoteCreated();
-        ConfigureBrowserCore(tab, tab.View.CoreWebView2!);
+        if (tab.View.TryCore() is not { } core)
+            return;   // 生成直後にブラウザプロセスが落ちた（ProcessFailed 経由で作り直す）
+        ConfigureBrowserCore(tab, core);
         // 拡張機能のページ（設定画面）用の仕込みは<b>最初の遷移より先に</b>済ませる——ドキュメント生成時の
         // 仕込みなので、待たずに navigate すると開いたその画面だけ効かない（§21.5.2）。
         try {
-            await tab.View.CoreWebView2!.AddScriptToExecuteOnDocumentCreatedAsync(ExtensionPageBridge.Script);
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(ExtensionPageBridge.Script);
         } catch {
             // 仕込めなくても普通のページには影響しない。
         }
         if (tab.PendingUrl is { } pending) {
             tab.PendingUrl = null;
-            TryNavigateBrowserCore(tab.View.CoreWebView2!, pending);
+            TryNavigateBrowserCore(core, pending);
         }
         UpdateBrowserTab(tab);
         UpdateBrowserToolbar(tab);
         await RefreshBrowserTabIconAsync(tab);
+    }
+    private LoomoWebView2 CreateBrowserView()
+        => new() {
+            DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x1E, 0x1E, 0x1E),
+            Visibility = Visibility.Collapsed,
+            CreationProperties = CreateWebViewCreationProperties()
+        };
+    /// <summary>コントロール側（CoreWebView2 より手前）の結線。作り直したコントロールにも同じものを結ぶ。</summary>
+    private void AttachBrowserView(BrowserTab tab, WebView2CompositionControl view) {
+        view.NavigationCompleted += OnBrowserNavigationCompleted;
+        view.ZoomFactorChanged += (_, _) => UpdateBrowserToolbar(tab);
+    }
+    /// <summary>ブラウザプロセスが落ちた。<b>プロファイルを共有している以上、落ちる理由は自分とは限らない</b>
+    /// ——Loomo を2つ起動していれば共有ブラウザプロセスは1つなので、他インスタンスの巻き添えでも落ちる（§21.5.3）。
+    /// 描画プロセスだけの死は読み直しで戻るが、ブラウザプロセスが落ちた WebView2 は<b>二度と描かない</b>ので
+    /// コントロールごと作り直す。</summary>
+    private void OnBrowserProcessFailed(BrowserTab tab, CoreWebView2ProcessFailedEventArgs e) {
+        if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited) {
+            try { tab.View.TryCore()?.Reload(); } catch { }
+            return;
+        }
+        // 自分のイベントを配っている最中にコントロールを壊さない（次のディスパッチへ回す）。
+        Dispatcher.BeginInvoke(new Action(() => _ = RebuildBrowserViewAsync(tab)));
+    }
+    /// <summary>タブの WebView2 を作り直し、落ちる前の行き先へ戻す。いま見ているタブだけ即実体化し、
+    /// 裏のタブ（別ワークスペースのタブを含む）は行き先を <see cref="BrowserTab.PendingUrl"/> に預けるだけ
+    /// ——次に見たときに開く。**別ワークスペースのタブも直す**のが要点で、そこを飛ばすと、切り替えて戻った
+    /// ときだけ空のペインが残る。</summary>
+    private async Task RebuildBrowserViewAsync(BrowserTab tab) {
+        if (!_browserWorkspaces.Values.Any(w => w.Tabs.Contains(tab)) && !_browserTabs.Contains(tab))
+            return;   // 落ちた直後に閉じられたタブ
+        var url = BrowserUrlOf(tab) ?? DefaultBrowserUrl;
+        var dead = tab.View;
+        var index = BrowserContentHost.Children.IndexOf(dead);
+        var wasVisible = dead.Visibility == Visibility.Visible;
+        if (index >= 0)
+            BrowserContentHost.Children.Remove(dead);
+        try { dead.Dispose(); } catch { }
+        var view = CreateBrowserView();
+        view.Visibility = wasVisible ? Visibility.Visible : Visibility.Collapsed;
+        tab.View = view;
+        tab.PendingUrl = url;
+        tab.RealizationStarted = false;
+        tab.IsLoading = false;
+        AttachBrowserView(tab, view);
+        // 表示中のワークスペースのタブだけ器へ戻す（裏のワークスペースのタブは切替時に AttachBrowserTabsAsync が載せる）。
+        if (index >= 0)
+            BrowserContentHost.Children.Insert(index, view);
+        if (ReferenceEquals(_activeBrowserTab, tab)) {
+            _browser.SetActiveView(view);
+            await EnsureBrowserRealizedAsync(tab);
+        }
     }
     /// <summary>タブの CoreWebView2 に、このペインとしての振る舞いを結ぶ。
     /// <b>ここで結ばないと素の WebView2 の既定に落ちる</b>——とくに <c>NewWindowRequested</c> を
@@ -196,6 +247,7 @@ public partial class ShellWindow {
     /// （<see cref="EditorSupportContextLink"/> に同じ罠の記録がある）。</summary>
     private void ConfigureBrowserCore(BrowserTab tab, CoreWebView2 core) {
         ConfigureBrowserCoreBasics(core);
+        core.ProcessFailed += (_, e) => OnBrowserProcessFailed(tab, e);
         core.NewWindowRequested += (_, e) => OnBrowserNewWindowRequested(e);
         // window.close()。閉じると WebView2 を Dispose するので、通知の中から同期に呼ばない
         // （自分のイベントを配っている最中に足元を壊すことになる）。次のディスパッチへ回す。
@@ -244,14 +296,14 @@ public partial class ShellWindow {
             e.Handled = true;
             created = CreateBrowserTab(uri, navigateSelf: false);
             await EnsureBrowserRealizedAsync(created);
-            if (created.View.CoreWebView2 is { } core) {
+            if (created.View.TryCore() is { } core) {
                 e.NewWindow = core;
                 return;
             }
             // 実体化できなかったときだけ、自分で開き直す（黙って何も起きないのが一番困る）。
             created.PendingUrl = uri;
             await EnsureBrowserRealizedAsync(created);
-            if (created.View.CoreWebView2 is not null)
+            if (created.View.TryCore() is not null)
                 return;
             // 2度目も駄目なら、この受け皿は使えない。Handled=true のまま NewWindow を渡さずに抜けると
             // リンクはどこにも開かず、活性化済みの空白タブだけが残る（＝一番困る結末そのもの）。
@@ -294,8 +346,8 @@ public partial class ShellWindow {
             return;
         var wasActive = _activeBrowserTab?.Id == id;
         var tab = _browserTabs[index];
-        if (tab.View.CoreWebView2 is not null)
-            tab.View.CoreWebView2.FaviconChanged -= OnBrowserFaviconChanged;
+        if (tab.View.TryCore() is { } closing)
+            closing.FaviconChanged -= OnBrowserFaviconChanged;
         BrowserContentHost.Children.Remove(tab.View);
         tab.View.NavigationCompleted -= OnBrowserNavigationCompleted;
         tab.View.Dispose();
@@ -321,10 +373,10 @@ public partial class ShellWindow {
         _vm.Tabs.ActivateBrowserTab(id);
         var url = BrowserUrlOf(tab);
         SetBrowserAddressText(url ?? string.Empty);
-        RecordTrailBrowser(url, tab.View.CoreWebView2?.DocumentTitle);
+        RecordTrailBrowser(url, tab.View.TryCore()?.DocumentTitle);
         // ★の状態・戻る/進むの活性・読み込み中は「今見ているタブ」のもの。切替のたびに揃える
         // （切り替えただけで訪問回数は増やさない）。
-        _vm.Browser.SetCurrentPage(url, tab.View.CoreWebView2?.DocumentTitle);
+        _vm.Browser.SetCurrentPage(url, tab.View.TryCore()?.DocumentTitle);
         // 促しバーは「いま見ているタブ」のもの（裏のタブがストアでも出さない）。
         EvaluateBrowserExtensionPrompt(tab);
         UpdateBrowserToolbar(tab);
@@ -335,21 +387,21 @@ public partial class ShellWindow {
     private void UpdateBrowserTab(BrowserTab? tab) {
         if (tab is null)
             return;
-        _vm.Tabs.UpdateBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle);
+        _vm.Tabs.UpdateBrowserTab(tab.Id, tab.View.TryCore()?.DocumentTitle);
         SaveActiveWorkspaceSnapshot();
     }
     private async void OnBrowserFaviconChanged(object? sender, object? e) {
         if (sender is not Microsoft.Web.WebView2.Core.CoreWebView2 coreWebView2)
             return;
-        var tab = _browserTabs.FirstOrDefault(t => ReferenceEquals(t.View.CoreWebView2, coreWebView2));
+        var tab = _browserTabs.FirstOrDefault(t => ReferenceEquals(t.View.TryCore(), coreWebView2));
         if (tab is null)
             return;
         await RefreshBrowserTabIconAsync(tab);
     }
     private async Task RefreshBrowserTabIconAsync(BrowserTab tab) {
-        if (tab.View.CoreWebView2 is null)
+        if (tab.View.TryCore() is not { } faviconCore)
             return;
-        var icon = await _tabIcons.GetBrowserIconAsync(tab.View.CoreWebView2, BrowserUrlOf(tab));
+        var icon = await _tabIcons.GetBrowserIconAsync(faviconCore, BrowserUrlOf(tab));
         _vm.Tabs.UpdateTabIcon(tab.Id, icon);
     }
 }

@@ -74,8 +74,12 @@ internal sealed record EditorTab(Guid Id)
         /// <summary>実体化せずに読める仮想ドキュメント判定（未実体化タブは常に実ファイル＝false）。</summary>
         public bool PeekIsVirtual => _control?.IsVirtualDocument ?? false;
     }
-internal sealed record BrowserTab(Guid Id, WebView2CompositionControl View)
+internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialView)
     {
+        /// <summary>いま載せているコントロール。ブラウザプロセスが落ちた WebView2 は二度と描かないので
+        /// 作り直して差し替える（§21.5.3）＝タブの寿命の間で固定ではない。</summary>
+        public WebView2CompositionControl View { get; set; } = InitialView;
+
         /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
         /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。</summary>
         public string? PendingUrl { get; set; }

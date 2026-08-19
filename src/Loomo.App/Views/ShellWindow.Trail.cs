@@ -220,7 +220,7 @@ public partial class ShellWindow {
             }
             if (kind == PaneKind.Browser && CurrentBrowserTrailUrl() is { } browserUrl)
             {
-                RecordTrailBrowser(browserUrl, _activeBrowserTab?.View.CoreWebView2?.DocumentTitle);
+                RecordTrailBrowser(browserUrl, _activeBrowserTab?.View.TryCore()?.DocumentTitle);
                 return;
             }
             RecordTrail((mode, stagePane, layout) =>

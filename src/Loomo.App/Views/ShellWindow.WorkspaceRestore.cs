@@ -149,7 +149,7 @@ public partial class ShellWindow {
         foreach (var tab in _browserTabs) {
             if (!BrowserContentHost.Children.Contains(tab.View))
                 BrowserContentHost.Children.Add(tab.View);
-            _vm.Tabs.AddBrowserTab(tab.Id, tab.View.CoreWebView2?.DocumentTitle, false);
+            _vm.Tabs.AddBrowserTab(tab.Id, tab.View.TryCore()?.DocumentTitle, false);
             await RefreshBrowserTabIconAsync(tab);
         }
     }

@@ -415,8 +415,8 @@ public partial class ShellWindow {
         if (_webThumbnailCaptureSequences.GetValueOrDefault(kind) != sequence)
             return;
         var core = kind switch {
-            PaneKind.EditorSupport => _editorSupport.WebView.View?.CoreWebView2,
-            PaneKind.Browser => ActiveBrowserView?.CoreWebView2,
+            PaneKind.EditorSupport => _editorSupport.WebView.Core,
+            PaneKind.Browser => ActiveBrowserView.TryCore(),
             _ => null,
         };
         if (core is null)
