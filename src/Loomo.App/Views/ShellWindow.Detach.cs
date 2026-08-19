@@ -20,6 +20,11 @@ public partial class ShellWindow {
             case WebView2CompositionControl browser:
                 snapshot.Url = browser.Source?.ToString();
                 break;
+            // 切り離したブラウザは作り直せるよう器（Grid）越しに載っている（CreateBrowserSpinoffItem）。
+            // 器のまま素通りさせると復元対象から外れ、切り替え・再起動でその窓だけ消える。
+            case Panel host when host.Children.OfType<WebView2CompositionControl>().FirstOrDefault() is { } hosted:
+                snapshot.Url = hosted.Source?.ToString();
+                break;
             case DetachedEditorSupportView preview:
                 snapshot.FilePath = preview.SourceFilePath;
                 break;
@@ -209,9 +214,14 @@ public partial class ShellWindow {
         if (view.TryCore() is not { } core)
             return;   // 生成直後に落ちた（作り直しは ProcessFailed 経由）
         ConfigureBrowserCoreBasics(core);
+        var rendererReloads = 0;
+        view.NavigationCompleted += (_, e) => { if (e.IsSuccess) rendererReloads = 0; };   // 描けたら仕切り直す
         core.ProcessFailed += (_, e) => {
             if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited) {
-                try { view.TryCore()?.Reload(); } catch { }
+                // 描画プロセスだけの死は読み直しで戻る。ただし回数を区切る（確実に描画を殺すページだと
+                // 読み直すたびに落ちて堂々巡りになる。本体ペインと同じ歯止め）。
+                if (rendererReloads++ < MaxRendererReloads)
+                    try { view.TryCore()?.Reload(); } catch { }
                 return;
             }
             // 落ちる前の行き先を控えてから、器の中身を作り直す（イベント配布中に壊さない）。

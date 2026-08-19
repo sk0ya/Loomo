@@ -97,7 +97,7 @@ internal static class WebViewDebugPort
             if (_adopted)
                 return false;
             var current = _port ??= ClaimPort();
-            if (SelectRunningPort(ReadClaims(), ListeningPorts(), current) is not { } running)
+            if (SelectRunningPort(ReadClaims(), ListeningPorts(), current, IsDebugEndpoint) is not { } running)
                 return false;
             _adopted = true;
             _port = running;
@@ -107,16 +107,38 @@ internal static class WebViewDebugPort
     }
 
     /// <summary>いま動いている共有ブラウザプロセスの番号を選ぶ。控えに載っている番号のうち listen 中のものを
-    /// 優先し（＝Loomo が使ったことのある番号）、無ければ探索帯で listen している最小の番号を採る。</summary>
-    internal static int? SelectRunningPort(IEnumerable<Claim> claims, IReadOnlySet<int> listening, int? current)
+    /// 優先する（＝Loomo が使ったことのある番号＝素性が分かっている）。控えに無い番号は<b>CDP エンドポイントだと
+    /// 確かめてから</b>しか採らない——探索帯には dev サーバーや別のデバッガも居るので、確かめずに拾うと
+    /// 引数が揃わないまま失敗を繰り返したうえ、その番号を控えに書き込んで次の起動まで巻き添えにする。</summary>
+    internal static int? SelectRunningPort(
+        IEnumerable<Claim> claims, IReadOnlySet<int> listening, int? current, Func<int, bool> isDebugEndpoint)
     {
         foreach (var claim in claims)
             if (claim.Port != current && listening.Contains(claim.Port))
                 return claim.Port;
         for (var port = StartPort; port < StartPort + SearchSpan; port++)
-            if (port != current && listening.Contains(port))
+            if (port != current && listening.Contains(port) && isDebugEndpoint(port))
                 return port;
         return null;
+    }
+
+    /// <summary>その番号が Chromium の CDP エンドポイントか（<c>/json/version</c> が
+    /// <c>webSocketDebuggerUrl</c> を返すか）。WebView2 の CDP は環境によって <c>::1</c> にしか
+    /// bind しないので、IPv4／IPv6 の両方を試す。立て直しのときだけ通る道なので、待ちは短く切る。</summary>
+    private static bool IsDebugEndpoint(int port)
+    {
+        foreach (var host in new[] { "127.0.0.1", "[::1]" })
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(400) };
+                var body = client.GetStringAsync($"http://{host}:{port}/json/version").GetAwaiter().GetResult();
+                if (body.Contains("webSocketDebuggerUrl", StringComparison.Ordinal))
+                    return true;
+            }
+            catch { }
+        }
+        return false;
     }
 
     /// <summary>控えを読む（1行 <c>"&lt;pid&gt; &lt;port&gt;"</c> の並び。壊れた行は無かったことにする）。</summary>

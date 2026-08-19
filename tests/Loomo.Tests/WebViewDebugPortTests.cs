@@ -153,19 +153,27 @@ public class WebViewDebugPortTests
     {
         var claims = new[] { new Claim(4321, 9335) };
 
-        // 探索帯には 9334 も listen しているが、Loomo が使ったことのある 9335 を採る。
-        var port = WebViewDebugPort.SelectRunningPort(claims, new HashSet<int> { 9334, 9335 }, current: 9333);
+        // 探索帯には 9334 も listen しているが、Loomo が使ったことのある 9335 を採る（確認も要らない）。
+        var port = WebViewDebugPort.SelectRunningPort(
+            claims, new HashSet<int> { 9334, 9335 }, current: 9333, isDebugEndpoint: _ => false);
 
         Assert.Equal(9335, port);
     }
 
     [Fact]
-    public void 引き当て直しは控えに無くてもlisten中の番号を拾う()
+    public void 引き当て直しは控えに無くてもCDPエンドポイントなら拾う()
         => Assert.Equal(9334, WebViewDebugPort.SelectRunningPort(
-            Array.Empty<Claim>(), new HashSet<int> { 9334 }, current: 9333));
+            Array.Empty<Claim>(), new HashSet<int> { 9334 }, current: 9333, isDebugEndpoint: p => p == 9334));
+
+    /// <summary>探索帯には dev サーバーや別のデバッガも居る。確かめずに拾うと、揃わない引数のまま失敗を
+    /// 繰り返したうえ、その番号を控えへ書き込んで次の起動まで巻き添えにする。</summary>
+    [Fact]
+    public void 素性の分からないlisten中の番号は拾わない()
+        => Assert.Null(WebViewDebugPort.SelectRunningPort(
+            Array.Empty<Claim>(), new HashSet<int> { 9334 }, current: 9333, isDebugEndpoint: _ => false));
 
     [Fact]
     public void 引き当て直す先が無ければnull()
         => Assert.Null(WebViewDebugPort.SelectRunningPort(
-            new[] { new Claim(4321, 9333) }, new HashSet<int> { 9333 }, current: 9333));
+            new[] { new Claim(4321, 9333) }, new HashSet<int> { 9333 }, current: 9333, isDebugEndpoint: _ => true));
 }

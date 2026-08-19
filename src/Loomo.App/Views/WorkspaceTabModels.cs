@@ -87,6 +87,10 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         /// <summary>CoreWebView2 の生成を開始済みか（多重生成・多重ナビゲートの防止）。</summary>
         public bool RealizationStarted { get; set; }
 
+        /// <summary>描画プロセスが落ちて読み直した回数（読み込みが通ったら 0 に戻す）。
+        /// 確実に描画を殺すページで読み直しの堂々巡りに入らないための歯止め。</summary>
+        public int RendererReloads { get; set; }
+
         /// <summary>読み込み中か。タブごとに持つ——ツールバーの「更新／停止」は
         /// <b>いま見ているタブ</b>の状態を出すので、裏のタブの読み込みに引きずられてはいけない。</summary>
         public bool IsLoading { get; set; }

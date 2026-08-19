@@ -269,18 +269,23 @@ public sealed class EditorSupportWebViewController : IDisposable
     private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
     {
         CodeSupportDiag.Log($"editor support webview: プロセス落ち {e.ProcessFailedKind}");
-        try
+        var browserExited = e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited;
+        // WebView2 が自分のイベントを配っている最中にコントロールを壊さない（次のディスパッチへ回す）。
+        _host.Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
-                DiscardView();
-        }
-        catch (Exception ex)
-        {
-            // 死んだ WebView2 の後始末は例外を投げうる。ここで抜けると立て直しの合図まで届かない。
-            CodeSupportDiag.Log($"editor support webview: 後始末で例外 {ex}");
-        }
-        CodeSupportDiag.Log("editor support webview: 組み直しを要求");
-        ReloadRequested?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                if (browserExited)
+                    DiscardView();
+            }
+            catch (Exception ex)
+            {
+                // 死んだ WebView2 の後始末は例外を投げうる。ここで抜けると立て直しの合図まで届かない。
+                CodeSupportDiag.Log($"editor support webview: 後始末で例外 {ex}");
+            }
+            CodeSupportDiag.Log("editor support webview: 組み直しを要求");
+            ReloadRequested?.Invoke(this, EventArgs.Empty);
+        }));
     }
 
     /// <summary>使えなくなった WebView2 を捨てる（次の <see cref="EnsureAsync"/> が作り直す）。</summary>

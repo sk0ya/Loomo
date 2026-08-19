@@ -22,10 +22,10 @@ public sealed class EditorSupportViewFactory : IEditorSupportViewFactory
         try
         {
             await view.EnsureCoreWebView2Async();
-            if (view.TryCore() is null)
-                return false;
-            WebViewEnvironment.NoteCreated();   // 動く環境ができた＝以後ブラウザ引数を変えてはいけない
-            return true;
+            // ここでは NoteCreated しない——切り離しの複製プレビューは生成プロパティ無し（＝既定プロファイル）
+            // で作るので必ず成功し、それで「動く環境がある」を立てると共有プロファイル側の立て直しが
+            // 永久に封じられる。共有プロファイルで作れたことは呼び元（EditorSupportWebViewController）が知らせる。
+            return view.TryCore() is not null;
         }
         catch
         {

@@ -3,6 +3,8 @@ namespace sk0ya.Loomo.App.Views;
 /// ツールバーの状態・ブックマーク・ページ内検索・ダウンロード・右クリックは
 /// <see cref="ShellWindow"/> の BrowserChrome 側に分けてある。</summary>
 public partial class ShellWindow {
+    /// <summary>描画プロセスが落ちたときに読み直す上限（<see cref="BrowserTab.RendererReloads"/>）。</summary>
+    private const int MaxRendererReloads = 2;
     private void OnBrowserBack(object sender, RoutedEventArgs e) => BrowserNavigateHistory(back: true);
     private void OnBrowserForward(object sender, RoutedEventArgs e) => BrowserNavigateHistory(back: false);
     /// <summary>アクティブタブの履歴を1つ進退する。ツールバーのボタンと
@@ -58,6 +60,7 @@ public partial class ShellWindow {
             if (!BrowserAddressBox.IsKeyboardFocusWithin)
                 SetBrowserAddressText(url ?? string.Empty);
             if (e.IsSuccess) {
+                tab.RendererReloads = 0;   // 描けたので、描画プロセス落ちの読み直し回数は仕切り直す
                 RecordTrailBrowser(url, view.TryCore()?.DocumentTitle);
                 _vm.Browser.RecordVisit(url, view.TryCore()?.DocumentTitle);
             }
@@ -150,25 +153,21 @@ public partial class ShellWindow {
         if (tab.RealizationStarted)
             return;
         tab.RealizationStarted = true;
+        // 生成条件は<b>実体化のたびに</b>入れ直す。タブは作った時点では実体化せず（起動を速くするため）、
+        // その間にポートの引き当て直しで引数が変わりうる——古い引数のまま入ると 0x8007139F で落ちる。
+        tab.View.CreationProperties = CreateWebViewCreationProperties();
         try {
             await tab.View.EnsureCoreWebView2Async();
         } catch {
             // 失敗の現実的な原因は「別の Loomo が同じプロファイルを違うブラウザ引数で握っている」
-            // （0x8007139F、§21.5.3）。ポートを引き当て直して一度だけやり直し、駄目なら黙らずに知らせる。
+            // （0x8007139F、§21.5.3）。ポートを引き当て直して<b>コントロールごと作り直して</b>やり直す
+            //（立ち上がらなかった WebView2 は使い回さない）。直せないなら黙らずに知らせる。
             tab.RealizationStarted = false;   // 失敗時は次回の表示・操作で再試行できるようにする
-            if (!WebViewEnvironment.TryRecover()) {
+            if (WebViewEnvironment.TryRecover())
+                await RebuildBrowserViewAsync(tab);
+            else
                 WebViewEnvironment.ReportUnavailable("ブラウザ");
-                return;
-            }
-            tab.View.CreationProperties = CreateWebViewCreationProperties();
-            tab.RealizationStarted = true;
-            try {
-                await tab.View.EnsureCoreWebView2Async();
-            } catch {
-                tab.RealizationStarted = false;
-                WebViewEnvironment.ReportUnavailable("ブラウザ");
-                return;
-            }
+            return;
         }
         WebViewEnvironment.NoteCreated();
         if (tab.View.TryCore() is not { } core)
@@ -206,7 +205,10 @@ public partial class ShellWindow {
     /// コントロールごと作り直す。</summary>
     private void OnBrowserProcessFailed(BrowserTab tab, CoreWebView2ProcessFailedEventArgs e) {
         if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited) {
-            try { tab.View.TryCore()?.Reload(); } catch { }
+            // 描画プロセスだけの死は読み直しで戻る。ただし<b>回数を区切る</b>——確実に描画を殺すページ
+            // （OOM 等）だと、読み直すたびに落ちて堂々巡りになり、CPU を焼いたまま操作もできなくなる。
+            if (tab.RendererReloads++ < MaxRendererReloads)
+                try { tab.View.TryCore()?.Reload(); } catch { }
             return;
         }
         // 自分のイベントを配っている最中にコントロールを壊さない（次のディスパッチへ回す）。
