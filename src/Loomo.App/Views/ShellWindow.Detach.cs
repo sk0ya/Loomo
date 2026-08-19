@@ -195,7 +195,8 @@ public partial class ShellWindow {
     }
     private async Task RealizeSpinoffBrowserAsync(WebView2CompositionControl view, string url, DetachedItem item) {
         try { await view.EnsureCoreWebView2Async(); }
-        catch { return; }
+        catch { WebViewEnvironment.ReportUnavailable("ブラウザ"); return; }
+        WebViewEnvironment.NoteCreated();
         ConfigureBrowserCoreBasics(view.CoreWebView2!);
         // 切り離した窓の target="_blank" は、素の WebView2 の既定（ツールバーの無い素っ気ない窓）ではなく
         // もう1枚の切り離しウィンドウで受ける（本体ペインの新しいタブと同じ考え方）。

@@ -42,20 +42,10 @@ public partial class ShellWindow : Window {
     private DispatcherTimer? _editorSupportDebounceTimer;
     private static readonly string EditorSupportPreviewFolder = Services.WebViewProfile.PreviewPageFolder;
     private static readonly string WebViewUserDataFolder = Services.WebViewProfile.UserDataFolder;
-    // リモートデバッグポート付き（TS IDE のフロントデバッグがこのペインへ CDP アタッチする。§29）。
-    // 共有 UserDataFolder の全 WebView2 が同一引数である必要があるため、ここで一括付与する。
-    // 「同一引数」はプロセスをまたいでも要るので、2つ目の Loomo は先行インスタンスのポートを引き継ぐ
-    // （WebViewDebugPort。引き継がないと 0x8007139F でブラウザ／EditorSupport が丸ごと無反応になる）。
-    private static readonly string WebViewAdditionalBrowserArguments =
-        "--allow-file-access-from-files " + Services.WebViewDebugPort.Argument;
-    // 拡張機能はプロファイル（＝UserDataFolder）単位の設定なので、ここで一度立てれば
-    // ブラウザペインのタブも切り離しウィンドウも同じ顔ぶれになる。既定は false で、
-    // false のままだと AddBrowserExtensionAsync は ERROR_NOT_SUPPORTED で失敗する（§21.5.2）。
+    // 生成条件（プロファイル・ブラウザ引数・拡張機能）の正本は WebViewEnvironment（§21.5.3）。
+    // 立て直し（ポートの引き当て直し）で引数が変わりうるので、都度組み立てる。
     private static CoreWebView2CreationProperties CreateWebViewCreationProperties()
-        => new() {
-            UserDataFolder = WebViewUserDataFolder, AdditionalBrowserArguments = WebViewAdditionalBrowserArguments,
-            AreBrowserExtensionsEnabled = true
-        };
+        => Services.WebViewEnvironment.CreateProperties();
     private bool _syncingEditorFromSupport;
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;

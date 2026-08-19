@@ -156,9 +156,24 @@ public partial class ShellWindow {
         try {
             await tab.View.EnsureCoreWebView2Async();
         } catch {
+            // 失敗の現実的な原因は「別の Loomo が同じプロファイルを違うブラウザ引数で握っている」
+            // （0x8007139F、§21.5.3）。ポートを引き当て直して一度だけやり直し、駄目なら黙らずに知らせる。
             tab.RealizationStarted = false;   // 失敗時は次回の表示・操作で再試行できるようにする
-            return;
+            if (!WebViewEnvironment.TryRecover()) {
+                WebViewEnvironment.ReportUnavailable("ブラウザ");
+                return;
+            }
+            tab.View.CreationProperties = CreateWebViewCreationProperties();
+            tab.RealizationStarted = true;
+            try {
+                await tab.View.EnsureCoreWebView2Async();
+            } catch {
+                tab.RealizationStarted = false;
+                WebViewEnvironment.ReportUnavailable("ブラウザ");
+                return;
+            }
         }
+        WebViewEnvironment.NoteCreated();
         ConfigureBrowserCore(tab, tab.View.CoreWebView2!);
         // 拡張機能のページ（設定画面）用の仕込みは<b>最初の遷移より先に</b>済ませる——ドキュメント生成時の
         // 仕込みなので、待たずに navigate すると開いたその画面だけ効かない（§21.5.2）。

@@ -370,6 +370,7 @@ public partial class ShellWindow {
         if (view.CoreWebView2 is null) {
             try {
                 await view.EnsureCoreWebView2Async();
+                WebViewEnvironment.NoteCreated();
             } catch {
                 _vm.Browser.ExtensionStatus = "この拡張機能の画面を開けませんでした。";
                 return;

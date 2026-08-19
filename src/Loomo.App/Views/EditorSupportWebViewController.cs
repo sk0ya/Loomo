@@ -40,6 +40,10 @@ public sealed class EditorSupportWebViewController : IDisposable
     /// </summary>
     private static readonly TimeSpan NavigationWatchdog = TimeSpan.FromSeconds(12);
 
+    /// <summary>WebView2 を用意できなかったときのやり直し間隔（使い切ったら利用者へ知らせる）。</summary>
+    private static readonly TimeSpan[] RetryDelays =
+        [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(8)];
+
     private readonly Panel _host;
     private readonly EditorSupportNavigationService _navigation;
     private readonly Func<CoreWebView2CreationProperties> _creationProperties;
@@ -51,6 +55,8 @@ public sealed class EditorSupportWebViewController : IDisposable
     private Task<bool>? _initTask;
     private bool _eventsAttached;
     private DispatcherTimer? _watchdog;
+    private DispatcherTimer? _retryTimer;
+    private int _retryAttempt;
     private string _searchTerm = "";
     private bool _searchCaseSensitive;
     private bool _searchUseRegex;
@@ -77,6 +83,11 @@ public sealed class EditorSupportWebViewController : IDisposable
     }
 
     public WebView2CompositionControl? View { get; private set; }
+
+    /// <summary>いまの CoreWebView2（未生成・ブラウザプロセスが落ちた後は null）。素の
+    /// <c>View.CoreWebView2</c> は落ちた後に<b>読むだけで例外</b>を投げるので、参照は必ずここを通す
+    /// （<see cref="WebViewSafe.TryCore"/>）。</summary>
+    public CoreWebView2? Core => View.TryCore();
     public IEditorSupportViewFactory ViewFactory => _viewFactory;
 
     /// <summary>
@@ -106,7 +117,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         _searchTerm = term ?? "";
         _searchCaseSensitive = caseSensitive;
         _searchUseRegex = useRegex;
-        if (View?.CoreWebView2 is { } core)
+        if (Core is { } core)
             PushSearchHighlight(core);
     }
 
@@ -169,7 +180,29 @@ public sealed class EditorSupportWebViewController : IDisposable
     private static bool IsPdf(string? uri)
         => uri is not null && uri.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// WebView2 を用意する。<b>生成に失敗したコントロールは捨てて作り直す</b>——失敗した WebView2 を握ったまま
+    /// 再試行しても二度と立ち上がらないので、ページを組み直せる状態にならない。
+    /// <para>失敗の現実的な原因は「別の Loomo が同じプロファイルを違うブラウザ引数で握っている」
+    /// （<c>ERROR_INVALID_STATE 0x8007139F</c>、§21.5.3）なので、まずポートを引き当て直して作り直す。
+    /// それでも駄目なら <see cref="ScheduleRetry"/> で数回やり直し、使い切ったら<b>黙らずに</b>知らせる——
+    /// 握り潰していたせいで、症状が「ヘッダーだけ更新されて中身が永久に描かれない」になっていた。</para>
+    /// </summary>
     public async Task<WebView2CompositionControl?> EnsureAsync()
+    {
+        if (await TryCreateViewAsync())
+            return View;
+        CodeSupportDiag.Log("editor support webview: 生成に失敗");
+        if (WebViewEnvironment.TryRecover() && await TryCreateViewAsync())
+        {
+            CodeSupportDiag.Log("editor support webview: ポートを引き当て直して復帰");
+            return View;
+        }
+        ScheduleRetry();
+        return null;
+    }
+
+    private async Task<bool> TryCreateViewAsync()
     {
         if (View is null)
         {
@@ -179,12 +212,91 @@ public sealed class EditorSupportWebViewController : IDisposable
         }
 
         _initTask ??= InitializeCoreAsync(View);
-        if (!await _initTask)
+        if (await _initTask)
         {
-            _initTask = null;
-            return null;
+            WebViewEnvironment.NoteCreated();
+            StopRetry();
+            return true;
         }
-        return View;
+        DiscardView();
+        return false;
+    }
+
+    /// <summary>
+    /// 作り直しを待って仕掛ける。生成の失敗は<b>そのときだけのもの</b>でありうる——共有ブラウザプロセスの
+    /// 落ち際や、別インスタンスが同時に立ち上げている最中に当たると失敗する。1回で諦めると、そのペインは
+    /// 触り直すまで空のまま残る（これが「更新されない」の見え方）。数回だけ間を空けて自力でやり直し、
+    /// 使い切ったら黙らずに知らせる。
+    /// </summary>
+    private void ScheduleRetry()
+    {
+        if (_retryAttempt >= RetryDelays.Length)
+        {
+            WebViewEnvironment.ReportUnavailable("エディタ支援");
+            return;
+        }
+        var delay = RetryDelays[_retryAttempt++];
+        CodeSupportDiag.Log($"editor support webview: {delay.TotalSeconds}秒後にやり直す（{_retryAttempt}回目）");
+        _retryTimer ??= CreateRetryTimer();
+        _retryTimer.Stop();
+        _retryTimer.Interval = delay;
+        _retryTimer.Start();
+    }
+
+    private DispatcherTimer CreateRetryTimer()
+    {
+        var timer = new DispatcherTimer();
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            ReloadRequested?.Invoke(this, EventArgs.Empty);
+        };
+        return timer;
+    }
+
+    private void StopRetry()
+    {
+        _retryTimer?.Stop();
+        _retryAttempt = 0;
+    }
+
+    /// <summary>
+    /// ブラウザプロセスが落ちた。<b>プロファイルを共有している以上、落ちる理由は自分とは限らない</b>——
+    /// Loomo を2つ起動していれば共有ブラウザプロセスは1つなので、他インスタンス側の巻き添えでも落ちる。
+    /// この WebView2 はもう二度と描かないので捨てて、ホストにページごと組み直させる（放っておくと
+    /// 「ヘッダーだけ更新されて中身が空のまま」になる）。描画プロセスだけの死は読み直しで戻る。
+    /// </summary>
+    private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        CodeSupportDiag.Log($"editor support webview: プロセス落ち {e.ProcessFailedKind}");
+        try
+        {
+            if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
+                DiscardView();
+        }
+        catch (Exception ex)
+        {
+            // 死んだ WebView2 の後始末は例外を投げうる。ここで抜けると立て直しの合図まで届かない。
+            CodeSupportDiag.Log($"editor support webview: 後始末で例外 {ex}");
+        }
+        CodeSupportDiag.Log("editor support webview: 組み直しを要求");
+        ReloadRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>使えなくなった WebView2 を捨てる（次の <see cref="EnsureAsync"/> が作り直す）。</summary>
+    private void DiscardView()
+    {
+        ResetPageState();
+        if (View is not null)
+        {
+            View.NavigationCompleted -= OnNavigationCompleted;
+            DetachCoreHandlers(Core);
+            _host.Children.Remove(View);
+        }
+        _viewFactory.Dispose(View);
+        View = null;
+        _initTask = null;
+        _eventsAttached = false;
     }
 
     /// <summary>
@@ -266,7 +378,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     internal void SetMarkdownEditMode(bool enabled)
     {
         _markdownEditMode = enabled && _markdownSource is not null;
-        if (View?.CoreWebView2 is { } core)
+        if (Core is { } core)
             PostMarkdownState(core);
     }
 
@@ -322,7 +434,7 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     public bool TryHorizontalScroll(int delta)
     {
-        if (delta == 0 || View is not { Visibility: Visibility.Visible, IsMouseOver: true, CoreWebView2: { } core })
+        if (delta == 0 || View is not { Visibility: Visibility.Visible, IsMouseOver: true } || Core is not { } core)
             return false;
         try
         {
@@ -334,7 +446,7 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     public void PostScrollRatio(double ratio)
     {
-        if (View?.CoreWebView2 is not { } core)
+        if (Core is not { } core)
             return;
         try
         {
@@ -354,6 +466,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         {
             core.WebMessageReceived += _messageReceived;
             core.ContextMenuRequested += _contextMenuRequested;
+            core.ProcessFailed += OnProcessFailed;
             _navigation.ConfigureVirtualHosts(core, null);
             try { await core.AddScriptToExecuteOnDocumentCreatedAsync(HorizontalScrollScript); }
             catch { }
@@ -372,14 +485,12 @@ public sealed class EditorSupportWebViewController : IDisposable
     {
         StopWatchdog();
         _watchdog = null;
+        StopRetry();
+        _retryTimer = null;
         ResetPageState();
         if (View is not null)
             View.NavigationCompleted -= OnNavigationCompleted;
-        if (_eventsAttached && View?.CoreWebView2 is { } core)
-        {
-            core.WebMessageReceived -= _messageReceived;
-            core.ContextMenuRequested -= _contextMenuRequested;
-        }
+        DetachCoreHandlers(Core);
         _viewFactory.Dispose(View);
         View = null;
         _initTask = null;
@@ -388,13 +499,22 @@ public sealed class EditorSupportWebViewController : IDisposable
         _findGate.Dispose();
     }
 
+    private void DetachCoreHandlers(CoreWebView2? core)
+    {
+        if (!_eventsAttached || core is null)
+            return;
+        core.WebMessageReceived -= _messageReceived;
+        core.ContextMenuRequested -= _contextMenuRequested;
+        core.ProcessFailed -= OnProcessFailed;
+    }
+
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         StopWatchdog();
         var action = _page.Completed(e.IsSuccess);
 
         // ページを組み直すとページ側の保持状態（と Find セッション）が消えるので、検索ハイライトを送り直す。
-        if (e.IsSuccess && View?.CoreWebView2 is { } loaded)
+        if (e.IsSuccess && Core is { } loaded)
         {
             _appliedFindTerm = null;
             PushSearchHighlight(loaded);

@@ -22,7 +22,10 @@ public sealed class EditorSupportViewFactory : IEditorSupportViewFactory
         try
         {
             await view.EnsureCoreWebView2Async();
-            return view.CoreWebView2 is not null;
+            if (view.CoreWebView2 is null)
+                return false;
+            WebViewEnvironment.NoteCreated();   // 動く環境ができた＝以後ブラウザ引数を変えてはいけない
+            return true;
         }
         catch
         {

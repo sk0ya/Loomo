@@ -7,6 +7,7 @@ public partial class ShellWindow {
     /// <summary>WebView2 側が行き詰まった（ナビゲーション失敗・応答なし・初回描画の取りこぼし）ときの復帰。
     /// ページ全体を組み直させる——本文差し替えでは、そもそも土台が無いので直らない。</summary>
     private void OnEditorSupportReloadRequested(object? sender, EventArgs e) {
+        CodeSupportDiag.Log($"editor support: 組み直し要求を受理（描画可={CanRenderEditorSupport()}）");
         _editorSupportForceFullPage = true;
         InvalidateEditorSupport();
     }
@@ -32,7 +33,7 @@ public partial class ShellWindow {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
         var tab = CreateBrowserTab("about:blank", requestedTitle: title);
         await EnsureBrowserRealizedAsync(tab);
-        if (tab.View.CoreWebView2 is not { } core)
+        if (tab.View.TryCore() is not { } core)
             return;
         _editorSupportNavigation.ConfigureVirtualHosts(core, mapFolder);
         core.Navigate(pageUrl);

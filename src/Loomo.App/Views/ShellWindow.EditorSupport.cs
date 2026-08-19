@@ -203,7 +203,9 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     }
     /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期・途中 return なし。</b></summary>
     private void ApplyEditorSupportFrame(EditorSupportFrame frame) {
-        var view = _editorSupport.WebView.View;
+        // ブラウザプロセスが落ちた後の WebView2 は CoreWebView2 を読むだけで例外を投げるので、
+        // 必ず均した参照（Core）を使う——ここで落とすと、以降このフレームは適用されずペインが空のまま残る。
+        var core = _editorSupport.WebView.Core;
         EditorSupportSettingsButton.Visibility = Visibility.Collapsed;
         if (!frame.ShowEdit)
             _markdownEditMode = false;
@@ -239,7 +241,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
                 break;
             case EditorSupportFrameContent.WebContent web:
                 HideEditorSupportVisual();
-                if (view?.CoreWebView2 is not { } core) {
+                if (core is null) {
                     // WebView2 を用意できなかった＝ペインは空のまま。ここで自分へ投げ返すと
                     // 初期化失敗のたびに即再試行して回り続けるので、記録だけ残して次の要求を待つ。
                     CodeSupportDiag.Log("webview unavailable: frame dropped");
