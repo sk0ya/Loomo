@@ -1968,7 +1968,9 @@
                                       ToolTip="エディタサポート・Diff・AI・IDE・TS IDE・検索・ファイル一覧を袖に並べる"
                                       Click="OnWingTabClick" />
                     </Grid>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    <ScrollViewer x:Name="WingScrollViewer"
+                                  ScrollChanged="OnWingScrollChanged"
+                                  VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <!-- 列数は設定「袖の列数」（1列／2列）。2列のときは ArrangeWingRows が
                              カードを横に束ねた行を積む（UniformGrid は行高を等分して縦に間延びする）。 -->

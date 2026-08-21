@@ -16,10 +16,17 @@ public partial class ShellWindow {
     /// 収めるため、細くはなるが横にはみ出さない。</summary>
     private int WingColumnCount
         => Math.Clamp(_settings.Appearance.WingColumns, 1, 2);
-    /// <summary>2列のときのカード幅。縦スクロールバーぶんと列間の隙間を先に引いてから割る——
-    /// ここを引かないとカードが列幅を超えて右端が切れる（袖の実効幅は袖幅そのものではない）。</summary>
+    /// <summary>2列のときのカード幅。実際のビューポート幅（縦スクロールバー表示後）から
+    /// 列間の隙間を引いて割る。初回の未配置時だけ袖幅から仮算出する。</summary>
     private double TwoColumnCardWidth
-        => (_wingWidth - 10 - SystemParameters.VerticalScrollBarWidth - WingCardGap) / 2;
+    {
+        get
+        {
+            var viewportWidth = WingScrollViewer?.ViewportWidth ?? 0;
+            var availableWidth = viewportWidth > 0 ? viewportWidth : Math.Max(0, _wingWidth - 10);
+            return Math.Max(1, (availableWidth - WingCardGap) / 2);
+        }
+    }
     /// <summary>袖カードの幅。</summary>
     private double CurrentWingCardWidth
         => WingColumnCount <= 1 ? Math.Max(150, _wingWidth - 10) : TwoColumnCardWidth;
@@ -221,6 +228,13 @@ public partial class ShellWindow {
             return;
         PaneLayoutDebugLog.Log($"OnStageSourceAreaSizeChanged {_layoutWingSourceWidth:0.#} -> {e.NewSize.Width:0.#}");
         ScheduleLayoutWings();
+    }
+    private void OnWingScrollChanged(object sender, ScrollChangedEventArgs e) {
+        if (Math.Abs(e.ViewportWidthChange) <= 0.5
+            || _paneSplitterDragging
+            || WingHost.Visibility != Visibility.Visible)
+            return;
+        RebuildWings();
     }
     private void UpdateWingHostVisibility() {
         if (WingHost is null)
