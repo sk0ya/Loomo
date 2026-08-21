@@ -69,7 +69,7 @@
             </Setter>
         </Style>
 
-        <!-- 袖の「すべて／メイン／サブ」。外枠の中で選択状態だけを面で示し、
+        <!-- 袖の「すべて／メイン／サブ」。外枠の中で選択状態を背景面＋下線で示し、
              個々のボタンの枠線が三つ並んで窮屈に見えないようにする。 -->
         <Style x:Key="WingSegmentButton" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -103,9 +103,9 @@
                                 <Setter TargetName="bg" Property="Background" Value="{DynamicResource BgAlt}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource BgAlt}" />
                                 <Setter TargetName="activeLine" Property="Background" Value="{DynamicResource Accent}" />
-                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="bg" Property="Opacity" Value="0.45" />
