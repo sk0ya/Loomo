@@ -34,6 +34,94 @@
             </Style.Triggers>
         </Style>
 
+        <!-- 袖のヘッダー用。折りたたみ操作はタブ群から少し離れた、独立したアイコンボタンとして見せる。 -->
+        <Style x:Key="WingCollapseButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bg" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 袖の「すべて／メイン／サブ」。外枠の中で選択状態だけを面で示し、
+             個々のボタンの枠線が三つ並んで窮屈に見えないようにする。 -->
+        <Style x:Key="WingSegmentButton" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <ContentPresenter.Resources>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                    </ContentPresenter.Resources>
+                                </ContentPresenter>
+                            </Border>
+                            <Border x:Name="activeLine" Height="2" Margin="7,0"
+                                    VerticalAlignment="Bottom" CornerRadius="1"
+                                    Background="Transparent" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                                <Setter TargetName="activeLine" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bg" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 俯瞰はタブと同じ列にあるが、現在の表示を切り替える操作なので控えめなアウトラインにする。 -->
+        <Style x:Key="WingOverviewButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+        </Style>
+
         <!-- Diff のソース切替（Git / 比較）のセグメントボタン -->
         <Style x:Key="SourceToggle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -1953,7 +2041,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button x:Name="WingCollapseButton" Grid.Column="0" Width="32" Height="28"
-                                Padding="0" Style="{StaticResource PaneActionButton}"
+                                Padding="0" Style="{StaticResource WingCollapseButton}"
                                 ToolTip="袖を折りたたむ" Click="OnToggleWingCollapsed">
                             <Path x:Name="WingCollapseIcon" Style="{StaticResource PaneActionIcon}"
                                   Data="{StaticResource WingIcon.Expanded}" />
@@ -1963,31 +2051,38 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="OverviewButton" Grid.Column="0" Style="{StaticResource FlatButton}"
+                            <!-- 起動直後のワークスペース復元が終わるまで出さない。ステージ状態が確定したら
+                                 UpdateWingHostVisibility が必要なときだけ表示する。 -->
+                            <Button x:Name="OverviewButton" Grid.Column="0" Visibility="Collapsed"
+                                    Style="{StaticResource WingOverviewButton}"
                                     Padding="8,4" Margin="0,0,6,0" Content="⊞ すべての画面"
                                     ToolTip="すべての画面を一覧表示（Ctrl+W z）"
                                     Click="OnToggleOverview" />
                             <!-- タブ：袖に並べる顔ぶれの切替（メイン＝常時そばに置く道具／サブ＝用があるとき呼ぶ面／
                                  すべて＝両方を通しで）。所属は固定＝StageModeCoordinator.MainGroup。 -->
-                            <Grid x:Name="WingTabs" Grid.Column="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ToggleButton x:Name="WingAllTab" Grid.Column="0" Tag="All" Content="すべて"
-                                              IsChecked="True" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
-                                              ToolTip="袖に出せる画面をすべて並べる（既定）"
-                                              Click="OnWingTabClick" />
-                                <ToggleButton x:Name="WingMainTab" Grid.Column="1" Tag="Main" Content="メイン"
-                                              Style="{StaticResource ToolbarToggleButton}" Margin="3,0,3,0"
-                                              ToolTip="エディタ・ターミナル・ブラウザ・Git を袖に並べる"
-                                              Click="OnWingTabClick" />
-                                <ToggleButton x:Name="WingSubTab" Grid.Column="2" Tag="Sub" Content="サブ"
-                                              Style="{StaticResource ToolbarToggleButton}" Margin="3,0,0,0"
-                                              ToolTip="エディタサポート・Diff・AI・IDE・TS IDE・検索・ファイル一覧を袖に並べる"
-                                              Click="OnWingTabClick" />
-                            </Grid>
+                            <Border Grid.Column="1" Background="{DynamicResource Bg}"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                    CornerRadius="6" Padding="2,2,2,3">
+                                <Grid x:Name="WingTabs">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="WingAllTab" Grid.Column="0" Tag="All" Content="すべて"
+                                                  IsChecked="True" Style="{StaticResource WingSegmentButton}"
+                                                  ToolTip="袖に出せる画面をすべて並べる（既定）"
+                                                  Click="OnWingTabClick" />
+                                    <ToggleButton x:Name="WingMainTab" Grid.Column="1" Tag="Main" Content="メイン"
+                                                  Style="{StaticResource WingSegmentButton}"
+                                                  ToolTip="エディタ・ターミナル・ブラウザ・Git を袖に並べる"
+                                                  Click="OnWingTabClick" />
+                                    <ToggleButton x:Name="WingSubTab" Grid.Column="2" Tag="Sub" Content="サブ"
+                                                  Style="{StaticResource WingSegmentButton}"
+                                                  ToolTip="エディタサポート・Diff・AI・IDE・TS IDE・検索・ファイル一覧を袖に並べる"
+                                                  Click="OnWingTabClick" />
+                                </Grid>
+                            </Border>
                         </Grid>
                     </Grid>
                     <ScrollViewer x:Name="WingScrollViewer"
