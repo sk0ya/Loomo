@@ -76,8 +76,8 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,2" />
-            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Margin" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="Template">
@@ -2063,7 +2063,7 @@
                             <Border Grid.Column="1" Background="{DynamicResource Bg}"
                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                     CornerRadius="6" Padding="2,2,2,3">
-                                <Grid x:Name="WingTabs">
+                                <Grid x:Name="WingTabs" SizeChanged="OnWingTabsSizeChanged">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />

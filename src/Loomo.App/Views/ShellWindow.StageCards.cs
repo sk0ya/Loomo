@@ -159,11 +159,22 @@ public partial class ShellWindow {
     private void UpdateWingTabs() {
         if (WingMainTab is null || WingSubTab is null || WingAllTab is null)
             return;
+        UpdateWingTabLabels();
         WingMainTab.IsChecked = _activeWingTab == WingTab.Main;
         WingSubTab.IsChecked = _activeWingTab == WingTab.Sub;
         WingAllTab.IsChecked = _activeWingTab == WingTab.All;
         UpdateWingToolbar();
     }
+    /// <summary>袖が細いときだけラベルを1文字へ縮める。ツールチップは詳細なまま残す。</summary>
+    private void UpdateWingTabLabels() {
+        if (WingTabs is null || WingMainTab is null || WingSubTab is null || WingAllTab is null)
+            return;
+        var compact = WingTabs.ActualWidth > 0 && WingTabs.ActualWidth < 190;
+        WingAllTab.Content = compact ? "全" : "すべて";
+        WingMainTab.Content = compact ? "主" : "メイン";
+        WingSubTab.Content = compact ? "他" : "サブ";
+    }
+    private void OnWingTabsSizeChanged(object sender, SizeChangedEventArgs e) => UpdateWingTabLabels();
     private void BuildLayoutWingSources() {
         _layoutWingSourceWidth = StageSourceArea.ActualWidth;
         SyncThumbnailSources(
