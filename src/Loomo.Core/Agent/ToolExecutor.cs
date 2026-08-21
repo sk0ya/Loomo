@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
@@ -16,7 +15,7 @@ using Microsoft.Extensions.Logging;
 namespace sk0ya.Loomo.Core.Agent;
 
 /// <summary>1ツールの実行を担う（UI非依存）：ツールの解決・引数正規化・冗長上書きガード・安全評価・承認・
-/// 実行・ジャーナル記録と、実行中イベント（承認待ち／実行中／完了）のチャネル送出。ループ本体は
+/// 実行と、実行中イベント（承認待ち／実行中／完了）のチャネル送出。ループ本体は
 /// <see cref="AgentOrchestrator"/>。</summary>
 internal sealed class ToolExecutor
 {
@@ -24,7 +23,6 @@ internal sealed class ToolExecutor
     private readonly IApprovalService _approval;
     private readonly ISafetyPolicy _safety;
     private readonly ITraceSink _trace;
-    private readonly IFileChangeJournal? _journal;
     private readonly ILogger _logger;
 
     public ToolExecutor(
@@ -32,14 +30,12 @@ internal sealed class ToolExecutor
         IApprovalService approval,
         ISafetyPolicy safety,
         ITraceSink trace,
-        IFileChangeJournal? journal,
         ILogger logger)
     {
         _tools = tools;
         _approval = approval;
         _safety = safety;
         _trace = trace;
-        _journal = journal;
         _logger = logger;
     }
 
@@ -144,17 +140,6 @@ internal sealed class ToolExecutor
                 return new ToolResultMessage(use.Id, "ユーザーが実行を拒否しました。", IsError: true);
         }
 
-        // Diff セッション用：ファイル変更ツールは実行前の全文を控えておき、成功後に前後ペアで記録する。
-        string? journalPath = null;
-        var journalExistedBefore = false;
-        string? journalBefore = null;
-        if (_journal is not null && tool is IFileMutationTool journalTool)
-        {
-            journalPath = SafeResolveTarget(journalTool, args);
-            if (journalPath is not null)
-                (journalExistedBefore, journalBefore) = FileChangeJournal.SafeReadFile(journalPath);
-        }
-
         events.TryWrite(new ToolExecutionStarted(use));
         _trace.Record(sessionId, turnId, TraceKinds.ToolStarted, new { toolUseId = use.Id, name = tool.Name });
         var toolClock = Stopwatch.StartNew();
@@ -169,15 +154,6 @@ internal sealed class ToolExecutor
             {
                 var target = SafeResolveTarget(fileTool, args);
                 if (target is not null) editedPaths.Add(target);
-            }
-            // ファイル変更に成功したら実行後の全文を読み、前後ペアをジャーナルへ記録する（Diff セッション用）。
-            if (!result.IsError && journalPath is not null && _journal is not null)
-            {
-                var (_, journalAfter) = FileChangeJournal.SafeReadFile(journalPath);
-                if (!journalExistedBefore || !string.Equals(journalBefore, journalAfter, StringComparison.Ordinal))
-                    _journal.Record(new FileChangeRecord(
-                        DateTimeOffset.Now, sessionId, turnId, tool.Name, journalPath,
-                        IsNew: !journalExistedBefore, journalBefore, journalAfter));
             }
             _trace.Record(sessionId, turnId, TraceKinds.ToolCompleted, new
             {

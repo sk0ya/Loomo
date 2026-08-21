@@ -89,7 +89,7 @@ public sealed partial class DiffSessionViewModel
 
     /// <summary>
     /// 取得済み Git パッチのキャッシュ（同一ファイル参照×コンテキスト行数で引く）。表示形式の切替
-    /// （統合↔左右）では git を再実行せずここから返す。一覧やリポジトリ／ジャーナルが変わるたびに
+    /// （統合↔左右）では git を再実行せずここから返す。一覧やリポジトリが変わるたびに
     /// <see cref="RefreshAsync"/> 冒頭で破棄するので、作業ツリーの変化には追従する。
     /// </summary>
     private readonly Dictionary<(DiffFileItem Item, int Context), string> _patchCache = new();
@@ -97,7 +97,7 @@ public sealed partial class DiffSessionViewModel
     /// <summary>
     /// 作業ツリー git 差分のパッチキャッシュを、その1ファイル分だけ捨てる。ファイルを選択し直すたびに呼び、
     /// 別ファイルの差分を見てから戻ってきたときに編集後の最新差分を読み直せるようにする（表示形式の
-    /// 切替時は選択が変わらないので走らず、その用途のキャッシュは保たれる）。AI変更は内容が item に
+    /// 切替時は選択が変わらないので走らず、その用途のキャッシュは保たれる）。アドホック比較は内容が item に
     /// 閉じ、コミット範囲は不変なので対象外（どちらも <see cref="DiffFileItem.Entry"/> が null）。
     /// </summary>
     private void InvalidateWorkingTreePatch(DiffFileItem? item)
@@ -120,7 +120,6 @@ public sealed partial class DiffSessionViewModel
         return text;
     }
 
-    private const string TooLargeMessage = "（ファイルが大きいため全文を保持していません。差分を表示できません）";
     private const string NoDiffMessage = "（差分はありません）";
 
     // 差分の組み立て（LCS・パッチ解析・字句解析）は WPF に一切触れない純粋な計算だが、行数に比例して
@@ -132,17 +131,16 @@ public sealed partial class DiffSessionViewModel
         if (item is null) return new UnifiedContent(new List<DiffRowVm>(), DiffSyntaxHighlighter.None);
         var path = item.FullPath;
 
-        if (item.UsesInlineContent)
+        // アドホック比較は git を引かず、素材の全文2つから組み立てる。
+        if (item.Comparison is { } comparison)
         {
-            if (item.OldContent is null || item.NewContent is null)
-                return UnifiedMessage(TooLargeMessage);
-            var (oldText, newText) = (item.OldContent, item.NewContent);
+            var (oldText, newText) = (comparison.LeftText, comparison.RightText);
             return await Task.Run(() =>
             {
                 var rows = new List<DiffRowVm>();
                 foreach (var line in DiffUtil.Compute(oldText, newText))
                     rows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
-                // AI変更・比較は全文2つから組み立てる経路で、行は本文そのもの（パッチの1文字プレフィックス無し）。
+                // アドホック比較は全文2つから組み立てる経路で、行は本文そのもの（パッチの1文字プレフィックス無し）。
                 return new UnifiedContent(
                     rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: false, rows));
             });
@@ -167,11 +165,9 @@ public sealed partial class DiffSessionViewModel
                 new List<DiffSideRowVm>(), DiffSyntaxHighlighter.None, DiffSyntaxHighlighter.None);
         var path = item.FullPath;
 
-        if (item.UsesInlineContent)
+        if (item.Comparison is { } comparison)
         {
-            if (item.OldContent is null || item.NewContent is null)
-                return SideMessage(TooLargeMessage);
-            var (oldText, newText) = (item.OldContent, item.NewContent);
+            var (oldText, newText) = (comparison.LeftText, comparison.RightText);
             // 左右は実際のファイルのように全文を行番号付きで対比する（ハンク折りたたみなし）
             return await Task.Run(() =>
                 WithSideSyntax(path, ToSideRows(SideBySideDiff.Build(DiffUtil.ComputeFull(oldText, newText)))));
@@ -199,10 +195,11 @@ public sealed partial class DiffSessionViewModel
 
     /// <summary>
     /// ハンク単位ステージ／アンステージの対象となるファイルか。作業ツリーの追跡済みファイル
-    /// （AI変更・コミット範囲・未追跡・コンフリクトは対象外。これらは部分ステージできない／意味がない）。
+    /// （コミット範囲・未追跡・コンフリクト・アドホック比較は対象外。これらは部分ステージできない／意味がない
+    /// ——比較は <see cref="DiffFileItem.Entry"/> が null なのでこの条件で落ちる）。
     /// </summary>
     private static bool SupportsHunkStaging(DiffFileItem? item)
-        => item is { IsAi: false, CommitFile: null, Entry: { IsUntracked: false, IsConflicted: false } };
+        => item is { CommitFile: null, Entry: { IsUntracked: false, IsConflicted: false } };
 
     /// <summary>選択ファイルのハンク一覧を組み立てる（対象外なら空にする）。コンテキスト3のパッチを使う。
     /// <paramref name="version"/> は <see cref="LoadDiffAsync"/> の読込世代。await の間に新しい読込が

@@ -1,7 +1,6 @@
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.Tests;
@@ -9,15 +8,14 @@ namespace sk0ya.Loomo.Tests;
 /// <summary>アドホック比較（クリップボード ↔ 選択範囲など）の素材と、差分本体の行 → ファイル行の対応。</summary>
 public class DiffComparisonTests
 {
-    /// <summary>比較モードは git にも変更ジャーナルにも触らないので、実体のまま組み立ててよい。</summary>
+    /// <summary>比較モードは git に触らないので、実体のまま組み立ててよい。</summary>
     private static DiffSessionViewModel CreateSut()
     {
         var workspace = new FakeWorkspaceService();
-        var journal = new FileChangeJournal();
         var git = new GitService(workspace);
         var files = new DiffFileGateway();
-        return new DiffSessionViewModel(journal, git, new FakeEditorService(), workspace, files,
-            new DiffSessionQuery(journal, git), new DiffSessionCommandHandler(files, journal, git));
+        return new DiffSessionViewModel(git, new FakeEditorService(), workspace, files,
+            new DiffSessionQuery(git), new DiffSessionCommandHandler(git));
     }
 
     private static DiffComparison Compare(string name)
@@ -110,7 +108,7 @@ public class DiffComparisonTests
         Assert.Contains("A", sut.CompareCaption);
 
         // 別のソースへ切り替えれば比較専用の操作は死ぬ（押した瞬間に見ている差分が消えないように）が、素材は残る。
-        sut.IsAiMode = true;
+        sut.IsGitMode = true;
         Assert.False(sut.HasComparison);
         Assert.Equal("", sut.CompareCaption);
         sut.IsCompareMode = true;
@@ -281,7 +279,7 @@ public class DiffComparisonTests
     [Fact]
     public void 全文差分は先頭を1行目として省略行の分も数える()
     {
-        // AI変更・アドホック比較の統合表示（@@ ではなく「… N 行省略 …」で畳まれる）
+        // アドホック比較の統合表示（@@ ではなく「… N 行省略 …」で畳まれる）
         var rows = new[]
         {
             new DiffRowVm("Context", "a"),          // 1行目

@@ -1,7 +1,6 @@
 using System.IO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.Tests;
@@ -38,10 +37,9 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(_root, "unchecked.txt"), "unchecked");
 
         var editor = new FakeEditorService();
-        var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
-            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
         // 未追跡ファイルは「バージョン管理外ファイル」セクションに並び、既定では未チェック。
@@ -67,10 +65,9 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await MustRunAsync("add", "-A");
 
         var editor = new FakeEditorService();
-        var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
-            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Contains(vm.Staged, i => i.Entry.Path == "staged.txt");
@@ -89,10 +86,9 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     {
         await File.WriteAllTextAsync(Path.Combine(_root, "candidate.txt"), "candidate");
         var editor = new FakeEditorService();
-        var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
-            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
 
@@ -116,10 +112,9 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     public void リモート同期コマンドは実行対象があるときだけ有効になる()
     {
         var editor = new FakeEditorService();
-        var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(journal, _git, editor, _workspace, files,
-            new DiffSessionQuery(journal, _git), new DiffSessionCommandHandler(files, journal, _git));
+        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
 
         Assert.False(vm.FetchCommand.CanExecute(null));

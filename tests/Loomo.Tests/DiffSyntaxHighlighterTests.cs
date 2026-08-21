@@ -28,7 +28,7 @@ public class DiffSyntaxHighlighterTests
     [Fact]
     public void プレフィックスの無い差分ではずらさない()
     {
-        // AI変更・アドホック比較は全文2つから組み立てるので、行は本文そのもの
+        // アドホック比較は全文2つから組み立てるので、行は本文そのもの
         var rows = new[] { Row("Added", "const int b = 2;") };
 
         var syntax = DiffSyntaxHighlighter.ForUnified(@"C:\work\a.cs", hasPatchPrefix: false, rows);

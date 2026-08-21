@@ -6,7 +6,6 @@ using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Tools;
@@ -59,7 +58,6 @@ internal static class LoomoServiceCollectionExtensions
                 ? new JsonlTraceSink(maxSessions: obs.MaxSessions)
                 : NullTraceSink.Instance;
         });
-        AddAliasedSingleton<FileChangeJournal, IFileChangeJournal>(services);
         services.AddSingleton<AgentOrchestrator>();
         services.AddSingleton<ConversationStore>();
         services.AddSingleton<WorkflowStore>();

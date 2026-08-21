@@ -23,7 +23,7 @@ internal static class DiffSyntaxHighlighter
 
     /// <summary>
     /// 統合表示のトークン列を作る。<paramref name="hasPatchPrefix"/> は各行が git パッチの
-    /// 1文字プレフィックス（<c>+</c>／<c>-</c>／空白）を含むか（AI変更・比較の差分は本文そのもの）。
+    /// 1文字プレフィックス（<c>+</c>／<c>-</c>／空白）を含むか（アドホック比較の差分は本文そのもの）。
     /// プレフィックスを持つ差分では、解析はそれを剥がした本文に対して行い、返す列は1桁ずらす。
     /// </summary>
     internal static IReadOnlyList<SyntaxToken[]?> ForUnified(

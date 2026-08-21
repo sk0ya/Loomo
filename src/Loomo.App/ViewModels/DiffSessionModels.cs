@@ -18,8 +18,6 @@ public enum DiffSource
 {
     /// <summary>Git（作業ツリー／コミット範囲）。</summary>
     Git,
-    /// <summary>AI 変更（ファイル変更ジャーナル）。</summary>
-    Ai,
     /// <summary>アドホック比較（<see cref="DiffComparison"/>）。ファイルにも Git にも依らない素材2つ。</summary>
     Compare,
 }
@@ -59,22 +57,17 @@ public sealed class DiffFileItem
     public required string Badge { get; init; }
     public string Stats { get; init; } = "";
     public string FileName => Path.GetFileName(FullPath);
-    public bool IsAi { get; init; }
-    public bool IsNew { get; init; }
     /// <summary>アドホック比較の項目なら、その素材そのもの（ストックに入っている実体を指す）。
     /// 一覧は更新のたびに作り直されるので、「どの比較か」は表示名やパスではなくこの参照で追う
     /// ——比較はパスを持たないことがあり、同じファイルの比較を複数ストックすることもあるため。</summary>
     public DiffComparison? Comparison { get; init; }
-    /// <summary>アドホック比較（<see cref="DiffComparison"/>）の項目。Git にも変更ジャーナルにも紐づかない。</summary>
+    /// <summary>アドホック比較（<see cref="DiffComparison"/>）の項目。Git には紐づかない。</summary>
     public bool IsCompare => Comparison is not null;
     /// <summary><see cref="FullPath"/> のファイルの中身が左側にあるか（既定は右＝新側。git 差分と同じ向き）。
     /// 差分の行から実ファイルの行番号を引くとき、どちら側の行番号を読むかを決める。</summary>
     public bool FileIsLeft { get; init; }
     public string? OldContent { get; init; }
     public string? NewContent { get; init; }
-    /// <summary>差分を git ではなく項目が持つ全文2つから組み立てるか（AI変更・アドホック比較がこれ）。</summary>
-    public bool UsesInlineContent => IsAi || IsCompare;
-    public bool CanRevert => IsAi && (IsNew || OldContent is not null);
     public GitChangeEntry? Entry { get; init; }
     /// <summary>作業ツリーの変更として破棄できる項目か（Git の作業ツリー項目だけが持つ）。</summary>
     public bool CanDiscard => Entry is not null;

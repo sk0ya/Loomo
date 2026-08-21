@@ -1,7 +1,6 @@
 using System.IO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Settings;
 using sk0ya.Loomo.Services;
 using sk0ya.Loomo.Services.Settings;
@@ -19,10 +18,9 @@ public sealed class GitSessionCommitDetailTests
         workspace.OpenFolder(root);
         var git = new GitService(workspace);
         var editor = new FakeEditorService();
-        var journal = new FileChangeJournal();
         var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(journal, git, editor, workspace, files,
-            new DiffSessionQuery(journal, git), new DiffSessionCommandHandler(files, journal, git));
+        var diff = new DiffSessionViewModel(git, editor, workspace, files,
+            new DiffSessionQuery(git), new DiffSessionCommandHandler(git));
         var query = new GitSessionQuery(git);
         return new GitSessionViewModel(git, editor, diff, query, new GitSessionCommandHandler(git),
             new GitHistoryViewModel(query), new GitRootSwitchViewModel(git, workspace), settings, store);

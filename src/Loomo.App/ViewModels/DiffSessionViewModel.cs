@@ -14,10 +14,9 @@ using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>AI変更、作業ツリー、コミット範囲の差分表示を調停する。</summary>
+/// <summary>作業ツリー、コミット範囲、アドホック比較の差分表示を調停する。</summary>
 public sealed partial class DiffSessionViewModel : ObservableObject
 {
-    private readonly IFileChangeJournal _journal;
     private readonly GitService _git;
     private readonly IEditorService _editor;
     private readonly IWorkspaceService _workspace;
@@ -29,12 +28,11 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     private (string? From, string To)? _commitRange;
 
-    /// <summary>差分の出どころ（Git／AI変更／アドホック比較）。ヘッダーのラジオボタンで切り替わる。</summary>
+    /// <summary>差分の出どころ（Git／アドホック比較）。ヘッダーのラジオボタンで切り替わる。</summary>
     [ObservableProperty] private DiffSource _source = DiffSource.Git;
     // ラジオボタン用の相互排他プロキシ。true を書いたものへ切り替わり、false 書き込みは無視する
     // （RadioButton は選択が移るとき旧選択に false を書くので、ここで捨てないと二重に切り替わる）。
     public bool IsGitMode { get => Source == DiffSource.Git; set { if (value) Source = DiffSource.Git; } }
-    public bool IsAiMode { get => Source == DiffSource.Ai; set { if (value) Source = DiffSource.Ai; } }
     public bool IsCompareMode { get => Source == DiffSource.Compare; set { if (value) Source = DiffSource.Compare; } }
     private bool _suppressModeChangeRefresh;
     [ObservableProperty] private bool _isSideBySide = true;
@@ -59,10 +57,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     public bool CanStageHunks => Hunks.Count > 0;
 
     public DiffSessionViewModel(
-        IFileChangeJournal journal, GitService git, IEditorService editor, IWorkspaceService workspace,
+        GitService git, IEditorService editor, IWorkspaceService workspace,
         DiffFileGateway files, DiffSessionQuery query, DiffSessionCommandHandler commands)
     {
-        _journal = journal;
         _git = git;
         _editor = editor;
         _workspace = workspace;
@@ -70,7 +67,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _query = query;
         _commands = commands;
         Conflict = new DiffConflictViewModel(files, git, ClearDiffForConflict, SetStatus);
-        _journal.Changed += (_, _) => DispatchRefresh();
         _git.RepositoryChanged += (_, _) => DispatchRefresh();
     }
 
@@ -110,7 +106,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnSourceChanged(DiffSource value)
     {
         OnPropertyChanged(nameof(IsGitMode));
-        OnPropertyChanged(nameof(IsAiMode));
         OnPropertyChanged(nameof(IsCompareMode));
         // 比較を見ているかどうかで意味が変わる（帯を畳む・比較専用の操作を殺す・一覧の見出し）。
         OnPropertyChanged(nameof(HasComparison));
@@ -250,7 +245,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     /// <summary>ストックした比較。新しいものが先頭。<b>作るたびに積み増し、閉じるまで残る</b>——
     /// 見比べたいものは1件とは限らず（案A・案B・保存前後…）、次の比較を作った瞬間に前のが消えるなら
-    /// 「並べて見比べる」ができないため。Git／AI変更へ切り替えても保持するが、永続化はしない。</summary>
+    /// 「並べて見比べる」ができないため。Git へ切り替えても保持するが、永続化はしない。</summary>
     private readonly List<DiffComparison> _comparisons = new();
 
     /// <summary>次の <see cref="RefreshAsync"/> で選び直す比較。一覧の項目は更新のたびに作り直されるので、
@@ -262,7 +257,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         => Source == DiffSource.Compare ? SelectedFile?.Comparison : null;
 
     /// <summary>今見ている比較があるか（左右入替・比較し直し・閉じるが使えるか）。
-    /// 素材は Git／AI変更へ切り替えても保持するが、<b>今それを見ていない間は false</b>——
+    /// 素材は Git へ切り替えても保持するが、<b>今それを見ていない間は false</b>——
     /// git 差分を見ているときに「左右を入れ替える」が押せると、押した瞬間に見ていた差分が消えるため。</summary>
     public bool HasComparison => CurrentComparison is not null;
 
@@ -449,7 +444,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
         var result = Source == DiffSource.Compare
             ? LoadComparison()
-            : await _query.LoadAsync(IsGitMode, _commitRange);
+            : await _query.LoadAsync(_commitRange);
         var items = result.Items;
         var emptyMessage = result.EmptyMessage;
 
@@ -524,27 +519,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         EditorLineOpenRequested?.Invoke(this, (item.FullPath, line));
     }
 
-    /// <summary>AI変更の巻き戻し：新規作成ならファイル削除、変更なら変更前の全文を書き戻す。</summary>
-    [RelayCommand]
-    private async Task RevertAsync(DiffFileItem? item)
-    {
-        item ??= SelectedFile;
-        if (item is not { CanRevert: true }) return;
-
-        var detail = item.IsNew ? "AI が新規作成したファイルなので削除されます。" : "AI 変更前の内容へ書き戻します。";
-        var answer = MessageBox.Show(
-            Application.Current?.MainWindow!,
-            $"{item.DisplayPath} の AI 変更を元に戻しますか？\n{detail}",
-            "AI変更の巻き戻し", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.Yes) return;
-
-        var result = await _commands.RevertAiAsync(item);
-        SetStatus(result.Message, !result.Success);
-    }
-
     /// <summary>
     /// Git 作業ツリー（Current）の変更を破棄する：追跡済みは作業ツリーを復元、未追跡は削除。破壊的。
-    /// コミット範囲・AI変更モードでは呼べない（<see cref="CanDiscardSelected"/> で抑止）。
+    /// コミット範囲・比較モードでは呼べない（<see cref="CanDiscardSelected"/> で抑止）。
     /// </summary>
     [RelayCommand]
     private async Task DiscardAsync(DiffFileItem? item)
@@ -616,14 +593,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         var result = await _commands.ApplyReverseAsync(reduced.Patch,
             $"{item.DisplayPath} のこの範囲（{reduced.DiscardedLineCount} 行）を破棄しました。");
         SetStatus(result.Message, !result.Success);
-    }
-
-    /// <summary>AI変更の記録をすべて消す（ファイル自体は変更しない）。</summary>
-    [RelayCommand]
-    private void ClearAiChanges()
-    {
-        _commands.ClearAiChanges();
-        SetStatus("AI変更の記録をクリアしました。", isError: false);
     }
 
     /// <summary>View（右クリック操作など）からペイン下部の実行結果メッセージを出す。</summary>

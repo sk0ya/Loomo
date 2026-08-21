@@ -16,7 +16,7 @@ using sk0ya.Loomo.App.ViewModels;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// Diff セッションペイン。AI変更（ファイル変更ジャーナル）と Git 作業ツリー差分を切り替えて表示する。
+/// Diff セッションペイン。Git 作業ツリー差分とアドホック比較を切り替えて表示する。
 /// 差分本体は読み取り専用 RichTextBox（FlowDocument）で描き、普通のテキストとして文字単位で選択・コピーできる。
 /// データ（<see cref="DiffSessionViewModel.DiffRows"/> / <see cref="DiffSessionViewModel.SideRows"/>）が
 /// 変わるたびに FlowDocument を組み直す。左右並びは本文2つ＋行番号ガター2つの縦スクロールを連動させる。
@@ -757,11 +757,6 @@ public partial class DiffSessionView : UserControl
     private void OnDiscardFile(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && ContextItem(sender) is { } item) vm.DiscardCommand.Execute(item);
-    }
-
-    private void OnRevertFile(object sender, RoutedEventArgs e)
-    {
-        if (Vm is { } vm && ContextItem(sender) is { } item) vm.RevertCommand.Execute(item);
     }
 
     private void OnCloseComparison(object sender, RoutedEventArgs e)

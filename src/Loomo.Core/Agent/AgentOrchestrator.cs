@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
@@ -28,7 +27,6 @@ public sealed class AgentOrchestrator
     private readonly ISafetyPolicy _safety;
     private readonly IContextWindowPolicy _context;
     private readonly ITraceSink _trace;
-    private readonly IFileChangeJournal? _journal;
     private readonly ILogger<AgentOrchestrator> _logger;
     // 1ツールの実行（解決・安全評価・承認・実行・記録）はこの collaborator が担う。ループ本体は本クラス。
     private readonly ToolExecutor _toolExecutor;
@@ -52,8 +50,7 @@ public sealed class AgentOrchestrator
         ISafetyPolicy safety,
         IContextWindowPolicy context,
         ILogger<AgentOrchestrator> logger,
-        ITraceSink? trace = null,
-        IFileChangeJournal? journal = null)
+        ITraceSink? trace = null)
     {
         _aiFactory = aiFactory;
         _tools = tools;
@@ -62,8 +59,7 @@ public sealed class AgentOrchestrator
         _context = context;
         _logger = logger;
         _trace = trace ?? NullTraceSink.Instance;
-        _journal = journal;
-        _toolExecutor = new ToolExecutor(_tools, _approval, _safety, _trace, _journal, _logger);
+        _toolExecutor = new ToolExecutor(_tools, _approval, _safety, _trace, _logger);
     }
 
     /// <summary>ユーザー入力を処理してイベントを流す。</summary>

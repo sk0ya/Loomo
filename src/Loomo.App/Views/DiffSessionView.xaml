@@ -384,9 +384,6 @@
                                             <MenuItem Header="変更を破棄" Click="OnDiscardFile"
                                                       ToolTip="このファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
                                                       Visibility="{Binding CanDiscard, Converter={StaticResource BoolToVis}}" />
-                                            <MenuItem Header="AI 変更を元に戻す" Click="OnRevertFile"
-                                                      ToolTip="AI が加えた変更を巻き戻す（新規作成なら削除）"
-                                                      Visibility="{Binding CanRevert, Converter={StaticResource BoolToVis}}" />
                                         </ContextMenu>
                                     </DockPanel.ContextMenu>
                                     <!-- 閉じる ✕ は比較項目へマウスを置いたときだけ見せ、普段の一覧を静かに保つ。 -->
