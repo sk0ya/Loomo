@@ -37,7 +37,9 @@ internal abstract record EditorSupportFrameContent
         string? Uri,
         string? MapFolder,
         string? PageKey,
-        string? MarkdownSource) : EditorSupportFrameContent;
+        string? MarkdownSource,
+        /// <summary>HTMLをUIスレッド外で一時ファイルへ書き込んだ後のナビゲーション先。</summary>
+        string? PreparedPageUrl = null) : EditorSupportFrameContent;
 
     /// <summary>
     /// WPF コントロールをそのまま載せる表示（CSV グリッド・画像・Hex 等）。

@@ -1,7 +1,11 @@
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>いま WebView2 に載せているページの同一性。URI 直開きと生成 HTML の両方を1つで表す。</summary>
-internal sealed record EditorSupportPageId(string? Uri, string? PageKey);
+internal sealed record EditorSupportPageId(
+    string? Uri,
+    string? PageKey,
+    /// <summary>同じURLを WebView2 が再読み込みできるページか。</summary>
+    bool CanReload = true);
 
 /// <summary>ページ読み込みの状態。</summary>
 internal enum EditorSupportPageStatus
@@ -103,6 +107,17 @@ public sealed class EditorSupportWebViewController : IDisposable
     /// ホストは EditorSupport の更新ループへ <c>Invalidate</c> を投げ、ページ全体を組み直す。
     /// </summary>
     public event EventHandler? ReloadRequested;
+
+    /// <summary>
+    /// 生成済みHTMLを一時ページへUIスレッド外で書き込む。フレーム適用時は完成したURLを
+    /// Navigateするだけにして、大きなプレビューの同期ファイルI/Oで画面を止めない。
+    /// </summary>
+    internal Task<string?> PreparePageAsync(string html, CancellationToken ct)
+        => Task.Run(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            return _navigation.TryWritePage(html, out var url) ? url : null;
+        }, ct);
 
     public void ResetPageState()
     {
@@ -319,7 +334,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         if (content.Body is { } body)
             return PatchBody(core, body, content.MapFolder, content.PageKey);
         if (content.Html is { } html)
-            return ShowHtml(core, html, content.MapFolder, content.PageKey);
+            return ShowHtml(core, html, content.MapFolder, content.PageKey, content.PreparedPageUrl);
         return EditorSupportPageApplyResult.Applied;   // 表示するものが無い（呼び元が組み立てていない）
     }
 
@@ -361,19 +376,29 @@ public sealed class EditorSupportWebViewController : IDisposable
     }
 
     private EditorSupportPageApplyResult ShowHtml(
-        CoreWebView2 core, string html, string? mapFolder, string? pageKey)
+        CoreWebView2 core, string html, string? mapFolder, string? pageKey, string? preparedPageUrl)
     {
         if (mapFolder is not null)
             _navigation.UpdatePreviewHost(core, mapFolder);
 
-        BeginLoad(new EditorSupportPageId(null, pageKey));
+        if (preparedPageUrl is { })
+        {
+            BeginLoad(new EditorSupportPageId(null, pageKey, CanReload: true));
+            try { core.Navigate(preparedPageUrl); }
+            catch { Fail(); }
+            return EditorSupportPageApplyResult.Applied;
+        }
 
         if (_navigation.TryWritePage(html, out var pageUrl))
         {
+            BeginLoad(new EditorSupportPageId(null, pageKey, CanReload: true));
             try { core.Navigate(pageUrl); }
             catch { Fail(); }
             return EditorSupportPageApplyResult.Applied;
         }
+        // ファイル書き込みに失敗した場合の NavigateToString は、Reload() で復元できない
+        // インメモリページ。初回の取りこぼし対策は従来どおりフル再構築へ戻す。
+        BeginLoad(new EditorSupportPageId(null, pageKey, CanReload: false));
         try { core.NavigateToString(html); }
         catch { Fail(); }
         return EditorSupportPageApplyResult.Applied;
@@ -527,8 +552,34 @@ public sealed class EditorSupportWebViewController : IDisposable
         }
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
 
-        if (action == EditorSupportPageAction.RequestReload)
+        if (action == EditorSupportPageAction.ReloadCurrentPage)
+        {
+            if (!ReloadCurrentPage(Core))
+                ReloadRequested?.Invoke(this, EventArgs.Empty);
+        }
+        else if (action == EditorSupportPageAction.RequestReload)
             ReloadRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 初回描画の取りこぼし対策。同じページを再利用するので、HTMLの再生成・一時ファイルの
+    /// 再書き込み・ページURLの作り直しを行わずに WebView2 だけを再読込する。
+    /// </summary>
+    private bool ReloadCurrentPage(CoreWebView2? core)
+    {
+        if (core is null || !_page.BeginCurrentPageReload())
+            return false;
+        StartWatchdog();
+        try
+        {
+            core.Reload();
+            return true;
+        }
+        catch
+        {
+            Fail();
+            return false;
+        }
     }
 
     /// <summary>

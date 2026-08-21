@@ -25,6 +25,9 @@ internal interface IEditorSupportRenderHost
     /// <summary>WebView2 を用意する（用意できたかは適用時に <c>CoreWebView2</c> の有無で分かる）。</summary>
     Task EnsureWebViewAsync();
 
+    /// <summary>生成HTMLを適用前に一時ページへ書き込む（UIスレッドをブロックしない）。</summary>
+    Task<string?> PreparePageAsync(string html, CancellationToken ct);
+
     /// <summary>本文差し替えができるページの鍵（復帰要求中は null＝必ずページ全体を組む）。</summary>
     string? ReadyPageKey { get; }
 
@@ -98,6 +101,14 @@ internal sealed class EditorSupportRenderFlow
         CancellationToken ct)
     {
         var selection = _resolver.Resolve(request.FilePath);
+        // キャレット移動はコード表示の呼び出しパネルだけを更新する。
+        // Markdown/JSON/XML 等の提供者はキャレットを表示内容に使わないため、ここで止めないと
+        // エディタでカーソルを動かすたびに本文全体の変換と WebView2 への setBody が走ってしまう。
+        // Content と合流した要求（Content | Caret）は本文も古くなっているので通常どおり描画する。
+        if (reason == EditorSupportUpdateReason.Caret
+            && selection.Kind != EditorSupportKind.Code)
+            return;
+
         if (selection.Kind == EditorSupportKind.Code && request.FilePath is not null)
         {
             // キャレット移動だけなら②パネルの差し替えで足りる（構造ツリーは作り直さない＝折りたたみを保つ）。
@@ -143,9 +154,13 @@ internal sealed class EditorSupportRenderFlow
         }
         else
         {
+            string? preparedPageUrl = null;
+            if (content.Html is { } html)
+                preparedPageUrl = await _host.PreparePageAsync(html, ct);
+            ct.ThrowIfCancellationRequested();
             body = new EditorSupportFrameContent.WebContent(
                 content.Html, content.Body, content.Uri, content.MapFolder, content.PageKey,
-                content.ShowEdit ? request.Text : null);
+                content.ShowEdit ? request.Text : null, preparedPageUrl);
         }
         _host.ClearFullPageRequest();
         apply(new EditorSupportFrame(

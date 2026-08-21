@@ -274,6 +274,20 @@ public class EditorSupportRenderFlowTests
         Assert.Empty(frames);
     }
 
+    [Fact]
+    public async Task 非コード表示ではキャレット移動で本文を再変換しない()
+    {
+        // Markdown/JSON 等はキャレットを表示へ反映しない。ここで提供者経路へ進むと、
+        // カーソル移動のたびに本文全体の変換と WebView2 の本文差し替えが発生する。
+        var host = new FakeHost();
+        var (flow, _) = Flow(host);
+        var frames = await Render(flow, Request(
+            lsp: null, file: @"C:\work\app\README.md"), EditorSupportUpdateReason.Caret);
+
+        Assert.Empty(frames);
+        Assert.Empty(host.Calls);
+    }
+
     // ── 提供者（Markdown 等）の経路 ───────────────────────────────────
 
     [Fact]
@@ -405,6 +419,9 @@ public class EditorSupportRenderFlowTests
             Calls.Add("EnsureWebView");
             return Task.CompletedTask;
         }
+
+        public Task<string?> PreparePageAsync(string html, CancellationToken ct)
+            => Task.FromResult<string?>(null);
 
         public void ClearFullPageRequest() => Calls.Add("ClearFullPageRequest");
         public LspNoticeModel.Notice? DiagnoseLsp(string filePath) => Diagnosis;

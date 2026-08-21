@@ -281,6 +281,9 @@ public partial class ShellWindow : IEditorSupportRenderHost {
 
     Task IEditorSupportRenderHost.EnsureWebViewAsync() => EnsureEditorSupportViewAsync();
 
+    Task<string?> IEditorSupportRenderHost.PreparePageAsync(string html, CancellationToken ct)
+        => _editorSupport.WebView.PreparePageAsync(html, ct);
+
     /// <summary>復帰要求が出ていれば本文差し替えを使わせない（必ず html が組み上がる＝1回で収束する）。</summary>
     string? IEditorSupportRenderHost.ReadyPageKey
         => _editorSupportForceFullPage ? null : _editorSupport.WebView.ReadyPageKey;

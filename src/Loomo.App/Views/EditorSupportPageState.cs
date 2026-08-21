@@ -6,6 +6,9 @@ internal enum EditorSupportPageAction
     /// <summary>何もしない（表示は成立している）。</summary>
     None,
 
+    /// <summary>初回表示の取りこぼし対策として、現在のページだけを再読み込みする。</summary>
+    ReloadCurrentPage,
+
     /// <summary>ページ全体を組み直してほしい（失敗・応答なし・初回描画の取りこぼし）。</summary>
     RequestReload,
 }
@@ -91,13 +94,27 @@ internal sealed class EditorSupportPageState
         if (!_firstRenderHealed)
         {
             _firstRenderHealed = true;
-            return EditorSupportPageAction.RequestReload;
+            // HTML生成・一時ファイル書き込みまでやり直す必要はない。呼び元が現在の
+            // WebViewページをそのまま再読込すれば、初回描画の取りこぼし対策を保ったまま
+            // 重いプレビュー再構築を省ける。
+            return success && attempted?.CanReload == true
+                ? EditorSupportPageAction.ReloadCurrentPage
+                : EditorSupportPageAction.RequestReload;
         }
 
         // 失敗したまま放置すると空白のページが残るので組み直しを頼む（同一性は Fail で捨ててある）。
         return !success && ShouldRetryAfterFailure(attempted)
             ? EditorSupportPageAction.RequestReload
             : EditorSupportPageAction.None;
+    }
+
+    /// <summary>成立済みのページを同じページとして再読み込み状態へ戻す。</summary>
+    public bool BeginCurrentPageReload()
+    {
+        if (_status != EditorSupportPageStatus.Ready || _pageId is null)
+            return false;
+        _status = EditorSupportPageStatus.Loading;
+        return true;
     }
 
     /// <summary>

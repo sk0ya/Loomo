@@ -3,10 +3,13 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>EditorSupportの一時ページとWebView2仮想ホストを管理する。</summary>
 public sealed class EditorSupportNavigationService
 {
-    /// <summary>一時ページのファイル名。フォルダーは全インスタンス共通（＝プロファイルの下）なので、
-    /// Loomo を2つ起動したときに互いの本文を上書きし合わないようプロセスごとに分ける。</summary>
+    /// <summary>一時ページのファイル名の基底。フォルダーは全インスタンス共通（＝プロファイルの下）なので、
+    /// Loomo を2つ起動したときに互いの本文を上書きし合わないようプロセスごとに分ける。
+    /// 実際に書くファイル名にはさらにページ世代を付け、キャンセル済みのバックグラウンド書き込みが
+    /// 現在表示中の本文を上書きしないようにする。</summary>
     private readonly string _pageFileName;
     private readonly string _previewFolder;
+    private readonly object _writeGate = new();
     private long _pageVersion;
     private string? _mappedPreviewFolder;
 
@@ -22,14 +25,26 @@ public sealed class EditorSupportNavigationService
     public bool TryWritePage(string html, out string url)
     {
         url = "";
-        try
+        lock (_writeGate)
         {
-            Directory.CreateDirectory(_previewFolder);
-            File.WriteAllText(Path.Combine(_previewFolder, _pageFileName), html, System.Text.Encoding.UTF8);
-            url = $"https://{MarkdownRenderer.PageVirtualHost}/{_pageFileName}?v={++_pageVersion}";
-            return true;
+            try
+            {
+                Directory.CreateDirectory(_previewFolder);
+                var version = ++_pageVersion;
+                var fileName = VersionedPageFileName(version);
+                File.WriteAllText(Path.Combine(_previewFolder, fileName), html, System.Text.Encoding.UTF8);
+                url = $"https://{MarkdownRenderer.PageVirtualHost}/{fileName}?v={version}";
+                return true;
+            }
+            catch { return false; }
         }
-        catch { return false; }
+    }
+
+    private string VersionedPageFileName(long version)
+    {
+        var extension = Path.GetExtension(_pageFileName);
+        var stem = Path.GetFileNameWithoutExtension(_pageFileName);
+        return $"{stem}-{version}{extension}";
     }
 
     /// <summary>もう誰も使っていない一時ページ（落ちたインスタンスの置き土産）を片付ける。

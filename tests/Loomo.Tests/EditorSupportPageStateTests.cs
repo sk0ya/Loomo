@@ -58,10 +58,23 @@ public class EditorSupportPageStateTests
         var state = new EditorSupportPageState();
 
         state.BeginLoad(Page("a"));
-        Assert.Equal(EditorSupportPageAction.RequestReload, state.Completed(success: true));
+        Assert.Equal(EditorSupportPageAction.ReloadCurrentPage, state.Completed(success: true));
+
+        Assert.True(state.BeginCurrentPageReload());
+        Assert.Null(state.ReadyPageKey); // 再読込中は本文差し替えを許さない
 
         state.BeginLoad(Page("b"));
         Assert.Equal(EditorSupportPageAction.None, state.Completed(success: true));
+    }
+
+    [Fact]
+    public void インメモリページはReloadではなくフル再構築する()
+    {
+        var state = new EditorSupportPageState();
+
+        state.BeginLoad(new EditorSupportPageId(null, "a", CanReload: false));
+
+        Assert.Equal(EditorSupportPageAction.RequestReload, state.Completed(success: true));
     }
 
     [Fact]

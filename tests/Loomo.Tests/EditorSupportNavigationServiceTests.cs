@@ -22,8 +22,12 @@ public class EditorSupportNavigationServiceTests
             Assert.True(service.TryWritePage("<p>first</p>", out var first));
             Assert.True(service.TryWritePage("<p>second</p>", out var second));
             Assert.NotEqual(first, second);
-            Assert.Equal("<p>second</p>", File.ReadAllText(Path.Combine(folder, "preview-1.html")));
-            Assert.StartsWith("https://page.loomo/preview-1.html?v=", second);
+            var firstPath = Path.Combine(folder, Path.GetFileName(new Uri(first).AbsolutePath));
+            var secondPath = Path.Combine(folder, Path.GetFileName(new Uri(second).AbsolutePath));
+            Assert.NotEqual(firstPath, secondPath);
+            Assert.Equal("<p>first</p>", File.ReadAllText(firstPath));
+            Assert.Equal("<p>second</p>", File.ReadAllText(secondPath));
+            Assert.StartsWith("https://page.loomo/preview-1-2.html?v=", second);
         }
         finally
         {
@@ -42,10 +46,12 @@ public class EditorSupportNavigationServiceTests
         {
             var first = new EditorSupportNavigationService(folder, "preview-1.html");
             var second = new EditorSupportNavigationService(folder, "preview-2.html");
-            Assert.True(first.TryWritePage("<p>first</p>", out _));
-            Assert.True(second.TryWritePage("<p>second</p>", out _));
-            Assert.Equal("<p>first</p>", File.ReadAllText(Path.Combine(folder, "preview-1.html")));
-            Assert.Equal("<p>second</p>", File.ReadAllText(Path.Combine(folder, "preview-2.html")));
+            Assert.True(first.TryWritePage("<p>first</p>", out var firstUrl));
+            Assert.True(second.TryWritePage("<p>second</p>", out var secondUrl));
+            Assert.Equal("<p>first</p>", File.ReadAllText(
+                Path.Combine(folder, Path.GetFileName(new Uri(firstUrl).AbsolutePath))));
+            Assert.Equal("<p>second</p>", File.ReadAllText(
+                Path.Combine(folder, Path.GetFileName(new Uri(secondUrl).AbsolutePath))));
         }
         finally
         {
@@ -62,7 +68,8 @@ public class EditorSupportNavigationServiceTests
         try
         {
             var service = new EditorSupportNavigationService(folder, "preview-1.html");
-            Assert.True(service.TryWritePage("<p>mine</p>", out _));
+            Assert.True(service.TryWritePage("<p>mine</p>", out var ownUrl));
+            var own = Path.Combine(folder, Path.GetFileName(new Uri(ownUrl).AbsolutePath));
             var stale = Path.Combine(folder, "preview-2.html");
             var fresh = Path.Combine(folder, "preview-3.html");
             File.WriteAllText(stale, "<p>stale</p>");
@@ -71,7 +78,7 @@ public class EditorSupportNavigationServiceTests
 
             service.CleanStalePages(TimeSpan.FromDays(1));
 
-            Assert.True(File.Exists(Path.Combine(folder, "preview-1.html")));
+            Assert.True(File.Exists(own));
             Assert.True(File.Exists(fresh));
             Assert.False(File.Exists(stale));
         }
