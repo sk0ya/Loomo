@@ -203,6 +203,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [ObservableProperty] private bool _hasUpstream;
     [ObservableProperty] private string _commitMessage = "";
     [ObservableProperty] private bool _amend;
+    private int _amendMessageLoadVersion;
     /// <summary>true なら次のコミットに <c>-S</c>（GPG署名）を付ける。署名鍵未設定・gpg 未インストール等の
     /// 失敗は通常の失敗時と同じく RunOpAsync が git のエラー出力をそのまま表示する。</summary>
     [ObservableProperty] private bool _sign;
@@ -279,7 +280,24 @@ public sealed partial class GitPanelViewModel : ObservableObject
     }
 
     partial void OnCommitMessageChanged(string value) => CommitCommand.NotifyCanExecuteChanged();
-    partial void OnAmendChanged(bool value) => CommitCommand.NotifyCanExecuteChanged();
+    partial void OnAmendChanged(bool value)
+    {
+        CommitCommand.NotifyCanExecuteChanged();
+        var version = ++_amendMessageLoadVersion;
+        if (!value)
+        {
+            CommitMessage = "";
+            return;
+        }
+        _ = LoadAmendMessageAsync(version);
+    }
+
+    private async Task LoadAmendMessageAsync(int version)
+    {
+        var message = await _git.GetCommitMessageAsync("HEAD");
+        if (version == _amendMessageLoadVersion && Amend)
+            CommitMessage = message;
+    }
     partial void OnIsBusyChanged(bool value)
     {
         CommitCommand.NotifyCanExecuteChanged();
@@ -484,7 +502,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     /// <summary>
     /// コミット。ステージ済みはそのまま、ツリーでチェックした作業ツリーのファイルは
-    /// コミット直前にステージしてから含める。amend はメッセージ修正だけでも成立する。
+    /// コミット直前にステージしてから含める。amend は直前のコミットメッセージを維持する。
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanCommit))]
     private async Task CommitAsync()

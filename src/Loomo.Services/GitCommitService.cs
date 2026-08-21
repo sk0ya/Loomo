@@ -87,10 +87,18 @@ public sealed class GitCommitService
     public Task<GitCommandResult> CommitAsync(string message, bool amend = false, bool sign = false)
     {
         var args = new List<string> { "commit" };
-        if (amend) args.Add("--amend");
+        if (amend)
+        {
+            args.Add("--amend");
+            // amend では入力されたメッセージを使わず、直前のコミットメッセージを維持する。
+            args.Add("--no-edit");
+        }
         if (sign) args.Add("-S");
-        args.Add("-m");
-        args.Add(message);
+        if (!amend)
+        {
+            args.Add("-m");
+            args.Add(message);
+        }
         return _mutations.ExecuteAsync(args.ToArray());
     }
 }

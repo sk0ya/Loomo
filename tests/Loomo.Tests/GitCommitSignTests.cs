@@ -62,6 +62,22 @@ public sealed class GitCommitSignTests : IAsyncLifetime
         Assert.DoesNotContain("signed commit", log.Output);
     }
 
+    [Fact]
+    public async Task amendは指定されたメッセージで上書きせず直前のメッセージを維持する()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "first.txt"), "first");
+        await MustRunAsync("add", "first.txt");
+        var first = await _git.CommitAsync("original commit", amend: false, sign: false);
+        Assert.True(first.Success, first.Error);
+
+        await File.WriteAllTextAsync(Path.Combine(_root, "first.txt"), "amended");
+        await MustRunAsync("add", "first.txt");
+        var amended = await _git.CommitAsync("replacement must be ignored", amend: true, sign: false);
+
+        Assert.True(amended.Success, amended.Error);
+        Assert.Equal("original commit", await _git.GetCommitMessageAsync("HEAD"));
+    }
+
     private async Task<GitCommandResult> MustRunAsync(params string[] args)
     {
         var result = await _git.RunAsync(args);

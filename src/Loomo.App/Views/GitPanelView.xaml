@@ -346,6 +346,8 @@
                 <Grid>
                     <TextBox x:Name="CommitMessageBox"
                              Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding Amend, Converter={StaticResource InverseBool}}"
+                             ToolTip="amend 時は直前のコミットメッセージをそのまま使用します。"
                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MaxHeight="120"
                              VerticalScrollBarVisibility="Auto">
                         <TextBox.InputBindings>
