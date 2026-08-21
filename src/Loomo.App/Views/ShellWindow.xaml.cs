@@ -152,7 +152,7 @@ public partial class ShellWindow : Window {
         WingSplitter.DragStarted += (_, _) => _paneSplitterDragging = true;
         WingSplitter.DragDelta += (_, e) => {
             _wingWidth = Math.Clamp(_wingWidth - e.HorizontalChange, MinWingWidth, MaxWingWidth);
-            WingColumn.Width = new GridLength(_wingWidth);
+            WingColumn.Width = new GridLength(EffectiveWingWidth);
         };
         WingSplitter.DragCompleted += (_, _) => {
             _paneSplitterDragging = false;
@@ -335,6 +335,38 @@ public partial class ShellWindow : Window {
         InitializeBrowserChrome();
         InitializeTrail();
         StartupProfiler.Mark("ShellWindow ctor 完了");
+    }
+
+    private void OnToggleWingCollapsed(object sender, RoutedEventArgs e) {
+        _isWingCollapsed = !_isWingCollapsed;
+        if (WingHost.Visibility == Visibility.Visible)
+            WingColumn.Width = new GridLength(EffectiveWingWidth);
+        WingSplitter.IsHitTestVisible = !_isWingCollapsed;
+        OverviewButton.Visibility = _stageActive && !_isWingCollapsed ? Visibility.Visible : Visibility.Collapsed;
+        UpdateWingToolbar();
+        RebuildWings();
+        RebuildStageIfResized();
+        SaveActiveWorkspaceSnapshot();
+    }
+
+    private void UpdateWingToolbar() {
+        if (WingToolbarActions is null || WingCollapseIcon is null)
+            return;
+        WingHost.Margin = _isWingCollapsed
+            ? new Thickness(0, 8, 0, 10)
+            : new Thickness(0, 8, 10, 10);
+        WingToolbar.ColumnDefinitions[0].Width = new GridLength(_isWingCollapsed ? 48 : 32);
+        WingCollapseButton.Width = _isWingCollapsed ? 48 : 32;
+        WingCollapseButton.Height = _isWingCollapsed ? 48 : 28;
+        // 折りたたみ時はスクロールバー自体を見せず、ホイール／トラックパッドでの
+        // スクロールは残す。アイコン列の横幅をスクロールバーに奪わせない。
+        ScrollViewer.SetVerticalScrollBarVisibility(
+            WingScrollViewer,
+            _isWingCollapsed ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto);
+        WingToolbarActions.Visibility = _isWingCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        WingCollapseIcon.Data = TryFindResource(_isWingCollapsed ? "WingIcon.Collapsed" : "WingIcon.Expanded") as Geometry;
+        WingCollapseButton.ToolTip = _isWingCollapsed ? "袖を展開" : "袖を折りたたむ";
+        WingSplitter.IsHitTestVisible = !_isWingCollapsed;
     }
     private async void OnLoaded(object sender, RoutedEventArgs e) {
         StartupProfiler.Mark("OnLoaded 開始");

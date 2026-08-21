@@ -29,7 +29,9 @@ public partial class ShellWindow {
     }
     /// <summary>袖カードの幅。</summary>
     private double CurrentWingCardWidth
-        => WingColumnCount <= 1 ? Math.Max(150, _wingWidth - 10) : TwoColumnCardWidth;
+        => _isWingCollapsed
+            ? 48
+            : WingColumnCount <= 1 ? Math.Max(150, _wingWidth - 10) : TwoColumnCardWidth;
     /// <summary>袖の候補（タブで絞る<b>前</b>）。有効だが Main に出ていないペイン。
     /// 「袖そのものを出すか」はこちらで判断する——選択中のタブが空でも、ほかのタブにカードが
     /// あるなら袖ごと畳んではいけない（畳むとタブに戻れなくなる）。</summary>
@@ -127,8 +129,8 @@ public partial class ShellWindow {
         var width = CurrentWingCardWidth;
         var cards = WingKinds()
             .Select(kind => _stageActive
-                ? BuildSessionCard(kind, width, isOverview: false)
-                : BuildLayoutWingCard(kind, width))
+                ? BuildSessionCard(kind, width, isOverview: false, iconOnly: _isWingCollapsed)
+                : BuildLayoutWingCard(kind, width, iconOnly: _isWingCollapsed))
             .ToList();
         foreach (var row in ArrangeWingRows(cards))
             WingStrip.Children.Add(row);
@@ -138,7 +140,7 @@ public partial class ShellWindow {
     /// 行を自前で組むのは、<c>UniformGrid</c> が行の高さを袖の高さで等分してカードが縦に間延びし、
     /// <c>WrapPanel</c> は実効幅の 1px 差で3枚目が回り込む／回り込まないが変わるため。</summary>
     private IEnumerable<UIElement> ArrangeWingRows(IReadOnlyList<Border> cards) {
-        var columns = WingColumnCount;
+        var columns = _isWingCollapsed ? 1 : WingColumnCount;
         if (columns <= 1)
             return cards;
         var rows = new List<UIElement>();
@@ -160,6 +162,7 @@ public partial class ShellWindow {
         WingMainTab.IsChecked = _activeWingTab == WingTab.Main;
         WingSubTab.IsChecked = _activeWingTab == WingTab.Sub;
         WingAllTab.IsChecked = _activeWingTab == WingTab.All;
+        UpdateWingToolbar();
     }
     private void BuildLayoutWingSources() {
         _layoutWingSourceWidth = StageSourceArea.ActualWidth;
@@ -192,7 +195,7 @@ public partial class ShellWindow {
         }
         var hasWings = WingCandidates().Count > 0;   // 選択中のタブが空でも、もう一方に有れば袖は出す
         PaneLayoutDebugLog.Log($"ScheduleLayoutWings hasWings={hasWings} prevWingColumnWidth={WingColumn.Width}", withCaller: true);
-        WingColumn.Width = hasWings ? new GridLength(_wingWidth) : GridLength.Auto;
+        WingColumn.Width = hasWings ? new GridLength(EffectiveWingWidth) : GridLength.Auto;
         WingSplitterColumn.Width = hasWings ? new GridLength(6) : new GridLength(0);
         WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
         WingSplitter.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
@@ -242,24 +245,30 @@ public partial class ShellWindow {
         if (CollapseWingsForFullscreen())
             return;
         // 選択中のタブが空でも、もう一方にカードがあるなら袖は出したままにする（畳むとタブへ戻れない）。
-        WingHost.Visibility = WingCandidates().Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var hasWings = WingCandidates().Count > 0;
+        WingHost.Visibility = hasWings ? Visibility.Visible : Visibility.Collapsed;
         WingSplitter.Visibility = WingHost.Visibility;
         WingSplitterColumn.Width = WingHost.Visibility == Visibility.Visible ? new GridLength(6) : new GridLength(0);
-        OverviewButton.Visibility = _stageActive ? Visibility.Visible : Visibility.Collapsed;
+        if (hasWings)
+            WingColumn.Width = new GridLength(EffectiveWingWidth);
+        OverviewButton.Visibility = _stageActive && !_isWingCollapsed ? Visibility.Visible : Visibility.Collapsed;
+        UpdateWingToolbar();
     }
-    private Border BuildSessionCard(PaneKind kind, double width, bool isOverview) {
+    private Border BuildSessionCard(PaneKind kind, double width, bool isOverview, bool iconOnly = false) {
         if (StageThumbnailPlanner.UsesSnapshotThumbnail(kind))
             return BuildCard(kind, width, SnapshotThumbnailBrush(kind), isOverview,
+                iconOnly,
                 () => { SetStagePane(kind); FocusPane(kind); });
         Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
         return BuildCard(kind, width, VisualThumbnailBrush(source), isOverview,
+            iconOnly,
             () => { SetStagePane(kind); FocusPane(kind); });
     }
-    private Border BuildLayoutWingCard(PaneKind kind, double width) {
+    private Border BuildLayoutWingCard(PaneKind kind, double width, bool iconOnly = false) {
         var brush = StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
             ? SnapshotThumbnailBrush(kind)
             : VisualThumbnailBrush(_stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind]);
-        return BuildCard(kind, width, brush, isOverview: false, () => {
+        return BuildCard(kind, width, brush, isOverview: false, iconOnly, () => {
                 if (_zoomedPane is not null) {
                     if (IsPaneVisible(kind))
                         ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
@@ -358,30 +367,57 @@ public partial class ShellWindow {
             // 合成面の取得に失敗しても、前回画像または後続の CapturePreviewAsync を使用する。
         }
     }
-    private Border BuildCard(PaneKind kind, double width, Brush thumbnail, bool isOverview, Action onClick) {
+    private Border BuildCard(PaneKind kind, double width, Brush thumbnail, bool isOverview, bool iconOnly, Action onClick) {
         var borderBrush = (Brush)FindResource("Border");
         var accent = (Brush)FindResource("Accent");
         var onStage = isOverview && OnStage(kind);
-        var height = Math.Round(width / CardAspect);
+        var height = iconOnly ? width : Math.Round(width / CardAspect);
         var card = new Border {
-            Width = width, Height = height, Margin = isOverview ? new Thickness(10) : new Thickness(0, 4, 0, 4), CornerRadius = new CornerRadius(6), Background = (Brush)FindResource("Panel"), BorderBrush = onStage ? accent : borderBrush, BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = isOverview ? PaneLabel(kind) : $"{PaneLabel(kind)} — クリックで舞台へ", Clip =new RectangleGeometry(new Rect(0, 0, width, height), 6, 6), };
+            Width = width, Height = height,
+            Margin = isOverview ? new Thickness(10) : iconOnly ? new Thickness(0) : new Thickness(0, 4, 0, 4),
+            CornerRadius = new CornerRadius(iconOnly ? 0 : 6),
+            Background = iconOnly ? Brushes.Transparent : (Brush)FindResource("Panel"),
+            BorderBrush = iconOnly ? Brushes.Transparent : onStage ? accent : borderBrush,
+            BorderThickness = iconOnly ? new Thickness(0) : new Thickness(1),
+            Cursor = Cursors.Hand, ToolTip = isOverview ? PaneLabel(kind) : $"{PaneLabel(kind)} — クリックで舞台へ",
+            Clip = new RectangleGeometry(new Rect(0, 0, width, height), iconOnly ? 0 : 6, iconOnly ? 0 : 6), };
         var root = new Grid { ClipToBounds = true };
-        root.Children.Add(new Border {
-            IsHitTestVisible = false, Background = thumbnail, });
-        root.Children.Add(new Border {
-            VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
-                Text = PaneLabel(kind), TextTrimming = TextTrimming.CharacterEllipsis,
-                FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
+        if (iconOnly) {
+            root.Children.Add(new System.Windows.Shapes.Path {
+                Data = TryFindResource(PaneIconKey(kind)) as Geometry,
+                Width = 16, Height = 16, Stretch = Stretch.None,
+                Stroke = (Brush)FindResource("FgDim"), StrokeThickness = 1.3,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+                StrokeLineJoin = PenLineJoin.Round,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        } else {
+            root.Children.Add(new Border {
+                IsHitTestVisible = false, Background = thumbnail, });
+            root.Children.Add(new Border {
+                VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
+                    Text = PaneLabel(kind), TextTrimming = TextTrimming.CharacterEllipsis,
+                    FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
+        }
         card.Child = root;
         AttachActivityBadge(root, kind, isOverview);
         var rest = isOverview ? 1.0 : WingRestOpacity;
         card.Opacity = rest;
         card.MouseEnter += (_, _) => {
-            card.BorderBrush = accent;
+            if (iconOnly)
+                card.Background = (Brush)FindResource("BgAlt");
+            else
+                card.BorderBrush = accent;
             card.Opacity = 1;
         };
         card.MouseLeave += (_, _) => {
-            card.BorderBrush = onStage ? accent : borderBrush;
+            if (iconOnly) {
+                card.Background = Brushes.Transparent;
+                card.BorderBrush = Brushes.Transparent;
+            } else {
+                card.BorderBrush = onStage ? accent : borderBrush;
+            }
             card.Opacity = rest;
         };
         card.MouseLeftButtonUp += (_, e) => {

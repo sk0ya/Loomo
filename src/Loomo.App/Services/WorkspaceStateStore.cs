@@ -588,6 +588,8 @@ public sealed class StageSnapshot
     public bool Overview { get; set; }
     /// <summary>袖の幅。null は旧データで、既定幅を使用する。</summary>
     public double? WingWidth { get; set; }
+    /// <summary>袖をアイコン表示へ折りたたんだまま復元するか。</summary>
+    public bool WingCollapsed { get; set; }
 }
 
 public sealed class TerminalSnapshot

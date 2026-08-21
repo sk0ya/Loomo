@@ -311,7 +311,8 @@ public partial class ShellWindow {
         snapshot.ActiveWingTab = _activeWingTab;
         snapshot.Stage = new StageSnapshot {
             IsActive = _stageActive, Pane = _stageActive ? _stagePane : null,
-            Overview = _stageActive && _overviewActive, WingWidth = _wingWidth
+            Overview = _stageActive && _overviewActive, WingWidth = _wingWidth,
+            WingCollapsed = _isWingCollapsed
         };
         snapshot.Layouts = _layouts.Select(l => new SavedLayout { Name = l.Name, Tree = l.Tree }).ToList();
         snapshot.ScratchLayout = _scratchLayout;

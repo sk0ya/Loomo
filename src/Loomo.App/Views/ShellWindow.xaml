@@ -113,6 +113,8 @@
         <!-- ファイル一覧：フォルダー＋行（＝中身を並べて見る面） -->
         <StreamGeometry x:Key="PaneIcon.Files">M2,4 H6 L7.5,5.8 H14 V12.5 H2 Z M4.5,8.2 H11.5 M4.5,10.4 H11.5</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.TsIde">M8,1.5 L13.5,4.75 V11.25 L8,14.5 L2.5,11.25 V4.75 Z M8,5.6 C6.9,5.6 6.3,6.6 6.3,8 C6.3,9.5 7,10.6 8,10.6 C9,10.6 9.7,9.5 9.7,8 C9.7,6.6 9.1,5.6 8,5.6 Z M8,5.7 V10.5</StreamGeometry>
+        <StreamGeometry x:Key="WingIcon.Expanded">M10.5,2.5 L5,8 L10.5,13.5</StreamGeometry>
+        <StreamGeometry x:Key="WingIcon.Collapsed">M5.5,2.5 L11,8 L5.5,13.5</StreamGeometry>
 
         <!-- タイトルバーのペイン表示トグル：表示中＝アクセント色／非表示＝グレーの線画アイコン。
              IsChecked とツールチップは code-behind の UpdatePaneToggleStates が実状態へ同期する。 -->
@@ -1943,38 +1945,59 @@
                        Style="{StaticResource PaneResizeThumb}" Visibility="Collapsed"
                        ToolTip="ドラッグで右側の画面一覧の幅を変更／ダブルクリックで既定幅へ戻す" />
                 <DockPanel x:Name="WingHost" Grid.Column="4" Margin="0,8,10,10" Visibility="Collapsed">
-                    <Button x:Name="OverviewButton" DockPanel.Dock="Top" Style="{StaticResource FlatButton}"
-                            Padding="8,4" Margin="0,0,0,8" Content="⊞ すべての画面"
-                            ToolTip="すべての画面を一覧表示（Ctrl+W z）"
-                            Click="OnToggleOverview" />
-                    <!-- タブ：袖に並べる顔ぶれの切替（メイン＝常時そばに置く道具／サブ＝用があるとき呼ぶ面／
-                         すべて＝両方を通しで）。所属は固定＝StageModeCoordinator.MainGroup。 -->
-                    <Grid x:Name="WingTabs" DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <!-- 袖の操作は左端に固定。折りたたむと一覧はペインアイコンだけになり、
+                         元の幅は保持したまま作業領域を広げる。 -->
+                    <Grid x:Name="WingToolbar" DockPanel.Dock="Top" Margin="0,0,0,6">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="32" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <ToggleButton x:Name="WingAllTab" Grid.Column="0" Tag="All" Content="すべて"
-                                      IsChecked="True" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
-                                      ToolTip="袖に出せる画面をすべて並べる（既定）"
-                                      Click="OnWingTabClick" />
-                        <ToggleButton x:Name="WingMainTab" Grid.Column="1" Tag="Main" Content="メイン"
-                                      Style="{StaticResource ToolbarToggleButton}" Margin="3,0,3,0"
-                                      ToolTip="エディタ・ターミナル・ブラウザ・Git を袖に並べる"
-                                      Click="OnWingTabClick" />
-                        <ToggleButton x:Name="WingSubTab" Grid.Column="2" Tag="Sub" Content="サブ"
-                                      Style="{StaticResource ToolbarToggleButton}" Margin="3,0,0,0"
-                                      ToolTip="エディタサポート・Diff・AI・IDE・TS IDE・検索・ファイル一覧を袖に並べる"
-                                      Click="OnWingTabClick" />
+                        <Button x:Name="WingCollapseButton" Grid.Column="0" Width="32" Height="28"
+                                Padding="0" Style="{StaticResource PaneActionButton}"
+                                ToolTip="袖を折りたたむ" Click="OnToggleWingCollapsed">
+                            <Path x:Name="WingCollapseIcon" Style="{StaticResource PaneActionIcon}"
+                                  Data="{StaticResource WingIcon.Expanded}" />
+                        </Button>
+                        <Grid x:Name="WingToolbarActions" Grid.Column="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="OverviewButton" Grid.Column="0" Style="{StaticResource FlatButton}"
+                                    Padding="8,4" Margin="0,0,6,0" Content="⊞ すべての画面"
+                                    ToolTip="すべての画面を一覧表示（Ctrl+W z）"
+                                    Click="OnToggleOverview" />
+                            <!-- タブ：袖に並べる顔ぶれの切替（メイン＝常時そばに置く道具／サブ＝用があるとき呼ぶ面／
+                                 すべて＝両方を通しで）。所属は固定＝StageModeCoordinator.MainGroup。 -->
+                            <Grid x:Name="WingTabs" Grid.Column="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ToggleButton x:Name="WingAllTab" Grid.Column="0" Tag="All" Content="すべて"
+                                              IsChecked="True" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
+                                              ToolTip="袖に出せる画面をすべて並べる（既定）"
+                                              Click="OnWingTabClick" />
+                                <ToggleButton x:Name="WingMainTab" Grid.Column="1" Tag="Main" Content="メイン"
+                                              Style="{StaticResource ToolbarToggleButton}" Margin="3,0,3,0"
+                                              ToolTip="エディタ・ターミナル・ブラウザ・Git を袖に並べる"
+                                              Click="OnWingTabClick" />
+                                <ToggleButton x:Name="WingSubTab" Grid.Column="2" Tag="Sub" Content="サブ"
+                                              Style="{StaticResource ToolbarToggleButton}" Margin="3,0,0,0"
+                                              ToolTip="エディタサポート・Diff・AI・IDE・TS IDE・検索・ファイル一覧を袖に並べる"
+                                              Click="OnWingTabClick" />
+                            </Grid>
+                        </Grid>
                     </Grid>
                     <ScrollViewer x:Name="WingScrollViewer"
+                                  HorizontalContentAlignment="Left"
                                   ScrollChanged="OnWingScrollChanged"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <!-- 列数は設定「袖の列数」（1列／2列）。2列のときは ArrangeWingRows が
                              カードを横に束ねた行を積む（UniformGrid は行高を等分して縦に間延びする）。 -->
-                        <StackPanel x:Name="WingStrip" />
+                        <StackPanel x:Name="WingStrip" HorizontalAlignment="Left" />
                     </ScrollViewer>
                 </DockPanel>
 
