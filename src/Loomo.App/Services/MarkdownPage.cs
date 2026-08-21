@@ -868,8 +868,9 @@ internal static class MarkdownPage
                 border-radius: 0 4px 4px 0;
             }
             blockquote p { margin: 4px 0; }
-            ul, ol { padding-left: 24px; margin: 8px 0; }
-            li { margin-bottom: 4px; }
+            ul, ol { padding-left: 24px; margin: 0; }
+            li { margin-bottom: 0; line-height: 1.5; }
+            li > p { margin: 2px 0; }
             table { border-collapse: collapse; width: 100%; margin: 14px 0; }
             th, td { border: 1px solid {{border}}; padding: 7px 12px; text-align: left; }
             th { background: {{panel}}; color: {{fg}}; font-weight: 600; }

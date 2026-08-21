@@ -268,6 +268,16 @@ public class MarkdownRendererTests
         Assert.Contains("data-line=\"4\"", html);
     }
 
+    [Fact]
+    public void Preview_ListMargin_IsCompact()
+    {
+        var page = MarkdownPage.BuildPage(Render("- item"), "list.md", "Dark");
+
+        Assert.Contains("ul, ol { padding-left: 24px; margin: 0; }", page);
+        Assert.Contains("li { margin-bottom: 0; line-height: 1.5; }", page);
+        Assert.Contains("li > p { margin: 2px 0; }", page);
+    }
+
     [Theory]
     [InlineData("- [ ] todo", "- [x] todo")]
     [InlineData("- [x] done", "- [ ] done")]
