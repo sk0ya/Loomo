@@ -293,10 +293,26 @@ public partial class ShellWindow {
                 RebaseEditorTabPath(tab, newPath);
         }
     }
+    /// <summary>
+    /// 開いたままのタブを新しいパスへ付け替える。<b>バッファの中身（未保存の編集も）はそのまま</b>で、
+    /// 名乗るパスだけが変わる。
+    /// <para>
+    /// バッファの <c>FilePath</c> を直接書くだけでは足りない。拡張子から決まっているもの——
+    /// シンタックスハイライトの言語、LSP のドキュメント URI（＝担当サーバーごと変わる）、
+    /// 外部変更を見るウォッチャ、相棒ペイン（EditorSupport）の種類——が旧拡張子のまま固まる。
+    /// 言語判定はコントロール内部なのでホストからは触れず、<c>RebaseFilePath</c>（Editor 1.0.78）に任せる。
+    /// </para>
+    /// </summary>
     private void RebaseEditorTabPath(EditorTab tab, string newPath) {
         if (tab.IsRealized) {
-            tab.Control.Engine.CurrentBuffer.FilePath = newPath;
+            tab.Control.RebaseFilePath(newPath);
             UpdateEditorTab(tab);   // タブ名更新＋スナップショット保存
+            // 相棒ペインの種類（md プレビュー／CSV 表／コードのアウトライン）は毎回の描画で
+            // パスから決め直すので、追従元が自分なら描き直しを1回頼めばよい。
+            if (ReferenceEquals(_editorSupport.Source, tab))
+                InvalidateEditorSupport();
+            if (ReferenceEquals(_activeEditorTab, tab))
+                OnActiveEditorFileChanged(tab);   // LSP の促し・問題一覧の対象ファイル
         } else if (tab.Pending is { } pending) {
             pending.FilePath = newPath;
             pending.Title = Path.GetFileName(newPath);
