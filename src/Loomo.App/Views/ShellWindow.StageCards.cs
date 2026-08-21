@@ -11,17 +11,11 @@ public partial class ShellWindow {
     private bool _layoutWingBuildPending;
     /// <summary>袖カードの列間の隙間（2列表示のとき）。</summary>
     private const double WingCardGap = 6;
-    /// <summary>2列で組むのに要るカード幅の下限。これを割る袖幅では 2列設定でも1列で組む。</summary>
-    private const double MinTwoColumnCardWidth = 80;
     /// <summary>実際に組む列数（設定「袖の列数」＝1列／2列。設定値が壊れていても 1〜2 に丸める）。
-    /// 2列にしても1枚が細くなりすぎる袖幅（およそ 193px 未満）では<b>1列へ落とす</b>——袖の
-    /// <c>ScrollViewer</c> は横スクロールを持たないので、列幅に収まらないカードはそのまま右端が切れる
-    /// （下限で丸めた幅をそのまま使うと、幅を引き算した意味が無くなる）。</summary>
+    /// 袖幅が狭い場合も設定どおり2列で組む。カードは列間隔とスクロールバーぶんを差し引いた幅に
+    /// 収めるため、細くはなるが横にはみ出さない。</summary>
     private int WingColumnCount
-        => Math.Clamp(_settings.Appearance.WingColumns, 1, 2) <= 1
-            || TwoColumnCardWidth < MinTwoColumnCardWidth
-            ? 1
-            : 2;
+        => Math.Clamp(_settings.Appearance.WingColumns, 1, 2);
     /// <summary>2列のときのカード幅。縦スクロールバーぶんと列間の隙間を先に引いてから割る——
     /// ここを引かないとカードが列幅を超えて右端が切れる（袖の実効幅は袖幅そのものではない）。</summary>
     private double TwoColumnCardWidth
