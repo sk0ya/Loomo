@@ -19,8 +19,22 @@ public partial class ShellWindow {
         vm.OpenFileInEditorRequested += (_, path) => _ = OpenFileInNewEditorTabAsync(path);
         vm.FindChanged += (_, _) => _ = ApplyBrowserFindAsync();
         vm.FindStepRequested += (_, step) => StepBrowserFind(step);
+        // ツールバーのドロップダウンは押し直しで閉じたい。閉じた時刻を覚えておかないと
+        // 「押し下げで閉じる→Click で開き直す」でトグルにならない（OnBrowser*Toggle）。
+        TrackPopupClose(BrowserDownloadsPopup);
+        TrackPopupClose(BrowserLibraryPopup);
+        TrackPopupClose(BrowserExtensionsPopup);
+        TrackPopupClose(BrowserPasswordsPopup);
         InitializeBrowserExtras();
     }
+
+    // ── ツールバーのドロップダウン（ダウンロード・ブックマークと履歴・拡張機能・パスワード） ──
+    // 開けるのは ToggleButton の素の動き。ここは「開いている最中に押したら閉じる」だけを受け持つ
+    // （なぜマウスアップで受けるかは SuppressPopupReopen の説明にある）。
+    private void OnBrowserDownloadsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserDownloadsPopup);
+    private void OnBrowserLibraryToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserLibraryPopup);
+    private void OnBrowserExtensionsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserExtensionsPopup);
+    private void OnBrowserPasswordsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserPasswordsPopup);
 
     // ── アドレス欄 ─────────────────────────────────────────────────────
     /// <summary>アドレス欄の文字を差し替える（候補は開かない）。表示中 URL の反映はすべてここを通す。</summary>

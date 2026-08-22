@@ -1107,9 +1107,11 @@
                                 ToolTip="{Binding Browser.BookmarkTip}"
                                 Command="{Binding Browser.ToggleBookmarkCommand}" />
 
-                        <!-- ダウンロードは受信中／完了ぶんがあるときだけ出る（無いときは幅も取らない）。 -->
+                        <!-- ダウンロードは受信中／完了ぶんがあるときだけ出る（無いときは幅も取らない）。
+                             マウスアップを覗くのは「開いている最中に押したら閉じる」を通すため（OnBrowser*Toggle 参照）。 -->
                         <ToggleButton Grid.Column="7" Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" ToolTip="ダウンロード"
+                                      PreviewMouseLeftButtonUp="OnBrowserDownloadsToggle"
                                       IsChecked="{Binding Browser.IsDownloadsOpen, Mode=TwoWay}"
                                       Visibility="{Binding Browser.HasDownloads, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
@@ -1122,17 +1124,21 @@
                         </ToggleButton>
                         <ToggleButton Grid.Column="8" Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" Content="☰" ToolTip="ブックマークと履歴"
+                                      PreviewMouseLeftButtonUp="OnBrowserLibraryToggle"
                                       IsChecked="{Binding Browser.IsLibraryOpen, Mode=TwoWay}" />
                         <ToggleButton x:Name="BrowserExtensionsButton" Grid.Column="9"
                                       Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" Content="🧩" ToolTip="拡張機能"
+                                      PreviewMouseLeftButtonUp="OnBrowserExtensionsToggle"
                                       IsChecked="{Binding Browser.IsExtensionsOpen, Mode=TwoWay}" />
                         <ToggleButton x:Name="BrowserPasswordsButton" Grid.Column="10"
                                       Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" Content="🔑" ToolTip="保存済みのログイン情報"
+                                      PreviewMouseLeftButtonUp="OnBrowserPasswordsToggle"
                                       IsChecked="{Binding Browser.IsPasswordsOpen, Mode=TwoWay}" />
 
-                        <Popup PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
+                        <Popup x:Name="BrowserDownloadsPopup"
+                               PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True" HorizontalOffset="0"
                                IsOpen="{Binding Browser.IsDownloadsOpen, Mode=TwoWay}">
                             <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
@@ -1203,7 +1209,8 @@
                         </Popup>
 
                         <!-- ブックマークと履歴。行のクリックで開き、× で一覧から消す。 -->
-                        <Popup PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
+                        <Popup x:Name="BrowserLibraryPopup"
+                               PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True"
                                IsOpen="{Binding Browser.IsLibraryOpen, Mode=TwoWay}">
                             <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
@@ -1243,7 +1250,8 @@
                              一覧・有効/無効・削除・ボタン（ポップアップ UI）はここが受け持つ。 -->
                         <!-- ボタンは右端にあるので、ポップアップは右揃え（幅ぶん左へずらす）にして
                              ウィンドウの外へはみ出さないようにする。 -->
-                        <Popup PlacementTarget="{Binding ElementName=BrowserExtensionsButton}" Placement="Bottom"
+                        <Popup x:Name="BrowserExtensionsPopup"
+                               PlacementTarget="{Binding ElementName=BrowserExtensionsButton}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True" HorizontalOffset="-386"
                                IsOpen="{Binding Browser.IsExtensionsOpen, Mode=TwoWay}">
                             <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
@@ -1342,7 +1350,8 @@
 
                         <!-- 保存済みのログイン情報（§21.5.2）。WebView2 では edge://settings/passwords が
                              開けず、保存はされるのに二度と見られない——その穴を塞ぐ一覧。 -->
-                        <Popup PlacementTarget="{Binding ElementName=BrowserPasswordsButton}" Placement="Bottom"
+                        <Popup x:Name="BrowserPasswordsPopup"
+                               PlacementTarget="{Binding ElementName=BrowserPasswordsButton}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True" HorizontalOffset="-406"
                                IsOpen="{Binding Browser.IsPasswordsOpen, Mode=TwoWay}">
                             <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
