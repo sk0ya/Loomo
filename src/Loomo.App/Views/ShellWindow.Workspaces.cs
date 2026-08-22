@@ -82,7 +82,10 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)
-        => RequestWorkspaceSwitch(workspace, captureCurrent: true);
+    {
+        _taskbarWorkspaceRecent.AddRecent(workspace);
+        RequestWorkspaceSwitch(workspace, captureCurrent: true);
+    }
 
     /// <summary>
     /// 切替要求を最新の1件に畳み、切替本体を1本だけ走らせる。

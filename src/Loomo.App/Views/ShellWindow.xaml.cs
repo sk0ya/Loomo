@@ -7,6 +7,7 @@ public partial class ShellWindow : Window {
     private readonly CommandPaletteViewController _paletteView;
     private readonly TabIconService _tabIcons;
     private readonly LoomoSettings _settings;
+    private readonly TaskbarWorkspaceRecentService _taskbarWorkspaceRecent;
     private readonly ShellAppearanceCoordinator _appearance;
     private readonly EditorSupportNavigationService _editorSupportNavigation;
     private readonly EditorSupportRegistry _editorSupports;
@@ -83,7 +84,7 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -100,6 +101,7 @@ public partial class ShellWindow : Window {
         _workspace = workspace;
         _tabIcons = tabIcons;
         _settings = settings;
+        _taskbarWorkspaceRecent = taskbarWorkspaceRecent;
         _appearance = new ShellAppearanceCoordinator(settings, () =>
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
@@ -180,6 +182,8 @@ public partial class ShellWindow : Window {
         vm.Tabs.TabDetachRequested += OnSidebarTabDetachRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
+        if (vm.Workspaces.ActiveWorkspace is { } activeWorkspace)
+            _taskbarWorkspaceRecent.AddRecent(activeWorkspace);
         InitializeDebugWiring();
         HookIdeActivity(PaneKind.Debug, _vm.Debug);
         HookIdeActivity(PaneKind.TsIde, _vm.TsIde);

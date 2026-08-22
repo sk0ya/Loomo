@@ -3,6 +3,7 @@ using System.Windows;
 using sk0ya.Loomo.App.DependencyInjection;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.Views;
+using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Observability;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -36,6 +37,12 @@ public partial class App : Application
         StartupProfiler.Mark("ServiceProvider 構築完了");
 
         _services.GetRequiredService<AppBootstrapper>().Initialize();
+
+        // タスクバーの Recent から起動された場合も、通常のフォルダー引数と同じ経路で
+        // ワークスペースを先にアクティブ化する。ShellWindow 解決後だと空の初期ペインを
+        // いったん作ってから切り替えることになるため、ウィンドウ生成前に済ませる。
+        if (StartupArguments.TryGetWorkspaceFolder(e.Args) is { } startupFolder)
+            _services.GetRequiredService<WorkspaceListViewModel>().ActivateFolder(startupFolder);
 
         var shell = _services.GetRequiredService<ShellWindow>();
         StartupProfiler.Mark("ShellWindow 解決完了");
