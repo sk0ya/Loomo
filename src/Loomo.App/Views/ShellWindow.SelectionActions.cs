@@ -17,6 +17,7 @@ public partial class ShellWindow {
                 e.SelectedText, e.HasSelection, workingDirectory: null, control?.FilePath),
             BuildDiffSendMenu(CompareEntries(
                 control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection)));
+        AddSemanticSelectionMenuItems(e.Menu, control);
         AddRefactorMenuItems(e.Menu, control);
         AddOpenLinkInWindowMenuItem(e.Menu, control);
         AddRunScriptMenuItem(e.Menu, control);

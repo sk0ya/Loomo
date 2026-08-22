@@ -85,6 +85,9 @@ public partial class ShellWindow {
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
+        // 意味的な選択（§24.9）。キー・右クリックメニューと同じ実装へ入る（§31.2 原則6）。
+        list.Add(new("エディタ", "選択を意味的に広げる", ExpandSemanticSelection, Sc("editor.selection.expand"), "editor.selection.expand"));
+        list.Add(new("エディタ", "選択を1段戻す", ShrinkSemanticSelection, Sc("editor.selection.shrink"), "editor.selection.shrink"));
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
         list.Add(new("コンポーザ", "本文をペグボードへ残す", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));

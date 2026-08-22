@@ -641,3 +641,17 @@ initialize に失敗しても「言語サーバーへの接続待ちです」**�
 回帰テスト：`ReferencesPopupPlacementTests`（呼び出したビュー内に収まる／操作していない側の分割を
 覆わない／下端寄せ／狭いビューでは上端から／ウィンドウ外へ出ない／相対オフセット換算）。
 実機での見た目確認は未実施（アプリ起動中でビルド出力がロックされうるため）。
+
+## §30.18 `selectionRange` の消費者はホスト側にいる（2026-08-22）
+
+`LspDocumentHandle.RequestSelectionRangeAsync`（＋ `ServerSupportsSelectionRange`）は §30 の移管時から
+実装済みだったが、**Loomo のツリーを grep しても呼び出し元は1つも無かった**。死んでいた口ではなく、
+`ILspDocument` 越しに **Editor 側**（`LspViewBridge` → `VimEditorControl` の `Shift+Alt+→/←`）が
+使う口である。ただしその実装は Vim の `Normal/Visual` モード限定で、**Loomo の既定は
+`Vim.Enabled = false`**（Vim 無効時のエンジンは常時 `Insert` を装う）ため**既定では一度も発火せず**、
+Vim を入れていても**編集中＝ Insert モードでは死んでいる**。
+
+そこで消費者をホスト側に置いた（`ShellWindow.SemanticSelection.cs` ＋ `Services/SemanticSelection.cs`）。
+`foldingRange` を使う `ShellAppearanceCoordinator`、`codeAction` を組む `ShellWindow.Refactoring.cs` と
+同じ立場で、**Editor ライブラリは変更していない**。設計・罠（適用した範囲と読み戻した範囲が
+一致しないこと／来た道を捨てる条件／キーがエディタへ吸われるかの結論）は **§24.9**（03）に書いた。

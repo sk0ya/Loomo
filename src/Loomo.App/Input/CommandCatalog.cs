@@ -37,6 +37,7 @@ public static class CommandCatalog
     private const string CatTab = "タブ";
     private const string CatStage = "セッション";
     private const string CatProblems = "問題";
+    private const string CatEditor = "エディタ";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new[]
     {
@@ -68,6 +69,12 @@ public static class CommandCatalog
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),
         new CommandDescriptor("problems.previous", CatProblems, "前の問題へ移動", "Shift+F8"),
+
+        // ===== エディタ（意味的な選択・§24.9） =====
+        // 既定キーは VS Code 準拠。Ctrl+W 系は<b>使わない</b>——Loomo ではペイン操作の vim 風
+        // プレフィックスで、部屋そのものの動線（JetBrains の Ctrl+W に引きずられない）。
+        new CommandDescriptor("editor.selection.expand", CatEditor, "選択を意味的に広げる", "Shift+Alt+Right"),
+        new CommandDescriptor("editor.selection.shrink", CatEditor, "選択を1段戻す", "Shift+Alt+Left"),
 
         // ===== セッション（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
