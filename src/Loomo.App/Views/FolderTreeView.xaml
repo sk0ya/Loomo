@@ -224,7 +224,8 @@
                     <!-- 空き領域での右クリック。対象は「ツリー全体／表示ルート直下」に限る
                          （項目に効く操作は下の ItemTemplate 側のメニュー）。 -->
                     <ContextMenu>
-                        <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
+                        <MenuItem Header="新規ファイル" Click="OnNewFileClick"
+                                  ToolTip="名前と拡張子を選んで作成します" />
                         <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
                         <Separator />
                         <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
@@ -363,7 +364,8 @@
                                      出し分け（グループが丸ごと隠れたときに線だけ残さない）は
                                      OnNodeContextMenuOpened→NormalizeSeparators が行う。 -->
                                 <ContextMenu Opened="OnNodeContextMenuOpened">
-                                    <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
+                                    <MenuItem Header="新規ファイル" Click="OnNewFileClick"
+                                              ToolTip="名前と拡張子を選んで作成します" />
                                     <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
                                     <Separator />
                                     <MenuItem Header="コピー" InputGestureText="Ctrl+C" Click="OnCopyClick" />

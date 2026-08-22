@@ -524,7 +524,9 @@ public partial class FilesColumnView : UserControl
         if (Vm is not { TargetDirectory: not null })
             return;
         var title = isDirectory ? "新規フォルダー" : "新規ファイル";
-        var name = InputDialog.Prompt(OwnerWindow, title, $"{title}名を入力:");
+        var name = isDirectory
+            ? InputDialog.Prompt(OwnerWindow, title, $"{title}名を入力:")
+            : NewFileDialog.Prompt(OwnerWindow);
         if (name is null)
             return;
         try

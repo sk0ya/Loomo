@@ -466,7 +466,8 @@
                             <MenuItem Header="ブラウザで開く" Tag="Html" Click="OnOpenInBrowserClick" />
                             <MenuItem Header="既定のアプリで開く" Tag="FileOnly" Click="OnOpenWithDefaultAppClick" />
                             <Separator />
-                            <MenuItem Header="新規ファイル" Click="OnNewFileClick" />
+                            <MenuItem Header="新規ファイル" Click="OnNewFileClick"
+                                      ToolTip="名前と拡張子を選んで作成します" />
                             <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
                             <Separator />
                             <MenuItem Header="コピー" InputGestureText="Ctrl+C" Tag="Selection" Click="OnCopyClick" />
