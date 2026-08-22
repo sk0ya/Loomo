@@ -35,6 +35,13 @@ public sealed class PochiEditorSupport : IEditorSupportUriProvider
     // 図面データはブリッジ（hostDoc）で渡すので、ペインの描画にエディタ本文は要らない。
     public bool UsesEditorText => false;
 
+    // 自動リロードはしない（§24.8・既定のまま）。理由は2つあり、どちらも単独で決め手になる。
+    // ①ナビゲート先はアプリ本体（公開ビルド）で、図面の中身はページの読み込みではなくブリッジ（hostDoc）
+    //   で渡している——読み直しても「新しい内容が出る」ことにはならない。ディスク側の更新を反映したければ
+    //   ブリッジで送り直すのが筋で、それは読み直しとは別の話。
+    // ②読み直すとキャンバスの状態（描きかけ・視点・取り消し履歴）が飛ぶ。しかも .pochi.json はここで
+    //   編集した結果が保存で書き戻る先なので、自動リロードにすると自分の保存で自分の編集を巻き戻しうる。
+
     public string DescribeTitle(string filePath) => $"Pochi: {Path.GetFileName(filePath)}";
 
     public string ResolveNavigationUri(string filePath)

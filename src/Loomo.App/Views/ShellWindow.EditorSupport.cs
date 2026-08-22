@@ -30,8 +30,10 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     /// <summary>EditorSupport の再描画を要求する唯一の入口。描けない状態なら要求は保持され、
     /// 可視化された時点で必ず1回描かれる（取りこぼさない）。</summary>
     private void InvalidateEditorSupport(
-        EditorSupportUpdateReason reason = EditorSupportUpdateReason.Content)
-        => EditorSupportLoop.Invalidate(reason);
+        EditorSupportUpdateReason reason = EditorSupportUpdateReason.Content) {
+        UpdateEditorSupportFileWatch();   // 追従元・提供者が変わりうる合図でもある（§24.8）
+        EditorSupportLoop.Invalidate(reason);
+    }
     /// <summary>いま中身を描いてよいか。可視表現の境界判定は <see cref="EditorSupportRenderPolicy"/> に一元化してある。</summary>
     private bool CanRenderEditorSupport()
         => _editorSupport.Source is not null

@@ -39,8 +39,10 @@ public partial class ShellWindow {
     private PaneLeaf? FindLeaf(PaneKind kind) => _paneLayout.Find(kind);
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
         => _paneLayout.FindParent(target, current);
-    private void RebuildPaneLayout()
-        => PaneLayoutDebugLog.Time("RebuildPaneLayout", RebuildPaneLayoutCore);
+    private void RebuildPaneLayout() {
+        PaneLayoutDebugLog.Time("RebuildPaneLayout", RebuildPaneLayoutCore);
+        UpdateEditorSupportFileWatch();   // ペインの見え方が変わった＝自動リロード監視の張り替え時（§24.8）
+    }
     private void RebuildPaneLayoutCore() {
         PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);
         if (_stageActive) {

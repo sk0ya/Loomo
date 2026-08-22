@@ -352,6 +352,24 @@ public sealed class EditorSupportWebViewController : IDisposable
         return EditorSupportPageApplyResult.Applied;
     }
 
+    /// <summary>
+    /// いま <paramref name="uri"/> を<b>読み終えて</b>載せているなら、その場で読み直す（§24.8）。
+    /// <para>
+    /// <see cref="Show"/> は<b>同じ URI なら再ナビゲートを省く</b>（<c>IsShowing</c>）ので、
+    /// ディスク上の更新を反映させたいだけの要求は通常の描画経路では素通りしてしまう。ここは
+    /// 「同じページのまま読み直す」ための別口で、初回描画の取りこぼし対策と同じ
+    /// <see cref="ReloadCurrentPage"/>（ページの同一性は保ったまま <c>Reload()</c>＋応答監視、
+    /// 例外なら <see cref="Fail"/>）を通す——HTML の再生成も一時ファイルの書き直しも要らないうえ、
+    /// 失敗の畳み方が既存の経路とずれない。
+    /// </para>
+    /// <para>
+    /// false＝そのページを載せていない（読み込み中・失敗後・別ページ）。読み直しでは直らないので、
+    /// 呼び元はページ全体の組み直しへ回すこと。
+    /// </para>
+    /// </summary>
+    internal bool ReloadShowing(string uri)
+        => _page.IsShowing(uri) && ReloadCurrentPage(Core);
+
     private EditorSupportPageApplyResult PatchBody(
         CoreWebView2 core, string body, string? mapFolder, string? pageKey)
     {

@@ -41,6 +41,10 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private readonly VimEditorControl _source;
     private readonly DispatcherTimer _debounce;
     private readonly EditorSupportVisualHost _visuals;
+    /// <summary>複製側の自動リロード監視（§24.8）。本体ペインと同じ判断（提供者の宣言・表示中のファイル）で
+    /// 1ファイルぶんだけ張る。<b>複製にも要る</b>——プレビューを別ウィンドウへ出すのは「見ながら直す」ためで、
+    /// そこだけ古いままだと本体と食い違って見える。</summary>
+    private readonly SingleFileWatcher _fileWatcher;
 
     private WebView2CompositionControl? _web;
     private FrameworkElement? _mountedVisual;
@@ -82,11 +86,16 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); _ = RenderAsync(); };
+        _fileWatcher = new SingleFileWatcher(OnPreviewFileChanged);
 
         _source.BufferChanged += OnSourceChanged;
         Loaded += OnLoaded;
         // 別ウィンドウへ移されると Unloaded→Loaded が発火する。次の Loaded で WebView2 を作り直す。
-        Unloaded += (_, _) => _reattachPending = true;
+        Unloaded += (_, _) =>
+        {
+            _reattachPending = true;
+            _fileWatcher.Stop();   // 画面から外れている間は見張らない（次の描画で張り直す）
+        };
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
@@ -119,6 +128,22 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _debounce.Start();
     }
 
+    /// <summary>
+    /// プレビュー中のファイルがディスク上で変わった（§24.8・通知は UI スレッドへ渡り済み）。
+    /// 複製側は本体のような「同じ URI なら再ナビゲートを省く」短絡を持たない（<see cref="RenderAsync"/> は
+    /// 毎回 <c>Navigate</c> する）ので、描き直しをそのまま頼めば新しい内容が出る。
+    /// </summary>
+    private void OnPreviewFileChanged(string changedPath)
+    {
+        if (_disposed)
+            return;
+        var filePath = _source.FilePath;
+        var provider = string.IsNullOrEmpty(filePath) ? null : _resolver.Resolve(filePath).Provider;
+        if (!EditorSupportAutoReload.ShouldReload(changedPath, provider, filePath, IsLoaded))
+            return;
+        Refresh();
+    }
+
     /// <summary>WebView2 を（作り直して）生成する。再ペアレント後に新ウィンドウのコンポジタへ確実に載せる。</summary>
     private void RebuildWebView()
     {
@@ -145,6 +170,10 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         var filePath = _source.FilePath;
         // 解決は本体と同じ Resolver を通す（Registry を直に引くと Hex/コードのフォールバックが抜ける）。
         var selection = string.IsNullOrEmpty(filePath) ? null : _resolver.Resolve(filePath);
+
+        // 自動リロードの監視をこの描画の対象へ合わせる（§24.8）。描画は表示・追従先・提供者が変わるたびに
+        // 走るので、ここ1か所で張り替えれば「別ファイルを見張ったまま」も「張りっぱなし」も起きない。
+        _fileWatcher.Watch(EditorSupportAutoReload.WatchTarget(selection?.Provider, filePath, IsLoaded));
 
         // ビジュアル表示（CSV グリッド・画像・Hex）は WebView2 を使わないので先に分岐する。
         if (selection?.Provider is IEditorSupportVisualProvider visualProvider && filePath is not null)
@@ -368,6 +397,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _disposed = true;
         _source.BufferChanged -= OnSourceChanged;
         _debounce.Stop();
+        _fileWatcher.Dispose();
         _renderCts?.Cancel();
         _renderCts?.Dispose();
         _renderCts = null;

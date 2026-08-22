@@ -83,6 +83,17 @@ public interface IEditorSupportUriProvider : IEditorSupportProvider
 {
     /// <summary>WebView2 がナビゲートする URI（通常はファイルの <c>file://</c> URI）。</summary>
     string ResolveNavigationUri(string filePath);
+
+    /// <summary>
+    /// 表示中のファイルがディスク上で変わったら、プレビューを自動で読み直すか（既定 <c>false</c>・§24.8）。
+    /// <para>
+    /// 判断を<b>提供者に宣言させる</b>のがこの口の要点。ファイル直開きの提供者でも、読み直しが
+    /// 「新しい内容が出る」ではなく「いまの状態が飛ぶ」になるものがある（再生中の動画が頭出しへ戻る、
+    /// 描きかけのキャンバスが消える）。ホスト側に拡張子の一覧を持たせると、提供者を足すたびに
+    /// 二重に書くことになり、必ず片方が古くなる。
+    /// </para>
+    /// </summary>
+    bool ReloadOnFileChange => false;
 }
 
 /// <summary>
@@ -344,6 +355,11 @@ public sealed class BrowserEditorSupport : IEditorSupportUriProvider
     // ファイルの file:// URI を直接ナビゲートする。エディタ本文は使わない。
     public bool UsesEditorText => false;
 
+    // ディスク上で変わったら黙って読み直す（§24.8）。ここが受け持つのは「ファイルの中身を描いた結果」
+    // そのもの（HTML・PDF・SVG）で、読み直せば新しい内容が出るだけ——失って困る表示状態が無い。
+    // Markdown プレビューが編集中の本文へ追従するのと同じことを、file:// 直開きの側でも成り立たせる。
+    public bool ReloadOnFileChange => true;
+
     public string DescribeTitle(string filePath)
     {
         var label = Path.GetExtension(filePath).TrimStart('.').ToUpperInvariant();
@@ -382,6 +398,9 @@ public sealed class MediaEditorSupport : IEditorSupportUriProvider
 
     // ファイルの file:// URI を直接ナビゲートする。エディタ本文は使わない。
     public bool UsesEditorText => false;
+
+    // 自動リロードはしない（§24.8）。読み直すと Chromium の内蔵プレーヤーは頭出しに戻るので、
+    // 長い動画を再生中にファイルが更新されると再生位置を失う＝事故になる。ここは手動で開き直す方が良い。
 
     public string DescribeTitle(string filePath)
     {

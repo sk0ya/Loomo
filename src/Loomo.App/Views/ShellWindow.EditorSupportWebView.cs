@@ -11,6 +11,39 @@ public partial class ShellWindow {
         _editorSupportForceFullPage = true;
         InvalidateEditorSupport();
     }
+    /// <summary>プレビュー中のファイルをディスク上で見張る監視（§24.8）。<b>常に1ファイルぶんだけ</b>で、
+    /// 対象が変われば張り替え、見張る理由が無くなれば止める。</summary>
+    private SingleFileWatcher? _editorSupportFileWatcher;
+    private SingleFileWatcher EditorSupportFileWatcher
+        => _editorSupportFileWatcher ??= new SingleFileWatcher(OnEditorSupportFileChanged);
+    /// <summary>監視をいまの状態（追従元のファイル・提供者・ペインの見え方）へ合わせる。冪等なので、
+    /// 状態が変わりうる場所（<see cref="InvalidateEditorSupport"/>・レイアウト再構築・追従元の切り離し）から
+    /// 素直に呼んでよい。判断は毎回 <see cref="EditorSupportAutoReload.WatchTarget"/> から取り直す。</summary>
+    private void UpdateEditorSupportFileWatch() {
+        var filePath = _editorSupport.Source?.PeekFilePath;   // タブを実体化させない読み方
+        var provider = string.IsNullOrEmpty(filePath) ? null : _editorSupportResolver.Resolve(filePath).Provider;
+        var target = EditorSupportAutoReload.WatchTarget(provider, filePath, CanRenderEditorSupport());
+        if (target is null && _editorSupportFileWatcher is null)
+            return;   // 見張るものが無く、まだ張ってもいない：監視そのものを作らない
+        EditorSupportFileWatcher.Watch(target);
+    }
+    /// <summary>プレビュー中のファイルがディスク上で変わった（通知は UI スレッドへ渡り済み・デバウンス済み）。
+    /// <b>いま実際にそのファイルを出しているときだけ</b>読み直す——監視の発火から通知までの間に追従先が
+    /// 変わっていることがあるので、条件はここで取り直す。</summary>
+    private void OnEditorSupportFileChanged(string changedPath) {
+        var filePath = _editorSupport.Source?.PeekFilePath;
+        var provider = string.IsNullOrEmpty(filePath) ? null : _editorSupportResolver.Resolve(filePath).Provider;
+        if (!EditorSupportAutoReload.ShouldReload(changedPath, provider, filePath, CanRenderEditorSupport())
+            || provider is not IEditorSupportUriProvider uriProvider)
+            return;
+        CodeSupportDiag.Log($"editor support: ファイル更新を検知して読み直す（{Path.GetFileName(changedPath)}）");
+        if (_editorSupport.WebView.ReloadShowing(uriProvider.ResolveNavigationUri(filePath!)))
+            return;
+        // そのページを読み終えて載せてはいない（読み込み中・失敗後・別ページ）。読み直しでは直らないので
+        // 通常の描画経路でページごと組み直す（同じページの二度目の失敗はページ状態機械が止める）。
+        _editorSupportForceFullPage = true;
+        InvalidateEditorSupport();
+    }
     internal bool TryHorizontalScrollEditorSupportWebView(int delta) => _editorSupport.WebView.TryHorizontalScroll(delta);
     /// <summary>検索パネルの条件を EditorSupport（プレビュー）のハイライトへ流す。プレビューの一致は
     /// 検索結果一覧に出てこないので、エディタ側だけ塗ると「ヒットしたのにプレビューのどこか分からない」
@@ -73,6 +106,7 @@ public partial class ShellWindow {
         _root = InsertRelative(_root, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
     }
     private void DetachEditorSupportSource() {
+        _editorSupportFileWatcher?.Stop();   // 追従元がいなくなる＝見張る理由も無くなる（§24.8）
         if (_editorSupport.DetachSource() is { } previous) {
             previous.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
             previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;

@@ -340,6 +340,7 @@ public partial class ShellWindow {
         _lspWorkspace.ApplyEditRequested -= OnLspServerApplyEditRequested;
         _workspace.FoldersChanged -= OnProblemWorkspaceFoldersChanged;
         _detached?.CloseAll();
+        _editorSupportFileWatcher?.Dispose();   // 閉じたあとに死んだ Dispatcher を叩かせない（§24.8）
         _editorSupport.WebView.Dispose();
         _editorSupport.Visuals.Dispose();
         foreach (var workspace in _editorWorkspaces.Values)

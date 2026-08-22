@@ -299,8 +299,10 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private IEnumerable<PaneKind> OverviewKinds() => StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
-    private void RebuildStage()
-        => PaneLayoutDebugLog.Time("RebuildStage", RebuildStageCore);
+    private void RebuildStage() {
+        PaneLayoutDebugLog.Time("RebuildStage", RebuildStageCore);
+        UpdateEditorSupportFileWatch();   // 舞台・袖の入れ替えで見え方が変わる（§24.8）
+    }
     private void RebuildStageCore() {
         if (!_stageActive)
             return;
