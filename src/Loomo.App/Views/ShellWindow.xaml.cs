@@ -338,6 +338,7 @@ public partial class ShellWindow : Window {
         };
         InitializePegboard();
         InitializeBrowserChrome();
+        InitializeGitLogFilter();
         InitializeTrail();
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
