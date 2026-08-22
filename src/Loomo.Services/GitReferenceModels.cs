@@ -15,6 +15,9 @@ public sealed record GitBranchInfo(string Name, bool IsCurrent, bool IsRemote, s
 /// <summary>タグ1件。</summary>
 public sealed record GitTagInfo(string Name, string TargetShortHash, string? Subject, bool IsAnnotated, string? Date);
 
+/// <summary>リモート追跡先の名前とURL。</summary>
+public sealed record GitRemoteInfo(string Name, string Url);
+
 /// <summary>サブモジュール1件。</summary>
 public sealed record GitSubmoduleInfo(
     string Path,

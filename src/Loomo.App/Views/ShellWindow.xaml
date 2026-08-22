@@ -1495,7 +1495,21 @@
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
                                Tag="Git" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="GIT" />
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="GIT"
+                                   ToolTip="右クリックでGitHubのPull Request／Issueを開く">
+                            <TextBlock.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="GitHub">
+                                        <MenuItem Header="Pull Requestsを開く"
+                                                  Command="{Binding PlacementTarget.DataContext.GitSession.OpenPullRequestsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  IsEnabled="{Binding PlacementTarget.DataContext.GitSession.IsGitHubRepository, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="Issuesを開く"
+                                                  Command="{Binding PlacementTarget.DataContext.GitSession.OpenIssuesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  IsEnabled="{Binding PlacementTarget.DataContext.GitSession.IsGitHubRepository, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    </MenuItem>
+                                </ContextMenu>
+                            </TextBlock.ContextMenu>
+                        </TextBlock>
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Git" Click="OnHidePane" />

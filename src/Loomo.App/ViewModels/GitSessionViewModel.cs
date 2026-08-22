@@ -43,6 +43,13 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _statusIsError;
+    /// <summary>現在のリポジトリがGitHub.comにある場合のWeb URL。</summary>
+    [ObservableProperty] private string? _gitHubRepositoryUrl;
+
+    public bool IsGitHubRepository => !string.IsNullOrWhiteSpace(GitHubRepositoryUrl);
+    public string GitHubRepositoryLabel => GitHubRepositoryUrl is { } url
+        ? new Uri(url).AbsolutePath.Trim('/')
+        : "";
 
     /// <summary>rebase / merge / cherry-pick が進行中か（続行・中止バナーの表示）。</summary>
     [ObservableProperty] private bool _operationInProgress;
@@ -135,6 +142,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
     public event EventHandler? DiffOpenRequested;
 
+    /// <summary>GitHubのページを内蔵ブラウザで開く要求。</summary>
+    public event EventHandler<string>? OpenHostingUrlRequested;
+
     /// <summary>
     /// リポジトリ状態が変わった可能性がある（<see cref="GitService.RepositoryChanged"/> をそのまま中継）。
     /// ShellWindow はこれで開いているエディタタブをディスクの最新内容へ追従させる（チェックアウト等で
@@ -200,6 +210,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             RemoteLabel = "";
             UpstreamLabel = "";
             Ahead = Behind = 0;
+            GitHubRepositoryUrl = null;
             Tags = Array.Empty<GitTagInfo>();
             Submodules = Array.Empty<GitSubmoduleInfo>();
             History.Clear();
@@ -229,6 +240,11 @@ public sealed partial class GitSessionViewModel : ObservableObject
         BranchTree = BranchTreeBuilder.Update(BranchTree, _allBranches);
         UpdateFilteredBranchTree();
         UpdateRemote(overview.Remotes);
+        var remoteUrls = await _git.GetRemoteUrlsAsync();
+        GitHubRepositoryUrl = remoteUrls
+            .OrderBy(remote => string.Equals(remote.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .Select(remote => GitHostingUrl.TryGetGitHubRepositoryUrl(remote.Url, out var url) ? url : null)
+            .FirstOrDefault(url => url is not null);
         Tags = overview.Tags;
         Submodules = overview.Submodules;
 
@@ -251,6 +267,12 @@ public sealed partial class GitSessionViewModel : ObservableObject
     }
 
     partial void OnBranchFilterChanged(string value) => UpdateFilteredBranchTree();
+
+    partial void OnGitHubRepositoryUrlChanged(string? value)
+    {
+        OnPropertyChanged(nameof(IsGitHubRepository));
+        OnPropertyChanged(nameof(GitHubRepositoryLabel));
+    }
 
     /// <summary>空語のときは <see cref="BranchTree"/> をそのまま指す（作り直さない＝開閉状態が生きる）。</summary>
     private void UpdateFilteredBranchTree() =>
@@ -302,6 +324,20 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [RelayCommand] private Task FetchAsync() => Commands.FetchAsync();
     [RelayCommand] private Task PullAsync() => Commands.PullAsync();
     [RelayCommand] private Task PushAsync() => Commands.PushAsync();
+
+    [RelayCommand]
+    private void OpenPullRequests()
+    {
+        if (GitHubRepositoryUrl is { } url)
+            OpenHostingUrlRequested?.Invoke(this, $"{url}/pulls");
+    }
+
+    [RelayCommand]
+    private void OpenIssues()
+    {
+        if (GitHubRepositoryUrl is { } url)
+            OpenHostingUrlRequested?.Invoke(this, $"{url}/issues");
+    }
 
     public async Task<string> GetCombinedCommitMessageAsync(IReadOnlyList<GitLogRow> rows)
     {

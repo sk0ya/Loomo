@@ -79,6 +79,8 @@ public sealed class GitService
 
     public Task<IReadOnlyList<string>> GetRemotesAsync() => _branches.GetRemotesAsync();
 
+    public Task<IReadOnlyList<GitRemoteInfo>> GetRemoteUrlsAsync() => _branches.GetRemoteUrlsAsync();
+
     public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync() => _branches.GetBranchesAsync();
 
     internal static (int Ahead, int Behind, bool Gone) ParseTrack(string track)

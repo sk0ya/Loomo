@@ -311,6 +311,7 @@ public partial class ShellWindow : Window {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
         };
+        vm.GitSession.OpenHostingUrlRequested += (_, url) => _ = OpenUrlInBrowserAsync(url, null);
         vm.GitSession.RepositoryChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(() => _ = RefreshOpenEditorTabsFromDiskAsync()));
         GitPane.IsVisibleChanged += (_, e) => {

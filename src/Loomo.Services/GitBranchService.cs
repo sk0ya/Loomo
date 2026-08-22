@@ -26,6 +26,30 @@ public sealed class GitBranchService
             : Array.Empty<string>();
     }
 
+    /// <summary>リモート名とfetch URLを取得する。push URLではなくリポジトリの正規URLを使う。</summary>
+    public async Task<IReadOnlyList<GitRemoteInfo>> GetRemoteUrlsAsync()
+    {
+        var result = await _runner.RunAsync("remote", "-v").ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<GitRemoteInfo>();
+
+        var remotes = new List<GitRemoteInfo>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in result.Output.Split('\n'))
+        {
+            var value = line.TrimEnd('\r');
+            var parts = value.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || !value.EndsWith("(fetch)", StringComparison.Ordinal))
+                continue;
+
+            var url = parts[1].Trim();
+            if (url.Length == 0 || !seen.Add(parts[0]))
+                continue;
+            remotes.Add(new GitRemoteInfo(parts[0], url));
+        }
+        return remotes;
+    }
+
     public async Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync()
     {
         var result = await _runner.RunAsync(

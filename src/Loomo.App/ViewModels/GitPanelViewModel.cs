@@ -325,7 +325,6 @@ public sealed partial class GitPanelViewModel : ObservableObject
     }
     partial void OnAheadChanged(int value) => PushCommand.NotifyCanExecuteChanged();
     partial void OnBehindChanged(int value) => PullCommand.NotifyCanExecuteChanged();
-
     private IDisposable? _live;
 
     /// <summary>Git パネルが見えている間のライブ監視を開始する（手動更新ボタンの代わり）。
