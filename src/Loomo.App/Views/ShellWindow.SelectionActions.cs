@@ -13,6 +13,8 @@ public partial class ShellWindow {
             return;
         }
         AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection,
+            BuildEditorSendMenuItem(
+                e.SelectedText, e.HasSelection, workingDirectory: null, control?.FilePath),
             BuildDiffSendMenu(CompareEntries(
                 control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection)));
         AddRefactorMenuItems(e.Menu, control);
@@ -315,7 +317,34 @@ public partial class ShellWindow {
     }
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)
         => AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection,
+            BuildEditorSendMenuItem(
+                e.SelectedText, e.HasSelection,
+                (sender as TerminalTabView)?.WorkingDirectory, currentDocumentPath: null),
             BuildDiffSendMenu(CompareEntries(control: null, "ターミナルの選択", e.SelectedText, e.HasSelection)));
+    /// <summary>選択テキストがファイルの場所（パス＋行・列）を指しているなら「エディタへ送る」1項目を作る。
+    /// ビルドエラー・スタックトレース・grep 出力・Git の diff 見出しなど、
+    /// <b>その場に出ている文字列</b>をそのまま宛先にして、その行へ着地させる（設計書 §23.3 の「〜へ送る」）。
+    /// 読み取れない／実在しないときは null を返して<b>項目自体を出さない</b>
+    /// （押せるのに何も起きない項目を作らないのがこの部屋の作法。<see cref="DescribeOpenLinkInWindow"/> と同じ）。</summary>
+    private MenuItem? BuildEditorSendMenuItem(
+        string selectedText, bool hasSelection, string? workingDirectory, string? currentDocumentPath) {
+        if (!hasSelection || string.IsNullOrWhiteSpace(selectedText))
+            return null;
+        if (!SourceLocationResolver.TryResolve(
+                _workspace, selectedText, workingDirectory, currentDocumentPath, out var location))
+            return null;
+        var name = Path.GetFileName(location.Path);
+        var where = location.Line > 0 ? $"{name}:{location.Line}" : name;
+        var item = new MenuItem {
+            Header = $"エディタへ送る（{where}）",
+            ToolTip = location.Line > 0 ? $"{location.Path}:{location.Line}" : location.Path, };
+        item.Click += (_, _) => _ = SendLocationToEditorAsync(location);
+        return item;
+    }
+    private async Task SendLocationToEditorAsync(SourceLocation location) {
+        await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
+        FocusPane(PaneKind.Editor);
+    }
     /// <summary>選択テキストの出どころの呼び名（比較の左右見出しに使う）。</summary>
     private static string SelectionSourceLabel(VimEditorControl? control)
         => control?.FilePath is { Length: > 0 } path
@@ -323,11 +352,14 @@ public partial class ShellWindow {
             : "エディタの選択";
     /// <summary>選択テキストを他のペインへ渡す項目群。<paramref name="diffItem"/> は
     /// <see cref="BuildDiffSendMenu"/> が作った「Diffへ送る」1項目で、他の「〜へ送る」と同じ高さに並べる
-    /// （選択が無くてもファイル比較だけは出したいので、この項目だけは選択の有無に依らず受け取る）。</summary>
+    /// （選択が無くてもファイル比較だけは出したいので、この項目だけは選択の有無に依らず受け取る）。
+    /// <paramref name="editorItem"/> は <see cref="BuildEditorSendMenuItem"/> が作った「エディタへ送る」で、
+    /// 選択がファイルの場所として読めたときだけ非 null になる。</summary>
     private void AddSelectionMenuItems(
-        ContextMenu menu, string selectedText, bool hasSelection, MenuItem? diffItem) {
+        ContextMenu menu, string selectedText, bool hasSelection,
+        MenuItem? editorItem, MenuItem? diffItem) {
         var hasText = hasSelection && !string.IsNullOrWhiteSpace(selectedText);
-        if (!hasText && diffItem is null)
+        if (!hasText && editorItem is null && diffItem is null)
             return;
         menu.Items.Add(new Separator());
         if (hasText) {
@@ -344,6 +376,8 @@ public partial class ShellWindow {
             search.Click += (_, _) => _ = SearchSelectionInBrowserAsync(selectedText);
             menu.Items.Add(search);
         }
+        if (editorItem is not null)
+            menu.Items.Add(editorItem);
         if (diffItem is not null)
             menu.Items.Add(diffItem);
         if (hasText)

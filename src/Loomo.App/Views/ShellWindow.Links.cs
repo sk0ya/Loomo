@@ -48,40 +48,14 @@ public partial class ShellWindow {
             }
             return; // mailto: 等は既定の外部起動に委ねる。
         }
+        // OSC8 のターゲットは素のパスのことも「パス:行:列」のこともある。
+        // 読み取りは選択テキストと同じ SourceLocationParser に寄せて、書式の解釈をここに二重化しない
+        // （相対パスの基準も cwd → ワークスペースの各フォルダーへ広がる＝マルチルートで解決できる）。
         var cwd = (sender as TerminalTabView)?.WorkingDirectory;
-        if (TryResolveFilePath(target, cwd, out var fullPath, out var line, out var column)) {
+        if (SourceLocationResolver.TryResolve(_workspace, target, cwd, currentDocumentPath: null, out var location)) {
             e.Handled = true;
-            _ = OpenPathInEditorAsync(fullPath, line, column);
+            _ = OpenPathInEditorAsync(location.Path, location.Line, location.Column);
         }
-    }
-    private static readonly System.Text.RegularExpressions.Regex TrailingLineColumn =
-        new(@":(\d+)(?::(\d+))?$", System.Text.RegularExpressions.RegexOptions.Compiled);
-    private static bool TryResolveFilePath(string target, string? workingDirectory, out string fullPath, out int line, out int column) {
-        fullPath = "";
-        line = 0;
-        column = 0;
-        var path = target;
-        var match = TrailingLineColumn.Match(path);
-        if (match.Success)
-        {
-            path = path[..match.Index];
-            int.TryParse(match.Groups[1].Value, out line);
-            if (match.Groups[2].Success)
-                int.TryParse(match.Groups[2].Value, out column);
-        }
-        if (string.IsNullOrWhiteSpace(path))
-            return false;
-        try {
-            if (!Path.IsPathRooted(path)) {
-                if (string.IsNullOrWhiteSpace(workingDirectory))
-                    return false;
-                path = Path.Combine(workingDirectory, path);
-            }
-            fullPath = Path.GetFullPath(path);
-        } catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) {
-            return false;
-        }
-        return File.Exists(fullPath);
     }
     private async Task OpenPathInEditorAsync(string fullPath, int line, int column, bool alignTop = false) {
         await OpenFileInNewEditorTabAsync(fullPath);
