@@ -150,6 +150,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SettingsPersistenceHandler>();
         services.AddSingleton<SettingsModelChoiceMapper>();
         services.AddSingleton<TabIconService>();
+        services.AddSingleton<IFileThumbnailService, FileThumbnailService>();
         services.AddSingleton<Input.KeybindingService>();
         // ファイル操作の Undo／Redo 履歴。ツリーとファイル一覧ペインで 1 本を共有する
         // （部屋の中のファイル操作は、どのペインから行っても同じ履歴に積む）。
@@ -173,7 +174,8 @@ internal static class LoomoServiceCollectionExtensions
                 sp.GetRequiredService<FileOperationHistory>()),
             sp.GetRequiredService<IFolderPinStore>(),
             sp.GetRequiredService<IFilePlacesProvider>(),
-            sp.GetRequiredService<FolderTreeViewModel>()));
+            sp.GetRequiredService<FolderTreeViewModel>(),
+            sp.GetRequiredService<IFileThumbnailService>()));
         services.AddSingleton<WorkflowToolRunner>();
         services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();

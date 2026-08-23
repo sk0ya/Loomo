@@ -23,6 +23,7 @@ public sealed class FilesColumnViewLayoutTests
             var root = Path.Combine(Path.GetTempPath(), $"loomo-files-layout-{Guid.NewGuid():N}");
             Directory.CreateDirectory(root);
             File.WriteAllText(Path.Combine(root, "alpha.txt"), "alpha");
+            File.WriteAllText(Path.Combine(root, "photo.png"), "test");
             Directory.CreateDirectory(Path.Combine(root, "folder"));
 
             var workspace = new FakeWorkspaceService();
@@ -31,9 +32,10 @@ public sealed class FilesColumnViewLayoutTests
                 new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-layout-workflows-{Guid.NewGuid():N}")),
                 new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
             tree.LoadRoot(root);
+            var thumbnailService = new FixedThumbnailService();
             var column = new FilesColumnViewModel(
                 workspace, FolderTreeCommandHandler.Unconfined(workspace, new FileOperationHistory()),
-                tree, new FakeFilePlacesProvider());
+                tree, new FakeFilePlacesProvider(), thumbnails: thumbnailService);
             column.Restore(snapshot: null, fallbackFolder: root);
 
             try
@@ -91,6 +93,18 @@ public sealed class FilesColumnViewLayoutTests
                         var layout = FindNamed(item!, expectedName);
                         Assert.NotNull(layout);
                         Assert.Equal(Visibility.Visible, layout!.Visibility);
+
+                        if (mode is FilesDisplayMode.LargeIcons or FilesDisplayMode.MediumIcons
+                            or FilesDisplayMode.SmallIcons or FilesDisplayMode.Tiles)
+                        {
+                            var photo = column.Entries.Single(entry => entry.Name == "photo.png");
+                            var photoItem = list.ItemContainerGenerator.ContainerFromItem(photo) as ListBoxItem;
+                            Assert.NotNull(photoItem);
+                            var photoLayout = FindNamed(photoItem!, expectedName);
+                            var photoImage = FindDescendant<Image>(photoLayout!);
+                            Assert.NotNull(photoImage);
+                            Assert.Same(thumbnailService.Image, photoImage!.Source);
+                        }
 
                         if (mode is FilesDisplayMode.Details or FilesDisplayMode.List)
                             Assert.Null(FindDescendant<WrapPanel>(list));
@@ -202,5 +216,21 @@ public sealed class FilesColumnViewLayoutTests
         thread.Join();
         if (error is not null)
             throw error;
+    }
+
+    private sealed class FixedThumbnailService : IFileThumbnailService
+    {
+        public FixedThumbnailService()
+        {
+            var drawing = new DrawingGroup();
+            drawing.Freeze();
+            Image = new DrawingImage(drawing);
+            Image.Freeze();
+        }
+
+        public ImageSource Image { get; }
+
+        public Task<ImageSource?> GetThumbnailAsync(string path, int edge, CancellationToken cancellationToken = default)
+            => Task.FromResult<ImageSource?>(Image);
     }
 }

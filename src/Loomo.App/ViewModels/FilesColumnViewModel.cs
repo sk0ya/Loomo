@@ -21,7 +21,10 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private readonly IFolderPinStore _pins;
     private readonly FolderTreeViewModel? _folderTree;
     private readonly IFilePlacesProvider _places;
+    private readonly IFileThumbnailService? _thumbnails;
     private readonly DebouncedFolderWatcher _watcher;
+    private CancellationTokenSource? _thumbnailCts;
+    private int _thumbnailGeneration;
 
     // 「戻る／進む」の履歴（フルパス）。ブラウザと同じ規則で、新しい移動は進む側を捨てる。
     private readonly List<string> _back = new();
@@ -39,13 +42,15 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         FolderTreeCommandHandler commands,
         IFolderPinStore pins,
         IFilePlacesProvider places,
-        FolderTreeViewModel? folderTree = null)
+        FolderTreeViewModel? folderTree = null,
+        IFileThumbnailService? thumbnails = null)
     {
         _workspace = workspace;
         _commands = commands;
         _pins = pins;
         _folderTree = folderTree;
         _places = places;
+        _thumbnails = thumbnails;
         _watcher = new DebouncedFolderWatcher(Refresh);
         foreach (var setting in CreateColumnSettings())
         {
@@ -372,6 +377,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     private void SetFolder(string folder, bool raiseStateChanged = true)
     {
+        CancelThumbnailLoads();
         if (!_restoringLayout)
             SaveFolderLayout(CurrentFolder);
         CurrentFolder = folder;
@@ -674,6 +680,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             EmptyMessage = _all.Count == 0
                 ? "このフォルダーは空です。"
                 : "絞り込みに一致する項目がありません。";
+
+        UpdateThumbnails();
     }
 
     /// <summary>監視更新のとき、同じパスの行は既存インスタンスのまま位置と値だけ直す
@@ -725,7 +733,59 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             DisplayMode = normalized;
             return;
         }
+        UpdateThumbnails();
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>現在の表示世代だけにサムネイルを適用する。フォルダー移動や表示形式変更で
+    /// 前の一覧の遅い Shell 応答が新しい一覧へ紛れ込まないよう、世代とキャンセルを二重に見る。</summary>
+    private void UpdateThumbnails()
+    {
+        CancelThumbnailLoads();
+        var edge = ThumbnailSupport.EdgeFor(DisplayMode);
+        if (_thumbnails is null || edge == 0)
+        {
+            foreach (var entry in Entries)
+                entry.ThumbnailImage = null;
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _thumbnailCts = cts;
+        var generation = _thumbnailGeneration;
+        foreach (var entry in Entries)
+        {
+            if (!ThumbnailSupport.IsSupported(entry.FullPath))
+            {
+                entry.ThumbnailImage = null;
+                continue;
+            }
+
+            _ = LoadThumbnailAsync(entry, edge, generation, cts.Token);
+        }
+    }
+
+    private async Task LoadThumbnailAsync(FileEntryViewModel entry, int edge, int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var image = await _thumbnails!.GetThumbnailAsync(entry.FullPath, edge, cancellationToken);
+            if (!cancellationToken.IsCancellationRequested && generation == _thumbnailGeneration
+                && Entries.Contains(entry))
+                entry.ThumbnailImage = image;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // フォルダー移動・表示モード切替では通常の制御フロー。
+        }
+    }
+
+    private void CancelThumbnailLoads()
+    {
+        _thumbnailGeneration++;
+        _thumbnailCts?.Cancel();
+        _thumbnailCts?.Dispose();
+        _thumbnailCts = null;
     }
 
     /// <summary>列見出しのクリック。同じ列なら向きを反転、別の列なら昇順から。</summary>
@@ -963,5 +1023,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         => string.Equals(
             a.TrimEnd('\\', '/'), b.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
-    public void Dispose() => _watcher.Dispose();
+    public void Dispose()
+    {
+        CancelThumbnailLoads();
+        _watcher.Dispose();
+    }
 }

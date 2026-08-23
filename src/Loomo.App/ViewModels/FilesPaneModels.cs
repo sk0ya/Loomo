@@ -112,6 +112,10 @@ public sealed partial class FileEntryViewModel : ObservableObject
 
     /// <summary>バイト数（フォルダーは 0）。監視更新で既存インスタンスを再利用するため可変。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IconImage))]
+    private ImageSource? _thumbnailImage;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SizeText))]
     private long _size;
 
@@ -119,9 +123,11 @@ public sealed partial class FileEntryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ModifiedText))]
     private DateTime _modified;
 
-    public ImageSource IconImage => IsDirectory
+    /// <summary>サムネイルがまだ無い間も必ず通常アイコンを返す。これにより非同期取得中、
+    /// 非対応形式、壊れたファイル、Shell 拡張の無い環境で表示が空白にならない。</summary>
+    public ImageSource IconImage => ThumbnailImage ?? (IsDirectory
         ? FileIcons.FolderImage(open: false)
-        : FileIcons.ImageFor(_iconIndex);
+        : FileIcons.ImageFor(_iconIndex));
 
     /// <summary>テーマの明暗が変わってアイコンの配色が入れ替わったとき、引き直させる。</summary>
     public void RefreshIcon() => OnPropertyChanged(nameof(IconImage));
