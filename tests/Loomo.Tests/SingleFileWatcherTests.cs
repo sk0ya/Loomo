@@ -129,4 +129,29 @@ public class SingleFileWatcherTests
             Directory.Delete(folder, recursive: true);
         }
     }
+
+    [Fact]
+    public void 親フォルダーが後から戻ると監視を再接続する()
+    {
+        var root = Directory.CreateTempSubdirectory("loomo-watch-").FullName;
+        var folder = Path.Combine(root, "戻る");
+        var target = Path.Combine(folder, "a.html");
+        try
+        {
+            using var watcher = new SingleFileWatcher(_ => { }, ShortDebounce, action => action());
+
+            watcher.Watch(target);
+            Assert.Null(watcher.Target);       // 初回は親フォルダーが無い
+
+            Directory.CreateDirectory(folder);
+
+            Assert.True(Wait(() => string.Equals(watcher.Target, target,
+                StringComparison.OrdinalIgnoreCase)));
+            Assert.Equal(1, watcher.WatchGeneration);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

@@ -30,13 +30,14 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         IWorkspaceService workspace,
         FolderTreeCommandHandler commands,
         IFolderPinStore pins,
-        IFilePlacesProvider places)
+        IFilePlacesProvider places,
+        FolderTreeViewModel? folderTree = null)
     {
         _workspace = workspace;
         _pins = pins;
         for (var i = 0; i < MaxColumns; i++)
         {
-            var column = new FilesColumnViewModel(workspace, commands, pins, places);
+            var column = new FilesColumnViewModel(workspace, commands, pins, places, folderTree);
             // カラムのイベントはペインで束ねて中継する（ShellWindow は列の数を知らなくてよい）。
             column.FileActivated += (_, path) => FileActivated?.Invoke(this, path);
             column.OpenInBrowserRequested += (_, path) => OpenInBrowserRequested?.Invoke(this, path);

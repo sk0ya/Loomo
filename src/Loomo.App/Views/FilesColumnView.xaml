@@ -496,9 +496,6 @@
                                           ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します" />
                             </MenuItem>
                             <MenuItem Header="このフォルダーで検索" Tag="SearchableDir" Click="OnSearchInFolderClick" />
-                            <!-- ピンの実体はツリーと同じ（IFolderPinStore）。 -->
-                            <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
-                            <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />
                             <Separator />
                             <MenuItem Header="パスをコピー" Tag="Selection">
                                 <MenuItem Header="フルパス" Click="OnCopyPathClick" />
@@ -506,6 +503,18 @@
                                           ToolTip="所属するワークスペースフォルダーからの相対パス" />
                                 <MenuItem Header="名前" Click="OnCopyNameClick" />
                             </MenuItem>
+                            <!-- FolderTree と同じ Git 操作。実際の要求は FolderTreeViewModel の
+                                 既存イベントへ流し、Git ペイン／エディタの受け口を共有する。 -->
+                            <Separator />
+                            <MenuItem Header="Git" Tag="GitMenu">
+                                <MenuItem Header="履歴を表示" Click="OnGitHistoryClick" />
+                                <MenuItem Header="Git Blame" Tag="GitBlame" Click="OnGitBlameClick" />
+                                <MenuItem Header=".gitignore に追加" Tag="GitIgnore" Click="OnAddToGitignoreClick" />
+                            </MenuItem>
+                            <Separator />
+                            <!-- ピンの実体はツリーと同じ（IFolderPinStore）。 -->
+                            <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
+                            <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>

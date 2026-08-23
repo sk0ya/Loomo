@@ -19,6 +19,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private readonly IWorkspaceService _workspace;
     private readonly FolderTreeCommandHandler _commands;
     private readonly IFolderPinStore _pins;
+    private readonly FolderTreeViewModel? _folderTree;
     private readonly IFilePlacesProvider _places;
     private readonly DebouncedFolderWatcher _watcher;
 
@@ -33,11 +34,13 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         IWorkspaceService workspace,
         FolderTreeCommandHandler commands,
         IFolderPinStore pins,
-        IFilePlacesProvider places)
+        IFilePlacesProvider places,
+        FolderTreeViewModel? folderTree = null)
     {
         _workspace = workspace;
         _commands = commands;
         _pins = pins;
+        _folderTree = folderTree;
         _places = places;
         _watcher = new DebouncedFolderWatcher(Refresh);
         _pins.PinsChanged += (_, _) => OnPropertyChanged(nameof(CanPinCurrentFolder));
@@ -637,6 +640,31 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     /// <summary>そのフォルダーを検索へ送れるか（コンテキストメニューの出し分け）。</summary>
     public bool CanSearchIn(string folder) => Directory.Exists(folder) && _workspace.Contains(folder);
+
+    /// <summary>FolderTree と同じ Git コンテキストメニューの出し分け。</summary>
+    public bool CanGitFor(FileEntryViewModel? entry)
+        => entry is not null && _folderTree?.CanGitForPath(entry.FullPath) == true;
+
+    public bool CanAddToGitignoreFor(FileEntryViewModel? entry)
+        => entry is not null && _folderTree?.CanAddToGitignoreForPath(entry.FullPath) == true;
+
+    public void RequestGitBlame(FileEntryViewModel entry)
+    {
+        if (!entry.IsDirectory && _folderTree is not null)
+            _folderTree.RequestGitBlame(entry.FullPath);
+    }
+
+    public void RequestGitHistory(FileEntryViewModel entry)
+    {
+        if (_folderTree is not null)
+            _folderTree.RequestGitHistory(entry.FullPath, entry.IsDirectory);
+    }
+
+    public void AddToGitignore(FileEntryViewModel entry)
+    {
+        if (_folderTree is not null)
+            _folderTree.AddToGitignore(entry.FullPath, entry.IsDirectory);
+    }
 
     private static bool TryNormalizeFolder(string? path, out string folder)
     {

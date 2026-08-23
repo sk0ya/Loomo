@@ -409,6 +409,9 @@ public partial class FilesColumnView : UserControl
                 "SearchableDir" => single is { IsDirectory: true } && Vm.CanSearchIn(single.FullPath),
                 "Pinnable" => Vm.CanPin(pinTarget),
                 "Unpinnable" => Vm.IsPinned(pinTarget),
+                "GitMenu" => Vm.CanGitFor(single),
+                "GitBlame" => single is { IsDirectory: false } && Vm.CanGitFor(single),
+                "GitIgnore" => Vm.CanAddToGitignoreFor(single),
                 // Undo/Redo は選択ではなく履歴で決まる（下の UpdateHistoryMenuItems が出し分ける）。
                 "UndoItem" or "RedoItem" => item.Visibility == Visibility.Visible,
                 _ => true,
@@ -528,6 +531,27 @@ public partial class FilesColumnView : UserControl
     {
         if (SingleSelection() is { IsDirectory: true } entry)
             Vm?.RequestSearchInFolder(entry.FullPath);
+    }
+
+    private void OnGitBlameClick(object sender, RoutedEventArgs e)
+    {
+        if (SingleSelection() is { IsDirectory: false } entry)
+            Vm?.RequestGitBlame(entry);
+    }
+
+    private void OnGitHistoryClick(object sender, RoutedEventArgs e)
+    {
+        if (SingleSelection() is { } entry)
+            Vm?.RequestGitHistory(entry);
+    }
+
+    private void OnAddToGitignoreClick(object sender, RoutedEventArgs e)
+    {
+        if (SingleSelection() is { } entry)
+        {
+            try { Vm?.AddToGitignore(entry); }
+            catch (InvalidOperationException ex) { ShowError(ex.Message); }
+        }
     }
 
     private void OnNewFileClick(object sender, RoutedEventArgs e) => CreateEntry(isDirectory: false);

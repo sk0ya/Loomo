@@ -247,6 +247,14 @@ public sealed partial class FolderTreeViewModel
         GitBlameRequested?.Invoke(this, node.FullPath);
     }
 
+    /// <summary>ファイル一覧からの「Git Blame」要求。ツリーのノードを作らず、同じ Git 判定と受け口を使う。</summary>
+    public void RequestGitBlame(string fullPath)
+    {
+        if (!CanGitForPath(fullPath) || !_fileCommands.FileExists(fullPath))
+            return;
+        GitBlameRequested?.Invoke(this, fullPath);
+    }
+
     /// <summary>指定ファイル／フォルダの Git 履歴表示を要求する（ShellWindow が Git ペインを前面に出し、
     /// そのパスの履歴に絞る）。Git リポジトリ配下かつ実在するときだけ発火する。</summary>
     public void RequestGitHistory(FileNodeViewModel node)
@@ -256,6 +264,15 @@ public sealed partial class FolderTreeViewModel
         var exists = _fileCommands.EntryExists(node.FullPath, node.IsDirectory);
         if (exists)
             GitHistoryRequested?.Invoke(this, node.FullPath);
+    }
+
+    /// <summary>ファイル一覧からの「履歴を表示」要求。ファイル・フォルダーのどちらにも効く。</summary>
+    public void RequestGitHistory(string fullPath, bool isDirectory)
+    {
+        if (!CanGitForPath(fullPath)
+            || !_fileCommands.EntryExists(fullPath, isDirectory))
+            return;
+        GitHistoryRequested?.Invoke(this, fullPath);
     }
 
     /// <summary>選択ノードのワークスペースルート相対パスを、ルート直下の .gitignore に1行追加する
@@ -276,5 +293,57 @@ public sealed partial class FolderTreeViewModel
         if (_fileCommands.AddToGitignore(folderRoot, node.FullPath, node.IsDirectory))
             RefreshWorkspace();
     }
-}
 
+    /// <summary>ファイル一覧から選んだ項目を、所属ワークスペースの .gitignore に追加する。</summary>
+    public void AddToGitignore(string fullPath, bool isDirectory)
+    {
+        var context = GitContextForPath(fullPath);
+        if (context is null
+            || !_fileCommands.EntryExists(fullPath, isDirectory)
+            || PathsEqual(context.Value.FolderRoot, fullPath))
+            return;
+
+        if (_fileCommands.AddToGitignore(context.Value.FolderRoot, fullPath, isDirectory))
+            RefreshWorkspace();
+    }
+
+    /// <summary>指定パスが FolderTree と同じ Git メニューの対象か。</summary>
+    public bool CanGitForPath(string fullPath) => GitContextForPath(fullPath) is { State.IsGitRepository: true };
+
+    /// <summary>指定パスを Git 操作へ送れるか（一覧のメニュー出し分け用）。</summary>
+    public bool CanAddToGitignoreForPath(string fullPath)
+        => GitContextForPath(fullPath) is { State.IsGitRepository: true } context
+            && !PathsEqual(context.FolderRoot, fullPath);
+
+    private (string FolderRoot, GitTreeState State)? GitContextForPath(string fullPath)
+    {
+        string full;
+        try { full = Path.GetFullPath(fullPath); }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        { return null; }
+
+        if (_multiRootStates.Count == 0)
+        {
+            var root = _workspace.PrimaryFolder;
+            return root is not null && IsPathWithin(full, root)
+                ? (root, _gitState)
+                : null;
+        }
+
+        // マルチルートで入れ子の登録がある場合は、最も深いルートを採用する。
+        foreach (var state in _multiRootStates.Values
+                     .OrderByDescending(s => s.FolderPath.Length))
+            if (IsPathWithin(full, state.FolderPath))
+                return (state.FolderPath, state.GitState);
+        return null;
+    }
+
+    private static bool IsPathWithin(string path, string directory)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd('\\', '/');
+        var fullDirectory = Path.GetFullPath(directory).TrimEnd('\\', '/');
+        return string.Equals(fullPath, fullDirectory, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+}

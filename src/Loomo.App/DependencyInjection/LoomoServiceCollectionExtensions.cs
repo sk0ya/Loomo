@@ -171,7 +171,8 @@ internal static class LoomoServiceCollectionExtensions
             FolderTreeCommandHandler.Unconfined(sp.GetRequiredService<IWorkspaceService>(),
                 sp.GetRequiredService<FileOperationHistory>()),
             sp.GetRequiredService<IFolderPinStore>(),
-            sp.GetRequiredService<IFilePlacesProvider>()));
+            sp.GetRequiredService<IFilePlacesProvider>(),
+            sp.GetRequiredService<FolderTreeViewModel>()));
         services.AddSingleton<WorkflowToolRunner>();
         services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();
