@@ -34,6 +34,7 @@ public partial class FolderTreeView : UserControl
     public FolderTreeView()
     {
         InitializeComponent();
+        Unloaded += (_, _) => CancelPropertiesLoad();
         _selectionPreviewTimer.Tick += (_, _) =>
         {
             _selectionPreviewTimer.Stop();

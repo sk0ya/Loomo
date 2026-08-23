@@ -24,6 +24,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly WorkflowStore _workflows;
     private readonly FolderTreeCommandHandler _fileCommands;
     private readonly FolderTreeQuery _query;
+    private readonly FilePropertiesService _fileProperties;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -153,14 +154,19 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // エディタでアクティブなファイルをツリーで展開・選択する（同期）。
     public event EventHandler? RevealCurrentFileRequested;
 
+    /// <summary>FolderTree のプロパティ表示で使う、DI 管理の読み取りサービス。</summary>
+    public FilePropertiesService FileProperties => _fileProperties;
+
     public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
-        FolderTreeCommandHandler fileCommands, FolderTreeQuery query)
+        FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
+        FilePropertiesService? fileProperties = null)
     {
         _workspace = workspace;
         _warmup = warmup;
         _workflows = workflows;
         _fileCommands = fileCommands;
         _query = query;
+        _fileProperties = fileProperties ?? new FilePropertiesService();
         _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
         // アプリと同じ寿命の ViewModel なので購読は解除しない。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();

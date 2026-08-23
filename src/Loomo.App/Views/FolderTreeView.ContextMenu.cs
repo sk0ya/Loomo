@@ -9,12 +9,15 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
 
 public partial class FolderTreeView
 {
+    private CancellationTokenSource? _propertiesLoadCts;
+
     // ===== ファイル操作（コンテキストメニュー／F2・Delete） =====
 
     // 右クリックした項目を選択しておく（後続の操作対象を直感的にする）。空き領域なら何もしない。
@@ -203,6 +206,52 @@ public partial class FolderTreeView
             // explorer 起動失敗は無視。
         }
     }
+
+    /// <summary>選択中の項目をまとめてプロパティウィンドウへ渡す。右クリックした項目が複数選択の
+    /// 集合内なら集合を維持し、集合外なら既存の Explorer 同様にその項目だけを対象にする。</summary>
+    private async void OnPropertiesClick(object sender, RoutedEventArgs e)
+    {
+        var selected = CurrentSelection(ContextNode(sender));
+        if (selected.Count == 0 || _propertiesLoadCts is not null || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var targets = selected
+            .Select(node => new FilePropertiesTarget(node.FullPath, node.IsDirectory))
+            .ToArray();
+
+        using var cts = new CancellationTokenSource();
+        _propertiesLoadCts = cts;
+        Mouse.OverrideCursor = Cursors.Wait;
+        try
+        {
+            // フォルダーのサイズ計算やネットワーク／長い UNC パスの ACL 読み取りで UI を固めない。
+            var result = await Task.Run(
+                () => vm.FileProperties.ReadMany(targets, cts.Token),
+                cts.Token);
+            if (cts.IsCancellationRequested || !IsLoaded)
+                return;
+            var dialog = new FilePropertiesWindow(result) { Owner = OwnerWindow };
+            dialog.ShowDialog();
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // ビューがアンロードされた、または読み取りがキャンセルされた場合は何もしない。
+        }
+        catch (Exception ex)
+        {
+            ShowError($"プロパティを表示できませんでした: {ex.Message}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_propertiesLoadCts, cts))
+            {
+                _propertiesLoadCts = null;
+                Mouse.OverrideCursor = null;
+            }
+        }
+    }
+
+    private void CancelPropertiesLoad() => _propertiesLoadCts?.Cancel();
 
     private void OnSetInTerminalClick(object sender, RoutedEventArgs e)
     {
