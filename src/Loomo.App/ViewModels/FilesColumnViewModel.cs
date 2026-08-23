@@ -1,5 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Files;
@@ -36,6 +37,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         new(StringComparer.OrdinalIgnoreCase);
     private List<FilesColumnSettingSnapshot> _legacyLayout = new();
     private bool _restoringLayout;
+    private readonly FilesGroupDescription _groupDescription;
 
     public FilesColumnViewModel(
         IWorkspaceService workspace,
@@ -52,6 +54,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         _places = places;
         _thumbnails = thumbnails;
         _watcher = new DebouncedFolderWatcher(Refresh);
+        EntriesView = CollectionViewSource.GetDefaultView(Entries);
+        _groupDescription = new FilesGroupDescription(this);
         foreach (var setting in CreateColumnSettings())
         {
             setting.PropertyChanged += OnColumnSettingPropertyChanged;
@@ -66,6 +70,10 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<FileEntryViewModel> Entries { get; } = new();
+
+    /// <summary>行は <see cref="Entries"/> のままにし、表示側だけをグループ化するビュー。
+    /// ListBox の選択項目が常に <see cref="FileEntryViewModel"/> であることを保つ。</summary>
+    public ICollectionView EntriesView { get; }
 
     /// <summary>現在地のパンくず（住所欄）。ワークスペースの内外を問わず、常にドライブから並べる。</summary>
     public ObservableCollection<FilesBreadcrumb> Breadcrumbs { get; } = new();
@@ -82,6 +90,10 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     [ObservableProperty] private FilesSortColumn _sortColumn = FilesSortColumn.Name;
 
     [ObservableProperty] private bool _sortDescending;
+
+    [ObservableProperty] private FilesGroupBy _groupBy;
+
+    public IReadOnlyList<FilesGroupByOption> GroupByOptions => FilesGrouping.Options;
 
     /// <summary>このカラムの一覧表示形式。現在地・並べ替えと同じくワークスペースごとに保存する。</summary>
     [ObservableProperty] private FilesDisplayMode _displayMode = FilesDisplayMode.Details;
@@ -321,12 +333,14 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         {
             SortColumn = snapshot.SortColumn;
             SortDescending = snapshot.SortDescending;
+            GroupBy = FilesGrouping.Normalize(snapshot.GroupBy);
             ShowHiddenFiles = snapshot.ShowHidden;
             DisplayMode = FilesDisplayModes.Normalize(snapshot.DisplayMode);
         }
         else
         {
             DisplayMode = FilesDisplayMode.Details;
+            GroupBy = FilesGroupBy.None;
         }
         Filter = "";   // 絞り込みは「今この瞬間の道具」なので持ち越さない
         IsFilterBarOpen = false;
@@ -363,6 +377,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             CurrentFolder = CurrentFolder.Length > 0 ? CurrentFolder : null,
             SortColumn = SortColumn,
             SortDescending = SortDescending,
+            GroupBy = GroupBy,
             ShowHidden = ShowHiddenFiles,
             DisplayMode = DisplayMode,
             ColumnSettings = CaptureLayout().Columns,
@@ -658,7 +673,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     private void ApplyView(bool preserveSelection)
     {
-        var arranged = FilesListing.Arrange(_all, SortColumn, SortDescending, Filter, ShowHiddenFiles);
+        var arranged = FilesListing.Arrange(_all, SortColumn, SortDescending, Filter, ShowHiddenFiles, GroupBy);
         if (preserveSelection)
             Reconcile(arranged);
         else
@@ -667,6 +682,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             foreach (var entry in arranged)
                 Entries.Add(entry);
         }
+        EntriesView.Refresh();
 
         var folders = arranged.Count(e => e.IsDirectory);
         var files = arranged.Count - folders;
@@ -717,6 +733,25 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     }
 
     partial void OnFilterChanged(string value) => ApplyView(preserveSelection: true);
+
+    partial void OnGroupByChanged(FilesGroupBy value)
+    {
+        var normalized = FilesGrouping.Normalize(value);
+        if (normalized != value)
+        {
+            GroupBy = normalized;
+            return;
+        }
+
+        EntriesView.GroupDescriptions.Clear();
+        if (GroupBy != FilesGroupBy.None)
+            EntriesView.GroupDescriptions.Add(_groupDescription);
+        if (_restoringLayout)
+            return;
+        ApplyView(preserveSelection: true);
+        EntriesView.Refresh();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     partial void OnShowHiddenFilesChanged(bool value)
     {

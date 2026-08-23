@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+    xmlns:local="clr-namespace:sk0ya.Loomo.App.Views"
     Background="{DynamicResource Panel}">
 
     <UserControl.Resources>
@@ -254,6 +255,9 @@
         <ItemsPanelTemplate x:Key="FilesIconItemsPanel">
             <WrapPanel Orientation="Horizontal" />
         </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="FilesGroupItemsPanel">
+            <local:FilesGroupItemsPanel />
+        </ItemsPanelTemplate>
     </UserControl.Resources>
 
     <!-- 操作対象のカラムだけ枠をアクセント色にする（2/4カラムのとき、キー操作の行き先を示す）。 -->
@@ -338,6 +342,11 @@
                           SelectedValue="{Binding DisplayMode, Mode=TwoWay}"
                           SelectedValuePath="Value" DisplayMemberPath="Label"
                           ToolTip="表示形式を切り替え" />
+                <ComboBox DockPanel.Dock="Right" Width="118" Height="22" Margin="4,0,0,0"
+                          ItemsSource="{Binding GroupByOptions}"
+                          SelectedValue="{Binding GroupBy, Mode=TwoWay}"
+                          SelectedValuePath="Value" DisplayMemberPath="Label"
+                          ToolTip="種類・更新日・サイズでグループ化" />
                 <ToggleButton x:Name="ColumnsButton" DockPanel.Dock="Right" Style="{StaticResource FilesToolToggle}"
                               Width="34" Content="列" ToolTip="列の表示・幅・順序"
                               IsChecked="{Binding IsColumnSettingsOpen, Mode=TwoWay}" />
@@ -517,7 +526,7 @@
             <!-- 一覧本体 -->
             <Grid>
                 <ListBox x:Name="EntryList"
-                         ItemsSource="{Binding Entries}"
+                         ItemsSource="{Binding EntriesView}"
                          SelectionMode="Extended"
                          Background="Transparent"
                          BorderThickness="0"
@@ -565,6 +574,28 @@
                             </Border>
                         </ControlTemplate>
                     </ListBox.Template>
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.Panel>
+                                <ItemsPanelTemplate>
+                                    <local:FilesGroupItemsPanel />
+                                </ItemsPanelTemplate>
+                            </GroupStyle.Panel>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <Border Background="{DynamicResource BgAlt}" Padding="7,3" Margin="0,5,0,1">
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding Name.Label}" Foreground="{DynamicResource FgDim}"
+                                                       FontSize="{DynamicResource Fs11}" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount, StringFormat=({0})}"
+                                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
+                                                       Margin="8,0,0,0" />
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
                     <ListBox.ContextMenu>
                         <!-- 並びはツリーの右クリックと同じ語彙・同じ順（開く/送る → 作る → 移す → 直す →
                              フォルダー → 写す）。同じ操作が2箇所で違う名前・違う順に並ぶ方が事故になる。

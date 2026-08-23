@@ -39,6 +39,32 @@ public static class FilesDisplayModes
         => Options.Any(option => option.Value == value) ? value : FilesDisplayMode.Details;
 }
 
+/// <summary>ファイル一覧のグループ化方法。数値で保存されるため末尾追加のみ可。</summary>
+public enum FilesGroupBy
+{
+    None,
+    Type,
+    Modified,
+    Size,
+}
+
+/// <summary>グループ化選択コンボボックスの項目。</summary>
+public sealed record FilesGroupByOption(FilesGroupBy Value, string Label);
+
+public static class FilesGrouping
+{
+    public static IReadOnlyList<FilesGroupByOption> Options { get; } =
+    [
+        new(FilesGroupBy.None, "グループ化なし"),
+        new(FilesGroupBy.Type, "種類／拡張子"),
+        new(FilesGroupBy.Modified, "更新日"),
+        new(FilesGroupBy.Size, "サイズ"),
+    ];
+
+    public static FilesGroupBy Normalize(FilesGroupBy value)
+        => Options.Any(option => option.Value == value) ? value : FilesGroupBy.None;
+}
+
 /// <summary>詳細表示で使う列。数値で保存されるため末尾追加のみ可。</summary>
 public enum FilesColumnKey
 {
@@ -145,6 +171,9 @@ public sealed partial class FileEntryViewModel : ObservableObject
     /// <summary>種類での並べ替えキー（表示と違い、比較が安定するよう小文字のまま）。</summary>
     public string TypeKey => IsDirectory ? "" : Path.GetExtension(Name).ToLowerInvariant();
 
+    /// <summary>現在のグループ化方法に応じた、表示名と並び順を持つグループ値。</summary>
+    public FilesGroupValue GroupValue(FilesGroupBy groupBy) => FilesListing.GroupValue(this, groupBy);
+
     public bool IsHtml => !IsDirectory
         && (FullPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
             || FullPath.EndsWith(".htm", StringComparison.OrdinalIgnoreCase));
@@ -197,7 +226,8 @@ public static class FilesListing
         FilesSortColumn column,
         bool descending,
         string filter,
-        bool showHidden)
+        bool showHidden,
+        FilesGroupBy groupBy = FilesGroupBy.None)
     {
         var matches = MatcherFor(filter);
         var items = source
@@ -220,7 +250,46 @@ public static class FilesListing
             // 同値のときは常に名前昇順で決める（更新のたびに並びが揺れないように）。
             return CompareNatural(a.Name, b.Name);
         });
-        return items;
+        if (groupBy == FilesGroupBy.None)
+            return items;
+
+        // グループの順序は現在の並べ替え方向に合わせ、グループ内は従来の列ソートを保つ。
+        var groups = items.GroupBy(entry => GroupValue(entry, groupBy));
+        var orderedGroups = descending
+            ? groups.OrderByDescending(group => group.Key.Order)
+                .ThenByDescending(group => group.Key.Label, StringComparer.CurrentCultureIgnoreCase)
+            : groups.OrderBy(group => group.Key.Order)
+                .ThenBy(group => group.Key.Label, StringComparer.CurrentCultureIgnoreCase);
+        return orderedGroups.SelectMany(group => group).ToList();
+    }
+
+    public static FilesGroupValue GroupValue(FileEntryViewModel entry, FilesGroupBy groupBy)
+        => groupBy switch
+        {
+            FilesGroupBy.Type => entry.IsDirectory
+                ? new FilesGroupValue("folder", "フォルダー", 0)
+                : new FilesGroupValue(entry.TypeKey, entry.TypeText, 1),
+            FilesGroupBy.Modified => entry.Modified == default
+                ? new FilesGroupValue("unknown", "更新日時なし", int.MaxValue)
+                : new FilesGroupValue(entry.Modified.Date.ToString("yyyyMMdd"),
+                    entry.Modified.ToString("yyyy/MM/dd"), entry.Modified.Date.Ticks),
+            FilesGroupBy.Size => entry.IsDirectory
+                ? new FilesGroupValue("folder", "フォルダー", 0)
+                : SizeGroup(entry.Size),
+            _ => new FilesGroupValue("", "", 0),
+        };
+
+    private static FilesGroupValue SizeGroup(long size)
+    {
+        var (key, label, order) = size switch
+        {
+            0 => ("0", "0 B", 1),
+            < 1024 => ("small", "1 B ～ 1 KB", 2),
+            < 1024 * 1024 => ("kb", "1 KB ～ 1 MB", 3),
+            < 1024L * 1024 * 1024 => ("mb", "1 MB ～ 1 GB", 4),
+            _ => ("gb", "1 GB 以上", 5),
+        };
+        return new FilesGroupValue(key, label, order);
     }
 
     /// <summary>絞り込みの判定。<c>*</c>／<c>?</c> を含めばワイルドカード（全体一致）、
@@ -275,3 +344,6 @@ public static class FilesListing
         return (a.Length - i) - (b.Length - j);
     }
 }
+
+/// <summary>グループの識別子・表示名・並べ替え順。空の一覧では生成されないため、空グループが残らない。</summary>
+public sealed record FilesGroupValue(string Key, string Label, long Order);

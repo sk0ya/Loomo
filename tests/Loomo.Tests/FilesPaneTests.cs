@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Linq;
+using System.Windows.Data;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Agent;
@@ -650,6 +651,150 @@ public sealed class FilesPaneTests : IDisposable
 
         var restored = store.LoadWorkspace(workspace.Id);
         Assert.Equal(FilesDisplayMode.Tiles, restored?.Files?.Columns.Single().DisplayMode);
+    }
+
+    [Fact]
+    public void グループ化は種類ごとに分かれグループ内は現在の列で並ぶ()
+    {
+        var sut = CreateColumn();
+        sut.GroupBy = FilesGroupBy.Type;
+
+        Assert.Equal(
+            new[] { "docs", "src", "app.cs", "file2.txt", "file10.txt" },
+            sut.Entries.Select(entry => entry.Name));
+        Assert.Equal(FilesGroupBy.Type, sut.GroupBy);
+        Assert.Equal(sut.Entries.Count, sut.EntriesView.Cast<FileEntryViewModel>().Count());
+        Assert.All(sut.EntriesView.Cast<object>(), item => Assert.IsType<FileEntryViewModel>(item));
+
+        var groups = sut.EntriesView.Groups!.Cast<CollectionViewGroup>().ToList();
+        Assert.Equal(new[] { "folder", ".cs", ".txt" },
+            groups.Select(group => ((FilesGroupValue)group.Name).Key));
+        Assert.Equal(new[] { "docs", "src" },
+            groups[0].Items.Cast<FileEntryViewModel>().Select(entry => entry.Name));
+        Assert.Equal(new[] { "app.cs" },
+            groups[1].Items.Cast<FileEntryViewModel>().Select(entry => entry.Name));
+        Assert.Equal(new[] { "file2.txt", "file10.txt" },
+            groups[2].Items.Cast<FileEntryViewModel>().Select(entry => entry.Name));
+    }
+
+    [Fact]
+    public void グループ化の降順はグループ順だけを反転しグループ内ソートを保つ()
+    {
+        var sut = CreateColumn();
+        sut.GroupBy = FilesGroupBy.Type;
+        sut.SortCommand.Execute("Size");
+
+        Assert.True(sut.SortDescending);
+        Assert.Equal(new[] { "file2.txt", "file10.txt", "app.cs", "docs", "src" },
+            sut.Entries.Select(entry => entry.Name));
+    }
+
+    [Fact]
+    public void 更新日とサイズは空の一覧でもグループ状態を残さない()
+    {
+        var sut = CreateColumn();
+        var empty = Path.Combine(_root, "empty");
+        Directory.CreateDirectory(empty);
+
+        sut.Navigate(empty);
+        sut.GroupBy = FilesGroupBy.Modified;
+        Assert.Empty(sut.Entries);
+        Assert.Empty(sut.EntriesView.Groups!);
+
+        sut.GroupBy = FilesGroupBy.Size;
+        Assert.Empty(sut.EntriesView.Groups!);
+    }
+
+    [Fact]
+    public void サイズグループは境界値を正しく分け昇降順を反映する()
+    {
+        var entries = new[]
+        {
+            new FileEntryViewModel(Path.Combine(_root, "zero.bin"), false, 0, new DateTime(2026, 1, 1)),
+            new FileEntryViewModel(Path.Combine(_root, "byte.bin"), false, 1, new DateTime(2026, 1, 2)),
+            new FileEntryViewModel(Path.Combine(_root, "kb.bin"), false, 1024, new DateTime(2026, 1, 3)),
+            new FileEntryViewModel(Path.Combine(_root, "mb.bin"), false, 1024L * 1024, new DateTime(2026, 1, 4)),
+            new FileEntryViewModel(Path.Combine(_root, "gb.bin"), false, 1024L * 1024 * 1024, new DateTime(2026, 1, 5)),
+        };
+
+        var ascending = FilesListing.Arrange(entries, FilesSortColumn.Name, false, "", false, FilesGroupBy.Size);
+        Assert.Equal(new[] { "0", "small", "kb", "mb", "gb" },
+            ascending.Select(entry => FilesListing.GroupValue(entry, FilesGroupBy.Size).Key));
+
+        var descending = FilesListing.Arrange(entries, FilesSortColumn.Name, true, "", false, FilesGroupBy.Size);
+        Assert.Equal(new[] { "gb", "mb", "kb", "small", "0" },
+            descending.Select(entry => FilesListing.GroupValue(entry, FilesGroupBy.Size).Key));
+    }
+
+    [Fact]
+    public void 単一グループと全表示形式でグループ項目と行型を維持する()
+    {
+        var only = Path.Combine(_root, "only");
+        Directory.CreateDirectory(only);
+        WriteFile(Path.Combine(only, "a.txt"), "a", new DateTime(2026, 1, 1));
+        WriteFile(Path.Combine(only, "b.txt"), "b", new DateTime(2026, 1, 2));
+
+        var sut = CreateColumn();
+        sut.Navigate(only);
+        sut.GroupBy = FilesGroupBy.Type;
+
+        foreach (var mode in sut.DisplayModeOptions.Select(option => option.Value))
+        {
+            sut.DisplayMode = mode;
+            Assert.Single(sut.EntriesView.Groups!);
+            var group = Assert.IsAssignableFrom<CollectionViewGroup>(sut.EntriesView.Groups![0]);
+            Assert.Equal(new[] { "a.txt", "b.txt" },
+                group.Items.Cast<FileEntryViewModel>().Select(entry => entry.Name));
+            Assert.All(sut.EntriesView.Cast<object>(), item => Assert.IsType<FileEntryViewModel>(item));
+        }
+    }
+
+    [Fact]
+    public void グループ化中もフォルダー単位の列レイアウト復元を壊さない()
+    {
+        var sut = CreateColumn();
+        sut.GroupBy = FilesGroupBy.Type;
+        sut.SetColumnWidth(FilesColumnKey.Name, 360);
+
+        sut.Navigate(_sub);
+        Assert.Equal(240, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.Equal(FilesGroupBy.Type, sut.GroupBy);
+
+        sut.SetColumnWidth(FilesColumnKey.Name, 180);
+        sut.Navigate(_root);
+
+        Assert.Equal(360, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.Equal(FilesGroupBy.Type, sut.GroupBy);
+        Assert.Equal(new[] { "docs", "src", "app.cs", "file2.txt", "file10.txt" },
+            sut.Entries.Select(entry => entry.Name));
+    }
+
+    [Fact]
+    public void グループ化はカラムスナップショットとJSON往復で復元できる()
+    {
+        var sut = CreateColumn();
+        sut.GroupBy = FilesGroupBy.Size;
+        var snapshot = sut.Capture();
+
+        var restored = CreateColumn();
+        restored.Restore(snapshot, _root);
+        Assert.Equal(FilesGroupBy.Size, restored.GroupBy);
+        Assert.NotEmpty(restored.EntriesView.Groups!);
+
+        var path = Path.Combine(_base, "workspaces-grouping.json");
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = _root,
+            Files = new FilesPaneSnapshot
+            {
+                Columns = [new FilesColumnSnapshot { CurrentFolder = _root, GroupBy = FilesGroupBy.Modified }]
+            }
+        };
+        var store = new WorkspaceStateStore(path);
+        store.Save(new WorkspaceState { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        Assert.Equal(FilesGroupBy.Modified,
+            store.LoadWorkspace(workspace.Id)?.Files?.Columns.Single().GroupBy);
     }
 
     [Fact]

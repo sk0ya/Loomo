@@ -404,6 +404,7 @@ public sealed class FilesPaneSnapshot
     public string? CurrentFolder { get; set; }
     public FilesSortColumn SortColumn { get; set; } = FilesSortColumn.Name;
     public bool SortDescending { get; set; }
+    public FilesGroupBy GroupBy { get; set; }
     public bool ShowHidden { get; set; }
 
     /// <summary>旧形式（カラムを持たない）で保存されたものを、1カラムぶんとして読み直す。</summary>
@@ -416,6 +417,7 @@ public sealed class FilesPaneSnapshot
             CurrentFolder = CurrentFolder,
             SortColumn = SortColumn,
             SortDescending = SortDescending,
+            GroupBy = GroupBy,
             ShowHidden = ShowHidden,
         });
         return this;
@@ -432,6 +434,7 @@ public sealed class FilesColumnSnapshot
     public string? CurrentFolder { get; set; }
     public FilesSortColumn SortColumn { get; set; } = FilesSortColumn.Name;
     public bool SortDescending { get; set; }
+    public FilesGroupBy GroupBy { get; set; }
     public bool ShowHidden { get; set; }
     public FilesDisplayMode DisplayMode { get; set; } = FilesDisplayMode.Details;
 
