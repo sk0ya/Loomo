@@ -46,6 +46,21 @@ public sealed class SearchPanelQuery
         return new SearchPanelResult(roots, status);
     }
 
+    public async Task<SearchPanelResult> AdvancedAsync(AdvancedSearchOptions options, string? searchRoot,
+        CancellationToken cancellationToken)
+    {
+        var hits = await _search.SearchFilesAsync(options, cancellationToken, searchRoot);
+        var groups = await Task.Run(() => hits.Select(hit => new SearchFileGroup(hit)).ToList(), cancellationToken);
+        var roots = await Task.Run(() => _mapper.Map(groups), cancellationToken);
+        var matchCount = groups.Sum(group => group.Count);
+        var status = groups.Count == 0
+            ? "一致なし"
+            : options.ContentQuery is { Length: > 0 }
+                ? $"{groups.Count} ファイル / {matchCount} 件"
+                : $"{groups.Count} ファイル";
+        return new SearchPanelResult(roots, status);
+    }
+
     /// <summary>1ファイル内の <paramref name="query"/> の全一致を <paramref name="replacement"/> へ置換して
     /// 書き戻す。ディスク上の現在の内容を読み直してから置換する（検索実行時点の LineText はキャッシュなので、
     /// その後の編集を踏まえて安全に反映するため）。一致が0件ならファイルには触れない。実際に置換した件数を返す。

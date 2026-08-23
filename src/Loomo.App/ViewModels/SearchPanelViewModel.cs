@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -64,6 +65,31 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索範囲（テキスト grep / ファイル名 / ターミナル）。</summary>
     [ObservableProperty] private SearchScope _scope = SearchScope.Text;
 
+    // 詳細検索（ファイル名・内容・属性を AND で組み合わせる）の条件。
+    [ObservableProperty] private string _advancedFileName = "";
+    [ObservableProperty] private string _advancedContent = "";
+    [ObservableProperty] private string _advancedExtension = "";
+    [ObservableProperty] private SearchFileKind _advancedKind = SearchFileKind.Any;
+    [ObservableProperty] private string _advancedMinimumSize = "";
+    [ObservableProperty] private string _advancedMaximumSize = "";
+    [ObservableProperty] private string _advancedModifiedFrom = "";
+    [ObservableProperty] private string _advancedModifiedTo = "";
+
+    public IReadOnlyList<SearchKindOption> SearchKindOptions { get; } =
+        new[]
+        {
+            new SearchKindOption(SearchFileKind.Any, "すべて"),
+            new SearchKindOption(SearchFileKind.Text, "テキスト"),
+            new SearchKindOption(SearchFileKind.Code, "コード"),
+            new SearchKindOption(SearchFileKind.Image, "画像"),
+            new SearchKindOption(SearchFileKind.Video, "動画"),
+            new SearchKindOption(SearchFileKind.Audio, "音声"),
+            new SearchKindOption(SearchFileKind.Pdf, "PDF"),
+            new SearchKindOption(SearchFileKind.Archive, "アーカイブ"),
+        };
+
+    public bool ShowAdvancedCriteria => Scope == SearchScope.Advanced;
+
     /// <summary>置換欄の入力（テキスト検索のみ）。1件（ファイル単位）／全置換のどちらも、その時点でのこの値を使う。</summary>
     [ObservableProperty] private string _replaceText = "";
 
@@ -101,7 +127,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public bool HasIncludeExclude => !string.IsNullOrEmpty(IncludeGlob) || !string.IsNullOrEmpty(ExcludeGlob);
 
     /// <summary>検索フォルダー行を表示するか。</summary>
-    public bool ShowRootRow => ShowSearchRoot && (IsAdvancedVisible || CanResetSearchRoot);
+    public bool ShowRootRow => ShowSearchRoot && (Scope == SearchScope.Advanced || IsAdvancedVisible || CanResetSearchRoot);
 
     /// <summary>include/exclude glob 行を表示するか。</summary>
     public bool ShowGlobRow => Scope == SearchScope.Text && (IsAdvancedVisible || HasIncludeExclude);
@@ -110,17 +136,18 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// （マルチルート時は各フォルダー配下を「フォルダー名/…」として提示する）。</summary>
     public IReadOnlyList<string> WorkspaceFolders => _workspace.Folders;
 
-    /// <summary>検索結果の各行で強調する検索ワード（テキスト／ファイル名／ターミナルとも Query を渡す）。
+    /// <summary>検索結果の一致行で強調する検索ワード。詳細検索では内容条件を使う。
     /// 空ならハイライトなし。</summary>
-    public string HighlightQuery => Query;
+    public string HighlightQuery => Scope == SearchScope.Advanced ? AdvancedContent : Query;
 
-    /// <summary>結果ハイライトを正規表現として扱うか。テキスト grep で正規表現モードのときだけ。
-    /// （ファイル名・ターミナルは常にリテラル一致でハイライトする。）</summary>
-    public bool HighlightUseRegex => Scope == SearchScope.Text && UseRegex;
+    /// <summary>検索結果のファイル名で強調する検索ワード。詳細検索では名前条件を使う。</summary>
+    public string FileNameHighlightQuery => Scope == SearchScope.Advanced ? AdvancedFileName : Query;
 
-    /// <summary>結果ハイライトで大文字小文字を区別するか。テキスト grep の大小区別オンのときだけ
-    /// （ファイル名は曖昧検索・ターミナルは無区別なので区別しない）。</summary>
-    public bool HighlightCaseSensitive => Scope == SearchScope.Text && CaseSensitive;
+    /// <summary>結果ハイライトを正規表現として扱うか。テキスト grep と詳細検索の内容条件だけで有効。</summary>
+    public bool HighlightUseRegex => (Scope is SearchScope.Text or SearchScope.Advanced) && UseRegex;
+
+    /// <summary>結果ハイライトで大文字小文字を区別するか。テキスト grep と詳細検索の内容条件で有効。</summary>
+    public bool HighlightCaseSensitive => (Scope is SearchScope.Text or SearchScope.Advanced) && CaseSensitive;
 
     /// <summary>クエリ欄のプレースホルダ（モードで文言を変える）。</summary>
     public string QueryPlaceholder => Scope switch
@@ -129,6 +156,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         SearchScope.Terminal => "ターミナル内を検索",
         SearchScope.Class => "クラス名で検索（ワークスペース横断）",
         SearchScope.Symbol => "シンボル名で検索（ワークスペース横断）",
+        SearchScope.Advanced => "下の条件を組み合わせて検索",
         _ => "検索ワード（ファイル内を grep）",
     };
 
@@ -203,6 +231,26 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         ScheduleSearch();
     }
 
+    partial void OnAdvancedFileNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(FileNameHighlightQuery));
+        ScheduleSearch();
+    }
+    partial void OnAdvancedContentChanged(string value)
+    {
+        OnPropertyChanged(nameof(HighlightQuery));
+        OnPropertyChanged(nameof(HighlightUseRegex));
+        OnPropertyChanged(nameof(HighlightCaseSensitive));
+        RaiseSupportHighlightChanged();
+        ScheduleSearch();
+    }
+    partial void OnAdvancedExtensionChanged(string value) => ScheduleSearch();
+    partial void OnAdvancedKindChanged(SearchFileKind value) => ScheduleSearch();
+    partial void OnAdvancedMinimumSizeChanged(string value) => ScheduleSearch();
+    partial void OnAdvancedMaximumSizeChanged(string value) => ScheduleSearch();
+    partial void OnAdvancedModifiedFromChanged(string value) => ScheduleSearch();
+    partial void OnAdvancedModifiedToChanged(string value) => ScheduleSearch();
+
     partial void OnSearchRootChanged(string value)
     {
         OnPropertyChanged(nameof(CanResetSearchRoot));
@@ -214,6 +262,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ShowRootRow));
         OnPropertyChanged(nameof(ShowGlobRow));
+        OnPropertyChanged(nameof(ShowAdvancedCriteria));
     }
 
     partial void OnScopeChanged(SearchScope value)
@@ -222,8 +271,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowSearchRoot));
         OnPropertyChanged(nameof(ShowRootRow));
         OnPropertyChanged(nameof(ShowGlobRow));
+        OnPropertyChanged(nameof(ShowAdvancedCriteria));
         OnPropertyChanged(nameof(HighlightUseRegex));
         OnPropertyChanged(nameof(HighlightCaseSensitive));
+        OnPropertyChanged(nameof(HighlightQuery));
+        OnPropertyChanged(nameof(FileNameHighlightQuery));
         OnPropertyChanged(nameof(CanReplace));
         RaiseSupportHighlightChanged();
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
@@ -237,6 +289,14 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleReplace() => IsReplaceVisible = !IsReplaceVisible;
+
+    [RelayCommand]
+    private void CancelSearch()
+    {
+        _cts?.Cancel();
+        IsBusy = false;
+        StatusMessage = "検索を停止しました";
+    }
 
     /// <summary>現在の結果ツリーに含まれる全ファイルグループ（フォルダー節点をたどって集める）。
     /// 全置換の対象集合・確認ダイアログの件数計算に使う（表示専用の <see cref="Results"/> と違い平坦なリスト）。</summary>
@@ -400,10 +460,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     {
         _cts?.Cancel();
 
-        if (string.IsNullOrEmpty(Query))
+        if (!HasSearchInput())
         {
             Results.Clear();
-            StatusMessage = "";
+            StatusMessage = Scope == SearchScope.Advanced && !HasAdvancedCriteria()
+                ? "条件を入力してください" : "";
             IsBusy = false;
             // クエリが空になったらエディタのハイライトも消す。
             ClearHighlightRequested?.Invoke(this, EventArgs.Empty);
@@ -426,6 +487,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             {
                 case SearchScope.FileName:
                     await RunFindFilesAsync(ct);
+                    break;
+                case SearchScope.Advanced:
+                    await RunAdvancedAsync(ct);
                     break;
                 case SearchScope.Terminal:
                     RunTerminalSearch();
@@ -466,6 +530,105 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (ct.IsCancellationRequested) return;
         ReplaceResults(result.Roots);
         StatusMessage = result.StatusMessage;
+    }
+
+    private async Task RunAdvancedAsync(CancellationToken ct)
+    {
+        if (!TryBuildAdvancedOptions(out var options, out var error))
+        {
+            ReplaceResults(Array.Empty<object>());
+            StatusMessage = error;
+            return;
+        }
+        var result = await _searchQuery.AdvancedAsync(options!, EffectiveSearchRoot(), ct);
+        if (ct.IsCancellationRequested) return;
+        ReplaceResults(result.Roots);
+        StatusMessage = result.StatusMessage;
+    }
+
+    private bool HasSearchInput()
+        => Scope == SearchScope.Advanced ? HasAdvancedCriteria() : !string.IsNullOrWhiteSpace(Query);
+
+    private bool HasAdvancedCriteria()
+        => !string.IsNullOrWhiteSpace(AdvancedFileName)
+            || !string.IsNullOrWhiteSpace(AdvancedContent)
+            || !string.IsNullOrWhiteSpace(AdvancedExtension)
+            || AdvancedKind != SearchFileKind.Any
+            || !string.IsNullOrWhiteSpace(AdvancedMinimumSize)
+            || !string.IsNullOrWhiteSpace(AdvancedMaximumSize)
+            || !string.IsNullOrWhiteSpace(AdvancedModifiedFrom)
+            || !string.IsNullOrWhiteSpace(AdvancedModifiedTo);
+
+    private bool TryBuildAdvancedOptions(out AdvancedSearchOptions? options, out string error)
+    {
+        options = null;
+        error = "";
+        if (!TryParseSize(AdvancedMinimumSize, out var minimum) || minimum < 0)
+        {
+            error = "最小サイズは 0 以上のバイト数（例: 10MB）で指定してください";
+            return false;
+        }
+        if (!TryParseSize(AdvancedMaximumSize, out var maximum) || maximum < 0)
+        {
+            error = "最大サイズは 0 以上のバイト数（例: 10MB）で指定してください";
+            return false;
+        }
+        if (minimum is { } min && maximum is { } max && min > max)
+        {
+            error = "サイズ範囲の最小値が最大値を超えています";
+            return false;
+        }
+        if (!TryParseDate(AdvancedModifiedFrom, endOfDay: false, out var from)
+            || !TryParseDate(AdvancedModifiedTo, endOfDay: true, out var to))
+        {
+            error = "更新日は yyyy-MM-dd などの形式で指定してください";
+            return false;
+        }
+        if (from is { } start && to is { } end && start > end)
+        {
+            error = "更新日の開始が終了より後になっています";
+            return false;
+        }
+
+        options = new AdvancedSearchOptions(
+            NullIfBlank(AdvancedFileName), NullIfBlank(AdvancedContent), CaseSensitive, UseRegex,
+            NullIfBlank(AdvancedExtension), AdvancedKind, minimum, maximum, from, to, 500);
+        return true;
+    }
+
+    private static bool TryParseSize(string value, out long? size)
+    {
+        size = null;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var text = value.Trim();
+        var unit = "B";
+        var number = text;
+        foreach (var suffix in new[] { "KB", "MB", "GB", "B" })
+        {
+            if (!text.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+            unit = suffix;
+            number = text[..^suffix.Length].Trim();
+            break;
+        }
+        if (!double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var amount)
+            || double.IsNaN(amount) || double.IsInfinity(amount)) return false;
+        var multiplier = unit.ToUpperInvariant() switch { "KB" => 1024d, "MB" => 1024d * 1024, "GB" => 1024d * 1024 * 1024, _ => 1d };
+        var result = amount * multiplier;
+        if (result > long.MaxValue) return false;
+        size = (long)Math.Ceiling(result);
+        return true;
+    }
+
+    private static bool TryParseDate(string value, bool endOfDay, out DateTime? date)
+    {
+        date = null;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        if (!DateTime.TryParse(value.Trim(), CultureInfo.CurrentCulture,
+                DateTimeStyles.AllowWhiteSpaces, out var parsed)) return false;
+        if (endOfDay && parsed.TimeOfDay == TimeSpan.Zero)
+            parsed = parsed.Date.AddDays(1).AddTicks(-1);
+        date = parsed;
+        return true;
     }
 
     /// <summary>アクティブなターミナル内テキストを検索し、1グループ「ターミナル」配下に一致を並べる。
@@ -563,7 +726,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// エディタで全マッチをハイライトする検索ワード。Editor の <c>HighlightSearch</c> は
     /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名／ターミナルでは空）。
     /// </summary>
-    public string HighlightTerm => Scope == SearchScope.Text && !UseRegex ? Query : "";
+    public string HighlightTerm => Scope switch
+    {
+        SearchScope.Text when !UseRegex => Query,
+        SearchScope.Advanced when !UseRegex => AdvancedContent,
+        _ => "",
+    };
 
     /// <summary>
     /// EditorSupport（Markdown プレビュー等）で塗る検索ワード。プレビューは検索結果一覧に出てこないので、
@@ -573,7 +741,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// 正規表現・大小区別の扱いは結果一覧と同じ <see cref="HighlightUseRegex"/> /
     /// <see cref="HighlightCaseSensitive"/> を使う。
     /// </summary>
-    public string SupportHighlightTerm => Scope == SearchScope.Text ? Query : "";
+    public string SupportHighlightTerm => Scope switch
+    {
+        SearchScope.Text => Query,
+        SearchScope.Advanced => AdvancedContent,
+        _ => "",
+    };
 
     // EditorSupport 側のハイライト条件（ワード・正規表現・大小区別）が変わったことを通知する。
     private void RaiseSupportHighlightChanged()
@@ -609,5 +782,5 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public void Activate(SearchFileGroup group)
         => ActivateRequested?.Invoke(this, new SearchHit(group.FullPath, 1, 1));
 
-    private static string? NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

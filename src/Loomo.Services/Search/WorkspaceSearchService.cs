@@ -28,6 +28,12 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 {
     private readonly IWorkspaceService _workspace;
 
+    // UTF-8 を厳格に判定してから、Windows で一般的な旧来コードページへフォールバックする。
+    // BOM 付き UTF-16/UTF-32 は StreamReader が BOM を優先して自動判定する。
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
+    private static readonly Encoding JapaneseWindows = CreateJapaneseWindowsEncoding();
+
     // 走査から除外する重いディレクトリ（rg 不在時のフォールバック用。rg は .gitignore を尊重するため不要）。
     private static readonly HashSet<string> SkipDirs = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -37,6 +43,12 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
     private static readonly Lazy<bool> HasRg = new(() => Probe("rg", "--version"));
 
     public WorkspaceSearchService(IWorkspaceService workspace) => _workspace = workspace;
+
+    private static Encoding CreateJapaneseWindowsEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(932, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+    }
 
     public async Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(
         string query, int max, CancellationToken ct, string? searchRoot = null)
@@ -111,6 +123,226 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         return hits;
     }
 
+    /// <summary>
+    /// ファイル属性を先に絞り込み、必要なファイルだけを内容確認する詳細検索。
+    /// 条件の組み合わせは AND。rg の gitignore 依存を避け、サイズ・日時を正確に扱うため
+    /// この経路はプロセス外コマンドではなく、キャンセル可能な明示スタック走査を使う。
+    /// ReparsePoint は外部への脱出と循環を避けるため、ファイル・フォルダーとも辿らない。
+    /// </summary>
+    public async Task<IReadOnlyList<AdvancedFileSearchHit>> SearchFilesAsync(
+        AdvancedSearchOptions options, CancellationToken ct, string? searchRoot = null)
+    {
+        var scopes = ResolveScopes(searchRoot);
+        if (scopes.Count == 0 || options.MaxResults <= 0)
+            return Array.Empty<AdvancedFileSearchHit>();
+
+        return await Task.Run(() => SearchAdvancedInProcess(options, scopes, ct), ct)
+            .ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<AdvancedFileSearchHit> SearchAdvancedInProcess(
+        AdvancedSearchOptions options, IReadOnlyList<(string Root, string? Prefix)> scopes,
+        CancellationToken ct)
+    {
+        var nameQuery = options.FileNameQuery?.Trim() ?? "";
+        var contentQuery = options.ContentQuery ?? "";
+        Regex? contentRegex = null;
+        if (options.UseRegex && contentQuery.Length > 0)
+        {
+            try
+            {
+                contentRegex = new Regex(contentQuery,
+                    options.CaseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase,
+                    TimeSpan.FromMilliseconds(250));
+            }
+            catch (ArgumentException) { return Array.Empty<AdvancedFileSearchHit>(); }
+        }
+
+        var comparison = options.CaseSensitive
+            ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var extensionRegex = GlobToExtensionRegex(options.ExtensionGlob);
+        var results = new List<AdvancedFileSearchHit>(Math.Min(options.MaxResults, 1024));
+
+        foreach (var (root, prefix) in scopes)
+        {
+            foreach (var rel in EnumerateRelativeFiles(root, ct, skipReparsePoints: true))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (results.Count >= options.MaxResults) return results;
+
+                var full = Path.GetFullPath(Path.Combine(root, rel));
+                long size;
+                DateTime modified;
+                try
+                {
+                    var info = new FileInfo(full);
+                    if (!info.Exists) continue;
+                    size = info.Length;
+                    modified = info.LastWriteTimeUtc;
+                }
+                catch { continue; }
+
+                if (options.MinimumSize is { } min && size < min) continue;
+                if (options.MaximumSize is { } max && size > max) continue;
+                if (options.ModifiedFrom is { } from && modified < from.ToUniversalTime()) continue;
+                if (options.ModifiedTo is { } to && modified > to.ToUniversalTime()) continue;
+
+                var fileName = Path.GetFileName(rel);
+                if (nameQuery.Length > 0
+                    && FuzzyMatcher.Score(fileName, nameQuery) is null
+                    && FuzzyMatcher.Score(rel, nameQuery) is null)
+                    continue;
+                if (extensionRegex is not null && !extensionRegex.IsMatch(fileName)) continue;
+                if (!MatchesKind(fileName, options.Kind)) continue;
+
+                IReadOnlyList<ContentSearchHit> contentMatches = Array.Empty<ContentSearchHit>();
+                if (contentQuery.Length > 0)
+                {
+                    contentMatches = FindContentMatches(full, rel, prefix, contentQuery,
+                        options, contentRegex, comparison, ct);
+                    if (contentMatches.Count == 0) continue;
+                }
+
+                results.Add(new AdvancedFileSearchHit(
+                    full, WithPrefix(rel, prefix), size, modified, contentMatches));
+            }
+        }
+        return results;
+    }
+
+    private static IReadOnlyList<ContentSearchHit> FindContentMatches(
+        string full, string rel, string? prefix, string query, AdvancedSearchOptions options,
+        Regex? regex, StringComparison comparison, CancellationToken ct)
+    {
+        try
+        {
+            var info = new FileInfo(full);
+            // 8 MiB is enough for source/config files while avoiding a detail search accidentally
+            // reading media or generated blobs into memory. Metadata-only searches never enter here.
+            if (info.Length > 8_000_000 || IsKnownBinaryExtension(full))
+                return Array.Empty<ContentSearchHit>();
+
+            try
+            {
+                return FindContentMatchesWithEncoding(full, rel, prefix, query, regex, comparison, StrictUtf8, ct);
+            }
+            catch (DecoderFallbackException)
+            {
+                // UTF-8 without BOM is the default, but existing Japanese workspaces can contain
+                // Shift-JIS/CP932 files. Retry only after a strict UTF-8 decode failure.
+                return FindContentMatchesWithEncoding(full, rel, prefix, query, regex, comparison,
+                    JapaneseWindows, ct);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (RegexMatchTimeoutException) { return Array.Empty<ContentSearchHit>(); }
+        catch { return Array.Empty<ContentSearchHit>(); }
+    }
+
+    private static IReadOnlyList<ContentSearchHit> FindContentMatchesWithEncoding(
+        string full, string rel, string? prefix, string query, Regex? regex,
+        StringComparison comparison, Encoding encoding, CancellationToken ct)
+    {
+        using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
+            64 * 1024, FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true);
+        var hits = new List<ContentSearchHit>();
+        var lineNumber = 0;
+        while (reader.ReadLine() is { } line)
+        {
+            ct.ThrowIfCancellationRequested();
+            lineNumber++;
+            Match? match = null;
+            try { match = regex?.Match(line); }
+            catch (RegexMatchTimeoutException) { return Array.Empty<ContentSearchHit>(); }
+            var index = match is { Success: true }
+                ? match.Index
+                : regex is null ? line.IndexOf(query, comparison) : -1;
+            if (index < 0) continue;
+            hits.Add(new ContentSearchHit(Path.GetFullPath(full), WithPrefix(rel, prefix),
+                lineNumber, index + 1, line));
+        }
+        return hits;
+    }
+
+    private static bool IsKnownBinaryExtension(string fullPath)
+    {
+        var extension = Path.GetExtension(fullPath);
+        return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".webp", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ico", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".flac", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".aac", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".wma", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".avi", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".wmv", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".webm", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".7z", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".rar", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tar", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".gz", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".bz2", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesKind(string fileName, SearchFileKind kind)
+    {
+        if (kind == SearchFileKind.Any) return true;
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return kind switch
+        {
+            SearchFileKind.Text => TextExtensions.Contains(extension),
+            SearchFileKind.Code => CodeExtensions.Contains(extension),
+            SearchFileKind.Image => ImageExtensions.Contains(extension),
+            SearchFileKind.Video => VideoExtensions.Contains(extension),
+            SearchFileKind.Audio => AudioExtensions.Contains(extension),
+            SearchFileKind.Pdf => extension == ".pdf",
+            SearchFileKind.Archive => ArchiveExtensions.Contains(extension),
+            _ => true,
+        };
+    }
+
+    private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".txt", ".md", ".markdown", ".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".csv", ".log" };
+    private static readonly HashSet<string> CodeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".cs", ".csx", ".fs", ".fsx", ".vb", ".cpp", ".c", ".h", ".hpp", ".java", ".kt", ".js", ".jsx", ".ts", ".tsx", ".py", ".rb", ".go", ".rs", ".php", ".swift", ".css", ".scss", ".html", ".xaml", ".sql", ".sh", ".ps1" };
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".ico", ".tif", ".tiff" };
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm" };
+    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".mp3", ".wav", ".flac", ".aac", ".m4a", ".ogg", ".wma" };
+    private static readonly HashSet<string> ArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".zip", ".7z", ".rar", ".tar", ".gz", ".bz2" };
+
+    private static Regex? GlobToExtensionRegex(string? glob)
+    {
+        if (string.IsNullOrWhiteSpace(glob)) return null;
+        var value = glob.Trim();
+        if (!value.StartsWith('*') && !value.StartsWith('.')) value = "*." + value;
+        if (value.StartsWith('.')) value = "*" + value;
+        var pattern = "^" + string.Concat(value.Select(c => c switch
+        {
+            '*' => ".*", '?' => ".", _ => Regex.Escape(c.ToString()),
+        })) + "$";
+        try { return new Regex(pattern, RegexOptions.IgnoreCase); }
+        catch { return null; }
+    }
+
     /// <summary>検索対象スコープを決める。<paramref name="searchRoot"/> が空ならワークスペースフォルダー
     /// 全件（プレフィックスは <see cref="Folders"/> が2件以上のときだけフォルダー名を付ける）、指定があれば
     /// いずれかのワークスペースフォルダー配下に限り単一スコープとして採用する（プレフィックス無し）。
@@ -149,10 +381,37 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             if (!Directory.Exists(candidate))
                 continue;
 
-            if (WorkspacePaths.IsWithin(rootFull, candidate))
+            if (WorkspacePaths.IsWithin(rootFull, candidate)
+                && !HasReparsePointBetween(rootFull, candidate))
                 return candidate;
         }
         return null;
+    }
+
+    private static bool HasReparsePointBetween(string root, string candidate)
+    {
+        try
+        {
+            var relative = Path.GetRelativePath(root, candidate);
+            if (relative == ".")
+                return new DirectoryInfo(root).Attributes.HasFlag(FileAttributes.ReparsePoint);
+
+            var current = Path.GetFullPath(root);
+            foreach (var segment in relative.Split(
+                         new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = Path.Combine(current, segment);
+                if (new DirectoryInfo(current).Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    return true;
+            }
+            return false;
+        }
+        catch
+        {
+            // 判定不能時は安全側に倒し、明示ルートとして採用しない。
+            return true;
+        }
     }
 
     private static string FolderPrefix(string folder)
@@ -342,6 +601,46 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                 if (SkipDirs.Contains(name) || name.StartsWith('.'))
                     continue;
                 pending.Push(d);
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateRelativeFiles(string root, CancellationToken ct, bool skipReparsePoints)
+    {
+        var pending = new Stack<string>();
+        try
+        {
+            if (skipReparsePoints && new DirectoryInfo(root).Attributes.HasFlag(FileAttributes.ReparsePoint))
+                yield break;
+        }
+        catch { yield break; }
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var dir = pending.Pop();
+            FileSystemInfo[] entries;
+            try { entries = new DirectoryInfo(dir).GetFileSystemInfos(); }
+            catch { continue; }
+
+            foreach (var entry in entries)
+            {
+                ct.ThrowIfCancellationRequested();
+                FileAttributes attributes;
+                try { attributes = entry.Attributes; }
+                catch { continue; } // individual ACL/metadata failure must not abort the scan
+                if (skipReparsePoints && attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+                if (entry is DirectoryInfo directory)
+                {
+                    var name = directory.Name;
+                    if (SkipDirs.Contains(name) || name.StartsWith('.')) continue;
+                    pending.Push(directory.FullName);
+                }
+                else if (entry is FileInfo file)
+                {
+                    yield return NormalizeRel(Path.GetRelativePath(root, file.FullName));
+                }
             }
         }
     }

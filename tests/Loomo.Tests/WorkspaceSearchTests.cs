@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
@@ -209,6 +210,72 @@ public class WorkspaceSearchTests
         finally { TryDelete(root); }
     }
 
+    [Fact]
+    public async Task AdvancedSearch_combines_name_content_kind_size_and_date_filters()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            var app = Path.Combine(root, "src", "app.cs");
+            File.SetLastWriteTimeUtc(app, new DateTime(2025, 2, 3, 4, 5, 6, DateTimeKind.Utc));
+            var hits = await svc.SearchFilesAsync(new AdvancedSearchOptions(
+                FileNameQuery: "app", ContentQuery: "needle", ExtensionGlob: "*.cs",
+                Kind: SearchFileKind.Code, MinimumSize: 1, MaximumSize: 10_000,
+                ModifiedFrom: new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                ModifiedTo: new DateTime(2025, 12, 31, 23, 59, 59, DateTimeKind.Utc)),
+                CancellationToken.None);
+
+            var hit = Assert.Single(hits);
+            Assert.EndsWith("src/app.cs", hit.RelativePath, StringComparison.OrdinalIgnoreCase);
+            Assert.Single(hit.ContentMatches);
+            Assert.Equal(2, hit.ContentMatches[0].Line);
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task AdvancedSearch_searchRoot_is_recursive_and_does_not_follow_reparse_points()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            var deep = Path.Combine(root, "src", "deep", "one", "two");
+            Directory.CreateDirectory(deep);
+            File.WriteAllText(Path.Combine(deep, "needle.txt"), "inside\n");
+            var hits = await svc.SearchFilesAsync(new AdvancedSearchOptions(ContentQuery: "inside"),
+                CancellationToken.None, Path.Combine(root, "src"));
+            Assert.Contains(hits, h => h.RelativePath.EndsWith("deep/one/two/needle.txt", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task AdvancedSearch_cancellation_is_observed()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                svc.SearchFilesAsync(new AdvancedSearchOptions(ContentQuery: "needle"), cts.Token));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task AdvancedSearch_invalid_regex_returns_no_results_without_throwing()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            var hits = await svc.SearchFilesAsync(new AdvancedSearchOptions(ContentQuery: "[", UseRegex: true),
+                CancellationToken.None);
+            Assert.Empty(hits);
+        }
+        finally { TryDelete(root); }
+    }
+
     // ===== マルチルート（複数ワークスペースフォルダー） =====
 
     [Fact]
@@ -241,6 +308,87 @@ public class WorkspaceSearchTests
         {
             TryDelete(root);
             TryDelete(second);
+        }
+    }
+
+    [Fact]
+    public async Task AdvancedSearch_reads_utf16_bom_and_shift_jis_text()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            var utf16 = Path.Combine(root, "src", "utf16.txt");
+            File.WriteAllText(utf16, "先頭\nUTF16 needle\n", Encoding.Unicode);
+
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            var shiftJis = Path.Combine(root, "src", "legacy.txt");
+            File.WriteAllText(shiftJis, "legacy 日本語 needle\n",
+                Encoding.GetEncoding(932, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback));
+
+            var hits = await svc.SearchFilesAsync(new AdvancedSearchOptions(ContentQuery: "needle"),
+                CancellationToken.None);
+
+            Assert.Contains(hits, h => h.RelativePath.EndsWith("utf16.txt", StringComparison.OrdinalIgnoreCase)
+                && h.ContentMatches[0].Line == 2);
+            Assert.Contains(hits, h => h.RelativePath.EndsWith("legacy.txt", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task AdvancedSearch_skips_oversized_content_but_keeps_metadata_search()
+    {
+        var (svc, root) = NewWorkspace();
+        try
+        {
+            var large = Path.Combine(root, "src", "large.txt");
+            File.WriteAllText(large, "needle\n");
+            using (var stream = new FileStream(large, FileMode.Open, FileAccess.Write, FileShare.Read))
+                stream.SetLength(8_000_001);
+
+            var contentHits = await svc.SearchFilesAsync(
+                new AdvancedSearchOptions(ContentQuery: "needle"), CancellationToken.None);
+            Assert.DoesNotContain(contentHits, h => h.FullPath.Equals(large, StringComparison.OrdinalIgnoreCase));
+
+            var metadataHits = await svc.SearchFilesAsync(
+                new AdvancedSearchOptions(FileNameQuery: "large"), CancellationToken.None);
+            var metadataHit = Assert.Single(metadataHits);
+            Assert.Equal(8_000_001, metadataHit.Size);
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public async Task AdvancedSearch_does_not_follow_symbolic_link_directory()
+    {
+        var (svc, root) = NewWorkspace();
+        var outside = Path.Combine(Path.GetTempPath(), "LoomoSearchOutside_" + Guid.NewGuid().ToString("N"));
+        var link = Path.Combine(root, "src", "linked");
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "secret.txt"), "outside-secret\n");
+        try
+        {
+            try { Directory.CreateSymbolicLink(link, outside); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                _ = ex;
+                // CI や開発者モード無効の Windows では作成権限がないため、環境依存の検証は行わない。
+                return;
+            }
+
+            var hits = await svc.SearchFilesAsync(new AdvancedSearchOptions(ContentQuery: "outside-secret"),
+                CancellationToken.None);
+            Assert.DoesNotContain(hits, h => h.FullPath.Contains("LoomoSearchOutside_", StringComparison.OrdinalIgnoreCase));
+
+            var explicitLinkHits = await svc.SearchFilesAsync(
+                new AdvancedSearchOptions(ContentQuery: "outside-secret"), CancellationToken.None, link);
+            Assert.DoesNotContain(explicitLinkHits,
+                h => h.FullPath.Contains("LoomoSearchOutside_", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDelete(root);
+            TryDelete(outside);
         }
     }
 

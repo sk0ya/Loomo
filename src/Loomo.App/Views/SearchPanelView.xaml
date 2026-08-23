@@ -156,8 +156,8 @@
         <!-- クエリ＋オプション -->
         <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6">
             <!-- 検索モード切替（検索ワード欄の上）＋ツールバー（すべて展開／すべて閉じる）を同じ行に。
-                 テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、ターミナル＝アクティブなターミナル内テキスト。
-                 Scope 列挙を EnumToBool で束ね、3択セグメントとして相互排他に振る舞わせる（既に選択中のボタンを
+                 テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、詳細＝名前・内容・属性の再帰検索、ターミナル＝アクティブなターミナル内テキスト。
+                 Scope 列挙を EnumToBool で束ね、相互排他に振る舞わせる（既に選択中のボタンを
                  押しても外れない＝ConvertBack が DoNothing）。見出し（"SEARCH"）はホストするペインのタイトルバー側が
                  持つ（サイドバー専用パネルではなく舞台ペインとして表示するため）。 -->
             <Grid Margin="0,0,0,4">
@@ -174,6 +174,10 @@
                                   Style="{StaticResource SearchToggle}"
                                   ToolTip="ファイル名で曖昧検索"
                                   IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=FileName, Mode=TwoWay}" />
+                    <ToggleButton Content="詳細" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
+                                  Style="{StaticResource SearchToggle}"
+                                  ToolTip="ファイル名・内容・種類・サイズ・更新日を組み合わせた再帰検索"
+                                  IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Advanced, Mode=TwoWay}" />
                     <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
                                   Style="{StaticResource SearchToggle}"
                                   ToolTip="アクティブなターミナル内を検索"
@@ -275,7 +279,59 @@
                         Command="{Binding ResetSearchRootCommand}" />
             </Grid>
 
-            <Grid>
+            <Grid Margin="0,0,0,4" Visibility="{Binding ShowAdvancedCriteria, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition />
+                    <RowDefinition />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Margin="0,0,2,2" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="ファイル名またはパスの曖昧検索（例: *.cs ではなく app）"
+                             Text="{Binding AdvancedFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="1" Margin="2,0,2,2" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="ファイル内容の検索。正規表現トグルを利用可能"
+                             Text="{Binding AdvancedContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ComboBox Grid.Column="2" Width="94" Margin="2,0,0,2" Padding="4,2" FontSize="{DynamicResource Fs11}"
+                              ItemsSource="{Binding SearchKindOptions}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                              SelectedValue="{Binding AdvancedKind, Mode=TwoWay}" ToolTip="拡張子から判定するファイル種類" />
+                </Grid>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Margin="0,0,2,2" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="拡張子（例: *.cs または .cs）" Text="{Binding AdvancedExtension, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="1" Margin="2,0" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="最小サイズ（B / KB / MB / GB）" Text="{Binding AdvancedMinimumSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="2" Margin="2,0" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="最大サイズ（B / KB / MB / GB）" Text="{Binding AdvancedMaximumSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <ToggleButton Content="Aa" Width="30" Height="24" Margin="2,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
+                                      Style="{StaticResource SearchToggle}" ToolTip="内容の大文字小文字を区別"
+                                      IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
+                        <ToggleButton Content=".*" Width="30" Height="24" Margin="2,0,0,0" FontSize="{DynamicResource Fs11}" Cursor="Hand"
+                                      Style="{StaticResource SearchToggle}" ToolTip="内容を正規表現として扱う"
+                                      IsChecked="{Binding UseRegex, Mode=TwoWay}" />
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Margin="0,0,2,0" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="更新日の開始（例: 2026-01-01）" Text="{Binding AdvancedModifiedFrom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="1" Margin="2,0" Padding="5,3" FontSize="{DynamicResource Fs11}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" BorderBrush="{DynamicResource Border}"
+                             ToolTip="更新日の終了（例: 2026-12-31）" Text="{Binding AdvancedModifiedTo, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Grid.Column="2" Text="名前＋内容＋属性は AND" Margin="6,3,0,0" FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}" />
+                </Grid>
+            </Grid>
+
+            <Grid Visibility="{Binding ShowAdvancedCriteria, Converter={StaticResource InverseBoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -339,9 +395,15 @@
                         Click="OnReplaceAllClick" />
             </Grid>
 
-            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
-                       Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
-                       Visibility="{Binding StatusMessage, Converter={StaticResource NonEmptyToVis}}" />
+            <Grid Margin="0,4,0,0">
+                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                           TextTrimming="CharacterEllipsis"
+                           Visibility="{Binding StatusMessage, Converter={StaticResource NonEmptyToVis}}" />
+                <Button Content="停止" HorizontalAlignment="Right" Height="20" Padding="6,0" FontSize="{DynamicResource Fs10}"
+                        Style="{StaticResource FolderBarButton}" ToolTip="実行中の再帰検索をキャンセル"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
+                        Command="{Binding CancelSearchCommand}" />
+            </Grid>
 
             <!-- include/exclude glob も grep 専用。テキスト検索時のみ、かつ「詳細」トグルが開いている
                  （または既に入力済みで絞り込み中の）ときだけ表示（ShowGlobRow）。 -->
@@ -452,10 +514,15 @@
                         <Image Grid.Column="0" Source="{Binding IconImage}"
                                Width="16" Height="16"
                                VerticalAlignment="Center" Margin="0,0,5,0" />
-                        <TextBlock Grid.Column="1" FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
-                                   views:SearchHighlightBehavior.Text="{Binding FileName}"
-                                   views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                   views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
+                                       views:SearchHighlightBehavior.Text="{Binding FileName}"
+                                       views:SearchHighlightBehavior.Query="{Binding DataContext.FileNameHighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                            <TextBlock Text="{Binding MetadataText}" Margin="8,0,0,0" FontSize="{DynamicResource Fs10}"
+                                       Foreground="{DynamicResource FgDim}"
+                                       Visibility="{Binding HasMetadata, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
                         <ContentPresenter Grid.Column="2" Content="{Binding}"
                                           ContentTemplate="{StaticResource CountBadge}" />
                     </Grid>

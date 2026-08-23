@@ -6,7 +6,9 @@ using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-public enum SearchScope { Text, FileName, Terminal, Class, Symbol }
+public enum SearchScope { Text, FileName, Advanced, Terminal, Class, Symbol }
+
+public readonly record struct SearchKindOption(SearchFileKind Value, string Label);
 
 public readonly record struct TerminalSearchHit(int LineIndex, int Column, int Length, string LineText);
 
@@ -78,6 +80,14 @@ public sealed partial class SearchFileGroup : ObservableObject
         _iconIndex = FileIcons.IndexFor(fullPath, isDirectory: false);
     }
 
+    public SearchFileGroup(AdvancedFileSearchHit hit)
+        : this(hit.FullPath, hit.RelativePath, hit.ContentMatches.Select(h => new SearchMatchItem(h)))
+    {
+        Size = hit.Size;
+        LastWriteTimeUtc = hit.LastWriteTimeUtc;
+        HasMetadata = true;
+    }
+
     [ObservableProperty] private bool _isExpanded = true;
     public string FullPath { get; }
     public string RelativePath { get; }
@@ -88,6 +98,21 @@ public sealed partial class SearchFileGroup : ObservableObject
     public string FileName => Segment(afterSlash: true);
     public string FolderPath => Segment(afterSlash: false);
     public bool ShowCount => Count > 0;
+    public bool HasMetadata { get; }
+    public long Size { get; }
+    public DateTime LastWriteTimeUtc { get; }
+    public string MetadataText => HasMetadata
+        ? $"{FormatSize(Size)}  {LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
+        : "";
+
+    private static string FormatSize(long size)
+        => size switch
+        {
+            < 1024 => $"{size} B",
+            < 1024 * 1024 => $"{size / 1024d:0.#} KB",
+            < 1024 * 1024 * 1024 => $"{size / (1024d * 1024):0.#} MB",
+            _ => $"{size / (1024d * 1024 * 1024):0.#} GB",
+        };
 
     private string Segment(bool afterSlash)
     {

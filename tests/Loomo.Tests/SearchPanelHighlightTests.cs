@@ -38,6 +38,49 @@ public sealed class SearchPanelHighlightTests
         Assert.True(sut.HighlightUseRegex);
     }
 
+    [Fact]
+    public void 詳細検索の内容条件はEditorハイライトと結果表示に使う()
+    {
+        var sut = CreateSut();
+        sut.Scope = SearchScope.Advanced;
+        sut.AdvancedFileName = "app";
+        sut.AdvancedContent = "needle";
+
+        Assert.Equal("needle", sut.HighlightQuery);
+        Assert.Equal("app", sut.FileNameHighlightQuery);
+        Assert.Equal("needle", sut.HighlightTerm);
+        Assert.Equal("needle", sut.SupportHighlightTerm);
+    }
+
+    [Fact]
+    public void 詳細検索の空条件は走査せず入力待ちになる()
+    {
+        var sut = CreateSut();
+        sut.Scope = SearchScope.Advanced;
+
+        Assert.Empty(sut.Results);
+        Assert.Equal("条件を入力してください", sut.StatusMessage);
+    }
+
+    [Fact]
+    public void 詳細検索の内容ヒットは既存のEditorジャンプイベントへ流れる()
+    {
+        var sut = CreateSut();
+        SearchHit? received = null;
+        sut.PreviewRequested += (_, hit) => received = hit;
+
+        sut.Scope = SearchScope.Advanced;
+        sut.AdvancedContent = "needle";
+        sut.Preview(new SearchMatchItem(new ContentSearchHit(
+            @"C:\work\src\app.cs", "src/app.cs", 12, 5, "needle here")));
+
+        Assert.NotNull(received);
+        Assert.Equal(@"C:\work\src\app.cs", received.Value.FullPath);
+        Assert.Equal(12, received.Value.Line);
+        Assert.Equal(5, received.Value.Column);
+        Assert.Equal("needle", received.Value.Highlight);
+    }
+
     [Theory]
     [InlineData(SearchScope.FileName)]
     [InlineData(SearchScope.Terminal)]
@@ -74,5 +117,7 @@ public sealed class SearchPanelHighlightTests
 
         public Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct, string? searchRoot = null)
             => Task.FromResult<IReadOnlyList<ContentSearchHit>>(Array.Empty<ContentSearchHit>());
+        public Task<IReadOnlyList<AdvancedFileSearchHit>> SearchFilesAsync(AdvancedSearchOptions options, CancellationToken ct, string? searchRoot = null)
+            => Task.FromResult<IReadOnlyList<AdvancedFileSearchHit>>(Array.Empty<AdvancedFileSearchHit>());
     }
 }

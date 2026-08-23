@@ -97,5 +97,7 @@ public sealed class SearchPanelQueryTests : IDisposable
             => throw new NotSupportedException();
         public Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct, string? searchRoot = null)
             => throw new NotSupportedException();
+        public Task<IReadOnlyList<AdvancedFileSearchHit>> SearchFilesAsync(AdvancedSearchOptions options, CancellationToken ct, string? searchRoot = null)
+            => throw new NotSupportedException();
     }
 }
