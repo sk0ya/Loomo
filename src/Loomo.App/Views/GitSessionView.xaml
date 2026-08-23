@@ -218,9 +218,8 @@
                                   PreviewMouseLeftButtonUp="OnBranchTreeClick"
                                   PreviewMouseRightButtonDown="OnListRightClickSelect"
                                   ContextMenuOpening="OnBranchContextMenuOpening">
-                            <!-- 行の右クリック＝そのブランチ1本に効く操作だけ。フォルダ／見出しではメニューを出さず、
-                                 現在ブランチやリモートブランチに意味を成さない項目は OnBranchContextMenuOpening が無効化する。
-                                 リポジトリ全体のフェッチ／プル／プッシュはここではなくヘッダーの同期帯（BranchSwitcherView）にある。 -->
+                            <!-- 行の右クリック＝そのブランチ1本に効く操作。フォルダ／見出しではメニューを出さず、
+                                 現在ブランチやリモートブランチに意味を成さない項目は無効化する。 -->
                             <TreeView.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="このブランチのコミットを表示" Click="OnBranchShowLog" />
@@ -238,6 +237,9 @@
                                     <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuDelete" Header="削除" Click="OnBranchDelete" />
+                                    <Separator />
+                                    <MenuItem x:Name="BranchMenuPull" Header="プル" Click="OnBranchPull" />
+                                    <MenuItem x:Name="BranchMenuPush" Header="プッシュ" Click="OnBranchPush" />
                                 </ContextMenu>
                             </TreeView.ContextMenu>
                         </TreeView>

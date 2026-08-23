@@ -125,13 +125,85 @@ public sealed class GitBranchService
 
     public Task<GitCommandResult> PullAsync() => _mutations.ExecuteAsync("pull");
 
-    public async Task<GitCommandResult> PushAsync()
+    /// <summary>
+    /// 指定したローカルブランチを上流へ同期する。現在ブランチは通常の pull を使い、
+    /// それ以外は作業ツリーを切り替えずに fetch の refspec で fast-forward 同期する。
+    /// </summary>
+    public async Task<GitCommandResult> PullBranchAsync(GitBranchInfo branch)
+    {
+        if (branch.IsRemote)
+            return await FailedBranchOperation("リモートブランチはプルの対象にできません。").ConfigureAwait(false);
+        if (branch.IsCurrent)
+            return await PullAsync().ConfigureAwait(false);
+        var upstream = await ResolveUpstreamAsync(branch.Upstream).ConfigureAwait(false);
+        if (upstream is null)
+            return await FailedBranchOperation($"ブランチ {branch.Name} には上流が設定されていません。").ConfigureAwait(false);
+
+        var (remote, remoteBranch) = upstream.Value;
+
+        // 非チェックアウトブランチは git pull（=現在のHEADへのmerge）を使えないため、
+        // 上流追跡先とローカルブランチを同時に更新する。分岐している場合は fetch が拒否するので、
+        // 未確認の上書きや作業ツリー変更は発生しない。
+        return remote == "."
+            ? await _mutations.ExecuteAsync("fetch", ".",
+                $"refs/heads/{remoteBranch}:refs/heads/{branch.Name}").ConfigureAwait(false)
+            : await _mutations.ExecuteAsync("fetch", remote,
+                $"refs/heads/{remoteBranch}:refs/remotes/{remote}/{remoteBranch}",
+                $"refs/heads/{remoteBranch}:refs/heads/{branch.Name}").ConfigureAwait(false);
+    }
+
+    public Task<GitCommandResult> PushAsync() => PushAsync(null);
+
+    private async Task<GitCommandResult> PushAsync(string? defaultRemote)
     {
         var result = await _mutations.ExecuteAsync("push").ConfigureAwait(false);
         if (!result.Success && result.Error.Contains("no upstream", StringComparison.OrdinalIgnoreCase))
-            result = await _mutations.ExecuteAsync("push", "-u", "origin", "HEAD").ConfigureAwait(false);
+            result = await _mutations.ExecuteAsync("push", "-u",
+                string.IsNullOrWhiteSpace(defaultRemote) ? "origin" : defaultRemote, "HEAD")
+                .ConfigureAwait(false);
         return result;
     }
+
+    /// <summary>指定したローカルブランチを、その上流または既定リモートへプッシュする。</summary>
+    public async Task<GitCommandResult> PushBranchAsync(GitBranchInfo branch, string? defaultRemote)
+    {
+        if (branch.IsRemote)
+            return await FailedBranchOperation("リモートブランチはプッシュの対象にできません。").ConfigureAwait(false);
+        if (branch.IsCurrent)
+            return await PushAsync(defaultRemote).ConfigureAwait(false);
+
+        var upstream = await ResolveUpstreamAsync(branch.Upstream).ConfigureAwait(false);
+        if (upstream is { } target)
+            return await _mutations.ExecuteAsync("push", target.Remote,
+                $"{branch.Name}:refs/heads/{target.Branch}").ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(defaultRemote))
+            return await _mutations.ExecuteAsync("push", "-u", defaultRemote, branch.Name)
+                .ConfigureAwait(false);
+        return await FailedBranchOperation($"ブランチ {branch.Name} のプッシュ先リモートがありません。").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// upstream:short はリモート名を含む場合（例 team/foo/main）と、ローカル上流の場合（例 main）が
+    /// ある。登録済みリモート名との最長一致で前者を判定し、残りをブランチ名として返す。
+    /// リモートに一致しない値はローカル上流として扱う（git fetch/push の remote は "."）。
+    /// </summary>
+    private async Task<(string Remote, string Branch)?> ResolveUpstreamAsync(string? upstream)
+    {
+        if (string.IsNullOrWhiteSpace(upstream))
+            return null;
+
+        var remote = (await GetRemotesAsync().ConfigureAwait(false))
+            .Where(name => upstream.StartsWith(name + "/", StringComparison.Ordinal))
+            .OrderByDescending(name => name.Length)
+            .FirstOrDefault();
+        if (remote is null)
+            return (".", upstream);
+
+        return (remote, upstream[(remote.Length + 1)..]);
+    }
+
+    private static Task<GitCommandResult> FailedBranchOperation(string message) =>
+        Task.FromResult(new GitCommandResult(-1, "", message));
 
     public Task<GitCommandResult> CheckoutAsync(string branch) =>
         _mutations.ExecuteAsync("checkout", branch);

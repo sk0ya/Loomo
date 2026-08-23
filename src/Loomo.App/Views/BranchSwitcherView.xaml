@@ -182,8 +182,8 @@
                       PreviewMouseLeftButtonUp="OnTreeClick"
                       PreviewMouseRightButtonDown="OnTreeRightClickSelect"
                       ContextMenuOpening="OnTreeContextMenuOpening">
-                <!-- 行の右クリック＝そのブランチだけに効く操作。リポジトリ全体の同期は上の帯にある。
-                     現在ブランチ・リモートブランチに意味を成さない項目は OnTreeContextMenuOpening が落とす。 -->
+                <!-- 行の右クリック＝そのブランチだけに効く操作。リポジトリ全体の同期帯とは別に、
+                     選択したローカルブランチのプル／プッシュもここから実行できる。 -->
                 <TreeView.ContextMenu>
                     <ContextMenu>
                         <MenuItem x:Name="MenuCheckout" Header="チェックアウト" Click="OnMenuCheckout" />
@@ -195,6 +195,9 @@
                         <MenuItem Header="ブランチ名をコピー" Click="OnMenuCopyName" />
                         <Separator />
                         <MenuItem x:Name="MenuDelete" Header="削除" Click="OnMenuDelete" />
+                        <Separator />
+                        <MenuItem x:Name="MenuPull" Header="プル" Click="OnMenuPull" />
+                        <MenuItem x:Name="MenuPush" Header="プッシュ" Click="OnMenuPush" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
             </TreeView>

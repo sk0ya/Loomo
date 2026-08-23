@@ -325,6 +325,12 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [RelayCommand] private Task PullAsync() => Commands.PullAsync();
     [RelayCommand] private Task PushAsync() => Commands.PushAsync();
 
+    public Task<GitCommandResult?> PullBranchAsync(GitBranchInfo branch) =>
+        Commands.PullBranchAsync(branch);
+
+    public Task<GitCommandResult?> PushBranchAsync(GitBranchInfo branch) =>
+        Commands.PushBranchAsync(branch, RemoteLabel);
+
     [RelayCommand]
     private void OpenPullRequests()
     {

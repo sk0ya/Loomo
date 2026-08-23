@@ -133,6 +133,8 @@ public partial class BranchSwitcherView : UserControl
         MenuMerge.IsEnabled = !branch.IsCurrent;
         MenuRebase.IsEnabled = !branch.IsCurrent;
         MenuDelete.IsEnabled = !branch.IsCurrent && !branch.IsRemote;
+        MenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
+        MenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
     }
 
     private async void OnMenuCheckout(object sender, RoutedEventArgs e)
@@ -180,6 +182,20 @@ public partial class BranchSwitcherView : UserControl
             try { Clipboard.SetText(branch.Name); } catch { /* クリップボード占有中は無視 */ }
         }
         Close();
+    }
+
+    private async void OnMenuPull(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || Target is not { } branch) return;
+        Close();
+        await vm.PullBranchAsync(branch);
+    }
+
+    private async void OnMenuPush(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || Target is not { } branch) return;
+        Close();
+        await vm.PushBranchAsync(branch);
     }
 
     private async void OnMenuDelete(object sender, RoutedEventArgs e)

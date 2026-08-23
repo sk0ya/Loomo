@@ -18,6 +18,10 @@ public sealed class GitSessionCommandHandler
     public Task<GitCommandResult?> FetchAsync() => RunAsync("フェッチ", _git.FetchAsync);
     public Task<GitCommandResult?> PullAsync() => RunAsync("プル", _git.PullAsync);
     public Task<GitCommandResult?> PushAsync() => RunAsync("プッシュ", _git.PushAsync);
+    public Task<GitCommandResult?> PullBranchAsync(GitBranchInfo branch) =>
+        RunAsync($"{branch.Name} をプル", () => _git.PullBranchAsync(branch));
+    public Task<GitCommandResult?> PushBranchAsync(GitBranchInfo branch, string? defaultRemote) =>
+        RunAsync($"{branch.Name} をプッシュ", () => _git.PushBranchAsync(branch, defaultRemote));
 
     public Task<GitCommandResult?> CheckoutBranchAsync(GitBranchInfo branch) => branch.IsRemote
         ? RunAsync($"チェックアウト {branch.Name}", () => _git.CheckoutTrackAsync(branch.Name))

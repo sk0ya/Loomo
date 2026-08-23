@@ -162,8 +162,11 @@ public sealed class GitService
 
     public Task<GitCommandResult> FetchAsync() => _branches.FetchAsync();
     public Task<GitCommandResult> PullAsync() => _branches.PullAsync();
+    public Task<GitCommandResult> PullBranchAsync(GitBranchInfo branch) => _branches.PullBranchAsync(branch);
 
     public Task<GitCommandResult> PushAsync() => _branches.PushAsync();
+    public Task<GitCommandResult> PushBranchAsync(GitBranchInfo branch, string? defaultRemote) =>
+        _branches.PushBranchAsync(branch, defaultRemote);
 
     public Task<GitCommandResult> CheckoutAsync(string branch) => _branches.CheckoutAsync(branch);
 

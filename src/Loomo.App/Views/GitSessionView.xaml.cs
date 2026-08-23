@@ -265,6 +265,8 @@ public partial class GitSessionView : UserControl
         BranchMenuMergeStrategy.IsEnabled = !branch.IsCurrent;
         BranchMenuRebase.IsEnabled = !branch.IsCurrent;
         BranchMenuDelete.IsEnabled = !branch.IsCurrent && !branch.IsRemote;
+        BranchMenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
+        BranchMenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
     }
 
     /// <summary>ダブルクリックと同じ「右のコミットグラフをこのブランチに切り替える」を右クリックからも。</summary>
@@ -331,6 +333,18 @@ public partial class GitSessionView : UserControl
         {
             try { Clipboard.SetText(branch.Name); } catch { /* クリップボード占有中は無視 */ }
         }
+    }
+
+    private async void OnBranchPull(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.PullBranchAsync(branch);
+    }
+
+    private async void OnBranchPush(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.PushBranchAsync(branch);
     }
 
     private async void OnBranchDelete(object sender, RoutedEventArgs e)
