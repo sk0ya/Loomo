@@ -409,6 +409,23 @@ public partial class FolderTreeView
         if (show && DataContext is FolderTreeViewModel treeVm)
             PopulateWorkflowMenu(cm, treeVm, node!);
 
+        // Explorer のQuick accessはWorkspaceStateStoreとは別のOS状態。メニューを開くたびに
+        // Shellへ照会するため、外部Explorerでの追加・解除や再起動後も表示がずれない。
+        var quickAccessSelection = CurrentSelection(node);
+        if (DataContext is FolderTreeViewModel quickAccessVm)
+        {
+            var canPin = quickAccessVm.CanPinToQuickAccess(quickAccessSelection);
+            var canUnpin = quickAccessVm.CanUnpinFromQuickAccess(quickAccessSelection);
+            var quickAccessPin = cm.Items.OfType<MenuItem>()
+                .FirstOrDefault(item => item.Tag as string == "QuickAccessPinnable");
+            var quickAccessUnpin = cm.Items.OfType<MenuItem>()
+                .FirstOrDefault(item => item.Tag as string == "QuickAccessUnpinnable");
+            if (quickAccessPin is not null)
+                quickAccessPin.Visibility = canPin ? Visibility.Visible : Visibility.Collapsed;
+            if (quickAccessUnpin is not null)
+                quickAccessUnpin.Visibility = canUnpin ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         // 「選択した2つを Diff で比較」は、ファイルをちょうど2つ選んでいるときだけ出す
         // （それ以外では何を左右に置くか決まらない）。
         var twoFiles = SelectedFilesForCompare(node).Count == 2;
@@ -531,6 +548,26 @@ public partial class FolderTreeView
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)
             vm.UnpinFolder(node.FullPath);
+    }
+
+    private void OnPinToQuickAccessClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var result = vm.PinToQuickAccess(CurrentSelection(ContextNode(sender)));
+        if (result.HasFailures)
+            ShowError(result.ErrorMessage ?? "クイックアクセスへのピン留めに失敗しました。");
+    }
+
+    private void OnUnpinFromQuickAccessClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var result = vm.UnpinFromQuickAccess(CurrentSelection(ContextNode(sender)));
+        if (result.HasFailures)
+            ShowError(result.ErrorMessage ?? "クイックアクセスからの解除に失敗しました。");
     }
 
     private void OnRemoveFromWorkspaceClick(object sender, RoutedEventArgs e)

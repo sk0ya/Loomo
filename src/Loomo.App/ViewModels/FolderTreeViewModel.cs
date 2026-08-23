@@ -26,6 +26,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly FolderTreeQuery _query;
     private readonly FilePropertiesService _fileProperties;
     private readonly IShellFileOperations _shellOperations;
+    private readonly IQuickAccessService _quickAccess;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -161,10 +162,15 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// <summary>FolderTree の「アプリで開く／共有／送る」で使う Shell アダプター。</summary>
     public IShellFileOperations ShellOperations => _shellOperations;
 
+    /// <summary>Windows Explorer のクイックアクセス／ホームの実状態を操作するアダプター。
+    /// WorkspaceStateStore には複製せず、Explorer を正本として扱う。</summary>
+    public IQuickAccessService QuickAccess => _quickAccess;
+
     public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
         FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
         FilePropertiesService? fileProperties = null,
-        IShellFileOperations? shellOperations = null)
+        IShellFileOperations? shellOperations = null,
+        IQuickAccessService? quickAccess = null)
     {
         _workspace = workspace;
         _warmup = warmup;
@@ -173,6 +179,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _query = query;
         _fileProperties = fileProperties ?? new FilePropertiesService();
         _shellOperations = shellOperations ?? new ShellFileOperations();
+        _quickAccess = quickAccess ?? new WindowsQuickAccessService();
         _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
         // アプリと同じ寿命の ViewModel なので購読は解除しない。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();

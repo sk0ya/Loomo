@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
@@ -15,6 +16,13 @@ public interface IFilePlacesProvider
     IReadOnlyList<FilesPlace> Drives();
 }
 
+/// <summary>クイックアクセスを変更した直後に、場所ポップアップの短期キャッシュを捨てるための
+/// optional adapter。既存のテスト用／外部 provider はこの interface を実装しなくてもよい。</summary>
+public interface IQuickAccessCacheInvalidator
+{
+    void InvalidateQuickAccessCache();
+}
+
 /// <summary>Windows シェル（`Shell.Application` COM）からクイックアクセスを読む実装。
 ///
 /// <para>クイックアクセスの実体は <c>%APPDATA%\Microsoft\Windows\Recent\AutomaticDestinations</c> の
@@ -22,7 +30,7 @@ public interface IFilePlacesProvider
 /// <c>Shell.Application</c> で開くのが唯一まともな入口なので、遅延バインド（dynamic）で呼ぶ。
 /// COM は STA が要るので UI スレッドから呼ぶ前提。ポップアップを開いた時だけ引き、
 /// 結果は短い間キャッシュする（毎回シェルを叩くと開くたびに一拍止まる）。</para></summary>
-public sealed class WindowsFilePlacesProvider : IFilePlacesProvider
+public sealed class WindowsFilePlacesProvider : IFilePlacesProvider, IQuickAccessCacheInvalidator
 {
     // シェル名前空間の「クイックアクセス」。
     private const string QuickAccessNamespace = "shell:::{679F85CB-0220-4080-B29B-5540CC05AAB6}";
@@ -30,6 +38,12 @@ public sealed class WindowsFilePlacesProvider : IFilePlacesProvider
 
     private IReadOnlyList<FilesPlace>? _quickAccess;
     private DateTime _quickAccessAt;
+
+    public void InvalidateQuickAccessCache()
+    {
+        _quickAccess = null;
+        _quickAccessAt = default;
+    }
 
     public IReadOnlyList<FilesPlace> QuickAccess()
     {
@@ -40,24 +54,42 @@ public sealed class WindowsFilePlacesProvider : IFilePlacesProvider
         try
         {
             var shellType = Type.GetTypeFromProgID("Shell.Application");
-            if (shellType is not null && Activator.CreateInstance(shellType) is { } instance)
+            object? instance = null;
+            try
             {
-                dynamic shell = instance;
-                dynamic? folder = shell.NameSpace(QuickAccessNamespace);
-                if (folder is not null)
+                if (shellType is not null && (instance = Activator.CreateInstance(shellType)) is not null)
                 {
-                    foreach (dynamic item in folder.Items())
+                    dynamic shell = instance;
+                    dynamic? folder = shell.NameSpace(QuickAccessNamespace);
+                    if (folder is not null)
                     {
-                        // 「PC」のような非ファイルシステム項目も混ざるので、実在フォルダーだけ拾う。
-                        string path = item.Path as string ?? "";
-                        if (path.Length == 0 || !Directory.Exists(path))
-                            continue;
-                        var name = item.Name as string;
-                        places.Add(new FilesPlace(
-                            string.IsNullOrEmpty(name) ? Path.GetFileName(path.TrimEnd('\\', '/')) : name,
-                            Path.GetFullPath(path), FilesPlaceKind.QuickAccess));
+                        foreach (dynamic item in folder.Items())
+                        {
+                            try
+                            {
+                                // 「PC」のような非ファイルシステム項目も混ざるので、実在フォルダーだけ拾う。
+                                string path = item.Path as string ?? "";
+                                if (path.Length == 0 || !Directory.Exists(path))
+                                    continue;
+                                var fullPath = Path.GetFullPath(path);
+                                var name = item.Name as string;
+                                places.Add(new FilesPlace(
+                                    string.IsNullOrEmpty(name) ? Path.GetFileName(fullPath.TrimEnd('\\', '/')) : name,
+                                    fullPath, FilesPlaceKind.QuickAccess));
+                            }
+                            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException
+                                or UnauthorizedAccessException or System.Security.SecurityException)
+                            {
+                                // 1件の壊れた／アクセス不能なShell項目で、他の場所まで失わない。
+                            }
+                        }
                     }
                 }
+            }
+            finally
+            {
+                if (instance is not null && Marshal.IsComObject(instance))
+                    Marshal.FinalReleaseComObject(instance);
             }
         }
         catch

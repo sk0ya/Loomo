@@ -166,6 +166,7 @@ internal static class LoomoServiceCollectionExtensions
         // （具象＋interface の二重登録・§26.10）。
         services.AddSingleton<IFolderPinStore>(sp => sp.GetRequiredService<FolderTreeViewModel>());
         services.AddSingleton<IFilePlacesProvider, WindowsFilePlacesProvider>();
+        services.AddSingleton<IQuickAccessService, WindowsQuickAccessService>();
         // ファイル一覧ペイン。操作の実体はツリーと同じ FolderTreeCommandHandler だが、
         // こちらは「ワークスペース外でも操作できる版」を渡す——外のフォルダーも開けるファイラなので、
         // エージェント用の限定（§10）を人間に被せない。

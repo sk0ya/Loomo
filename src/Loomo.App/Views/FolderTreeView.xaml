@@ -497,6 +497,14 @@
                                               Visibility="{Binding IsPinnable, Converter={StaticResource BoolToVis}}" />
                                     <MenuItem Header="ピン留めを解除" Click="OnUnpinClick"
                                               Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
+                                    <!-- Explorer のクイックアクセス／ホーム。WorkspaceStateStore のルートピンとは別に、
+                                         Windows Shell の状態を正本とする。Opened で実状態を照会する。 -->
+                                    <MenuItem Header="クイックアクセスにピン留め" Tag="QuickAccessPinnable"
+                                              Click="OnPinToQuickAccessClick" Visibility="Collapsed"
+                                              ToolTip="Windows Explorer のクイックアクセス（ホーム）へ追加します" />
+                                    <MenuItem Header="クイックアクセスから解除" Tag="QuickAccessUnpinnable"
+                                              Click="OnUnpinFromQuickAccessClick" Visibility="Collapsed"
+                                              ToolTip="Windows Explorer のクイックアクセス（ホーム）から解除します" />
                                     <!-- 複数フォルダーワークスペースの見出し（ワークスペースフォルダー自身）のみ：
                                          そのフォルダー内のピン留め切替候補・ワークスペースからの除去。
                                          中身は OnNodeContextMenuOpened→PopulateRootSwitchMenu が動的に流し込む。 -->
