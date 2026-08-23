@@ -175,17 +175,43 @@ public partial class FolderTreeView
     // 同じになるので出さない。
     private void OnOpenWithDefaultAppClick(object sender, RoutedEventArgs e)
     {
-        if (ContextNode(sender) is not { IsDirectory: false } node || !File.Exists(node.FullPath))
+        if (DataContext is not FolderTreeViewModel vm)
             return;
 
-        try
-        {
-            Process.Start(new ProcessStartInfo(node.FullPath) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ShowError($"既定のアプリで開けませんでした: {ex.Message}");
-        }
+        ExecuteShellAction(vm, ShellFileAction.Open,
+            CurrentSelection(ContextNode(sender)).Where(n => !n.IsDirectory));
+    }
+
+    private void OnOpenWithAppClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is FolderTreeViewModel vm)
+            ExecuteShellAction(vm, ShellFileAction.OpenWith, CurrentSelection(ContextNode(sender)));
+    }
+
+    private void OnShareClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is FolderTreeViewModel vm)
+            ExecuteShellAction(vm, ShellFileAction.Share, CurrentSelection(ContextNode(sender)));
+    }
+
+    private void OnSendToClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is FolderTreeViewModel vm)
+            ExecuteShellAction(vm, ShellFileAction.SendTo, CurrentSelection(ContextNode(sender)));
+    }
+
+    private void ExecuteShellAction(
+        FolderTreeViewModel vm,
+        ShellFileAction action,
+        IEnumerable<FileNodeViewModel> nodes)
+    {
+        var paths = nodes.Select(n => n.FullPath).ToArray();
+        if (paths.Length == 0)
+            return;
+
+        var result = vm.ShellOperations.Execute(action, paths);
+        if (!result.IsCancelled && result.FailedPaths.Count > 0)
+            ShowError(result.ErrorMessage ?? "Shell 操作を実行できませんでした。");
     }
 
     private void OnRevealInExplorerClick(object sender, RoutedEventArgs e)
@@ -196,10 +222,14 @@ public partial class FolderTreeView
         try
         {
             // ファイルは選択状態で、ディレクトリはその中を開く。
+            var info = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
             if (File.Exists(node.FullPath))
-                Process.Start("explorer.exe", $"/select,\"{node.FullPath}\"");
+                info.ArgumentList.Add("/select," + Path.GetFullPath(node.FullPath));
             else if (Directory.Exists(node.FullPath))
-                Process.Start("explorer.exe", $"\"{node.FullPath}\"");
+                info.ArgumentList.Add(Path.GetFullPath(node.FullPath));
+            else
+                return;
+            Process.Start(info);
         }
         catch
         {
@@ -248,6 +278,27 @@ public partial class FolderTreeView
                 _propertiesLoadCts = null;
                 Mouse.OverrideCursor = null;
             }
+        }
+    }
+
+    private void OnCompressToZipClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var nodes = CurrentSelection(ContextNode(sender));
+        if (nodes.Count == 0)
+            return;
+
+        try
+        {
+            var archive = vm.CompressEntries(nodes);
+            ClearMultiSelection();
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(archive)));
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
         }
     }
 

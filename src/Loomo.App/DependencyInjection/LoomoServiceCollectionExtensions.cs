@@ -158,6 +158,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<FolderTreeCommandHandler>();
         services.AddSingleton<FolderTreeQuery>();
         services.AddSingleton<FilePropertiesService>();
+        services.AddSingleton<IShellFileOperations, ShellFileOperations>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<TaskbarWorkspaceRecentService>();
         services.AddSingleton<FolderTreeViewModel>();

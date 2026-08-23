@@ -25,6 +25,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly FolderTreeCommandHandler _fileCommands;
     private readonly FolderTreeQuery _query;
     private readonly FilePropertiesService _fileProperties;
+    private readonly IShellFileOperations _shellOperations;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -157,9 +158,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// <summary>FolderTree のプロパティ表示で使う、DI 管理の読み取りサービス。</summary>
     public FilePropertiesService FileProperties => _fileProperties;
 
+    /// <summary>FolderTree の「アプリで開く／共有／送る」で使う Shell アダプター。</summary>
+    public IShellFileOperations ShellOperations => _shellOperations;
+
     public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
         FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
-        FilePropertiesService? fileProperties = null)
+        FilePropertiesService? fileProperties = null,
+        IShellFileOperations? shellOperations = null)
     {
         _workspace = workspace;
         _warmup = warmup;
@@ -167,6 +172,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _fileCommands = fileCommands;
         _query = query;
         _fileProperties = fileProperties ?? new FilePropertiesService();
+        _shellOperations = shellOperations ?? new ShellFileOperations();
         _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
         // アプリと同じ寿命の ViewModel なので購読は解除しない。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();

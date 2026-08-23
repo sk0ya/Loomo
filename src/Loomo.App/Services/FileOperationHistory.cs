@@ -13,18 +13,23 @@ public enum FileOperationKind
     Copy,
     /// <summary>削除（ゴミ箱へ移動）。</summary>
     Delete,
+    /// <summary>選択項目を ZIP アーカイブとして作成。</summary>
+    Zip,
 }
 
 /// <summary>記録された 1 項目ぶんの操作。<see cref="Source"/>／<see cref="Target"/> の意味は種類ごと：
 /// 作成・削除は片側だけ（作成＝Target に作った／削除＝Source を捨てた）、名前の変更・移動・コピーは
 /// Source から Target へ。パスはすべて確定後のフルパス（一意化「 - コピー」適用後）。</summary>
-public sealed record FileOperation(FileOperationKind Kind, string Source, string Target, bool IsDirectory, string? ReplacedPath = null)
+public sealed record FileOperation(FileOperationKind Kind, string Source, string Target, bool IsDirectory, string? ReplacedPath = null,
+    IReadOnlyList<string>? Sources = null)
 {
     public static FileOperation Created(string path, bool isDirectory) => new(FileOperationKind.Create, "", path, isDirectory);
     public static FileOperation Renamed(string oldPath, string newPath, bool isDirectory) => new(FileOperationKind.Rename, oldPath, newPath, isDirectory);
     public static FileOperation Moved(string source, string destination, bool isDirectory, string? replacedPath = null) => new(FileOperationKind.Move, source, destination, isDirectory, replacedPath);
     public static FileOperation Copied(string source, string destination, bool isDirectory, string? replacedPath = null) => new(FileOperationKind.Copy, source, destination, isDirectory, replacedPath);
     public static FileOperation Deleted(string path, bool isDirectory) => new(FileOperationKind.Delete, path, "", isDirectory);
+    public static FileOperation Compressed(IReadOnlyList<string> sources, string destination)
+        => new(FileOperationKind.Zip, sources.Count > 0 ? sources[0] : "", destination, false, Sources: sources);
 
     /// <summary>ツリー・タブが追随する対象パス（表示名の元にもする）。</summary>
     internal string PrimaryPath => Kind is FileOperationKind.Delete ? Source : Target;
@@ -230,6 +235,17 @@ public sealed class FileOperationHistory
             case (FileOperationKind.Delete, true):
                 RequireVacant(operation.Source);
                 break;
+
+            case (FileOperationKind.Zip, true):
+                RequireExists(operation.Target, false, name);
+                break;
+            case (FileOperationKind.Zip, false):
+                if (operation.Sources is null || operation.Sources.Count == 0)
+                    throw new InvalidOperationException("ZIP の元項目がありません。");
+                foreach (var source in operation.Sources)
+                    RequireEntryExists(source, Path.GetFileName(source));
+                RequireVacant(operation.Target);
+                break;
         }
     }
 
@@ -271,6 +287,7 @@ public sealed class FileOperationHistory
         FileOperationKind.Rename => MoveEntry(operation.Target, operation.Source, operation.IsDirectory),
         FileOperationKind.Move => UndoMove(operation),
         FileOperationKind.Delete => Restore(operation.Source, operation.IsDirectory),
+        FileOperationKind.Zip => Discard(operation.Target, false),
         _ => throw new InvalidOperationException("不明な操作です。"),
     };
 
@@ -281,6 +298,7 @@ public sealed class FileOperationHistory
         FileOperationKind.Rename => MoveEntry(operation.Source, operation.Target, operation.IsDirectory),
         FileOperationKind.Move => RedoMove(operation),
         FileOperationKind.Delete => Discard(operation.Source, operation.IsDirectory),
+        FileOperationKind.Zip => ZipEntry(operation),
         _ => throw new InvalidOperationException("不明な操作です。"),
     };
 
@@ -312,6 +330,12 @@ public sealed class FileOperationHistory
     {
         PrepareRedoReplacement(operation);
         return MoveEntry(operation.Source, operation.Target, operation.IsDirectory);
+    }
+
+    private static FileOperationEffect ZipEntry(FileOperation operation)
+    {
+        FolderTreeCommandHandler.CreateZipFile(operation.Sources!, operation.Target);
+        return new FileOperationEffect(null, null, null, operation.Target, false);
     }
 
     private static void PrepareRedoReplacement(FileOperation operation)
@@ -471,6 +495,7 @@ public sealed class FileOperationHistory
             FileOperationKind.Move => "移動",
             FileOperationKind.Copy => "コピー",
             FileOperationKind.Delete => "削除",
+            FileOperationKind.Zip => "ZIPに圧縮",
             _ => "ファイル操作",
         };
     }

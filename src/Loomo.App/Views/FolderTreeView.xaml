@@ -400,6 +400,8 @@
                                     <MenuItem Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicateClick"
                                               ToolTip="同じフォルダーに「 - コピー」を付けて複製します"
                                               Visibility="{Binding CanDuplicate, Converter={StaticResource BoolToVis}}" />
+                                    <MenuItem Header="ZIPに圧縮" Click="OnCompressToZipClick"
+                                              ToolTip="選択項目を同じフォルダーの ZIP に圧縮します（Undo/Redo 対応）" />
                                     <Separator />
                                     <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
                                     <MenuItem Header="削除" InputGestureText="Delete" Click="OnDeleteClick" />
@@ -419,6 +421,12 @@
                                          エディタペインで開けない素材の逃げ道。 -->
                                     <MenuItem Header="既定のアプリで開く" Click="OnOpenWithDefaultAppClick"
                                               Visibility="{Binding IsDirectory, Converter={StaticResource InverseBoolToVis}}" />
+                                    <MenuItem Header="アプリで開く…" Click="OnOpenWithAppClick"
+                                              ToolTip="Windows の『アプリで開く』画面を表示します" />
+                                    <MenuItem Header="共有" Click="OnShareClick"
+                                              ToolTip="Windows Shell の共有を開きます" />
+                                    <MenuItem Header="送る" Click="OnSendToClick"
+                                              ToolTip="Windows Shell の『送る』を実行します" />
                                     <MenuItem Header="エクスプローラーで表示" Click="OnRevealInExplorerClick" />
                                     <MenuItem Header="ターミナルへ送る" Click="OnSetInTerminalClick"
                                               ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />

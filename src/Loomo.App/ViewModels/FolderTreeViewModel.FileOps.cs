@@ -111,6 +111,19 @@ public sealed partial class FolderTreeViewModel
         return parent is null ? null : PasteEntry(parent, node.FullPath, move: false);
     }
 
+    /// <summary>選択項目を ZIP に圧縮し、生成したアーカイブのパスを返す。ZIP は通常の
+    /// ファイル操作履歴に積むため、Undo／Redo で生成物を戻せる。</summary>
+    public string CompressEntries(IEnumerable<FileNodeViewModel> nodes)
+    {
+        var paths = nodes
+            .Where(n => n is not null && !n.IsWorkspaceFolderRoot)
+            .Select(n => n.FullPath)
+            .ToArray();
+        var archive = _fileCommands.CompressToZip(paths);
+        RefreshWorkspace();
+        return archive;
+    }
+
     // ===== Undo / Redo（作成・名前の変更・移動・コピー・削除） =====
     // 履歴の実体はツリーとファイル一覧ペインで共有する FileOperationHistory（記録は
     // FolderTreeCommandHandler、逆操作は履歴側）。ここはその結果をツリーと開いているタブへ流す係。

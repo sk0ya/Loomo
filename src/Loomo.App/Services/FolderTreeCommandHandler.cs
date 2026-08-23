@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using System.IO.Compression;
 using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -106,6 +107,76 @@ public sealed class FolderTreeCommandHandler
             return;   // 既に無いものは履歴にも残さない（戻す先が無い）。
         SendToRecycleBin(path, isDirectory);
         _history.Record(FileOperation.Deleted(path, isDirectory));
+    }
+
+    /// <summary>選択項目を同じ親フォルダーの ZIP に圧縮する。生成物は履歴へ記録し、
+    /// Redo では元の選択項目からアーカイブを再生成する。</summary>
+    public string CompressToZip(IEnumerable<string> sourcePaths)
+    {
+        if (sourcePaths is null) throw new ArgumentNullException(nameof(sourcePaths));
+
+        var sources = sourcePaths
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(Resolve)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(p => File.Exists(p) || Directory.Exists(p))
+            .ToArray();
+        if (sources.Length == 0)
+            throw new InvalidOperationException("ZIP にする項目がありません。");
+
+        var parent = Path.GetDirectoryName(sources[0])
+            ?? throw new InvalidOperationException("ZIP の作成先を特定できません。");
+        var stem = sources.Length == 1
+            ? Path.GetFileNameWithoutExtension(sources[0].TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            : "archive";
+        if (string.IsNullOrWhiteSpace(stem)) stem = "archive";
+        var destination = EnsureUniqueDestination(Path.Combine(parent, stem + ".zip"), false);
+
+        CreateZipFile(sources, destination);
+        _history.Record(FileOperation.Compressed(sources, destination));
+        return destination;
+    }
+
+    /// <summary>ZIP の共通作成処理。Redo からも呼ばれるため、成功前に履歴を変更しない。
+    /// 再解析ポイントは辿らない。</summary>
+    internal static void CreateZipFile(IReadOnlyList<string> sources, string destination)
+    {
+        try
+        {
+            using var archive = ZipFile.Open(destination, ZipArchiveMode.Create);
+            foreach (var source in sources)
+            {
+                if (Directory.Exists(source))
+                    AddDirectory(archive, source, Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+                else if (File.Exists(source))
+                    archive.CreateEntryFromFile(source, Path.GetFileName(source), CompressionLevel.Fastest);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            try { if (File.Exists(destination)) File.Delete(destination); } catch { /* 元の例外を優先 */ }
+            throw new InvalidOperationException($"ZIP の作成に失敗しました: {ex.Message}", ex);
+        }
+    }
+
+    private static void AddDirectory(ZipArchive archive, string directory, string entryRoot)
+    {
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+        };
+        foreach (var file in Directory.EnumerateFiles(directory, "*", options))
+        {
+            var relative = Path.GetRelativePath(directory, file).Replace(Path.DirectorySeparatorChar, '/');
+            archive.CreateEntryFromFile(file, entryRoot + "/" + relative, CompressionLevel.Fastest);
+        }
+        foreach (var child in Directory.EnumerateDirectories(directory, "*", options))
+        {
+            var name = Path.GetFileName(child);
+            AddDirectory(archive, child, entryRoot + "/" + name);
+        }
     }
 
     /// <summary>ゴミ箱へ送る（完全削除ではない）。Undo の逆操作（作成・コピーの取り消し）も
