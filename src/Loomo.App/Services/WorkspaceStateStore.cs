@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -432,6 +433,7 @@ public sealed class FilesColumnSnapshot
     public FilesSortColumn SortColumn { get; set; } = FilesSortColumn.Name;
     public bool SortDescending { get; set; }
     public bool ShowHidden { get; set; }
+    public FilesDisplayMode DisplayMode { get; set; } = FilesDisplayMode.Details;
 }
 
 /// <summary>ファイル一覧の並べ替え列。数値で永続化されるため末尾追加のみ可。</summary>

@@ -69,6 +69,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private bool _sortDescending;
 
+    /// <summary>このカラムの一覧表示形式。現在地・並べ替えと同じくワークスペースごとに保存する。</summary>
+    [ObservableProperty] private FilesDisplayMode _displayMode = FilesDisplayMode.Details;
+
+    public IReadOnlyList<FilesDisplayModeOption> DisplayModeOptions => FilesDisplayModes.Options;
+
     /// <summary>名前での絞り込み（部分一致。<c>*.cs</c> のようにワイルドカードも書ける）。
     /// 入力欄はツールバーに常設せず、一覧で <c>/</c> を押したときだけ下端に出す。</summary>
     [ObservableProperty] private string _filter = "";
@@ -273,6 +278,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             SortColumn = snapshot.SortColumn;
             SortDescending = snapshot.SortDescending;
             ShowHiddenFiles = snapshot.ShowHidden;
+            DisplayMode = FilesDisplayModes.Normalize(snapshot.DisplayMode);
+        }
+        else
+        {
+            DisplayMode = FilesDisplayMode.Details;
         }
         Filter = "";   // 絞り込みは「今この瞬間の道具」なので持ち越さない
         IsFilterBarOpen = false;
@@ -299,6 +309,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         SortColumn = SortColumn,
         SortDescending = SortDescending,
         ShowHidden = ShowHiddenFiles,
+        DisplayMode = DisplayMode,
     };
 
     private void SetFolder(string folder, bool raiseStateChanged = true)
@@ -472,6 +483,18 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     partial void OnShowHiddenFilesChanged(bool value)
     {
         ApplyView(preserveSelection: true);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    partial void OnDisplayModeChanged(FilesDisplayMode value)
+    {
+        // バインディング以外から不正値が入っても、XAML側で全レイアウトが非表示にならないようにする。
+        var normalized = FilesDisplayModes.Normalize(value);
+        if (normalized != value)
+        {
+            DisplayMode = normalized;
+            return;
+        }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 

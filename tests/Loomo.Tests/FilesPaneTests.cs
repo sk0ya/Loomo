@@ -482,6 +482,77 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 表示形式は6種類から選べて変更通知が出る()
+    {
+        var sut = CreateColumn();
+        var changes = 0;
+        sut.StateChanged += (_, _) => changes++;
+
+        Assert.Equal(
+            new[] { FilesDisplayMode.Details, FilesDisplayMode.List, FilesDisplayMode.LargeIcons,
+                FilesDisplayMode.MediumIcons, FilesDisplayMode.SmallIcons, FilesDisplayMode.Tiles },
+            sut.DisplayModeOptions.Select(option => option.Value));
+
+        foreach (var mode in sut.DisplayModeOptions.Select(option => option.Value))
+            sut.DisplayMode = mode;
+
+        Assert.Equal(FilesDisplayMode.Tiles, sut.DisplayMode);
+        Assert.Equal(sut.DisplayModeOptions.Count - 1, changes);
+    }
+
+    [Fact]
+    public void 表示形式はカラムのスナップショットへ保存して復元できる()
+    {
+        var sut = CreateColumn();
+        sut.DisplayMode = FilesDisplayMode.MediumIcons;
+        var snapshot = sut.Capture();
+
+        var restored = CreateColumn();
+        restored.Restore(snapshot, _root);
+
+        Assert.Equal(FilesDisplayMode.MediumIcons, snapshot.DisplayMode);
+        Assert.Equal(FilesDisplayMode.MediumIcons, restored.DisplayMode);
+    }
+
+    [Fact]
+    public void 不正な表示形式は詳細へ戻る()
+    {
+        Assert.Equal(FilesDisplayMode.Details, FilesDisplayModes.Normalize((FilesDisplayMode)999));
+
+        var sut = CreateColumn();
+        sut.DisplayMode = FilesDisplayMode.Tiles;
+        sut.Restore(new FilesColumnSnapshot { CurrentFolder = _root, DisplayMode = (FilesDisplayMode)999 }, _root);
+
+        Assert.Equal(FilesDisplayMode.Details, sut.DisplayMode);
+
+        sut.DisplayMode = (FilesDisplayMode)999;
+        Assert.Equal(FilesDisplayMode.Details, sut.DisplayMode);
+    }
+
+    [Fact]
+    public void 表示形式はワークスペース状態のJSON往復でも保持される()
+    {
+        var path = Path.Combine(_base, "workspaces.json");
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = _root,
+            Files = new FilesPaneSnapshot
+            {
+                Columns =
+                [
+                    new FilesColumnSnapshot { CurrentFolder = _root, DisplayMode = FilesDisplayMode.Tiles }
+                ]
+            }
+        };
+        var store = new WorkspaceStateStore(path);
+
+        store.Save(new WorkspaceState { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        var restored = store.LoadWorkspace(workspace.Id);
+        Assert.Equal(FilesDisplayMode.Tiles, restored?.Files?.Columns.Single().DisplayMode);
+    }
+
+    [Fact]
     public void 旧形式の1カラム保存も読める()
     {
         // 1カラムだけだった頃の workspaces.json（Columns を持たない）。

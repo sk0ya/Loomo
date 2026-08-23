@@ -2,6 +2,43 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>ファイル一覧の表示形式。数値で保存されるため末尾追加のみ可。</summary>
+public enum FilesDisplayMode
+{
+    /// <summary>名前・サイズ・更新日時・種類を列で表示する。</summary>
+    Details,
+    /// <summary>小さいアイコンと名前を1行に表示する。</summary>
+    List,
+    /// <summary>大きいアイコンをグリッド表示する。</summary>
+    LargeIcons,
+    /// <summary>中くらいのアイコンをグリッド表示する。</summary>
+    MediumIcons,
+    /// <summary>小さいアイコンをグリッド表示する。</summary>
+    SmallIcons,
+    /// <summary>アイコンと属性を横に並べる。</summary>
+    Tiles,
+}
+
+/// <summary>表示形式選択コンボボックスの項目。</summary>
+public sealed record FilesDisplayModeOption(FilesDisplayMode Value, string Label);
+
+public static class FilesDisplayModes
+{
+    public static IReadOnlyList<FilesDisplayModeOption> Options { get; } =
+    [
+        new(FilesDisplayMode.Details, "詳細"),
+        new(FilesDisplayMode.List, "一覧"),
+        new(FilesDisplayMode.LargeIcons, "大アイコン"),
+        new(FilesDisplayMode.MediumIcons, "中アイコン"),
+        new(FilesDisplayMode.SmallIcons, "小アイコン"),
+        new(FilesDisplayMode.Tiles, "タイル"),
+    ];
+
+    /// <summary>保存値や外部からの設定値を、実際に選択できる表示形式へ丸める。</summary>
+    public static FilesDisplayMode Normalize(FilesDisplayMode value)
+        => Options.Any(option => option.Value == value) ? value : FilesDisplayMode.Details;
+}
+
 /// <summary>ファイル一覧ペインの1行。ツリー（<see cref="FileNodeViewModel"/>）と違い子を持たず、
 /// 一覧・並べ替えのための素の値（サイズ・更新日時・種類）を持つ。アイコンはツリーと同じ
 /// <see cref="FileIcons"/> から引く（種別ごとの共有インスタンスなので都度引いても配列参照ぶん）。</summary>

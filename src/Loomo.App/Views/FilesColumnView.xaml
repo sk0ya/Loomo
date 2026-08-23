@@ -246,6 +246,13 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <ItemsPanelTemplate x:Key="FilesVerticalItemsPanel">
+            <VirtualizingStackPanel Orientation="Vertical" />
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="FilesIconItemsPanel">
+            <WrapPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
     </UserControl.Resources>
 
     <!-- 操作対象のカラムだけ枠をアクセント色にする（2/4カラムのとき、キー操作の行き先を示す）。 -->
@@ -325,6 +332,11 @@
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                           Data="M4,2 L10,7 L4,12" />
                 </Button>
+                <ComboBox DockPanel.Dock="Right" Width="104" Height="22" Margin="4,0,0,0"
+                          ItemsSource="{Binding DisplayModeOptions}"
+                          SelectedValue="{Binding DisplayMode, Mode=TwoWay}"
+                          SelectedValuePath="Value" DisplayMemberPath="Label"
+                          ToolTip="表示形式を切り替え" />
                 <!-- 件数は独立したステータス行にせず、ナビゲーション行へ統合して縦幅を節約する。 -->
                 <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
                            Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
@@ -399,6 +411,31 @@
 
             <!-- 列見出し -->
             <Grid DockPanel.Dock="Top" Margin="{StaticResource FilesRowInset}">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.Details}">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.List}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.LargeIcons}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.MediumIcons}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.SmallIcons}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.Tiles}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="{StaticResource FilesSizeWidth}" />
@@ -447,6 +484,25 @@
                          PreviewKeyDown="OnListPreviewKeyDown"
                          DragOver="OnListDragOver"
                          Drop="OnListDrop">
+                    <ListBox.Style>
+                        <Style TargetType="ListBox">
+                            <Setter Property="ItemsPanel" Value="{StaticResource FilesVerticalItemsPanel}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.LargeIcons}">
+                                    <Setter Property="ItemsPanel" Value="{StaticResource FilesIconItemsPanel}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.MediumIcons}">
+                                    <Setter Property="ItemsPanel" Value="{StaticResource FilesIconItemsPanel}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.SmallIcons}">
+                                    <Setter Property="ItemsPanel" Value="{StaticResource FilesIconItemsPanel}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DisplayMode}" Value="{x:Static vm:FilesDisplayMode.Tiles}">
+                                    <Setter Property="ItemsPanel" Value="{StaticResource FilesIconItemsPanel}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.Style>
                     <ListBox.Template>
                         <ControlTemplate TargetType="ListBox">
                             <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
@@ -519,28 +575,102 @@
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:FileEntryViewModel}">
-                            <Grid Background="Transparent" Margin="{StaticResource FilesRowInset}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="{StaticResource FilesSizeWidth}" />
-                                    <ColumnDefinition Width="{StaticResource FilesModifiedWidth}" />
-                                    <ColumnDefinition Width="{StaticResource FilesTypeWidth}" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="6,0,4,0">
+                            <Grid Background="Transparent">
+                                <!-- 詳細：既存の4列レイアウト。見出しと同じ幅リソースを使う。 -->
+                                <Grid x:Name="DetailsLayout" Visibility="Collapsed" Height="24"
+                                      Margin="{StaticResource FilesRowInset}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="{StaticResource FilesSizeWidth}" />
+                                        <ColumnDefinition Width="{StaticResource FilesModifiedWidth}" />
+                                        <ColumnDefinition Width="{StaticResource FilesTypeWidth}" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="6,0,4,0">
+                                        <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,6,0"
+                                               VerticalAlignment="Center" SnapsToDevicePixels="True" />
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                                   FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding SizeText}" HorizontalAlignment="Right"
+                                               Margin="0,0,8,0" VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
+                                    <TextBlock Grid.Column="3" Text="{Binding TypeText}" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" FontSize="{DynamicResource Fs11}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+
+                                <!-- 一覧：縦方向の1行。 -->
+                                <StackPanel x:Name="ListLayout" Visibility="Collapsed" Orientation="Horizontal"
+                                            Height="24" Margin="6,0,4,0">
                                     <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,6,0"
-                                           VerticalAlignment="Center" SnapsToDevicePixels="True" />
+                                           VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="1" Text="{Binding SizeText}" HorizontalAlignment="Right"
-                                           Margin="0,0,8,0" VerticalAlignment="Center"
-                                           FontSize="{DynamicResource Fs11}" />
-                                <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" Margin="6,0,0,0"
-                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
-                                <TextBlock Grid.Column="3" Text="{Binding TypeText}" Margin="6,0,0,0"
-                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs11}"
-                                           TextTrimming="CharacterEllipsis" />
+
+                                <!-- アイコン系：WrapPanel 内で幅を持つため、選択・右クリック・ダブルクリックは
+                                     ListBoxItem の既存イベント経路をそのまま使える。 -->
+                                <StackPanel x:Name="LargeIconsLayout" Visibility="Collapsed" Width="112" Height="112"
+                                            Margin="4,6" HorizontalAlignment="Center">
+                                    <Image Source="{Binding IconImage}" Width="64" Height="64" HorizontalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" Margin="2,6,2,0" TextAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
+                                </StackPanel>
+                                <StackPanel x:Name="MediumIconsLayout" Visibility="Collapsed" Width="92" Height="94"
+                                            Margin="4,5" HorizontalAlignment="Center">
+                                    <Image Source="{Binding IconImage}" Width="40" Height="40" HorizontalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" Margin="2,5,2,0" TextAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
+                                </StackPanel>
+                                <StackPanel x:Name="SmallIconsLayout" Visibility="Collapsed" Width="76" Height="58"
+                                            Margin="3,4" HorizontalAlignment="Center">
+                                    <Image Source="{Binding IconImage}" Width="24" Height="24" HorizontalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" Margin="2,3,2,0" TextAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" MaxHeight="28" FontSize="{DynamicResource Fs11}" />
+                                </StackPanel>
+
+                                <!-- タイル：アイコンと代表的な属性を横並びにする。 -->
+                                <Grid x:Name="TilesLayout" Visibility="Collapsed" Width="220" Height="64" Margin="4,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Image Source="{Binding IconImage}" Width="32" Height="32" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Margin="6,0,3,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontSize="{DynamicResource Fs12}" />
+                                        <TextBlock Text="{Binding TypeText}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
+                                        <TextBlock Text="{Binding ModifiedText}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.DisplayMode, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="{x:Static vm:FilesDisplayMode.Details}">
+                                    <Setter TargetName="DetailsLayout" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DataContext.DisplayMode, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="{x:Static vm:FilesDisplayMode.List}">
+                                    <Setter TargetName="ListLayout" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DataContext.DisplayMode, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="{x:Static vm:FilesDisplayMode.LargeIcons}">
+                                    <Setter TargetName="LargeIconsLayout" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DataContext.DisplayMode, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="{x:Static vm:FilesDisplayMode.MediumIcons}">
+                                    <Setter TargetName="MediumIconsLayout" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DataContext.DisplayMode, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="{x:Static vm:FilesDisplayMode.SmallIcons}">
+                                    <Setter TargetName="SmallIconsLayout" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding DataContext.DisplayMode, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="{x:Static vm:FilesDisplayMode.Tiles}">
+                                    <Setter TargetName="TilesLayout" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
