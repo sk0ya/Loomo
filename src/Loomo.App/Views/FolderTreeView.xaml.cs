@@ -18,6 +18,11 @@ public partial class FolderTreeView : UserControl
     // gg（先頭へ）の 1 つ目の g を受け取った状態。
     private bool _pendingG;
 
+    // Explorer と同じ type-ahead 選択。キー入力が途切れたら次の入力を新しい検索にする。
+    private string _typeAheadText = string.Empty;
+    private readonly DispatcherTimer _typeAheadResetTimer =
+        new() { Interval = TimeSpan.FromMilliseconds(800) };
+
     // キーボード移動（j/k・矢印・gg/G）で選択が変わったときのプレビュー。押しっぱなしのキーリピートで
     // 通り過ぎる行まで読み込むと重いので、少し落ち着いてから「そのとき選択されている行」を開く。
     private readonly DispatcherTimer _selectionPreviewTimer =
@@ -33,6 +38,11 @@ public partial class FolderTreeView : UserControl
         {
             _selectionPreviewTimer.Stop();
             PreviewSelectedNode();
+        };
+        _typeAheadResetTimer.Tick += (_, _) =>
+        {
+            _typeAheadResetTimer.Stop();
+            _typeAheadText = string.Empty;
         };
     }
 
@@ -251,7 +261,7 @@ public partial class FolderTreeView : UserControl
         var wasPendingG = _pendingG;
         _pendingG = false;
 
-        // Ctrl+C/X/V/D はコピー／切り取り／貼り付け／複製、Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y はファイル操作の
+        // Ctrl+A/C/X/V/D は全選択／コピー／切り取り／貼り付け／複製、Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y はファイル操作の
         // 元に戻す／やり直す（下の Ctrl 早期 return より前で処理する）。
         if ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0
             && (e.KeyboardDevice.Modifiers & (ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
@@ -259,6 +269,10 @@ public partial class FolderTreeView : UserControl
             var node = tree.SelectedItem as FileNodeViewModel;
             switch (e.Key)
             {
+                case Key.A:
+                    SelectAllVisibleNodes();
+                    e.Handled = true;
+                    return;
                 case Key.C:
                     FileClipboard.SetFiles(CurrentSelection(node).Select(n => n.FullPath), move: false);
                     e.Handled = true;
@@ -296,9 +310,20 @@ public partial class FolderTreeView : UserControl
         if ((e.KeyboardDevice.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
             return;
 
+        if (e.Key == Key.F10 && (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            OpenSelectedContextMenu(tree);
+            e.Handled = true;
+            return;
+        }
+
         // 素の移動キーは複数選択を解除して単一選択のキーボード移動へ戻す（Explorer 等と同じ）。
-        // Delete/F2/Escape は現在の複数選択を活かしたいので対象外。
-        if (_multiSelected.Count > 0 && e.Key is Key.J or Key.K or Key.H or Key.L or Key.Enter or Key.G)
+        // TreeView が処理する矢印／ページ移動もここで先に解除する。Delete/F2/Escape は現在の複数選択を
+        // 活かしたいので対象外。
+        if (_multiSelected.Count > 0 && e.Key is
+            Key.J or Key.K or Key.H or Key.L or Key.Enter or Key.G
+            or Key.Up or Key.Down or Key.Left or Key.Right or Key.Home or Key.End
+            or Key.PageUp or Key.PageDown)
             ClearMultiSelection();
 
         switch (e.Key)
@@ -342,6 +367,16 @@ public partial class FolderTreeView : UserControl
                 e.Handled = true;
                 break;
 
+            case Key.Home:
+                GoToEdge(last: false);
+                e.Handled = true;
+                break;
+
+            case Key.End:
+                GoToEdge(last: true);
+                e.Handled = true;
+                break;
+
             case Key.F2:
                 RenameNode(tree.SelectedItem as FileNodeViewModel);
                 e.Handled = true;
@@ -354,9 +389,113 @@ public partial class FolderTreeView : UserControl
         }
     }
 
-    // ツリーへの直接の文字入力（type-ahead 検索）は vim キーと競合するため無効化する。
+    // ツリーへの直接の文字入力は Explorer の type-ahead 選択として扱う。j/k/g などは
+    // KeyDown 側で Vim 操作として処理されるため、ここには通常の文字入力だけが届く。
     private void OnTreePreviewTextInput(object sender, TextCompositionEventArgs e)
-        => e.Handled = true;
+    {
+        if (sender is not TreeView tree
+            || DataContext is not FolderTreeViewModel vm
+            || string.IsNullOrEmpty(e.Text)
+            || (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
+            return;
+
+        var visible = VisibleNodes(vm.Nodes).ToList();
+        if (visible.Count == 0)
+            return;
+
+        _typeAheadResetTimer.Stop();
+        _typeAheadText += e.Text;
+        var current = tree.SelectedItem as FileNodeViewModel;
+        var currentIndex = current is null ? -1 : visible.IndexOf(current);
+        var matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(
+            visible.Select(n => n.Name).ToList(), _typeAheadText, currentIndex);
+
+        // 入力が続いて一致しなくなった場合は、最後の文字を新しい検索の先頭として試す。
+        if (matchIndex < 0 && _typeAheadText.Length > e.Text.Length)
+        {
+            _typeAheadText = e.Text;
+            matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(
+                visible.Select(n => n.Name).ToList(), _typeAheadText, currentIndex);
+        }
+
+        if (matchIndex >= 0)
+        {
+            ClearMultiSelection();
+            SelectAndReveal(visible[matchIndex], focus: true);
+        }
+
+        _typeAheadResetTimer.Start();
+        e.Handled = true;
+    }
+
+    private void SelectAllVisibleNodes()
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var visible = VisibleNodes(vm.Nodes).ToList();
+        if (visible.Count == 0)
+            return;
+
+        ClearMultiSelection();
+        foreach (var node in visible)
+            AddToMultiSelection(node);
+
+        // フォーカスだけツリーに入っている、または折りたたみでネイティブ選択が非表示になっている
+        // 状態でも、表示中の現在地を作る。Shift+F10 が常に表示中の項目へ届くようにする。
+        if (FileTree.SelectedItem is not FileNodeViewModel current || !visible.Contains(current))
+            SelectAndReveal(visible[0], focus: true);
+        else
+            FindContainer(FileTree, current)?.Focus();
+    }
+
+    private void OpenSelectedContextMenu(TreeView tree)
+    {
+        if (tree.SelectedItem is not FileNodeViewModel node)
+        {
+            if (tree.ContextMenu is { } emptyMenu)
+                emptyMenu.IsOpen = true;
+            return;
+        }
+
+        var container = FindContainer(tree, node);
+        if (container is null)
+            return;
+
+        // キーボード移動直後の遅延プレビューがメニュー表示中にファイルを開いてフォーカスを
+        // 奪わないようにする。右クリック経路は Mouse.RightButton の判定で既に抑止される。
+        _selectionPreviewTimer.Stop();
+        var wasSuppressingPreview = _suppressSelectionPreview;
+        _suppressSelectionPreview = true;
+        try
+        {
+            container.IsSelected = true;
+            container.Focus();
+            if (FindContextMenuTarget(container) is { ContextMenu: { } menu } target)
+            {
+                menu.PlacementTarget = target;
+                menu.IsOpen = true;
+            }
+        }
+        finally
+        {
+            _suppressSelectionPreview = wasSuppressingPreview;
+        }
+    }
+
+    private static FrameworkElement? FindContextMenuTarget(DependencyObject root)
+    {
+        if (root is FrameworkElement element && element.ContextMenu is not null)
+            return element;
+
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (FindContextMenuTarget(VisualTreeHelper.GetChild(root, i)) is { } found)
+                return found;
+        }
+
+        return null;
+    }
 
     private void Activate(FileNodeViewModel node)
     {
