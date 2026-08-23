@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
@@ -42,7 +42,7 @@ public sealed class FilesPaneTests : IDisposable
         // ピン留めの持ち主はツリー。ペインは IFolderPinStore 越しに同じものを見る（§26.10）。
         _tree = new FolderTreeViewModel(_workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(_workspace), new FolderTreeQuery());
+            new FolderTreeCommandHandler(_workspace, new FileOperationHistory()), new FolderTreeQuery());
         _tree.LoadRoot(_root);
     }
 
@@ -60,7 +60,7 @@ public sealed class FilesPaneTests : IDisposable
     private FilesColumnViewModel CreateColumn()
     {
         var column = new FilesColumnViewModel(
-            _workspace, FolderTreeCommandHandler.Unconfined(_workspace), _tree, new FakeFilePlacesProvider());
+            _workspace, FolderTreeCommandHandler.Unconfined(_workspace, new FileOperationHistory()), _tree, new FakeFilePlacesProvider());
         column.Restore(snapshot: null, fallbackFolder: _root);
         return column;
     }
@@ -68,7 +68,7 @@ public sealed class FilesPaneTests : IDisposable
     private FilesPaneViewModel CreatePane()
     {
         var pane = new FilesPaneViewModel(
-            _workspace, FolderTreeCommandHandler.Unconfined(_workspace), _tree, new FakeFilePlacesProvider());
+            _workspace, FolderTreeCommandHandler.Unconfined(_workspace, new FileOperationHistory()), _tree, new FakeFilePlacesProvider());
         pane.Restore(snapshot: null, fallbackFolder: _root);
         return pane;
     }
@@ -469,7 +469,7 @@ public sealed class FilesPaneTests : IDisposable
         var snapshot = pane.Capture();
 
         var restored = new FilesPaneViewModel(
-            _workspace, FolderTreeCommandHandler.Unconfined(_workspace), _tree, new FakeFilePlacesProvider());
+            _workspace, FolderTreeCommandHandler.Unconfined(_workspace, new FileOperationHistory()), _tree, new FakeFilePlacesProvider());
         restored.Restore(snapshot, _root);
 
         Assert.Equal(2, restored.ColumnCount);

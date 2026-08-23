@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
@@ -39,7 +39,7 @@ public sealed class FolderTreeMultiRootTests : IDisposable
         var workspace = new WorkspaceService(new SafetySettings());
         var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+            new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
         return (sut, workspace);
     }
 

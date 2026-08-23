@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -90,6 +90,39 @@ public sealed partial class FolderTreeViewModel
             return null;
         var parent = Path.GetDirectoryName(node.FullPath);
         return parent is null ? null : PasteEntry(parent, node.FullPath, move: false);
+    }
+
+    // ===== Undo / Redo（作成・名前の変更・移動・コピー・削除） =====
+    // 履歴の実体はツリーとファイル一覧ペインで共有する FileOperationHistory（記録は
+    // FolderTreeCommandHandler、逆操作は履歴側）。ここはその結果をツリーと開いているタブへ流す係。
+
+    /// <summary>ファイル操作の Undo／Redo 履歴（メニューの出し分け・入力可否の判定に使う）。</summary>
+    public FileOperationHistory History => _fileCommands.History;
+
+    /// <summary>複数選択の削除・複数ファイルの貼り付けのように、1 回の Undo でまとめて戻したい
+    /// 一連の操作をくくる（<c>using</c> を抜けたところで 1 手として記録される）。</summary>
+    public IDisposable BeginFileOperationBatch() => History.BeginBatch();
+
+    /// <summary>直近のファイル操作を元に戻す。戻せないときは <see cref="InvalidOperationException"/>
+    /// （呼び出し側がメッセージを表示する）。</summary>
+    public FileOperationResult UndoFileOperation() => ApplyHistoryResult(History.Undo());
+
+    /// <summary>元に戻したファイル操作をやり直す。</summary>
+    public FileOperationResult RedoFileOperation() => ApplyHistoryResult(History.Redo());
+
+    // 逆操作でディスク上が変わった分をツリーへ反映し、開いているタブを追従（移動）・クローズ（削除）させる。
+    // 監視（DebouncedFolderWatcher）任せにしないのは、通常のファイル操作と同じ即時性にするため。
+    private FileOperationResult ApplyHistoryResult(FileOperationResult result)
+    {
+        RefreshWorkspace();
+        foreach (var effect in result.Effects)
+        {
+            if (effect.MovedFrom is not null && effect.MovedTo is not null)
+                EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(effect.MovedFrom, effect.MovedTo, effect.IsDirectory));
+            if (effect.Removed is not null)
+                EntryDeleted?.Invoke(this, effect.Removed);
+        }
+        return result;
     }
 
     /// <summary>「相対パスをコピー」用の、ノードが属するワークスペースフォルダーからの相対パス。

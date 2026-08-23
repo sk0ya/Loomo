@@ -1,4 +1,4 @@
-using System.Collections.Specialized;
+﻿using System.Collections.Specialized;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -328,6 +328,18 @@ public partial class FilesColumnView : UserControl
                     DuplicateEntries(Selection());
                     e.Handled = true;
                     return;
+                // ファイル操作の元に戻す／やり直す（履歴はエクスプローラーのツリーと共有）。
+                case Key.Z:
+                    if ((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
+                        RedoFileOperation();
+                    else
+                        UndoFileOperation();
+                    e.Handled = true;
+                    return;
+                case Key.Y:
+                    RedoFileOperation();
+                    e.Handled = true;
+                    return;
             }
             return;
         }
@@ -397,11 +409,14 @@ public partial class FilesColumnView : UserControl
                 "SearchableDir" => single is { IsDirectory: true } && Vm.CanSearchIn(single.FullPath),
                 "Pinnable" => Vm.CanPin(pinTarget),
                 "Unpinnable" => Vm.IsPinned(pinTarget),
+                // Undo/Redo は選択ではなく履歴で決まる（下の UpdateHistoryMenuItems が出し分ける）。
+                "UndoItem" or "RedoItem" => item.Visibility == Visibility.Visible,
                 _ => true,
             };
             item.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        UpdateHistoryMenuItems(menu);
         FolderTreeView.NormalizeSeparators(menu);
         foreach (var submenu in menu.Items.OfType<MenuItem>())
             FolderTreeView.NormalizeSeparators(submenu);
@@ -570,11 +585,13 @@ public partial class FilesColumnView : UserControl
             != MessageBoxResult.OK)
             return;
 
-        foreach (var entry in entries)
-        {
-            try { Vm.DeleteEntry(entry); }
-            catch (InvalidOperationException ex) { ShowError(ex.Message); }
-        }
+        // 選択ぶんは 1 回の Undo でまとめて戻す。
+        using (Vm.BeginFileOperationBatch())
+            foreach (var entry in entries)
+            {
+                try { Vm.DeleteEntry(entry); }
+                catch (InvalidOperationException ex) { ShowError(ex.Message); }
+            }
     }
 
     private void OnDuplicateClick(object sender, RoutedEventArgs e) => DuplicateEntries(Selection());
@@ -583,11 +600,12 @@ public partial class FilesColumnView : UserControl
     {
         if (Vm is null)
             return;
-        foreach (var entry in entries)
-        {
-            try { Vm.DuplicateEntry(entry); }
-            catch (InvalidOperationException ex) { ShowError(ex.Message); }
-        }
+        using (Vm.BeginFileOperationBatch())
+            foreach (var entry in entries)
+            {
+                try { Vm.DuplicateEntry(entry); }
+                catch (InvalidOperationException ex) { ShowError(ex.Message); }
+            }
     }
 
     private void OnCopyClick(object sender, RoutedEventArgs e)
@@ -606,8 +624,9 @@ public partial class FilesColumnView : UserControl
         var move = FileClipboard.PrefersMove();
         try
         {
-            foreach (var source in FileClipboard.GetFiles())
-                Vm.PasteEntry(target, source, move);
+            using (Vm.BeginFileOperationBatch())
+                foreach (var source in FileClipboard.GetFiles())
+                    Vm.PasteEntry(target, source, move);
         }
         catch (InvalidOperationException ex)
         {
@@ -618,6 +637,49 @@ public partial class FilesColumnView : UserControl
         // 切り取り→貼り付け（移動）はエクスプローラー同様、成功後にクリップボードを空にする。
         if (move)
             FileClipboard.Clear();
+    }
+
+    // ===== 元に戻す／やり直す（ファイル操作の Undo/Redo・ツリーと共有の履歴） =====
+
+    private void OnUndoFileOperationClick(object sender, RoutedEventArgs e) => UndoFileOperation();
+
+    private void OnRedoFileOperationClick(object sender, RoutedEventArgs e) => RedoFileOperation();
+
+    private void UndoFileOperation() => RunHistoryStep(undo: true);
+
+    private void RedoFileOperation() => RunHistoryStep(undo: false);
+
+    private void RunHistoryStep(bool undo)
+    {
+        if (Vm is null || (undo ? !Vm.History.CanUndo : !Vm.History.CanRedo))
+            return;
+
+        try
+        {
+            var result = undo ? Vm.UndoFileOperation() : Vm.RedoFileOperation();
+            ToastService.Info($"{(undo ? "元に戻しました" : "やり直しました")}: {result.Description}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    // 「元に戻す」「やり直す」の見出しを次の一手に合わせ、無いときは項目ごと隠す。
+    private void UpdateHistoryMenuItems(ContextMenu menu)
+    {
+        foreach (var item in menu.Items.OfType<MenuItem>())
+            switch (item.Tag as string)
+            {
+                case "UndoItem": ApplyHistoryHeader(item, "元に戻す", Vm?.History.UndoDescription); break;
+                case "RedoItem": ApplyHistoryHeader(item, "やり直す", Vm?.History.RedoDescription); break;
+            }
+    }
+
+    private static void ApplyHistoryHeader(MenuItem item, string verb, string? description)
+    {
+        item.Visibility = description is null ? Visibility.Collapsed : Visibility.Visible;
+        item.Header = description is null ? verb : $"{verb}（{description}）";
     }
 
     private void OnCopyPathClick(object sender, RoutedEventArgs e)

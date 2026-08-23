@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
@@ -36,7 +36,7 @@ public sealed class FolderTreePinningTests : IDisposable
         var workspace = new FakeWorkspaceService();
         return new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+            new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
     }
 
     [Fact]

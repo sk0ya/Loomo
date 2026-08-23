@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
@@ -45,7 +45,7 @@ public sealed class FolderTreeGitignoreTests : IDisposable
         var workspace = new FakeWorkspaceService();
         return new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+            new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class FolderTreeGitignoreTests : IDisposable
             var workspace = new sk0ya.Loomo.Services.WorkspaceService(new sk0ya.Loomo.Core.Safety.SafetySettings());
             var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
                 new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-                new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+                new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
             sut.LoadRoot(_root);
             await sut.WhenTreeLoadedAsync();
             workspace.AddFolder(secondary);

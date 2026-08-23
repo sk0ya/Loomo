@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -205,7 +205,8 @@ public partial class FolderTreeView : UserControl
         var wasPendingG = _pendingG;
         _pendingG = false;
 
-        // Ctrl+C/X/V/D はコピー／切り取り／貼り付け／複製（下の Ctrl 早期 return より前で処理する）。
+        // Ctrl+C/X/V/D はコピー／切り取り／貼り付け／複製、Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y はファイル操作の
+        // 元に戻す／やり直す（下の Ctrl 早期 return より前で処理する）。
         if ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0
             && (e.KeyboardDevice.Modifiers & (ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
         {
@@ -226,6 +227,19 @@ public partial class FolderTreeView : UserControl
                     return;
                 case Key.D:
                     DuplicateNodes(CurrentSelection(node));
+                    e.Handled = true;
+                    return;
+                // エディタの Undo とは別系統。ツリーにフォーカスがある間だけ、ファイル操作
+                // （作成・名前の変更・移動・コピー・削除）の履歴を 1 手ずつ戻す／進める。
+                case Key.Z:
+                    if ((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
+                        RedoFileOperation();
+                    else
+                        UndoFileOperation();
+                    e.Handled = true;
+                    return;
+                case Key.Y:
+                    RedoFileOperation();
                     e.Handled = true;
                     return;
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
@@ -90,9 +90,11 @@ public partial class FolderTreeView
 
         try
         {
-            foreach (var source in sources)
-                if (!string.IsNullOrEmpty(source))
-                    lastPasted = vm.PasteEntry(targetDir, source, move);
+            // 1 回のドロップぶんは 1 回の Undo でまとめて戻す。
+            using (vm.BeginFileOperationBatch())
+                foreach (var source in sources)
+                    if (!string.IsNullOrEmpty(source))
+                        lastPasted = vm.PasteEntry(targetDir, source, move);
         }
         catch (InvalidOperationException ex)
         {

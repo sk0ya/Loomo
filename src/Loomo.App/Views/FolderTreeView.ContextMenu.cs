@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -121,11 +121,13 @@ public partial class FolderTreeView
             return;
 
         string? lastCreated = null;
-        foreach (var node in nodes)
-        {
-            try { lastCreated = vm.DuplicateEntry(node) ?? lastCreated; }
-            catch (InvalidOperationException ex) { ShowError(ex.Message); }
-        }
+        // 複数選択ぶんは 1 回の Undo でまとめて戻す。
+        using (vm.BeginFileOperationBatch())
+            foreach (var node in nodes)
+            {
+                try { lastCreated = vm.DuplicateEntry(node) ?? lastCreated; }
+                catch (InvalidOperationException ex) { ShowError(ex.Message); }
+            }
 
         if (lastCreated is not null)
         {
@@ -150,11 +152,12 @@ public partial class FolderTreeView
             return;
 
         ClearMultiSelection();
-        foreach (var node in nodes)
-        {
-            try { vm.DeleteEntry(node); }
-            catch (InvalidOperationException ex) { ShowError(ex.Message); }
-        }
+        using (vm.BeginFileOperationBatch())
+            foreach (var node in nodes)
+            {
+                try { vm.DeleteEntry(node); }
+                catch (InvalidOperationException ex) { ShowError(ex.Message); }
+            }
     }
 
     private void OnOpenInBrowserClick(object sender, RoutedEventArgs e)
@@ -307,6 +310,8 @@ public partial class FolderTreeView
         // そのフォルダー内のピン留め切替候補を流し込む。
         if (node is { IsWorkspaceFolderRoot: true } headerNode && DataContext is FolderTreeViewModel vm2)
             PopulateRootSwitchMenu(cm, vm2, headerNode);
+
+        UpdateHistoryMenuItems(cm);
 
         // 区切り線の整形は、上の出し分けをすべて終えた最後に行う（グループが丸ごと隠れたときに
         // 区切り線だけが残らないようにする）。
@@ -466,8 +471,9 @@ public partial class FolderTreeView
 
         try
         {
-            foreach (var source in FileClipboard.GetFiles())
-                lastPasted = vm.PasteEntry(targetDir, source, move);
+            using (vm.BeginFileOperationBatch())
+                foreach (var source in FileClipboard.GetFiles())
+                    lastPasted = vm.PasteEntry(targetDir, source, move);
         }
         catch (InvalidOperationException ex)
         {
@@ -499,6 +505,73 @@ public partial class FolderTreeView
         {
             ShowError(ex.Message);
         }
+    }
+
+    // ===== 元に戻す／やり直す（ファイル操作の Undo/Redo） =====
+    // 実体は共有の FileOperationHistory（作成・名前の変更・移動・コピー・削除）。エディタの Undo とは
+    // 別物なので、キーはツリーにフォーカスがあるときだけ拾う（PreviewKeyDown → OnTreeKeyDown）。
+
+    private void OnUndoFileOperationClick(object sender, RoutedEventArgs e) => UndoFileOperation();
+
+    private void OnRedoFileOperationClick(object sender, RoutedEventArgs e) => RedoFileOperation();
+
+    internal void UndoFileOperation() => RunHistoryStep(undo: true);
+
+    internal void RedoFileOperation() => RunHistoryStep(undo: false);
+
+    private void RunHistoryStep(bool undo)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+        if (undo ? !vm.History.CanUndo : !vm.History.CanRedo)
+            return;   // 履歴が空のときは黙って何もしない（エディタ等へキーは渡さない）。
+
+        FileOperationResult result;
+        try
+        {
+            result = undo ? vm.UndoFileOperation() : vm.RedoFileOperation();
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowError(ex.Message);
+            return;
+        }
+
+        // ツリーの外（ワークスペース外・別ルート）へ効くこともあるので、何が起きたかは必ず言葉で出す。
+        ToastService.Info($"{(undo ? "元に戻しました" : "やり直しました")}: {result.Description}");
+        if (result.RevealPath is { } reveal)
+        {
+            ClearMultiSelection();
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
+        }
+    }
+
+    // 「元に戻す」「やり直す」の見出しを次の一手に合わせ、無いときは項目ごと隠す
+    // （区切り線は呼び出し側の NormalizeSeparators が追随する）。
+    private void UpdateHistoryMenuItems(ContextMenu menu)
+    {
+        var history = (DataContext as FolderTreeViewModel)?.History;
+        foreach (var item in menu.Items.OfType<MenuItem>())
+            switch (item.Tag as string)
+            {
+                case "UndoItem": ApplyHistoryHeader(item, "元に戻す", history?.UndoDescription); break;
+                case "RedoItem": ApplyHistoryHeader(item, "やり直す", history?.RedoDescription); break;
+            }
+    }
+
+    private static void ApplyHistoryHeader(MenuItem item, string verb, string? description)
+    {
+        item.Visibility = description is null ? Visibility.Collapsed : Visibility.Visible;
+        item.Header = description is null ? verb : $"{verb}（{description}）";
+    }
+
+    // ツリー空き領域のメニュー。項目の出し分けは Undo/Redo だけなので、それを更新して線をならす。
+    private void OnTreeContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu)
+            return;
+        UpdateHistoryMenuItems(menu);
+        NormalizeSeparators(menu);
     }
 
     private static void ShowError(string message)

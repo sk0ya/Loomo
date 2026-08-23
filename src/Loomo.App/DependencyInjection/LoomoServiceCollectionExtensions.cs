@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.App.Services;
@@ -151,6 +151,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SettingsModelChoiceMapper>();
         services.AddSingleton<TabIconService>();
         services.AddSingleton<Input.KeybindingService>();
+        // ファイル操作の Undo／Redo 履歴。ツリーとファイル一覧ペインで 1 本を共有する
+        // （部屋の中のファイル操作は、どのペインから行っても同じ履歴に積む）。
+        services.AddSingleton<FileOperationHistory>();
         services.AddSingleton<FolderTreeCommandHandler>();
         services.AddSingleton<FolderTreeQuery>();
         services.AddSingleton<WorkspaceListViewModel>();
@@ -165,7 +168,8 @@ internal static class LoomoServiceCollectionExtensions
         // エージェント用の限定（§10）を人間に被せない。
         services.AddSingleton(sp => new FilesPaneViewModel(
             sp.GetRequiredService<IWorkspaceService>(),
-            FolderTreeCommandHandler.Unconfined(sp.GetRequiredService<IWorkspaceService>()),
+            FolderTreeCommandHandler.Unconfined(sp.GetRequiredService<IWorkspaceService>(),
+                sp.GetRequiredService<FileOperationHistory>()),
             sp.GetRequiredService<IFolderPinStore>(),
             sp.GetRequiredService<IFilePlacesProvider>()));
         services.AddSingleton<WorkflowToolRunner>();

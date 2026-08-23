@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -11,22 +11,33 @@ namespace sk0ya.Loomo.App.Services;
 /// 既定は限定つき（<see cref="IWorkspaceService.ResolvePath"/> 経由）だが、ファイル一覧ペインは
 /// 外のフォルダーも開けるファイラなので <see cref="Unconfined"/> を使い、エクスプローラーと同じに
 /// 振る舞う。AI の <c>write_file</c>／<c>edit_file</c> は従来どおり ResolvePath を通るので、
-/// エージェント側の防御は変わらない。</para></summary>
+/// エージェント側の防御は変わらない。</para>
+///
+/// <para>成功した操作は <see cref="FileOperationHistory"/> へ 1 件ずつ記録し、Undo／Redo（逆操作）は
+/// そちらが持つ。履歴はツリーとファイル一覧ペインで共有する 1 本（DI シングルトン）なので、
+/// 限定つき・限定なしのどちらのインスタンスから行った操作も同じ履歴に積まれる。</para></summary>
 public sealed class FolderTreeCommandHandler
 {
     private readonly IWorkspaceService _workspace;
+    private readonly FileOperationHistory _history;
     private readonly bool _confineToWorkspace;
 
-    public FolderTreeCommandHandler(IWorkspaceService workspace) : this(workspace, confineToWorkspace: true) { }
+    public FolderTreeCommandHandler(IWorkspaceService workspace, FileOperationHistory history)
+        : this(workspace, history, confineToWorkspace: true) { }
 
-    private FolderTreeCommandHandler(IWorkspaceService workspace, bool confineToWorkspace)
+    private FolderTreeCommandHandler(IWorkspaceService workspace, FileOperationHistory history, bool confineToWorkspace)
     {
         _workspace = workspace;
+        _history = history;
         _confineToWorkspace = confineToWorkspace;
     }
 
     /// <summary>ワークスペース外でも操作できる版（ファイル一覧ペイン用）。</summary>
-    public static FolderTreeCommandHandler Unconfined(IWorkspaceService workspace) => new(workspace, false);
+    public static FolderTreeCommandHandler Unconfined(IWorkspaceService workspace, FileOperationHistory history)
+        => new(workspace, history, false);
+
+    /// <summary>Undo／Redo の履歴（ツリーとファイル一覧ペインで共有）。</summary>
+    public FileOperationHistory History => _history;
 
     /// <summary>パスの正規化。限定つきなら <see cref="IWorkspaceService.ResolvePath"/>（ワークスペース外は拒否）、
     /// 限定なしなら素の絶対パス化。</summary>
@@ -59,6 +70,7 @@ public sealed class FolderTreeCommandHandler
         {
             throw new InvalidOperationException($"作成に失敗しました: {ex.Message}", ex);
         }
+        _history.Record(FileOperation.Created(fullPath, isDirectory));
         return fullPath;
     }
 
@@ -83,12 +95,23 @@ public sealed class FolderTreeCommandHandler
         {
             throw new InvalidOperationException($"名前の変更に失敗しました: {ex.Message}", ex);
         }
+        _history.Record(FileOperation.Renamed(oldPath, newPath, isDirectory));
         return newPath;
     }
 
     public void Delete(string path, bool isDirectory)
     {
         path = Resolve(path);
+        if (!(isDirectory ? Directory.Exists(path) : File.Exists(path)))
+            return;   // 既に無いものは履歴にも残さない（戻す先が無い）。
+        SendToRecycleBin(path, isDirectory);
+        _history.Record(FileOperation.Deleted(path, isDirectory));
+    }
+
+    /// <summary>ゴミ箱へ送る（完全削除ではない）。Undo の逆操作（作成・コピーの取り消し）も
+    /// ここを通す——「消した」ものは必ずゴミ箱に居る、という一点を守るため。</summary>
+    internal static void SendToRecycleBin(string path, bool isDirectory)
+    {
         try
         {
             if (isDirectory && Directory.Exists(path))
@@ -122,7 +145,7 @@ public sealed class FolderTreeCommandHandler
             if (isDirectory)
             {
                 if (move) Directory.Move(source, destination);
-                else CopyDirectory(source, destination);
+                else CopyDirectoryTree(source, destination);
             }
             else if (move) File.Move(source, destination);
             else File.Copy(source, destination);
@@ -131,6 +154,9 @@ public sealed class FolderTreeCommandHandler
         {
             throw new InvalidOperationException($"貼り付けに失敗しました: {ex.Message}", ex);
         }
+        _history.Record(move
+            ? FileOperation.Moved(source, destination, isDirectory)
+            : FileOperation.Copied(source, destination, isDirectory));
         return destination;
     }
 
@@ -169,13 +195,14 @@ public sealed class FolderTreeCommandHandler
         }
     }
 
-    private static void CopyDirectory(string source, string destination)
+    /// <summary>フォルダーを中身ごとコピーする。Redo（コピーのやり直し）からも使う。</summary>
+    internal static void CopyDirectoryTree(string source, string destination)
     {
         Directory.CreateDirectory(destination);
         foreach (var file in Directory.EnumerateFiles(source))
             File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
         foreach (var directory in Directory.EnumerateDirectories(source))
-            CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
+            CopyDirectoryTree(directory, Path.Combine(destination, Path.GetFileName(directory)));
     }
 
     private static bool PathsEqual(string left, string right) =>

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
@@ -45,7 +45,7 @@ public sealed class FolderTreeContextMenuTests : IDisposable
         var workspace = new WorkspaceService(new SafetySettings());
         var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+            new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
         return (sut, workspace);
     }
 
@@ -62,6 +62,28 @@ public sealed class FolderTreeContextMenuTests : IDisposable
 
         Assert.Equal(Path.Combine(_primary, "note - コピー.md"), created);
         Assert.Equal("hello", File.ReadAllText(created!));
+    }
+
+    /// <summary>右クリック「元に戻す」の入口。逆操作そのものは FileOperationHistoryTests で見るので、
+    /// ここは「ツリーが作り直され、開いているタブが追従できるよう EntryRenamed が飛ぶ」ところだけ。</summary>
+    [Fact]
+    public async Task 名前の変更を元に戻すとタブ追従の通知が飛ぶ()
+    {
+        File.WriteAllText(Path.Combine(_primary, "note.md"), "hello");
+
+        var (sut, _) = CreateSut();
+        sut.LoadRoot(_primary);
+        await sut.WhenTreeLoadedAsync();
+        sut.RenameEntry(sut.Nodes.Single(n => n.Name == "note.md"), "renamed.md");
+
+        EntryRenamedEventArgs? renamed = null;
+        sut.EntryRenamed += (_, e) => renamed = e;
+        var result = sut.UndoFileOperation();
+
+        Assert.Equal(Path.Combine(_primary, "renamed.md"), renamed?.OldPath);
+        Assert.Equal(Path.Combine(_primary, "note.md"), renamed?.NewPath);
+        Assert.Equal(Path.Combine(_primary, "note.md"), result.RevealPath);
+        Assert.True(File.Exists(Path.Combine(_primary, "note.md")));
     }
 
     /// <summary>見出しノード（ワークスペースフォルダー自身）は複製しない——複製先がその親＝

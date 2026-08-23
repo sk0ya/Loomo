@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
@@ -22,7 +22,7 @@ public class ShellViewModelTests
         var workspace = new FakeWorkspaceService();
         var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
             new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
-            new FolderTreeCommandHandler(workspace), new FolderTreeQuery());
+            new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
 
         var approval = new UiApprovalService();
         var settings = new LoomoSettings();
@@ -104,7 +104,7 @@ public class ShellViewModelTests
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-ts-launch-profiles.json")));
 
         var filesVm = new FilesPaneViewModel(
-            workspace, new FolderTreeCommandHandler(workspace), folderTree, new FakeFilePlacesProvider());
+            workspace, new FolderTreeCommandHandler(workspace, new FileOperationHistory()), folderTree, new FakeFilePlacesProvider());
 
         return new ShellViewModel(folderTree, filesVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,

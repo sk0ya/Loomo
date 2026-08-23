@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
@@ -552,6 +552,39 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         Refresh();
         PendingSelection = copied;
         return copied;
+    }
+
+    // ===== Undo / Redo =====
+    // 履歴はツリー（エクスプローラー）と共有する 1 本。どちらのペインで行った操作も、
+    // どちらのペインからでも同じ順に戻せる。
+
+    /// <summary>ファイル操作の Undo／Redo 履歴（ツリーと共有）。</summary>
+    public FileOperationHistory History => _commands.History;
+
+    /// <summary>複数選択ぶんを 1 回の Undo でまとめて戻すためのくくり。</summary>
+    public IDisposable BeginFileOperationBatch() => History.BeginBatch();
+
+    /// <summary>直近のファイル操作を元に戻す（戻せないときは <see cref="InvalidOperationException"/>）。</summary>
+    public FileOperationResult UndoFileOperation() => ApplyHistoryResult(History.Undo());
+
+    /// <summary>元に戻したファイル操作をやり直す。</summary>
+    public FileOperationResult RedoFileOperation() => ApplyHistoryResult(History.Redo());
+
+    private FileOperationResult ApplyHistoryResult(FileOperationResult result)
+    {
+        foreach (var effect in result.Effects)
+        {
+            if (effect.MovedFrom is not null && effect.MovedTo is not null)
+                EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(effect.MovedFrom, effect.MovedTo, effect.IsDirectory));
+            if (effect.Removed is not null)
+                EntryDeleted?.Invoke(this, effect.Removed);
+        }
+        Refresh();
+        // 戻した先が今見ているフォルダーの中なら、その行を選ぶ（別フォルダーなら選択は動かさない）。
+        if (result.RevealPath is { } reveal
+            && string.Equals(Path.GetDirectoryName(reveal), CurrentFolder, StringComparison.OrdinalIgnoreCase))
+            PendingSelection = reveal;
+        return result;
     }
 
     /// <summary>「相対パスをコピー」用。基準は所属するワークスペースフォルダー（マルチルートで
