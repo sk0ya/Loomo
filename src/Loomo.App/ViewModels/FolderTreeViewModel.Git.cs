@@ -17,11 +17,13 @@ public sealed partial class FolderTreeViewModel
 
         _gitLoadCts?.Cancel();
         _gitState = GitTreeState.Empty;
+        GitStatusChanged?.Invoke(this, EventArgs.Empty);
         if (_currentRoot is null)
         {
             _gitLoadCts = null;
             FilterStatus = "";
             ReloadNodes();
+            GitStatusChanged?.Invoke(this, EventArgs.Empty);
             _gitLoadTask = Task.CompletedTask;
             return;
         }
@@ -43,9 +45,18 @@ public sealed partial class FolderTreeViewModel
             _gitState = state;
             ApplyFilterStatus(state);
             ReloadNodes();
+            GitStatusChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException) { }
-        catch { }
+        catch
+        {
+            if (ReferenceEquals(_gitLoadCts, cts))
+            {
+                _gitState = GitTreeState.Empty;
+                ReloadNodes();
+                GitStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
         finally
         {
             if (ReferenceEquals(_gitLoadCts, cts)) _gitLoadCts = null;
@@ -63,6 +74,7 @@ public sealed partial class FolderTreeViewModel
         RefreshRootOptionAvailability(state.RootOptions);
         state.Watcher?.Watch(ExistingWatchPath(state.DisplayedPath, state.FolderPath));
         state.GitLoadCts?.Cancel();
+        state.GitState = GitTreeState.Empty;
         var cts = new CancellationTokenSource();
         state.GitLoadCts = cts;
         state.GitLoadTask = LoadRootStateAndReconcileAsync(state, cts);
@@ -79,9 +91,18 @@ public sealed partial class FolderTreeViewModel
                 return;
             state.GitState = loaded;
             ReconcileRootStateChildren(state);
+            GitStatusChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException) { }
-        catch { }
+        catch
+        {
+            if (ReferenceEquals(state.GitLoadCts, cts))
+            {
+                state.GitState = GitTreeState.Empty;
+                ReconcileRootStateChildren(state);
+                GitStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
         finally
         {
             if (ReferenceEquals(state.GitLoadCts, cts)) state.GitLoadCts = null;

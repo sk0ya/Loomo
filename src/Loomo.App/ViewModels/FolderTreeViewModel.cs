@@ -12,6 +12,7 @@ using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -27,6 +28,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly FilePropertiesService _fileProperties;
     private readonly IShellFileOperations _shellOperations;
     private readonly IQuickAccessService _quickAccess;
+    private readonly GitService? _gitService;
+    private IDisposable? _gitLiveTracker;
     private GitTreeState _gitState = GitTreeState.Empty;
     // ワークスペースの真のルート（ツール・ターミナルの基準。OpenFolder で確定し、表示切替では変えない）。
     private string? _workspaceRoot;
@@ -131,6 +134,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 検索パネルの既定の開始フォルダーへ反映する。
     public event EventHandler<string>? CurrentRootChanged;
 
+    /// <summary>Git状態の読込完了を、FolderTree以外の表示（FilesPane等）へ中継する。</summary>
+    public event EventHandler? GitStatusChanged;
+
     /// <summary>ツリーに現在表示している（ピン留めで切替わり得る）ルート。検索の既定フォルダーに使う。</summary>
     public string? CurrentRoot => _currentRoot;
 
@@ -170,7 +176,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
         FilePropertiesService? fileProperties = null,
         IShellFileOperations? shellOperations = null,
-        IQuickAccessService? quickAccess = null)
+        IQuickAccessService? quickAccess = null,
+        GitService? gitService = null)
     {
         _workspace = workspace;
         _warmup = warmup;
@@ -180,6 +187,12 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _fileProperties = fileProperties ?? new FilePropertiesService();
         _shellOperations = shellOperations ?? new ShellFileOperations();
         _quickAccess = quickAccess ?? new WindowsQuickAccessService();
+        _gitService = gitService;
+        if (_gitService is not null)
+        {
+            _gitService.RepositoryChanged += OnGitRepositoryChanged;
+            _gitService.ActiveRootChanged += OnGitRepositoryChanged;
+        }
         _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
         // アプリと同じ寿命の ViewModel なので購読は解除しない。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();
@@ -213,6 +226,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         try { _workspace.OpenFolder(path); }
         finally { _suppressFoldersChangedReaction = false; }
         _workspaceRoot = Path.GetFullPath(path);
+        EnsureGitLiveTracking();
 
         foreach (var state in _multiRootStates.Values)
             state.Watcher?.Dispose();
@@ -235,6 +249,22 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         }
         else
             SelectRootOption(RootOptions[0]);
+    }
+
+    private void EnsureGitLiveTracking()
+    {
+        if (_gitLiveTracker is null && _gitService is not null)
+            _gitLiveTracker = _gitService.TrackLiveChanges();
+    }
+
+    private void OnGitRepositoryChanged(object? sender, EventArgs e)
+    {
+        var action = new Action(RefreshWorkspace);
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+            dispatcher.BeginInvoke(action);
+        else
+            action();
     }
 
     /// <summary>保存・復元でプライマリフォルダーの正本になる状態。複数フォルダー時はフォルダーごとの
@@ -398,7 +428,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         // （git が変更として報告するパスは ignore 対象になり得ない）。これにより、
         // 変更フォルダを再帰的に自動展開する際にディレクトリ階層ごとに
         // `git check-ignore` を同期起動して UI を固める問題を避ける。
-        var ignoredPaths = (HideIgnoredFiles && !ShowChangedOnly)
+        // 無視対象を隠す場合だけでなく、表示する場合も同じ一括照会の結果を
+        // ノードの「I」バッジへ使う。ShowChangedOnly では Git が返した変更集合だけを
+        // 通すため check-ignore を省き、変更ノードを無視扱いにしない。
+        var ignoredPaths = (!ShowChangedOnly && state.IsGitRepository)
             ? state.GetIgnoredPaths(directories.Concat(files))
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -459,11 +492,72 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         if (FolderTreeShellNamespaces.IsShellPath(fullPath))
             return GitChangeKind.None;
         var state = ResolveGitState(rootKey);
-        if (isDirectory)
-            return state.ChangedDirectories.Contains(Path.GetFullPath(fullPath))
-                ? GitChangeKind.DirectoryChanged
-                : GitChangeKind.None;
-        return state.GetFileStatus(fullPath);
+        return state.GetStatus(fullPath, isDirectory);
+    }
+
+    /// <summary>FilesPaneから使うパス起点のGit状態。ワークスペース外はリポジトリ外として
+    /// Noneを返し、複数ルートでは最も深い所属ルートの状態を使う。</summary>
+    internal GitChangeKind GitStatusForPath(string fullPath, bool isDirectory)
+    {
+        if (FolderTreeShellNamespaces.IsShellPath(fullPath))
+            return GitChangeKind.None;
+
+        string normalized;
+        try { normalized = Path.GetFullPath(fullPath); }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        { return GitChangeKind.None; }
+
+        var state = ResolveGitStateForPath(normalized);
+        if (state is null)
+            return GitChangeKind.None;
+        state.GetIgnoredPaths(new[] { normalized });
+        return state.GetStatus(normalized, isDirectory);
+    }
+
+    /// <summary>FilesPaneの現在地を1回のcheck-ignoreでまとめて判定する。ツリーがその枝を
+    /// まだ展開していなくても、ignoredバッジを正しく出せるようにする。</summary>
+    internal IReadOnlyDictionary<string, GitChangeKind> GitStatusesForPaths(
+        IEnumerable<(string FullPath, bool IsDirectory)> entries)
+    {
+        var result = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
+        var grouped = new Dictionary<GitTreeState, List<(string FullPath, bool IsDirectory)>>();
+        foreach (var entry in entries)
+        {
+            string full;
+            try { full = Path.GetFullPath(entry.FullPath); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            { continue; }
+
+            var state = ResolveGitStateForPath(full);
+            if (state is null)
+                continue;
+            if (!grouped.TryGetValue(state, out var list))
+                grouped[state] = list = new();
+            list.Add((full, entry.IsDirectory));
+        }
+
+        foreach (var pair in grouped)
+        {
+            var state = pair.Key;
+            var paths = pair.Value.Select(entry => entry.FullPath).ToArray();
+            state.GetIgnoredPaths(paths);
+            foreach (var entry in pair.Value)
+                result[entry.FullPath] = state.GetStatus(entry.FullPath, entry.IsDirectory);
+        }
+        return result;
+    }
+
+    private GitTreeState? ResolveGitStateForPath(string normalized)
+    {
+        if (_multiRootStates.Count > 0)
+            return _multiRootStates.Values
+                .Where(candidate => IsPathWithin(normalized, candidate.FolderPath))
+                .OrderByDescending(candidate => candidate.FolderPath.Length)
+                .Select(candidate => candidate.GitState)
+                .FirstOrDefault();
+
+        var root = _workspace.PrimaryFolder;
+        return root is not null && IsPathWithin(normalized, root) ? _gitState : null;
     }
 
     /// <summary>rootKey が属するフォルダーが Git リポジトリ配下か（FileNodeViewModel の「Git」メニュー

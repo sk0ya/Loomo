@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Converters;
 
@@ -39,9 +40,24 @@ public sealed class GitStatusToBrushConverter : IValueConverter
     private static readonly Brush Deleted = Freeze("#E57373");  // 削除・コンフリクト：赤
     private static readonly Brush Renamed = Freeze("#6CB6FF");  // リネーム：青
     private static readonly Brush Other = Freeze("#9DA5B4");    // その他：灰
+    private static readonly Brush Staged = Freeze("#C792EA");   // ステージ済み：紫
+    private static readonly Brush Ignored = Freeze("#7F8490");  // 無視対象：灰
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => (value as string) switch
+    {
+        if (value is GitChangeKind kind)
+            return kind switch
+            {
+                GitChangeKind.Modified or GitChangeKind.DirectoryChanged => Modified,
+                GitChangeKind.Added or GitChangeKind.Untracked => Added,
+                GitChangeKind.Deleted or GitChangeKind.Conflicted => Deleted,
+                GitChangeKind.Renamed => Renamed,
+                GitChangeKind.Staged => Staged,
+                GitChangeKind.Ignored => Ignored,
+                _ => Other,
+            };
+
+        return (value as string) switch
         {
             "M" => Modified,
             "A" or "?" or "C" => Added,
@@ -49,6 +65,7 @@ public sealed class GitStatusToBrushConverter : IValueConverter
             "R" => Renamed,
             _ => Other,
         };
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();

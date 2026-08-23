@@ -673,6 +673,11 @@
                                                 Orientation="Horizontal" Margin="6,0,4,0">
                                         <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,6,0"
                                                VerticalAlignment="Center" SnapsToDevicePixels="True" />
+                                        <TextBlock Text="{Binding GitStatusBadge}"
+                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
+                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
+                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,4,0"
+                                                   FontFamily="Consolas" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                    FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
@@ -696,6 +701,11 @@
                                             Height="24" Margin="6,0,4,0">
                                     <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,6,0"
                                            VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding GitStatusBadge}"
+                                               Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
+                                               Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
+                                               ToolTip="{Binding GitStatusTooltip}" Margin="0,0,4,0"
+                                               FontFamily="Consolas" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
@@ -705,20 +715,41 @@
                                 <StackPanel x:Name="LargeIconsLayout" Visibility="Collapsed" Width="112" Height="112"
                                             Margin="4,6" HorizontalAlignment="Center">
                                     <Image Source="{Binding IconImage}" Width="64" Height="64" HorizontalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" Margin="2,6,2,0" TextAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="2,6,2,0">
+                                        <TextBlock Text="{Binding GitStatusBadge}"
+                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
+                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
+                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
+                                                   FontFamily="Consolas" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
+                                    </StackPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="MediumIconsLayout" Visibility="Collapsed" Width="92" Height="94"
                                             Margin="4,5" HorizontalAlignment="Center">
                                     <Image Source="{Binding IconImage}" Width="40" Height="40" HorizontalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" Margin="2,5,2,0" TextAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="2,5,2,0">
+                                        <TextBlock Text="{Binding GitStatusBadge}"
+                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
+                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
+                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
+                                                   FontFamily="Consolas" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
+                                    </StackPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="SmallIconsLayout" Visibility="Collapsed" Width="76" Height="58"
                                             Margin="3,4" HorizontalAlignment="Center">
                                     <Image Source="{Binding IconImage}" Width="24" Height="24" HorizontalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" Margin="2,3,2,0" TextAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" MaxHeight="28" FontSize="{DynamicResource Fs11}" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="2,3,2,0">
+                                        <TextBlock Text="{Binding GitStatusBadge}"
+                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
+                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
+                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
+                                                   FontFamily="Consolas" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxHeight="28" FontSize="{DynamicResource Fs11}" />
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <!-- タイル：アイコンと代表的な属性を横並びにする。 -->
@@ -730,7 +761,15 @@
                                     <Image Source="{Binding IconImage}" Width="32" Height="32" HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="1" Margin="6,0,3,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontSize="{DynamicResource Fs12}" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding GitStatusBadge}"
+                                                       Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
+                                                       Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
+                                                       ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
+                                                       FontFamily="Consolas" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                       FontSize="{DynamicResource Fs12}" />
+                                        </StackPanel>
                                         <TextBlock Text="{Binding TypeText}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                                         <TextBlock Text="{Binding ModifiedText}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
                                     </StackPanel>

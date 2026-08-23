@@ -597,6 +597,18 @@
                                 <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="GitName" Property="Foreground" Value="#E4676B" />
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Staged">
+                                <Setter TargetName="GitBadge" Property="Text" Value="S" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#C792EA" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#C792EA" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GitStatus}" Value="Ignored">
+                                <Setter TargetName="GitBadge" Property="Text" Value="I" />
+                                <Setter TargetName="GitBadge" Property="Foreground" Value="#7F8490" />
+                                <Setter TargetName="GitBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Foreground" Value="#7F8490" />
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding GitStatus}" Value="DirectoryChanged">
                                 <Setter TargetName="GitBadge" Property="Text" Value="●" />
                                 <Setter TargetName="GitBadge" Property="Foreground" Value="#E2C08D" />

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -131,6 +132,40 @@ public sealed partial class FileEntryViewModel : ObservableObject
     public string FullPath { get; }
     public string Name { get; }
     public bool IsDirectory { get; }
+
+    /// <summary>Git作業ツリー上の状態。リポジトリ外・未読込・クリーンは None。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GitStatusBadge))]
+    [NotifyPropertyChangedFor(nameof(GitStatusTooltip))]
+    private GitChangeKind _gitStatus;
+
+    public string GitStatusBadge => GitStatus switch
+    {
+        GitChangeKind.Modified => "M",
+        GitChangeKind.Untracked => "U",
+        GitChangeKind.Conflicted => "C",
+        GitChangeKind.Staged => "S",
+        GitChangeKind.Ignored => "I",
+        GitChangeKind.Added => "A",
+        GitChangeKind.Deleted => "D",
+        GitChangeKind.Renamed => "R",
+        GitChangeKind.DirectoryChanged => "●",
+        _ => "",
+    };
+
+    public string GitStatusTooltip => GitStatus switch
+    {
+        GitChangeKind.Modified => "変更",
+        GitChangeKind.Untracked => "未追跡",
+        GitChangeKind.Conflicted => "競合",
+        GitChangeKind.Staged => "ステージ済み",
+        GitChangeKind.Ignored => "無視対象",
+        GitChangeKind.Added => "追加",
+        GitChangeKind.Deleted => "削除",
+        GitChangeKind.Renamed => "名前変更",
+        GitChangeKind.DirectoryChanged => "配下に変更あり",
+        _ => "クリーン／Git対象外",
+    };
 
     /// <summary>隠し属性（またはシステム属性）が付いているか。<c>.git</c> のような作業に無関係な
     /// フォルダーは既定で伏せる（「隠しファイルを表示」で戻る）。</summary>

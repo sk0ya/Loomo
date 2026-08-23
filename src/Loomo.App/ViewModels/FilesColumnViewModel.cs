@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Windows.Data;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Files;
 
@@ -26,6 +27,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private readonly DebouncedFolderWatcher _watcher;
     private CancellationTokenSource? _thumbnailCts;
     private int _thumbnailGeneration;
+    private CancellationTokenSource? _gitStatusCts;
 
     // 「戻る／進む」の履歴（フルパス）。ブラウザと同じ規則で、新しい移動は進む側を捨てる。
     private readonly List<string> _back = new();
@@ -54,6 +56,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         _places = places;
         _thumbnails = thumbnails;
         _watcher = new DebouncedFolderWatcher(Refresh);
+        if (_folderTree is not null)
+            _folderTree.GitStatusChanged += OnGitStatusChanged;
         EntriesView = CollectionViewSource.GetDefaultView(Entries);
         _groupDescription = new FilesGroupDescription(this);
         foreach (var setting in CreateColumnSettings())
@@ -393,6 +397,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private void SetFolder(string folder, bool raiseStateChanged = true)
     {
         CancelThumbnailLoads();
+        CancelGitStatusLoad();
         if (!_restoringLayout)
             SaveFolderLayout(CurrentFolder);
         CurrentFolder = folder;
@@ -405,6 +410,14 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         NotifyHistoryChanged();
         if (raiseStateChanged)
             StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnGitStatusChanged(object? sender, EventArgs e)
+    {
+        if (CurrentFolder.Length == 0)
+            return;
+
+        StartGitStatusLoad(_all, CurrentFolder);
     }
 
     private static IEnumerable<FilesColumnSetting> CreateColumnSettings()
@@ -650,7 +663,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
                     var isDirectory = info is DirectoryInfo;
                     var hidden = (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
                     var size = info is FileInfo file ? file.Length : 0L;
-                    items.Add(new FileEntryViewModel(path, isDirectory, size, info.LastWriteTime, hidden));
+                    // Git 状態は一覧を集めた後に一括で照会する。ここで項目ごとに
+                    // check-ignore を起動すると、件数ぶん同期プロセスを起動して UI を固めたうえ、
+                    // 下の一括照会と同じ結果を二重に取得してしまう。
+                    var entry = new FileEntryViewModel(path, isDirectory, size, info.LastWriteTime, hidden);
+                    items.Add(entry);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -667,8 +684,58 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // 変更状態は既に読み込まれているキャッシュだけをここで使う。ignore 判定を含む
+        // git プロセスの起動は StartGitStatusLoad でバックグラウンドに分離する。
+        foreach (var entry in items)
+            entry.GitStatus = _folderTree?.GitStatusForPath(entry.FullPath, entry.IsDirectory)
+                ?? GitChangeKind.None;
+
         _all = items;
         ApplyView(preserveSelection);
+        StartGitStatusLoad(items, CurrentFolder);
+    }
+
+    private void StartGitStatusLoad(IReadOnlyList<FileEntryViewModel> entries, string folder)
+    {
+        if (_folderTree is null || entries.Count == 0)
+            return;
+
+        CancelGitStatusLoad();
+        var cts = new CancellationTokenSource();
+        _gitStatusCts = cts;
+        _ = LoadGitStatusesAsync(entries, folder, cts);
+    }
+
+    private async Task LoadGitStatusesAsync(
+        IReadOnlyList<FileEntryViewModel> entries, string folder, CancellationTokenSource cts)
+    {
+        try
+        {
+            var statuses = await Task.Run(() => _folderTree!.GitStatusesForPaths(
+                entries.Select(entry => (entry.FullPath, entry.IsDirectory))), cts.Token);
+            cts.Token.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(_gitStatusCts, cts) || !PathsEqual(CurrentFolder, folder))
+                return;
+
+            foreach (var entry in entries)
+                entry.GitStatus = statuses.TryGetValue(entry.FullPath, out var status)
+                    ? status : GitChangeKind.None;
+            ApplyView(preserveSelection: true);
+        }
+        catch (OperationCanceledException) { }
+        catch { /* Git 不可用・権限エラー時はキャッシュ状態を表示したままにする。 */ }
+        finally
+        {
+            if (ReferenceEquals(_gitStatusCts, cts))
+                _gitStatusCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private void CancelGitStatusLoad()
+    {
+        _gitStatusCts?.Cancel();
+        _gitStatusCts = null;
     }
 
     private void ApplyView(bool preserveSelection)
@@ -1065,6 +1132,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         CancelThumbnailLoads();
+        CancelGitStatusLoad();
         _watcher.Dispose();
+        if (_folderTree is not null)
+            _folderTree.GitStatusChanged -= OnGitStatusChanged;
     }
 }

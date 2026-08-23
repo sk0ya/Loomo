@@ -18,6 +18,8 @@ public enum GitChangeKind
     Renamed,
     Untracked,
     Conflicted,
+    Staged,
+    Ignored,
     DirectoryChanged,
 }
 
@@ -25,8 +27,9 @@ internal sealed class GitTreeState
 {
     private readonly string _rootPath;
     private readonly string? _gitRootPath;
+    private readonly object _ignoredPathsGate = new();
 
-    public static GitTreeState Empty { get; } = new("", null, new(), new(), new());
+    public static GitTreeState Empty { get; } = new("", null, new(), new(), new(), new());
 
     public bool IsGitRepository => _gitRootPath is not null;
 
@@ -34,19 +37,24 @@ internal sealed class GitTreeState
     public Dictionary<string, GitChangeKind> FileStatuses { get; }
     public HashSet<string> ChangedFiles { get; }
     public HashSet<string> ChangedDirectories { get; }
+    /// <summary>この状態を使って列挙済みの無視対象。無視対象を表示する設定でも、同じ
+    /// バッチ照会の結果をノードのバッジへ再利用する。</summary>
+    public HashSet<string> IgnoredPaths { get; }
 
     private GitTreeState(
         string rootPath,
         string? gitRootPath,
         Dictionary<string, GitChangeKind> fileStatuses,
         HashSet<string> changedFiles,
-        HashSet<string> changedDirectories)
+        HashSet<string> changedDirectories,
+        HashSet<string> ignoredPaths)
     {
         _rootPath = rootPath;
         _gitRootPath = gitRootPath;
         FileStatuses = fileStatuses;
         ChangedFiles = changedFiles;
         ChangedDirectories = changedDirectories;
+        IgnoredPaths = ignoredPaths;
     }
 
     /// <summary>指定ファイルの変更種別（変更なしは None）。</summary>
@@ -58,14 +66,14 @@ internal sealed class GitTreeState
         var fullRoot = Path.GetFullPath(rootPath);
         var gitRoot = FindGitRoot(fullRoot, token);
         if (gitRoot is null)
-            return new GitTreeState(fullRoot, null, new(), new(), new());
+            return new GitTreeState(fullRoot, null, new(), new(), new(), new());
 
         token.ThrowIfCancellationRequested();
         var fileStatuses = LoadFileStatuses(gitRoot, token);
         token.ThrowIfCancellationRequested();
         var changedFiles = new HashSet<string>(fileStatuses.Keys, StringComparer.OrdinalIgnoreCase);
         var changedDirectories = LoadChangedDirectories(changedFiles, fullRoot);
-        return new GitTreeState(fullRoot, gitRoot, fileStatuses, changedFiles, changedDirectories);
+        return new GitTreeState(fullRoot, gitRoot, fileStatuses, changedFiles, changedDirectories, new());
     }
 
     public HashSet<string> GetIgnoredPaths(IEnumerable<string> fullPaths)
@@ -90,7 +98,11 @@ internal sealed class GitTreeState
             .ToArray();
 
         if (candidates.Length == 0)
+        {
+            lock (_ignoredPathsGate)
+                IgnoredPaths.UnionWith(ignoredPaths);
             return ignoredPaths;
+        }
 
         var input = string.Join('\0', candidates.Select(x => x.RelativePath)) + '\0';
         var result = RunGit(_gitRootPath, input, new[] { "check-ignore", "-z", "--stdin" });
@@ -100,7 +112,29 @@ internal sealed class GitTreeState
         foreach (var relativePath in result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
             ignoredPaths.Add(Path.GetFullPath(Path.Combine(_gitRootPath, relativePath)));
 
+        lock (_ignoredPathsGate)
+            IgnoredPaths.UnionWith(ignoredPaths);
         return ignoredPaths;
+    }
+
+    /// <summary>ファイル／フォルダーに表示する状態。無視対象は変更状態より前に判定し、
+    /// フォルダーは配下の変更を集約する。</summary>
+    public GitChangeKind GetStatus(string fullPath, bool isDirectory)
+    {
+        if (isDirectory)
+        {
+            var normalized = Path.GetFullPath(fullPath);
+            if (ChangedDirectories.Contains(normalized))
+                return GitChangeKind.DirectoryChanged;
+            lock (_ignoredPathsGate)
+                return IgnoredPaths.Contains(normalized) ? GitChangeKind.Ignored : GitChangeKind.None;
+        }
+
+        var path = Path.GetFullPath(fullPath);
+        if (FileStatuses.TryGetValue(path, out var status))
+            return status;
+        lock (_ignoredPathsGate)
+            return IgnoredPaths.Contains(path) ? GitChangeKind.Ignored : GitChangeKind.None;
     }
 
     private bool IsInsideGitDirectory(string fullPath)
@@ -176,7 +210,10 @@ internal sealed class GitTreeState
     }
 
     // git status --porcelain の XY 2 文字コードを表示用の種別へ落とす。
-    // 競合（U を含む、AA/DD）を最優先で判定し、以降は X か Y のどちらかに現れた文字で分類する。
+    // 競合（U を含む、AA/DD）を最優先で判定する。作業ツリー側（Y）に差分が
+    // 残っている場合はその状態を表示し、作業ツリーがクリーンで index 側だけに
+    // 差分がある場合だけ Staged とする。これにより AM/MM の編集を Added や
+    // Staged に潰さず、現在の作業ツリー状態を優先できる。
     private static GitChangeKind MapStatus(string xy)
     {
         if (xy == "??")
@@ -187,6 +224,20 @@ internal sealed class GitTreeState
 
         if (x is 'U' || y is 'U' || xy is "AA" or "DD")
             return GitChangeKind.Conflicted;
+        if (!IsCleanStatus(y))
+        {
+            if (y is 'R')
+                return GitChangeKind.Renamed;
+            if (y is 'A')
+                return GitChangeKind.Added;
+            if (y is 'D')
+                return GitChangeKind.Deleted;
+            return GitChangeKind.Modified;
+        }
+
+        // X のみが立っている項目は index にだけ差分がある。
+        if (!IsCleanStatus(x))
+            return GitChangeKind.Staged;
         if (x is 'R' || y is 'R')
             return GitChangeKind.Renamed;
         if (x is 'A' || y is 'A')
@@ -195,6 +246,9 @@ internal sealed class GitTreeState
             return GitChangeKind.Deleted;
         return GitChangeKind.Modified;
     }
+
+    // porcelain=v1 は未設定側を '.' ではなく空白で出す（-z でも同じ）。
+    private static bool IsCleanStatus(char status) => status is '.' or ' ';
 
     private static HashSet<string> LoadChangedDirectories(HashSet<string> changedFiles, string visibleRoot)
     {
