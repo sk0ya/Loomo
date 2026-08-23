@@ -257,6 +257,15 @@ public partial class FolderTreeView : UserControl
         if (sender is not TreeView tree)
             return;
 
+        // ツリー内のルート切替 ComboBox 等がフォーカスを持つ間は、親 TreeView の
+        // PreviewKeyDown で標準の入力・選択操作を奪わない。アドレスバーはツリー外だが、
+        // このガードは同じ PreviewKeyDown の経路に追加された子コントロールにも効く。
+        if (e.OriginalSource is DependencyObject source
+            && (FindAncestor<TextBoxBase>(source) is not null
+                || FindAncestor<ComboBox>(source) is not null
+                || FindAncestor<PasswordBox>(source) is not null))
+            return;
+
         // gg 判定用。g 以外のキーが来たらプレフィックス状態を解除する。
         var wasPendingG = _pendingG;
         _pendingG = false;
@@ -329,15 +338,12 @@ public partial class FolderTreeView : UserControl
         switch (e.Key)
         {
             case Key.J:
-                // 未選択時は先頭を選ぶだけ（その回は下へ動かさず先頭に留める）。
-                if (!EnsureSelection(tree))
-                    RaiseKey(tree, Key.Down);
+                MoveVisibleSelection(tree, delta: 1);
                 e.Handled = true;
                 break;
 
             case Key.K:
-                if (!EnsureSelection(tree))
-                    RaiseKey(tree, Key.Up);
+                MoveVisibleSelection(tree, delta: -1);
                 e.Handled = true;
                 break;
 
@@ -529,6 +535,25 @@ public partial class FolderTreeView : UserControl
         SelectAndReveal(last ? all[^1] : all[0], focus: true);
     }
 
+    /// <summary>展開状態を反映した表示順で、現在の選択を一つ前後へ移動する。</summary>
+    private void MoveVisibleSelection(TreeView tree, int delta)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var visible = VisibleNodes(vm.Nodes).ToList();
+        if (visible.Count == 0)
+            return;
+
+        var currentIndex = tree.SelectedItem is FileNodeViewModel current
+            ? visible.IndexOf(current)
+            : -1;
+        var targetIndex = FolderTreeKeyboardNavigation.FindAdjacentIndex(
+            visible.Count, currentIndex, delta);
+        if (targetIndex >= 0)
+            SelectAndReveal(visible[targetIndex], focus: true);
+    }
+
     // 遅延読込ツリーで指定パスを上から順に展開し、たどり着いたノードを選択・表示する。
     // ShellWindow からエディタの現在ファイルをツリーへ同期表示するために使う。
     public void RevealPath(string fullPath)
@@ -654,23 +679,6 @@ public partial class FolderTreeView : UserControl
         }
 
         return null;
-    }
-
-    // まだ何も選択されていなければ先頭ノードを選択・フォーカスして true を返す。
-    // true のとき呼び出し側はその回の移動を行わず、選択を先頭に留める。
-    private static bool EnsureSelection(TreeView tree)
-    {
-        if (tree.SelectedItem is not null || tree.Items.Count == 0)
-            return false;
-
-        if (tree.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
-        {
-            first.IsSelected = true;
-            first.Focus();
-            return true;
-        }
-
-        return false;
     }
 
     // 指定キーの KeyDown を再発行し、TreeView/TreeViewItem 標準のキーボード操作へ委譲する。
