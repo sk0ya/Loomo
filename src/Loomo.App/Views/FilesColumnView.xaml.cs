@@ -455,6 +455,7 @@ public partial class FilesColumnView : UserControl
                 "GitMenu" => Vm.CanGitFor(single),
                 "GitBlame" => single is { IsDirectory: false } && Vm.CanGitFor(single),
                 "GitIgnore" => Vm.CanAddToGitignoreFor(single),
+                "AiMenu" => selection.Count > 0 && Vm.CanRunFileAi,
                 // Undo/Redo は選択ではなく履歴で決まる（下の UpdateHistoryMenuItems が出し分ける）。
                 "UndoItem" or "RedoItem" => item.Visibility == Visibility.Visible,
                 _ => true,
@@ -574,6 +575,22 @@ public partial class FilesColumnView : UserControl
     {
         if (SingleSelection() is { IsDirectory: true } entry)
             Vm?.RequestSearchInFolder(entry.FullPath);
+    }
+
+    private void OnFileAiClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is null)
+            return;
+        var action = ((sender as MenuItem)?.Tag as string) switch
+        {
+            "FileAiSummarize" => FileAiAction.Summarize,
+            "FileAiReview" => FileAiAction.Review,
+            "FileAiGenerateTests" => FileAiAction.GenerateTests,
+            "FileAiFindRelated" => FileAiAction.FindRelated,
+            _ => (FileAiAction?)null,
+        };
+        if (action is { } selectedAction)
+            Vm.RequestFileAi(selectedAction, Selection());
     }
 
     private void OnGitBlameClick(object sender, RoutedEventArgs e)

@@ -517,6 +517,11 @@
                                          AI 操作は「AI」の子メニューとして増やしていく想定。 -->
                                     <Separator />
                                     <MenuItem Header="AI" Tag="AiMenu" Visibility="Collapsed">
+                                        <MenuItem Header="要約" Tag="FileAiSummarize" Click="OnFileAiClick" />
+                                        <MenuItem Header="レビュー" Tag="FileAiReview" Click="OnFileAiClick" />
+                                        <MenuItem Header="テスト生成" Tag="FileAiGenerateTests" Click="OnFileAiClick" />
+                                        <MenuItem Header="関連ファイルを検索" Tag="FileAiFindRelated" Click="OnFileAiClick" />
+                                        <Separator />
                                         <MenuItem Header="誤字脱字チェック" Click="OnTypoCheckClick" />
                                         <!-- 入力ありワークフローを Opened 時に動的に流し込む（候補が無ければ区切り線ごと隠す）。 -->
                                         <Separator Tag="AiWorkflowSep" />

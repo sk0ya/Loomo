@@ -651,6 +651,13 @@
                                 <MenuItem Header=".gitignore に追加" Tag="GitIgnore" Click="OnAddToGitignoreClick" />
                             </MenuItem>
                             <Separator />
+                            <MenuItem Header="AI" Tag="AiMenu">
+                                <MenuItem Header="要約" Tag="FileAiSummarize" Click="OnFileAiClick" />
+                                <MenuItem Header="レビュー" Tag="FileAiReview" Click="OnFileAiClick" />
+                                <MenuItem Header="テスト生成" Tag="FileAiGenerateTests" Click="OnFileAiClick" />
+                                <MenuItem Header="関連ファイルを検索" Tag="FileAiFindRelated" Click="OnFileAiClick" />
+                            </MenuItem>
+                            <Separator />
                             <!-- ピンの実体はツリーと同じ（IFolderPinStore）。 -->
                             <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
                             <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />

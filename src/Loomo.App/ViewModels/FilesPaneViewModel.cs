@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -47,6 +48,7 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             column.SetInTerminalRequested += (_, request) => SetInTerminalRequested?.Invoke(this, request);
             column.CompareRequested += (_, request) => CompareRequested?.Invoke(this, request);
             column.SearchInFolderRequested += (_, path) => SearchInFolderRequested?.Invoke(this, path);
+            column.FileAiRequested += (_, request) => FileAiRequested?.Invoke(this, request);
             column.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
             column.Activated += (sender, _) => SetActiveColumn((FilesColumnViewModel)sender!);
             AllColumns.Add(column);
@@ -98,6 +100,7 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
     public event EventHandler<FileCompareRequest>? CompareRequested;
     public event EventHandler<string>? SearchInFolderRequested;
+    public event EventHandler<FileAiRequest>? FileAiRequested;
     public event EventHandler? StateChanged;
 
     partial void OnColumnCountChanged(int value)

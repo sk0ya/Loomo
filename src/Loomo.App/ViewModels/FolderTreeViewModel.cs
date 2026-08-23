@@ -148,6 +148,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // AIバーをワークフローモードへ切替えて、当該ファイルを構造化 input として実行する。
     public event EventHandler<WorkflowRunRequest>? WorkflowRequested;
 
+    /// <summary>選択項目をAIバーの定型操作へ渡す要求。</summary>
+    public event EventHandler<FileAiRequest>? FileAiRequested;
+
     // FolderTree の「Git」>「Git Blame」要求（ファイルのみ）。View（コンテキストメニュー）から発火し、
     // ShellWindow がエディタペインでファイルを開いて VimEditorControl のネイティブ Git Blame を
     // トリガーする。引数はファイルのフルパス。

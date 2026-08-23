@@ -277,6 +277,21 @@ public sealed partial class FolderTreeViewModel
             TypoCheckRequested?.Invoke(this, node.FullPath);
     }
 
+    /// <summary>選択ファイル／フォルダーをAI定型操作へ渡す。実体の読み取りと安全な除外は
+    /// 共通コンテキストビルダーで行うため、ここではシェル項目と空選択だけを弾く。</summary>
+    public void RequestFileAi(FileAiAction action, IEnumerable<FileNodeViewModel> nodes)
+    {
+        if (!IsAiReady)
+            return;
+        var paths = nodes.Where(node => !node.IsShellItem)
+            .Select(node => node.FullPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (paths.Count > 0)
+            FileAiRequested?.Invoke(this, new FileAiRequest(action, paths));
+    }
+
     /// <summary>コンテキストメニューに出す「入力ありワークフロー」一覧。</summary>
     public IReadOnlyList<WorkflowSummary> InputWorkflows() => _workflows.ListInputWorkflows();
 

@@ -399,15 +399,16 @@ public partial class FolderTreeView
         var node = (cm.PlacementTarget as FrameworkElement)?.DataContext as FileNodeViewModel;
         SetFileSystemOperationVisibility(cm, node is null || !node.IsShellItem);
         var ready = DataContext is FolderTreeViewModel vm && vm.IsAiReady;
-        var show = ready && node is { IsDirectory: false } && File.Exists(node.FullPath);
+        var selection = CurrentSelection(node);
+        var show = ready && selection.Count > 0 && selection.Any(item => !item.IsShellItem);
 
         foreach (var item in cm.Items)
             if (item is FrameworkElement { Tag: "AiMenu" } element)
                 element.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
 
         // 「AI」サブメニューを出すときだけ、入力ありワークフローの一覧を流し込む。
-        if (show && DataContext is FolderTreeViewModel treeVm)
-            PopulateWorkflowMenu(cm, treeVm, node!);
+        if (show && DataContext is FolderTreeViewModel treeVm && node is { IsDirectory: false } && File.Exists(node.FullPath))
+            PopulateWorkflowMenu(cm, treeVm, node);
 
         // Explorer のQuick accessはWorkspaceStateStoreとは別のOS状態。メニューを開くたびに
         // Shellへ照会するため、外部Explorerでの追加・解除や再起動後も表示がずれない。
@@ -536,6 +537,23 @@ public partial class FolderTreeView
     {
         if (ContextNode(sender) is { IsDirectory: false } node && DataContext is FolderTreeViewModel vm)
             vm.RequestTypoCheck(node);
+    }
+
+    private void OnFileAiClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+        var tag = (sender as MenuItem)?.Tag as string;
+        var action = tag switch
+        {
+            "FileAiSummarize" => FileAiAction.Summarize,
+            "FileAiReview" => FileAiAction.Review,
+            "FileAiGenerateTests" => FileAiAction.GenerateTests,
+            "FileAiFindRelated" => FileAiAction.FindRelated,
+            _ => (FileAiAction?)null,
+        };
+        if (action is { } selectedAction)
+            vm.RequestFileAi(selectedAction, CurrentSelection(ContextNode(sender)));
     }
 
     private void OnPinClick(object sender, RoutedEventArgs e)

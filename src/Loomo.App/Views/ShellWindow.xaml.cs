@@ -21,6 +21,8 @@ public partial class ShellWindow : Window {
     private readonly Editor.Core.Engine.VimEngineServices _editorEngineServices;
     private readonly ILspServerAdmin _lspServerAdmin;
     private readonly KeybindingService _keybindings;
+    private readonly FileAiSelectionContextBuilder _fileAiSelection;
+    private CancellationTokenSource? _fileAiPreparationCts;
     private readonly ShellViewModel _vm;
     private KeyboardDispatcher? _keyboard;
     private readonly Dictionary<Guid, TerminalWorkspaceTabs> _terminalWorkspaces = new();
@@ -132,6 +134,7 @@ public partial class ShellWindow : Window {
         _lspServerAdmin = lspServerAdmin;
         _git = git;
         _keybindings = keybindings;
+        _fileAiSelection = new FileAiSelectionContextBuilder(workspace);
         _keyboard = BuildKeyboardDispatcher();
         _terminalTabs = _scratchTerminalWorkspace.Tabs;
         _editorTabs = _scratchEditorWorkspace.Tabs;
@@ -273,6 +276,7 @@ public partial class ShellWindow : Window {
         vm.FolderTree.CurrentRootChanged += (_, root) => vm.SearchPanel.SetDefaultRoot(root);
         vm.FolderTree.AddressNavigationRequested += (_, path) => vm.Workspaces.ActivateFolder(path);
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
+        vm.FolderTree.FileAiRequested += (_, request) => _ = RunFileAiAsync(request);
         vm.FolderTree.WorkflowRequested += (_, req) => RunWorkflowWithInput(req.WorkflowId, req.Input);
         vm.FolderTree.GitBlameRequested += async (_, fullPath) => {
             fullPath = Path.GetFullPath(fullPath);
@@ -298,6 +302,7 @@ public partial class ShellWindow : Window {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
             FocusPane(PaneKind.Search);
         };
+        vm.Files.FileAiRequested += (_, request) => _ = RunFileAiAsync(request);
         vm.Files.StateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         vm.FolderTree.RevealInFilesPaneRequested += (_, path) => {
             vm.Files.Reveal(path);

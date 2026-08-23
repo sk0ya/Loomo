@@ -177,6 +177,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
     public event EventHandler<FileCompareRequest>? CompareRequested;
     public event EventHandler<string>? SearchInFolderRequested;
+    public event EventHandler<FileAiRequest>? FileAiRequested;
     public event EventHandler<string>? OpenInBrowserRequested;
 
     /// <summary>現在地・並べ替え・絞り込みが変わったので保存してほしい。</summary>
@@ -1075,6 +1076,20 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         // 検索はワークスペースを対象にする道具なので、外のフォルダーは渡さない。
         if (Directory.Exists(folder) && _workspace.Contains(folder))
             SearchInFolderRequested?.Invoke(this, folder);
+    }
+
+    public bool CanRunFileAi => _folderTree?.IsAiReady == true;
+
+    public void RequestFileAi(FileAiAction action, IEnumerable<FileEntryViewModel> entries)
+    {
+        if (!CanRunFileAi)
+            return;
+        var paths = entries.Select(entry => entry.FullPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (paths.Count > 0)
+            FileAiRequested?.Invoke(this, new FileAiRequest(action, paths));
     }
 
     /// <summary>そのフォルダーを検索へ送れるか（コンテキストメニューの出し分け）。</summary>
