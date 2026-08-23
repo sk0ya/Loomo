@@ -403,6 +403,9 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     private void SetDisplayRoot(string path)
     {
         _currentRoot = Path.GetFullPath(path);
+        // ピン留め切替・セッション復元・直接入力のいずれでも、表示中の実体を
+        // アドレス欄へ反映する。入力途中の値は SetDisplayRoot が呼ばれないため上書きしない。
+        AddressText = _currentRoot;
         RefreshRootOptionAvailability(RootOptions);
         RootLabel = Path.GetFileName(path.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(RootLabel)) RootLabel = path;

@@ -271,6 +271,7 @@ public partial class ShellWindow : Window {
             FocusPane(PaneKind.Search);
         };
         vm.FolderTree.CurrentRootChanged += (_, root) => vm.SearchPanel.SetDefaultRoot(root);
+        vm.FolderTree.AddressNavigationRequested += (_, path) => vm.Workspaces.ActivateFolder(path);
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         vm.FolderTree.WorkflowRequested += (_, req) => RunWorkflowWithInput(req.WorkflowId, req.Input);
         vm.FolderTree.GitBlameRequested += async (_, fullPath) => {
