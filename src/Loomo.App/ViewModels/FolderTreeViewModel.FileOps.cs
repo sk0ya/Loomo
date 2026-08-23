@@ -28,7 +28,8 @@ public sealed partial class FolderTreeViewModel
     /// ファイル選択時はその親、未選択時はルート。フォルダ未選択なら null。</summary>
     public string? GetTargetDirectory(FileNodeViewModel? selected)
     {
-        if (_currentRoot is null)
+        if (_currentRoot is null || FolderTreeShellNamespaces.IsShellPath(_currentRoot)
+            || selected?.IsShellItem == true)
             return null;
         if (selected is null)
             return _currentRoot;
@@ -38,6 +39,7 @@ public sealed partial class FolderTreeViewModel
     /// <summary>指定ディレクトリ直下に空ファイル／フォルダを作成し、作成したフルパスを返す。</summary>
     public string CreateEntry(string parentDirectory, string name, bool isDirectory)
     {
+        EnsureFileSystemPath(parentDirectory);
         var fullPath = _fileCommands.Create(parentDirectory, name, isDirectory);
         RefreshWorkspace();
         return fullPath;
@@ -46,6 +48,7 @@ public sealed partial class FolderTreeViewModel
     /// <summary>ノードを新しい名前へ変更し、変更後のフルパスを返す。</summary>
     public string RenameEntry(FileNodeViewModel node, string newName)
     {
+        EnsureFileSystemItem(node);
         var oldPath = _workspace.ResolvePath(node.FullPath);
         var newPath = _fileCommands.Rename(oldPath, newName, node.IsDirectory);
         if (string.Equals(oldPath, newPath, StringComparison.Ordinal)) return oldPath;
@@ -58,6 +61,7 @@ public sealed partial class FolderTreeViewModel
     /// <summary>ノードをゴミ箱へ送る（完全削除ではない）。</summary>
     public void DeleteEntry(FileNodeViewModel node)
     {
+        EnsureFileSystemItem(node);
         var path = _workspace.ResolvePath(node.FullPath);
         _fileCommands.Delete(path, node.IsDirectory);
         RefreshWorkspace();
@@ -71,6 +75,8 @@ public sealed partial class FolderTreeViewModel
     /// 「 - コピー」を付けて一意化し、フォルダを自身／配下へ貼るのは拒否する。</summary>
     public string PasteEntry(string targetDirectory, string sourcePath, bool move)
     {
+        EnsureFileSystemPath(targetDirectory);
+        EnsureFileSystemPath(sourcePath);
         var source = Path.GetFullPath(sourcePath);
         var isDirectory = _fileCommands.DirectoryExists(source);
         var destination = _fileCommands.Paste(targetDirectory, source, move);
@@ -88,6 +94,8 @@ public sealed partial class FolderTreeViewModel
         bool move,
         Func<FileConflictContext, FileConflictDecision> resolver)
     {
+        EnsureFileSystemPath(targetDirectory);
+        EnsureFileSystemPath(sourcePath);
         var source = Path.GetFullPath(sourcePath);
         var isDirectory = _fileCommands.DirectoryExists(source);
         var result = _fileCommands.PasteWithConflict(targetDirectory, source, move, resolver);
@@ -105,7 +113,7 @@ public sealed partial class FolderTreeViewModel
     /// ワークスペース外になり得るので対象外＝null を返す。</summary>
     public string? DuplicateEntry(FileNodeViewModel node)
     {
-        if (node.IsWorkspaceFolderRoot)
+        if (node.IsWorkspaceFolderRoot || node.IsShellItem)
             return null;
         var parent = Path.GetDirectoryName(node.FullPath);
         return parent is null ? null : PasteEntry(parent, node.FullPath, move: false);
@@ -123,12 +131,24 @@ public sealed partial class FolderTreeViewModel
         CancellationToken cancellationToken = default)
     {
         var paths = nodes
-            .Where(n => n is not null && !n.IsWorkspaceFolderRoot)
+            .Where(n => n is not null && !n.IsWorkspaceFolderRoot && !n.IsShellItem)
             .Select(n => n.FullPath)
             .ToArray();
         var archive = await _fileCommands.CompressToZipAsync(paths, cancellationToken);
         RefreshWorkspace();
         return archive;
+    }
+
+    private static void EnsureFileSystemItem(FileNodeViewModel node)
+    {
+        if (node.IsShellItem)
+            throw new InvalidOperationException("Shell 名前空間の項目はFolderTreeから変更できません。");
+    }
+
+    private static void EnsureFileSystemPath(string path)
+    {
+        if (FolderTreeShellNamespaces.IsShellPath(path))
+            throw new InvalidOperationException("Shell 名前空間の項目は通常のファイル操作へ渡せません。");
     }
 
     // ===== Undo / Redo（作成・名前の変更・移動・コピー・削除） =====
@@ -175,6 +195,8 @@ public sealed partial class FolderTreeViewModel
     /// コピーされるパスが変わると、貼り付け先での意味が変わってしまうため。</summary>
     public string RelativePathFor(FileNodeViewModel node)
     {
+        if (node.IsShellItem)
+            return node.FullPath;
         var baseFolder = FolderRootFor(node.RootKey) ?? _workspace.FolderForOrPrimary(node.FullPath);
         if (baseFolder is null)
             return node.FullPath;

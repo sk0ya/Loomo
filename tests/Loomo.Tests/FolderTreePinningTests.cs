@@ -45,7 +45,7 @@ public sealed class FolderTreePinningTests : IDisposable
         var sut = CreateSut();
         sut.LoadRoot(_root);
 
-        var option = Assert.Single(sut.RootOptions);
+        var option = Assert.Single(sut.RootOptions, o => !o.IsPinned && !o.IsShellNamespace);
         Assert.False(option.IsPinned);
         Assert.Equal(Path.GetFullPath(_root), option.FullPath);
         Assert.Same(option, sut.SelectedRootOption);
@@ -145,7 +145,7 @@ public sealed class FolderTreePinningTests : IDisposable
         sut.PinFolder(_nested);
         Assert.Equal(1, fired);
 
-        sut.SelectedRootOption = sut.RootOptions.Single(o => !o.IsPinned);
+        sut.SelectedRootOption = sut.RootOptions.Single(o => !o.IsPinned && !o.IsShellNamespace);
         Assert.Equal(2, fired);
 
         sut.UnpinFolder(_nested);

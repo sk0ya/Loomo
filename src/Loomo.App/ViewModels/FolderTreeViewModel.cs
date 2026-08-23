@@ -214,7 +214,20 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         BuildRootOptions(pinnedFolders ?? Array.Empty<string>());
 
         var initial = treeRootPath is null ? null : FindRootOption(treeRootPath);
-        SelectRootOption(initial ?? RootOptions[0]);
+        if (initial is not null)
+            SelectRootOption(initial);
+        else if (treeRootPath is { } savedShell
+                 && FolderTreeShellNamespaces.IsShellPath(savedShell)
+                 && _query.DirectoryExists(savedShell))
+        {
+            // 既知の入口ではないライブラリ内の仮想子項目も TreeRootPath として復元する。
+            _suppressRootSelection = true;
+            try { SelectedRootOption = null; }
+            finally { _suppressRootSelection = false; }
+            SetDisplayRoot(savedShell);
+        }
+        else
+            SelectRootOption(RootOptions[0]);
     }
 
     /// <summary>保存・復元でプライマリフォルダーの正本になる状態。複数フォルダー時はフォルダーごとの
@@ -264,6 +277,14 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private void RefreshWorkspace()
     {
         if (_multiRootStates.Count == 0 && _currentRoot is null) return;
+        if (_multiRootStates.Count == 0 && _currentRoot is not null
+            && FolderTreeShellNamespaces.IsShellPath(_currentRoot))
+        {
+            // 仮想名前空間には FileSystemWatcher / Git の対応するルートがない。
+            // シェル列挙を明示的な更新として扱い、通常パス側の監視を残さない。
+            ReloadNodes();
+            return;
+        }
         if (_multiRootStates.Count == 0)
         {
             RefreshRootOptionAvailability(RootOptions);
@@ -365,6 +386,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         var entries = _query.EnumerateChildren(path);
         var directories = entries.Directories;
         var files = entries.Files;
+        var isShell = FolderTreeShellNamespaces.IsShellPath(path);
         // 「変更のみ表示」では変更ファイル集合だけを通すため、ignore 判定は不要
         // （git が変更として報告するパスは ignore 対象になり得ない）。これにより、
         // 変更フォルダを再帰的に自動展開する際にディレクトリ階層ごとに
@@ -374,11 +396,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var visibleDirectories = directories
-            .OrderBy(d => Path.GetFileName(d))
-            .Where(d => ShouldShow(d, isDirectory: true, ignoredPaths, state))
+            .OrderBy(d => FolderTreeShellNamespaces.Name(d), StringComparer.OrdinalIgnoreCase)
+            .Where(d => isShell || ShouldShow(d, isDirectory: true, ignoredPaths, state))
             .Select(d =>
             {
-                var node = new FileNodeViewModel(d, true, this, rootKey);
+                var node = new FileNodeViewModel(d, true, this, rootKey, isShellItem: isShell);
                 // 「変更のみ表示」では変更ファイルがフォルダの奥に埋もれて見えなくなるため、
                 // 該当フォルダを自動展開して中の追加/変更ファイルをそのまま見せる。
                 // （展開すると子も同じ経路でフィルタ＆自動展開され、末端まで再帰的に開く）
@@ -387,9 +409,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             });
 
         var visibleFiles = files
-            .OrderBy(f => Path.GetFileName(f))
-            .Where(f => ShouldShow(f, isDirectory: false, ignoredPaths, state))
-            .Select(f => new FileNodeViewModel(f, false, this, rootKey));
+            .OrderBy(f => FolderTreeShellNamespaces.Name(f), StringComparer.OrdinalIgnoreCase)
+            .Where(f => isShell || ShouldShow(f, isDirectory: false, ignoredPaths, state))
+            .Select(f => new FileNodeViewModel(f, false, this, rootKey, isShellItem: isShell));
 
         foreach (var node in visibleDirectories.Concat(visibleFiles))
             yield return node;
@@ -399,6 +421,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     private bool ShouldShow(string path, bool isDirectory, HashSet<string> ignoredPaths, GitTreeState state)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(path))
+            return true;
         var fullPath = Path.GetFullPath(path);
 
         if (HideIgnoredFiles && ignoredPaths.Contains(fullPath))
@@ -425,6 +449,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ツリー上のノードに付ける差分マークの種別。フォルダは配下に変更を含むなら DirectoryChanged。
     internal GitChangeKind GitStatusFor(string fullPath, bool isDirectory, string rootKey)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(fullPath))
+            return GitChangeKind.None;
         var state = ResolveGitState(rootKey);
         if (isDirectory)
             return state.ChangedDirectories.Contains(Path.GetFullPath(fullPath))
@@ -448,6 +474,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         if (_currentRoot is null)
             return "フォルダを開いてください";
 
+        if (FolderTreeShellNamespaces.IsShellPath(_currentRoot)
+            && !_query.DirectoryExists(_currentRoot))
+            return "Windows Shell 名前空間を利用できません";
+
         if (!_query.DirectoryExists(_currentRoot))
             return "フォルダーが存在しません";
 
@@ -462,6 +492,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     private void StartWatching(string path)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(path))
+            return;
         _watcher ??= new DebouncedFolderWatcher(RefreshWorkspace);
         _watcher.Watch(ExistingWatchPath(path, _workspaceRoot));
     }
@@ -602,6 +634,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // ピン先が消えている間は、作成を検知できる最寄りの既存親（ただしワークスペース内）を監視する。
     private static string ExistingWatchPath(string path, string? workspaceRoot)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(path))
+            return path;
         var candidate = Path.GetFullPath(path);
         var boundary = workspaceRoot is null ? null : Path.GetFullPath(workspaceRoot);
         while (!Directory.Exists(candidate)

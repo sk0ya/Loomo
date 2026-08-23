@@ -42,7 +42,7 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     /// （実在しない・ワークスペース外・フォルダー自身・既にピン留め済み）をそのまま写したもの。</summary>
     public bool CanPin(string fullPath)
     {
-        if (string.IsNullOrEmpty(fullPath))
+        if (string.IsNullOrEmpty(fullPath) || FolderTreeShellNamespaces.IsShellPath(fullPath))
             return false;
         var full = Path.GetFullPath(fullPath);
         if (!_query.DirectoryExists(full) || IsPinnedPath(full))
@@ -71,7 +71,7 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     /// <summary>fullPath がピン留め済みか（属するワークスペースフォルダー基準）。</summary>
     public bool IsPinnedPath(string fullPath)
     {
-        if (fullPath.Length == 0)
+        if (fullPath.Length == 0 || FolderTreeShellNamespaces.IsShellPath(fullPath))
             return false;
         var full = Path.GetFullPath(fullPath);
 
@@ -97,6 +97,8 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     /// ルート、複数フォルダー時は所属するワークスペースフォルダー）の切替候補へ追加する。</summary>
     public void PinFolder(string fullPath)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(fullPath))
+            return;
         var full = Path.GetFullPath(fullPath);
         if (!_query.DirectoryExists(full))
             return;
@@ -126,6 +128,8 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     /// <summary>ピン留めを解除する。表示中のパスだった場合は、そのルートの表示をルート自身へ戻す。</summary>
     public void UnpinFolder(string fullPath)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(fullPath))
+            return;
         var full = Path.GetFullPath(fullPath);
 
         if (_multiRootStates.Count == 0)
@@ -318,7 +322,8 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     private void SwitchRootOption(FolderTreeRootState state, FolderRootOption option)
     {
         state.SelectedRootOption = option;
-        var full = Path.GetFullPath(option.FullPath);
+        if (!FolderTreeShellNamespaces.TryNormalize(option.FullPath, state.FolderPath, out var full))
+            return;
         if (PathsEqual(full, state.DisplayedPath))
             return;
 
@@ -336,6 +341,12 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
         {
             RootOptions.Clear();
             RootOptions.Add(new FolderRootOption(_workspaceRoot!, LabelFor(_workspaceRoot!), isPinned: false));
+
+            // Explorer の左ペインで常用する仮想ルート。ピン留めとは別の固定候補なので、
+            // ワークスペース状態へは候補一覧ではなく TreeRootPath だけを保存する。
+            foreach (var shell in FolderTreeShellNamespaces.Known)
+                RootOptions.Add(new FolderRootOption(shell.Path, shell.Label, isPinned: false,
+                    isShellNamespace: true));
 
             // ブランチ切替などで一時的に消えたピンも保持する。存在状態は FolderRootOption が表示する。
             foreach (var pin in pinnedFolders)
@@ -372,7 +383,8 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     {
         try
         {
-            var full = Path.GetFullPath(fullPath);
+            if (!FolderTreeShellNamespaces.TryNormalize(fullPath, _workspaceRoot, out var full))
+                return null;
             return RootOptions.FirstOrDefault(o => PathsEqual(o.FullPath, full));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
@@ -402,12 +414,16 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     // ツリーの表示ルートを差し替える（ワークスペースの確定はしない、単一フォルダー時のみ使う）。
     private void SetDisplayRoot(string path)
     {
-        _currentRoot = Path.GetFullPath(path);
+        if (!FolderTreeShellNamespaces.TryNormalize(path, _currentRoot ?? _workspaceRoot, out var normalized))
+            return;
+        _currentRoot = normalized;
         // ピン留め切替・セッション復元・直接入力のいずれでも、表示中の実体を
         // アドレス欄へ反映する。入力途中の値は SetDisplayRoot が呼ばれないため上書きしない。
         AddressText = _currentRoot;
         RefreshRootOptionAvailability(RootOptions);
-        RootLabel = Path.GetFileName(path.TrimEnd('\\', '/'));
+        RootLabel = FolderTreeShellNamespaces.IsShellPath(_currentRoot)
+            ? FolderTreeShellNamespaces.Name(_currentRoot)
+            : Path.GetFileName(_currentRoot.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(RootLabel)) RootLabel = path;
 
         // 検索パネルの既定の開始フォルダーを表示ルートへ追従させる。
@@ -422,14 +438,25 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
 
         // git 状態はバックグラウンドで読み、完了後に ReloadNodes でツリーへ反映する。
         // UI スレッドで git プロセスを同期起動しないので、ワークスペース切替が固まらない。
-        RefreshGitStateAsync();
-        StartWatching(_currentRoot);
+        if (FolderTreeShellNamespaces.IsShellPath(_currentRoot))
+        {
+            _gitLoadCts?.Cancel();
+            _gitState = GitTreeState.Empty;
+            _watcher?.Dispose();
+            _watcher = null;
+            ReloadNodes();
+        }
+        else
+        {
+            RefreshGitStateAsync();
+            StartWatching(_currentRoot);
+        }
     }
 
-    private static void RefreshRootOptionAvailability(IEnumerable<FolderRootOption> options)
+    private void RefreshRootOptionAvailability(IEnumerable<FolderRootOption> options)
     {
         foreach (var option in options)
-            option.IsMissing = !Directory.Exists(option.FullPath);
+            option.IsMissing = !(_query.DirectoryExists(option.FullPath));
     }
 
     // ComboBox の表示名。ワークスペースルートはフォルダ名、ピンはルートからの相対パス
@@ -440,6 +467,8 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     // baseRoot にそのワークスペースフォルダー自身のパスを渡す（プライマリ基準の相対化はしない）。
     private static string LabelForWithin(string? baseRoot, string fullPath)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(fullPath))
+            return FolderTreeShellNamespaces.Name(fullPath);
         var name = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(name))
             name = fullPath;
@@ -481,7 +510,10 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
 
     private static bool PathsEqual(string a, string b)
         => string.Equals(
-            Path.GetFullPath(a).TrimEnd('\\', '/'),
-            Path.GetFullPath(b).TrimEnd('\\', '/'),
-            StringComparison.OrdinalIgnoreCase);
+            NormalizeRootPath(a), NormalizeRootPath(b), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeRootPath(string path)
+        => FolderTreeShellNamespaces.TryNormalize(path, null, out var normalized)
+            ? normalized.TrimEnd('\\', '/')
+            : path.TrimEnd('\\', '/');
 }

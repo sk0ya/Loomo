@@ -397,6 +397,7 @@ public partial class FolderTreeView
             return;
 
         var node = (cm.PlacementTarget as FrameworkElement)?.DataContext as FileNodeViewModel;
+        SetFileSystemOperationVisibility(cm, node is null || !node.IsShellItem);
         var ready = DataContext is FolderTreeViewModel vm && vm.IsAiReady;
         var show = ready && node is { IsDirectory: false } && File.Exists(node.FullPath);
 
@@ -561,10 +562,10 @@ public partial class FolderTreeView
     // FileClipboard が持つ。ここは「何を選んでいるか」だけを決める。
 
     private void OnCopyClick(object sender, RoutedEventArgs e)
-        => FileClipboard.SetFiles(CurrentSelection(ContextNode(sender)).Select(n => n.FullPath), move: false);
+        => FileClipboard.SetFiles(CurrentSelection(ContextNode(sender)).Where(n => !n.IsShellItem).Select(n => n.FullPath), move: false);
 
     private void OnCutClick(object sender, RoutedEventArgs e)
-        => FileClipboard.SetFiles(CurrentSelection(ContextNode(sender)).Select(n => n.FullPath), move: true);
+        => FileClipboard.SetFiles(CurrentSelection(ContextNode(sender)).Where(n => !n.IsShellItem).Select(n => n.FullPath), move: true);
 
     private void OnPasteClick(object sender, RoutedEventArgs e) => PasteInto(ContextNode(sender));
 
@@ -706,8 +707,18 @@ public partial class FolderTreeView
     {
         if (sender is not ContextMenu menu)
             return;
+        var allowed = DataContext is FolderTreeViewModel vm
+            && !FolderTreeShellNamespaces.IsShellPath(vm.CurrentRoot);
+        SetFileSystemOperationVisibility(menu, allowed);
         UpdateHistoryMenuItems(menu);
         NormalizeSeparators(menu);
+    }
+
+    private static void SetFileSystemOperationVisibility(ContextMenu menu, bool allowed)
+    {
+        foreach (var item in menu.Items.OfType<FrameworkElement>())
+            if (item.Tag as string == "FileSystemOnly")
+                item.Visibility = allowed ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static void ShowError(string message)

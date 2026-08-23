@@ -5,10 +5,19 @@ public sealed record FolderTreeEntries(IReadOnlyList<string> Directories, IReadO
 /// <summary>フォルダーツリーが表示するファイルシステム情報を読み取る。</summary>
 public sealed class FolderTreeQuery
 {
-    public bool DirectoryExists(string path) => Directory.Exists(path);
+    private readonly WindowsFolderTreeShellNamespaceProvider _shell;
+
+    public FolderTreeQuery(WindowsFolderTreeShellNamespaceProvider? shell = null)
+        => _shell = shell ?? new WindowsFolderTreeShellNamespaceProvider();
+
+    public bool DirectoryExists(string path)
+        => FolderTreeShellNamespaces.IsShellPath(path) ? _shell.Exists(path) : Directory.Exists(path);
 
     public FolderTreeEntries EnumerateChildren(string path)
     {
+        if (FolderTreeShellNamespaces.IsShellPath(path))
+            return _shell.Enumerate(path);
+
         if (!Directory.Exists(path))
             return new FolderTreeEntries(Array.Empty<string>(), Array.Empty<string>());
 

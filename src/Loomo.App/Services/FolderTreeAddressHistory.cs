@@ -87,16 +87,7 @@ public sealed class FolderTreeAddressHistory
         if (text.Length == 0)
             return false;
 
-        try
-        {
-            var baseDirectory = Normalize(basePath) ?? Environment.CurrentDirectory;
-            fullPath = Path.GetFullPath(text, baseDirectory);
-            return true;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
+        return FolderTreeShellNamespaces.TryNormalize(text, basePath, out fullPath);
     }
 
     private static void AddMatches(IEnumerable<string> paths, string input, List<string> result, int limit)
@@ -125,6 +116,8 @@ public sealed class FolderTreeAddressHistory
         fullPath = string.Empty;
         if (string.IsNullOrWhiteSpace(path))
             return false;
+        if (FolderTreeShellNamespaces.TryNormalize(path, null, out fullPath))
+            return true;
         try
         {
             fullPath = Path.GetFullPath(path.Trim());

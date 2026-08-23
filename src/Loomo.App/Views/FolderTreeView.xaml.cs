@@ -289,11 +289,11 @@ public partial class FolderTreeView : UserControl
                     e.Handled = true;
                     return;
                 case Key.C:
-                    FileClipboard.SetFiles(CurrentSelection(node).Select(n => n.FullPath), move: false);
+                    FileClipboard.SetFiles(CurrentSelection(node).Where(n => !n.IsShellItem).Select(n => n.FullPath), move: false);
                     e.Handled = true;
                     return;
                 case Key.X:
-                    FileClipboard.SetFiles(CurrentSelection(node).Select(n => n.FullPath), move: true);
+                    FileClipboard.SetFiles(CurrentSelection(node).Where(n => !n.IsShellItem).Select(n => n.FullPath), move: true);
                     e.Handled = true;
                     return;
                 case Key.V:

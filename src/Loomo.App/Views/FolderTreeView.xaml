@@ -92,6 +92,8 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0" Style="{StaticResource ExplorerIconButton}"
@@ -169,7 +171,16 @@
                 </Grid>
             </Button>
 
-            <StackPanel Grid.Column="6" Margin="6,0,0,0">
+            <Button Grid.Column="6" Style="{StaticResource ExplorerIconButton}"
+                    Command="{Binding GoBackCommand}" ToolTip="戻る（Alt+←）">
+                <TextBlock Text="‹" FontSize="22" Margin="0,-3,0,0" />
+            </Button>
+            <Button Grid.Column="7" Style="{StaticResource ExplorerIconButton}"
+                    Command="{Binding GoForwardCommand}" ToolTip="進む（Alt+→）">
+                <TextBlock Text="›" FontSize="22" Margin="0,-3,0,0" />
+            </Button>
+
+            <StackPanel Grid.Column="8" Margin="6,0,0,0">
                 <ComboBox x:Name="AddressComboBox"
                           MinHeight="26"
                           IsEditable="True"
@@ -243,11 +254,11 @@
                     <!-- 空き領域での右クリック。対象は「ツリー全体／表示ルート直下」に限る
                          （項目に効く操作は下の ItemTemplate 側のメニュー）。 -->
                     <ContextMenu Opened="OnTreeContextMenuOpened">
-                        <MenuItem Header="新規ファイル" Click="OnNewFileClick"
+                        <MenuItem Header="新規ファイル" Tag="FileSystemOnly" Click="OnNewFileClick"
                                   ToolTip="名前と拡張子を選んで作成します" />
-                        <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                        <MenuItem Header="新規フォルダー" Tag="FileSystemOnly" Click="OnNewFolderClick" />
                         <Separator />
-                        <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
+                        <MenuItem Header="貼り付け" Tag="FileSystemOnly" InputGestureText="Ctrl+V" Click="OnPasteClick" />
                         <!-- 見出しと表示可否は Opened で次の一手に合わせる（履歴が空なら隠す）。 -->
                         <Separator />
                         <MenuItem Header="元に戻す" Tag="UndoItem" InputGestureText="Ctrl+Z"
@@ -389,22 +400,22 @@
                                      出し分け（グループが丸ごと隠れたときに線だけ残さない）は
                                      OnNodeContextMenuOpened→NormalizeSeparators が行う。 -->
                                 <ContextMenu Opened="OnNodeContextMenuOpened">
-                                    <MenuItem Header="新規ファイル" Click="OnNewFileClick"
+                                    <MenuItem Header="新規ファイル" Tag="FileSystemOnly" Click="OnNewFileClick"
                                               ToolTip="名前と拡張子を選んで作成します" />
-                                    <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                                    <MenuItem Header="新規フォルダー" Tag="FileSystemOnly" Click="OnNewFolderClick" />
                                     <Separator />
-                                    <MenuItem Header="コピー" InputGestureText="Ctrl+C" Click="OnCopyClick" />
-                                    <MenuItem Header="切り取り" InputGestureText="Ctrl+X" Click="OnCutClick" />
-                                    <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
+                                    <MenuItem Header="コピー" Tag="FileSystemOnly" InputGestureText="Ctrl+C" Click="OnCopyClick" />
+                                    <MenuItem Header="切り取り" Tag="FileSystemOnly" InputGestureText="Ctrl+X" Click="OnCutClick" />
+                                    <MenuItem Header="貼り付け" Tag="FileSystemOnly" InputGestureText="Ctrl+V" Click="OnPasteClick" />
                                     <!-- 同じフォルダー内へのコピー＆貼り付けを1手にしたもの（名前は「 - コピー」で一意化）。 -->
                                     <MenuItem Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicateClick"
                                               ToolTip="同じフォルダーに「 - コピー」を付けて複製します"
                                               Visibility="{Binding CanDuplicate, Converter={StaticResource BoolToVis}}" />
-                                    <MenuItem Header="ZIPに圧縮" Click="OnCompressToZipClick"
+                                    <MenuItem Header="ZIPに圧縮" Tag="FileSystemOnly" Click="OnCompressToZipClick"
                                               ToolTip="選択項目を同じフォルダーの ZIP に圧縮します（Undo/Redo 対応）" />
                                     <Separator />
-                                    <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
-                                    <MenuItem Header="削除" InputGestureText="Delete" Click="OnDeleteClick" />
+                                    <MenuItem Header="名前の変更" Tag="FileSystemOnly" InputGestureText="F2" Click="OnRenameClick" />
+                                    <MenuItem Header="削除" Tag="FileSystemOnly" InputGestureText="Delete" Click="OnDeleteClick" />
                                     <!-- ファイル操作の Undo/Redo。見出しと表示可否は
                                          OnNodeContextMenuOpened→UpdateHistoryMenuItems が次の一手に合わせる。 -->
                                     <Separator />

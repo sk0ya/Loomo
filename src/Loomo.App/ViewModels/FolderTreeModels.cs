@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Agent;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -21,22 +22,26 @@ public readonly record struct EntryRenamedEventArgs(string OldPath, string NewPa
 /// 以降はピン留めフォルダ。Label はルートからの相対パスで同名フォルダを区別する。</summary>
 public sealed partial class FolderRootOption : ObservableObject
 {
-    public FolderRootOption(string fullPath, string label, bool isPinned)
+    public FolderRootOption(string fullPath, string label, bool isPinned, bool isShellNamespace = false)
     {
         FullPath = fullPath;
         Label = label;
         IsPinned = isPinned;
-        IsMissing = !Directory.Exists(fullPath);
+        IsShellNamespace = isShellNamespace || FolderTreeShellNamespaces.IsShellPath(fullPath);
+        IsMissing = !FolderTreeShellNamespaces.IsShellPath(fullPath) && !Directory.Exists(fullPath);
     }
 
     public string FullPath { get; }
     public string Label { get; }
     public bool IsPinned { get; }
+    public bool IsShellNamespace { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayLabel))]
     private bool _isMissing;
 
     /// <summary>フォルダーが一時的に存在しないピンも候補に残し、状態を明示する表示名。</summary>
-    public string DisplayLabel => IsMissing ? $"{Label} (フォルダーなし)" : Label;
+    public string DisplayLabel => IsMissing
+        ? $"{Label} ({(IsShellNamespace ? "利用不可" : "フォルダーなし")})"
+        : Label;
 }

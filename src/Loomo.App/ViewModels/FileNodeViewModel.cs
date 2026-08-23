@@ -14,6 +14,8 @@ public sealed partial class FileNodeViewModel : ObservableObject
     public string FullPath { get; }
     public string Name { get; }
     public bool IsDirectory { get; }
+    /// <summary>Shell 名前空間の表示項目。実パスに見える内部パスを通常のファイル操作へ渡さないための印。</summary>
+    public bool IsShellItem { get; }
 
     /// <summary>この項目が属する表示ルート（Git状態・ピン状態の参照先を決める）。単一フォルダー時は
     /// ワークスペースの表示ルート、複数フォルダー時は所属するワークスペースフォルダーのパス。
@@ -70,18 +72,18 @@ public sealed partial class FileNodeViewModel : ObservableObject
     private bool _isGitRepository;
 
     /// <summary>「Git」メニュー（Git Blame 等）を出すか（ファイルかつ Git リポジトリ配下）。</summary>
-    public bool CanGitBlame => !IsDirectory && IsGitRepository;
+    public bool CanGitBlame => !IsShellItem && !IsDirectory && IsGitRepository;
 
     /// <summary>「Git」メニューを出すか（Git リポジトリ配下。履歴表示はファイル・フォルダ両方に効く）。</summary>
-    public bool CanGitHistory => IsGitRepository;
+    public bool CanGitHistory => !IsShellItem && IsGitRepository;
 
     /// <summary>「Git」＞「.gitignore に追加」を出すか。見出しノード（ワークスペースフォルダー自身）は
     /// 除く——自分自身への相対パスは "." になり、無意味な行が書かれるだけのため。</summary>
-    public bool CanAddToGitignore => IsGitRepository && !IsWorkspaceFolderRoot;
+    public bool CanAddToGitignore => !IsShellItem && IsGitRepository && !IsWorkspaceFolderRoot;
 
     /// <summary>「複製」を出すか。見出しノード（ワークスペースフォルダー自身）は除く——複製先が
     /// 親フォルダー＝ワークスペース外になり得るため。</summary>
-    public bool CanDuplicate => !IsWorkspaceFolderRoot;
+    public bool CanDuplicate => !IsShellItem && !IsWorkspaceFolderRoot;
 
     // ピン留め済みか（コンテキストメニューの「ピン留め／解除」の出し分け）。
     // ピン状態の変更時は owner（RefreshPinMarks）が読込済みノードへ反映する。
@@ -90,7 +92,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
     private bool _isPinned;
 
     /// <summary>「ピン留め」メニューを出すか（フォルダかつ未ピン。見出しノードはピン留め不可）。</summary>
-    public bool IsPinnable => IsDirectory && !IsPinned && !IsWorkspaceFolderRoot;
+    public bool IsPinnable => !IsShellItem && IsDirectory && !IsPinned && !IsWorkspaceFolderRoot;
 
     /// <summary>「ワークスペースから削除」メニューを出すか（見出しノードのみ）。</summary>
     public bool CanRemoveFromWorkspace => IsWorkspaceFolderRoot;
@@ -98,18 +100,22 @@ public sealed partial class FileNodeViewModel : ObservableObject
     public FileNodeViewModel(string fullPath, bool isDirectory, FolderTreeViewModel owner, string rootKey,
         bool isWorkspaceFolderRoot = false,
         ObservableCollection<FolderRootOption>? rootSwitchOptions = null,
-        FolderRootOption? selectedRootSwitchOption = null)
+        FolderRootOption? selectedRootSwitchOption = null,
+        bool isShellItem = false)
     {
         FullPath = fullPath;
         IsDirectory = isDirectory;
-        var name = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+        IsShellItem = isShellItem || FolderTreeShellNamespaces.IsShellPath(fullPath);
+        var name = IsShellItem
+            ? FolderTreeShellNamespaces.Name(fullPath)
+            : Path.GetFileName(fullPath.TrimEnd('\\', '/'));
         Name = string.IsNullOrEmpty(name) ? fullPath : name;
         RootKey = rootKey;
         IsWorkspaceFolderRoot = isWorkspaceFolderRoot;
         _owner = owner;
         GitStatus = owner.GitStatusFor(fullPath, isDirectory, rootKey);
         IsGitRepository = owner.IsGitRepositoryFor(rootKey);
-        if (isDirectory && !isWorkspaceFolderRoot)
+        if (isDirectory && !isWorkspaceFolderRoot && !IsShellItem)
             _isPinned = owner.IsPinnedPath(fullPath);
 
         RootSwitchOptions = rootSwitchOptions;
@@ -140,6 +146,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         FullPath = "";
         Name = "";
         IsDirectory = false;
+        IsShellItem = false;
         RootKey = "";
         _owner = null!;
         _iconIndex = FileIconData.DefaultFileIndex;

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -8,6 +9,8 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class FolderTreeViewModel
 {
     private readonly FolderTreeAddressHistory _addressHistory = new();
+    private readonly Stack<string> _backPaths = new();
+    private readonly Stack<string> _forwardPaths = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAddressError))]
@@ -21,6 +24,14 @@ public sealed partial class FolderTreeViewModel
     public IReadOnlyList<string> AddressHistory => _addressHistory.Entries;
 
     public bool HasAddressError => !string.IsNullOrEmpty(AddressError);
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(GoBackCommand))]
+    private bool _canGoBack;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(GoForwardCommand))]
+    private bool _canGoForward;
 
     /// <summary>現在のワークスペース外へ移動するとき、ShellWindow の既存切替経路へ渡す。</summary>
     public event EventHandler<string>? AddressNavigationRequested;
@@ -46,13 +57,34 @@ public sealed partial class FolderTreeViewModel
 
         if (!_query.DirectoryExists(fullPath))
         {
-            AddressError = $"フォルダーが存在しません: {fullPath}";
+            AddressError = FolderTreeShellNamespaces.IsShellPath(fullPath)
+                ? "Windows Shell 名前空間を利用できません"
+                : $"フォルダーが存在しません: {fullPath}";
             return false;
         }
 
         AddressError = string.Empty;
+        if (_currentRoot is not null && !PathsEqual(_currentRoot, fullPath))
+        {
+            _backPaths.Push(_currentRoot);
+            _forwardPaths.Clear();
+            UpdateNavigationState();
+        }
         _addressHistory.Add(fullPath);
         AddressText = fullPath;
+
+        // Shell 名前空間はワークスペースの物理パスではないため、既存のワークスペース
+        // 切替経路へ渡さず FolderTree 内で表示ルートだけを切り替える。ライブラリ内の
+        // 子項目も同じ経路に通す。
+        if (FolderTreeShellNamespaces.IsShellPath(fullPath))
+        {
+            _suppressRootSelection = true;
+            try { SelectedRootOption = RootOptions.FirstOrDefault(o => PathsEqual(o.FullPath, fullPath)); }
+            finally { _suppressRootSelection = false; }
+            SetDisplayRoot(fullPath);
+            RootStateChanged?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
 
         // マルチルートの各見出しは同時に表示されるため、1つのアドレスへ寄せる操作は
         // 既存の「フォルダーを開く」経路へ渡して単一ルートへ戻す。
@@ -79,6 +111,58 @@ public sealed partial class FolderTreeViewModel
 
         RootStateChanged?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    /// <summary>FolderTree 内の表示ルート履歴を戻る。外部ワークスペースへの移動は、
+    /// アプリ全体のワークスペース切替を壊さないため履歴へ戻す要求を出す。</summary>
+    [RelayCommand(CanExecute = nameof(CanGoBack))]
+    private void GoBack()
+    {
+        if (_backPaths.Count == 0 || _currentRoot is null)
+            return;
+        var target = _backPaths.Pop();
+        _forwardPaths.Push(_currentRoot);
+        NavigateHistoryTarget(target);
+        UpdateNavigationState();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoForward))]
+    private void GoForward()
+    {
+        if (_forwardPaths.Count == 0 || _currentRoot is null)
+            return;
+        var target = _forwardPaths.Pop();
+        _backPaths.Push(_currentRoot);
+        NavigateHistoryTarget(target);
+        UpdateNavigationState();
+    }
+
+    private void NavigateHistoryTarget(string target)
+    {
+        AddressError = string.Empty;
+        AddressText = target;
+        if (FolderTreeShellNamespaces.IsShellPath(target) || _workspace.Contains(target))
+        {
+            var option = RootOptions.FirstOrDefault(o => PathsEqual(o.FullPath, target));
+            if (option is not null)
+                SelectRootOption(option);
+            else
+            {
+                _suppressRootSelection = true;
+                try { SelectedRootOption = null; }
+                finally { _suppressRootSelection = false; }
+                SetDisplayRoot(target);
+            }
+            return;
+        }
+
+        AddressNavigationRequested?.Invoke(this, target);
+    }
+
+    private void UpdateNavigationState()
+    {
+        CanGoBack = _backPaths.Count > 0;
+        CanGoForward = _forwardPaths.Count > 0;
     }
 
     private void RefreshAddressSuggestions(string input)
