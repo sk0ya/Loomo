@@ -812,10 +812,7 @@ public partial class FilesColumnView : UserControl
             return;
 
         var data = new DataObject();
-        var list = new StringCollection();
-        foreach (var path in paths)
-            list.Add(path);
-        data.SetFileDropList(list);
+        FileDragDrop.SetPaths(data, paths);
 
         _internalDrag = true;
         try { DragDrop.DoDragDrop(EntryList, data, DragDropEffects.Copy | DragDropEffects.Move); }
@@ -833,8 +830,9 @@ public partial class FilesColumnView : UserControl
     {
         var effect = ResolveDropEffect(e, out var targetDirectory);
         e.Handled = true;
+        var sources = FileDragDrop.TryGetPaths(e.Data);
         if (effect == DragDropEffects.None || targetDirectory is null || Vm is null
-            || e.Data.GetData(DataFormats.FileDrop) is not string[] sources)
+            || sources.Count == 0)
             return;
 
         var move = (effect & DragDropEffects.Move) != 0;
@@ -876,7 +874,7 @@ public partial class FilesColumnView : UserControl
         if (targetDirectory is null)
             return DragDropEffects.None;
 
-        var sources = e.Data.GetData(DataFormats.FileDrop) as string[] ?? Array.Empty<string>();
+        var sources = FileDragDrop.TryGetPaths(e.Data);
         foreach (var source in sources)
         {
             // フォルダを自身／配下へは不可（無限再帰）。

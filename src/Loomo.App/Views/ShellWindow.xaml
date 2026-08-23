@@ -636,7 +636,8 @@
                 <Grid x:Name="PaneHost" Grid.Column="2">
 
                 <!-- Terminal -->
-                <DockPanel x:Name="TerminalPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="TerminalPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                            DragOver="OnFileDropDragOver" Drop="OnTerminalFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
                                Tag="Terminal" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -745,7 +746,8 @@
                 </DockPanel>
 
                 <!-- Editor -->
-                <DockPanel x:Name="EditorPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="EditorPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                            DragOver="OnFileDropDragOver" Drop="OnEditorFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
                                Tag="Editor" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1500,7 +1502,8 @@
                 </DockPanel>
 
                 <!-- Git : セッションペイン（コミットグラフ・ブランチ・rebase 等の複雑操作） -->
-                <DockPanel x:Name="GitPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="GitPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                            DragOver="OnFileDropDragOver" Drop="OnGitFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
                                Tag="Git" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1628,7 +1631,8 @@
 
                 <!-- 検索 : ペイン化（全文検索/ファイル名/ターミナル内検索。エディタ等と同格の舞台ペイン）。
                      ヘッダーツールバーは持たず、モード切替・オプションは SearchPanelView 内蔵。 -->
-                <DockPanel x:Name="SearchPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="SearchPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                            DragOver="OnFileDropDragOver" Drop="OnSearchFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
                                Tag="Search" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1700,7 +1704,8 @@
                 </DockPanel>
 
                 <!-- Diff : セッションペイン（Git作業ツリー差分＋アドホック比較） -->
-                <DockPanel x:Name="DiffPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="DiffPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                            DragOver="OnFileDropDragOver" Drop="OnDiffFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
                                Tag="Diff" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">

@@ -345,6 +345,7 @@ public partial class ShellWindow {
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
+        CancelFileDropOperations();
         _lspWorkspace.DiagnosticsPublished -= OnLspDiagnosticsPublished;
         // 外さないと、閉じたあとにサーバーが applyEdit を投げてきたとき死んだ Dispatcher を叩く。
         _lspWorkspace.ApplyEditRequested -= OnLspServerApplyEditRequested;

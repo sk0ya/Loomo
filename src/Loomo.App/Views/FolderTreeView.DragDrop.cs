@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -54,8 +53,20 @@ public partial class FolderTreeView
         if (!File.Exists(node.FullPath) && !Directory.Exists(node.FullPath))
             return;
 
+        // 掴んだノードが集合に含まれるときだけ集合全体を運ぶ。別のノードを掴んだ場合に
+        // 古い複数選択が意図せず一緒に外へ出ないよう、Explorer／FilesPaneと同じ規則にする。
+        var selected = _multiSelected.Contains(node)
+            ? CurrentSelection(node)
+            : new[] { node };
+        var sources = selected
+            .Where(selected => !selected.IsShellItem
+                && (File.Exists(selected.FullPath) || Directory.Exists(selected.FullPath)))
+            .Select(selected => selected.FullPath)
+            .ToArray();
+        if (sources.Length == 0) return;
+
         var data = new DataObject();
-        data.SetFileDropList(new StringCollection { node.FullPath });
+        FileDragDrop.SetPaths(data, sources);
 
         _internalDrag = true;
         try
@@ -80,9 +91,10 @@ public partial class FolderTreeView
         var effect = ResolveDropEffect(e, out var targetDir);
         e.Handled = true;
 
+        var sources = FileDragDrop.TryGetPaths(e.Data);
         if (effect == DragDropEffects.None || targetDir is null
             || DataContext is not FolderTreeViewModel vm
-            || e.Data.GetData(DataFormats.FileDrop) is not string[] sources)
+            || sources.Count == 0)
             return;
 
         var move = (effect & DragDropEffects.Move) != 0;
@@ -140,7 +152,7 @@ public partial class FolderTreeView
         if (targetDir is null)
             return DragDropEffects.None;
 
-        var sources = e.Data.GetData(DataFormats.FileDrop) as string[] ?? Array.Empty<string>();
+        var sources = FileDragDrop.TryGetPaths(e.Data);
         // フォルダを自身／配下へは不可（無限再帰）。ドラッグ中にカーソルで示す。
         foreach (var s in sources)
             if (Directory.Exists(s) && (PathEquals(s, targetDir) || IsAncestor(s, targetDir)))
