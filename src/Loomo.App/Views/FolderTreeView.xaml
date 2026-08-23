@@ -94,7 +94,6 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0" Style="{StaticResource ExplorerIconButton}"
                     Click="OnAddFolderToWorkspaceClick"
@@ -180,24 +179,64 @@
                 <TextBlock Text="›" FontSize="22" Margin="0,-3,0,0" />
             </Button>
 
-            <StackPanel Grid.Column="8" Margin="6,0,0,0">
-                <ComboBox x:Name="AddressComboBox"
-                          MinHeight="26"
+        </Grid>
+
+        <!-- 専用アドレスバー：通常のコンボボックスに見えないよう、入力欄としての境界・カーソル・
+             編集可否を明示する。候補は入力欄の下にドロップダウン表示され、ツリーの高さを奪わない。 -->
+        <Border DockPanel.Dock="Top" x:Name="AddressBar"
+                Margin="8,0,6,4" Padding="6,1"
+                Background="{DynamicResource Bg}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                CornerRadius="3"
+                ToolTip="Ctrl+L でフォーカス。フォルダーのパスまたは UNC パスを入力して Enter">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="場所" Margin="0,0,8,0"
+                           VerticalAlignment="Center" Foreground="{DynamicResource FgDim}"
+                           FontSize="{DynamicResource Fs11}" />
+                <ComboBox Grid.Row="0" Grid.Column="1" x:Name="AddressComboBox"
+                          MinHeight="25"
                           IsEditable="True"
+                          IsReadOnly="False"
                           IsTextSearchEnabled="False"
                           StaysOpenOnEdit="True"
+                          MaxDropDownHeight="180"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0"
+                          Foreground="{DynamicResource Fg}"
+                          HorizontalContentAlignment="Stretch"
                           ItemsSource="{Binding AddressSuggestions}"
                           Text="{Binding AddressText, UpdateSourceTrigger=PropertyChanged}"
-                          ToolTip="Ctrl+L でフォーカス。フォルダーのパスまたは UNC パスを入力して Enter"
                           KeyDown="OnAddressKeyDown"
-                          SelectionChanged="OnAddressSuggestionSelected" />
-                <TextBlock Text="{Binding AddressError}"
+                          SelectionChanged="OnAddressSuggestionSelected">
+                    <!-- ComboBox の編集部品にも入力欄の見た目を継承させる。IsEditable だけに依存しない。 -->
+                    <ComboBox.Resources>
+                        <Style TargetType="TextBox">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            <Setter Property="CaretBrush" Value="{DynamicResource Fg}" />
+                            <Setter Property="Padding" Value="0" />
+                        </Style>
+                    </ComboBox.Resources>
+                </ComboBox>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AddressError}"
                            Foreground="#FFE06C75"
                            FontSize="{DynamicResource Fs11}"
                            TextTrimming="CharacterEllipsis"
+                           Margin="0,1,4,0"
+                           IsHitTestVisible="False"
                            Visibility="{Binding HasAddressError, Converter={StaticResource BoolToVis}}" />
-            </StackPanel>
-        </Grid>
+            </Grid>
+        </Border>
 
         <!-- 表示ルートの切替（単一フォルダー時のみ）。操作ボタンの行とは分け、ツリーの直上に
              専用行として置く。候補はワークスペースルート＋ピン留めフォルダ。複数フォルダー時は

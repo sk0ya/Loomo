@@ -137,6 +137,38 @@ public sealed class RecentUsageTests : IDisposable
     }
 
     [Fact]
+    public void 表示場所は項目自身を繰り返さず親フォルダーを返す()
+    {
+        var rootFile = Path.Combine(_root, "README.md");
+        var nestedFile = Path.Combine(_root, "src", "main.cs");
+        var nestedFolder = Path.Combine(_root, "src", "components");
+        Directory.CreateDirectory(Path.GetDirectoryName(nestedFile)!);
+        Directory.CreateDirectory(nestedFolder);
+        File.WriteAllText(rootFile, "readme");
+        File.WriteAllText(nestedFile, "class C {}");
+        var workspace = Snapshot();
+
+        var rootFileItem = new RecentPathSnapshot { RootIndex = 0, RelativePath = "README.md" };
+        var nestedFileItem = new RecentPathSnapshot
+        {
+            RootIndex = 0,
+            RelativePath = Path.Combine("src", "main.cs"),
+        };
+        var nestedFolderItem = new RecentPathSnapshot
+        {
+            RootIndex = 0,
+            RelativePath = Path.Combine("src", "components"),
+        };
+
+        Assert.Equal("ワークスペース直下",
+            RecentUsageService.LocationLabel(workspace, rootFileItem, isDirectory: false));
+        Assert.Equal("src",
+            RecentUsageService.LocationLabel(workspace, nestedFileItem, isDirectory: false));
+        Assert.Equal("src",
+            RecentUsageService.LocationLabel(workspace, nestedFolderItem, isDirectory: true));
+    }
+
+    [Fact]
     public async Task 非同期履歴更新はキャンセルできる()
     {
         var workspace = Snapshot();

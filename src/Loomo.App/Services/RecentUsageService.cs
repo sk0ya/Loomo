@@ -102,6 +102,39 @@ public sealed class RecentUsageService
         return item.RelativePath.Length == 0 ? DisplayName(root, isDirectory: true) : item.RelativePath;
     }
 
+    /// <summary>一覧の2行目に表示する場所。項目自身の相対パスではなく、親の場所だけを返す。
+    /// これにより「main.cs / src/main.cs」のような名前の重複を避け、ルート直下も意味のある日本語で示す。</summary>
+    public static string LocationLabel(WorkspaceSnapshot workspace, RecentPathSnapshot item, bool isDirectory)
+    {
+        var root = RootAt(workspace, item.RootIndex);
+        if (root is null) return string.Empty;
+
+        var relative = item.RelativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        string? parent;
+        try
+        {
+            // ファイルは親フォルダー、頻繁フォルダーはその親フォルダーを表示する。
+            parent = Path.GetDirectoryName(relative);
+        }
+        catch
+        {
+            parent = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(parent) || parent == ".")
+            return RootLocationLabel(item.RootIndex, root);
+
+        var parts = parent.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 0
+            ? RootLocationLabel(item.RootIndex, root)
+            : string.Join(" / ", parts);
+    }
+
+    private static string RootLocationLabel(int rootIndex, string root)
+        => rootIndex == 0
+            ? "ワークスペース直下"
+            : $"追加ルート（{DisplayName(root, isDirectory: true)}）直下";
+
     private static bool Record(
         WorkspaceSnapshot workspace,
         List<RecentPathSnapshot> entries,
@@ -327,6 +360,7 @@ public sealed class RecentItemsViewModel : ObservableObject
     public ObservableCollection<RecentUsageItem> RecentFiles { get; } = new();
     public ObservableCollection<RecentUsageItem> FrequentFolders { get; } = new();
     public bool HasItems => RecentFiles.Count > 0 || FrequentFolders.Count > 0;
+    public int TotalCount => RecentFiles.Count + FrequentFolders.Count;
 
     public event EventHandler<RecentUsageItem>? NavigationRequested;
     public event EventHandler? Changed;
@@ -446,6 +480,7 @@ public sealed class RecentItemsViewModel : ObservableObject
                 Add(FrequentFolders, item, true);
         }
         OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(TotalCount));
     }
 
     private void Add(ObservableCollection<RecentUsageItem> target, RecentPathSnapshot item, bool isDirectory)
@@ -454,6 +489,7 @@ public sealed class RecentItemsViewModel : ObservableObject
         var full = RecentUsageService.Resolve(_workspace, item);
         if (full.Length == 0) return;
         target.Add(new RecentUsageItem(full, RecentUsageService.DisplayName(full, isDirectory),
-            RecentUsageService.RelativeLabel(_workspace, item), item.LastUsedUtc, item.UseCount, isDirectory));
+            RecentUsageService.LocationLabel(_workspace, item, isDirectory),
+            item.LastUsedUtc, item.UseCount, isDirectory));
     }
 }

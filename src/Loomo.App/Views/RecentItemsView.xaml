@@ -5,8 +5,8 @@
     <UserControl.Resources>
         <Style x:Key="RecentButton" TargetType="Button">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="8,4" />
-            <Setter Property="Margin" Value="4,1" />
+            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="Margin" Value="2,0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
@@ -40,34 +40,50 @@
         </DataTemplate>
     </UserControl.Resources>
 
-    <ScrollViewer MaxHeight="210" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel>
-            <Expander Header="最近使ったファイル" IsExpanded="True" Margin="4,2,4,0"
-                      Foreground="{DynamicResource FgDim}">
-                <ItemsControl ItemsSource="{Binding RecentFiles}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Style="{StaticResource RecentButton}" Click="OnItemClick"
-                                    ToolTip="{Binding FullPath}">
-                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RecentItemTemplate}" />
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </Expander>
-            <Expander Header="よく使うフォルダー" IsExpanded="True" Margin="4,0,4,2"
-                      Foreground="{DynamicResource FgDim}">
-                <ItemsControl ItemsSource="{Binding FrequentFolders}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Style="{StaticResource RecentButton}" Click="OnItemClick"
-                                    ToolTip="{Binding FullPath}">
-                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RecentItemTemplate}" />
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </Expander>
-        </StackPanel>
-    </ScrollViewer>
+    <!-- 中央の FilesPane 上部に置く補助セクション。閉じた状態を既定にし、
+         展開しても通常のファイル一覧を押しつぶさない。 -->
+    <Expander x:Name="RecentSection" IsExpanded="False" MaxHeight="142"
+              Margin="4,0,4,2" VerticalAlignment="Top"
+              Foreground="{DynamicResource FgDim}">
+        <Expander.Header>
+            <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding TotalCount}"
+                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                           Opacity="0.72" Margin="6,0,0,0" />
+                <TextBlock Text="最近・頻繁" FontSize="{DynamicResource Fs11}" />
+            </DockPanel>
+        </Expander.Header>
+        <ScrollViewer MaxHeight="108" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      CanContentScroll="True">
+            <StackPanel>
+                <Expander Header="最近使ったファイル" IsExpanded="True" Margin="0,0,0,1"
+                          Foreground="{DynamicResource FgDim}">
+                    <ItemsControl ItemsSource="{Binding RecentFiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource RecentButton}" Click="OnItemClick"
+                                        ToolTip="{Binding FullPath}">
+                                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RecentItemTemplate}" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+                <Expander Header="よく使うフォルダー" IsExpanded="True" Margin="0,0,0,1"
+                          Foreground="{DynamicResource FgDim}">
+                    <ItemsControl ItemsSource="{Binding FrequentFolders}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource RecentButton}" Click="OnItemClick"
+                                        ToolTip="{Binding FullPath}">
+                                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RecentItemTemplate}" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </Expander>
 </UserControl>

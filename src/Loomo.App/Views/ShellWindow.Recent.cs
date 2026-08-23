@@ -9,9 +9,13 @@ public partial class ShellWindow
     {
         if (item.IsDirectory)
         {
-            _vm.Files.Reveal(item.FullPath);
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files);
-            FocusPane(PaneKind.Files);
+            // 頻繁フォルダーはサイドバーの FolderTree へ戻す。中央 FilesPane に
+            // クイックアクセスを置いても、階層を確認する既存の導線は変えない。
+            _vm.FolderTree.NavigateAddress(item.FullPath);
+            _vm.IsSidebarVisible = true;
+            _vm.ActivePanel = SidebarPanel.Explorer;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                new Action(FocusSidebar));
             return;
         }
 

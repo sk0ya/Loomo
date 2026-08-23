@@ -33,10 +33,12 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         IFolderPinStore pins,
         IFilePlacesProvider places,
         FolderTreeViewModel? folderTree = null,
-        IFileThumbnailService? thumbnails = null)
+        IFileThumbnailService? thumbnails = null,
+        RecentItemsViewModel? recent = null)
     {
         _workspace = workspace;
         _pins = pins;
+        Recent = recent ?? new RecentItemsViewModel(new RecentUsageService());
         for (var i = 0; i < MaxColumns; i++)
         {
             var column = new FilesColumnViewModel(workspace, commands, pins, places, folderTree, thumbnails);
@@ -60,6 +62,9 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
 
     /// <summary>常に4つある実体。表示するのは先頭から <see cref="ColumnCount"/> 個。</summary>
     public ObservableCollection<FilesColumnViewModel> AllColumns { get; } = new();
+
+    /// <summary>中央ファイル一覧上部のクイックアクセス。サイドバーには表示しない。</summary>
+    public RecentItemsViewModel Recent { get; }
 
     /// <summary>いま画面に出ているカラム（View はこれを並べる）。</summary>
     public ObservableCollection<FilesColumnViewModel> Columns { get; } = new();
