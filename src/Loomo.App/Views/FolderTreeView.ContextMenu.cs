@@ -136,7 +136,7 @@ public partial class FolderTreeView
         {
             var reveal = lastCreated;
             ClearMultiSelection();
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
         }
     }
 
@@ -281,24 +281,35 @@ public partial class FolderTreeView
         }
     }
 
-    private void OnCompressToZipClick(object sender, RoutedEventArgs e)
+    private async void OnCompressToZipClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not FolderTreeViewModel vm)
+        if (_zipOperationCts is not null || DataContext is not FolderTreeViewModel vm)
             return;
 
         var nodes = CurrentSelection(ContextNode(sender));
         if (nodes.Count == 0)
             return;
 
+        using var cts = new CancellationTokenSource();
+        _zipOperationCts = cts;
         try
         {
-            var archive = vm.CompressEntries(nodes);
+            var archive = await vm.CompressEntriesAsync(nodes, cts.Token);
             ClearMultiSelection();
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(archive)));
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(archive)));
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // ビューがアンロードされた場合は、作成途中の一時 ZIP を残さず静かに終了する。
         }
         catch (InvalidOperationException ex)
         {
             ShowError(ex.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(_zipOperationCts, cts))
+                _zipOperationCts = null;
         }
     }
 
@@ -642,7 +653,7 @@ public partial class FolderTreeView
 
     internal void RedoFileOperation() => RunHistoryStep(undo: false);
 
-    private void RunHistoryStep(bool undo)
+    private async void RunHistoryStep(bool undo)
     {
         if (DataContext is not FolderTreeViewModel vm)
             return;
@@ -652,7 +663,9 @@ public partial class FolderTreeView
         FileOperationResult result;
         try
         {
-            result = undo ? vm.UndoFileOperation() : vm.RedoFileOperation();
+            result = undo
+                ? vm.UndoFileOperation()
+                : await vm.RedoFileOperationAsync();
         }
         catch (InvalidOperationException ex)
         {
@@ -665,7 +678,7 @@ public partial class FolderTreeView
         if (result.RevealPath is { } reveal)
         {
             ClearMultiSelection();
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => RevealPath(reveal)));
         }
     }
 

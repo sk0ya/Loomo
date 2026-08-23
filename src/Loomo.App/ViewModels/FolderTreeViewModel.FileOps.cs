@@ -114,12 +114,19 @@ public sealed partial class FolderTreeViewModel
     /// <summary>選択項目を ZIP に圧縮し、生成したアーカイブのパスを返す。ZIP は通常の
     /// ファイル操作履歴に積むため、Undo／Redo で生成物を戻せる。</summary>
     public string CompressEntries(IEnumerable<FileNodeViewModel> nodes)
+        => CompressEntriesAsync(nodes).GetAwaiter().GetResult();
+
+    /// <summary>ZIP 圧縮を UI スレッドから切り離して実行する。キャンセル時は履歴へ記録せず、
+    /// 作成途中の一時ファイルもコマンド側で片付ける。</summary>
+    public async Task<string> CompressEntriesAsync(
+        IEnumerable<FileNodeViewModel> nodes,
+        CancellationToken cancellationToken = default)
     {
         var paths = nodes
             .Where(n => n is not null && !n.IsWorkspaceFolderRoot)
             .Select(n => n.FullPath)
             .ToArray();
-        var archive = _fileCommands.CompressToZip(paths);
+        var archive = await _fileCommands.CompressToZipAsync(paths, cancellationToken);
         RefreshWorkspace();
         return archive;
     }
@@ -141,6 +148,10 @@ public sealed partial class FolderTreeViewModel
 
     /// <summary>元に戻したファイル操作をやり直す。</summary>
     public FileOperationResult RedoFileOperation() => ApplyHistoryResult(History.Redo());
+
+    /// <summary>ZIP の再生成を UI スレッドで塞がない非同期版。</summary>
+    public async Task<FileOperationResult> RedoFileOperationAsync(CancellationToken cancellationToken = default)
+        => ApplyHistoryResult(await History.RedoAsync(cancellationToken));
 
     // 逆操作でディスク上が変わった分をツリーへ反映し、開いているタブを追従（移動）・クローズ（削除）させる。
     // 監視（DebouncedFolderWatcher）任せにしないのは、通常のファイル操作と同じ即時性にするため。

@@ -114,4 +114,40 @@ public sealed class ZipFileOperationTests : IDisposable
         using var recreated = ZipFile.OpenRead(zipPath);
         Assert.Contains(recreated.Entries, e => e.FullName == "one.txt");
     }
+
+    [Fact]
+    public async Task 親フォルダーと子を同時選択しても重複せず生成中ZIPを取り込まない()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "folder")).FullName;
+        var child = Path.Combine(folder, "child.txt");
+        File.WriteAllText(child, "child");
+        var workspace = new WorkspaceService(new SafetySettings());
+        workspace.OpenFolder(_root);
+        var commands = new FolderTreeCommandHandler(workspace, new FileOperationHistory());
+
+        // 子を先に渡す順序でも、親だけをアーカイブ対象にする。
+        var zipPath = await commands.CompressToZipAsync([child, folder]);
+
+        using var archive = ZipFile.OpenRead(zipPath);
+        Assert.Single(archive.Entries, entry => entry.FullName == "folder/child.txt");
+        Assert.DoesNotContain(archive.Entries, entry => entry.FullName.Contains("loomo-tmp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task キャンセル時は最終ZIPと一時ファイルを残さない()
+    {
+        var source = Path.Combine(_root, "cancel.txt");
+        File.WriteAllText(source, new string('x', 1024));
+        var workspace = new WorkspaceService(new SafetySettings());
+        workspace.OpenFolder(_root);
+        var commands = new FolderTreeCommandHandler(workspace, new FileOperationHistory());
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            commands.CompressToZipAsync([source], cancellation.Token));
+
+        Assert.False(File.Exists(Path.Combine(_root, "cancel.zip")));
+        Assert.Empty(Directory.EnumerateFiles(_root, "*.loomo-tmp-*"));
+    }
 }

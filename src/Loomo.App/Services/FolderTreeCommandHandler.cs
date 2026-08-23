@@ -112,17 +112,33 @@ public sealed class FolderTreeCommandHandler
     /// <summary>選択項目を同じ親フォルダーの ZIP に圧縮する。生成物は履歴へ記録し、
     /// Redo では元の選択項目からアーカイブを再生成する。</summary>
     public string CompressToZip(IEnumerable<string> sourcePaths)
+        => CompressToZipAsync(sourcePaths).GetAwaiter().GetResult();
+
+    /// <summary>選択項目をバックグラウンドから呼び出せる形で ZIP に圧縮する。
+    /// 最終パスへ直接書かず、同じ親の隠し一時ファイルを完成後に移動するので、失敗／キャンセルで
+    /// 壊れた ZIP が残らない。</summary>
+    public async Task<string> CompressToZipAsync(
+        IEnumerable<string> sourcePaths,
+        CancellationToken cancellationToken = default)
     {
         if (sourcePaths is null) throw new ArgumentNullException(nameof(sourcePaths));
 
-        var sources = sourcePaths
+        var candidates = sourcePaths
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Select(Resolve)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(p => File.Exists(p) || Directory.Exists(p))
             .ToArray();
-        if (sources.Length == 0)
+        if (candidates.Length == 0)
             throw new InvalidOperationException("ZIP にする項目がありません。");
+
+        // 親フォルダーとその子を同時に選んだ場合は親だけを入れる。重複したエントリを作らず、
+        // 「ファイル→そのファイルを含むフォルダー」の選択で出力 ZIP 自身を読み込むことも防ぐ。
+        var sourceDirectories = candidates.Where(Directory.Exists).ToArray();
+        var sources = candidates
+            .Where(path => !sourceDirectories.Any(parent =>
+                !PathsEqual(path, parent) && IsPathWithin(path, parent)))
+            .ToArray();
 
         var parent = Path.GetDirectoryName(sources[0])
             ?? throw new InvalidOperationException("ZIP の作成先を特定できません。");
@@ -132,7 +148,7 @@ public sealed class FolderTreeCommandHandler
         if (string.IsNullOrWhiteSpace(stem)) stem = "archive";
         var destination = EnsureUniqueDestination(Path.Combine(parent, stem + ".zip"), false);
 
-        CreateZipFile(sources, destination);
+        await CreateZipFileAsync(sources, destination, cancellationToken).ConfigureAwait(false);
         _history.Record(FileOperation.Compressed(sources, destination));
         return destination;
     }
@@ -140,26 +156,60 @@ public sealed class FolderTreeCommandHandler
     /// <summary>ZIP の共通作成処理。Redo からも呼ばれるため、成功前に履歴を変更しない。
     /// 再解析ポイントは辿らない。</summary>
     internal static void CreateZipFile(IReadOnlyList<string> sources, string destination)
+        => CreateZipFileAsync(sources, destination).GetAwaiter().GetResult();
+
+    internal static async Task CreateZipFileAsync(
+        IReadOnlyList<string> sources,
+        string destination,
+        CancellationToken cancellationToken = default)
     {
+        var temporary = destination + ".loomo-tmp-" + Guid.NewGuid().ToString("N");
         try
         {
-            using var archive = ZipFile.Open(destination, ZipArchiveMode.Create);
-            foreach (var source in sources)
+            using (var archive = ZipFile.Open(temporary, ZipArchiveMode.Create))
             {
-                if (Directory.Exists(source))
-                    AddDirectory(archive, source, Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
-                else if (File.Exists(source))
-                    archive.CreateEntryFromFile(source, Path.GetFileName(source), CompressionLevel.Fastest);
+                try { File.SetAttributes(temporary, FileAttributes.Hidden); } catch { /* 表示属性は補助的 */ }
+
+                foreach (var source in sources)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (Directory.Exists(source))
+                        await AddDirectoryAsync(
+                            archive,
+                            source,
+                            Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                            temporary,
+                            destination,
+                            cancellationToken).ConfigureAwait(false);
+                    else if (File.Exists(source))
+                        await AddFileAsync(archive, source, Path.GetFileName(source), cancellationToken)
+                            .ConfigureAwait(false);
+                }
             }
+
+            File.Move(temporary, destination);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (OperationCanceledException)
         {
-            try { if (File.Exists(destination)) File.Delete(destination); } catch { /* 元の例外を優先 */ }
+            TryDelete(temporary);
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException
+                                   or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            TryDelete(temporary);
             throw new InvalidOperationException($"ZIP の作成に失敗しました: {ex.Message}", ex);
         }
+        finally { TryDelete(temporary); }
     }
 
-    private static void AddDirectory(ZipArchive archive, string directory, string entryRoot)
+    private static async Task AddDirectoryAsync(
+        ZipArchive archive,
+        string directory,
+        string entryRoot,
+        string temporary,
+        string destination,
+        CancellationToken cancellationToken)
     {
         var options = new EnumerationOptions
         {
@@ -169,14 +219,56 @@ public sealed class FolderTreeCommandHandler
         };
         foreach (var file in Directory.EnumerateFiles(directory, "*", options))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (PathsEqual(file, temporary) || PathsEqual(file, destination))
+                continue;
             var relative = Path.GetRelativePath(directory, file).Replace(Path.DirectorySeparatorChar, '/');
-            archive.CreateEntryFromFile(file, entryRoot + "/" + relative, CompressionLevel.Fastest);
+            await AddFileAsync(archive, file, entryRoot + "/" + relative, cancellationToken)
+                .ConfigureAwait(false);
         }
         foreach (var child in Directory.EnumerateDirectories(directory, "*", options))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var name = Path.GetFileName(child);
-            AddDirectory(archive, child, entryRoot + "/" + name);
+            await AddDirectoryAsync(
+                archive, child, entryRoot + "/" + name, temporary, destination, cancellationToken)
+                .ConfigureAwait(false);
         }
+    }
+
+    private static async Task AddFileAsync(
+        ZipArchive archive,
+        string source,
+        string entryName,
+        CancellationToken cancellationToken)
+    {
+        var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
+        await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 64 * 1024, useAsync: true);
+        await using var output = entry.Open();
+        await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsPathWithin(string path, string directory)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd('\\', '/');
+        var fullDirectory = Path.GetFullPath(directory).TrimEnd('\\', '/');
+        return string.Equals(fullPath, fullDirectory, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+            }
+        }
+        catch { /* 元の ZIP／キャンセル結果を優先する */ }
     }
 
     /// <summary>ゴミ箱へ送る（完全削除ではない）。Undo の逆操作（作成・コピーの取り消し）も

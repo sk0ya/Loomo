@@ -736,14 +736,16 @@ public partial class FilesColumnView : UserControl
 
     private void RedoFileOperation() => RunHistoryStep(undo: false);
 
-    private void RunHistoryStep(bool undo)
+    private async void RunHistoryStep(bool undo)
     {
         if (Vm is null || (undo ? !Vm.History.CanUndo : !Vm.History.CanRedo))
             return;
 
         try
         {
-            var result = undo ? Vm.UndoFileOperation() : Vm.RedoFileOperation();
+            var result = undo
+                ? Vm.UndoFileOperation()
+                : await Vm.RedoFileOperationAsync();
             ToastService.Info($"{(undo ? "元に戻しました" : "やり直しました")}: {result.Description}");
         }
         catch (InvalidOperationException ex)

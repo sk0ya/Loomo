@@ -30,11 +30,16 @@ public partial class FolderTreeView : UserControl
 
     // プログラムからの選択（エディタの現在ファイル同期・ドロップ後の表示）では自動プレビューしない。
     private bool _suppressSelectionPreview;
+    private CancellationTokenSource? _zipOperationCts;
 
     public FolderTreeView()
     {
         InitializeComponent();
-        Unloaded += (_, _) => CancelPropertiesLoad();
+        Unloaded += (_, _) =>
+        {
+            CancelPropertiesLoad();
+            _zipOperationCts?.Cancel();
+        };
         _selectionPreviewTimer.Tick += (_, _) =>
         {
             _selectionPreviewTimer.Stop();

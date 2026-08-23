@@ -941,6 +941,10 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// <summary>元に戻したファイル操作をやり直す。</summary>
     public FileOperationResult RedoFileOperation() => ApplyHistoryResult(History.Redo());
 
+    /// <summary>ZIP の再生成を UI スレッドで塞がない非同期版。</summary>
+    public async Task<FileOperationResult> RedoFileOperationAsync(CancellationToken cancellationToken = default)
+        => ApplyHistoryResult(await History.RedoAsync(cancellationToken));
+
     private FileOperationResult ApplyHistoryResult(FileOperationResult result)
     {
         foreach (var effect in result.Effects)

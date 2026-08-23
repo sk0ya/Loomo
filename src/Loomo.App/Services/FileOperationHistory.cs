@@ -108,6 +108,10 @@ public sealed class FileOperationHistory
     /// <summary>元に戻した操作をやり直す。</summary>
     public FileOperationResult Redo() => Step(undo: false);
 
+    /// <summary>ZIP の再生成を UI スレッドで同期実行しないための非同期版。</summary>
+    public Task<FileOperationResult> RedoAsync(CancellationToken cancellationToken = default)
+        => StepAsync(undo: false, cancellationToken);
+
     /// <summary>履歴を捨てる。</summary>
     public void Clear()
     {
@@ -126,6 +130,9 @@ public sealed class FileOperationHistory
     // そこで一手を失うと「片付けてからもう一度 Ctrl+Z」ができなくなるうえ、次の Ctrl+Z がひとつ前の
     // 無関係な操作に効いてしまう。だから覗くだけにして、通ってから降ろす。
     private FileOperationResult Step(bool undo)
+        => StepAsync(undo, CancellationToken.None).GetAwaiter().GetResult();
+
+    private async Task<FileOperationResult> StepAsync(bool undo, CancellationToken cancellationToken)
     {
         var from = undo ? _undo : _redo;
         var to = undo ? _redo : _undo;
@@ -138,13 +145,21 @@ public sealed class FileOperationHistory
 
         // 検証は全件まとめて先に。1 件でも通らなければ 1 件も動かさず、履歴もそのまま残す。
         foreach (var operation in operations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             Validate(operation, undo);
+        }
 
         var effects = new List<FileOperationEffect>(operations.Count);
         try
         {
             foreach (var operation in operations)
-                effects.Add(undo ? UndoOne(operation) : RedoOne(operation));
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                effects.Add(undo
+                    ? UndoOne(operation)
+                    : await RedoOneAsync(operation, cancellationToken));
+            }
         }
         catch
         {
@@ -301,6 +316,22 @@ public sealed class FileOperationHistory
         FileOperationKind.Zip => ZipEntry(operation),
         _ => throw new InvalidOperationException("不明な操作です。"),
     };
+
+    private static Task<FileOperationEffect> RedoOneAsync(
+        FileOperation operation,
+        CancellationToken cancellationToken)
+        => operation.Kind == FileOperationKind.Zip
+            ? RedoZipAsync(operation, cancellationToken)
+            : Task.FromResult(RedoOne(operation));
+
+    private static async Task<FileOperationEffect> RedoZipAsync(
+        FileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        await FolderTreeCommandHandler.CreateZipFileAsync(
+            operation.Sources!, operation.Target, cancellationToken);
+        return new FileOperationEffect(null, null, null, operation.Target, false);
+    }
 
     private static FileOperationEffect UndoCopy(FileOperation operation)
     {
