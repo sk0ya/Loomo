@@ -26,6 +26,7 @@ public partial class ShellWindow {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
         path = Path.GetFullPath(path);
+        _vm.Recent.RecordFile(path);
         EnsureEditorPaneForOpenedFile(path);
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
@@ -51,6 +52,7 @@ public partial class ShellWindow {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
         path = Path.GetFullPath(path);
+        _vm.Recent.RecordFile(path);
         EnsureEditorPaneForOpenedFile(path);
         var existing = _editorTabs.FirstOrDefault(t =>
             string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));

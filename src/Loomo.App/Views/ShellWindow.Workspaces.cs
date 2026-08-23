@@ -176,6 +176,7 @@ public partial class ShellWindow {
         DetachBrowserTabs();
         _detached?.CloseAll();
         _activeWorkspace = workspace;
+        _vm.Recent.SetWorkspace(workspace);
         profile?.Lap("detach");
         if (!deferHydration) {
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);

@@ -143,6 +143,8 @@ internal static class LoomoServiceCollectionExtensions
         AddAliasedSingleton<LocalLlmWarmupService, IAiWarmup>(services);
         services.AddSingleton<AppBootstrapper>();
         services.AddSingleton<WorkspaceStateStore>();
+        services.AddSingleton<RecentUsageService>();
+        services.AddSingleton<RecentItemsViewModel>();
         services.AddSingleton<PromptHistoryStore>();
         services.AddSingleton<ModelFolderGateway>();
         services.AddSingleton<ModelFolderPicker>();

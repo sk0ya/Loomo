@@ -179,6 +179,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? SearchInFolderRequested;
     public event EventHandler<FileAiRequest>? FileAiRequested;
     public event EventHandler<string>? OpenInBrowserRequested;
+    public event EventHandler<string>? FolderNavigated;
 
     /// <summary>現在地・並べ替え・絞り込みが変わったので保存してほしい。</summary>
     public event EventHandler? StateChanged;
@@ -410,7 +411,10 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         LoadEntries(preserveSelection: false);
         NotifyHistoryChanged();
         if (raiseStateChanged)
+        {
+            FolderNavigated?.Invoke(this, folder);
             StateChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void OnGitStatusChanged(object? sender, EventArgs e)

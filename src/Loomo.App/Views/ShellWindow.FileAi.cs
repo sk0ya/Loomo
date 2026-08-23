@@ -29,6 +29,13 @@ public partial class ShellWindow
             var result = await _fileAiSelection.BuildAsync(request.Action, request.Paths, preparationCts.Token);
             if (preparationCts.IsCancellationRequested || !IsLoaded)
                 return;
+            foreach (var path in request.Paths)
+            {
+                if (Directory.Exists(path))
+                    _vm.Recent.RecordFolder(path);
+                else if (File.Exists(path))
+                    _vm.Recent.RecordFile(path);
+            }
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
             _vm.AiBar.AskAbout(result.Prompt);
             ToastService.Info(result.Summary);

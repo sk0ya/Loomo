@@ -282,6 +282,10 @@ public partial class ShellWindow {
         }
     }
     private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e) {
+        if (e.IsDirectory)
+            _vm.Recent.RecordFolder(e.NewPath);
+        else
+            _vm.Recent.RecordFile(e.NewPath);
         foreach (var tab in _editorTabs) {
             var path = tab.PeekFilePath;
             if (string.IsNullOrEmpty(path))

@@ -304,6 +304,13 @@ public sealed class WorkspaceSnapshot
     /// <summary>このワークスペースで開いている切り離しウィンドウ。</summary>
     public List<DetachedWindowSnapshot> DetachedWindows { get; set; } = new();
 
+    /// <summary>このワークスペース内で最近開いたファイル。保存するのはルート番号と相対パスだけで、
+    /// ワークスペース外のパスやファイル内容は保存しない。</summary>
+    public List<RecentPathSnapshot> RecentFiles { get; set; } = new();
+
+    /// <summary>このワークスペース内でよく開いたフォルダー。利用回数と最終利用時刻を持つ。</summary>
+    public List<RecentPathSnapshot> FrequentFolders { get; set; } = new();
+
     /// <summary>FolderTree でピン留めしたフォルダ（フルパス）。ルート切替 ComboBox の候補になる
     /// （プライマリフォルダーぶん。プライマリ以外は <see cref="AdditionalFolders"/> 側に持つ）。</summary>
     public List<string> PinnedFolders { get; set; } = new();
@@ -374,6 +381,16 @@ public sealed class WorkspaceSnapshot
     /// <summary>Git の比較基準（作業ツリー／ブランチ／分岐点）。null の旧データは作業ツリー基準。
     /// 「このブランチで入れた変更を見ている」という現在地はワークスペースごとに違うのでここに持つ。</summary>
     public GitCompareSnapshot? GitCompare { get; set; }
+}
+
+/// <summary>最近利用した項目の永続化形。<see cref="RootIndex"/> はプライマリを 0 とする。
+/// 絶対パスを保存しないことで、履歴ファイルからワークスペース外の場所を漏らさない。</summary>
+public sealed class RecentPathSnapshot
+{
+    public int RootIndex { get; set; }
+    public string RelativePath { get; set; } = "";
+    public DateTime LastUsedUtc { get; set; }
+    public int UseCount { get; set; } = 1;
 }
 
 /// <summary>Git の比較基準の復元状態。<c>GitCompareBaseViewModel</c> が読み書きする。</summary>

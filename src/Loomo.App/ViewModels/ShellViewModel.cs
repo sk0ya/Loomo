@@ -37,6 +37,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
     public SessionsViewModel Sessions { get; }
+    public RecentItemsViewModel Recent { get; }
     public SettingsViewModel Settings { get; }
     public AppearanceViewModel Appearance { get; }
     public LspSettingsViewModel Lsp { get; }
@@ -93,7 +94,8 @@ public sealed partial class ShellViewModel : ObservableObject
         SearchPanelViewModel searchPanel,
         DebugViewModel debug,
         TsDebugViewModel tsIde,
-        TrailViewModel trail)
+        TrailViewModel trail,
+        RecentItemsViewModel? recent = null)
     {
         FolderTree = folderTree;
         Files = files;
@@ -101,6 +103,7 @@ public sealed partial class ShellViewModel : ObservableObject
         AiBar = aiBar;
         Tabs = tabs;
         Sessions = sessions;
+        Recent = recent ?? new RecentItemsViewModel(new RecentUsageService());
         Settings = settings;
         Appearance = appearance;
         Lsp = lsp;

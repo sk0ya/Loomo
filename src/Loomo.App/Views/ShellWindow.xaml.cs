@@ -190,6 +190,8 @@ public partial class ShellWindow : Window {
         vm.Tabs.TabDetachRequested += OnSidebarTabDetachRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
+        vm.Recent.Changed += (_, _) => SaveActiveWorkspaceSnapshot();
+        vm.Recent.NavigationRequested += OnRecentNavigationRequested;
         if (vm.Workspaces.ActiveWorkspace is { } activeWorkspace)
             _taskbarWorkspaceRecent.AddRecent(activeWorkspace);
         InitializeDebugWiring();
@@ -245,6 +247,11 @@ public partial class ShellWindow : Window {
             _activeEditorTab?.Control.HighlightSearch(h.Highlight);
         };
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
+        vm.SearchPanel.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(SearchPanelViewModel.CurrentSearchRootPath)
+                && vm.SearchPanel.CurrentSearchRootPath is { } searchRoot)
+                vm.Recent.RecordFolder(searchRoot);
+        };
         vm.SearchPanel.SupportHighlightChanged += (_, _) => ApplyEditorSupportSearchHighlight();
         vm.SearchPanel.FilesReplacedOnDisk += async (_, paths) =>
             await ReloadEditorTabsAfterReplaceAsync(paths, vm.SearchPanel.HighlightTerm);
@@ -273,7 +280,10 @@ public partial class ShellWindow : Window {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
             FocusPane(PaneKind.Search);
         };
-        vm.FolderTree.CurrentRootChanged += (_, root) => vm.SearchPanel.SetDefaultRoot(root);
+        vm.FolderTree.CurrentRootChanged += (_, root) => {
+            vm.SearchPanel.SetDefaultRoot(root);
+            vm.Recent.RecordFolder(root);
+        };
         vm.FolderTree.AddressNavigationRequested += (_, path) => vm.Workspaces.ActivateFolder(path);
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         vm.FolderTree.FileAiRequested += (_, request) => _ = RunFileAiAsync(request);
@@ -292,6 +302,7 @@ public partial class ShellWindow : Window {
         // ファイル一覧ペイン。素材の行き先（エディタ・ターミナル・Diff・検索・ブラウザ）と
         // タブ追従はツリーと同じ受け口へ流す——どちらから操作しても結果が同じであるべきなので。
         vm.Files.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
+        vm.Files.FolderNavigated += (_, path) => vm.Recent.RecordFolder(path);
         vm.Files.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         vm.Files.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);
         vm.Files.EntryDeleted += (_, path) => OnFolderTreeEntryDeleted(path);

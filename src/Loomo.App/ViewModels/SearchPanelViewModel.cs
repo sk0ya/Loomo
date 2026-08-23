@@ -106,6 +106,10 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// テキスト／ファイル名検索でのみ使う（ターミナル検索は対象外）。</summary>
     [ObservableProperty] private string _searchRoot = "";
 
+    /// <summary>現在の検索開始フォルダーを実パスで返す。履歴収集など、検索実行そのものとは
+    /// 別のUI連携が必要な場合に使う。空はワークスペース全体を表す。</summary>
+    public string? CurrentSearchRootPath => EffectiveSearchRoot();
+
     // 既定の開始フォルダー（FolderTree の表示ルート・SearchRoot と同じ表記）。リセットの戻り先・追従の基準。
     private string _defaultRoot = "";
 
@@ -254,6 +258,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     partial void OnSearchRootChanged(string value)
     {
         OnPropertyChanged(nameof(CanResetSearchRoot));
+        OnPropertyChanged(nameof(CurrentSearchRootPath));
         OnPropertyChanged(nameof(ShowRootRow));
         ScheduleSearch();
     }
