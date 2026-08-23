@@ -111,6 +111,7 @@ public partial class DiffSessionView : UserControl
             _hooked.Conflict.ScrollToConflictRequested -= OnScrollToConflictRequested;
             _hooked.DiffRows.CollectionChanged -= OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged -= OnSideRowsChanged;
+            _hooked.PropertyChanged -= OnVmPropertyChanged;
         }
         _hooked = Vm;
         if (_hooked is not null)
@@ -120,6 +121,7 @@ public partial class DiffSessionView : UserControl
             _hooked.Conflict.ScrollToConflictRequested += OnScrollToConflictRequested;
             _hooked.DiffRows.CollectionChanged += OnDiffRowsChanged;
             _hooked.SideRows.CollectionChanged += OnSideRowsChanged;
+            _hooked.PropertyChanged += OnVmPropertyChanged;   // Markdown レンダリング差分の表示切替
             ScheduleRebuildUnified();
             ScheduleRebuildSide();
         }
@@ -429,6 +431,7 @@ public partial class DiffSessionView : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         HookSyntaxColors();
+        ReattachMarkdownWebIfMoved();
         // 以下（自分の子コントロールへの購読）は1度だけ——Loaded はペインの再ペアレントのたびに走り、
         // 二度目からは同じハンドラが積み上がるだけで、子は同じインスタンスのまま生き続けている。
         if (_viewHooked) return;

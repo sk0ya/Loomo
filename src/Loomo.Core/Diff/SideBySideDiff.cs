@@ -79,10 +79,12 @@ public static class SideBySideDiff
         var added = new List<(string Text, int Line)>();
         var oldLine = 0;
         var newLine = 0;
+        // ハンクの中かどうか。中では先頭1文字だけで分類する（本文の `---`/`+++` をヘッダと読まないため）。
+        var inHunk = false;
 
         foreach (var raw in patchText.Replace("\r\n", "\n").Split('\n'))
         {
-            switch (ClassifyPatchLine(raw))
+            switch (ClassifyPatchLine(raw, inHunk))
             {
                 case SideCellKind.Removed: removed.Add((raw[1..], oldLine++)); break;
                 case SideCellKind.Added: added.Add((raw[1..], newLine++)); break;
@@ -90,10 +92,13 @@ public static class SideBySideDiff
                     FlushChanges(rows, removed, added);
                     if (TryParseHunkStarts(raw, out var o, out var n)) { oldLine = o; newLine = n; }
                     if (!hideChrome) rows.Add(SideBySideRow.Shared(SideCellKind.Gap, raw));
+                    inHunk = true;
                     break;
                 case SideCellKind.Header:
                     FlushChanges(rows, removed, added);
                     if (!hideChrome) rows.Add(SideBySideRow.Shared(SideCellKind.Header, raw));
+                    // 「\ No newline at end of file」はハンクの中のマーカー（ハンクはまだ続く）。
+                    if (!raw.StartsWith("\\", StringComparison.Ordinal)) inHunk = false;
                     break;
                 default:
                     FlushChanges(rows, removed, added);
@@ -119,7 +124,33 @@ public static class SideBySideDiff
         return true;
     }
 
-    /// <summary>git の unified diff 1行を表示種別へ分類する（Empty は返さない）。</summary>
+    /// <summary>
+    /// git の unified diff 1行を表示種別へ分類する（Empty は返さない）。
+    ///
+    /// <para><paramref name="inHunk"/> は「この行はハンク（<c>@@</c> のあと）の中か」。<b>ハンクの中では
+    /// 先頭1文字だけで決める</b>——本文にはプレフィックス1文字が付くので、<c>---</c> という本文の削除行は
+    /// <c>----</c>、<c>+++</c> の追加行は <c>++++</c> になり、ヘッダの綴り（<c>---</c>/<c>+++</c>）と
+    /// 見分けが付かなくなる。ハンクの中身をヘッダと読むと、水平線・フロントマターの囲み・setext 見出しの
+    /// 下線が<b>行ごと消えて</b>別の文書になる（Markdown レンダリング差分＝§24.10 はそれを再構成するので、
+    /// 誤りが見えない形で紛れ込む）。既定の <c>false</c> は従来どおりの綴りによる判定。</para>
+    /// </summary>
+    public static SideCellKind ClassifyPatchLine(string line, bool inHunk)
+    {
+        if (!inHunk)
+            return ClassifyPatchLine(line);
+        if (line.StartsWith("@@", StringComparison.Ordinal)) return SideCellKind.Gap;   // 次のハンク
+        if (line.Length == 0) return SideCellKind.Context;
+        switch (line[0])
+        {
+            case ' ': return SideCellKind.Context;
+            case '+': return SideCellKind.Added;
+            case '-': return SideCellKind.Removed;
+            case '\\': return SideCellKind.Header;   // 「\ No newline at end of file」
+            default: return ClassifyPatchLine(line);     // ハンクが終わって次のファイルの見出しへ入った
+        }
+    }
+
+    /// <summary>綴りだけで分類する（ハンクの外＝ファイルの見出し・ハンク見出し）。</summary>
     public static SideCellKind ClassifyPatchLine(string line)
     {
         if (line.StartsWith("+++", StringComparison.Ordinal)

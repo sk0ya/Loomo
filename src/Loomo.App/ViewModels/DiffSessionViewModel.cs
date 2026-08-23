@@ -24,6 +24,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     public DiffConflictViewModel Conflict { get; }
     private readonly DiffSessionQuery _query;
     private readonly DiffSessionCommandHandler _commands;
+    /// <summary>Markdown レンダリング差分の配色（プレビューと同じ <c>Appearance.MarkdownPreviewTheme</c>）を
+    /// 引くために持つ。<b>必須</b>——既定へ落ちるオーバーロードを置くと、既定値の写しが増えて
+    /// プレビューと静かにズレる（LSP のテーブルで踏んだのと同じ轍）。</summary>
+    private readonly LoomoSettings _settings;
     private bool _loaded;
 
     private (string? From, string To)? _commitRange;
@@ -56,9 +60,12 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     public bool CanStageHunks => Hunks.Count > 0;
 
+    /// <param name="settings">Markdown レンダリング差分の配色（<c>Appearance.MarkdownPreviewTheme</c>）を
+    /// 引くための設定。Markdown プレビューと同じ見え方にするための一次情報なので必須。</param>
     public DiffSessionViewModel(
         GitService git, IEditorService editor, IWorkspaceService workspace,
-        DiffFileGateway files, DiffSessionQuery query, DiffSessionCommandHandler commands)
+        DiffFileGateway files, DiffSessionQuery query, DiffSessionCommandHandler commands,
+        LoomoSettings settings)
     {
         _git = git;
         _editor = editor;
@@ -66,7 +73,14 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _files = files;
         _query = query;
         _commands = commands;
+        _settings = settings;
         Conflict = new DiffConflictViewModel(files, git, ClearDiffForConflict, SetStatus);
+        // コンフリクト解消表示に入る／出ると、レンダリング表示を出せるかどうかが変わる（§24.10）。
+        Conflict.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DiffConflictViewModel.IsConflictMode))
+                NotifyMarkdownRenderState();
+        };
         _git.RepositoryChanged += (_, _) => DispatchRefresh();
     }
 
@@ -129,6 +143,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         // 「今どの比較を見ているか」は選択中の項目が正本（複数ストックできるので、素材を1つ覚えるのでは足りない）。
         OnPropertyChanged(nameof(HasComparison));
         OnPropertyChanged(nameof(CompareCaption));
+        // Markdown かどうかで表示モードの切り替え自体の出し入れが変わる。
+        NotifyMarkdownRenderState();
         if (_pendingJumpFile is not null && !ReferenceEquals(value, _pendingJumpFile))
         {
             _pendingJumpFile = null;
@@ -150,6 +166,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     partial void OnIsSideBySideChanged(bool value)
     {
         _changeCursor = -1;
+        NotifyMarkdownRenderState();
         _ = LoadAndAutoJumpAsync(SelectedFile);
     }
 

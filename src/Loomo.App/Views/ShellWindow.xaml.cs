@@ -118,6 +118,11 @@ public partial class ShellWindow : Window {
             _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
         };
         editorSupportWebView.ReloadRequested += OnEditorSupportReloadRequested;
+        // Markdown 差分のレンダリング表示（§24.10）。Diff ペインは XAML から生えて DI が届かないので、
+        // 部屋の他のプレビューと同じ道具（WebView2 のファクトリと一時ページの置き場）をここで渡す。
+        DiffSessionHost.ConfigureMarkdownRender(editorSupportViewFactory, EditorSupportPreviewFolder);
+        // 本文のリンクは EditorSupport のプレビューと同じ振り分け（URL＝ブラウザ／ファイル＝エディタ）へ流す。
+        DiffSessionHost.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
         _editorSupports = editorSupports;
         _editorSupportResolver = editorSupportResolver;
         _codeSupport = codeSupport;

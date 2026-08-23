@@ -1721,9 +1721,12 @@
                                                  IsChecked="{Binding DiffSession.IsCompareMode}" />
                                 </StackPanel>
                             </Border>
-                            <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く -->
+                            <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く。
+                                 Markdown をレンダリング表示している間は出さない——押しても画面は変わらず、
+                                 差分の読み直しだけが走る（押せるのに何も起きない・§24.7）。 -->
                             <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
-                                    Margin="0,0,10,0">
+                                    Margin="0,0,10,0"
+                                    Visibility="{Binding DiffSession.CanChooseTextLayout, Converter={StaticResource BoolToVis}}">
                                 <StackPanel Orientation="Horizontal">
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="左右" FontSize="{DynamicResource Fs12}"
                                                  ToolTip="削除を左・追加を右に並べて表示（side by side）"
@@ -1731,6 +1734,20 @@
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="統合" FontSize="{DynamicResource Fs12}"
                                                  ToolTip="差分を1列で表示（unified）"
                                                  IsChecked="{Binding DiffSession.IsSideBySide, Converter={StaticResource InverseBool}}" />
+                                </StackPanel>
+                            </Border>
+                            <!-- Markdown 差分のレンダリング表示（§24.10）。テキスト／描画の切り替えは
+                                 **対象が Markdown のときだけ**出す（押せるのに何も起きない項目を作らない・§24.7）。 -->
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                                    Margin="0,0,10,0"
+                                    Visibility="{Binding DiffSession.CanRenderMarkdown, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="テキスト" FontSize="{DynamicResource Fs12}"
+                                                 ToolTip="パッチの行をそのまま読む（既定）"
+                                                 IsChecked="{Binding DiffSession.IsMarkdownRender, Converter={StaticResource InverseBool}}" />
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="描画" FontSize="{DynamicResource Fs12}"
+                                                 ToolTip="Markdown をレンダリングし、追加・削除をその文書の中に混ぜて読む"
+                                                 IsChecked="{Binding DiffSession.IsMarkdownRender}" />
                                 </StackPanel>
                             </Border>
                             <!-- Git セッションから連携されたコミット範囲の表示中ラベル＋解除 -->

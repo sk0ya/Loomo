@@ -307,6 +307,9 @@ public sealed class EditorSupportWebViewController : IDisposable
     private void DiscardView()
     {
         ResetPageState();
+        // 仮想ホストのマップは core に付いているので、捨てたら「マップ済み」の記憶も捨てる
+        // （さもないと作り直した core に preview.loomo が無いまま張り直されない）。
+        _navigation.ResetPreviewHost();
         if (View is not null)
         {
             View.NavigationCompleted -= OnNavigationCompleted;

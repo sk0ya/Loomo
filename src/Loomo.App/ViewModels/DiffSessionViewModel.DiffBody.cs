@@ -55,6 +55,21 @@ public sealed partial class DiffSessionViewModel
     {
         var version = ++_diffLoadVersion;
         await LoadHunksAsync(item, version);
+        if (UseMarkdownRender(item))
+        {
+            // レンダリング表示中はテキスト行を組み立てない（画面から退けてあるものを作っても捨てるだけ）。
+            var render = await BuildMarkdownRenderAsync(item!);
+            if (version != _diffLoadVersion)
+                return; // より新しい読込が始まっている
+            ApplyMarkdownRender(render);
+            return;
+        }
+        if (version != _diffLoadVersion)
+            return;                  // より新しい読込が始まっている
+        // モードを戻したら前の HTML を残さない。**世代チェックの内側で**消すのが要点——外でやると、
+        // 遅れて再開した古い読込が、既に出ている新しいレンダリング結果を消して真っ白なペインにする。
+        MarkdownRenderHtml = null;
+        MarkdownRenderNotice = "";
         if (IsSideBySide)
         {
             var content = await BuildSideContentAsync(item);

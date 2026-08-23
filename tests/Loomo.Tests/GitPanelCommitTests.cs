@@ -39,7 +39,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         var editor = new FakeEditorService();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings());
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
         // 未追跡ファイルは「バージョン管理外ファイル」セクションに並び、既定では未チェック。
@@ -67,7 +67,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         var editor = new FakeEditorService();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings());
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Contains(vm.Staged, i => i.Entry.Path == "staged.txt");
@@ -88,7 +88,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         var editor = new FakeEditorService();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings());
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
         await vm.RefreshCommand.ExecuteAsync(null);
 
@@ -114,7 +114,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         var editor = new FakeEditorService();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git));
+            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings());
         var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch);
 
         Assert.False(vm.FetchCommand.CanExecute(null));

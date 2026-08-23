@@ -64,6 +64,52 @@ public static class DiffUtil
         return sb.ToString().TrimEnd('\n');
     }
 
+    /// <summary>
+    /// git の unified diff テキストを <see cref="DiffLine"/> の並びへ戻す（ヘッダ行と <c>@@</c> は落とす）。
+    /// <b>全文コンテキストのパッチ専用</b>——ハンク化されたパッチを渡すと、畳まれた文脈行が黙って
+    /// 抜けた「別の文書」になる。<see cref="ComputeFull"/> と同じ形（Gap 無し）を、git が既に計算済みの
+    /// 差分から得るための入口。
+    ///
+    /// <para><b>本文はハンクの中だけ</b>から拾う。ハンクの外の行（<c>diff --git</c> 等のヘッダ、git が
+    /// 返したエラーメッセージ）は本文ではないので落とす——先頭1文字を剥がして文脈行にすると、
+    /// <c>fatal: …</c> が <c>atal: …</c> という本文の1行として文書に紛れ込む。そしてハンクの中では
+    /// 先頭1文字だけで分類する（<see cref="SideBySideDiff.ClassifyPatchLine(string, bool)"/>）ので、
+    /// <c>---</c>（水平線・フロントマターの囲み・setext 見出しの下線）の削除行や <c>+++</c> の追加行も
+    /// 落ちない。ハンクが1つも無ければ空を返すので、呼び元は「差分が無い」と「解釈できなかった」を
+    /// パッチ本文が空かどうかで見分けられる。</para>
+    /// </summary>
+    public static IReadOnlyList<DiffLine> FromUnifiedPatch(string patchText)
+    {
+        var lines = new List<DiffLine>();
+        var inHunk = false;
+        foreach (var raw in patchText.Replace("\r\n", "\n").Split('\n'))
+        {
+            var kind = SideBySideDiff.ClassifyPatchLine(raw, inHunk);
+            if (kind == SideCellKind.Gap)
+            {
+                inHunk = true;      // ハンク見出しそのものは本文ではない
+                continue;
+            }
+            if (kind == SideCellKind.Header)
+            {
+                // 「\ No newline at end of file」はハンクの中のマーカー（ハンクはまだ続く）。
+                if (!raw.StartsWith("\\", StringComparison.Ordinal)) inHunk = false;
+                continue;
+            }
+            if (!inHunk)
+                continue;           // ハンクの外の行は本文ではない
+            lines.Add(new DiffLine(
+                kind switch
+                {
+                    SideCellKind.Added => DiffLineKind.Added,
+                    SideCellKind.Removed => DiffLineKind.Removed,
+                    _ => DiffLineKind.Context,
+                },
+                raw.Length > 0 ? raw[1..] : ""));
+        }
+        return lines;
+    }
+
     private static string[] Split(string text)
         => text.Length == 0 ? Array.Empty<string>() : text.Replace("\r\n", "\n").Split('\n');
 

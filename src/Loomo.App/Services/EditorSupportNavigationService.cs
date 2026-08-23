@@ -83,6 +83,15 @@ public sealed class EditorSupportNavigationService
         TryMap(core, MarkdownRenderer.PageVirtualHost, _previewFolder);
     }
 
+    /// <summary>
+    /// 「どのフォルダーをマップ済みか」の記憶を捨てる。<b>WebView2 を捨てたら必ず呼ぶ</b>——
+    /// 実マップは <see cref="CoreWebView2"/> 側に付いているので、core を作り直すとマップは消えるのに
+    /// この記憶だけが残り、<see cref="UpdatePreviewHost"/> が「同じフォルダーだから」と何もしなくなる。
+    /// その結果、同じファイルを見ているのに<b>相対パス画像だけ全部壊れる</b>（別フォルダーの文書を
+    /// 経由しないと復帰しない）。
+    /// </summary>
+    public void ResetPreviewHost() => _mappedPreviewFolder = null;
+
     public void UpdatePreviewHost(CoreWebView2 core, string? folder)
     {
         if (string.IsNullOrEmpty(folder)

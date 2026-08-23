@@ -494,10 +494,10 @@
                 <Grid Visibility="{Binding Conflict.ShowDiffBody, Converter={StaticResource BoolToVis}}">
                 <RichTextBox x:Name="UnifiedBox" Style="{StaticResource DiffTextBox}"
                              ContextMenu="{StaticResource DiffUnifiedMenu}"
-                             Visibility="{Binding IsSideBySide, Converter={StaticResource InverseBoolToVis}}" />
+                             Visibility="{Binding ShowUnifiedText, Converter={StaticResource BoolToVis}}" />
 
                 <Grid x:Name="SidePanel"
-                      Visibility="{Binding IsSideBySide, Converter={StaticResource BoolToVis}}">
+                      Visibility="{Binding ShowSideText, Converter={StaticResource BoolToVis}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="120" />
                         <ColumnDefinition Width="Auto" />
@@ -537,6 +537,26 @@
                         <RichTextBox x:Name="RightTextBox" Grid.Column="1" Style="{StaticResource DiffTextBox}"
                                      ContextMenu="{StaticResource DiffSideMenu}" />
                     </Grid>
+                </Grid>
+
+                <!-- Markdown 差分のレンダリング表示（設計書 §24.10）。対象が .md/.markdown で
+                     「描画」モードのときだけ出る。中身（WebView2）は DiffSessionView.MarkdownRender.cs が
+                     モードを切った瞬間に実体化して差し込む——テキスト差分しか見ない間はブラウザプロセスを増やさない。 -->
+                <Grid x:Name="MarkdownRenderHost" Background="{DynamicResource BgAlt}"
+                      Visibility="{Binding IsMarkdownRenderActive, Converter={StaticResource BoolToVis}}">
+                    <!-- 出せなかった理由（差分が大きすぎる・差分が無い）。黙って空白にしない。 -->
+                    <TextBlock Margin="14,10" TextWrapping="Wrap" VerticalAlignment="Top"
+                               Foreground="{DynamicResource FgDim}" Text="{Binding MarkdownRenderNotice}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding MarkdownRenderNotice}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </Grid>
                 </Grid>
 

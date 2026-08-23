@@ -74,7 +74,7 @@ public class ShellViewModelTests
         var rootSwitch = new GitRootSwitchViewModel(git, workspace);
         var diffFiles = new DiffFileGateway();
         var diffSessionVm = new DiffSessionViewModel(git, new FakeEditorService(), workspace,
-            diffFiles, new DiffSessionQuery(git), new DiffSessionCommandHandler(git));
+            diffFiles, new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings());
         var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService(), workspace, diffSessionVm, rootSwitch);
         var gitQuery = new GitSessionQuery(git);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(), diffSessionVm,
