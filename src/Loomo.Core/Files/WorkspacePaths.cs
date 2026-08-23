@@ -77,6 +77,16 @@ public static class WorkspacePaths
         return relative.Replace(Path.DirectorySeparatorChar, '/');
     }
 
+    /// <summary>パスの<b>等値比較用</b>の正規化（絶対化＋末尾区切りの除去）。解決できないパスは
+    /// 与えられたまま返す——短くしようとして出所を変えない。
+    /// <para>比較そのもの（大小無視）は呼び出し側で行う。ここを各所で書き直すと
+    /// 「片方だけ <c>GetFullPath</c> していて一致しない」が起きるので、正規化はこの1本に寄せる。</para></summary>
+    public static string Normalize(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        return TryFull(path, out var full) ? full : path;
+    }
+
     private static bool TryFull(string value, out string full)
     {
         try

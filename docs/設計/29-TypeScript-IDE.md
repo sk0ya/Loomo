@@ -170,3 +170,14 @@ npm スクリプト launch の出力・自然終了。node/js-debug 未導入環
   複数子接続のスレッド/停止イベントの統合は複雑さに見合わない（典型的な TS 開発では単一プロセス）。
   必要になったら「子ごとに別 `DebugSessionViewModel`」方向で設計し直す。
 - **アタッチポートの永続化**：プロセス列挙（ポート自動検出）で手入力がほぼ不要になったため保留。
+
+## 29.6 エディタのガターのテスト実行 ▶ ／結果（2026-08）
+
+dotnet 側と**同じ動線**が `*.test.ts` / `*.spec.ts` にも出る（正本は §28.10）。TS 固有の点だけ：
+
+- 位置は `TsTestDiscovery`（`TsDiscoveredTest.FilePath` / `Line1`）がそのまま宣言位置になる
+  ——dotnet と違い探索の時点でファイルと行が判っているので、追加の走査は要らない。
+- 単体実行は既存の `TsDebugTestsViewModel.RunSingleTestCommand`（ファイル限定＋`-t 葉タイトル`）を
+  そのまま使う。**「TS では 1 件だけ走らせられない」ということはない**ので、dotnet 先行にはしていない。
+- 所要時間は jest 互換 JSON の `duration`（ミリ秒）。欠落・null・負値は「不明」として出さない。
+- 管轄の振り分けはデバッグの `ManagerForPath` と同じ拡張子表（`.ts/.mts/.cts/.tsx/.js/.jsx/.mjs/.cjs`）。

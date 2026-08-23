@@ -75,6 +75,9 @@ public static class CommandCatalog
         // プレフィックスで、部屋そのものの動線（JetBrains の Ctrl+W に引きずられない）。
         new CommandDescriptor("editor.selection.expand", CatEditor, "選択を意味的に広げる", "Shift+Alt+Right"),
         new CommandDescriptor("editor.selection.shrink", CatEditor, "選択を1段戻す", "Shift+Alt+Left"),
+        // ガターの ▶ はマウス専用なので、キーボードからの実行経路をコマンドとして持たせる（§28.10）。
+        // 既定キーは与えない——テストを書く人だけが使う操作で、既定の1打鍵を占有する理由が無い。
+        new CommandDescriptor("editor.test.runAtCaret", CatEditor, "カーソル行のテストを実行", null),
 
         // ===== セッション（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),

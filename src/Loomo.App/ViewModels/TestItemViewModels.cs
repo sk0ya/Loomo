@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -92,6 +93,34 @@ public sealed partial class TestItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSource))]
     private int _line;
 
+    /// <summary>宣言位置のファイル（ソース走査で判ったもの）。エディタのガターに ▶／結果グリフを置く場所。
+    /// <see cref="SourcePath"/> と分けてあるのは、あちらが実行結果（スタックトレース）由来の<b>失敗位置</b>で、
+    /// ヘルパの行を指すことがあるため——▶ の置き場所には使えない。
+    /// <para>比較用の正規化（<see cref="NormalizedDeclarationPath"/>）は<b>設定時に1回だけ</b>行う。
+    /// ガターの再送は打鍵ごとに全件を舐めるので、そこで <c>Path.GetFullPath</c>（Windows では P/Invoke）を
+    /// テスト件数ぶん呼ぶと UI スレッドに効いてくる。</para></summary>
+    public string? DeclarationPath
+    {
+        get => _declarationPath;
+        set
+        {
+            if (string.Equals(_declarationPath, value, StringComparison.Ordinal)) return;
+            _declarationPath = value;
+            NormalizedDeclarationPath = WorkspacePaths.Normalize(value);
+        }
+    }
+    private string? _declarationPath;
+
+    /// <summary>比較用に正規化した <see cref="DeclarationPath"/>（未設定なら空文字）。</summary>
+    public string NormalizedDeclarationPath { get; private set; } = "";
+
+    /// <summary>宣言位置の行（<b>1 始まり</b>。0 は「位置不明」）。エディタのバッファ行は 0 始まりなので、
+    /// ガターへ渡すときは −1 する。</summary>
+    public int DeclarationLine { get; set; }
+
+    /// <summary>直近の実行にかかった時間（結果に含まれていなければ null）。ガターのツールチップに出す。</summary>
+    public TimeSpan? Duration { get; private set; }
+
     /// <summary>状態を表すグリフ（色は XAML の <c>Status</c> トリガで付ける）。</summary>
     public string Glyph => Status switch
     {
@@ -110,17 +139,22 @@ public sealed partial class TestItemViewModel : ObservableObject
     public bool HasMessage => Status == TestStatus.Failed && !string.IsNullOrEmpty(Message);
 
     /// <summary>実行結果（TRX）を反映する。位置はスタックトレースから取れたときだけ更新する。</summary>
-    public void Update(TestStatus status, string? message, string? sourcePath, int line)
+    public void Update(TestStatus status, string? message, string? sourcePath, int line,
+        TimeSpan? duration = null)
     {
         Status = status;
         Message = message;
+        Duration = duration;
         if (!string.IsNullOrEmpty(sourcePath)) { SourcePath = sourcePath; Line = line; }
     }
 
     /// <summary>テオリ等のケース 1 件分の結果を、このメソッド行へ集約する（1 ケースでも失敗なら失敗、
     /// 全成功なら成功、それ以外はスキップ）。失敗位置・メッセージは最初の失敗ケースのものを残す。</summary>
-    public void ApplyCaseResult(TestStatus status, string? message, string? sourcePath, int line)
+    public void ApplyCaseResult(TestStatus status, string? message, string? sourcePath, int line,
+        TimeSpan? duration = null)
     {
+        Duration = _caseAccumulating ? (Duration ?? TimeSpan.Zero) + (duration ?? TimeSpan.Zero) : duration;
+        _caseAccumulating = true;
         if (Status != TestStatus.Failed)  // 既に失敗確定なら降格させない
         {
             if (status == TestStatus.Failed) { Status = TestStatus.Failed; Message = message; }
@@ -130,8 +164,18 @@ public sealed partial class TestItemViewModel : ObservableObject
         if (!string.IsNullOrEmpty(sourcePath) && string.IsNullOrEmpty(SourcePath)) { SourcePath = sourcePath; Line = line; }
     }
 
-    public void SetRunning() => Status = TestStatus.Running;
-    public void ResetStatus() => Status = TestStatus.NotRun;
+    /// <summary>このメソッド行が、今回の実行でケース結果を1件以上受け取ったか
+    /// （テオリの所要時間を全ケースぶん合算するため。実行を跨いで足し込まないよう <see cref="SetRunning"/> で戻す）。</summary>
+    private bool _caseAccumulating;
+
+    public void SetRunning() { Status = TestStatus.Running; Duration = null; _caseAccumulating = false; }
+    public void ResetStatus() { Status = TestStatus.NotRun; _caseAccumulating = false; }
+
+    /// <summary>これから 1 回ぶんの結果を流し込む、の合図（<c>DotnetTestRunner.ApplyTrx</c> の先頭）。
+    /// ケースの所要時間の合算をここで切る——<see cref="SetRunning"/> だけに任せると、
+    /// グループ実行の <c>--filter</c> が「表示中の行」より広いテストを拾ったとき
+    /// （成功を非表示にしている等）に前回ぶんへ足し込まれ、所要時間が倍に見える。</summary>
+    public void BeginResultBatch() => _caseAccumulating = false;
 
     /// <summary>名前空間を落として クラス.メソッド（＋テオリ引数）を残す。</summary>
     private static string ShortName(string fqn)

@@ -1,3 +1,4 @@
+using sk0ya.Loomo.Core.Files;
 using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.App.Views;
@@ -181,6 +182,9 @@ public partial class ShellWindow {
         var filePath = tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath;
         _vm.Debug.Problems.CurrentFilePath = filePath;
         _vm.TsIde.Problems.CurrentFilePath = filePath;
+        // 読み込みを伴わないタブ活性化ぶんの再送（読み込みを伴う経路は LoadEditorFile が受け持つ）。
+        // 同じ内容なら Editor 側が no-op にするので、重複して送っても害はない。
+        if (tab.IsRealized) SyncEditorTestGlyphs(tab.Control);
         if (string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase))
             return;
         _lastLspPromptPath = filePath;
@@ -332,8 +336,10 @@ public partial class ShellWindow {
             CloseEditorTab(id);
         SaveActiveWorkspaceSnapshot();
     }
+    // 正規化はワークスペース側の 1 本（WorkspacePaths.Normalize）に寄せる——同じ形の GetFullPath+TrimEnd を
+    // 各所で書き直すと「片方だけ正規化していて一致しない」が起きる。
     private static bool PathsEqual(string a, string b)
-        => string.Equals( Path.GetFullPath(a).TrimEnd('\\', '/'), Path.GetFullPath(b).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        => string.Equals(WorkspacePaths.Normalize(a), WorkspacePaths.Normalize(b), StringComparison.OrdinalIgnoreCase);
     private static bool IsPathUnder(string path, string directory) {
         var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
         var full = Path.GetFullPath(path);

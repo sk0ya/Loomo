@@ -20,8 +20,10 @@ internal static class TsTestRunner
     /// パッケージ間や別セッションの結果が混ざらないようにする。</summary>
     private static readonly string ResultsDir = Path.Combine(Path.GetTempPath(), "Loomo", "test-results");
 
-    /// <summary>結果 1 件。<see cref="Title"/> は describe 連結（"a &gt; b &gt; テスト名"、探索側と同じ形）。</summary>
-    internal sealed record TsTestResult(string FilePath, string Title, TestStatus Status, string? Message);
+    /// <summary>結果 1 件。<see cref="Title"/> は describe 連結（"a &gt; b &gt; テスト名"、探索側と同じ形）。
+    /// <see cref="Duration"/> は jest 互換 JSON の <c>duration</c>（ミリ秒。無ければ null）。</summary>
+    internal sealed record TsTestResult(string FilePath, string Title, TestStatus Status, string? Message,
+        TimeSpan? Duration = null);
 
     /// <summary>package.json からテストランナーを判定する（devDependencies / dependencies のキー、
     /// 次いで scripts.test の文言）。判定できなければ null。</summary>
@@ -150,7 +152,7 @@ internal static class TsTestRunner
                 item = createItem(r.FilePath, r.Title);
                 tests.Add(item);
             }
-            item.Update(r.Status, r.Message, sourcePath: null, line: 0);   // 位置は探索側の値を保持
+            item.Update(r.Status, r.Message, sourcePath: null, line: 0, r.Duration);   // 位置は探索側の値を保持
         }
     }
 
@@ -210,7 +212,12 @@ internal static class TsTestRunner
                     }
                 }
 
-                list.Add(new TsTestResult(path, title, mapped, message));
+                // duration はミリ秒（vitest/jest とも数値。skip したテストでは欠けることがある）。
+                TimeSpan? duration = a.TryGetProperty("duration", out var dur)
+                    && dur.ValueKind == JsonValueKind.Number && dur.TryGetDouble(out var ms) && ms >= 0
+                        ? TimeSpan.FromMilliseconds(ms) : null;
+
+                list.Add(new TsTestResult(path, title, mapped, message, duration));
             }
         }
         return list;

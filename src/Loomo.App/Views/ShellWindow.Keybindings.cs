@@ -10,7 +10,7 @@ public partial class ShellWindow {
             ["pane.search"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search); FocusPane(PaneKind.Search); },
             ["pane.files"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files); FocusPane(PaneKind.Files); },
             ["problems.next"] = () => CurrentProblems().NextCommand.Execute(null), ["problems.previous"] = () => CurrentProblems().PreviousCommand.Execute(null),
-            ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection,
+            ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,
             ["tab.newTerminal"] = () => OnTerminalNewTab(this, new RoutedEventArgs()), ["tab.newEditor"] = () => OnEditorNewTab(this, new RoutedEventArgs()), ["tab.newBrowser"] = () => OnBrowserNewTab(this, new RoutedEventArgs()),
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null), ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null), ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null), ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null), ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null), ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null), ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null), ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree, };

@@ -103,6 +103,20 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         }
     }
 
+    /// <summary>一覧・各行の状態が変わったとき（UI スレッド）。エディタのガターのテストグリフ再送の契機。</summary>
+    public event Action? TestsChanged;
+
+    IReadOnlyList<TestItemViewModel> ITestExplorer.TestItems => Tests;
+
+    /// <summary>ガターの ▶／コマンドパレットからの単体実行（ファイル限定＋<c>-t</c>）。
+    /// vitest / jest とも 1 件だけ走らせる手段があるので、dotnet 側と同じ動線をそのまま出せる。</summary>
+    async Task<bool> ITestExplorer.RunTestAsync(TestItemViewModel test)
+    {
+        if (!RunSingleTestCommand.CanExecute(test)) return false;
+        await RunSingleTestCommand.ExecuteAsync(test);
+        return true;
+    }
+
     /// <summary>テストタブが表示されたときの保険的な収集。</summary>
     public void EnsureTestsDiscovered()
     {
@@ -170,20 +184,17 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         {
             var fqn = TsTestRunner.MakeFqn(d.FilePath, d.Title);
             keep.Add(fqn);
-            if (existing.TryGetValue(fqn, out var item))
+            if (!existing.TryGetValue(fqn, out var item))
             {
-                item.IsParameterized = d.IsEach;
-                item.SourcePath = d.FilePath;
-                item.Line = d.Line1;
+                item = CreateItem(d.FilePath, d.Title);
+                Tests.Add(item);
             }
-            else
-            {
-                var created = CreateItem(d.FilePath, d.Title);
-                created.IsParameterized = d.IsEach;
-                created.SourcePath = d.FilePath;
-                created.Line = d.Line1;
-                Tests.Add(created);
-            }
+            item.IsParameterized = d.IsEach;
+            item.SourcePath = d.FilePath;
+            item.Line = d.Line1;
+            // 宣言位置はエディタのガターの ▶ を置く場所（TS は探索の位置がそのまま宣言位置）。
+            item.DeclarationPath = d.FilePath;
+            item.DeclarationLine = d.Line1;
         }
 
         for (var i = Tests.Count - 1; i >= 0; i--)
@@ -196,6 +207,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
         SyncTree();
         RecomputeSummary();
+        TestsChanged?.Invoke();
     }
 
     /// <summary>1 テスト行を TS 規約で作る：グループキー＝正規化ファイルパス、葉表示＝タイトル、
@@ -226,17 +238,23 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         {
             _session.StatusMessage = "テスト実行中…";
             foreach (var t in Tests) t.SetRunning();
+            TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
             var hadResults = false;
             foreach (var pkgDir in Tests.Select(t => FindPackageDir(t.ClassName)).Where(d => d is not null)
                          .Distinct(StringComparer.OrdinalIgnoreCase).ToList())
                 hadResults |= await RunPackageAsync(pkgDir!, fileScope: null, testName: null,
                     $"テスト: {Path.GetFileName(pkgDir!)}");
+            _session.StatusMessage = CountStatus(hadResults, Tests);
+        }
+        finally
+        {
+            // 後始末は必ず通す（例外・中断で「実行中」のまま固まらせない。ガターのグリフも同じ状態を映す）。
             foreach (var t in Tests) if (t.Status == TestStatus.Running) t.ResetStatus();  // 未突合は戻す
             SyncTree();
             RecomputeSummary();
-            _session.StatusMessage = CountStatus(hadResults, Tests);
+            TestsChanged?.Invoke();
+            _session.IsTaskRunning = false;
         }
-        finally { _session.IsTaskRunning = false; }
     }
 
     /// <summary>1 件のテストだけ実行する（ファイル限定＋<c>-t 葉タイトル</c>。同名タイトルが同ファイルに
@@ -283,14 +301,20 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             _session.StatusMessage = runningStatus;
             foreach (var t in running) t.SetRunning();
             UpdateAggregates();
+            TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
             var rel = Path.GetRelativePath(pkgDir, filePath);
             var had = await RunPackageAsync(pkgDir, rel, testName, label);
+            _session.StatusMessage = finalStatus(had);
+        }
+        finally
+        {
+            // 後始末は必ず通す（例外・中断で「実行中」のまま固まらせない。ガターのグリフも同じ状態を映す）。
             foreach (var t in running) if (t.Status == TestStatus.Running) t.ResetStatus();
             SyncTree();
             RecomputeSummary();
-            _session.StatusMessage = finalStatus(had);
+            TestsChanged?.Invoke();
+            _session.IsTaskRunning = false;
         }
-        finally { _session.IsTaskRunning = false; }
     }
 
     /// <summary>1 パッケージ分の実行（ランナー判定 → npx → JSON 反映）。結果が得られたら true。</summary>

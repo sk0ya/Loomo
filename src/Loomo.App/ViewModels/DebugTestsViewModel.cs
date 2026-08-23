@@ -111,6 +111,20 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
         }
     }
 
+    /// <summary>一覧・各行の状態が変わったとき（UI スレッド）。エディタのガターのテストグリフ再送の契機。</summary>
+    public event Action? TestsChanged;
+
+    IReadOnlyList<TestItemViewModel> ITestExplorer.TestItems => Tests;
+
+    /// <summary>ガターの ▶／コマンドパレットからの単体実行。ビルド中・デバッグ中は何もしない
+    /// （テストペインの ▶ と同じ <see cref="CanRunTask"/> の判定を通す）。</summary>
+    async Task<bool> ITestExplorer.RunTestAsync(TestItemViewModel test)
+    {
+        if (!RunSingleTestCommand.CanExecute(test)) return false;
+        await RunSingleTestCommand.ExecuteAsync(test);
+        return true;
+    }
+
     /// <summary>テストタブが表示されたときの保険的な収集（まだ一覧が無ければバックグラウンド収集を起動する）。</summary>
     public void EnsureTestsDiscovered()
     {
@@ -161,8 +175,9 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
     }
 
     /// <summary>収集結果を既存の一覧へマージする（クリアしない）。新規は追加、消えた未実行テストは除去。
-    /// 既に実行結果を持つ行は探索に出てこなくても残す（パーサが拾えない種別・直前の実行結果を消さない）。</summary>
-    private void ApplyDiscovered(IReadOnlyList<DiscoveredTest> found)
+    /// 既に実行結果を持つ行は探索に出てこなくても残す（パーサが拾えない種別・直前の実行結果を消さない）。
+    /// <para>マージ規則（宣言位置は毎回更新、失敗位置は温存）を固定したいので単体テストから直接呼ぶ＝internal。</para></summary>
+    internal void ApplyDiscovered(IReadOnlyList<DiscoveredTest> found)
     {
         var keep = new HashSet<string>(StringComparer.Ordinal);
         var existing = new Dictionary<string, TestItemViewModel>(StringComparer.Ordinal);
@@ -171,10 +186,16 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
         foreach (var d in found)
         {
             keep.Add(d.FullyQualifiedName);
-            if (existing.TryGetValue(d.FullyQualifiedName, out var item))
-                item.IsParameterized = d.IsParameterized;
-            else
-                Tests.Add(new TestItemViewModel(d.FullyQualifiedName) { IsParameterized = d.IsParameterized });
+            if (!existing.TryGetValue(d.FullyQualifiedName, out var item))
+            {
+                item = new TestItemViewModel(d.FullyQualifiedName);
+                Tests.Add(item);
+            }
+            item.IsParameterized = d.IsParameterized;
+            // 宣言位置はエディタのガターの ▶ を置く場所。行の挿入・削除には追従しないので、
+            // 走査のたびに上書きして最新へ寄せる（失敗位置＝SourcePath/Line とは別枠）。
+            item.DeclarationPath = d.SourcePath;
+            item.DeclarationLine = d.Line1;
         }
 
         // 探索に現れなくなった「未実行」の行だけ掃除する（結果を持つ行は残す）。
@@ -188,6 +209,7 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
 
         SyncTree();
         RecomputeSummary();
+        TestsChanged?.Invoke();
     }
 
     /// <summary>ワークスペースの全テストを実行する（<c>dotnet test</c> ＋ TRX ロガー）。結果を各行へ反映する。</summary>
@@ -239,14 +261,21 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
             _session.StatusMessage = runningStatus;
             foreach (var t in running) t.SetRunning();
             prepare?.Invoke();
+            TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
             var trx = await DotnetTestRunner.RunAsync(_terminal, _session, target, filter, label);
             if (trx is not null) DotnetTestRunner.ApplyTrx(trx, _session, Tests);
+            _session.StatusMessage = finalStatus(trx is not null);
+        }
+        finally
+        {
+            // 後始末は必ず通す。例外・中断でここを飛ばすと「実行中」のままの行が残り、
+            // エディタのガターも実行中の塗り＋「実行中…」のツールチップで固まる。
             foreach (var t in running) if (t.Status == TestStatus.Running) t.ResetStatus();  // 未突合は戻す
             SyncTree();
             RecomputeSummary();
-            _session.StatusMessage = finalStatus(trx is not null);
+            TestsChanged?.Invoke();
+            _session.IsTaskRunning = false;
         }
-        finally { _session.IsTaskRunning = false; }
     }
 
     private static string CountStatus(bool hadResults, IEnumerable<TestItemViewModel> set)

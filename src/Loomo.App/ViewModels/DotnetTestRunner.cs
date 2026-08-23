@@ -59,6 +59,9 @@ internal static class DotnetTestRunner
             return;
         }
 
+        // 今回ぶんの合算をここで切る（テオリのケース所要時間。詳細は TestItemViewModel.BeginResultBatch）。
+        foreach (var t in tests) t.BeginResultBatch();
+
         foreach (var r in results)
         {
             var item = tests.FirstOrDefault(t => string.Equals(t.FullyQualifiedName, r.Name, StringComparison.Ordinal));
@@ -75,8 +78,8 @@ internal static class DotnetTestRunner
             }
             if (item is null) { item = new TestItemViewModel(r.Name); tests.Add(item); }
 
-            if (isCase) item.ApplyCaseResult(r.Status, r.Message, r.SourcePath, r.Line);
-            else item.Update(r.Status, r.Message, r.SourcePath, r.Line);
+            if (isCase) item.ApplyCaseResult(r.Status, r.Message, r.SourcePath, r.Line, r.Duration);
+            else item.Update(r.Status, r.Message, r.SourcePath, r.Line, r.Duration);
         }
     }
 }

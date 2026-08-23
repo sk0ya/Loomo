@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>TRX から取り出したテスト 1 件の結果（名前・状態・失敗メッセージ先頭行・スタックから拾った位置）。</summary>
-public readonly record struct TrxResult(string Name, TestStatus Status, string? Message, string? SourcePath, int Line);
+/// <summary>TRX から取り出したテスト 1 件の結果（名前・状態・失敗メッセージ先頭行・スタックから拾った位置・所要時間）。</summary>
+public readonly record struct TrxResult(string Name, TestStatus Status, string? Message, string? SourcePath, int Line,
+    TimeSpan? Duration = null);
 
 /// <summary>TRX（VSTest 形式 XML）を読み、各 <c>UnitTestResult</c> を <see cref="TrxResult"/> へ写すパーサ。
 /// 一覧との突き合わせ（テオリのケース集約・未知テストの追加）は呼び出し側が行う。</summary>
@@ -55,7 +57,10 @@ public static class TrxResultParser
                 }
             }
 
-            results.Add(new TrxResult(name, status, msg, path, line1));
+            // duration は "00:00:00.0123456" 形式。無い／読めないものは null（ツールチップに出さない）。
+            TimeSpan? duration = TimeSpan.TryParse((string?)r.Attribute("duration"), CultureInfo.InvariantCulture, out var d)
+                ? d : null;
+            results.Add(new TrxResult(name, status, msg, path, line1, duration));
         }
         return results;
     }

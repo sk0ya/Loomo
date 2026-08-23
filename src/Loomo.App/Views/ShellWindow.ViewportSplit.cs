@@ -149,8 +149,11 @@ public partial class ShellWindow {
         var control = BuildEditorControl(tab);
         tab.SetControl(control);
         if (tab.Pending is { } snapshot) {
+            // セッション復元だけは LoadEditorFile を通らず editor.LoadFile を直に呼ぶ（未保存本文の復元があるため）。
+            // そちらもグリフを捨てるので、ここで送り直す。
             WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
             _appearance.ApplyUsingFoldingOnOpen(control);
+            SyncEditorTestGlyphs(control);
             tab.Pending = null;
         }
     }
@@ -208,6 +211,7 @@ public partial class ShellWindow {
         control.CloseTabRequested += (_, _) => CloseActiveEditorTab();
         control.WindowCloseRequested += (_, _) => CloseEditorView();
         WireEditorForDebug(control);
+        WireEditorForTestGlyphs(control);
         return control;
     }
     private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {
@@ -312,9 +316,19 @@ public partial class ShellWindow {
             }
         }
     }
+    /// <summary>エディタへファイルを読み込ませる。<b>Loomo 側の <c>LoadFile</c> の唯一の漏斗</b>で、
+    /// ここを通る経路は現在このとおり:
+    /// 新規タブ／プレビュータブで開く（<c>OpenFileInNewEditorTabAsync</c>／<c>OpenFileInPreviewTabAsync</c>）・
+    /// 外部変更の読み直し（<c>ReloadExistingTabIfChangedAsync</c> ← 既存タブを開き直したとき／
+    /// Git のブランチ切替（<c>RefreshOpenEditorTabsFromDiskAsync</c>）／検索パネルの一括置換）・
+    /// 分割で同じファイルを開く（<c>SplitEditorView</c>）・切り離し窓（複製／リンク先を別窓で開く／復元）。
+    /// <para>読み込み後の後始末をここへ集める理由は、<c>VimEditorControl.LoadFile</c> が
+    /// テストグリフを捨てるのに <c>BufferChanged</c> を<b>発火しない</b>こと。個々の呼び出し側で
+    /// 送り直していると、上のどれか（実際にブランチ切替で全タブ）が落ちる。</para></summary>
     private void LoadEditorFile(VimEditorControl control, string path) {
         control.LoadFile(path);
         _appearance.ApplyUsingFoldingOnOpen(control);
+        SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
     }
     private void ApplyVimEnabledToOpenEditorTabs() {
         foreach (var tab in _editorTabs)

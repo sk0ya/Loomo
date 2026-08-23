@@ -88,6 +88,11 @@ public partial class ShellWindow {
         // 意味的な選択（§24.9）。キー・右クリックメニューと同じ実装へ入る（§31.2 原則6）。
         list.Add(new("エディタ", "選択を意味的に広げる", ExpandSemanticSelection, Sc("editor.selection.expand"), "editor.selection.expand"));
         list.Add(new("エディタ", "選択を1段戻す", ShrinkSemanticSelection, Sc("editor.selection.shrink"), "editor.selection.shrink"));
+        // ガターの ▶ はマウス専用なので、キーボードからの実行経路はここが受け持つ（§24）。
+        // 対象が無いときは項目自体を出さない——押せるのに何も起きない項目を作らないため。
+        if (ActiveEditorTestAtCaret() is { } caretTest)
+            list.Add(new("エディタ", $"カーソル行のテストを実行: {caretTest.Test.DisplayName}",
+                RunTestAtCaret, Sc("editor.test.runAtCaret"), "editor.test.runAtCaret"));
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
         list.Add(new("コンポーザ", "本文をペグボードへ残す", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));

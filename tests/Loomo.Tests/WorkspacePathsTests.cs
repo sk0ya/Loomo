@@ -155,4 +155,15 @@ public sealed class WorkspaceServiceQueriesTests
         Assert.Equal(@"C:\work\app", workspace.FolderForOrPrimary(null));
         Assert.Null(Workspace().FolderForOrPrimary(@"E:\elsewhere\x.md"));
     }
+
+    /// <summary>等値比較用の正規化（絶対化＋末尾区切り除去）。パス比較を書く側がここへ寄せる前提なので、
+    /// 「解決できないものは与えられたまま返す」までを含めて固定する。</summary>
+    [Fact]
+    public void Normalize_absolutizes_and_trims_the_trailing_separator()
+    {
+        Assert.Equal(@"C:\work\app", WorkspacePaths.Normalize(@"C:\work\app\"));
+        Assert.Equal(@"C:\work\app\a.cs", WorkspacePaths.Normalize(@"C:\work\app\sub\..\a.cs"));
+        Assert.Equal("", WorkspacePaths.Normalize(null));
+        Assert.Equal("", WorkspacePaths.Normalize("   "));
+    }
 }

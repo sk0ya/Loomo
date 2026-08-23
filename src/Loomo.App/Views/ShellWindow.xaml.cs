@@ -190,6 +190,7 @@ public partial class ShellWindow : Window {
         if (vm.Workspaces.ActiveWorkspace is { } activeWorkspace)
             _taskbarWorkspaceRecent.AddRecent(activeWorkspace);
         InitializeDebugWiring();
+        InitializeTestGlyphWiring();
         HookIdeActivity(PaneKind.Debug, _vm.Debug);
         HookIdeActivity(PaneKind.TsIde, _vm.TsIde);
         InitializeProblemsWiring();
