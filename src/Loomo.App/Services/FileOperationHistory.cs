@@ -18,12 +18,12 @@ public enum FileOperationKind
 /// <summary>記録された 1 項目ぶんの操作。<see cref="Source"/>／<see cref="Target"/> の意味は種類ごと：
 /// 作成・削除は片側だけ（作成＝Target に作った／削除＝Source を捨てた）、名前の変更・移動・コピーは
 /// Source から Target へ。パスはすべて確定後のフルパス（一意化「 - コピー」適用後）。</summary>
-public sealed record FileOperation(FileOperationKind Kind, string Source, string Target, bool IsDirectory)
+public sealed record FileOperation(FileOperationKind Kind, string Source, string Target, bool IsDirectory, string? ReplacedPath = null)
 {
     public static FileOperation Created(string path, bool isDirectory) => new(FileOperationKind.Create, "", path, isDirectory);
     public static FileOperation Renamed(string oldPath, string newPath, bool isDirectory) => new(FileOperationKind.Rename, oldPath, newPath, isDirectory);
-    public static FileOperation Moved(string source, string destination, bool isDirectory) => new(FileOperationKind.Move, source, destination, isDirectory);
-    public static FileOperation Copied(string source, string destination, bool isDirectory) => new(FileOperationKind.Copy, source, destination, isDirectory);
+    public static FileOperation Moved(string source, string destination, bool isDirectory, string? replacedPath = null) => new(FileOperationKind.Move, source, destination, isDirectory, replacedPath);
+    public static FileOperation Copied(string source, string destination, bool isDirectory, string? replacedPath = null) => new(FileOperationKind.Copy, source, destination, isDirectory, replacedPath);
     public static FileOperation Deleted(string path, bool isDirectory) => new(FileOperationKind.Delete, path, "", isDirectory);
 
     /// <summary>ツリー・タブが追随する対象パス（表示名の元にもする）。</summary>
@@ -108,6 +108,8 @@ public sealed class FileOperationHistory
     {
         if (_undo.Count == 0 && _redo.Count == 0)
             return;
+        foreach (var step in _undo.Concat(_redo))
+            CleanupBackups(step);
         _undo.Clear();
         _redo.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -183,6 +185,7 @@ public sealed class FileOperationHistory
             case (FileOperationKind.Create, true):
             case (FileOperationKind.Copy, true):
                 RequireExists(operation.Target, operation.IsDirectory, name);
+                RequireBackupIfNeeded(operation);
                 break;
             case (FileOperationKind.Delete, false):
                 RequireExists(operation.Source, operation.IsDirectory, name);
@@ -193,11 +196,18 @@ public sealed class FileOperationHistory
             case (FileOperationKind.Move, true):
                 RequireExists(operation.Target, operation.IsDirectory, name);
                 RequireVacant(operation.Source, operation.Target);
+                RequireBackupIfNeeded(operation);
                 break;
             case (FileOperationKind.Rename, false):
             case (FileOperationKind.Move, false):
                 RequireExists(operation.Source, operation.IsDirectory, name);
-                RequireVacant(operation.Target, operation.Source);
+                if (operation.ReplacedPath is null)
+                    RequireVacant(operation.Target, operation.Source);
+                else
+                {
+                    RequireEntryExists(operation.Target, name);
+                    RequireVacant(operation.ReplacedPath);
+                }
                 break;
 
             case (FileOperationKind.Create, false):
@@ -205,7 +215,14 @@ public sealed class FileOperationHistory
                 break;
             case (FileOperationKind.Copy, false):
                 RequireExists(operation.Source, operation.IsDirectory, Path.GetFileName(operation.Source));
-                RequireVacant(operation.Target);
+                if (operation.ReplacedPath is null)
+                    RequireVacant(operation.Target);
+                else
+                {
+                    RequireEntryExists(operation.Target, name);
+                    RequireVacant(operation.ReplacedPath);
+                }
+                // Redo of an overwrite reuses the same backup slot after the current target is moved there.
                 break;
 
             // 削除の取り消し（ゴミ箱からの復元）は行き先が空いていることだけ。実体の有無は
@@ -222,6 +239,20 @@ public sealed class FileOperationHistory
             throw new InvalidOperationException($"「{name}」が見つかりません（別の場所へ移動・削除された可能性があります）。");
     }
 
+    private static void RequireBackupIfNeeded(FileOperation operation)
+    {
+        if (operation.ReplacedPath is not null
+            && !File.Exists(operation.ReplacedPath)
+            && !Directory.Exists(operation.ReplacedPath))
+            throw new InvalidOperationException("上書き前の項目が見つからないため戻せません。");
+    }
+
+    private static void RequireEntryExists(string path, string name)
+    {
+        if (!File.Exists(path) && !Directory.Exists(path))
+            throw new InvalidOperationException($"「{name}」が見つかりません（別の場所へ移動・削除された可能性があります）。");
+    }
+
     /// <summary>行き先が空いていることを確かめる。<paramref name="movedFrom"/> は移動元で、大文字小文字だけを
     /// 変える名前の変更（a.txt → A.txt）では「行き先」に居るのが移動元自身なので、そのときは空きとみなす。</summary>
     private static void RequireVacant(string path, string? movedFrom = null)
@@ -235,8 +266,10 @@ public sealed class FileOperationHistory
     private static FileOperationEffect UndoOne(FileOperation operation) => operation.Kind switch
     {
         // 作った／コピーしたものはゴミ箱へ（消さずに捨てる＝取り消しの取り消しがきかない状況でも救える）。
-        FileOperationKind.Create or FileOperationKind.Copy => Discard(operation.Target, operation.IsDirectory),
-        FileOperationKind.Rename or FileOperationKind.Move => MoveEntry(operation.Target, operation.Source, operation.IsDirectory),
+        FileOperationKind.Create => Discard(operation.Target, operation.IsDirectory),
+        FileOperationKind.Copy => UndoCopy(operation),
+        FileOperationKind.Rename => MoveEntry(operation.Target, operation.Source, operation.IsDirectory),
+        FileOperationKind.Move => UndoMove(operation),
         FileOperationKind.Delete => Restore(operation.Source, operation.IsDirectory),
         _ => throw new InvalidOperationException("不明な操作です。"),
     };
@@ -244,11 +277,57 @@ public sealed class FileOperationHistory
     private static FileOperationEffect RedoOne(FileOperation operation) => operation.Kind switch
     {
         FileOperationKind.Create => Recreate(operation.Target, operation.IsDirectory),
-        FileOperationKind.Copy => CopyEntry(operation.Source, operation.Target, operation.IsDirectory),
-        FileOperationKind.Rename or FileOperationKind.Move => MoveEntry(operation.Source, operation.Target, operation.IsDirectory),
+        FileOperationKind.Copy => RedoCopy(operation),
+        FileOperationKind.Rename => MoveEntry(operation.Source, operation.Target, operation.IsDirectory),
+        FileOperationKind.Move => RedoMove(operation),
         FileOperationKind.Delete => Discard(operation.Source, operation.IsDirectory),
         _ => throw new InvalidOperationException("不明な操作です。"),
     };
+
+    private static FileOperationEffect UndoCopy(FileOperation operation)
+    {
+        var effect = Discard(operation.Target, operation.IsDirectory);
+        if (operation.ReplacedPath is null)
+            return effect;
+        FolderTreeCommandHandler.RestoreBackup(operation.ReplacedPath, operation.Target);
+        // 同じパスの元ファイルを復元したので、開いているタブを閉じる通知は出さない。
+        return new FileOperationEffect(null, null, null, operation.Target, operation.IsDirectory);
+    }
+
+    private static FileOperationEffect UndoMove(FileOperation operation)
+    {
+        var effect = MoveEntry(operation.Target, operation.Source, operation.IsDirectory);
+        if (operation.ReplacedPath is not null)
+            FolderTreeCommandHandler.RestoreBackup(operation.ReplacedPath, operation.Target);
+        return effect with { Revealed = operation.Source };
+    }
+
+    private static FileOperationEffect RedoCopy(FileOperation operation)
+    {
+        PrepareRedoReplacement(operation);
+        return CopyEntry(operation.Source, operation.Target, operation.IsDirectory);
+    }
+
+    private static FileOperationEffect RedoMove(FileOperation operation)
+    {
+        PrepareRedoReplacement(operation);
+        return MoveEntry(operation.Source, operation.Target, operation.IsDirectory);
+    }
+
+    private static void PrepareRedoReplacement(FileOperation operation)
+    {
+        if (operation.ReplacedPath is null || !File.Exists(operation.Target) && !Directory.Exists(operation.Target))
+            return;
+        try
+        {
+            if (Directory.Exists(operation.Target)) Directory.Move(operation.Target, operation.ReplacedPath);
+            else File.Move(operation.Target, operation.ReplacedPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"上書き対象を退避できませんでした: {ex.Message}", ex);
+        }
+    }
 
     private static FileOperationEffect MoveEntry(string from, string to, bool isDirectory)
     {
@@ -323,9 +402,27 @@ public sealed class FileOperationHistory
     {
         _undo.Add(step);
         if (_undo.Count > MaxDepth)
+        {
+            CleanupBackups(_undo[0]);
             _undo.RemoveAt(0);
+        }
+        foreach (var oldStep in _redo)
+            CleanupBackups(oldStep);
         _redo.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void CleanupBackups(FileOperationStep step)
+    {
+        foreach (var path in step.Operations.Select(o => o.ReplacedPath).Where(p => p is not null).Cast<string>())
+        {
+            try
+            {
+                if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                else if (File.Exists(path)) File.Delete(path);
+            }
+            catch { /* 履歴の破棄をファイルロックで失敗させない */ }
+        }
     }
 
     private void EndBatch()

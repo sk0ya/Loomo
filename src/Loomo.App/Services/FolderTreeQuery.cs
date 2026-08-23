@@ -15,8 +15,12 @@ public sealed class FolderTreeQuery
         try
         {
             return new FolderTreeEntries(
-                Directory.EnumerateDirectories(path).ToArray(),
-                Directory.EnumerateFiles(path).ToArray());
+                Directory.EnumerateDirectories(path)
+                    .Where(p => !Path.GetFileName(p).StartsWith(".loomo-conflict-", StringComparison.OrdinalIgnoreCase))
+                    .ToArray(),
+                Directory.EnumerateFiles(path)
+                    .Where(p => !Path.GetFileName(p).StartsWith(".loomo-conflict-", StringComparison.OrdinalIgnoreCase))
+                    .ToArray());
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {

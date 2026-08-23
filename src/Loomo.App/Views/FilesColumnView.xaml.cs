@@ -1,5 +1,7 @@
 ﻿using System.Collections.Specialized;
 
+using sk0ya.Loomo.App.Services;
+
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ファイル一覧ペインの1カラム。詳細リスト・並べ替え・絞り込み・複数選択・
@@ -646,11 +648,31 @@ public partial class FilesColumnView : UserControl
             return;
 
         var move = FileClipboard.PrefersMove();
+        FileConflictDecision? applyToAll = null;
+        var cancelled = false;
+
+        FileConflictDecision ResolveConflict(FileConflictContext context)
+        {
+            if (applyToAll is { } remembered)
+                return remembered;
+            var decision = FileConflictDialog.Show(OwnerWindow, context);
+            if (decision.ApplyToAll && decision.Action is (FileConflictAction.Overwrite or FileConflictAction.Skip))
+                applyToAll = decision with { ApplyToAll = false };
+            return decision;
+        }
+
         try
         {
             using (Vm.BeginFileOperationBatch())
                 foreach (var source in FileClipboard.GetFiles())
-                    Vm.PasteEntry(target, source, move);
+                {
+                    var result = Vm.PasteEntry(target, source, move, ResolveConflict);
+                    if (result.Cancelled)
+                    {
+                        cancelled = true;
+                        break;
+                    }
+                }
         }
         catch (InvalidOperationException ex)
         {
@@ -659,7 +681,7 @@ public partial class FilesColumnView : UserControl
         }
 
         // 切り取り→貼り付け（移動）はエクスプローラー同様、成功後にクリップボードを空にする。
-        if (move)
+        if (move && !cancelled)
             FileClipboard.Clear();
     }
 
@@ -773,11 +795,27 @@ public partial class FilesColumnView : UserControl
             return;
 
         var move = (effect & DragDropEffects.Move) != 0;
+        FileConflictDecision? applyToAll = null;
+        FileConflictDecision ResolveConflict(FileConflictContext context)
+        {
+            if (applyToAll is { } remembered)
+                return remembered;
+            var decision = FileConflictDialog.Show(OwnerWindow, context);
+            if (decision.ApplyToAll && decision.Action is (FileConflictAction.Overwrite or FileConflictAction.Skip))
+                applyToAll = decision with { ApplyToAll = false };
+            return decision;
+        }
+
         try
         {
-            foreach (var source in sources)
-                if (!string.IsNullOrEmpty(source))
-                    Vm.PasteEntry(targetDirectory, source, move);
+            using (Vm.BeginFileOperationBatch())
+                foreach (var source in sources)
+                    if (!string.IsNullOrEmpty(source))
+                    {
+                        var result = Vm.PasteEntry(targetDirectory, source, move, ResolveConflict);
+                        if (result.Cancelled)
+                            break;
+                    }
         }
         catch (InvalidOperationException ex)
         {

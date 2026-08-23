@@ -517,12 +517,35 @@ public partial class FolderTreeView
 
         var move = FileClipboard.PrefersMove();
         string? lastPasted = null;
+        FileConflictDecision? applyToAll = null;
+        var cancelled = false;
+
+        FileConflictDecision ResolveConflict(FileConflictContext context)
+        {
+            if (applyToAll is { } remembered)
+                return remembered;
+
+            var decision = FileConflictDialog.Show(OwnerWindow, context);
+            // 名前変更は項目ごとに名前が必要なので、全件適用は上書き／スキップだけにする。
+            if (decision.ApplyToAll && decision.Action is (FileConflictAction.Overwrite or FileConflictAction.Skip))
+                applyToAll = decision with { ApplyToAll = false };
+            return decision;
+        }
 
         try
         {
             using (vm.BeginFileOperationBatch())
                 foreach (var source in FileClipboard.GetFiles())
-                    lastPasted = vm.PasteEntry(targetDir, source, move);
+                {
+                    var result = vm.PasteEntry(targetDir, source, move, ResolveConflict);
+                    if (result.DestinationPath is { } pasted)
+                        lastPasted = pasted;
+                    if (result.Cancelled)
+                    {
+                        cancelled = true;
+                        break;
+                    }
+                }
         }
         catch (InvalidOperationException ex)
         {
@@ -531,7 +554,7 @@ public partial class FolderTreeView
         }
 
         // 切り取り→貼り付け（移動）はエクスプローラー同様、成功後にクリップボードを空にする。
-        if (move)
+        if (move && !cancelled)
             FileClipboard.Clear();
 
         if (lastPasted is not null)

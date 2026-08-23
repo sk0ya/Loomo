@@ -81,6 +81,25 @@ public sealed partial class FolderTreeViewModel
         return destination;
     }
 
+    /// <summary>競合解決付きの貼り付け。スキップ／キャンセルはツリーを更新せず結果だけ返す。</summary>
+    public FilePasteResult PasteEntry(
+        string targetDirectory,
+        string sourcePath,
+        bool move,
+        Func<FileConflictContext, FileConflictDecision> resolver)
+    {
+        var source = Path.GetFullPath(sourcePath);
+        var isDirectory = _fileCommands.DirectoryExists(source);
+        var result = _fileCommands.PasteWithConflict(targetDirectory, source, move, resolver);
+        if (result.DestinationPath is not { } destination)
+            return result;
+
+        RefreshWorkspace();
+        if (move)
+            EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(source, destination, isDirectory));
+        return result;
+    }
+
     /// <summary>ノードを同じフォルダー内へ複製し、複製後のフルパスを返す（同名衝突は貼り付けと同じく
     /// 「 - コピー」で一意化する）。見出しノード（ワークスペースフォルダー自身）は複製先の親が
     /// ワークスペース外になり得るので対象外＝null を返す。</summary>

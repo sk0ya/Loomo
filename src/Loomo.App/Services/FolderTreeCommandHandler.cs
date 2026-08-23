@@ -126,6 +126,16 @@ public sealed class FolderTreeCommandHandler
     }
 
     public string Paste(string targetDirectory, string sourcePath, bool move)
+        => PasteWithConflict(targetDirectory, sourcePath, move, resolver: null).DestinationPath
+            ?? throw new InvalidOperationException("貼り付けはキャンセルされました。");
+
+    /// <summary>競合時の選択を呼び出し側へ委譲して貼り付ける。resolver が null の場合は従来どおり
+    /// 「 - コピー」で一意化する。スキップ／キャンセルはファイルを変更せず履歴にも記録しない。</summary>
+    public FilePasteResult PasteWithConflict(
+        string targetDirectory,
+        string sourcePath,
+        bool move,
+        Func<FileConflictContext, FileConflictDecision>? resolver)
     {
         var source = Path.GetFullPath(sourcePath);
         var isDirectory = Directory.Exists(source);
@@ -137,9 +147,97 @@ public sealed class FolderTreeCommandHandler
 
         var name = Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var destination = Resolve(Path.Combine(targetDir, name));
-        if (move && PathsEqual(source, destination)) return destination;
-        destination = EnsureUniqueDestination(destination, isDirectory);
+        if (move && PathsEqual(source, destination)) return new FilePasteResult(destination);
 
+        if (File.Exists(destination) || Directory.Exists(destination))
+        {
+            if (resolver is null)
+                destination = EnsureUniqueDestination(destination, isDirectory);
+            else
+            {
+                var decision = resolver(new FileConflictContext(source, destination, isDirectory, move));
+                switch (decision.Action)
+                {
+                    case FileConflictAction.Skip:
+                        return FilePasteResult.Skip();
+                    case FileConflictAction.Cancel:
+                        return FilePasteResult.Cancel();
+                    case FileConflictAction.Rename:
+                        var renamed = ResolveRenamedDestination(targetDir, decision.NewName);
+                        if (File.Exists(renamed) || Directory.Exists(renamed))
+                        {
+                            // 名前変更先も埋まっている場合は、同じダイアログをもう一度開けるよう
+                            // 呼び出し側の resolver に再提示する。
+                            return PasteWithConflictAtDestination(source, targetDir, renamed, move, isDirectory, resolver);
+                        }
+                        destination = renamed;
+                        break;
+                    case FileConflictAction.Overwrite:
+                        break;
+                    default:
+                        throw new InvalidOperationException("不明な競合解決です。");
+                }
+            }
+        }
+
+        var replaced = (File.Exists(destination) || Directory.Exists(destination))
+            ? BackupExistingDestination(destination)
+            : null;
+        try { ExecutePaste(source, destination, move, isDirectory); }
+        catch
+        {
+            if (replaced is not null)
+            {
+                RemovePartialDestination(destination);
+                RestoreBackup(replaced, destination);
+            }
+            throw;
+        }
+        _history.Record(move
+            ? FileOperation.Moved(source, destination, isDirectory, replaced)
+            : FileOperation.Copied(source, destination, isDirectory, replaced));
+        return new FilePasteResult(destination);
+    }
+
+    private FilePasteResult PasteWithConflictAtDestination(
+        string source, string targetDirectory, string destination, bool move, bool isDirectory,
+        Func<FileConflictContext, FileConflictDecision> resolver)
+    {
+        if (File.Exists(destination) || Directory.Exists(destination))
+        {
+            var decision = resolver(new FileConflictContext(source, destination, isDirectory, move));
+            if (decision.Action == FileConflictAction.Skip) return FilePasteResult.Skip();
+            if (decision.Action == FileConflictAction.Cancel) return FilePasteResult.Cancel();
+            if (decision.Action == FileConflictAction.Rename)
+            {
+                destination = ResolveRenamedDestination(targetDirectory, decision.NewName);
+                return PasteWithConflictAtDestination(source, targetDirectory, destination, move, isDirectory, resolver);
+            }
+            if (decision.Action != FileConflictAction.Overwrite)
+                throw new InvalidOperationException("不明な競合解決です。");
+        }
+
+        var replaced = (File.Exists(destination) || Directory.Exists(destination))
+            ? BackupExistingDestination(destination)
+            : null;
+        try { ExecutePaste(source, destination, move, isDirectory); }
+        catch
+        {
+            if (replaced is not null)
+            {
+                RemovePartialDestination(destination);
+                RestoreBackup(replaced, destination);
+            }
+            throw;
+        }
+        _history.Record(move
+            ? FileOperation.Moved(source, destination, isDirectory, replaced)
+            : FileOperation.Copied(source, destination, isDirectory, replaced));
+        return new FilePasteResult(destination);
+    }
+
+    private static void ExecutePaste(string source, string destination, bool move, bool isDirectory)
+    {
         try
         {
             if (isDirectory)
@@ -154,10 +252,62 @@ public sealed class FolderTreeCommandHandler
         {
             throw new InvalidOperationException($"貼り付けに失敗しました: {ex.Message}", ex);
         }
-        _history.Record(move
-            ? FileOperation.Moved(source, destination, isDirectory)
-            : FileOperation.Copied(source, destination, isDirectory));
-        return destination;
+    }
+
+    private static string ResolveRenamedDestination(string targetDirectory, string? newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+            throw new InvalidOperationException("新しい名前を入力してください。");
+        ValidateName(newName.Trim());
+        var target = Path.GetFullPath(Path.Combine(targetDirectory, newName.Trim()));
+        return target;
+    }
+
+    /// <summary>上書き対象を同じ親へ一時退避する。Undo で元の項目を復元するため、履歴に残す。</summary>
+    private static string BackupExistingDestination(string destination)
+    {
+        var parent = Path.GetDirectoryName(destination)
+            ?? throw new InvalidOperationException("貼り付け先の親フォルダーを特定できません。");
+        var backup = Path.Combine(parent, $".loomo-conflict-{Guid.NewGuid():N}-{Path.GetFileName(destination)}");
+        try
+        {
+            if (Directory.Exists(destination)) Directory.Move(destination, backup);
+            else File.Move(destination, backup);
+            try { File.SetAttributes(backup, FileAttributes.Hidden); } catch { /* 非表示化は補助 */ }
+            return backup;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"上書き対象を退避できませんでした: {ex.Message}", ex);
+        }
+    }
+
+    private static void RemovePartialDestination(string destination)
+    {
+        try
+        {
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            else if (File.Exists(destination)) File.Delete(destination);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"失敗した貼り付け結果を片付けられませんでした: {ex.Message}", ex);
+        }
+    }
+
+    internal static void RestoreBackup(string backup, string destination)
+    {
+        try
+        {
+            if (Directory.Exists(backup)) Directory.Move(backup, destination);
+            else if (File.Exists(backup)) File.Move(backup, destination);
+            else throw new InvalidOperationException("上書き前の項目が見つかりません。");
+        }
+        catch (InvalidOperationException) { throw; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"上書き前の項目を復元できませんでした: {ex.Message}", ex);
+        }
     }
 
     public bool AddToGitignore(string workspaceRoot, string fullPath, bool isDirectory)

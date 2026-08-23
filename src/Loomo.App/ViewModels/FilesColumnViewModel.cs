@@ -547,6 +547,26 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         return destination;
     }
 
+    /// <summary>競合解決付きの貼り付け。キャンセル／スキップ時は表示と選択を変更しない。</summary>
+    public FilePasteResult PasteEntry(
+        string targetDirectory,
+        string sourcePath,
+        bool move,
+        Func<FileConflictContext, FileConflictDecision> resolver)
+    {
+        var source = Path.GetFullPath(sourcePath);
+        var isDirectory = _commands.DirectoryExists(source);
+        var result = _commands.PasteWithConflict(targetDirectory, source, move, resolver);
+        if (result.DestinationPath is not { } destination)
+            return result;
+
+        if (move)
+            EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(source, destination, isDirectory));
+        Refresh();
+        PendingSelection = destination;
+        return result;
+    }
+
     public string DuplicateEntry(FileEntryViewModel entry)
     {
         var parent = Path.GetDirectoryName(Path.GetFullPath(entry.FullPath))

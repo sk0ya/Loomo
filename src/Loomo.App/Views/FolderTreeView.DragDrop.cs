@@ -87,6 +87,17 @@ public partial class FolderTreeView
 
         var move = (effect & DragDropEffects.Move) != 0;
         string? lastPasted = null;
+        FileConflictDecision? applyToAll = null;
+
+        FileConflictDecision ResolveConflict(FileConflictContext context)
+        {
+            if (applyToAll is { } remembered)
+                return remembered;
+            var decision = FileConflictDialog.Show(OwnerWindow, context);
+            if (decision.ApplyToAll && decision.Action is (FileConflictAction.Overwrite or FileConflictAction.Skip))
+                applyToAll = decision with { ApplyToAll = false };
+            return decision;
+        }
 
         try
         {
@@ -94,7 +105,13 @@ public partial class FolderTreeView
             using (vm.BeginFileOperationBatch())
                 foreach (var source in sources)
                     if (!string.IsNullOrEmpty(source))
-                        lastPasted = vm.PasteEntry(targetDir, source, move);
+                    {
+                        var result = vm.PasteEntry(targetDir, source, move, ResolveConflict);
+                        if (result.DestinationPath is { } pasted)
+                            lastPasted = pasted;
+                        if (result.Cancelled)
+                            break;
+                    }
         }
         catch (InvalidOperationException ex)
         {
