@@ -29,6 +29,10 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     // 表示中フォルダーの生の一覧（絞り込み前）。絞り込み・並べ替えの変更で読み直さないために持つ。
     private List<FileEntryViewModel> _all = new();
+    private readonly Dictionary<string, FilesColumnLayoutSnapshot> _folderLayouts =
+        new(StringComparer.OrdinalIgnoreCase);
+    private List<FilesColumnSettingSnapshot> _legacyLayout = new();
+    private bool _restoringLayout;
 
     public FilesColumnViewModel(
         IWorkspaceService workspace,
@@ -43,6 +47,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         _folderTree = folderTree;
         _places = places;
         _watcher = new DebouncedFolderWatcher(Refresh);
+        foreach (var setting in CreateColumnSettings())
+        {
+            setting.PropertyChanged += OnColumnSettingPropertyChanged;
+            ColumnSettings.Add(setting);
+        }
         _pins.PinsChanged += (_, _) => OnPropertyChanged(nameof(CanPinCurrentFolder));
         FileIcons.PaletteChanged += (_, _) =>
         {
@@ -73,6 +82,28 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     [ObservableProperty] private FilesDisplayMode _displayMode = FilesDisplayMode.Details;
 
     public IReadOnlyList<FilesDisplayModeOption> DisplayModeOptions => FilesDisplayModes.Options;
+
+    /// <summary>詳細表示の列。順序はこのコレクション、表示・幅は各項目が持つ。</summary>
+    public ObservableCollection<FilesColumnSetting> ColumnSettings { get; } = new();
+
+    [ObservableProperty] private bool _isColumnSettingsOpen;
+
+    public IReadOnlyList<FilesColumnSetting> VisibleColumnSettings
+        => ColumnSettings.Where(setting => setting.IsVisible).ToList();
+
+    public int NameColumnIndex => VisibleColumnIndex(FilesColumnKey.Name);
+    public int SizeColumnIndex => VisibleColumnIndex(FilesColumnKey.Size);
+    public int ModifiedColumnIndex => VisibleColumnIndex(FilesColumnKey.Modified);
+    public int TypeColumnIndex => VisibleColumnIndex(FilesColumnKey.Type);
+    public bool IsNameColumnVisible => IsColumnVisible(FilesColumnKey.Name);
+    public bool IsSizeColumnVisible => IsColumnVisible(FilesColumnKey.Size);
+    public bool IsModifiedColumnVisible => IsColumnVisible(FilesColumnKey.Modified);
+    public bool IsTypeColumnVisible => IsColumnVisible(FilesColumnKey.Type);
+
+    public GridLength Slot0Width => SlotWidth(0);
+    public GridLength Slot1Width => SlotWidth(1);
+    public GridLength Slot2Width => SlotWidth(2);
+    public GridLength Slot3Width => SlotWidth(3);
 
     /// <summary>名前での絞り込み（部分一致。<c>*.cs</c> のようにワイルドカードも書ける）。
     /// 入力欄はツールバーに常設せず、一覧で <c>/</c> を押したときだけ下端に出す。</summary>
@@ -269,6 +300,14 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// フォールバック（プライマリフォルダー）を開く。</summary>
     public void Restore(FilesColumnSnapshot? snapshot, string? fallbackFolder)
     {
+        _restoringLayout = true;
+        _folderLayouts.Clear();
+        if (snapshot?.FolderColumnSettings is not null)
+            foreach (var pair in snapshot.FolderColumnSettings)
+                if (!string.IsNullOrWhiteSpace(pair.Key) && pair.Value is not null)
+                    _folderLayouts[pair.Key] = pair.Value;
+        _legacyLayout = snapshot?.ColumnSettings?.ToList() ?? new();
+
         _back.Clear();
         _forward.Clear();
         NotifyHistoryChanged();
@@ -298,23 +337,46 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             IsEmpty = true;
             EmptyMessage = "フォルダーが開かれていません。";
             StatusText = "";
+            _restoringLayout = false;
             return;
         }
         SetFolder(folder, raiseStateChanged: false);
+        if (_folderLayouts.ContainsKey(folder))
+            ApplyFolderLayout(folder);
+        else if (_legacyLayout.Count > 0)
+            ApplyLayout(_legacyLayout);
+        else
+            ResetLayout();
+        _restoringLayout = false;
     }
 
-    public FilesColumnSnapshot Capture() => new()
+    public FilesColumnSnapshot Capture()
     {
-        CurrentFolder = CurrentFolder.Length > 0 ? CurrentFolder : null,
-        SortColumn = SortColumn,
-        SortDescending = SortDescending,
-        ShowHidden = ShowHiddenFiles,
-        DisplayMode = DisplayMode,
-    };
+        SaveFolderLayout(CurrentFolder);
+        return new FilesColumnSnapshot
+        {
+            CurrentFolder = CurrentFolder.Length > 0 ? CurrentFolder : null,
+            SortColumn = SortColumn,
+            SortDescending = SortDescending,
+            ShowHidden = ShowHiddenFiles,
+            DisplayMode = DisplayMode,
+            ColumnSettings = CaptureLayout().Columns,
+            FolderColumnSettings = _folderLayouts.ToDictionary(
+                pair => pair.Key,
+                pair => new FilesColumnLayoutSnapshot
+                {
+                    Columns = pair.Value.Columns.Select(CloneSetting).ToList(),
+                }, StringComparer.OrdinalIgnoreCase),
+        };
+    }
 
     private void SetFolder(string folder, bool raiseStateChanged = true)
     {
+        if (!_restoringLayout)
+            SaveFolderLayout(CurrentFolder);
         CurrentFolder = folder;
+        if (!_restoringLayout)
+            ApplyFolderLayout(folder);
         // 表示するのは直下だけなので再帰監視はしない（リポジトリ全体を見張る必要はない）。
         _watcher.Watch(folder, includeSubdirectories: false);
         UpdateBreadcrumbs();
@@ -323,6 +385,174 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         if (raiseStateChanged)
             StateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    private static IEnumerable<FilesColumnSetting> CreateColumnSettings()
+    {
+        yield return new FilesColumnSetting(FilesColumnKey.Name, "名前", 240, canHide: false);
+        yield return new FilesColumnSetting(FilesColumnKey.Size, "サイズ", 86, canHide: true);
+        yield return new FilesColumnSetting(FilesColumnKey.Modified, "更新日時", 124, canHide: true);
+        yield return new FilesColumnSetting(FilesColumnKey.Type, "種類", 72, canHide: true);
+    }
+
+    private void OnColumnSettingPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is FilesColumnSetting setting && e.PropertyName == nameof(FilesColumnSetting.IsVisible)
+            && !setting.CanHide && !setting.IsVisible)
+            setting.IsVisible = true;
+
+        NotifyColumnLayoutChanged();
+        if (!_restoringLayout)
+        {
+            SaveFolderLayout(CurrentFolder);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void NotifyColumnLayoutChanged()
+    {
+        OnPropertyChanged(nameof(VisibleColumnSettings));
+        OnPropertyChanged(nameof(NameColumnIndex));
+        OnPropertyChanged(nameof(SizeColumnIndex));
+        OnPropertyChanged(nameof(ModifiedColumnIndex));
+        OnPropertyChanged(nameof(TypeColumnIndex));
+        OnPropertyChanged(nameof(IsNameColumnVisible));
+        OnPropertyChanged(nameof(IsSizeColumnVisible));
+        OnPropertyChanged(nameof(IsModifiedColumnVisible));
+        OnPropertyChanged(nameof(IsTypeColumnVisible));
+        OnPropertyChanged(nameof(Slot0Width));
+        OnPropertyChanged(nameof(Slot1Width));
+        OnPropertyChanged(nameof(Slot2Width));
+        OnPropertyChanged(nameof(Slot3Width));
+    }
+
+    private int VisibleColumnIndex(FilesColumnKey key)
+        => Math.Max(0, VisibleColumnSettings.ToList().FindIndex(setting => setting.Key == key));
+
+    private bool IsColumnVisible(FilesColumnKey key)
+        => ColumnSettings.Any(setting => setting.Key == key && setting.IsVisible);
+
+    private GridLength SlotWidth(int index)
+    {
+        var visible = VisibleColumnSettings;
+        return new GridLength(index < visible.Count ? visible[index].Width : 0);
+    }
+
+    public void SetColumnWidth(FilesColumnKey key, double width)
+    {
+        var setting = ColumnSettings.FirstOrDefault(candidate => candidate.Key == key);
+        if (setting is null)
+            return;
+        setting.Width = ClampWidth(setting, width);
+    }
+
+    public double ColumnWidth(FilesColumnKey key)
+        => ColumnSettings.FirstOrDefault(candidate => candidate.Key == key)?.Width ?? 0;
+
+    [RelayCommand]
+    private void MoveColumnUp(FilesColumnSetting? setting)
+    {
+        if (setting is null)
+            return;
+        var index = ColumnSettings.IndexOf(setting);
+        if (index <= 0)
+            return;
+        ColumnSettings.Move(index, index - 1);
+        NotifyColumnLayoutChanged();
+        SaveFolderLayout(CurrentFolder);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void MoveColumnDown(FilesColumnSetting? setting)
+    {
+        if (setting is null)
+            return;
+        var index = ColumnSettings.IndexOf(setting);
+        if (index < 0 || index >= ColumnSettings.Count - 1)
+            return;
+        ColumnSettings.Move(index, index + 1);
+        NotifyColumnLayoutChanged();
+        SaveFolderLayout(CurrentFolder);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SaveFolderLayout(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+            return;
+        _folderLayouts[folder] = CaptureLayout();
+    }
+
+    private void ApplyFolderLayout(string folder)
+    {
+        if (_folderLayouts.TryGetValue(folder, out var saved))
+            ApplyLayout(saved.Columns);
+        else
+            ResetLayout();
+    }
+
+    private FilesColumnLayoutSnapshot CaptureLayout() => new()
+    {
+        Columns = ColumnSettings.Select(setting => new FilesColumnSettingSnapshot
+        {
+            Key = setting.Key,
+            IsVisible = setting.IsVisible,
+            Width = setting.Width,
+        }).ToList(),
+    };
+
+    private static FilesColumnSettingSnapshot CloneSetting(FilesColumnSettingSnapshot setting)
+        => new() { Key = setting.Key, IsVisible = setting.IsVisible, Width = setting.Width };
+
+    private void ApplyLayout(IEnumerable<FilesColumnSettingSnapshot> saved)
+    {
+        var savedList = saved.ToList();
+        var byKey = savedList
+            .GroupBy(item => item.Key)
+            .ToDictionary(group => group.Key, group => group.First());
+        var orderedKeys = savedList
+            .Select(item => item.Key)
+            .Where(key => ColumnSettings.Any(setting => setting.Key == key))
+            .Distinct()
+            .ToList();
+        orderedKeys.AddRange(ColumnSettings.Select(setting => setting.Key)
+            .Where(key => !orderedKeys.Contains(key)));
+        var ordered = orderedKeys
+            .Select(key => ColumnSettings.Single(setting => setting.Key == key))
+            .ToList();
+
+        _restoringLayout = true;
+        try
+        {
+            for (var i = 0; i < ordered.Count; i++)
+                ColumnSettings.Move(ColumnSettings.IndexOf(ordered[i]), i);
+            foreach (var setting in ColumnSettings)
+            {
+                if (!byKey.TryGetValue(setting.Key, out var item))
+                {
+                    setting.IsVisible = true;
+                    setting.Width = setting.DefaultWidth;
+                    continue;
+                }
+                setting.IsVisible = setting.Key == FilesColumnKey.Name || item.IsVisible;
+                setting.Width = ClampWidth(setting, item.Width > 0 ? item.Width : setting.DefaultWidth);
+            }
+        }
+        finally
+        {
+            _restoringLayout = false;
+        }
+        NotifyColumnLayoutChanged();
+    }
+
+    private void ResetLayout()
+    {
+        ApplyLayout(Array.Empty<FilesColumnSettingSnapshot>());
+    }
+
+    private static double ClampWidth(FilesColumnSetting setting, double width)
+        => Math.Clamp(double.IsFinite(width) ? width : setting.DefaultWidth,
+            setting.Key == FilesColumnKey.Name ? 120 : 40, 800);
 
     private void NotifyHistoryChanged()
     {

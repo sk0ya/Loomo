@@ -19,6 +19,9 @@ public partial class FilesColumnView : UserControl
     private static bool _internalDrag;
     private FilesColumnViewModel? _boundVm;
     private string _breadcrumbPickerSelectionPath = "";
+    private FilesColumnKey? _resizingColumn;
+    private double _resizeStartX;
+    private double _resizeStartWidth;
 
     public FilesColumnView()
     {
@@ -32,6 +35,44 @@ public partial class FilesColumnView : UserControl
     private FilesColumnViewModel? Vm => DataContext as FilesColumnViewModel;
 
     private Window? OwnerWindow => Window.GetWindow(this);
+
+    // 見出しの右端は並べ替えボタンの中に置いたまま、8pxだけ列幅変更の帯として扱う。
+    // 通常のクリックは従来どおり並べ替えコマンドへ流す。
+    private void OnColumnHeaderMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Button { Tag: string tag } header
+            || !Enum.TryParse<FilesColumnKey>(tag, out var key)
+            || Vm is null)
+            return;
+        var point = e.GetPosition(header);
+        if (header.ActualWidth < 24 || point.X < header.ActualWidth - 8)
+            return;
+
+        _resizingColumn = key;
+        _resizeStartX = point.X;
+        _resizeStartWidth = Vm.ColumnWidth(key);
+        header.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnColumnHeaderMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_resizingColumn is not { } key || Vm is null || sender is not Button header)
+            return;
+        var point = e.GetPosition(header);
+        Vm.SetColumnWidth(key, _resizeStartWidth + point.X - _resizeStartX);
+        e.Handled = true;
+    }
+
+    private void OnColumnHeaderMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_resizingColumn is null)
+            return;
+        if (sender is Button header && header.IsMouseCaptured)
+            header.ReleaseMouseCapture();
+        _resizingColumn = null;
+        e.Handled = true;
+    }
 
     /// <summary>このカラムへフォーカスを移す（ペインのフォーカス受け口から呼ばれる）。</summary>
     public void FocusList()

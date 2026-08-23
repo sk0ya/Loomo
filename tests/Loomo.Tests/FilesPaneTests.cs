@@ -530,6 +530,106 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 詳細列は幅表示順表示非表示を変更して保存できる()
+    {
+        var sut = CreateColumn();
+        var size = sut.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Size);
+
+        sut.SetColumnWidth(FilesColumnKey.Name, 360);
+        size.IsVisible = false;
+        sut.MoveColumnDownCommand.Execute(sut.ColumnSettings[0]);
+
+        Assert.Equal(new[] { FilesColumnKey.Size, FilesColumnKey.Name, FilesColumnKey.Modified, FilesColumnKey.Type },
+            sut.ColumnSettings.Select(setting => setting.Key));
+        Assert.Equal(360, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.False(size.IsVisible);
+        Assert.Equal(0, sut.SizeColumnIndex); // 非表示列は表示スロットを占有しない
+
+        var snapshot = sut.Capture();
+        var restored = CreateColumn();
+        restored.Restore(snapshot, _root);
+
+        Assert.Equal(sut.ColumnSettings.Select(setting => setting.Key),
+            restored.ColumnSettings.Select(setting => setting.Key));
+        Assert.Equal(360, restored.ColumnWidth(FilesColumnKey.Name));
+        Assert.False(restored.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Size).IsVisible);
+    }
+
+    [Fact]
+    public void 詳細列設定はフォルダーごとに独立して復元される()
+    {
+        var sut = CreateColumn();
+        sut.SetColumnWidth(FilesColumnKey.Name, 360);
+        sut.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Type).IsVisible = false;
+
+        sut.Navigate(_sub);
+        Assert.Equal(240, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.True(sut.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Type).IsVisible);
+
+        sut.SetColumnWidth(FilesColumnKey.Name, 180);
+        sut.Navigate(_root);
+
+        Assert.Equal(360, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.False(sut.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Type).IsVisible);
+    }
+
+    [Fact]
+    public void 不正な列設定は既定値へ丸め名前列は必ず表示する()
+    {
+        var sut = CreateColumn();
+        sut.Restore(new FilesColumnSnapshot
+        {
+            CurrentFolder = _root,
+            ColumnSettings =
+            [
+                new() { Key = FilesColumnKey.Type, IsVisible = true, Width = 100 },
+                new() { Key = (FilesColumnKey)999, IsVisible = true, Width = 100 },
+                new() { Key = FilesColumnKey.Name, IsVisible = false, Width = 1 },
+                new() { Key = FilesColumnKey.Size, IsVisible = true, Width = 1 },
+                new() { Key = FilesColumnKey.Size, IsVisible = false, Width = 999 },
+            ]
+        }, _root);
+
+        Assert.Equal(new[] { FilesColumnKey.Type, FilesColumnKey.Name, FilesColumnKey.Size, FilesColumnKey.Modified },
+            sut.ColumnSettings.Select(setting => setting.Key));
+        Assert.True(sut.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Name).IsVisible);
+        Assert.Equal(120, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.Equal(40, sut.ColumnWidth(FilesColumnKey.Size));
+    }
+
+    [Fact]
+    public void 列設定はワークスペースJSON往復で保持される()
+    {
+        var path = Path.Combine(_base, "workspaces-columns.json");
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = _root,
+            Files = new FilesPaneSnapshot
+            {
+                Columns =
+                [
+                    new FilesColumnSnapshot
+                    {
+                        CurrentFolder = _root,
+                        ColumnSettings =
+                        [new() { Key = FilesColumnKey.Name, Width = 333 }],
+                        FolderColumnSettings = new Dictionary<string, FilesColumnLayoutSnapshot>
+                        {
+                            [_root] = new() { Columns = [new() { Key = FilesColumnKey.Name, Width = 333 }] }
+                        }
+                    }
+                ]
+            }
+        };
+        var store = new WorkspaceStateStore(path);
+
+        store.Save(new WorkspaceState { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        var restored = store.LoadWorkspace(workspace.Id);
+        Assert.Equal(333, restored?.Files?.Columns.Single().FolderColumnSettings[_root].Columns.Single().Width);
+    }
+
+    [Fact]
     public void 表示形式はワークスペース状態のJSON往復でも保持される()
     {
         var path = Path.Combine(_base, "workspaces.json");

@@ -39,6 +39,50 @@ public static class FilesDisplayModes
         => Options.Any(option => option.Value == value) ? value : FilesDisplayMode.Details;
 }
 
+/// <summary>詳細表示で使う列。数値で保存されるため末尾追加のみ可。</summary>
+public enum FilesColumnKey
+{
+    Name,
+    Size,
+    Modified,
+    Type,
+}
+
+/// <summary>列設定の保存値。未知の列、重複、極端な幅は復元時に無視・正規化する。</summary>
+public sealed class FilesColumnSettingSnapshot
+{
+    public FilesColumnKey Key { get; set; }
+    public bool IsVisible { get; set; } = true;
+    public double Width { get; set; }
+}
+
+/// <summary>フォルダーごとの詳細列レイアウト。</summary>
+public sealed class FilesColumnLayoutSnapshot
+{
+    public List<FilesColumnSettingSnapshot> Columns { get; set; } = new();
+}
+
+/// <summary>列設定を表示・編集する行。</summary>
+public sealed partial class FilesColumnSetting : ObservableObject
+{
+    public FilesColumnSetting(FilesColumnKey key, string label, double defaultWidth, bool canHide)
+    {
+        Key = key;
+        Label = label;
+        DefaultWidth = defaultWidth;
+        CanHide = canHide;
+        _width = defaultWidth;
+    }
+
+    public FilesColumnKey Key { get; }
+    public string Label { get; }
+    public double DefaultWidth { get; }
+    public bool CanHide { get; }
+
+    [ObservableProperty] private bool _isVisible = true;
+    [ObservableProperty] private double _width;
+}
+
 /// <summary>ファイル一覧ペインの1行。ツリー（<see cref="FileNodeViewModel"/>）と違い子を持たず、
 /// 一覧・並べ替えのための素の値（サイズ・更新日時・種類）を持つ。アイコンはツリーと同じ
 /// <see cref="FileIcons"/> から引く（種別ごとの共有インスタンスなので都度引いても配列参照ぶん）。</summary>

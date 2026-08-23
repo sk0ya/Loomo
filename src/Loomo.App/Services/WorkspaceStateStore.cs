@@ -434,6 +434,12 @@ public sealed class FilesColumnSnapshot
     public bool SortDescending { get; set; }
     public bool ShowHidden { get; set; }
     public FilesDisplayMode DisplayMode { get; set; } = FilesDisplayMode.Details;
+
+    /// <summary>現在地の列レイアウト。旧 workspaces.json には無いので空なら既定値。</summary>
+    public List<FilesColumnSettingSnapshot> ColumnSettings { get; set; } = new();
+
+    /// <summary>このカラムで訪れたフォルダーごとの列レイアウト。</summary>
+    public Dictionary<string, FilesColumnLayoutSnapshot> FolderColumnSettings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>ファイル一覧の並べ替え列。数値で永続化されるため末尾追加のみ可。</summary>

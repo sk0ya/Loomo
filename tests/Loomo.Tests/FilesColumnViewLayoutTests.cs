@@ -2,6 +2,7 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using sk0ya.Loomo.App.Services;
@@ -100,6 +101,41 @@ public sealed class FilesColumnViewLayoutTests
                     combo.SelectedValue = FilesDisplayMode.Tiles;
                     window.UpdateLayout();
                     Assert.Equal(FilesDisplayMode.Tiles, column.DisplayMode);
+
+                    var columnsButton = view.FindName("ColumnsButton") as ToggleButton;
+                    var popup = view.FindName("ColumnSettingsPopup") as Popup;
+                    Assert.NotNull(columnsButton);
+                    Assert.NotNull(popup);
+                    columnsButton!.IsChecked = true;
+                    window.UpdateLayout();
+                    Assert.True(popup!.IsOpen);
+                    Assert.NotNull(popup.Child);
+
+                    var checks = FindDescendants<CheckBox>(popup.Child!).ToList();
+                    Assert.Equal(4, checks.Count);
+                    Assert.Contains(checks, check => check.Content?.ToString() == "名前" && !check.IsEnabled);
+                    var sizeCheck = Assert.Single(checks, check => check.Content?.ToString() == "サイズ");
+                    sizeCheck.IsChecked = false;
+                    window.UpdateLayout();
+                    Assert.False(column.IsSizeColumnVisible);
+
+                    sizeCheck.IsChecked = true;
+                    var nameSetting = column.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Name);
+                    var down = Assert.Single(FindDescendants<Button>(popup.Child!),
+                        button => button.Content?.ToString() == "↓"
+                            && ReferenceEquals(button.CommandParameter, nameSetting));
+                    Assert.NotNull(down.Command);
+                    down.Command!.Execute(down.CommandParameter);
+                    window.UpdateLayout();
+                    Assert.Equal(FilesColumnKey.Size, column.ColumnSettings[0].Key);
+                    Assert.Equal(1, column.NameColumnIndex);
+
+                    column.DisplayMode = FilesDisplayMode.Details;
+                    column.SetColumnWidth(FilesColumnKey.Name, 333);
+                    window.UpdateLayout();
+                    var detail = FindNamed(view, "DetailsLayout") as Grid;
+                    Assert.NotNull(detail);
+                    Assert.Equal(333, detail!.ColumnDefinitions[column.NameColumnIndex].ActualWidth, 0);
                 }
                 finally
                 {
@@ -125,6 +161,18 @@ public sealed class FilesColumnViewLayoutTests
                 return nested;
         }
         return null;
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+            foreach (var nested in FindDescendants<T>(child))
+                yield return nested;
+        }
     }
 
     private static FrameworkElement? FindNamed(DependencyObject root, string name)
