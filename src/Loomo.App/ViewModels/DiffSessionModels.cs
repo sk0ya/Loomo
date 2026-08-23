@@ -73,4 +73,10 @@ public sealed class DiffFileItem
     public bool CanDiscard => Entry is not null;
     public bool IsStaged { get; init; }
     public GitCommitFileChange? CommitFile { get; init; }
+
+    /// <summary>比較基準（ブランチ／分岐点）に対する変更なら、その変更と基準 ref。
+    /// 差分本体は<b>この ref</b> で引く——基準を切り替えた直後に古い ref で引く取り違えを型で防ぐ。
+    /// 作業ツリー項目（<see cref="Entry"/>）とは排他で、こちらが非 null の項目には
+    /// ステージ／破棄／行単位の適用は存在しない（<see cref="CanDiscard"/> が false のまま）。</summary>
+    public GitCompareFile? CompareBaseFile { get; init; }
 }

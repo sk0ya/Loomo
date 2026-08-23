@@ -27,6 +27,7 @@ public sealed class GitService
     private readonly GitStashService _stashes;
     private readonly GitDiffService _diff;
     private readonly GitRebaseService _rebase;
+    private readonly GitCompareService _compare;
     private readonly GitRepositoryMonitor _monitor;
 
     public GitService(IWorkspaceService workspace)
@@ -44,6 +45,7 @@ public sealed class GitService
         _stashes = new GitStashService(_runner, _mutations);
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
+        _compare = new GitCompareService(_runner);
         _monitor = new GitRepositoryMonitor(_rootState, _runner);
         _monitor.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
@@ -96,6 +98,28 @@ public sealed class GitService
 
     public Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3) =>
         _diff.GetDiffTextAsync(entry, staged, contextLines);
+
+    // ===== 比較基準（作業ツリー／ブランチ／分岐点） =====
+
+    /// <summary>比較基準として選べる ref（ローカル＋リモート追跡ブランチ）。</summary>
+    public Task<IReadOnlyList<string>> GetComparableRefsAsync() => _compare.GetComparableRefsAsync();
+
+    /// <summary>既定ブランチの推定（origin/HEAD → main → master …）。無ければ null。</summary>
+    public Task<string?> GetDefaultBranchAsync(IReadOnlyList<string>? availableRefs = null) =>
+        _compare.GetDefaultBranchAsync(availableRefs);
+
+    /// <summary>比較基準を実際の ref へ解決する（失敗は理由付きで返る）。</summary>
+    public Task<GitCompareResolution> ResolveCompareBaseAsync(GitCompareBaseSelection selection) =>
+        _compare.ResolveAsync(selection);
+
+    /// <summary>基準に対する変更ファイル一覧（未追跡は含まない・リネームは1件）。失敗は理由付きで返る。</summary>
+    public Task<GitCompareChanges> GetCompareChangesAsync(string baseRef) =>
+        _compare.GetChangesAsync(baseRef);
+
+    /// <summary>基準に対する1ファイルの差分テキスト。</summary>
+    public Task<string> GetCompareFileDiffAsync(
+        string baseRef, GitCommitFileChange file, int contextLines = 3) =>
+        _compare.GetFileDiffAsync(baseRef, file, contextLines);
 
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 

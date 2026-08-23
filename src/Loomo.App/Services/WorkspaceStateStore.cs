@@ -369,6 +369,20 @@ public sealed class WorkspaceSnapshot
 
     /// <summary>ファイル一覧ペイン（§26.10）の現在地と並べ替え。null の旧データはプライマリフォルダーから始める。</summary>
     public FilesPaneSnapshot? Files { get; set; }
+
+    /// <summary>Git の比較基準（作業ツリー／ブランチ／分岐点）。null の旧データは作業ツリー基準。
+    /// 「このブランチで入れた変更を見ている」という現在地はワークスペースごとに違うのでここに持つ。</summary>
+    public GitCompareSnapshot? GitCompare { get; set; }
+}
+
+/// <summary>Git の比較基準の復元状態。<c>GitCompareBaseViewModel</c> が読み書きする。</summary>
+public sealed class GitCompareSnapshot
+{
+    /// <summary>0=作業ツリー / 1=ブランチと比較 / 2=分岐点と比較（<c>GitCompareBaseKind</c> の値）。</summary>
+    public int Kind { get; set; }
+
+    /// <summary>比較先ブランチ（例 <c>main</c> / <c>origin/main</c>）。作業ツリー基準では null。</summary>
+    public string? Branch { get; set; }
 }
 
 /// <summary>ファイル一覧ペインの復元状態（カラム構成＋カラムごとの現在地）。</summary>

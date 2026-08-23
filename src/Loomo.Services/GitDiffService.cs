@@ -41,10 +41,13 @@ public sealed class GitDiffService
             }
         }
 
+        // pathspec をリテラル扱いにする（git の pathspec は既定でグロブが効くので、これが無いと
+        // "a[1].txt" の差分に "a1.txt" が混ざる）。GitCompareArgs 側と同じ扱い。
         var unified = $"--unified={contextLines}";
+        var literal = GitCompareArgs.LiteralPathspecs;
         var args = staged
-            ? new[] { "diff", "--cached", unified, "--", entry.Path }
-            : new[] { "diff", unified, "--", entry.Path };
+            ? new[] { literal, "diff", "--cached", unified, "--", entry.Path }
+            : new[] { literal, "diff", unified, "--", entry.Path };
         var result = await _runner.RunAsync(args).ConfigureAwait(false);
         return result.Success ? result.Output : result.Message;
     }

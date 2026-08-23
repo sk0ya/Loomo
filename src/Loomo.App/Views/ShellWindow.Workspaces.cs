@@ -183,6 +183,7 @@ public partial class ShellWindow {
             // ファイル一覧はパンくずの起点・ピン・書き込み可否をワークスペースのフォルダー集合から
             // 決めるので、それが確定する LoadRoot のあとで復元する。
             _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
+            RestoreGitCompareBase(workspace);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
         profile?.Lap("folderTree");
@@ -208,6 +209,7 @@ public partial class ShellWindow {
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
+            RestoreGitCompareBase(workspace);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
             profile?.Lap("deferredFolderTree");
         }
@@ -231,6 +233,13 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
         profile?.Lap("scheduleSave");
     }
+    // Git の比較基準はワークスペースごとの現在地。**LoadRoot（＝_workspace.OpenFolder）のあと**で戻す
+    // ——前に置くと Git の対象フォルダーがまだ切り替わっておらず、VM が走らせるブランチ候補の読込が
+    // 「ワークスペースフォルダーが開かれていません」で空を返し、保存した枝が既定ブランチへすり替わる
+    // （deferHydration の経路が本番の起動経路なので、そこでこそ踏む）。
+    private void RestoreGitCompareBase(WorkspaceSnapshot workspace)
+        => _vm.GitPanel.CompareBase.Restore(workspace.GitCompare);
+
     // スナップショットからワークスペースフォルダー一覧（プライマリ＋追加）を組み立てる。deferHydration 中は
     // _workspace（実サービス）がまだ新ワークスペースへ切り替わっていないことがあるため、スナップショットの
     // データから直接組み立てる（_workspace.Folders を読むと古いワークスペースの値を拾ってしまう）。
@@ -305,6 +314,7 @@ public partial class ShellWindow {
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
         snapshot.AdditionalFolders = _vm.FolderTree.CaptureAdditionalFolders().ToList();
         snapshot.Files = _vm.Files.Capture();
+        snapshot.GitCompare = _vm.GitPanel.CompareBase.Capture();
         snapshot.ComposerText = CaptureComposerText();
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();

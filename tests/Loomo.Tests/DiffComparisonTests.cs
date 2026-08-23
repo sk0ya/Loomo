@@ -15,7 +15,8 @@ public class DiffComparisonTests
         var git = new GitService(workspace);
         var files = new DiffFileGateway();
         return new DiffSessionViewModel(git, new FakeEditorService(), workspace, files,
-            new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings());
+            new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings(),
+            new GitCompareBaseViewModel(git));
     }
 
     private static DiffComparison Compare(string name)

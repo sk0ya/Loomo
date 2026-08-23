@@ -73,9 +73,13 @@ public class ShellViewModelTests
         var git = new sk0ya.Loomo.Services.GitService(workspace);
         var rootSwitch = new GitRootSwitchViewModel(git, workspace);
         var diffFiles = new DiffFileGateway();
+        // 実アプリと同じく Git パネルと Diff ペインで1つを共有する（Singleton 相当）。
+        var compareBase = new GitCompareBaseViewModel(git);
         var diffSessionVm = new DiffSessionViewModel(git, new FakeEditorService(), workspace,
-            diffFiles, new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings());
-        var gitPanelVm = new GitPanelViewModel(git, new FakeEditorService(), workspace, diffSessionVm, rootSwitch);
+            diffFiles, new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings(),
+            compareBase);
+        var gitPanelVm = new GitPanelViewModel(
+            git, new FakeEditorService(), workspace, diffSessionVm, rootSwitch, compareBase);
         var gitQuery = new GitSessionQuery(git);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(), diffSessionVm,
             gitQuery, new GitSessionCommandHandler(git), new GitHistoryViewModel(gitQuery), rootSwitch);

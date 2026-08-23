@@ -20,7 +20,8 @@ public sealed class GitSessionCommitDetailTests
         var editor = new FakeEditorService();
         var files = new DiffFileGateway();
         var diff = new DiffSessionViewModel(git, editor, workspace, files,
-            new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings());
+            new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings(),
+            new GitCompareBaseViewModel(git));
         var query = new GitSessionQuery(git);
         return new GitSessionViewModel(git, editor, diff, query, new GitSessionCommandHandler(git),
             new GitHistoryViewModel(query), new GitRootSwitchViewModel(git, workspace), settings, store);

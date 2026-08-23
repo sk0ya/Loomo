@@ -50,22 +50,9 @@ public sealed class GitHistoryService
             ? await _runner.RunAsync("diff-tree", "--root", "-r", "-m", "--first-parent",
                 "--no-commit-id", "--name-status", toHash).ConfigureAwait(false)
             : await _runner.RunAsync("diff", "--name-status", fromHash, toHash).ConfigureAwait(false);
-        if (!result.Success)
-            return Array.Empty<GitCommitFileChange>();
-
-        var changes = new List<GitCommitFileChange>();
-        foreach (var line in result.Output.Split('\n'))
-        {
-            var value = line.TrimEnd('\r');
-            if (value.Length == 0) continue;
-            var parts = value.Split('\t');
-            if (parts.Length < 2 || parts[0].Length == 0) continue;
-            var (path, originalPath) = parts.Length >= 3
-                ? (parts[2], parts[1])
-                : (parts[1], (string?)null);
-            changes.Add(new GitCommitFileChange(parts[0][0], path, originalPath));
-        }
-        return changes;
+        return result.Success
+            ? GitNameStatusParser.Parse(result.Output)
+            : Array.Empty<GitCommitFileChange>();
     }
 
     public async Task<string> GetRangeFileDiffAsync(

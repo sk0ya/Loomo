@@ -305,11 +305,16 @@
             <MenuItem Header="選択範囲をクリップボードと比較" Click="OnCompareSelectionWithClipboard"
                       ToolTip="差分本体で選択したテキストとクリップボードの内容を比較する" />
             <Separator />
+            <!-- 行単位の破棄は「作業ツリー vs インデックス／HEAD」の概念。基準がブランチ／分岐点のときや
+                 コミット範囲を見ている間は存在しないので、灰色で残さず項目ごと出さない（§24.11）。 -->
             <MenuItem Header="選択した行を破棄" Click="OnDiscardSelectedLines"
                       ToolTip="選択した追加・削除行の変更だけを作業ツリーから取り消す"
-                      IsEnabled="{Binding PlacementTarget.DataContext.CanDiscardLines,
-                          RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-            <Separator />
+                      Visibility="{Binding PlacementTarget.DataContext.CanDiscardLines,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu},
+                          Converter={StaticResource BoolToVis}}" />
+            <Separator Visibility="{Binding PlacementTarget.DataContext.CanDiscardLines,
+                          RelativeSource={RelativeSource AncestorType=ContextMenu},
+                          Converter={StaticResource BoolToVis}}" />
             <MenuItem Header="⇄ 左右を入れ替える" Click="OnSwapComparison"
                       IsEnabled="{Binding PlacementTarget.DataContext.HasComparison,
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />

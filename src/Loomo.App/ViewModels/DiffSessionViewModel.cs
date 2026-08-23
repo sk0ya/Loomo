@@ -28,6 +28,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     /// 引くために持つ。<b>必須</b>——既定へ落ちるオーバーロードを置くと、既定値の写しが増えて
     /// プレビューと静かにズレる（LSP のテーブルで踏んだのと同じ轍）。</summary>
     private readonly LoomoSettings _settings;
+    /// <summary>比較基準（作業ツリー／ブランチ／分岐点）。サイドバー Git パネルと共有する Singleton
+    /// なので、どちらのヘッダーで切り替えても一覧と差分本体の両方がその基準になる。</summary>
+    public GitCompareBaseViewModel CompareBase { get; }
     private bool _loaded;
 
     private (string? From, string To)? _commitRange;
@@ -43,6 +46,11 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     [ObservableProperty] private string _gitTargetLabel = "";
     /// <summary>単一コミットの差分を表示中なら、そのコミットを Git 一覧で選択できる。</summary>
     public bool CanOpenCommitInGit => _commitRange is { From: null };
+
+    /// <summary>比較基準の選択をヘッダーに出すか。Git モードで、かつコミット範囲を表示していないときだけ
+    /// ——コミット範囲は「何と比べているか」を自分で持っているので、そこに基準を並べても効かない
+    /// （押せるのに何も起きない項目になる）。</summary>
+    public bool ShowCompareBaseSelector => IsGitMode && _commitRange is null;
     [ObservableProperty] private DiffFileItem? _selectedFile;
     [ObservableProperty] private string _emptyMessage = "";
     [ObservableProperty] private string _statusMessage = "";
@@ -65,7 +73,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     public DiffSessionViewModel(
         GitService git, IEditorService editor, IWorkspaceService workspace,
         DiffFileGateway files, DiffSessionQuery query, DiffSessionCommandHandler commands,
-        LoomoSettings settings)
+        LoomoSettings settings, GitCompareBaseViewModel compareBase)
     {
         _git = git;
         _editor = editor;
@@ -74,6 +82,21 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _query = query;
         _commands = commands;
         _settings = settings;
+        CompareBase = compareBase;
+        // 基準の切替は git status の出力には現れない（ポーリング署名も動かない）ので、
+        // ここで明示的に読み直さないと古い基準の一覧・差分が残る。
+        CompareBase.Changed += (_, _) =>
+        {
+            UpdateCanDiscard();
+            // 基準の切替はユーザー操作＝UI スレッド発なので、Application が無い（ヘッドレス）ときは
+            // ディスパッチせずそのまま読み直す。
+            if (Application.Current is null)
+            {
+                if (_loaded) _ = RefreshAsync();
+                return;
+            }
+            DispatchRefresh();
+        };
         Conflict = new DiffConflictViewModel(files, git, ClearDiffForConflict, SetStatus);
         // コンフリクト解消表示に入る／出ると、レンダリング表示を出せるかどうかが変わる（§24.10）。
         Conflict.PropertyChanged += (_, e) =>
@@ -157,9 +180,14 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
     private void UpdateCanDiscard()
     {
-        var workingTree = IsGitMode && _commitRange is null;
-        CanDiscardSelected = workingTree && SelectedFile?.Entry is not null;
-        CanDiscardLines = workingTree
+        // 破棄も行・範囲単位の適用も「作業ツリー vs インデックス／HEAD」の概念。基準がブランチ／分岐点の
+        // ときは存在しないので、ビュー側の表示ごと消す（無効化して押せるのに何も起きない項目にしない）。
+        OnPropertyChanged(nameof(ShowCompareBaseSelector));
+        // 判定は GitCompareCapabilities 一箇所（Git パネル側のゲートと同じもの）。
+        var capabilities = CompareBase.Capabilities;
+        var gitWorkingTree = IsGitMode && _commitRange is null;
+        CanDiscardSelected = gitWorkingTree && capabilities.CanDiscard && SelectedFile?.Entry is not null;
+        CanDiscardLines = gitWorkingTree && capabilities.CanApplyLines
             && SelectedFile is { IsStaged: false, Entry: { IsUntracked: false } };
     }
 
@@ -251,10 +279,15 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         _commitRange = null;
         GitTargetLabel = "";
         IsGitMode = true;
+        UpdateCanDiscard();  // 既に Git モードだと IsGitMode の setter は何も通知しない
         await RefreshAsync();
+        // 基準がブランチ／分岐点のとき、一覧の項目はステージ済み／未ステージの区別を持たない
+        // （その概念が無い）ので、まず厳密一致で探し、無ければパスだけで拾う。
         SelectedFile = Files.FirstOrDefault(f =>
             f.IsStaged == isStaged
             && string.Equals(f.DisplayPath, entry.Path, StringComparison.OrdinalIgnoreCase))
+            ?? Files.FirstOrDefault(f =>
+                string.Equals(f.DisplayPath, entry.Path, StringComparison.OrdinalIgnoreCase))
             ?? SelectedFile;
     }
 
@@ -461,7 +494,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject
 
         var result = Source == DiffSource.Compare
             ? LoadComparison()
-            : await _query.LoadAsync(_commitRange);
+            : await _query.LoadAsync(
+                _commitRange,
+                _commitRange is null ? await CompareBase.ResolveAsync() : null);
         var items = result.Items;
         var emptyMessage = result.EmptyMessage;
 

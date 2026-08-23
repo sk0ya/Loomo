@@ -1721,6 +1721,13 @@
                                                  IsChecked="{Binding DiffSession.IsCompareMode}" />
                                 </StackPanel>
                             </Border>
+                            <!-- 比較基準（作業ツリー／ブランチ／分岐点）。サイドバー Git パネルと同じ状態を
+                                 見ているので、どちらで切り替えても一覧と差分本体の両方がその基準になる。
+                                 コミット範囲を表示している間は出さない（そちらが優先で効かないため）。 -->
+                            <Border Margin="0,0,10,0" VerticalAlignment="Center"
+                                    Visibility="{Binding DiffSession.ShowCompareBaseSelector, Converter={StaticResource BoolToVis}}">
+                                <views:GitCompareBaseView DataContext="{Binding DiffSession.CompareBase}" />
+                            </Border>
                             <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く。
                                  Markdown をレンダリング表示している間は出さない——押しても画面は変わらず、
                                  差分の読み直しだけが走る（押せるのに何も起きない・§24.7）。 -->

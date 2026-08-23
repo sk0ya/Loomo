@@ -217,8 +217,26 @@ public sealed partial class GitPanelViewModel : ObservableObject
     public ObservableCollection<GitChangeItem> Changes { get; } = new();
     /// <summary>Git の管理対象になっていないファイル。チェックでコミット対象に含める。</summary>
     public ObservableCollection<GitChangeItem> UnversionedFiles { get; } = new();
-    /// <summary>「変更」「バージョン管理外」をトップレベルに持つ、コミット対象選択用のツリー。</summary>
+    /// <summary>「変更」「バージョン管理外」をトップレベルに持つ、コミット対象選択用のツリー。
+    /// 基準がブランチ／分岐点のときは、その基準に対する変更ファイルの単一セクションになる。</summary>
     [ObservableProperty] private IReadOnlyList<GitChangeTreeNode> _workingTreeSections = Array.Empty<GitChangeTreeNode>();
+
+    /// <summary>
+    /// 今の比較基準で意味を持つ操作。ステージ／アンステージ／破棄・コミット対象チェック・コミットは
+    /// 「作業ツリー vs インデックス／HEAD」の概念で、<c>main</c> との比較には存在しない——
+    /// ビューはこの各フラグでそれらを<b>出す／出さない</b>を決める（無効化して押せるのに何も
+    /// 起きない項目にしない）。コマンド側の二重ガードも同じフラグを見るので、判定は
+    /// <see cref="GitCompareCapabilities.For(GitCompareBaseKind)"/> 一箇所に集まる。
+    /// ファイルを開く・差分を開くは基準に依らないので、ここには現れない（常に出す）。
+    /// </summary>
+    [ObservableProperty]
+    private GitCompareCapabilities _capabilities =
+        GitCompareCapabilities.For(GitCompareBaseKind.WorkingTree);
+
+    /// <summary>基準に対する変更一覧そのものが取れなかった理由（曖昧な引数・壊れた ref など）。
+    /// 空なら問題なし。<b>基準を解決できなかった理由は別</b>で、そちらは基準選択 UI
+    /// （<see cref="GitCompareBaseViewModel.ErrorMessage"/>）が出す——同じ理由を2箇所に出さない。</summary>
+    [ObservableProperty] private string _compareBaseError = "";
 
     /// <summary>退避中のスタッシュ（新しい＝stash@{0} が先頭）。</summary>
     public ObservableCollection<GitStashEntry> Stashes { get; } = new();
@@ -243,15 +261,22 @@ public sealed partial class GitPanelViewModel : ObservableObject
     /// （<see cref="GitSessionViewModel"/>）で共有する（どちらから切り替えても両方に反映される）。</summary>
     public GitRootSwitchViewModel RootSwitch { get; }
 
+    /// <summary>比較基準（作業ツリー／ブランチ／分岐点）。Diff ペインと共有する Singleton。</summary>
+    public GitCompareBaseViewModel CompareBase { get; }
+
     public GitPanelViewModel(
         GitService git, IEditorService editor, IWorkspaceService workspace, DiffSessionViewModel diff,
-        GitRootSwitchViewModel rootSwitch)
+        GitRootSwitchViewModel rootSwitch, GitCompareBaseViewModel compareBase)
     {
         _git = git;
         _editor = editor;
         _workspace = workspace;
         _diff = diff;
         RootSwitch = rootSwitch;
+        CompareBase = compareBase;
+        // 基準が変わったら一覧を組み直す（ポーリング署名は git status しか見ないので、
+        // 基準の切替はそこには現れない＝自前で読み直さないと古い一覧が残る）。
+        CompareBase.Changed += OnCompareBaseChanged;
         _git.RepositoryChanged += OnRepositoryChanged;
         Staged.CollectionChanged += OnCommitCandidatesChanged;
         Changes.CollectionChanged += OnCommitCandidatesChanged;
@@ -259,7 +284,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
     }
 
     private bool CanCommit() =>
-        IsRepository && !IsBusy && !string.IsNullOrWhiteSpace(CommitMessage)
+        // 基準がブランチ／分岐点のときはコミット欄ごと出さないが、amend を立てたまま基準を切り替えても
+        // true のままにならないよう、判定にも同じフラグを入れる。
+        Capabilities.CanCommit && IsRepository && !IsBusy && !string.IsNullOrWhiteSpace(CommitMessage)
         && (Amend || Staged.Count > 0 || Changes.Any(i => i.IsChecked) || UnversionedFiles.Any(i => i.IsChecked));
 
     private void OnCommitCandidatesChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -278,6 +305,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
         if (e.PropertyName == nameof(GitChangeItem.IsChecked))
             CommitCommand.NotifyCanExecuteChanged();
     }
+
+    partial void OnCapabilitiesChanged(GitCompareCapabilities value) =>
+        CommitCommand.NotifyCanExecuteChanged();
 
     partial void OnCommitMessageChanged(string value) => CommitCommand.NotifyCanExecuteChanged();
     partial void OnAmendChanged(bool value)
@@ -371,6 +401,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
             UnversionedFiles.Clear();
             WorkingTreeSections = Array.Empty<GitChangeTreeNode>();
             Stashes.Clear();
+            CompareBaseError = "";
+            Capabilities = GitCompareCapabilities.For(GitCompareBaseKind.WorkingTree);
             return;
         }
 
@@ -379,6 +411,22 @@ public sealed partial class GitPanelViewModel : ObservableObject
         Behind = status.Behind;
         HasUpstream = !string.IsNullOrWhiteSpace(status.Upstream);
         HasRemote = (await _git.GetRemotesAsync()).Count > 0;
+
+        // スタッシュは基準に依らず作業ツリーの退避なので、どちらの基準でも同じように出す。
+        var stashEntries = await _git.GetStashesAsync();
+        Stashes.Clear();
+        foreach (var stash in stashEntries)
+            Stashes.Add(stash);
+
+        // 比較基準を解決する。作業ツリー基準なら git は1回も起動しない（従来経路の負荷は変えない）。
+        var resolution = await CompareBase.ResolveAsync();
+        Capabilities = CompareBase.Capabilities;
+        CompareBaseError = "";
+        if (!CompareBase.IsWorkingTree)
+        {
+            await LoadCompareBaseChangesAsync(resolution);
+            return;
+        }
 
         // ライブ更新でチェックが勝手に戻らないよう、作業ツリー側はパス単位で選択状態を引き継ぐ。
         var wasChecked = Changes.Concat(UnversionedFiles)
@@ -407,11 +455,57 @@ public sealed partial class GitPanelViewModel : ObservableObject
             sections.Add(GitChangeTreeNode.BuildSection(
                 "バージョン管理外ファイル", UnversionedFiles, wasExpanded.GetValueOrDefault("バージョン管理外ファイル", false)));
         WorkingTreeSections = sections;
+    }
 
-        var stashes = await _git.GetStashesAsync();
-        Stashes.Clear();
-        foreach (var stash in stashes)
-            Stashes.Add(stash);
+    /// <summary>
+    /// ブランチ／分岐点基準の変更ファイル一覧を組み立てる。<c>git diff --name-status &lt;base&gt;</c>
+    /// （二点記法＝未コミットの編集も含む）なので、<b>未追跡ファイルは出ない</b>——まだ git に足していない
+    /// ファイルは「このブランチが基準に対して入れた変更」ではないため。リネームは <c>R</c> の1行にまとまる。
+    /// ステージ済み・コミット対象チェックはこの基準では意味を持たないので、集合ごと空にする。
+    /// </summary>
+    private async Task LoadCompareBaseChangesAsync(GitCompareResolution resolution)
+    {
+        Staged.Clear();
+        Changes.Clear();
+        UnversionedFiles.Clear();
+
+        if (resolution.BaseRef is null)
+        {
+            // 解決できていない（理由は CompareBaseError に出ている）。空一覧のままにする。
+            WorkingTreeSections = Array.Empty<GitChangeTreeNode>();
+            return;
+        }
+
+        var changes = await _git.GetCompareChangesAsync(resolution.BaseRef);
+        if (changes.HasError)
+        {
+            // 一覧が取れないのに黙って空を出すと「差分があるのに無い」と嘘をつく。理由を出す。
+            CompareBaseError = changes.Error!;
+            WorkingTreeSections = Array.Empty<GitChangeTreeNode>();
+            return;
+        }
+
+        var items = changes.Files
+            .Select(change => new GitChangeItem(
+                new GitChangeEntry(change.Path, change.OrigPath, ' ', change.Status,
+                    IsUntracked: false, IsConflicted: false),
+                isStaged: false))
+            .ToList();
+        WorkingTreeSections = items.Count == 0
+            ? Array.Empty<GitChangeTreeNode>()
+            : new[] { GitChangeTreeNode.BuildSection(resolution.Label, items) };
+    }
+
+    private void OnCompareBaseChanged(object? sender, EventArgs e)
+    {
+        // まだ開いていない（＝一度も読んでいない）パネルでは読まない。表示された時点の
+        // StartLiveTracking が最新の基準で読み直すので、隠れている間に git を叩く必要はない。
+        if (!_loaded) return;
+        var app = Application.Current;
+        // 基準の切替はユーザー操作＝UI スレッド発なので、Application が無い（ヘッドレス）ときは
+        // ディスパッチせずそのまま読み直す。
+        if (app is null) { _ = RefreshAsync(); return; }
+        app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
     }
 
     /// <summary>現在の変更を退避する（任意のメッセージ付き・未追跡ファイルも含める）。</summary>
@@ -466,22 +560,25 @@ public sealed partial class GitPanelViewModel : ObservableObject
     private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
 
     [RelayCommand]
-    private Task UnstageAllAsync() => RunOpAsync("全アンステージ", () => _git.UnstageAllAsync());
+    private Task UnstageAllAsync() => Capabilities.CanUnstage
+        ? RunOpAsync("全アンステージ", () => _git.UnstageAllAsync())
+        : Task.CompletedTask;
 
     [RelayCommand]
-    private Task StageAsync(GitChangeItem? item) => item is null
+    private Task StageAsync(GitChangeItem? item) => item is null || !Capabilities.CanStage
         ? Task.CompletedTask
         : RunOpAsync("ステージ", () => _git.StageAsync(item.Entry.Path));
 
     [RelayCommand]
-    private Task UnstageAsync(GitChangeItem? item) => item is null
+    private Task UnstageAsync(GitChangeItem? item) => item is null || !Capabilities.CanUnstage
         ? Task.CompletedTask
         : RunOpAsync("アンステージ", () => _git.UnstageAsync(item.Entry.Path));
 
     [RelayCommand]
     private async Task DiscardAsync(GitChangeItem? item)
     {
-        if (item is null) return;
+        // ビュー側でも出さないが、基準がブランチ／分岐点のときは概念として存在しない操作なので二重に塞ぐ。
+        if (item is null || !Capabilities.CanDiscard) return;
         var detail = item.Entry.IsUntracked ? "未追跡ファイルなので削除されます。" : "作業ツリーの変更が失われます。";
         var answer = MessageBox.Show(
             Application.Current?.MainWindow!,
@@ -495,6 +592,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand]
     private Task UnstageSelectedAsync()
     {
+        if (!Capabilities.CanUnstage) return Task.CompletedTask;
         var paths = _stagedSelection.Select(i => i.Entry.Path).ToArray();
         return paths.Length == 0 ? Task.CompletedTask : RunOpAsync("アンステージ", () => _git.UnstageAsync(paths));
     }
@@ -506,6 +604,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCommit))]
     private async Task CommitAsync()
     {
+        // コミットはインデックスの内容を確定する操作。基準がブランチ／分岐点のときは概念として存在しない。
+        if (!Capabilities.CanCommit) return;
         if (string.IsNullOrWhiteSpace(CommitMessage))
         {
             StatusMessage = "コミットメッセージを入力してください。";

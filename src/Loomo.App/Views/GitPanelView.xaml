@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+    xmlns:views="clr-namespace:sk0ya.Loomo.App.Views"
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
@@ -170,9 +171,12 @@
                                   DataType="{x:Type vm:GitChangeTreeNode}"
                                   ItemsSource="{Binding Children}">
             <DockPanel Background="Transparent" ToolTip="{Binding Change.ToolTipText}">
+                <!-- コミット対象チェックは「作業ツリー→インデックス」の概念。基準がブランチ／分岐点の
+                     ときは存在しないので出さない（無効化して押せるのに何も起きない項目にしない）。 -->
                 <CheckBox DockPanel.Dock="Left" IsChecked="{Binding IsChecked, Mode=TwoWay}"
                           IsThreeState="{Binding IsDirectory}" VerticalAlignment="Center" Margin="1,0,6,0"
-                          ToolTip="配下をコミット対象に含める／除外する" />
+                          ToolTip="配下をコミット対象に含める／除外する"
+                          Visibility="{Binding DataContext.Capabilities.CanCommit, RelativeSource={RelativeSource AncestorType=TreeView}, Converter={StaticResource BoolToVis}}" />
                 <Border DockPanel.Dock="Right" Background="{DynamicResource Border}" CornerRadius="7"
                         Padding="6,0" MinWidth="18" Height="15" Margin="6,0,0,0"
                         VerticalAlignment="Center"
@@ -219,11 +223,15 @@
             <MenuItem Header="差分を開く"
                       Command="{Binding PlacementTarget.DataContext.OpenDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-            <Separator />
+            <!-- ここから下は「作業ツリー vs インデックス／HEAD」の操作。main との比較には存在しないので、
+                 基準がブランチ／分岐点のときは項目ごと出さない。ファイルを開く／差分を開くは基準に依らない。 -->
+            <Separator Visibility="{Binding PlacementTarget.DataContext.Capabilities.CanStage, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}" />
             <MenuItem Header="このファイルをステージ"
+                      Visibility="{Binding PlacementTarget.DataContext.Capabilities.CanStage, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}"
                       Command="{Binding PlacementTarget.DataContext.StageCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <MenuItem Header="このファイルを破棄"
+                      Visibility="{Binding PlacementTarget.DataContext.Capabilities.CanDiscard, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}"
                       Command="{Binding PlacementTarget.DataContext.DiscardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
@@ -277,7 +285,12 @@
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
 
-            <!-- ブランチ＋同期操作（カード・2行） -->
+            <!-- 比較基準：作業ツリー（既定）／ブランチと比較／分岐点と比較。
+                 切り替えると下の変更一覧と Diff ペインの差分本体が同じ基準になる（VM は Singleton 共有）。 -->
+            <views:GitCompareBaseView DockPanel.Dock="Top" Margin="8,2,8,4"
+                                      DataContext="{Binding CompareBase}" />
+
+            <!-- ブランチ＋同期操作（カード・2行）。フェッチ／プル／プッシュは比較基準に依らない。 -->
             <Border DockPanel.Dock="Top" Margin="8,2,8,6" Padding="8,6" CornerRadius="5"
                     Background="{DynamicResource Bg}">
                 <StackPanel>
@@ -341,8 +354,10 @@
                 </StackPanel>
             </Border>
 
-            <!-- コミットメッセージ＋コミット -->
-            <StackPanel DockPanel.Dock="Top" Margin="8,0,8,6">
+            <!-- コミットメッセージ＋コミット。コミットはインデックスの内容を確定する操作なので、
+                 基準がブランチ／分岐点のときは出さない（そこにステージという概念が無い）。 -->
+            <StackPanel DockPanel.Dock="Top" Margin="8,0,8,6"
+                        Visibility="{Binding Capabilities.CanCommit, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <TextBox x:Name="CommitMessageBox"
                              Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
@@ -407,6 +422,12 @@
             <!-- ヘッダー群と変更一覧の区切り -->
             <Border DockPanel.Dock="Top" Height="1" Margin="8,0,8,4"
                     Background="{DynamicResource Border}" />
+
+            <!-- 基準に対する変更一覧そのものが取れなかった理由。黙って「変更なし」に見せないための一行
+                 （基準を解決できなかった理由は上の GitCompareBaseView が出すので、ここには出ない）。 -->
+            <TextBlock DockPanel.Dock="Top" Margin="10,0,10,4" FontSize="{DynamicResource Fs11}"
+                       Text="{Binding CompareBaseError}" TextWrapping="Wrap" Foreground="#FFE57373"
+                       Visibility="{Binding CompareBaseError, Converter={StaticResource NonEmptyToVis}}" />
 
             <!-- 変更一覧。上はステージ済み（プレーンなリスト＝コミット対象）、下は作業ツリーを
                  ディレクトリツリーで表示し、チェックしたファイルをコミットに含める。

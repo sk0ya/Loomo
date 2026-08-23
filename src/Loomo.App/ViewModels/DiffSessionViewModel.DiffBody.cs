@@ -128,9 +128,12 @@ public sealed partial class DiffSessionViewModel
         var key = (item, contextLines);
         if (_patchCache.TryGetValue(key, out var cached))
             return cached;
+        // 比較基準の項目は、その項目が作られたときの ref で引く（項目と ref を一緒に持たせてある）。
         var text = await (item.CommitFile is { } commitFile && _commitRange is { } range
             ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines)
-            : _git.GetDiffTextAsync(item.Entry!, item.IsStaged, contextLines));
+            : item.CompareBaseFile is { } compareFile
+                ? _git.GetCompareFileDiffAsync(compareFile.BaseRef, compareFile.Change, contextLines)
+                : _git.GetDiffTextAsync(item.Entry!, item.IsStaged, contextLines));
         _patchCache[key] = text;
         return text;
     }
@@ -214,7 +217,8 @@ public sealed partial class DiffSessionViewModel
     /// ——比較は <see cref="DiffFileItem.Entry"/> が null なのでこの条件で落ちる）。
     /// </summary>
     private static bool SupportsHunkStaging(DiffFileItem? item)
-        => item is { CommitFile: null, Entry: { IsUntracked: false, IsConflicted: false } };
+        => item is { CommitFile: null, CompareBaseFile: null,
+                     Entry: { IsUntracked: false, IsConflicted: false } };
 
     /// <summary>選択ファイルのハンク一覧を組み立てる（対象外なら空にする）。コンテキスト3のパッチを使う。
     /// <paramref name="version"/> は <see cref="LoadDiffAsync"/> の読込世代。await の間に新しい読込が
