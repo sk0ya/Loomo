@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
@@ -11,24 +11,27 @@ public partial class ShellWindow
 {
     private CancellationTokenSource? _fileDropCts;
 
+    // 前の投下を打ち切るのは Cancel だけにし、Dispose はその投下自身の finally に任せる。
+    // ここで捨ててしまうと、await の途中で止まっている前のハンドラーが再開したときに
+    // operation.Token（破棄済み CTS のプロパティ）を読んで ObjectDisposedException になる
+    // ——async void なので、それはそのまま未処理例外になる。
     private CancellationTokenSource BeginFileDropOperation()
     {
         _fileDropCts?.Cancel();
-        _fileDropCts?.Dispose();
         return _fileDropCts = new CancellationTokenSource();
     }
 
     private void EndFileDropOperation(CancellationTokenSource operation)
     {
-        if (!ReferenceEquals(_fileDropCts, operation)) return;
-        _fileDropCts = null;
+        // 自分が最後の投下なら「進行中なし」に戻す。追い越されていても、自分の CTS は必ず捨てる。
+        if (ReferenceEquals(_fileDropCts, operation))
+            _fileDropCts = null;
         operation.Dispose();
     }
 
     private void CancelFileDropOperations()
     {
         _fileDropCts?.Cancel();
-        _fileDropCts?.Dispose();
         _fileDropCts = null;
     }
 
@@ -58,17 +61,19 @@ public partial class ShellWindow
         e.Handled = true;
         if (DropEffectFor(sender, paths) == DragDropEffects.None) return;
         var operation = BeginFileDropOperation();
+        // トークンは await をまたぐので、CTS からではなく最初に 1 度だけ取り出して使う。
+        var token = operation.Token;
         try
         {
             foreach (var path in paths)
             {
-                operation.Token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
                 await OpenFileInNewEditorTabAsync(path);
             }
-            if (!operation.Token.IsCancellationRequested)
+            if (!token.IsCancellationRequested)
                 FocusPane(PaneKind.Editor);
         }
-        catch (OperationCanceledException) when (operation.Token.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         finally { EndFileDropOperation(operation); }
     }
 
@@ -79,10 +84,11 @@ public partial class ShellWindow
         if (DropEffectFor(sender, paths) == DragDropEffects.None || _activeTerminalTab?.View is not { } view)
             return;
         var operation = BeginFileDropOperation();
+        var token = operation.Token;
         try
         {
             var input = string.Join(" ", paths.Select(FileDragDrop.PowerShellQuote));
-            if (input.Length == 0 || operation.Token.IsCancellationRequested) return;
+            if (input.Length == 0 || token.IsCancellationRequested) return;
             view.SendTerminalInput(input);
             FocusPane(PaneKind.Terminal);
         }
@@ -95,10 +101,11 @@ public partial class ShellWindow
         e.Handled = true;
         if (DropEffectFor(sender, paths) == DragDropEffects.None) return;
         var operation = BeginFileDropOperation();
+        var token = operation.Token;
         try
         {
             var root = FileDragDrop.CommonDirectory(paths);
-            if (root is null || operation.Token.IsCancellationRequested) return;
+            if (root is null || token.IsCancellationRequested) return;
             _vm.SearchPanel.SetSearchRoot(root);
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
             FocusPane(PaneKind.Search);
@@ -112,9 +119,10 @@ public partial class ShellWindow
         e.Handled = true;
         if (DropEffectFor(sender, paths) == DragDropEffects.None) return;
         var operation = BeginFileDropOperation();
+        var token = operation.Token;
         try
         {
-            if (!operation.Token.IsCancellationRequested)
+            if (!token.IsCancellationRequested)
                 CompareFilesInDiff(new FileCompareRequest(paths[0], paths.Length == 2 ? paths[1] : null));
         }
         finally { EndFileDropOperation(operation); }
@@ -126,16 +134,18 @@ public partial class ShellWindow
         e.Handled = true;
         if (DropEffectFor(sender, paths) == DragDropEffects.None) return;
         var operation = BeginFileDropOperation();
+        // トークンは await をまたぐので、CTS からではなく最初に 1 度だけ取り出して使う。
+        var token = operation.Token;
         try
         {
             var path = FileDragDrop.CommonDirectory(paths);
             if (path is null) return;
             await _vm.GitSession.ShowPathHistoryAsync(path);
-            if (operation.Token.IsCancellationRequested) return;
+            if (token.IsCancellationRequested) return;
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
             FocusPane(PaneKind.Git);
         }
-        catch (OperationCanceledException) when (operation.Token.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         finally { EndFileDropOperation(operation); }
     }
 }

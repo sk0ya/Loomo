@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using sk0ya.Loomo.App.Services;
@@ -98,6 +98,9 @@ public sealed class ZipFileOperationTests : IDisposable
         var zipPath = commands.CompressToZip([first, folder]);
 
         Assert.True(File.Exists(zipPath));
+        // 作成中の一時ファイルに付けた Hidden が Move で引き継がれたままだと、できあがった
+        // ZIP が一覧にもツリーにも出ず、圧縮が失敗したように見える。
+        Assert.False(File.GetAttributes(zipPath).HasFlag(FileAttributes.Hidden));
         using (var archive = ZipFile.OpenRead(zipPath))
         {
             Assert.Contains(archive.Entries, e => e.FullName == "one.txt");
@@ -111,6 +114,7 @@ public sealed class ZipFileOperationTests : IDisposable
 
         history.Redo();
         Assert.True(File.Exists(zipPath));
+        Assert.False(File.GetAttributes(zipPath).HasFlag(FileAttributes.Hidden));
         using var recreated = ZipFile.OpenRead(zipPath);
         Assert.Contains(recreated.Entries, e => e.FullName == "one.txt");
     }

@@ -188,6 +188,15 @@ public sealed class FolderTreeCommandHandler
             }
 
             File.Move(temporary, destination);
+            // 一時ファイルに付けた Hidden は Move で引き継がれる。落とさないと、できあがった
+            // ZIP が隠しファイルのまま＝一覧にもツリーにも出ず、直後の「作った ZIP を選ぶ」も
+            // 空振りして、圧縮が失敗したように見える。
+            try { File.SetAttributes(destination, FileAttributes.Normal); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or ArgumentException or NotSupportedException)
+            {
+                // 属性を戻せなくても ZIP 自体は作れている。
+            }
         }
         catch (OperationCanceledException)
         {

@@ -513,7 +513,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         var state = ResolveGitStateForPath(normalized);
         if (state is null)
             return GitChangeKind.None;
-        state.GetIgnoredPaths(new[] { normalized });
+        // ここでは<b>読み込み済みのキャッシュだけ</b>を見る。1件ずつ check-ignore を起動すると、
+        // 呼び出し元（一覧の組み立て）が項目数ぶんの git プロセスを UI スレッドで順番に立てることに
+        // なり、フォルダーを開くたびに画面が止まる。無視状態は GitStatusesForPaths が
+        // バックグラウンドで一括照会して後から反映する。
         return state.GetStatus(normalized, isDirectory);
     }
 

@@ -1,5 +1,6 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
@@ -231,6 +232,39 @@ public sealed class GitTreeStateTests
         process.WaitForExit();
         return process.ExitCode;
     }
+
+    /// <summary>一覧を組み立てる経路（FilesColumnViewModel.LoadEntries）が使う
+    /// <c>GitStatusForPath</c> は、読み込み済みのキャッシュだけを見ること。
+    ///
+    /// <para>ここで <c>GetIgnoredPaths</c>（＝<c>git check-ignore</c> の同期起動）を呼ぶと、
+    /// フォルダーを開くたびに<b>項目数ぶんの git プロセス</b>を UI スレッドで順番に立てることに
+    /// なる。500 個のファイルがあるフォルダーでは 500 回で、画面が描かれる前に固まる。
+    /// 無視状態は GitStatusesForPaths がバックグラウンドで一括照会して後から反映する。</para></summary>
+    [Fact]
+    public void 一覧の1件ずつの状態取得はcheck_ignoreを起動しない()
+    {
+        var source = ReadSource("src", "Loomo.App", "ViewModels", "FolderTreeViewModel.cs");
+        var start = source.IndexOf("internal GitChangeKind GitStatusForPath(", StringComparison.Ordinal);
+        Assert.True(start >= 0, "GitStatusForPath が見つからない");
+        var batch = source.IndexOf("GitStatusesForPaths(", start, StringComparison.Ordinal);
+        Assert.True(batch > start, "GitStatusesForPaths が見つからない");
+        var body = source[start..batch];
+
+        Assert.DoesNotContain("GetIgnoredPaths", body);
+        // 一括照会のほうは今までどおり起動してよい（バックグラウンド専用）。
+        Assert.Contains("GetIgnoredPaths", source[batch..]);
+    }
+
+    private static string ReadSource(params string[] parts)
+    {
+        var root = new DirectoryInfo(Path.GetDirectoryName(SourceFile())!);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "sk0ya.Loomo.sln")))
+            root = root.Parent;
+        Assert.NotNull(root);
+        return File.ReadAllText(Path.Combine(new[] { root!.FullName }.Concat(parts).ToArray()));
+    }
+
+    private static string SourceFile([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
 
     private static void DeleteDirectory(string path)
     {
