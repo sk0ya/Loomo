@@ -38,6 +38,9 @@ public partial class App : Application
 
         _services.GetRequiredService<AppBootstrapper>().Initialize();
 
+        // 前回のプロセスが残した上書き退避先を片付ける（台帳に控えたぶんだけ）。臨界パスへは載せない。
+        _ = System.Threading.Tasks.Task.Run(ConflictBackupJournal.Sweep);
+
         // タスクバーの Recent から起動された場合も、通常のフォルダー引数と同じ経路で
         // ワークスペースを先にアクティブ化する。ShellWindow 解決後だと空の初期ペインを
         // いったん作ってから切り替えることになるため、ウィンドウ生成前に済ませる。
@@ -100,6 +103,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // 上書き貼り付けの退避先（.loomo-conflict-*）は Undo のためだけに残している隠しコピーなので、
+        // 履歴と一緒にここで捨てる。落ちて通らなかったぶんは次回起動の Sweep が拾う。
+        try { _services?.GetService<FileOperationHistory>()?.Clear(); } catch { }
         _services?.Dispose();
         base.OnExit(e);
     }

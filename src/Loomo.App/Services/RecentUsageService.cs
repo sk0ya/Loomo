@@ -10,7 +10,15 @@ using sk0ya.Loomo.App.ViewModels;
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>最近利用したファイルと頻繁に利用するフォルダーの収集・表示用状態。
-/// 保存単位は現在の <see cref="WorkspaceSnapshot"/> で、ファイル内容・検索語・AI入力は扱わない。</summary>
+/// 保存単位は現在の <see cref="WorkspaceSnapshot"/> で、ファイル内容・検索語・AI入力は扱わない。
+///
+/// <para><b>更新は copy-on-write。</b>存在確認・権限確認をUIスレッドから外すため、記録はスレッドプールで
+/// 走る（<see cref="RecordFileAsync"/>／<see cref="RecordFolderAsync"/>）。一方
+/// <see cref="WorkspaceSnapshot"/> は同じ瞬間に <c>WorkspaceStateStore.Save</c> が
+/// <c>JsonSerializer</c> で直列化しうるので、共有リストをその場で <c>Clear()</c>／<c>AddRange</c> したり
+/// 既存要素を書き換えたりすると、保存が「コレクションが変更されました」で落ちる。だから常に新しい
+/// <see cref="List{T}"/>／新しい <see cref="RecentPathSnapshot"/> を組み立て、最後に参照だけ差し替える
+/// （参照代入は原子的なので、直列化側は必ず新旧どちらか一貫した並びを見る）。</para></summary>
 public sealed class RecentUsageService
 {
     public const int MaxRecentFiles = 20;
@@ -43,16 +51,22 @@ public sealed class RecentUsageService
 
     public bool RecordFile(WorkspaceSnapshot workspace, string? fullPath, DateTime? nowUtc = null)
     {
-        workspace.RecentFiles ??= new();
-        NormalizeInPlace(workspace, workspace.RecentFiles, isDirectory: false);
-        return Record(workspace, workspace.RecentFiles, fullPath, isDirectory: false, MaxRecentFiles, nowUtc);
+        var updated = Record(workspace, workspace.RecentFiles ?? [], fullPath,
+            isDirectory: false, MaxRecentFiles, nowUtc);
+        if (updated is null)
+            return false;
+        workspace.RecentFiles = updated;
+        return true;
     }
 
     public bool RecordFolder(WorkspaceSnapshot workspace, string? fullPath, DateTime? nowUtc = null)
     {
-        workspace.FrequentFolders ??= new();
-        NormalizeInPlace(workspace, workspace.FrequentFolders, isDirectory: true);
-        return Record(workspace, workspace.FrequentFolders, fullPath, isDirectory: true, MaxFrequentFolders, nowUtc);
+        var updated = Record(workspace, workspace.FrequentFolders ?? [], fullPath,
+            isDirectory: true, MaxFrequentFolders, nowUtc);
+        if (updated is null)
+            return false;
+        workspace.FrequentFolders = updated;
+        return true;
     }
 
     /// <summary>履歴の存在確認・権限確認をUIスレッドから外すための入口。</summary>
@@ -135,47 +149,41 @@ public sealed class RecentUsageService
             ? "ワークスペース直下"
             : $"追加ルート（{DisplayName(root, isDirectory: true)}）直下";
 
-    private static bool Record(
+    /// <summary>1 件ぶん記録した新しい並びを返す（記録できなければ null）。渡された
+    /// <paramref name="entries"/> も、その中の要素も書き換えない——保存側が同時に直列化しうるため。</summary>
+    private static List<RecentPathSnapshot>? Record(
         WorkspaceSnapshot workspace,
-        List<RecentPathSnapshot> entries,
+        IReadOnlyList<RecentPathSnapshot> entries,
         string? fullPath,
         bool isDirectory,
         int max,
         DateTime? nowUtc)
     {
         if (!TryLocate(workspace, fullPath, isDirectory, out var rootIndex, out var relative))
-            return false;
+            return null;
 
-        var existing = entries.FirstOrDefault(x => x.RootIndex == rootIndex
+        var normalized = Normalize(workspace, entries, isDirectory);
+        var existing = normalized.FirstOrDefault(x => x.RootIndex == rootIndex
             && string.Equals(x.RelativePath, relative, StringComparison.OrdinalIgnoreCase));
         var now = nowUtc ?? DateTime.UtcNow;
-        if (existing is null)
+        var recorded = new RecentPathSnapshot
         {
-            entries.Add(new RecentPathSnapshot
-            {
-                RootIndex = rootIndex,
-                RelativePath = relative,
-                LastUsedUtc = now,
-                UseCount = 1,
-            });
-        }
-        else
-        {
-            existing.LastUsedUtc = now;
-            existing.UseCount = existing.UseCount >= int.MaxValue
-                ? int.MaxValue
-                : Math.Max(1, existing.UseCount) + 1;
-        }
+            RootIndex = rootIndex,
+            RelativePath = relative,
+            LastUsedUtc = now,
+            UseCount = existing is null
+                ? 1
+                : existing.UseCount >= int.MaxValue ? int.MaxValue : Math.Max(1, existing.UseCount) + 1,
+        };
 
-        var kept = entries
-            .Where(x => TryResolveExisting(workspace, x, isDirectory))
+        // 既存ぶんの実在確認は Normalize が済ませているので、ここで見るのは足した 1 件だけ。
+        var merged = normalized.Where(x => !ReferenceEquals(x, existing)).Append(recorded);
+        return merged
+            .Where(x => !ReferenceEquals(x, recorded) || TryResolveExisting(workspace, x, isDirectory))
             .OrderByDescending(x => isDirectory ? x.UseCount : 0)
             .ThenByDescending(x => x.LastUsedUtc)
             .Take(max)
             .ToList();
-        entries.Clear();
-        entries.AddRange(kept);
-        return true;
     }
 
     private static IEnumerable<RecentPathSnapshot> Clean(
@@ -199,16 +207,13 @@ public sealed class RecentUsageService
         };
     }
 
-    private static void NormalizeInPlace(WorkspaceSnapshot workspace,
-        List<RecentPathSnapshot> entries, bool isDirectory)
-    {
-        var normalized = Clean(workspace, entries, isDirectory)
+    /// <summary>実在しないものを落として重複をまとめた<b>新しい</b>並び（元のリストは触らない）。</summary>
+    private static List<RecentPathSnapshot> Normalize(WorkspaceSnapshot workspace,
+        IReadOnlyList<RecentPathSnapshot> entries, bool isDirectory)
+        => Clean(workspace, entries, isDirectory)
             .GroupBy(Key, StringComparer.OrdinalIgnoreCase)
             .Select(Merge)
             .ToList();
-        entries.Clear();
-        entries.AddRange(normalized);
-    }
 
     private static string Key(RecentPathSnapshot item)
         => $"{item.RootIndex}\0{item.RelativePath}";

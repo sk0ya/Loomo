@@ -179,6 +179,36 @@ public sealed class RecentUsageTests : IDisposable
             new RecentUsageService().LoadAsync(workspace, cancellation.Token));
     }
 
+    [Fact]
+    public void 記録は共有リストを書き換えず入れ替える()
+    {
+        // 記録はスレッドプールで走る一方、同じ WorkspaceSnapshot を保存側が直列化しうる。
+        // その場で Clear()／AddRange したり既存要素を書き換えたりすると保存が落ちるので、
+        // 「元のリストと要素はそのまま・参照だけ差し替える」ことを守らせる。
+        var first = Path.Combine(_root, "one.txt");
+        var second = Path.Combine(_root, "two.txt");
+        File.WriteAllText(first, "1");
+        File.WriteAllText(second, "2");
+        var workspace = Snapshot();
+        var service = new RecentUsageService();
+
+        service.RecordFile(workspace, first, DateTime.UnixEpoch.AddMinutes(1));
+        var before = workspace.RecentFiles;
+        var beforeEntry = Assert.Single(before);
+        var beforeUsedAt = beforeEntry.LastUsedUtc;
+
+        service.RecordFile(workspace, second, DateTime.UnixEpoch.AddMinutes(2));
+        service.RecordFile(workspace, first, DateTime.UnixEpoch.AddMinutes(3));
+
+        Assert.NotSame(before, workspace.RecentFiles);
+        Assert.Single(before);                                  // 直列化中の並びは変えられていない
+        Assert.Equal(beforeUsedAt, beforeEntry.LastUsedUtc);    // 既存要素も書き換えていない
+        Assert.Equal(2, workspace.RecentFiles.Count);
+        Assert.Equal("one.txt", workspace.RecentFiles[0].RelativePath);
+        Assert.Equal(DateTime.UnixEpoch.AddMinutes(3), workspace.RecentFiles[0].LastUsedUtc);
+        Assert.Equal(2, workspace.RecentFiles[0].UseCount);
+    }
+
     private WorkspaceSnapshot Snapshot() => new() { RootPath = _root, Name = "test" };
 
     public void Dispose()

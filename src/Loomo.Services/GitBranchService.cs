@@ -135,7 +135,7 @@ public sealed class GitBranchService
             return await FailedBranchOperation("リモートブランチはプルの対象にできません。").ConfigureAwait(false);
         if (branch.IsCurrent)
             return await PullAsync().ConfigureAwait(false);
-        var upstream = await ResolveUpstreamAsync(branch.Upstream).ConfigureAwait(false);
+        var upstream = await ResolveUpstreamAsync(branch).ConfigureAwait(false);
         if (upstream is null)
             return await FailedBranchOperation($"ブランチ {branch.Name} には上流が設定されていません。").ConfigureAwait(false);
 
@@ -172,7 +172,7 @@ public sealed class GitBranchService
         if (branch.IsCurrent)
             return await PushAsync(defaultRemote).ConfigureAwait(false);
 
-        var upstream = await ResolveUpstreamAsync(branch.Upstream).ConfigureAwait(false);
+        var upstream = await ResolveUpstreamAsync(branch).ConfigureAwait(false);
         if (upstream is { } target)
             return await _mutations.ExecuteAsync("push", target.Remote,
                 $"{branch.Name}:refs/heads/{target.Branch}").ConfigureAwait(false);
@@ -183,11 +183,31 @@ public sealed class GitBranchService
     }
 
     /// <summary>
-    /// upstream:short はリモート名を含む場合（例 team/foo/main）と、ローカル上流の場合（例 main）が
-    /// ある。登録済みリモート名との最長一致で前者を判定し、残りをブランチ名として返す。
-    /// リモートに一致しない値はローカル上流として扱う（git fetch/push の remote は "."）。
+    /// 上流の追跡先（リモートとブランチ名）を求める。<b>正本は <c>branch.&lt;name&gt;.remote</c> ／
+    /// <c>branch.&lt;name&gt;.merge</c></b>で、git 自身が持っている分解済みの値をそのまま使う。
     /// </summary>
-    private async Task<(string Remote, string Branch)?> ResolveUpstreamAsync(string? upstream)
+    private async Task<(string Remote, string Branch)?> ResolveUpstreamAsync(GitBranchInfo branch)
+    {
+        var remote = await ConfigValueAsync($"branch.{branch.Name}.remote").ConfigureAwait(false);
+        var merge = await ConfigValueAsync($"branch.{branch.Name}.merge").ConfigureAwait(false);
+        if (remote is not null && merge is not null)
+        {
+            var name = merge.StartsWith("refs/heads/", StringComparison.Ordinal)
+                ? merge["refs/heads/".Length..]
+                : merge;
+            if (name.Length > 0)
+                return (remote, name);
+        }
+
+        return await ResolveUpstreamByNameAsync(branch.Upstream).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 設定を引けなかったときの後詰め。upstream:short はリモート名を含む場合（例 team/foo/main）と、
+    /// ローカル上流の場合（例 main）がある。登録済みリモート名との最長一致で前者を判定し、
+    /// 残りをブランチ名として返す。
+    /// </summary>
+    private async Task<(string Remote, string Branch)?> ResolveUpstreamByNameAsync(string? upstream)
     {
         if (string.IsNullOrWhiteSpace(upstream))
             return null;
@@ -196,10 +216,33 @@ public sealed class GitBranchService
             .Where(name => upstream.StartsWith(name + "/", StringComparison.Ordinal))
             .OrderByDescending(name => name.Length)
             .FirstOrDefault();
-        if (remote is null)
-            return (".", upstream);
+        if (remote is not null)
+            return (remote, upstream[(remote.Length + 1)..]);
 
-        return (remote, upstream[(remote.Length + 1)..]);
+        // リモート名に一致しない＝ローカル上流のはず。ただしここには「git remote が失敗して一覧が
+        // 空だった」場合も落ちてくるので、ローカルに同名ブランチが実在するときだけ "." を返す。
+        // 取り違えると fetch は refs/heads/origin/main を探しに行き、push は「origin/main」という
+        // 名前のローカルブランチを新しく作ってしまう。
+        return await LocalBranchExistsAsync(upstream).ConfigureAwait(false)
+            ? (".", upstream)
+            : null;
+    }
+
+    private async Task<string?> ConfigValueAsync(string key)
+    {
+        var result = await _runner.RunAsync("config", "--get", key).ConfigureAwait(false);
+        if (!result.Success)
+            return null;
+        var value = result.Output.Trim();
+        return value.Length == 0 ? null : value;
+    }
+
+    private async Task<bool> LocalBranchExistsAsync(string branch)
+    {
+        var result = await _runner
+            .RunAsync("rev-parse", "--verify", "--quiet", $"refs/heads/{branch}")
+            .ConfigureAwait(false);
+        return result.Success && result.Output.Trim().Length > 0;
     }
 
     private static Task<GitCommandResult> FailedBranchOperation(string message) =>

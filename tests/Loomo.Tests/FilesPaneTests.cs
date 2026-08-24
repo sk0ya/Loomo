@@ -575,6 +575,46 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 既定のままのフォルダーは列設定を溜め込まない()
+    {
+        // ワークスペースへ保存される辞書なので、ただ通り過ぎただけのフォルダーで太らせない。
+        var sut = CreateColumn();
+        for (var i = 0; i < 5; i++)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(_root, $"通過-{i}")).FullName;
+            sut.Navigate(folder);
+        }
+        sut.Navigate(_root);
+        sut.SetColumnWidth(FilesColumnKey.Name, 360);
+
+        var snapshot = sut.Capture();
+
+        var kept = Assert.Single(snapshot.FolderColumnSettings);
+        Assert.Equal(_root, kept.Key);
+        Assert.Equal(360, kept.Value.Columns.Single(c => c.Key == FilesColumnKey.Name).Width);
+    }
+
+    [Fact]
+    public void フォルダーごとの列設定は上限を超えたら古い順に捨てる()
+    {
+        var sut = CreateColumn();
+        var folders = new List<string>();
+        for (var i = 0; i < 105; i++)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(_root, $"列-{i}")).FullName;
+            folders.Add(folder);
+            sut.Navigate(folder);
+            sut.SetColumnWidth(FilesColumnKey.Name, 300 + i);   // 既定と違う＝覚える対象
+        }
+
+        var snapshot = sut.Capture();
+
+        Assert.Equal(100, snapshot.FolderColumnSettings.Count);
+        Assert.DoesNotContain(folders[0], snapshot.FolderColumnSettings.Keys);
+        Assert.Contains(folders[^1], snapshot.FolderColumnSettings.Keys);
+    }
+
+    [Fact]
     public void 不正な列設定は既定値へ丸め名前列は必ず表示する()
     {
         var sut = CreateColumn();

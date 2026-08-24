@@ -112,7 +112,9 @@ public sealed class FileOperationHistory
     public Task<FileOperationResult> RedoAsync(CancellationToken cancellationToken = default)
         => StepAsync(undo: false, cancellationToken);
 
-    /// <summary>履歴を捨てる。</summary>
+    /// <summary>履歴を捨て、上書きで退避してあった実体（<c>.loomo-conflict-*</c>）も片付ける。
+    /// 退避先は Undo のためだけに残しているので、履歴と寿命を合わせる——アプリ終了時
+    /// （<c>App.OnExit</c>）に必ず通し、隠しコピーをユーザーのフォルダーへ残さない。</summary>
     public void Clear()
     {
         if (_undo.Count == 0 && _redo.Count == 0)
@@ -377,6 +379,8 @@ public sealed class FileOperationHistory
         {
             if (Directory.Exists(operation.Target)) Directory.Move(operation.Target, operation.ReplacedPath);
             else File.Move(operation.Target, operation.ReplacedPath);
+            // Undo で戻したぶんを再び退避した＝台帳にも戻す。
+            ConflictBackupJournal.Record(operation.ReplacedPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -475,8 +479,9 @@ public sealed class FileOperationHistory
             {
                 if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
                 else if (File.Exists(path)) File.Delete(path);
+                ConflictBackupJournal.Forget(path);
             }
-            catch { /* 履歴の破棄をファイルロックで失敗させない */ }
+            catch { /* 履歴の破棄をファイルロックで失敗させない（次回起動の Sweep が拾う） */ }
         }
     }
 

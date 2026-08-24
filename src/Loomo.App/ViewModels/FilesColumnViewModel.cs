@@ -35,8 +35,13 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     // 表示中フォルダーの生の一覧（絞り込み前）。絞り込み・並べ替えの変更で読み直さないために持つ。
     private List<FileEntryViewModel> _all = new();
+    // 訪れたフォルダーごとの列レイアウト。ワークスペースに保存されるので、
+    // 「既定のままのフォルダーは覚えない」＋「古い順に上限で捨てる」で必ず頭打ちにする
+    // （_folderLayoutOrder は古い順。末尾が直近）。
     private readonly Dictionary<string, FilesColumnLayoutSnapshot> _folderLayouts =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _folderLayoutOrder = new();
+    private const int MaxFolderLayouts = 100;
     private List<FilesColumnSettingSnapshot> _legacyLayout = new();
     private bool _restoringLayout;
     private readonly FilesGroupDescription _groupDescription;
@@ -484,10 +489,16 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         _restoringLayout = true;
         _folderLayouts.Clear();
+        _folderLayoutOrder.Clear();
         if (snapshot?.FolderColumnSettings is not null)
             foreach (var pair in snapshot.FolderColumnSettings)
-                if (!string.IsNullOrWhiteSpace(pair.Key) && pair.Value is not null)
-                    _folderLayouts[pair.Key] = pair.Value;
+            {
+                // 既定と同じぶんはここで落とす（上限が入る前に保存された太った状態も、開いた時点で痩せる）。
+                if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null || IsDefaultLayout(pair.Value))
+                    continue;
+                _folderLayouts[pair.Key] = pair.Value;
+                TouchFolderLayout(pair.Key);
+            }
         _legacyLayout = snapshot?.ColumnSettings?.ToList() ?? new();
 
         _back.Clear();
@@ -682,16 +693,75 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(folder))
             return;
-        _folderLayouts[folder] = CaptureLayout();
+
+        var layout = CaptureLayout();
+        // 既定のままのフォルダーは覚えない——復元しても ResetLayout と同じ結果なのに、
+        // 訪れたフォルダーの数だけ workspaces.json が太り続ける。
+        if (IsDefaultLayout(layout))
+        {
+            ForgetFolderLayout(folder);
+            return;
+        }
+
+        _folderLayouts[folder] = layout;
+        TouchFolderLayout(folder);
     }
 
     private void ApplyFolderLayout(string folder)
     {
         if (_folderLayouts.TryGetValue(folder, out var saved))
+        {
+            TouchFolderLayout(folder);
             ApplyLayout(saved.Columns);
+        }
         else
             ResetLayout();
     }
+
+    /// <summary>直近に使ったフォルダーとして並べ直し、上限を超えたぶんを古い順に捨てる。</summary>
+    private void TouchFolderLayout(string folder)
+    {
+        _folderLayoutOrder.RemoveAll(f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase));
+        _folderLayoutOrder.Add(folder);
+        while (_folderLayoutOrder.Count > MaxFolderLayouts)
+        {
+            _folderLayouts.Remove(_folderLayoutOrder[0]);
+            _folderLayoutOrder.RemoveAt(0);
+        }
+    }
+
+    private void ForgetFolderLayout(string folder)
+    {
+        _folderLayouts.Remove(folder);
+        _folderLayoutOrder.RemoveAll(f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>列の並び・表示・幅がすべて既定どおりか。</summary>
+    private static bool IsDefaultLayout(FilesColumnLayoutSnapshot layout)
+    {
+        var defaults = DefaultLayout;
+        if (layout.Columns.Count != defaults.Count)
+            return false;
+        for (var i = 0; i < defaults.Count; i++)
+        {
+            var column = layout.Columns[i];
+            if (column.Key != defaults[i].Key
+                || !column.IsVisible
+                || Math.Abs(column.Width - defaults[i].Width) > 0.5)
+                return false;
+        }
+        return true;
+    }
+
+    private static readonly IReadOnlyList<FilesColumnSettingSnapshot> DefaultLayout =
+        CreateColumnSettings()
+            .Select(setting => new FilesColumnSettingSnapshot
+            {
+                Key = setting.Key,
+                IsVisible = true,
+                Width = setting.DefaultWidth,
+            })
+            .ToList();
 
     private FilesColumnLayoutSnapshot CaptureLayout() => new()
     {

@@ -440,12 +440,15 @@ public sealed class FolderTreeCommandHandler
     {
         var parent = Path.GetDirectoryName(destination)
             ?? throw new InvalidOperationException("貼り付け先の親フォルダーを特定できません。");
-        var backup = Path.Combine(parent, $".loomo-conflict-{Guid.NewGuid():N}-{Path.GetFileName(destination)}");
+        var backup = Path.Combine(parent,
+            $"{ConflictBackupJournal.Prefix}{Guid.NewGuid():N}-{Path.GetFileName(destination)}");
         try
         {
             if (Directory.Exists(destination)) Directory.Move(destination, backup);
             else File.Move(destination, backup);
             try { File.SetAttributes(backup, FileAttributes.Hidden); } catch { /* 非表示化は補助 */ }
+            // 履歴を捨てる前にプロセスが落ちても残骸を消せるよう、在り処を控える。
+            ConflictBackupJournal.Record(backup);
             return backup;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -474,6 +477,7 @@ public sealed class FolderTreeCommandHandler
             if (Directory.Exists(backup)) Directory.Move(backup, destination);
             else if (File.Exists(backup)) File.Move(backup, destination);
             else throw new InvalidOperationException("上書き前の項目が見つかりません。");
+            ConflictBackupJournal.Forget(backup);
         }
         catch (InvalidOperationException) { throw; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
