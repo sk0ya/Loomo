@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -417,9 +417,6 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
         if (!FolderTreeShellNamespaces.TryNormalize(path, _currentRoot ?? _workspaceRoot, out var normalized))
             return;
         _currentRoot = normalized;
-        // ピン留め切替・セッション復元・直接入力のいずれでも、表示中の実体を
-        // アドレス欄へ反映する。入力途中の値は SetDisplayRoot が呼ばれないため上書きしない。
-        AddressText = _currentRoot;
         RefreshRootOptionAvailability(RootOptions);
         RootLabel = FolderTreeShellNamespaces.IsShellPath(_currentRoot)
             ? FolderTreeShellNamespaces.Name(_currentRoot)

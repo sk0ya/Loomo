@@ -52,52 +52,6 @@ public partial class FolderTreeView : UserControl
         };
     }
 
-    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.L
-            || (e.KeyboardDevice.Modifiers & ModifierKeys.Control) == 0
-            || (e.KeyboardDevice.Modifiers & (ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
-            return;
-
-        AddressComboBox.Focus();
-        AddressComboBox.ApplyTemplate();
-        if (AddressComboBox.Template.FindName("PART_EditableTextBox", AddressComboBox) is TextBox textBox)
-        {
-            textBox.Focus();
-            textBox.SelectAll();
-        }
-        else
-        {
-            AddressComboBox.IsDropDownOpen = true;
-        }
-
-        e.Handled = true;
-    }
-
-    private void OnAddressKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter || DataContext is not FolderTreeViewModel vm)
-            return;
-
-        if (vm.NavigateAddress(AddressComboBox.Text))
-            AddressComboBox.IsDropDownOpen = false;
-        e.Handled = true;
-    }
-
-    private void OnAddressSuggestionSelected(object sender, SelectionChangedEventArgs e)
-    {
-        if (AddressComboBox.SelectedItem is not string path)
-            return;
-
-        AddressComboBox.Text = path;
-        AddressComboBox.ApplyTemplate();
-        if (AddressComboBox.Template.FindName("PART_EditableTextBox", AddressComboBox) is TextBox textBox)
-        {
-            textBox.SelectionStart = path.Length;
-            textBox.SelectionLength = 0;
-        }
-    }
-
     /// <summary>ツリー本体へキーボードフォーカスを移す。未選択なら先頭ノードを選んでフォーカスする。
     /// TreeView 自体にフォーカスしても j/k・矢印キーの移動は効かない（キーボード移動は TreeViewItem
     /// 側の実装）ので、必ず項目コンテナへ入れる。パネルを開いた直後はコンテナがまだ生成されて

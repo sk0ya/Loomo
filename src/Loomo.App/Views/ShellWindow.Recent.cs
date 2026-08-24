@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Views;
@@ -9,13 +9,11 @@ public partial class ShellWindow
     {
         if (item.IsDirectory)
         {
-            // 頻繁フォルダーはサイドバーの FolderTree へ戻す。中央 FilesPane に
-            // クイックアクセスを置いても、階層を確認する既存の導線は変えない。
-            _vm.FolderTree.NavigateAddress(item.FullPath);
-            _vm.IsSidebarVisible = true;
-            _vm.ActivePanel = SidebarPanel.Explorer;
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
-                new Action(FocusSidebar));
+            // 「場所」も住所欄もファイル一覧の持ち物なので、頻繁フォルダーもそこへ開く
+            // （サイドバーのツリーの根を勝手に打ち替えない）。
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files);
+            _vm.Files.Reveal(item.FullPath);
+            FocusPane(PaneKind.Files);
             return;
         }
 

@@ -50,6 +50,8 @@ public partial class FilesColumnView : UserControl
         // クリック・フォーカスのどちらでも「操作対象のカラム」になる。
         PreviewMouseDown += (_, _) => Vm?.NotifyActivated();
         PreviewGotKeyboardFocus += (_, _) => Vm?.NotifyActivated();
+        // Ctrl+L はペイン全体で受ける（一覧・絞り込み欄、どこにフォーカスがあっても住所へ飛べる）。
+        PreviewKeyDown += OnColumnPreviewKeyDown;
     }
 
     private FilesColumnViewModel? Vm => DataContext as FilesColumnViewModel;
@@ -120,6 +122,16 @@ public partial class FilesColumnView : UserControl
     // 一覧の中から探して選択＋スクロールする。行の実体化はレイアウト後なので一度譲る。
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 候補は入力のたびに作り直されるので、その結果に合わせてポップアップを開閉する
+        // （OnAddressTextChanged が先に走るため、ここでは新しい候補が見えている）。
+        if (e.PropertyName is nameof(FilesColumnViewModel.AddressText)
+            or nameof(FilesColumnViewModel.AddressError)
+            or nameof(FilesColumnViewModel.IsAddressEditing))
+        {
+            UpdateAddressSuggestionPopup();
+            return;
+        }
+
         if (e.PropertyName != nameof(FilesColumnViewModel.PendingSelection) || Vm?.PendingSelection is not { } path)
             return;
         Vm.PendingSelection = null;

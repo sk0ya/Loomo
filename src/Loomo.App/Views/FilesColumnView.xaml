@@ -490,36 +490,88 @@
                            Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
                            VerticalAlignment="Center" Margin="8,0,2,0"
                            TextTrimming="CharacterEllipsis" />
-                <!-- パンくず（住所欄）。常にドライブから並べる＝フルパスとして読める。
-                     狭いときは末尾（現在地）が見えるよう右端へ寄せる。 -->
-                <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden"
-                              VerticalScrollBarVisibility="Disabled" ScrollChanged="OnBreadcrumbScrollChanged">
-                    <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:FilesBreadcrumb}">
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Style="{StaticResource FilesCrumbButton}"
-                                            Click="OnBreadcrumbPickerClick"
-                                            PreviewMouseLeftButtonDown="OnBreadcrumbPickerMouseDown"
-                                            PreviewMouseLeftButtonUp="OnBreadcrumbPickerMouseUp"
-                                            Tag="{Binding}"
-                                            ToolTip="{Binding FullPath}">
-                                        <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
-                                                   TextTrimming="CharacterEllipsis" MaxWidth="160" />
-                                    </Button>
-                                    <TextBlock Text="›" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
-                                               FontSize="{DynamicResource Fs12}"
-                                               Visibility="{Binding IsLast, Converter={StaticResource InverseBoolToVis}}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <!-- 住所欄。エクスプローラーと同じく、ふだんはパンくず（常にドライブから並べる＝
+                     フルパスとして読める）で、Ctrl+L か余白クリックで同じ場所が入力欄になる。
+                     読むのと打ち込むのは同じ一行の別の顔なので、行を2つに増やさない。 -->
+                <Grid x:Name="AddressArea">
+                    <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled" ScrollChanged="OnBreadcrumbScrollChanged"
+                                  Visibility="{Binding IsAddressEditing, Converter={StaticResource InverseBoolToVis}}">
+                        <!-- パンくずの右の余白を押しても入力欄が開くよう、背景を持たせて当たり判定を作る。 -->
+                        <Grid Background="Transparent" MouseLeftButtonDown="OnBreadcrumbBlankClick">
+                            <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center"
+                                          HorizontalAlignment="Left">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:FilesBreadcrumb}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Style="{StaticResource FilesCrumbButton}"
+                                                    Click="OnBreadcrumbPickerClick"
+                                                    PreviewMouseLeftButtonDown="OnBreadcrumbPickerMouseDown"
+                                                    PreviewMouseLeftButtonUp="OnBreadcrumbPickerMouseUp"
+                                                    Tag="{Binding}"
+                                                    ToolTip="{Binding FullPath}">
+                                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="160" />
+                                            </Button>
+                                            <TextBlock Text="›" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                                       FontSize="{DynamicResource Fs12}"
+                                                       Visibility="{Binding IsLast, Converter={StaticResource InverseBoolToVis}}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <!-- 入力欄。素の TextBox に枠を足しただけに見えるよう、配色はペインに合わせる。 -->
+                    <Border x:Name="AddressEditor" Background="{DynamicResource Bg}"
+                            BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="3"
+                            Padding="5,0"
+                            Visibility="{Binding IsAddressEditing, Converter={StaticResource BoolToVis}}">
+                        <TextBox x:Name="AddressBox" BorderThickness="0" Background="Transparent"
+                                 Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
+                                 VerticalContentAlignment="Center" MinHeight="20"
+                                 FontSize="{DynamicResource Fs12}"
+                                 Text="{Binding AddressText, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewKeyDown="OnAddressKeyDown"
+                                 LostKeyboardFocus="OnAddressLostFocus"
+                                 ToolTip="フォルダーのパス・UNC パス・相対パスを入力して Enter（Esc で戻る）" />
+                    </Border>
+
+                    <!-- 入力履歴と直下フォルダーの候補。入力欄の下に出し、行の高さは変えない。 -->
+                    <Popup x:Name="AddressSuggestionPopup" PlacementTarget="{Binding ElementName=AddressEditor}"
+                           Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
+                           Width="{Binding ActualWidth, ElementName=AddressEditor}">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" Padding="2" Margin="0,2,0,0" MaxHeight="220">
+                            <StackPanel>
+                                <TextBlock Text="{Binding AddressError}" Foreground="#FFE06C75"
+                                           FontSize="{DynamicResource Fs11}" Margin="4,2"
+                                           TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding HasAddressError, Converter={StaticResource BoolToVis}}" />
+                                <ListBox x:Name="AddressSuggestionList" Background="Transparent" BorderThickness="0"
+                                         Foreground="{DynamicResource Fg}" MaxHeight="180"
+                                         ItemsSource="{Binding AddressSuggestions}"
+                                         ItemContainerStyle="{StaticResource FilesRow}"
+                                         PreviewKeyDown="OnAddressSuggestionKeyDown"
+                                         MouseLeftButtonUp="OnAddressSuggestionClick">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" Margin="6,2"
+                                                       FontSize="{DynamicResource Fs11}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
             </DockPanel>
 
             <Grid x:Name="PlacesAndFilesLayout">

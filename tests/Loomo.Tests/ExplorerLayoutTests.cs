@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 
@@ -54,16 +54,18 @@ public sealed class ExplorerLayoutTests
     }
 
     [Fact]
-    public void アドレスバーは明示的に編集可能で直接入力経路を持つ()
+    public void アドレスバーはファイル一覧が持ちサイドバーには置かない()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "FolderTreeView.xaml");
-        Assert.Contains("x:Name=\"AddressBar\"", xaml);
-        Assert.Contains("x:Name=\"AddressComboBox\"", xaml);
-        Assert.Contains("IsEditable=\"True\"", xaml);
-        Assert.Contains("IsReadOnly=\"False\"", xaml);
-        Assert.Contains("Text=\"{Binding AddressText, UpdateSourceTrigger=PropertyChanged}\"", xaml);
-        Assert.Contains("KeyDown=\"OnAddressKeyDown\"", xaml);
-        Assert.Contains("PreviewKeyDown=\"OnPreviewKeyDown\"", xaml);
+        // 住所は「いま見ている場所」なので、その場所を持っているファイル一覧の道具にする。
+        // ツリーに置いていたときは、打ったパスがワークスペース切替へ流れて部屋ごと入れ替わった。
+        var files = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        Assert.Contains("x:Name=\"AddressBox\"", files);
+        Assert.Contains("Text=\"{Binding AddressText, UpdateSourceTrigger=PropertyChanged}\"", files);
+        Assert.Contains("PreviewKeyDown=\"OnAddressKeyDown\"", files);
+
+        var tree = Read("src", "Loomo.App", "Views", "FolderTreeView.xaml");
+        Assert.DoesNotContain("AddressComboBox", tree);
+        Assert.DoesNotContain("AddressText", tree);
     }
 
     private static string Read(params string[] parts)

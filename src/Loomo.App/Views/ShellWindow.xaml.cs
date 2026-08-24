@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow : Window {
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
@@ -284,7 +284,6 @@ public partial class ShellWindow : Window {
             vm.SearchPanel.SetDefaultRoot(root);
             vm.Recent.RecordFolder(root);
         };
-        vm.FolderTree.AddressNavigationRequested += (_, path) => vm.Workspaces.ActivateFolder(path);
         vm.FolderTree.TypoCheckRequested += (_, path) => vm.AiBar.RunTypoCheck(path);
         vm.FolderTree.FileAiRequested += (_, request) => _ = RunFileAiAsync(request);
         vm.FolderTree.WorkflowRequested += (_, req) => RunWorkflowWithInput(req.WorkflowId, req.Input);

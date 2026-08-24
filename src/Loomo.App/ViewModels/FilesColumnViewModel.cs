@@ -246,6 +246,96 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenFolder(string? path) => Navigate(path);
 
+    // ===== 編集可能なアドレス欄（Ctrl+L） =====
+    // エクスプローラーと同じく、ふだんはパンくずで、必要なときだけ同じ場所が入力欄になる。
+    // 住所を「読む」のと「打ち込む」のは同じ一行の別の顔なので、行を2つに増やさない。
+
+    private readonly FolderTreeAddressHistory _addressHistory = new();
+
+    /// <summary>パンくずの代わりに入力欄を出しているか。</summary>
+    [ObservableProperty] private bool _isAddressEditing;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAddressError))]
+    private string _addressError = "";
+
+    [ObservableProperty] private string _addressText = "";
+
+    public bool HasAddressError => AddressError.Length > 0;
+
+    /// <summary>入力履歴と、区切り文字まで打ったときの直下フォルダー。</summary>
+    public ObservableCollection<string> AddressSuggestions { get; } = new();
+
+    partial void OnAddressTextChanged(string value)
+    {
+        AddressError = "";
+        RefreshAddressSuggestions(value);
+    }
+
+    /// <summary>入力欄を開き、現在地を初期値にする（Ctrl+L・パンくずの余白クリック）。</summary>
+    public void BeginAddressEdit()
+    {
+        AddressText = CurrentFolder;
+        AddressError = "";
+        RefreshAddressSuggestions(AddressText);
+        IsAddressEditing = true;
+    }
+
+    /// <summary>入力欄を畳んでパンくずへ戻す（Esc・フォーカスが外れたとき）。</summary>
+    public void CancelAddressEdit()
+    {
+        IsAddressEditing = false;
+        AddressError = "";
+        AddressSuggestions.Clear();
+    }
+
+    /// <summary>入力されたパスへ移動する。相対パス・UNC パス・シェル名前空間も受ける。
+    /// ワークスペースの内外は問わない——ファイル一覧はもともとワークスペース外も歩ける
+    /// （§26）ので、ここでワークスペースを切り替えたり作ったりはしない。</summary>
+    public bool NavigateAddress(string? input)
+    {
+        var basePath = CurrentFolder.Length > 0 ? CurrentFolder : null;
+        if (!FolderTreeAddressHistory.TryNormalizePath(input, basePath, out var fullPath))
+        {
+            AddressError = "パスを解釈できません";
+            return false;
+        }
+
+        // ファイルを指されたら、その親を開いてファイルを選ぶ（打ち間違いではなく近道なので）。
+        if (File.Exists(fullPath))
+        {
+            var parent = Path.GetDirectoryName(fullPath);
+            if (parent is { Length: > 0 })
+            {
+                _addressHistory.Add(parent);
+                Navigate(parent);
+                PendingSelection = fullPath;
+                CancelAddressEdit();
+                return true;
+            }
+        }
+
+        if (!Directory.Exists(fullPath))
+        {
+            AddressError = $"フォルダーが存在しません: {fullPath}";
+            return false;
+        }
+
+        _addressHistory.Add(fullPath);
+        Navigate(fullPath);
+        CancelAddressEdit();
+        return true;
+    }
+
+    private void RefreshAddressSuggestions(string? input)
+    {
+        var basePath = CurrentFolder.Length > 0 ? CurrentFolder : null;
+        var suggestions = _addressHistory.Suggest(input, basePath);
+        AddressSuggestions.Clear();
+        foreach (var suggestion in suggestions)
+            AddressSuggestions.Add(suggestion);
+    }
+
     [RelayCommand(CanExecute = nameof(CanGoBack))]
     private void GoBack()
     {

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
@@ -50,37 +50,29 @@ public sealed class FolderTreeShellNamespaceTests
     }
 
     [Fact]
-    public void Navigate_and_back_stay_inside_folder_tree_for_virtual_children()
+    public void Selecting_a_virtual_root_stays_inside_folder_tree()
     {
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "loomo-shell-nav-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
             var shellRoot = $"shell:::{{{FolderTreeShellNamespaces.NetworkId}}}";
-            var shellChild = shellRoot + "\\Server";
+            var shellChild = shellRoot + @"\Server";
             var workspace = new FakeWorkspaceService();
             var provider = new AvailableShellProvider(shellRoot, shellChild);
             var sut = CreateSut(workspace, new FolderTreeQuery(provider));
             sut.LoadRoot(root);
 
-            var requested = false;
-            sut.AddressNavigationRequested += (_, _) => requested = true;
+            // 仮想ルートは表示ルートの候補として並ぶ。選んでもワークスペースは動かない。
+            var option = Assert.Single(sut.RootOptions, o => o.FullPath == shellRoot);
+            sut.SelectedRootOption = option;
 
-            Assert.True(sut.NavigateAddress("Network"));
             Assert.Equal(shellRoot, sut.CurrentRoot);
-            Assert.False(requested);
+            Assert.Equal(root, workspace.PrimaryFolder);
             var node = Assert.Single(sut.Nodes);
             Assert.True(node.IsShellItem);
             Assert.False(node.IsPinnable);
             Assert.False(sut.CanPin(shellChild));
             Assert.False(sut.IsPinnedPath(shellChild));
-
-            Assert.True(sut.NavigateAddress("Server"));
-            Assert.Equal(shellChild, sut.CurrentRoot);
-            Assert.True(sut.CanGoBack);
-
-            sut.GoBackCommand.Execute(null);
-            Assert.Equal(shellRoot, sut.CurrentRoot);
-            Assert.True(sut.CanGoForward);
         }
         finally
         {
