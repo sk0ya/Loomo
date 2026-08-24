@@ -26,23 +26,29 @@ public sealed class ExplorerLayoutTests
     }
 
     [Fact]
-    public void QuickAccessは中央FilesPaneの上部に一つだけ置かれる()
+    public void 場所Expanderはファイル一覧のフォルダーアイコンで開閉する()
     {
         var xaml = Read("src", "Loomo.App", "Views", "FilesPaneView.xaml");
-        Assert.Contains("<views:RecentItemsView x:Name=\"QuickAccessView\" Grid.Row=\"0\"", xaml);
-        Assert.Contains("DataContext=\"{Binding Recent}\"", xaml);
-        Assert.Contains("Visibility=\"{Binding HasItems, Converter={StaticResource BoolToVis}}\"", xaml);
-        Assert.Contains("<Grid x:Name=\"ColumnHost\" Grid.Row=\"1\"", xaml);
+        Assert.DoesNotContain("RecentItemsView", xaml);
+        Assert.Contains("<Grid x:Name=\"ColumnHost\" />", xaml);
+
+        var column = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        Assert.Contains("x:Name=\"PlacesButton\"", column);
+        Assert.Contains("IsChecked=\"{Binding IsExpanded, ElementName=PlacesExpander, Mode=TwoWay}\"", column);
+        Assert.Contains("<Expander x:Name=\"PlacesExpander\"", column);
+        Assert.Contains("Expanded=\"OnPlacesExpanded\"", column);
+        Assert.Contains("ItemsSource=\"{Binding Places}\"", column);
     }
 
     [Fact]
-    public void 最近項目はコンパクトな折りたたみセクションである()
+    public void 最近項目は場所Expander内の通常グループである()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "RecentItemsView.xaml");
-        Assert.Contains("x:Name=\"RecentSection\" IsExpanded=\"False\" MaxHeight=\"142\"", xaml);
-        Assert.Contains("<ScrollViewer MaxHeight=\"108\"", xaml);
-        Assert.Contains("Text=\"{Binding Name}\"", xaml);
-        Assert.Contains("Text=\"{Binding Location}\"", xaml);
+        var vm = Read("src", "Loomo.App", "ViewModels", "FilesColumnViewModel.cs");
+        Assert.Contains("FilesPlaceGroup(\"最近使ったファイル\"", vm);
+        Assert.Contains("FilesPlaceGroup(\"よく使うフォルダー\"", vm);
+        Assert.Contains("FilesPlaceKind.RecentFile", vm);
+        Assert.Contains("FilesPlaceKind.FrequentFolder", vm);
+        Assert.DoesNotContain("RecentSection", vm);
     }
 
     [Fact]

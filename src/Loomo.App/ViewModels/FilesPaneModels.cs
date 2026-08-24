@@ -241,7 +241,11 @@ public enum FilesPlaceKind
     /// <summary>Windows エクスプローラーのクイックアクセス。</summary>
     QuickAccess,
     /// <summary>ドライブのルート。</summary>
-    Drive
+    Drive,
+    /// <summary>最近使ったファイル。</summary>
+    RecentFile,
+    /// <summary>頻繁に使うフォルダー。</summary>
+    FrequentFolder
 }
 
 /// <summary>「場所」ポップアップの1項目。</summary>

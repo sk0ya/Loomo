@@ -275,53 +275,15 @@
         <DockPanel>
             <!-- ツールバー：場所／戻る／進む ＋ パンくず ＋ 絞り込み -->
             <DockPanel DockPanel.Dock="Top" Margin="4,2,4,1" LastChildFill="True">
-                <!-- 押すたびに開閉させるための下ごしらえ（実体は code-behind の OnPlacesButtonMouseUp）。
-                     ClickMode は既定の Release のまま——Press にするとボタンがマウスをキャプチャした
-                     まま Popup が開き、Popup 側がキャプチャを取れずに StaysOpen=False（外側クリックで
-                     閉じる）が丸ごと効かなくなる。 -->
+                <!-- Windows エクスプローラーの「場所」ボタン。押すと直下の Expander を開閉する。 -->
                 <ToggleButton x:Name="PlacesButton" DockPanel.Dock="Left" Style="{StaticResource FilesToolToggle}"
                               ToolTip="場所（ワークスペース・ピン留め・クイックアクセス・PC）"
-                              PreviewMouseLeftButtonDown="OnPlacesButtonMouseDown"
-                              PreviewMouseLeftButtonUp="OnPlacesButtonMouseUp"
-                              Checked="OnPlacesOpened">
+                              IsChecked="{Binding IsExpanded, ElementName=PlacesExpander, Mode=TwoWay}">
                     <Path Width="13" Height="13" Stretch="Uniform" StrokeThickness="1.4"
                           StrokeLineJoin="Round"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
                           Data="M1,3 L5,3 L6.5,4.5 L13,4.5 L13,11.5 L1,11.5 Z" />
                 </ToggleButton>
-                <Popup x:Name="PlacesPopup"
-                       PlacementTarget="{Binding ElementName=PlacesButton}" Placement="Bottom" StaysOpen="False"
-                       AllowsTransparency="True" IsOpen="{Binding IsChecked, ElementName=PlacesButton, Mode=TwoWay}">
-                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                            BorderThickness="1" Padding="4" Margin="0,2,0,0">
-                        <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{Binding Places}" MinWidth="240">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:FilesPlaceGroup}">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Name}" Style="{StaticResource PopupSectionLabel}" />
-                                            <ItemsControl ItemsSource="{Binding Items}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type vm:FilesPlace}">
-                                                        <Button Style="{StaticResource FilesCrumbButton}"
-                                                                Padding="8,3" HorizontalContentAlignment="Left"
-                                                                Click="OnPlaceClick" Tag="{Binding FullPath}"
-                                                                ToolTip="{Binding FullPath}">
-                                                            <TextBlock Text="{Binding Name}"
-                                                                       FontSize="{DynamicResource Fs12}"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       MaxWidth="320" />
-                                                        </Button>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Border>
-                </Popup>
 
                 <Button DockPanel.Dock="Left" Style="{StaticResource FilesToolButton}"
                         Command="{Binding GoBackCommand}" ToolTip="戻る（Alt+←）">
@@ -422,6 +384,53 @@
                     </ItemsControl>
                 </ScrollViewer>
             </DockPanel>
+
+            <!-- 場所一覧。フォルダーアイコンで開閉する本体。最近／頻繁もこの中の通常グループとして表示する。 -->
+            <Expander x:Name="PlacesExpander" DockPanel.Dock="Top" IsExpanded="False"
+                      Expanded="OnPlacesExpanded" Foreground="{DynamicResource Fg}"
+                      Margin="4,0,4,2">
+                <!-- 見出しは持たせない。開閉の入口はツールバー左のフォルダーアイコンだけにし、
+                     Expander の中身だけをその直下へ配置する。 -->
+                <Expander.Template>
+                    <ControlTemplate TargetType="Expander">
+                        <ContentPresenter x:Name="ExpandSite" ContentSource="Content" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ExpandSite" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Expander.Template>
+                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" Padding="4" MaxHeight="420">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Places}" MinWidth="240">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:FilesPlaceGroup}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource PopupSectionLabel}" />
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:FilesPlace}">
+                                                    <Button Style="{StaticResource FilesCrumbButton}"
+                                                            Padding="8,3" HorizontalContentAlignment="Left"
+                                                            Click="OnPlaceClick" Tag="{Binding}"
+                                                            ToolTip="{Binding FullPath}">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="{DynamicResource Fs12}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   MaxWidth="320" />
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+            </Expander>
 
             <!-- パンくず項目を選んだときの VS Code 風ピッカー。兄弟フォルダーをルートにして、
                  子フォルダーは展開矢印から辿れる。 -->

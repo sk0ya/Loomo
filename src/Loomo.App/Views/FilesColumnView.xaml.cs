@@ -121,23 +121,9 @@ public partial class FilesColumnView : UserControl
 
     // ===== 場所（ワークスペース・ピン留め・クイックアクセス・PC） =====
 
-    private void OnPlacesOpened(object sender, RoutedEventArgs e) => Vm?.LoadPlaces();
+    private void OnPlacesExpanded(object sender, RoutedEventArgs e) => Vm?.LoadPlaces();
 
-    // ポップアップが開いている間、ボタンの押下は Popup のマウスキャプチャに飲まれてボタンまで
-    // 届かない（Popup は自分で閉じる）。ところがその後のマウスアップは届き、それだけでボタンが
-    // Click 扱いになるため、閉じた直後にまた開く＝押しても閉じないトグルになっていた。
-    // 対のダウンを受けていないアップは無視すれば、押すたびに開閉する。
-    private bool _placesButtonPressed;
     private bool _breadcrumbPickerButtonPressed;
-
-    private void OnPlacesButtonMouseDown(object sender, MouseButtonEventArgs e) => _placesButtonPressed = true;
-
-    private void OnPlacesButtonMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_placesButtonPressed)
-            e.Handled = true;
-        _placesButtonPressed = false;
-    }
 
     // Popup は外側クリックを先に受けて閉じるため、同じボタンのマウスアップだけが後から届き、
     // そのままだと Click が再発火してポップアップを開き直してしまう。
@@ -279,9 +265,9 @@ public partial class FilesColumnView : UserControl
 
     private void OnPlaceClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string path })
-            Vm?.Navigate(path);
-        PlacesButton.IsChecked = false;
+        if (sender is FrameworkElement { Tag: FilesPlace place })
+            Vm?.OpenPlace(place);
+        PlacesExpander.IsExpanded = false;
     }
 
     /// <summary>ピン留めの対象＝選んでいるフォルダー行、無ければ現在地。</summary>

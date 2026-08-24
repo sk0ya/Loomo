@@ -41,7 +41,7 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         Recent = recent ?? new RecentItemsViewModel(new RecentUsageService());
         for (var i = 0; i < MaxColumns; i++)
         {
-            var column = new FilesColumnViewModel(workspace, commands, pins, places, folderTree, thumbnails);
+            var column = new FilesColumnViewModel(workspace, commands, pins, places, folderTree, thumbnails, Recent);
             // カラムのイベントはペインで束ねて中継する（ShellWindow は列の数を知らなくてよい）。
             column.FileActivated += (_, path) => FileActivated?.Invoke(this, path);
             column.OpenInBrowserRequested += (_, path) => OpenInBrowserRequested?.Invoke(this, path);

@@ -47,7 +47,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         IFolderPinStore pins,
         IFilePlacesProvider places,
         FolderTreeViewModel? folderTree = null,
-        IFileThumbnailService? thumbnails = null)
+        IFileThumbnailService? thumbnails = null,
+        RecentItemsViewModel? recent = null)
     {
         _workspace = workspace;
         _commands = commands;
@@ -55,6 +56,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         _folderTree = folderTree;
         _places = places;
         _thumbnails = thumbnails;
+        Recent = recent;
         _watcher = new DebouncedFolderWatcher(Refresh);
         if (_folderTree is not null)
             _folderTree.GitStatusChanged += OnGitStatusChanged;
@@ -85,6 +87,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// <summary>「場所」ポップアップの中身（ワークスペース／ピン留め／クイックアクセス／PC）。
     /// 開いたときに <see cref="LoadPlaces"/> で作り直す——シェルを毎回叩かないため。</summary>
     public ObservableCollection<FilesPlaceGroup> Places { get; } = new();
+
+    /// <summary>場所Expanderへ最近／頻繁項目を供給する共有状態。開くたびに場所一覧へ反映する。</summary>
+    public RecentItemsViewModel? Recent { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGoUp))]
@@ -300,6 +305,20 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         if (pinned.Count > 0)
             Places.Add(new FilesPlaceGroup("ピン留め", pinned));
 
+        var recentFiles = Recent?.RecentFiles
+            .Where(item => File.Exists(item.FullPath))
+            .Select(item => new FilesPlace(item.Name, item.FullPath, FilesPlaceKind.RecentFile))
+            .ToList() ?? [];
+        if (recentFiles.Count > 0)
+            Places.Add(new FilesPlaceGroup("最近使ったファイル", recentFiles));
+
+        var frequentFolders = Recent?.FrequentFolders
+            .Where(item => Directory.Exists(item.FullPath))
+            .Select(item => new FilesPlace(item.Name, item.FullPath, FilesPlaceKind.FrequentFolder))
+            .ToList() ?? [];
+        if (frequentFolders.Count > 0)
+            Places.Add(new FilesPlaceGroup("よく使うフォルダー", frequentFolders));
+
         var quickAccess = _places.QuickAccess();
         if (quickAccess.Count > 0)
             Places.Add(new FilesPlaceGroup("クイックアクセス", quickAccess));
@@ -307,6 +326,20 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var drives = _places.Drives();
         if (drives.Count > 0)
             Places.Add(new FilesPlaceGroup("PC", drives));
+    }
+
+    /// <summary>場所Expanderの項目を開く。最近使ったファイルだけは直接エディタへ渡す。</summary>
+    public void OpenPlace(FilesPlace? place)
+    {
+        if (place is null)
+            return;
+        if (place.Kind == FilesPlaceKind.RecentFile)
+        {
+            if (File.Exists(place.FullPath))
+                FileActivated?.Invoke(this, place.FullPath);
+            return;
+        }
+        Navigate(place.FullPath);
     }
 
     /// <summary>ピンの表示名。所属ワークスペースフォルダーからの相対パスで、同名フォルダーを区別する。</summary>
