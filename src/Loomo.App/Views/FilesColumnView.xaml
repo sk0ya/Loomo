@@ -386,9 +386,9 @@
             </DockPanel>
 
             <!-- 場所一覧。フォルダーアイコンで開閉する本体。最近／頻繁もこの中の通常グループとして表示する。 -->
-            <Expander x:Name="PlacesExpander" DockPanel.Dock="Top" IsExpanded="False"
-                      Expanded="OnPlacesExpanded" Foreground="{DynamicResource Fg}"
-                      Margin="4,0,4,2">
+            <Expander x:Name="PlacesExpander" DockPanel.Dock="Left" ExpandDirection="Right"
+                      IsExpanded="False" Expanded="OnPlacesExpanded"
+                      Foreground="{DynamicResource Fg}" Margin="0,0,4,0">
                 <!-- 見出しは持たせない。開閉の入口はツールバー左のフォルダーアイコンだけにし、
                      Expander の中身だけをその直下へ配置する。 -->
                 <Expander.Template>
@@ -401,8 +401,8 @@
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Expander.Template>
-                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                        BorderThickness="1" Padding="4" MaxHeight="420">
+                <Border Width="240" Background="{DynamicResource Panel}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="4">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding Places}" MinWidth="240">
                             <ItemsControl.ItemTemplate>

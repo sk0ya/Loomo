@@ -35,7 +35,7 @@ public sealed class ExplorerLayoutTests
         var column = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
         Assert.Contains("x:Name=\"PlacesButton\"", column);
         Assert.Contains("IsChecked=\"{Binding IsExpanded, ElementName=PlacesExpander, Mode=TwoWay}\"", column);
-        Assert.Contains("<Expander x:Name=\"PlacesExpander\"", column);
+        Assert.Contains("<Expander x:Name=\"PlacesExpander\" DockPanel.Dock=\"Left\" ExpandDirection=\"Right\"", column);
         Assert.Contains("Expanded=\"OnPlacesExpanded\"", column);
         Assert.Contains("ItemsSource=\"{Binding Places}\"", column);
     }
