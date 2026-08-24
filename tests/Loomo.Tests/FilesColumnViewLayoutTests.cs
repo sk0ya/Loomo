@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,7 +16,7 @@ namespace sk0ya.Loomo.Tests;
 public sealed class FilesColumnViewLayoutTests
 {
     [Fact]
-    public void 表示形式6つが実レイアウトとComboBoxへ反映される()
+    public void 表示形式6つが実レイアウトと表示形式ポップアップへ反映される()
     {
         RunSta(() =>
         {
@@ -60,10 +60,18 @@ public sealed class FilesColumnViewLayoutTests
                     window.UpdateLayout();
 
                     var list = FindDescendant<ListBox>(view);
-                    var combo = FindDescendant<ComboBox>(view);
                     Assert.NotNull(list);
-                    Assert.NotNull(combo);
-                    Assert.Equal(6, combo!.Items.Count);
+
+                    // 表示形式は素の ComboBox ではなく、ペインと同じ配色のポップアップから選ぶ。
+                    var displayButton = view.FindName("DisplayModeButton") as ToggleButton;
+                    var displayPopup = view.FindName("DisplayModePopup") as Popup;
+                    Assert.NotNull(displayButton);
+                    Assert.NotNull(displayPopup);
+                    displayButton!.IsChecked = true;
+                    window.UpdateLayout();
+                    Assert.True(displayPopup!.IsOpen);
+                    var modeButtons = FindDescendants<Button>(displayPopup.Child!).ToList();
+                    Assert.Equal(6, modeButtons.Count);
                     Assert.Equal(SelectionMode.Extended, list!.SelectionMode);
                     Assert.NotNull(list.ContextMenu);
                     list.SelectedIndex = 0;
@@ -75,7 +83,6 @@ public sealed class FilesColumnViewLayoutTests
                         column.DisplayMode = mode;
                         window.UpdateLayout();
 
-                        Assert.Equal(mode, combo.SelectedValue);
                         Assert.Same(selected, list.SelectedItem);
                         var item = FindDescendant<ListBoxItem>(list);
                         Assert.NotNull(item);
@@ -112,9 +119,14 @@ public sealed class FilesColumnViewLayoutTests
                             Assert.NotNull(FindDescendant<WrapPanel>(list));
                     }
 
-                    combo.SelectedValue = FilesDisplayMode.Tiles;
+                    // ポップアップの行を押すと表示形式が切り替わり、ポップアップは閉じる。
+                    var tilesButton = modeButtons[
+                        FilesDisplayModes.Options.Select(option => option.Value).ToList()
+                            .IndexOf(FilesDisplayMode.Tiles)];
+                    tilesButton.Command.Execute(tilesButton.CommandParameter);
                     window.UpdateLayout();
                     Assert.Equal(FilesDisplayMode.Tiles, column.DisplayMode);
+                    Assert.False(column.IsDisplayMenuOpen);
 
                     var columnsButton = view.FindName("ColumnsButton") as ToggleButton;
                     var popup = view.FindName("ColumnSettingsPopup") as Popup;

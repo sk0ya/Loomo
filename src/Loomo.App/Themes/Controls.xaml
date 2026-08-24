@@ -20,6 +20,7 @@
     <conv:ActiveTagConverter x:Key="ActiveTagConverter" />
     <conv:EqualityActiveTagConverter x:Key="EqualityActiveTagConverter" />
     <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVisibilityConverter" />
+    <conv:EqualityToVisibilityConverter x:Key="EqualityToVis" />
     <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
     <conv:RelativeDateConverter x:Key="RelativeDate" />
     <conv:LastPathSegmentConverter x:Key="LastPathSegment" />

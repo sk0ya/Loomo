@@ -164,6 +164,16 @@ public sealed class EqualityActiveTagConverter : IMultiValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>2つの値が一致するとき Visible。選択中の項目にだけチェックを出すのに使う。</summary>
+public sealed class EqualityToVisibilityConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        => values.Length >= 2 && Equals(values[0], values[1]) ? Visibility.Visible : Visibility.Collapsed;
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>すべて true のとき Visible。</summary>
 public sealed class AllTrueToVisibilityConverter : IMultiValueConverter
 {

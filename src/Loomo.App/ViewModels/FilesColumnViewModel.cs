@@ -100,12 +100,48 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private bool _sortDescending;
 
-    [ObservableProperty] private FilesGroupBy _groupBy;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupByLabel))]
+    private FilesGroupBy _groupBy;
 
     public IReadOnlyList<FilesGroupByOption> GroupByOptions => FilesGrouping.Options;
 
+    /// <summary>グループ化・表示形式は素の ComboBox ではなく、ツールバーのアイコン＋ポップアップで
+    /// 選ぶ（OS 既定のコンボは配色も行間もこのペインの作法から外れる）。開閉状態はここが持つ。</summary>
+    [ObservableProperty] private bool _isGroupMenuOpen;
+
+    [ObservableProperty] private bool _isDisplayMenuOpen;
+
+    /// <summary>ツールチップに出す、いま選んでいるグループ化の名前。</summary>
+    public string GroupByLabel =>
+        GroupByOptions.FirstOrDefault(option => option.Value == GroupBy)?.Label ?? "グループ化なし";
+
+    /// <summary>ツールチップに出す、いま選んでいる表示形式の名前。</summary>
+    public string DisplayModeLabel =>
+        DisplayModeOptions.FirstOrDefault(option => option.Value == DisplayMode)?.Label ?? "詳細";
+
+    [RelayCommand]
+    private void SelectGroupBy(FilesGroupByOption? option)
+    {
+        if (option is null)
+            return;
+        GroupBy = option.Value;
+        IsGroupMenuOpen = false;
+    }
+
+    [RelayCommand]
+    private void SelectDisplayMode(FilesDisplayModeOption? option)
+    {
+        if (option is null)
+            return;
+        DisplayMode = option.Value;
+        IsDisplayMenuOpen = false;
+    }
+
     /// <summary>このカラムの一覧表示形式。現在地・並べ替えと同じくワークスペースごとに保存する。</summary>
-    [ObservableProperty] private FilesDisplayMode _displayMode = FilesDisplayMode.Details;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayModeLabel))]
+    private FilesDisplayMode _displayMode = FilesDisplayMode.Details;
 
     public IReadOnlyList<FilesDisplayModeOption> DisplayModeOptions => FilesDisplayModes.Options;
 
@@ -458,12 +494,16 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         StartGitStatusLoad(_all, CurrentFolder);
     }
 
+    /// <summary>「種類」列が拡張子（<c>MD</c>）を出していた頃の既定幅。保存済みレイアウトの
+    /// 引き上げ判定にだけ使う（<see cref="ApplyLayout"/>）。</summary>
+    private const double LegacyTypeColumnWidth = 72;
+
     private static IEnumerable<FilesColumnSetting> CreateColumnSettings()
     {
         yield return new FilesColumnSetting(FilesColumnKey.Name, "名前", 240, canHide: false);
         yield return new FilesColumnSetting(FilesColumnKey.Size, "サイズ", 86, canHide: true);
         yield return new FilesColumnSetting(FilesColumnKey.Modified, "更新日時", 124, canHide: true);
-        yield return new FilesColumnSetting(FilesColumnKey.Type, "種類", 72, canHide: true);
+        yield return new FilesColumnSetting(FilesColumnKey.Type, "種類", 150, canHide: true);
     }
 
     private void OnColumnSettingPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -607,7 +647,15 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
                     continue;
                 }
                 setting.IsVisible = setting.Key == FilesColumnKey.Name || item.IsVisible;
-                setting.Width = ClampWidth(setting, item.Width > 0 ? item.Width : setting.DefaultWidth);
+                var width = item.Width;
+                // 「種類」列の中身は拡張子（MD）から、エクスプローラーと同じ種類名
+                // （Markdown ソース ファイル）へ変わった。旧既定幅のまま保存されている
+                // レイアウトは、変更前の中身に合わせた幅なので新しい既定幅へ引き上げる
+                // ——そのままだと保存済みのフォルダーだけ種類が読めないまま残る。
+                // 自分で幅を変えた列（旧既定幅と違う値）はユーザーの指定なので触らない。
+                if (setting.Key == FilesColumnKey.Type && Math.Abs(width - LegacyTypeColumnWidth) < 0.5)
+                    width = setting.DefaultWidth;
+                setting.Width = ClampWidth(setting, width > 0 ? width : setting.DefaultWidth);
             }
         }
         finally

@@ -249,6 +249,64 @@
             </Setter>
         </Style>
 
+        <!-- Git 状態の見せ方はツリー（FolderTreeView）と同じ語彙にそろえる：名前そのものを状態色で塗り、
+             状態文字は行の右端に置く。バッジを名前の前に置くと、状態のある行だけ名前が右へずれて
+             一覧の左端が揃わなくなる——同じデータを見せる2つのペインで作法を変えない。
+             トリガは後勝ちなので、選択時の AccentFg が状態色より後に来る。 -->
+        <Style x:Key="FilesGitName" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Modified">
+                    <Setter Property="Foreground" Value="#E2C08D" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Added">
+                    <Setter Property="Foreground" Value="#73C991" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Untracked">
+                    <Setter Property="Foreground" Value="#73C991" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Deleted">
+                    <Setter Property="Foreground" Value="#C74E39" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Renamed">
+                    <Setter Property="Foreground" Value="#73C991" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Conflicted">
+                    <Setter Property="Foreground" Value="#E4676B" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Staged">
+                    <Setter Property="Foreground" Value="#C792EA" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="Ignored">
+                    <Setter Property="Foreground" Value="#7F8490" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding GitStatus}" Value="DirectoryChanged">
+                    <Setter Property="Foreground" Value="#E2C08D" />
+                </DataTrigger>
+                <!-- 選択中は Accent 背景の上で状態色が読みにくいので、名前だけ AccentFg へ戻す
+                     （バッジの色はそのまま＝状態は失われない）。 -->
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                             Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 行の右端に置く状態文字。名前の色と同じ表（FilesGitName）から引く。 -->
+        <Style x:Key="FilesGitBadge" TargetType="TextBlock">
+            <Setter Property="Text" Value="{Binding GitStatusBadge}" />
+            <Setter Property="ToolTip" Value="{Binding GitStatusTooltip}" />
+            <Setter Property="Foreground"
+                    Value="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}" />
+            <Setter Property="Visibility"
+                    Value="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
         <ItemsPanelTemplate x:Key="FilesVerticalItemsPanel">
             <VirtualizingStackPanel Orientation="Vertical" />
         </ItemsPanelTemplate>
@@ -299,19 +357,96 @@
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                           Data="M4,2 L10,7 L4,12" />
                 </Button>
-                <ComboBox DockPanel.Dock="Right" Width="104" Height="22" Margin="4,0,0,0"
-                          ItemsSource="{Binding DisplayModeOptions}"
-                          SelectedValue="{Binding DisplayMode, Mode=TwoWay}"
-                          SelectedValuePath="Value" DisplayMemberPath="Label"
-                          ToolTip="表示形式を切り替え" />
-                <ComboBox DockPanel.Dock="Right" Width="118" Height="22" Margin="4,0,0,0"
-                          ItemsSource="{Binding GroupByOptions}"
-                          SelectedValue="{Binding GroupBy, Mode=TwoWay}"
-                          SelectedValuePath="Value" DisplayMemberPath="Label"
-                          ToolTip="種類・更新日・サイズでグループ化" />
+                <!-- 表示形式・グループ化・列は、いずれも「アイコンを押すとこのペインの配色の
+                     ポップアップが出る」形にそろえる。素の ComboBox は OS 既定の配色・行間で描かれ、
+                     暗色テーマの中でここだけ浮いていた。 -->
+                <ToggleButton x:Name="DisplayModeButton" DockPanel.Dock="Right"
+                              Style="{StaticResource FilesToolToggle}" Margin="2,0,0,0"
+                              ToolTip="{Binding DisplayModeLabel, StringFormat=表示形式（{0}）}"
+                              IsChecked="{Binding IsDisplayMenuOpen, Mode=TwoWay}">
+                    <Path Width="13" Height="13" Stretch="Uniform" StrokeThickness="1.3"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                          Data="M1,1 L5.5,1 L5.5,5.5 L1,5.5 Z M7.5,1 L12,1 L12,5.5 L7.5,5.5 Z
+                                M1,7.5 L5.5,7.5 L5.5,12 L1,12 Z M7.5,7.5 L12,7.5 L12,12 L7.5,12 Z" />
+                </ToggleButton>
+                <Popup x:Name="DisplayModePopup" PlacementTarget="{Binding ElementName=DisplayModeButton}" Placement="Bottom"
+                       StaysOpen="False" AllowsTransparency="True"
+                       IsOpen="{Binding IsDisplayMenuOpen, Mode=TwoWay}">
+                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" Padding="3" Margin="0,2,0,0">
+                        <ItemsControl ItemsSource="{Binding DisplayModeOptions}" MinWidth="130">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:FilesDisplayModeOption}">
+                                    <Button Style="{StaticResource FilesCrumbButton}" Padding="4,3"
+                                            HorizontalContentAlignment="Stretch"
+                                            Command="{Binding DataContext.SelectDisplayModeCommand, Source={x:Reference Root}}"
+                                            CommandParameter="{Binding}">
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Left" Text="✓" Width="14"
+                                                       Foreground="{DynamicResource Accent}"
+                                                       FontSize="{DynamicResource Fs11}">
+                                                <TextBlock.Visibility>
+                                                    <MultiBinding Converter="{StaticResource EqualityToVis}">
+                                                        <Binding Path="Value" />
+                                                        <Binding Path="DataContext.DisplayMode" Source="{x:Reference Root}" />
+                                                    </MultiBinding>
+                                                </TextBlock.Visibility>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Label}" FontSize="{DynamicResource Fs12}" />
+                                        </DockPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </Popup>
+                <ToggleButton x:Name="GroupByButton" DockPanel.Dock="Right"
+                              Style="{StaticResource FilesToolToggle}" Margin="2,0,0,0"
+                              ToolTip="{Binding GroupByLabel, StringFormat=グループ化（{0}）}"
+                              IsChecked="{Binding IsGroupMenuOpen, Mode=TwoWay}">
+                    <Path Width="13" Height="13" Stretch="Uniform" StrokeThickness="1.4"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                          Data="M1,1.5 L12,1.5 M3.5,5 L12,5 M3.5,8 L12,8 M1,11.5 L12,11.5" />
+                </ToggleButton>
+                <Popup x:Name="GroupByPopup" PlacementTarget="{Binding ElementName=GroupByButton}" Placement="Bottom"
+                       StaysOpen="False" AllowsTransparency="True"
+                       IsOpen="{Binding IsGroupMenuOpen, Mode=TwoWay}">
+                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" Padding="3" Margin="0,2,0,0">
+                        <ItemsControl ItemsSource="{Binding GroupByOptions}" MinWidth="150">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:FilesGroupByOption}">
+                                    <Button Style="{StaticResource FilesCrumbButton}" Padding="4,3"
+                                            HorizontalContentAlignment="Stretch"
+                                            Command="{Binding DataContext.SelectGroupByCommand, Source={x:Reference Root}}"
+                                            CommandParameter="{Binding}">
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Left" Text="✓" Width="14"
+                                                       Foreground="{DynamicResource Accent}"
+                                                       FontSize="{DynamicResource Fs11}">
+                                                <TextBlock.Visibility>
+                                                    <MultiBinding Converter="{StaticResource EqualityToVis}">
+                                                        <Binding Path="Value" />
+                                                        <Binding Path="DataContext.GroupBy" Source="{x:Reference Root}" />
+                                                    </MultiBinding>
+                                                </TextBlock.Visibility>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Label}" FontSize="{DynamicResource Fs12}" />
+                                        </DockPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </Popup>
                 <ToggleButton x:Name="ColumnsButton" DockPanel.Dock="Right" Style="{StaticResource FilesToolToggle}"
-                              Width="34" Content="列" ToolTip="列の表示・幅・順序"
-                              IsChecked="{Binding IsColumnSettingsOpen, Mode=TwoWay}" />
+                              Margin="2,0,0,0" ToolTip="列の表示・幅・順序"
+                              IsChecked="{Binding IsColumnSettingsOpen, Mode=TwoWay}">
+                    <Path Width="13" Height="13" Stretch="Uniform" StrokeThickness="1.3"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                          Data="M1,1 L12,1 L12,12 L1,12 Z M5,1 L5,12 M8.5,1 L8.5,12" />
+                </ToggleButton>
                 <Popup x:Name="ColumnSettingsPopup" PlacementTarget="{Binding ElementName=ColumnsButton}" Placement="Bottom"
                        StaysOpen="False" AllowsTransparency="True"
                        IsOpen="{Binding IsColumnSettingsOpen, Mode=TwoWay}">
@@ -415,18 +550,32 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:FilesPlaceGroup}">
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Name}" Style="{StaticResource PopupSectionLabel}" />
+                                        <!-- 見出しは PopupSectionLabel（上余白16px）より詰める。ここは常設の
+                                             縦長パネルで、行ピッチ 20px に対して見出しだけ広いと隙間が目立つ。 -->
+                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs10}" Margin="4,8,4,1" />
                                         <ItemsControl ItemsSource="{Binding Items}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type vm:FilesPlace}">
                                                     <Button Style="{StaticResource FilesCrumbButton}"
-                                                            Padding="8,3" HorizontalContentAlignment="Left"
+                                                            Padding="4,1" HorizontalContentAlignment="Stretch"
                                                             Click="OnPlaceClick" Tag="{Binding}"
                                                             ToolTip="{Binding FullPath}">
-                                                        <TextBlock Text="{Binding Name}"
-                                                                   FontSize="{DynamicResource Fs12}"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   MaxWidth="320" />
+                                                        <DockPanel LastChildFill="True">
+                                                            <Image DockPanel.Dock="Left" Source="{Binding IconImage}"
+                                                                   Width="14" Height="14" Margin="0,0,5,0"
+                                                                   VerticalAlignment="Center"
+                                                                   SnapsToDevicePixels="True" />
+                                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Detail}"
+                                                                       Foreground="{DynamicResource FgDim}"
+                                                                       FontSize="{DynamicResource Fs10}"
+                                                                       VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                       TextTrimming="CharacterEllipsis" MaxWidth="90" />
+                                                            <TextBlock Text="{Binding Name}"
+                                                                       FontSize="{DynamicResource Fs12}"
+                                                                       VerticalAlignment="Center"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                        </DockPanel>
                                                     </Button>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -696,19 +845,18 @@
                                         <ColumnDefinition Width="{Binding DataContext.Slot2Width, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                         <ColumnDefinition Width="{Binding DataContext.Slot3Width, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="{Binding DataContext.NameColumnIndex, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                Visibility="{Binding DataContext.IsNameColumnVisible, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"
-                                                Orientation="Horizontal" Margin="6,0,4,0">
-                                        <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,6,0"
-                                               VerticalAlignment="Center" SnapsToDevicePixels="True" />
-                                        <TextBlock Text="{Binding GitStatusBadge}"
-                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
-                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
-                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,4,0"
-                                                   FontFamily="Consolas" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                                   FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
+                                    <!-- 名前セル：アイコン｜名前（可変）｜状態文字（右端）。名前を可変にすることで
+                                         長い名前は列の中で省略され、状態のある行でも左端が揃う。 -->
+                                    <DockPanel Grid.Column="{Binding DataContext.NameColumnIndex, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                               Visibility="{Binding DataContext.IsNameColumnVisible, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"
+                                               Margin="6,0,4,0" LastChildFill="True">
+                                        <Image DockPanel.Dock="Left" Source="{Binding IconImage}" Width="16" Height="16"
+                                               Margin="0,0,6,0" VerticalAlignment="Center" SnapsToDevicePixels="True" />
+                                        <TextBlock DockPanel.Dock="Right" Style="{StaticResource FilesGitBadge}"
+                                                   Margin="6,0,2,0" />
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
+                                                   FontSize="{DynamicResource Fs12}" />
+                                    </DockPanel>
                                     <TextBlock Grid.Column="{Binding DataContext.SizeColumnIndex, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                Visibility="{Binding DataContext.IsSizeColumnVisible, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"
                                                Text="{Binding SizeText}" HorizontalAlignment="Right"
@@ -725,59 +873,54 @@
                                 </Grid>
 
                                 <!-- 一覧：縦方向の1行。 -->
-                                <StackPanel x:Name="ListLayout" Visibility="Collapsed" Orientation="Horizontal"
-                                            Height="24" Margin="6,0,4,0">
-                                    <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,6,0"
-                                           VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding GitStatusBadge}"
-                                               Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
-                                               Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
-                                               ToolTip="{Binding GitStatusTooltip}" Margin="0,0,4,0"
-                                               FontFamily="Consolas" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                               FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
+                                <DockPanel x:Name="ListLayout" Visibility="Collapsed"
+                                           Height="24" Margin="6,0,4,0" LastChildFill="True">
+                                    <Image DockPanel.Dock="Left" Source="{Binding IconImage}" Width="16" Height="16"
+                                           Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource FilesGitBadge}"
+                                               Margin="6,0,2,0" />
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
+                                               FontSize="{DynamicResource Fs12}" />
+                                </DockPanel>
 
                                 <!-- アイコン系：WrapPanel 内で幅を持つため、選択・右クリック・ダブルクリックは
                                      ListBoxItem の既存イベント経路をそのまま使える。 -->
-                                <StackPanel x:Name="LargeIconsLayout" Visibility="Collapsed" Width="112" Height="112"
+                                <!-- アイコン系：名前は「折り返してから省略」。横並びの StackPanel に入れると
+                                     幅の制約が届かず TextTrimming が効かないため、名前は必ずセル幅いっぱいの
+                                     1要素として置く（両端が切れて読めない、という以前の見え方の原因）。
+                                     状態文字はアイコンの右上に重ねる——名前の前に置くと中央揃えが崩れる。 -->
+                                <StackPanel x:Name="LargeIconsLayout" Visibility="Collapsed" Width="112" Height="118"
                                             Margin="4,6" HorizontalAlignment="Center">
-                                    <Image Source="{Binding IconImage}" Width="64" Height="64" HorizontalAlignment="Center" />
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="2,6,2,0">
-                                        <TextBlock Text="{Binding GitStatusBadge}"
-                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
-                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
-                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
-                                                   FontFamily="Consolas" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
-                                    </StackPanel>
+                                    <Grid Width="64" Height="64" HorizontalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" Width="64" Height="64" />
+                                        <TextBlock Style="{StaticResource FilesGitBadge}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
+                                               TextAlignment="Center" TextWrapping="Wrap" MaxHeight="44"
+                                               Margin="2,6,2,0" FontSize="{DynamicResource Fs12}" />
                                 </StackPanel>
-                                <StackPanel x:Name="MediumIconsLayout" Visibility="Collapsed" Width="92" Height="94"
+                                <StackPanel x:Name="MediumIconsLayout" Visibility="Collapsed" Width="92" Height="100"
                                             Margin="4,5" HorizontalAlignment="Center">
-                                    <Image Source="{Binding IconImage}" Width="40" Height="40" HorizontalAlignment="Center" />
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="2,5,2,0">
-                                        <TextBlock Text="{Binding GitStatusBadge}"
-                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
-                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
-                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
-                                                   FontFamily="Consolas" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="{DynamicResource Fs12}" />
-                                    </StackPanel>
+                                    <Grid Width="40" Height="40" HorizontalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" Width="40" Height="40" />
+                                        <TextBlock Style="{StaticResource FilesGitBadge}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
+                                               TextAlignment="Center" TextWrapping="Wrap" MaxHeight="44"
+                                               Margin="2,5,2,0" FontSize="{DynamicResource Fs12}" />
                                 </StackPanel>
-                                <StackPanel x:Name="SmallIconsLayout" Visibility="Collapsed" Width="76" Height="58"
+                                <StackPanel x:Name="SmallIconsLayout" Visibility="Collapsed" Width="76" Height="66"
                                             Margin="3,4" HorizontalAlignment="Center">
-                                    <Image Source="{Binding IconImage}" Width="24" Height="24" HorizontalAlignment="Center" />
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="2,3,2,0">
-                                        <TextBlock Text="{Binding GitStatusBadge}"
-                                                   Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
-                                                   Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
-                                                   ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
-                                                   FontFamily="Consolas" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" MaxHeight="28" FontSize="{DynamicResource Fs11}" />
-                                    </StackPanel>
+                                    <Grid Width="24" Height="24" HorizontalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" Width="24" Height="24" />
+                                        <TextBlock Style="{StaticResource FilesGitBadge}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
+                                               TextAlignment="Center" TextWrapping="Wrap" MaxHeight="38"
+                                               Margin="2,3,2,0" FontSize="{DynamicResource Fs11}" />
                                 </StackPanel>
 
                                 <!-- タイル：アイコンと代表的な属性を横並びにする。 -->
@@ -789,15 +932,12 @@
                                     <Image Source="{Binding IconImage}" Width="32" Height="32" HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="1" Margin="6,0,3,0" VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding GitStatusBadge}"
-                                                       Foreground="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}"
-                                                       Visibility="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}"
-                                                       ToolTip="{Binding GitStatusTooltip}" Margin="0,0,3,0"
-                                                       FontFamily="Consolas" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource FilesGitBadge}"
+                                                       Margin="6,0,0,0" />
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
                                                        FontSize="{DynamicResource Fs12}" />
-                                        </StackPanel>
+                                        </DockPanel>
                                         <TextBlock Text="{Binding TypeText}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                                         <TextBlock Text="{Binding ModifiedText}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
                                     </StackPanel>

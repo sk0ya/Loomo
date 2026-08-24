@@ -197,11 +197,10 @@ public sealed partial class FileEntryViewModel : ObservableObject
 
     public string ModifiedText => Modified == default ? "" : Modified.ToString("yyyy/MM/dd HH:mm");
 
-    /// <summary>「種類」列。フォルダーは <c>フォルダー</c>、ファイルは拡張子（大文字・ドット無し）。
-    /// 拡張子の無いファイルは空欄にせず <c>ファイル</c> と書く（空欄は読み手には欠測に見える）。</summary>
-    public string TypeText => IsDirectory
-        ? "フォルダー"
-        : Path.GetExtension(Name) is { Length: > 1 } ext ? ext[1..].ToUpperInvariant() : "ファイル";
+    /// <summary>「種類」列。エクスプローラーと同じ種類名（<c>Markdown ソース ファイル</c> など）を
+    /// シェルから引く。シェルが答えない環境では拡張子を大文字にしたものへ落ち、拡張子の無い
+    /// ファイルは空欄にせず <c>ファイル</c> と書く（空欄は読み手には欠測に見える）。</summary>
+    public string TypeText => ShellTypeNames.Describe(Name, IsDirectory);
 
     /// <summary>種類での並べ替えキー（表示と違い、比較が安定するよう小文字のまま）。</summary>
     public string TypeKey => IsDirectory ? "" : Path.GetExtension(Name).ToLowerInvariant();
@@ -249,7 +248,22 @@ public enum FilesPlaceKind
 }
 
 /// <summary>「場所」ポップアップの1項目。</summary>
-public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind);
+public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind)
+{
+    /// <summary>行頭のアイコン。ツリー・一覧と同じ <see cref="FileIcons"/> から引くので、
+    /// 同じフォルダーが場所一覧とツリーで違う絵になることがない。名前だけが縦に並ぶ一覧は、
+    /// フォルダーとファイルの区別が付かず走査しづらい。</summary>
+    public ImageSource IconImage => Kind == FilesPlaceKind.RecentFile
+        ? FileIcons.ImageFor(FileIcons.IndexFor(FullPath, isDirectory: false))
+        : FileIcons.FolderImage(open: false);
+
+    /// <summary>名前だけでは区別できない同名フォルダーのための補足（親フォルダー名）。
+    /// ワークスペース・ピン留めは名前自体が場所を表すので付けない。</summary>
+    public string Detail => Kind is FilesPlaceKind.QuickAccess or FilesPlaceKind.RecentFile
+        or FilesPlaceKind.FrequentFolder
+        ? Path.GetFileName(Path.GetDirectoryName(FullPath.TrimEnd('\\', '/')) ?? "")
+        : "";
+}
 
 /// <summary>「場所」ポップアップの1グループ（見出し＋項目）。</summary>
 public sealed record FilesPlaceGroup(string Name, IReadOnlyList<FilesPlace> Items);
