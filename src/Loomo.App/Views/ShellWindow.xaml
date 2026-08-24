@@ -1557,8 +1557,11 @@
                             <!-- フェッチ／プル／プッシュはここには置かない。ブランチ切替ポップアップの
                                  同期帯（BranchSwitcherView）が一箇所の持ち場で、上流と件数もそこに出る。 -->
                             <!-- コミット一覧の絞り込み：author:／msg:／hash:／ref:／date: のトークン構文＋
-                                 作者ドロップダウン・期間ピッカーの補助UI。git は再実行せず、読み込み済みの
-                                 一覧をクライアント側で CommitLogFilter により判定する。 -->
+                                 作者ドロップダウン・期間ピッカーの補助UI。
+                                 条件のうち git で表現できる分（作者・本文・日付）は git log の
+                                 author/grep/since オプションへ押し下げて「履歴全体」を検索し
+                                 （GitLogQuery／CommitLogFilter.ApplyTo）、hash:／ref: は git に対応する
+                                 絞り込みが無いので読み込み済みの一覧に対して効く。 -->
                             <Grid Width="210" Margin="8,0,0,0" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center" Cursor="IBeam"
@@ -1571,7 +1574,9 @@
                                                 <TextBlock Text="date:&gt;2026-01-01　date:&lt;2026-06-30" />
                                                 <TextBlock Text="date:2026-01-01..2026-06-30　date:2026-07" />
                                                 <TextBlock TextWrapping="Wrap"
-                                                           Text="接頭辞なしは全項目に部分一致。&quot;引用符&quot;で空白を含められます。" />
+                                                           Text="接頭辞なしは件名を履歴全体から検索（16進数はハッシュ扱いで読み込み済みのみ）。&quot;引用符&quot;で空白を含められます。" />
+                                                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource FgDim}"
+                                                           Text="author:／msg:／date: は git 側で検索するので、読み込んでいない古いコミットも見つかります。" />
                                             </StackPanel>
                                         </ToolTip>
                                     </TextBox.ToolTip>

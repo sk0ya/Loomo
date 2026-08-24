@@ -328,33 +328,35 @@ public sealed partial class GitPanelViewModel : ObservableObject
         if (version == _amendMessageLoadVersion && Amend)
             CommitMessage = message;
     }
+    /// <summary>
+    /// 同期系コマンドの可否をまとめて再評価する。プル／プッシュは<b>方式ごとに別コマンド</b>
+    /// （通常・リベース・早送りのみ／通常・強制）なので、条件が変わる場所ごとに列挙していると
+    /// 増やしたときに必ず1つ書き漏らす——通知先はここ1箇所に持つ。
+    /// </summary>
+    private void NotifySyncCommands()
+    {
+        FetchCommand.NotifyCanExecuteChanged();
+        PullCommand.NotifyCanExecuteChanged();
+        PullRebaseCommand.NotifyCanExecuteChanged();
+        PullFastForwardCommand.NotifyCanExecuteChanged();
+        PushCommand.NotifyCanExecuteChanged();
+        PushForceCommand.NotifyCanExecuteChanged();
+    }
     partial void OnIsBusyChanged(bool value)
     {
         CommitCommand.NotifyCanExecuteChanged();
-        FetchCommand.NotifyCanExecuteChanged();
-        PullCommand.NotifyCanExecuteChanged();
-        PushCommand.NotifyCanExecuteChanged();
+        CloneCommand.NotifyCanExecuteChanged();
+        NotifySyncCommands();
     }
     partial void OnIsRepositoryChanged(bool value)
     {
         CommitCommand.NotifyCanExecuteChanged();
-        FetchCommand.NotifyCanExecuteChanged();
-        PullCommand.NotifyCanExecuteChanged();
-        PushCommand.NotifyCanExecuteChanged();
+        NotifySyncCommands();
     }
-    partial void OnHasRemoteChanged(bool value)
-    {
-        FetchCommand.NotifyCanExecuteChanged();
-        PullCommand.NotifyCanExecuteChanged();
-        PushCommand.NotifyCanExecuteChanged();
-    }
-    partial void OnHasUpstreamChanged(bool value)
-    {
-        PullCommand.NotifyCanExecuteChanged();
-        PushCommand.NotifyCanExecuteChanged();
-    }
-    partial void OnAheadChanged(int value) => PushCommand.NotifyCanExecuteChanged();
-    partial void OnBehindChanged(int value) => PullCommand.NotifyCanExecuteChanged();
+    partial void OnHasRemoteChanged(bool value) => NotifySyncCommands();
+    partial void OnHasUpstreamChanged(bool value) => NotifySyncCommands();
+    partial void OnAheadChanged(int value) => NotifySyncCommands();
+    partial void OnBehindChanged(int value) => NotifySyncCommands();
     private IDisposable? _live;
 
     /// <summary>Git パネルが見えている間のライブ監視を開始する（手動更新ボタンの代わり）。
@@ -546,9 +548,50 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand]
     private Task InitRepositoryAsync() => RunOpAsync("git init", () => _git.InitAsync());
 
+    /// <summary>
+    /// リポジトリをクローンして、そのフォルダーをワークスペースへ追加する（今のフォルダーは閉じない）。
+    /// URL → 親フォルダー → フォルダー名の順に聞く。git 自身と同じ既定名を初期値に入れるので、
+    /// 大抵はそのまま確定できる。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanClone))]
+    private async Task CloneAsync()
+    {
+        var owner = Application.Current?.MainWindow;
+        var url = Views.InputDialog.Prompt(owner, "リポジトリをクローン",
+            "リポジトリの URL を入力してください（例: https://github.com/user/repo.git）");
+        if (string.IsNullOrWhiteSpace(url)) return;
+
+        var picker = new Microsoft.Win32.OpenFolderDialog { Title = "クローン先の親フォルダーを選択" };
+        if (picker.ShowDialog(owner) != true) return;
+
+        var folderName = Views.InputDialog.Prompt(owner, "リポジトリをクローン",
+            "作成するフォルダー名", GitCloneService.FolderNameFrom(url));
+        if (string.IsNullOrWhiteSpace(folderName)) return;
+
+        // 実行状態（多重実行の抑止・進行中表示・結果表示）は他の git 操作と同じ土俵に乗せる
+        // ——ここだけ自前で IsBusy を上げ下げすると、長いクローンの最中に他のボタンが復活する。
+        GitCloneResult? outcome = null;
+        await RunOpAsync($"{folderName} のクローン", async () =>
+        {
+            outcome = await _git.CloneAsync(url, picker.FolderName, folderName);
+            return new GitCommandResult(outcome.Success ? 0 : -1, "", outcome.Message);
+        });
+
+        // ワークスペースへ足す＝エクスプローラのツリーにも出る（マルチルート）。
+        // 祖先／子孫関係で拒否されても git 側は成功しているので、表示はそのまま。
+        if (outcome is { Success: true })
+            _workspace.AddFolder(outcome.TargetPath);
+    }
+
+    /// <summary>クローンはリポジトリでない場所でも押せる（＝ここだけ IsRepository を見ない）。</summary>
+    private bool CanClone() => !IsBusy;
+
     private bool CanFetch() => IsRepository && HasRemote && !IsBusy;
     private bool CanPull() => IsRepository && HasRemote && HasUpstream && Behind > 0 && !IsBusy;
     private bool CanPush() => IsRepository && HasRemote && HasUpstream && Ahead > 0 && !IsBusy;
+
+    /// <summary>強制プッシュは「送るものが無い」ときも要る（リモートを巻き戻す用途）ので Ahead を見ない。</summary>
+    private bool CanPushForce() => IsRepository && HasRemote && !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanFetch))]
     private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());
@@ -556,8 +599,27 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanPull))]
     private Task PullAsync() => RunOpAsync("プル", () => _git.PullAsync());
 
+    /// <summary>取り込み方を選んでプルする（プルボタンの右クリックメニュー）。</summary>
+    [RelayCommand(CanExecute = nameof(CanPull))]
+    private Task PullRebaseAsync() =>
+        RunOpAsync("プル（リベース）", () => _git.PullAsync(GitPullMode.Rebase));
+
+    [RelayCommand(CanExecute = nameof(CanPull))]
+    private Task PullFastForwardAsync() =>
+        RunOpAsync("プル（早送りのみ）", () => _git.PullAsync(GitPullMode.FastForwardOnly));
+
     [RelayCommand(CanExecute = nameof(CanPush))]
     private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
+
+    /// <summary>強制プッシュ（<c>--force-with-lease</c>）。リベース・amend の後に押し直すための入口。</summary>
+    [RelayCommand(CanExecute = nameof(CanPushForce))]
+    private async Task PushForceAsync()
+    {
+        if (!Views.GitBranchDialogs.ConfirmForcePush(
+            Application.Current?.MainWindow, BranchLabel))
+            return;
+        await RunOpAsync("強制プッシュ", () => _git.PushAsync(force: true));
+    }
 
     [RelayCommand]
     private Task UnstageAllAsync() => Capabilities.CanUnstage

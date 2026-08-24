@@ -133,8 +133,53 @@ public partial class BranchSwitcherView : UserControl
         MenuMerge.IsEnabled = !branch.IsCurrent;
         MenuRebase.IsEnabled = !branch.IsCurrent;
         MenuDelete.IsEnabled = !branch.IsCurrent && !branch.IsRemote;
+        // リモート行にだけ出す（ローカルの「削除」と並べると取り違えるので、要らない側は消す）
+        MenuDeleteRemote.Visibility = branch.IsRemote ? Visibility.Visible : Visibility.Collapsed;
+        MenuSetUpstream.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
+        MenuUnsetUpstream.IsEnabled = !branch.IsRemote && branch.Upstream is not null;
         MenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
         MenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
+        MenuPushForce.IsEnabled = MenuPush.IsEnabled;
+    }
+
+    // ===== 同期帯の「▾」（方式を選ぶ） =====
+
+    /// <summary>ボタンに付けたメニューを左クリックで開く（右クリック専用のままだと誰も気づかない）。</summary>
+    private static void OpenMenu(object sender)
+    {
+        if (sender is not FrameworkElement { ContextMenu: { } menu } element) return;
+        menu.PlacementTarget = element;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    private void OnPullOptions(object sender, RoutedEventArgs e) => OpenMenu(sender);
+    private void OnPushOptions(object sender, RoutedEventArgs e) => OpenMenu(sender);
+
+    private Task PullWithModeAsync(GitPullMode mode) =>
+        Vm is { } vm ? vm.PullWithModeAsync(mode) : Task.CompletedTask;
+
+    private async void OnPullMerge(object sender, RoutedEventArgs e) =>
+        await PullWithModeAsync(GitPullMode.Merge);
+    private async void OnPullRebase(object sender, RoutedEventArgs e) =>
+        await PullWithModeAsync(GitPullMode.Rebase);
+    private async void OnPullFastForward(object sender, RoutedEventArgs e) =>
+        await PullWithModeAsync(GitPullMode.FastForwardOnly);
+
+    private async void OnPushNormal(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        await vm.Commands.PushAsync();
+    }
+
+    private async void OnPushForce(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var owner = Window.GetWindow(this);
+        var target = vm.UpstreamLabel.Length > 0 ? vm.UpstreamLabel : "現在のブランチ";
+        Close();
+        if (GitBranchDialogs.ConfirmForcePush(owner, target))
+            await vm.PushForceAsync();
     }
 
     private async void OnMenuCheckout(object sender, RoutedEventArgs e)
@@ -196,6 +241,41 @@ public partial class BranchSwitcherView : UserControl
         if (Vm is not { } vm || Target is not { } branch) return;
         Close();
         await vm.PushBranchAsync(branch);
+    }
+
+    private async void OnMenuPushForce(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || Target is not { } branch) return;
+        var owner = Window.GetWindow(this);
+        Close();
+        if (GitBranchDialogs.ConfirmForcePush(owner, branch.Name))
+            await vm.PushBranchAsync(branch, force: true);
+    }
+
+    private async void OnMenuDeleteRemote(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || Target is not { IsRemote: true } branch) return;
+        var owner = Window.GetWindow(this);
+        Close();
+        if (GitBranchDialogs.ConfirmDeleteRemoteBranch(owner, branch.Name))
+            await vm.DeleteRemoteBranchAsync(branch);
+    }
+
+    private async void OnMenuSetUpstream(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || Target is not { } branch) return;
+        var owner = Window.GetWindow(this);
+        Close();
+        var upstream = GitBranchDialogs.PromptUpstream(owner, vm, branch);
+        if (!string.IsNullOrWhiteSpace(upstream))
+            await vm.SetUpstreamAsync(branch, upstream);
+    }
+
+    private async void OnMenuUnsetUpstream(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || Target is not { } branch) return;
+        Close();
+        await vm.UnsetUpstreamAsync(branch);
     }
 
     private async void OnMenuDelete(object sender, RoutedEventArgs e)

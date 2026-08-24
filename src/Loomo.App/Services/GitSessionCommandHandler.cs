@@ -17,11 +17,56 @@ public sealed class GitSessionCommandHandler
 
     public Task<GitCommandResult?> FetchAsync() => RunAsync("フェッチ", _git.FetchAsync);
     public Task<GitCommandResult?> PullAsync() => RunAsync("プル", _git.PullAsync);
+
+    /// <summary>取り込み方を指定してプルする（マージ／リベース／早送りのみ）。</summary>
+    public Task<GitCommandResult?> PullAsync(GitPullMode mode) =>
+        RunAsync(PullLabel(mode), () => _git.PullAsync(mode));
+
     public Task<GitCommandResult?> PushAsync() => RunAsync("プッシュ", _git.PushAsync);
+
+    /// <summary>強制プッシュ（<c>--force-with-lease</c>）。確認は呼び出し側（ビュー）の責務。</summary>
+    public Task<GitCommandResult?> PushForceAsync() =>
+        RunAsync("強制プッシュ", () => _git.PushAsync(force: true));
+
     public Task<GitCommandResult?> PullBranchAsync(GitBranchInfo branch) =>
         RunAsync($"{branch.Name} をプル", () => _git.PullBranchAsync(branch));
-    public Task<GitCommandResult?> PushBranchAsync(GitBranchInfo branch, string? defaultRemote) =>
-        RunAsync($"{branch.Name} をプッシュ", () => _git.PushBranchAsync(branch, defaultRemote));
+    public Task<GitCommandResult?> PushBranchAsync(
+        GitBranchInfo branch, string? defaultRemote, bool force = false) =>
+        RunAsync(force ? $"{branch.Name} を強制プッシュ" : $"{branch.Name} をプッシュ",
+            () => _git.PushBranchAsync(branch, defaultRemote, force));
+
+    /// <summary>リモート上のブランチを削除する（一覧の <c>origin/foo</c> 行に効く）。</summary>
+    public Task<GitCommandResult?> DeleteRemoteBranchAsync(GitBranchInfo branch) =>
+        RunAsync($"リモートから削除 {branch.Name}", () => _git.DeleteRemoteBranchAsync(branch.Name));
+
+    public Task<GitCommandResult?> SetUpstreamAsync(GitBranchInfo branch, string upstream) =>
+        RunAsync($"{branch.Name} の上流を {upstream} に設定",
+            () => _git.SetUpstreamAsync(branch.Name, upstream));
+
+    public Task<GitCommandResult?> UnsetUpstreamAsync(GitBranchInfo branch) =>
+        RunAsync($"{branch.Name} の上流を解除", () => _git.UnsetUpstreamAsync(branch.Name));
+
+    public Task<GitCommandResult?> AddRemoteAsync(string name, string url) =>
+        RunAsync($"リモート追加 {name}", () => _git.AddRemoteAsync(name, url));
+
+    public Task<GitCommandResult?> SetRemoteUrlAsync(string name, string url) =>
+        RunAsync($"リモート {name} の URL を変更", () => _git.SetRemoteUrlAsync(name, url));
+
+    public Task<GitCommandResult?> RemoveRemoteAsync(string name) =>
+        RunAsync($"リモート削除 {name}", () => _git.RemoveRemoteAsync(name));
+
+    /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す。</summary>
+    public Task<GitCommandResult?> RestoreFileAtRevisionAsync(
+        string hash, string shortHash, string relativePath) =>
+        RunAsync($"{relativePath} を {shortHash} の内容へ戻す",
+            () => _git.RestoreFileAtRevisionAsync(hash, relativePath));
+
+    private static string PullLabel(GitPullMode mode) => mode switch
+    {
+        GitPullMode.Rebase => "プル（リベース）",
+        GitPullMode.FastForwardOnly => "プル（早送りのみ）",
+        _ => "プル",
+    };
 
     public Task<GitCommandResult?> CheckoutBranchAsync(GitBranchInfo branch) => branch.IsRemote
         ? RunAsync($"チェックアウト {branch.Name}", () => _git.CheckoutTrackAsync(branch.Name))

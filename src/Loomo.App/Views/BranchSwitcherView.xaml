@@ -121,6 +121,18 @@
                                            Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
                             </StackPanel>
                         </Button>
+                        <!-- プルの取り込み方（Rider の Update Project 相当）。既定の1クリックは素の pull のまま
+                             残し、方式を選びたいときだけこの「▾」を開く。 -->
+                        <Button Style="{StaticResource SyncOpButton}" Padding="3,0" Margin="-4,0,2,0"
+                                Content="▾" ToolTip="プルの取り込み方を選ぶ" Click="OnPullOptions">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="マージで取り込む（既定）" Click="OnPullMerge" />
+                                    <MenuItem Header="リベースで取り込む（--rebase）" Click="OnPullRebase" />
+                                    <MenuItem Header="早送りできるときだけ（--ff-only）" Click="OnPullFastForward" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
                         <Button Style="{StaticResource SyncOpButton}"
                                 ToolTip="プッシュ（現在ブランチのコミットを上流へ送る。上流未設定なら作成する）"
                                 Command="{Binding PushCommand}">
@@ -141,6 +153,17 @@
                                 <TextBlock Text="{Binding Ahead}" Style="{StaticResource SyncOpCount}"
                                            Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
                             </StackPanel>
+                        </Button>
+                        <!-- 強制プッシュはここ（メニューの中）に置く。リベース・amend・スカッシュの後に
+                             必ず要る操作なのに入口が無かったが、1クリック目に出しては事故るため。 -->
+                        <Button Style="{StaticResource SyncOpButton}" Padding="3,0" Margin="-4,0,2,0"
+                                Content="▾" ToolTip="プッシュの方式を選ぶ" Click="OnPushOptions">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="プッシュ（既定）" Click="OnPushNormal" />
+                                    <MenuItem Header="強制プッシュ（--force-with-lease）…" Click="OnPushForce" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
                         </Button>
                         </StackPanel>
                     </StackPanel>
@@ -195,9 +218,15 @@
                         <MenuItem Header="ブランチ名をコピー" Click="OnMenuCopyName" />
                         <Separator />
                         <MenuItem x:Name="MenuDelete" Header="削除" Click="OnMenuDelete" />
+                        <MenuItem x:Name="MenuDeleteRemote" Header="リモートから削除…" Click="OnMenuDeleteRemote" />
+                        <Separator />
+                        <MenuItem x:Name="MenuSetUpstream" Header="上流を設定…" Click="OnMenuSetUpstream" />
+                        <MenuItem x:Name="MenuUnsetUpstream" Header="上流を解除" Click="OnMenuUnsetUpstream" />
                         <Separator />
                         <MenuItem x:Name="MenuPull" Header="プル" Click="OnMenuPull" />
                         <MenuItem x:Name="MenuPush" Header="プッシュ" Click="OnMenuPush" />
+                        <MenuItem x:Name="MenuPushForce" Header="強制プッシュ（--force-with-lease）…"
+                                  Click="OnMenuPushForce" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
             </TreeView>

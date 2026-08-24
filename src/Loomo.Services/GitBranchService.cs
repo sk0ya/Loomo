@@ -123,7 +123,15 @@ public sealed class GitBranchService
     public Task<GitCommandResult> FetchAsync() =>
         _mutations.ExecuteAsync("fetch", "--all", "--prune");
 
-    public Task<GitCommandResult> PullAsync() => _mutations.ExecuteAsync("pull");
+    public Task<GitCommandResult> PullAsync() => PullAsync(GitPullMode.Merge);
+
+    /// <summary>取り込み方を指定してプルする。</summary>
+    public Task<GitCommandResult> PullAsync(GitPullMode mode) => mode switch
+    {
+        GitPullMode.Rebase => _mutations.ExecuteAsync("pull", "--rebase"),
+        GitPullMode.FastForwardOnly => _mutations.ExecuteAsync("pull", "--ff-only"),
+        _ => _mutations.ExecuteAsync("pull"),
+    };
 
     /// <summary>
     /// 指定したローカルブランチを上流へ同期する。現在ブランチは通常の pull を使い、
@@ -152,35 +160,104 @@ public sealed class GitBranchService
                 $"refs/heads/{remoteBranch}:refs/heads/{branch.Name}").ConfigureAwait(false);
     }
 
-    public Task<GitCommandResult> PushAsync() => PushAsync(null);
+    public Task<GitCommandResult> PushAsync() => PushCurrentAsync(null, force: false);
 
-    private async Task<GitCommandResult> PushAsync(string? defaultRemote)
+    /// <summary>
+    /// 現在ブランチをプッシュする。<paramref name="force"/> は <c>--force</c> ではなく
+    /// <b><c>--force-with-lease</c></b>——素の <c>--force</c> は「自分が最後に見た後に誰かが積んだコミット」を
+    /// 黙って消すのに対し、lease は追跡している ref が自分の知っている位置から動いていたら拒否する。
+    /// rebase・amend・squash の後に押す操作なので、既定でこの安全側を使う。
+    /// （<c>--force-if-includes</c> は更に安全だが git 2.30 以降でしか無いので付けない。）
+    /// </summary>
+    public Task<GitCommandResult> PushAsync(bool force) => PushCurrentAsync(null, force);
+
+    private async Task<GitCommandResult> PushCurrentAsync(string? defaultRemote, bool force)
     {
-        var result = await _mutations.ExecuteAsync("push").ConfigureAwait(false);
+        var result = await _mutations.ExecuteAsync(WithLease(force, "push")).ConfigureAwait(false);
         if (!result.Success && result.Error.Contains("no upstream", StringComparison.OrdinalIgnoreCase))
-            result = await _mutations.ExecuteAsync("push", "-u",
-                string.IsNullOrWhiteSpace(defaultRemote) ? "origin" : defaultRemote, "HEAD")
+        {
+            // 上流が無い＝たいていは「まだリモートに無いブランチ」だが、上流を解除しただけで
+            // リモート側は残っていることもある（この機能自身が「上流を解除」を持っている）。
+            // だから force はここでも<b>落とさない</b>——落とすと、強制プッシュを承認した人に
+            // 「非早送りで拒否されました」を返すことになり、確認ダイアログの約束と食い違う。
+            result = await _mutations.ExecuteAsync(WithLease(force, "push", "-u",
+                string.IsNullOrWhiteSpace(defaultRemote) ? "origin" : defaultRemote, "HEAD"))
                 .ConfigureAwait(false);
+        }
         return result;
     }
 
     /// <summary>指定したローカルブランチを、その上流または既定リモートへプッシュする。</summary>
-    public async Task<GitCommandResult> PushBranchAsync(GitBranchInfo branch, string? defaultRemote)
+    public Task<GitCommandResult> PushBranchAsync(GitBranchInfo branch, string? defaultRemote) =>
+        PushBranchAsync(branch, defaultRemote, force: false);
+
+    /// <summary>指定したローカルブランチをプッシュする（<paramref name="force"/> は
+    /// <see cref="PushAsync(bool)"/> と同じく <c>--force-with-lease</c>）。</summary>
+    public async Task<GitCommandResult> PushBranchAsync(
+        GitBranchInfo branch, string? defaultRemote, bool force)
     {
         if (branch.IsRemote)
             return await FailedBranchOperation("リモートブランチはプッシュの対象にできません。").ConfigureAwait(false);
         if (branch.IsCurrent)
-            return await PushAsync(defaultRemote).ConfigureAwait(false);
+            return await PushCurrentAsync(defaultRemote, force).ConfigureAwait(false);
 
         var upstream = await ResolveUpstreamAsync(branch).ConfigureAwait(false);
         if (upstream is { } target)
-            return await _mutations.ExecuteAsync("push", target.Remote,
-                $"{branch.Name}:refs/heads/{target.Branch}").ConfigureAwait(false);
+            return await _mutations.ExecuteAsync(WithLease(force, "push", target.Remote,
+                $"{branch.Name}:refs/heads/{target.Branch}")).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(defaultRemote))
-            return await _mutations.ExecuteAsync("push", "-u", defaultRemote, branch.Name)
+            return await _mutations
+                .ExecuteAsync(WithLease(force, "push", "-u", defaultRemote, branch.Name))
                 .ConfigureAwait(false);
         return await FailedBranchOperation($"ブランチ {branch.Name} のプッシュ先リモートがありません。").ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// <c>--force-with-lease</c> を <c>push</c> の直後（refspec より前）へ差し込む。
+    /// git はオプションの位置に寛容だが、refspec の後ろに置くと読みにくいので組み立てを1箇所に寄せる。
+    /// </summary>
+    private static string[] WithLease(bool force, params string[] args)
+    {
+        if (!force) return args;
+        var list = new List<string>(args.Length + 1);
+        list.Add(args[0]);
+        list.Add("--force-with-lease");
+        list.AddRange(args.Skip(1));
+        return list.ToArray();
+    }
+
+    /// <summary>
+    /// リモート上のブランチを削除する（<c>git push &lt;remote&gt; --delete &lt;branch&gt;</c>）。
+    /// <paramref name="remoteBranch"/> は一覧に出ている <c>origin/foo</c> 形式。
+    /// <c>git branch -d</c> ではリモート追跡の参照が消えるだけでリモート側は残るので、別操作にしてある。
+    /// </summary>
+    public async Task<GitCommandResult> DeleteRemoteBranchAsync(string remoteBranch)
+    {
+        var remotes = await GetRemotesAsync().ConfigureAwait(false);
+        if (GitRemoteRef.TrySplit(remoteBranch, remotes) is not { } target)
+            return await FailedBranchOperation(
+                $"{remoteBranch} のリモートを特定できませんでした。").ConfigureAwait(false);
+        return await _mutations.ExecuteAsync("push", target.Remote, "--delete", target.Branch)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>ローカルブランチの上流を設定する（<paramref name="upstream"/> は <c>origin/main</c> 形式）。</summary>
+    public Task<GitCommandResult> SetUpstreamAsync(string branch, string upstream) =>
+        _mutations.ExecuteAsync("branch", $"--set-upstream-to={upstream}", branch);
+
+    /// <summary>ローカルブランチの上流を解除する。</summary>
+    public Task<GitCommandResult> UnsetUpstreamAsync(string branch) =>
+        _mutations.ExecuteAsync("branch", "--unset-upstream", branch);
+
+    public Task<GitCommandResult> AddRemoteAsync(string name, string url) =>
+        _mutations.ExecuteAsync("remote", "add", name, url);
+
+    public Task<GitCommandResult> SetRemoteUrlAsync(string name, string url) =>
+        _mutations.ExecuteAsync("remote", "set-url", name, url);
+
+    /// <summary>リモートを削除する（追跡ブランチと <c>branch.*.remote</c> の設定も git が消す）。</summary>
+    public Task<GitCommandResult> RemoveRemoteAsync(string name) =>
+        _mutations.ExecuteAsync("remote", "remove", name);
 
     /// <summary>
     /// 上流の追跡先（リモートとブランチ名）を求める。<b>正本は <c>branch.&lt;name&gt;.remote</c> ／
@@ -212,12 +289,9 @@ public sealed class GitBranchService
         if (string.IsNullOrWhiteSpace(upstream))
             return null;
 
-        var remote = (await GetRemotesAsync().ConfigureAwait(false))
-            .Where(name => upstream.StartsWith(name + "/", StringComparison.Ordinal))
-            .OrderByDescending(name => name.Length)
-            .FirstOrDefault();
-        if (remote is not null)
-            return (remote, upstream[(remote.Length + 1)..]);
+        var remotes = await GetRemotesAsync().ConfigureAwait(false);
+        if (GitRemoteRef.TrySplit(upstream, remotes) is { } split)
+            return split;
 
         // リモート名に一致しない＝ローカル上流のはず。ただしここには「git remote が失敗して一覧が
         // 空だった」場合も落ちてくるので、ローカルに同名ブランチが実在するときだけ "." を返す。

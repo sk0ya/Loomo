@@ -8,6 +8,22 @@ public enum GitResetMode
     Hard
 }
 
+/// <summary>
+/// git pull の取り込み方。<see cref="Merge"/> は素の <c>git pull</c>（設定 <c>pull.rebase</c> に従う）で、
+/// 残り2つは明示的に方式を指定する（Rider の Update Project 相当）。
+/// </summary>
+public enum GitPullMode
+{
+    /// <summary>既定。リポジトリ／ユーザーの <c>pull.rebase</c> 設定に従う。</summary>
+    Merge,
+
+    /// <summary>取り込んだ上にローカルコミットを載せ替える（<c>--rebase</c>）。</summary>
+    Rebase,
+
+    /// <summary>早送りできるときだけ取り込む（<c>--ff-only</c>）。マージコミットを作らない。</summary>
+    FastForwardOnly
+}
+
 /// <summary>git merge の戦略。</summary>
 public enum GitMergeStrategy
 {

@@ -281,6 +281,11 @@
             <Button Margin="0,8,0,0" Content="リポジトリを初期化 (git init)"
                     Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
                     Command="{Binding InitRepositoryCommand}" />
+            <!-- 「まだリポジトリが無い」場所には、作る（init）と持ってくる（clone）の2つの入口が要る。
+                 クローン先はワークスペースへ追加されるので、いまのフォルダーは閉じない。 -->
+            <Button Margin="0,4,0,0" Content="リポジトリをクローン…"
+                    Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
+                    Command="{Binding CloneCommand}" />
         </StackPanel>
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
@@ -314,8 +319,17 @@
                                            Margin="5,0,0,0" Foreground="{DynamicResource FgDim}" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource SyncButton}" ToolTip="プル（リモートの変更を取り込む）"
+                        <!-- 幅の無いサイドバーなので方式は右クリックへ逃がす（ボタンは1クリックの既定操作のまま）。 -->
+                        <Button x:Name="PullSyncButton" Style="{StaticResource SyncButton}"
+                                ToolTip="プル（リモートの変更を取り込む）／右クリックで取り込み方を選ぶ"
                                 Command="{Binding PullCommand}">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="マージで取り込む（既定）" Command="{Binding PullCommand}" />
+                                    <MenuItem Header="リベースで取り込む（--rebase）" Command="{Binding PullRebaseCommand}" />
+                                    <MenuItem Header="早送りできるときだけ（--ff-only）" Command="{Binding PullFastForwardCommand}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="↓" VerticalAlignment="Center">
                                     <TextBlock.Style>
@@ -332,8 +346,16 @@
                                            Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource SyncButton}" ToolTip="プッシュ（ローカルの変更を送る）"
+                        <Button x:Name="PushSyncButton" Style="{StaticResource SyncButton}"
+                                ToolTip="プッシュ（ローカルの変更を送る）／右クリックで強制プッシュ"
                                 Command="{Binding PushCommand}">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="プッシュ（既定）" Command="{Binding PushCommand}" />
+                                    <MenuItem Header="強制プッシュ（--force-with-lease）…"
+                                              Command="{Binding PushForceCommand}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="↑" VerticalAlignment="Center">
                                     <TextBlock.Style>

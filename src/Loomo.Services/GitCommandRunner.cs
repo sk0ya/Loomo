@@ -49,16 +49,36 @@ public sealed class GitCommandRunner
         IReadOnlyDictionary<string, string>? extraEnvironment,
         params string[] args) => RunAsync(extraEnvironment, CancellationToken.None, args);
 
-    internal async Task<GitCommandResult> RunAsync(
+    internal Task<GitCommandResult> RunAsync(
         IReadOnlyDictionary<string, string>? extraEnvironment,
         CancellationToken cancellationToken,
         params string[] args)
     {
         var root = _rootState.CurrentRoot;
         if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
-            return new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。");
+            return Task.FromResult(
+                new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。"));
+        return RunInAsync(root, extraEnvironment, null, cancellationToken, args);
+    }
 
-        var startInfo = CreateStartInfo(root, extraEnvironment, args);
+    /// <summary>
+    /// 作業ディレクトリを明示して git を実行する。<b>まだリポジトリでない場所</b>で走らせる操作
+    /// （clone）のための入口で、リポジトリ内の操作は <see cref="RunAsync(string[])"/> を使う。
+    /// <paramref name="timeout"/> は既定（<see cref="DefaultTimeout"/>）の上書き——clone は
+    /// 大きなリポジトリだと分単位かかるので、2分で刈られると「途中まで落として失敗」になる。
+    /// </summary>
+    internal async Task<GitCommandResult> RunInAsync(
+        string workingDirectory,
+        IReadOnlyDictionary<string, string>? extraEnvironment,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken,
+        params string[] args)
+    {
+        if (string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory))
+            return new GitCommandResult(-1, "", $"フォルダーがありません: {workingDirectory}");
+
+        var startInfo = CreateStartInfo(workingDirectory, extraEnvironment, args);
+        var limit = timeout ?? _timeout;
         try
         {
             using var process = Process.Start(startInfo);
@@ -67,18 +87,18 @@ public sealed class GitCommandRunner
 
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            using var timeout = new CancellationTokenSource(_timeout);
+            using var timeoutSource = new CancellationTokenSource(limit);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, timeout.Token);
+                cancellationToken, timeoutSource.Token);
             try
             {
                 await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested)
             {
                 TryKill(process);
                 return new GitCommandResult(-1, "",
-                    $"git がタイムアウトしました（{_timeout.TotalSeconds:0}秒）。");
+                    $"git がタイムアウトしました（{limit.TotalSeconds:0}秒）。");
             }
             catch (OperationCanceledException)
             {

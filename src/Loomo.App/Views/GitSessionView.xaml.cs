@@ -265,8 +265,40 @@ public partial class GitSessionView : UserControl
         BranchMenuMergeStrategy.IsEnabled = !branch.IsCurrent;
         BranchMenuRebase.IsEnabled = !branch.IsCurrent;
         BranchMenuDelete.IsEnabled = !branch.IsCurrent && !branch.IsRemote;
+        BranchMenuDeleteRemote.Visibility = branch.IsRemote ? Visibility.Visible : Visibility.Collapsed;
+        BranchMenuSetUpstream.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
+        BranchMenuUnsetUpstream.IsEnabled = !branch.IsRemote && branch.Upstream is not null;
         BranchMenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
         BranchMenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
+        BranchMenuPushForce.IsEnabled = BranchMenuPush.IsEnabled;
+    }
+
+    private async void OnBranchPushForce(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedBranch is not { } branch) return;
+        if (GitBranchDialogs.ConfirmForcePush(Window.GetWindow(this), branch.Name))
+            await vm.PushBranchAsync(branch, force: true);
+    }
+
+    private async void OnBranchDeleteRemote(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedBranch is not { IsRemote: true } branch) return;
+        if (GitBranchDialogs.ConfirmDeleteRemoteBranch(Window.GetWindow(this), branch.Name))
+            await vm.DeleteRemoteBranchAsync(branch);
+    }
+
+    private async void OnBranchSetUpstream(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedBranch is not { } branch) return;
+        var upstream = GitBranchDialogs.PromptUpstream(Window.GetWindow(this), vm, branch);
+        if (!string.IsNullOrWhiteSpace(upstream))
+            await vm.SetUpstreamAsync(branch, upstream);
+    }
+
+    private async void OnBranchUnsetUpstream(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedBranch is { } branch)
+            await vm.UnsetUpstreamAsync(branch);
     }
 
     /// <summary>ダブルクリックと同じ「右のコミットグラフをこのブランチに切り替える」を右クリックからも。</summary>
@@ -549,6 +581,79 @@ public partial class GitSessionView : UserControl
         SquashMenuItem.Visibility = visible;
         SquashSeparator.Visibility = visible;
         InteractiveRebaseMenuItem.Visibility = SelectedCommitCount == 1 ? Visibility.Visible : Visibility.Collapsed;
+
+        // 「この版の…」はファイル1件の履歴を見ているときだけ意味を持つ（どのファイルの版か決まらないため）
+        var fileRevision = Vm?.IsFileHistory == true && SelectedCommitCount == 1
+            ? Visibility.Visible : Visibility.Collapsed;
+        FileRevisionSeparator.Visibility = fileRevision;
+        FileRevisionOpenMenuItem.Visibility = fileRevision;
+        FileRevisionCompareMenuItem.Visibility = fileRevision;
+        FileRevisionRestoreMenuItem.Visibility = fileRevision;
+    }
+
+    // ===== 特定リビジョンのファイル（ファイル履歴中のみ） =====
+
+    private async void OnCommitOpenFileRevision(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            await vm.OpenFileAtRevisionAsync(row);
+    }
+
+    private async void OnCommitCompareFileRevision(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            await vm.CompareFileWithRevisionAsync(row);
+    }
+
+    private async void OnCommitRestoreFileRevision(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedCommit is not { } row) return;
+        var answer = MessageBox.Show(Window.GetWindow(this),
+            $"{vm.History.ScopedPath} を {row.ShortHash} の時点の内容へ戻します。\n" +
+            "作業ツリーの現在の内容は失われます（履歴は書き換えません）。\n\n実行しますか？",
+            "この版の内容へ戻す", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Yes)
+            await vm.RestoreFileAtRevisionAsync(row);
+    }
+
+    // ===== リモート =====
+
+    private async void OnRemoteAdd(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var owner = Window.GetWindow(this);
+        var name = InputDialog.Prompt(owner, "リモートを追加",
+            "リモート名を入力してください（例: origin）", vm.Remotes.Count == 0 ? "origin" : "");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var url = InputDialog.Prompt(owner, "リモートを追加", $"{name} の URL を入力してください");
+        if (!string.IsNullOrWhiteSpace(url))
+            await vm.AddRemoteAsync(name, url);
+    }
+
+    private async void OnRemoteSetUrl(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || RemoteList.SelectedItem is not GitRemoteInfo remote) return;
+        var url = InputDialog.Prompt(Window.GetWindow(this), "リモートの URL を変更",
+            $"{remote.Name} の URL", remote.Url);
+        if (!string.IsNullOrWhiteSpace(url) && url != remote.Url)
+            await vm.SetRemoteUrlAsync(remote.Name, url);
+    }
+
+    private void OnRemoteCopyUrl(object sender, RoutedEventArgs e)
+    {
+        if (RemoteList.SelectedItem is not GitRemoteInfo remote) return;
+        try { Clipboard.SetText(remote.Url); } catch { /* クリップボード占有中は無視 */ }
+    }
+
+    private async void OnRemoteRemove(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || RemoteList.SelectedItem is not GitRemoteInfo remote) return;
+        var answer = MessageBox.Show(Window.GetWindow(this),
+            $"リモート {remote.Name}（{remote.Url}）を削除しますか？\n" +
+            "追跡ブランチと上流の設定も一緒に消えます（リモート側のリポジトリはそのままです）。",
+            "リモートの削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Yes)
+            await vm.RemoveRemoteAsync(remote.Name);
     }
 
     /// <summary>

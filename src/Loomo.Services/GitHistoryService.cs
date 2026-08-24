@@ -11,22 +11,31 @@ public sealed class GitHistoryService
 
     public GitHistoryService(GitCommandRunner runner) => _runner = runner;
 
-    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(
-        string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null)
-    {
-        var revArg = string.IsNullOrWhiteSpace(branchRef) ? "--all" : branchRef;
-        var args = new List<string> { "log", "--graph", revArg, $"-n{limit}" };
-        if (skip > 0)
-            args.Add($"--skip={skip}");
-        args.Add("--date=format:%Y-%m-%d %H:%M");
-        args.Add($"--pretty=format:{GitLogParser.PrettyFormat}");
-        if (!string.IsNullOrWhiteSpace(pathFilter))
+    public Task<IReadOnlyList<GitLogRow>> GetLogAsync(
+        string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null) =>
+        GetLogAsync(new GitLogQuery
         {
-            args.Add("--");
-            args.Add(pathFilter);
-        }
+            BranchRef = branchRef,
+            Limit = limit,
+            Skip = skip,
+            PathFilter = pathFilter,
+        });
 
-        var result = await _runner.RunAsync(args.ToArray()).ConfigureAwait(false);
+    /// <summary>
+    /// 条件付きでコミットログを引く。絞り込み（作者・本文・日付）は <paramref name="query"/> 経由で
+    /// <b>git に渡る</b>ので、読み込み済みのページの外にある古いコミットも対象になる。
+    ///
+    /// <para><c>--follow</c> は「1つの pathspec」でしか使えず、指定に反すると git は
+    /// <c>fatal: --follow requires exactly one pathspec</c> で終わる。<see cref="GitLogQuery"/> の側で
+    /// パスがあるときだけ付けているが、それでもリネーム追跡が使えない git 構成はあり得るので、
+    /// 失敗したら <c>--follow</c> を落として引き直す（履歴が丸ごと空になるより、追跡なしで出す方がよい）。</para>
+    /// </summary>
+    public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(GitLogQuery query)
+    {
+        var result = await _runner.RunAsync(query.ToArguments()).ConfigureAwait(false);
+        if (!result.Success && query.FollowRenames)
+            result = await _runner.RunAsync((query with { FollowRenames = false }).ToArguments())
+                .ConfigureAwait(false);
         return result.Success ? GitLogParser.Parse(result.Output) : Array.Empty<GitLogRow>();
     }
 

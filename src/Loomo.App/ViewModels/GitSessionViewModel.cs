@@ -107,6 +107,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>タグ一覧（作成日の新しい順、フラット表示）。</summary>
     [ObservableProperty] private IReadOnlyList<GitTagInfo> _tags = Array.Empty<GitTagInfo>();
 
+    /// <summary>リモート一覧（名前＋fetch URL）。追加・URL 変更・削除の対象。</summary>
+    [ObservableProperty] private IReadOnlyList<GitRemoteInfo> _remotes = Array.Empty<GitRemoteInfo>();
+
     /// <summary>サブモジュール一覧（0件ならビュー側でセクションごと隠す）。</summary>
     [ObservableProperty] private IReadOnlyList<GitSubmoduleInfo> _submodules = Array.Empty<GitSubmoduleInfo>();
 
@@ -212,6 +215,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             Ahead = Behind = 0;
             GitHubRepositoryUrl = null;
             Tags = Array.Empty<GitTagInfo>();
+            Remotes = Array.Empty<GitRemoteInfo>();
             Submodules = Array.Empty<GitSubmoduleInfo>();
             History.Clear();
             OperationInProgress = false;
@@ -241,6 +245,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         UpdateFilteredBranchTree();
         UpdateRemote(overview.Remotes);
         var remoteUrls = await _git.GetRemoteUrlsAsync();
+        Remotes = remoteUrls;
         GitHubRepositoryUrl = remoteUrls
             .OrderBy(remote => string.Equals(remote.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .Select(remote => GitHostingUrl.TryGetGitHubRepositoryUrl(remote.Url, out var url) ? url : null)
@@ -325,11 +330,40 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [RelayCommand] private Task PullAsync() => Commands.PullAsync();
     [RelayCommand] private Task PushAsync() => Commands.PushAsync();
 
+    /// <summary>取り込み方を選んでプルする（ビューのプルボタンのメニューから）。</summary>
+    public Task<GitCommandResult?> PullWithModeAsync(GitPullMode mode) => Commands.PullAsync(mode);
+
+    /// <summary>強制プッシュ（<c>--force-with-lease</c>）。確認ダイアログはビュー側で出す。</summary>
+    public Task<GitCommandResult?> PushForceAsync() => Commands.PushForceAsync();
+
     public Task<GitCommandResult?> PullBranchAsync(GitBranchInfo branch) =>
         Commands.PullBranchAsync(branch);
 
-    public Task<GitCommandResult?> PushBranchAsync(GitBranchInfo branch) =>
-        Commands.PushBranchAsync(branch, RemoteLabel);
+    public Task<GitCommandResult?> PushBranchAsync(GitBranchInfo branch, bool force = false) =>
+        Commands.PushBranchAsync(branch, RemoteLabel, force);
+
+    public Task<GitCommandResult?> DeleteRemoteBranchAsync(GitBranchInfo branch) =>
+        Commands.DeleteRemoteBranchAsync(branch);
+
+    public Task<GitCommandResult?> SetUpstreamAsync(GitBranchInfo branch, string upstream) =>
+        Commands.SetUpstreamAsync(branch, upstream);
+
+    public Task<GitCommandResult?> UnsetUpstreamAsync(GitBranchInfo branch) =>
+        Commands.UnsetUpstreamAsync(branch);
+
+    /// <summary>
+    /// 上流の候補（リモート追跡ブランチ名）。上流を設定するダイアログの初期値・候補表示に使う。
+    /// </summary>
+    public IReadOnlyList<string> RemoteBranchNames =>
+        _allBranches.Where(branch => branch.IsRemote).Select(branch => branch.Name).ToList();
+
+    public Task<GitCommandResult?> AddRemoteAsync(string name, string url) =>
+        Commands.AddRemoteAsync(name, url);
+
+    public Task<GitCommandResult?> SetRemoteUrlAsync(string name, string url) =>
+        Commands.SetRemoteUrlAsync(name, url);
+
+    public Task<GitCommandResult?> RemoveRemoteAsync(string name) => Commands.RemoveRemoteAsync(name);
 
     [RelayCommand]
     private void OpenPullRequests()
@@ -391,6 +425,101 @@ public sealed partial class GitSessionViewModel : ObservableObject
             Content = patch,
             OnSaved = _ => { },  // 読み取り専用の用途
         });
+    }
+
+    // ===== 特定リビジョンのファイル =====
+    //
+    // ファイル履歴（パス絞り込み）中だけ意味を持つ操作。Rider の File History と同じ3点——
+    // その頃の中身を「開く」「今と比べる」「戻す」。コミット詳細の変更ファイル一覧が
+    // 現在の版しか開けなかったので、過去の版に手が届く経路がここまで無かった。
+
+    /// <summary>ファイル履歴を見ている（＝この節の操作が使える）か。</summary>
+    public bool IsFileHistory => History.IsFileScoped;
+
+    /// <summary>そのコミット時点の内容をエディタの仮想ドキュメントで開く（読み取り専用の用途）。</summary>
+    public async Task OpenFileAtRevisionAsync(GitLogRow row)
+    {
+        if (RevisionTarget(row) is not { } target) return;
+        var (hash, shortHash, path) = target;
+
+        var result = await _query.GetFileAtRevisionAsync(hash, path);
+        if (!result.Success)
+        {
+            SetError(result.Message);
+            return;
+        }
+
+        var name = System.IO.Path.GetFileNameWithoutExtension(path);
+        var extension = System.IO.Path.GetExtension(path);
+        await _editor.OpenDocumentAsync(new EditorDocument
+        {
+            FileName = $"{name}@{shortHash}{extension}",
+            Content = result.Output,
+            OnSaved = _ => { },  // 過去の版なので保存先は無い
+        });
+    }
+
+    /// <summary>
+    /// そのコミット時点の内容と、いまの作業ツリーの内容を Diff ペインで見比べる。
+    /// git の差分テキストではなく<b>2つの本文の比較</b>として渡すので、左右入替や行ジャンプなど
+    /// アドホック比較の道具立てがそのまま効く。
+    /// </summary>
+    public async Task CompareFileWithRevisionAsync(GitLogRow row)
+    {
+        if (RevisionTarget(row) is not { } target) return;
+        var (hash, shortHash, path) = target;
+
+        var result = await _query.GetFileAtRevisionAsync(hash, path);
+        if (!result.Success)
+        {
+            SetError(result.Message);
+            return;
+        }
+
+        var fullPath = _query.ToFullPath(path);
+        var (currentTitle, currentText) = await ReadWorkingTreeAsync(fullPath);
+        var name = System.IO.Path.GetFileName(path);
+        _diff.ShowComparison(new DiffComparison(
+            $"{name}@{shortHash}", result.Output, currentTitle, currentText,
+            FilePath: fullPath ?? "", FileIsLeft: false));
+        DiffOpenRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す（確認はビュー側で済ませて呼ぶ）。</summary>
+    public async Task RestoreFileAtRevisionAsync(GitLogRow row)
+    {
+        if (RevisionTarget(row) is not { } target) return;
+        var (hash, shortHash, path) = target;
+        await Commands.RestoreFileAtRevisionAsync(hash, shortHash, path);
+    }
+
+    /// <summary>この節の操作の前提（ファイル履歴＋コミット行）が揃っているか。揃っていなければ null。</summary>
+    private (string Hash, string ShortHash, string Path)? RevisionTarget(GitLogRow row)
+    {
+        if (row.Hash is not { } hash || History.ScopedPath is not { Length: > 0 } path
+            || !History.IsFileScoped)
+            return null;
+        return (hash, row.ShortHash ?? hash[..Math.Min(7, hash.Length)], path);
+    }
+
+    private static async Task<(string Title, string Text)> ReadWorkingTreeAsync(string? fullPath)
+    {
+        if (fullPath is null || !System.IO.File.Exists(fullPath))
+            return ("現在（作業ツリーに無し）", "");
+        try
+        {
+            return ("現在", await System.IO.File.ReadAllTextAsync(fullPath));
+        }
+        catch (Exception exception)
+        {
+            return ("現在（読み取り失敗）", exception.Message);
+        }
+    }
+
+    private void SetError(string message)
+    {
+        StatusIsError = true;
+        StatusMessage = message;
     }
 
     // ===== 進行中操作 =====

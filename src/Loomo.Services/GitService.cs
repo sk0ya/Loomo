@@ -28,6 +28,7 @@ public sealed class GitService
     private readonly GitDiffService _diff;
     private readonly GitRebaseService _rebase;
     private readonly GitCompareService _compare;
+    private readonly GitCloneService _clone;
     private readonly GitRepositoryMonitor _monitor;
 
     public GitService(IWorkspaceService workspace)
@@ -46,6 +47,7 @@ public sealed class GitService
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
         _compare = new GitCompareService(_runner);
+        _clone = new GitCloneService(_runner);
         _monitor = new GitRepositoryMonitor(_rootState, _runner);
         _monitor.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
         _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
@@ -95,6 +97,25 @@ public sealed class GitService
     public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(
         string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null)
         => await _history.GetLogAsync(branchRef, limit, skip, pathFilter).ConfigureAwait(false);
+
+    /// <summary>絞り込み条件付きでコミットログを引く（作者・本文・日付は git 側で篩われる）。</summary>
+    public Task<IReadOnlyList<GitLogRow>> GetLogAsync(GitLogQuery query) => _history.GetLogAsync(query);
+
+    // ===== 特定リビジョンのファイル =====
+
+    /// <summary>そのコミット時点のファイル内容（失敗は理由付き）。</summary>
+    public Task<GitCommandResult> GetFileAtRevisionAsync(string revision, string relativePath) =>
+        _diff.GetFileAtRevisionAsync(revision, relativePath);
+
+    /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す（履歴は書き換えない）。</summary>
+    public Task<GitCommandResult> RestoreFileAtRevisionAsync(string revision, string relativePath) =>
+        _diff.RestoreFileAtRevisionAsync(revision, relativePath);
+
+    /// <summary>リポジトリをクローンする（ワークスペースの現在の対象には触らない）。</summary>
+    public Task<GitCloneResult> CloneAsync(
+        string url, string parentDirectory, string? folderName = null,
+        System.Threading.CancellationToken cancellationToken = default) =>
+        _clone.CloneAsync(url, parentDirectory, folderName, cancellationToken);
 
     public Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3) =>
         _diff.GetDiffTextAsync(entry, staged, contextLines);
@@ -162,11 +183,40 @@ public sealed class GitService
 
     public Task<GitCommandResult> FetchAsync() => _branches.FetchAsync();
     public Task<GitCommandResult> PullAsync() => _branches.PullAsync();
+
+    /// <summary>取り込み方（マージ／リベース／早送りのみ）を指定してプルする。</summary>
+    public Task<GitCommandResult> PullAsync(GitPullMode mode) => _branches.PullAsync(mode);
     public Task<GitCommandResult> PullBranchAsync(GitBranchInfo branch) => _branches.PullBranchAsync(branch);
 
     public Task<GitCommandResult> PushAsync() => _branches.PushAsync();
+
+    /// <summary>強制プッシュ（<c>--force-with-lease</c>）。リベースや amend の後の押し直し用。</summary>
+    public Task<GitCommandResult> PushAsync(bool force) => _branches.PushAsync(force);
     public Task<GitCommandResult> PushBranchAsync(GitBranchInfo branch, string? defaultRemote) =>
         _branches.PushBranchAsync(branch, defaultRemote);
+    public Task<GitCommandResult> PushBranchAsync(
+        GitBranchInfo branch, string? defaultRemote, bool force) =>
+        _branches.PushBranchAsync(branch, defaultRemote, force);
+
+    /// <summary>リモート上のブランチを削除する（<c>origin/foo</c> 形式で渡す）。</summary>
+    public Task<GitCommandResult> DeleteRemoteBranchAsync(string remoteBranch) =>
+        _branches.DeleteRemoteBranchAsync(remoteBranch);
+
+    // ===== 上流・リモートの管理 =====
+
+    public Task<GitCommandResult> SetUpstreamAsync(string branch, string upstream) =>
+        _branches.SetUpstreamAsync(branch, upstream);
+
+    public Task<GitCommandResult> UnsetUpstreamAsync(string branch) =>
+        _branches.UnsetUpstreamAsync(branch);
+
+    public Task<GitCommandResult> AddRemoteAsync(string name, string url) =>
+        _branches.AddRemoteAsync(name, url);
+
+    public Task<GitCommandResult> SetRemoteUrlAsync(string name, string url) =>
+        _branches.SetRemoteUrlAsync(name, url);
+
+    public Task<GitCommandResult> RemoveRemoteAsync(string name) => _branches.RemoveRemoteAsync(name);
 
     public Task<GitCommandResult> CheckoutAsync(string branch) => _branches.CheckoutAsync(branch);
 

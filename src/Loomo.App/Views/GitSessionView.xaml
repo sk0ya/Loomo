@@ -237,9 +237,16 @@
                                     <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuDelete" Header="削除" Click="OnBranchDelete" />
+                                    <MenuItem x:Name="BranchMenuDeleteRemote" Header="リモートから削除…"
+                                              Click="OnBranchDeleteRemote" />
+                                    <Separator />
+                                    <MenuItem x:Name="BranchMenuSetUpstream" Header="上流を設定…" Click="OnBranchSetUpstream" />
+                                    <MenuItem x:Name="BranchMenuUnsetUpstream" Header="上流を解除" Click="OnBranchUnsetUpstream" />
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuPull" Header="プル" Click="OnBranchPull" />
                                     <MenuItem x:Name="BranchMenuPush" Header="プッシュ" Click="OnBranchPush" />
+                                    <MenuItem x:Name="BranchMenuPushForce" Header="強制プッシュ（--force-with-lease）…"
+                                              Click="OnBranchPushForce" />
                                 </ContextMenu>
                             </TreeView.ContextMenu>
                         </TreeView>
@@ -252,6 +259,7 @@
                     <Grid Grid.Row="2">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" MinHeight="40" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
@@ -288,8 +296,42 @@
                             </ListBox>
                         </DockPanel>
 
+                        <!-- リモート一覧。行の右クリックで URL 変更・削除、見出しの「＋」で追加。
+                             リモートが1つも無いリポジトリでも見出しは出す（＝「追加できる場所」がここだと分かる）。 -->
+                        <DockPanel Grid.Row="1" Margin="0,6,0,0">
+                            <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
+                                <TextBlock DockPanel.Dock="Left" Text="リモート" VerticalAlignment="Center"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
+                                        Content="＋ 追加" ToolTip="リモートを追加…" Click="OnRemoteAdd" />
+                            </DockPanel>
+                            <ListBox x:Name="RemoteList" Style="{StaticResource GitList}"
+                                     ItemsSource="{Binding Remotes}" MaxHeight="120"
+                                     PreviewMouseRightButtonDown="OnListRightClickSelect">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="URL を変更…" Click="OnRemoteSetUrl" />
+                                        <MenuItem Header="URL をコピー" Click="OnRemoteCopyUrl" />
+                                        <Separator />
+                                        <MenuItem Header="削除…" Click="OnRemoteRemove" />
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True" ToolTip="{Binding Url}">
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Name}"
+                                                       FontWeight="SemiBold" Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding Url}" TextTrimming="CharacterEllipsis"
+                                                       FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource FgDim}" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+
                         <!-- サブモジュール一覧（サブモジュールが無いワークスペースではセクションごと隠す） -->
-                        <DockPanel Grid.Row="1" Margin="0,6,0,0"
+                        <DockPanel Grid.Row="2" Margin="0,6,0,0"
                                    Visibility="{Binding Submodules.Count, Converter={StaticResource CountToVis}}">
                             <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
                                 <TextBlock DockPanel.Dock="Left" Text="サブモジュール" VerticalAlignment="Center"
@@ -407,6 +449,15 @@
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff" />
+                                <!-- ファイル履歴（パス絞り込み）中だけ出す「その頃のこのファイル」。
+                                     OnCommitContextMenuOpening が表示を切り替える。 -->
+                                <Separator x:Name="FileRevisionSeparator" />
+                                <MenuItem x:Name="FileRevisionOpenMenuItem"
+                                          Header="この版のファイルをエディタで開く" Click="OnCommitOpenFileRevision" />
+                                <MenuItem x:Name="FileRevisionCompareMenuItem"
+                                          Header="この版と現在のファイルを比較" Click="OnCommitCompareFileRevision" />
+                                <MenuItem x:Name="FileRevisionRestoreMenuItem"
+                                          Header="この版の内容へ戻す…" Click="OnCommitRestoreFileRevision" />
                                 <Separator />
                                 <MenuItem Header="ここから新しいブランチを作成…" Click="OnCommitCreateBranch" />
                                 <MenuItem Header="タグを作成…" Click="OnCommitCreateTag" />

@@ -66,6 +66,36 @@ public sealed class GitDiffService
         return (baseContent, ours, theirs);
     }
 
+    // ===== 特定リビジョンのファイル =====
+
+    /// <summary>
+    /// そのコミット時点のファイル内容（<c>git show &lt;rev&gt;:&lt;path&gt;</c>）。存在しなければ理由付きで失敗を返す
+    /// （そのコミットではまだ無かった／別名だったファイルを「空ファイル」と偽らないため）。
+    /// <paramref name="relativePath"/> はリポジトリルート基準・"/" 区切り。
+    /// </summary>
+    public async Task<GitCommandResult> GetFileAtRevisionAsync(string revision, string relativePath)
+    {
+        var path = Normalize(relativePath);
+        var result = await _runner
+            .RunAsync(GitCompareArgs.LiteralPathspecs, "show", $"{revision}:{path}")
+            .ConfigureAwait(false);
+        return result.Success
+            ? result
+            : new GitCommandResult(result.ExitCode, "",
+                $"{revision} にこのファイルはありません（{path}）。\n{result.Error}".TrimEnd());
+    }
+
+    /// <summary>
+    /// 作業ツリーのファイルをそのコミット時点の内容へ戻す（<c>git checkout &lt;rev&gt; -- &lt;path&gt;</c>）。
+    /// インデックスにも入るので、そのままコミットすれば「戻した」というコミットになる（履歴は書き換えない）。
+    /// </summary>
+    public Task<GitCommandResult> RestoreFileAtRevisionAsync(string revision, string relativePath) =>
+        _mutations.ExecuteAsync(
+            GitCompareArgs.LiteralPathspecs, "checkout", revision, "--", Normalize(relativePath));
+
+    private static string Normalize(string relativePath) =>
+        relativePath.Replace('\\', '/').TrimStart('/');
+
     public async Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse)
     {
         var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
