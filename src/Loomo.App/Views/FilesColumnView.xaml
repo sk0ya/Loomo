@@ -385,10 +385,17 @@
                 </ScrollViewer>
             </DockPanel>
 
-            <!-- 場所一覧。フォルダーアイコンで開閉する本体。最近／頻繁もこの中の通常グループとして表示する。 -->
-            <Expander x:Name="PlacesExpander" DockPanel.Dock="Left" ExpandDirection="Right"
-                      IsExpanded="False" Expanded="OnPlacesExpanded"
-                      Foreground="{DynamicResource Fg}" Margin="0,0,4,0">
+            <Grid x:Name="PlacesAndFilesLayout">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="PlacesColumn" Width="0" MinWidth="0" MaxWidth="420" />
+                    <ColumnDefinition x:Name="PlacesSplitterColumn" Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 場所一覧。フォルダーアイコンで開閉する本体。最近／頻繁もこの中の通常グループとして表示する。 -->
+                <Expander x:Name="PlacesExpander" Grid.Column="0" ExpandDirection="Right"
+                          IsExpanded="False" Expanded="OnPlacesExpanded" Collapsed="OnPlacesCollapsed"
+                          Foreground="{DynamicResource Fg}" Margin="0,0,4,0">
                 <!-- 見出しは持たせない。開閉の入口はツールバー左のフォルダーアイコンだけにし、
                      Expander の中身だけをその直下へ配置する。 -->
                 <Expander.Template>
@@ -401,10 +408,10 @@
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Expander.Template>
-                <Border Width="240" Background="{DynamicResource Panel}"
+                <Border MinWidth="180" Background="{DynamicResource Panel}"
                         BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="4">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Places}" MinWidth="240">
+                        <ItemsControl ItemsSource="{Binding Places}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:FilesPlaceGroup}">
                                     <StackPanel>
@@ -430,10 +437,15 @@
                         </ItemsControl>
                     </ScrollViewer>
                 </Border>
-            </Expander>
+                </Expander>
+                <GridSplitter x:Name="PlacesSplitter" Grid.Column="1" Width="5"
+                              HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                              ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                              Background="{DynamicResource Border}" Visibility="Collapsed" />
 
             <!-- パンくず項目を選んだときの VS Code 風ピッカー。兄弟フォルダーをルートにして、
                  子フォルダーは展開矢印から辿れる。 -->
+                <DockPanel Grid.Column="2">
             <Popup x:Name="BreadcrumbPickerPopup" Placement="Bottom" StaysOpen="False"
                    AllowsTransparency="True">
                 <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
@@ -825,6 +837,8 @@
                            FontSize="{DynamicResource Fs12}" HorizontalAlignment="Center" Margin="0,24,0,0"
                            IsHitTestVisible="False"
                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
+            </Grid>
+                </DockPanel>
             </Grid>
         </DockPanel>
     </Border>

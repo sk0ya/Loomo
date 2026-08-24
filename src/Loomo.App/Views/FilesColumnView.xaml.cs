@@ -22,6 +22,7 @@ public partial class FilesColumnView : UserControl
     private FilesColumnKey? _resizingColumn;
     private double _resizeStartX;
     private double _resizeStartWidth;
+    private double _placesPaneWidth = 240;
 
     public FilesColumnView()
     {
@@ -121,7 +122,21 @@ public partial class FilesColumnView : UserControl
 
     // ===== 場所（ワークスペース・ピン留め・クイックアクセス・PC） =====
 
-    private void OnPlacesExpanded(object sender, RoutedEventArgs e) => Vm?.LoadPlaces();
+    private void OnPlacesExpanded(object sender, RoutedEventArgs e)
+    {
+        if (PlacesColumn.Width.Value < 1)
+            PlacesColumn.Width = new GridLength(Math.Clamp(_placesPaneWidth, 180, 420));
+        PlacesSplitter.Visibility = Visibility.Visible;
+        Vm?.LoadPlaces();
+    }
+
+    private void OnPlacesCollapsed(object sender, RoutedEventArgs e)
+    {
+        if (PlacesColumn.ActualWidth >= 1)
+            _placesPaneWidth = Math.Clamp(PlacesColumn.ActualWidth, 180, 420);
+        PlacesSplitter.Visibility = Visibility.Collapsed;
+        PlacesColumn.Width = new GridLength(0);
+    }
 
     private bool _breadcrumbPickerButtonPressed;
 
