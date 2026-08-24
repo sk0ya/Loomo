@@ -713,6 +713,7 @@
                          PreviewMouseRightButtonDown="OnListPreviewMouseRightButtonDown"
                          MouseDoubleClick="OnListMouseDoubleClick"
                          PreviewKeyDown="OnListPreviewKeyDown"
+                         PreviewTextInput="OnListPreviewTextInput"
                          DragOver="OnListDragOver"
                          Drop="OnListDrop">
                     <ListBox.Style>
@@ -774,6 +775,12 @@
                             <MenuItem Header="開く" Tag="Single" Click="OnOpenClick" />
                             <MenuItem Header="ブラウザで開く" Tag="Html" Click="OnOpenInBrowserClick" />
                             <MenuItem Header="既定のアプリで開く" Tag="FileOnly" Click="OnOpenWithDefaultAppClick" />
+                            <MenuItem Header="アプリで開く…" Tag="Selection" Click="OnOpenWithAppClick"
+                                      ToolTip="Windows の「プログラムから開く」を出します" />
+                            <MenuItem Header="共有" Tag="Selection" Click="OnShareClick"
+                                      ToolTip="Windows の共有ダイアログへ渡します" />
+                            <MenuItem Header="送る" Tag="Selection" Click="OnSendToClick"
+                                      ToolTip="Windows の「送る」メニューへ渡します" />
                             <Separator />
                             <MenuItem Header="新規ファイル" Click="OnNewFileClick"
                                       ToolTip="名前と拡張子を選んで作成します" />
@@ -784,6 +791,8 @@
                             <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
                             <MenuItem Header="複製" InputGestureText="Ctrl+D" Tag="Selection" Click="OnDuplicateClick"
                                       ToolTip="同じフォルダーに「 - コピー」を付けて複製します" />
+                            <MenuItem Header="ZIPに圧縮" Tag="Selection" Click="OnCompressToZipClick"
+                                      ToolTip="選択項目を同じフォルダーの ZIP にまとめます（Ctrl+Z で取り消せます）" />
                             <Separator />
                             <MenuItem Header="名前の変更" InputGestureText="F2" Tag="Single" Click="OnRenameClick" />
                             <MenuItem Header="削除" InputGestureText="Delete" Tag="Selection" Click="OnDeleteClick" />
@@ -831,6 +840,16 @@
                             <!-- ピンの実体はツリーと同じ（IFolderPinStore）。 -->
                             <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
                             <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />
+                            <!-- Windows Explorer 側のクイックアクセス。Loomo のルートピンとは別物なので
+                                 名前で区別する（実体は Explorer が正本）。 -->
+                            <MenuItem Header="クイックアクセスにピン留め" Tag="QuickAccessPinnable"
+                                      Click="OnQuickAccessPinClick" />
+                            <MenuItem Header="クイックアクセスから解除" Tag="QuickAccessUnpinnable"
+                                      Click="OnQuickAccessUnpinClick" />
+                            <Separator />
+                            <MenuItem Header="プロパティ" InputGestureText="Alt+Enter" Tag="Selection"
+                                      Click="OnPropertiesClick"
+                                      ToolTip="サイズ、日時、属性、場所、権限を表示します" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>

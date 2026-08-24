@@ -24,10 +24,29 @@ public partial class FilesColumnView : UserControl
     private double _resizeStartWidth;
     private double _placesPaneWidth = 240;
 
+    // Explorer と同じ type-ahead 選択。キー入力が途切れたら次の入力を新しい検索にする
+    // （間隔はツリーと同じ 800ms）。
+    private string _typeAheadText = string.Empty;
+    private readonly DispatcherTimer _typeAheadResetTimer =
+        new() { Interval = TimeSpan.FromMilliseconds(800) };
+
     public FilesColumnView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        _typeAheadResetTimer.Tick += (_, _) =>
+        {
+            _typeAheadResetTimer.Stop();
+            _typeAheadText = string.Empty;
+        };
+        // 閉じたカラムの裏で ZIP 生成やプロパティ読み取りを走らせ続けない
+        // （ZIP は途中の一時ファイルもコマンド側が片付ける）。
+        Unloaded += (_, _) =>
+        {
+            _typeAheadResetTimer.Stop();
+            _propertiesLoadCts?.Cancel();
+            _zipOperationCts?.Cancel();
+        };
         // クリック・フォーカスのどちらでも「操作対象のカラム」になる。
         PreviewMouseDown += (_, _) => Vm?.NotifyActivated();
         PreviewGotKeyboardFocus += (_, _) => Vm?.NotifyActivated();
@@ -335,7 +354,7 @@ public partial class FilesColumnView : UserControl
         if (Vm is null)
             return;
 
-        // Alt+←／→ は戻る／進む（Alt 付きは SystemKey に入る）。
+        // Alt+←／→ は戻る／進む、Alt+Enter はプロパティ（Alt 付きは SystemKey に入る）。
         if ((e.KeyboardDevice.Modifiers & ModifierKeys.Alt) != 0)
         {
             var systemKey = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -347,6 +366,11 @@ public partial class FilesColumnView : UserControl
             else if (systemKey == Key.Right && Vm.GoForwardCommand.CanExecute(null))
             {
                 Vm.GoForwardCommand.Execute(null);
+                e.Handled = true;
+            }
+            else if (systemKey is Key.Enter or Key.Return)
+            {
+                ShowProperties();
                 e.Handled = true;
             }
             return;
@@ -420,7 +444,70 @@ public partial class FilesColumnView : UserControl
                 Vm.RefreshCommand.Execute(null);
                 e.Handled = true;
                 break;
+            // TUI ファイラーと同じ j/k 移動。ツリーと同じ語彙にそろえる（そちらは §Vim 操作として
+            // 先に入っていた）。1文字目が j/k のファイルへは type-ahead ではなく「/」の絞り込みで届く。
+            case Key.J:
+                MoveSelection(delta: 1);
+                e.Handled = true;
+                break;
+            case Key.K:
+                MoveSelection(delta: -1);
+                e.Handled = true;
+                break;
         }
+    }
+
+    /// <summary>表示順（絞り込み・並べ替え・グループ化の後）の隣へ選択を移す。端では止まる。</summary>
+    private void MoveSelection(int delta)
+    {
+        var items = EntryList.Items.OfType<FileEntryViewModel>().ToList();
+        var currentIndex = EntryList.SelectedItem is FileEntryViewModel current
+            ? items.IndexOf(current)
+            : -1;
+        var index = FolderTreeKeyboardNavigation.FindAdjacentIndex(items.Count, currentIndex, delta);
+        if (index < 0)
+            return;
+        EntryList.SelectedItems.Clear();
+        EntryList.SelectedItem = items[index];
+        EntryList.ScrollIntoView(items[index]);
+    }
+
+    // 一覧への直接の文字入力は Explorer と同じ type-ahead 選択にする。j/k は上の KeyDown で
+    // 移動として処理済みなので、ここには通常の文字入力だけが届く。
+    private void OnListPreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.Text)
+            || (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
+            return;
+
+        var items = EntryList.Items.OfType<FileEntryViewModel>().ToList();
+        if (items.Count == 0)
+            return;
+
+        _typeAheadResetTimer.Stop();
+        _typeAheadText += e.Text;
+        var names = items.Select(entry => entry.Name).ToList();
+        var currentIndex = EntryList.SelectedItem is FileEntryViewModel current
+            ? items.IndexOf(current)
+            : -1;
+        var matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(names, _typeAheadText, currentIndex);
+
+        // 入力が続いて一致しなくなった場合は、最後の文字を新しい検索の先頭として試す。
+        if (matchIndex < 0 && _typeAheadText.Length > e.Text.Length)
+        {
+            _typeAheadText = e.Text;
+            matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(names, _typeAheadText, currentIndex);
+        }
+
+        if (matchIndex >= 0)
+        {
+            EntryList.SelectedItems.Clear();
+            EntryList.SelectedItem = items[matchIndex];
+            EntryList.ScrollIntoView(items[matchIndex]);
+        }
+
+        _typeAheadResetTimer.Start();
+        e.Handled = true;
     }
 
     // ===== コンテキストメニュー =====
@@ -453,6 +540,9 @@ public partial class FilesColumnView : UserControl
                 "SearchableDir" => single is { IsDirectory: true } && Vm.CanSearchIn(single.FullPath),
                 "Pinnable" => Vm.CanPin(pinTarget),
                 "Unpinnable" => Vm.IsPinned(pinTarget),
+                // Windows Explorer 側のクイックアクセス（Loomo のルートピンとは別物）。
+                "QuickAccessPinnable" => Vm.CanPinToQuickAccess(selection),
+                "QuickAccessUnpinnable" => Vm.CanUnpinFromQuickAccess(selection),
                 "GitMenu" => Vm.CanGitFor(single),
                 "GitBlame" => single is { IsDirectory: false } && Vm.CanGitFor(single),
                 "GitIgnore" => Vm.CanAddToGitignoreFor(single),

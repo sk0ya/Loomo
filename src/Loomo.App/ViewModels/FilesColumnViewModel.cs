@@ -1180,6 +1180,67 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// <summary>そのフォルダーを検索へ送れるか（コンテキストメニューの出し分け）。</summary>
     public bool CanSearchIn(string folder) => Directory.Exists(folder) && _workspace.Contains(folder);
 
+    // ===== Windows シェル連携（アプリで開く／共有／送る／ZIP／プロパティ／クイックアクセス） =====
+    // ロードマップの「Windowsシェル連携」はこのペインの話だが、実装はツリー側にだけ入っていた。
+    // 実体はツリーと同じ DI インスタンス（FolderTreeViewModel が持つもの）へ委譲する——
+    // ここで new すると、ツリーとファイル一覧でクイックアクセスの状態が別々になる。
+
+    private IShellFileOperations? _fallbackShellOperations;
+    private FilePropertiesService? _fallbackFileProperties;
+    private IQuickAccessService? _fallbackQuickAccess;
+
+    public IShellFileOperations ShellOperations =>
+        _folderTree?.ShellOperations ?? (_fallbackShellOperations ??= new ShellFileOperations());
+
+    public FilePropertiesService FileProperties =>
+        _folderTree?.FileProperties ?? (_fallbackFileProperties ??= new FilePropertiesService());
+
+    public IQuickAccessService QuickAccess =>
+        _folderTree?.QuickAccess ?? (_fallbackQuickAccess ??= new WindowsQuickAccessService());
+
+    /// <summary>選択項目を同じ親フォルダーの ZIP にまとめ、生成物のフルパスを返す。
+    /// 履歴はツリーと共有しているので、Ctrl+Z でそのまま取り消せる。
+    ///
+    /// <para>一覧の読み直しはここではせず、呼び出し側（View）が UI スレッドで行う——
+    /// <see cref="Entries"/> は Dispatcher スレッドの持ち物で、await の戻り先を
+    /// このメソッドの都合で決めてしまうと、UI の無い呼び出し元から使えなくなる。</para></summary>
+    public Task<string> CompressEntriesAsync(
+        IEnumerable<FileEntryViewModel> entries,
+        CancellationToken cancellationToken = default)
+    {
+        var paths = entries
+            .Where(entry => entry is not null)
+            .Select(entry => entry.FullPath)
+            .ToArray();
+        return _commands.CompressToZipAsync(paths, cancellationToken);
+    }
+
+    /// <summary>クイックアクセスへ留められる選択か（フォルダーで、まだ留まっていない）。</summary>
+    public bool CanPinToQuickAccess(IEnumerable<FileEntryViewModel> entries)
+        => QuickAccess.IsAvailable && entries.Any(entry =>
+            entry.IsDirectory && QuickAccess.CanPin(entry.FullPath));
+
+    public bool CanUnpinFromQuickAccess(IEnumerable<FileEntryViewModel> entries)
+        => QuickAccess.IsAvailable && entries.Any(entry =>
+            entry.IsDirectory && QuickAccess.IsPinned(entry.FullPath));
+
+    public QuickAccessBatchResult PinToQuickAccess(IEnumerable<FileEntryViewModel> entries)
+        => QuickAccess.PinMany(entries
+            .Where(entry => entry.IsDirectory)
+            .Select(entry => entry.FullPath)
+            .Where(QuickAccess.CanPin));
+
+    public QuickAccessBatchResult UnpinFromQuickAccess(IEnumerable<FileEntryViewModel> entries)
+        => QuickAccess.UnpinMany(entries
+            .Where(entry => entry.IsDirectory)
+            .Select(entry => entry.FullPath)
+            .Where(QuickAccess.IsPinned));
+
+    /// <summary>クイックアクセスを変えた直後は「場所」の短期キャッシュを捨てる
+    /// （捨てないと、留めたばかりのフォルダーが30秒間出てこない）。</summary>
+    public void InvalidateQuickAccessCache()
+        => (_places as IQuickAccessCacheInvalidator)?.InvalidateQuickAccessCache();
+
     /// <summary>FolderTree と同じ Git コンテキストメニューの出し分け。</summary>
     public bool CanGitFor(FileEntryViewModel? entry)
         => entry is not null && _folderTree?.CanGitForPath(entry.FullPath) == true;

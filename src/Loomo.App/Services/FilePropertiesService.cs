@@ -31,7 +31,10 @@ public sealed record FilePropertyItem(
     string? Error,
     string? PermissionError = null)
 {
-    public string KindDisplay => IsDirectory ? "フォルダー" : "ファイル";
+    /// <summary>「種類」。一覧の同名列と同じく、エクスプローラーの種類名をシェルから引く
+    /// （同じファイルの種類が、一覧では「Markdown ソース ファイル」・プロパティでは「ファイル」、
+    /// と食い違わないようにする）。</summary>
+    public string KindDisplay => ShellTypeNames.Describe(Name, IsDirectory);
 
     public string SizeDisplay => Error is not null
         ? "取得できません"
