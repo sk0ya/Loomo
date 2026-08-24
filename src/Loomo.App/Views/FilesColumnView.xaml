@@ -910,10 +910,10 @@
                                      幅の制約が届かず TextTrimming が効かないため、名前は必ずセル幅いっぱいの
                                      1要素として置く（両端が切れて読めない、という以前の見え方の原因）。
                                      状態文字はアイコンの右上に重ねる——名前の前に置くと中央揃えが崩れる。 -->
-                                <StackPanel x:Name="LargeIconsLayout" Visibility="Collapsed" Width="112" Height="118"
+                                <StackPanel x:Name="LargeIconsLayout" Visibility="Collapsed" Width="112" Height="150"
                                             Margin="4,6" HorizontalAlignment="Center">
-                                    <Grid Width="64" Height="64" HorizontalAlignment="Center">
-                                        <Image Source="{Binding IconImage}" Width="64" Height="64" />
+                                    <Grid Width="96" Height="96" HorizontalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" Width="96" Height="96" />
                                         <TextBlock Style="{StaticResource FilesGitBadge}"
                                                    HorizontalAlignment="Right" VerticalAlignment="Top" />
                                     </Grid>
@@ -921,10 +921,10 @@
                                                TextAlignment="Center" TextWrapping="Wrap" MaxHeight="44"
                                                Margin="2,6,2,0" FontSize="{DynamicResource Fs12}" />
                                 </StackPanel>
-                                <StackPanel x:Name="MediumIconsLayout" Visibility="Collapsed" Width="92" Height="100"
+                                <StackPanel x:Name="MediumIconsLayout" Visibility="Collapsed" Width="92" Height="104"
                                             Margin="4,5" HorizontalAlignment="Center">
-                                    <Grid Width="40" Height="40" HorizontalAlignment="Center">
-                                        <Image Source="{Binding IconImage}" Width="40" Height="40" />
+                                    <Grid Width="48" Height="48" HorizontalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" Width="48" Height="48" />
                                         <TextBlock Style="{StaticResource FilesGitBadge}"
                                                    HorizontalAlignment="Right" VerticalAlignment="Top" />
                                     </Grid>
