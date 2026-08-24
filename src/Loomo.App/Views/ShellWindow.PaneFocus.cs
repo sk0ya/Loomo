@@ -221,8 +221,12 @@ public partial class ShellWindow {
         _focusedRegion = FocusTarget.Sidebar;
         if (TryRestoreFocus(_lastSidebarFocus, SidebarContainer))
             return;
+        // Explorer は中身のツリーへ直接フォーカス（先頭未選択なら選ぶ）。ツリーはセクション
+        // （ExplorerSection）の中なので、可視の子がそのまま FolderTreeView とは限らない。
         if (view is FolderTreeView tree)
-            tree.FocusTree();           // Explorer は中身のツリーへ直接フォーカス（先頭未選択なら選ぶ）
+            tree.FocusTree();
+        else if (ReferenceEquals(view, ExplorerSection))
+            SidebarFolderTree.FocusTree();
         else
             FocusFirstFocusable(view);  // 他パネルは最初のフォーカス可能要素へ
     }

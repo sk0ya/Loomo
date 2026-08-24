@@ -355,9 +355,9 @@ public partial class ShellWindow {
         if (string.IsNullOrEmpty(path))
             return;
         _vm.RevealExplorerPanel();
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
-            if (SidebarContainer.Children.OfType<FolderTreeView>().FirstOrDefault() is { } tree)
-                tree.RevealPath(path);
-        }));
+        // ツリーは SidebarContainer の直下ではなく ExplorerSection（タブ一覧と分割した行）の中に
+        // 入っているので、直下の子を探すと必ず null になって同期が黙って効かなくなる。名前で持つ。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded,
+            new Action(() => SidebarFolderTree.RevealPath(path)));
     }
 }
