@@ -40,6 +40,41 @@ public sealed class FilesPanePresentationTests
 
         // 選択中は Accent 背景の上で状態色が読めないので、名前だけ AccentFg へ戻す。
         Assert.Contains("IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}", xaml);
+
+        // バッジは「状態文字があるとき」出す。EmptyToVis はウォーターマーク用（空のとき出す）で、
+        // これを使っていたためバッジは変更のある行でだけ消えていた＝一度も出ていなかった。
+        var badgeStyle = Section(xaml, "x:Key=\"FilesGitBadge\"", "</Style>");
+        Assert.Contains("GitStatusBadge, Converter={StaticResource NonEmptyToVis}", badgeStyle);
+        Assert.DoesNotContain("Converter={StaticResource EmptyToVis}", badgeStyle);
+    }
+
+    [Fact]
+    public void 状態バッジと名前の色は同じ状態から引く()
+    {
+        // どの状態でも「名前の色」と「バッジ」の両方が定義されていること。片方だけだと
+        // 状態が色でしか分からない／文字でしか分からない行が混ざる。
+        foreach (var status in new[] { "Modified", "Added", "Untracked", "Deleted", "Renamed",
+                                       "Conflicted", "Staged", "Ignored", "DirectoryChanged" })
+        {
+            var entry = new FileEntryViewModel(@"C:\ws\a.txt", isDirectory: false, 0, DateTime.Now)
+            {
+                GitStatus = Enum.Parse<GitChangeKind>(status),
+            };
+            Assert.False(string.IsNullOrEmpty(entry.GitStatusBadge), $"{status} のバッジが空");
+            Assert.False(string.IsNullOrEmpty(entry.GitStatusTooltip), $"{status} の説明が空");
+        }
+
+        var clean = new FileEntryViewModel(@"C:\ws\a.txt", isDirectory: false, 0, DateTime.Now);
+        Assert.Equal("", clean.GitStatusBadge);
+    }
+
+    private static string Section(string text, string startMarker, string endMarker)
+    {
+        var start = text.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"{startMarker} が見つからない");
+        var end = text.IndexOf(endMarker, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"{endMarker} が見つからない");
+        return text[start..end];
     }
 
     [Fact]

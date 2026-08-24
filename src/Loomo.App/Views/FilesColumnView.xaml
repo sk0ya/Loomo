@@ -299,8 +299,10 @@
             <Setter Property="ToolTip" Value="{Binding GitStatusTooltip}" />
             <Setter Property="Foreground"
                     Value="{Binding GitStatus, Converter={StaticResource GitStatusBrush}}" />
+            <!-- 状態文字があるときに出す。EmptyToVis はウォーターマーク用（空のとき出す）の逆で、
+                 これを使っていたためバッジは変更のある行でだけ消えていた。 -->
             <Setter Property="Visibility"
-                    Value="{Binding GitStatusBadge, Converter={StaticResource EmptyToVis}}" />
+                    Value="{Binding GitStatusBadge, Converter={StaticResource NonEmptyToVis}}" />
             <Setter Property="FontFamily" Value="Consolas" />
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
             <Setter Property="FontWeight" Value="SemiBold" />
