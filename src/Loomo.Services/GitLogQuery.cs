@@ -87,10 +87,12 @@ public sealed record GitLogQuery
             args.Add("--all-match");
 
         // 表示日時（作成日時）と git 側の基準（コミット日時）のずれを吸収するため前後1日広げる。
+        // 端（0001-01-01／9999-12-31）は広げようがないのでそのまま使う——date:9999 のような
+        // 入力は打てるので、ここで AddDays が例外を投げると一覧の更新ごと落ちる。
         if (Since is { } since)
-            args.Add($"--since={Format(since.AddDays(-1))} 00:00:00");
+            args.Add($"--since={Format(WidenBack(since))} 00:00:00");
         if (Until is { } until)
-            args.Add($"--until={Format(until.AddDays(1))} 23:59:59");
+            args.Add($"--until={Format(WidenForward(until))} 23:59:59");
 
         if (FollowRenames && !string.IsNullOrWhiteSpace(PathFilter))
             args.Add("--follow");
@@ -102,6 +104,12 @@ public sealed record GitLogQuery
         }
         return args.ToArray();
     }
+
+    private static DateOnly WidenBack(DateOnly value) =>
+        value > DateOnly.MinValue ? value.AddDays(-1) : value;
+
+    private static DateOnly WidenForward(DateOnly value) =>
+        value < DateOnly.MaxValue ? value.AddDays(1) : value;
 
     private static string Format(DateOnly value) =>
         value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

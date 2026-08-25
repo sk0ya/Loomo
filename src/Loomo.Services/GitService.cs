@@ -108,8 +108,9 @@ public sealed class GitService
         _diff.GetFileAtRevisionAsync(revision, relativePath);
 
     /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す（履歴は書き換えない）。</summary>
-    public Task<GitCommandResult> RestoreFileAtRevisionAsync(string revision, string relativePath) =>
-        _diff.RestoreFileAtRevisionAsync(revision, relativePath);
+    public Task<GitCommandResult> RestoreFileAtRevisionAsync(
+        string revision, string relativePath, string? renamedTo = null) =>
+        _diff.RestoreFileAtRevisionAsync(revision, relativePath, renamedTo);
 
     /// <summary>リポジトリをクローンする（ワークスペースの現在の対象には触らない）。</summary>
     public Task<GitCloneResult> CloneAsync(
@@ -145,6 +146,10 @@ public sealed class GitService
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 
     public Task<string> GetCommitPatchAsync(string hash) => _history.GetCommitPatchAsync(hash);
+
+    /// <summary>リネームを追った履歴の「コミットごとのパス」表。</summary>
+    public Task<IReadOnlyDictionary<string, string>> GetRenameTrailAsync(string relativePath) =>
+        _history.GetRenameTrailAsync(relativePath);
 
     public Task<IReadOnlyList<GitCommitFileChange>> GetRangeChangesAsync(string? fromHash, string toHash) =>
         _history.GetRangeChangesAsync(fromHash, toHash);

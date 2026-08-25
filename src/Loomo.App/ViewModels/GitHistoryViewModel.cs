@@ -37,6 +37,9 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     /// <summary>まとめて絞り込みを書き換えている間（＝自分で読み直す側）だけ立てる抑止旗。</summary>
     private bool _suppressRequery;
 
+    /// <summary>進行中の追加読み込み。同時に呼ばれたら新しく走らせず、これに相乗りする。</summary>
+    private Task<bool>? _loadingMore;
+
     [ObservableProperty] private GitLogRow? _selectedLogRow;
     [ObservableProperty] private string _commitDetail = "";
     [ObservableProperty] private bool _isPathScoped;
@@ -190,20 +193,44 @@ public sealed partial class GitHistoryViewModel : ObservableObject
         UpdateAuthorOptions();
     }
 
-    public async Task LoadMoreAsync()
+    /// <summary>次のページを足す。<b>一覧が伸びたかどうかを返す</b>——呼び直しても進まない状態
+    /// （もう無い／読み直しに追い越された）を呼び出し側が見分けられないと、
+    /// 「見つかるまで読み進める」側が終わらない輪に入る（<see cref="SelectLoadedOrOlderAsync"/>）。
+    ///
+    /// <para>既に走っている読み込みがあれば<b>それに相乗りする</b>。以前はここで即 return して
+    /// いたが、そうすると一覧のスクロール（撃ちっぱなしの <c>LoadMoreAsync</c>）の最中に
+    /// 「そのコミットまで手繰る」が始まったとき、戻り先が同期完了になって <c>await</c> が
+    /// UI スレッドを譲らず、走っている読み込みの続きが永久に走れない＝画面ごと固まっていた。</para></summary>
+    public Task<bool> LoadMoreAsync()
     {
-        if (IsLoadingMoreLog || !HasMoreLog) return;
+        if (_loadingMore is { } running) return running;
+        if (!HasMoreLog) return Task.FromResult(false);
+        var task = LoadMoreCoreAsync();
+        // 同期で終わっていたら finally が先に走って片付け済み。完了済みの Task を覚え込ませると
+        // 以降ずっとそれを返して、二度と読み進まなくなる。
+        if (!task.IsCompleted) _loadingMore = task;
+        return task;
+    }
+
+    private async Task<bool> LoadMoreCoreAsync()
+    {
         IsLoadingMoreLog = true;
         try
         {
             var generation = _loadGeneration;
+            var before = LogRows.Count;
             var page = await _query.GetLogPageAsync(BuildQuery(_loadedCommitCount));
             // 読み込み中に読み直しが始まっていたら、この続きはもう別の一覧のもの
-            if (generation != _loadGeneration) return;
+            if (generation != _loadGeneration) return false;
             ApplyPage(page, SelectedLogRow?.Hash);
             UpdateAuthorOptions();
+            return LogRows.Count > before;
         }
-        finally { IsLoadingMoreLog = false; }
+        finally
+        {
+            _loadingMore = null;
+            IsLoadingMoreLog = false;
+        }
     }
 
     public Task ShowBranchAsync(GitBranchInfo branch)
@@ -308,11 +335,10 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     private async Task SelectLoadedOrOlderAsync(string hash)
     {
         var target = FindCommitRow(hash);
-        while (target is null && HasMoreLog)
-        {
-            await LoadMoreAsync();
+        // 進まなくなったら抜ける。HasMoreLog だけで回すと、読み込みが進まない状態
+        // （読み直しに追い越された等）でそのまま回り続ける。
+        while (target is null && HasMoreLog && await LoadMoreAsync())
             target = FindCommitRow(hash);
-        }
         if (target is null) return;
         // 既に手元にある行なので、読み直さずに篩だけ外して見えるようにする
         // （ここで読み直すと、この後の選択が入れ替わった一覧の上で迷子になる）。

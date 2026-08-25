@@ -256,6 +256,37 @@ public sealed class GitRemoteAndRevisionTests : IAsyncLifetime
         Assert.Equal(new[] { "改名" }, Subjects(withoutFollow));
     }
 
+    [Fact]
+    public async Task リネーム前の版もその時点の名前で引けて今の名前へ戻せる()
+    {
+        // --follow で並べた履歴には「いまの名前では存在しなかったコミット」が混じる。
+        // 名前を解決せずに git show <hash>:<いまのパス> を投げると、追跡で拾えるようにした行が
+        // そっくり「このファイルはありません」で操作できない行になる。
+        var before = await CommitAsync("old.txt", "むかしの内容", "作成");
+        await MustRunAsync("mv", "old.txt", "new.txt");
+        await MustRunAsync("commit", "-m", "改名");
+        await CommitAsync("new.txt", "いまの内容", "更新");
+
+        var trail = await _git.GetRenameTrailAsync("new.txt");
+        Assert.Equal("old.txt", trail[before]);
+
+        var old = await _git.GetFileAtRevisionAsync(before, trail[before]);
+        Assert.True(old.Success, old.Message);
+        Assert.Equal("むかしの内容", old.Output.Trim());
+
+        // 戻し先はいまの名前。昔の名前のファイルが生えてくるのは「戻した」ではない。
+        var restored = await _git.RestoreFileAtRevisionAsync(before, trail[before], renamedTo: "new.txt");
+        Assert.True(restored.Success, restored.Message);
+        Assert.Equal("むかしの内容",
+            (await File.ReadAllTextAsync(Path.Combine(_root, "new.txt"))).Trim());
+        Assert.False(File.Exists(Path.Combine(_root, "old.txt")), "昔の名前のファイルが残っている");
+
+        // インデックスにも昔の名前が残らない（残ると「昔の名前の削除」まで一緒にコミットされる）。
+        var status = await _git.GetStatusAsync();
+        Assert.DoesNotContain(status.Staged.Concat(status.Unstaged),
+            change => change.Path.Contains("old.txt"));
+    }
+
     // ===== クローン =====
 
     [Fact]

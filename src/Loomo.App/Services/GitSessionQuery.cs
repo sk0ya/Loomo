@@ -36,6 +36,10 @@ public sealed class GitSessionQuery
     /// <summary>絞り込み条件込みでログの1ページを引く（条件は git 側で効く）。</summary>
     public Task<IReadOnlyList<GitLogRow>> GetLogPageAsync(GitLogQuery query) => _git.GetLogAsync(query);
 
+    /// <summary>リネームを追った履歴の「コミットごとのパス」表。</summary>
+    public Task<IReadOnlyDictionary<string, string>> GetRenameTrailAsync(string relativePath) =>
+        _git.GetRenameTrailAsync(relativePath);
+
     /// <summary>そのコミット時点のファイル内容（失敗は理由付き）。</summary>
     public Task<GitCommandResult> GetFileAtRevisionAsync(string hash, string relativePath) =>
         _git.GetFileAtRevisionAsync(hash, relativePath);

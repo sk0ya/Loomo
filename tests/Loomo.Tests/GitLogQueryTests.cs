@@ -23,6 +23,27 @@ public class GitLogQueryTests
     }
 
     [Fact]
+    public void 日付の端は広げずにそのまま渡す()
+    {
+        // date:9999 や date:<0001-01-01 は打てる入力。前後1日の余裕を足すところで
+        // DateOnly の端を越えると例外になり、一覧の更新ごと落ちていた。
+        var upper = Args(new GitLogQuery { Until = DateOnly.MaxValue });
+        Assert.Contains("--until=9999-12-31 23:59:59", upper);
+
+        var lower = Args(new GitLogQuery { Since = DateOnly.MinValue });
+        Assert.Contains("--since=0001-01-01 00:00:00", lower);
+
+        // 端でなければ従来どおり前後へ1日広げる。
+        var ordinary = Args(new GitLogQuery
+        {
+            Since = new DateOnly(2026, 8, 10),
+            Until = new DateOnly(2026, 8, 20),
+        });
+        Assert.Contains("--since=2026-08-09 00:00:00", ordinary);
+        Assert.Contains("--until=2026-08-21 23:59:59", ordinary);
+    }
+
+    [Fact]
     public void パスは末尾の区切りより後ろへ置きグロブ解釈を止める()
     {
         var args = new GitLogQuery { PathFilter = "docs/a[1].md" }.ToArguments();

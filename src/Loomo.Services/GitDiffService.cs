@@ -88,10 +88,56 @@ public sealed class GitDiffService
     /// <summary>
     /// 作業ツリーのファイルをそのコミット時点の内容へ戻す（<c>git checkout &lt;rev&gt; -- &lt;path&gt;</c>）。
     /// インデックスにも入るので、そのままコミットすれば「戻した」というコミットになる（履歴は書き換えない）。
+    ///
+    /// <para><paramref name="renamedTo"/> は<b>いまの名前</b>。リネームを跨ぐ版（その時点では
+    /// 別の名前だった）では、git は<b>昔の名前でファイルを生やす</b>だけで、いまのファイルは元のまま
+    /// ＝「戻した」ことにならず、代わりに知らないファイルが1つ増える。そこで生やしたものを
+    /// いまの名前へ移し、昔の名前のインデックス登録を取り消す。</para>
     /// </summary>
-    public Task<GitCommandResult> RestoreFileAtRevisionAsync(string revision, string relativePath) =>
-        _mutations.ExecuteAsync(
-            GitCompareArgs.LiteralPathspecs, "checkout", revision, "--", Normalize(relativePath));
+    public async Task<GitCommandResult> RestoreFileAtRevisionAsync(
+        string revision, string relativePath, string? renamedTo = null)
+    {
+        var source = Normalize(relativePath);
+        var target = Normalize(renamedTo ?? relativePath);
+        var crossesRename = !string.Equals(source, target, StringComparison.OrdinalIgnoreCase);
+        var root = _rootState.CurrentRoot;
+        if (crossesRename && root is null)
+            crossesRename = false;   // 根が分からなければ移せない。素直に checkout だけ行う。
+
+        string? from = null, to = null;
+        if (crossesRename)
+        {
+            from = Path.Combine(root!, source.Replace('/', Path.DirectorySeparatorChar));
+            to = Path.Combine(root!, target.Replace('/', Path.DirectorySeparatorChar));
+            // 昔の名前が「いま別のファイルとして」存在するなら踏み潰さない。
+            if (File.Exists(from))
+                return new GitCommandResult(-1, "",
+                    $"{source} が作業ツリーにあるため戻せません（この版では {target} は {source} という名前でした）。");
+        }
+
+        var checkout = await _mutations
+            .ExecuteAsync(GitCompareArgs.LiteralPathspecs, "checkout", revision, "--", source)
+            .ConfigureAwait(false);
+        if (!checkout.Success || !crossesRename)
+            return checkout;
+
+        try
+        {
+            var directory = Path.GetDirectoryName(to!);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+            File.Move(from!, to!, overwrite: true);
+        }
+        catch (Exception exception)
+        {
+            return new GitCommandResult(-1, "", $"{target} へ書き戻せませんでした: {exception.Message}");
+        }
+
+        // 昔の名前は HEAD に無いので、インデックスを HEAD へ揃えれば登録ごと消える。
+        return await _mutations
+            .ExecuteAsync(GitCompareArgs.LiteralPathspecs, "reset", "-q", "HEAD", "--", source)
+            .ConfigureAwait(false);
+    }
 
     private static string Normalize(string relativePath) =>
         relativePath.Replace('\\', '/').TrimStart('/');

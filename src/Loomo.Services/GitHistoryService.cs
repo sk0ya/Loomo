@@ -39,6 +39,20 @@ public sealed class GitHistoryService
         return result.Success ? GitLogParser.Parse(result.Output) : Array.Empty<GitLogRow>();
     }
 
+    /// <summary>リネームを追ったときの「コミットごとのパス」表を作る（<see cref="GitRenameTrail"/>）。
+    /// 引けなかったら空の表を返す——その場合は呼び出し側がいまのパスのまま扱う。</summary>
+    public async Task<IReadOnlyDictionary<string, string>> GetRenameTrailAsync(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return new Dictionary<string, string>();
+        var result = await _runner
+            .RunAsync("log", "--follow", "--format=%H", "--name-status", "--", relativePath)
+            .ConfigureAwait(false);
+        return result.Success
+            ? GitRenameTrail.Parse(result.Output, relativePath)
+            : new Dictionary<string, string>();
+    }
+
     public async Task<string> GetCommitSummaryAsync(string hash)
     {
         var result = await _runner.RunAsync("show", "--stat", "--format=fuller", hash)

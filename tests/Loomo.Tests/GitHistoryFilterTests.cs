@@ -138,6 +138,21 @@ public sealed class GitHistoryFilterTests : IAsyncLifetime
         Assert.Equal(target, _history.SelectedLogRow?.Hash);
     });
 
+    [Fact]
+    public void 追加読み込みは進めたかどうかを答える() => RunOnDispatcher(async () =>
+    {
+        // 「そのコミットまで読み進める」側はこの答えで輪を抜ける。進んだかを見ずに
+        // HasMoreLog だけで回すと、進まない状態のまま回り続けて画面ごと固まる。
+        await CommitAsync("Alice", "a.txt", "ひとつめ");
+        await _history.ReloadAsync();
+
+        Assert.False(_history.HasMoreLog);
+        Assert.False(await _history.LoadMoreAsync(), "読むものが無いのに進んだと答えている");
+
+        // 手元に無いコミットを指しても、読み進められないだけで戻ってくる（回り続けない）。
+        await _history.SelectCommitAsync(new string('0', 40));
+    });
+
     // ===== 補助 =====
 
     /// <summary>

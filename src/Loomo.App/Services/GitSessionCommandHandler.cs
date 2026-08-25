@@ -57,9 +57,9 @@ public sealed class GitSessionCommandHandler
 
     /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す。</summary>
     public Task<GitCommandResult?> RestoreFileAtRevisionAsync(
-        string hash, string shortHash, string relativePath) =>
-        RunAsync($"{relativePath} を {shortHash} の内容へ戻す",
-            () => _git.RestoreFileAtRevisionAsync(hash, relativePath));
+        string hash, string shortHash, string relativePath, string? renamedTo = null) =>
+        RunAsync($"{renamedTo ?? relativePath} を {shortHash} の内容へ戻す",
+            () => _git.RestoreFileAtRevisionAsync(hash, relativePath, renamedTo));
 
     private static string PullLabel(GitPullMode mode) => mode switch
     {

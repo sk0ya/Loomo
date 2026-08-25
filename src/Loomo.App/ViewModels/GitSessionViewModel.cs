@@ -439,7 +439,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>そのコミット時点の内容をエディタの仮想ドキュメントで開く（読み取り専用の用途）。</summary>
     public async Task OpenFileAtRevisionAsync(GitLogRow row)
     {
-        if (RevisionTarget(row) is not { } target) return;
+        if (await RevisionTargetAsync(row) is not { } target) return;
         var (hash, shortHash, path) = target;
 
         var result = await _query.GetFileAtRevisionAsync(hash, path);
@@ -466,7 +466,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// </summary>
     public async Task CompareFileWithRevisionAsync(GitLogRow row)
     {
-        if (RevisionTarget(row) is not { } target) return;
+        if (await RevisionTargetAsync(row) is not { } target) return;
         var (hash, shortHash, path) = target;
 
         var result = await _query.GetFileAtRevisionAsync(hash, path);
@@ -488,18 +488,41 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す（確認はビュー側で済ませて呼ぶ）。</summary>
     public async Task RestoreFileAtRevisionAsync(GitLogRow row)
     {
-        if (RevisionTarget(row) is not { } target) return;
+        if (await RevisionTargetAsync(row) is not { } target) return;
         var (hash, shortHash, path) = target;
-        await Commands.RestoreFileAtRevisionAsync(hash, shortHash, path);
+        // path はその版での名前。書き戻し先はいまの名前なので、両方を渡す。
+        await Commands.RestoreFileAtRevisionAsync(hash, shortHash, path, History.ScopedPath);
     }
 
-    /// <summary>この節の操作の前提（ファイル履歴＋コミット行）が揃っているか。揃っていなければ null。</summary>
-    private (string Hash, string ShortHash, string Path)? RevisionTarget(GitLogRow row)
+    /// <summary>この節の操作の前提（ファイル履歴＋コミット行）が揃っているか。揃っていなければ null。
+    ///
+    /// <para>パスは<b>そのコミット時点の名前</b>を返す。ファイル履歴は <c>--follow</c> でリネームを
+    /// 追って並べているので、いまの名前のまま <c>git show &lt;hash&gt;:&lt;path&gt;</c> を投げると、
+    /// リネーム前の行では必ず「このファイルはありません」になる（追跡で拾えるようにした行が、
+    /// そっくり操作できない行になっていた）。</para></summary>
+    private async Task<(string Hash, string ShortHash, string Path)?> RevisionTargetAsync(GitLogRow row)
     {
         if (row.Hash is not { } hash || History.ScopedPath is not { Length: > 0 } path
             || !History.IsFileScoped)
             return null;
-        return (hash, row.ShortHash ?? hash[..Math.Min(7, hash.Length)], path);
+        return (hash, row.ShortHash ?? hash[..Math.Min(7, hash.Length)],
+            await ResolveRevisionPathAsync(hash, path));
+    }
+
+    /// <summary>いまのパス絞り込みに対するリネーム追跡表（引けたら覚えておく。パスが変われば作り直す）。</summary>
+    private string? _renameTrailPath;
+    private IReadOnlyDictionary<string, string> _renameTrail =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    private async Task<string> ResolveRevisionPathAsync(string hash, string currentPath)
+    {
+        if (!string.Equals(_renameTrailPath, currentPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _renameTrail = await _query.GetRenameTrailAsync(currentPath);
+            _renameTrailPath = currentPath;
+        }
+        // 表に無いコミット（追跡が使えない git 構成・表が引けなかった）はいまの名前で試す。
+        return _renameTrail.TryGetValue(hash, out var atRevision) ? atRevision : currentPath;
     }
 
     private static async Task<(string Title, string Text)> ReadWorkingTreeAsync(string? fullPath)
