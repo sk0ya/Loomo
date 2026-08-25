@@ -35,6 +35,7 @@ public partial class ShellWindow {
         vm.ExtensionPromptDismissed += (_, _) => OnBrowserExtensionPromptDismissed();
         vm.PasswordsRefreshRequested += (_, _) => _ = LoadSavedPasswordsAsync();
         vm.PasswordsClearRequested += (_, _) => _ = ClearSavedPasswordsAsync();
+        InitializeBrowserImport();
     }
 
     /// <summary>プロファイルを触るための足場。タブが1枚も実体化していないと <c>CoreWebView2</c> が無いので、

@@ -38,6 +38,11 @@ public partial class App : Application
 
         _services.GetRequiredService<AppBootstrapper>().Initialize();
 
+        // 取り込み待ちのログイン情報を流し込む（設計書 §21.5.4）。ここでしかできない——
+        // Login Data は稼働中の WebView2 が掴んでいて書けず、WebView2 がまだ1つも作られていないのは
+        // この瞬間だけ。待ちが無いときはファイルの有無を見るだけで抜ける（起動を遅くしない）。
+        var pendingImport = ApplyPendingPasswordImport();
+
         // 前回のプロセスが残した上書き退避先を片付ける（台帳に控えたぶんだけ）。臨界パスへは載せない。
         _ = System.Threading.Tasks.Task.Run(ConflictBackupJournal.Sweep);
 
@@ -52,6 +57,38 @@ public partial class App : Application
         shell.ContentRendered += (_, _) => StartupProfiler.Mark("ContentRendered（初フレーム）");
         shell.Show();
         StartupProfiler.Mark("Show() 呼び出し完了");
+
+        // 取り込みの結果はここで出す。ToastService は購読者がいなければ黙って捨てる作りで、
+        // 購読者（ToastHostViewModel）が生まれるのは ShellWindow を解決した後——
+        // 適用した場所でそのまま鳴らすと、成功も失敗も<b>誰にも届かない</b>。
+        pendingImport?.Invoke();
+    }
+
+    /// <summary>他のブラウザから取り込んだログイン情報を、WebView2 がまだ動いていないうちに
+    /// プロファイルへ流し込む（設計書 §21.5.4）。待ちが無ければ何もしない。
+    /// <b>失敗しても起動は続ける</b>——取り込みのために部屋が開かないのは本末転倒で、
+    /// 控えは残るので次の起動でやり直せる。</summary>
+    /// <returns>利用者へ伝えることがあれば、それを鳴らす仕事。ウィンドウが出てから呼ぶ。</returns>
+    private static Action? ApplyPendingPasswordImport()
+    {
+        try
+        {
+            if (!new PendingPasswordImportStore().HasPending)
+                return null;
+            var result = LoginDataWriter.ApplyPending(Services.WebViewProfile.UserDataFolder);
+            StartupProfiler.Mark("取り込み待ちのログイン情報を適用");
+            if (result.Error is { } error)
+                return () => ToastService.Error($"ログイン情報を取り込めませんでした: {error}");
+            if (result.Added > 0)
+                return () => ToastService.Success($"ログイン情報 {result.Added} 件を取り込みました。");
+            // 全部が重複だった＝やることは済んでいる。黙って終える（何度も同じ通知を出さない）。
+            return null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[取り込み] 保留分の適用に失敗: {ex}");
+            return null;
+        }
     }
 
     private static void ConfigureServices(IServiceCollection services)

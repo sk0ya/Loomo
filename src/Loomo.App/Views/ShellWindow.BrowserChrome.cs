@@ -36,6 +36,15 @@ public partial class ShellWindow {
     private void OnBrowserExtensionsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserExtensionsPopup);
     private void OnBrowserPasswordsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserPasswordsPopup);
 
+    /// <summary>取り込みを開く（§21.5.4）。入口が2つ（ブックマーク一覧と鍵の一覧）あるのは、
+    /// 取り込む中身がその両方に跨がるから。<b>開く前に呼び出し元のポップアップを閉じる</b>——
+    /// どちらも <c>StaysOpen="False"</c> なので、重なったまま出すと下の1枚が居座って操作を食う。</summary>
+    private void OnBrowserImportOpen(object sender, RoutedEventArgs e) {
+        _vm.Browser.IsLibraryOpen = false;
+        _vm.Browser.IsPasswordsOpen = false;
+        _vm.Browser.Import.IsOpen = true;
+    }
+
     // ── アドレス欄 ─────────────────────────────────────────────────────
     /// <summary>アドレス欄の文字を差し替える（候補は開かない）。表示中 URL の反映はすべてここを通す。</summary>
     private void SetBrowserAddressText(string text) {

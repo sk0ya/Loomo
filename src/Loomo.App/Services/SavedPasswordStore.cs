@@ -1,6 +1,4 @@
 using System.Runtime.Versioning;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Data.Sqlite;
 
 namespace sk0ya.Loomo.App.Services;
@@ -26,34 +24,28 @@ public sealed record SavedPasswordResult(IReadOnlyList<SavedPassword> Items, str
 }
 
 /// <summary>
-/// WebView2 のプロファイルに保存されたログイン情報を読む。
+/// Chromium 系プロファイルの <c>Login Data</c> に保存されたログイン情報を読む。
 ///
 /// <para><b>なぜ自前で読むのか</b>：ブラウザペインは <c>IsPasswordAutosaveEnabled</c> を立てているので
 /// 保存そのものは Edge が行うが、WebView2 では <c>edge://settings/passwords</c> が開けない——
 /// つまり<b>保存はされるのに二度と見られない</b>。ここが埋まらないと「パスワードを覚えさせる」判断ができない。</para>
 ///
-/// <para><b>読み方</b>は Chromium の作りそのままで、
-/// <c>Local State</c> の <c>os_crypt.encrypted_key</c>（先頭 5 文字 <c>DPAPI</c> を除いた残りを DPAPI で解錠）が
-/// AES-256-GCM の鍵、<c>Default/Login Data</c>（SQLite）の <c>logins.password_value</c> が
-/// <c>v10</c>/<c>v11</c> ＋ 12 バイトのノンス ＋ 本体 ＋ 16 バイトのタグ。
-/// 古い項目は AES ではなく DPAPI で直接暗号化されているので、そちらも受ける。</para>
+/// <para><b>読み方</b>は <see cref="ChromiumCrypto"/> に寄せた（鍵と v10 の綴りはあちらが唯一の持ち主）。
+/// 構造が同じなので、<c>profileRoot</c> を差し替えれば<b>他所のブラウザ</b>（Vivaldi など）も同じ手で読める
+/// ——取り込み（<see cref="ChromiumImportReader"/>）はそれを利用している。</para>
 ///
-/// <para><b>書き込まない</b>。Login Data はブラウザが開いている間ずっと掴んでいるので、
+/// <para><b>ここでは書き込まない</b>。Login Data はブラウザが開いている間ずっと掴んでいるので、
 /// 消したり書き換えたりするのはプロファイルを壊す道になる。読むときも実体には触らず一時コピーを開く。
-/// 一括削除だけは WebView2 の <c>ClearBrowsingDataAsync</c>（＝ブラウザ自身にやらせる）を使う。</para>
+/// 一括削除だけは WebView2 の <c>ClearBrowsingDataAsync</c>（＝ブラウザ自身にやらせる）を使い、
+/// 取り込みの書き込みは<b>WebView2 が動いていない起動直後</b>に <see cref="LoginDataWriter"/> が行う。</para>
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SavedPasswordStore(string profileRoot)
 {
-    private const string KeyPrefix = "DPAPI";
-    private static readonly byte[] AesPrefixV10 = "v10"u8.ToArray();
-    private static readonly byte[] AesPrefixV11 = "v11"u8.ToArray();
-
     /// <summary>WebView2 は UserDataFolder の下に <c>EBWebView</c> を作り、その中がプロファイル一式。</summary>
     public static SavedPasswordStore ForUserDataFolder(string userDataFolder)
         => new(Path.Combine(userDataFolder, "EBWebView"));
 
-    private string LocalStatePath => Path.Combine(profileRoot, "Local State");
     private string LoginDataPath => Path.Combine(profileRoot, "Default", "Login Data");
 
     /// <summary>まだ一度もブラウザを開いていない（プロファイルが無い）ときは、一覧そのものを出さない。</summary>
@@ -63,25 +55,16 @@ public sealed class SavedPasswordStore(string profileRoot)
     {
         if (!IsAvailable)
             return SavedPasswordResult.Failed("プロファイルがまだありません。");
-        byte[] key;
-        try
-        {
-            key = ReadMasterKey();
-        }
-        // UnauthorizedAccessException も受ける。Local State が ACL で読めないとここを素通りし、
-        // 呼び出し元（Task.Run 内の await）から UI スレッドの未処理例外になる＝一覧を開くだけで落ちる。
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                   or JsonException or CryptographicException or FormatException)
-        {
-            return SavedPasswordResult.Failed($"暗号鍵を取り出せませんでした: {ex.Message}");
-        }
+        if (!ChromiumCrypto.TryOpen(profileRoot, out var crypto, out var error))
+            return SavedPasswordResult.Failed(error!);
 
-        // 後始末の対象はコピー先の<b>フォルダー</b>を先に決めておく。CopyDatabase が途中で投げると
+        // 後始末の対象はコピー先の<b>フォルダー</b>を先に決めておく。コピーが途中で投げると
         // 戻り値は受け取れないが、そのときには既に Login Data を書き終えていることがある。
-        var workingDirectory = Path.Combine(Path.GetTempPath(), $"loomo-logins-{Guid.NewGuid():N}");
+        var workingDirectory = ChromiumDatabaseCopy.NewWorkingDirectory("logins");
         try
         {
-            return new SavedPasswordResult(ReadLogins(CopyDatabase(workingDirectory), key), null);
+            var database = ChromiumDatabaseCopy.To(LoginDataPath, workingDirectory);
+            return new SavedPasswordResult(ReadLogins(database, crypto!), null);
         }
         catch (Exception ex) when (ex is IOException or SqliteException or UnauthorizedAccessException)
         {
@@ -89,54 +72,11 @@ public sealed class SavedPasswordStore(string profileRoot)
         }
         finally
         {
-            TryDeleteDirectory(workingDirectory);
+            ChromiumDatabaseCopy.TryDelete(workingDirectory);
         }
     }
 
-    /// <summary>Local State の <c>os_crypt.encrypted_key</c> を DPAPI（CurrentUser）で解錠する。
-    /// <b>鍵がまだ無い Local State は普通にある</b>——Login Data はプロファイル作成時点で作られるのに対し、
-    /// <c>os_crypt</c> は最初に何かを保存するまで書かれない。<c>GetProperty</c> で取ると
-    /// <see cref="KeyNotFoundException"/> が飛び、呼び出し元（UI スレッド）ごと落ちる。</summary>
-    private byte[] ReadMasterKey()
-    {
-        using var document = JsonDocument.Parse(File.ReadAllText(LocalStatePath));
-        if (!document.RootElement.TryGetProperty("os_crypt", out var osCrypt)
-            || !osCrypt.TryGetProperty("encrypted_key", out var keyElement)
-            || keyElement.ValueKind != JsonValueKind.String)
-            throw new JsonException("暗号鍵がまだ作られていません。");
-        var encoded = keyElement.GetString() ?? throw new JsonException("encrypted_key がありません。");
-        var blob = Convert.FromBase64String(encoded);
-        if (blob.Length <= KeyPrefix.Length
-            || !Encoding.ASCII.GetString(blob, 0, KeyPrefix.Length).Equals(KeyPrefix, StringComparison.Ordinal))
-            throw new CryptographicException("鍵の形式が想定と違います。");
-        return ProtectedData.Unprotect(blob[KeyPrefix.Length..], null, DataProtectionScope.CurrentUser);
-    }
-
-    /// <summary>Login Data は稼働中のブラウザが掴んでいるので、読むのは一時コピー。
-    /// 併走ファイル（-wal / -shm / -journal）も一緒に持ってこないと、直前の書き込みが欠ける。</summary>
-    private string CopyDatabase(string directory)
-    {
-        Directory.CreateDirectory(directory);
-        var destination = Path.Combine(directory, "Login Data");
-        foreach (var suffix in new[] { "", "-wal", "-shm", "-journal" })
-        {
-            var source = LoginDataPath + suffix;
-            if (File.Exists(source))
-                CopyShared(source, destination + suffix);
-        }
-        return destination;
-    }
-
-    /// <summary><see cref="File.Copy(string,string)"/> は掴まれているファイルで失敗することがあるので、
-    /// 共有読み取りで開いて自分で流す。</summary>
-    private static void CopyShared(string source, string destination)
-    {
-        using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
-        input.CopyTo(output);
-    }
-
-    private static List<SavedPassword> ReadLogins(string databasePath, byte[] key)
+    internal static List<SavedPassword> ReadLogins(string databasePath, ChromiumCrypto crypto)
     {
         var items = new List<SavedPassword>();
         // 開くのはコピーなので読み書きで開いてよい（WAL を畳むのに書き込みが要る）。
@@ -163,60 +103,18 @@ public sealed class SavedPasswordStore(string profileRoot)
                 var blob = reader.IsDBNull(2) ? Array.Empty<byte>() : (byte[])reader[2];
                 if (blob.Length == 0)
                     continue;   // 「保存しない」を選んだサイトは空で入っている
-                if (TryDecrypt(blob, key) is not { } password)
+                if (crypto.TryDecryptText(blob) is not { } password)
                     continue;
                 items.Add(new SavedPassword(
                     reader.GetString(0),
                     reader.IsDBNull(1) ? "" : reader.GetString(1),
                     password,
-                    FromChromiumTime(reader.IsDBNull(3) ? 0 : reader.GetInt64(3))));
+                    ChromiumCrypto.FromChromiumTime(reader.IsDBNull(3) ? 0 : reader.GetInt64(3))));
             }
             catch (Exception ex) when (ex is InvalidCastException or FormatException)
             {
             }
         }
         return items;
-    }
-
-    /// <summary>v10/v11 なら AES-256-GCM、そうでなければ古い DPAPI 直の項目として扱う。</summary>
-    private static string? TryDecrypt(byte[] blob, byte[] key)
-    {
-        try
-        {
-            var isAes = blob.Length > 15
-                && (blob.AsSpan(0, 3).SequenceEqual(AesPrefixV10) || blob.AsSpan(0, 3).SequenceEqual(AesPrefixV11));
-            if (!isAes)
-                return Encoding.UTF8.GetString(
-                    ProtectedData.Unprotect(blob, null, DataProtectionScope.CurrentUser));
-            var nonce = blob.AsSpan(3, 12);
-            var tag = blob.AsSpan(blob.Length - 16, 16);
-            var cipher = blob.AsSpan(15, blob.Length - 15 - 16);
-            var plain = new byte[cipher.Length];
-            using var aes = new AesGcm(key, 16);
-            aes.Decrypt(nonce, cipher, tag, plain);
-            return Encoding.UTF8.GetString(plain);
-        }
-        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
-        {
-            // 1件読めなくても残りは出す（アプリ束縛暗号など、こちらで解けない項目が混じり得る）。
-            return null;
-        }
-    }
-
-    /// <summary>Chromium の時刻は 1601-01-01 UTC からのマイクロ秒。
-    /// 桁の壊れた値でも <see cref="DateTime"/> の範囲外で投げさせない（表示に使うだけの値で、
-    /// これ1件のために一覧全体を落とす意味が無い）。</summary>
-    private static DateTime FromChromiumTime(long value)
-    {
-        if (value <= 0)
-            return DateTime.MinValue;
-        try { return new DateTime(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMicroseconds(value); }
-        catch (ArgumentOutOfRangeException) { return DateTime.MinValue; }
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try { Directory.Delete(path, recursive: true); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 }

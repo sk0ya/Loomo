@@ -128,6 +128,10 @@ public sealed partial class BrowserViewModel : ObservableObject
 
     public BrowserViewModel(BrowserLibraryStore store) => _store = store;
 
+    /// <summary>他のブラウザからの取り込み（§21.5.4）。選ばせるところまでが VM の仕事で、
+    /// 実際に読んで書くのはシェル（プロファイルと WebView2 に触るため）。</summary>
+    public BrowserImportViewModel Import { get; } = new();
+
     // ── ツールバーの状態 ───────────────────────────────────────────────
     [ObservableProperty] private bool _canGoBack;
     [ObservableProperty] private bool _canGoForward;
@@ -349,6 +353,25 @@ public sealed partial class BrowserViewModel : ObservableObject
     {
         if (_library is not null)
             _store.Save(_library);
+    }
+
+    /// <summary>取り込んだブックマーク・履歴を、いま持っているものへ混ぜて保存する（§21.5.4）。
+    /// <b>browser.json の持ち主はこの VM だけ</b>なので、取り込み側がファイルへ直接書くことはしない
+    /// ——そうすると、この VM が抱えている古い実体が次の保存で取り込みぶんを消し飛ばす。</summary>
+    public (int Bookmarks, int History) MergeImported(
+        IReadOnlyList<BrowserBookmark> bookmarks, IReadOnlyList<BrowserHistoryEntry> history)
+    {
+        var library = Library;
+        var (mergedBookmarks, addedBookmarks) = BrowserImportMerge.Bookmarks(library.Bookmarks, bookmarks);
+        var (mergedHistory, addedHistory) = BrowserImportMerge.History(library.History, history, _store.MaxHistory);
+        library.Bookmarks = mergedBookmarks;
+        library.History = mergedHistory;
+        Persist();
+        RefreshLists();
+        // 取り込んだブックマークにいま見ているページが含まれていたら、★も点く。
+        IsBookmarked = CurrentUrl is not null
+            && library.Bookmarks.Any(b => BrowserLibrary.SameUrl(b.Url, CurrentUrl));
+        return (addedBookmarks, addedHistory);
     }
 
     // ── ページ内検索（Ctrl+F） ─────────────────────────────────────────

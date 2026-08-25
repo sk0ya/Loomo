@@ -1225,8 +1225,17 @@
                                 <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
                                     <StackPanel>
-                                        <TextBlock Text="ブックマーク" Margin="4,2" Foreground="{DynamicResource FgDim}"
-                                                   FontSize="{DynamicResource Fs11}" />
+                                        <DockPanel Margin="4,2">
+                                            <TextBlock DockPanel.Dock="Left" Text="ブックマーク"
+                                                       Foreground="{DynamicResource FgDim}"
+                                                       FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                                            <!-- 取り込みの入口（§21.5.4）。ブックマーク・履歴・パスワード・Cookie を
+                                                 まとめて扱うので、鍵アイコン側にも同じ入口を置いてある。 -->
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                    Content="他のブラウザから取り込む" HorizontalAlignment="Right"
+                                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                    Click="OnBrowserImportOpen" />
+                                        </DockPanel>
                                         <TextBlock Text="まだありません（☆ かCtrl+D で追加）" Margin="6,2"
                                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                                    Visibility="{Binding HasBookmarks, Converter={StaticResource InverseBoolToVis}}" />
@@ -1372,6 +1381,11 @@
                                                 Content="すべて削除" HorizontalAlignment="Right"
                                                 Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                                 Command="{Binding ClearPasswordsCommand}" />
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                Content="取り込み" HorizontalAlignment="Right"
+                                                ToolTip="他のブラウザから取り込む"
+                                                Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                Click="OnBrowserImportOpen" />
                                     </DockPanel>
                                     <TextBox Margin="4,2" MinHeight="24" VerticalContentAlignment="Center"
                                              Text="{Binding PasswordFilter, UpdateSourceTrigger=PropertyChanged, Delay=120}"
@@ -1430,6 +1444,72 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+
+                        <!-- 他のブラウザからの取り込み（§21.5.4）。種類ごとに条件が違う
+                             （Cookie は相手の終了が要る／アプリ束縛暗号の項目は解けない）ので、
+                             一括ボタンではなく種類を選ばせ、できないことは選ぶ前に文で出す。 -->
+                        <Popup x:Name="BrowserImportPopup"
+                               PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True"
+                               IsOpen="{Binding Browser.Import.IsOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="420"
+                                    DataContext="{Binding Browser.Import}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <StackPanel>
+                                    <DockPanel Margin="4,2">
+                                        <TextBlock DockPanel.Dock="Left" Text="他のブラウザから取り込む"
+                                                   Foreground="{DynamicResource FgDim}"
+                                                   FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                                Content="再確認" HorizontalAlignment="Right"
+                                                ToolTip="ブラウザを終了した後などに押し直す"
+                                                Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                Command="{Binding RefreshCommand}" />
+                                    </DockPanel>
+                                    <ComboBox Margin="4,2" MinHeight="24" VerticalContentAlignment="Center"
+                                              ItemsSource="{Binding Sources}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedSource, Mode=TwoWay}" />
+                                    <!-- その相手固有の但し書き。押してから断られるのを避けるため、選ぶ前に出す。 -->
+                                    <TextBlock Margin="6,2" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Error}" FontSize="{DynamicResource Fs11}"
+                                               Text="{Binding SelectedSource.Note}"
+                                               Visibility="{Binding SelectedSource.HasNote, Converter={StaticResource BoolToVis}}" />
+                                    <WrapPanel Margin="4,4,4,2">
+                                        <CheckBox Content="ブックマーク" Margin="0,0,10,2"
+                                                  FontSize="{DynamicResource Fs11}"
+                                                  IsChecked="{Binding ImportBookmarks, Mode=TwoWay}" />
+                                        <CheckBox Content="履歴" Margin="0,0,10,2"
+                                                  FontSize="{DynamicResource Fs11}"
+                                                  IsChecked="{Binding ImportHistory, Mode=TwoWay}" />
+                                        <CheckBox Content="パスワード" Margin="0,0,10,2"
+                                                  FontSize="{DynamicResource Fs11}"
+                                                  IsChecked="{Binding ImportPasswords, Mode=TwoWay}" />
+                                        <CheckBox Content="Cookie（ログイン状態）" Margin="0,0,10,2"
+                                                  FontSize="{DynamicResource Fs11}"
+                                                  IsChecked="{Binding ImportCookies, Mode=TwoWay}" />
+                                    </WrapPanel>
+                                    <Button Margin="4,2" HorizontalAlignment="Right"
+                                            Style="{StaticResource BrowserRowButton}"
+                                            Content="取り込む" FontSize="{DynamicResource Fs12}"
+                                            Command="{Binding ImportCommand}" />
+                                    <TextBlock Margin="6,2" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                               Text="{Binding Status}"
+                                               Visibility="{Binding Status, Converter={StaticResource NonEmptyToVis}}" />
+                                    <!-- 「なぜ CSV 経由が要るのか」は、Chrome を選んだときに出る但し書きが言う。
+                                         常設の説明文にすると、関係ない相手を選んでいる間ずっと邪魔になる。 -->
+                                    <Button Margin="4,2" HorizontalAlignment="Left"
+                                            Style="{StaticResource BrowserRowButton}"
+                                            Content="CSV からパスワードを取り込む"
+                                            FontSize="{DynamicResource Fs11}"
+                                            ToolTip="ブラウザ側で書き出したパスワード CSV を読み込みます"
+                                            Command="{Binding ImportCsvCommand}" />
                                 </StackPanel>
                             </Border>
                         </Popup>
