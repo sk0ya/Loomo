@@ -71,11 +71,19 @@ public partial class FilesColumnView : UserControl
     // Preview で受ける（開始させると2打目でわずかに幅が動く）。
     private void OnColumnGripMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount != 2 || GripColumn(sender) is not { } key || Vm is null)
+        if (e.ClickCount != 2 || GripColumn(sender) is not { } key)
             return;
-        Vm.SetColumnWidth(key, AutoFitWidth(key));
-        Vm.EndColumnWidthDrag();
+        AutoFitColumn(key);
         e.Handled = true;
+    }
+
+    /// <summary>その列の幅を中身に合わせる（境目のダブルクリック）。</summary>
+    internal void AutoFitColumn(FilesColumnKey key)
+    {
+        if (Vm is not { } vm)
+            return;
+        vm.SetColumnWidth(key, AutoFitWidth(key));
+        vm.EndColumnWidthDrag();
     }
 
     private void OnColumnGripDragStarted(object sender, DragStartedEventArgs e)
@@ -93,52 +101,69 @@ public partial class FilesColumnView : UserControl
     private void OnColumnGripDragCompleted(object sender, DragCompletedEventArgs e)
         => Vm?.EndColumnWidthDrag();
 
-    /// <summary>その列の中身（と見出し）がちょうど収まる幅。ダブルクリックで使う。</summary>
+    /// <summary>その列の中身（と見出し）がちょうど収まる幅。ダブルクリックで使う。
+    /// 文字の大きさは <c>Fs*</c> をその場で引く——UI の文字サイズは設定で変わるので（§UIフォント）、
+    /// ここに数字を焼き込むと大きくしたときだけ測り足りず、合わせたはずの列が見切れる。</summary>
     private double AutoFitWidth(FilesColumnKey key)
     {
         var vm = Vm;
         if (vm is null)
             return 0;
 
+        var headerSize = FontSizeResource("Fs11", 11);
+        var nameSize = FontSizeResource("Fs12", 12);
+        var cellSize = headerSize;
         var typeface = new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        // 状態バッジだけは行の書体と違う（Consolas・SemiBold）。
+        var badgeTypeface = new Typeface(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.SemiBold,
+            FontStretches.Normal);
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        double TextWidth(string? text, double size)
+        double TextWidth(string? text, double size, Typeface? face = null)
         {
             if (string.IsNullOrEmpty(text))
                 return 0;
             var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                typeface, size, Brushes.Black, dpi);
+                face ?? typeface, size, Brushes.Black, dpi);
             return formatted.WidthIncludingTrailingWhitespace;
         }
 
         var setting = vm.ColumnSettings.FirstOrDefault(candidate => candidate.Key == key);
-        // 見出しも隠れない幅にする（並べ替え記号ぶんも見込む）。
-        var width = TextWidth(setting?.Label + "▲", HeaderFontSize) + HeaderCellExtra;
-        // 数え切れないほどのフォルダーで測り続けない——先頭のぶんで十分に決まる。
-        foreach (var entry in vm.Entries.Take(AutoFitSampleCount))
+        // 見出しも隠れない幅にする（並べ替え記号は今出ていなくても場所を空けておく——
+        // 並べ替え直後に見出しが欠ける方が驚く）。
+        var width = TextWidth(setting?.Label + " ▲", headerSize) + HeaderCellExtra;
+        // 測るのは「いま出ている行」（絞り込み中は残っている行だけ）。数え切れないほどの
+        // フォルダーで測り続けはしない——先頭のぶんで十分に決まる。
+        foreach (var entry in vm.EntriesView.Cast<FileEntryViewModel>().Take(AutoFitSampleCount))
         {
             var cell = key switch
             {
-                FilesColumnKey.Name => TextWidth(entry.Name, RowFontSize) + NameCellExtra,
-                FilesColumnKey.Size => TextWidth(entry.SizeText, RowSubFontSize) + CellExtra,
-                FilesColumnKey.Modified => TextWidth(entry.ModifiedText, RowSubFontSize) + CellExtra,
-                FilesColumnKey.Type => TextWidth(entry.TypeText, RowSubFontSize) + CellExtra,
+                FilesColumnKey.Name => TextWidth(entry.Name, nameSize) + NameCellExtra
+                    + TextWidth(entry.GitStatusBadge, headerSize, badgeTypeface),
+                FilesColumnKey.Size => TextWidth(entry.SizeText, cellSize) + SizeCellExtra,
+                FilesColumnKey.Modified => TextWidth(entry.ModifiedText, cellSize) + CellExtra,
+                FilesColumnKey.Type => TextWidth(entry.TypeText, cellSize) + CellExtra,
                 _ => 0,
             };
             if (cell > width)
                 width = cell;
         }
-        return Math.Ceiling(width);
+        // FormattedText の実測と TextBlock の折り返し判定は端数で食い違うことがある。
+        // 足りない側へ外すと「合わせたのに…」で終わるので、必ず切り上げてから 1px 足す。
+        return Math.Ceiling(width) + 1;
     }
 
-    // 行・見出しのフォントと、文字の左右に要る余白（アイコン16＋間隔6＋左右の Margin、
-    // 名前列はさらに右端の状態バッジぶん）。XAML 側の値を変えたらここも合わせる。
-    private const double HeaderFontSize = 11;
-    private const double RowFontSize = 12;
-    private const double RowSubFontSize = 11;
-    private const double CellExtra = 16;
-    private const double NameCellExtra = 50;
-    private const double HeaderCellExtra = 16;
+    private double FontSizeResource(string key, double fallback)
+        => TryFindResource(key) is double size && size > 0 ? size : fallback;
+
+    // 文字の左右に要る余白。行テンプレートの Margin をそのまま足したもの——XAML 側を変えたらここも合わせる。
+    // 名前セル：DockPanel の Margin 6+4 ＋ アイコン 16 ＋ アイコン右 6 ＋ バッジの Margin 6+2（バッジ幅は実測）。
+    private const double NameCellExtra = 40;
+    // サイズセル：右寄せで Margin 0,0,8,0。左は隣の列との詰まりを避けて 8 見る。
+    private const double SizeCellExtra = 16;
+    // 更新日時・種類セル：Margin 6,0,0,0 ＋ 右の余裕 8。
+    private const double CellExtra = 14;
+    // 見出しボタンの Padding 6,0（左右）＋ つまみの線ぶん。
+    private const double HeaderCellExtra = 14;
     private const int AutoFitSampleCount = 2000;
 
     /// <summary>このカラムへフォーカスを移す（ペインのフォーカス受け口から呼ばれる）。</summary>

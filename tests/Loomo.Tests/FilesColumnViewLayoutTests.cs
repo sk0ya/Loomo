@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Globalization;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -261,6 +262,122 @@ public sealed class FilesColumnViewLayoutTests
                     window.UpdateLayout();
                     var sizeGrip = Assert.Single(grips, thumb => (string)thumb.Tag == nameof(FilesColumnKey.Size));
                     Assert.Equal(Visibility.Collapsed, sizeGrip.Visibility);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                column.Dispose();
+                try { Directory.Delete(root, recursive: true); } catch { }
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void 幅を内容に合わせた列は見切れない(bool 大きい文字)
+    {
+        // UI の文字サイズは設定で変わる（§UIフォント）。実測に使う Fs* を焼き込むと、
+        // 大きくしたときだけ測り足りず「合わせたのに三点リーダーが出る」になる。
+        RunSta(() =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), $"loomo-files-fit-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.Combine(root, "とても長い名前のフォルダー"));
+            File.WriteAllText(Path.Combine(root, "とても長いファイル名のサンプル文書.md"), new string('x', 5000));
+            File.WriteAllText(Path.Combine(root, "a.txt"), "a");
+
+            var workspace = new FakeWorkspaceService();
+            workspace.OpenFolder(root);
+            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
+                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-fit-workflows-{Guid.NewGuid():N}")),
+                new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
+            tree.LoadRoot(root);
+            var column = new FilesColumnViewModel(
+                workspace, FolderTreeCommandHandler.Unconfined(workspace, new FileOperationHistory()),
+                tree, new FakeFilePlacesProvider());
+            column.Restore(snapshot: null, fallbackFolder: root);
+
+            try
+            {
+                var view = new FilesColumnView { DataContext = column };
+                if (大きい文字)
+                {
+                    // UiFontManager が基準pxから配り直すのと同じ形で、この木だけ大きくする。
+                    // 倍率は既定（16px ÷ 基準13px ≒ 1.23）——つまり素の Typography.xaml の値
+                    // （11・12）で測るのは、既定の設定ですら足りない。
+                    var scale = UiFontManager.DefaultSize / UiFontManager.ReferenceSize;
+                    view.Resources["Fs10"] = Math.Round(10 * scale, 2);
+                    view.Resources["Fs11"] = Math.Round(11 * scale, 2);
+                    view.Resources["Fs12"] = Math.Round(12 * scale, 2);
+                }
+                var window = new Window
+                {
+                    Width = 1200,
+                    Height = 420,
+                    Content = view,
+                    ShowInTaskbar = false,
+                    WindowStyle = WindowStyle.None
+                };
+                try
+                {
+                    window.Show();
+                    window.UpdateLayout();
+
+                    foreach (var key in new[]
+                    {
+                        FilesColumnKey.Name, FilesColumnKey.Size,
+                        FilesColumnKey.Modified, FilesColumnKey.Type
+                    })
+                    {
+                        view.AutoFitColumn(key);
+                    }
+                    window.UpdateLayout();
+
+                    var list = FindDescendant<ListBox>(view)!;
+                    var rows = 0;
+                    foreach (var entry in column.Entries)
+                    {
+                        var item = list.ItemContainerGenerator.ContainerFromItem(entry) as ListBoxItem;
+                        Assert.NotNull(item);
+                        var details = (Grid)FindNamed(item!, "DetailsLayout")!;
+                        foreach (var text in FindDescendants<TextBlock>(details))
+                        {
+                            if (text.Visibility != Visibility.Visible || string.IsNullOrEmpty(text.Text))
+                                continue;
+                            // 三点リーダーが出るのは「置ける幅 < 文字の幅」のとき。
+                            var natural = new FormattedText(text.Text, CultureInfo.CurrentCulture,
+                                FlowDirection.LeftToRight,
+                                new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+                                text.FontSize, Brushes.Black,
+                                VisualTreeHelper.GetDpi(text).PixelsPerDip).WidthIncludingTrailingWhitespace;
+                            Assert.True(text.ActualWidth + 0.5 >= natural,
+                                $"「{text.Text}」が {text.ActualWidth} に収まらない（必要 {natural}・大きい文字={大きい文字}）");
+                            rows++;
+                        }
+                    }
+                    Assert.True(rows > 0);
+
+                    // 絞り込み中は残っている行に合わせる（消えている長い名前まで見込むと、
+                    // 絞り込んだ結果ほど列だけ広いままになる）。
+                    var 全体 = column.ColumnWidth(FilesColumnKey.Name);
+                    column.Filter = "a.txt";
+                    window.UpdateLayout();
+                    view.AutoFitColumn(FilesColumnKey.Name);
+                    Assert.True(column.ColumnWidth(FilesColumnKey.Name) < 全体);
+                    column.Filter = "";
+                    window.UpdateLayout();
+
+                    // 見出しも欠けない（並べ替え記号ぶんも見込む）。
+                    var header = FindDescendants<Button>(view)
+                        .Single(button => (button.Tag as string) == nameof(FilesColumnKey.Type));
+                    var label = FindDescendant<TextBlock>(header)!;
+                    Assert.True(label.ActualWidth > 0);
+                    Assert.True(header.ActualWidth >= label.ActualWidth);
                 }
                 finally
                 {
