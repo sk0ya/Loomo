@@ -368,9 +368,13 @@ public sealed class GitComparePanelTests : IAsyncLifetime
 
     private static async Task WaitAsync(Func<bool> condition)
     {
-        for (var i = 0; i < 100 && !condition(); i++)
+        // 読み直しは fire-and-forget なので待つしかない。全テスト並列実行では git のプロセス起動が
+        // スレッドプール待ちに入るぶん遅くなるので、単体実行の体感より余裕を持たせる。
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition() && elapsed.Elapsed < TimeSpan.FromSeconds(10))
             await Task.Delay(20);
-        Assert.True(condition(), "条件が満たされませんでした（更新が走っていない可能性）。");
+        Assert.True(condition(),
+            $"条件が満たされませんでした（{elapsed.Elapsed.TotalSeconds:F1}秒待機／更新が走っていない可能性）。");
     }
 
     private async Task CommitAsync(string path, string content, string message)

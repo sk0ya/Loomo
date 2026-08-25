@@ -261,14 +261,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     }
 
     private void OnGitRepositoryChanged(object? sender, EventArgs e)
-    {
-        var action = new Action(RefreshWorkspace);
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess())
-            dispatcher.BeginInvoke(action);
-        else
-            action();
-    }
+        => UiDispatch.Post(RefreshWorkspace);
 
     /// <summary>保存・復元でプライマリフォルダーの正本になる状態。複数フォルダー時はフォルダーごとの
     /// 状態（<see cref="_multiRootStates"/>）が正本で、単一フォルダー時のフィールド

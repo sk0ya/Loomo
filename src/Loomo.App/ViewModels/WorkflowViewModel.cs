@@ -221,12 +221,7 @@ public sealed partial class WorkflowViewModel : ObservableObject
             _runInputValue = WorkflowRunInput.FromText(value ?? "");
     }
 
-    private static void Dispatch(Action action)
-    {
-        var app = System.Windows.Application.Current;
-        if (app is null || app.Dispatcher.CheckAccess()) action();
-        else app.Dispatcher.BeginInvoke(action);
-    }
+    private static void Dispatch(Action action) => UiDispatch.Post(action);
 
     // ===== ステップ編集 =====
 

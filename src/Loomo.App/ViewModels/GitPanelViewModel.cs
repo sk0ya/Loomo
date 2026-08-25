@@ -11,6 +11,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -378,10 +379,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
     private void OnRepositoryChanged(object? sender, EventArgs e)
     {
         if (!_loaded) return;
-        var app = Application.Current;
-        if (app is null) return;
         // 更新系コマンドの完了スレッドは UI とは限らないためディスパッチする
-        app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
+        UiDispatch.Post(() => _ = RefreshAsync());
     }
 
     [RelayCommand]
@@ -503,11 +502,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         // まだ開いていない（＝一度も読んでいない）パネルでは読まない。表示された時点の
         // StartLiveTracking が最新の基準で読み直すので、隠れている間に git を叩く必要はない。
         if (!_loaded) return;
-        var app = Application.Current;
-        // 基準の切替はユーザー操作＝UI スレッド発なので、Application が無い（ヘッドレス）ときは
-        // ディスパッチせずそのまま読み直す。
-        if (app is null) { _ = RefreshAsync(); return; }
-        app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
+        UiDispatch.Post(() => _ = RefreshAsync());
     }
 
     /// <summary>現在の変更を退避する（任意のメッセージ付き・未追跡ファイルも含める）。</summary>

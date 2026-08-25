@@ -88,13 +88,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         CompareBase.Changed += (_, _) =>
         {
             UpdateCanDiscard();
-            // 基準の切替はユーザー操作＝UI スレッド発なので、Application が無い（ヘッドレス）ときは
-            // ディスパッチせずそのまま読み直す。
-            if (Application.Current is null)
-            {
-                if (_loaded) _ = RefreshAsync();
-                return;
-            }
             DispatchRefresh();
         };
         Conflict = new DiffConflictViewModel(files, git, ClearDiffForConflict, SetStatus);
@@ -135,9 +128,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject
     private void DispatchRefresh()
     {
         if (!_loaded) return;
-        var app = Application.Current;
-        if (app is null) return;
-        app.Dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
+        UiDispatch.Post(() => _ = RefreshAsync());
     }
 
     partial void OnSourceChanged(DiffSource value)

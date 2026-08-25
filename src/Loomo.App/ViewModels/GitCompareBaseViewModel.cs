@@ -230,16 +230,7 @@ public sealed partial class GitCompareBaseViewModel : ObservableObject
     }
 
     // GitService の通知はポーリングのタイマースレッドから来るので、UI スレッドへ寄せてから読み込む。
-    private void DispatchReloadBranches()
-    {
-        var app = Application.Current;
-        if (app is null)
-        {
-            _ = ReloadBranchesAsync();
-            return;
-        }
-        app.Dispatcher.BeginInvoke(new Action(() => _ = ReloadBranchesAsync()));
-    }
+    private void DispatchReloadBranches() => UiDispatch.Post(() => _ = ReloadBranchesAsync());
 
     private void RaiseChanged()
     {
