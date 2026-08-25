@@ -657,11 +657,25 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             setting.IsVisible = true;
 
         NotifyColumnLayoutChanged();
-        if (!_restoringLayout)
+        if (!_restoringLayout && !_draggingColumnWidth)
         {
             SaveFolderLayout(CurrentFolder);
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>幅のドラッグ中。列は 1px 動くたびに変わるので、その間は保存とワークスペースへの
+    /// 通知を止め、離した時に 1 回だけ書く（掴んだまま動かしている間じゅう
+    /// workspaces.json を書き直させない）。</summary>
+    private bool _draggingColumnWidth;
+
+    public void BeginColumnWidthDrag() => _draggingColumnWidth = true;
+
+    public void EndColumnWidthDrag()
+    {
+        _draggingColumnWidth = false;
+        SaveFolderLayout(CurrentFolder);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void NotifyColumnLayoutChanged()
@@ -728,6 +742,15 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             return;
         ColumnSettings.Move(index, index + 1);
         NotifyColumnLayoutChanged();
+        SaveFolderLayout(CurrentFolder);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>いまのフォルダーの列（幅・並び・表示）を作りたてに戻す。</summary>
+    [RelayCommand]
+    private void ResetColumnLayout()
+    {
+        ResetLayout();
         SaveFolderLayout(CurrentFolder);
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -868,9 +891,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         NotifyColumnLayoutChanged();
     }
 
+    /// <summary>列を作りたて（幅・並び・表示すべて既定）へ戻す。空のレイアウトを流すのでは
+    /// 並びだけ前のフォルダーのまま残るので、既定そのものを流す。</summary>
     private void ResetLayout()
     {
-        ApplyLayout(Array.Empty<FilesColumnSettingSnapshot>());
+        ApplyLayout(DefaultLayout.Select(CloneSetting));
     }
 
     private static double ClampWidth(FilesColumnSetting setting, double width)

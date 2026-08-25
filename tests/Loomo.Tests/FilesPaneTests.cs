@@ -585,6 +585,61 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 幅のドラッグ中は保存せず離した時に一度だけ書く()
+    {
+        // 掴んだまま動かしている間じゅう workspaces.json を書き直させない（1ドラッグ＝1回）。
+        var sut = CreateColumn();
+        var saves = 0;
+        sut.StateChanged += (_, _) => saves++;
+
+        sut.BeginColumnWidthDrag();
+        sut.SetColumnWidth(FilesColumnKey.Name, 300);
+        sut.SetColumnWidth(FilesColumnKey.Name, 320);
+        sut.SetColumnWidth(FilesColumnKey.Name, 340);
+
+        Assert.Equal(0, saves);
+        Assert.Equal(340, sut.ColumnWidth(FilesColumnKey.Name));   // 見た目は動いている
+
+        sut.EndColumnWidthDrag();
+
+        Assert.Equal(1, saves);
+        Assert.Equal(340, sut.Capture().FolderColumnSettings[_root]
+            .Columns.Single(c => c.Key == FilesColumnKey.Name).Width);
+    }
+
+    [Fact]
+    public void 幅は列ごとの下限と上限で止まる()
+    {
+        var sut = CreateColumn();
+
+        sut.SetColumnWidth(FilesColumnKey.Name, 10);
+        sut.SetColumnWidth(FilesColumnKey.Size, 10);
+        sut.SetColumnWidth(FilesColumnKey.Type, 5000);
+
+        Assert.Equal(120, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.Equal(40, sut.ColumnWidth(FilesColumnKey.Size));
+        Assert.Equal(800, sut.ColumnWidth(FilesColumnKey.Type));
+    }
+
+    [Fact]
+    public void 列を既定に戻すと幅も並びも表示も戻る()
+    {
+        var sut = CreateColumn();
+        sut.SetColumnWidth(FilesColumnKey.Name, 360);
+        sut.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Type).IsVisible = false;
+        sut.MoveColumnDownCommand.Execute(sut.ColumnSettings[0]);
+
+        sut.ResetColumnLayoutCommand.Execute(null);
+
+        Assert.Equal(new[] { FilesColumnKey.Name, FilesColumnKey.Size, FilesColumnKey.Modified, FilesColumnKey.Type },
+            sut.ColumnSettings.Select(setting => setting.Key));
+        Assert.Equal(240, sut.ColumnWidth(FilesColumnKey.Name));
+        Assert.All(sut.ColumnSettings, setting => Assert.True(setting.IsVisible));
+        // 既定に戻ったフォルダーは覚えない（覚えたままだと復元で同じ結果を書き戻すだけ太る）。
+        Assert.Empty(sut.Capture().FolderColumnSettings);
+    }
+
+    [Fact]
     public void 詳細列設定はフォルダーごとに独立して復元される()
     {
         var sut = CreateColumn();

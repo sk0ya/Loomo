@@ -7,11 +7,9 @@
     Background="{DynamicResource Panel}">
 
     <UserControl.Resources>
-        <!-- 列幅は見出しと行で必ず同じ値を使う（別々に書くと片方だけ直って列がずれる）。
-             名前列だけ可変（*）で、残り3列はここで決めた固定幅。 -->
-        <GridLength x:Key="FilesSizeWidth">86</GridLength>
-        <GridLength x:Key="FilesModifiedWidth">124</GridLength>
-        <GridLength x:Key="FilesTypeWidth">72</GridLength>
+        <!-- 列幅は見出しと行で必ず同じ値を使う（別々に書くと片方だけ直って列がずれる）ため、
+             どちらも ViewModel の Slot0..3Width を見る。実体は FilesColumnSetting.Width で、
+             見出しの境目のつまみ（FilesColumnGrip）で変えられる。 -->
         <!-- 行と見出しの右端に空ける幅。重ねて描く縦スクロールバー（7px）の下へ
              最終列の文字が潜らないようにするためのもので、見出し・行の両方に同じ値を入れる。 -->
         <Thickness x:Key="FilesRowInset">0,0,8,0</Thickness>
@@ -197,6 +195,39 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="b" Property="Background" Value="{DynamicResource Bg}" />
                                 <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 列の境目に置く、幅を変えるつまみ。見出しボタンの上に重ねる。
+             当たり判定は境目をまたぐ 9px——狙うのは「見出しの右端 8px」ではなく境目の線そのものなので、
+             半分は隣の見出しへはみ出させる（はみ出させないと、境目を狙ったクリックが隣の列の
+             並べ替えになる）。見えるのは 1px の区切り線だけで、掴めるところではポインタが
+             ⇔ に変わる。 -->
+        <Style x:Key="FilesColumnGrip" TargetType="Thumb">
+            <Setter Property="Width" Value="9" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,0,-4,0" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="Transparent">
+                            <Border x:Name="line" Width="1" Margin="0,4" HorizontalAlignment="Center"
+                                    Background="{DynamicResource Border}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="line" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="line" Property="Margin" Value="0" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="line" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="line" Property="Margin" Value="0" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -479,9 +510,13 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="見出しの右端をドラッグすると幅を変更できます。"
+                            <TextBlock Text="列の境目をドラッグすると幅を変えられます（ダブルクリックで内容に合わせます）。"
                                        Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
-                                       TextWrapping="Wrap" Margin="2,5,2,0" />
+                                       TextWrapping="Wrap" Margin="2,5,2,3" />
+                            <Button Content="幅と並びを既定に戻す" HorizontalAlignment="Left"
+                                    Style="{StaticResource FilesCrumbButton}"
+                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
+                                    Command="{Binding ResetColumnLayoutCommand}" />
                         </StackPanel>
                     </Border>
                 </Popup>
@@ -725,34 +760,52 @@
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="{Binding NameColumnIndex}" Tag="Name" Style="{StaticResource FilesColumnHeader}"
                         Visibility="{Binding IsNameColumnVisible, Converter={StaticResource BoolToVis}}"
-                        PreviewMouseLeftButtonDown="OnColumnHeaderMouseDown"
-                        PreviewMouseMove="OnColumnHeaderMouseMove" PreviewMouseLeftButtonUp="OnColumnHeaderMouseUp"
                         Command="{Binding SortCommand}" CommandParameter="Name"
                         ToolTip="名前で並べ替え（数字は数として読みます）">
                     <TextBlock><Run Text="名前" /><Run Text="{Binding NameSortMark, Mode=OneWay}" /></TextBlock>
                 </Button>
                 <Button Grid.Column="{Binding SizeColumnIndex}" Tag="Size" Style="{StaticResource FilesColumnHeader}"
                         Visibility="{Binding IsSizeColumnVisible, Converter={StaticResource BoolToVis}}"
-                        PreviewMouseLeftButtonDown="OnColumnHeaderMouseDown"
-                        PreviewMouseMove="OnColumnHeaderMouseMove" PreviewMouseLeftButtonUp="OnColumnHeaderMouseUp"
                         HorizontalContentAlignment="Right"
                         Command="{Binding SortCommand}" CommandParameter="Size" ToolTip="サイズで並べ替え">
                     <TextBlock><Run Text="サイズ" /><Run Text="{Binding SizeSortMark, Mode=OneWay}" /></TextBlock>
                 </Button>
                 <Button Grid.Column="{Binding ModifiedColumnIndex}" Tag="Modified" Style="{StaticResource FilesColumnHeader}"
                         Visibility="{Binding IsModifiedColumnVisible, Converter={StaticResource BoolToVis}}"
-                        PreviewMouseLeftButtonDown="OnColumnHeaderMouseDown"
-                        PreviewMouseMove="OnColumnHeaderMouseMove" PreviewMouseLeftButtonUp="OnColumnHeaderMouseUp"
                         Command="{Binding SortCommand}" CommandParameter="Modified" ToolTip="更新日時で並べ替え">
                     <TextBlock><Run Text="更新日時" /><Run Text="{Binding ModifiedSortMark, Mode=OneWay}" /></TextBlock>
                 </Button>
                 <Button Grid.Column="{Binding TypeColumnIndex}" Tag="Type" Style="{StaticResource FilesColumnHeader}"
                         Visibility="{Binding IsTypeColumnVisible, Converter={StaticResource BoolToVis}}"
-                        PreviewMouseLeftButtonDown="OnColumnHeaderMouseDown"
-                        PreviewMouseMove="OnColumnHeaderMouseMove" PreviewMouseLeftButtonUp="OnColumnHeaderMouseUp"
                         Command="{Binding SortCommand}" CommandParameter="Type" ToolTip="種類で並べ替え">
                     <TextBlock><Run Text="種類" /><Run Text="{Binding TypeSortMark, Mode=OneWay}" /></TextBlock>
                 </Button>
+                <!-- 幅のつまみは見出しボタンより後に置く（後に置いたぶんが上＝先に当たり判定を取る）。
+                     列の並びは表示中の列で決まるので、Grid.Column と表示・非表示は見出しと同じものを見る。 -->
+                <Thumb Grid.Column="{Binding NameColumnIndex}" Tag="Name" Style="{StaticResource FilesColumnGrip}"
+                       Visibility="{Binding IsNameColumnVisible, Converter={StaticResource BoolToVis}}"
+                       PreviewMouseLeftButtonDown="OnColumnGripMouseDown"
+                       DragStarted="OnColumnGripDragStarted" DragDelta="OnColumnGripDragDelta"
+                       DragCompleted="OnColumnGripDragCompleted"
+                       ToolTip="ドラッグで「名前」の幅を変更（ダブルクリックで内容に合わせる）" />
+                <Thumb Grid.Column="{Binding SizeColumnIndex}" Tag="Size" Style="{StaticResource FilesColumnGrip}"
+                       Visibility="{Binding IsSizeColumnVisible, Converter={StaticResource BoolToVis}}"
+                       PreviewMouseLeftButtonDown="OnColumnGripMouseDown"
+                       DragStarted="OnColumnGripDragStarted" DragDelta="OnColumnGripDragDelta"
+                       DragCompleted="OnColumnGripDragCompleted"
+                       ToolTip="ドラッグで「サイズ」の幅を変更（ダブルクリックで内容に合わせる）" />
+                <Thumb Grid.Column="{Binding ModifiedColumnIndex}" Tag="Modified" Style="{StaticResource FilesColumnGrip}"
+                       Visibility="{Binding IsModifiedColumnVisible, Converter={StaticResource BoolToVis}}"
+                       PreviewMouseLeftButtonDown="OnColumnGripMouseDown"
+                       DragStarted="OnColumnGripDragStarted" DragDelta="OnColumnGripDragDelta"
+                       DragCompleted="OnColumnGripDragCompleted"
+                       ToolTip="ドラッグで「更新日時」の幅を変更（ダブルクリックで内容に合わせる）" />
+                <Thumb Grid.Column="{Binding TypeColumnIndex}" Tag="Type" Style="{StaticResource FilesColumnGrip}"
+                       Visibility="{Binding IsTypeColumnVisible, Converter={StaticResource BoolToVis}}"
+                       PreviewMouseLeftButtonDown="OnColumnGripMouseDown"
+                       DragStarted="OnColumnGripDragStarted" DragDelta="OnColumnGripDragDelta"
+                       DragCompleted="OnColumnGripDragCompleted"
+                       ToolTip="ドラッグで「種類」の幅を変更（ダブルクリックで内容に合わせる）" />
             </Grid>
 
             <!-- 一覧本体 -->

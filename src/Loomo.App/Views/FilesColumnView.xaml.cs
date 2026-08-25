@@ -1,4 +1,5 @@
 ﻿using System.Collections.Specialized;
+using System.Globalization;
 
 using sk0ya.Loomo.App.Services;
 
@@ -19,9 +20,6 @@ public partial class FilesColumnView : UserControl
     private static bool _internalDrag;
     private FilesColumnViewModel? _boundVm;
     private string _breadcrumbPickerSelectionPath = "";
-    private FilesColumnKey? _resizingColumn;
-    private double _resizeStartX;
-    private double _resizeStartWidth;
     private double _placesPaneWidth = 240;
 
     // Explorer と同じ type-ahead 選択。キー入力が途切れたら次の入力を新しい検索にする
@@ -62,43 +60,86 @@ public partial class FilesColumnView : UserControl
 
     private Window? OwnerWindow => Window.GetWindow(this);
 
-    // 見出しの右端は並べ替えボタンの中に置いたまま、8pxだけ列幅変更の帯として扱う。
-    // 通常のクリックは従来どおり並べ替えコマンドへ流す。
-    private void OnColumnHeaderMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not Button { Tag: string tag } header
-            || !Enum.TryParse<FilesColumnKey>(tag, out var key)
-            || Vm is null)
-            return;
-        var point = e.GetPosition(header);
-        if (header.ActualWidth < 24 || point.X < header.ActualWidth - 8)
-            return;
+    // 列幅の変更は見出しの境目に重ねたつまみ（FilesColumnGrip）が受ける。並べ替えは見出しボタンの
+    // まま——同じ場所を「押したら並べ替え・端を掴んだら幅」と読み分けさせないのが狙い。
+    private static FilesColumnKey? GripColumn(object sender)
+        => sender is Thumb { Tag: string tag } && Enum.TryParse<FilesColumnKey>(tag, out var key)
+            ? key
+            : null;
 
-        _resizingColumn = key;
-        _resizeStartX = point.X;
-        _resizeStartWidth = Vm.ColumnWidth(key);
-        header.CaptureMouse();
+    // ダブルクリックは幅をその列の中身に合わせる。Thumb のドラッグが始まる前に止めるため
+    // Preview で受ける（開始させると2打目でわずかに幅が動く）。
+    private void OnColumnGripMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2 || GripColumn(sender) is not { } key || Vm is null)
+            return;
+        Vm.SetColumnWidth(key, AutoFitWidth(key));
+        Vm.EndColumnWidthDrag();
         e.Handled = true;
     }
 
-    private void OnColumnHeaderMouseMove(object sender, MouseEventArgs e)
+    private void OnColumnGripDragStarted(object sender, DragStartedEventArgs e)
+        => Vm?.BeginColumnWidthDrag();
+
+    // Thumb の HorizontalChange はつまみ自身から見た移動量で、つまみは幅の変更に追随して動く。
+    // そのぶん「いまの幅＋差分」で積むのが正しく、下限で止まっている間も暴走しない。
+    private void OnColumnGripDragDelta(object sender, DragDeltaEventArgs e)
     {
-        if (_resizingColumn is not { } key || Vm is null || sender is not Button header)
+        if (GripColumn(sender) is not { } key || Vm is null)
             return;
-        var point = e.GetPosition(header);
-        Vm.SetColumnWidth(key, _resizeStartWidth + point.X - _resizeStartX);
-        e.Handled = true;
+        Vm.SetColumnWidth(key, Vm.ColumnWidth(key) + e.HorizontalChange);
     }
 
-    private void OnColumnHeaderMouseUp(object sender, MouseButtonEventArgs e)
+    private void OnColumnGripDragCompleted(object sender, DragCompletedEventArgs e)
+        => Vm?.EndColumnWidthDrag();
+
+    /// <summary>その列の中身（と見出し）がちょうど収まる幅。ダブルクリックで使う。</summary>
+    private double AutoFitWidth(FilesColumnKey key)
     {
-        if (_resizingColumn is null)
-            return;
-        if (sender is Button header && header.IsMouseCaptured)
-            header.ReleaseMouseCapture();
-        _resizingColumn = null;
-        e.Handled = true;
+        var vm = Vm;
+        if (vm is null)
+            return 0;
+
+        var typeface = new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        double TextWidth(string? text, double size)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+            var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                typeface, size, Brushes.Black, dpi);
+            return formatted.WidthIncludingTrailingWhitespace;
+        }
+
+        var setting = vm.ColumnSettings.FirstOrDefault(candidate => candidate.Key == key);
+        // 見出しも隠れない幅にする（並べ替え記号ぶんも見込む）。
+        var width = TextWidth(setting?.Label + "▲", HeaderFontSize) + HeaderCellExtra;
+        // 数え切れないほどのフォルダーで測り続けない——先頭のぶんで十分に決まる。
+        foreach (var entry in vm.Entries.Take(AutoFitSampleCount))
+        {
+            var cell = key switch
+            {
+                FilesColumnKey.Name => TextWidth(entry.Name, RowFontSize) + NameCellExtra,
+                FilesColumnKey.Size => TextWidth(entry.SizeText, RowSubFontSize) + CellExtra,
+                FilesColumnKey.Modified => TextWidth(entry.ModifiedText, RowSubFontSize) + CellExtra,
+                FilesColumnKey.Type => TextWidth(entry.TypeText, RowSubFontSize) + CellExtra,
+                _ => 0,
+            };
+            if (cell > width)
+                width = cell;
+        }
+        return Math.Ceiling(width);
     }
+
+    // 行・見出しのフォントと、文字の左右に要る余白（アイコン16＋間隔6＋左右の Margin、
+    // 名前列はさらに右端の状態バッジぶん）。XAML 側の値を変えたらここも合わせる。
+    private const double HeaderFontSize = 11;
+    private const double RowFontSize = 12;
+    private const double RowSubFontSize = 11;
+    private const double CellExtra = 16;
+    private const double NameCellExtra = 50;
+    private const double HeaderCellExtra = 16;
+    private const int AutoFitSampleCount = 2000;
 
     /// <summary>このカラムへフォーカスを移す（ペインのフォーカス受け口から呼ばれる）。</summary>
     public void FocusList()

@@ -177,6 +177,104 @@ public sealed class FilesColumnViewLayoutTests
         });
     }
 
+    [Fact]
+    public void 列の境目のつまみで幅を変えられる()
+    {
+        RunSta(() =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), $"loomo-files-grip-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+            File.WriteAllText(Path.Combine(root, "alpha.txt"), "alpha");
+
+            var workspace = new FakeWorkspaceService();
+            workspace.OpenFolder(root);
+            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
+                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-grip-workflows-{Guid.NewGuid():N}")),
+                new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
+            tree.LoadRoot(root);
+            var column = new FilesColumnViewModel(
+                workspace, FolderTreeCommandHandler.Unconfined(workspace, new FileOperationHistory()),
+                tree, new FakeFilePlacesProvider());
+            column.Restore(snapshot: null, fallbackFolder: root);
+
+            try
+            {
+                var view = new FilesColumnView { DataContext = column };
+                var window = new Window
+                {
+                    Width = 900,
+                    Height = 420,
+                    Content = view,
+                    ShowInTaskbar = false,
+                    WindowStyle = WindowStyle.None
+                };
+                try
+                {
+                    window.Show();
+                    window.UpdateLayout();
+
+                    // 幅のつまみは列ごとに1つ。場所パネルの GridSplitter も Thumb なので Tag で選り分ける。
+                    var grips = FindDescendants<Thumb>(view)
+                        .Where(thumb => thumb.Tag is string tag && Enum.TryParse<FilesColumnKey>(tag, out _))
+                        .ToList();
+                    Assert.Equal(4, grips.Count);
+
+                    var nameGrip = Assert.Single(grips, thumb => (string)thumb.Tag == nameof(FilesColumnKey.Name));
+                    var header = (Grid)VisualTreeHelper.GetParent(nameGrip);
+
+                    // つまみの中心は列の境目そのもの（見出しの右端 8px ではない）。
+                    var center = nameGrip.TransformToAncestor(header)
+                        .Transform(new Point(nameGrip.ActualWidth / 2, 0)).X;
+                    Assert.True(Math.Abs(center - column.ColumnWidth(FilesColumnKey.Name)) <= 1,
+                        $"つまみの中心 {center} が列の境目 {column.ColumnWidth(FilesColumnKey.Name)} から離れている");
+
+                    var saves = 0;
+                    column.StateChanged += (_, _) => saves++;
+
+                    nameGrip.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+                    nameGrip.RaiseEvent(new DragDeltaEventArgs(40, 0) { RoutedEvent = Thumb.DragDeltaEvent });
+                    nameGrip.RaiseEvent(new DragDeltaEventArgs(20, 0) { RoutedEvent = Thumb.DragDeltaEvent });
+                    window.UpdateLayout();
+
+                    Assert.Equal(300, column.ColumnWidth(FilesColumnKey.Name));
+                    var detail = (Grid)FindNamed(view, "DetailsLayout")!;
+                    Assert.Equal(300, detail.ColumnDefinitions[column.NameColumnIndex].ActualWidth, 0);
+                    Assert.Equal(0, saves);   // 掴んでいる間は保存しない
+
+                    nameGrip.RaiseEvent(new DragCompletedEventArgs(60, 0, false)
+                    {
+                        RoutedEvent = Thumb.DragCompletedEvent
+                    });
+                    Assert.Equal(1, saves);
+
+                    // 下限より狭くはできない（列が潰れて名前が読めなくなるのを防ぐ）。
+                    nameGrip.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+                    nameGrip.RaiseEvent(new DragDeltaEventArgs(-500, 0) { RoutedEvent = Thumb.DragDeltaEvent });
+                    nameGrip.RaiseEvent(new DragCompletedEventArgs(-500, 0, false)
+                    {
+                        RoutedEvent = Thumb.DragCompletedEvent
+                    });
+                    Assert.Equal(120, column.ColumnWidth(FilesColumnKey.Name));
+
+                    // 非表示の列のつまみは出ない（境目がないところに掴めるものを置かない）。
+                    column.ColumnSettings.Single(setting => setting.Key == FilesColumnKey.Size).IsVisible = false;
+                    window.UpdateLayout();
+                    var sizeGrip = Assert.Single(grips, thumb => (string)thumb.Tag == nameof(FilesColumnKey.Size));
+                    Assert.Equal(Visibility.Collapsed, sizeGrip.Visibility);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                column.Dispose();
+                try { Directory.Delete(root, recursive: true); } catch { }
+            }
+        });
+    }
+
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
