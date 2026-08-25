@@ -528,10 +528,13 @@
                         </Grid>
                     </ScrollViewer>
 
-                    <!-- 入力欄。素の TextBox に枠を足しただけに見えるよう、配色はペインに合わせる。 -->
+                    <!-- 入力欄。素の TextBox に枠を足しただけに見えるよう、配色はペインに合わせる。
+                         枠の 1px は Margin="0,-1" で高さから相殺する。相殺しないと入力欄だけ
+                         パンくずより 2px 高くなり、住所欄を開くたびにナビゲーション行——ひいては
+                         下の一覧全体——が上下する（枠は行の余白へ 1px はみ出して描かれるだけ）。 -->
                     <Border x:Name="AddressEditor" Background="{DynamicResource Bg}"
                             BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="3"
-                            Padding="5,0"
+                            Padding="5,0" Margin="0,-1"
                             Visibility="{Binding IsAddressEditing, Converter={StaticResource BoolToVis}}">
                         <!-- 余白は枠（AddressEditor）側だけが持つ。アプリ共通の TextBox 様式は
                              Padding="8,6" なので、そのままだと入力欄だけ 10px 背が高くなり、

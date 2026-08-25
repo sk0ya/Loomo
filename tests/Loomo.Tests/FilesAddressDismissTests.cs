@@ -77,20 +77,32 @@ public sealed class FilesAddressDismissTests
         Dispatcher.PushFrame(frame);
     }
 
-    [Fact]
-    public void 住所欄を開いてもナビゲーション行の高さは変わらない()
+    /// <summary>住所欄はパンくずと入れ替わるだけで、行の高さを動かしてはいけない
+    /// （開くたびに下の一覧ごと上下する）。UI の文字サイズはユーザー設定で変わり、
+    /// 既定は等倍(13)ではなく 16px なので、<b>実際に使われる倍率</b>でも見る。</summary>
+    [Theory]
+    [InlineData(UiFontManager.ReferenceSize)]   // 等倍
+    [InlineData(UiFontManager.DefaultSize)]     // 既定
+    [InlineData(22)]                            // 大きめ
+    public void 住所欄を開いてもナビゲーション行の高さは変わらない(double baseFontSize)
     {
         RunSta(() =>
         {
-            using var pane = OpenPane();
-            var nav = (FrameworkElement)pane.View.FindName("NavRow")!;
-            var browsing = nav.ActualHeight;
-            Assert.True(browsing > 0);
+            var fonts = new UiFontManager();
+            fonts.Apply(baseFontSize);
+            try
+            {
+                using var pane = OpenPane();
+                var nav = (FrameworkElement)pane.View.FindName("NavRow")!;
+                var browsing = nav.ActualHeight;
+                Assert.True(browsing > 0);
 
-            pane.Column.BeginAddressEdit();
-            pane.Window.UpdateLayout();
+                pane.Column.BeginAddressEdit();
+                pane.Window.UpdateLayout();
 
-            Assert.Equal(browsing, nav.ActualHeight);
+                Assert.Equal(browsing, nav.ActualHeight);
+            }
+            finally { fonts.Apply(UiFontManager.ReferenceSize); }
         });
     }
 
