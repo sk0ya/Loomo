@@ -6,6 +6,12 @@ public sealed class BrowserBookmark
     public string Url { get; set; } = "";
     public string? Title { get; set; }
     public DateTime AddedUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>置き場所（根からのフォルダー名の並び。空なら一番上）。
+    /// <b>1本の文字列ではなく段の並び</b>で持つ——フォルダー名に <c>/</c> が入っていても
+    /// 区切りと取り違えないため（取り込み元のフォルダー名は相手の browser が決めた任意の文字列）。
+    /// 木に組み直すのは <see cref="BrowserBookmarkTree"/>。</summary>
+    public List<string> Folder { get; set; } = new();
 }
 
 /// <summary>訪問履歴の1件（URL 単位でまとめ、訪問のたびに <see cref="VisitCount"/> と

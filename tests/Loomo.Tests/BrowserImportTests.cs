@@ -300,6 +300,40 @@ public class BrowserImportTests
     }
 
     [Fact]
+    public void Bookmarks_keep_the_folder_they_were_filed_in()
+    {
+        var profile = NewDirectory();
+        File.WriteAllText(Path.Combine(profile, "Bookmarks"), """
+        {
+          "roots": {
+            "bookmark_bar": {
+              "type": "folder", "name": "ブックマーク バー",
+              "children": [
+                { "type": "url", "name": "直下", "url": "https://top.example/" },
+                { "type": "folder", "name": "開発", "children": [
+                    { "type": "url", "name": "奥", "url": "https://deep.example/x" } ] }
+              ]
+            },
+            "other": {
+              "type": "folder", "name": "その他のブックマーク",
+              "children": [ { "type": "url", "name": "余所", "url": "https://other.example/" } ]
+            }
+          }
+        }
+        """);
+
+        var read = ChromiumImportReader.ReadBookmarks(profile);
+
+        Assert.Equal(new[] { "ブックマーク バー" },
+            read.Items.Single(b => b.Url == "https://top.example/").Folder);
+        // 入れ子は道が伸びる。潜り終えても他の件に混ざらない（道は複製して渡している）。
+        Assert.Equal(new[] { "ブックマーク バー", "開発" },
+            read.Items.Single(b => b.Url == "https://deep.example/x").Folder);
+        Assert.Equal(new[] { "その他のブックマーク" },
+            read.Items.Single(b => b.Url == "https://other.example/").Folder);
+    }
+
+    [Fact]
     public void Missing_bookmark_file_is_empty_not_an_error()
     {
         var read = ChromiumImportReader.ReadBookmarks(NewDirectory());
@@ -328,6 +362,29 @@ public class BrowserImportTests
         Assert.Equal(1, added);
         Assert.Equal(2, merged.Count);
         Assert.Equal("自分で付けた名前", merged[0].Title);   // 既存の名前は守る
+    }
+
+    [Fact]
+    public void An_already_bookmarked_page_moves_into_the_folder_it_came_in_with()
+    {
+        // 取り込む前に ☆ を押していたぶんが一番上に居座ると、持ち込んだ整理に穴が空いて見える。
+        var existing = new List<BrowserBookmark> { new() { Url = "https://example.com/", Title = "自分の名前" } };
+        var incoming = new List<BrowserBookmark>
+        {
+            new() { Url = "https://example.com/", Title = "相手の名前", Folder = { "バー", "開発" } },
+        };
+
+        var (merged, added) = BrowserImportMerge.Bookmarks(existing, incoming);
+
+        Assert.Equal(0, added);
+        Assert.Equal("自分の名前", merged[0].Title);                        // 名前は守ったまま
+        Assert.Equal(new[] { "バー", "開発" }, merged[0].Folder);
+
+        // 2回目も同じ結果（置き場所が入っているものは動かさない）。
+        var again = BrowserImportMerge.Bookmarks(
+            merged, new List<BrowserBookmark> { new() { Url = "https://example.com/", Folder = { "別" } } });
+        Assert.Equal(0, again.Added);
+        Assert.Equal(new[] { "バー", "開発" }, again.Merged[0].Folder);
     }
 
     [Fact]

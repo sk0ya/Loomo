@@ -214,7 +214,8 @@ public class BrowserLibraryTests
 
         vm.ToggleBookmark();
         Assert.True(vm.IsBookmarked);
-        Assert.Equal("https://example.com/docs", Assert.Single(vm.Bookmarks).Url);
+        Assert.Equal("https://example.com/docs",
+            Assert.Single(vm.Bookmarks.OfType<BrowserLinkViewModel>()).Url);
 
         vm.ToggleBookmark();
         Assert.False(vm.IsBookmarked);
@@ -391,5 +392,122 @@ public class BrowserLibraryTests
     {
         Assert.Equal("example.com.md", BrowserPageMarkdown.FileNameFor("https://example.com/a/b?c=1"));
         Assert.Equal("page.md", BrowserPageMarkdown.FileNameFor("about:blank"));
+    }
+
+    // ===== ブックマークの階層（BrowserBookmarkTree） =====
+
+    private static BrowserBookmark Marked(string url, params string[] folder)
+        => new() { Url = url, Folder = folder.ToList() };
+
+    [Fact]
+    public void Folders_are_built_from_each_bookmark_place_and_count_the_whole_subtree()
+    {
+        var tree = BrowserBookmarkTree.Build(new[]
+        {
+            Marked("https://a.example/", "バー"),
+            Marked("https://b.example/", "バー", "開発"),
+            Marked("https://c.example/"),
+        });
+
+        Assert.Equal("https://c.example/", Assert.Single(tree.Bookmarks).Url);
+        var bar = Assert.Single(tree.Folders);
+        Assert.Equal("バー", bar.Name);
+        Assert.Equal(2, bar.TotalCount);                       // 入れ子のぶんも数える
+        Assert.Equal(1, Assert.Single(bar.Folders).TotalCount);
+    }
+
+    [Fact]
+    public void Collapsed_folders_do_not_produce_rows_for_what_is_inside()
+    {
+        var tree = BrowserBookmarkTree.Build(new[]
+        {
+            Marked("https://a.example/", "バー"),
+            Marked("https://b.example/", "バー", "開発"),
+            Marked("https://c.example/"),
+        });
+
+        var collapsed = BrowserBookmarkTree.Flatten(tree, new HashSet<string>());
+        Assert.Equal(2, collapsed.Count);                      // 「バー」の行と、一番上の1件
+        Assert.Equal("バー", collapsed[0].Folder!.Name);
+        Assert.Equal("https://c.example/", collapsed[1].Bookmark!.Url);
+
+        var opened = BrowserBookmarkTree.Flatten(
+            tree, new HashSet<string> { BrowserBookmarkTree.Key(new[] { "バー" }) });
+        // フォルダーが先、ぶら下がっているブックマークが後。中の「開発」は畳んだまま。
+        Assert.Equal(4, opened.Count);
+        Assert.Equal("開発", opened[1].Folder!.Name);
+        Assert.Equal(1, opened[1].Depth);
+        Assert.Equal("https://a.example/", opened[2].Bookmark!.Url);
+        Assert.Equal(1, opened[2].Depth);
+    }
+
+    [Fact]
+    public void A_slash_in_a_folder_name_is_just_a_character_not_a_separator()
+    {
+        var tree = BrowserBookmarkTree.Build(new[]
+        {
+            Marked("https://a.example/", "仕事/私用"),
+            Marked("https://b.example/", "仕事", "私用"),
+        });
+
+        Assert.Equal(2, tree.Folders.Count);
+        Assert.Equal("仕事/私用", tree.Folders[0].Name);
+        Assert.Empty(tree.Folders[0].Folders);
+        Assert.Equal("私用", Assert.Single(tree.Folders[1].Folders).Name);
+        Assert.NotEqual(BrowserBookmarkTree.Key(tree.Folders[0].Path),
+                        BrowserBookmarkTree.Key(tree.Folders[1].Folders[0].Path));
+    }
+
+    [Fact]
+    public void Empty_segments_do_not_make_an_unopenable_step()
+    {
+        var tree = BrowserBookmarkTree.Build(new[] { Marked("https://a.example/", " ", "開発") });
+
+        Assert.Equal("開発", Assert.Single(tree.Folders).Name);
+    }
+
+    [Fact]
+    public void Folders_start_collapsed_and_open_when_the_row_is_pressed()
+    {
+        var path = TempFile();
+        var store = new BrowserLibraryStore(path);
+        store.Save(new BrowserLibrarySnapshot
+        {
+            Bookmarks =
+            {
+                new BrowserBookmark { Url = "https://a.example/", Folder = { "バー" } },
+                new BrowserBookmark { Url = "https://b.example/" },
+            },
+        });
+        var vm = new BrowserViewModel(store) { IsLibraryOpen = true };
+
+        var folder = Assert.Single(vm.Bookmarks.OfType<BrowserBookmarkFolderViewModel>());
+        Assert.False(folder.IsExpanded);
+        Assert.Equal(1, folder.Count);
+        // 畳んでいる間は中のブックマークの行は無い（一番上の1件だけ）。
+        Assert.Equal("https://b.example/",
+            Assert.Single(vm.Bookmarks.OfType<BrowserLinkViewModel>()).Url);
+
+        vm.ToggleBookmarkFolderCommand.Execute(folder);
+
+        Assert.True(Assert.Single(vm.Bookmarks.OfType<BrowserBookmarkFolderViewModel>()).IsExpanded);
+        Assert.Equal(2, vm.Bookmarks.OfType<BrowserLinkViewModel>().Count());
+        File.Delete(path);
+    }
+
+    [Fact]
+    public void The_place_of_a_bookmark_survives_a_save_and_load()
+    {
+        var path = TempFile();
+        var store = new BrowserLibraryStore(path);
+        store.Save(new BrowserLibrarySnapshot
+        {
+            Bookmarks = { new BrowserBookmark { Url = "https://a.example/", Folder = { "バー", "開発" } } },
+        });
+
+        var loaded = new BrowserLibraryStore(path).Load();
+
+        Assert.Equal(new[] { "バー", "開発" }, Assert.Single(loaded.Bookmarks).Folder);
+        File.Delete(path);
     }
 }

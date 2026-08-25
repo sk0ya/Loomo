@@ -5,8 +5,39 @@ using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>ブックマーク一覧の1行に共通するもの（＝段の深さ）。フォルダーの行とブックマークの行を
+/// <b>1つの ItemsControl に均して流す</b>ための土台。入れ子の ItemsControl にしないのは、行の中から
+/// コマンド（開く・消す・畳む）へ辿る道を「一覧の DataContext」一段に保つため——入れ子にすると
+/// <c>AncestorType=ItemsControl</c> が内側の一覧に当たって、行のボタンが黙って効かなくなる。</summary>
+public abstract partial class BrowserRowViewModel : ObservableObject
+{
+    /// <summary>根から数えた段（0 が一番上）。</summary>
+    public int Depth { get; init; }
+
+    /// <summary>字下げ。行の見た目の左端だけを寄せる（幅は変えない）。</summary>
+    public Thickness IndentMargin => new(Depth * 14, 0, 0, 0);
+}
+
+/// <summary>ブックマーク一覧のフォルダー行（設計書 §21.5.1）。畳んだままでも中の件数は見せる。</summary>
+public sealed partial class BrowserBookmarkFolderViewModel : BrowserRowViewModel
+{
+    public required string Name { get; init; }
+
+    /// <summary>展開状態を覚えておくための鍵（<see cref="BrowserBookmarkTree.Key"/>）。</summary>
+    public required string Key { get; init; }
+
+    /// <summary>この下（入れ子を含む）のブックマーク数。</summary>
+    public required int Count { get; init; }
+
+    public required bool IsExpanded { get; init; }
+
+    public string Glyph => IsExpanded ? "▾" : "▸";
+    public string FolderGlyph => IsExpanded ? "📂" : "📁";
+    public string CountText => Count.ToString();
+}
+
 /// <summary>ブックマーク／履歴／候補の1行（一覧・ドロップダウンの表示単位）。</summary>
-public sealed partial class BrowserLinkViewModel : ObservableObject
+public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
 {
     public required string Url { get; init; }
     public string? Title { get; init; }
@@ -152,12 +183,31 @@ public sealed partial class BrowserViewModel : ObservableObject
     }
 
     // ── ブックマーク・履歴 ─────────────────────────────────────────────
-    public ObservableCollection<BrowserLinkViewModel> Bookmarks { get; } = new();
+    /// <summary>ブックマーク一覧の行（フォルダーの行とブックマークの行が深さ順に並んだもの）。
+    /// 木そのものではなく<b>均した行の列</b>を持つ——理由は <see cref="BrowserRowViewModel"/>。</summary>
+    public ObservableCollection<BrowserRowViewModel> Bookmarks { get; } = new();
     public ObservableCollection<BrowserLinkViewModel> History { get; } = new();
     public ObservableCollection<BrowserLinkViewModel> Suggestions { get; } = new();
 
     [ObservableProperty] private bool _isLibraryOpen;
     [ObservableProperty] private bool _isSuggestionsOpen;
+
+    /// <summary>いま開いているフォルダー（<see cref="BrowserBookmarkTree.Key"/> の鍵）。
+    /// <b>既定は全部畳んだ状態</b>——取り込んだ直後の数百件が一覧を埋め尽くさないように
+    /// （エクスプローラのツリーと同じ流儀）。覚えるのはアプリを動かしている間だけで、
+    /// browser.json には書かない：どこを開いていたかは資産ではなく、いまの見え方にすぎない。</summary>
+    private readonly HashSet<string> _expandedFolders = new(StringComparer.Ordinal);
+
+    /// <summary>フォルダーの行を押した（開く／畳む）。</summary>
+    [RelayCommand]
+    private void ToggleBookmarkFolder(BrowserBookmarkFolderViewModel? folder)
+    {
+        if (folder is null)
+            return;
+        if (!_expandedFolders.Remove(folder.Key))
+            _expandedFolders.Add(folder.Key);
+        RefreshLists();
+    }
 
     /// <summary>一覧を開いた時点で（まだなら）browser.json を読み、閉じている間の変化を反映する。</summary>
     partial void OnIsLibraryOpenChanged(bool value)
@@ -337,8 +387,24 @@ public sealed partial class BrowserViewModel : ObservableObject
     {
         var library = _library ?? new BrowserLibrarySnapshot();
         Bookmarks.Clear();
-        foreach (var b in library.Bookmarks)
-            Bookmarks.Add(new BrowserLinkViewModel { Url = b.Url, Title = b.Title, IsBookmark = true });
+        foreach (var row in BrowserBookmarkTree.Flatten(
+                     BrowserBookmarkTree.Build(library.Bookmarks), _expandedFolders))
+            Bookmarks.Add(row.Folder is { } folder
+                ? new BrowserBookmarkFolderViewModel
+                {
+                    Depth = row.Depth,
+                    Name = folder.Name,
+                    Key = BrowserBookmarkTree.Key(folder.Path),
+                    Count = folder.TotalCount,
+                    IsExpanded = _expandedFolders.Contains(BrowserBookmarkTree.Key(folder.Path)),
+                }
+                : new BrowserLinkViewModel
+                {
+                    Depth = row.Depth,
+                    Url = row.Bookmark!.Url,
+                    Title = row.Bookmark.Title,
+                    IsBookmark = true,
+                });
         History.Clear();
         foreach (var h in library.History.Take(MaxHistoryShown))
             History.Add(new BrowserLinkViewModel { Url = h.Url, Title = h.Title, IsBookmark = false });

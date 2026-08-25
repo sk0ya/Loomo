@@ -75,8 +75,12 @@ public static class ChromiumImportReader
     }
 
     // ── ブックマーク ───────────────────────────────────────────────────
-    /// <summary><c>Bookmarks</c>（JSON）を平らにして読む。フォルダー構造は捨てる——
-    /// Loomo 側のブックマークは階層を持たない一列なので、持ち込んでも表現できない。</summary>
+    /// <summary><c>Bookmarks</c>（JSON）を読む。<b>フォルダーの階層はそのまま持ち込む</b>——
+    /// 「ブックマーク バー／開発」のような置き場所は、その人が自分で作った整理そのもので、
+    /// 平らにすると数百件が一列になって使い物にならない。木に組み直すのは表示側
+    /// （<see cref="BrowserBookmarkTree"/>）で、ここは1件ごとに道
+    /// （<see cref="BrowserBookmark.Folder"/>）を付けて返すだけ。
+    /// <c>roots</c> の直下（「ブックマーク バー」「その他のブックマーク」）も普通のフォルダーとして数える。</summary>
     public static ImportRead<BrowserBookmark> ReadBookmarks(string profilePath)
     {
         var path = Path.Combine(profilePath, "Bookmarks");
@@ -85,11 +89,12 @@ public static class ChromiumImportReader
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(path));
-            if (!document.RootElement.TryGetProperty("roots", out var roots))
+            if (!document.RootElement.TryGetProperty("roots", out var roots)
+                || roots.ValueKind != JsonValueKind.Object)
                 return ImportRead<BrowserBookmark>.Empty();
             var items = new List<BrowserBookmark>();
             foreach (var root in roots.EnumerateObject())
-                CollectBookmarks(root.Value, items);
+                CollectBookmarks(root.Value, items, new List<string>());
             return new ImportRead<BrowserBookmark>(items, 0, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -98,13 +103,15 @@ public static class ChromiumImportReader
         }
     }
 
-    private static void CollectBookmarks(JsonElement node, List<BrowserBookmark> items)
+    /// <param name="folder">いま潜っているフォルダーの道（根から数えた名前の並び）。</param>
+    private static void CollectBookmarks(JsonElement node, List<BrowserBookmark> items, List<string> folder)
     {
         if (node.ValueKind != JsonValueKind.Object)
             return;
         var type = node.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String
             ? t.GetString()
             : null;
+        var nodeName = node.TryGetProperty("name", out var name) ? name.GetString() : null;
         if (type == "url")
         {
             if (!node.TryGetProperty("url", out var url) || url.ValueKind != JsonValueKind.String)
@@ -115,14 +122,23 @@ public static class ChromiumImportReader
             items.Add(new BrowserBookmark
             {
                 Url = value!,
-                Title = node.TryGetProperty("name", out var name) ? name.GetString() : null,
+                Title = nodeName,
                 AddedUtc = ReadJsonChromiumTime(node, "date_added"),
+                // 道は<b>複製して</b>渡す（潜り終えて縮む同じ実体を渡すと、全件が最後の道を指す）。
+                Folder = new List<string>(folder),
             });
             return;
         }
-        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
-            foreach (var child in children.EnumerateArray())
-                CollectBookmarks(child, items);
+        if (!node.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Array)
+            return;
+        // 名前の無いフォルダーでは段を増やさない（表示できない空の段ができるだけ）。
+        var named = !string.IsNullOrWhiteSpace(nodeName);
+        if (named)
+            folder.Add(nodeName!.Trim());
+        foreach (var child in children.EnumerateArray())
+            CollectBookmarks(child, items, folder);
+        if (named)
+            folder.RemoveAt(folder.Count - 1);
     }
 
     /// <summary>Bookmarks の日時は<b>文字列で入った</b> Chromium 時刻。無い／壊れていれば「いま」にする

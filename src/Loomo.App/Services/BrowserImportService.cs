@@ -144,18 +144,32 @@ public static class BrowserImportService
 public static class BrowserImportMerge
 {
     /// <summary>ブックマークを併合して、増えた件数と一緒に返す。既にあるものには触らない
-    /// （タイトルを相手のもので上書きすると、自分で付け直した名前が消える）。</summary>
+    /// （タイトルを相手のもので上書きすると、自分で付け直した名前が消える）。
+    /// <b>置き場所だけは例外</b>で、こちらが一番上に持っていた（＝まだ置き場所が無い）ものに
+    /// 相手のフォルダーが付いていたら、そこへ入れる——同じ URL が「取り込み前に ☆ を押したから
+    /// 一番上」に居座ると、取り込んだ整理の中に穴が空いて見える。2回目以降は既に道が入っているので
+    /// 何も起きない（＝繰り返しても同じ結果）。</summary>
     public static (List<BrowserBookmark> Merged, int Added) Bookmarks(
         IEnumerable<BrowserBookmark> existing, IEnumerable<BrowserBookmark> incoming)
     {
         var merged = existing.ToList();
-        var seen = new HashSet<string>(
-            merged.Select(b => BrowserLibrary.Normalize(b.Url)), StringComparer.OrdinalIgnoreCase);
+        var index = new Dictionary<string, BrowserBookmark>(StringComparer.OrdinalIgnoreCase);
+        foreach (var bookmark in merged)
+            index.TryAdd(BrowserLibrary.Normalize(bookmark.Url), bookmark);
         var added = 0;
         foreach (var bookmark in incoming)
         {
-            if (!BrowserLibrary.IsRecordable(bookmark.Url) || !seen.Add(BrowserLibrary.Normalize(bookmark.Url)))
+            if (!BrowserLibrary.IsRecordable(bookmark.Url))
                 continue;
+            var key = BrowserLibrary.Normalize(bookmark.Url);
+            if (index.TryGetValue(key, out var found))
+            {
+                var incomingFolder = BrowserBookmarkTree.NormalizePath(bookmark.Folder);
+                if (BrowserBookmarkTree.NormalizePath(found.Folder).Count == 0 && incomingFolder.Count > 0)
+                    found.Folder = incomingFolder;
+                continue;
+            }
+            index[key] = bookmark;
             merged.Add(bookmark);
             added++;
         }

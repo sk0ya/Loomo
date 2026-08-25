@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="clr-namespace:sk0ya.Loomo.App.Views"
+    xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
     xmlns:editor="clr-namespace:Editor.Controls;assembly=Editor.Controls"
     xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
     Title="Loomo" Height="800" Width="1280"
@@ -329,7 +330,9 @@
 
         <!-- ブックマーク／履歴／候補の共通の行テンプレート。見出し＋（違うときだけ）URL の2段。 -->
         <DataTemplate x:Key="BrowserLinkRow">
-            <Grid>
+            <!-- ブックマークの行はフォルダーの中にも並ぶので、段のぶんだけ左へ寄せる
+                 （履歴・候補は段が無いので 0）。 -->
+            <Grid Margin="{Binding IndentMargin}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -355,6 +358,31 @@
                         Command="{Binding DataContext.RemoveLinkCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                         CommandParameter="{Binding}" />
             </Grid>
+        </DataTemplate>
+
+        <!-- ブックマークの一覧はフォルダーの行とリンクの行が混ざって流れてくるので、型で振り分ける
+             （暗黙の DataTemplate）。履歴・候補の一覧は ItemTemplate を明示しているので影響しない。 -->
+        <DataTemplate DataType="{x:Type vm:BrowserLinkViewModel}">
+            <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource BrowserLinkRow}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:BrowserBookmarkFolderViewModel}">
+            <!-- 行ごと押して開閉する（つまみだけを的にしない——高密度な一覧では狙いにくい）。 -->
+            <Button Style="{StaticResource BrowserRowButton}" Margin="{Binding IndentMargin}"
+                    ToolTip="開く／畳む"
+                    Command="{Binding DataContext.ToggleBookmarkFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Glyph}" Width="10" Foreground="{DynamicResource FgDim}"
+                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding FolderGlyph}" Margin="2,0,6,0"
+                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <!-- 畳んだままでも中身の量が分かるように件数だけは出す。 -->
+                    <TextBlock Text="{Binding CountText}" Margin="6,0,0,0" Foreground="{DynamicResource FgDim}"
+                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
         </DataTemplate>
     </Window.Resources>
 
@@ -1239,8 +1267,9 @@
                                         <TextBlock Text="まだありません（☆ かCtrl+D で追加）" Margin="6,2"
                                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                                                    Visibility="{Binding HasBookmarks, Converter={StaticResource InverseBoolToVis}}" />
-                                        <ItemsControl ItemsSource="{Binding Bookmarks}"
-                                                      ItemTemplate="{StaticResource BrowserLinkRow}" />
+                                        <!-- ItemTemplate は指定しない：行の型（フォルダー／リンク）で
+                                             暗黙の DataTemplate が選ばれる。 -->
+                                        <ItemsControl ItemsSource="{Binding Bookmarks}" />
                                         <DockPanel Margin="4,8,4,2">
                                             <TextBlock DockPanel.Dock="Left" Text="履歴"
                                                        Foreground="{DynamicResource FgDim}"
