@@ -46,6 +46,10 @@ public partial class FilesColumnView : UserControl
             _typeAheadResetTimer.Stop();
             _propertiesLoadCts?.Cancel();
             _zipOperationCts?.Cancel();
+            // 住所欄を開いたまま外されたら、畳んでウィンドウの見張りも外す（見張りが残ると
+            // 閉じたカラムがウィンドウのクリックを掴み続ける）。
+            Vm?.CancelAddressEdit();
+            UpdateAddressSuggestionPopup();
         };
         // クリック・フォーカスのどちらでも「操作対象のカラム」になる。
         PreviewMouseDown += (_, _) => Vm?.NotifyActivated();

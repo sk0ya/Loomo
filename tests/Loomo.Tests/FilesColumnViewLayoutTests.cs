@@ -13,8 +13,14 @@ using sk0ya.Loomo.Core.Agent;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>ファイル一覧の表示形式を実際のWPFビューへ適用したときのレイアウト検証。</summary>
+[Collection(WpfViewTests.Name)]
 public sealed class FilesColumnViewLayoutTests
 {
+    // ビューは共有の STA ホスト上で組み立てる（WpfViewTests のコレクション）。
+    private readonly WpfViewHost _host;
+
+    public FilesColumnViewLayoutTests(WpfViewHost host) => _host = host;
+
     [Fact]
     public void 表示形式6つが実レイアウトと表示形式ポップアップへ反映される()
     {
@@ -40,11 +46,6 @@ public sealed class FilesColumnViewLayoutTests
 
             try
             {
-                if (Application.Current is null)
-                {
-                    var app = new sk0ya.Loomo.App.App();
-                    app.InitializeComponent();
-                }
                 var view = new FilesColumnView { DataContext = column };
                 var window = new Window
                 {
@@ -214,21 +215,7 @@ public sealed class FilesColumnViewLayoutTests
         return null;
     }
 
-    private static void RunSta(Action body)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { body(); }
-            catch (Exception ex) { error = ex; }
-            finally { Dispatcher.CurrentDispatcher.InvokeShutdown(); }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
-    }
+    private void RunSta(Action body) => _host.Run(body);
 
     private sealed class FixedThumbnailService : IFileThumbnailService
     {

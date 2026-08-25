@@ -117,33 +117,94 @@ public partial class FilesColumnView
         UpdateAddressSuggestionPopup();
     }
 
-    /// <summary>入力欄からフォーカスが外れたら畳む。ただし候補一覧へ移ったときは畳まない
-    /// （候補を選ぶ前に消えてしまう）。</summary>
+    /// <summary>入力欄・候補一覧からフォーカスが外れたら畳む。ただし住所欄の内側
+    /// （入力欄⇔候補一覧）を行き来しているだけのときは畳まない（候補を選ぶ前に消えてしまう）。
+    ///
+    /// <para>候補一覧にも同じハンドラを付けてある——入力欄から候補へ降りたあとは入力欄の
+    /// <c>LostKeyboardFocus</c> はもう鳴らないので、片方だけに付けると「候補へ降りたら最後、
+    /// どこへフォーカスが移っても住所欄が開きっぱなし」になる。</para></summary>
     private void OnAddressLostFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (e.NewFocus is DependencyObject next && IsWithinAddressPopup(next))
+        if (e.NewFocus is DependencyObject next && IsWithinAddressUi(next))
             return;
-        Vm?.CancelAddressEdit();
-        UpdateAddressSuggestionPopup();
+        DismissAddressEdit();
     }
 
-    private bool IsWithinAddressPopup(DependencyObject node)
+    /// <summary>入力欄を畳んでパンくずへ戻す。
+    ///
+    /// <para>畳むと入力欄は <c>Collapsed</c> になるので、そこにキーボードフォーカスが残っていた場合は
+    /// WPF がフォーカスをウィンドウの根へ落とす。根に落ちるとキー入力はどのペインにも届かず、
+    /// Ctrl+L も一覧のカーソル移動も無反応になる（フォーカスを取れない余白を押して畳んだときが
+    /// まさにこれ）。押した先が自分でフォーカスを取るならそちらが勝つので、<b>誰も取らなかったとき
+    /// だけ</b>一覧へ返す——判定は押下の処理が終わったあとでないとできないので一度譲る。</para></summary>
+    private void DismissAddressEdit()
     {
-        for (var current = node; current is not null; current = VisualTreeHelperParent(current))
-            if (ReferenceEquals(current, AddressSuggestionList))
+        if (Vm is not { IsAddressEditing: true })
+            return;
+        var hadKeyboardFocus = AddressBox.IsKeyboardFocusWithin;
+        Vm.CancelAddressEdit();
+        UpdateAddressSuggestionPopup();
+        if (!hadKeyboardFocus)
+            return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            if (Keyboard.FocusedElement is null or Window)
+                EntryList.Focus();
+        }));
+    }
+
+    /// <summary>住所欄そのもの（入力欄の枠）か、候補ポップアップの中か。</summary>
+    private bool IsWithinAddressUi(DependencyObject node)
+    {
+        for (var current = node; current is not null; current = ParentOf(current))
+            if (ReferenceEquals(current, AddressEditor) || ReferenceEquals(current, AddressSuggestionRoot))
                 return true;
         return false;
     }
 
-    private static DependencyObject? VisualTreeHelperParent(DependencyObject node)
+    private static DependencyObject? ParentOf(DependencyObject node)
         => node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
-            ? System.Windows.Media.VisualTreeHelper.GetParent(node)
+            ? System.Windows.Media.VisualTreeHelper.GetParent(node) ?? LogicalTreeHelper.GetParent(node)
             : LogicalTreeHelper.GetParent(node);
+
+    // ===== 外側クリックで畳む =====
+    // フォーカスが外れたら畳む、だけでは足りない。WPF はフォーカスを取れない要素
+    // （ツールバーの余白・見出し・他ペインの地の部分）を押してもキーボードフォーカスを
+    // 動かさないので、LostKeyboardFocus が鳴らず住所欄が開きっぱなしになる。入力中だけ
+    // ウィンドウ全体の押下を見張り、住所欄の外を押されたら畳む。
+
+    private Window? _addressDismissWindow;
+
+    /// <summary>入力中だけウィンドウの押下を見張る。開閉のたびに呼ばれる
+    /// （<see cref="UpdateAddressSuggestionPopup"/> 経由）ので、状態と見張りが必ず揃う。</summary>
+    private void SyncAddressDismissWatch()
+    {
+        var window = Vm is { IsAddressEditing: true } ? OwnerWindow : null;
+        if (ReferenceEquals(window, _addressDismissWindow))
+            return;
+
+        if (_addressDismissWindow is not null)
+            _addressDismissWindow.RemoveHandler(PreviewMouseDownEvent,
+                new MouseButtonEventHandler(OnWindowMouseDownWhileAddressEditing));
+        _addressDismissWindow = window;
+        // 行やボタンが押下を Handled にしていても畳みたいので handledEventsToo。
+        _addressDismissWindow?.AddHandler(PreviewMouseDownEvent,
+            new MouseButtonEventHandler(OnWindowMouseDownWhileAddressEditing), handledEventsToo: true);
+    }
+
+    private void OnWindowMouseDownWhileAddressEditing(object sender, MouseButtonEventArgs e)
+    {
+        // 押下は握り潰さない（畳んだうえで、押した先の操作はそのまま通す）。
+        if (e.OriginalSource is DependencyObject source && IsWithinAddressUi(source))
+            return;
+        DismissAddressEdit();
+    }
 
     /// <summary>候補ポップアップの開閉。入力中で、出すものがあるときだけ開く。</summary>
     private void UpdateAddressSuggestionPopup()
     {
         AddressSuggestionPopup.IsOpen = Vm is { IsAddressEditing: true }
             && (Vm.AddressSuggestions.Count > 0 || Vm.HasAddressError);
+        SyncAddressDismissWatch();
     }
 }

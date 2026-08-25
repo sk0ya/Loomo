@@ -334,7 +334,7 @@
         </Border.Style>
         <DockPanel>
             <!-- ツールバー：場所／戻る／進む ＋ パンくず ＋ 絞り込み -->
-            <DockPanel DockPanel.Dock="Top" Margin="4,2,4,1" LastChildFill="True">
+            <DockPanel x:Name="NavRow" DockPanel.Dock="Top" Margin="4,2,4,1" LastChildFill="True">
                 <!-- Windows エクスプローラーの「場所」ボタン。押すと直下の Expander を開閉する。 -->
                 <ToggleButton x:Name="PlacesButton" DockPanel.Dock="Left" Style="{StaticResource FilesToolToggle}"
                               ToolTip="場所（ワークスペース・ピン留め・クイックアクセス・PC）"
@@ -533,9 +533,12 @@
                             BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="3"
                             Padding="5,0"
                             Visibility="{Binding IsAddressEditing, Converter={StaticResource BoolToVis}}">
+                        <!-- 余白は枠（AddressEditor）側だけが持つ。アプリ共通の TextBox 様式は
+                             Padding="8,6" なので、そのままだと入力欄だけ 10px 背が高くなり、
+                             住所欄を開くたびにナビゲーション行ごと伸び縮みする。 -->
                         <TextBox x:Name="AddressBox" BorderThickness="0" Background="Transparent"
                                  Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}"
-                                 VerticalContentAlignment="Center" MinHeight="20"
+                                 VerticalContentAlignment="Center" Padding="0"
                                  FontSize="{DynamicResource Fs12}"
                                  Text="{Binding AddressText, UpdateSourceTrigger=PropertyChanged}"
                                  PreviewKeyDown="OnAddressKeyDown"
@@ -547,7 +550,8 @@
                     <Popup x:Name="AddressSuggestionPopup" PlacementTarget="{Binding ElementName=AddressEditor}"
                            Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
                            Width="{Binding ActualWidth, ElementName=AddressEditor}">
-                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                        <Border x:Name="AddressSuggestionRoot"
+                                Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
                                 BorderThickness="1" Padding="2" Margin="0,2,0,0" MaxHeight="220">
                             <StackPanel>
                                 <TextBlock Text="{Binding AddressError}" Foreground="#FFE06C75"
@@ -559,6 +563,7 @@
                                          ItemsSource="{Binding AddressSuggestions}"
                                          ItemContainerStyle="{StaticResource FilesRow}"
                                          PreviewKeyDown="OnAddressSuggestionKeyDown"
+                                         LostKeyboardFocus="OnAddressLostFocus"
                                          MouseLeftButtonUp="OnAddressSuggestionClick">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>

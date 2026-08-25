@@ -17,8 +17,14 @@ public sealed class ExplorerLayoutTests
         Assert.True(start >= 0 && end > start);
         var section = xaml[start..end];
 
-        var tree = section.IndexOf("<views:FolderTreeView Grid.Row=\"0\"", StringComparison.Ordinal);
-        Assert.True(tree >= 0, "FolderTreeView は ExplorerSection の先頭行であること");
+        // ツリーには x:Name が付いているので、属性の並び順に依存しない形で先頭行を見る
+        // （名前を足した時点で「Grid.Row が続く」前提の検査は空振りしていた）。
+        var tree = section.IndexOf("<views:FolderTreeView", StringComparison.Ordinal);
+        Assert.True(tree >= 0, "FolderTreeView は ExplorerSection の中にあること");
+        var tagEnd = section.IndexOf('>', tree);
+        Assert.True(tagEnd > tree, "FolderTreeView の開始タグが閉じていること");
+        Assert.True(section[tree..tagEnd].Contains("Grid.Row=\"0\"", StringComparison.Ordinal),
+            "FolderTreeView は ExplorerSection の先頭行であること");
         Assert.DoesNotContain("RecentItemsView", section);
         Assert.Contains("ExplorerFolderTreeRow\" Height=\"*\" MinHeight=\"150\"", section);
         Assert.Contains("<GridSplitter x:Name=\"SidebarTabsSplitter\" Grid.Row=\"1\"", section);
@@ -66,6 +72,29 @@ public sealed class ExplorerLayoutTests
         var tree = Read("src", "Loomo.App", "Views", "FolderTreeView.xaml");
         Assert.DoesNotContain("AddressComboBox", tree);
         Assert.DoesNotContain("AddressText", tree);
+    }
+
+    [Fact]
+    public void アドレス欄はフォーカスが外れても外側を押しても畳む()
+    {
+        // 「フォーカスが外れたら畳む」だけでは畳めない道が2つ残っていた——
+        // (1) 候補一覧へ降りたあとは入力欄の LostKeyboardFocus がもう鳴らない、
+        // (2) フォーカスを取れない要素（余白・見出し・他ペインの地）を押しても
+        //     キーボードフォーカスは動かないので何も鳴らない。
+        var xaml = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var box = xaml.IndexOf("x:Name=\"AddressBox\"", StringComparison.Ordinal);
+        var list = xaml.IndexOf("x:Name=\"AddressSuggestionList\"", StringComparison.Ordinal);
+        Assert.True(box >= 0 && list > box);
+        Assert.Contains("LostKeyboardFocus=\"OnAddressLostFocus\"", xaml[box..list]);
+        Assert.Contains("LostKeyboardFocus=\"OnAddressLostFocus\"", xaml[list..]);
+
+        var code = Read("src", "Loomo.App", "Views", "FilesColumnView.Address.cs");
+        Assert.Contains("PreviewMouseDownEvent", code);
+        Assert.Contains("handledEventsToo: true", code);
+        // 見張りは入力中だけ。畳んだら（＝カラムを閉じたら）ウィンドウから外す。
+        Assert.Contains("RemoveHandler(PreviewMouseDownEvent", code);
+        var view = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml.cs");
+        Assert.Contains("Vm?.CancelAddressEdit();", view);
     }
 
     private static string Read(params string[] parts)
