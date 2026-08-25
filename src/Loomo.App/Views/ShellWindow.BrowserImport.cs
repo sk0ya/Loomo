@@ -31,10 +31,7 @@ public partial class ShellWindow {
         try {
             var sources = await Task.Run(() => ChromiumBrowsers.Detect()
                 .SelectMany(ChromiumBrowsers.ProfilesOf)
-                .Select(profile => new BrowserImportSourceViewModel {
-                    Profile = profile,
-                    Note = DescribeImportSource(profile),
-                })
+                .Select(DescribeImportSource)
                 .ToList());
             import.SetSources(sources, sources.Count == 0
                 ? "取り込めるブラウザが見つかりませんでした。"
@@ -46,14 +43,25 @@ public partial class ShellWindow {
 
     /// <summary>その相手で起きることを1行で。<b>数えられることだけを言う</b>——
     /// 「たぶん移せます」ではなく、鍵の形とファイルの状態から分かることだけを書く。</summary>
-    private static string DescribeImportSource(ChromiumProfileRef profile) {
+    private static BrowserImportSourceViewModel DescribeImportSource(ChromiumProfileRef profile) {
         var notes = new List<string>();
-        if (ChromiumImportReader.IsCookieDatabaseLocked(profile.Path))
+        var cookiesLocked = ChromiumImportReader.IsCookieDatabaseLocked(profile.Path);
+        var appBound = ChromiumCrypto.TryOpen(profile.Browser.UserDataFolder, out var crypto, out _) && crypto!.IsAppBound;
+        var bookmarks = ChromiumImportReader.ReadBookmarks(profile.Path);
+        if (cookiesLocked)
             notes.Add($"Cookie を取り込むには {profile.Browser.DisplayName} を終了してください");
-        if (ChromiumCrypto.TryOpen(profile.Browser.UserDataFolder, out var crypto, out _) && crypto!.IsAppBound)
+        if (appBound)
             notes.Add("このブラウザは保存内容をアプリ束縛暗号で保護しているため、"
                 + "パスワードと Cookie は取り込めません（パスワードは CSV 書き出しから）");
-        return string.Join(" / ", notes);
+        if (!string.IsNullOrEmpty(bookmarks.Error))
+            notes.Add($"ブックマークを読めません: {bookmarks.Error}");
+        return new BrowserImportSourceViewModel {
+            Profile = profile,
+            BookmarkCount = bookmarks.Count,
+            CanImportPasswords = !appBound,
+            CanImportCookies = !appBound && !cookiesLocked,
+            Note = string.Join(" / ", notes),
+        };
     }
 
     /// <summary>取り込みを実行して、結果を1つの文にまとめる。読み取りは重い（SQLite のコピー・
@@ -66,23 +74,28 @@ public partial class ShellWindow {
             var harvest = await Task.Run(() => BrowserImportService.Harvest(profile, selection));
 
             var summary = new List<string>();
-            if (harvest.Bookmarks.Count > 0 || harvest.History.Count > 0) {
-                var (bookmarks, history) = _vm.Browser.MergeImported(harvest.Bookmarks, harvest.History);
-                if (selection.Bookmarks)
-                    summary.Add($"ブックマーク {bookmarks} 件");
-                if (selection.History)
-                    summary.Add($"履歴 {history} 件");
-            }
+            var (bookmarks, history) = _vm.Browser.MergeImported(harvest.Bookmarks, harvest.History);
+            var importedSomething = bookmarks > 0 || history > 0;
+            if (selection.Bookmarks)
+                summary.Add($"ブックマーク: {bookmarks} 件追加（{harvest.Bookmarks.Count} 件を読込）");
+            if (selection.History)
+                summary.Add($"履歴: {history} 件追加（{harvest.History.Count} 件を読込）");
             if (harvest.Cookies.Count > 0) {
                 var applied = await ApplyImportedCookiesAsync(harvest.Cookies);
-                summary.Add($"Cookie {applied} 件");
+                summary.Add($"Cookie: {applied} 件反映");
+                importedSomething |= applied > 0;
             }
-            if (harvest.Passwords.Count > 0) {
+            if (selection.Passwords && harvest.Passwords.Count > 0) {
                 var queued = BrowserImportService.QueuePasswords(harvest.Passwords);
                 // ここでは書けない（稼働中の WebView2 が Login Data を掴んでいる）ので、
                 // 「入った」ではなく「次の起動で入る」と言う。嘘をつかないのがこの一行の役目。
-                summary.Add($"パスワード {queued} 件（次回起動時に取り込みます）");
+                summary.Add($"パスワード: {queued} 件（次回起動時に取り込みます）");
+                importedSomething |= queued > 0;
             }
+            else if (selection.Passwords)
+                summary.Add("パスワード: 0 件");
+            if (selection.Cookies && harvest.Cookies.Count == 0)
+                summary.Add("Cookie: 0 件");
 
             var notes = new List<string>(harvest.Errors);
             if (harvest.Blocked > 0)
@@ -92,9 +105,9 @@ public partial class ShellWindow {
 
             import.Status = summary.Count == 0
                 ? notes.Count == 0 ? "取り込むものがありませんでした。" : string.Join(" ", notes)
-                : string.Join("・", summary) + "を取り込みました。"
+                : string.Join("・", summary) + "。"
                     + (notes.Count == 0 ? "" : " " + string.Join(" ", notes));
-            if (summary.Count > 0)
+            if (importedSomething)
                 ToastService.Success($"{profile.Label} から取り込みました。");
         } catch (Exception ex) {
             import.Status = $"取り込めませんでした: {ex.Message}";

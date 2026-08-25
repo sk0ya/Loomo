@@ -100,4 +100,8 @@ public static class BrowserBookmarkTree
     /// フォルダーごと消すときの対象。</summary>
     public static IEnumerable<BrowserBookmark> Descendants(BookmarkFolder folder)
         => folder.Bookmarks.Concat(folder.Folders.SelectMany(Descendants));
+
+    /// <summary>フォルダーを深さ優先で列挙する。表示状態の一括操作に使う。</summary>
+    public static IEnumerable<BookmarkFolder> Folders(BookmarkFolder root)
+        => root.Folders.SelectMany(folder => new[] { folder }.Concat(Folders(folder)));
 }

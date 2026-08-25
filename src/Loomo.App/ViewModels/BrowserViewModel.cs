@@ -42,6 +42,12 @@ public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
     public required string Url { get; init; }
     public string? Title { get; init; }
     public bool IsBookmark { get; init; }
+    /// <summary>ブックマーク一覧の行か。履歴・候補にも同じ行テンプレートを使うための識別子。</summary>
+    public bool IsBookmarkRow { get; init; }
+
+    [ObservableProperty] private bool _isSelected;
+    internal event EventHandler? SelectionChanged;
+    partial void OnIsSelectedChanged(bool value) => SelectionChanged?.Invoke(this, EventArgs.Empty);
 
     public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? Url : Title!;
     public string Glyph => IsBookmark ? "★" : "🕘";
@@ -175,7 +181,10 @@ public sealed partial class BrowserViewModel : ObservableObject
     partial void OnZoomPercentChanged(int value) => OnPropertyChanged(nameof(ShowZoom));
 
     public string BookmarkGlyph => IsBookmarked ? "★" : "☆";
-    public string BookmarkTip => IsBookmarked ? "ブックマークを外す（Ctrl+D）" : "ブックマークに追加（Ctrl+D）";
+    public bool IsBookmarkable => BrowserLibrary.IsRecordable(CurrentUrl);
+    public string BookmarkTip => !IsBookmarkable
+        ? "このページはブックマークに追加できません"
+        : IsBookmarked ? "ブックマークを外す（Ctrl+D）" : "ブックマークに追加（Ctrl+D）";
     partial void OnIsBookmarkedChanged(bool value)
     {
         OnPropertyChanged(nameof(BookmarkGlyph));
@@ -191,12 +200,31 @@ public sealed partial class BrowserViewModel : ObservableObject
 
     [ObservableProperty] private bool _isLibraryOpen;
     [ObservableProperty] private bool _isSuggestionsOpen;
+    [ObservableProperty] private bool _isBookmarkSelectionMode;
+
+    public string SelectionModeButtonText => IsBookmarkSelectionMode ? "選択を終了" : "選択";
+    public string SelectedBookmarkCountText => $"選択中 {SelectedBookmarkCount} 件";
+    public string DeleteSelectedBookmarksText => $"選択した {SelectedBookmarkCount} 件を削除";
+
+    partial void OnIsBookmarkSelectionModeChanged(bool value)
+    {
+        if (!value)
+            ClearBookmarkSelection();
+        OnPropertyChanged(nameof(SelectionModeButtonText));
+        OnPropertyChanged(nameof(HasSelectedBookmarks));
+        OnPropertyChanged(nameof(SelectedBookmarkCountText));
+        OnPropertyChanged(nameof(DeleteSelectedBookmarksText));
+    }
 
     /// <summary>いま開いているフォルダー（<see cref="BrowserBookmarkTree.Key"/> の鍵）。
     /// <b>既定は全部畳んだ状態</b>——取り込んだ直後の数百件が一覧を埋め尽くさないように
     /// （エクスプローラのツリーと同じ流儀）。覚えるのはアプリを動かしている間だけで、
     /// browser.json には書かない：どこを開いていたかは資産ではなく、いまの見え方にすぎない。</summary>
     private readonly HashSet<string> _expandedFolders = new(StringComparer.Ordinal);
+
+    /// <summary>現在の一覧にフォルダーが含まれるか。取り込み後の「全展開」を必要なときだけ出す。</summary>
+    public bool HasBookmarkFolders => _library?.Bookmarks.Any(b =>
+        BrowserBookmarkTree.NormalizePath(b.Folder).Count > 0) == true;
 
     /// <summary>フォルダーの行を押した（開く／畳む）。</summary>
     [RelayCommand]
@@ -207,6 +235,71 @@ public sealed partial class BrowserViewModel : ObservableObject
         if (!_expandedFolders.Remove(folder.Key))
             _expandedFolders.Add(folder.Key);
         RefreshLists();
+    }
+
+    /// <summary>取り込んだ直後に中身を確認しやすいよう、フォルダーを一度に開く。</summary>
+    [RelayCommand]
+    private void ExpandAllBookmarkFolders()
+    {
+        _ = Library;
+        foreach (var folder in BrowserBookmarkTree.Folders(BrowserBookmarkTree.Build(Library.Bookmarks)))
+            _expandedFolders.Add(BrowserBookmarkTree.Key(folder.Path));
+        RefreshLists();
+    }
+
+    /// <summary>一覧をコンパクトに戻す。</summary>
+    [RelayCommand]
+    private void CollapseAllBookmarkFolders()
+    {
+        _expandedFolders.Clear();
+        RefreshLists();
+    }
+
+    /// <summary>ブックマークの複数選択モードを開閉する。</summary>
+    [RelayCommand]
+    private void ToggleBookmarkSelectionMode()
+        => IsBookmarkSelectionMode = !IsBookmarkSelectionMode;
+
+    [RelayCommand]
+    private void SelectAllBookmarks()
+    {
+        _ = Library;
+        IsBookmarkSelectionMode = true;
+        // 折りたたまれたフォルダーの中も「全選択」に含める。
+        foreach (var folder in BrowserBookmarkTree.Folders(BrowserBookmarkTree.Build(Library.Bookmarks)))
+            _expandedFolders.Add(BrowserBookmarkTree.Key(folder.Path));
+        RefreshLists();
+        foreach (var item in Bookmarks.OfType<BrowserLinkViewModel>())
+            item.IsSelected = true;
+        NotifyBookmarkSelectionChanged();
+    }
+
+    [RelayCommand]
+    private void ClearBookmarkSelection()
+    {
+        foreach (var item in Bookmarks.OfType<BrowserLinkViewModel>())
+            item.IsSelected = false;
+        NotifyBookmarkSelectionChanged();
+    }
+
+    [RelayCommand]
+    private void RemoveSelectedBookmarks()
+    {
+        var selected = Bookmarks.OfType<BrowserLinkViewModel>()
+            .Where(item => item.IsSelected)
+            .Select(item => item.Url)
+            .ToList();
+        if (selected.Count == 0)
+            return;
+
+        var keys = selected.Select(BrowserLibrary.Normalize)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Library.Bookmarks.RemoveAll(bookmark =>
+            keys.Contains(BrowserLibrary.Normalize(bookmark.Url)));
+        IsBookmarkSelectionMode = false;
+        RefreshLists();
+        Persist();
+        ToastService.Info($"ブックマーク {selected.Count} 件を削除しました。");
     }
 
     /// <summary>一覧を開いた時点で（まだなら）browser.json を読み、閉じている間の変化を反映する。</summary>
@@ -259,6 +352,8 @@ public sealed partial class BrowserViewModel : ObservableObject
         CurrentTitle = title;
         IsBookmarked = _library is not null && url is not null
             && _library.Bookmarks.Any(b => BrowserLibrary.SameUrl(b.Url, url));
+        OnPropertyChanged(nameof(IsBookmarkable));
+        OnPropertyChanged(nameof(BookmarkTip));
     }
 
     /// <summary>ページを訪れた（ナビゲーション成功）ことを記録する。</summary>
@@ -321,6 +416,7 @@ public sealed partial class BrowserViewModel : ObservableObject
         IsBookmarked = existing is null;
         RefreshLists();
         Persist();
+        ToastService.Success(existing is null ? "ブックマークに追加しました。" : "ブックマークを外しました。");
     }
 
     [RelayCommand]
@@ -355,6 +451,7 @@ public sealed partial class BrowserViewModel : ObservableObject
             IsBookmarked = false;
         RefreshLists();
         Persist();
+        ToastService.Info($"{(item.IsBookmark ? "ブックマーク" : "履歴")}を削除しました。");
     }
 
     [RelayCommand]
@@ -389,31 +486,66 @@ public sealed partial class BrowserViewModel : ObservableObject
         Bookmarks.Clear();
         foreach (var row in BrowserBookmarkTree.Flatten(
                      BrowserBookmarkTree.Build(library.Bookmarks), _expandedFolders))
-            Bookmarks.Add(row.Folder is { } folder
-                ? new BrowserBookmarkFolderViewModel
+        {
+            if (row.Folder is { } folder)
+            {
+                Bookmarks.Add(new BrowserBookmarkFolderViewModel
                 {
                     Depth = row.Depth,
                     Name = folder.Name,
                     Key = BrowserBookmarkTree.Key(folder.Path),
                     Count = folder.TotalCount,
                     IsExpanded = _expandedFolders.Contains(BrowserBookmarkTree.Key(folder.Path)),
-                }
-                : new BrowserLinkViewModel
+                });
+            }
+            else
+            {
+                var bookmark = new BrowserLinkViewModel
                 {
                     Depth = row.Depth,
                     Url = row.Bookmark!.Url,
                     Title = row.Bookmark.Title,
                     IsBookmark = true,
-                });
+                    IsBookmarkRow = true,
+                };
+                bookmark.SelectionChanged += OnBookmarkSelectionChanged;
+                Bookmarks.Add(bookmark);
+            }
+        }
         History.Clear();
         foreach (var h in library.History.Take(MaxHistoryShown))
             History.Add(new BrowserLinkViewModel { Url = h.Url, Title = h.Title, IsBookmark = false });
         OnPropertyChanged(nameof(HasBookmarks));
         OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(HasBookmarkFolders));
+        OnPropertyChanged(nameof(BookmarkCount));
+        OnPropertyChanged(nameof(HistoryCount));
+        OnPropertyChanged(nameof(BookmarkCountText));
+        OnPropertyChanged(nameof(HistoryCountText));
     }
 
     public bool HasBookmarks => Bookmarks.Count > 0;
     public bool HasHistory => History.Count > 0;
+    public int BookmarkCount => _library?.Bookmarks.Count ?? 0;
+    public int HistoryCount => _library?.History.Count ?? 0;
+    public string BookmarkCountText => $"ブックマーク（{BookmarkCount}）";
+    public string HistoryCountText => $"履歴（{HistoryCount}）";
+
+    public int SelectedBookmarkCount
+        => Bookmarks.OfType<BrowserLinkViewModel>().Count(item => item.IsSelected);
+
+    public bool HasSelectedBookmarks => SelectedBookmarkCount > 0;
+
+    private void NotifyBookmarkSelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectedBookmarkCount));
+        OnPropertyChanged(nameof(HasSelectedBookmarks));
+        OnPropertyChanged(nameof(SelectedBookmarkCountText));
+        OnPropertyChanged(nameof(DeleteSelectedBookmarksText));
+    }
+
+    private void OnBookmarkSelectionChanged(object? sender, EventArgs e)
+        => NotifyBookmarkSelectionChanged();
 
     private void Persist()
     {

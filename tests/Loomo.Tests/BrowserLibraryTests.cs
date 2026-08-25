@@ -224,6 +224,30 @@ public class BrowserLibraryTests
     }
 
     [Fact]
+    public void Multiple_bookmarks_can_be_selected_and_removed_together()
+    {
+        var path = TempFile();
+        var vm = new BrowserViewModel(new BrowserLibraryStore(path));
+        vm.RecordVisit("https://example.com/a", "A");
+        vm.ToggleBookmark();
+        vm.RecordVisit("https://example.com/b", "B");
+        vm.ToggleBookmark();
+
+        vm.SelectAllBookmarksCommand.Execute(null);
+
+        Assert.True(vm.IsBookmarkSelectionMode);
+        Assert.Equal(2, vm.SelectedBookmarkCount);
+        Assert.Equal("選択した 2 件を削除", vm.DeleteSelectedBookmarksText);
+
+        vm.RemoveSelectedBookmarksCommand.Execute(null);
+
+        Assert.Empty(vm.Bookmarks.OfType<BrowserLinkViewModel>());
+        Assert.Empty(new BrowserLibraryStore(path).Load().Bookmarks);
+        Assert.False(vm.IsBookmarkSelectionMode);
+        File.Delete(path);
+    }
+
+    [Fact]
     public void Switching_tabs_or_a_late_title_does_not_count_a_new_visit()
     {
         var path = TempFile();

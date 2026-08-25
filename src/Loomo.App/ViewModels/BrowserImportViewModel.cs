@@ -16,6 +16,14 @@ public sealed partial class BrowserImportSourceViewModel : ObservableObject
     /// 「できませんでした」と言われるのが一番腹立たしい。</summary>
     [ObservableProperty] private string _note = "";
 
+    /// <summary>選択前に分かるブックマーク件数。取り込んでから空振りに気付かないようにする。</summary>
+    public int BookmarkCount { get; init; }
+    public string BookmarkCountText => $"ブックマーク {BookmarkCount} 件";
+
+    /// <summary>暗号鍵・ファイル状態から今すぐ読める種類。利用不可のチェックを押させない。</summary>
+    public bool CanImportPasswords { get; init; } = true;
+    public bool CanImportCookies { get; init; } = true;
+
     public bool HasNote => Note.Length > 0;
 
     partial void OnNoteChanged(string value) => OnPropertyChanged(nameof(HasNote));
@@ -66,7 +74,11 @@ public sealed partial class BrowserImportViewModel : ObservableObject
         SourcesRefreshRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    partial void OnSelectedSourceChanged(BrowserImportSourceViewModel? value) => ImportCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedSourceChanged(BrowserImportSourceViewModel? value)
+    {
+        ImportCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasSelectedSource));
+    }
     partial void OnIsBusyChanged(bool value) => ImportCommand.NotifyCanExecuteChanged();
     partial void OnImportBookmarksChanged(bool value) => ImportCommand.NotifyCanExecuteChanged();
     partial void OnImportHistoryChanged(bool value) => ImportCommand.NotifyCanExecuteChanged();
@@ -74,7 +86,9 @@ public sealed partial class BrowserImportViewModel : ObservableObject
     partial void OnImportCookiesChanged(bool value) => ImportCommand.NotifyCanExecuteChanged();
 
     public BrowserImportSelection Selection
-        => new(ImportBookmarks, ImportHistory, ImportPasswords, ImportCookies);
+        => new(ImportBookmarks, ImportHistory,
+            ImportPasswords && (SelectedSource?.CanImportPasswords ?? false),
+            ImportCookies && (SelectedSource?.CanImportCookies ?? false));
 
     /// <summary>候補を差し替える。<b>選択は URL ではなくプロファイルのパスで復元する</b>——
     /// 押し直しのたびに選び直させると、「ブラウザを閉じてから再確認」がひどく煩わしい。</summary>
@@ -93,8 +107,27 @@ public sealed partial class BrowserImportViewModel : ObservableObject
     }
 
     public bool HasSources => Sources.Count > 0;
+    public bool HasSelectedSource => SelectedSource is not null;
 
     private bool CanImport() => !IsBusy && SelectedSource is not null && !Selection.IsEmpty;
+
+    [RelayCommand]
+    private void SelectBookmarksOnly()
+    {
+        ImportBookmarks = true;
+        ImportHistory = false;
+        ImportPasswords = false;
+        ImportCookies = false;
+    }
+
+    [RelayCommand]
+    private void SelectAll()
+    {
+        ImportBookmarks = true;
+        ImportHistory = true;
+        ImportPasswords = true;
+        ImportCookies = true;
+    }
 
     [RelayCommand(CanExecute = nameof(CanImport))]
     private void Import()
