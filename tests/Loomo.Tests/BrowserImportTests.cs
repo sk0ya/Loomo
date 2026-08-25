@@ -542,6 +542,55 @@ public class BrowserImportTests
         Assert.Empty(store.Load());
     }
 
+    /// <summary>再起動を挟まずに2回取り込んでも、1回目が消えない。置き換えにしていたときは
+    /// 「次回起動時に取り込みます」と出した後で黙って消えていた。</summary>
+    [Fact]
+    public void Queueing_a_second_source_keeps_the_first()
+    {
+        var path = Path.Combine(NewDirectory(), "pending.bin");
+        var store = new PendingPasswordImportStore(path);
+
+        store.Save(new[]
+        {
+            new ImportedPassword("https://a.example/", "https://a.example/", "taro", "aaa", DateTime.UtcNow),
+        });
+        store.Save(new[]
+        {
+            new ImportedPassword("https://b.example/", "https://b.example/", "hanako", "bbb", DateTime.UtcNow),
+        });
+
+        var loaded = store.Load();
+        Assert.Equal(2, loaded.Count);
+        Assert.Contains(loaded, p => p.Password == "aaa");
+        Assert.Contains(loaded, p => p.Password == "bbb");
+    }
+
+    [Fact]
+    public void Queueing_the_same_login_twice_keeps_the_newer_one()
+    {
+        var path = Path.Combine(NewDirectory(), "pending.bin");
+        var store = new PendingPasswordImportStore(path);
+        var login = new ImportedPassword("https://a.example/", "https://a.example/", "taro", "古い", DateTime.UtcNow);
+
+        store.Save(new[] { login });
+        store.Save(new[] { login with { Password = "新しい" } });
+
+        var loaded = Assert.Single(store.Load());
+        Assert.Equal("新しい", loaded.Password);
+    }
+
+    /// <summary>同一とみなす鍵は書き込み側の <c>UNIQUE</c> と同じ完全一致。大小文字を無視すると、
+    /// DB なら別行として入るものをここで先に捨てることになる。</summary>
+    [Fact]
+    public void Queue_treats_case_differences_as_distinct_like_the_database_does()
+    {
+        var merged = PendingPasswordImportStore.Merge(
+            new[] { new ImportedPassword("https://a.example/", "https://a.example/", "Taro", "x", DateTime.UtcNow) },
+            new[] { new ImportedPassword("https://a.example/", "https://a.example/", "taro", "y", DateTime.UtcNow) });
+
+        Assert.Equal(2, merged.Count);
+    }
+
     [Fact]
     public void A_corrupt_queue_file_is_empty_rather_than_fatal()
     {

@@ -32,21 +32,49 @@ public sealed class PendingPasswordImportStore
     /// 復号もせずファイルの有無だけを見る（無いときが大半で、そこに DPAPI を挟む理由が無い）。</summary>
     public bool HasPending => File.Exists(_path);
 
-    /// <summary>積む。既にあるぶんは<b>置き換える</b>——同じ相手から取り込み直したときに
-    /// 二重に積み上がると、次の起動でどちらが新しいか分からなくなる（重複は書き込み側の
-    /// <c>INSERT OR IGNORE</c> が弾くので、積む側は単純にしておく）。</summary>
+    /// <summary>積む。既にある待ちには<b>足す</b>——<b>置き換えてはいけない</b>。
+    /// 再起動を挟まずに2回取り込む（Vivaldi から取り込んだ後、続けて Chrome の CSV を読む）のは
+    /// 普通の流れで、置き換えるとそこで1回目が黙って消える——しかも画面には
+    /// 「次回起動時に取り込みます」と出た後なので、消えたことに気づく手がかりが無い。
+    /// 同じ資格情報が二度来たら<b>後から来たほうを採る</b>（積み上がりはここで止める）。</summary>
     public void Save(IReadOnlyList<ImportedPassword> items)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var json = JsonSerializer.SerializeToUtf8Bytes(items);
+            var json = JsonSerializer.SerializeToUtf8Bytes(Merge(Load(), items));
             File.WriteAllBytes(_path, ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
         {
             // 積めなくてもブラウズは続けられる。次の取り込みでやり直せる。
         }
+    }
+
+    /// <summary>待ちを足し合わせる。<b>同一とみなす鍵は書き込み側の <c>UNIQUE</c> と同じ</b>——
+    /// あちらは <c>(origin_url, username_element, username_value, password_element, signon_realm)</c> の
+    /// 完全一致で弾くので、ここで大小文字を無視すると DB なら別物として入る行を先に捨ててしまう
+    /// （要素名は <see cref="LoginDataWriter"/> が常に空で揃える）。</summary>
+    internal static List<ImportedPassword> Merge(
+        IReadOnlyList<ImportedPassword> existing, IReadOnlyList<ImportedPassword> incoming)
+    {
+        var merged = new List<ImportedPassword>(existing);
+        var index = new Dictionary<(string Origin, string User, string Realm), int>();
+        for (var i = 0; i < merged.Count; i++)
+            index[Key(merged[i])] = i;
+        foreach (var item in incoming)
+        {
+            if (index.TryGetValue(Key(item), out var at))
+                merged[at] = item;   // 後から来たほうが新しい
+            else
+            {
+                index[Key(item)] = merged.Count;
+                merged.Add(item);
+            }
+        }
+        return merged;
+
+        static (string, string, string) Key(ImportedPassword p) => (p.Origin, p.Username, p.SignonRealm);
     }
 
     /// <summary>読み出す。壊れていたら<b>空として扱う</b>（起動を止めない）。</summary>

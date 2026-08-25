@@ -322,6 +322,9 @@ public partial class FilesColumnView : UserControl
         // 一覧の形が変わると列見出しの出入りも変わる。自動のあいだは出した時点で配り直す。
         if (e.PropertyName == nameof(FilesColumnViewModel.DisplayMode) && Vm is { ColumnWidthsAreAuto: true })
         {
+            // 測り直す。隠れていた列の控えは「中身の幅」ではなく設定値のままなので、
+            // 使い回すと、いま出てきた列だけが次にフォルダーを移るまで見当違いの幅で出る。
+            _contentWidths = null;
             QueueAutoColumnWidths();
             return;
         }
