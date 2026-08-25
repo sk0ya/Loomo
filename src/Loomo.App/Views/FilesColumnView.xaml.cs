@@ -21,6 +21,8 @@ public partial class FilesColumnView : UserControl
     private FilesColumnViewModel? _boundVm;
     private string _breadcrumbPickerSelectionPath = "";
     private double _placesPaneWidth = 240;
+    private bool _autoWidthsQueued;
+    private Dictionary<FilesColumnKey, double>? _contentWidths;
 
     // Explorer と同じ type-ahead 選択。キー入力が途切れたら次の入力を新しい検索にする
     // （間隔はツリーと同じ 800ms）。
@@ -54,6 +56,7 @@ public partial class FilesColumnView : UserControl
         PreviewGotKeyboardFocus += (_, _) => Vm?.NotifyActivated();
         // Ctrl+L はペイン全体で受ける（一覧・絞り込み欄、どこにフォーカスがあっても住所へ飛べる）。
         PreviewKeyDown += OnColumnPreviewKeyDown;
+        EntryList.SizeChanged += OnEntryListSizeChanged;
     }
 
     private FilesColumnViewModel? Vm => DataContext as FilesColumnViewModel;
@@ -77,13 +80,42 @@ public partial class FilesColumnView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>その列の幅を中身に合わせる（境目のダブルクリック）。</summary>
+    /// <summary>その列の幅を中身に合わせる（境目のダブルクリック）。ここから先はユーザーの
+    /// 指定なので、ペインの幅が変わっても配り直さないし、フォルダーにも覚える。</summary>
     internal void AutoFitColumn(FilesColumnKey key)
     {
         if (Vm is not { } vm)
             return;
-        vm.SetColumnWidth(key, AutoFitWidth(key));
+        vm.SetColumnWidth(key, ContentWidth(key));
         vm.EndColumnWidthDrag();
+    }
+
+    /// <summary>既定の列で開いたフォルダーの幅を、中身に合わせて配る（VM からの合図と、
+    /// 自動のあいだのペイン幅の変化で走る）。名前以外は中身ぴったり、名前が残りを受け持つ
+    /// ——余れば広げ、はみ出すぶんは名前から削る（名前だけが省略して読める列なので）。</summary>
+    internal void ApplyAutoColumnWidths()
+    {
+        if (Vm is not { } vm || !vm.ColumnWidthsAreAuto)
+            return;
+
+        // 中身の幅は測り直さない限り変わらない。ペインの幅を変えている間じゅう測ると、
+        // 3000件のフォルダーでドラッグのたびに数msずつ積む——配り直しだけを毎回やる。
+        var content = _contentWidths ??= vm.ColumnSettings.ToDictionary(
+            setting => setting.Key,
+            setting => setting.IsVisible ? ContentWidth(setting.Key) : setting.Width);
+        var widths = new Dictionary<FilesColumnKey, double>(content);
+
+        // 使える横幅は一覧の幅から右端の逃げ（重ねて描くスクロールバーぶん）を引いたもの。
+        var inset = TryFindResource("FilesRowInset") is Thickness rowInset ? rowInset.Right : 0;
+        var available = EntryList.ActualWidth - inset;
+        if (available > 0 && vm.IsNameColumnVisible)
+        {
+            var others = vm.ColumnSettings
+                .Where(setting => setting.IsVisible && setting.Key != FilesColumnKey.Name)
+                .Sum(setting => widths[setting.Key]);
+            widths[FilesColumnKey.Name] = available - others;   // 下限・上限は VM 側で丸める
+        }
+        vm.ApplyAutoColumnWidths(widths);
     }
 
     private void OnColumnGripDragStarted(object sender, DragStartedEventArgs e)
@@ -101,10 +133,10 @@ public partial class FilesColumnView : UserControl
     private void OnColumnGripDragCompleted(object sender, DragCompletedEventArgs e)
         => Vm?.EndColumnWidthDrag();
 
-    /// <summary>その列の中身（と見出し）がちょうど収まる幅。ダブルクリックで使う。
+    /// <summary>その列の中身（と見出し）がちょうど収まる幅。
     /// 文字の大きさは <c>Fs*</c> をその場で引く——UI の文字サイズは設定で変わるので（§UIフォント）、
     /// ここに数字を焼き込むと大きくしたときだけ測り足りず、合わせたはずの列が見切れる。</summary>
-    private double AutoFitWidth(FilesColumnKey key)
+    private double ContentWidth(FilesColumnKey key)
     {
         var vm = Vm;
         if (vm is null)
@@ -112,36 +144,24 @@ public partial class FilesColumnView : UserControl
 
         var headerSize = FontSizeResource("Fs11", 11);
         var nameSize = FontSizeResource("Fs12", 12);
-        var cellSize = headerSize;
-        var typeface = new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-        // 状態バッジだけは行の書体と違う（Consolas・SemiBold）。
-        var badgeTypeface = new Typeface(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.SemiBold,
-            FontStretches.Normal);
-        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        double TextWidth(string? text, double size, Typeface? face = null)
-        {
-            if (string.IsNullOrEmpty(text))
-                return 0;
-            var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                face ?? typeface, size, Brushes.Black, dpi);
-            return formatted.WidthIncludingTrailingWhitespace;
-        }
+        var text = new TextMeasure(FontFamily, FontStyles.Normal, FontWeights.Normal, this);
+        // 状態バッジだけは行の書体が違う（Consolas・SemiBold）。
+        var badge = new TextMeasure(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.SemiBold, this);
 
         var setting = vm.ColumnSettings.FirstOrDefault(candidate => candidate.Key == key);
-        // 見出しも隠れない幅にする（並べ替え記号は今出ていなくても場所を空けておく——
-        // 並べ替え直後に見出しが欠ける方が驚く）。
-        var width = TextWidth(setting?.Label + " ▲", headerSize) + HeaderCellExtra;
-        // 測るのは「いま出ている行」（絞り込み中は残っている行だけ）。数え切れないほどの
-        // フォルダーで測り続けはしない——先頭のぶんで十分に決まる。
-        foreach (var entry in vm.EntriesView.Cast<FileEntryViewModel>().Take(AutoFitSampleCount))
+        // 見出しも隠れない幅にする（並べ替え記号は今出ていなくても場所を空ける——
+        // 並べ替えた瞬間に見出しが欠ける方が驚く）。
+        var width = text.Width(setting?.Label + " ▲", headerSize) + HeaderCellExtra;
+        // 測るのは「いま出ている行」（絞り込み中は残っている行だけ）。
+        foreach (var entry in vm.EntriesView.Cast<FileEntryViewModel>())
         {
             var cell = key switch
             {
-                FilesColumnKey.Name => TextWidth(entry.Name, nameSize) + NameCellExtra
-                    + TextWidth(entry.GitStatusBadge, headerSize, badgeTypeface),
-                FilesColumnKey.Size => TextWidth(entry.SizeText, cellSize) + SizeCellExtra,
-                FilesColumnKey.Modified => TextWidth(entry.ModifiedText, cellSize) + CellExtra,
-                FilesColumnKey.Type => TextWidth(entry.TypeText, cellSize) + CellExtra,
+                FilesColumnKey.Name => text.Width(entry.Name, nameSize) + NameCellExtra
+                    + badge.Width(entry.GitStatusBadge, headerSize),
+                FilesColumnKey.Size => text.Width(entry.SizeText, headerSize) + SizeCellExtra,
+                FilesColumnKey.Modified => text.Width(entry.ModifiedText, headerSize) + CellExtra,
+                FilesColumnKey.Type => text.Width(entry.TypeText, headerSize) + CellExtra,
                 _ => 0,
             };
             if (cell > width)
@@ -155,6 +175,68 @@ public partial class FilesColumnView : UserControl
     private double FontSizeResource(string key, double fallback)
         => TryFindResource(key) is double size && size > 0 ? size : fallback;
 
+    /// <summary>1書体ぶんの文字幅の物差し。1行ずつ <see cref="FormattedText"/> を作ると
+    /// 3000件のフォルダーで列1つ 220ms かかる（実測）。ふだんはグリフの送り幅——WPF が実際に
+    /// 文字送りに使う値——を1文字ずつ覚えながら足し、その書体に無い文字（絵文字など・別フォントで
+    /// 描かれる）を含む行だけ <see cref="FormattedText"/> へ落とす。同じ3000件が 4ms になる。</summary>
+    private readonly struct TextMeasure
+    {
+        // 書体ごとの「文字→送り幅（em）」。UIスレッドからしか触らないので素の Dictionary でよい。
+        private static readonly Dictionary<(string Family, int Weight, int Style), Dictionary<char, double>> Advances = new();
+
+        private readonly Typeface _typeface;
+        private readonly GlyphTypeface? _glyphs;
+        private readonly Dictionary<char, double>? _advances;
+        private readonly double _dpi;
+
+        public TextMeasure(FontFamily family, FontStyle style, FontWeight weight, Visual owner)
+        {
+            _typeface = new Typeface(family, style, weight, FontStretches.Normal);
+            _glyphs = _typeface.TryGetGlyphTypeface(out var glyphs) ? glyphs : null;
+            _dpi = VisualTreeHelper.GetDpi(owner).PixelsPerDip;
+            if (_glyphs is null)
+            {
+                _advances = null;
+                return;
+            }
+            var key = (family.Source, weight.ToOpenTypeWeight(), style == FontStyles.Normal ? 0 : 1);
+            if (!Advances.TryGetValue(key, out var table))
+                Advances[key] = table = new Dictionary<char, double>();
+            _advances = table;
+        }
+
+        public double Width(string? text, double size)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+            if (_glyphs is { } glyphs && _advances is { } advances)
+            {
+                var em = 0.0;
+                var measured = true;
+                foreach (var ch in text)
+                {
+                    if (!advances.TryGetValue(ch, out var advance))
+                    {
+                        advance = glyphs.CharacterToGlyphMap.TryGetValue(ch, out var index)
+                            ? glyphs.AdvanceWidths[index]
+                            : double.NaN;   // この書体に無い＝別フォントで描かれるので実測に回す
+                        advances[ch] = advance;
+                    }
+                    if (double.IsNaN(advance))
+                    {
+                        measured = false;
+                        break;
+                    }
+                    em += advance;
+                }
+                if (measured)
+                    return em * size;
+            }
+            return new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                _typeface, size, Brushes.Black, _dpi).WidthIncludingTrailingWhitespace;
+        }
+    }
+
     // 文字の左右に要る余白。行テンプレートの Margin をそのまま足したもの——XAML 側を変えたらここも合わせる。
     // 名前セル：DockPanel の Margin 6+4 ＋ アイコン 16 ＋ アイコン右 6 ＋ バッジの Margin 6+2（バッジ幅は実測）。
     private const double NameCellExtra = 40;
@@ -164,7 +246,6 @@ public partial class FilesColumnView : UserControl
     private const double CellExtra = 14;
     // 見出しボタンの Padding 6,0（左右）＋ つまみの線ぶん。
     private const double HeaderCellExtra = 14;
-    private const int AutoFitSampleCount = 2000;
 
     /// <summary>このカラムへフォーカスを移す（ペインのフォーカス受け口から呼ばれる）。</summary>
     public void FocusList()
@@ -182,10 +263,46 @@ public partial class FilesColumnView : UserControl
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (_boundVm is not null)
+        {
             _boundVm.PropertyChanged -= OnVmPropertyChanged;
+            _boundVm.AutoColumnWidthsRequested -= OnAutoColumnWidthsRequested;
+        }
         _boundVm = Vm;
         if (_boundVm is not null)
+        {
             _boundVm.PropertyChanged += OnVmPropertyChanged;
+            _boundVm.AutoColumnWidthsRequested += OnAutoColumnWidthsRequested;
+            // 復元は View がつながる前に済んでいることがあるので、つながった時点でも一度配る。
+            QueueAutoColumnWidths();
+        }
+    }
+
+    private void OnAutoColumnWidthsRequested(object? sender, EventArgs e)
+    {
+        _contentWidths = null;   // 別のフォルダー＝別の中身
+        QueueAutoColumnWidths();
+    }
+
+    // 幅を配るにはペインの実寸が要る（開いた直後・畳んだ見出しはまだ 0）。レイアウトが済んでから走らせる。
+    private void QueueAutoColumnWidths()
+    {
+        if (_autoWidthsQueued)
+            return;
+        _autoWidthsQueued = true;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _autoWidthsQueued = false;
+            ApplyAutoColumnWidths();
+        }), DispatcherPriority.Loaded);
+    }
+
+    // 自動のあいだはペインの幅に追随する（掴んで決めた幅は動かさない）。幅を見張るのは一覧の方
+    // ——見出しの帯は列がはみ出すと「はみ出した合計」を ActualWidth に返すので、狭くなったことに
+    // 気づけないし、使える幅の物差しにもならない。
+    private void OnEntryListSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged && Vm is { ColumnWidthsAreAuto: true })
+            QueueAutoColumnWidths();
     }
 
     // VM が「この行を選んでほしい」と言ってきたら（作成・名前変更・貼り付けの直後、Reveal）、
@@ -199,6 +316,13 @@ public partial class FilesColumnView : UserControl
             or nameof(FilesColumnViewModel.IsAddressEditing))
         {
             UpdateAddressSuggestionPopup();
+            return;
+        }
+
+        // 一覧の形が変わると列見出しの出入りも変わる。自動のあいだは出した時点で配り直す。
+        if (e.PropertyName == nameof(FilesColumnViewModel.DisplayMode) && Vm is { ColumnWidthsAreAuto: true })
+        {
+            QueueAutoColumnWidths();
             return;
         }
 

@@ -586,6 +586,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         else
             ResetLayout();
         _restoringLayout = false;
+        RequestAutoColumnWidths();
     }
 
     public FilesColumnSnapshot Capture()
@@ -623,6 +624,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         UpdateBreadcrumbs();
         LoadEntries(preserveSelection: false);
         NotifyHistoryChanged();
+        // 幅を測れるのは中身が入ってから（レイアウトの適用は LoadEntries より前に走る）。
+        RequestAutoColumnWidths();
         if (raiseStateChanged)
         {
             FolderNavigated?.Invoke(this, folder);
@@ -662,6 +665,39 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             SaveFolderLayout(CurrentFolder);
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>いまの列幅は「中身に合わせた自動値」か。ユーザーが決めた幅ではないので、
+    /// フォルダーには覚えず（＝訪れたぶんだけ workspaces.json を太らせない）、ペインの幅が
+    /// 変わったら配り直してよい。掴んで動かした時点で false になり、そこからは指定として扱う。</summary>
+    public bool ColumnWidthsAreAuto { get; private set; } = true;
+
+    /// <summary>既定の列で開いたので、中身に合わせて幅を決めてほしいという合図。
+    /// 文字の幅を測れるのは描く側だけなので、決めるのは View（<c>FilesColumnView</c>）。</summary>
+    public event EventHandler? AutoColumnWidthsRequested;
+
+    /// <summary>View が実測した幅を、ユーザーの指定として覚えずに当てる。</summary>
+    public void ApplyAutoColumnWidths(IReadOnlyDictionary<FilesColumnKey, double> widths)
+    {
+        _restoringLayout = true;
+        try
+        {
+            foreach (var setting in ColumnSettings)
+                if (widths.TryGetValue(setting.Key, out var width))
+                    setting.Width = ClampWidth(setting, width);
+        }
+        finally
+        {
+            _restoringLayout = false;
+        }
+        ColumnWidthsAreAuto = true;
+        NotifyColumnLayoutChanged();
+    }
+
+    private void RequestAutoColumnWidths()
+    {
+        if (ColumnWidthsAreAuto)
+            AutoColumnWidthsRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>幅のドラッグ中。列は 1px 動くたびに変わるので、その間は保存とワークスペースへの
@@ -712,6 +748,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var setting = ColumnSettings.FirstOrDefault(candidate => candidate.Key == key);
         if (setting is null)
             return;
+        ColumnWidthsAreAuto = false;   // ここから先はユーザーの指定
         setting.Width = ClampWidth(setting, width);
     }
 
@@ -751,6 +788,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private void ResetColumnLayout()
     {
         ResetLayout();
+        RequestAutoColumnWidths();
         SaveFolderLayout(CurrentFolder);
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -762,8 +800,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
         var layout = CaptureLayout();
         // 既定のままのフォルダーは覚えない——復元しても ResetLayout と同じ結果なのに、
-        // 訪れたフォルダーの数だけ workspaces.json が太り続ける。
-        if (IsDefaultLayout(layout))
+        // 訪れたフォルダーの数だけ workspaces.json が太り続ける。自動で合わせただけの幅も
+        // 「既定のまま」に数える（開き直せば同じ幅が出る＝覚える意味がない）。
+        if (IsDefaultLayout(layout) || (ColumnWidthsAreAuto && IsDefaultOrderAndVisibility(layout)))
         {
             ForgetFolderLayout(folder);
             return;
@@ -816,6 +855,18 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
                 || Math.Abs(column.Width - defaults[i].Width) > 0.5)
                 return false;
         }
+        return true;
+    }
+
+    /// <summary>並びと表示・非表示だけが既定どおりか（幅は見ない）。</summary>
+    private static bool IsDefaultOrderAndVisibility(FilesColumnLayoutSnapshot layout)
+    {
+        var defaults = DefaultLayout;
+        if (layout.Columns.Count != defaults.Count)
+            return false;
+        for (var i = 0; i < defaults.Count; i++)
+            if (layout.Columns[i].Key != defaults[i].Key || !layout.Columns[i].IsVisible)
+                return false;
         return true;
     }
 
@@ -888,14 +939,17 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         {
             _restoringLayout = false;
         }
+        ColumnWidthsAreAuto = false;
         NotifyColumnLayoutChanged();
     }
 
     /// <summary>列を作りたて（幅・並び・表示すべて既定）へ戻す。空のレイアウトを流すのでは
-    /// 並びだけ前のフォルダーのまま残るので、既定そのものを流す。</summary>
+    /// 並びだけ前のフォルダーのまま残るので、既定そのものを流す。既定の幅は仮置きで、
+    /// このあと View が中身に合わせて配り直す（<see cref="AutoColumnWidthsRequested"/>）。</summary>
     private void ResetLayout()
     {
         ApplyLayout(DefaultLayout.Select(CloneSetting));
+        ColumnWidthsAreAuto = true;
     }
 
     private static double ClampWidth(FilesColumnSetting setting, double width)

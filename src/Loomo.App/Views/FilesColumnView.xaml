@@ -510,7 +510,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="列の境目をドラッグすると幅を変えられます（ダブルクリックで内容に合わせます）。"
+                            <TextBlock Text="幅はふだん中身に合わせて自動で決まります。境目をドラッグすると自分で決められます（ダブルクリックで内容ぴったり）。"
                                        Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
                                        TextWrapping="Wrap" Margin="2,5,2,3" />
                             <Button Content="幅と並びを既定に戻す" HorizontalAlignment="Left"
@@ -726,7 +726,7 @@
             </Border>
 
             <!-- 列見出し -->
-            <Grid DockPanel.Dock="Top" Margin="{StaticResource FilesRowInset}">
+            <Grid x:Name="ColumnHeader" DockPanel.Dock="Top" Margin="{StaticResource FilesRowInset}">
                 <Grid.Style>
                     <Style TargetType="Grid">
                         <Setter Property="Visibility" Value="Visible" />

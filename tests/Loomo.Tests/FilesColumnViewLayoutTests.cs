@@ -392,6 +392,111 @@ public sealed class FilesColumnViewLayoutTests
         });
     }
 
+    [Fact]
+    public void 既定で開いた列は中身に合わせて名前が残りを受け持つ()
+    {
+        RunSta(() =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), $"loomo-files-auto-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+            File.WriteAllText(Path.Combine(root, "a.txt"), "a");
+            File.WriteAllText(Path.Combine(root, "b.txt"), "b");
+            var 別 = Directory.CreateDirectory(Path.Combine(root, "sub")).FullName;
+            File.WriteAllText(Path.Combine(別, "とても長い名前のドキュメント原稿-最終版.md"), "x");
+
+            var workspace = new FakeWorkspaceService();
+            workspace.OpenFolder(root);
+            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
+                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-auto-workflows-{Guid.NewGuid():N}")),
+                new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
+            tree.LoadRoot(root);
+            var column = new FilesColumnViewModel(
+                workspace, FolderTreeCommandHandler.Unconfined(workspace, new FileOperationHistory()),
+                tree, new FakeFilePlacesProvider());
+            column.Restore(snapshot: null, fallbackFolder: root);
+
+            try
+            {
+                var view = new FilesColumnView { DataContext = column };
+                var window = new Window
+                {
+                    Width = 900,
+                    Height = 420,
+                    Content = view,
+                    ShowInTaskbar = false,
+                    WindowStyle = WindowStyle.None
+                };
+                try
+                {
+                    window.Show();
+                    window.UpdateLayout();
+                    view.ApplyAutoColumnWidths();
+                    window.UpdateLayout();
+
+                    // 使える幅は一覧の幅から右端の逃げ（スクロールバーぶん 8px）を引いたもの。
+                    // 見出しの帯は列がはみ出すと「はみ出した合計」を返すので物差しにしない。
+                    var list = (ListBox)view.FindName("EntryList")!;
+                    double 使える幅() => list.ActualWidth - 8;
+                    double 合計() => column.ColumnSettings.Where(setting => setting.IsVisible)
+                        .Sum(setting => setting.Width);
+
+                    // 名前以外は中身ぴったり、名前が残りを受け持つ＝行いっぱいに広がり、はみ出さない。
+                    Assert.True(column.ColumnWidthsAreAuto);
+                    Assert.Equal(使える幅(), 合計(), 0);
+                    Assert.NotEqual(240, column.ColumnWidth(FilesColumnKey.Name));
+
+                    // 自動のあいだはペインの幅に追随する（ウィンドウの幅変更は WM_SIZE 待ちで
+                    // 即時に効かないので、ビュー自身の幅を変えて測る）。
+                    var 元の幅 = 使える幅();
+                    var 元の名前幅 = column.ColumnWidth(FilesColumnKey.Name);
+                    view.Width = 700;
+                    window.UpdateLayout();
+                    view.ApplyAutoColumnWidths();
+                    window.UpdateLayout();
+                    Assert.True(使える幅() < 元の幅);   // 本当に狭くなっている
+                    Assert.Equal(使える幅(), 合計(), 0);
+                    // 狭くなったぶんは名前から削る（他の列は中身ぴったりのまま）。
+                    Assert.True(column.ColumnWidth(FilesColumnKey.Name) < 元の名前幅);
+
+                    // 自動で合わせただけの幅はフォルダーに覚えない（訪れたぶんだけ太らせない）。
+                    Assert.Empty(column.Capture().FolderColumnSettings);
+
+                    // 掴んで決めた幅はユーザーの指定。ペイン幅が変わっても動かず、覚える。
+                    column.SetColumnWidth(FilesColumnKey.Name, 333);
+                    column.EndColumnWidthDrag();
+                    Assert.False(column.ColumnWidthsAreAuto);
+                    view.Width = 1000;
+                    window.UpdateLayout();
+                    Assert.Equal(333, column.ColumnWidth(FilesColumnKey.Name));
+                    Assert.NotEmpty(column.Capture().FolderColumnSettings);
+
+                    // 別のフォルダーへ行けばまたそこの中身に合わせて始まる。
+                    column.Navigate(別);
+                    window.UpdateLayout();
+                    view.ApplyAutoColumnWidths();
+                    window.UpdateLayout();
+                    Assert.True(column.ColumnWidthsAreAuto);
+                    Assert.Equal(使える幅(), 合計(), 0);
+
+                    // 戻れば覚えた幅（自動ではない）。
+                    column.Navigate(root);
+                    window.UpdateLayout();
+                    Assert.False(column.ColumnWidthsAreAuto);
+                    Assert.Equal(333, column.ColumnWidth(FilesColumnKey.Name));
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                column.Dispose();
+                try { Directory.Delete(root, recursive: true); } catch { }
+            }
+        });
+    }
+
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
