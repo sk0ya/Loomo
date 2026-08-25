@@ -162,7 +162,7 @@ public partial class FilesColumnView : UserControl
         if (PlacesColumn.Width.Value < 1)
             PlacesColumn.Width = new GridLength(Math.Clamp(_placesPaneWidth, 180, 420));
         PlacesSplitter.Visibility = Visibility.Visible;
-        Vm?.LoadPlaces();
+        Vm?.SetPlacesOpen(true);
     }
 
     private void OnPlacesCollapsed(object sender, RoutedEventArgs e)
@@ -171,6 +171,7 @@ public partial class FilesColumnView : UserControl
             _placesPaneWidth = Math.Clamp(PlacesColumn.ActualWidth, 180, 420);
         PlacesSplitter.Visibility = Visibility.Collapsed;
         PlacesColumn.Width = new GridLength(0);
+        Vm?.SetPlacesOpen(false);
     }
 
     private bool _breadcrumbPickerButtonPressed;
@@ -313,11 +314,12 @@ public partial class FilesColumnView : UserControl
         return null;
     }
 
+    /// <summary>場所は常設の縦パネルであってポップアップではないので、項目を開いても畳まない。
+    /// 閉じるのはツールバーの「場所」ボタンを押したときだけにする（続けて別の場所へ飛べる）。</summary>
     private void OnPlaceClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: FilesPlace place })
             Vm?.OpenPlace(place);
-        PlacesExpander.IsExpanded = false;
     }
 
     /// <summary>ピン留めの対象＝選んでいるフォルダー行、無ければ現在地。</summary>

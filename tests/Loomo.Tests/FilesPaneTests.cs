@@ -272,6 +272,34 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 場所は開いている間ピン留めの変化をその場で反映する()
+    {
+        // 常設パネルなので、項目を開いても畳まない＝開き直しでは更新されない。
+        var sut = CreateColumn();
+        sut.SetPlacesOpen(true);
+        Assert.DoesNotContain(sut.Places, group => group.Name == "ピン留め");
+
+        _tree.PinFolder(_sub);
+
+        var pinned = Assert.Single(sut.Places, group => group.Name == "ピン留め");
+        Assert.Equal(_sub, pinned.Items.Single().FullPath);
+
+        // 中身が変わらない読み直しでは、グループの実体を作り替えない（スクロール位置を壊さないため）。
+        var before = sut.Places.ToArray();
+        sut.LoadPlaces();
+        Assert.Equal(before.Length, sut.Places.Count);
+        for (var i = 0; i < before.Length; i++)
+            Assert.Same(before[i], sut.Places[i]);
+
+        // 畳んだ後は追随しない（次に開いたときに読み直す）。
+        sut.SetPlacesOpen(false);
+        _tree.UnpinFolder(_sub);
+        Assert.Contains(sut.Places, group => group.Name == "ピン留め");
+        sut.SetPlacesOpen(true);
+        Assert.DoesNotContain(sut.Places, group => group.Name == "ピン留め");
+    }
+
+    [Fact]
     public void ピン留めはツリーと共有される()
     {
         var sut = CreateColumn();

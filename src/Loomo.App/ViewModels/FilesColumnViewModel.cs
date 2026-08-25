@@ -72,7 +72,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             setting.PropertyChanged += OnColumnSettingPropertyChanged;
             ColumnSettings.Add(setting);
         }
-        _pins.PinsChanged += (_, _) => OnPropertyChanged(nameof(CanPinCurrentFolder));
+        _pins.PinsChanged += OnPinsChanged;
+        if (Recent is not null)
+            Recent.Changed += OnRecentChanged;
         FileIcons.PaletteChanged += (_, _) =>
         {
             foreach (var entry in Entries)
@@ -89,12 +91,37 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// <summary>現在地のパンくず（住所欄）。ワークスペースの内外を問わず、常にドライブから並べる。</summary>
     public ObservableCollection<FilesBreadcrumb> Breadcrumbs { get; } = new();
 
-    /// <summary>「場所」ポップアップの中身（ワークスペース／ピン留め／クイックアクセス／PC）。
-    /// 開いたときに <see cref="LoadPlaces"/> で作り直す——シェルを毎回叩かないため。</summary>
+    /// <summary>「場所」パネルの中身（ワークスペース／ピン留め／クイックアクセス／PC）。
+    /// 開いている間だけ <see cref="LoadPlaces"/> で作り直す——シェルを毎回叩かないため。</summary>
     public ObservableCollection<FilesPlaceGroup> Places { get; } = new();
 
-    /// <summary>場所Expanderへ最近／頻繁項目を供給する共有状態。開くたびに場所一覧へ反映する。</summary>
+    /// <summary>場所Expanderへ最近／頻繁項目を供給する共有状態。開いている間は変化を反映する。</summary>
     public RecentItemsViewModel? Recent { get; }
+
+    /// <summary>場所パネルが開いているか。項目を開いても畳まない常設パネルなので、
+    /// 開いている間にピン留めや最近使ったファイルが変わったら、その場で作り直す。</summary>
+    public bool IsPlacesOpen { get; private set; }
+
+    /// <summary>場所パネルの開閉をビューから伝える。開いた時点の一覧を読む。</summary>
+    public void SetPlacesOpen(bool open)
+    {
+        IsPlacesOpen = open;
+        if (open)
+            LoadPlaces();
+    }
+
+    private void OnPinsChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(CanPinCurrentFolder));
+        if (IsPlacesOpen)
+            LoadPlaces();
+    }
+
+    private void OnRecentChanged(object? sender, EventArgs e)
+    {
+        if (IsPlacesOpen)
+            LoadPlaces();
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGoUp))]
@@ -416,47 +443,63 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanPinCurrentFolder));
     }
 
-    /// <summary>「場所」ポップアップを開くときに呼ぶ。ワークスペースフォルダー・ピン留め
-    /// （ツリーと共有）・Windows のクイックアクセス・ドライブを、近いものから順に並べる。</summary>
+    /// <summary>「場所」パネルの一覧を作り直す。ワークスペースフォルダー・ピン留め
+    /// （ツリーと共有）・Windows のクイックアクセス・ドライブを、近いものから順に並べる。
+    /// 中身が同じなら差し替えない——開いたまま作り直すので、スクロール位置を壊さない。</summary>
     public void LoadPlaces()
     {
-        Places.Clear();
+        var groups = new List<FilesPlaceGroup>();
 
         var workspaceFolders = _workspace.Folders
             .Where(Directory.Exists)
             .Select(folder => new FilesPlace(NameOf(folder), folder, FilesPlaceKind.WorkspaceFolder))
             .ToList();
         if (workspaceFolders.Count > 0)
-            Places.Add(new FilesPlaceGroup("ワークスペース", workspaceFolders));
+            groups.Add(new FilesPlaceGroup("ワークスペース", workspaceFolders));
 
         var pinned = _pins.AllPins
             .Where(Directory.Exists)
             .Select(path => new FilesPlace(LabelForPin(path), path, FilesPlaceKind.Pinned))
             .ToList();
         if (pinned.Count > 0)
-            Places.Add(new FilesPlaceGroup("ピン留め", pinned));
+            groups.Add(new FilesPlaceGroup("ピン留め", pinned));
 
         var recentFiles = Recent?.RecentFiles
             .Where(item => File.Exists(item.FullPath))
             .Select(item => new FilesPlace(item.Name, item.FullPath, FilesPlaceKind.RecentFile))
             .ToList() ?? [];
         if (recentFiles.Count > 0)
-            Places.Add(new FilesPlaceGroup("最近使ったファイル", recentFiles));
+            groups.Add(new FilesPlaceGroup("最近使ったファイル", recentFiles));
 
         var frequentFolders = Recent?.FrequentFolders
             .Where(item => Directory.Exists(item.FullPath))
             .Select(item => new FilesPlace(item.Name, item.FullPath, FilesPlaceKind.FrequentFolder))
             .ToList() ?? [];
         if (frequentFolders.Count > 0)
-            Places.Add(new FilesPlaceGroup("よく使うフォルダー", frequentFolders));
+            groups.Add(new FilesPlaceGroup("よく使うフォルダー", frequentFolders));
 
         var quickAccess = _places.QuickAccess();
         if (quickAccess.Count > 0)
-            Places.Add(new FilesPlaceGroup("クイックアクセス", quickAccess));
+            groups.Add(new FilesPlaceGroup("クイックアクセス", quickAccess));
 
         var drives = _places.Drives();
         if (drives.Count > 0)
-            Places.Add(new FilesPlaceGroup("PC", drives));
+            groups.Add(new FilesPlaceGroup("PC", drives));
+
+        ApplyPlaces(groups);
+    }
+
+    /// <summary>同じ中身なら <see cref="Places"/> をそのままにする。ItemsControl を丸ごと
+    /// 作り直すと、開きっぱなしのパネルではスクロール位置とホバーが毎回飛ぶ。</summary>
+    private void ApplyPlaces(List<FilesPlaceGroup> groups)
+    {
+        if (groups.Count == Places.Count
+            && groups.Zip(Places, (next, current) => next.Name == current.Name
+                && next.Items.SequenceEqual(current.Items)).All(same => same))
+            return;
+        Places.Clear();
+        foreach (var group in groups)
+            Places.Add(group);
     }
 
     /// <summary>場所Expanderの項目を開く。最近使ったファイルだけは直接エディタへ渡す。</summary>
@@ -1455,6 +1498,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         CancelThumbnailLoads();
         CancelGitStatusLoad();
         _watcher.Dispose();
+        _pins.PinsChanged -= OnPinsChanged;
+        if (Recent is not null)
+            Recent.Changed -= OnRecentChanged;
         if (_folderTree is not null)
             _folderTree.GitStatusChanged -= OnGitStatusChanged;
     }
