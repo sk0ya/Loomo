@@ -152,6 +152,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SettingsPersistenceHandler>();
         services.AddSingleton<SettingsModelChoiceMapper>();
         services.AddSingleton<TabIconService>();
+        // ブックマーク・履歴の行に出すサイトのアイコン（§21.5.1）。タブの favicon（TabIconService）と
+        // 置き場を分けず、開いたページのぶんはここへ写して使い回す。
+        services.AddSingleton<FaviconService>();
         services.AddSingleton<IFileThumbnailService, FileThumbnailService>();
         services.AddSingleton<Input.KeybindingService>();
         // ファイル操作の Undo／Redo 履歴。ツリーとファイル一覧ペインで 1 本を共有する

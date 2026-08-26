@@ -1,0 +1,570 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Windows.Media.Imaging;
+
+namespace sk0ya.Loomo.App.Services;
+
+/// <summary>
+/// ブックマーク・履歴・候補の行に出す<b>サイトのアイコン（favicon）</b>を引く。
+///
+/// <para>★ の一点張りから「見ればどのサイトか分かる」へ変えるための道具（設計書 §21.5.1）。
+/// タブの favicon（<see cref="TabIconService"/>）は<b>開いている</b> WebView2 から貰えるが、
+/// ブックマークは開いていないページの絵が要るので、ここは自分で取りに行く。</para>
+///
+/// <para><b>速さは3段の入れ子で作る</b>——上の段で当たったら下は触らない。
+/// <list type="number">
+/// <item>メモリ（<c>_resolved</c>）：同じホストなら何行あっても引き当ては辞書1回。
+///   取れなかったことも <c>null</c> として覚えるので、無いサイトを何度も取りに行かない。</item>
+/// <item>ディスク（<c>%APPDATA%/Loomo/favicons</c>）：32px の PNG に揃えて置く。
+///   次の起動でも通信ゼロで出る。取れなかったホストは <c>.miss</c> の空ファイルで覚え、
+///   一定期間（<see cref="MissRetry"/>）は再挑戦しない。</item>
+/// <item>通信：ここまで外れたときだけ。<b>ブックマークの行だけ</b>が使える
+///   （履歴・アドレス欄の候補は <c>allowNetwork: false</c>＝キャッシュにあるものだけ出す）——
+///   打つたびに数十件の取得が走ると、候補が降りる速さそのものが壊れる。</item>
+/// </list></para>
+///
+/// <para><b>鍵はホスト</b>（<c>example.com</c>）で URL 単位ではない。favicon はサイトに1枚なので、
+/// 数百件のブックマークでも取得はホストの数——これが一番効く節約。</para>
+///
+/// <para>さらに、人がページを開いたときに WebView2 が持っている favicon をそのまま
+/// <see cref="Harvest"/> でこの置き場へ写す（通信ゼロ）。よく行くサイトほど、
+/// ブックマークに追加した瞬間にはもう絵がある。</para>
+/// </summary>
+public sealed class FaviconService
+{
+    /// <summary>保存・表示に揃える一辺（px）。行に出すのは 14〜16 DIP なので、
+    /// 高 DPI でも足りるだけの 32px を上限に縮めて置く（大きい絵をそのまま抱えない）。</summary>
+    public const int IconPixels = 32;
+
+    private const int MaxDownloadBytes = 256 * 1024;
+    private const int MaxHtmlBytes = 128 * 1024;
+
+    /// <summary>取れなかったホストを再び取りに行くまでの間隔。</summary>
+    private static readonly TimeSpan MissRetry = TimeSpan.FromDays(7);
+
+    /// <summary>1件あたりの待ち時間。アイコンは「出れば嬉しい」ものなので、長く待たない。</summary>
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(6);
+
+    /// <summary>1ホストを諦めるまでの締切。<b>1件ごとの待ち時間だけでは足りない</b>——
+    /// 取りに行く道は https/http × (/favicon.ico, HTML) の4本あるので、繋がらないホスト1つが
+    /// 6秒×4＝24秒、同時4本しかない取得の口を塞ぐ。数百件のブックマークでは、
+    /// そういうホストが数個続いただけで手前の絵が何分も出て来なくなる。</summary>
+    private static readonly TimeSpan HostDeadline = TimeSpan.FromSeconds(10);
+
+    /// <summary>同時に走らせる取得の数。ブックマーク一覧を開いた瞬間に数十ホストへ
+    /// いっせいに繋ぎに行かないための栓。</summary>
+    private const int MaxConcurrentDownloads = 4;
+
+    private static readonly HttpClient Http = CreateHttpClient();
+
+    private readonly string _cacheDirectory;
+    private readonly SemaphoreSlim _network = new(MaxConcurrentDownloads, MaxConcurrentDownloads);
+
+    /// <summary>結論（絵、または「無い」を表す null）。<b>取れなかったことも覚える</b>のが要点。</summary>
+    private readonly ConcurrentDictionary<string, ImageSource?> _resolved = new(StringComparer.Ordinal);
+
+    /// <summary>取得中のもの。同じホストの行が同時に何行来ても取得は1回で済ませる。</summary>
+    private readonly ConcurrentDictionary<string, Lazy<Task<ImageSource?>>> _inflight = new(StringComparer.Ordinal);
+
+    public FaviconService() : this(DefaultCacheDirectory()) { }
+
+    public FaviconService(string cacheDirectory) => _cacheDirectory = cacheDirectory;
+
+    public static string DefaultCacheDirectory() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Loomo", "favicons");
+
+    /// <summary>すでに手元にある絵だけを返す（同期・通信もディスクも触らない）。</summary>
+    public ImageSource? TryGetCached(string? url)
+    {
+        var key = SiteKey(url);
+        return key is not null && _resolved.TryGetValue(key, out var icon) ? icon : null;
+    }
+
+    /// <summary>そのアドレスのサイトアイコンを取る。
+    /// <paramref name="allowNetwork"/> が false なら手元（メモリ・ディスク）にあるものだけを返す。
+    /// <b>例外は投げない</b>——呼び出し側は表示のためだけに待つので、失敗は「絵が無い」で足りる。</summary>
+    public Task<ImageSource?> GetAsync(string? url, bool allowNetwork)
+    {
+        var key = SiteKey(url);
+        if (key is null)
+            return Task.FromResult<ImageSource?>(null);
+        if (_resolved.TryGetValue(key, out var known))
+            return Task.FromResult(known);
+
+        // 束ねる鍵に<b>取りに行って良いかを含める</b>。ホストだけで束ねると、先に来た手元だけの
+        // 引き（履歴・候補）に後から来たブックマークの行が相乗りして null を受け取り、
+        // その行は二度と取りに行かない（行 VM は一度頼んだら覚えるので、絵は出ないまま残る）。
+        var slot = allowNetwork ? key + "|net" : key;   // '|' はホスト名に現れない
+        return _inflight.GetOrAdd(slot, _ => new Lazy<Task<ImageSource?>>(
+            () => ResolveAsync(key, slot, allowNetwork), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    /// <summary>開いているページの favicon（WebView2 が既に持っているもの）を置き場へ写す。
+    /// 通信を1回も増やさずに、よく行くサイトのぶんが溜まっていく。</summary>
+    public void Harvest(string? pageUrl, byte[] pngBytes) => _ = HarvestAsync(pageUrl, pngBytes);
+
+    /// <summary><see cref="Harvest"/> の待てる版（テスト用。実際の呼び出しは投げっぱなしで良い）。</summary>
+    internal Task HarvestAsync(string? pageUrl, byte[] pngBytes)
+    {
+        var key = SiteKey(pageUrl);
+        // 「取れなかった」と覚えているホスト（値が null）は<b>写す価値が一番高い</b>——
+        // ここで弾くと、取りに行っては 403 で断られるサイトを人が開いて絵を持って来ても
+        // ★ のままになる（キーの有無で見ると、まさにそれが起きる）。
+        if (key is null || pngBytes.Length == 0
+            || (_resolved.TryGetValue(key, out var existing) && existing is not null))
+            return Task.CompletedTask;
+        // 復号・縮小・書き出しは UI スレッドでやらない（ナビゲーションのたびに来る）。
+        return Task.Run(() =>
+        {
+            var icon = DecodeIcon(pngBytes);
+            if (icon is null)
+                return;
+            _resolved[key] = icon;
+            if (!File.Exists(IconPath(key)) && EncodePng(icon) is { } png)
+                SaveToDisk(key, png);
+        });
+    }
+
+    private async Task<ImageSource?> ResolveAsync(string key, string slot, bool allowNetwork)
+    {
+        ImageSource? icon = null;
+        try
+        {
+            icon = await Task.Run(() => (ImageSource?)LoadFromDisk(key)).ConfigureAwait(false);
+            if (icon is null && allowNetwork && !HasFreshMiss(key))
+            {
+                var downloaded = await DownloadAsync(key).ConfigureAwait(false);
+                if (downloaded is not null)
+                {
+                    icon = downloaded;
+                    if (EncodePng(downloaded) is { } png)
+                        SaveToDisk(key, png);
+                }
+                else
+                {
+                    MarkMiss(key);
+                }
+            }
+        }
+        catch
+        {
+            // 絵が出ないだけ。ブラウズは続く。
+        }
+
+        // 「無い」を覚えるのは取りに行った側だけ。手元だけ見て外れたぶんまで覚えると、
+        // あとからブックマークの行が来ても二度と取りに行かなくなる。
+        if (icon is not null || allowNetwork)
+            _resolved[key] = icon;
+        _inflight.TryRemove(slot, out _);
+        return icon;
+    }
+
+    // ── 取りに行く ───────────────────────────────────────────────────
+    /// <summary>ブラウザと同じ順で当たる：まず <c>/favicon.ico</c>、外れたら HTML の
+    /// <c>&lt;link rel="icon"&gt;</c>。https で繋がったのに絵が無いときは http を試さない
+    /// （繋がらなかったときだけ落とす）。</summary>
+    private async Task<BitmapSource?> DownloadAsync(string authority)
+    {
+        await _network.WaitAsync().ConfigureAwait(false);
+        using var deadline = new CancellationTokenSource(HostDeadline);
+        try
+        {
+            foreach (var scheme in new[] { "https", "http" })
+            {
+                if (!Uri.TryCreate($"{scheme}://{authority}/", UriKind.Absolute, out var root))
+                    continue;
+                if (await FetchIconAsync(new Uri(root, "/favicon.ico"), deadline.Token)
+                        .ConfigureAwait(false) is { } direct)
+                    return direct;
+
+                var html = await FetchHtmlAsync(root, deadline.Token).ConfigureAwait(false);
+                if (html is null)
+                    continue;                 // 繋がらなかった → 次のスキームへ
+                foreach (var href in ParseIconLinks(html))
+                {
+                    // HTML に直接埋まっている絵はその場で開ける（取りに行かない）。
+                    if (TryDecodeDataUri(href) is { } inline)
+                        return inline;
+                    if (Uri.TryCreate(root, href, out var iconUri)
+                        && await FetchIconAsync(iconUri, deadline.Token).ConfigureAwait(false) is { } linked)
+                        return linked;
+                }
+                return null;                  // 繋がったが絵は無かった
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            _network.Release();
+        }
+    }
+
+    private static async Task<BitmapSource?> FetchIconAsync(Uri uri, CancellationToken deadline)
+    {
+        // 絵は途中まででは使えないので、上限を超えたら捨てる（切り詰めない）。
+        var bytes = await FetchAsync(uri, MaxDownloadBytes, truncate: false, deadline).ConfigureAwait(false);
+        if (bytes is null)
+            return null;
+        // SVG は WPF が読めない。HTML は「404 を 200 で返す」サイトの本文なので、どちらも絵ではない。
+        return LooksLikeMarkup(bytes) ? null : DecodeIcon(bytes);
+    }
+
+    private static async Task<string?> FetchHtmlAsync(Uri uri, CancellationToken deadline)
+    {
+        // <head> はページの頭にあるので、上限までで<b>切り詰めて</b>使う——捨ててはいけない。
+        // 本文が数百 KB あるページ（Qiita など）は珍しくなく、捨てると icon の在り処ごと落ちる（実測）。
+        var bytes = await FetchAsync(uri, MaxHtmlBytes, truncate: true, deadline).ConfigureAwait(false);
+        if (bytes is null)
+            return null;
+        try
+        {
+            var text = Encoding.UTF8.GetString(bytes);
+            var headEnd = text.IndexOf("</head", StringComparison.OrdinalIgnoreCase);
+            return headEnd > 0 ? text[..headEnd] : text;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>上限まで読んで返す（相手の言う長さを信用せず、実際に読んだ量で切る）。
+    /// <paramref name="truncate"/> が true なら上限までの前半を返し、false なら超えた時点で捨てる。</summary>
+    private static async Task<byte[]?> FetchAsync(Uri uri, int maxBytes, bool truncate,
+        CancellationToken deadline)
+    {
+        try
+        {
+            // 1件ごとの待ち時間と、ホストごとの締切のどちらか早い方で切る。
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(deadline);
+            cts.CancelAfter(RequestTimeout);
+            using var response = await Http
+                .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return null;
+            if (!truncate && response.Content.Headers.ContentLength > maxBytes)
+                return null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[8 * 1024];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, cts.Token).ConfigureAwait(false)) > 0)
+            {
+                buffer.Write(chunk, 0, read);
+                if (buffer.Length < maxBytes)
+                    continue;
+                if (!truncate)
+                    return null;
+                break;      // 前半だけで足りる（残りは受け取らずに切る）
+            }
+            return buffer.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static HttpClient CreateHttpClient()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            MaxConnectionsPerServer = 2,
+            AllowAutoRedirect = true,
+            MaxAutomaticRedirections = 5,
+        };
+        var client = new HttpClient(handler) { Timeout = RequestTimeout };
+        // 素の HttpClient を弾くサイトがある（UA 無しは bot 扱い）。
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Loomo/1.0");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "image/*,text/html;q=0.8,*/*;q=0.5");
+        return client;
+    }
+
+    // ── 置き場（ディスク） ───────────────────────────────────────────
+    private BitmapSource? LoadFromDisk(string key)
+    {
+        try
+        {
+            var path = IconPath(key);
+            return File.Exists(path) ? DecodeIcon(File.ReadAllBytes(path)) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void SaveToDisk(string key, byte[] png)
+    {
+        try
+        {
+            Directory.CreateDirectory(_cacheDirectory);
+            var path = IconPath(key);
+            var temp = path + ".tmp";
+            File.WriteAllBytes(temp, png);
+            File.Move(temp, path, overwrite: true);
+            var miss = MissPath(key);
+            if (File.Exists(miss))
+                File.Delete(miss);
+        }
+        catch
+        {
+            // 置けなくても表示はできている（次回また取りに行くだけ）。
+        }
+    }
+
+    private bool HasFreshMiss(string key)
+    {
+        try
+        {
+            var path = MissPath(key);
+            return File.Exists(path) && DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < MissRetry;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void MarkMiss(string key)
+    {
+        try
+        {
+            Directory.CreateDirectory(_cacheDirectory);
+            File.WriteAllBytes(MissPath(key), Array.Empty<byte>());
+        }
+        catch
+        {
+            // 覚えられなくても実害は「次も取りに行く」だけ。
+        }
+    }
+
+    private string IconPath(string key) => Path.Combine(_cacheDirectory, CacheFileName(key) + ".png");
+    private string MissPath(string key) => Path.Combine(_cacheDirectory, CacheFileName(key) + ".miss");
+
+    // ── 純関数（テストの対象） ───────────────────────────────────────
+    /// <summary>アイコンを引く鍵＝ホスト（既定でないポートは含む）。http/https 以外は null。
+    /// <b>URL ごとではなくサイトごと</b>に持つのが、この機能の速さの正体。</summary>
+    public static string? SiteKey(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+            return null;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return null;
+        return string.IsNullOrEmpty(uri.Host) ? null : uri.Authority.ToLowerInvariant();
+    }
+
+    /// <summary>鍵をファイル名に落とす。読めるように綴りは残しつつ、ファイル名に使えない字は伏せ、
+    /// 伏せたことで別ホストが同じ名前にならないよう短い指紋を足す。</summary>
+    internal static string CacheFileName(string key)
+    {
+        var safe = new StringBuilder(key.Length);
+        foreach (var ch in key)
+            safe.Append(char.IsAsciiLetterOrDigit(ch) || ch is '.' or '-' ? ch : '_');
+        var name = safe.ToString();
+        if (name.Length > 60)
+            name = name[..60];
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        return $"{name}-{Convert.ToHexString(hash)[..8].ToLowerInvariant()}";
+    }
+
+    /// <summary>HTML の head から <c>&lt;link rel="…icon…" href="…"&gt;</c> を拾う。
+    /// 素の正規表現で足りる——ここで欲しいのは1本の href だけで、外れたら「絵が無い」で済むから。
+    /// <c>.svg</c> は WPF が描けないので最初から外す。普通の icon を先に、
+    /// apple-touch-icon（大きい絵）は後回しに並べる。</summary>
+    internal static IReadOnlyList<string> ParseIconLinks(string html)
+    {
+        var plain = new List<string>();
+        var apple = new List<string>();
+        foreach (Match tag in Regex.Matches(html, "<link\\b[^>]*>",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var rel = Attribute(tag.Value, "rel");
+            if (rel is null || !rel.Contains("icon", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var href = Attribute(tag.Value, "href");
+            if (string.IsNullOrWhiteSpace(href)
+                || href.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+                || href.StartsWith("data:image/svg", StringComparison.OrdinalIgnoreCase))
+                continue;
+            (rel.Contains("apple", StringComparison.OrdinalIgnoreCase) ? apple : plain).Add(href);
+        }
+        plain.AddRange(apple);
+        return plain;
+    }
+
+    private static string? Attribute(string tag, string name)
+    {
+        var match = Regex.Match(tag, name + "\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|([^\\s>]+))",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return null;
+        for (var i = 2; i <= 4; i++)
+            if (match.Groups[i].Success)
+                return WebUtility.HtmlDecode(match.Groups[i].Value).Trim();
+        return null;
+    }
+
+    /// <summary>HTML に直接埋まっている絵（<c>data:image/png;base64,…</c>）をその場で開く。
+    /// これを見ないと <c>Uri</c> ごと HTTP で取りに行って例外→「絵が無い」と覚えてしまう
+    /// ——絵はもう手元にあるのに。base64 でないもの（URL エンコードの SVG 等）は対象外。</summary>
+    private static BitmapSource? TryDecodeDataUri(string href)
+    {
+        if (!href.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var comma = href.IndexOf(',');
+        if (comma < 0 || !href[..comma].Contains("base64", StringComparison.OrdinalIgnoreCase))
+            return null;
+        try
+        {
+            return DecodeIcon(Convert.FromBase64String(href[(comma + 1)..].Trim()));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool LooksLikeMarkup(byte[] bytes)
+    {
+        var head = Encoding.ASCII.GetString(bytes, 0, Math.Min(bytes.Length, 64)).TrimStart();
+        return head.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase)
+            || head.StartsWith("<html", StringComparison.OrdinalIgnoreCase)
+            || head.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase)
+            || head.StartsWith("<svg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── 画像 ─────────────────────────────────────────────────────────
+    /// <summary>バイト列を1枚の凍結済みビットマップにする。<c>.ico</c> は何枚も入っているので
+    /// <see cref="IconPixels"/> に一番近い（できれば大きい方の）1枚を選ぶ——小さい絵を引き伸ばすと汚い。
+    ///
+    /// <para><b>最後に画素を写し取って復号器から切り離す</b>のが要点。取得は背景スレッドで走るので、
+    /// <see cref="BitmapDecoder"/> にぶら下がったままの <see cref="BitmapFrame"/> を UI スレッドへ渡すと
+    /// 「別のスレッドが所有している」で落ちる（凍結しても復号器の側の紐は切れない・実測）。
+    /// 写した後は完全に自前の画素なので、凍結して何枚の行からでも共有できる。</para></summary>
+    private static BitmapSource? DecodeIcon(byte[] bytes)
+    {
+        if (bytes.Length == 0)
+            return null;
+        try
+        {
+            using var stream = new MemoryStream(bytes, writable: false);
+            var decoder = BitmapDecoder.Create(
+                stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            var frame = decoder.Frames
+                .Where(f => f.PixelWidth > 0 && f.PixelHeight > 0)
+                .OrderBy(f => f.PixelWidth >= IconPixels ? 0 : 1)
+                .ThenBy(f => Math.Abs(f.PixelWidth - IconPixels))
+                .FirstOrDefault();
+            if (frame is null)
+                return null;
+            if (frame.CanFreeze)
+                frame.Freeze();
+
+            BitmapSource source = frame;
+            if (source.PixelWidth > IconPixels)
+            {
+                var scale = IconPixels / (double)source.PixelWidth;
+                source = new TransformedBitmap(frame, new ScaleTransform(scale, scale));
+            }
+            if (source.Format != PixelFormats.Bgra32)
+                source = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+
+            var detached = new WriteableBitmap(source);   // ここで画素を写して復号器から切る
+            detached.Freeze();
+            return detached;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static byte[]? EncodePng(BitmapSource source)
+    {
+        try
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(source));
+            using var buffer = new MemoryStream();
+            encoder.Save(buffer);
+            return buffer.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}
+
+/// <summary>行1つぶんの favicon の面倒（<b>一度だけ</b>頼む・届いたら知らせる）をまとめたもの。
+/// ブックマークの行とブックマークバーの項目という別々の VM が同じ振る舞いを要るので、
+/// 継承ではなく持たせる形にしてある。
+///
+/// <para><b>頼むのは束ねた時ではなく、最初に絵を訊かれた時</b>（＝画面に出た時）。一覧を作り直す
+/// たびに全行のぶん取りに行くのを避けるための、地味だが一番効く仕掛け——一覧の行 VM は
+/// ページを1枚開くたびに作り直されている。</para></summary>
+internal sealed class FaviconSlot
+{
+    private readonly FaviconService? _icons;
+    private readonly string? _url;
+    private readonly bool _allowNetwork;
+    private readonly Action _notify;
+    private bool _requested;
+
+    public FaviconSlot(FaviconService? icons, string? url, bool allowNetwork, Action notify)
+    {
+        _icons = icons;
+        _url = url;
+        _allowNetwork = allowNetwork;
+        _notify = notify;
+    }
+
+    public ImageSource? Icon { get; private set; }
+
+    /// <summary>絵を返す（まだなら取りに行かせる）。届いたら <c>notify</c> で知らせる。</summary>
+    public ImageSource? Get()
+    {
+        if (_requested || _icons is null)
+            return Icon;
+        _requested = true;
+        var task = _icons.GetAsync(_url, _allowNetwork);
+        if (task.IsCompletedSuccessfully)
+        {
+            // 手元にあった＝この場で返せる。通知は出さない
+            // （バインドの評価中に PropertyChanged を投げ返さないため）。
+            Icon = task.Result;
+            return Icon;
+        }
+        Await(task);
+        return Icon;
+    }
+
+    private async void Await(Task<ImageSource?> task)
+    {
+        try
+        {
+            var icon = await task.ConfigureAwait(true);
+            if (icon is null)
+                return;
+            Icon = icon;
+            _notify();
+        }
+        catch
+        {
+            // 絵が出ないだけ。
+        }
+    }
+}

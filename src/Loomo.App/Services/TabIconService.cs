@@ -25,6 +25,14 @@ public sealed class TabIconService
 
     private readonly ConcurrentDictionary<string, Lazy<Task<ImageSource>>> _browserIconCache = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>取れた favicon の写し先（ブックマークの行が同じ絵を使う・§21.5.1）。
+    /// <b>開いているページのぶんは通信ゼロで溜まる</b>——ここで写しておくと、ブックマークに
+    /// 追加した瞬間にはもう絵がある。</summary>
+    private readonly FaviconService? _favicons;
+
+    /// <param name="favicons">省くと写さないだけ（タブのアイコンは従来どおり出る）。</param>
+    public TabIconService(FaviconService? favicons = null) => _favicons = favicons;
+
     public ImageSource GetTerminalIcon() => FileIcons.ImageFor(TerminalIconIndex);
 
     public ImageSource GetFileIcon(string? path)
@@ -47,7 +55,7 @@ public sealed class TabIconService
             return Task.FromResult(FallbackBrowserIcon);
 
         return _browserIconCache.GetOrAdd(cacheKey, _ =>
-            new Lazy<Task<ImageSource>>(() => LoadBrowserIconAsync(coreWebView2), LazyThreadSafetyMode.ExecutionAndPublication))
+            new Lazy<Task<ImageSource>>(() => LoadBrowserIconAsync(coreWebView2, pageUrl), LazyThreadSafetyMode.ExecutionAndPublication))
             .Value;
     }
 
@@ -59,7 +67,7 @@ public sealed class TabIconService
         return string.IsNullOrWhiteSpace(pageUrl) ? null : pageUrl.Trim();
     }
 
-    private static async Task<ImageSource> LoadBrowserIconAsync(CoreWebView2 coreWebView2)
+    private async Task<ImageSource> LoadBrowserIconAsync(CoreWebView2 coreWebView2, string? pageUrl)
     {
         try
         {
@@ -70,10 +78,17 @@ public sealed class TabIconService
             if (stream is null)
                 return FallbackBrowserIcon;
 
+            // WebView2 が返すのは前方参照専用のストリームなので、いったんバイト列にしてから
+            // 2度使う（タブの絵と、ブックマーク用の置き場への写し）。
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+            _favicons?.Harvest(pageUrl, bytes);
+
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.StreamSource = stream;
+            bitmap.StreamSource = new MemoryStream(bytes, writable: false);
             bitmap.EndInit();
             bitmap.Freeze();
             return bitmap;

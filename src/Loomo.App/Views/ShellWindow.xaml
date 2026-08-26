@@ -328,6 +328,20 @@
             </Setter>
         </Style>
 
+        <!-- 行の頭に出す<b>サイトのアイコン</b>（favicon・§21.5.1）。まだ届かない／取れないときは
+             文字の絵（★・🕘・📁）に落ちる。<b>幅は固定</b>——絵は後から非同期に届くので、
+             届くたびに幅が変わると一覧全体の再配置が走る（高密度な一覧では目にも見える）。 -->
+        <DataTemplate x:Key="BrowserRowIcon">
+            <Grid Width="14" Height="14" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Glyph}" Foreground="{DynamicResource FgDim}"
+                           FontSize="{DynamicResource Fs11}" TextAlignment="Center"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding HasIcon, Converter={StaticResource InverseBoolToVis}}" />
+                <Image Source="{Binding Icon}" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+            </Grid>
+        </DataTemplate>
+
         <!-- ブックマーク／履歴の行テンプレート。見出し＋（違うときだけ）URL の2段。 -->
         <DataTemplate x:Key="BrowserLinkRow">
             <!-- ブックマークの行はフォルダーの中にも並ぶので、段のぶんだけ左へ寄せる
@@ -360,8 +374,8 @@
                         Command="{Binding DataContext.OpenLinkCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                         CommandParameter="{Binding}" ToolTip="{Binding Url}">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Glyph}" Foreground="{DynamicResource FgDim}"
-                                   FontSize="{DynamicResource Fs11}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource BrowserRowIcon}"
+                                          Margin="0,0,6,0" VerticalAlignment="Center" />
                         <StackPanel>
                             <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}"
                                        TextTrimming="CharacterEllipsis" />
@@ -385,8 +399,8 @@
                     Command="{Binding DataContext.OpenLinkCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                     CommandParameter="{Binding}" ToolTip="{Binding Url}">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Glyph}" Foreground="{DynamicResource FgDim}"
-                               FontSize="{DynamicResource Fs11}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource BrowserRowIcon}"
+                                      Margin="0,0,6,0" VerticalAlignment="Center" />
                     <StackPanel>
                         <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}"
                                    TextTrimming="CharacterEllipsis" />
@@ -430,8 +444,8 @@
             <Button Style="{StaticResource BrowserRowButton}" ToolTip="{Binding Url}"
                     Command="{Binding Owner.OpenLinkCommand}" CommandParameter="{Binding}">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="★" Foreground="{DynamicResource FgDim}" Margin="0,0,6,0"
-                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource BrowserRowIcon}"
+                                      Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                 </StackPanel>
@@ -447,8 +461,8 @@
                         Visibility="{Binding IsFolder, Converter={StaticResource InverseBoolToVis}}"
                         Command="{Binding Owner.OpenBookmarkBarItemCommand}" CommandParameter="{Binding}">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="★" Foreground="{DynamicResource FgDim}" Margin="0,0,4,0"
-                                   FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                        <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource BrowserRowIcon}"
+                                          Margin="0,0,4,0" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs11}"
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </StackPanel>

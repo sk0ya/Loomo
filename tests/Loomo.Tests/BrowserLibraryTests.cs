@@ -536,6 +536,32 @@ public class BrowserLibraryTests
         File.Delete(path);
     }
 
+    [Fact]
+    public void Only_bookmark_assets_may_fetch_a_site_icon()
+    {
+        var path = TempFile();
+        var store = new BrowserLibraryStore(path);
+        store.Save(new BrowserLibrarySnapshot
+        {
+            Bookmarks = { new BrowserBookmark { Url = "https://a.example/", Folder = { "バー" } } },
+            History = { new BrowserHistoryEntry { Url = "https://b.example/" } },
+        });
+        var vm = new BrowserViewModel(store) { IsLibraryOpen = true, IsBookmarkBarVisible = true };
+        vm.UpdateSuggestions("a.example");
+
+        // 一覧の行と、帯から落ちる一枚の中身は取りに行って良い（人が開いて見えている資産）。
+        Assert.All(vm.Bookmarks.OfType<BrowserLinkViewModel>(), row => Assert.True(row.AllowIconFetch));
+        Assert.All(Assert.Single(vm.BookmarkBarItems).Children, row => Assert.True(row.AllowIconFetch));
+
+        // 履歴とアドレス欄の候補は手元にあるものだけ。候補には<b>ブックマーク由来の行</b>が
+        // 混ざるので、IsBookmark を条件にすると1文字打つたびに取得が走る。
+        Assert.All(vm.History, row => Assert.False(row.AllowIconFetch));
+        Assert.NotEmpty(vm.Suggestions);
+        Assert.Contains(vm.Suggestions, row => row.IsBookmark);
+        Assert.All(vm.Suggestions, row => Assert.False(row.AllowIconFetch));
+        File.Delete(path);
+    }
+
     // ===== ブックマークバー（アドレス欄の下の帯・表示/非表示） =====
 
     private static BrowserViewModel WithBookmarks(string path, params BrowserBookmark[] bookmarks)

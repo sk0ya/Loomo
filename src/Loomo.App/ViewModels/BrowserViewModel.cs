@@ -45,6 +45,15 @@ public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
     /// <summary>ブックマーク一覧の行か。履歴・候補にも同じ行テンプレートを使うための識別子。</summary>
     public bool IsBookmarkRow { get; init; }
 
+    /// <summary>サイトのアイコンを引く相手（null なら文字の絵のまま＝テスト・単体表示）。</summary>
+    public FaviconService? Icons { get; init; }
+
+    /// <summary>この行がサイトのアイコンを<b>取りに行って良い</b>か。ブックマークの資産
+    /// （一覧の行・帯から落ちる一枚）だけ true で、履歴とアドレス欄の候補は手元にあるものだけ出す。
+    /// <b><see cref="IsBookmark"/> では代用できない</b>——候補にはブックマーク由来の行が混ざるので、
+    /// それを条件にすると1文字打つたびに未取得のホストぶんの取得が走る（＝候補が降りる速さが壊れる）。</summary>
+    public bool AllowIconFetch { get; init; }
+
     /// <summary>この行を作った VM。<b>ブックマークバーのフォルダーの中身</b>だけが使う——
     /// そこは Popup の中の一覧で、行のテンプレートから <c>AncestorType=ItemsControl</c> を辿ると
     /// バーの項目（フォルダー）に当たってコマンドが見つからず、押しても黙って何も起きない。</summary>
@@ -55,7 +64,22 @@ public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
     partial void OnIsSelectedChanged(bool value) => SelectionChanged?.Invoke(this, EventArgs.Empty);
 
     public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? Url : Title!;
+
+    /// <summary>サイトのアイコンが取れないときの絵（★＝ブックマーク／🕘＝履歴）。
+    /// 出自の区別はここにしか無いので、favicon が出るようになっても残す。</summary>
     public string Glyph => IsBookmark ? "★" : "🕘";
+
+    /// <summary>サイトのアイコン。取りに行って良いかは <see cref="AllowIconFetch"/> 側の判断。</summary>
+    private FaviconSlot? _iconSlot;
+    private FaviconSlot IconSlot => _iconSlot ??= new FaviconSlot(
+        Icons, Url, allowNetwork: AllowIconFetch, () =>
+        {
+            OnPropertyChanged(nameof(Icon));
+            OnPropertyChanged(nameof(HasIcon));
+        });
+
+    public ImageSource? Icon => IconSlot.Get();
+    public bool HasIcon => IconSlot.Get() is not null;
 
     /// <summary>見出しが URL と同じ行は下段を出さない（高密度・予約幅なしの流儀）。</summary>
     public string SubText => DisplayTitle == Url ? "" : Url;
@@ -91,6 +115,24 @@ public sealed partial class BrowserBookmarkBarItemViewModel : ObservableObject
     }
 
     public string ToolTipText => IsFolder ? $"{Title}（{Children.Count} 件）" : Url!;
+
+    /// <summary>サイトのアイコンが取れないときの絵。<b>リンクの項目にしか出ない</b>——
+    /// フォルダーの項目は別のボタン（開閉する ToggleButton）で、そちらが自前で 📁 を出す。</summary>
+    public string Glyph => "★";
+
+    /// <summary>帯の項目のアイコン。行と同じ仕掛け（<see cref="FaviconSlot"/>）。
+    /// 帯に並ぶのは根の直下だけ＝多くて十数件なので取りに行かせる
+    /// （フォルダーの項目は行き先が無いので、そもそも引くものが無い）。</summary>
+    private FaviconSlot? _iconSlot;
+    private FaviconSlot IconSlot => _iconSlot ??= new FaviconSlot(
+        Owner.Icons, Url, allowNetwork: !IsFolder, () =>
+        {
+            OnPropertyChanged(nameof(Icon));
+            OnPropertyChanged(nameof(HasIcon));
+        });
+
+    public ImageSource? Icon => IconSlot.Get();
+    public bool HasIcon => IconSlot.Get() is not null;
 }
 
 /// <summary>ダウンロード1件。WebView2 の <see cref="CoreWebView2DownloadOperation"/> は
@@ -203,15 +245,22 @@ public sealed partial class BrowserViewModel : ObservableObject
     public BrowserViewModel() : this(new BrowserLibraryStore()) { }
 
     /// <param name="settings">表示状態（ブックマークバーの表示ON/OFF）の保存先。テストでは省く。</param>
+    /// <param name="favicons">行に出すサイトのアイコンの取得先（§21.5.1）。テストでは省く
+    /// ——省くと行は文字の絵（★／🕘）のままで、通信もディスクも触らない。</param>
     public BrowserViewModel(BrowserLibraryStore store,
-        LoomoSettings? settings = null, SettingsStore? settingsStore = null)
+        LoomoSettings? settings = null, SettingsStore? settingsStore = null,
+        FaviconService? favicons = null)
     {
         _store = store;
         _settings = settings;
         _settingsStore = settingsStore;
+        Icons = favicons;
         // 保存された表示状態を初期反映する（field 直接代入なので永続化・再構築は走らない）。
         _isBookmarkBarVisible = settings?.BrowserBookmarkBarVisible ?? true;
     }
+
+    /// <summary>行に出すサイトのアイコン（favicon）の取得先。行 VM がここから引く。</summary>
+    internal FaviconService? Icons { get; }
 
     /// <summary>他のブラウザからの取り込み（§21.5.4）。選ばせるところまでが VM の仕事で、
     /// 実際に読んで書くのはシェル（プロファイルと WebView2 に触るため）。</summary>
@@ -359,10 +408,15 @@ public sealed partial class BrowserViewModel : ObservableObject
                 {
                     Owner = this,
                     Title = folder.Name,
+                    // 落ちる一枚の中身は人が帯を押して開いた＝見えている行なので、
+                    // 取りに行かせる（枚数は多いことがあるが、ホスト単位・同時4本・
+                    // ホストごとの締切で頭は抑えてある）。
                     Children = BrowserBookmarkTree.Descendants(folder)
                         .Select(b => new BrowserLinkViewModel
                         {
                             Owner = this,
+                            Icons = Icons,
+                            AllowIconFetch = true,
                             Url = b.Url,
                             Title = b.Title,
                             IsBookmark = true,
@@ -637,7 +691,10 @@ public sealed partial class BrowserViewModel : ObservableObject
         var suggestions = BrowserLibrary.Suggest(Library.Bookmarks, Library.History, query);
         Suggestions.Clear();
         foreach (var s in suggestions)
-            Suggestions.Add(new BrowserLinkViewModel { Url = s.Url, Title = s.Title, IsBookmark = s.IsBookmark });
+            Suggestions.Add(new BrowserLinkViewModel
+            {
+                Icons = Icons, Url = s.Url, Title = s.Title, IsBookmark = s.IsBookmark,
+            });
         IsSuggestionsOpen = Suggestions.Count > 0;
     }
 
@@ -663,6 +720,8 @@ public sealed partial class BrowserViewModel : ObservableObject
             {
                 var bookmark = new BrowserLinkViewModel
                 {
+                    Icons = Icons,
+                    AllowIconFetch = true,
                     Depth = row.Depth,
                     Url = row.Bookmark!.Url,
                     Title = row.Bookmark.Title,
@@ -675,7 +734,10 @@ public sealed partial class BrowserViewModel : ObservableObject
         }
         History.Clear();
         foreach (var h in library.History.Take(MaxHistoryShown))
-            History.Add(new BrowserLinkViewModel { Url = h.Url, Title = h.Title, IsBookmark = false });
+            History.Add(new BrowserLinkViewModel
+            {
+                Icons = Icons, Url = h.Url, Title = h.Title, IsBookmark = false,
+            });
         RefreshBookmarkBar();
         OnPropertyChanged(nameof(HasBookmarks));
         OnPropertyChanged(nameof(HasHistory));
