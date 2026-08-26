@@ -75,12 +75,27 @@ public static class ChromiumImportReader
     }
 
     // ── ブックマーク ───────────────────────────────────────────────────
+    /// <summary>Chromium が決め打ちで持つ入れ物のうち、<b>ブックマークバーそのもの</b>を指す鍵。</summary>
+    private const string BookmarkBarRoot = "bookmark_bar";
+
+    /// <summary>持ち込まない入れ物。<c>trash</c> は Vivaldi の「ごみ箱」＝<b>その人が消したぶん</b>で、
+    /// 取り込みで蘇らせると帯にも一覧にも捨てたはずの整理が並ぶ（Chrome には無い、Vivaldi 固有の根）。</summary>
+    private static readonly HashSet<string> DiscardedRoots =
+        new(StringComparer.OrdinalIgnoreCase) { "trash" };
+
     /// <summary><c>Bookmarks</c>（JSON）を読む。<b>フォルダーの階層はそのまま持ち込む</b>——
-    /// 「ブックマーク バー／開発」のような置き場所は、その人が自分で作った整理そのもので、
+    /// 「開発／設計」のような置き場所は、その人が自分で作った整理そのもので、
     /// 平らにすると数百件が一列になって使い物にならない。木に組み直すのは表示側
     /// （<see cref="BrowserBookmarkTree"/>）で、ここは1件ごとに道
     /// （<see cref="BrowserBookmark.Folder"/>）を付けて返すだけ。
-    /// <c>roots</c> の直下（「ブックマーク バー」「その他のブックマーク」）も普通のフォルダーとして数える。</summary>
+    ///
+    /// <para><b><c>roots</c> の直下は普通のフォルダーではない</b>——名前も役割もブラウザが決めた
+    /// 決め打ちの入れ物なので、一段のフォルダーとして数えない。<c>bookmark_bar</c> の<b>子</b>が
+    /// こちらの一番上（＝ブックマークバーに並ぶ段）で、そこを一段潜らせると、相手の帯にあった整理が
+    /// 丸ごと「ブックマーク」1枚の中へ隠れてしまう（Vivaldi の <c>bookmark_bar</c> の名前は
+    /// そのものずばり「ブックマーク」なので、なおさら何も持ち込めていないように見える）。
+    /// <c>trash</c> は捨てたぶんなので持ち込まず、それ以外（<c>other</c>／<c>synced</c>）だけ
+    /// 名前どおりのフォルダーとして受ける。</para></summary>
     public static ImportRead<BrowserBookmark> ReadBookmarks(string profilePath)
     {
         var path = Path.Combine(profilePath, "Bookmarks");
@@ -94,7 +109,12 @@ public static class ChromiumImportReader
                 return ImportRead<BrowserBookmark>.Empty();
             var items = new List<BrowserBookmark>();
             foreach (var root in roots.EnumerateObject())
-                CollectBookmarks(root.Value, items, new List<string>());
+            {
+                if (DiscardedRoots.Contains(root.Name))
+                    continue;
+                CollectBookmarks(root.Value, items, new List<string>(),
+                    nameThisFolder: !string.Equals(root.Name, BookmarkBarRoot, StringComparison.OrdinalIgnoreCase));
+            }
             return new ImportRead<BrowserBookmark>(items, 0, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -104,7 +124,10 @@ public static class ChromiumImportReader
     }
 
     /// <param name="folder">いま潜っているフォルダーの道（根から数えた名前の並び）。</param>
-    private static void CollectBookmarks(JsonElement node, List<BrowserBookmark> items, List<string> folder)
+    /// <param name="nameThisFolder">この節の名前で段を1つ増やすか。ブックマークバーの根だけ
+    /// <c>false</c>——あれは「フォルダー」ではなく帯そのものなので、子がこちらの一番上になる。</param>
+    private static void CollectBookmarks(
+        JsonElement node, List<BrowserBookmark> items, List<string> folder, bool nameThisFolder = true)
     {
         if (node.ValueKind != JsonValueKind.Object)
             return;
@@ -132,7 +155,7 @@ public static class ChromiumImportReader
         if (!node.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Array)
             return;
         // 名前の無いフォルダーでは段を増やさない（表示できない空の段ができるだけ）。
-        var named = !string.IsNullOrWhiteSpace(nodeName);
+        var named = nameThisFolder && !string.IsNullOrWhiteSpace(nodeName);
         if (named)
             folder.Add(nodeName!.Trim());
         foreach (var child in children.EnumerateArray())

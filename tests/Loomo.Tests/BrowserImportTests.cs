@@ -324,13 +324,43 @@ public class BrowserImportTests
 
         var read = ChromiumImportReader.ReadBookmarks(profile);
 
-        Assert.Equal(new[] { "ブックマーク バー" },
-            read.Items.Single(b => b.Url == "https://top.example/").Folder);
+        // ブックマークバーの子が、こちらの一番上（帯に並ぶ段）。根の名前で段を増やさない。
+        Assert.Empty(read.Items.Single(b => b.Url == "https://top.example/").Folder);
         // 入れ子は道が伸びる。潜り終えても他の件に混ざらない（道は複製して渡している）。
-        Assert.Equal(new[] { "ブックマーク バー", "開発" },
+        Assert.Equal(new[] { "開発" },
             read.Items.Single(b => b.Url == "https://deep.example/x").Folder);
+        // バー以外の決め打ちの入れ物は、名前どおりのフォルダーとして受ける。
         Assert.Equal(new[] { "その他のブックマーク" },
             read.Items.Single(b => b.Url == "https://other.example/").Folder);
+    }
+
+    [Fact]
+    public void Deleted_bookmarks_in_the_vivaldi_trash_are_not_imported()
+    {
+        // Vivaldi の trash は「その人が消したブックマーク」。取り込みで蘇らせない。
+        var profile = NewDirectory();
+        File.WriteAllText(Path.Combine(profile, "Bookmarks"), """
+        {
+          "roots": {
+            "bookmark_bar": {
+              "type": "folder", "name": "ブックマーク",
+              "children": [ { "type": "url", "name": "現役", "url": "https://live.example/" } ]
+            },
+            "trash": {
+              "type": "folder", "name": "ごみ箱",
+              "children": [
+                { "type": "url", "name": "捨てた", "url": "https://trashed.example/" },
+                { "type": "folder", "name": "捨てた束", "children": [
+                    { "type": "url", "name": "捨てた奥", "url": "https://trashed.example/deep" } ] }
+              ]
+            }
+          }
+        }
+        """);
+
+        var read = ChromiumImportReader.ReadBookmarks(profile);
+
+        Assert.Equal("https://live.example/", Assert.Single(read.Items).Url);
     }
 
     [Fact]
