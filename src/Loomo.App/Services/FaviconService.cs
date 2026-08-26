@@ -44,6 +44,12 @@ public sealed class FaviconService
     /// <summary>取れなかったホストを再び取りに行くまでの間隔。</summary>
     private static readonly TimeSpan MissRetry = TimeSpan.FromDays(7);
 
+    /// <summary>置き場の絵が古びたと見なすまでの期間。サイトが絵を差し替えたとき、
+    /// <b>次の起動でも古い絵が出続けない</b>ようにするための期限——ただし期限切れでも
+    /// 取りに行きはしない（人がそのページを開いて <see cref="Harvest"/> が来たときに、
+    /// 通信ゼロで写し直すだけ）。</summary>
+    private static readonly TimeSpan IconRefresh = TimeSpan.FromDays(30);
+
     /// <summary>1件あたりの待ち時間。アイコンは「出れば嬉しい」ものなので、長く待たない。</summary>
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(6);
 
@@ -68,9 +74,26 @@ public sealed class FaviconService
     /// <summary>取得中のもの。同じホストの行が同時に何行来ても取得は1回で済ませる。</summary>
     private readonly ConcurrentDictionary<string, Lazy<Task<ImageSource?>>> _inflight = new(StringComparer.Ordinal);
 
+    /// <summary>取りに行く手。<b>テストが差し替える唯一の穴</b>——ここが実通信のままだと、
+    /// 「繋がらなかった」を作るのに実際の DNS/HTTP に頼ることになり、串（プロキシ）や
+    /// ISP の代理応答で結論が変わってしまう。</summary>
+    private Func<string, Task<SiteFetch>> _fetch;
+
     public FaviconService() : this(DefaultCacheDirectory()) { }
 
-    public FaviconService(string cacheDirectory) => _cacheDirectory = cacheDirectory;
+    public FaviconService(string cacheDirectory)
+    {
+        _cacheDirectory = cacheDirectory;
+        _fetch = DownloadAsync;
+    }
+
+    /// <summary>取りに行く手を差し替える（テスト専用）。</summary>
+    internal void UseFetchForTests(Func<string, Task<SiteFetch>> fetch) => _fetch = fetch;
+
+    /// <summary>取りに行った結果。<c>Reached</c> は<b>相手が答えたか</b>——
+    /// 「繋がったが絵は無い」と「そもそも繋がらない」を分けるためだけにある
+    /// （前者しか <c>.miss</c> を書いて良くない）。</summary>
+    internal readonly record struct SiteFetch(BitmapSource? Icon, bool Reached);
 
     public static string DefaultCacheDirectory() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -110,11 +133,15 @@ public sealed class FaviconService
     internal Task HarvestAsync(string? pageUrl, byte[] pngBytes)
     {
         var key = SiteKey(pageUrl);
+        if (key is null || pngBytes.Length == 0)
+            return Task.CompletedTask;
         // 「取れなかった」と覚えているホスト（値が null）は<b>写す価値が一番高い</b>——
         // ここで弾くと、取りに行っては 403 で断られるサイトを人が開いて絵を持って来ても
         // ★ のままになる（キーの有無で見ると、まさにそれが起きる）。
-        if (key is null || pngBytes.Length == 0
-            || (_resolved.TryGetValue(key, out var existing) && existing is not null))
+        // すでに絵があるときも、置き場のぶんが古びていれば写し直す——絵を差し替えたサイトが
+        // 起動のたびに古い絵へ戻る（＝ディスクの写しに期限が無い）のを止めるため。
+        var known = _resolved.TryGetValue(key, out var existing) && existing is not null;
+        if (known && !IsDiskIconStale(key))
             return Task.CompletedTask;
         // 復号・縮小・書き出しは UI スレッドでやらない（ナビゲーションのたびに来る）。
         return Task.Run(() =>
@@ -123,7 +150,7 @@ public sealed class FaviconService
             if (icon is null)
                 return;
             _resolved[key] = icon;
-            if (!File.Exists(IconPath(key)) && EncodePng(icon) is { } png)
+            if (IsDiskIconStale(key) && EncodePng(icon) is { } png)
                 SaveToDisk(key, png);
         });
     }
@@ -136,15 +163,19 @@ public sealed class FaviconService
             icon = await Task.Run(() => (ImageSource?)LoadFromDisk(key)).ConfigureAwait(false);
             if (icon is null && allowNetwork && !HasFreshMiss(key))
             {
-                var downloaded = await DownloadAsync(key).ConfigureAwait(false);
-                if (downloaded is not null)
+                var fetched = await _fetch(key).ConfigureAwait(false);
+                if (fetched.Icon is { } downloaded)
                 {
                     icon = downloaded;
                     if (EncodePng(downloaded) is { } png)
                         SaveToDisk(key, png);
                 }
-                else
+                else if (fetched.Reached
+                         && !(_resolved.TryGetValue(key, out var landed) && landed is not null))
                 {
+                    // 「無い」を7日覚えて良いのは<b>相手が答えた</b>ときだけ。圏外や
+                    // captive portal で繋がらなかったぶんまで覚えると、線が戻っても
+                    // 7日ずっと ★ のまま（しかも再起動しても消えない）になる。
                     MarkMiss(key);
                 }
             }
@@ -156,8 +187,14 @@ public sealed class FaviconService
 
         // 「無い」を覚えるのは取りに行った側だけ。手元だけ見て外れたぶんまで覚えると、
         // あとからブックマークの行が来ても二度と取りに行かなくなる。
-        if (icon is not null || allowNetwork)
+        // ただし<b>塗り潰さない</b>——取りに行っている10秒のあいだに、人がそのサイトを開いて
+        // Harvest が絵を入れていることがある（403 で断られるサイトほど、まさにそれが起きる）。
+        // TryAdd なら、後から入ったその絵に譲れる。
+        if (icon is not null)
             _resolved[key] = icon;
+        else if (allowNetwork && !_resolved.TryAdd(key, null)
+                 && _resolved.TryGetValue(key, out var harvested))
+            icon = harvested;
         _inflight.TryRemove(slot, out _);
         return icon;
     }
@@ -166,39 +203,46 @@ public sealed class FaviconService
     /// <summary>ブラウザと同じ順で当たる：まず <c>/favicon.ico</c>、外れたら HTML の
     /// <c>&lt;link rel="icon"&gt;</c>。https で繋がったのに絵が無いときは http を試さない
     /// （繋がらなかったときだけ落とす）。</summary>
-    private async Task<BitmapSource?> DownloadAsync(string authority)
+    private async Task<SiteFetch> DownloadAsync(string authority)
     {
         await _network.WaitAsync().ConfigureAwait(false);
         using var deadline = new CancellationTokenSource(HostDeadline);
+        var reached = false;
         try
         {
             foreach (var scheme in new[] { "https", "http" })
             {
                 if (!Uri.TryCreate($"{scheme}://{authority}/", UriKind.Absolute, out var root))
                     continue;
-                if (await FetchIconAsync(new Uri(root, "/favicon.ico"), deadline.Token)
-                        .ConfigureAwait(false) is { } direct)
+                var direct = await FetchIconAsync(new Uri(root, "/favicon.ico"), deadline.Token)
+                    .ConfigureAwait(false);
+                reached |= direct.Reached;
+                if (direct.Icon is not null)
                     return direct;
 
                 var html = await FetchHtmlAsync(root, deadline.Token).ConfigureAwait(false);
-                if (html is null)
-                    continue;                 // 繋がらなかった → 次のスキームへ
-                foreach (var href in ParseIconLinks(html))
+                reached |= html.Reached;
+                if (html.Text is null)
+                    continue;                 // 読めなかった → 次のスキームへ
+                foreach (var href in ParseIconLinks(html.Text))
                 {
                     // HTML に直接埋まっている絵はその場で開ける（取りに行かない）。
                     if (TryDecodeDataUri(href) is { } inline)
-                        return inline;
-                    if (Uri.TryCreate(root, href, out var iconUri)
-                        && await FetchIconAsync(iconUri, deadline.Token).ConfigureAwait(false) is { } linked)
+                        return new SiteFetch(inline, true);
+                    if (!Uri.TryCreate(root, href, out var iconUri))
+                        continue;
+                    var linked = await FetchIconAsync(iconUri, deadline.Token).ConfigureAwait(false);
+                    reached |= linked.Reached;
+                    if (linked.Icon is not null)
                         return linked;
                 }
-                return null;                  // 繋がったが絵は無かった
+                return new SiteFetch(null, true);   // 繋がったが絵は無かった
             }
-            return null;
+            return new SiteFetch(null, reached);
         }
         catch
         {
-            return null;
+            return new SiteFetch(null, reached);
         }
         finally
         {
@@ -206,40 +250,45 @@ public sealed class FaviconService
         }
     }
 
-    private static async Task<BitmapSource?> FetchIconAsync(Uri uri, CancellationToken deadline)
+    private static async Task<SiteFetch> FetchIconAsync(Uri uri, CancellationToken deadline)
     {
         // 絵は途中まででは使えないので、上限を超えたら捨てる（切り詰めない）。
-        var bytes = await FetchAsync(uri, MaxDownloadBytes, truncate: false, deadline).ConfigureAwait(false);
+        var (bytes, reached) = await FetchAsync(uri, MaxDownloadBytes, truncate: false, deadline)
+            .ConfigureAwait(false);
         if (bytes is null)
-            return null;
+            return new SiteFetch(null, reached);
         // SVG は WPF が読めない。HTML は「404 を 200 で返す」サイトの本文なので、どちらも絵ではない。
-        return LooksLikeMarkup(bytes) ? null : DecodeIcon(bytes);
+        return new SiteFetch(LooksLikeMarkup(bytes) ? null : DecodeIcon(bytes), reached);
     }
 
-    private static async Task<string?> FetchHtmlAsync(Uri uri, CancellationToken deadline)
+    private static async Task<(string? Text, bool Reached)> FetchHtmlAsync(Uri uri, CancellationToken deadline)
     {
         // <head> はページの頭にあるので、上限までで<b>切り詰めて</b>使う——捨ててはいけない。
         // 本文が数百 KB あるページ（Qiita など）は珍しくなく、捨てると icon の在り処ごと落ちる（実測）。
-        var bytes = await FetchAsync(uri, MaxHtmlBytes, truncate: true, deadline).ConfigureAwait(false);
+        var (bytes, reached) = await FetchAsync(uri, MaxHtmlBytes, truncate: true, deadline)
+            .ConfigureAwait(false);
         if (bytes is null)
-            return null;
+            return (null, reached);
         try
         {
             var text = Encoding.UTF8.GetString(bytes);
             var headEnd = text.IndexOf("</head", StringComparison.OrdinalIgnoreCase);
-            return headEnd > 0 ? text[..headEnd] : text;
+            return (headEnd > 0 ? text[..headEnd] : text, reached);
         }
         catch
         {
-            return null;
+            return (null, reached);
         }
     }
 
     /// <summary>上限まで読んで返す（相手の言う長さを信用せず、実際に読んだ量で切る）。
-    /// <paramref name="truncate"/> が true なら上限までの前半を返し、false なら超えた時点で捨てる。</summary>
-    private static async Task<byte[]?> FetchAsync(Uri uri, int maxBytes, bool truncate,
+    /// <paramref name="truncate"/> が true なら上限までの前半を返し、false なら超えた時点で捨てる。
+    /// 返り値の <c>Reached</c> は<b>相手が答えたか</b>——404 も大きすぎも「答え」で、
+    /// そもそも繋がらなかった（例外・時間切れ）のとは区別する。</summary>
+    private static async Task<(byte[]? Bytes, bool Reached)> FetchAsync(Uri uri, int maxBytes, bool truncate,
         CancellationToken deadline)
     {
+        var reached = false;
         try
         {
             // 1件ごとの待ち時間と、ホストごとの締切のどちらか早い方で切る。
@@ -247,10 +296,11 @@ public sealed class FaviconService
             cts.CancelAfter(RequestTimeout);
             using var response = await Http
                 .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+            reached = true;
             if (!response.IsSuccessStatusCode)
-                return null;
+                return (null, true);
             if (!truncate && response.Content.Headers.ContentLength > maxBytes)
-                return null;
+                return (null, true);
 
             await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
             using var buffer = new MemoryStream();
@@ -262,14 +312,14 @@ public sealed class FaviconService
                 if (buffer.Length < maxBytes)
                     continue;
                 if (!truncate)
-                    return null;
+                    return (null, true);
                 break;      // 前半だけで足りる（残りは受け取らずに切る）
             }
-            return buffer.ToArray();
+            return (buffer.ToArray(), true);
         }
         catch
         {
-            return null;
+            return (null, reached);
         }
     }
 
@@ -320,6 +370,21 @@ public sealed class FaviconService
         catch
         {
             // 置けなくても表示はできている（次回また取りに行くだけ）。
+        }
+    }
+
+    /// <summary>置き場の絵が無い、または古びた（<see cref="IconRefresh"/> 超え）か。</summary>
+    private bool IsDiskIconStale(string key)
+    {
+        try
+        {
+            var path = IconPath(key);
+            return !File.Exists(path)
+                || DateTime.UtcNow - File.GetLastWriteTimeUtc(path) >= IconRefresh;
+        }
+        catch
+        {
+            return true;    // 見られないなら書きに行く（書けなければそこでまた諦める）
         }
     }
 
@@ -513,9 +578,12 @@ public sealed class FaviconService
 /// ブックマークの行とブックマークバーの項目という別々の VM が同じ振る舞いを要るので、
 /// 継承ではなく持たせる形にしてある。
 ///
-/// <para><b>頼むのは束ねた時ではなく、最初に絵を訊かれた時</b>（＝画面に出た時）。一覧を作り直す
-/// たびに全行のぶん取りに行くのを避けるための、地味だが一番効く仕掛け——一覧の行 VM は
-/// ページを1枚開くたびに作り直されている。</para></summary>
+/// <para><b>頼むのは束ねた時ではなく、最初に絵を訊かれた時</b>（＝行が描かれた時）。一覧の行 VM は
+/// ページを1枚開くたびに作り直されるので、束ね直しただけでは取りに行かない——地味だが一番効く。
+/// ただし<b>「画面に見えた時」ではない</b>：ブックマークの一覧は仮想化していない
+/// <c>ItemsControl</c> なので、開いた瞬間に全行が描かれる（＝ホストの数だけ一斉に頼まれる）。
+/// 一斉に走らせないための栓は <see cref="FaviconService"/> 側（同時4本・ホストごと10秒の締切）が持つ。
+/// 横へ開くサブメニューだけは <c>Popup</c> なので、開くまで本当に描かれない。</para></summary>
 internal sealed class FaviconSlot
 {
     private readonly FaviconService? _icons;

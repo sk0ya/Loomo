@@ -11,6 +11,11 @@ namespace sk0ya.Loomo.Tests;
 /// ブックマークの行に出すサイトのアイコン（§21.5.1・<see cref="FaviconService"/>）の検証。
 /// 通信は行わない——ここで確かめたいのは「鍵の作り方」「置き場の当て方」「取りに行って良い場面の
 /// 線引き」で、そのどれもが通信の手前にある判断だから。
+///
+/// <para>取りに行く場面は <see cref="FaviconService.UseFetchForTests"/> で差し替える。
+/// 実際に届かないホスト名（<c>*.invalid</c>）で代用してはいけない——串（プロキシ）や ISP が
+/// 名前解決の失敗に代理のページを返す環境では「繋がらなかった」が「繋がった」に化けて、
+/// 結論そのものが入れ替わる（しかも1件あたり締切の10秒を丸ごと待つ）。</para>
 /// </summary>
 public class FaviconServiceTests
 {
@@ -19,6 +24,14 @@ public class FaviconServiceTests
         var path = Path.Combine(Path.GetTempPath(), $"loomo-favicons-{Guid.NewGuid():N}");
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    /// <summary>「相手は答えたが絵は無かった」を作る（bot 避けで断られるサイト等）。</summary>
+    private static FaviconService AnsweredWithoutIcon(string directory)
+    {
+        var service = new FaviconService(directory);
+        service.UseFetchForTests(_ => Task.FromResult(new FaviconService.SiteFetch(null, Reached: true)));
+        return service;
     }
 
     // ===== 鍵（ホスト単位） =====
@@ -134,18 +147,17 @@ public class FaviconServiceTests
     public async Task Harvest_wins_over_a_host_already_remembered_as_hopeless()
     {
         var directory = TempDirectory();
-        var service = new FaviconService(directory);
+        var service = AnsweredWithoutIcon(directory);
 
-        // 取りに行って外した（bot 避けで断られるサイト等）＝「無い」と覚えた状態を作る。
-        // 通信は届かない前提のホストを使うので、これは確実に外れる。
-        Assert.Null(await service.GetAsync("https://loomo.invalid/", allowNetwork: true));
+        // 取りに行って外した＝「無い」と覚えた状態を作る。
+        Assert.Null(await service.GetAsync("https://example.com/", allowNetwork: true));
         Assert.Single(Directory.GetFiles(directory, "*.miss"));
 
         // そこへ人がページを開いて絵を持って来た。ここで弾いてしまうと、
         // 取りに行けないサイトは何度開いても ★ のままになる。
-        await service.HarvestAsync("https://loomo.invalid/page", OnePixelPng());
+        await service.HarvestAsync("https://example.com/page", OnePixelPng());
 
-        Assert.NotNull(service.TryGetCached("https://loomo.invalid/other"));
+        Assert.NotNull(service.TryGetCached("https://example.com/other"));
         Assert.Single(Directory.GetFiles(directory, "*.png"));
         Assert.Empty(Directory.GetFiles(directory, "*.miss"));   // 覚えた「無い」も消える
     }
@@ -154,19 +166,80 @@ public class FaviconServiceTests
     public async Task A_cache_only_miss_does_not_stop_a_later_bookmark_row_from_fetching()
     {
         var directory = TempDirectory();
-        var service = new FaviconService(directory);
+        var service = AnsweredWithoutIcon(directory);
 
         // 同じホストを、手元だけの引き（履歴・候補）と取りに行く引き（ブックマーク）で同時に頼む。
         // 束ねる鍵がホストだけだと、後から来たブックマークの行が手元だけの答え（null）に
         // 相乗りして、取りに行かないまま「絵が無い」になる。
-        var cacheOnly = service.GetAsync("https://loomo.invalid/", allowNetwork: false);
-        var bookmark = service.GetAsync("https://loomo.invalid/", allowNetwork: true);
+        var cacheOnly = service.GetAsync("https://example.com/", allowNetwork: false);
+        var bookmark = service.GetAsync("https://example.com/", allowNetwork: true);
         await Task.WhenAll(cacheOnly, bookmark);
         Assert.Null(await cacheOnly);
         Assert.Null(await bookmark);
 
         // 取りに行った側だけが「無い」を記録する。
         Assert.Single(Directory.GetFiles(directory, "*.miss"));
+    }
+
+    [Fact]
+    public async Task A_host_that_could_not_be_reached_is_not_remembered_as_hopeless()
+    {
+        var directory = TempDirectory();
+        var service = new FaviconService(directory);
+        // 圏外・captive portal・串の落ちている環境＝相手は何も答えていない。
+        service.UseFetchForTests(_ => Task.FromResult(new FaviconService.SiteFetch(null, Reached: false)));
+
+        Assert.Null(await service.GetAsync("https://example.com/", allowNetwork: true));
+
+        // ここで .miss を書くと、線が戻っても7日ぜんぶ（再起動しても）★ のままになる。
+        // 「絵が無いサイト」と「今つながらないだけ」を同じ扱いにしてはいけない。
+        Assert.Empty(Directory.GetFiles(directory));
+
+        // 立ち上げ直せば（＝メモリの結論が消えれば）また取りに行く。
+        var restarted = AnsweredWithoutIcon(directory);
+        Assert.Null(await restarted.GetAsync("https://example.com/", allowNetwork: true));
+        Assert.Single(Directory.GetFiles(directory, "*.miss"));
+    }
+
+    [Fact]
+    public async Task An_icon_harvested_while_fetching_is_not_overwritten_by_the_failed_fetch()
+    {
+        var directory = TempDirectory();
+        var service = new FaviconService(directory);
+        // 取りに行っている最中（最大10秒）に、人がそのサイトを開いて絵が届いた——そのあとで
+        // 取得が外れる。ここで結論を null で上書きすると、絵は手元にあるのに ★ のままになる。
+        service.UseFetchForTests(async _ =>
+        {
+            await service.HarvestAsync("https://example.com/page", OnePixelPng());
+            return new FaviconService.SiteFetch(null, Reached: true);
+        });
+
+        Assert.NotNull(await service.GetAsync("https://example.com/", allowNetwork: true));
+        Assert.NotNull(service.TryGetCached("https://example.com/other"));
+        Assert.Empty(Directory.GetFiles(directory, "*.miss"));
+    }
+
+    [Fact]
+    public async Task Harvest_refreshes_an_icon_that_went_stale_on_disk()
+    {
+        var directory = TempDirectory();
+        var service = new FaviconService(directory);
+        var path = Path.Combine(directory, FaviconService.CacheFileName("example.com") + ".png");
+        File.WriteAllBytes(path, OnePixelPng());
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-60));
+
+        // 起動直後：置き場の絵で出る（＝メモリにも入る）。
+        Assert.NotNull(await service.GetAsync("https://example.com/", allowNetwork: false));
+
+        // 人がそのサイトを開いた。置き場のぶんが古びているなら写し直す——さもないと、
+        // 絵を差し替えたサイトは起動のたびに古い絵へ戻り続ける。
+        await service.HarvestAsync("https://example.com/page", OnePixelPng());
+        var refreshed = File.GetLastWriteTimeUtc(path);
+        Assert.True(refreshed > DateTime.UtcNow.AddDays(-1));
+
+        // 新しいうちは書き直さない（ページを開くたびに置き場を触らない）。
+        await service.HarvestAsync("https://example.com/page", OnePixelPng());
+        Assert.Equal(refreshed, File.GetLastWriteTimeUtc(path));
     }
 
     /// <summary>1px の PNG（中身は問わない——読めて凍る絵であれば良い）。</summary>

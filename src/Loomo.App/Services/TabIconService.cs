@@ -83,7 +83,13 @@ public sealed class TabIconService
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
             var bytes = buffer.ToArray();
-            _favicons?.Harvest(pageUrl, bytes);
+            // GetFaviconAsync が返すのは「待ち終えた今」コントロールが持っている絵なので、
+            // 待っているあいだに別のサイトへ移っていたら<b>写さない</b>——A が即 B へ飛ばす
+            // ページでは、B の絵が A のホストの名前で置き場に残ってしまう（しかも置き場は
+            // 開き直すたびに読まれるので、間違いがずっと出続ける）。
+            if (FaviconService.SiteKey(pageUrl) is { } key
+                && FaviconService.SiteKey(coreWebView2.Source) == key)
+                _favicons?.Harvest(pageUrl, bytes);
 
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
