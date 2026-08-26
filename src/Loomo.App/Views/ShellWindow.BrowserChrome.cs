@@ -23,24 +23,40 @@ public partial class ShellWindow {
         // 「押し下げで閉じる→Click で開き直す」でトグルにならない（OnBrowser*Toggle）。
         TrackPopupClose(BrowserDownloadsPopup);
         TrackPopupClose(BrowserLibraryPopup);
+        TrackPopupClose(BrowserHistoryPopup);
         TrackPopupClose(BrowserExtensionsPopup);
         TrackPopupClose(BrowserPasswordsPopup);
         InitializeBrowserExtras();
     }
 
-    // ── ツールバーのドロップダウン（ダウンロード・ブックマークと履歴・拡張機能・パスワード） ──
+    // ── ツールバーのドロップダウン（ダウンロード・ブックマーク・履歴・拡張機能・パスワード） ──
     // 開けるのは ToggleButton の素の動き。ここは「開いている最中に押したら閉じる」だけを受け持つ
     // （なぜマウスアップで受けるかは SuppressPopupReopen の説明にある）。
     private void OnBrowserDownloadsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserDownloadsPopup);
-    private void OnBrowserLibraryToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserLibraryPopup);
+    private void OnBrowserLibraryToggle(object sender, MouseButtonEventArgs e) {
+        _vm.Browser.IsHistoryOpen = false;
+        SuppressPopupReopen(sender, e, BrowserLibraryPopup);
+    }
+    private void OnBrowserHistoryToggle(object sender, MouseButtonEventArgs e) {
+        _vm.Browser.IsLibraryOpen = false;
+        SuppressPopupReopen(sender, e, BrowserHistoryPopup);
+    }
     private void OnBrowserExtensionsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserExtensionsPopup);
     private void OnBrowserPasswordsToggle(object sender, MouseButtonEventArgs e) => SuppressPopupReopen(sender, e, BrowserPasswordsPopup);
+
+    /// <summary>ブックマークバーの « » と右クリックから、ブックマーク一覧（🔖）を開く。
+    /// 帯に入り切らない項目へ辿る道はここ1本にしてある（帯そのものは横スクロールしない）。</summary>
+    private void OnBrowserBookmarkBarOverflow(object sender, RoutedEventArgs e) {
+        _vm.Browser.IsHistoryOpen = false;
+        _vm.Browser.IsLibraryOpen = true;
+    }
 
     /// <summary>取り込みを開く（§21.5.4）。入口が2つ（ブックマーク一覧と鍵の一覧）あるのは、
     /// 取り込む中身がその両方に跨がるから。<b>開く前に呼び出し元のポップアップを閉じる</b>——
     /// どちらも <c>StaysOpen="False"</c> なので、重なったまま出すと下の1枚が居座って操作を食う。</summary>
     private void OnBrowserImportOpen(object sender, RoutedEventArgs e) {
         _vm.Browser.IsLibraryOpen = false;
+        _vm.Browser.IsHistoryOpen = false;
         _vm.Browser.IsPasswordsOpen = false;
         _vm.Browser.Import.IsOpen = true;
     }
@@ -339,6 +355,11 @@ public partial class ShellWindow {
             case Key.D when ctrl && !shift:
                 _vm.Browser.ToggleBookmark();
                 break;
+            // ブックマークバーの表示切替。Shift 付きをここで取る数少ない例外だが、
+            // Ctrl+Shift+B に他の割り当ては無く、ブラウザの慣習どおりで迷いようがない。
+            case Key.B when ctrl && shift:
+                _vm.Browser.ToggleBookmarkBar();
+                break;
             // Ctrl+T（新しいタブ）と Ctrl+W（タブを閉じる）はブラウザの慣習だが、ここでは<b>取らない</b>。
             // Loomo では Ctrl+T が舞台／レイアウトの巡回、Ctrl+W がペイン操作のプレフィックス（vim 風）で、
             // 部屋そのものの動線だから——ブラウザにフォーカスがある間だけ効かなくなる方が混乱する。
@@ -422,6 +443,8 @@ public partial class ShellWindow {
         parent.Children.Add(BrowserMenuItem(core,
             _vm.Browser.IsBookmarked ? "ブックマークを外す" : "ブックマークに追加",
             () => _vm.Browser.ToggleBookmark()));
+        parent.Children.Add(BrowserMenuItem(core, _vm.Browser.BookmarkBarMenuText,
+            () => _vm.Browser.ToggleBookmarkBar()));
         parent.Children.Add(BrowserSeparator(core));
         parent.Children.Add(BrowserMenuItem(core, "ページ内を検索…", OpenBrowserFind));
         parent.Children.Add(BrowserMenuItem(core, "URL をコピー", () => {

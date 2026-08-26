@@ -36,6 +36,10 @@ public sealed class LoomoSettings
     /// コンテキストメニュー「軌跡を非表示にする」や設定の「外観」トグルからここへ書き戻される。</summary>
     public bool TrailVisible { get; set; } = true;
 
+    /// <summary>ブラウザペインのブックマークバー（アドレス欄の下の帯）を表示するか。既定は表示。
+    /// バーの右クリック・ブックマーク一覧の切替ボタン・Ctrl+Shift+B からここへ書き戻され、次回起動でも保たれる。</summary>
+    public bool BrowserBookmarkBarVisible { get; set; } = true;
+
     /// <summary>Git ペインの下段「コミット詳細」（選択コミットの <c>git show --stat</c>）を表示するか。
     /// 既定は表示。Git ペインのタイトル領域のトグルからここへ書き戻され、次回起動でも保たれる。</summary>
     public bool GitCommitDetailVisible { get; set; } = true;

@@ -186,6 +186,8 @@ public partial class ShellWindow {
         }
         UpdateBrowserTab(tab);
         UpdateBrowserToolbar(tab);
+        // ブックマークバーを出しているなら、ここで browser.json を読ませる（起動時には読まない）。
+        _vm.Browser.PrepareBookmarkBar();
         await RefreshBrowserTabIconAsync(tab);
     }
     private LoomoWebView2 CreateBrowserView()

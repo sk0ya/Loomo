@@ -422,6 +422,69 @@
                 </StackPanel>
             </Button>
         </DataTemplate>
+
+        <!-- 帯から落ちる一枚の行。開くだけ（消す・選ぶはブックマーク一覧の仕事）。
+             コマンドは行 VM の Owner から辿る——ここは Popup の中なので、
+             AncestorType=ItemsControl では帯の項目（フォルダー）に当たってしまう。 -->
+        <DataTemplate x:Key="BrowserBookmarkBarMenuRow">
+            <Button Style="{StaticResource BrowserRowButton}" ToolTip="{Binding Url}"
+                    Command="{Binding Owner.OpenLinkCommand}" CommandParameter="{Binding}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="★" Foreground="{DynamicResource FgDim}" Margin="0,0,6,0"
+                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+        <!-- ブックマークバー（アドレス欄の下の帯）の1項目。リンクは押すと開き、フォルダーは
+             中身を一枚落とす。段は作らない——帯は「1クリックで届く」ための場所で、木を辿る場所は
+             ブックマーク一覧（🔖）の方。 -->
+        <DataTemplate x:Key="BrowserBookmarkBarItem">
+            <Grid>
+                <Button Style="{StaticResource BrowserRowButton}" Padding="6,1" MaxWidth="180"
+                        Margin="0,0,2,0" ToolTip="{Binding ToolTipText}"
+                        Visibility="{Binding IsFolder, Converter={StaticResource InverseBoolToVis}}"
+                        Command="{Binding Owner.OpenBookmarkBarItemCommand}" CommandParameter="{Binding}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="★" Foreground="{DynamicResource FgDim}" Margin="0,0,4,0"
+                                   FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs11}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <!-- フォルダーは押している間だけ開いて見えるように ToggleButton にする
+                     （IsOpen は VM 側が持つので、隣を開いたら畳むのも VM の仕事）。 -->
+                <ToggleButton x:Name="BookmarkBarFolder" Style="{StaticResource ToolbarToggleButton}"
+                              Padding="6,1" MaxWidth="180" Margin="0,0,2,0"
+                              ToolTip="{Binding ToolTipText}"
+                              Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}"
+                              IsChecked="{Binding IsOpen, Mode=TwoWay}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="📁" Margin="0,0,4,0" FontSize="{DynamicResource Fs11}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs11}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ToggleButton>
+                <Popup PlacementTarget="{Binding ElementName=BookmarkBarFolder}" Placement="Bottom"
+                       StaysOpen="False" AllowsTransparency="True"
+                       IsOpen="{Binding IsOpen, Mode=TwoWay}">
+                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="3" Padding="4" MinWidth="240" MaxWidth="420">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                        </Border.Effect>
+                        <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Children}"
+                                          ItemTemplate="{StaticResource BrowserBookmarkBarMenuRow}" />
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
+            </Grid>
+        </DataTemplate>
+
     </Window.Resources>
 
     <!-- 最大化は code-behind で制御：通常は WM_GETMINMAXINFO でワーク領域に制限し、
@@ -1101,6 +1164,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <!-- 戻る／進むは履歴の有無で活性が変わる（押せるかどうかが見えないと、
                              行き止まりかページが応答していないのか区別できない）。 -->
@@ -1192,16 +1256,31 @@
                                            Visibility="{Binding Browser.DownloadBadge, Converter={StaticResource NonEmptyToVis}}" />
                             </StackPanel>
                         </ToggleButton>
-                        <ToggleButton Grid.Column="8" Style="{StaticResource ToolbarToggleButton}" Height="28"
-                                      Padding="6,0" Content="☰" ToolTip="ブックマークと履歴"
+                        <ToggleButton Grid.Column="8" x:Name="BrowserBookmarksButton"
+                                      Style="{StaticResource ToolbarToggleButton}" Height="28"
+                                      Padding="6,0" ToolTip="ブックマーク一覧"
                                       PreviewMouseLeftButtonUp="OnBrowserLibraryToggle"
-                                      IsChecked="{Binding Browser.IsLibraryOpen, Mode=TwoWay}" />
-                        <ToggleButton x:Name="BrowserExtensionsButton" Grid.Column="9"
+                                      IsChecked="{Binding Browser.IsLibraryOpen, Mode=TwoWay}">
+                            <TextBlock Text="🔖" FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" />
+                        </ToggleButton>
+                        <ToggleButton Grid.Column="9" Style="{StaticResource ToolbarToggleButton}" Height="28"
+                                      Padding="6,0" ToolTip="履歴"
+                                      PreviewMouseLeftButtonUp="OnBrowserHistoryToggle"
+                                      IsChecked="{Binding Browser.IsHistoryOpen, Mode=TwoWay}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🕘" FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Browser.HistoryCount}" Margin="3,0,0,0"
+                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs11}"
+                                           Foreground="{DynamicResource Accent}"
+                                           Visibility="{Binding Browser.HasHistory, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BrowserExtensionsButton" Grid.Column="10"
                                       Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" Content="🧩" ToolTip="拡張機能"
                                       PreviewMouseLeftButtonUp="OnBrowserExtensionsToggle"
                                       IsChecked="{Binding Browser.IsExtensionsOpen, Mode=TwoWay}" />
-                        <ToggleButton x:Name="BrowserPasswordsButton" Grid.Column="10"
+                        <ToggleButton x:Name="BrowserPasswordsButton" Grid.Column="11"
                                       Style="{StaticResource ToolbarToggleButton}" Height="28"
                                       Padding="6,0" Content="🔑" ToolTip="保存済みのログイン情報"
                                       PreviewMouseLeftButtonUp="OnBrowserPasswordsToggle"
@@ -1278,13 +1357,14 @@
                             </Border>
                         </Popup>
 
-                        <!-- ブックマークと履歴。行のクリックで開き、× で一覧から消す。 -->
+                        <!-- ブックマーク。行のクリックで開き、× または選択モードで削除する。 -->
                         <Popup x:Name="BrowserLibraryPopup"
                                PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True"
                                IsOpen="{Binding Browser.IsLibraryOpen, Mode=TwoWay}">
+                            <!-- 見出しの行に並ぶボタンが1つ増えた（バーの表示切替）ぶん、履歴側より広く取る。 -->
                             <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="420"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="480"
                                     DataContext="{Binding Browser}">
                                 <Border.Effect>
                                     <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
@@ -1297,6 +1377,11 @@
                                                        Foreground="{DynamicResource FgDim}"
                                                        FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
                                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <Button Style="{StaticResource BrowserRowButton}"
+                                                        Content="{Binding BookmarkBarToggleText}"
+                                                        ToolTip="アドレス欄の下のブックマークバーを出す／畳む（Ctrl+Shift+B）"
+                                                        Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                        Command="{Binding ToggleBookmarkBarCommand}" />
                                                 <Button Style="{StaticResource BrowserRowButton}"
                                                         Content="{Binding SelectionModeButtonText}"
                                                         ToolTip="複数のブックマークを選択してまとめて操作"
@@ -1342,7 +1427,26 @@
                                         <!-- ItemTemplate は指定しない：行の型（フォルダー／リンク）で
                                              暗黙の DataTemplate が選ばれる。 -->
                                         <ItemsControl ItemsSource="{Binding Bookmarks}" />
-                                        <DockPanel Margin="4,8,4,2">
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+
+                        <!-- 履歴。ブックマークとは目的が違うため、独立したボタンと一覧にする。 -->
+                        <Popup x:Name="BrowserHistoryPopup"
+                               PlacementTarget="{Binding ElementName=BrowserAddressBox}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True"
+                               IsOpen="{Binding Browser.IsHistoryOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="3" Padding="4" Width="420"
+                                    DataContext="{Binding Browser}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel>
+                                        <DockPanel Margin="4,2">
                                             <TextBlock DockPanel.Dock="Left" Text="{Binding HistoryCountText}"
                                                        Foreground="{DynamicResource FgDim}"
                                                        FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
@@ -1352,6 +1456,9 @@
                                                     Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}"
                                                     Command="{Binding ClearHistoryCommand}" />
                                         </DockPanel>
+                                        <TextBlock Text="まだ履歴がありません" Margin="6,2"
+                                                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                                   Visibility="{Binding HasHistory, Converter={StaticResource InverseBoolToVis}}" />
                                         <ItemsControl ItemsSource="{Binding History}"
                                                       ItemTemplate="{StaticResource BrowserLinkRow}" />
                                     </StackPanel>
@@ -1645,6 +1752,42 @@
                             </Border>
                         </Popup>
                     </Grid>
+
+                    <!-- ブックマークバー（§21.5.1）。根の直下のブックマーク／フォルダーを1行で並べる。
+                         表示・非表示は Ctrl+Shift+B・帯の右クリック・ブックマーク一覧の切替・ページの
+                         右クリックメニュー（Loomo）から。設定へ書き戻すので次回起動でも同じ見え方。
+                         入り切らない項目は « » でブックマーク一覧へ回す（横スクロールにはしない——
+                         帯の中でスクロールしても、探すのは結局一覧の方が速い）。 -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource Panel}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="6,1"
+                            DataContext="{Binding Browser}"
+                            Visibility="{Binding IsBookmarkBarVisible, Converter={StaticResource BoolToVis}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="{Binding BookmarkBarMenuText}"
+                                          Command="{Binding ToggleBookmarkBarCommand}" />
+                                <MenuItem Header="ブックマーク一覧を開く" Click="OnBrowserBookmarkBarOverflow" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource BrowserRowButton}"
+                                    Content="»" Padding="6,1" ToolTip="すべてのブックマーク"
+                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                    Click="OnBrowserBookmarkBarOverflow" />
+                            <TextBlock DockPanel.Dock="Left" Margin="4,2" VerticalAlignment="Center"
+                                       Text="ブックマークはまだありません（☆ か Ctrl+D で追加）"
+                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                       Visibility="{Binding HasBookmarkBarItems, Converter={StaticResource InverseBoolToVis}}" />
+                            <ItemsControl ItemsSource="{Binding BookmarkBarItems}" ClipToBounds="True"
+                                          ItemTemplate="{StaticResource BrowserBookmarkBarItem}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </DockPanel>
+                    </Border>
 
                     <!-- 拡張機能ストアの促しバー（§21.5.2）。ストアの拡張機能ページを開いたら出る。
                          ページ側の「Chrome に追加」を押しても同じ導入へ回る（注入スクリプトが横取りする）。 -->

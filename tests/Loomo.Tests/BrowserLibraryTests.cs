@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Settings;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -532,6 +533,107 @@ public class BrowserLibraryTests
         var loaded = new BrowserLibraryStore(path).Load();
 
         Assert.Equal(new[] { "バー", "開発" }, Assert.Single(loaded.Bookmarks).Folder);
+        File.Delete(path);
+    }
+
+    // ===== ブックマークバー（アドレス欄の下の帯・表示/非表示） =====
+
+    private static BrowserViewModel WithBookmarks(string path, params BrowserBookmark[] bookmarks)
+    {
+        var store = new BrowserLibraryStore(path);
+        var snapshot = new BrowserLibrarySnapshot();
+        snapshot.Bookmarks.AddRange(bookmarks);
+        store.Save(snapshot);
+        return new BrowserViewModel(store);
+    }
+
+    [Fact]
+    public void The_bookmark_bar_shows_only_what_sits_at_the_top_and_folds_the_rest_into_folders()
+    {
+        var path = TempFile();
+        var vm = WithBookmarks(path,
+            Marked("https://a.example/", "バー"),
+            Marked("https://b.example/", "バー", "開発"),
+            Marked("https://c.example/"));
+
+        vm.PrepareBookmarkBar();   // ここで browser.json を読む（起動時には読まない）
+
+        // 根の直下＝フォルダー「バー」と、どこにも入っていない1件。
+        Assert.Equal(2, vm.BookmarkBarItems.Count);
+        var folder = vm.BookmarkBarItems[0];
+        Assert.True(folder.IsFolder);
+        Assert.Equal("バー", folder.Title);
+        // 帯から落ちる一枚は入れ子ぶんも平らに持つ（段は作らない）。
+        Assert.Equal(new[] { "https://a.example/", "https://b.example/" },
+            folder.Children.Select(c => c.Url));
+        Assert.False(vm.BookmarkBarItems[1].IsFolder);
+        Assert.Equal("https://c.example/", vm.BookmarkBarItems[1].Url);
+    }
+
+    [Fact]
+    public void Hiding_the_bookmark_bar_empties_it_and_showing_it_again_fills_it_back()
+    {
+        var path = TempFile();
+        var vm = WithBookmarks(path, Marked("https://a.example/"));
+        vm.PrepareBookmarkBar();
+        Assert.True(vm.HasBookmarkBarItems);
+
+        vm.ToggleBookmarkBarCommand.Execute(null);
+
+        Assert.False(vm.IsBookmarkBarVisible);
+        Assert.Empty(vm.BookmarkBarItems);
+
+        vm.ToggleBookmarkBarCommand.Execute(null);
+
+        Assert.True(vm.IsBookmarkBarVisible);
+        Assert.Equal("https://a.example/", Assert.Single(vm.BookmarkBarItems).Url);
+        File.Delete(path);
+    }
+
+    [Fact]
+    public void The_bookmark_bar_visibility_is_kept_in_the_settings()
+    {
+        var settings = new LoomoSettings();
+        var vm = new BrowserViewModel(new BrowserLibraryStore(TempFile()), settings);
+
+        vm.ToggleBookmarkBarCommand.Execute(null);
+
+        Assert.False(settings.BrowserBookmarkBarVisible);
+
+        // 次の起動＝保存された状態で作り直したときに畳んだままであること。
+        Assert.False(new BrowserViewModel(new BrowserLibraryStore(TempFile()), settings).IsBookmarkBarVisible);
+    }
+
+    [Fact]
+    public void Adding_a_bookmark_appears_in_the_bar_without_opening_the_list()
+    {
+        var path = TempFile();
+        var vm = WithBookmarks(path);
+        vm.PrepareBookmarkBar();
+        vm.SetCurrentPage("https://a.example/", "A");
+
+        vm.ToggleBookmark();
+
+        var item = Assert.Single(vm.BookmarkBarItems);
+        Assert.Equal("A", item.Title);
+        Assert.Equal("https://a.example/", item.Url);
+        File.Delete(path);
+    }
+
+    [Fact]
+    public void Only_one_folder_hangs_open_from_the_bar_at_a_time()
+    {
+        var path = TempFile();
+        var vm = WithBookmarks(path,
+            Marked("https://a.example/", "バー"),
+            Marked("https://b.example/", "仕事"));
+        vm.PrepareBookmarkBar();
+
+        vm.BookmarkBarItems[0].IsOpen = true;
+        vm.BookmarkBarItems[1].IsOpen = true;
+
+        Assert.False(vm.BookmarkBarItems[0].IsOpen);
+        Assert.True(vm.BookmarkBarItems[1].IsOpen);
         File.Delete(path);
     }
 }

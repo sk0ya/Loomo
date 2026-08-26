@@ -45,6 +45,11 @@ public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
     /// <summary>ブックマーク一覧の行か。履歴・候補にも同じ行テンプレートを使うための識別子。</summary>
     public bool IsBookmarkRow { get; init; }
 
+    /// <summary>この行を作った VM。<b>ブックマークバーのフォルダーの中身</b>だけが使う——
+    /// そこは Popup の中の一覧で、行のテンプレートから <c>AncestorType=ItemsControl</c> を辿ると
+    /// バーの項目（フォルダー）に当たってコマンドが見つからず、押しても黙って何も起きない。</summary>
+    public BrowserViewModel? Owner { get; init; }
+
     [ObservableProperty] private bool _isSelected;
     internal event EventHandler? SelectionChanged;
     partial void OnIsSelectedChanged(bool value) => SelectionChanged?.Invoke(this, EventArgs.Empty);
@@ -54,6 +59,38 @@ public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
 
     /// <summary>見出しが URL と同じ行は下段を出さない（高密度・予約幅なしの流儀）。</summary>
     public string SubText => DisplayTitle == Url ? "" : Url;
+}
+
+/// <summary>ブックマークバー（アドレス欄の下の帯）の1項目。根の直下にあるブックマークか
+/// フォルダーのどちらかで、フォルダーは押すと中身を落とす。
+///
+/// <para>バーに出すのは<b>根の直下だけ</b>。ブックマーク一覧（ポップアップ）は資産の全体を畳んで
+/// 見せる場所で、こちらは「いつも行く数件へ1クリックで届く」ための帯——同じ木を2つの目的で
+/// 見せるので、深さの扱いが違う（バーは1段、フォルダーの中身は平らに落とす）。</para></summary>
+public sealed partial class BrowserBookmarkBarItemViewModel : ObservableObject
+{
+    public required BrowserViewModel Owner { get; init; }
+    public required string Title { get; init; }
+
+    /// <summary>ブックマークなら行き先、フォルダーなら null。</summary>
+    public string? Url { get; init; }
+
+    public bool IsFolder => Url is null;
+
+    /// <summary>フォルダーの中身（入れ子ぶんも含めて平らに落としたもの）。
+    /// バーから落ちる一枚に入れ子の開閉まで持ち込まない——数クリック先へ届くのが帯の役目。</summary>
+    public IReadOnlyList<BrowserLinkViewModel> Children { get; init; } = Array.Empty<BrowserLinkViewModel>();
+
+    /// <summary>フォルダーの中身を出しているか（帯から落ちる一枚）。</summary>
+    [ObservableProperty] private bool _isOpen;
+
+    partial void OnIsOpenChanged(bool value)
+    {
+        if (value)
+            Owner.CloseOtherBookmarkBarPopups(this);
+    }
+
+    public string ToolTipText => IsFolder ? $"{Title}（{Children.Count} 件）" : Url!;
 }
 
 /// <summary>ダウンロード1件。WebView2 の <see cref="CoreWebView2DownloadOperation"/> は
@@ -159,11 +196,22 @@ public sealed partial class SavedPasswordViewModel : ObservableObject
 public sealed partial class BrowserViewModel : ObservableObject
 {
     private readonly BrowserLibraryStore _store;
+    private readonly LoomoSettings? _settings;
+    private readonly SettingsStore? _settingsStore;
     private BrowserLibrarySnapshot? _library;
 
     public BrowserViewModel() : this(new BrowserLibraryStore()) { }
 
-    public BrowserViewModel(BrowserLibraryStore store) => _store = store;
+    /// <param name="settings">表示状態（ブックマークバーの表示ON/OFF）の保存先。テストでは省く。</param>
+    public BrowserViewModel(BrowserLibraryStore store,
+        LoomoSettings? settings = null, SettingsStore? settingsStore = null)
+    {
+        _store = store;
+        _settings = settings;
+        _settingsStore = settingsStore;
+        // 保存された表示状態を初期反映する（field 直接代入なので永続化・再構築は走らない）。
+        _isBookmarkBarVisible = settings?.BrowserBookmarkBarVisible ?? true;
+    }
 
     /// <summary>他のブラウザからの取り込み（§21.5.4）。選ばせるところまでが VM の仕事で、
     /// 実際に読んで書くのはシェル（プロファイルと WebView2 に触るため）。</summary>
@@ -199,6 +247,7 @@ public sealed partial class BrowserViewModel : ObservableObject
     public ObservableCollection<BrowserLinkViewModel> Suggestions { get; } = new();
 
     [ObservableProperty] private bool _isLibraryOpen;
+    [ObservableProperty] private bool _isHistoryOpen;
     [ObservableProperty] private bool _isSuggestionsOpen;
     [ObservableProperty] private bool _isBookmarkSelectionMode;
 
@@ -225,6 +274,114 @@ public sealed partial class BrowserViewModel : ObservableObject
     /// <summary>現在の一覧にフォルダーが含まれるか。取り込み後の「全展開」を必要なときだけ出す。</summary>
     public bool HasBookmarkFolders => _library?.Bookmarks.Any(b =>
         BrowserBookmarkTree.NormalizePath(b.Folder).Count > 0) == true;
+
+    // ── ブックマークバー（アドレス欄の下の帯・§21.5.1） ─────────────────
+    /// <summary>バーに並ぶ項目（根の直下のフォルダー→ブックマークの順）。</summary>
+    public ObservableCollection<BrowserBookmarkBarItemViewModel> BookmarkBarItems { get; } = new();
+
+    public bool HasBookmarkBarItems => BookmarkBarItems.Count > 0;
+
+    /// <summary>ブックマークバーを出すか（設定へ永続化する＝次回起動でも同じ見え方）。
+    /// 帯は資産の量に関係なく1行ぶんの高さを取るので、要らない人が畳めることまで含めて機能になる
+    /// ——切り替えの入口はバーの右クリック・ブックマーク一覧の「バーを表示／隠す」・Ctrl+Shift+B・
+    /// ページの右クリックメニュー（Loomo）。</summary>
+    [ObservableProperty] private bool _isBookmarkBarVisible = true;
+
+    partial void OnIsBookmarkBarVisibleChanged(bool value)
+    {
+        if (value)
+            _ = Library;      // 出すと決めた時点で読む（起動時には読まない流儀のまま）
+        RefreshBookmarkBar();
+        OnPropertyChanged(nameof(BookmarkBarToggleText));
+        OnPropertyChanged(nameof(BookmarkBarMenuText));
+        if (_settings is null)
+            return;
+        _settings.BrowserBookmarkBarVisible = value;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
+    }
+
+    /// <summary>ブックマーク一覧の中に置く短い方の見出し（周りが「選択」「畳む」等と並ぶ場所）。</summary>
+    public string BookmarkBarToggleText => IsBookmarkBarVisible ? "バーを隠す" : "バーを表示";
+
+    /// <summary>右クリックメニューに出す方の見出し（何のバーかが文だけで分かる長さ）。</summary>
+    public string BookmarkBarMenuText => IsBookmarkBarVisible ? "ブックマークバーを隠す" : "ブックマークバーを表示";
+
+    [RelayCommand]
+    public void ToggleBookmarkBar() => IsBookmarkBarVisible = !IsBookmarkBarVisible;
+
+    /// <summary>ブラウザペインを実際に使い始めたときに呼ぶ。バーを出しているならここで
+    /// browser.json を読む——「起動時には読まない」流儀を保ったまま、帯の中身を埋めるための一点。</summary>
+    public void PrepareBookmarkBar()
+    {
+        if (IsBookmarkBarVisible)
+            _ = Library;
+    }
+
+    /// <summary>バーのブックマークを開く（フォルダーの項目は帯から落ちる一枚を開くだけで、ここへは来ない）。</summary>
+    [RelayCommand]
+    private void OpenBookmarkBarItem(BrowserBookmarkBarItemViewModel? item)
+    {
+        if (item?.Url is not { Length: > 0 } url)
+            return;
+        CloseBookmarkBarPopups();
+        OpenUrlRequested?.Invoke(this, (url, false));
+    }
+
+    /// <summary>帯から落ちる一枚は同時に1つだけにする（隣を開いたら前のは畳む）。</summary>
+    internal void CloseOtherBookmarkBarPopups(BrowserBookmarkBarItemViewModel opened)
+    {
+        foreach (var item in BookmarkBarItems)
+        {
+            if (!ReferenceEquals(item, opened))
+                item.IsOpen = false;
+        }
+    }
+
+    private void CloseBookmarkBarPopups()
+    {
+        foreach (var item in BookmarkBarItems)
+            item.IsOpen = false;
+    }
+
+    /// <summary>バーの項目を組み直す。<b>根の直下だけ</b>を並べ、フォルダーは中身（入れ子ぶん含む）を
+    /// 平らに持たせる。読み込み前（<c>_library</c> が null）は空のまま——読んだ時点で
+    /// <see cref="RefreshLists"/> からここへ戻ってくる。</summary>
+    private void RefreshBookmarkBar()
+    {
+        BookmarkBarItems.Clear();
+        if (IsBookmarkBarVisible && _library is not null)
+        {
+            var root = BrowserBookmarkTree.Build(_library.Bookmarks);
+            foreach (var folder in root.Folders)
+            {
+                BookmarkBarItems.Add(new BrowserBookmarkBarItemViewModel
+                {
+                    Owner = this,
+                    Title = folder.Name,
+                    Children = BrowserBookmarkTree.Descendants(folder)
+                        .Select(b => new BrowserLinkViewModel
+                        {
+                            Owner = this,
+                            Url = b.Url,
+                            Title = b.Title,
+                            IsBookmark = true,
+                        })
+                        .ToList(),
+                });
+            }
+            foreach (var bookmark in root.Bookmarks)
+            {
+                BookmarkBarItems.Add(new BrowserBookmarkBarItemViewModel
+                {
+                    Owner = this,
+                    Title = string.IsNullOrWhiteSpace(bookmark.Title) ? bookmark.Url : bookmark.Title!,
+                    Url = bookmark.Url,
+                });
+            }
+        }
+        OnPropertyChanged(nameof(HasBookmarkBarItems));
+    }
 
     /// <summary>フォルダーの行を押した（開く／畳む）。</summary>
     [RelayCommand]
@@ -425,7 +582,9 @@ public sealed partial class BrowserViewModel : ObservableObject
         if (item is null)
             return;
         IsLibraryOpen = false;
+        IsHistoryOpen = false;
         IsSuggestionsOpen = false;
+        CloseBookmarkBarPopups();
         OpenUrlRequested?.Invoke(this, (item.Url, false));
     }
 
@@ -435,6 +594,8 @@ public sealed partial class BrowserViewModel : ObservableObject
         if (item is null)
             return;
         IsLibraryOpen = false;
+        IsHistoryOpen = false;
+        CloseBookmarkBarPopups();
         OpenUrlRequested?.Invoke(this, (item.Url, true));
     }
 
@@ -515,6 +676,7 @@ public sealed partial class BrowserViewModel : ObservableObject
         History.Clear();
         foreach (var h in library.History.Take(MaxHistoryShown))
             History.Add(new BrowserLinkViewModel { Url = h.Url, Title = h.Title, IsBookmark = false });
+        RefreshBookmarkBar();
         OnPropertyChanged(nameof(HasBookmarks));
         OnPropertyChanged(nameof(HasHistory));
         OnPropertyChanged(nameof(HasBookmarkFolders));
