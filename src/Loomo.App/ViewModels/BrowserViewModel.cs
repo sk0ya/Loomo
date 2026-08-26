@@ -86,11 +86,10 @@ public sealed partial class BrowserLinkViewModel : BrowserRowViewModel
 }
 
 /// <summary>ブックマークバー（アドレス欄の下の帯）の1項目。根の直下にあるブックマークか
-/// フォルダーのどちらかで、フォルダーは押すと中身を落とす。
+/// フォルダーのどちらかで、フォルダーは押すと中身を一枚落とす。
 ///
-/// <para>バーに出すのは<b>根の直下だけ</b>。ブックマーク一覧（ポップアップ）は資産の全体を畳んで
-/// 見せる場所で、こちらは「いつも行く数件へ1クリックで届く」ための帯——同じ木を2つの目的で
-/// 見せるので、深さの扱いが違う（バーは1段、フォルダーの中身は平らに落とす）。</para></summary>
+/// <para>バーに出すのは<b>根の直下だけ</b>で、その先は落ちた一枚の中を
+/// <see cref="BrowserBookmarkMenuItemViewModel"/> が<b>階層のまま</b>受け持つ。</para></summary>
 public sealed partial class BrowserBookmarkBarItemViewModel : ObservableObject
 {
     public required BrowserViewModel Owner { get; init; }
@@ -101,9 +100,12 @@ public sealed partial class BrowserBookmarkBarItemViewModel : ObservableObject
 
     public bool IsFolder => Url is null;
 
-    /// <summary>フォルダーの中身（入れ子ぶんも含めて平らに落としたもの）。
-    /// バーから落ちる一枚に入れ子の開閉まで持ち込まない——数クリック先へ届くのが帯の役目。</summary>
-    public IReadOnlyList<BrowserLinkViewModel> Children { get; init; } = Array.Empty<BrowserLinkViewModel>();
+    /// <summary>フォルダーの<b>直下</b>（フォルダーが先、リンクが後）。入れ子はそれぞれの項目が持つ。</summary>
+    public IReadOnlyList<BrowserBookmarkMenuItemViewModel> Children { get; init; }
+        = Array.Empty<BrowserBookmarkMenuItemViewModel>();
+
+    /// <summary>この下（入れ子を含む）のブックマーク数。</summary>
+    public int Count { get; init; }
 
     /// <summary>フォルダーの中身を出しているか（帯から落ちる一枚）。</summary>
     [ObservableProperty] private bool _isOpen;
@@ -111,10 +113,16 @@ public sealed partial class BrowserBookmarkBarItemViewModel : ObservableObject
     partial void OnIsOpenChanged(bool value)
     {
         if (value)
+        {
             Owner.CloseOtherBookmarkBarPopups(this);
+            return;
+        }
+        // 畳むときは横へ開いていた枚も一緒に畳む（次に開いたとき、前の道が開きっぱなしにならない）。
+        foreach (var child in Children)
+            child.CloseSubmenus();
     }
 
-    public string ToolTipText => IsFolder ? $"{Title}（{Children.Count} 件）" : Url!;
+    public string ToolTipText => IsFolder ? $"{Title}（{Count} 件）" : Url!;
 
     /// <summary>サイトのアイコンが取れないときの絵。<b>リンクの項目にしか出ない</b>——
     /// フォルダーの項目は別のボタン（開閉する ToggleButton）で、そちらが自前で 📁 を出す。</summary>
@@ -133,6 +141,78 @@ public sealed partial class BrowserBookmarkBarItemViewModel : ObservableObject
 
     public ImageSource? Icon => IconSlot.Get();
     public bool HasIcon => IconSlot.Get() is not null;
+}
+
+/// <summary>ブックマークバーから落ちる一枚の中の1項目（フォルダーかリンク）。
+///
+/// <para><b>フォルダーは横へもう一枚開く</b>（ブラウザの定番の形）。以前はここで入れ子を平らに
+/// 落としていたが、それだと<b>その人が作った整理が一段目までしか見えない</b>——深いところに
+/// 分けてある数百件が、フォルダー名を失って1枚の長い列になる。木を辿る場所はブックマーク一覧
+/// （🔖）だけで足りると考えていたのが誤りで、帯からも同じ道を辿れないと「1クリックで届く」以前に
+/// <b>どこに何があるか</b>が消える。</para>
+///
+/// <para>開け閉ての規則はブラウザと同じで単純に保つ：ある項目にカーソルが来たら<b>同じ段の
+/// 開いている一枚を畳み</b>、その項目がフォルダーなら自分の一枚を開く。畳むのは
+/// 「隣が開いたとき」「親が閉じたとき」「リンクを押したとき」だけ——カーソルが外れた瞬間に
+/// 畳むと、斜めに動かして子の一枚へ入る途中で消えてしまう。</para></summary>
+public sealed partial class BrowserBookmarkMenuItemViewModel : ObservableObject
+{
+    public required BrowserViewModel Owner { get; init; }
+    public required string Title { get; init; }
+
+    /// <summary>リンクなら行き先、フォルダーなら null。</summary>
+    public string? Url { get; init; }
+
+    public bool IsFolder => Url is null;
+
+    /// <summary>フォルダーの直下（フォルダーが先、リンクが後）。</summary>
+    public IReadOnlyList<BrowserBookmarkMenuItemViewModel> Items { get; init; }
+        = Array.Empty<BrowserBookmarkMenuItemViewModel>();
+
+    /// <summary>この下（入れ子を含む）のブックマーク数。畳んだままでも量が分かるように出す。</summary>
+    public int Count { get; init; }
+
+    /// <summary>同じ段に並ぶ項目（自分を含む）。隣を開いたら畳むために要る。</summary>
+    internal IReadOnlyList<BrowserBookmarkMenuItemViewModel> Siblings { get; set; }
+        = Array.Empty<BrowserBookmarkMenuItemViewModel>();
+
+    [ObservableProperty] private bool _isSubmenuOpen;
+
+    public string CountText => IsFolder ? Count.ToString() : "";
+    public string ToolTipText => IsFolder ? $"{Title}（{Count} 件）" : Url!;
+
+    /// <summary>サイトのアイコンが取れないときの絵。</summary>
+    public string Glyph => IsFolder ? "📁" : "★";
+
+    private FaviconSlot? _iconSlot;
+    private FaviconSlot IconSlot => _iconSlot ??= new FaviconSlot(
+        Owner.Icons, Url, allowNetwork: !IsFolder, () =>
+        {
+            OnPropertyChanged(nameof(Icon));
+            OnPropertyChanged(nameof(HasIcon));
+        });
+
+    public ImageSource? Icon => IconSlot.Get();
+    public bool HasIcon => IconSlot.Get() is not null;
+
+    /// <summary>この項目にカーソルが来た（＝押した）。同じ段の開いている一枚を畳んでから、
+    /// 自分がフォルダーなら横へ開く。</summary>
+    public void Enter()
+    {
+        foreach (var sibling in Siblings)
+            if (!ReferenceEquals(sibling, this))
+                sibling.CloseSubmenus();
+        if (IsFolder)
+            IsSubmenuOpen = true;
+    }
+
+    /// <summary>自分から先の開いている枚を全部畳む。</summary>
+    public void CloseSubmenus()
+    {
+        IsSubmenuOpen = false;
+        foreach (var child in Items)
+            child.CloseSubmenus();
+    }
 }
 
 /// <summary>ダウンロード1件。WebView2 の <see cref="CoreWebView2DownloadOperation"/> は
@@ -377,20 +457,37 @@ public sealed partial class BrowserViewModel : ObservableObject
         OpenUrlRequested?.Invoke(this, (url, false));
     }
 
+    /// <summary>帯から落ちた一枚（何段目でも）のリンクを開く。開いたら道ごと畳む。</summary>
+    [RelayCommand]
+    private void OpenBookmarkMenuItem(BrowserBookmarkMenuItemViewModel? item)
+    {
+        if (item?.Url is not { Length: > 0 } url)
+            return;
+        CloseBookmarkBarPopups();
+        OpenUrlRequested?.Invoke(this, (url, false));
+    }
+
     /// <summary>帯から落ちる一枚は同時に1つだけにする（隣を開いたら前のは畳む）。</summary>
     internal void CloseOtherBookmarkBarPopups(BrowserBookmarkBarItemViewModel opened)
     {
         foreach (var item in BookmarkBarItems)
         {
-            if (!ReferenceEquals(item, opened))
-                item.IsOpen = false;
+            if (ReferenceEquals(item, opened))
+                continue;
+            item.IsOpen = false;
+            foreach (var child in item.Children)
+                child.CloseSubmenus();
         }
     }
 
     private void CloseBookmarkBarPopups()
     {
         foreach (var item in BookmarkBarItems)
+        {
             item.IsOpen = false;
+            foreach (var child in item.Children)
+                child.CloseSubmenus();
+        }
     }
 
     /// <summary>バーの項目を組み直す。<b>根の直下だけ</b>を並べ、フォルダーは中身（入れ子ぶん含む）を
@@ -408,20 +505,9 @@ public sealed partial class BrowserViewModel : ObservableObject
                 {
                     Owner = this,
                     Title = folder.Name,
-                    // 落ちる一枚の中身は人が帯を押して開いた＝見えている行なので、
-                    // 取りに行かせる（枚数は多いことがあるが、ホスト単位・同時4本・
-                    // ホストごとの締切で頭は抑えてある）。
-                    Children = BrowserBookmarkTree.Descendants(folder)
-                        .Select(b => new BrowserLinkViewModel
-                        {
-                            Owner = this,
-                            Icons = Icons,
-                            AllowIconFetch = true,
-                            Url = b.Url,
-                            Title = b.Title,
-                            IsBookmark = true,
-                        })
-                        .ToList(),
+                    Count = folder.TotalCount,
+                    // 中身は<b>階層のまま</b>持つ（フォルダーは横へもう一枚開く）。
+                    Children = BuildBookmarkMenu(folder),
                 });
             }
             foreach (var bookmark in root.Bookmarks)
@@ -435,6 +521,35 @@ public sealed partial class BrowserViewModel : ObservableObject
             }
         }
         OnPropertyChanged(nameof(HasBookmarkBarItems));
+    }
+
+    /// <summary>帯から落ちる一枚の中身を組む。<b>直下だけ</b>を並べ（フォルダーが先、リンクが後）、
+    /// その先はそれぞれの項目がまた同じ形で持つ——だからブラウザと同じように何段でも辿れる。
+    ///
+    /// <para>ここで木を全部 VM にするが、絵（favicon）を頼むのは<b>行が実際に描かれてから</b>なので、
+    /// 開いていない段の取得は走らない（<see cref="FaviconSlot"/>）。</para></summary>
+    private List<BrowserBookmarkMenuItemViewModel> BuildBookmarkMenu(BookmarkFolder folder)
+    {
+        var items = new List<BrowserBookmarkMenuItemViewModel>();
+        foreach (var child in folder.Folders)
+            items.Add(new BrowserBookmarkMenuItemViewModel
+            {
+                Owner = this,
+                Title = child.Name,
+                Count = child.TotalCount,
+                Items = BuildBookmarkMenu(child),
+            });
+        foreach (var bookmark in folder.Bookmarks)
+            items.Add(new BrowserBookmarkMenuItemViewModel
+            {
+                Owner = this,
+                Title = string.IsNullOrWhiteSpace(bookmark.Title) ? bookmark.Url : bookmark.Title!,
+                Url = bookmark.Url,
+            });
+        // 同じ段の顔ぶれを互いに知らせる（隣を開いたら畳むため）。
+        foreach (var item in items)
+            item.Siblings = items;
+        return items;
     }
 
     /// <summary>フォルダーの行を押した（開く／畳む）。</summary>

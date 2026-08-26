@@ -549,9 +549,8 @@ public class BrowserLibraryTests
         var vm = new BrowserViewModel(store) { IsLibraryOpen = true, IsBookmarkBarVisible = true };
         vm.UpdateSuggestions("a.example");
 
-        // 一覧の行と、帯から落ちる一枚の中身は取りに行って良い（人が開いて見えている資産）。
+        // 一覧の行は取りに行って良い（人が開いて見えている資産）。
         Assert.All(vm.Bookmarks.OfType<BrowserLinkViewModel>(), row => Assert.True(row.AllowIconFetch));
-        Assert.All(Assert.Single(vm.BookmarkBarItems).Children, row => Assert.True(row.AllowIconFetch));
 
         // 履歴とアドレス欄の候補は手元にあるものだけ。候補には<b>ブックマーク由来の行</b>が
         // 混ざるので、IsBookmark を条件にすると1文字打つたびに取得が走る。
@@ -589,11 +588,67 @@ public class BrowserLibraryTests
         var folder = vm.BookmarkBarItems[0];
         Assert.True(folder.IsFolder);
         Assert.Equal("バー", folder.Title);
-        // 帯から落ちる一枚は入れ子ぶんも平らに持つ（段は作らない）。
-        Assert.Equal(new[] { "https://a.example/", "https://b.example/" },
-            folder.Children.Select(c => c.Url));
+        // 帯から落ちる一枚は<b>直下だけ</b>を並べ、フォルダーは横へもう一枚開く（段を潰さない）。
+        Assert.Equal(new[] { "開発", "https://a.example/" },
+            folder.Children.Select(c => c.IsFolder ? c.Title : c.Url));
+        var nested = Assert.Single(folder.Children, c => c.IsFolder);
+        Assert.Equal("https://b.example/", Assert.Single(nested.Items).Url);
         Assert.False(vm.BookmarkBarItems[1].IsFolder);
         Assert.Equal("https://c.example/", vm.BookmarkBarItems[1].Url);
+    }
+
+    [Fact]
+    public void The_menu_that_drops_from_the_bar_keeps_every_level_of_the_tree()
+    {
+        var path = TempFile();
+        var vm = WithBookmarks(path,
+            Marked("https://deep.example/", "バー", "開発", "設計"),
+            Marked("https://mid.example/", "バー", "開発"),
+            Marked("https://top.example/", "バー"));
+
+        vm.PrepareBookmarkBar();
+
+        // 帯には根の直下（＝「バー」）だけ。その先は一枚ずつ横へ辿れる。
+        var bar = Assert.Single(vm.BookmarkBarItems);
+        Assert.Equal(3, bar.Count);                       // 畳んでいても総数は見せる
+        var dev = Assert.Single(bar.Children, c => c.IsFolder);
+        Assert.Equal("開発", dev.Title);
+        Assert.Equal(2, dev.Count);
+        var design = Assert.Single(dev.Items, c => c.IsFolder);
+        Assert.Equal("設計", design.Title);
+        Assert.Equal("https://deep.example/", Assert.Single(design.Items).Url);
+        File.Delete(path);
+    }
+
+    [Fact]
+    public void Opening_one_submenu_folds_the_one_next_to_it_and_closing_the_bar_folds_them_all()
+    {
+        var path = TempFile();
+        var vm = WithBookmarks(path,
+            Marked("https://a.example/", "バー", "開発", "設計"),
+            Marked("https://b.example/", "バー", "資料"));
+        vm.PrepareBookmarkBar();
+        var bar = Assert.Single(vm.BookmarkBarItems);
+        bar.IsOpen = true;
+        var dev = bar.Children.First(c => c.Title == "開発");
+        var docs = bar.Children.First(c => c.Title == "資料");
+
+        dev.Enter();
+        dev.Items[0].Enter();                             // 「設計」まで開く
+        Assert.True(dev.IsSubmenuOpen);
+        Assert.True(dev.Items[0].IsSubmenuOpen);
+
+        docs.Enter();                                     // 隣へ移った
+
+        // 隣を開いたら、前の道は根元から畳む（開きっぱなしの枝が残らない）。
+        Assert.True(docs.IsSubmenuOpen);
+        Assert.False(dev.IsSubmenuOpen);
+        Assert.False(dev.Items[0].IsSubmenuOpen);
+
+        bar.IsOpen = false;
+
+        Assert.False(docs.IsSubmenuOpen);
+        File.Delete(path);
     }
 
     [Fact]

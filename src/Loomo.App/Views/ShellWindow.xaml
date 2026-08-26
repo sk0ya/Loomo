@@ -437,19 +437,48 @@
             </Button>
         </DataTemplate>
 
-        <!-- 帯から落ちる一枚の行。開くだけ（消す・選ぶはブックマーク一覧の仕事）。
-             コマンドは行 VM の Owner から辿る——ここは Popup の中なので、
-             AncestorType=ItemsControl では帯の項目（フォルダー）に当たってしまう。 -->
-        <DataTemplate x:Key="BrowserBookmarkBarMenuRow">
-            <Button Style="{StaticResource BrowserRowButton}" ToolTip="{Binding Url}"
-                    Command="{Binding Owner.OpenLinkCommand}" CommandParameter="{Binding}">
-                <StackPanel Orientation="Horizontal">
-                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource BrowserRowIcon}"
-                                      Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding DisplayTitle}" FontSize="{DynamicResource Fs12}"
-                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
+        <!-- 帯から落ちる一枚の1項目。リンクは押すと開き、フォルダーは<b>横へもう一枚</b>開く
+             （ブラウザの定番の形）。入れ子は暗黙のテンプレート（＝これ自身）が受けるので何段でも続く。
+             開け閉ては VM 側の規則（隣が開いたら畳む・親が閉じたら畳む）に一本化してあるので、
+             ここは「カーソルが来た」「押した」を渡すだけ。 -->
+        <DataTemplate DataType="{x:Type vm:BrowserBookmarkMenuItemViewModel}">
+            <Grid Background="Transparent" MouseEnter="OnBrowserBookmarkMenuItemEnter">
+                <Button x:Name="MenuRow" Style="{StaticResource BrowserRowButton}"
+                        ToolTip="{Binding ToolTipText}" Click="OnBrowserBookmarkMenuItemClick">
+                    <DockPanel LastChildFill="True">
+                        <ContentPresenter DockPanel.Dock="Left" Content="{Binding}"
+                                          ContentTemplate="{StaticResource BrowserRowIcon}"
+                                          Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <!-- フォルダーだけ、右端に「先がある」印と件数を出す。 -->
+                        <TextBlock DockPanel.Dock="Right" Text="▸" Margin="8,0,0,0"
+                                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" Margin="8,0,0,0"
+                                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Button>
+                <!-- 子の一枚。StaysOpen は True——畳むのは VM の規則だけにする
+                     （カーソルが外れた瞬間に閉じると、斜めに動かして子へ入る途中で消える）。 -->
+                <Popup PlacementTarget="{Binding ElementName=MenuRow}" Placement="Right"
+                       HorizontalOffset="-2" VerticalOffset="-5" StaysOpen="True" AllowsTransparency="True"
+                       IsOpen="{Binding IsSubmenuOpen, Mode=TwoWay}">
+                    <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="3" Padding="4" MinWidth="220" MaxWidth="420">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                        </Border.Effect>
+                        <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Items}" />
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
+            </Grid>
         </DataTemplate>
         <!-- ブックマークバー（アドレス欄の下の帯）の1項目。リンクは押すと開き、フォルダーは
              中身を一枚落とす。段は作らない——帯は「1クリックで届く」ための場所で、木を辿る場所は
@@ -491,8 +520,7 @@
                         </Border.Effect>
                         <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
-                            <ItemsControl ItemsSource="{Binding Children}"
-                                          ItemTemplate="{StaticResource BrowserBookmarkBarMenuRow}" />
+                            <ItemsControl ItemsSource="{Binding Children}" />
                         </ScrollViewer>
                     </Border>
                 </Popup>

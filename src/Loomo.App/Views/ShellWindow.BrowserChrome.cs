@@ -51,6 +51,25 @@ public partial class ShellWindow {
         _vm.Browser.IsLibraryOpen = true;
     }
 
+    /// <summary>帯から落ちた一枚の項目にカーソルが来た。開け閉ての規則そのものは VM 側
+    /// （<see cref="BrowserBookmarkMenuItemViewModel.Enter"/>）に置いてあるので、ここは伝えるだけ
+    /// ——同じ段の開いている一枚を畳み、フォルダーなら横へもう一枚開く。</summary>
+    private void OnBrowserBookmarkMenuItemEnter(object sender, MouseEventArgs e) {
+        if (sender is FrameworkElement { DataContext: BrowserBookmarkMenuItemViewModel item })
+            item.Enter();
+    }
+
+    /// <summary>帯から落ちた一枚の項目を押した。リンクは開き、フォルダーは横へ開く
+    /// （カーソルで開くのと同じ動き——触れずに押した人にも同じ結果を返す）。</summary>
+    private void OnBrowserBookmarkMenuItemClick(object sender, RoutedEventArgs e) {
+        if (sender is not FrameworkElement { DataContext: BrowserBookmarkMenuItemViewModel item })
+            return;
+        if (item.IsFolder)
+            item.Enter();
+        else
+            _vm.Browser.OpenBookmarkMenuItemCommand.Execute(item);
+    }
+
     /// <summary>取り込みを開く（§21.5.4）。入口が2つ（ブックマーク一覧と鍵の一覧）あるのは、
     /// 取り込む中身がその両方に跨がるから。<b>開く前に呼び出し元のポップアップを閉じる</b>——
     /// どちらも <c>StaysOpen="False"</c> なので、重なったまま出すと下の1枚が居座って操作を食う。</summary>
