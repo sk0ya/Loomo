@@ -302,6 +302,7 @@ public partial class ShellWindow {
     private void RebuildStage() {
         PaneLayoutDebugLog.Time("RebuildStage", RebuildStageCore);
         UpdateEditorSupportFileWatch();   // 舞台・袖の入れ替えで見え方が変わる（§24.8）
+        SyncEditorSupportRenderability(); // 同じ理由で、描けずに持ち越した要求を拾い直す時でもある
     }
     private void RebuildStageCore() {
         if (!_stageActive)

@@ -34,29 +34,77 @@ internal sealed class EditorSupportController
     public EditorSupportHistory History { get; } = new();
     public IReadOnlyList<OutlineNode>? OutlineRoots { get; private set; }
     public EditorTab? OutlineSource { get; private set; }
+    /// <summary>いま出ている構造を取ったファイル。<b>追従元タブだけでは足りない</b>——
+    /// 同じタブで別のファイルを開き直すと、前のファイルの構造が「このタブのもの」として残る。</summary>
+    public string? OutlineFilePath { get; private set; }
     public LspRange? CurrentSymbolRange { get; set; }
     public (int Line, int Col)? CurrentCaret { get; set; }
     public int ReadyAttempts { get; private set; }
     public Stopwatch? DiagnosticStopwatch { get; set; }
     public CodeOutlineView? OutlineView { get; set; }
 
-    public void SetOutline(EditorTab source, IReadOnlyList<OutlineNode> roots)
+    /// <summary>
+    /// 画面に出したフレームに合わせてアウトライン状態を確定する。<b>ここが唯一の書き込み口</b>で、
+    /// 呼ばれるのは <c>EditorSupportRenderFlow.Emit</c>（キャンセル確認の直後）だけ。
+    /// 描画の途中で書くと、追い越されて捨てられた描画が「画面に出ていない構造」を記録してしまい、
+    /// 以後キャレット追従（②パネルの取り直し）だけが黙って止まる。
+    /// </summary>
+    internal void CommitOutline(EditorSupportOutlineCommit commit)
     {
-        OutlineSource = source;
-        OutlineRoots = roots;
+        switch (commit.Kind)
+        {
+            case EditorSupportOutlineCommitKind.Clear:
+                ClearOutline();
+                break;
+            case EditorSupportOutlineCommitKind.Replace:
+                OutlineSource = commit.Source;
+                OutlineFilePath = commit.FilePath;
+                OutlineRoots = commit.Roots;
+                CurrentSymbolRange = commit.SymbolRange;
+                CurrentCaret = commit.Caret;
+                break;
+            case EditorSupportOutlineCommitKind.Keep:
+                CurrentSymbolRange = commit.SymbolRange;
+                CurrentCaret = commit.Caret;
+                break;
+        }
     }
 
     public void ClearOutline()
     {
         OutlineRoots = null;
         OutlineSource = null;
+        OutlineFilePath = null;
         CurrentSymbolRange = null;
         CurrentCaret = null;
     }
 
-    public bool ShouldRefreshCallPanels(EditorTab source, int caretLine, int caretColumn)
+    /// <summary>
+    /// いま出ている構造が、この追従元・このファイルのものか。<b>「構造が出ているか」の判定は必ずこれを通す</b>
+    /// ——タブだけを見ていると、別ファイルへ切り替えた直後の一瞬に前のファイルの構造で
+    /// キャレット追従を動かしてしまう。
+    /// </summary>
+    public bool OutlineMatches(EditorTab? source, string? filePath)
+        => OutlineRoots is not null
+           && source is not null
+           && ReferenceEquals(OutlineSource, source)
+           && SamePath(OutlineFilePath, filePath);
+
+    private static bool SamePath(string? left, string? right)
     {
-        if (OutlineRoots is null || !ReferenceEquals(OutlineSource, source))
+        if (left is null || right is null)
+            return left is null && right is null;
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return string.Equals(left, right, StringComparison.OrdinalIgnoreCase); }
+    }
+
+    public bool ShouldRefreshCallPanels(EditorTab source, string? filePath, int caretLine, int caretColumn)
+    {
+        if (!OutlineMatches(source, filePath))
             return false;
         if (CurrentSymbolRange is { } range
             && CodeEditorSupportAnalysis.CaretInRange(range, caretLine, caretColumn))

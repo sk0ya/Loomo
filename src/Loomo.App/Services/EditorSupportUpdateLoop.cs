@@ -14,6 +14,22 @@ public enum EditorSupportUpdateReason
 }
 
 /// <summary>
+/// 「描けるようになったか」を<b>あとで見に行く</b>ための起床。<see cref="EditorSupportUpdateLoop"/> は
+/// 描けない間の要求を捨てずに残すが、それを<b>誰かが知らせに来る</b>のを当てにすると、
+/// 知らせ忘れた経路の数だけ「中身が古いまま」が生まれる（舞台を降りる・俯瞰を閉じる・
+/// 袖から戻す・切り離しから戻す…と可視化の経路は増え続ける）。
+/// 要求が残っている間だけループ自身がこれで起き直すので、<b>知らせる側に義務が無い</b>。
+/// </summary>
+public interface IEditorSupportRenderabilityWatch
+{
+    /// <summary>次の見回りを仕掛ける（すでに仕掛けてあれば張り替える）。</summary>
+    void Schedule(TimeSpan delay, Action tick);
+
+    /// <summary>見回りを止める。</summary>
+    void Cancel();
+}
+
+/// <summary>
 /// EditorSupport の再描画を<b>一本のループへ集約</b>する。ペインの更新契機は
 /// タブ切替・本文変更・保存・ペイン可視化・舞台切替・ピン／スライド切替・キャレット移動・
 /// ナビゲーション復帰…と十数か所に散っているが、外から触れる入口は
@@ -26,8 +42,12 @@ public enum EditorSupportUpdateReason
 /// 連番カウンタで「負けた側は黙って return」していたため、<b>途中まで UI を書き換えた描画が
 /// 捨てられて中途半端な表示のまま固まる</b>ことがあった。</item>
 /// <item><b>要求は決して消えない。</b>描けない状態（ペインが閉じている等）なら<b>描かずに要求を
-/// 残す</b>＝ dirty フラグ。可視化されて <see cref="Invalidate"/> が来た時点で必ず1回描かれる。
-/// 以前は不可視なら単に return していたので、その更新は永久に失われていた。</item>
+/// 残す</b>＝ dirty フラグ。以前は不可視なら単に return していたので、その更新は永久に失われていた。
+/// <para>残した要求は<b>自分で拾い直す</b>——<see cref="IEditorSupportRenderabilityWatch"/> で
+/// 描けるようになるまで見回る。要求を残すだけにして「可視化した側が <see cref="Invalidate"/> を
+/// 呼ぶ」に頼っていたときは、呼び忘れた経路（俯瞰の開閉・舞台からタイルへ戻る…）の分だけ
+/// 「ペインは見えているのに中身が古いまま」が残っていた。<b>知らせる側の義務にしない</b>のが
+/// ここの要点で、明示の <see cref="Invalidate"/> は「即座に描く」ための早道でしかない。</para></item>
 /// <item><b>新しい要求は古い描画を止める。</b>走行中に <see cref="Invalidate"/> が来たら実行中の
 /// <see cref="CancellationToken"/> をキャンセルする。キャンセルされた要求は次周回へ差し戻すので、
 /// 取りこぼしにはならない。ただし止めてよいのは<b>本当に古くなった描画だけ</b>で、
@@ -56,8 +76,21 @@ public sealed class EditorSupportUpdateLoop
     /// <summary>同じ描画を続けて追い越してよい回数。これを超えたら一度描き切らせる。</summary>
     private const int MaxConsecutiveCancellations = 2;
 
+    /// <summary>
+    /// 描けるようになったかを見回る間隔。<b>だんだん間を空ける</b>——可視化は普通すぐ起きるので
+    /// 最初は細かく、ペインを閉じたまま何時間も置かれる場合に無駄な起床を残さない。
+    /// 明示の <see cref="Invalidate"/> が来ればそちらが即座に描くので、これは取りこぼしの網でしかない。
+    /// </summary>
+    internal static readonly TimeSpan[] RenderabilityPollDelays =
+    [
+        TimeSpan.FromMilliseconds(250),
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(4),
+    ];
+
     private readonly Func<bool> _canRender;
     private readonly Func<EditorSupportUpdateReason, CancellationToken, Task> _render;
+    private readonly IEditorSupportRenderabilityWatch _watch;
     private readonly Action<Exception>? _onError;
 
     private EditorSupportUpdateReason _pending;
@@ -65,18 +98,23 @@ public sealed class EditorSupportUpdateLoop
     private CancellationTokenSource? _running;
     private bool _draining;
     private int _consecutiveCancellations;
+    private int _pollStep;
 
     /// <param name="canRender">いま描いてよいか（ペインが実際に見えているか）。</param>
     /// <param name="render">1回分の描画。<paramref name="render"/> は渡された
     /// <see cref="CancellationToken"/> を尊重し、<b>UI への反映はキャンセル確認の直後に同期で</b>行うこと。</param>
+    /// <param name="watch">描けない間、描けるようになったかを見に行くための起床。
+    /// <b>省略可能にしていない</b>のがここの要点——省略できると、本番だけ網の無い状態で組み立てられる。</param>
     /// <param name="onError">描画が例外で落ちたときの通知（省略時は握りつぶす）。</param>
     public EditorSupportUpdateLoop(
         Func<bool> canRender,
         Func<EditorSupportUpdateReason, CancellationToken, Task> render,
+        IEditorSupportRenderabilityWatch watch,
         Action<Exception>? onError = null)
     {
         _canRender = canRender;
         _render = render;
+        _watch = watch;
         _onError = onError;
     }
 
@@ -111,6 +149,38 @@ public sealed class EditorSupportUpdateLoop
         Completion = DrainAsync();
     }
 
+    /// <summary>
+    /// 可視状態が変わったかもしれないので、残っている要求を拾い直す。<b>要求が無ければ何もしない</b>ので、
+    /// レイアウトの組み直しのような頻繁な合図から気軽に呼べる（<see cref="Invalidate"/> と違って
+    /// 描き直しを起こさない）。見回りの起床もここへ合流する。
+    /// </summary>
+    public void PollRenderability()
+    {
+        if (_pending == EditorSupportUpdateReason.None)
+        {
+            _watch.Cancel();
+            _pollStep = 0;
+            return;
+        }
+        if (_draining)
+            return;             // 走行中：描き終わったループが自分でもう一周する
+        if (!_canRender())
+        {
+            ArmWatch();         // まだ描けない：また見に来る
+            return;
+        }
+        Completion = DrainAsync();
+    }
+
+    /// <summary>次の見回りを仕掛ける（間隔は回を追うごとに空ける）。</summary>
+    private void ArmWatch()
+    {
+        var delay = RenderabilityPollDelays[Math.Min(_pollStep, RenderabilityPollDelays.Length - 1)];
+        if (_pollStep < RenderabilityPollDelays.Length)
+            _pollStep++;
+        _watch.Schedule(delay, PollRenderability);
+    }
+
     /// <summary>走行中の描画を、いま来た要求のために捨ててよいか。</summary>
     private bool ShouldPreempt(EditorSupportUpdateReason reason)
     {
@@ -131,9 +201,15 @@ public sealed class EditorSupportUpdateLoop
         {
             while (_pending != EditorSupportUpdateReason.None)
             {
-                // 描けないなら要求を残したまま抜ける＝ dirty。次の Invalidate（可視化）で必ず描かれる。
+                // 描けないなら要求を残したまま抜ける＝ dirty。可視化を知らせてもらえなくても、
+                // 見回り（ArmWatch）が描けるようになった時点で拾い直す。
                 if (!_canRender())
+                {
+                    ArmWatch();
                     return;
+                }
+                _watch.Cancel();        // 描ける：もう見回りは要らない
+                _pollStep = 0;
 
                 var reason = _pending;
                 _pending = EditorSupportUpdateReason.None;

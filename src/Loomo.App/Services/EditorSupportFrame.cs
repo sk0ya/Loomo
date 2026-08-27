@@ -1,3 +1,5 @@
+using sk0ya.Loomo.App.Views;   // EditorTab（アウトラインの持ち主）
+
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>
@@ -25,10 +27,52 @@ internal sealed record EditorSupportFrame(
     bool ShowExport,
     EditorSupportFrameContent Content);
 
+/// <summary>フレームを適用したときに確定するアウトライン状態の扱い。</summary>
+internal enum EditorSupportOutlineCommitKind
+{
+    /// <summary>アウトラインは出ていない（コード表示以外・案内表示）。</summary>
+    Clear,
+
+    /// <summary>構造ツリーごと入れ替える。</summary>
+    Replace,
+
+    /// <summary>ツリーは据え置き、②の対象（シンボル範囲・キャレット）だけ更新する。</summary>
+    Keep,
+}
+
+/// <summary>
+/// フレームと<b>同時に</b>確定させるアウトライン状態。キャレット追従（<c>CaretMoved</c> の current 付替えと
+/// ②パネルの取り直し判定）はこの状態だけを見て動くので、<b>画面に出ていないアウトラインが記録されると
+/// 追従だけが黙って死ぬ</b>——ツリーは出ているのに②が二度と更新されない、という形の「固まる」になる。
+///
+/// <para>
+/// だから状態は描画の途中で書かず、フレームの一部として運ぶ。書き込む場所は
+/// <c>EditorSupportRenderFlow.Emit</c> ただ一つで、そこは<b>キャンセル確認の直後</b>なので、
+/// 追い越されて捨てられた描画が状態を書くことが型として起こり得ない。
+/// </para>
+/// </summary>
+internal sealed record EditorSupportOutlineCommit(
+    EditorSupportOutlineCommitKind Kind,
+    EditorTab? Source = null,
+    string? FilePath = null,
+    IReadOnlyList<OutlineNode>? Roots = null,
+    LspRange? SymbolRange = null,
+    (int Line, int Col)? Caret = null)
+{
+    public static EditorSupportOutlineCommit Cleared { get; } =
+        new(EditorSupportOutlineCommitKind.Clear);
+}
+
 /// <summary>フレームの中身。表示方式ごとに1ケース。</summary>
 internal abstract record EditorSupportFrameContent
 {
     private EditorSupportFrameContent() { }
+
+    /// <summary>
+    /// このフレームが画面に出たときのアウトライン状態。<b>抽象メンバーにしてある</b>のは、
+    /// 表示方式を1つ足したときに「アウトラインをどう扱うか」を決め忘れられないようにするため。
+    /// </summary>
+    internal abstract EditorSupportOutlineCommit Outline { get; }
 
     /// <summary>WebView2 表示（HTML 全体／本文差し替え／ファイル URI 直開き）。</summary>
     internal sealed record WebContent(
@@ -39,7 +83,11 @@ internal abstract record EditorSupportFrameContent
         string? PageKey,
         string? MarkdownSource,
         /// <summary>HTMLをUIスレッド外で一時ファイルへ書き込んだ後のナビゲーション先。</summary>
-        string? PreparedPageUrl = null) : EditorSupportFrameContent;
+        string? PreparedPageUrl = null) : EditorSupportFrameContent
+    {
+        /// <summary>コード表示ではない＝アウトラインは無い（前のファイルの構造を持ち越さない）。</summary>
+        internal override EditorSupportOutlineCommit Outline => EditorSupportOutlineCommit.Cleared;
+    }
 
     /// <summary>
     /// WPF コントロールをそのまま載せる表示（CSV グリッド・画像・Hex 等）。
@@ -47,13 +95,27 @@ internal abstract record EditorSupportFrameContent
     /// </summary>
     internal sealed record VisualContent(
         IEditorSupportVisual Visual,
-        Action Apply) : EditorSupportFrameContent;
+        Action Apply) : EditorSupportFrameContent
+    {
+        internal override EditorSupportOutlineCommit Outline => EditorSupportOutlineCommit.Cleared;
+    }
 
     /// <summary>コード構造アウトライン（＋②呼び出しパネル）。</summary>
+    /// <param name="Source">この構造の持ち主（追従元タブ）。</param>
+    /// <param name="FilePath">この構造を取ったファイル。<b>タブだけでは足りない</b>——
+    /// 同じタブが別のファイルを開き直すと、前のファイルの構造が「このタブのもの」として残る。</param>
     internal sealed record OutlineContent(
         IReadOnlyList<OutlineNode> Roots,
         int CurrentLine1,
-        CallPanels Panels) : EditorSupportFrameContent;
+        CallPanels Panels,
+        EditorTab Source,
+        string FilePath,
+        LspRange? SymbolRange,
+        (int Line, int Col) Caret) : EditorSupportFrameContent
+    {
+        internal override EditorSupportOutlineCommit Outline => new(
+            EditorSupportOutlineCommitKind.Replace, Source, FilePath, Roots, SymbolRange, Caret);
+    }
 
     /// <summary>
     /// 既に出ている構造ツリーはそのままに、②呼び出しパネル（と current）だけを差し替える。
@@ -63,9 +125,21 @@ internal abstract record EditorSupportFrameContent
     /// </summary>
     internal sealed record PanelsContent(
         int? CurrentLine1,
-        CallPanels Panels) : EditorSupportFrameContent;
+        CallPanels Panels,
+        LspRange? SymbolRange,
+        (int Line, int Col) Caret) : EditorSupportFrameContent
+    {
+        /// <summary>ツリーは据え置き（折りたたみを保つ）ので、②の対象だけ更新する。</summary>
+        internal override EditorSupportOutlineCommit Outline => new(
+            EditorSupportOutlineCommitKind.Keep, SymbolRange: SymbolRange, Caret: Caret);
+    }
 
     /// <summary>言語サーバー未接続／未導入などの案内。</summary>
     internal sealed record NoticeContent(
-        LspNoticeModel.Notice Notice) : EditorSupportFrameContent;
+        LspNoticeModel.Notice Notice) : EditorSupportFrameContent
+    {
+        /// <summary>案内が出ている＝構造は画面に無い。ここを Keep にすると、消えたツリーを
+        /// 相手にキャレット追従が空回りする。</summary>
+        internal override EditorSupportOutlineCommit Outline => EditorSupportOutlineCommit.Cleared;
+    }
 }

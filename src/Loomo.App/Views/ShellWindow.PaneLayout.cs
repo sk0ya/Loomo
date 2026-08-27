@@ -42,6 +42,7 @@ public partial class ShellWindow {
     private void RebuildPaneLayout() {
         PaneLayoutDebugLog.Time("RebuildPaneLayout", RebuildPaneLayoutCore);
         UpdateEditorSupportFileWatch();   // ペインの見え方が変わった＝自動リロード監視の張り替え時（§24.8）
+        SyncEditorSupportRenderability(); // 同じ理由で、描けずに持ち越した要求を拾い直す時でもある
     }
     private void RebuildPaneLayoutCore() {
         PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);

@@ -11,6 +11,16 @@ namespace sk0ya.Loomo.App.Views;
 /// 中途半端な状態を残して「固まったように見える」ことがあった。）
 /// </para>
 /// <para>
+/// <b>「見えているのに中身が古いまま」を構造で潰してある。</b>描けない状態（ペインが閉じている・
+/// 舞台に立っていない）で来た要求は捨てずに持ち越されるが、それを描かせるのに
+/// <see cref="InvalidateEditorSupport"/> の呼び出しを<b>当てにしない</b>——可視化の経路
+/// （タイル表示の開閉・舞台の差し替え・俯瞰の開閉・袖からの復帰…）は増え続けるので、
+/// 呼び忘れが1つあるだけで固まる。網は二重にしてある：
+/// <see cref="SyncEditorSupportRenderability"/> をレイアウト組み直しの合流点
+/// （<c>RebuildPaneLayout</c> / <c>RebuildStage</c>）から呼んで<b>即座に</b>拾い、
+/// それでも漏れた経路は <see cref="EditorSupportUpdateLoop"/> の見回りが拾う。
+/// </para>
+/// <para>
 /// <b>このファイルに残っているのは描画の両端だけ</b>——追従元タブから本文・キャレットを読む
 /// （<see cref="RenderEditorSupportAsync"/>）ところと、UI へ書く（<see cref="ApplyEditorSupportFrame"/>）
 /// ところ。真ん中の筋道（言語サーバーが未準備・無応答・構造が空・コールドスタート、本文差し替えの可否）は
@@ -25,8 +35,20 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     /// 応答なし・差し替え先ページ喪失からの復帰で立てる一度きりのフラグ。</summary>
     private bool _editorSupportForceFullPage;
     private EditorSupportUpdateLoop EditorSupportLoop => _editorSupportLoop ??= new EditorSupportUpdateLoop(
-        CanRenderEditorSupport, RenderEditorSupportAsync,
+        CanRenderEditorSupport, RenderEditorSupportAsync, new DispatcherRenderabilityWatch(),
         ex => CodeSupportDiag.Log($"render failed: {ex}"));
+
+    /// <summary>
+    /// ペインの見え方が変わったので、持ち越してある要求を拾い直す。<b>要求が無ければ何もしない</b>ので、
+    /// レイアウトの組み直し（タイル・舞台・袖・俯瞰）から無条件に呼べる。
+    /// <para>
+    /// これと <see cref="EditorSupportUpdateLoop"/> の見回りは<b>二重の網</b>で、狙いが違う。
+    /// こちらは可視化した瞬間に描くための早道、見回りは「ここを呼び忘れた経路」でも必ず拾うための保険。
+    /// 「可視化した側が <see cref="InvalidateEditorSupport"/> を呼ぶ」に頼っていた頃は、呼び忘れた経路の分だけ
+    /// 「ペインは見えているのに中身が前のファイルのまま」が残っていた。
+    /// </para>
+    /// </summary>
+    private void SyncEditorSupportRenderability() => _editorSupportLoop?.PollRenderability();
     /// <summary>EditorSupport の再描画を要求する唯一の入口。描けない状態なら要求は保持され、
     /// 可視化された時点で必ず1回描かれる（取りこぼさない）。</summary>
     private void InvalidateEditorSupport(
@@ -203,11 +225,22 @@ public partial class ShellWindow : IEditorSupportRenderHost {
             GetLspDocument(source), _settings.Appearance.MarkdownPreviewTheme);
         await EditorSupportFlow.RenderAsync(request, reason, ApplyEditorSupportFrame, ct);
     }
-    /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期・途中 return なし。</b></summary>
+    /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期。</b>
+    /// 途中で return しないのが規約——<b>書き始める前に</b>載せられるかを見て、駄目なら1文字も書かずに戻る
+    /// （書きかけで抜けると「題名だけ新しいファイル」が残る）。</summary>
     private void ApplyEditorSupportFrame(EditorSupportFrame frame) {
         // ブラウザプロセスが落ちた後の WebView2 は CoreWebView2 を読むだけで例外を投げるので、
         // 必ず均した参照（Core）を使う——ここで落とすと、以降このフレームは適用されずペインが空のまま残る。
         var core = _editorSupport.WebView.Core;
+        // WebView2 が用意できていないなら、このフレームは載せられない。<b>何も書かずに戻る</b>のが要点——
+        // 先にヘッダーとタイトルだけ新しいファイルへ変えてから中身の適用に失敗すると、
+        // 「題名は新しいファイル・中身は前のファイル」という半端な画面が残る（§26.5 で潰した形）。
+        // やり直しは EditorSupportWebViewController の再生成（ReloadRequested）が持っているので、
+        // ここで投げ返して即再試行の輪を作らない。
+        if (frame.Content is EditorSupportFrameContent.WebContent && core is null) {
+            CodeSupportDiag.Log("webview unavailable: frame dropped");
+            return;
+        }
         EditorSupportSettingsButton.Visibility = Visibility.Collapsed;
         if (!frame.ShowEdit)
             _markdownEditMode = false;
@@ -243,13 +276,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
                 break;
             case EditorSupportFrameContent.WebContent web:
                 HideEditorSupportVisual();
-                if (core is null) {
-                    // WebView2 を用意できなかった＝ペインは空のまま。ここで自分へ投げ返すと
-                    // 初期化失敗のたびに即再試行して回り続けるので、記録だけ残して次の要求を待つ。
-                    CodeSupportDiag.Log("webview unavailable: frame dropped");
-                    break;
-                }
-                if (_editorSupport.WebView.Show(core, web) == EditorSupportPageApplyResult.NeedsFullPage) {
+                if (_editorSupport.WebView.Show(core!, web) == EditorSupportPageApplyResult.NeedsFullPage) {
                     // 差し替え先のページが（別ファイルへの遷移・読み込み失敗で）もう無い。
                     // 黙って捨てると古い表示のまま固まるので、ページ全体で組み直す。
                     _editorSupportForceFullPage = true;
@@ -281,7 +308,8 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     private EditorSupportRenderFlow EditorSupportFlow => _editorSupportFlow ??= new EditorSupportRenderFlow(
         _editorSupportResolver, _editorSupport, _workspace, _lspWorkspace, _codeSupport, this);
 
-    Task IEditorSupportRenderHost.EnsureWebViewAsync() => EnsureEditorSupportViewAsync();
+    async Task<bool> IEditorSupportRenderHost.EnsureWebViewAsync()
+        => await EnsureEditorSupportViewAsync() is not null && _editorSupport.WebView.Core is not null;
 
     Task<string?> IEditorSupportRenderHost.PreparePageAsync(string html, CancellationToken ct)
         => _editorSupport.WebView.PreparePageAsync(html, ct);
@@ -322,7 +350,8 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     private void CodeReadyRetry_Tick(object? sender, EventArgs e) {
         var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
-        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath) || _editorSupport.OutlineRoots is not null) {
+        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath)
+            || _editorSupport.OutlineMatches(source, filePath)) {
             StopCodeReadyRetry();
             return;
         }
@@ -343,8 +372,9 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     {
         // current 表示はアウトラインの純ロジックだけで決まる。150ms のデバウンスや
         // references/callHierarchy の応答を待たず、キャレット移動と同時に付け替える。
-        if (_editorSupport.OutlineRoots is { } roots
-            && ReferenceEquals(_editorSupport.OutlineSource, _editorSupport.Source))
+        if (_editorSupport.OutlineMatches(
+                _editorSupport.Source, _editorSupport.Source?.Control.FilePath)
+            && _editorSupport.OutlineRoots is { } roots)
         {
             var member = CodeOutline.FindEnclosing(roots, e.Line, e.Column);
             _editorSupport.OutlineView?.SetCurrent(member is null ? 0 : member.Line0 + 1);

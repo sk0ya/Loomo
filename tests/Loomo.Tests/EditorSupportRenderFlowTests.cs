@@ -15,6 +15,7 @@ namespace sk0ya.Loomo.Tests;
 public class EditorSupportRenderFlowTests
 {
     private const string File = @"C:\work\app\Foo.cs";
+    private const string Other = @"C:\work\app\Other.cs";
 
     // ── 言語サーバーが準備できていないとき ────────────────────────────────
 
@@ -303,6 +304,20 @@ public class EditorSupportRenderFlowTests
     }
 
     [Fact]
+    public async Task WebViewを用意できないときは何も出さない()
+    {
+        // 載せる先が無いのにフレームを出すと、ヘッダーとタイトルだけ新しいファイルへ変わって
+        // 中身は前のファイルのまま、という半端な画面が残る（＝固まったようにしか見えない）。
+        var host = new FakeHost { WebViewAvailable = false };
+        var (flow, _) = Flow(host);
+
+        var frames = await Render(flow, Request(file: @"C:\work\app\README.md", lsp: null));
+
+        Assert.Empty(frames);
+        Assert.Equal(["EnsureWebView"], host.Calls);   // 組み立てへ進まない
+    }
+
+    [Fact]
     public async Task 復帰要求中は本文差し替えを使わない()
     {
         // 差し替え先のページが無いのに setBody を投げても何も起きない＝古い表示のまま固まる。
@@ -326,6 +341,67 @@ public class EditorSupportRenderFlowTests
         await Render(flow, Request(file: @"C:\work\app\README.md", lsp: null));
 
         Assert.Equal("ClearFullPageRequest", host.Calls[^1]);
+    }
+
+    /// <summary>
+    /// 追い越されて捨てられた描画が<b>アウトライン状態だけ</b>書き換えてしまう経路の回帰。
+    /// フレームは出ない（＝画面は変わらない）のに状態が別ファイルのものに変わると、以後
+    /// <c>ShouldRefreshCallPanels</c> が食い違い続け、<b>ツリーは出ているのに②が二度と更新されない</b>。
+    /// 画面と状態は必ず同時に動くこと。
+    /// </summary>
+    [Fact]
+    public async Task 追い越された描画はアウトライン状態も書き換えない()
+    {
+        var (flow, state) = Flow(new FakeHost());
+        await Render(flow, Request(lsp: new FakeLspDocument(File, [Method("Foo", 10)])));
+        var shownRoots = state.OutlineRoots;
+        var shownFile = state.OutlineFilePath;
+        Assert.NotNull(shownRoots);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flow.RenderAsync(
+            Request(lsp: new FakeLspDocument(Other, [Method("Bar", 3)]), file: Other),
+            EditorSupportUpdateReason.Content, _ => { }, cts.Token));
+
+        Assert.Same(shownRoots, state.OutlineRoots);   // 画面に出ているものと食い違わない
+        Assert.Equal(shownFile, state.OutlineFilePath);
+    }
+
+    [Fact]
+    public async Task 案内へ落ちたらアウトライン状態も一緒に消える()
+    {
+        // 構造が画面から消えたのに状態だけ残ると、消えたツリーを相手にキャレット追従が空回りする。
+        var host = new FakeHost { Diagnosis = Notice("marksman が見つかりません") };
+        var (flow, state) = Flow(host);
+        var tab = new EditorTab(Guid.NewGuid());
+        await Render(flow, Request(lsp: new FakeLspDocument(File, [Method("Foo", 10)]), source: tab));
+        Assert.NotNull(state.OutlineRoots);
+
+        await Render(flow, Request(lsp: null, source: tab));   // サーバーが落ちた＝案内へ
+
+        Assert.Null(state.OutlineRoots);
+        Assert.Null(state.OutlineFilePath);
+    }
+
+    [Fact]
+    public async Task 同じタブが別ファイルを開いたら前の構造で呼び出しパネルを取りに行かない()
+    {
+        // 持ち主の判定がタブだけだと、開き直した直後のキャレット移動で「前のファイルの構造」を
+        // 相手に②パネルだけ差し替えてしまう（画面は新しいファイル、中身は前のファイル）。
+        var (flow, state) = Flow(new FakeHost());
+        var tab = new EditorTab(Guid.NewGuid());
+        await Render(flow, Request(lsp: new FakeLspDocument(File, [Method("Foo", 10)]), source: tab));
+
+        var frames = await Render(
+            flow,
+            Request(lsp: new FakeLspDocument(Other, [Method("Bar", 3)]), file: Other, source: tab),
+            EditorSupportUpdateReason.Caret);
+
+        // ②の差し替えではなく、新しいファイルの構造として組み直される。
+        var outline = Assert.IsType<EditorSupportFrameContent.OutlineContent>(frames[0].Content);
+        Assert.Equal(Other, outline.FilePath);
+        Assert.Equal(Other, state.OutlineFilePath);
     }
 
     [Fact]
@@ -367,8 +443,8 @@ public class EditorSupportRenderFlowTests
     }
 
     private static EditorSupportRenderRequest Request(
-        ILspDocument? lsp, string file = File, int caretLine = 10)
-        => new(new EditorTab(Guid.NewGuid()), file, "class Foo { void Foo() {} }",
+        ILspDocument? lsp, string file = File, int caretLine = 10, EditorTab? source = null)
+        => new(source ?? new EditorTab(Guid.NewGuid()), file, "class Foo { void Foo() {} }",
             caretLine, 0, lsp, "dark");
 
     private static async Task<List<EditorSupportFrame>> Render(
@@ -414,10 +490,13 @@ public class EditorSupportRenderFlowTests
             init => ReadyPageKeyValue = value;
         }
 
-        public Task EnsureWebViewAsync()
+        /// <summary>WebView2 を用意できるか（false＝用意できない）。</summary>
+        public bool WebViewAvailable { get; init; } = true;
+
+        public Task<bool> EnsureWebViewAsync()
         {
             Calls.Add("EnsureWebView");
-            return Task.CompletedTask;
+            return Task.FromResult(WebViewAvailable);
         }
 
         public Task<string?> PreparePageAsync(string html, CancellationToken ct)

@@ -16,7 +16,7 @@ public class EditorSupportUpdateLoopTests
     {
         var visible = false;
         var renders = 0;
-        var loop = new EditorSupportUpdateLoop(() => visible, (_, _) => { renders++; return Task.CompletedTask; });
+        var loop = Loop(() => visible, (_, _) => { renders++; return Task.CompletedTask; });
 
         loop.Invalidate(Content);
 
@@ -35,7 +35,7 @@ public class EditorSupportUpdateLoopTests
     {
         var gate = new TaskCompletionSource();
         var seen = new List<EditorSupportUpdateReason>();
-        var loop = new EditorSupportUpdateLoop(() => true, async (reason, _) =>
+        var loop = Loop(() => true, async (reason, _) =>
         {
             seen.Add(reason);
             if (seen.Count == 1)
@@ -64,7 +64,7 @@ public class EditorSupportUpdateLoopTests
         var gate = new TaskCompletionSource();
         var cancelled = false;
         var runs = 0;
-        var loop = new EditorSupportUpdateLoop(() => true, async (_, ct) =>
+        var loop = Loop(() => true, async (_, ct) =>
         {
             runs++;
             if (runs > 1)
@@ -88,7 +88,7 @@ public class EditorSupportUpdateLoopTests
     {
         var errors = new List<Exception>();
         var runs = 0;
-        var loop = new EditorSupportUpdateLoop(() => true, (_, _) =>
+        var loop = Loop(() => true, (_, _) =>
         {
             runs++;
             if (runs == 1)
@@ -111,7 +111,7 @@ public class EditorSupportUpdateLoopTests
         // 自分へ要求を投げ返す。ここが無限ループにならないことを保証する。
         var runs = 0;
         EditorSupportUpdateLoop loop = null!;
-        loop = new EditorSupportUpdateLoop(() => true, (_, _) =>
+        loop = Loop(() => true, (_, _) =>
         {
             runs++;
             if (runs == 1)
@@ -136,7 +136,7 @@ public class EditorSupportUpdateLoopTests
         var gate = new TaskCompletionSource();
         var seen = new List<EditorSupportUpdateReason>();
         var cancelledDuringContent = false;
-        var loop = new EditorSupportUpdateLoop(() => true, async (reason, ct) =>
+        var loop = Loop(() => true, async (reason, ct) =>
         {
             seen.Add(reason);
             if (seen.Count > 1)
@@ -163,7 +163,7 @@ public class EditorSupportUpdateLoopTests
         var started = 0;
         var finished = 0;
         EditorSupportUpdateLoop loop = null!;
-        loop = new EditorSupportUpdateLoop(() => true, async (_, ct) =>
+        loop = Loop(() => true, async (_, ct) =>
         {
             started++;
             if (finished == 0)
@@ -191,12 +191,12 @@ public class EditorSupportUpdateLoopTests
         var wedged = new TaskCompletionSource();
         var errors = new List<Exception>();
         var runs = 0;
-        var loop = new EditorSupportUpdateLoop(() => true, async (_, _) =>
+        var loop = Loop(() => true, async (_, _) =>
         {
             if (++runs == 1)
                 await wedged.Task;   // ct を見ない・永久に返らない描画
-        }, errors.Add)
-        { AbandonAfterCancel = TimeSpan.FromMilliseconds(50) };
+        }, errors.Add);
+        loop.AbandonAfterCancel = TimeSpan.FromMilliseconds(50);
 
         loop.Invalidate(Content);
         loop.Invalidate(Content);            // 追い越し＝中断を伝える
@@ -214,7 +214,7 @@ public class EditorSupportUpdateLoopTests
         // 自分のトークン以外で中断された描画（初期化の打ち切り等）を握りつぶすと、
         // 「描かれなかった」ことが誰にも見えないまま古い表示が残る。
         var errors = new List<Exception>();
-        var loop = new EditorSupportUpdateLoop(() => true, (_, _) =>
+        var loop = Loop(() => true, (_, _) =>
         {
             using var unrelated = new CancellationTokenSource();
             unrelated.Cancel();
@@ -233,7 +233,7 @@ public class EditorSupportUpdateLoopTests
     public void None_is_ignored()
     {
         var renders = 0;
-        var loop = new EditorSupportUpdateLoop(() => true, (_, _) => { renders++; return Task.CompletedTask; });
+        var loop = Loop(() => true, (_, _) => { renders++; return Task.CompletedTask; });
 
         loop.Invalidate(EditorSupportUpdateReason.None);
 
@@ -241,10 +241,160 @@ public class EditorSupportUpdateLoopTests
         Assert.False(loop.HasPendingWork);
     }
 
+    // ── 描けない間に持ち越した要求を、誰にも知らせてもらわずに回収する ──────────
+    //    ここが無いと「要求は消えない」が絵に描いた餅になる。要求を持っていても、それを
+    //    描かせる Invalidate が来ない可視化経路（俯瞰の開閉・舞台からタイルへ戻る・袖から戻す…）が
+    //    1つでもあれば「ペインは見えているのに中身が古いまま」が残る。
+
+    [Fact]
+    public void 描けない間に残した要求は誰も知らせなくても自分で拾い直す()
+    {
+        var visible = false;
+        var renders = 0;
+        var watch = new FakeWatch();
+        var loop = Loop(() => visible, (_, _) => { renders++; return Task.CompletedTask; }, watch: watch);
+
+        loop.Invalidate(Content);
+        Assert.Equal(0, renders);
+        Assert.True(watch.IsArmed);      // 描けないので見回りが仕掛かる
+
+        watch.Fire();                    // まだ描けない
+        Assert.Equal(0, renders);
+        Assert.True(watch.IsArmed);      // 諦めずにまた見に来る
+
+        visible = true;
+        watch.Fire();                    // 誰も Invalidate していないのに——
+
+        Assert.Equal(1, renders);        // 描かれる
+        Assert.False(loop.HasPendingWork);
+        Assert.False(watch.IsArmed);     // 用が済んだら止まる
+    }
+
+    [Fact]
+    public void 見回りは間隔を空けていき最後は頭打ちになる()
+    {
+        // ペインを閉じたまま何時間も置かれる場合に、細かい起床を延々と残さない。
+        var watch = new FakeWatch();
+        var loop = Loop(() => false, (_, _) => Task.CompletedTask, watch: watch);
+
+        loop.Invalidate(Content);
+        for (var i = 0; i < 4; i++)
+            watch.Fire();
+
+        var delays = EditorSupportUpdateLoop.RenderabilityPollDelays;
+        Assert.Equal(
+            [delays[0], delays[1], delays[2], delays[2], delays[2]],
+            watch.Delays);
+    }
+
+    [Fact]
+    public void 描き切ったら見回りの間隔もやり直しになる()
+    {
+        var visible = false;
+        var watch = new FakeWatch();
+        var loop = Loop(() => visible, (_, _) => Task.CompletedTask, watch: watch);
+
+        loop.Invalidate(Content);
+        watch.Fire();                    // 間隔が1段進む
+        visible = true;
+        watch.Fire();                    // ここで描き切る
+        visible = false;
+        loop.Invalidate(Content);        // 次に描けなくなったとき——
+
+        Assert.Equal(
+            [EditorSupportUpdateLoop.RenderabilityPollDelays[0]], watch.Delays[^1..]);
+    }
+
+    [Fact]
+    public void 可視状態の問い合わせは要求が無ければ何もしない()
+    {
+        // レイアウトの組み直しから無条件に呼ばれる。要求が無いのに描き直すと、
+        // ペインを触るたびにプレビュー全体が作り直されることになる。
+        var renders = 0;
+        var watch = new FakeWatch();
+        var loop = Loop(() => true, (_, _) => { renders++; return Task.CompletedTask; }, watch: watch);
+
+        loop.PollRenderability();
+
+        Assert.Equal(0, renders);
+        Assert.False(watch.IsArmed);
+    }
+
+    [Fact]
+    public void 可視化の合図で持ち越した要求がその場で描かれる()
+    {
+        // 見回りを待たずに描くための早道（レイアウト組み直しからの合図）。
+        var visible = false;
+        var renders = 0;
+        var watch = new FakeWatch();
+        var loop = Loop(() => visible, (_, _) => { renders++; return Task.CompletedTask; }, watch: watch);
+        loop.Invalidate(Content);
+        visible = true;
+
+        loop.PollRenderability();
+
+        Assert.Equal(1, renders);
+        Assert.False(loop.HasPendingWork);
+        Assert.False(watch.IsArmed);
+    }
+
+    [Fact]
+    public async Task 走行中に来た可視化の合図は二重に描かない()
+    {
+        var gate = new TaskCompletionSource();
+        var runs = 0;
+        var watch = new FakeWatch();
+        var loop = Loop(() => true, async (_, _) =>
+        {
+            if (++runs == 1)
+                await gate.Task;
+        }, watch: watch);
+
+        loop.Invalidate(Content);
+        loop.PollRenderability();        // 走行中：ドレインが面倒を見るので何も起こさない
+        Assert.Equal(1, runs);
+
+        gate.SetResult();
+        await loop.Completion;
+        Assert.Equal(1, runs);
+    }
+
     /// <summary>条件が成り立つまで待つ（成り立たなければ失敗させるため、待ちきって戻る）。</summary>
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         for (var i = 0; i < 200 && !condition(); i++)
             await Task.Delay(10);
+    }
+
+    /// <summary>本番と同じ形（見回り付き）で組み立てる。</summary>
+    private static EditorSupportUpdateLoop Loop(
+        Func<bool> canRender,
+        Func<EditorSupportUpdateReason, CancellationToken, Task> render,
+        Action<Exception>? onError = null,
+        IEditorSupportRenderabilityWatch? watch = null)
+        => new(canRender, render, watch ?? new FakeWatch(), onError);
+
+    /// <summary>見回りの起床を手で進める（実装の DispatcherTimer と同じく一発きり）。</summary>
+    private sealed class FakeWatch : IEditorSupportRenderabilityWatch
+    {
+        private Action? _tick;
+
+        public List<TimeSpan> Delays { get; } = [];
+        public bool IsArmed => _tick is not null;
+
+        public void Schedule(TimeSpan delay, Action tick)
+        {
+            Delays.Add(delay);
+            _tick = tick;
+        }
+
+        public void Cancel() => _tick = null;
+
+        public void Fire()
+        {
+            var tick = _tick ?? throw new InvalidOperationException("見回りが仕掛かっていない");
+            _tick = null;
+            tick();
+        }
     }
 }
