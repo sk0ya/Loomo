@@ -283,8 +283,28 @@ public class EditorSupportUpdateLoopTests
 
         var delays = EditorSupportUpdateLoop.RenderabilityPollDelays;
         Assert.Equal(
-            [delays[0], delays[1], delays[2], delays[2], delays[2]],
+            [delays[0], delays[1], delays[2], delays[3], delays[^1]],
             watch.Delays);
+    }
+
+    [Fact]
+    public void 見回りは間隔が伸びきっても止まらない()
+    {
+        // 止めてしまうと、要求の回収が「可視化した側が知らせに来る」前提へ戻る＝この網の意味が消える。
+        var visible = false;
+        var watch = new FakeWatch();
+        var renders = 0;
+        var loop = Loop(() => visible, (_, _) => { renders++; return Task.CompletedTask; }, watch: watch);
+
+        loop.Invalidate(Content);
+        for (var i = 0; i < 20; i++)
+            watch.Fire();
+        Assert.True(watch.IsArmed);
+
+        visible = true;
+        watch.Fire();
+
+        Assert.Equal(1, renders);   // 何時間後でも、可視化されれば描かれる
     }
 
     [Fact]

@@ -362,7 +362,7 @@ public class EditorSupportRenderFlowTests
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flow.RenderAsync(
             Request(lsp: new FakeLspDocument(Other, [Method("Bar", 3)]), file: Other),
-            EditorSupportUpdateReason.Content, _ => { }, cts.Token));
+            EditorSupportUpdateReason.Content, _ => true, cts.Token));
 
         Assert.Same(shownRoots, state.OutlineRoots);   // 画面に出ているものと食い違わない
         Assert.Equal(shownFile, state.OutlineFilePath);
@@ -405,6 +405,26 @@ public class EditorSupportRenderFlowTests
     }
 
     [Fact]
+    public async Task 画面に出せなかったフレームはアウトライン状態も確定しない()
+    {
+        // 適用側が捨てたフレーム（WebView2 のブラウザプロセスが組み立て中に落ちた等）の状態まで書くと、
+        // 画面は前のファイルのまま・状態だけ次のファイル、という食い違いが残る。
+        var (flow, state) = Flow(new FakeHost());
+        await Render(flow, Request(lsp: new FakeLspDocument(File, [Method("Foo", 10)])));
+        var shownRoots = state.OutlineRoots;
+        Assert.NotNull(shownRoots);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await flow.RenderAsync(
+            Request(file: @"C:\work\app\README.md", lsp: null),
+            EditorSupportUpdateReason.Content,
+            _ => false,                      // 載せる先が無い＝画面は据え置き
+            cts.Token);
+
+        Assert.Same(shownRoots, state.OutlineRoots);
+    }
+
+    [Fact]
     public async Task 追い越された描画はフレームを出さない()
     {
         // ct 確認より後ろで UI を書くと、捨てられるはずの描画が画面へ残る（＝中途半端な表示）。
@@ -415,7 +435,7 @@ public class EditorSupportRenderFlowTests
         var frames = new List<EditorSupportFrame>();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flow.RenderAsync(
             Request(lsp: new FakeLspDocument(File, [Method("Foo", 10)])),
-            EditorSupportUpdateReason.Content, frames.Add, cts.Token));
+            EditorSupportUpdateReason.Content, Collect(frames), cts.Token));
 
         Assert.Empty(frames);
     }
@@ -455,9 +475,13 @@ public class EditorSupportRenderFlowTests
     {
         var frames = new List<EditorSupportFrame>();
         using var cts = new CancellationTokenSource(timeoutSafety ?? TimeSpan.FromSeconds(20));
-        await flow.RenderAsync(request, reason, frames.Add, cts.Token);
+        await flow.RenderAsync(request, reason, Collect(frames), cts.Token);
         return frames;
     }
+
+    /// <summary>フレームを受け取って「画面に出せた」と答える適用（＝通常のホスト）。</summary>
+    private static Func<EditorSupportFrame, bool> Collect(List<EditorSupportFrame> frames)
+        => frame => { frames.Add(frame); return true; };
 
     private static DocumentSymbol Method(string name, int line0)
     {

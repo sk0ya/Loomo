@@ -57,7 +57,8 @@ internal interface IEditorSupportRenderHost
 /// 押し出せば、真ん中は素の非同期処理として残る。
 /// </para>
 /// <para>
-/// <c>apply</c> は<b>同期のコールバック</b>で、<c>ct</c> を確認した直後に呼ぶ。<c>IAsyncEnumerable</c> に
+/// <c>apply</c> は<b>同期のコールバック</b>で、<c>ct</c> を確認した直後に呼び、<b>画面に出せたかを返す</b>
+/// （出せなかったフレームの状態は確定しない＝画面と状態が食い違わない）。<c>IAsyncEnumerable</c> に
 /// しなかったのはこのためで、yield と適用の間に await が挟まると「確認したときは有効だったフレームを
 /// 追い越されてから適用する」余地が生まれる（＝中途半端な表示が残る、§26.5 で潰した形）。
 /// </para>
@@ -94,11 +95,12 @@ internal sealed class EditorSupportRenderFlow
         _host = host;
     }
 
-    /// <summary>1回分の描画。<paramref name="apply"/> は組み上がったフレームを同期で適用する。</summary>
+    /// <summary>1回分の描画。<paramref name="apply"/> は組み上がったフレームを同期で適用し、
+    /// <b>画面に出せたか</b>を返す（false＝載せる先が無い等で捨てた）。</summary>
     public async Task RenderAsync(
         EditorSupportRenderRequest request,
         EditorSupportUpdateReason reason,
-        Action<EditorSupportFrame> apply,
+        Func<EditorSupportFrame, bool> apply,
         CancellationToken ct)
     {
         var selection = _resolver.Resolve(request.FilePath);
@@ -128,7 +130,7 @@ internal sealed class EditorSupportRenderFlow
     private async Task RenderProviderAsync(
         EditorSupportRenderRequest request,
         IEditorSupportProvider? provider,
-        Action<EditorSupportFrame> apply,
+        Func<EditorSupportFrame, bool> apply,
         CancellationToken ct)
     {
         // WebView2 を使う提供者のときだけ、<b>組み立てより先に</b>用意する。以前は pending を積んでから
@@ -178,7 +180,7 @@ internal sealed class EditorSupportRenderFlow
     private async Task RenderCodeAsync(
         EditorSupportRenderRequest request,
         string filePath,
-        Action<EditorSupportFrame> apply,
+        Func<EditorSupportFrame, bool> apply,
         CancellationToken ct)
     {
         var lsp = request.Lsp;
@@ -277,7 +279,7 @@ internal sealed class EditorSupportRenderFlow
     private async Task RefreshCallPanelsAsync(
         EditorSupportRenderRequest request,
         string filePath,
-        Action<EditorSupportFrame> apply,
+        Func<EditorSupportFrame, bool> apply,
         CancellationToken ct)
     {
         if (!_state.ShouldRefreshCallPanels(
@@ -304,11 +306,13 @@ internal sealed class EditorSupportRenderFlow
     /// <b>②パネルだけが二度と更新されない</b>——ペインが固まったようにしか見えない壊れ方になる。
     /// </para>
     /// </summary>
-    private void Emit(Action<EditorSupportFrame> apply, EditorSupportFrame frame, CancellationToken ct)
+    private void Emit(Func<EditorSupportFrame, bool> apply, EditorSupportFrame frame, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        _state.CommitOutline(frame.Content.Outline);
-        apply(frame);
+        // 出せたときだけ状態を確定する。適用側が捨てたフレームの状態まで書くと、画面は前のまま
+        // 状態だけ次のファイルのものになり、そこから先はキャレット追従が食い違い続ける。
+        if (apply(frame))
+            _state.CommitOutline(frame.Content.Outline);
     }
 
     private static (int Line, int Col) Caret(EditorSupportRenderRequest request)

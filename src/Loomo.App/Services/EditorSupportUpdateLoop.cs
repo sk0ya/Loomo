@@ -78,14 +78,21 @@ public sealed class EditorSupportUpdateLoop
 
     /// <summary>
     /// 描けるようになったかを見回る間隔。<b>だんだん間を空ける</b>——可視化は普通すぐ起きるので
-    /// 最初は細かく、ペインを閉じたまま何時間も置かれる場合に無駄な起床を残さない。
+    /// 最初は細かく、ペインを閉じたまま何時間も置かれる場合は最後の間隔まで開く。
     /// 明示の <see cref="Invalidate"/> が来ればそちらが即座に描くので、これは取りこぼしの網でしかない。
+    /// <para>
+    /// <b>最後まで行っても止めない。</b>止めてしまうと、要求の回収がふたたび
+    /// 「可視化した側が知らせに来る」前提に戻り、知らせ忘れた経路でだけ固まる——この網はそれを
+    /// 無くすために置いてある。代わりに終端を十分長くして、閉じたままのペインの負担を
+    /// 1分あたり2回の真偽判定まで落とす。
+    /// </para>
     /// </summary>
     internal static readonly TimeSpan[] RenderabilityPollDelays =
     [
         TimeSpan.FromMilliseconds(250),
         TimeSpan.FromSeconds(1),
         TimeSpan.FromSeconds(4),
+        TimeSpan.FromSeconds(30),
     ];
 
     private readonly Func<bool> _canRender;

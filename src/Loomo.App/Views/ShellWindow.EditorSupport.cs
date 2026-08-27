@@ -227,8 +227,10 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     }
     /// <summary>組み上がったフレームを丸ごと適用する。<b>ここが UI を書く唯一の場所で、同期。</b>
     /// 途中で return しないのが規約——<b>書き始める前に</b>載せられるかを見て、駄目なら1文字も書かずに戻る
-    /// （書きかけで抜けると「題名だけ新しいファイル」が残る）。</summary>
-    private void ApplyEditorSupportFrame(EditorSupportFrame frame) {
+    /// （書きかけで抜けると「題名だけ新しいファイル」が残る）。
+    /// <para>戻り値は<b>画面に出せたか</b>。false のときフレームに載っていたアウトライン状態も確定されない
+    /// （<c>EditorSupportRenderFlow.Emit</c>）——画面と状態は必ず一緒に動かす。</para></summary>
+    private bool ApplyEditorSupportFrame(EditorSupportFrame frame) {
         // ブラウザプロセスが落ちた後の WebView2 は CoreWebView2 を読むだけで例外を投げるので、
         // 必ず均した参照（Core）を使う——ここで落とすと、以降このフレームは適用されずペインが空のまま残る。
         var core = _editorSupport.WebView.Core;
@@ -239,7 +241,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         // ここで投げ返して即再試行の輪を作らない。
         if (frame.Content is EditorSupportFrameContent.WebContent && core is null) {
             CodeSupportDiag.Log("webview unavailable: frame dropped");
-            return;
+            return false;
         }
         EditorSupportSettingsButton.Visibility = Visibility.Collapsed;
         if (!frame.ShowEdit)
@@ -286,6 +288,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
                 _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
                 break;
         }
+        return true;
     }
     private CodeOutlineView EnsureCodeOutlineView() {
         if (_editorSupport.OutlineView is not null)
@@ -346,25 +349,28 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     private void StopCodeReadyRetry()
         => _editorSupport.StopReadyRetry();
     /// <summary>言語サーバーの準備待ちポーリング。<b>自分では描かず</b>ループへ要求を投げるだけなので、
-    /// 描画の入れ子（tick が await 中に次の tick が走って解析要求が積み上がる）が起きない。</summary>
+    /// 描画の入れ子（tick が await 中に次の tick が走って解析要求が積み上がる）が起きない。
+    /// 判断そのものは <see cref="LspReadyRetryPolicy"/>（純関数・テスト可能）にある——ここを閉じると
+    /// そのタブでは二度と構造が出ないので、止める条件はテストで固定しておきたい。</summary>
     private void CodeReadyRetry_Tick(object? sender, EventArgs e) {
         var source = _editorSupport.Source;
         var filePath = source?.Control.FilePath;
-        if (source is null || filePath is null || !_codeSupport.CanHandle(filePath)
-            || _editorSupport.OutlineMatches(source, filePath)) {
-            StopCodeReadyRetry();
-            return;
+        var lsp = source is null ? null : GetLspDocument(source);
+        var step = LspReadyRetryPolicy.Next(
+            codeSourceOpen: filePath is not null && _codeSupport.CanHandle(filePath),
+            serverReady: lsp is not null && lsp.IsReady && filePath is not null
+                         && CodeEditorSupportAnalysis.LspMatchesFile(lsp, filePath),
+            attempts: _editorSupport.AdvanceReadyAttempt(),
+            maxAttempts: CodeReadyMaxRetries,
+            noticeGraceTicks: EditorSupportRenderFlow.ConnectingNoticeGraceTicks);
+        switch (step) {
+            case LspReadyRetryStep.Stop:
+                StopCodeReadyRetry();   // 上限まで待った：案内のまま諦める（ペイン再オープンでやり直す）
+                break;
+            case LspReadyRetryStep.Render:
+                InvalidateEditorSupport();
+                break;
         }
-        if (_editorSupport.AdvanceReadyAttempt() > CodeReadyMaxRetries) {
-            StopCodeReadyRetry(); // サーバーが来ない：案内のまま諦める（ペイン再オープンで再試行される）
-            return;
-        }
-        var lsp = GetLspDocument(source);
-        var ready = lsp is not null && lsp.IsReady
-                    && CodeEditorSupportAnalysis.LspMatchesFile(lsp, filePath);
-        // 準備できた瞬間と、猶予を過ぎて案内を出す一度だけ描き直す（毎 tick 投げると無駄に組み直す）。
-        if (ready || _editorSupport.ReadyAttempts == EditorSupportRenderFlow.ConnectingNoticeGraceTicks)
-            InvalidateEditorSupport();
     }
     private void ScheduleCodeCallPanelsRefresh()
         => _editorSupport.ScheduleCaretRefresh(() => InvalidateEditorSupport(EditorSupportUpdateReason.Caret));
