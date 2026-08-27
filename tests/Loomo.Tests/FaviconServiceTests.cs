@@ -34,6 +34,23 @@ public class FaviconServiceTests
         return service;
     }
 
+    // ===== HTML からアイコンの指定を拾う =====
+
+    [Fact]
+    public void Icon_link_is_found_even_next_to_a_data_attribute_of_the_same_name()
+    {
+        // 属性名の左を境界で留めないと、data-rel を rel として先に拾って「icon ではない」と判断し、
+        // 本物のアイコン指定ごと捨てる（そのうえ「絵が無いサイト」として7日覚える）。
+        var links = FaviconService.ParseIconLinks(
+            "<link data-rel=\"nav\" rel=\"icon\" data-href=\"/x.png\" href=\"/i.png\">");
+
+        Assert.Equal(["/i.png"], links);
+    }
+
+    [Fact]
+    public void Non_icon_links_are_still_skipped()
+        => Assert.Empty(FaviconService.ParseIconLinks("<link rel=\"stylesheet\" href=\"/site.css\">"));
+
     // ===== 鍵（ホスト単位） =====
 
     [Fact]
@@ -195,10 +212,72 @@ public class FaviconServiceTests
         // 「絵が無いサイト」と「今つながらないだけ」を同じ扱いにしてはいけない。
         Assert.Empty(Directory.GetFiles(directory));
 
-        // 立ち上げ直せば（＝メモリの結論が消えれば）また取りに行く。
-        var restarted = AnsweredWithoutIcon(directory);
-        Assert.Null(await restarted.GetAsync("https://example.com/", allowNetwork: true));
-        Assert.Single(Directory.GetFiles(directory, "*.miss"));
+        // メモリにも覚えない。覚えると、線が戻っても<b>立ち上げ直すまで</b>そのホストは ★ のまま
+        // （_resolved に期限は無い）——ディスクの7日ガードと同じ穴がセッション寿命で開くことになる。
+        // 同じインスタンスのまま、線が戻ればもう一度取りに行けること。
+        service.UseFetchForTests(_ => Task.FromResult(
+            new FaviconService.SiteFetch(OnePixelIcon(), Reached: true)));
+
+        Assert.NotNull(await service.GetAsync("https://example.com/", allowNetwork: true));
+    }
+
+    [Fact]
+    public async Task A_fetch_that_threw_is_not_remembered_as_hopeless()
+    {
+        // 取りに行く途中の例外（DNS・TLS・タイムアウト）も「絵が無い」ではない。
+        var directory = TempDirectory();
+        var service = new FaviconService(directory);
+        var attempts = 0;
+        service.UseFetchForTests(_ =>
+        {
+            attempts++;
+            throw new InvalidOperationException("boom");
+        });
+
+        Assert.Null(await service.GetAsync("https://example.com/", allowNetwork: true));
+        Assert.Null(await service.GetAsync("https://example.com/other", allowNetwork: true));
+
+        Assert.Equal(2, attempts);              // 結論を出せていないので、次の行はまた取りに行く
+        Assert.Empty(Directory.GetFiles(directory));
+    }
+
+    [Fact]
+    public async Task A_site_that_answered_without_an_icon_is_fetched_only_once()
+    {
+        // 逆側の固定。相手が答えたうえで絵が無いなら、何行あっても取りに行くのは1回きり。
+        var directory = TempDirectory();
+        var attempts = 0;
+        var service = new FaviconService(directory);
+        service.UseFetchForTests(_ =>
+        {
+            attempts++;
+            return Task.FromResult(new FaviconService.SiteFetch(null, Reached: true));
+        });
+
+        Assert.Null(await service.GetAsync("https://example.com/a", allowNetwork: true));
+        Assert.Null(await service.GetAsync("https://example.com/b", allowNetwork: true));
+
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public async Task A_cache_only_miss_is_remembered_so_typing_does_not_re_probe_the_disk()
+    {
+        // アドレス欄の候補は打鍵のたびに全行を作り直す（allowNetwork: false）。置き場に無いことを
+        // 覚えないと、1文字ごとに数十回の File.Exists ＋復号が走る。
+        var directory = TempDirectory();
+        var service = new FaviconService(directory);
+        Assert.Null(await service.GetAsync("https://example.com/", allowNetwork: false));
+
+        // 覚えている証拠：この後で置き場に絵が現れても、手元だけの引きはディスクを見に行かない。
+        File.WriteAllBytes(
+            Path.Combine(directory, FaviconService.CacheFileName("example.com") + ".png"),
+            OnePixelPng());
+        Assert.Null(await service.GetAsync("https://example.com/", allowNetwork: false));
+
+        // ただし「絵が無いサイト」として覚えたわけではない——あとから来たブックマークの行は
+        // ちゃんと拾う（ここでは置き場の絵で足りるので通信も要らない）。
+        Assert.NotNull(await service.GetAsync("https://example.com/", allowNetwork: true));
     }
 
     [Fact]
@@ -243,6 +322,10 @@ public class FaviconServiceTests
     }
 
     /// <summary>1px の PNG（中身は問わない——読めて凍る絵であれば良い）。</summary>
+    /// <summary>取得が返す絵（<see cref="FaviconService.SiteFetch"/> 用）。</summary>
+    private static BitmapSource OnePixelIcon()
+        => BitmapFrame.Create(new MemoryStream(OnePixelPng()));
+
     private static byte[] OnePixelPng()
     {
         var source = BitmapSource.Create(1, 1, 96, 96, System.Windows.Media.PixelFormats.Bgra32,

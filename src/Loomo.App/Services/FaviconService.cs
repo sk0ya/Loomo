@@ -74,6 +74,18 @@ public sealed class FaviconService
     /// <summary>取得中のもの。同じホストの行が同時に何行来ても取得は1回で済ませる。</summary>
     private readonly ConcurrentDictionary<string, Lazy<Task<ImageSource?>>> _inflight = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// <b>置き場に無かった</b>ホスト。「絵が無いサイト」（<c>_resolved</c> の null）とは<b>別物</b>で、
+    /// 意味は「ディスクを見たが無かった＝取りに行けば分かるかもしれない」。
+    /// <para>
+    /// これが無いと、アドレス欄の候補（<c>allowNetwork: false</c>）は結論を何も覚えないので、
+    /// 打鍵のたびに全行ぶんの <see cref="LoadFromDisk"/> が走る——1文字ごとに数十回の
+    /// <c>File.Exists</c>＋復号。かといって「絵が無い」として覚えると、あとから来た
+    /// ブックマークの行が取りに行かなくなる（それが <c>_resolved</c> を汚してはいけない理由）。
+    /// </para>
+    /// </summary>
+    private readonly ConcurrentDictionary<string, byte> _diskMisses = new(StringComparer.Ordinal);
+
     /// <summary>取りに行く手。<b>テストが差し替える唯一の穴</b>——ここが実通信のままだと、
     /// 「繋がらなかった」を作るのに実際の DNS/HTTP に頼ることになり、串（プロキシ）や
     /// ISP の代理応答で結論が変わってしまう。</summary>
@@ -116,6 +128,9 @@ public sealed class FaviconService
             return Task.FromResult<ImageSource?>(null);
         if (_resolved.TryGetValue(key, out var known))
             return Task.FromResult(known);
+        // 手元だけで良いなら、置き場に無いと分かっているホストはそこで終わり（ディスクを触らない）。
+        if (!allowNetwork && _diskMisses.ContainsKey(key))
+            return Task.FromResult<ImageSource?>(null);
 
         // 束ねる鍵に<b>取りに行って良いかを含める</b>。ホストだけで束ねると、先に来た手元だけの
         // 引き（履歴・候補）に後から来たブックマークの行が相乗りして null を受け取り、
@@ -158,41 +173,54 @@ public sealed class FaviconService
     private async Task<ImageSource?> ResolveAsync(string key, string slot, bool allowNetwork)
     {
         ImageSource? icon = null;
+        // 「このサイトには絵が無い」と<b>言い切れた</b>か。言い切れないまま覚えると、
+        // その結論はもう覆らない（_resolved に期限は無い）。
+        var absent = false;
         try
         {
             icon = await Task.Run(() => (ImageSource?)LoadFromDisk(key)).ConfigureAwait(false);
-            if (icon is null && allowNetwork && !HasFreshMiss(key))
+            if (icon is null)
+                _diskMisses[key] = 0;
+            if (icon is null && allowNetwork)
             {
-                var fetched = await _fetch(key).ConfigureAwait(false);
-                if (fetched.Icon is { } downloaded)
+                if (HasFreshMiss(key))
                 {
-                    icon = downloaded;
-                    if (EncodePng(downloaded) is { } png)
-                        SaveToDisk(key, png);
+                    absent = true;      // 直近に確かめて「無い」と分かっている
                 }
-                else if (fetched.Reached
-                         && !(_resolved.TryGetValue(key, out var landed) && landed is not null))
+                else
                 {
-                    // 「無い」を7日覚えて良いのは<b>相手が答えた</b>ときだけ。圏外や
-                    // captive portal で繋がらなかったぶんまで覚えると、線が戻っても
-                    // 7日ずっと ★ のまま（しかも再起動しても消えない）になる。
-                    MarkMiss(key);
+                    var fetched = await _fetch(key).ConfigureAwait(false);
+                    if (fetched.Icon is { } downloaded)
+                    {
+                        icon = downloaded;
+                        if (EncodePng(downloaded) is { } png)
+                            SaveToDisk(key, png);
+                    }
+                    else if (fetched.Reached)
+                    {
+                        // 「無い」と言い切って良いのは<b>相手が答えた</b>ときだけ。圏外や
+                        // captive portal で繋がらなかったぶんまで覚えると、線が戻っても
+                        // ★ のまま（ディスクなら7日、メモリなら再起動まで）になる。
+                        absent = true;
+                        if (!(_resolved.TryGetValue(key, out var landed) && landed is not null))
+                            MarkMiss(key);
+                    }
                 }
             }
         }
         catch
         {
-            // 絵が出ないだけ。ブラウズは続く。
+            // 絵が出ないだけ。ブラウズは続く（＝言い切れていないので覚えない）。
         }
 
-        // 「無い」を覚えるのは取りに行った側だけ。手元だけ見て外れたぶんまで覚えると、
-        // あとからブックマークの行が来ても二度と取りに行かなくなる。
+        // 「無い」を覚えるのは言い切れたときだけ。手元だけ見て外れたぶんや、届かなかったぶんまで
+        // 覚えると、あとからブックマークの行が来ても・線が戻っても二度と取りに行かなくなる。
         // ただし<b>塗り潰さない</b>——取りに行っている10秒のあいだに、人がそのサイトを開いて
         // Harvest が絵を入れていることがある（403 で断られるサイトほど、まさにそれが起きる）。
         // TryAdd なら、後から入ったその絵に譲れる。
         if (icon is not null)
             _resolved[key] = icon;
-        else if (allowNetwork && !_resolved.TryAdd(key, null)
+        else if (absent && !_resolved.TryAdd(key, null)
                  && _resolved.TryGetValue(key, out var harvested))
             icon = harvested;
         _inflight.TryRemove(slot, out _);
@@ -363,6 +391,7 @@ public sealed class FaviconService
             var temp = path + ".tmp";
             File.WriteAllBytes(temp, png);
             File.Move(temp, path, overwrite: true);
+            _diskMisses.TryRemove(key, out _);   // 置き場に入った＝「無い」の記憶は捨てる
             var miss = MissPath(key);
             if (File.Exists(miss))
                 File.Delete(miss);
@@ -470,9 +499,13 @@ public sealed class FaviconService
         return plain;
     }
 
+    /// <summary>タグから属性を1つ取る。<b>名前の左を境界で留める</b>のが要点——留めないと
+    /// <c>&lt;link data-rel="x" rel="icon" …&gt;</c> の <c>rel</c> として先に現れる <c>data-rel</c> を拾い、
+    /// 「icon ではない」と判断して<b>本物のアイコン指定を捨てる</b>（そのうえ「絵が無いサイト」として
+    /// 7日覚える）。<c>href</c> と <c>data-href</c> も同じ形。</summary>
     private static string? Attribute(string tag, string name)
     {
-        var match = Regex.Match(tag, name + "\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|([^\\s>]+))",
+        var match = Regex.Match(tag, "(?:^|\\s)" + name + "\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|([^\\s>]+))",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
             return null;
