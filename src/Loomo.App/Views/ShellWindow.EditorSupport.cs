@@ -264,8 +264,13 @@ public partial class ShellWindow : IEditorSupportRenderHost {
                 outlineView.ShowOutline(outline.Roots, outline.CurrentLine1, outline.Panels);
                 break;
             case EditorSupportFrameContent.PanelsContent panels:
+                // 構造がまだ出ていないなら②だけ差し替えても意味が無い。<b>false で返す</b>——
+                // 何も描いていないので、Emit にこのフレームの状態（Keep＝SymbolRange とキャレット）を
+                // 確定させてはいけない。確定させると ShouldRefreshCallPanels が「キャレットは既に
+                // この範囲の中」と見なし、キャレットがその範囲を出るまで②が更新されなくなる
+                // ——この構造が無くそうとしている「古いまま固まる」そのものになる。
                 if (_editorSupport.OutlineView is not { } shown)
-                    break;   // 構造がまだ出ていないなら②だけ差し替えても意味が無い
+                    return false;
                 if (panels.CurrentLine1 is int current)
                     shown.SetCurrentAndPanels(current, panels.Panels);
                 else

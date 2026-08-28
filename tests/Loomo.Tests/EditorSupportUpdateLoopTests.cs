@@ -288,6 +288,26 @@ public class EditorSupportUpdateLoopTests
     }
 
     [Fact]
+    public void 要求が積み直されただけでは見回りの間隔は空かない()
+    {
+        // ペインを閉じたまま編集・タブ切替を続けると Invalidate が何度も届く。これで段階を
+        // 進めてしまうと、4回で終端の30秒へ飛ぶ＝可視化の合図を取りこぼした経路で、古い内容が
+        // 250ms ではなく30秒居座る。細かい刻みは<b>いちばん普通の場合にこそ</b>使うためにある。
+        var watch = new FakeWatch();
+        var loop = Loop(() => false, (_, _) => Task.CompletedTask, watch: watch);
+
+        for (var i = 0; i < 5; i++)
+            loop.Invalidate(Content);
+
+        var first = EditorSupportUpdateLoop.RenderabilityPollDelays[0];
+        Assert.Equal([first, first, first, first, first], watch.Delays);
+
+        // 空振りした見回りだけが段階を進める。
+        watch.Fire();
+        Assert.Equal(EditorSupportUpdateLoop.RenderabilityPollDelays[1], watch.Delays[^1]);
+    }
+
+    [Fact]
     public void 見回りは間隔が伸びきっても止まらない()
     {
         // 止めてしまうと、要求の回収が「可視化した側が知らせに来る」前提へ戻る＝この網の意味が消える。

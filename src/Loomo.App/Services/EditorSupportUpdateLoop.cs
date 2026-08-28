@@ -173,19 +173,25 @@ public sealed class EditorSupportUpdateLoop
             return;             // 走行中：描き終わったループが自分でもう一周する
         if (!_canRender())
         {
-            ArmWatch();         // まだ描けない：また見に来る
+            ArmWatch(advance: true);   // 見回りが空振りした：次はもう少し間を空けて見に来る
             return;
         }
         Completion = DrainAsync();
     }
 
-    /// <summary>次の見回りを仕掛ける（間隔は回を追うごとに空ける）。</summary>
-    private void ArmWatch()
+    /// <summary>
+    /// 次の見回りを仕掛ける。間隔は<b>見回りが実際に空振りするたび</b>に空けていく。
+    /// </summary>
+    /// <param name="advance">見回りが1回鳴って、それでもまだ描けなかったか。
+    /// <b>要求が積み直されただけ</b>（<see cref="DrainAsync"/> からの再武装）では段階を進めない——
+    /// 進めると、ペインを閉じたまま4回編集した／タブを4回切り替えただけで終端の30秒へ飛び、
+    /// 「可視化は普通すぐ起きるので最初は細かく」という刻みが<b>いちばん普通の場合にこそ</b>
+    /// 使われなくなる（知らせ忘れた経路があったとき、古い内容が250msではなく30秒居座る）。</param>
+    private void ArmWatch(bool advance)
     {
-        var delay = RenderabilityPollDelays[Math.Min(_pollStep, RenderabilityPollDelays.Length - 1)];
-        if (_pollStep < RenderabilityPollDelays.Length)
+        if (advance && _pollStep < RenderabilityPollDelays.Length - 1)
             _pollStep++;
-        _watch.Schedule(delay, PollRenderability);
+        _watch.Schedule(RenderabilityPollDelays[_pollStep], PollRenderability);
     }
 
     /// <summary>走行中の描画を、いま来た要求のために捨ててよいか。</summary>
@@ -212,7 +218,7 @@ public sealed class EditorSupportUpdateLoop
                 // 見回り（ArmWatch）が描けるようになった時点で拾い直す。
                 if (!_canRender())
                 {
-                    ArmWatch();
+                    ArmWatch(advance: false);
                     return;
                 }
                 _watch.Cancel();        // 描ける：もう見回りは要らない
