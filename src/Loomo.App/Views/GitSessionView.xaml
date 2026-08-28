@@ -96,6 +96,38 @@
             </Setter>
         </Style>
 
+        <!-- 左列（ブランチ一覧）の開閉ボタン。コミット一覧の見出し行に収まるよう、装飾は最小限の
+             平板な山括弧1文字にする（開＝◀ 閉じられる／閉＝▶ 開ける）。 -->
+        <Style x:Key="BranchColumnToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="ToolTip" Value="ブランチ一覧の表示／非表示" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="2">
+                            <TextBlock x:Name="glyph" Text="▶" FontSize="{DynamicResource Fs8}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="glyph" Property="Text" Value="◀" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                <Setter TargetName="glyph" Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- コミット一覧（LogList）の列見出し。既定の GridViewColumnHeader は OS 標準のボタン風装飾で
              ダークテーマに馴染まないため平板化するが、列幅ドラッグ自体は既定テンプレートが
              "PART_HeaderGripper" という名前の Thumb を探して配線するので、そのThumbだけは残す
@@ -227,13 +259,14 @@
 
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="190" MinWidth="120" />
-                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition x:Name="BranchColumn" Width="190" MinWidth="120" />
+                    <ColumnDefinition x:Name="BranchSplitterColumn" Width="6" />
                     <ColumnDefinition Width="*" MinWidth="200" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ブランチ一覧＋タグ一覧 -->
-                <Grid Grid.Column="0">
+                <!-- ブランチ一覧＋タグ一覧。コミット一覧の見出し「コミット」の左の開閉ボタンで
+                     列ごと畳める（非表示時は列の幅ごと 0 にする＝ApplyBranchColumnVisibility）。 -->
+                <Grid x:Name="BranchPanel" Grid.Column="0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="2*" MinHeight="80" />
                         <RowDefinition Height="6" />
@@ -405,7 +438,7 @@
                     </Grid>
                 </Grid>
 
-                <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" />
 
                 <!-- コミットグラフ＋詳細。詳細はグラフの「右」に縦に置く（変更ファイル一覧が上・
@@ -456,7 +489,27 @@
                              FontFamily="Cascadia Mono, Consolas">
                         <ListView.View>
                             <GridView>
+                                <!-- 見出しの左端に左列（ブランチ一覧）の開閉ボタンを置く。列見出しの
+                                     DataContext は見出し文字列そのものなので、状態は UserControl の
+                                     DataContext（VM）へ RelativeSource で結ぶ。結びは片方向＋Click で
+                                     VM を反転させる：TwoWay にすると見出しの再生成や DataContext の
+                                     差し替えの拍子に ToggleButton の既定値（false）が VM へ書き戻され、
+                                     押してもいないのに畳まれた状態が設定へ永続化されてしまう。 -->
                                 <GridViewColumn Header="コミット" Width="380">
+                                    <GridViewColumn.HeaderTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <ToggleButton Style="{StaticResource BranchColumnToggle}"
+                                                              Click="OnBranchColumnToggleClick"
+                                                              IsChecked="{Binding DataContext.BranchColumnVisible,
+                                                                  RelativeSource={RelativeSource AncestorType=UserControl},
+                                                                  Mode=OneWay}" />
+                                                <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridViewColumn.HeaderTemplate>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock TextTrimming="CharacterEllipsis">

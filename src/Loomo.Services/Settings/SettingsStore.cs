@@ -110,6 +110,9 @@ public sealed class SettingsStore
         /// <summary>Git ペインのコミット詳細の表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? GitCommitDetailVisible { get; set; }
 
+        /// <summary>Git ペインのブランチ一覧列の表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
+        public bool? GitBranchColumnVisible { get; set; }
+
         /// <summary>ブラウザのブックマークバーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? BrowserBookmarkBarVisible { get; set; }
 
@@ -130,6 +133,7 @@ public sealed class SettingsStore
             WarmupEnabled = s.WarmupEnabled,
             TrailVisible = s.TrailVisible,
             GitCommitDetailVisible = s.GitCommitDetailVisible,
+            GitBranchColumnVisible = s.GitBranchColumnVisible,
             BrowserBookmarkBarVisible = s.BrowserBookmarkBarVisible,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
@@ -150,6 +154,7 @@ public sealed class SettingsStore
             if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
             if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
+            if (GitBranchColumnVisible is { } gitBranches) s.GitBranchColumnVisible = gitBranches; // 同上
             if (BrowserBookmarkBarVisible is { } bookmarkBar) s.BrowserBookmarkBarVisible = bookmarkBar; // 同上
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);

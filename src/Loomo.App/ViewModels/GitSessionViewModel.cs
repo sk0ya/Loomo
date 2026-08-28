@@ -69,6 +69,18 @@ public sealed partial class GitSessionViewModel : ObservableObject
         catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
     }
 
+    /// <summary>左列のブランチ一覧（タグ／リモート／サブモジュールを含む縦列）を表示するか。
+    /// コミット一覧の見出し「コミット」の左の開閉ボタンで切り替え、設定へ永続化する。</summary>
+    [ObservableProperty] private bool _branchColumnVisible = true;
+
+    partial void OnBranchColumnVisibleChanged(bool value)
+    {
+        if (_settings is null) return;
+        _settings.GitBranchColumnVisible = value;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
+    }
+
     /// <summary>ブランチ一覧のツリー（ローカル／リモートの見出し、その中を "/" でフォルダ化）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
 
@@ -133,6 +145,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _settingsStore = settingsStore;
         // 保存された表示状態を初期反映する（field 直接代入なので OnCommitDetailVisibleChanged＝永続化は走らない）。
         _commitDetailVisible = settings?.GitCommitDetailVisible ?? true;
+        _branchColumnVisible = settings?.GitBranchColumnVisible ?? true;
         Commands.StatusChanged += (_, status) =>
         {
             IsBusy = status.IsBusy;

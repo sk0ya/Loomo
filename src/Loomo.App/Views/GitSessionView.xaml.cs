@@ -29,6 +29,9 @@ public partial class GitSessionView : UserControl
     /// <summary>コミット詳細を隠す直前の幅。再表示でユーザーがドラッグした幅へ戻すため覚えておく。</summary>
     private GridLength _commitDetailWidth = new(300);
 
+    /// <summary>ブランチ一覧の列を隠す直前の幅。再表示でユーザーがドラッグした幅へ戻すため覚えておく。</summary>
+    private GridLength _branchColumnWidth = new(190);
+
     public GitSessionView()
     {
         InitializeComponent();
@@ -56,12 +59,44 @@ public partial class GitSessionView : UserControl
             _subscribedSession.PropertyChanged += OnSessionPropertyChanged;
 
         ApplyCommitDetailVisibility();
+        ApplyBranchColumnVisibility();
     }
 
     private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(GitSessionViewModel.CommitDetailVisible))
             ApplyCommitDetailVisibility();
+        else if (e.PropertyName == nameof(GitSessionViewModel.BranchColumnVisible))
+            ApplyBranchColumnVisibility();
+    }
+
+    /// <summary>
+    /// 左列（ブランチ一覧＋タグ／リモート／サブモジュール）の表示/非表示を反映する。コミット詳細と
+    /// 同じく、非表示のときは列の幅と MinWidth ごと 0 にして畳む（中身を Collapsed にするだけでは
+    /// 列の固定幅が残り、空白の帯が居座るため）。
+    /// </summary>
+    private void ApplyBranchColumnVisibility()
+    {
+        var visible = Vm?.BranchColumnVisible ?? true;
+        if (visible)
+        {
+            BranchSplitterColumn.Width = new GridLength(6);
+            BranchColumn.MinWidth = 120;
+            BranchColumn.Width = _branchColumnWidth;
+            BranchSplitter.Visibility = Visibility.Visible;
+            BranchPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            // ドラッグ後の実寸を覚えてから畳む（次の表示で同じ幅に戻す）
+            if (BranchColumn.ActualWidth > 0)
+                _branchColumnWidth = new GridLength(BranchColumn.ActualWidth);
+            BranchSplitter.Visibility = Visibility.Collapsed;
+            BranchPanel.Visibility = Visibility.Collapsed;
+            BranchSplitterColumn.Width = new GridLength(0);
+            BranchColumn.MinWidth = 0;
+            BranchColumn.Width = new GridLength(0);
+        }
     }
 
     /// <summary>
@@ -90,6 +125,14 @@ public partial class GitSessionView : UserControl
             CommitDetailColumn.MinWidth = 0;
             CommitDetailColumn.Width = new GridLength(0);
         }
+    }
+
+    /// <summary>コミット一覧の見出し「コミット」の左の開閉ボタン。VM 側を反転させ、
+    /// 表示の反映（列を畳む／戻す）と永続化はそちらの変更通知経由で行う。</summary>
+    private void OnBranchColumnToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+            vm.BranchColumnVisible = !vm.BranchColumnVisible;
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

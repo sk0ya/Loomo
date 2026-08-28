@@ -44,6 +44,10 @@ public sealed class LoomoSettings
     /// 既定は表示。Git ペインのタイトル領域のトグルからここへ書き戻され、次回起動でも保たれる。</summary>
     public bool GitCommitDetailVisible { get; set; } = true;
 
+    /// <summary>Git ペインの左列「ブランチ一覧」（タグ／リモート／サブモジュールを含む縦列）を表示するか。
+    /// 既定は表示。コミット一覧の見出し「コミット」の左の開閉ボタンからここへ書き戻され、次回起動でも保たれる。</summary>
+    public bool GitBranchColumnVisible { get; set; } = true;
+
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
 
