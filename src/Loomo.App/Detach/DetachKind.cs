@@ -15,5 +15,9 @@ internal enum DetachKind
     /// <summary>メインの Editor タブをそのまま別ウィンドウへ移動した実コントロール（複製なし）。</summary>
     EditorMove,
     /// <summary>メインの Terminal タブ（生セッション）をそのまま別ウィンドウへ移動した実コントロール（複製なし）。</summary>
-    TerminalMove
+    TerminalMove,
+    /// <summary>1コミットの1ファイルの差分だけを見せる独立 Diff（同期なし）。DIFF ペインとは
+    /// 別の VM を持つので、ペイン側の表示対象を奪わない。<b>復元しない</b>——見比べのために
+    /// その場で開く一時的な窓で、スナップショットには何が写っていたかを持たせていない。</summary>
+    DiffSpinoff
 }

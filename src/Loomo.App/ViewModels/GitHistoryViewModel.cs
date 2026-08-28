@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Data;
+using sk0ya.Loomo.Core.Git;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
@@ -41,7 +42,17 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     private Task<bool>? _loadingMore;
 
     [ObservableProperty] private GitLogRow? _selectedLogRow;
+
+    /// <summary>選択コミットの生の詳細（<c>git show --numstat</c>）。ここが唯一の入口で、
+    /// コメント（<see cref="CommitMessage"/>）と変更ファイル一覧（<see cref="CommitFiles"/>）は
+    /// この1本から派生させる。</summary>
     [ObservableProperty] private string _commitDetail = "";
+
+    /// <summary>コミットのコメント（件名＋本文）と、その下に1行でまとめた素性。ファイル一覧は含まない。</summary>
+    [ObservableProperty] private string _commitMessage = "";
+
+    /// <summary>変更ファイル一覧の見出しに出す「N ファイル +A -D」。</summary>
+    [ObservableProperty] private string _commitFileSummary = "";
     [ObservableProperty] private bool _isPathScoped;
     [ObservableProperty] private string _pathScopeLabel = "";
     [ObservableProperty] private bool _isLogScoped;
@@ -60,6 +71,10 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     public bool IsFileScoped => _pathIsFile && _path is { Length: > 0 };
 
     public ObservableCollection<GitLogRow> LogRows { get; } = new();
+
+    /// <summary>選択コミットの変更ファイル一覧（フォルダ構造つき）。最上位ノードだけを持つ。</summary>
+    public ObservableCollection<CommitFileNode> CommitFiles { get; } = new();
+
     public System.ComponentModel.ICollectionView LogView { get; }
     private string? EffectiveAuthor => string.IsNullOrEmpty(AuthorSelection)
         || AuthorSelection == AllAuthorsLabel ? null : AuthorSelection;
@@ -125,6 +140,27 @@ public sealed partial class GitHistoryViewModel : ObservableObject
             // 絞り込みの読み直しが失敗しても一覧は前の内容のまま残す（例外で落とさない）。
         }
     }
+
+    /// <summary>生の詳細が変わったら、コメントとフォルダ構造つきの変更ファイル一覧へ組み直す。</summary>
+    partial void OnCommitDetailChanged(string value)
+    {
+        var summary = CommitSummary.Parse(value);
+        CommitMessage = summary.Header;
+
+        CommitFiles.Clear();
+        foreach (var node in CommitFileNode.Build(summary.Files))
+            CommitFiles.Add(node);
+
+        if (summary.Files.Count == 0)
+        {
+            CommitFileSummary = "";
+            return;
+        }
+        var added = summary.Files.Sum(f => f.Added ?? 0);
+        var deleted = summary.Files.Sum(f => f.Deleted ?? 0);
+        CommitFileSummary = $"{summary.Files.Count} ファイル  +{added} -{deleted}";
+    }
+
     partial void OnSelectedLogRowChanged(GitLogRow? value)
     {
         if (value?.Hash is { } hash) _ = LoadDetailAsync(hash);

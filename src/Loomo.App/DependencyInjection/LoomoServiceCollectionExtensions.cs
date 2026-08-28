@@ -99,6 +99,8 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<DiffSessionQuery>();
         services.AddSingleton<DiffSessionCommandHandler>();
         services.AddSingleton<DiffSessionViewModel>();
+        // 切り離しウィンドウ用にもう1つ立てるための生成器（ペインの VM を奪わないため）。
+        services.AddSingleton<DiffSessionFactory>();
 
         return services;
     }

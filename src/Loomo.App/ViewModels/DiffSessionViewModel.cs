@@ -15,7 +15,7 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>作業ツリー、コミット範囲、アドホック比較の差分表示を調停する。</summary>
-public sealed partial class DiffSessionViewModel : ObservableObject
+public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 {
     private readonly GitService _git;
     private readonly IEditorService _editor;
@@ -85,11 +85,14 @@ public sealed partial class DiffSessionViewModel : ObservableObject
         CompareBase = compareBase;
         // 基準の切替は git status の出力には現れない（ポーリング署名も動かない）ので、
         // ここで明示的に読み直さないと古い基準の一覧・差分が残る。
-        CompareBase.Changed += (_, _) =>
+        // 購読先（比較基準・GitService）はどちらも共有の Singleton なので、あとで外せるよう
+        // ハンドラーを持っておく（<see cref="Dispose"/>：切り離しウィンドウ用の複製を閉じるとき）。
+        _onCompareBaseChanged = (_, _) =>
         {
             UpdateCanDiscard();
             DispatchRefresh();
         };
+        CompareBase.Changed += _onCompareBaseChanged;
         Conflict = new DiffConflictViewModel(files, git, ClearDiffForConflict, SetStatus);
         // コンフリクト解消表示に入る／出ると、レンダリング表示を出せるかどうかが変わる（§24.10）。
         Conflict.PropertyChanged += (_, e) =>
@@ -97,7 +100,24 @@ public sealed partial class DiffSessionViewModel : ObservableObject
             if (e.PropertyName == nameof(DiffConflictViewModel.IsConflictMode))
                 NotifyMarkdownRenderState();
         };
-        _git.RepositoryChanged += (_, _) => DispatchRefresh();
+        _onRepositoryChanged = (_, _) => DispatchRefresh();
+        _git.RepositoryChanged += _onRepositoryChanged;
+    }
+
+    private readonly EventHandler _onCompareBaseChanged;
+    private readonly EventHandler _onRepositoryChanged;
+
+    /// <summary>
+    /// 共有 Singleton（比較基準・<see cref="GitService"/>）への購読を外し、監視を止める。
+    /// ペインの VM は部屋と同じ寿命なので破棄しない——これを呼ぶのは<b>切り離しウィンドウ用に
+    /// もう1つ立てた複製</b>を閉じるとき。外さないと GitService 側がこの VM を握り続け、
+    /// 閉じた窓の VM とビューがプロセス終了まで生き残って、リポジトリが動くたびに読み直し続ける。
+    /// </summary>
+    public void Dispose()
+    {
+        StopLiveTracking();
+        CompareBase.Changed -= _onCompareBaseChanged;
+        _git.RepositoryChanged -= _onRepositoryChanged;
     }
 
     private void ClearDiffForConflict()

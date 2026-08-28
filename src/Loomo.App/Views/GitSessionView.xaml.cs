@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
-using sk0ya.Loomo.Core.Git;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -27,8 +26,8 @@ public partial class GitSessionView : UserControl
     private GitSessionViewModel? _subscribedSession;
     private bool _isRevealingLogRow;
 
-    /// <summary>コミット詳細を隠す直前の高さ。再表示でユーザーがドラッグした高さへ戻すため覚えておく。</summary>
-    private GridLength _commitDetailHeight = new(140);
+    /// <summary>コミット詳細を隠す直前の幅。再表示でユーザーがドラッグした幅へ戻すため覚えておく。</summary>
+    private GridLength _commitDetailWidth = new(300);
 
     public GitSessionView()
     {
@@ -56,7 +55,6 @@ public partial class GitSessionView : UserControl
         if (_subscribedSession is not null)
             _subscribedSession.PropertyChanged += OnSessionPropertyChanged;
 
-        RenderCommitDetail();
         ApplyCommitDetailVisibility();
     }
 
@@ -67,39 +65,37 @@ public partial class GitSessionView : UserControl
     }
 
     /// <summary>
-    /// コミット詳細の表示/非表示を反映する。非表示のときは行の高さと MinHeight ごと 0 にして畳む
-    /// （中身を Collapsed にするだけでは行の固定高さが残り、空白の帯が居座るため）。
+    /// コミット詳細（グラフの右の列）の表示/非表示を反映する。非表示のときは列の幅と MinWidth ごと
+    /// 0 にして畳む（中身を Collapsed にするだけでは列の固定幅が残り、空白の帯が居座るため）。
     /// </summary>
     private void ApplyCommitDetailVisibility()
     {
         var visible = Vm?.CommitDetailVisible ?? true;
         if (visible)
         {
-            CommitDetailSplitterRow.Height = new GridLength(6);
-            CommitDetailRow.MinHeight = 60;
-            CommitDetailRow.Height = _commitDetailHeight;
+            CommitDetailSplitterColumn.Width = new GridLength(6);
+            CommitDetailColumn.MinWidth = 140;
+            CommitDetailColumn.Width = _commitDetailWidth;
             CommitDetailSplitter.Visibility = Visibility.Visible;
-            CommitDetailBox.Visibility = Visibility.Visible;
+            CommitDetailPanel.Visibility = Visibility.Visible;
         }
         else
         {
-            // ドラッグ後の実寸を覚えてから畳む（次の表示で同じ高さに戻す）
-            if (CommitDetailRow.ActualHeight > 0)
-                _commitDetailHeight = new GridLength(CommitDetailRow.ActualHeight);
+            // ドラッグ後の実寸を覚えてから畳む（次の表示で同じ幅に戻す）
+            if (CommitDetailColumn.ActualWidth > 0)
+                _commitDetailWidth = new GridLength(CommitDetailColumn.ActualWidth);
             CommitDetailSplitter.Visibility = Visibility.Collapsed;
-            CommitDetailBox.Visibility = Visibility.Collapsed;
-            CommitDetailSplitterRow.Height = new GridLength(0);
-            CommitDetailRow.MinHeight = 0;
-            CommitDetailRow.Height = new GridLength(0);
+            CommitDetailPanel.Visibility = Visibility.Collapsed;
+            CommitDetailSplitterColumn.Width = new GridLength(0);
+            CommitDetailColumn.MinWidth = 0;
+            CommitDetailColumn.Width = new GridLength(0);
         }
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(GitHistoryViewModel.CommitDetail))
-            RenderCommitDetail();
-        else if (e.PropertyName == nameof(GitHistoryViewModel.SelectedLogRow) &&
-                 Vm?.History.SelectedLogRow is { } row && !_isRevealingLogRow)
+        if (e.PropertyName == nameof(GitHistoryViewModel.SelectedLogRow) &&
+            Vm?.History.SelectedLogRow is { } row && !_isRevealingLogRow)
         {
             // Extended 選択の ListView は SelectedItem バインディングだけでは外部からの選択が
             // コンテナへ反映されない場合があるため、実体の選択も明示して画面内へ出す。
@@ -129,81 +125,75 @@ public partial class GitSessionView : UserControl
         }
     }
 
+    /// <summary>変更ファイル一覧で選択中のファイルノード（フォルダ行なら null）。</summary>
+    private CommitFileNode? SelectedCommitFile =>
+        CommitFileList.SelectedItem is CommitFileNode { IsDirectory: false } node ? node : null;
+
     /// <summary>
-    /// CommitDetail（<c>git show --stat</c> の生テキスト）を RichTextBox へ整形描画する。
-    /// 変更ファイル一覧の統計行はファイルパス部分だけを Hyperlink 化し、その他の行は素のまま流す。
-    /// 幅は表示領域へ折り返す（固定 PageWidth を与えると横スクロールバーが縦スクロールの Auto 判定と
-    /// 競合し、下端が横バーに隠れて見えなくなるため）。通常のペイン幅では stat 行は折り返さず桁も保たれる。
+    /// ダブルクリックは<b>そのファイルの差分を別ウィンドウ</b>で開く（フォルダ行は開閉に任せて何もしない）。
+    /// 一覧の主目的は「このコミットで何がどう変わったか」を見ることなので、いまの中身を開く
+    /// （＝名前のリンククリック）より差分の方が近い。ペインの差分表示は奪わない。
     /// </summary>
-    private void RenderCommitDetail()
+    private void OnCommitFileDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        var text = Vm?.History.CommitDetail ?? "";
-        var paragraph = new Paragraph { Margin = new Thickness(0) };
-        var accent = TryFindResource("Accent") as Brush ?? Brushes.SteelBlue;
-
-        var lines = text.Replace("\r\n", "\n").Split('\n');
-        for (var i = 0; i < lines.Length; i++)
+        if (Vm is { } vm && SelectedCommitFile?.NavigatePath is { } path)
         {
-            AppendLine(paragraph, lines[i], accent);
-            if (i < lines.Length - 1)
-                paragraph.Inlines.Add(new LineBreak());
-        }
-
-        var doc = new FlowDocument(paragraph)
-        {
-            FontFamily = CommitDetailBox.FontFamily,
-            FontSize = CommitDetailBox.FontSize,
-            PagePadding = new Thickness(6, 4, 6, 4),
-        };
-        CommitDetailBox.Document = doc;
-    }
-
-    /// <summary>1 行を Inline 群として追加。統計行ならパス部分を Hyperlink にする。</summary>
-    private void AppendLine(Paragraph paragraph, string line, Brush accent)
-    {
-        if (CommitStatLinks.TryParse(line) is { } stat)
-        {
-            var before = line[..stat.PathIndex];
-            var pathText = line.Substring(stat.PathIndex, stat.PathLength);
-            var after = line[(stat.PathIndex + stat.PathLength)..];
-
-            if (before.Length > 0) paragraph.Inlines.Add(new Run(before));
-            var link = new Hyperlink(new Run(pathText))
-            {
-                Foreground = accent,
-                Cursor = Cursors.Hand,
-                ToolTip = $"{stat.NavigatePath} をエディタで開く",
-                Tag = stat.NavigatePath,
-            };
-            link.Click += OnChangedFileClick;
-            paragraph.Inlines.Add(link);
-            if (after.Length > 0) paragraph.Inlines.Add(new Run(after));
-        }
-        else
-        {
-            paragraph.Inlines.Add(new Run(line));
+            e.Handled = true;
+            vm.RequestChangedFileDiffWindow(path);
         }
     }
 
-    private async void OnChangedFileClick(object sender, RoutedEventArgs e)
+    private void OnCommitFileDiffWindow(object sender, RoutedEventArgs e)
     {
-        if (Vm is { } vm && sender is Hyperlink { Tag: string path })
+        if (Vm is { } vm && SelectedCommitFile?.NavigatePath is { } path)
+            vm.RequestChangedFileDiffWindow(path);
+    }
+
+    private async void OnCommitFileOpen(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommitFile?.NavigatePath is { } path)
             await vm.OpenChangedFileAsync(path);
+    }
+
+    /// <summary>
+    /// 変更ファイル一覧のコンテキストメニューは<b>ファイル行の上でだけ</b>出す。フォルダ行には
+    /// 「開く／コピー」の対象が無く、行の外（空白域）で出すと直前に選んでいた<b>別の</b>ファイルへ
+    /// 操作が効いてしまう（右クリックは行が無ければ選択を動かさないため）。
+    /// キーボード起動（CursorLeft が負）は選択行そのものが対象なので、位置は問わない。
+    /// </summary>
+    private void OnCommitFileContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var onRow = e.CursorLeft < 0 || FindRowContainer(e.OriginalSource) is not null;
+        if (!onRow || SelectedCommitFile is null)
+            e.Handled = true;
+    }
+
+    private void OnCommitFileCopyPath(object sender, RoutedEventArgs e)
+    {
+        if (SelectedCommitFile?.NavigatePath is { } path)
+            try { Clipboard.SetText(path); } catch { /* クリップボード占有中は無視 */ }
     }
 
     /// <summary>右クリックでも対象行を選択状態にする（コンテキストメニューの対象を確定させる）。</summary>
     private void OnListRightClickSelect(object sender, MouseButtonEventArgs e)
     {
-        var element = e.OriginalSource as DependencyObject;
+        var container = FindRowContainer(e.OriginalSource);
+        if (container is ListBoxItem listItem)
+            listItem.IsSelected = true;
+        else if (container is TreeViewItem treeItem)
+            treeItem.IsSelected = true;
+    }
+
+    /// <summary>クリック元から一覧の行コンテナを遡って探す。行の外（空白域）なら null。</summary>
+    private static DependencyObject? FindRowContainer(object? originalSource)
+    {
+        var element = originalSource as DependencyObject;
         // OriginalSource が Run 等の FrameworkContentElement のことがある（VisualTreeHelper だと例外）
         while (element is not null and not ListBoxItem and not TreeViewItem)
             element = element is Visual or System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(element)
                 : LogicalTreeHelper.GetParent(element);
-        if (element is ListBoxItem listItem)
-            listItem.IsSelected = true;
-        else if (element is TreeViewItem treeItem)
-            treeItem.IsSelected = true;
+        return element;
     }
 
     // ===== ブランチ操作 =====

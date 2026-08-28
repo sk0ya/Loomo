@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Core.Git;
 
 namespace sk0ya.Loomo.Services;
 
@@ -55,7 +56,13 @@ public sealed class GitHistoryService
 
     public async Task<string> GetCommitSummaryAsync(string hash)
     {
-        var result = await _runner.RunAsync("show", "--stat", "--format=fuller", hash)
+        // --stat ではなく --numstat。--stat は幅に合わせてパスを ".../Views/Foo.xaml" と
+        // 省略するので、変更ファイル一覧をフォルダ構造へ組み直せない（CommitSummary が解析する）。
+        // 書式も fuller ではなく区切り文字つきの1レコードにする——Git ペインの詳細は
+        // グラフの右の細い列なので、fuller の "AuthorDate: ..." が何行にも折り返して
+        // 肝心のコミットコメントを画面外へ押し出してしまう（並べ替えは CommitSummary の仕事）。
+        var result = await _runner
+            .RunAsync("show", "--numstat", "--date=format:%Y-%m-%d %H:%M", "--format=" + CommitSummary.Format, hash)
             .ConfigureAwait(false);
         return result.Success ? result.Output : result.Message;
     }

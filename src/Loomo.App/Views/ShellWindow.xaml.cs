@@ -6,6 +6,7 @@ public partial class ShellWindow : Window {
     private readonly IWorkspaceService _workspace;
     private readonly CommandPaletteViewController _paletteView;
     private readonly TabIconService _tabIcons;
+    private readonly DiffSessionFactory _diffSessions;
     private readonly LoomoSettings _settings;
     private readonly TaskbarWorkspaceRecentService _taskbarWorkspaceRecent;
     private readonly ShellAppearanceCoordinator _appearance;
@@ -86,7 +87,7 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -102,6 +103,7 @@ public partial class ShellWindow : Window {
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
         _tabIcons = tabIcons;
+        _diffSessions = diffSessions;
         _settings = settings;
         _taskbarWorkspaceRecent = taskbarWorkspaceRecent;
         _appearance = new ShellAppearanceCoordinator(settings, () =>
@@ -323,6 +325,10 @@ public partial class ShellWindow : Window {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
         };
+        // コミット詳細のファイルをダブルクリック＝そのファイルの差分だけを独立した窓で開く
+        // （ペインの DIFF は動かさないので、一覧と見比べたまま何枚でも並べられる）。
+        vm.GitSession.DiffWindowRequested += (_, request) =>
+            Detached.Detach(CreateCommitDiffSpinoffItem(request));
         // 差分本体の行から、その実ファイルの同じ行をエディタで開く（行が特定できないときは 0＝開くだけ）。
         vm.DiffSession.EditorLineOpenRequested += async (_, target) => {
             await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);

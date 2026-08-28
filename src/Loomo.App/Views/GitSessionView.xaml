@@ -138,6 +138,44 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 変更ファイル一覧の1行。左＝名前（ファイルはリンク：クリックでエディタで開く）、
+             右＝フォルダは件数ピル／ファイルは増減。コンテナは BranchTreeItem を共用する
+             （矢印＋全幅ホバー＋子の左ガイド線が同じ見え方になる）。 -->
+        <HierarchicalDataTemplate x:Key="CommitFileNodeTemplate" ItemsSource="{Binding Children}">
+            <DockPanel ToolTip="{Binding ToolTipText}" Background="Transparent">
+                <!-- フォルダ行の件数ピル -->
+                <Border DockPanel.Dock="Right" Background="{DynamicResource Border}" CornerRadius="7"
+                        Padding="6,0" MinWidth="18" Height="15" Margin="6,0,2,0" VerticalAlignment="Center"
+                        Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding LeafCount}" FontSize="{DynamicResource Fs10}"
+                               Foreground="{DynamicResource Fg}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+
+                <!-- ファイル行の増減（+12 -3 ／ バイナリは Bin） -->
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ChurnLabel}" FontSize="{DynamicResource Fs10}"
+                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,1,2,0"
+                           FontFamily="Cascadia Mono, Consolas" />
+
+                <!-- 名前。ファイルは Fg、フォルダは淡色（ブランチ一覧と同じ塗り分け）。
+                     <b>リンクにはしない</b>——Hyperlink はマウスダウンを自分で握ってしまい、
+                     行のダブルクリック（＝差分を別ウィンドウ）が永久に届かなくなる。 -->
+                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </DockPanel>
+        </HierarchicalDataTemplate>
     </UserControl.Resources>
 
     <DockPanel>
@@ -370,18 +408,20 @@
                 <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" />
 
-                <!-- コミットグラフ＋詳細。詳細は Git ペインのタイトル領域のトグルで表示/非表示を
-                     切り替えられる（非表示時は行の高さごと畳む＝ApplyCommitDetailVisibility）。 -->
+                <!-- コミットグラフ＋詳細。詳細はグラフの「右」に縦に置く（変更ファイル一覧が上・
+                     コミットコメントが下）。ファイルのパスは横に長いので、下段の横帯より
+                     右の縦列の方がフォルダ構造ごと収まる。Git ペインのタイトル領域のトグルで
+                     表示/非表示を切り替えられる（非表示時は列の幅ごと畳む＝ApplyCommitDetailVisibility）。 -->
                 <Grid Grid.Column="2">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" MinHeight="100" />
-                        <RowDefinition x:Name="CommitDetailSplitterRow" Height="6" />
-                        <RowDefinition x:Name="CommitDetailRow" Height="140" MinHeight="60" />
-                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="160" />
+                        <ColumnDefinition x:Name="CommitDetailSplitterColumn" Width="6" />
+                        <ColumnDefinition x:Name="CommitDetailColumn" Width="300" MinWidth="140" />
+                    </Grid.ColumnDefinitions>
 
-                    <!-- コミットグラフ本体（Row 0）。パス履歴の絞り込み帯を上に載せるため、一覧と列幅
+                    <!-- コミットグラフ本体（Column 0）。パス履歴の絞り込み帯を上に載せるため、一覧と列幅
                          ドラッグ用オーバーレイ（両者は同座標で重ねる必要がある）を DockPanel でまとめる。 -->
-                    <DockPanel Grid.Row="0">
+                    <DockPanel Grid.Column="0">
                     <!-- ファイル／フォルダの履歴に絞っている間だけ出すスコープ帯（「✕」で解除）。 -->
                     <Border DockPanel.Dock="Top" Margin="0,0,0,2" Padding="8,4"
                             Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
@@ -491,17 +531,62 @@
                     </Grid>
                     </DockPanel>
 
-                    <GridSplitter x:Name="CommitDetailSplitter" Grid.Row="1" Height="6"
-                                  HorizontalAlignment="Stretch"
+                    <GridSplitter x:Name="CommitDetailSplitter" Grid.Column="1" Width="6"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- 選択コミットの詳細（git show の統計表示）。変更ファイル一覧のパスは
-                         リンク化してクリックでエディタで開く（描画・パース判定は code-behind）。 -->
-                    <RichTextBox x:Name="CommitDetailBox" Grid.Row="2" IsReadOnly="True" IsDocumentEnabled="True"
+                    <!-- 選択コミットの詳細。上＝変更ファイル一覧（フォルダ構造つき）、
+                         下＝コミットコメント。一覧の方が主役なので上に置き、高さも一覧へ寄せる。 -->
+                    <Grid x:Name="CommitDetailPanel" Grid.Column="2" Background="{DynamicResource BgAlt}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="2*" MinHeight="60" />
+                            <RowDefinition Height="6" />
+                            <RowDefinition Height="1*" MinHeight="48" />
+                        </Grid.RowDefinitions>
+
+                        <DockPanel Grid.Row="0">
+                            <!-- 見出し兼サマリ（「12 ファイル +34 -5」）。一覧が空のときも帯は残す
+                                 （詳細列がどこの何なのかが常に分かるように）。 -->
+                            <TextBlock DockPanel.Dock="Top" Margin="8,4,8,2"
+                                       FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis">
+                                <Run Text="変更ファイル" /><Run Text="  " /><Run
+                                    Text="{Binding History.CommitFileSummary, Mode=OneWay}"
+                                    FontWeight="Normal" />
+                            </TextBlock>
+                            <TreeView x:Name="CommitFileList" Background="Transparent" BorderThickness="0"
+                                      Foreground="{DynamicResource Fg}"
+                                      ItemsSource="{Binding History.CommitFiles}"
+                                      ItemContainerStyle="{StaticResource BranchTreeItem}"
+                                      ItemTemplate="{StaticResource CommitFileNodeTemplate}"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                      PreviewMouseRightButtonDown="OnListRightClickSelect"
+                                      ContextMenuOpening="OnCommitFileContextMenuOpening"
+                                      MouseDoubleClick="OnCommitFileDoubleClick">
+                                <TreeView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="差分を別ウィンドウで表示" Click="OnCommitFileDiffWindow"
+                                                  FontWeight="SemiBold" />
+                                        <MenuItem Header="エディタで開く" Click="OnCommitFileOpen" />
+                                        <MenuItem Header="パスをコピー" Click="OnCommitFileCopyPath" />
+                                    </ContextMenu>
+                                </TreeView.ContextMenu>
+                            </TreeView>
+                        </DockPanel>
+
+                        <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
+                                      Background="{DynamicResource Border}" />
+
+                        <!-- コミットコメント（件名・本文と、その下にハッシュ／作者／日時の1行）。
+                             選択・コピーできるよう読み取り専用の TextBox にする（狭い列なので折り返す）。 -->
+                        <TextBox Grid.Row="2" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                 Text="{Binding History.CommitMessage, Mode=OneWay}"
+                                 TextWrapping="Wrap" AcceptsReturn="True"
                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                  FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs12}"
-                                 Foreground="{DynamicResource Fg}"
-                                 BorderThickness="0" Background="{DynamicResource BgAlt}" />
+                                 Foreground="{DynamicResource Fg}" Padding="6,4"
+                                 BorderThickness="0" Background="Transparent" />
+                    </Grid>
                 </Grid>
             </Grid>
         </DockPanel>

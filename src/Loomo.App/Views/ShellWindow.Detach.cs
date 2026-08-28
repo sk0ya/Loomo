@@ -202,6 +202,42 @@ public partial class ShellWindow {
         _ = RealizeSpinoffBrowserAsync(host, view, url, item);
         return item;
     }
+    /// <summary>
+    /// コミット詳細の1ファイルの差分を、独立した切り離しウィンドウで開く（Git ペインのダブルクリック）。
+    ///
+    /// <para>VM は <see cref="DiffSessionFactory"/> で<b>もう1つ立てる</b>——DIFF ペインの VM は部屋が
+    /// ひとつ持っている状態なので、そこへ流し込むとペインで見ていた差分が奪われる。立てた VM は共有
+    /// Singleton（GitService・比較基準）を購読するので、窓を閉じるときに <c>Dispose</c> する。</para>
+    ///
+    /// <para>ビューは XAML から生えないぶん、ペインが ShellWindow のコンストラクタで受け取っているのと
+    /// 同じ物（レンダリング表示の WebView2 ファクトリ、リンク・エディタ行への中継）をここで渡す。
+    /// 一時ページ名だけはペインと分ける（既定名のままだと互いの本文を上書きし合う）。</para>
+    /// </summary>
+    private DetachedItem CreateCommitDiffSpinoffItem(CommitFileDiffRequest request) {
+        var vm = _diffSessions.Create();
+        var view = new DiffSessionView { DataContext = vm };
+        view.ConfigureMarkdownRender(
+            _editorSupport.WebView.ViewFactory, EditorSupportPreviewFolder, Guid.NewGuid().ToString("N"));
+        view.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
+        // 差分の行から実ファイルを開く／コミットを Git ペインで選ぶ——どちらもメイン側の持ち場なので、
+        // ペインの VM と同じ経路へ中継してメインウィンドウを前に出す。
+        vm.EditorLineOpenRequested += async (_, target) => {
+            await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);
+            Activate();
+            FocusPane(PaneKind.Editor);
+        };
+        vm.CommitOpenInGitRequested += async (_, hash) => {
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
+            await _vm.GitSession.SelectCommitAsync(hash);
+            Activate();
+            FocusPane(PaneKind.Git);
+        };
+        var title = $"{Path.GetFileName(request.FullPath)} — {request.Label}";
+        var item = new DetachedItem(
+            DetachKind.DiffSpinoff, title, view, _tabIcons.GetFileIcon(request.FullPath), vm.Dispose);
+        _ = vm.ShowCommitFileAsync(request.Hash, request.Label, request.FullPath, lineInCommit: 0);
+        return item;
+    }
     private static void DisposeSpinoffBrowser(Panel host) {
         foreach (var view in host.Children.OfType<WebView2CompositionControl>().ToList())
             try { view.Dispose(); } catch { }

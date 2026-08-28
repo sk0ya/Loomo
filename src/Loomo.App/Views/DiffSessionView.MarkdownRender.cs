@@ -49,13 +49,18 @@ public partial class DiffSessionView
     /// ホスト（ShellWindow）から WebView2 の作り方と一時ページの置き場を受け取る。この UserControl は
     /// XAML から生えるので DI が届かない——渡されなければレンダリング表示は動かない（テキスト差分は通常どおり）。
     /// </summary>
-    public void ConfigureMarkdownRender(IEditorSupportViewFactory factory, string previewFolder)
+    /// <param name="instanceKey">一時ページのファイル名を分ける鍵。Diff のビューは<b>同時に複数</b>
+    /// 生きうる（ペイン＋切り離しウィンドウ）ので、既定名のままだと互いの本文を上書きし合って、
+    /// 窓を開けた瞬間からペイン側のレンダリング表示まで壊れる。</param>
+    public void ConfigureMarkdownRender(
+        IEditorSupportViewFactory factory, string previewFolder, string? instanceKey = null)
     {
         _markdownViewFactory = factory;
         // EditorSupport のプレビューと同じフォルダーを共有しつつ、ファイル名は分ける
         // （同じ名前だと互いの本文を上書きし合う）。掃除の glob（preview-*.html）には引っかかる名前にする。
+        var suffix = string.IsNullOrEmpty(instanceKey) ? "" : $"-{instanceKey}";
         _markdownNavigation = new EditorSupportNavigationService(
-            previewFolder, $"preview-diff-{Environment.ProcessId}.html");
+            previewFolder, $"preview-diff-{Environment.ProcessId}{suffix}.html");
         // 落ちたインスタンスや前回の版が置いていった一時ページの掃除（起動を待たせないよう裏で）。
         var navigation = _markdownNavigation;
         Task.Run(() => navigation.CleanStalePages(TimeSpan.FromDays(1)));

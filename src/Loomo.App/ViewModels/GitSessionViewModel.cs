@@ -145,6 +145,10 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
     public event EventHandler? DiffOpenRequested;
 
+    /// <summary>コミット詳細の1ファイルを、独立した差分ウィンドウで見たい
+    /// （ShellWindow が切り離しウィンドウを開く）。ペインの表示対象は動かさない。</summary>
+    public event EventHandler<CommitFileDiffRequest>? DiffWindowRequested;
+
     /// <summary>GitHubのページを内蔵ブラウザで開く要求。</summary>
     public event EventHandler<string>? OpenHostingUrlRequested;
 
@@ -414,6 +418,19 @@ public sealed partial class GitSessionViewModel : ObservableObject
         DiffOpenRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// コミット詳細の変更ファイル一覧から、そのファイル1つの差分を<b>別ウィンドウ</b>で開く。
+    /// 対象は「一覧で選んでいるコミット × 渡されたパス」。削除されたファイルでも差分は見られるので、
+    /// 作業ツリーに実体があるかは問わない（<see cref="GitSessionQuery.ToFullPath"/> で素直に解決する）。
+    /// </summary>
+    public void RequestChangedFileDiffWindow(string relativePath)
+    {
+        if (History.SelectedLogRow is not { Hash: { } hash } row) return;
+        if (_query.ToFullPath(relativePath) is not { } fullPath) return;
+        DiffWindowRequested?.Invoke(this,
+            new CommitFileDiffRequest(hash, $"コミット {row.ShortHash}", fullPath));
+    }
+
     /// <summary>コミットのフルパッチをエディタの仮想ドキュメントで開く。</summary>
     public async Task OpenPatchAsync(GitLogRow row)
     {
@@ -552,3 +569,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [RelayCommand] private Task AbortOperationAsync() => Commands.AbortAsync(_status);
 
 }
+
+/// <summary>1コミットの1ファイルを差分ウィンドウで開く要求。</summary>
+/// <param name="Hash">対象コミット（親との差分を見る）。</param>
+/// <param name="Label">ウィンドウ・ヘッダーに出す対象の呼び名（「コミット 0c92f1e」）。</param>
+/// <param name="FullPath">対象ファイルの絶対パス。マルチルートで対象リポジトリを決めるのにも使う。</param>
+public readonly record struct CommitFileDiffRequest(string Hash, string Label, string FullPath);
