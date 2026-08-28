@@ -474,8 +474,11 @@
                         </DockPanel>
                     </Border>
                     <Grid>
-                    <!-- 列幅は GridView の列見出し境界をドラッグして調整できる（作者・日時が固定幅で
-                         コミットメッセージを圧迫し、狭いペインで見出しがほぼ読めなくなる問題への対処）。 -->
+                    <!-- 列幅は列境界をドラッグして調整できる（作者・日時が固定幅でコミットメッセージを
+                         圧迫し、狭いペインで見出しがほぼ読めなくなる問題への対処）。ここの Width は
+                         初期値で、幅の余りは先頭列（コミット）が吸って一覧の右端まで埋める
+                         ＝日時の右境界は常に詳細列の GridSplitter と重なる
+                         （GitSessionView.LogColumnResize.cs）。 -->
                     <ListView x:Name="LogList" Style="{StaticResource GitList}"
                              ItemContainerStyle="{StaticResource GitLogListItem}"
                              ItemsSource="{Binding History.LogView}"
