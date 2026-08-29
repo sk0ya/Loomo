@@ -216,6 +216,9 @@ public partial class ShellWindow {
     private DetachedItem CreateCommitDiffSpinoffItem(CommitFileDiffRequest request) {
         var vm = _diffSessions.Create();
         var view = new DiffSessionView { DataContext = vm };
+        // この窓にはペインヘッダーが無い＝ヘッダーへ集約した操作（次/前の差分・エディタで開く・
+        // 左右/統合・Markdown 描画・Git 一覧で表示）が丸ごと欠ける。ビュー自前のバーで同じ物を出す。
+        view.ShowStandaloneToolbar();
         view.ConfigureMarkdownRender(
             _editorSupport.WebView.ViewFactory, EditorSupportPreviewFolder, Guid.NewGuid().ToString("N"));
         view.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
@@ -235,6 +238,15 @@ public partial class ShellWindow {
         var title = $"{Path.GetFileName(request.FullPath)} — {request.Label}";
         var item = new DetachedItem(
             DetachKind.DiffSpinoff, title, view, _tabIcons.GetFileIcon(request.FullPath), vm.Dispose);
+        // 「次の差分」はファイルの端を越えると同じコミットの隣のファイルへ移る（＝窓の中身が別ファイルに
+        // なる）ので、タブのタイトルとアイコンも今見ているファイルへ追従させる——開いたときの名前のまま
+        // だと、どのファイルを読んでいるのか窓の側から分からなくなる。
+        vm.PropertyChanged += (_, e) => {
+            if (e.PropertyName != nameof(DiffSessionViewModel.SelectedFile)) return;
+            if (vm.SelectedFile is not { FullPath.Length: > 0 } file) return;
+            item.Title = $"{Path.GetFileName(file.FullPath)} — {request.Label}";
+            item.Icon = _tabIcons.GetFileIcon(file.FullPath);
+        };
         _ = vm.ShowCommitFileAsync(request.Hash, request.Label, request.FullPath, lineInCommit: 0);
         return item;
     }

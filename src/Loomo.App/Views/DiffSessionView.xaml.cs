@@ -1,4 +1,4 @@
-using Editor.Core.Syntax;
+﻿using Editor.Core.Syntax;
 using sk0ya.Loomo.App.Services;
 using System;
 using System.Collections.Generic;
@@ -55,6 +55,27 @@ public partial class DiffSessionView : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
+
+    /// <summary>
+    /// ペインヘッダーを持たないホスト（Git のコミット詳細からダブルクリックで開く切り離しウィンドウ）で、
+    /// このビュー自前のツールバーを出す。ペインでは ShellWindow 側のヘッダーが同じ操作を持っているので
+    /// 既定は非表示——両方出すと同じボタンが二段になる。
+    /// </summary>
+    public void ShowStandaloneToolbar()
+    {
+        StandaloneToolbar.Visibility = Visibility.Visible;
+        _standalone = true;
+        if (IsLoaded)
+            FocusSelfForKeys();
+    }
+
+    /// <summary>切り離しホストか（＝自前ツールバーと、開いた直後のキーフォーカスを持つか）。</summary>
+    private bool _standalone;
+
+    /// <summary>開いた直後から F8／Alt+↓ が効くように、このビュー自身へキーフォーカスを置く
+    /// （<c>UserControl.InputBindings</c> はフォーカスの経路に居ないと拾われない）。</summary>
+    private void FocusSelfForKeys()
+        => Dispatcher.BeginInvoke(new Action(() => Focus()), DispatcherPriority.Loaded);
 
     // ===== エディタ配色の購読 =====
     // エディタの配色を変えたら差分の構文色も付け直す。ただし購読先は**静的イベント**なので、
@@ -432,6 +453,8 @@ public partial class DiffSessionView : UserControl
     {
         HookSyntaxColors();
         ReattachMarkdownWebIfMoved();
+        if (_standalone)
+            FocusSelfForKeys();
         // 以下（自分の子コントロールへの購読）は1度だけ——Loaded はペインの再ペアレントのたびに走り、
         // 二度目からは同じハンドラが積み上がるだけで、子は同じインスタンスのまま生き続けている。
         if (_viewHooked) return;
