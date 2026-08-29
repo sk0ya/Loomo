@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -163,7 +163,8 @@ internal sealed class DetachedWindowManager
             return;
         _dropConsumed = true;
         if (ReferenceEquals(_dragSource, target))
-            return; // 同一ウィンドウ内ドロップは何もしない（並べ替えは未対応）
+            return; // 同一ウィンドウ内ドロップは何もしない（帯の中の並べ替えは
+                    // DetachedPaneWindow.TabDrag の自前追従が済ませている）
 
         _dragSource.RemoveItem(item, dispose: false);
         target.AddItem(item);

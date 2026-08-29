@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,6 +34,67 @@ public class DetachedPaneWindowTests
             restoredBounds: new Rect(100, 100, 1000, 700));
 
         Assert.Equal(new Point(200, 8), position);
+    }
+
+    // タブ3枚：A[0..160] B[160..310] C[310..430]（中心 80 / 235 / 370）。
+    private static readonly double[] Centers = { 80.0, 235.0, 370.0 };
+
+    [Fact]
+    public void 右へ運んだタブは右端が隣の中心を越えたところで入れ替わる()
+    {
+        // A(幅160)を掴んで右へ。右端が B の中心(235)を越える＝左端 75 を過ぎたら B と入れ替わる。
+        Assert.Equal(0, DetachedPaneWindow.CalculateReorderIndex(Centers, 0, draggedLeft: 70, draggedRight: 230));
+        Assert.Equal(1, DetachedPaneWindow.CalculateReorderIndex(Centers, 0, draggedLeft: 80, draggedRight: 240));
+        Assert.Equal(2, DetachedPaneWindow.CalculateReorderIndex(Centers, 0, draggedLeft: 220, draggedRight: 380));
+    }
+
+    [Fact]
+    public void 左へ運んだタブは左端が手前の中心を越えたところで入れ替わる()
+    {
+        Assert.Equal(2, DetachedPaneWindow.CalculateReorderIndex(Centers, 2, draggedLeft: 240, draggedRight: 360));
+        Assert.Equal(1, DetachedPaneWindow.CalculateReorderIndex(Centers, 2, draggedLeft: 230, draggedRight: 350));
+        Assert.Equal(0, DetachedPaneWindow.CalculateReorderIndex(Centers, 2, draggedLeft: 70, draggedRight: 190));
+    }
+
+    [Fact]
+    public void 幅の広いタブでも末尾へ届く()
+    {
+        // 中心どうしで比べていたときの取りこぼし：掴んだタブ(幅160)は帯の内側へクランプされるので、
+        // 隣(幅150)より広いと中心が隣の中心を越えられず、右端まで運んでも末尾へ行けなかった。
+        var centers = new[] { 80.0, 235.0 };   // A[0..160] B[160..310]、クランプ後の A の左端は最大 150
+
+        Assert.Equal(1, DetachedPaneWindow.CalculateReorderIndex(centers, 0, draggedLeft: 150, draggedRight: 310));
+    }
+
+    [Fact]
+    public void 入れ替えの境目は左右どちらへ運んでも同じで行き来しても暴れない()
+    {
+        // A を右へ運んで B と入れ替えた直後（A は index 1・左端 76）、そのまま押し戻さない限り戻らない。
+        var afterSwap = new[] { 75.0, 230.0 };   // B[0..150] A[150..310]
+
+        Assert.Equal(1, DetachedPaneWindow.CalculateReorderIndex(afterSwap, 1, draggedLeft: 76, draggedRight: 236));
+        Assert.Equal(0, DetachedPaneWindow.CalculateReorderIndex(afterSwap, 1, draggedLeft: 74, draggedRight: 234));
+    }
+
+    [Fact]
+    public void コンテナ未生成のタブは並べ替えの判定から外す()
+    {
+        // 中心が取れないタブ（NaN）は境目に数えない＝掴んだタブが勝手に飛ばない。
+        var centers = new[] { 80.0, double.NaN, 370.0 };
+
+        Assert.Equal(0, DetachedPaneWindow.CalculateReorderIndex(centers, 0, draggedLeft: 70, draggedRight: 230));
+        Assert.Equal(-1, DetachedPaneWindow.CalculateReorderIndex(centers, 5, draggedLeft: 70, draggedRight: 230));
+    }
+
+    [Fact]
+    public void ドラッグ中の案内は離したときに起きることを出す()
+    {
+        Assert.Equal("離すと新しいウィンドウ", TabDragGhost.HintFor(DragDropEffects.None));
+        Assert.Equal("このタブ帯へ入れる", TabDragGhost.HintFor(DragDropEffects.Move));
+
+        // 1枚だけの切り離し窓から引き出しても分かれない（EndDrag が弾く）ので、起きないことを約束しない。
+        Assert.Equal("すでに単独のウィンドウ", TabDragGhost.HintFor(DragDropEffects.None, canSplit: false));
+        Assert.Equal("このタブ帯へ入れる", TabDragGhost.HintFor(DragDropEffects.Move, canSplit: false));
     }
 
     [Fact]
@@ -113,6 +175,54 @@ public class DetachedPaneWindowTests
             item.Dispose();
             item.Dispose();
             Assert.Equal(1, count);
+        });
+    }
+
+    [Fact]
+    public void タブが増えてもキャプションボタンとドラッグ領域は帯に残る()
+    {
+        RunSta(() =>
+        {
+            var window = NewWindow();
+            for (var i = 0; i < 12; i++)
+                window.AddItem(NewItem($"とても長いタブのタイトル {i}"));
+
+            const double barWidth = 500;
+            window.TitleBar.Measure(new Size(barWidth, 34));
+            window.TitleBar.Arrange(new Rect(0, 0, barWidth, 34));
+            window.TitleBar.UpdateLayout();
+
+            // タブ帯は残り幅で打ち切られ、あふれた分はスクロールへ回る（＝伸び続けない）。
+            Assert.True(window.TabStripScrollViewer.ScrollableWidth > 0, "あふれた分はスクロールで送る");
+
+            // キャプションボタンは帯の右端に収まり、タブ帯との間にはウィンドウ移動用の掴みしろが残る。
+            var buttonsLeft = window.CaptionButtons.TransformToAncestor(window.TitleBar)
+                .Transform(new Point(0, 0)).X;
+            var stripRight = window.TabStripScrollViewer.TransformToAncestor(window.TitleBar)
+                .Transform(new Point(window.TabStripScrollViewer.ActualWidth, 0)).X;
+
+            Assert.Equal(barWidth - window.CaptionButtons.ActualWidth, buttonsLeft, precision: 3);
+            Assert.True(buttonsLeft - stripRight >= 48, $"掴みしろが足りない（{buttonsLeft - stripRight}px）");
+        });
+    }
+
+    [Fact]
+    public void タブ一覧はタブ帯と同じ並びの全件を映す()
+    {
+        RunSta(() =>
+        {
+            var window = NewWindow();
+            var a = NewItem("A");
+            var b = NewItem("B");
+            window.AddItem(a);
+            window.AddItem(b);
+
+            // 一覧は帯と同じ実体（_items）を直接映す＝あふれても件数も並びもズレない。
+            Assert.Same(window.TabStripItems.ItemsSource, window.TabOverflowList.ItemsSource);
+            Assert.Equal(new[] { a, b }, window.TabOverflowList.ItemsSource.Cast<DetachedItem>());
+
+            window.RemoveItem(a, dispose: true);
+            Assert.Equal(new[] { b }, window.TabOverflowList.ItemsSource.Cast<DetachedItem>());
         });
     }
 

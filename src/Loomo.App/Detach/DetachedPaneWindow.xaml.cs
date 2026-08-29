@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using sk0ya.Loomo.App.Detach;
 using sk0ya.Loomo.App.Services;
 
@@ -28,14 +29,12 @@ public partial class DetachedPaneWindow : Window
     private readonly DetachedWindowManager _manager;
     private readonly ObservableCollection<DetachedItem> _items = new();
 
-    private Point _dragStart;
-    private DetachedItem? _pressedItem;
-
     internal DetachedPaneWindow(DetachedWindowManager manager)
     {
         _manager = manager;
         InitializeComponent();
         TabStripItems.ItemsSource = _items;
+        TabOverflowList.ItemsSource = _items;
         Closed += OnWindowClosed;
         StateChanged += (_, _) => MaxRestoreButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
         LocationChanged += (_, _) => _manager.NotifyChanged();
@@ -64,6 +63,11 @@ public partial class DetachedPaneWindow : Window
     /// <summary>タイトルバーの空き領域ドラッグでウィンドウ移動（ダブルクリックで最大化トグル）。タブ・ボタン上は無視。</summary>
     private void OnCaptionMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // タブ一覧のポップアップは別 HWND だが、押下は論理的な親である TitleBar まで浮いてくる。
+        // 行ボタンの外側（枠や 4px の余白）を押しただけでウィンドウが動き出さないよう、帯そのものの
+        // 上で押されたときだけ受ける。
+        if (!IsWithinTitleBar(e.OriginalSource))
+            return;
         if (ResolveItem(e.OriginalSource) is not null || IsWithinButton(e.OriginalSource))
             return;
         if (e.ClickCount == 2)
@@ -105,6 +109,16 @@ public partial class DetachedPaneWindow : Window
         return new Point(
             cursor.X - restoredBounds.Width * horizontalRatio,
             cursor.Y - captionPoint.Y);
+    }
+
+    /// <summary>押された要素が帯そのもの（＝この窓の視覚ツリー）の中か。ポップアップの中身は別の
+    /// 視覚ツリー（PopupRoot）に居るので、ここで弾かれる。</summary>
+    private bool IsWithinTitleBar(object source)
+    {
+        for (var d = source as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
+            if (ReferenceEquals(d, TitleBar))
+                return true;
+        return false;
     }
 
     private static bool IsWithinButton(object source)
@@ -194,6 +208,7 @@ public partial class DetachedPaneWindow : Window
             it.Content.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         }
         Title = $"{item.Title} — Loomo";
+        QueueActiveTabIntoView();
         _manager.NotifyChanged();
     }
 
@@ -258,59 +273,57 @@ public partial class DetachedPaneWindow : Window
         }
     }
 
-    // ===== ウィンドウ間ドラッグ&ドロップ =====
-
-    private void OnTabPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    /// <summary>「▾」：あふれて見えなくなったタブも含む全件を一覧表示し、クリックで直接アクティブ化する
+    /// （本体のタブ帯の <c>OnTabOverflowClick</c> と同じ導線。一覧は <c>_items</c> をそのまま映す）。</summary>
+    private void OnTabOverflowClick(object sender, RoutedEventArgs e)
     {
-        _dragStart = e.GetPosition(this);
-        _pressedItem = ResolveItem(e.OriginalSource);
+        TabOverflowPopup.PlacementTarget = TabOverflowButton;
+        TabOverflowPopup.IsOpen = _items.Count > 0;
     }
 
-    private void OnTabPreviewMouseMove(object sender, MouseEventArgs e)
+    private void OnTabOverflowItemClick(object sender, RoutedEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _pressedItem is null)
-            return;
-
-        var pos = e.GetPosition(this);
-        if (Math.Abs(pos.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance
-            && Math.Abs(pos.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
-            return;
-
-        var item = _pressedItem;
-        _pressedItem = null;
-
-        // 子要素（閉じるボタン等）がマウスをキャプチャしていると DoDragDrop が始まらないため解放する。
-        if (Mouse.Captured is not null)
-            Mouse.Capture(null);
-
-        _manager.BeginDrag(item, this);
-        try
-        {
-            var data = new DataObject(DetachDragFormat, item.Id.ToString());
-            var result = DragDrop.DoDragDrop(TabStripItems, data, DragDropEffects.Move);
-            _manager.EndDrag(result);
-        }
-        finally
-        {
-            _manager.ClearDrag();
-        }
+        TabOverflowPopup.IsOpen = false;
+        if (sender is FrameworkElement { DataContext: DetachedItem item } && _items.Contains(item))
+            SetActive(item);
     }
 
-    private void OnTabStripDragOver(object sender, DragEventArgs e)
+    // ===== タブ帯のスクロール =====
+
+    /// <summary>帯からあふれたタブはホイールで送る（Editor ペインの帯と同じ流儀＝横スクロールバーは出さない）。</summary>
+    private void OnTabStripMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        e.Effects = _manager.IsDragging && e.Data.GetDataPresent(DetachDragFormat)
-            ? DragDropEffects.Move
-            : DragDropEffects.None;
+        if (sender is not ScrollViewer viewer || viewer.ScrollableWidth <= 0)
+            return;
+        viewer.ScrollToHorizontalOffset(
+            Math.Clamp(viewer.HorizontalOffset - e.Delta, 0, viewer.ScrollableWidth));
         e.Handled = true;
     }
 
-    private void OnTabStripDrop(object sender, DragEventArgs e)
+    /// <summary>アクティブなタブを帯の見える範囲へ寄せる（あふれた先のタブを選んでも隠れたままにしない）。
+    /// レイアウト後でないと位置が定まらないので <see cref="DispatcherPriority.Loaded"/> で後追いする。</summary>
+    private void QueueActiveTabIntoView()
+        => Dispatcher.BeginInvoke(new Action(ScrollActiveTabIntoView), DispatcherPriority.Loaded);
+
+    private void ScrollActiveTabIntoView()
     {
-        if (_manager.IsDragging && e.Data.GetDataPresent(DetachDragFormat))
-        {
-            e.Handled = true;
-            _manager.DropOnto(this);
-        }
+        // 並べ替え中は寄せない。掴んだタブは追従の <c>TranslateTransform</c> の分だけ右にずれて見えるので、
+        // その位置で寄せると帯がドラッグの下で動き、掴んだタブがカーソルから離れて見える。
+        if (_reorderItem is not null || TabStripScrollViewer.ViewportWidth <= 0)
+            return;
+        TabStripItems.UpdateLayout();
+        if (_items.FirstOrDefault(i => i.IsActive) is not { } active
+            || ContainerFor(active) is not { IsVisible: true } container)
+            return;
+
+        var bounds = container.TransformToAncestor(TabStripScrollViewer)
+            .TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+        if (bounds.Left < 0)
+            TabStripScrollViewer.ScrollToHorizontalOffset(
+                Math.Max(0, TabStripScrollViewer.HorizontalOffset + bounds.Left));
+        else if (bounds.Right > TabStripScrollViewer.ViewportWidth)
+            TabStripScrollViewer.ScrollToHorizontalOffset(
+                TabStripScrollViewer.HorizontalOffset + bounds.Right - TabStripScrollViewer.ViewportWidth);
     }
 
     /// <summary>イベントの発生元要素から、それが属するタブの <see cref="DetachedItem"/> を辿る。</summary>

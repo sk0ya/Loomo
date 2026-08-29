@@ -458,11 +458,22 @@ public partial class ShellWindow {
             TabOverflowPopupList.Children.Add(row);
         }
     }
+    /// <summary>ペインのタブを帯の外へ引き出すドラッグ。切り離しウィンドウ側と同じ演出——運んでいるタブを
+    /// カーソルに付け（<see cref="TabDragGhost"/>）、元のタブは薄く残す（設計書 §21.4 の「タブが動く」の続き）。</summary>
     private void StartPaneTabTearOff(Guid id, UIElement? source) {
         if (source is null || BuildTearOffFactory(id) is not { } factory)
             return;
         if (Mouse.Captured is not null)
             Mouse.Capture(null);
+        var entry = FindPaneTabEntry(id);
+        var container = entry is not null && source is ItemsControl host
+            ? host.ItemContainerGenerator.ContainerFromItem(entry) as FrameworkElement
+            : null;
+        if (container is not null)
+            container.Opacity = TabDragGhost.TornSourceOpacity;
+        using var ghost = TabDragGhost.Show(this, entry?.Title ?? "タブ", entry?.Icon);
+        void OnGiveFeedback(object _, GiveFeedbackEventArgs e) => ghost.Follow(e.Effects);
+        source.GiveFeedback += OnGiveFeedback;
         Detached.BeginExternalDrag(factory);
         QueryContinueDragEventHandler onQcd = (_, e) => { if (e.EscapePressed) Detached.CancelDrag(); };
         source.QueryContinueDrag += onQcd;
@@ -472,9 +483,17 @@ public partial class ShellWindow {
             Detached.EndDrag(result);
         } finally {
             source.QueryContinueDrag -= onQcd;
+            source.GiveFeedback -= OnGiveFeedback;
+            if (container is not null)
+                container.Opacity = 1;   // 引き出せていれば元タブごと消えている（残ったときのために戻す）
             Detached.ClearDrag();
         }
     }
+    /// <summary>タブ帯の表示用エントリ（ゴーストに出す名前とアイコンの出どころ）。</summary>
+    private TabEntryViewModel? FindPaneTabEntry(Guid id)
+        => _vm.Tabs.EditorTabs.FirstOrDefault(t => t.Id == id)
+           ?? _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == id)
+           ?? _vm.Tabs.BrowserTabs.FirstOrDefault(t => t.Id == id);
     private Func<DetachedItem>? BuildTearOffFactory(Guid id) {
         if (_editorTabs.Any(t => t.Id == id))
             return () => {
