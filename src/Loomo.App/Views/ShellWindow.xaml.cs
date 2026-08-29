@@ -321,14 +321,11 @@ public partial class ShellWindow : Window {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files);
             FocusPane(PaneKind.Files);
         };
-        vm.GitSession.DiffOpenRequested += (_, _) => {
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
-            FocusPane(PaneKind.Diff);
-        };
+        vm.GitSession.DiffOpenRequested += (_, target) => ShowDiff(target);
         // コミット詳細のファイルをダブルクリック＝そのファイルの差分だけを独立した窓で開く
         // （ペインの DIFF は動かさないので、一覧と見比べたまま何枚でも並べられる）。
-        vm.GitSession.DiffWindowRequested += (_, request) =>
-            Detached.Detach(CreateCommitDiffSpinoffItem(request));
+        vm.GitSession.DiffWindowRequested += (_, request) => Detached.Detach(CreateDiffSpinoffItem(
+            new DiffOpenTarget.CommitFile(request.Hash, request.Label, request.FullPath, LineInCommit: 0)));
         // 差分本体の行から、その実ファイルの同じ行をエディタで開く（行が特定できないときは 0＝開くだけ）。
         vm.DiffSession.EditorLineOpenRequested += async (_, target) => {
             await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);
@@ -339,10 +336,7 @@ public partial class ShellWindow : Window {
             await vm.GitSession.SelectCommitAsync(hash);
             FocusPane(PaneKind.Git);
         };
-        vm.GitPanel.DiffOpenRequested += (_, _) => {
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
-            FocusPane(PaneKind.Diff);
-        };
+        vm.GitPanel.DiffOpenRequested += (_, target) => ShowDiff(target);
         vm.GitSession.OpenHostingUrlRequested += (_, url) => _ = OpenUrlInBrowserAsync(url, null);
         vm.GitSession.RepositoryChanged += (_, _) =>
             Dispatcher.BeginInvoke(new Action(() => _ = RefreshOpenEditorTabsFromDiskAsync()));

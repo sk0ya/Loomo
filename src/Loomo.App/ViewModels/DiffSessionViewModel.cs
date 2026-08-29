@@ -217,6 +217,31 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             AutoJumpRequested?.Invoke();
     }
 
+    /// <summary>
+    /// 表示要求（<see cref="DiffOpenTarget"/>）を、この VM の対応する表示へ振り分ける唯一の入口。
+    /// ペインの VM と切り離しウィンドウの VM が<b>同じ要求を同じように</b>開けることが要点——
+    /// ここが1本でないと「ペインが隠れていたら別ウィンドウ」が出し先ごとに別機能になってしまう。
+    /// ペインの表示・フォーカス・窓を開くのは呼び出し側（ShellWindow）の仕事。
+    /// </summary>
+    public Task ShowAsync(DiffOpenTarget target)
+    {
+        switch (target)
+        {
+            case DiffOpenTarget.Comparison c:
+                ShowComparison(c.Value);
+                return Task.CompletedTask;
+            case DiffOpenTarget.CommitRange r:
+                ShowCommitRange(r.FromHash, r.ToHash, r.Label);
+                return Task.CompletedTask;
+            case DiffOpenTarget.CommitFile f:
+                return ShowCommitFileAsync(f.Hash, f.Label, f.Path, f.LineInCommit);
+            case DiffOpenTarget.WorkingTreeFile w:
+                return ShowWorkingTreeFileAsync(w.Entry, w.IsStaged);
+            default:
+                return Task.CompletedTask;
+        }
+    }
+
     /// <summary>Git コミット範囲の差分を表示する。</summary>
     public void ShowCommitRange(string? fromHash, string toHash, string label)
     {

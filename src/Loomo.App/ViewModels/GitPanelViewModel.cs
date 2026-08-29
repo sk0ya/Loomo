@@ -186,10 +186,10 @@ public sealed partial class GitPanelViewModel : ObservableObject
     private readonly GitService _git;
     private readonly IEditorService _editor;
     private readonly IWorkspaceService _workspace;
-    private readonly DiffSessionViewModel _diff;
 
-    /// <summary>「差分を開く」操作：Diff ペインの表示を呼び出し側（ShellWindow）へ要求する。</summary>
-    public event EventHandler? DiffOpenRequested;
+    /// <summary>「差分を開く」操作：何の差分かだけを渡して表示を要求する（Diff ペインへ出すか、
+    /// ペインが隠れていれば別ウィンドウで開くかは ShellWindow が決める）。</summary>
+    public event EventHandler<DiffOpenTarget>? DiffOpenRequested;
 
     /// <summary>初回の読込を済ませたか。Git パネルを開くまで遅延する。</summary>
     private bool _loaded;
@@ -266,13 +266,12 @@ public sealed partial class GitPanelViewModel : ObservableObject
     public GitCompareBaseViewModel CompareBase { get; }
 
     public GitPanelViewModel(
-        GitService git, IEditorService editor, IWorkspaceService workspace, DiffSessionViewModel diff,
+        GitService git, IEditorService editor, IWorkspaceService workspace,
         GitRootSwitchViewModel rootSwitch, GitCompareBaseViewModel compareBase)
     {
         _git = git;
         _editor = editor;
         _workspace = workspace;
-        _diff = diff;
         RootSwitch = rootSwitch;
         CompareBase = compareBase;
         // 基準が変わったら一覧を組み直す（ポーリング署名は git status しか見ないので、
@@ -711,13 +710,13 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await _editor.OpenFileAsync(fullPath);
     }
 
-    /// <summary>変更行のコンテキストメニュー「差分を開く」：その作業ツリー差分を Diff ペインで開く。</summary>
+    /// <summary>変更行のコンテキストメニュー「差分を開く」：その作業ツリー差分を見せてほしいと頼む
+    /// （Diff ペインで開くか、ペインが隠れていれば別ウィンドウかは ShellWindow が決める）。</summary>
     [RelayCommand]
-    private async Task OpenDiffAsync(GitChangeItem? item)
+    private void OpenDiff(GitChangeItem? item)
     {
         if (item is null) return;
-        await _diff.ShowWorkingTreeFileAsync(item.Entry, item.IsStaged);
-        DiffOpenRequested?.Invoke(this, EventArgs.Empty);
+        DiffOpenRequested?.Invoke(this, new DiffOpenTarget.WorkingTreeFile(item.Entry, item.IsStaged));
     }
 
     /// <summary>更新系操作の共通枠：多重実行の抑止・結果メッセージの表示。</summary>

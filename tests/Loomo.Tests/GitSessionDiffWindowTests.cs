@@ -88,17 +88,34 @@ public sealed class GitSessionDiffWindowTests : IAsyncLifetime
         Assert.False(raised);
     }
 
+    [Fact]
+    public async Task コミットの差分は表示要求として渡しDiffペインの状態には触らない()
+    {
+        // Diff ペインへ出すか（隠れていれば）別ウィンドウで開くかは ShellWindow が決めるので、
+        // Git 側は「何を見せるか」だけを渡す——ここで VM を直に書き換えていた頃は、ペインが
+        // 隠れているときの逃げ道が選べなかった。
+        await CommitAsync("a.txt", "a\n", "first");
+        var vm = CreateSession();
+        var commit = await HeadRowAsync();
+
+        DiffOpenTarget? received = null;
+        vm.DiffOpenRequested += (_, t) => received = t;
+
+        vm.OpenDiffForCommits(new[] { commit });
+
+        var target = Assert.IsType<DiffOpenTarget.CommitRange>(received);
+        Assert.Null(target.FromHash);                 // 1件なら「そのコミットの変更」
+        Assert.Equal(commit.Hash, target.ToHash);
+        Assert.Contains(commit.ShortHash!, target.Label);
+    }
+
     // ===== ヘルパー =====
 
     private GitSessionViewModel CreateSession()
     {
         var editor = new FakeEditorService();
         var query = new GitSessionQuery(_git);
-        var compareBase = new GitCompareBaseViewModel(_git);
-        var diff = new DiffSessionViewModel(_git, editor, _workspace, new DiffFileGateway(),
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings(),
-            compareBase);
-        return new GitSessionViewModel(_git, editor, diff, query, new GitSessionCommandHandler(_git),
+        return new GitSessionViewModel(_git, editor, query, new GitSessionCommandHandler(_git),
             new GitHistoryViewModel(query), new GitRootSwitchViewModel(_git, _workspace), null, null);
     }
 

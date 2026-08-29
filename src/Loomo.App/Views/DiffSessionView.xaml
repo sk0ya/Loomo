@@ -337,14 +337,31 @@
 
     <DockPanel>
         <!-- ツールバーは通常ペインヘッダー側（ShellWindow）へ集約。ただしヘッダーを持たないホスト
-             （Git のコミット詳細からダブルクリックで開く切り離しウィンドウ）では、そこへ回した操作が
-             丸ごと届かなくなるので、同じ操作をこのバーで出す（ShowStandaloneToolbar で表示）。
+             （Git のコミット詳細からダブルクリックで開く窓と、Diff ペインが隠れているときの差分の
+             行き先になる窓）では、そこへ回した操作が丸ごと届かなくなるので、同じ操作をこのバーで出す
+             （ShowStandaloneToolbar で表示）。
              スタイル・コマンドはペインヘッダーと同じものを見ているので、見た目も挙動も揃う。 -->
         <Border x:Name="StandaloneToolbar" DockPanel.Dock="Top" Visibility="Collapsed"
                 Background="{DynamicResource Panel}" Padding="8,4"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
             <DockPanel LastChildFill="False">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- ソース（Git／比較）。ペインヘッダーと同じ状態を見ているので、窓の中でも
+                         積んである比較へ切り替えられる。 -->
+                    <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1" Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="{DynamicResource Fs12}"
+                                         IsChecked="{Binding IsGitMode}" />
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="比較" FontSize="{DynamicResource Fs12}"
+                                         ToolTip="クリップボードや選択範囲どうしの比較（右クリックの「Diff へ送る」で作れます）"
+                                         IsChecked="{Binding IsCompareMode}" />
+                        </StackPanel>
+                    </Border>
+                    <!-- 比較基準（作業ツリー／ブランチ／分岐点）。コミット範囲の表示中は出さない（効かないため）。 -->
+                    <Border Margin="0,0,10,0" VerticalAlignment="Center"
+                            Visibility="{Binding ShowCompareBaseSelector, Converter={StaticResource BoolToVis}}">
+                        <local:GitCompareBaseView DataContext="{Binding CompareBase}" />
+                    </Border>
                     <!-- 表示形式（左右／統合）。Markdown を描画表示している間は効かないので出さない（§24.7）。 -->
                     <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1" Margin="0,0,10,0"
                             Visibility="{Binding CanChooseTextLayout, Converter={StaticResource BoolToVis}}">
@@ -385,6 +402,27 @@
                             ToolTip="このコミットを Git のコミット一覧で選択する"
                             Command="{Binding OpenCommitInGitCommand}"
                             Visibility="{Binding CanOpenCommitInGit, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 作業ツリーへ"
+                            ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
+                            Command="{Binding ClearGitTargetCommand}"
+                            Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
+                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="変更を破棄"
+                            ToolTip="選択中ファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
+                            Command="{Binding DiscardCommand}"
+                            Visibility="{Binding CanDiscardSelected, Converter={StaticResource BoolToVis}}" />
+                    <!-- アドホック比較中だけの操作（ペインヘッダーと同じ3点）。 -->
+                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇄ 左右入替"
+                            ToolTip="比較の左右を入れ替える"
+                            Command="{Binding SwapComparisonCommand}"
+                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="クリップボードで再比較"
+                            ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
+                            Command="{Binding RecompareWithClipboardCommand}"
+                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 比較を閉じる"
+                            ToolTip="今見ている比較を閉じる（ほかの比較は残る）"
+                            Command="{Binding CloseComparisonCommand}"
+                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
                 <!-- 何のコミットを見ているか。窓のタイトルは選択ファイル名を追うので、出どころはここに残す。 -->
                 <TextBlock DockPanel.Dock="Right" Text="{Binding GitTargetLabel}" VerticalAlignment="Center"

@@ -203,7 +203,8 @@ public partial class ShellWindow {
         return item;
     }
     /// <summary>
-    /// コミット詳細の1ファイルの差分を、独立した切り離しウィンドウで開く（Git ペインのダブルクリック）。
+    /// 差分ひとつを、切り離しウィンドウのタブ1枚として作る（Git のコミット詳細のダブルクリック＝
+    /// 送るたびに新しい窓と、Diff ペインが隠れているときの差分の行き先＝同じ窓へタブを足す、の共通の実体）。
     ///
     /// <para>VM は <see cref="DiffSessionFactory"/> で<b>もう1つ立てる</b>——DIFF ペインの VM は部屋が
     /// ひとつ持っている状態なので、そこへ流し込むとペインで見ていた差分が奪われる。立てた VM は共有
@@ -213,19 +214,21 @@ public partial class ShellWindow {
     /// 同じ物（レンダリング表示の WebView2 ファクトリ、リンク・エディタ行への中継）をここで渡す。
     /// 一時ページ名だけはペインと分ける（既定名のままだと互いの本文を上書きし合う）。</para>
     /// </summary>
-    private DetachedItem CreateCommitDiffSpinoffItem(CommitFileDiffRequest request) {
+    /// <param name="onDisposed">タブが閉じられたときの後始末（次の差分を足す先の管理に使う）。</param>
+    private DetachedItem CreateDiffSpinoffItem(DiffOpenTarget target, Action? onDisposed = null) {
         var vm = _diffSessions.Create();
         var view = new DiffSessionView { DataContext = vm };
         // この窓にはペインヘッダーが無い＝ヘッダーへ集約した操作（次/前の差分・エディタで開く・
-        // 左右/統合・Markdown 描画・Git 一覧で表示）が丸ごと欠ける。ビュー自前のバーで同じ物を出す。
+        // 左右/統合・Markdown 描画・Git 一覧で表示・比較の入替/再比較/閉じる）が丸ごと欠ける。
+        // ビュー自前のバーで同じ物を出す。
         view.ShowStandaloneToolbar();
         view.ConfigureMarkdownRender(
             _editorSupport.WebView.ViewFactory, EditorSupportPreviewFolder, Guid.NewGuid().ToString("N"));
         view.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
         // 差分の行から実ファイルを開く／コミットを Git ペインで選ぶ——どちらもメイン側の持ち場なので、
         // ペインの VM と同じ経路へ中継してメインウィンドウを前に出す。
-        vm.EditorLineOpenRequested += async (_, target) => {
-            await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);
+        vm.EditorLineOpenRequested += async (_, t) => {
+            await OpenPathInEditorAsync(Path.GetFullPath(t.Path), t.Line, column: 0);
             Activate();
             FocusPane(PaneKind.Editor);
         };
@@ -235,19 +238,21 @@ public partial class ShellWindow {
             Activate();
             FocusPane(PaneKind.Git);
         };
-        var title = $"{Path.GetFileName(request.FullPath)} — {request.Label}";
         var item = new DetachedItem(
-            DetachKind.DiffSpinoff, title, view, _tabIcons.GetFileIcon(request.FullPath), vm.Dispose);
-        // 「次の差分」はファイルの端を越えると同じコミットの隣のファイルへ移る（＝窓の中身が別ファイルに
-        // なる）ので、タブのタイトルとアイコンも今見ているファイルへ追従させる——開いたときの名前のまま
-        // だと、どのファイルを読んでいるのか窓の側から分からなくなる。
+            DetachKind.DiffSpinoff, target.WindowTitle, view, _tabIcons.GetFileIcon(target.IconPath),
+            () => { vm.Dispose(); onDisposed?.Invoke(); });
+        // 「次の差分」はファイルの端を越えると隣のファイルへ移る（＝窓の中身が別ファイルになる）ので、
+        // タブのタイトルとアイコンも今見ているファイルへ追従させる——開いたときの名前のままだと、
+        // どのファイルを読んでいるのか窓の側から分からなくなる。
         vm.PropertyChanged += (_, e) => {
             if (e.PropertyName != nameof(DiffSessionViewModel.SelectedFile)) return;
-            if (vm.SelectedFile is not { FullPath.Length: > 0 } file) return;
-            item.Title = $"{Path.GetFileName(file.FullPath)} — {request.Label}";
+            if (vm.SelectedFile is not { } file) return;
+            item.Title = file.Comparison is { } compare
+                ? new DiffOpenTarget.Comparison(compare).WindowTitle    // 比較は左右の名前で名乗る
+                : target.TitleFor(file.FullPath);
             item.Icon = _tabIcons.GetFileIcon(file.FullPath);
         };
-        _ = vm.ShowCommitFileAsync(request.Hash, request.Label, request.FullPath, lineInCommit: 0);
+        _ = ShowDiffInWindowAsync(vm, target);
         return item;
     }
     private static void DisposeSpinoffBrowser(Panel host) {

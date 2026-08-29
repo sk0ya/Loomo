@@ -50,6 +50,25 @@ internal sealed class DetachedWindowManager
         NotifyChanged();
     }
 
+    /// <summary>
+    /// <paramref name="sibling"/> が居る窓へ、新しい項目を<b>タブとして</b>足して前へ出す
+    /// （見つからなければ false＝呼び出し側が新しい窓を開く）。同じ用途の物を窓ごと増やさず
+    /// 1つの窓のタブに集めるための入口——タブは掴んで引き出せば別窓にできるので、
+    /// 「まとめる」を既定にしても並べて見比べる自由は残る。
+    /// </summary>
+    internal bool TryAddNextTo(DetachedItem sibling, DetachedItem item)
+    {
+        var window = _windows.FirstOrDefault(w => w.Contains(sibling));
+        if (window is null)
+            return false;
+        window.AddItem(item);                 // AddItem がそのままアクティブタブにする
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
+        window.Activate();
+        NotifyChanged();
+        return true;
+    }
+
     private DetachedPaneWindow NewWindow(double? left = null, double? top = null)
     {
         var win = new DetachedPaneWindow(this) { Owner = _owner };

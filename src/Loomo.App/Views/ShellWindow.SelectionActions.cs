@@ -253,9 +253,8 @@ public partial class ShellWindow {
     }
     private void ShowBlameCommitDiff(VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         if (blame.CommitHash is not { Length: > 0 } hash) return;
-        _ = _vm.DiffSession.ShowCommitFileAsync( hash, $"コミット {hash}", control.FilePath, blame.OriginalLine);
-        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
-        FocusPane(PaneKind.Diff);
+        ShowDiff(new DiffOpenTarget.CommitFile(
+            hash, $"コミット {DiffOpenTarget.Short(hash)}", control.FilePath, blame.OriginalLine));
     }
     private async Task ShowGitHistoryAsync(string fullPath, string? commitHash = null) {
         await _vm.GitSession.ShowPathHistoryAsync(Path.GetFullPath(fullPath), commitHash);
@@ -479,12 +478,10 @@ public partial class ShellWindow {
             ToastService.Error($"ファイルを読めませんでした: {ex.Message}");
         }
     }
-    /// <summary>比較を Diff ペインへ渡して、そのペインを見えるところへ出す（「〜へ送る」の共通の締め）。</summary>
-    private void CompareInDiff(DiffComparison comparison) {
-        _vm.DiffSession.ShowComparison(comparison);
-        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
-        FocusPane(PaneKind.Diff);
-    }
+    /// <summary>比較を差分の行き先へ渡す（「〜へ送る」の共通の締め）。ペインが出ていればペインへ、
+    /// 隠れていれば別ウィンドウへ——判断は <see cref="ShowDiff"/> ひとつが持つ。</summary>
+    private void CompareInDiff(DiffComparison comparison)
+        => ShowDiff(new DiffOpenTarget.Comparison(comparison));
     private static readonly string[] RunnableScriptExtensions = { ".ps1", ".bat", ".cmd" };
     private void AddRunScriptMenuItem(ContextMenu menu, VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path || !IsRunnableScript(path))

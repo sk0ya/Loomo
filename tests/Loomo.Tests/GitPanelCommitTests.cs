@@ -41,11 +41,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(_root, "unchecked.txt"), "unchecked");
 
         var editor = new FakeEditorService();
-        var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings(),
-            _compareBase);
-        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch, _compareBase);
+        var vm = new GitPanelViewModel(_git, editor, _workspace, _rootSwitch, _compareBase);
         await vm.RefreshCommand.ExecuteAsync(null);
         // 未追跡ファイルは「バージョン管理外ファイル」セクションに並び、既定では未チェック。
         var section = Assert.Single(vm.WorkingTreeSections);
@@ -70,11 +66,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         await MustRunAsync("add", "-A");
 
         var editor = new FakeEditorService();
-        var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings(),
-            _compareBase);
-        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch, _compareBase);
+        var vm = new GitPanelViewModel(_git, editor, _workspace, _rootSwitch, _compareBase);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Contains(vm.Staged, i => i.Entry.Path == "staged.txt");
         Assert.Empty(vm.WorkingTreeSections);
@@ -92,11 +84,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     {
         await File.WriteAllTextAsync(Path.Combine(_root, "candidate.txt"), "candidate");
         var editor = new FakeEditorService();
-        var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings(),
-            _compareBase);
-        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch, _compareBase);
+        var vm = new GitPanelViewModel(_git, editor, _workspace, _rootSwitch, _compareBase);
         await vm.RefreshCommand.ExecuteAsync(null);
 
         Assert.False(vm.CommitCommand.CanExecute(null));
@@ -119,11 +107,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     public void リモート同期コマンドは実行対象があるときだけ有効になる()
     {
         var editor = new FakeEditorService();
-        var files = new DiffFileGateway();
-        var diff = new DiffSessionViewModel(_git, editor, _workspace, files,
-            new DiffSessionQuery(_git), new DiffSessionCommandHandler(_git), new LoomoSettings(),
-            _compareBase);
-        var vm = new GitPanelViewModel(_git, editor, _workspace, diff, _rootSwitch, _compareBase);
+        var vm = new GitPanelViewModel(_git, editor, _workspace, _rootSwitch, _compareBase);
 
         Assert.False(vm.FetchCommand.CanExecute(null));
         Assert.False(vm.PullCommand.CanExecute(null));
@@ -170,6 +154,23 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
 
         root.IsChecked = true;
         Assert.All(new[] { a, b, c }, item => Assert.True(item.IsChecked));
+    }
+
+    [Fact]
+    public void 差分を開くは表示要求を投げるだけでペインの状態には触らない()
+    {
+        // 出し先（Diff ペイン／ペインが隠れていれば別ウィンドウ）を決めるのは ShellWindow なので、
+        // パネルが渡すのは「作業ツリーのこのファイル」という要求だけ。
+        var vm = new GitPanelViewModel(_git, new FakeEditorService(), _workspace, _rootSwitch, _compareBase);
+        var item = new GitChangeItem(new GitChangeEntry("src/a.cs", null, 'M', '.', false, false), isStaged: true);
+        DiffOpenTarget? received = null;
+        vm.DiffOpenRequested += (_, t) => received = t;
+
+        vm.OpenDiffCommand.Execute(item);
+
+        var target = Assert.IsType<DiffOpenTarget.WorkingTreeFile>(received);
+        Assert.Equal("src/a.cs", target.Entry.Path);
+        Assert.True(target.IsStaged);
     }
 
     private async Task<GitCommandResult> MustRunAsync(params string[] args)

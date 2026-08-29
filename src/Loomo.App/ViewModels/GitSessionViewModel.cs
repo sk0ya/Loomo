@@ -25,7 +25,6 @@ public sealed partial class GitSessionViewModel : ObservableObject
 {
     private readonly GitService _git;
     private readonly IEditorService _editor;
-    private readonly DiffSessionViewModel _diff;
     private readonly GitSessionQuery _query;
     private readonly LoomoSettings? _settings;
     private readonly SettingsStore? _settingsStore;
@@ -129,14 +128,13 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// と共有する（どちらから切り替えても両方に反映される）。</summary>
     public GitRootSwitchViewModel RootSwitch { get; }
 
-    public GitSessionViewModel(GitService git, IEditorService editor, DiffSessionViewModel diff,
+    public GitSessionViewModel(GitService git, IEditorService editor,
         GitSessionQuery query, GitSessionCommandHandler commands, GitHistoryViewModel history,
         GitRootSwitchViewModel rootSwitch,
         LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
         _git = git;
         _editor = editor;
-        _diff = diff;
         _query = query;
         Commands = commands;
         History = history;
@@ -155,8 +153,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _git.RepositoryChanged += OnRepositoryChanged;
     }
 
-    /// <summary>Diff セッションへの表示を要求した（ShellWindow が Diff ペインを表示・フォーカスする）。</summary>
-    public event EventHandler? DiffOpenRequested;
+    /// <summary>差分を見せてほしい（何を見せるかだけを渡す。Diff ペインへ出すか、ペインが隠れていれば
+    /// 別ウィンドウで開くかは ShellWindow が決める）。</summary>
+    public event EventHandler<DiffOpenTarget>? DiffOpenRequested;
 
     /// <summary>コミット詳細の1ファイルを、独立した差分ウィンドウで見たい
     /// （ShellWindow が切り離しウィンドウを開く）。ペインの表示対象は動かさない。</summary>
@@ -406,7 +405,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 選択コミットの差分を Diff セッションで表示する。
+    /// 選択コミットの差分の表示を要求する（出し先は ShellWindow が決める）。
     /// 1件ならそのコミットの変更、2件以上なら一覧上の端点（最古と最新）のスナップショット比較。
     /// </summary>
     public void OpenDiffForCommits(IReadOnlyList<GitLogRow> rows)
@@ -418,7 +417,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
         if (commits.Count == 1)
         {
             var c = commits[0];
-            _diff.ShowCommitRange(null, c.Hash!, $"コミット {c.ShortHash}");
+            DiffOpenRequested?.Invoke(this,
+                new DiffOpenTarget.CommitRange(null, c.Hash!, $"コミット {c.ShortHash}"));
         }
         else
         {
@@ -426,9 +426,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
             var ordered = commits.OrderBy(c => History.LogRows.IndexOf(c)).ToList();
             var newest = ordered[0];
             var oldest = ordered[^1];
-            _diff.ShowCommitRange(oldest.Hash!, newest.Hash!, $"{oldest.ShortHash} → {newest.ShortHash}");
+            DiffOpenRequested?.Invoke(this, new DiffOpenTarget.CommitRange(
+                oldest.Hash!, newest.Hash!, $"{oldest.ShortHash} → {newest.ShortHash}"));
         }
-        DiffOpenRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -490,7 +490,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     }
 
     /// <summary>
-    /// そのコミット時点の内容と、いまの作業ツリーの内容を Diff ペインで見比べる。
+    /// そのコミット時点の内容と、いまの作業ツリーの内容を見比べる（Diff ペイン、隠れていれば別ウィンドウ）。
     /// git の差分テキストではなく<b>2つの本文の比較</b>として渡すので、左右入替や行ジャンプなど
     /// アドホック比較の道具立てがそのまま効く。
     /// </summary>
@@ -509,10 +509,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
         var fullPath = _query.ToFullPath(path);
         var (currentTitle, currentText) = await ReadWorkingTreeAsync(fullPath);
         var name = System.IO.Path.GetFileName(path);
-        _diff.ShowComparison(new DiffComparison(
+        DiffOpenRequested?.Invoke(this, new DiffOpenTarget.Comparison(new DiffComparison(
             $"{name}@{shortHash}", result.Output, currentTitle, currentText,
-            FilePath: fullPath ?? "", FileIsLeft: false));
-        DiffOpenRequested?.Invoke(this, EventArgs.Empty);
+            FilePath: fullPath ?? "", FileIsLeft: false)));
     }
 
     /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す（確認はビュー側で済ませて呼ぶ）。</summary>

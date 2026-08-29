@@ -10,7 +10,8 @@ using sk0ya.Loomo.App.Views;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// Git のコミット詳細からダブルクリックで開く<b>切り離しウィンドウ</b>のツールバー。
+/// 切り離しウィンドウ（Git のコミット詳細のダブルクリック／Diff ペインが隠れているときの
+/// 差分の行き先）のツールバー。
 ///
 /// <para>Diff の操作はペインヘッダー（ShellWindow）へ集約されているため、ヘッダーを持たない
 /// 切り離しウィンドウでは「次/前の差分」「エディタで開く」等がまるごと消えていた。ビュー自前の
@@ -65,6 +66,38 @@ public sealed class DiffStandaloneToolbarTests
                 .ToList();
             Assert.Contains("IsSideBySide", toggles);
             Assert.Contains("IsMarkdownRender", toggles);
+        });
+    }
+
+    /// <summary>この窓は「Diff ペインが隠れているときの差分の行き先」でもある（§24.5.2）＝
+    /// git の差分もアドホック比較もここへ来る。ペインヘッダーにしか無かった操作
+    /// （ソース切替・比較の入替/再比較/閉じる・変更を破棄・作業ツリーへ戻す）が窓でも要るのはそのため。</summary>
+    [Fact]
+    public void 切り離しツールバーは比較と作業ツリーの操作も持つ()
+    {
+        _host.Run(() =>
+        {
+            var view = new DiffSessionView();
+            view.ShowStandaloneToolbar();
+            var bar = (FrameworkElement)view.FindName("StandaloneToolbar")!;
+
+            var commands = Descendants(bar).OfType<ButtonBase>()
+                .Select(b => BindingOperations.GetBinding(b, ButtonBase.CommandProperty)?.Path.Path)
+                .Where(p => p is not null)
+                .ToList();
+
+            Assert.Contains("SwapComparisonCommand", commands);
+            Assert.Contains("RecompareWithClipboardCommand", commands);
+            Assert.Contains("CloseComparisonCommand", commands);
+            Assert.Contains("DiscardCommand", commands);
+            Assert.Contains("ClearGitTargetCommand", commands);
+
+            // ソース（Git／比較）の切替そのものもヘッダー側にしか無かった
+            var toggles = Descendants(bar).OfType<RadioButton>()
+                .Select(r => BindingOperations.GetBinding(r, ToggleButton.IsCheckedProperty)?.Path.Path)
+                .ToList();
+            Assert.Contains("IsGitMode", toggles);
+            Assert.Contains("IsCompareMode", toggles);
         });
     }
 

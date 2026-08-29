@@ -57,8 +57,8 @@ public partial class DiffSessionView : UserControl
     }
 
     /// <summary>
-    /// ペインヘッダーを持たないホスト（Git のコミット詳細からダブルクリックで開く切り離しウィンドウ）で、
-    /// このビュー自前のツールバーを出す。ペインでは ShellWindow 側のヘッダーが同じ操作を持っているので
+    /// ペインヘッダーを持たないホスト（切り離しウィンドウ＝Git のコミット詳細のダブルクリック／
+    /// Diff ペインが隠れているときの差分の行き先）で、このビュー自前のツールバーを出す。ペインでは ShellWindow 側のヘッダーが同じ操作を持っているので
     /// 既定は非表示——両方出すと同じボタンが二段になる。
     /// </summary>
     public void ShowStandaloneToolbar()
