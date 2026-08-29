@@ -1,3 +1,5 @@
+﻿using System.Runtime.CompilerServices;
+using System.Windows.Media;
 using Editor.Controls.Themes;
 using sk0ya.Loomo.App.Services;
 
@@ -44,7 +46,7 @@ public class ShellAppearanceCoordinatorTests
         var theme = ShellAppearanceCoordinator.ResolveEditorTheme(name);
         Assert.NotSame(EditorTheme.Dracula, theme);
         // 背景・文字色が既定のままなら組み立てに失敗している。
-        Assert.NotEqual(theme.Background.ToString(), theme.Foreground.ToString());
+        Assert.NotEqual(Describe(theme.Background), Describe(theme.Foreground));
     }
 
     /// <summary>設定パネルの選択肢がすべて別々の配色へ解決される（＝キーの綴り違いで既定へ落ちていない）こと。
@@ -61,8 +63,20 @@ public class ShellAppearanceCoordinatorTests
         };
         var colors = keys
             .Select(k => ShellAppearanceCoordinator.ResolveEditorTheme(k))
-            .Select(t => $"{t.Background}/{t.TokenKeyword}")
+            .Select(t => $"{Describe(t.Background)}/{Describe(t.TokenKeyword)}")
             .ToList();
         Assert.Equal(keys.Length, colors.Distinct().Count());
     }
+
+    /// <summary>ブラシを配色の見分けが付く文字列にする。<b>色を読めるのは凍結済みのブラシだけ</b>
+    /// ——Loomo 側プリセット（<c>EditorThemePresets</c>）は凍結して配るが、ライブラリ内蔵の配色
+    /// （Dracula/Dark/Nord/…）は凍結されておらず<b>最初に触れたスレッドに所有される</b>。並列実行では
+    /// 別スレッドのテストが先に作ることがあり、そのまま <c>ToString()</c> すると
+    /// <c>VerifyAccess</c> で落ちる（実際にこのテストが不定期に落ちていた）。所有権を跨げない
+    /// ブラシは同一性（参照）で見分ける——このテストが見たいのは「別々の配色へ解決されるか」なので、
+    /// 別インスタンスであることが分かれば足りる。</summary>
+    private static string Describe(Brush brush)
+        => brush is SolidColorBrush { IsFrozen: true } solid
+            ? solid.Color.ToString()
+            : $"#{RuntimeHelpers.GetHashCode(brush):X8}";
 }
