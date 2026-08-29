@@ -37,7 +37,10 @@ public partial class DetachedPaneWindow : Window
         TabOverflowList.ItemsSource = _items;
         Closed += OnWindowClosed;
         StateChanged += (_, _) => MaxRestoreButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
-        LocationChanged += (_, _) => _manager.NotifyChanged();
+        LocationChanged += (_, _) => {
+            _manager.UpdateWindowDragTarget(this);
+            _manager.NotifyChanged();
+        };
         SizeChanged += (_, _) => _manager.NotifyChanged();
         StateChanged += (_, _) => _manager.NotifyChanged();
 
@@ -79,7 +82,17 @@ public partial class DetachedPaneWindow : Window
             RestoreForCaptionDrag(e);
         var hwnd = new WindowInteropHelper(this).Handle;
         ReleaseCapture();
-        SendMessage(hwnd, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+        _manager.BeginWindowDrag(this);
+        try
+        {
+            SendMessage(hwnd, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+        }
+        finally
+        {
+            // 標準のタイトルバー移動は WPF の Drop を通らないため、戻ってきた時点で
+            // 別の切り離し窓上に着地していれば、管理側で全タブを結合する。
+            _manager.EndWindowDrag(this);
+        }
     }
 
     /// <summary>
@@ -138,8 +151,10 @@ public partial class DetachedPaneWindow : Window
             source.AddHook(WndProc);
     }
 
-    private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WM_MOVE)
+            _manager.UpdateWindowDragTarget(this);
         if (msg == HorizontalWheelScroll.WM_MOUSEHWHEEL && HorizontalWheelScroll.Handle(wParam))
         {
             handled = true;
@@ -150,6 +165,7 @@ public partial class DetachedPaneWindow : Window
 
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 0x0002;
+    private const int WM_MOVE = 0x0003;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -160,6 +176,14 @@ public partial class DetachedPaneWindow : Window
 
     internal int ItemCount => _items.Count;
     internal bool Contains(DetachedItem item) => _items.Contains(item);
+
+    /// <summary>別窓を重ねたときの結合先案内を表示する。</summary>
+    internal void SetMergeTarget(bool enabled)
+        => MergeTargetFrame.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>ドラッグ元に「離すと結合」を表示する。</summary>
+    internal void SetMergeSourceHint(bool enabled)
+        => MergeSourceHint.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>このウィンドウが抱える項目（ホスト側からの一括操作用。順序は表示順）。</summary>
     internal IEnumerable<DetachedItem> Items => _items;

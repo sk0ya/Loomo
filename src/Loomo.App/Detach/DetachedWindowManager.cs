@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.App.Services;
@@ -28,6 +28,12 @@ internal sealed class DetachedWindowManager
     private Func<DetachedItem>? _dragFactory;   // 外部（メインペインのタブ）由来の遅延生成器
     private bool _dropConsumed;
     private bool _dragCancelled;
+
+    // タイトルバーを使ったウィンドウ単位のドラッグ。Windows の標準移動ループ中は
+    // WPF の Drop が発生しないため、移動開始時の位置と終了時のカーソル位置で結合を判定する。
+    private DetachedPaneWindow? _windowDragSource;
+    private DetachedPaneWindow? _windowDragTarget;
+    private Point _windowDragStart;
 
     public DetachedWindowManager(Window owner, Action? changed = null)
     {
@@ -92,6 +98,132 @@ internal sealed class DetachedWindowManager
     internal void NotifyChanged()
     {
         if (!_suppressChanged) _changed();
+    }
+
+    /// <summary>切り離しウィンドウそのもののタイトルバー移動を開始する。</summary>
+    internal void BeginWindowDrag(DetachedPaneWindow source)
+    {
+        ClearWindowDragFeedback();
+        _windowDragSource = source;
+        _windowDragStart = new Point(source.Left, source.Top);
+    }
+
+    /// <summary>タイトルバー移動中のカーソル位置に応じて、結合可能な窓の案内を更新する。</summary>
+    internal void UpdateWindowDragTarget(DetachedPaneWindow source)
+    {
+        if (!ReferenceEquals(_windowDragSource, source))
+            return;
+
+        if (!HasMoved(source) || !WindowNative.GetCursorPos(out var cursor))
+        {
+            ClearWindowDragFeedback();
+            return;
+        }
+
+        var target = FindWindowAt(cursor, source);
+        if (ReferenceEquals(target, _windowDragTarget))
+            return;
+
+        _windowDragTarget?.SetMergeTarget(false);
+        _windowDragTarget = target;
+        _windowDragTarget?.SetMergeTarget(true);
+        source.SetMergeSourceHint(target is not null);
+    }
+
+    /// <summary>
+    /// タイトルバー移動が終わったとき、カーソルが別の切り離しウィンドウ上にあれば結合する。
+    /// 標準の <c>WM_NCLBUTTONDOWN/HTCAPTION</c> 移動はアプリ内の DragDrop にならないため、
+    /// ドロップイベントではなくここで後処理する。
+    /// </summary>
+    internal void EndWindowDrag(DetachedPaneWindow source)
+    {
+        if (!ReferenceEquals(_windowDragSource, source))
+            return;
+
+        try
+        {
+            // クリックだけでは結合しない。タイトルバー上で別窓が背後に重なっている場合でも、
+            // クリックしただけで窓が消えるのは避ける。
+            if (!HasMoved(source) || !WindowNative.GetCursorPos(out var cursor))
+                return;
+
+            UpdateWindowDragTarget(source);
+            var target = _windowDragTarget ?? FindWindowAt(cursor, source);
+            if (target is not null)
+                MergeWindows(source, target);
+        }
+        finally
+        {
+            ClearWindowDragFeedback();
+            _windowDragSource = null;
+        }
+    }
+
+    private void ClearWindowDragFeedback()
+    {
+        _windowDragTarget?.SetMergeTarget(false);
+        _windowDragTarget = null;
+        _windowDragSource?.SetMergeSourceHint(false);
+    }
+
+    private bool HasMoved(DetachedPaneWindow source)
+        => Math.Abs(source.Left - _windowDragStart.X) > 2
+           || Math.Abs(source.Top - _windowDragStart.Y) > 2;
+
+    private DetachedPaneWindow? FindWindowAt(WindowNative.NativePoint point, DetachedPaneWindow source)
+    {
+        // 作成順の逆から見ると、同じ場所に重なった窓では後から作った窓を優先できる。
+        foreach (var window in _windows.AsEnumerable().Reverse())
+        {
+            if (ReferenceEquals(window, source)
+                || !window.IsVisible
+                || window.WindowState == WindowState.Minimized)
+                continue;
+
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero || !WindowNative.GetWindowRect(hwnd, out var bounds))
+                continue;
+
+            if (point.X >= bounds.Left && point.X < bounds.Right
+                && point.Y >= bounds.Top && point.Y < bounds.Bottom)
+                return window;
+        }
+
+        return null;
+    }
+
+    /// <summary>ウィンドウ単位のドラッグで、元窓の全タブを相手窓へ移す。</summary>
+    private void MergeWindows(DetachedPaneWindow source, DetachedPaneWindow target)
+    {
+        if (ReferenceEquals(source, target))
+            return;
+
+        var items = source.Items.ToList();
+        if (items.Count == 0)
+            return;
+        var active = items.FirstOrDefault(item => item.IsActive);
+
+        _suppressChanged = true;
+        try
+        {
+            // RemoveItem は最後の項目を外した時点で元窓を閉じる。コンテンツは破棄せず、
+            // target.AddItem が同じ実体を新しい ContentHost へ再ペアレントする。
+            foreach (var item in items)
+            {
+                source.RemoveItem(item, dispose: false);
+                target.AddItem(item);
+            }
+
+            if (active is not null && target.Contains(active))
+                target.SetActive(active);
+            target.Activate();
+        }
+        finally
+        {
+            _suppressChanged = false;
+        }
+
+        NotifyChanged();
     }
 
     public List<DetachedWindowSnapshot> Capture(Func<DetachedItem, DetachedItemSnapshot?> captureItem)
@@ -216,6 +348,8 @@ internal sealed class DetachedWindowManager
     /// <summary>アプリ終了時：全フローティングウィンドウを閉じ、全項目を破棄する。</summary>
     public void CloseAll()
     {
+        ClearWindowDragFeedback();
+        _windowDragSource = null;
         _suppressChanged = true;
         foreach (var win in _windows.ToList())
             win.CloseAndDisposeItems();
@@ -228,16 +362,10 @@ internal sealed class DetachedWindowManager
     /// <summary>スクリーン座標のカーソル位置を DIU（WPF 論理座標）へ変換して返す（新窓の配置用）。</summary>
     private (double Left, double Top) CursorPositionDiu()
     {
-        if (!GetCursorPos(out var p))
+        if (!WindowNative.GetCursorPos(out var p))
             return (200, 200);
         var dpi = VisualTreeHelper.GetDpi(_owner);
         return (p.X / dpi.DpiScaleX, p.Y / dpi.DpiScaleY);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT { public int X; public int Y; }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetCursorPos(out POINT lpPoint);
 }
