@@ -9,6 +9,7 @@ internal static class WindowNative
     internal const uint SWP_NOZORDER = SwpNoZOrder;
     internal const uint SWP_NOACTIVATE = SwpNoActivate;
     internal const uint MONITOR_DEFAULTTONEAREST = MonitorDefaultToNearest;
+    internal const uint GwHwndNext = 2;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -16,6 +17,12 @@ internal static class WindowNative
 
     [DllImport("user32.dll")]
     internal static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetTopWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 
     [DllImport("user32.dll")]
     internal static extern uint GetDoubleClickTime();

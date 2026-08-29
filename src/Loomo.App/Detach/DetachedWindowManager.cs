@@ -172,8 +172,8 @@ internal sealed class DetachedWindowManager
 
     private DetachedPaneWindow? FindWindowAt(WindowNative.NativePoint point, DetachedPaneWindow source)
     {
-        // 作成順の逆から見ると、同じ場所に重なった窓では後から作った窓を優先できる。
-        foreach (var window in _windows.AsEnumerable().Reverse())
+        var candidates = new Dictionary<IntPtr, DetachedPaneWindow>();
+        foreach (var window in _windows)
         {
             if (ReferenceEquals(window, source)
                 || !window.IsVisible
@@ -186,10 +186,26 @@ internal sealed class DetachedWindowManager
 
             if (point.X >= bounds.Left && point.X < bounds.Right
                 && point.Y >= bounds.Top && point.Y < bounds.Bottom)
-                return window;
+                candidates[hwnd] = window;
         }
 
-        return null;
+        if (candidates.Count == 0)
+            return null;
+
+        // _windows は生成順であり、Activate 後の見た目の前後関係を表さない。
+        // デスクトップのトップレベル HWND を実際の Z 順（先頭が最前面）で走査し、
+        // 重なった候補のうち画面上で最前面にある窓を結合先にする。
+        var seen = new HashSet<IntPtr>();
+        for (var hwnd = WindowNative.GetTopWindow(IntPtr.Zero);
+             hwnd != IntPtr.Zero && seen.Add(hwnd);
+             hwnd = WindowNative.GetWindow(hwnd, WindowNative.GwHwndNext))
+        {
+            if (candidates.TryGetValue(hwnd, out var target))
+                return target;
+        }
+
+        // 列挙に失敗した場合も、当たり判定自体は捨てず最初の候補へ戻す。
+        return candidates.Values.First();
     }
 
     /// <summary>ウィンドウ単位のドラッグで、元窓の全タブを相手窓へ移す。</summary>

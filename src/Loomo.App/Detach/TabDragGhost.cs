@@ -121,6 +121,7 @@ internal sealed class TabDragGhost : IDisposable
         var ghost = new TabDragGhost(owner, title, icon) { _canSplit = canSplit };
         ghost._window.Show();
         ghost.Follow(DragDropEffects.None);
+        ghost._follow.Start();
         return ghost;
     }
 
