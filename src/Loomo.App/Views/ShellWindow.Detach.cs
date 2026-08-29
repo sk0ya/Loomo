@@ -40,12 +40,15 @@ public partial class ShellWindow {
             if (source is not null) return TryCreateEditorMirrorItem(source.Id);
         }
         if (kind is DetachKind.EditorMirror or DetachKind.EditorMove) {
-            var editor = CreateEditorTab().Control;
+            var tab = CreateEditorTab();
+            var editor = tab.Control;
             if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
                 LoadEditorFile(editor, snapshot.FilePath);
             if (snapshot.Text is not null) editor.SetText(snapshot.Text);
             var title = string.IsNullOrWhiteSpace(snapshot.FilePath) ? "Untitled" : Path.GetFileName(snapshot.FilePath);
-            return new DetachedItem(DetachKind.EditorMove, title, editor, _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose);
+            return new DetachedItem(DetachKind.EditorMove, title, editor, _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose) {
+                Return = new DetachReturn(TabEntryKind.Editor, () => AdoptEditorTab(tab))
+            };
         }
         if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
             var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -117,13 +120,16 @@ public partial class ShellWindow {
     private void OpenPathInDetachedWindow(string fullPath, int line = 0, int column = 0) {
         if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
             return;
-        var control = CreateEditorTab().Control;
+        var tab = CreateEditorTab();
+        var control = tab.Control;
         LoadEditorFile(control, fullPath);
         if (line > 0) {
             try { control.NavigateTo(line - 1, column > 0 ? column - 1 : 0); }
             catch { /* 行番号が本文より後ろなら内部でクランプ */ }
         }
-        Detached.Detach(new DetachedItem( DetachKind.EditorMove, Path.GetFileName(fullPath), control, _tabIcons.GetFileIcon(fullPath), dispose: control.Dispose));
+        Detached.Detach(new DetachedItem( DetachKind.EditorMove, Path.GetFileName(fullPath), control, _tabIcons.GetFileIcon(fullPath), dispose: control.Dispose) {
+            Return = new DetachReturn(TabEntryKind.Editor, () => AdoptEditorTab(tab))
+        });
     }
     /// <summary>リンク先の URL を別ウィンドウのブラウザで開く（同期なしのスピンオフ）。</summary>
     private void OpenUrlInDetachedWindow(string url) {
@@ -147,7 +153,8 @@ public partial class ShellWindow {
         if (src is null)
             return null;
         var srcCtl = src.Control;                 // 未実体化なら実体化
-        var mirror = CreateEditorTab().Control;    // 独立コントロール（_editorTabs には加えない＝非永続）
+        var mirrorTab = CreateEditorTab();         // 独立コントロール（_editorTabs には加えない＝非永続）
+        var mirror = mirrorTab.Control;
         if (!string.IsNullOrWhiteSpace(srcCtl.FilePath) && File.Exists(srcCtl.FilePath) && !srcCtl.IsModified)
             LoadEditorFile(mirror, srcCtl.FilePath);
         else
@@ -167,12 +174,19 @@ public partial class ShellWindow {
         EventHandler mirHandler = (_, _) => Sync(mirror, srcCtl);
         srcCtl.BufferChanged += srcHandler;
         mirror.BufferChanged += mirHandler;
+        void Unsync() {
+            srcCtl.BufferChanged -= srcHandler;
+            mirror.BufferChanged -= mirHandler;
+        }
         var title = string.IsNullOrWhiteSpace(srcCtl.FilePath) ? "Untitled" : Path.GetFileName(srcCtl.FilePath!);
         return new DetachedItem( DetachKind.EditorMirror, title, mirror, _tabIcons.GetFileIcon(srcCtl.FilePath), dispose: () => {
-                srcCtl.BufferChanged -= srcHandler;
-                mirror.BufferChanged -= mirHandler;
+                Unsync();
                 mirror.Dispose();
-            });
+            }) {
+            // 帯へ戻すときは追従を切ってから独立したタブとして迎える——同期したまま並ぶと、
+            // 同じファイルの2枚が一緒に動いて別々に編集できない。
+            Return = new DetachReturn(TabEntryKind.Editor, () => { Unsync(); AdoptEditorTab(mirrorTab); })
+        };
     }
     private DetachedItem CreateTerminalSpinoffItem(TerminalTab? sourceTab)
         => CreateTerminalSpinoffItem(sourceTab?.View.WorkingDirectory);
@@ -182,9 +196,28 @@ public partial class ShellWindow {
             cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
         var view = new TerminalTabView("pwsh.exe", cwd) { AutoFocusOnStart = false };
         _appearance.ApplyTerminalAppearance(view);
-        var item = new DetachedItem( DetachKind.TerminalSpinoff, "Terminal", view, _tabIcons.GetTerminalIcon(), dispose: () => _ = view.CloseAsync());
-        view.HeaderTitleChanged += (_, title) =>
-            item.Title = string.IsNullOrWhiteSpace(title) ? "Terminal" : title;
+        // メインの帯へ戻すときはここで張った見出し追従を外し、メインのタブとしての配線を張り直す
+        // （タブの実体＝生きたセッションはそのまま運ぶ）。
+        return CreateDetachedTerminalItem(DetachKind.TerminalSpinoff, view, () => HookTerminalTab(new TerminalTab(Guid.NewGuid(), view)));
+    }
+    /// <summary>切り離しウィンドウのターミナルタブ（スピンオフも移動も同じ形）。見出しはセッションに追従し、
+    /// メインの帯へ落とせば <paramref name="mainTab"/> が返すタブとして戻る。</summary>
+    private DetachedItem CreateDetachedTerminalItem(
+        DetachKind kind, TerminalTabView view, Func<TerminalTab> mainTab) {
+        DetachedItem? item = null;
+        void OnTitle(object? _, string title)
+            => item!.Title = string.IsNullOrWhiteSpace(title) ? "Terminal" : title;
+        item = new DetachedItem(
+            kind,
+            string.IsNullOrWhiteSpace(view.HeaderTitle) ? "Terminal" : view.HeaderTitle,
+            view, _tabIcons.GetTerminalIcon(),
+            dispose: () => { view.HeaderTitleChanged -= OnTitle; _ = view.CloseAsync(); }) {
+            Return = new DetachReturn(TabEntryKind.Terminal, () => {
+                view.HeaderTitleChanged -= OnTitle;
+                AdoptTerminalTab(mainTab());
+            })
+        };
+        view.HeaderTitleChanged += OnTitle;
         return item;
     }
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
@@ -198,7 +231,16 @@ public partial class ShellWindow {
         var view = CreateBrowserView();
         view.Visibility = Visibility.Visible;
         host.Children.Add(view);
-        var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DisposeSpinoffBrowser(host));
+        var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DisposeSpinoffBrowser(host)) {
+            // 戻すときは<b>作り直す</b>——WebView2（コンポジション版）は窓をまたいで載せ替えると
+            // コンポジタが元の窓に残って空表示になる（引き出すときも同じ理由で新規生成している）。
+            Return = new DetachReturn(TabEntryKind.Browser, () => {
+                var current = host.Children.OfType<WebView2CompositionControl>().FirstOrDefault()?.Source?.ToString();
+                DisposeSpinoffBrowser(host);
+                _ = CreateBrowserTabAsync(current ?? url);
+                FocusPane(PaneKind.Browser);
+            })
+        };
         _ = RealizeSpinoffBrowserAsync(host, view, url, item);
         return item;
     }
@@ -214,8 +256,7 @@ public partial class ShellWindow {
     /// 同じ物（レンダリング表示の WebView2 ファクトリ、リンク・エディタ行への中継）をここで渡す。
     /// 一時ページ名だけはペインと分ける（既定名のままだと互いの本文を上書きし合う）。</para>
     /// </summary>
-    /// <param name="onDisposed">タブが閉じられたときの後始末（次の差分を足す先の管理に使う）。</param>
-    private DetachedItem CreateDiffSpinoffItem(DiffOpenTarget target, Action? onDisposed = null) {
+    private DetachedItem CreateDiffSpinoffItem(DiffOpenTarget target) {
         var vm = _diffSessions.Create();
         var view = new DiffSessionView { DataContext = vm };
         // この窓にはペインヘッダーが無い＝ヘッダーへ集約した操作（次/前の差分・エディタで開く・
@@ -240,7 +281,7 @@ public partial class ShellWindow {
         };
         var item = new DetachedItem(
             DetachKind.DiffSpinoff, target.WindowTitle, view, _tabIcons.GetFileIcon(target.IconPath),
-            () => { vm.Dispose(); onDisposed?.Invoke(); });
+            vm.Dispose);
         // 「次の差分」はファイルの端を越えると隣のファイルへ移る（＝窓の中身が別ファイルになる）ので、
         // タブのタイトルとアイコンも今見ているファイルへ追従させる——開いたときの名前のままだと、
         // どのファイルを読んでいるのか窓の側から分からなくなる。
@@ -296,6 +337,11 @@ public partial class ShellWindow {
         catch { /* 不正 URL は無視（空ページのまま） */ }
     }
     private void RebuildSpinoffBrowser(Panel host, DetachedItem item, string url) {
+        // 落ちた知らせは窓から外れた後にも届く（Dispatcher 経由なので1拍遅れる）。手放した器へ作り直すと、
+        // 誰にも見えない WebView2 が残る——メインへ<b>戻した</b>ときは新しいタブとして作り直し済みなので、
+        // ブラウザが2つに増えてしまう。どの窓にも居ない項目なら何もしない。
+        if (!Detached.AllItems.Contains(item))
+            return;
         DisposeSpinoffBrowser(host);
         host.Children.Clear();
         var view = CreateBrowserView();
@@ -474,7 +520,7 @@ public partial class ShellWindow {
         using var ghost = TabDragGhost.Show(this, entry?.Title ?? "タブ", entry?.Icon);
         void OnGiveFeedback(object _, GiveFeedbackEventArgs e) => ghost.Follow(e.Effects);
         source.GiveFeedback += OnGiveFeedback;
-        Detached.BeginExternalDrag(factory);
+        Detached.BeginExternalDrag(factory, ghost);
         QueryContinueDragEventHandler onQcd = (_, e) => { if (e.EscapePressed) Detached.CancelDrag(); };
         source.QueryContinueDrag += onQcd;
         try {
@@ -497,16 +543,19 @@ public partial class ShellWindow {
     private Func<DetachedItem>? BuildTearOffFactory(Guid id) {
         if (_editorTabs.Any(t => t.Id == id))
             return () => {
-                var control = RemoveEditorTabForMove(id)!;
+                // タブの実体（EditorTab）ごと運ぶ。戻すときも同じ実体を帯へ戻すので、タブ ID も
+                // コントロールに張った配線（見出し更新・軌跡・EditorSupport 追従）も切り離す前のまま続く。
+                var tab = RemoveEditorTabForMove(id)!;
+                var control = tab.Control;
                 var title = string.IsNullOrWhiteSpace(control.FilePath) ? "Untitled" : Path.GetFileName(control.FilePath!);
-                return new DetachedItem( DetachKind.EditorMove, title, control, _tabIcons.GetFileIcon(control.FilePath), dispose: control.Dispose);
+                return new DetachedItem( DetachKind.EditorMove, title, control, _tabIcons.GetFileIcon(control.FilePath), dispose: control.Dispose) {
+                    Return = new DetachReturn(TabEntryKind.Editor, () => AdoptEditorTab(tab))
+                };
             };
         if (_terminalTabs.Any(t => t.Id == id))
             return () => {
-                var view = RemoveTerminalTabForMove(id)!;
-                var item = new DetachedItem( DetachKind.TerminalMove, string.IsNullOrWhiteSpace(view.HeaderTitle) ? "Terminal" : view.HeaderTitle, view, _tabIcons.GetTerminalIcon(), dispose: () => _ = view.CloseAsync());
-                view.HeaderTitleChanged += (_, t) => item.Title = string.IsNullOrWhiteSpace(t) ? "Terminal" : t;
-                return item;
+                var tab = RemoveTerminalTabForMove(id)!;
+                return CreateDetachedTerminalItem(DetachKind.TerminalMove, tab.View, () => tab);
             };
         if (_browserTabs.Any(t => t.Id == id))
             return () => {
@@ -518,13 +567,70 @@ public partial class ShellWindow {
             };
         return null;
     }
+    // ===== 切り離しウィンドウ → メインの帯（戻す） =====
+
+    /// <summary>
+    /// ペインのヘッダー（帯の行そのもの）は、切り離したタブの<b>戻し先</b>でもある。切り離しウィンドウの
+    /// タブを掴んでここへ落とすと、メインのタブとして戻る（Editor のタブは Editor の帯だけが受ける）。
+    ///
+    /// <para>受けるのは<b>そのペインの種類に合うタブだけ</b>——Diff やプレビューの複製にはメインの帯に
+    /// 対応する居場所が無いので受けない（<see cref="DetachedItem.Return"/> が null）。運んでいるのが
+    /// タブ（<see cref="DetachedPaneWindow.DetachDragFormat"/>）でなければ素通しするので、ペイン本体の
+    /// ファイルドロップ（<c>OnEditorFileDrop</c> 等）は塞がない。</para>
+    /// </summary>
+    private void OnPaneHeaderTabDragOver(object sender, DragEventArgs e) {
+        if (!CanReturnDetachedTab(sender, e))
+            return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+    private void OnPaneHeaderTabDrop(object sender, DragEventArgs e) {
+        if (!CanReturnDetachedTab(sender, e))
+            return;
+        e.Handled = true;
+        Detached.ReturnDraggedToMain();
+        Activate();   // 戻した先はメイン窓＝前へ出す（掴んでいた切り離し窓が前面のままだと戻り先が見えない）
+    }
+    private bool CanReturnDetachedTab(object sender, DragEventArgs e)
+        => e.Data.GetDataPresent(DetachedPaneWindow.DetachDragFormat)
+           && sender is FrameworkElement { Tag: string tag }
+           && Detached.DraggingReturn is { } ret
+           && PaneTabKind(tag) == ret.Kind;
+    /// <summary>ペインヘッダーの <c>Tag</c>（PaneKind の綴り）に対応するタブ種別（帯を持たないペインは null）。</summary>
+    private static TabEntryKind? PaneTabKind(string paneTag) => paneTag switch {
+        "Editor" => TabEntryKind.Editor,
+        "Terminal" => TabEntryKind.Terminal,
+        "Browser" => TabEntryKind.Browser,
+        _ => null,
+    };
+    /// <summary>切り離しウィンドウから戻ってきたエディタタブを帯へ迎える。<b>実体はそのまま</b>——
+    /// 引き出すときに <see cref="RemoveEditorTabForMove"/> が返した同じ <see cref="EditorTab"/> なので、
+    /// タブ ID・コントロールに張った配線・未保存の本文・カーソル位置が切り離す前のまま続く。</summary>
+    private void AdoptEditorTab(EditorTab tab) {
+        _editorTabs.Add(tab);
+        _vm.Tabs.AddEditorTab(tab.Id, tab.PeekFilePath, tab.PeekIsModified, false);
+        ActivateEditorTab(tab.Id);
+        UpdateEditorTab(tab);   // 仮想ドキュメントの名前・変更マークは実体から引き直す
+        FocusPane(PaneKind.Editor);
+        SaveActiveWorkspaceSnapshot();
+    }
+    /// <summary>切り離しウィンドウから戻ってきたターミナルタブを帯へ迎える（生きたセッションのまま）。</summary>
+    private void AdoptTerminalTab(TerminalTab tab) {
+        _terminalTabs.Add(tab);
+        _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
+        ActivateTerminalTab(tab.Id);
+        FocusPane(PaneKind.Terminal);
+        SaveActiveWorkspaceSnapshot();
+    }
     private static Guid? ResolvePaneTabId(object originalSource) {
         for (var d = originalSource as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
             if (d is FrameworkElement { Tag: Guid id })
                 return id;
         return null;
     }
-    private VimEditorControl? RemoveEditorTabForMove(Guid id) {
+    /// <summary>エディタタブをメインから外して<b>実体（<see cref="EditorTab"/>）ごと</b>返す（Dispose はしない
+    /// ＝別ウィンドウへ移すため）。戻すときは同じ実体を <see cref="AdoptEditorTab"/> で帯へ戻す。</summary>
+    private EditorTab? RemoveEditorTabForMove(Guid id) {
         var index = _editorTabs.FindIndex(t => t.Id == id);
         if (index < 0)
             return null;
@@ -559,9 +665,10 @@ public partial class ShellWindow {
             }
         }
         SaveActiveWorkspaceSnapshot();
-        return control;
+        return tab;
     }
-    private TerminalTabView? RemoveTerminalTabForMove(Guid id) {
+    /// <summary>ターミナルタブをメインから外して実体ごと返す（<c>CloseAsync</c> はしない＝別ウィンドウへ移す）。</summary>
+    private TerminalTab? RemoveTerminalTabForMove(Guid id) {
         var index = _terminalTabs.FindIndex(t => t.Id == id);
         if (index < 0)
             return null;
@@ -589,6 +696,6 @@ public partial class ShellWindow {
             }
         }
         SaveActiveWorkspaceSnapshot();
-        return tab.View;
+        return tab;
     }
 }

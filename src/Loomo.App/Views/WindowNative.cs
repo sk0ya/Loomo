@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 
 /// <summary>Shellウィンドウのクロームとマルチモニタ配置で使用するWin32境界。</summary>
 internal static class WindowNative
@@ -23,6 +23,16 @@ internal static class WindowNative
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+    /// <summary>カーソル直下の窓（<c>WS_EX_TRANSPARENT</c> の窓は素通しされる＝ドラッグ中のタブ片は返らない）。</summary>
+    [DllImport("user32.dll")]
+    internal static extern IntPtr WindowFromPoint(NativePoint point);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+
+    /// <summary><see cref="GetAncestor"/> の GA_ROOT（子ウィンドウからトップレベルの窓へ辿る）。</summary>
+    internal const uint GaRoot = 2;
 
     [DllImport("user32.dll")]
     internal static extern uint GetDoubleClickTime();

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.App.Services;
 
@@ -28,6 +29,17 @@ internal sealed class DetachedWindowManager
     private Func<DetachedItem>? _dragFactory;   // 外部（メインペインのタブ）由来の遅延生成器
     private bool _dropConsumed;
     private bool _dragCancelled;
+
+    // タブドラッグ中にカーソルが乗っている切り離しウィンドウ（＝離せばそこのタブになる先）。
+    // タブ帯（34px）だけでなく窓のどこでも受けるので、位置はタイマーで追う——中身が WebView2 や
+    // ターミナルだと WPF のドラッグイベントが届かないことがあり、イベント頼みだと窓によって
+    // 受けたり受けなかったりする。
+    private TabDragGhost? _dragGhost;
+    private DetachedPaneWindow? _dragHover;
+    private DispatcherTimer? _dragHoverTimer;
+
+    /// <summary>前へ出た順（先頭が直近）。差分など「いまある窓へ足す」行き先の決定に使う。</summary>
+    private readonly List<DetachedPaneWindow> _activationOrder = new();
 
     // タイトルバーを使ったウィンドウ単位のドラッグ。Windows の標準移動ループ中は
     // WPF の Drop が発生しないため、移動開始時の位置と終了時のカーソル位置で結合を判定する。
@@ -57,15 +69,14 @@ internal sealed class DetachedWindowManager
     }
 
     /// <summary>
-    /// <paramref name="sibling"/> が居る窓へ、新しい項目を<b>タブとして</b>足して前へ出す
-    /// （見つからなければ false＝呼び出し側が新しい窓を開く）。同じ用途の物を窓ごと増やさず
-    /// 1つの窓のタブに集めるための入口——タブは掴んで引き出せば別窓にできるので、
-    /// 「まとめる」を既定にしても並べて見比べる自由は残る。
+    /// <b>いま開いている切り離しウィンドウ</b>（直近に前へ出たもの）へ、新しい項目を<b>タブとして</b>
+    /// 足して前へ出す。窓が1つも無ければ false＝呼び出し側が新しい窓を開く。同じ用途の物を窓ごと
+    /// 増やさず1つの窓のタブに集めるための入口——タブは掴んで引き出せば別窓にできるので、
+    /// 「まとめる」を既定にしても並べて見比べる自由は残る（差分の行き先がこれ）。
     /// </summary>
-    internal bool TryAddNextTo(DetachedItem sibling, DetachedItem item)
+    internal bool TryAddToRecentWindow(DetachedItem item)
     {
-        var window = _windows.FirstOrDefault(w => w.Contains(sibling));
-        if (window is null)
+        if (RecentWindow() is not { } window)
             return false;
         window.AddItem(item);                 // AddItem がそのままアクティブタブにする
         if (window.WindowState == WindowState.Minimized)
@@ -75,9 +86,20 @@ internal sealed class DetachedWindowManager
         return true;
     }
 
+    /// <summary>直近に前へ出た窓（一度も Activated が来ていなければ最後に作った窓）。</summary>
+    private DetachedPaneWindow? RecentWindow()
+        => _activationOrder.FirstOrDefault(w => _windows.Contains(w)) ?? _windows.LastOrDefault();
+
+    private void NoteActivated(DetachedPaneWindow window)
+    {
+        _activationOrder.Remove(window);
+        _activationOrder.Insert(0, window);
+    }
+
     private DetachedPaneWindow NewWindow(double? left = null, double? top = null)
     {
         var win = new DetachedPaneWindow(this) { Owner = _owner };
+        win.Activated += (_, _) => NoteActivated(win);
         if (left is { } l && top is { } t)
         {
             win.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -92,6 +114,7 @@ internal sealed class DetachedWindowManager
     internal void OnWindowClosed(DetachedPaneWindow window)
     {
         _windows.Remove(window);
+        _activationOrder.Remove(window);
         NotifyChanged();
     }
 
@@ -170,7 +193,7 @@ internal sealed class DetachedWindowManager
         => Math.Abs(source.Left - _windowDragStart.X) > 2
            || Math.Abs(source.Top - _windowDragStart.Y) > 2;
 
-    private DetachedPaneWindow? FindWindowAt(WindowNative.NativePoint point, DetachedPaneWindow source)
+    private DetachedPaneWindow? FindWindowAt(WindowNative.NativePoint point, DetachedPaneWindow? source)
     {
         var candidates = new Dictionary<IntPtr, DetachedPaneWindow>();
         foreach (var window in _windows)
@@ -270,23 +293,110 @@ internal sealed class DetachedWindowManager
     // ===== ドラッグ調停 =====
 
     /// <summary>既存の切り離しタブをウィンドウ間で移動するドラッグの開始。</summary>
-    internal void BeginDrag(DetachedItem item, DetachedPaneWindow source)
+    internal void BeginDrag(DetachedItem item, DetachedPaneWindow source, TabDragGhost? ghost = null)
     {
         _dragItem = item;
         _dragSource = source;
         _dragFactory = null;
         _dropConsumed = false;
         _dragCancelled = false;
+        StartHoverTracking(ghost);
     }
 
     /// <summary>メインペインのタブを引き出す外部ドラッグの開始（実体化はドロップ時まで遅延）。</summary>
-    internal void BeginExternalDrag(Func<DetachedItem> factory)
+    internal void BeginExternalDrag(Func<DetachedItem> factory, TabDragGhost? ghost = null)
     {
         _dragItem = null;
         _dragSource = null;
         _dragFactory = factory;
         _dropConsumed = false;
         _dragCancelled = false;
+        StartHoverTracking(ghost);
+    }
+
+    /// <summary>いま運んでいるのが「メインへ戻せるタブ」ならその戻し方（メイン窓の帯が受けるかの判定に使う）。
+    /// メインから引き出している最中（外部ドラッグ）は null——引き出した先はメインの帯ではない。</summary>
+    internal DetachReturn? DraggingReturn => _dragItem?.Return;
+
+    /// <summary>運んでいるタブをメイン窓のペインへ戻す（受け口の判定はメイン窓側）。
+    /// 窓から外してから <see cref="DetachReturn.Apply"/> を呼ぶ——コントロールは親を1つしか持てないので、
+    /// 先にメインへ載せると切り離し窓の後片付けが<b>載せ替えた先から</b>外してしまう。</summary>
+    internal void ReturnDraggedToMain()
+    {
+        if (_dragCancelled || _dragItem is not { } item || _dragSource is not { } source)
+            return;
+        if (item.Return is not { } ret)
+            return;
+        _dropConsumed = true;
+        source.RemoveItem(item, dispose: false);   // 実体はメインで生き続ける（Apply が要否を決める）
+        ret.Apply();
+    }
+
+    /// <summary>いま運んでいるタブの出どころがこの窓か（自分の窓の中身の上で離したときは受けない
+    /// ＝従来どおり新しい窓へ分かれる）。</summary>
+    internal bool IsDragSource(DetachedPaneWindow window) => ReferenceEquals(_dragSource, window);
+
+    // ===== 「窓のどこへ落としても受ける」ための追従 =====
+
+    /// <summary>ドラッグ中、カーソルの下の切り離しウィンドウを追い続ける（結合先の案内も更新する）。</summary>
+    private void StartHoverTracking(TabDragGhost? ghost)
+    {
+        _dragGhost = ghost;
+        _dragHover = null;
+        _dragHoverTimer ??= new DispatcherTimer(
+            TimeSpan.FromMilliseconds(50), DispatcherPriority.Normal,
+            (_, _) => UpdateDragHover(), _owner.Dispatcher);
+        _dragHoverTimer.Start();
+        UpdateDragHover();
+    }
+
+    private void UpdateDragHover()
+    {
+        var target = !IsDragging || _dragCancelled ? null : WindowUnderCursor();
+        if (!ReferenceEquals(target, _dragHover))
+        {
+            _dragHover?.SetMergeTarget(false);
+            _dragHover = target;
+            _dragHover?.SetMergeTarget(true);
+        }
+        _dragGhost?.SetOverMergeTarget(target is not null);
+    }
+
+    /// <summary>
+    /// カーソルの<b>直下に実際に見えている</b>切り離しウィンドウ（無ければ null）。窓単位のドラッグが使う
+    /// <see cref="FindWindowAt"/> と違い、矩形に入っているだけの窓は採らない——タブのドラッグでは
+    /// 「見えている窓へ落とす」が約束なので、手前の窓（他アプリの窓・引き出し元の窓自身）に隠れた窓へ
+    /// 吸い込まれてはいけない。<c>WindowFromPoint</c> はカーソル直下の窓を Z 順で返し、素通し指定
+    /// （<c>WS_EX_TRANSPARENT</c>）のタブ片は無視する。
+    /// </summary>
+    private DetachedPaneWindow? WindowUnderCursor()
+    {
+        if (!WindowNative.GetCursorPos(out var cursor))
+            return null;
+        var hwnd = WindowNative.WindowFromPoint(cursor);
+        if (hwnd == IntPtr.Zero)
+            return null;
+        var root = WindowNative.GetAncestor(hwnd, WindowNative.GaRoot);   // 子コントロールからトップレベルへ
+        if (root == IntPtr.Zero)
+            root = hwnd;
+        foreach (var window in _windows)
+        {
+            if (ReferenceEquals(window, _dragSource)   // 引き出し元の上で離したら分離（結合ではない）
+                || !window.IsVisible
+                || window.WindowState == WindowState.Minimized)
+                continue;
+            if (new WindowInteropHelper(window).Handle == root)
+                return window;
+        }
+        return null;
+    }
+
+    private void StopHoverTracking()
+    {
+        _dragHoverTimer?.Stop();
+        _dragHover?.SetMergeTarget(false);
+        _dragHover = null;
+        _dragGhost = null;
     }
 
     /// <summary>Esc 等でドラッグがキャンセルされた（元タブを消さない／新窓も作らない）。</summary>
@@ -325,26 +435,52 @@ internal sealed class DetachedWindowManager
         if (_dropConsumed || _dragCancelled)
             return;
 
+        // 離した瞬間の位置で結合先を取り直す（タイマーの最後の値は最大 50ms 古い）。
+        // ドロップイベントに頼らないのがここの肝——切り離し窓の中身が WebView2 やターミナルだと
+        // WPF のドラッグイベントが届かないことがあり、窓の上で離したのに新しい窓が増えてしまう。
+        // ただし<b>誰かが受け取った（result != None）ドラッグは横取りしない</b>——この救済は
+        // 「どこも受けなかった」ときのためのもので、受け手が居るなら二重に処理することになる。
+        UpdateDragHover();
+        var hover = result == DragDropEffects.None ? _dragHover : null;
+
         // 外部ドラッグ（メインペインのタブ引き出し）：detached 窓ストリップへ落とせば結合済み（consumed）。
         // それ以外の場所で離したら新窓へ引き出す（Esc は _dragCancelled で除外済み）。メイン窓が最大化
         // していると「外側」が無くなり切り離せないため、位置によるスナップバックはしない。
         if (_dragFactory is { } factory)
         {
+            if (hover is not null)
+            {
+                hover.AddItem(factory());
+                hover.Activate();
+                return;
+            }
             SpawnAtCursor(factory());
             return;
         }
 
+        if (_dragItem is not { } item || _dragSource is not { } src)
+            return;
+
+        // 別の切り離し窓の上で離した：その窓のタブにする（帯の上でなくてもよい）。
+        if (hover is not null && !ReferenceEquals(hover, src))
+        {
+            src.RemoveItem(item, dispose: false);
+            hover.AddItem(item);
+            hover.Activate();
+            return;
+        }
+
         // 既存タブの窓間ドラッグ：どのストリップにも受け取られなかった（ウィンドウ外）なら新窓へ分離。
-        if (result != DragDropEffects.None)
+        if (result != DragDropEffects.None || src.ItemCount <= 1)
             return;
-        if (_dragItem is not { } item || _dragSource is not { } src || src.ItemCount <= 1)
-            return;
+
         src.RemoveItem(item, dispose: false);
         SpawnAtCursor(item);
     }
 
     internal void ClearDrag()
     {
+        StopHoverTracking();
         _dragItem = null;
         _dragSource = null;
         _dragFactory = null;
@@ -364,6 +500,7 @@ internal sealed class DetachedWindowManager
     /// <summary>アプリ終了時：全フローティングウィンドウを閉じ、全項目を破棄する。</summary>
     public void CloseAll()
     {
+        StopHoverTracking();
         ClearWindowDragFeedback();
         _windowDragSource = null;
         _suppressChanged = true;

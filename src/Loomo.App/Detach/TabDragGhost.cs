@@ -42,6 +42,9 @@ internal sealed class TabDragGhost : IDisposable
     /// <summary>窓の外で離したら本当に新しい窓へ分かれるか（元の窓に1枚しか無ければ何も起きない）。</summary>
     private bool _canSplit = true;
 
+    /// <summary>カーソルが別の切り離しウィンドウの上にあるか（帯の上でなくてもそこのタブになる）。</summary>
+    private bool _overMergeTarget;
+
     private TabDragGhost(Window owner, string title, ImageSource? icon)
     {
         _dpi = VisualTreeHelper.GetDpi(owner);
@@ -133,10 +136,23 @@ internal sealed class TabDragGhost : IDisposable
         if (_shownFor != effects)
         {
             _shownFor = effects;
-            _hint.Text = HintFor(effects, _canSplit);
+            UpdateHint();
         }
         MoveToCursor();
     }
+
+    /// <summary>カーソルが別の切り離しウィンドウに入った／出たことを伝える
+    /// （<see cref="DetachedWindowManager"/> がカーソル位置から判定して渡す）。</summary>
+    public void SetOverMergeTarget(bool over)
+    {
+        if (_closed || _overMergeTarget == over)
+            return;
+        _overMergeTarget = over;
+        UpdateHint();
+    }
+
+    private void UpdateHint()
+        => _hint.Text = HintFor(_shownFor ?? DragDropEffects.None, _canSplit, _overMergeTarget);
 
     private void MoveToCursor()
     {
@@ -147,9 +163,12 @@ internal sealed class TabDragGhost : IDisposable
     }
 
     /// <summary>ドロップ先が受け取る構えなら「結合」、どこも受けないなら離した先が新しい窓になる。
+    /// <paramref name="overMergeTarget"/>＝帯の外でも切り離しウィンドウの上に居る（そこのタブになる）。
     /// ただし分かれようのないタブ（1枚だけの切り離し窓）では、起きないことを約束しない。</summary>
-    internal static string HintFor(DragDropEffects effects, bool canSplit = true)
+    internal static string HintFor(
+        DragDropEffects effects, bool canSplit = true, bool overMergeTarget = false)
         => effects != DragDropEffects.None ? "このタブ帯へ入れる"
+            : overMergeTarget ? "このウィンドウのタブにする"
             : canSplit ? "離すと新しいウィンドウ" : "すでに単独のウィンドウ";
 
     public void Dispose()

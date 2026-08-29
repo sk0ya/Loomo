@@ -4,7 +4,9 @@
         Title="Loomo" Width="960" Height="680" MinWidth="360" MinHeight="240"
         Background="{DynamicResource Panel}"
         Foreground="{DynamicResource Fg}"
-        WindowStyle="None" ResizeMode="CanResize">
+        WindowStyle="None" ResizeMode="CanResize"
+        AllowDrop="True" PreviewDragOver="OnWindowDragOver" PreviewDrop="OnWindowDrop"
+        DragOver="OnWindowUnclaimedDragOver" Drop="OnWindowUnclaimedDrop">
 
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="34" ResizeBorderThickness="6"

@@ -10,12 +10,6 @@ namespace sk0ya.Loomo.App.Views;
 /// 配置を崩すのは対価が大きい。窓なら見終わって閉じれば元の配置がそのまま残る。</para>
 /// </summary>
 public partial class ShellWindow {
-    /// <summary>ペインが隠れているときに開いた差分のタブたち（新しいものが末尾）。次の差分は
-    /// <b>最後のタブと同じ窓へ足す</b>——差分は溜めて見比べる物なので上書きはしないが、送るたびに
-    /// 窓が増えると画面が埋まる。窓は1つ・タブが増える形にして、並べたくなったらタブを引き出せばよい
-    /// （切り離しウィンドウのタブは掴んで外へ落とすと別窓になる）。閉じられたタブはここから外れる。</summary>
-    private readonly List<DetachedItem> _diffTabs = new();
-
     /// <summary>差分を見せる。ペインが出ていなければ別ウィンドウで開く（このクラスの主役）。</summary>
     private void ShowDiff(DiffOpenTarget target) {
         // ステージモードでは「隠れている」ペインは無い（袖に居るだけで、舞台へ上げれば出る）ので
@@ -29,16 +23,15 @@ public partial class ShellWindow {
         ShowDiffInDetachedWindow(target);
     }
 
-    /// <summary>差分をペイン外の窓で開く。既に開いている差分タブがあれば<b>その窓のタブとして</b>足す。</summary>
+    /// <summary>差分をペイン外の窓で開く。<b>切り離しウィンドウが既に出ていれば、そこのタブとして足す</b>
+    /// ——差分は溜めて見比べる物なので前のを上書きはしないが、送るたびに窓が増えると画面が埋まる。
+    /// 足す先は直近に前へ出た窓で、相手が差分の窓かどうかは問わない（エディタを切り離した窓でも同じ
+    /// ——「いま開いている別ウィンドウ」がタブの行き先という一本の約束にする）。並べて見比べたくなったら
+    /// タブを掴んで外へ落とせば別窓になる（切り離しウィンドウの既存の作法）。</summary>
     private void ShowDiffInDetachedWindow(DiffOpenTarget target) {
-        var sibling = _diffTabs.Count > 0 ? _diffTabs[^1] : null;   // 足す先は最後に開いたタブの窓
-        DetachedItem? item = null;
-        item = CreateDiffSpinoffItem(target, onDisposed: () => {
-            if (item is { } closed) _diffTabs.Remove(closed);
-        });
-        _diffTabs.Add(item);
-        // 相手の窓が既に閉じられていれば（TryAddNextTo が false）新しい窓を開く。
-        if (sibling is null || !Detached.TryAddNextTo(sibling, item))
+        var item = CreateDiffSpinoffItem(target);
+        // 窓が1つも出ていなければ（TryAddToRecentWindow が false）新しい窓を開く。
+        if (!Detached.TryAddToRecentWindow(item))
             Detached.Detach(item);
     }
 

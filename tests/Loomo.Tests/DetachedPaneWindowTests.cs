@@ -4,6 +4,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using sk0ya.Loomo.App.Detach;
+using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using Xunit;
 
@@ -95,6 +96,123 @@ public class DetachedPaneWindowTests
         // 1枚だけの切り離し窓から引き出しても分かれない（EndDrag が弾く）ので、起きないことを約束しない。
         Assert.Equal("すでに単独のウィンドウ", TabDragGhost.HintFor(DragDropEffects.None, canSplit: false));
         Assert.Equal("このタブ帯へ入れる", TabDragGhost.HintFor(DragDropEffects.Move, canSplit: false));
+    }
+
+    [Fact]
+    public void ドラッグ中の案内は窓の上なら帯の外でもタブになると出す()
+    {
+        // タブ帯（34px）を外しても切り離しウィンドウの上なら、離せばその窓のタブになる。
+        Assert.Equal("このウィンドウのタブにする",
+            TabDragGhost.HintFor(DragDropEffects.None, canSplit: true, overMergeTarget: true));
+        // 帯の上（受け手が Move を返している）ならそちらの案内を優先する。
+        Assert.Equal("このタブ帯へ入れる",
+            TabDragGhost.HintFor(DragDropEffects.Move, canSplit: true, overMergeTarget: true));
+        // 1枚だけの窓から引き出しても、相手の窓の上なら結合はできる。
+        Assert.Equal("このウィンドウのタブにする",
+            TabDragGhost.HintFor(DragDropEffects.None, canSplit: false, overMergeTarget: true));
+    }
+
+    [Fact]
+    public void 切り離しウィンドウが出ていれば次の項目はそのタブになる()
+    {
+        RunSta(() =>
+        {
+            var owner = new Window { Width = 200, Height = 200, ShowInTaskbar = false };
+            owner.Show();                       // Owner に指定するには表示済みである必要がある
+            var manager = new DetachedWindowManager(owner);
+            try
+            {
+                var first = NewItem("A");
+                // 窓が1つも無ければ呼び出し側が新しい窓を開く（＝ここでは false）。
+                Assert.False(manager.TryAddToRecentWindow(first));
+
+                manager.Detach(first);
+                var second = NewItem("B");
+                Assert.True(manager.TryAddToRecentWindow(second));
+
+                // 窓は増えず、2枚目はタブとして足されてアクティブになる。
+                Assert.Equal(new[] { first, second }, manager.AllItems);
+                Assert.True(second.IsActive);
+                Assert.False(first.IsActive);
+            }
+            finally
+            {
+                manager.CloseAll();
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void 戻せるタブはメインの帯へ返せる()
+    {
+        RunSta(() =>
+        {
+            var manager = new DetachedWindowManager(new Window());
+            var window = new DetachedPaneWindow(manager);
+            var returned = 0;
+            var keep = NewItem("keep");                       // 窓が空になって閉じないよう1枚残す
+            var item = new DetachedItem(
+                DetachKind.EditorMove, "A", new Border(), icon: null, dispose: () => Assert.Fail("戻すときは破棄しない"))
+            {
+                Return = new DetachReturn(TabEntryKind.Editor, () => returned++),
+            };
+            window.AddItem(keep);
+            window.AddItem(item);
+
+            manager.BeginDrag(item, window);
+            Assert.Equal(TabEntryKind.Editor, manager.DraggingReturn?.Kind);
+
+            manager.ReturnDraggedToMain();
+
+            Assert.Equal(1, returned);
+            Assert.False(window.Contains(item));   // 窓からは外れ、実体はメイン側で生き続ける
+            Assert.True(window.Contains(keep));
+            manager.ClearDrag();
+        });
+    }
+
+    [Fact]
+    public void Escでやめたドラッグはタブを動かさない()
+    {
+        RunSta(() =>
+        {
+            var manager = new DetachedWindowManager(new Window());
+            var window = new DetachedPaneWindow(manager);
+            var keep = NewItem("keep");
+            var item = NewItem("A");
+            window.AddItem(keep);
+            window.AddItem(item);
+
+            manager.BeginDrag(item, window);
+            manager.CancelDrag();
+            manager.EndDrag(DragDropEffects.None);   // 離した場所で結合も分離もしない
+
+            Assert.True(window.Contains(item));
+            Assert.Equal(2, window.ItemCount);
+            manager.ClearDrag();
+        });
+    }
+
+    [Fact]
+    public void 戻し先を持たないタブは帯に受けさせない()
+    {
+        RunSta(() =>
+        {
+            var manager = new DetachedWindowManager(new Window());
+            var window = new DetachedPaneWindow(manager);
+            var keep = NewItem("keep");
+            var item = NewItem("Diff");            // Return なし＝Diff やプレビューの複製
+            window.AddItem(keep);
+            window.AddItem(item);
+
+            manager.BeginDrag(item, window);
+
+            Assert.Null(manager.DraggingReturn);   // メインの帯は受け口を出さない
+            manager.ReturnDraggedToMain();
+            Assert.True(window.Contains(item));    // 呼ばれても何も起きない
+            manager.ClearDrag();
+        });
     }
 
     [Fact]

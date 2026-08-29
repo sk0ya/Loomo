@@ -263,7 +263,11 @@ public partial class DetachedPaneWindow
         void OnGiveFeedback(object _, GiveFeedbackEventArgs e) => ghost.Follow(e.Effects);
         TabStripItems.GiveFeedback += OnGiveFeedback;
 
-        _manager.BeginDrag(item, this);
+        _manager.BeginDrag(item, this, ghost);
+        // Esc は「やめる」——付けていないと、離した場所の窓へ結合されたり新しい窓が増えたりする
+        // （メインのタブ引き出し側と同じ約束。`EndDrag` はこの旗を見て何もせず戻る）。
+        QueryContinueDragEventHandler onQueryContinue = (_, e) => { if (e.EscapePressed) _manager.CancelDrag(); };
+        TabStripItems.QueryContinueDrag += onQueryContinue;
         try
         {
             var data = new DataObject(DetachDragFormat, item.Id.ToString());
@@ -272,6 +276,7 @@ public partial class DetachedPaneWindow
         }
         finally
         {
+            TabStripItems.QueryContinueDrag -= onQueryContinue;
             TabStripItems.GiveFeedback -= OnGiveFeedback;
             if (source is not null)
                 source.Opacity = 1;            // 他の窓へ移ったなら、そこで作り直された器が素のまま出る
@@ -294,5 +299,62 @@ public partial class DetachedPaneWindow
             e.Handled = true;
             _manager.DropOnto(this);
         }
+    }
+
+    /// <summary>
+    /// タブ帯だけでなく<b>窓のどこへ落としても</b>この窓のタブとして受ける。帯は 34px しかなく、
+    /// 中身の上で離すと（受け手が居ないので）新しい窓が増える——「別ウィンドウのタブにする」つもりの
+    /// 手が空振りしていた。自分から出たドラッグは受けない＝同じ窓の中身の上で離したら、従来どおり
+    /// 新しい窓へ分かれる。
+    ///
+    /// <para>Preview（トンネル）で受けるのは、中身（エディタ・ブラウザ・ターミナル）のドロップ処理より
+    /// 先に取るため。運んでいるのがタブ（<see cref="DetachDragFormat"/>）でなければ何もしないので、
+    /// ファイルのドロップなど中身本来の受け口は塞がない。中身が WPF のドラッグイベントを通さない場合の
+    /// 取りこぼしは <c>DetachedWindowManager.EndDrag</c> がカーソル位置から拾う。</para>
+    /// </summary>
+    private void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        if (!CanAcceptTabDrop(e))
+            return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void OnWindowDrop(object sender, DragEventArgs e)
+    {
+        if (!CanAcceptTabDrop(e))
+            return;
+        e.Handled = true;
+        _manager.DropOnto(this);
+    }
+
+    private bool CanAcceptTabDrop(DragEventArgs e)
+        => _manager.IsDragging
+           && !_manager.IsDragSource(this)
+           && e.Data.GetDataPresent(DetachDragFormat);
+
+    /// <summary>
+    /// 窓のどこにも受け手が居なかったドラッグには、はっきり「受け取らない」と返す。
+    /// <c>Window</c> に <c>AllowDrop</c> を付けた副作用——素のまま返すと OLE には呼び出し元が許した効果
+    /// （コピー/移動）がそのまま返り、<b>受け取れるように見えるカーソル</b>が出るうえ、エクスプローラーからの
+    /// 「移動」ドラッグでは元のファイルが消えかねない。
+    ///
+    /// <para><c>e.Source</c> がこの窓自身のときだけ効く＝中身（エディタ等）が自前の受け口を持っていれば
+    /// そちらに任せる。運んでいるタブを受けられる場合は上の Preview が処理済みでここへは来ない。</para>
+    /// </summary>
+    private void OnWindowUnclaimedDragOver(object sender, DragEventArgs e)
+    {
+        if (!ReferenceEquals(e.Source, this))
+            return;
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnWindowUnclaimedDrop(object sender, DragEventArgs e)
+    {
+        if (!ReferenceEquals(e.Source, this))
+            return;
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
     }
 }

@@ -781,6 +781,7 @@
                             DragOver="OnFileDropDragOver" Drop="OnTerminalFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
                                Tag="Terminal" Cursor="SizeAll"
+                               AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
@@ -891,6 +892,7 @@
                             DragOver="OnFileDropDragOver" Drop="OnEditorFileDrop">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
                                Tag="Editor" Cursor="SizeAll"
+                               AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
@@ -1091,6 +1093,7 @@
                 <DockPanel x:Name="BrowserPane" Background="{DynamicResource Panel}">
                     <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
                                Tag="Browser" Cursor="SizeAll"
+                               AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="BROWSER" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"

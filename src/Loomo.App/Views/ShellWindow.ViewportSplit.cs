@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン内分割（vim 風 Ctrl+W v/s/q）と外観適用・PaneSplitView 実装</summary>
 public partial class ShellWindow {
     private bool CloseFocusedViewport() {
@@ -132,10 +132,14 @@ public partial class ShellWindow {
         var view = new TerminalTabView("pwsh.exe", startDirectory) {
             AutoFocusOnStart = false, };
         _appearance.ApplyTerminalAppearance(view);
-        var tab = new TerminalTab(requestedId ?? Guid.NewGuid(), view);
-        view.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
-        view.HyperlinkActivated += OnTerminalLinkActivated;
-        view.ContextMenuBuilding += OnTerminalContextMenuBuilding;
+        return HookTerminalTab(new TerminalTab(requestedId ?? Guid.NewGuid(), view));
+    }
+    /// <summary>メインのタブとしての配線（見出し追従・リンク・右クリック・活動バッジ）を張る。
+    /// 新しいタブと、切り離しウィンドウから<b>戻ってきた</b>セッションの受け入れで共通。</summary>
+    private TerminalTab HookTerminalTab(TerminalTab tab) {
+        tab.View.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
+        tab.View.HyperlinkActivated += OnTerminalLinkActivated;
+        tab.View.ContextMenuBuilding += OnTerminalContextMenuBuilding;
         HookTerminalActivity(tab);
         return tab;
     }
