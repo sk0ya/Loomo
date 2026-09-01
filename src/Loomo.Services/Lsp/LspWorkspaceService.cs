@@ -229,14 +229,22 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         string path,
         out string text)
     {
-        if (currentTexts is not null && currentTexts.TryGetValue(path, out text!))
-            return true;
-        var match = currentTexts?.FirstOrDefault(pair =>
-            string.Equals(Path.GetFullPath(pair.Key), path, StringComparison.OrdinalIgnoreCase));
-        if (match is { } found)
+        if (currentTexts is not null)
         {
-            text = found.Value;
-            return true;
+            if (currentTexts.TryGetValue(path, out text!))
+                return true;
+            // FirstOrDefault は「見つからなかった」ときも既定の KeyValuePair を返す。?. と合わせて
+            // Nullable にしても中身は非 null 扱いなので、`is { }` は常に真になり、開いていない
+            // ファイルまで本文 "" として返してしまっていた（fixAll が空文書を didOpen して常に空振り、
+            // さらに開いている文書へ空の didChange を送ってサーバー側の本文を壊す）。列挙で判定する。
+            foreach (var pair in currentTexts)
+            {
+                if (string.Equals(Path.GetFullPath(pair.Key), path, StringComparison.OrdinalIgnoreCase))
+                {
+                    text = pair.Value;
+                    return true;
+                }
+            }
         }
         text = "";
         return false;

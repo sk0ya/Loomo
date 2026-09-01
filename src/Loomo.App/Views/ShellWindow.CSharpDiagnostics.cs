@@ -212,9 +212,11 @@ public partial class ShellWindow
 
     private void ClearStyleCopPresentation(VimEditorControl control)
     {
-        if (_styleCopAnalysisCts.TryGetValue(control, out var cts))
+        // Cancel だけでなく辞書からも外す。解析タスク側の finally も同じ掃除をするが、
+        // タブを閉じた直後は「Dispose 済みコントロールを鍵にしたエントリ」を残さないことが要点。
+        if (_styleCopAnalysisCts.Remove(control, out var cts))
             cts.Cancel();
-        if (_compilerAnalysisCts.TryGetValue(control, out var compilerCts))
+        if (_compilerAnalysisCts.Remove(control, out var compilerCts))
             compilerCts.Cancel();
         _styleCopResults.Remove(control);
         _compilerResults.Remove(control);

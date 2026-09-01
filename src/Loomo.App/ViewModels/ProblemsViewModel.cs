@@ -29,8 +29,9 @@ public sealed class ProblemItemViewModel
 {
     public ProblemItemViewModel(string filePath, int line1, int column1, ProblemSeverity severity,
         string code, string message, ProblemSource source = ProblemSource.Build,
-        int? endLine1 = null, int? endColumn1 = null)
+        int? endLine1 = null, int? endColumn1 = null, bool hasCode = true)
     {
+        HasCode = hasCode;
         FilePath = filePath;
         Line1 = line1;
         Column1 = column1;
@@ -51,6 +52,9 @@ public sealed class ProblemItemViewModel
     public ProblemSeverity Severity { get; }
     /// <summary>診断コード（CS1002 / MSB3027 / MC3000 など）。</summary>
     public string Code { get; }
+    /// <summary><see cref="Code"/> が診断そのもののコードか（false なら発生源名で埋めた代用）。
+    /// 代用のときはコードで同一性を判定できないので、重複排除の鍵にメッセージを足す。</summary>
+    public bool HasCode { get; }
     public string Message { get; }
     public ProblemSource Source { get; }
     public string SourceLabel => Source switch
@@ -226,7 +230,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
             .Select(d => new ProblemItemViewModel(filePath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
                 ToProblemSeverity(d.Severity),
                 string.IsNullOrWhiteSpace(d.Code) ? (string.IsNullOrWhiteSpace(d.Source) ? "LSP" : d.Source!) : d.Code!,
-                d.Message, ProblemSource.Lsp, d.Range.End.Line + 1, d.Range.End.Character + 1))
+                d.Message, ProblemSource.Lsp, d.Range.End.Line + 1, d.Range.End.Character + 1,
+                hasCode: !string.IsNullOrWhiteSpace(d.Code)))
             .ToList();
         if (items.Count == 0) _lspItems.Remove(filePath); else _lspItems[filePath] = items;
         Rebuild();
@@ -247,7 +252,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
             .Where(d => d.Source?.Equals("Compiler", StringComparison.OrdinalIgnoreCase) == true)
             .Select(d => new ProblemItemViewModel(fullPath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
                 ToProblemSeverity(d.Severity), d.Code ?? "Compiler", d.Message, ProblemSource.Compiler,
-                d.Range.End.Line + 1, d.Range.End.Character + 1))
+                d.Range.End.Line + 1, d.Range.End.Character + 1,
+                hasCode: !string.IsNullOrWhiteSpace(d.Code)))
             .ToList();
         if (items.Count == 0) _compilerItems.Remove(fullPath); else _compilerItems[fullPath] = items;
         Rebuild();
@@ -303,7 +309,11 @@ public sealed partial class ProblemsViewModel : ObservableObject
             // severity／message は除外する。Analyzer の設定やローカライズが一時的に異なっても、
             // 同じ ID・位置の診断を二重表示せず、SourcePriorityの正本を残す。
             // Build出力は終端rangeを持たず開始位置だけなので、終端位置はキーに含めない。
-            .GroupBy(i => $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}",
+            // ただしコードを持たない診断（Code が発生源名の代用）は ID で区別できないので、
+            // 同じ位置の別々の診断が消えないようメッセージまで鍵に含める。
+            .GroupBy(i => i.HasCode
+                    ? $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}"
+                    : $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}|{i.Message}",
                 System.StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderBy(SourcePriority).First())
             .ToList();

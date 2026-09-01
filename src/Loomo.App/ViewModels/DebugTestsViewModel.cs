@@ -465,7 +465,8 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
             session.DebugService.Exited -= OnTestDebugSessionExited;
 
         var process = Interlocked.Exchange(ref _testDebugProcess, null);
-        if (process is not null) await process.DisposeAsync();
+        // Dispose() からは UI スレッドが同期待ちする。継続を Dispatcher へ戻さない。
+        if (process is not null) await process.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>testhostをattachしたDAPセッションとVSTest待機プロセスを結び付ける。

@@ -97,12 +97,19 @@ public partial class ShellWindow
             CSharpSolutionAction.Run => "実行",
             _ => "ビルド",
         };
+        // IDE ペインのヘッダーと Solution Explorer の見出しは同じ文言を出す。片方だけ
+        // 更新し忘れると「テスト中…」のまま止まって見えるので、必ず両方をここから書く。
+        void SetStatus(string message)
+        {
+            _vm.Debug.StatusMessage = message;
+            if (_vm.CSharpSolutionExplorer is { } target)
+                target.ExecutionStatusText = message;
+        }
+
         _vm.Debug.RequestOutput();
         _vm.Debug.IsTaskRunning = true;
-        _vm.Debug.StatusMessage = e.Action == CSharpSolutionAction.Test
-            ? "テスト中…" : e.Action == CSharpSolutionAction.Run ? "実行中…" : "ビルド中…";
-        if (_vm.CSharpSolutionExplorer is { } explorer)
-            explorer.ExecutionStatusText = _vm.Debug.StatusMessage;
+        SetStatus(e.Action == CSharpSolutionAction.Test
+            ? "テスト中…" : e.Action == CSharpSolutionAction.Run ? "実行中…" : "ビルド中…");
         CSharpTestExecutionResult? testExecution = null;
         try
         {
@@ -112,6 +119,7 @@ public partial class ShellWindow
                 var command = IisExpressLaunchCommand.Build(target, launchProfile, out var launchError);
                 if (command is null)
                 {
+                    SetStatus($"{actionName}失敗");
                     ShowRefactorStatus($"IIS Expressを起動できません: {launchError}");
                     return;
                 }
@@ -127,11 +135,13 @@ public partial class ShellWindow
                     targetFramework: tfm);
                 if (testExecution.PreparationError is { } preparationError)
                 {
+                    SetStatus($"{actionName}失敗");
                     ShowRefactorStatus(preparationError);
                     return;
                 }
                 if (testExecution.Command is not { } testResult)
                 {
+                    SetStatus($"{actionName}失敗");
                     ShowRefactorStatus("テストを実行できませんでした。");
                     return;
                 }
@@ -150,20 +160,16 @@ public partial class ShellWindow
 
             _vm.Debug.WriteConsole(result.Output);
             _vm.Debug.ReportBuildOutput(result.Output, Path.GetDirectoryName(target));
-            _vm.Debug.StatusMessage = result.Success
+            SetStatus(result.Success
                 ? $"{actionName}成功"
-                : $"{actionName}失敗（{result.ExitCode}）";
-            if (_vm.CSharpSolutionExplorer is { } solutionExplorer)
-                solutionExplorer.ExecutionStatusText = _vm.Debug.StatusMessage;
+                : $"{actionName}失敗（{result.ExitCode}）");
             ShowRefactorStatus(result.Success
                 ? $"{actionName}が完了しました: {Path.GetFileName(target)}"
                 : $"{actionName}に失敗しました: {Path.GetFileName(target)}");
         }
         catch (Exception ex)
         {
-            _vm.Debug.StatusMessage = $"{actionName}失敗";
-            if (_vm.CSharpSolutionExplorer is { } solutionExplorer)
-                solutionExplorer.ExecutionStatusText = _vm.Debug.StatusMessage;
+            SetStatus($"{actionName}失敗");
             ShowRefactorStatus($"{actionName}を実行できませんでした: {ex.Message}");
         }
         finally

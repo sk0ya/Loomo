@@ -407,7 +407,7 @@ internal sealed class LspDocumentEntry
         if (!Client.Client.SupportsDocumentDiagnostics) return;
         var next = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _diagnosticPull, next);
-        previous?.Cancel();
+        CancelSafely(previous);
         var client = Client;
         var version = Volatile.Read(ref _version);
         var task = Task.Run(async () =>
@@ -454,7 +454,17 @@ internal sealed class LspDocumentEntry
     private void CancelDiagnosticsPull()
     {
         var cts = Interlocked.Exchange(ref _diagnosticPull, null);
-        cts?.Cancel();
+        CancelSafely(cts);
+    }
+
+    /// <summary>取り出した CTS の Cancel。フィールドから外した直後でも、完了継続が
+    /// 先に Dispose を終えていることがある（CompareExchange が空振りした側）。その場合
+    /// Cancel は ObjectDisposedException を投げるが、既に用済みなので無視してよい。
+    /// UpdateText は打鍵ごとに UI スレッドで走るので、ここが漏れると入力中に落ちる。</summary>
+    private static void CancelSafely(CancellationTokenSource? cts)
+    {
+        try { cts?.Cancel(); }
+        catch (ObjectDisposedException) { }
     }
 
     private void NotifyState(string? message)

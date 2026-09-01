@@ -254,6 +254,10 @@ public partial class ShellWindow {
             UpdateEditorSupportPinToggle();
         }
         if (tab.IsRealized) {
+            // 破棄する前に C# 診断（StyleCop／compiler フォールバック）の購読と保持を外す。
+            // 外さないと解析中のタスクが Dispose 済みコントロールへ結果を書き戻し、
+            // 閉じたファイルの問題も「問題」一覧に残り続ける。
+            ClearStyleCopPresentation(tab.Control);
             ViewportTree.Detach(tab.Control);
             tab.Control.Dispose();
         }

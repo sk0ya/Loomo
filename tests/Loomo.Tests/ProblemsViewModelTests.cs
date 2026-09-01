@@ -366,4 +366,39 @@ public class ProblemsViewModelTests
         Assert.Equal(1000, vm.Groups.Count);
         Assert.Equal(1, groupsChanged);
     }
+
+    /// <summary>コードを持たない LSP 診断は、Code に発生源名（"LSP" 等）が代入される。
+    /// 重複排除の鍵を FilePath|行|列|Code だけにすると、同じ位置に出た別々の診断が
+    /// 1 件に潰れて一覧から消える。メッセージまで見て区別すること。</summary>
+    [Fact]
+    public void Code_less_lsp_diagnostics_at_the_same_position_are_both_listed()
+    {
+        var vm = new ProblemsViewModel();
+        var range = new LspRange(new LspPosition(3, 0), new LspPosition(3, 8));
+
+        vm.SetLspDiagnostics("file:///C:/src/A.ts", [
+            new LspDiagnostic(range, "未使用の変数です", DiagnosticSeverity.Warning),
+            new LspDiagnostic(range, "この式は常に true です", DiagnosticSeverity.Warning),
+        ]);
+
+        var items = vm.Groups.SelectMany(g => g.Items).ToList();
+        Assert.Equal(2, items.Count);
+        Assert.Contains(items, i => i.Message == "未使用の変数です");
+        Assert.Contains(items, i => i.Message == "この式は常に true です");
+    }
+
+    /// <summary>コードを持つ診断は従来どおり、同じ ID・同じ位置なら発生源をまたいで 1 件に畳む。</summary>
+    [Fact]
+    public void Same_code_at_the_same_position_is_still_deduplicated()
+    {
+        var vm = new ProblemsViewModel();
+        var range = new LspRange(new LspPosition(3, 0), new LspPosition(3, 8));
+
+        vm.SetLspDiagnostics("file:///C:/src/A.cs", [
+            new LspDiagnostic(range, "; が必要です", DiagnosticSeverity.Error, "csharp", "CS1002"),
+            new LspDiagnostic(range, "; expected", DiagnosticSeverity.Error, "csharp", "CS1002"),
+        ]);
+
+        Assert.Single(vm.Groups.SelectMany(g => g.Items));
+    }
 }

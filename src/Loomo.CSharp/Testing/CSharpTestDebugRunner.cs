@@ -176,7 +176,10 @@ public sealed class CSharpTestDebugProcess : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Stop();
-        try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+        // ConfigureAwait(false) は必須。Dispose() から同期待ちされる（UI スレッドが
+        // GetAwaiter().GetResult() でブロックする）ため、継続を Dispatcher へ戻すと
+        // アプリ終了時にそのまま固まる。
+        try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
         catch { }
         _cancellation.Dispose();
         _process.OutputDataReceived -= OnOutput;
