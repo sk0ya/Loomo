@@ -1,0 +1,30 @@
+{
+  "profiles": {
+    "Client": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    "Client executable": {
+      "commandName": "Executable",
+      "executablePath": "bin\\Debug\\net10.0-windows\\Loomo.CSharpFixture.Client.exe",
+      "commandLineArgs": "--fixture",
+      "workingDirectory": "."
+    },
+    "IIS Express": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "launchUrl": "api/health"
+    }
+  },
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:5123",
+      "sslPort": 0
+    }
+  }
+}

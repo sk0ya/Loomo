@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using sk0ya.Loomo.Services.Refactoring;
+using sk0ya.Loomo.CSharp.Refactoring;
 
 namespace sk0ya.Loomo.App.Views;
 

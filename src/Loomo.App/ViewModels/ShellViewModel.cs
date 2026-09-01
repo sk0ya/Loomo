@@ -23,6 +23,7 @@ public enum SettingsCategory
     Ai,
     Lsp,
     Formatter,
+    StyleCop,
     Keyboard
 }
 
@@ -43,12 +44,17 @@ public sealed partial class ShellViewModel : ObservableObject
     public LspSettingsViewModel Lsp { get; }
     public LspPromptViewModel LspPrompt { get; }
     public FormatterSettingsViewModel Formatter { get; }
+    public StyleCopSettingsViewModel StyleCop { get; }
     public KeybindingsViewModel Keyboard { get; }
     public GitPanelViewModel GitPanel { get; }
     public GitSessionViewModel GitSession { get; }
     public DiffSessionViewModel DiffSession { get; }
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
+    /// <summary>アクティブなC#ファイルのプロジェクト／TFM文脈表示。</summary>
+    public CSharpProjectContextViewModel CSharpContext { get; }
+    /// <summary>評価済みsolution／projectの構造表示。通常のFolderTreeとは別のC#ビュー。</summary>
+    public CSharpSolutionExplorerViewModel? CSharpSolutionExplorer { get; }
     /// <summary>ブラウザペインのツールバー状態・ブックマーク・履歴・ダウンロード（設計書 §21）。</summary>
     public BrowserViewModel Browser { get; }
     public SearchPanelViewModel SearchPanel { get; }
@@ -95,7 +101,10 @@ public sealed partial class ShellViewModel : ObservableObject
         DebugViewModel debug,
         TsDebugViewModel tsIde,
         TrailViewModel trail,
-        RecentItemsViewModel? recent = null)
+        RecentItemsViewModel? recent = null,
+        CSharpProjectContextViewModel? csharpContext = null,
+        CSharpSolutionExplorerViewModel? csharpSolutionExplorer = null,
+        StyleCopSettingsViewModel? styleCop = null)
     {
         FolderTree = folderTree;
         Files = files;
@@ -111,6 +120,7 @@ public sealed partial class ShellViewModel : ObservableObject
         // 促しバーの「設定を開く」→ LSP 設定オーバーレイを開く。
         LspPrompt.OpenSettingsRequested += () => OpenSettingsOverlay(SettingsCategory.Lsp);
         Formatter = formatter;
+        StyleCop = styleCop ?? new StyleCopSettingsViewModel();
         Keyboard = keyboard;
         GitPanel = gitPanel;
         GitSession = gitSession;
@@ -122,6 +132,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Debug = debug;
         TsIde = tsIde;
         Trail = trail;
+        CSharpContext = csharpContext ?? new CSharpProjectContextViewModel();
+        CSharpSolutionExplorer = csharpSolutionExplorer;
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
@@ -186,6 +198,8 @@ public sealed partial class ShellViewModel : ObservableObject
             Lsp.Refresh();
         else if (value == SettingsCategory.Formatter)
             Formatter.Refresh();
+        else if (value == SettingsCategory.StyleCop)
+            StyleCop.Refresh();
     }
 
     /// <summary>設定オーバーレイを閉じる（Esc・背景クリック・閉じるボタン）。</summary>

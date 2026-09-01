@@ -1,4 +1,7 @@
 using sk0ya.Loomo.Services.Lsp;
+using sk0ya.Loomo.CSharp.Editor;
+using sk0ya.Loomo.CSharp.Projects;
+using sk0ya.Loomo.CSharp.Refactoring;
 using sk0ya.Loomo.Services.Refactoring;
 
 namespace sk0ya.Loomo.App.Views;
@@ -33,8 +36,9 @@ public partial class ShellWindow
 
     /// <summary>右クリックメニューへ「リファクタリング」を足す。中身は開いたときに詰める。
     ///
-    /// <para>出す条件は<b>コントロール側が "Rename Symbol" を出していた条件と同じ（接続済み）</b>に
-    /// 揃えてある。ここを `IsReady`（didOpen 済み）まで絞ると、接続直後のわずかな間だけ
+    /// <para>C#はLSP未接続でも専用DLLのrename／Change Signatureを使えるため、C#ファイルに限り
+    /// 接続条件を外す。他言語は従来どおり、コントロール側が "Rename Symbol" を出す条件（接続済み）に
+    /// 揃える。ここを `IsReady`（didOpen 済み）まで絞ると、接続直後のわずかな間だけ
     /// **どちらのメニューにも名前の変更が無い**状態が生まれる——ネイティブ項目は
     /// <c>HostProvidesRenameMenuItem</c> で消してあるため。</para></summary>
     private void AddRefactorMenuItems(ContextMenu menu, VimEditorControl? control)
@@ -45,11 +49,15 @@ public partial class ShellWindow
                 $"lspDoc={(control?.LspDocument is null ? "null" : $"connected={control.LspDocument.IsConnected} ready={control.LspDocument.IsReady}")} " +
                 $"hasSelection={control?.HasSelection} range={Describe(control?.SelectionAsLspRange())}");
 
-        if (control?.FilePath is not { Length: > 0 }) return;
-        if (control.LspDocument is not { IsConnected: true }) return;
+        if (control?.FilePath is not { Length: > 0 } filePath) return;
+        var isCSharp = string.Equals(Path.GetExtension(filePath), ".cs",
+            StringComparison.OrdinalIgnoreCase);
+        if (!isCSharp && control.LspDocument is not { IsConnected: true }) return;
 
         menu.Items.Add(new Separator());
         var root = new MenuItem { Header = "リファクタリング" };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(root, "CSharpRefactoring");
+        System.Windows.Automation.AutomationProperties.SetName(root, root.Header.ToString());
         root.Items.Add(new MenuItem { Header = "候補を取得しています…", IsEnabled = false });
         root.SubmenuOpened += (_, _) => _ = PopulateRefactorMenuAsync(root, control);
         menu.Items.Add(root);
@@ -78,8 +86,17 @@ public partial class ShellWindow
         root.Items.Add(BuildRenameMenuItem(control));
         if (signature is not null)
         {
-            var item = new MenuItem { Header = "シグネチャの変更…", ToolTip = signature.Display };
-            item.Click += (_, _) => _ = ChangeSignatureAsync(signature);
+            var item = new MenuItem
+            {
+                Header = "シグネチャの変更…",
+                ToolTip = signature.Display,
+                Tag = CSharpEditorCommandCatalog.ChangeSignature,
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(
+                item, CSharpEditorCommandCatalog.ChangeSignature);
+            System.Windows.Automation.AutomationProperties.SetName(item, item.Header.ToString());
+            item.Click += (_, _) => ExecuteCSharpEditorCommand(
+                CSharpEditorCommandCatalog.ChangeSignature, control);
             root.Items.Add(item);
         }
 
@@ -100,6 +117,9 @@ public partial class ShellWindow
                     Header = MenuHeaderText.Escape(item.Title),
                     ToolTip = item.ServerTitle,
                 };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(
+                    menuItem, $"CSharpRefactorAction.{root.Items.Count}");
+                System.Windows.Automation.AutomationProperties.SetName(menuItem, menuItem.Header.ToString());
                 var captured = item;
                 menuItem.Click += (_, _) => _ = ApplyRefactoringAsync(control, captured);
                 root.Items.Add(menuItem);
@@ -146,8 +166,17 @@ public partial class ShellWindow
 
     private MenuItem BuildRenameMenuItem(VimEditorControl control)
     {
-        var item = new MenuItem { Header = "名前の変更…", InputGestureText = "LSP" };
-        item.Click += (_, _) => control.ExecuteCommand("Rename");
+        var item = new MenuItem
+        {
+            Header = "名前の変更…",
+            InputGestureText = "LSP",
+            Tag = CSharpEditorCommandCatalog.Rename,
+        };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(
+            item, CSharpEditorCommandCatalog.Rename);
+        System.Windows.Automation.AutomationProperties.SetName(item, item.Header.ToString());
+        item.Click += (_, _) => ExecuteCSharpEditorCommand(
+            CSharpEditorCommandCatalog.Rename, control);
         return item;
     }
 
@@ -208,7 +237,12 @@ public partial class ShellWindow
                 var changes = RenameExtractedSymbol(item, edit.Changes, out bool cancelled);
                 if (cancelled) return;
 
-                var error = ApplyLspWorkspaceEdit(changes, edit.DocumentVersions, edit.FileOperations);
+                var error = ApplyLspWorkspaceEdit(changes, edit.DocumentVersions, edit.FileOperations,
+#if LOOMO_EDITOR_HOST_API
+                    expectedTexts: edit.ExpectedTexts);
+#else
+                    expectedTexts: null);
+#endif
                 ShowRefactorStatus(error is null
                     ? $"「{item.Title}」を適用しました。"
                     : $"「{item.Title}」を適用できませんでした: {error}");
@@ -262,7 +296,12 @@ public partial class ShellWindow
     private void OnLspServerApplyEditRequested(object? sender, LspApplyEditEventArgs e)
     {
         var error = Dispatcher.Invoke(() =>
-            ApplyLspWorkspaceEdit(e.Edit.Changes, e.Edit.DocumentVersions, e.Edit.FileOperations));
+            ApplyLspWorkspaceEdit(e.Edit.Changes, e.Edit.DocumentVersions, e.Edit.FileOperations,
+#if LOOMO_EDITOR_HOST_API
+                expectedTexts: e.Edit.ExpectedTexts));
+#else
+                expectedTexts: null));
+#endif
         e.Applied = error is null;
         e.FailureReason = error;
         if (error is not null)
@@ -286,15 +325,22 @@ public partial class ShellWindow
         var dialog = new ChangeSignatureDialog(signature) { Owner = this };
         if (dialog.ShowDialog() != true) return;
 
-        var refactoring = new CSharpSignatureRefactoring(_lspWorkspace, folders, FindOpenEditorText);
-        var plan = await refactoring.PlanAsync(signature, dialog.Result!);
+        var currentText = FindOpenEditorText(signature.FilePath);
+        var plan = currentText is null
+            ? await new CSharpSignatureRefactoring(
+                _lspWorkspace, folders, FindOpenEditorText).PlanAsync(signature, dialog.Result!)
+            : await CSharpSignatureRefactoring.PlanWithSolutionAsync(
+                _lspWorkspace, folders, FindOpenEditorText, _solutionModel?.Current,
+                signature.FilePath, currentText, signature, dialog.Result!,
+                FindOpenCSharpEditorTexts(), _csharpEditorConfig);
         if (plan.Error is { } planError)
         {
             ShowRefactorStatus(planError);
             return;
         }
 
-        var error = ApplyLspWorkspaceEdit(plan.Changes, documentVersions: null, fileOperations: null);
+        var error = ApplyLspWorkspaceEdit(plan.Changes, documentVersions: null, fileOperations: null,
+            expectedTexts: plan.ExpectedTexts);
         if (error is not null)
         {
             ShowRefactorStatus($"シグネチャを変更できませんでした: {error}");
@@ -309,7 +355,19 @@ public partial class ShellWindow
     /// <summary>開いているタブが持つ最新テキスト（未保存を含む）。開いていなければ null。</summary>
     private string? FindOpenEditorText(string path)
         => _editorTabs.FirstOrDefault(tab =>
-                tab.IsRealized &&
-                string.Equals(Path.GetFullPath(tab.Control.FilePath ?? ""), path, StringComparison.OrdinalIgnoreCase))
+                tab.IsRealized && EditorPathMatches(tab.Control, path))
             ?.Control.Text;
+
+    /// <summary>意味モデルを作るときに、開いているC#タブの未保存本文をすべて渡す。
+    /// 対象ファイルだけを上書きすると、別ファイルの未保存method group／呼び出しを
+    /// 古いディスク内容で安全確認してしまう。</summary>
+    private IReadOnlyDictionary<string, string> FindOpenCSharpEditorTexts()
+        => _editorTabs
+            .Where(tab => tab.IsRealized &&
+                string.Equals(Path.GetExtension(tab.Control.FilePath ?? ""), ".cs",
+                    StringComparison.OrdinalIgnoreCase) &&
+                tab.Control.FilePath is { Length: > 0 })
+            .GroupBy(tab => Path.GetFullPath(tab.Control.FilePath!), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Control.Text,
+                StringComparer.OrdinalIgnoreCase);
 }

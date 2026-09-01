@@ -39,6 +39,7 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
 
     public string Uri => _entry.Uri;
     public string FilePath => _entry.FilePath;
+    public string Text => _entry.Text;
     public string LanguageId => _entry.LanguageId;
 
     public bool IsConnected => _disposed == 0 && _entry.Client.IsRunning;
@@ -53,6 +54,17 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
     public bool ServerSupportsFoldingRange => _entry.Client.Client.SupportsFoldingRange;
     public bool ServerSupportsRangeFormatting => _entry.Client.Client.SupportsRangeFormatting;
     public bool ServerSupportsSelectionRange => _entry.Client.Client.SupportsSelectionRange;
+#if LOOMO_EDITOR_EXTENDED_LSP
+    public bool ServerSupportsCompletionResolve => _entry.Client.Client.SupportsCompletionResolve;
+    public bool ServerSupportsImplementation => _entry.Client.Client.SupportsImplementation;
+    public bool ServerSupportsTypeDefinition => _entry.Client.Client.SupportsTypeDefinition;
+    public bool ServerSupportsDeclaration => _entry.Client.Client.SupportsDeclaration;
+    public bool ServerSupportsPrepareRename => _entry.Client.Client.SupportsPrepareRename;
+    public bool ServerSupportsDocumentHighlight => _entry.Client.Client.SupportsDocumentHighlight;
+    public bool ServerSupportsDocumentLink => _entry.Client.Client.SupportsDocumentLink;
+    public bool ServerSupportsCodeLens => _entry.Client.Client.SupportsCodeLens;
+    public bool ServerSupportsCodeLensResolve => _entry.Client.Client.SupportsCodeLensResolve;
+#endif
     public bool ServerSupportsWorkspaceDiagnostics => _entry.Client.Client.SupportsWorkspaceDiagnostics;
     public IReadOnlyList<string> CompletionTriggerCharacters => _entry.Client.Client.CompletionTriggerCharacters;
     public IReadOnlyList<string> ServerCodeActionKinds => _entry.Client.Client.CodeActionKinds;
@@ -77,6 +89,13 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
             ? _entry.Client.Client.GetCompletionAsync(Uri, new LspPosition(line, character), ct)
             : Empty<LspCompletionItem>();
 
+#if LOOMO_EDITOR_EXTENDED_LSP
+    public Task<LspCompletionItem?> ResolveCompletionAsync(LspCompletionItem item, CancellationToken ct = default) =>
+        IsReady
+            ? _entry.Client.Client.ResolveCompletionAsync(item, ct)
+            : Task.FromResult<LspCompletionItem?>(null);
+#endif
+
     public Task<LspHover?> RequestHoverAsync(int line, int character) =>
         IsReady
             ? _entry.Client.Client.GetHoverAsync(Uri, new LspPosition(line, character))
@@ -86,6 +105,28 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
         IsReady
             ? _entry.Client.Client.GetDefinitionAsync(Uri, new LspPosition(line, character))
             : Task.FromResult<(string Uri, int Line, int Column)?>(null);
+
+#if LOOMO_EDITOR_EXTENDED_LSP
+    public Task<IReadOnlyList<LspLocation>> RequestImplementationAsync(int line, int character, CancellationToken ct = default) =>
+        IsReady && ServerSupportsImplementation
+            ? _entry.Client.Client.GetImplementationAsync(Uri, new LspPosition(line, character), ct)
+            : Empty<LspLocation>();
+
+    public Task<IReadOnlyList<LspLocation>> RequestTypeDefinitionAsync(int line, int character, CancellationToken ct = default) =>
+        IsReady && ServerSupportsTypeDefinition
+            ? _entry.Client.Client.GetTypeDefinitionAsync(Uri, new LspPosition(line, character), ct)
+            : Empty<LspLocation>();
+
+    public Task<IReadOnlyList<LspLocation>> RequestDeclarationAsync(int line, int character, CancellationToken ct = default) =>
+        IsReady && ServerSupportsDeclaration
+            ? _entry.Client.Client.GetDeclarationAsync(Uri, new LspPosition(line, character), ct)
+            : Empty<LspLocation>();
+
+    public Task<LspRange?> PrepareRenameAsync(int line, int character, CancellationToken ct = default) =>
+        IsReady && ServerSupportsPrepareRename
+            ? _entry.Client.Client.PrepareRenameAsync(Uri, new LspPosition(line, character), ct)
+            : Task.FromResult<LspRange?>(null);
+#endif
 
     public Task<LspSignatureHelp?> RequestSignatureHelpAsync(int line, int character, CancellationToken ct = default) =>
         IsReady
@@ -159,10 +200,35 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
             ? _entry.Client.Client.GetSemanticTokensAsync(Uri)
             : Task.FromResult<SemanticToken[]?>(null);
 
+#if LOOMO_EDITOR_EXTENDED_LSP
+    public Task<SemanticTokensResult?> RequestSemanticTokensResultAsync(
+        string? previousResultId, CancellationToken ct = default) =>
+        IsReady
+            ? _entry.Client.Client.GetSemanticTokensResultAsync(Uri, previousResultId, ct)
+            : Task.FromResult<SemanticTokensResult?>(null);
+#endif
+
     public Task<IReadOnlyList<DocumentHighlight>?> RequestDocumentHighlightAsync(int line, int character, CancellationToken ct = default) =>
         IsReady
             ? _entry.Client.Client.RequestDocumentHighlightAsync(Uri, line, character, ct)
             : Task.FromResult<IReadOnlyList<DocumentHighlight>?>(null);
+
+#if LOOMO_EDITOR_EXTENDED_LSP
+    public Task<IReadOnlyList<LspDocumentLink>> RequestDocumentLinksAsync(CancellationToken ct = default) =>
+        IsReady && ServerSupportsDocumentLink
+            ? _entry.Client.Client.GetDocumentLinksAsync(Uri, ct)
+            : Task.FromResult<IReadOnlyList<LspDocumentLink>>([]);
+
+    public Task<IReadOnlyList<LspCodeLens>> RequestCodeLensesAsync(CancellationToken ct = default) =>
+        IsReady && ServerSupportsCodeLens
+            ? _entry.Client.Client.GetCodeLensesAsync(Uri, ct)
+            : Task.FromResult<IReadOnlyList<LspCodeLens>>([]);
+
+    public Task<LspCodeLens?> ResolveCodeLensAsync(LspCodeLens lens, CancellationToken ct = default) =>
+        IsReady && ServerSupportsCodeLensResolve
+            ? _entry.Client.Client.ResolveCodeLensAsync(lens, ct)
+            : Task.FromResult<LspCodeLens?>(null);
+#endif
 
     public async Task<LspSelectionRange?> RequestSelectionRangeAsync(int line, int character)
     {

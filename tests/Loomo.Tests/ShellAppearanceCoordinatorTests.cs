@@ -76,7 +76,10 @@ public class ShellAppearanceCoordinatorTests
     /// ブラシは同一性（参照）で見分ける——このテストが見たいのは「別々の配色へ解決されるか」なので、
     /// 別インスタンスであることが分かれば足りる。</summary>
     private static string Describe(Brush brush)
-        => brush is SolidColorBrush { IsFrozen: true } solid
-            ? solid.Color.ToString()
-            : $"#{RuntimeHelpers.GetHashCode(brush):X8}";
+    {
+        // Freezable の IsFrozen/Color は、所有 Dispatcher と別スレッドから読むと
+        // VerifyAccess で例外になる。テーマの識別には参照 identity だけで十分なので、
+        // WPF プロパティへ触れずに比較する。
+        return $"#{RuntimeHelpers.GetHashCode(brush):X8}";
+    }
 }

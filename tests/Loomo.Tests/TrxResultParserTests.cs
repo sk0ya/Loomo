@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.CSharp.Testing;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -31,27 +31,27 @@ Expected: 1</Message>
 </TestRun>
 """;
 
-    private static TrxResult[] Parse(string xml)
+    private static CSharpTrxResult[] Parse(string xml)
     {
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.trx");
         File.WriteAllText(path, xml);
         try
         {
-            var results = TrxResultParser.Parse(path, out var error);
+            var results = CSharpTrxResultParser.Parse(path, out var error);
             Assert.Null(error);
             return results.ToArray();
         }
         finally { try { File.Delete(path); } catch { /* 後始末の失敗は本題ではない */ } }
     }
 
-    private static TrxResult Find(TrxResult[] results, string name)
+    private static CSharpTrxResult Find(CSharpTrxResult[] results, string name)
         => results.Single(r => r.Name == name);
 
     [Fact]
     public void Reads_duration_as_a_timespan()
     {
         var r = Find(Parse(Trx), "N.C.Passes");
-        Assert.Equal(TestStatus.Passed, r.Status);
+        Assert.Equal(CSharpTestStatus.Passed, r.Status);
         Assert.Equal(1.2345678, r.Duration!.Value.TotalSeconds, 6);
     }
 
@@ -67,7 +67,7 @@ Expected: 1</Message>
     public void Failure_keeps_first_message_line_location_and_duration()
     {
         var r = Find(Parse(Trx), "N.C.Fails");
-        Assert.Equal(TestStatus.Failed, r.Status);
+        Assert.Equal(CSharpTestStatus.Failed, r.Status);
         Assert.Equal("Assert.Equal() Failure", r.Message);
         Assert.Equal(@"C:\work\CTests.cs", r.SourcePath);
         Assert.Equal(42, r.Line);
@@ -76,12 +76,12 @@ Expected: 1</Message>
 
     [Fact]
     public void Not_executed_counts_as_skipped()
-        => Assert.Equal(TestStatus.Skipped, Find(Parse(Trx), "N.C.Skips").Status);
+        => Assert.Equal(CSharpTestStatus.Skipped, Find(Parse(Trx), "N.C.Skips").Status);
 
     [Fact]
     public void Unreadable_file_reports_an_error_and_returns_nothing()
     {
-        var results = TrxResultParser.Parse(
+        var results = CSharpTrxResultParser.Parse(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-missing.trx"), out var error);
         Assert.NotNull(error);
         Assert.Empty(results);

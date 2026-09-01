@@ -67,6 +67,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? CommitOpenInGitRequested;
 
     public bool CanStageHunks => Hunks.Count > 0;
+    private int _refreshGeneration;
 
     /// <param name="settings">Markdown レンダリング差分の配色（<c>Appearance.MarkdownPreviewTheme</c>）を
     /// 引くための設定。Markdown プレビューと同じ見え方にするための一次情報なので必須。</param>
@@ -523,6 +524,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     private async Task RefreshAsync(bool force = false)
     {
         _loaded = true;
+        var refreshGeneration = Interlocked.Increment(ref _refreshGeneration);
         _patchCache.Clear();
         var selectedPath = SelectedFile?.FullPath;
         // 比較はパスを持たないことがあり、同じパスで複数ストックもできるので、選び直しはパスでは引けない。
@@ -533,6 +535,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             : await _query.LoadAsync(
                 _commitRange,
                 _commitRange is null ? await CompareBase.ResolveAsync() : null);
+        // 基準変更などで先行した読み込みが後から完了しても、最新の選択状態を上書きさせない。
+        if (refreshGeneration != Volatile.Read(ref _refreshGeneration)) return;
         var items = result.Items;
         var emptyMessage = result.EmptyMessage;
 

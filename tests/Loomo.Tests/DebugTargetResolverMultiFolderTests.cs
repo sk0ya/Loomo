@@ -1,6 +1,8 @@
 using System.IO;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
+using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Services;
 
@@ -79,5 +81,34 @@ public sealed class DebugTargetResolverMultiFolderTests : IDisposable
         var target = DebugTargetResolver.FindBuildTarget(workspace, new NullSession());
 
         Assert.Equal(Path.GetFullPath(_csprojPath), target is null ? null : Path.GetFullPath(target));
+    }
+
+    [Fact]
+    public async Task Build_uses_the_selected_solution_configuration()
+    {
+        var terminal = new RecordingTerminal();
+
+        Assert.True(await DebugTargetResolver.BuildAsync(
+            terminal, new NullSession(), _csprojPath, configuration: "Release"));
+        Assert.Contains(" -c 'Release' ", terminal.LastCommand);
+    }
+
+    private sealed class RecordingTerminal : ITerminalService
+    {
+        public string CurrentDirectory => "C:\\ws";
+        public bool IsExecuting => false;
+        public string LastCommand { get; private set; } = "";
+        public Task<CommandResult> RunCommandAsync(string command, CancellationToken ct)
+            => Task.FromResult(new CommandResult(command, "", 0, CurrentDirectory, true));
+        public Task<CommandResult> RunCommandInVisibleTerminalAsync(string command, CancellationToken ct)
+        {
+            LastCommand = command;
+            return RunCommandAsync(command, ct);
+        }
+        public void SetWorkingDirectory(string path) { }
+        public bool TryRunInVisibleTerminal(string command) => false;
+#pragma warning disable CS0067
+        public event EventHandler<CommandResult>? CommandExecuted;
+#pragma warning restore CS0067
     }
 }

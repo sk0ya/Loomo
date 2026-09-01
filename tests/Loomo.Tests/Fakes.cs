@@ -32,6 +32,12 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
 {
     private readonly List<string> _folders = new();
 
+    public FakeWorkspaceService(string? initialFolder = null)
+    {
+        if (!string.IsNullOrWhiteSpace(initialFolder))
+            _folders.Add(initialFolder);
+    }
+
     public IReadOnlyList<string> Folders => _folders;
     public string? PrimaryFolder => _folders.Count > 0 ? _folders[0] : null;
     public string? SelectedPath { get; set; }

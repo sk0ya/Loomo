@@ -167,6 +167,9 @@ public sealed class EditorSettings
     /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
     public bool AutoClosePairs { get; set; }
 
+    /// <summary>LSPが返すparameter name等のinlay hintをエディタ内へ表示する。既定 OFF。</summary>
+    public bool ShowInlayHints { get; set; }
+
     /// <summary>インデント幅（Vim <c>tabstop</c>/<c>shiftwidth</c>）。既定 2（ライブラリ既定と同じ）。</summary>
     public int TabWidth { get; set; } = 2;
 

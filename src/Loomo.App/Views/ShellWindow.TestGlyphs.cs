@@ -19,6 +19,7 @@ public partial class ShellWindow {
     private readonly HashSet<VimEditorControl> _testGlyphSyncPending = new();
     private void InitializeTestGlyphWiring() {
         _vm.Debug.Tests.TestsChanged += SyncAllEditorTestGlyphs;
+        _vm.Debug.Tests.CoverageChanged += SyncAllEditorTestGlyphs;
         _vm.TsIde.Tests.TestsChanged += SyncAllEditorTestGlyphs;
         // ワークスペースが変われば「どのファイルがテストソースか」の記憶も捨てる。
         _workspace.FoldersChanged += (_, _) => _testGlyphColumns.Reset();
@@ -71,8 +72,48 @@ public partial class ShellWindow {
     private void SyncEditorTestGlyphs(VimEditorControl control) {
         var path = control.FilePath;
         var glyphs = EditorTestGlyphMap.Build(_workspace, TestExplorerForPath(path).TestItems, path);
+        var coverage = CoverageForPath(path);
+        var branchByLine = coverage?.BranchDetails.ToDictionary(branch => branch.Line1)
+            ?? new Dictionary<int, sk0ya.Loomo.CSharp.Testing.CoverageBranchSummary>();
+#if LOOMO_EDITOR_HOST_API
+        var coverageMarkers = coverage?.LineDetails.Select(line =>
+        {
+            var kind = line.Covered
+                ? Editor.Controls.Rendering.CoverageMarkerKind.Covered
+                : Editor.Controls.Rendering.CoverageMarkerKind.Uncovered;
+            var tooltip = line.Covered ? "カバレッジ: 実行済み" : "カバレッジ: 未実行";
+            if (branchByLine.TryGetValue(line.Line1, out var branch))
+            {
+                kind = branch.CoveredBranches == 0
+                    ? Editor.Controls.Rendering.CoverageMarkerKind.Uncovered
+                    : branch.CoveredBranches < branch.ValidBranches
+                        ? Editor.Controls.Rendering.CoverageMarkerKind.Partial
+                        : kind;
+                tooltip += $"／分岐 {branch.CoveredBranches}/{branch.ValidBranches}";
+            }
+            return new Editor.Controls.Rendering.EditorCoverageMarker(line.Line1 - 1, kind, tooltip);
+        }).ToArray()
+            ?? Array.Empty<Editor.Controls.Rendering.EditorCoverageMarker>();
+#endif
         control.SetTestGlyphsEnabled(_testGlyphColumns.ShouldEnable(path, glyphs.Count));
         control.SetTestGlyphs(glyphs);
+#if LOOMO_EDITOR_HOST_API
+        control.SetCoverageMarkersEnabled(coverageMarkers.Length > 0);
+        control.SetCoverageMarkers(coverageMarkers);
+#endif
+    }
+
+    private sk0ya.Loomo.CSharp.Testing.CoverageFileSummary? CoverageForPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        var normalizedPath = path.Replace('\\', '/').TrimStart('/');
+        return _vm.Debug.Tests.CoverageFiles.FirstOrDefault(file =>
+        {
+            var candidate = file.Path.Replace('\\', '/').TrimStart('/');
+            return string.Equals(candidate, normalizedPath, StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.EndsWith('/' + candidate, StringComparison.OrdinalIgnoreCase)
+                || candidate.EndsWith('/' + normalizedPath, StringComparison.OrdinalIgnoreCase);
+        });
     }
     /// <summary>ガターの ▶ が押された：その行のテストだけを実行する（1 行に複数あれば順に）。
     /// 実行中／完了のグリフはテスト側の状態変化（<c>TestsChanged</c>）が運んでくるので、ここでは触らない。</summary>

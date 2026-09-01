@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using Editor.Core.Lsp;
-using sk0ya.Loomo.Services.Refactoring;
+using sk0ya.Loomo.CSharp.Refactoring;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;

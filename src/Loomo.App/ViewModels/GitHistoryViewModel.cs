@@ -133,7 +133,10 @@ public sealed partial class GitHistoryViewModel : ObservableObject
             else
                 await Task.Yield();
             if (generation != _requeryGeneration) return;
-            await ReloadAsync();
+            // 明示的な ReloadAsync が先に始まっていた場合は、その再読込が
+            // 予約処理を無効化している。ここでは世代を進めず、同じ一覧へ
+            // 追記する通常の再読込だけを実行する。
+            await ReloadCoreAsync();
         }
         catch (Exception)
         {
@@ -215,7 +218,16 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     /// 世代で番をして、追い越された古い読み込みは結果ごと捨てる。
     /// 一覧を空にするのも git から返ってきた後（先に消すと読み込みのたびに一瞬空になる）。
     /// </summary>
-    public async Task ReloadAsync()
+    public Task ReloadAsync()
+    {
+        // LogFilter のデバウンス再読込と、呼び出し側が明示する再読込が
+        // 競合すると、古いリクエストが新しい一覧を無効化して空表示を残す。
+        // 明示側を優先するため、予約側の世代をここで進める。
+        _requeryGeneration++;
+        return ReloadCoreAsync();
+    }
+
+    private async Task ReloadCoreAsync()
     {
         var generation = ++_loadGeneration;
         var selectedHash = SelectedLogRow?.Hash;

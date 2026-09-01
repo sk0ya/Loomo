@@ -8,10 +8,12 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <UseWPF>true</UseWPF>
+    <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.80'))">$(DefineConstants);LOOMO_EDITOR_EXTENDED_LSP</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+    <ProjectReference Include="..\Loomo.CSharp\Loomo.CSharp.csproj" />
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
   </ItemGroup>
 
@@ -49,8 +51,20 @@
     <!-- 1.0.74: サーバー由来 file URI の正規化（LspUri。tsserver の "file:///c%3A/…" で rename/診断が壊れていた） -->
     <!-- 1.0.75: LSP要求の60秒タイムアウト（無応答サーバーでの永久待ちを解消）＋Rename Symbolダイアログの
          テーマ追従・自動サイズ（ボタン見切れの修正） -->
-    <!-- 1.0.79: テスト実行▶／結果グリフのガター列（SetTestGlyphsEnabled/SetTestGlyphs/TestGlyphClicked） -->
-    <PackageReference Include="sk0ya.Editor.Controls" Version="1.0.79" />
+    <!-- 1.0.80: §33のホストAPI（GoTo系/リネームのホスト提供・診断・テストグリフ）と、
+         追加したLSP契約（補完additionalTextEdits／implementation／typeDefinition等）を公開。
+         既定はこの公開パッケージ参照。Editorを同時に直す間だけ -p:UseLocalEditor=true で
+         C:\Projects\Editor のプロジェクト参照へ切り替える（Directory.Build.props）。 -->
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
+         それらを PrivateAssets として隠すため、Loomo のコンパイル時型参照は明示する。 -->
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Controls\Editor.Controls.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Core\Editor.Core.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <PackageReference Include="sk0ya.Editor.Controls" Version="$(EditorPackageVersion)"
+                      Condition="'$(UseLocalEditor)' == 'false'" />
     <!-- 1.0.24: フォントリガチャ＋行描画キャッシュ（GPU合成向け再シェイプ削減）、Ctrl-R履歴フィルタの一致文字可視化を修正 -->
     <!-- 1.0.25: リサイズ時のテキストリフロー、画面内検索バー（Ctrl+Shift+F）、選択テキストの色付きコピー（HTML/RTF）、
          BELベル通知（可聴＋非アクティブタブのベルインジケータ）、OSC 9;4タスクバー進捗表示、スクロールバック行数上限の設定対応 -->
@@ -65,10 +79,6 @@
          グリフをフォント幅でなくセル数で送るよう修正＋遅延ラップの取りこぼし修正、セルに固定されるインライン画像描画、
          タブの別ウィンドウ切り離し、貼り付け改行のCR正規化、ConPTY破棄時のデッドロック修正、FlowDocument描画経路の削除 -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.31" />
-    <!-- C# の「シグネチャの変更」用（§32.5）。LSP に無いリファクタリングなので構文木で自前に書き換える。
-         使うのは構文 API だけ（MSBuildWorkspace ではない）——意味解決と呼び出し元の列挙は、
-         すでに動いている言語サーバー（textDocument/references）に任せる。 -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
   </ItemGroup>
 
 </Project>

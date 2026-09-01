@@ -1,3 +1,5 @@
+using sk0ya.Loomo.Core.Files;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: エディタの「使用箇所表示（Find References / gr）」の結果を受けて一覧表示する。 エディタコントロールは LSP に問い合わせて参照を計算するが、結果は自身では描画せず <see cref="VimEditorControl.FindReferencesResult"/> イベントを発火するだけなので、ホスト側で ポップアップに一覧を出し、クリックで該当ファイル・行へジャンプさせる。 同じイベントは grep / 診断一覧 / コール・型ヒエラルキー / ワークスペースシンボルの結果にも使われる。 ※「まず配線だけ最小実装」段階：機能は通っているが見た目は最小。後でドッキングパネル等へ移す。</summary>
 public partial class ShellWindow {
@@ -56,6 +58,7 @@ public partial class ShellWindow {
     private void BuildReferencesPopup(IReadOnlyList<FindReferenceItem> items, string title) {
         ReferencesPopupTitle.Text = title;
         ReferencesPopupList.Children.Clear();
+        ReferencesPopupPeek.Visibility = Visibility.Collapsed;
         if (items.Count == 0) {
             ReferencesPopupList.Children.Add(new TextBlock {
                 Text = "使用箇所が見つかりませんでした", FontSize = UiFontManager.Scaled(12), Margin = new Thickness(10, 6, 10, 6), Foreground = (Brush)FindResource("FgDim"), });
@@ -63,7 +66,9 @@ public partial class ShellWindow {
         }
         foreach (var item in items) {
             var captured = item;
-            var location = $"{Path.GetFileName(captured.FilePath)}:{captured.Line + 1}:{captured.Col + 1}";
+            var display = NavigationLocationFormatter.Resolve(
+                captured.FilePath, _workspace.Folders, _solutionModel?.Current);
+            var location = display.Format(captured.Line, captured.Col);
             var preview = captured.Preview ?? ReadSourceLine(captured.FilePath, captured.Line);
             var content = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
             content.Inlines.Add(new System.Windows.Documents.Run(location) {
@@ -75,10 +80,29 @@ public partial class ShellWindow {
                 Style = (Style)FindResource("BranchMenuItem"), FontSize = UiFontManager.Scaled(12), ToolTip = $"{captured.FilePath}:{captured.Line + 1}:{captured.Col + 1}", Content = content, };
             row.Click += (_, _) => {
                 ReferencesPopup.IsOpen = false;
-                _ = OpenPathInEditorAsync(captured.FilePath, captured.Line + 1, captured.Col + 1);
+                if (Uri.TryCreate(captured.FilePath, UriKind.Absolute, out var uri) && !uri.IsFile)
+                    _ = OpenUrlInBrowserAsync(uri.AbsoluteUri, "外部ソース");
+                else
+                    _ = OpenPathInEditorAsync(captured.FilePath, captured.Line + 1, captured.Col + 1);
             };
+            row.MouseEnter += (_, _) => ShowReferencePeek(captured);
             ReferencesPopupList.Children.Add(row);
         }
+        ShowReferencePeek(items[0]);
+    }
+
+    private void ShowReferencePeek(FindReferenceItem item)
+    {
+        var display = NavigationLocationFormatter.Resolve(
+            item.FilePath, _workspace.Folders, _solutionModel?.Current);
+        // 定義Peekでは、同一バッファの未保存行をディスク上の内容より優先する。
+        var context = string.IsNullOrWhiteSpace(item.Preview)
+            ? NavigationSourceContext.Read(item.FilePath, item.Line)
+            : item.Preview;
+        ReferencesPopupPeek.Text = string.IsNullOrWhiteSpace(context)
+            ? $"プレビュー: {display.Format(item.Line, item.Col)}\n（ソースを読み取れません）"
+            : $"プレビュー: {display.Format(item.Line, item.Col)}\n{context}";
+        ReferencesPopupPeek.Visibility = Visibility.Visible;
     }
     private static string ReadSourceLine(string filePath, int line) {
         try {

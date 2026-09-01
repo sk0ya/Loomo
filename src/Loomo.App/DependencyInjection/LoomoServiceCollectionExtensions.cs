@@ -4,6 +4,9 @@ using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
+using sk0ya.Loomo.CSharp.Configuration;
+using sk0ya.Loomo.CSharp.Projects;
+using sk0ya.Loomo.CSharp.Testing;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Observability;
@@ -36,13 +39,25 @@ internal static class LoomoServiceCollectionExtensions
 
         AddLoomoLsp(services);
         AddLoomoFormatting(services);
+        services.AddSingleton<IProjectEvaluator,
+            sk0ya.Loomo.CSharp.Projects.MsBuildProjectEvaluator>();
+        services.AddSingleton<sk0ya.Loomo.CSharp.Projects.SolutionModelService>();
+        services.AddSingleton<ISolutionModelService>(sp =>
+            sp.GetRequiredService<sk0ya.Loomo.CSharp.Projects.SolutionModelService>());
+        services.AddSingleton<CSharpEditorConfigService>();
+        services.AddSingleton<StyleCopConfigurationService>();
+        services.AddSingleton<StyleCopSeverityService>();
+        services.AddSingleton<CSharpCompilerDiagnosticService>();
+        services.AddSingleton<StyleCopDiagnosticService>();
+        services.AddSingleton<StyleCopCodeFixService>();
+        services.AddSingleton<CSharpSolutionExplorerViewModel>();
         services.AddSingleton<sk0ya.Loomo.Services.Debug.IDebugSessionFactory,
             sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory>();
         // TS IDE ペイン用の js-debug 工場。IDebugSessionFactory の既定登録（netcoredbg）は dotnet 用 IDE ペインの
         // ものなので、こちらは具象型で登録して TsDebugViewModel だけが使う。
         services.AddSingleton<sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory>();
         services.AddSingleton<ITestDiscoveryService,
-            sk0ya.Loomo.Services.Debug.TestDiscoveryService>();
+            sk0ya.Loomo.CSharp.Testing.TestDiscoveryService>();
 
         // ツール、会話、トレースは一つのエージェント実行状態を共有するため Singleton。
         services.AddSingleton<IAgentTool, PwshTool>();
@@ -196,9 +211,11 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<LspSettingsViewModel>();
         services.AddSingleton<LspPromptViewModel>();
         services.AddSingleton<FormatterSettingsViewModel>();
+        services.AddSingleton<StyleCopSettingsViewModel>();
         services.AddSingleton<KeybindingsViewModel>();
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();
+        services.AddSingleton<CSharpProjectContextViewModel>();
         // ブックマーク・履歴はワークスペースをまたぐ資産なので、アプリ単位の1ファイルに持つ。
         services.AddSingleton<BrowserLibraryStore>();
         services.AddSingleton<BrowserViewModel>();
@@ -249,10 +266,15 @@ internal static class LoomoServiceCollectionExtensions
     /// </summary>
     internal static void AddLoomoFormatting(IServiceCollection services, string? formatterStorePath = null)
     {
-        services.AddSingleton(_ => Editor.Core.Engine.VimEngineServices.CreateApplication(
-            formatterStorePath ?? System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "Loomo", "formatters.json")));
+        services.AddSingleton(_ =>
+        {
+            var engineServices = Editor.Core.Engine.VimEngineServices.CreateApplication(
+                formatterStorePath ?? System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                    "Loomo", "formatters.json"));
+            sk0ya.Loomo.CSharp.Editor.CSharpEditorIntegration.Configure(engineServices);
+            return engineServices;
+        });
         services.AddSingleton(sp =>
             sp.GetRequiredService<Editor.Core.Engine.VimEngineServices>().Formatters);
         services.AddSingleton<sk0ya.Loomo.Services.Formatting.FormatterManagementService>();

@@ -15,6 +15,8 @@ public partial class ShellWindow {
         // アプリ全体のキーバインドより先に見る——F5 のようにブラウザの慣習が優先されるものがある。
         if (HandleBrowserKey(e))
             return;
+        if (TryHandleWorkspaceEditUndo(e))
+            return;
         _keyboard?.HandlePreviewKeyDown(e);
     }
     private const double ResizeStepRatio = 0.08;

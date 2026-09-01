@@ -19,6 +19,9 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// ビュー（DebugTestsView）をそのまま共有する。グループ＝テストファイル、葉＝テストタイトル。</summary>
 public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplorer, IDisposable
 {
+    /// <summary>共有テストビューのデバッグ列は、Node testhost経路が未実装のため隠す。</summary>
+    public bool IsTestDebugSupported => false;
+
     private readonly IWorkspaceService _workspace;
     private readonly ITerminalService _terminal;
     private readonly IDebugSession _session;
@@ -43,6 +46,10 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
     [ObservableProperty] private string _testFilter = "";
 
+    /// <summary>共有テストビューのタグ絞り込み。現在のTS探索はタグを返さないが、公式adapter由来の行と
+    /// C#版で同じ表示契約を保つ。</summary>
+    [ObservableProperty] private string _traitFilter = "";
+
     [ObservableProperty] private bool _hasVisibleTests;
 
     public bool NoFilterMatch => HasTestResults && !HasVisibleTests;
@@ -51,6 +58,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
     partial void OnShowFailedChanged(bool value) => SyncTree();
     partial void OnShowNotRunChanged(bool value) => SyncTree();
     partial void OnTestFilterChanged(string value) => SyncTree();
+    partial void OnTraitFilterChanged(string value) => SyncTree();
     partial void OnHasVisibleTestsChanged(bool value) => OnPropertyChanged(nameof(NoFilterMatch));
     partial void OnHasTestResultsChanged(bool value) => OnPropertyChanged(nameof(NoFilterMatch));
     partial void OnIsDiscoveringTestsChanged(bool value) => OnPropertyChanged(nameof(TestEmptyHint));
@@ -72,6 +80,9 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             TestCommand.NotifyCanExecuteChanged();
             RunSingleTestCommand.NotifyCanExecuteChanged();
             RunGroupCommand.NotifyCanExecuteChanged();
+            DebugSingleTestCommand.NotifyCanExecuteChanged();
+            DebugGroupCommand.NotifyCanExecuteChanged();
+            DebugFileCommand.NotifyCanExecuteChanged();
         };
 
         _workspace.RootChanged += OnWorkspaceRootChanged;
@@ -283,6 +294,34 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             had => CountStatus(had, group.Tests));
     }
 
+    /// <summary>共有テストビューのファイル単位実行。TSではグループ自体がファイルなので、
+    /// グループ実行へ委譲する。</summary>
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private Task RunFile(TestGroupViewModel? group) => RunGroup(group);
+
+    // DebugTestsView はC#／TypeScriptで共有するため、TS側にも同名Commandを用意する。
+    // NodeテストのDAP起動仕様（vitest／jestのinspect経路）は別実装であり、C#のtesthostへ誤接続しない。
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private Task DebugSingleTest(TestItemViewModel? item)
+    {
+        _session.StatusMessage = "TypeScriptテストのデバッグは未対応です";
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private Task DebugGroup(TestGroupViewModel? group)
+    {
+        _session.StatusMessage = "TypeScriptテストのデバッグは未対応です";
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunTask))]
+    private Task DebugFile(TestGroupViewModel? group)
+    {
+        _session.StatusMessage = "TypeScriptテストのデバッグは未対応です";
+        return Task.CompletedTask;
+    }
+
     /// <summary>ファイル限定実行の共通処理（1 件/グループ）。</summary>
     private async Task RunScopedAsync(IReadOnlyList<TestItemViewModel> running, string filePath, string? testName,
         string runningStatus, string label, Func<bool, string> finalStatus)
@@ -374,6 +413,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         TestTree.Clear();
 
         var filtering = !string.IsNullOrEmpty(TestFilter?.Trim())
+            || !string.IsNullOrEmpty(TraitFilter?.Trim())
             || !(ShowPassed && ShowFailed && ShowNotRun);
 
         foreach (var g in Tests.GroupBy(t => t.ClassName, StringComparer.OrdinalIgnoreCase)
@@ -382,7 +422,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             var visible = g.Where(MatchesFilter).OrderBy(t => t.Line).ToList();
             if (visible.Count == 0) continue;
 
-            var node = new TestGroupViewModel(g.Key, ToRelativeDisplay(g.Key));
+            var node = new TestGroupViewModel(g.Key, ToRelativeDisplay(g.Key), g.Key);
             foreach (var t in visible) node.Tests.Add(t);
             node.IsExpanded = filtering || (expanded.TryGetValue(g.Key, out var e) && e);
             node.RecomputeAggregate();
@@ -417,8 +457,13 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         if (!statusOk) return false;
 
         var f = TestFilter?.Trim();
-        return string.IsNullOrEmpty(f)
-            || t.FullyQualifiedName.Contains(f, StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(f) &&
+            !t.FullyQualifiedName.Contains(f, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var traitFilter = TraitFilter?.Trim();
+        return string.IsNullOrEmpty(traitFilter)
+            || t.TraitsText.Contains(traitFilter, StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateAggregates()

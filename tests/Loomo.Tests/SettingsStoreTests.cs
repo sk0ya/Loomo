@@ -170,4 +170,31 @@ public class SettingsStoreTests
     {
         Assert.False(new LoomoSettings().Editor.CollapseUsingsOnOpen);
     }
+
+    [Fact]
+    public void Save_and_load_persists_inlay_hints_setting()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new LoomoSettings();
+            saved.Editor.ShowInlayHints = true;
+
+            var store = new SettingsStore(path);
+            store.Save(saved);
+
+            var loaded = new LoomoSettings();
+            store.Load(loaded);
+
+            Assert.True(loaded.Editor.ShowInlayHints);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Inlay_hints_are_disabled_by_default()
+        => Assert.False(new LoomoSettings().Editor.ShowInlayHints);
 }

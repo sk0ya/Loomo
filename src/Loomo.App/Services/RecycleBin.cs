@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 
@@ -20,6 +21,19 @@ namespace sk0ya.Loomo.App.Services;
 [SupportedOSPlatform("windows")]
 internal static class RecycleBin
 {
+    // 直前にこのプロセスがゴミ箱へ送った項目は、$Recycle.Bin 全体を毎回読む必要がない。
+    // ゴミ箱が大きい環境では、$I メタデータを全件 ReadAllBytes するだけで数十秒かかり得る。
+    // 履歴はプロセス内だけのものなので、ここに保持するヒントもプロセス内限りでよい。
+    private static readonly ConcurrentDictionary<string, DateTime> RecentDeletes = new(
+        StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>ゴミ箱へ送った直後に、復元検索を短縮するヒントを記録する。</summary>
+    public static void RememberDeleted(string originalPath)
+    {
+        try { RecentDeletes[Path.GetFullPath(originalPath)] = DateTime.UtcNow; }
+        catch (ArgumentException) { }
+    }
+
     /// <summary><paramref name="originalPath"/> にあった項目をゴミ箱から元の場所へ戻す。
     /// 戻せなかったときは false と日本語の理由を返す（例外は投げない）。</summary>
     public static bool TryRestore(string originalPath, out string? error)
@@ -39,7 +53,8 @@ internal static class RecycleBin
             return false;
         }
 
-        var match = FindNewest(binDirectory!, full);
+        var match = FindNewest(binDirectory!, full,
+            RecentDeletes.TryGetValue(full, out var hint) ? hint : null);
         if (match is null)
         {
             error = "ゴミ箱に見つかりませんでした（完全に削除された可能性があります）。";
@@ -64,6 +79,7 @@ internal static class RecycleBin
             if (isDirectory) Directory.Move(payload, full);
             else File.Move(payload, full);
             File.Delete(match.InfoPath);
+            RecentDeletes.TryRemove(full, out _);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -95,8 +111,13 @@ internal static class RecycleBin
     }
 
     /// <summary>元のパスが一致するメタデータのうち、削除日時が最も新しいもの。</summary>
-    private static RecycledEntry? FindNewest(string binDirectory, string originalPath)
+    private static RecycledEntry? FindNewest(
+        string binDirectory, string originalPath, DateTime? recentDeleteUtc = null)
     {
+        if (recentDeleteUtc is { } hint &&
+            FindRecent(binDirectory, originalPath, hint) is { } recent)
+            return recent;
+
         RecycledEntry? newest = null;
         IEnumerable<string> infoFiles;
         try { infoFiles = Directory.EnumerateFiles(binDirectory, "$I*"); }
@@ -116,6 +137,35 @@ internal static class RecycleBin
                 newest = new RecycledEntry(infoPath, deletedUtc);
         }
         return newest;
+    }
+
+    /// <summary>直前の削除に対応する候補だけを先に調べる。ファイルの更新時刻は厳密な
+    /// ゴミ箱の削除時刻ではないため、少し余裕を持たせる。見つからない場合は呼び出し元が
+    /// 既存の全件走査へフォールバックし、別プロセスから削除された項目の復元互換性を保つ。</summary>
+    private static RecycledEntry? FindRecent(
+        string binDirectory, string originalPath, DateTime hintUtc)
+    {
+        try
+        {
+            var threshold = hintUtc - TimeSpan.FromSeconds(10);
+            var candidates = Directory.EnumerateFiles(binDirectory, "$I*")
+                .Select(path => new FileInfo(path))
+                .Where(info => info.LastWriteTimeUtc >= threshold)
+                .OrderByDescending(info => info.LastWriteTimeUtc);
+            foreach (var info in candidates)
+            {
+                byte[] bytes;
+                try { bytes = File.ReadAllBytes(info.FullName); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
+
+                if (!TryParseInfo(bytes, out var path, out var deletedUtc) ||
+                    !string.Equals(path, originalPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                return new RecycledEntry(info.FullName, deletedUtc);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return null;
     }
 
     /// <summary><c>$I</c> ファイルの中身（元のパスと削除日時）を読む。

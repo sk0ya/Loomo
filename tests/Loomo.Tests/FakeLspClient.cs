@@ -20,8 +20,8 @@ internal sealed class FakeLspClient : ILspClient
     public int InitializeCount;
     public IReadOnlyList<string>? LastWorkspaceFolders;
     public bool Disposed;
-    public bool KeepRunningAfterDispose;
-    public bool RaiseExitedOnDispose;
+    public bool KeepRunningAfterDispose = false;
+    public bool RaiseExitedOnDispose = false;
 
     public FakeLspClient(string executable, string root)
     {
@@ -95,7 +95,10 @@ internal sealed class FakeLspClient : ILspClient
     }
 
     public List<LspSymbolInformation> WorkspaceSymbols { get; } = [];
+    public Func<string, IReadOnlyList<LspCodeAction>>? CodeActionProvider { get; set; }
+    public int CodeActionRequestCount;
     public IReadOnlyList<LspDiagnostic>? DocumentDiagnostics { get; set; } = [];
+    public Queue<IReadOnlyList<LspDiagnostic>?> DocumentDiagnosticsResponses { get; } = [];
     public int DocumentDiagnosticRequestCount;
 
     public Task<IReadOnlyList<LspSymbolInformation>> GetWorkspaceSymbolsAsync(string query, CancellationToken ct = default)
@@ -112,15 +115,28 @@ internal sealed class FakeLspClient : ILspClient
     public Task<IReadOnlyList<LspLocation>> GetReferencesAsync(string uri, LspPosition position, bool includeDeclaration = true, CancellationToken ct = default) => Empty<LspLocation>();
     public Task<IReadOnlyList<LspFoldingRange>> GetFoldingRangesAsync(string uri, CancellationToken ct = default) => Empty<LspFoldingRange>();
     public Task<IReadOnlyList<DocumentSymbol>> GetDocumentSymbolsAsync(string uri, CancellationToken ct = default) => Empty<DocumentSymbol>();
-    public Task<IReadOnlyList<LspCodeAction>> GetCodeActionsAsync(string uri, LspRange range, CancellationToken ct = default) => Empty<LspCodeAction>();
+    public Task<IReadOnlyList<LspCodeAction>> GetCodeActionsAsync(string uri, LspRange range, CancellationToken ct = default)
+        => GetCodeActionsAsync(uri, range, null, null, ct);
+    public Task<IReadOnlyList<LspCodeAction>> GetCodeActionsAsync(
+        string uri, LspRange range, IReadOnlyList<string>? only,
+        IReadOnlyList<LspDiagnostic>? diagnostics, CancellationToken ct = default)
+    {
+        Interlocked.Increment(ref CodeActionRequestCount);
+        return Task.FromResult(CodeActionProvider?.Invoke(uri) ?? (IReadOnlyList<LspCodeAction>)[]);
+    }
     public Task<IReadOnlyList<InlayHint>> GetInlayHintsAsync(string uri, LspRange range, CancellationToken ct = default) => Empty<InlayHint>();
     public Task<SemanticToken[]?> GetSemanticTokensAsync(string uri, CancellationToken ct = default) => Task.FromResult<SemanticToken[]?>(null);
     public Task<LspDocumentDiagnosticReport?> GetDocumentDiagnosticsAsync(string uri, CancellationToken ct = default)
     {
         Interlocked.Increment(ref DocumentDiagnosticRequestCount);
-        return Task.FromResult(DocumentDiagnostics is null
+        IReadOnlyList<LspDiagnostic>? diagnostics;
+        lock (DocumentDiagnosticsResponses)
+            diagnostics = DocumentDiagnosticsResponses.Count > 0
+                ? DocumentDiagnosticsResponses.Dequeue()
+                : DocumentDiagnostics;
+        return Task.FromResult(diagnostics is null
             ? null
-            : new LspDocumentDiagnosticReport(DocumentDiagnostics, null, Unchanged: false));
+            : new LspDocumentDiagnosticReport(diagnostics, null, Unchanged: false));
     }
     public Task<LspWorkspaceDiagnosticResult?> GetWorkspaceDiagnosticsAsync(CancellationToken ct = default) => Task.FromResult<LspWorkspaceDiagnosticResult?>(null);
     public Task<CallHierarchyItem?> PrepareCallHierarchyAsync(string uri, LspPosition pos, CancellationToken ct = default) => Task.FromResult<CallHierarchyItem?>(null);

@@ -94,6 +94,20 @@ public class DebugProjectDiscoveryTests : IDisposable
     }
 
     [Fact]
+    public void Discover_fallback_reaches_deep_nested_projects()
+    {
+        WriteProject(Path.Combine("one", "two", "three", "four", "five", "six"),
+            "DeepApp", PlainCsproj);
+
+        var found = DebugProjectDiscovery.Discover(_root);
+
+        var project = Assert.Single(found);
+        Assert.Equal("DeepApp", project.Name);
+        Assert.EndsWith(Path.Combine("one", "two", "three", "four", "five", "six", "DeepApp.csproj"),
+            project.FullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Discover_with_sln_uses_only_referenced_projects()
     {
         WriteProject("src/App", "App", PlainCsproj);
@@ -107,6 +121,21 @@ public class DebugProjectDiscoveryTests : IDisposable
             Global
             EndGlobal
             """);
+
+        var found = DebugProjectDiscovery.Discover(_root);
+
+        Assert.Single(found);
+        Assert.Equal("App", found[0].Name);
+    }
+
+    [Fact]
+    public void Discover_with_slnx_uses_only_referenced_projects()
+    {
+        WriteProject("src/App", "App", PlainCsproj);
+        WriteProject("src/Extra", "Extra", PlainCsproj);
+
+        File.WriteAllText(Path.Combine(_root, "Solution.slnx"),
+            "<Solution><Project Path=\"src/App/App.csproj\" /><Project Path=\"src/Missing/Missing.csproj\" /></Solution>");
 
         var found = DebugProjectDiscovery.Discover(_root);
 

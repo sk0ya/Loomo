@@ -1,5 +1,5 @@
 using Editor.Core.Lsp;
-using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.CSharp;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;

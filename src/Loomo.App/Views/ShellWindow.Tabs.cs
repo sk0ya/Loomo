@@ -180,6 +180,7 @@ public partial class ShellWindow {
     private LspPromptInfo? _lastLspPrompt;
     private void OnActiveEditorFileChanged(EditorTab tab) {
         var filePath = tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath;
+        _vm.CSharpContext.SetCurrentFile(filePath);
         _vm.Debug.Problems.CurrentFilePath = filePath;
         _vm.TsIde.Problems.CurrentFilePath = filePath;
         // 読み込みを伴わないタブ活性化ぶんの再送（読み込みを伴う経路は LoadEditorFile が受け持つ）。

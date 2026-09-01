@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Loomo.CSharpFixture.Feature</RootNamespace>
+    <AssemblyName>Loomo.CSharpFixture.Feature</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DefineConstants>FIXTURE_FEATURE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Contracts.csproj" />
+    <ProjectReference Include="..\FixtureGenerator\FixtureGenerator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Compile Include="..\Shared\LinkedFile.cs" Link="Shared\LinkedFile.cs" />
+    <AdditionalFiles Include="..\..\.editorconfig" />
+    <AdditionalFiles Include="GeneratorInput.txt" />
+  </ItemGroup>
+</Project>

@@ -165,6 +165,8 @@
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Lsp}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="✨  整形"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Formatter}" />
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="🛡  StyleCop"
+                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=StyleCop}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="⌨  キーボード"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Keyboard}" />
                     </StackPanel>
@@ -446,6 +448,85 @@
                                            Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
+                            <!-- ===== StyleCop ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=StyleCop}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionTitle}" Text="StyleCop.Analyzers" Margin="0,0,0,4" />
+                                    <Button Grid.Column="1" Style="{StaticResource IconButton}" Width="28" Height="28"
+                                            FontSize="{DynamicResource Fs14}" Content="↻" ToolTip="プロジェクトのStyleCop状態を更新"
+                                            Command="{Binding StyleCop.RefreshStatusCommand}" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource FieldHint}"
+                                           Text="StyleCopの導入状態・設定ファイル・severityをプロジェクトごとに確認できます。severity変更は明示操作で、プロジェクト直下の .editorconfig だけを書き換えます。" />
+
+                                <ItemsControl ItemsSource="{Binding StyleCop.Projects}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                    CornerRadius="6" Padding="10,8" Margin="0,0,0,6"
+                                                    Background="{DynamicResource BgAlt}">
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding ProjectName}" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource Fg}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding StateText}" FontSize="{DynamicResource Fs11}"
+                                                                   Foreground="{DynamicResource FgDim}" />
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding FullPath}" FontFamily="Cascadia Mono, Consolas"
+                                                               FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}"
+                                                               TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                                    <TextBlock Text="{Binding AnalyzerText}" FontSize="{DynamicResource Fs11}"
+                                                               Foreground="{DynamicResource FgDim}" Margin="0,4,0,0" />
+                                                    <TextBlock Text="{Binding ConfigurationText}" FontSize="{DynamicResource Fs11}"
+                                                               Foreground="{DynamicResource FgDim}" />
+                                                    <TextBlock Text="{Binding RulesetText}" FontSize="{DynamicResource Fs11}"
+                                                               Foreground="{DynamicResource FgDim}" />
+                                                    <TextBlock Text="{Binding SeverityText}" FontSize="{DynamicResource Fs11}"
+                                                               Foreground="{DynamicResource FgDim}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding ErrorText}" FontSize="{DynamicResource Fs11}"
+                                                               Foreground="#D06060" TextWrapping="Wrap"
+                                                               Visibility="{Binding ErrorText, Converter={StaticResource NonEmptyToVis}}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Separator Margin="0,10,0,8" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="ルールseverityを変更（明示操作）" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding StyleCop.Projects}"
+                                          SelectedValue="{Binding StyleCop.SelectedProjectPath, Mode=TwoWay}"
+                                          SelectedValuePath="FullPath" DisplayMemberPath="ProjectName"
+                                          ToolTip="変更対象のプロジェクト" />
+                                <TextBlock Text="{Binding StyleCop.TargetEditorConfigPath, StringFormat='変更先: {0}'}"
+                                           FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs10}"
+                                           Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
+                                           ToolTip="{Binding StyleCop.TargetEditorConfigPath}" />
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Margin="0,0,6,0" Text="{Binding StyleCop.RuleId, UpdateSourceTrigger=PropertyChanged}"
+                                             FontFamily="Cascadia Mono, Consolas" ToolTip="ルールID（例: SA1101）" />
+                                    <ComboBox Grid.Column="1" Margin="0,0,6,0" ItemsSource="{Binding StyleCop.SeverityOptions}"
+                                              SelectedItem="{Binding StyleCop.SelectedSeverity, Mode=TwoWay}" />
+                                    <Button Grid.Column="2" Content="変更" Style="{StaticResource FlatButton}"
+                                            Padding="10,2" Command="{Binding StyleCop.ApplySeverityCommand}" />
+                                </Grid>
+                                <TextBlock Text="{Binding StyleCop.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
+                            </StackPanel>
+
                             <!-- ===== 外観（カラーテーマはアプリ全体・エディタ・ターミナル・プレビューをここに集約） ===== -->
                             <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Appearance}">
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="文字サイズ（アプリ全体）" Margin="0,0,0,4" />
@@ -560,6 +641,11 @@
                                           IsChecked="{Binding Settings.AutoClosePairs}"
                                           ToolTip="( [ { や &quot; ' を入力すると対応する閉じ記号を自動挿入します。">
                                     <TextBlock Text="括弧・引用符を自動で閉じる" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.ShowInlayHints}"
+                                          ToolTip="C#の引数名など、LSPが返す補助情報をコード上に薄く表示します。">
+                                    <TextBlock Text="LSPのinlay hint（引数名など）を表示する" TextWrapping="Wrap" />
                                 </CheckBox>
 
                                 <Separator Margin="0,16,0,10" />

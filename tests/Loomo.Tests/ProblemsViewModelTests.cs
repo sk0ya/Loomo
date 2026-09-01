@@ -165,7 +165,10 @@ public class ProblemsViewModelTests
 
         Assert.Equal(1, vm.ErrorCount);
         Assert.Equal(1, vm.WarningCount);
-        var lsp = Assert.Single(vm.Groups.Single(g => g.FileName == "B.cs").Items);
+        Assert.Equal(0, vm.InformationCount);
+        Assert.Equal(1, vm.HintCount);
+        var lsp = vm.Groups.Single(g => g.FileName == "B.cs").Items
+            .Single(item => item.Severity == ProblemSeverity.Error);
         Assert.Equal(5, lsp.Line1);
         Assert.Equal(7, lsp.Column1);
         Assert.Equal(ProblemSource.Lsp, lsp.Source);
@@ -174,6 +177,43 @@ public class ProblemsViewModelTests
         vm.SetLspDiagnostics(uri, []);
         Assert.DoesNotContain(vm.Groups, g => g.FileName == "B.cs");
         Assert.Single(vm.Groups);
+    }
+
+    [Fact]
+    public void Compiler_fallback_diagnostics_have_their_own_source_filter()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetCompilerDiagnostics(@"C:\src\A.cs", [
+            new(new(new(1, 2), new(1, 3)), "; が必要です", DiagnosticSeverity.Error,
+                "Compiler", "CS1002")]);
+
+        var item = Assert.Single(vm.Groups.SelectMany(group => group.Items));
+        Assert.Equal(ProblemSource.Compiler, item.Source);
+        Assert.Equal("Compiler", item.SourceLabel);
+
+        vm.ShowCompiler = false;
+        Assert.Empty(vm.Groups);
+        vm.ShowCompiler = true;
+        Assert.Single(vm.Groups.SelectMany(group => group.Items));
+
+        vm.ClearAllCompilerDiagnostics();
+        Assert.Empty(vm.Groups);
+    }
+
+    [Fact]
+    public void Lsp_copy_wins_over_compiler_fallback_for_the_same_diagnostic()
+    {
+        var vm = new ProblemsViewModel();
+        const string path = @"C:\src\A.cs";
+        vm.SetCompilerDiagnostics(path, [
+            new(new(new(0, 0), new(0, 1)), "同じ診断", DiagnosticSeverity.Error,
+                "Compiler", "CS1002")]);
+        vm.SetLspDiagnostics(new Uri(path).AbsoluteUri, [
+            new(new(new(0, 0), new(0, 1)), "同じ診断", DiagnosticSeverity.Error,
+                "csharp", "CS1002")]);
+
+        var item = Assert.Single(vm.Groups.SelectMany(group => group.Items));
+        Assert.Equal(ProblemSource.Lsp, item.Source);
     }
 
     [Fact]
@@ -238,6 +278,46 @@ public class ProblemsViewModelTests
 
         var item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
         Assert.Equal(ProblemSource.Lsp, item.Source);
+    }
+
+    [Fact]
+    public void Build_and_lsp_diagnostics_dedupe_even_when_severity_differs()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(@"C:\src\A.cs(1,1): warning SA1600: same message [C:\src\P.csproj]");
+        vm.SetLspDiagnostics(new Uri(@"C:\src\A.cs").AbsoluteUri,
+        [
+            new(new(new(0, 0), new(0, 1)), "same message", DiagnosticSeverity.Error, "StyleCop", "SA1600"),
+        ]);
+
+        var item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSource.Build, item.Source);
+        Assert.Equal(ProblemSeverity.Warning, item.Severity);
+
+        vm.ShowBuild = false;
+        item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSource.Lsp, item.Source);
+        Assert.Equal(ProblemSeverity.Error, item.Severity);
+    }
+
+    [Fact]
+    public void Build_and_lsp_diagnostics_dedupe_when_localized_messages_differ()
+    {
+        var vm = new ProblemsViewModel();
+        vm.SetFromBuildOutput(@"C:\src\A.cs(1,1): warning SA1600: Build message [C:\src\P.csproj]");
+        vm.SetLspDiagnostics(new Uri(@"C:\src\A.cs").AbsoluteUri,
+        [
+            new(new(new(0, 0), new(0, 1)), "LSP message", DiagnosticSeverity.Warning, "StyleCop", "SA1600"),
+        ]);
+
+        var item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSource.Build, item.Source);
+        Assert.Equal("Build message", item.Message);
+
+        vm.ShowBuild = false;
+        item = Assert.Single(vm.Groups.SelectMany(g => g.Items));
+        Assert.Equal(ProblemSource.Lsp, item.Source);
+        Assert.Equal("LSP message", item.Message);
     }
 
     [Fact]

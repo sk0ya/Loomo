@@ -9,7 +9,7 @@ namespace sk0ya.Loomo.Tests;
 public sealed class ExplorerLayoutTests
 {
     [Fact]
-    public void ExplorerはFolderTreeを先頭に置き最近項目を重複表示しない()
+    public void ExplorerはCSharpソリューションツリーとFolderTreeを表示し最近項目を重複表示しない()
     {
         var xaml = Read("src", "Loomo.App", "Views", "ShellWindow.xaml");
         var start = xaml.IndexOf("<Grid x:Name=\"ExplorerSection\"", StringComparison.Ordinal);
@@ -17,14 +17,16 @@ public sealed class ExplorerLayoutTests
         Assert.True(start >= 0 && end > start);
         var section = xaml[start..end];
 
-        // ツリーには x:Name が付いているので、属性の並び順に依存しない形で先頭行を見る
-        // （名前を足した時点で「Grid.Row が続く」前提の検査は空振りしていた）。
+        var solutionTree = section.IndexOf("<views:CSharpSolutionExplorerView", StringComparison.Ordinal);
+        Assert.True(solutionTree >= 0, "CSharpSolutionExplorerView は ExplorerSection にあること");
+
         var tree = section.IndexOf("<views:FolderTreeView", StringComparison.Ordinal);
         Assert.True(tree >= 0, "FolderTreeView は ExplorerSection の中にあること");
         var tagEnd = section.IndexOf('>', tree);
         Assert.True(tagEnd > tree, "FolderTreeView の開始タグが閉じていること");
-        Assert.True(section[tree..tagEnd].Contains("Grid.Row=\"0\"", StringComparison.Ordinal),
-            "FolderTreeView は ExplorerSection の先頭行であること");
+        Assert.True(solutionTree < tree, "CSharpSolutionExplorerView は FolderTreeView より先に表示すること");
+        Assert.True(section[tree..tagEnd].Contains("Grid.Row=\"1\"", StringComparison.Ordinal),
+            "FolderTreeView はソリューションツリーの下に置くこと");
         Assert.DoesNotContain("RecentItemsView", section);
         Assert.Contains("ExplorerFolderTreeRow\" Height=\"*\" MinHeight=\"150\"", section);
         Assert.Contains("<GridSplitter x:Name=\"SidebarTabsSplitter\" Grid.Row=\"1\"", section);

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -129,8 +130,10 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         if (idx < 0 || idx >= lines.Length) return;
         var prev = idx > 0 ? lines[idx - 1] : null;
 
-        foreach (var expr in AutosExtractor.ExtractCandidates(lines[idx], prev,
-                     AutosExtractor.LanguageForPath(frame.SourcePath)))
+        var candidates = IsTypeScriptPath(frame.SourcePath)
+            ? TypeScriptAutosExtractor.ExtractCandidates(lines[idx], prev)
+            : CSharpAutosExtractor.ExtractCandidates(lines[idx], prev);
+        foreach (var expr in candidates)
         {
             var value = await _debug.EvaluateAsync(expr, frame.Id);
             if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
@@ -139,6 +142,9 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         }
         HasAutos = Autos.Count > 0;
     }
+
+    private static bool IsTypeScriptPath(string path)
+        => Path.GetExtension(path).ToLowerInvariant() is ".ts" or ".tsx" or ".js" or ".jsx" or ".mjs" or ".cjs";
 
     // --- ウォッチ ---
 

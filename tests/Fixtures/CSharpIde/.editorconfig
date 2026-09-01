@@ -1,0 +1,18 @@
+root = true
+
+[*]
+charset = utf-8-bom
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+fixture_generator_value = from-analyzer-config
+
+[*.cs]
+dotnet_diagnostic.SA0001.severity = warning
+dotnet_diagnostic.SA1600.severity = warning
+dotnet_diagnostic.SA1101.severity = error
+csharp_style_var_for_built_in_types = true:suggestion
+
+[*.g.cs]
+generated_code = true
+dotnet_diagnostic.SA0001.severity = none

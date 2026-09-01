@@ -4,8 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.CSharp.Build;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
+using sk0ya.Loomo.CSharp.Debug;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -17,47 +19,7 @@ internal static class DebugTargetResolver
     /// フォルダーが対象）。IDE（ビルド・テスト・デバッグ）ペインの表示要否判定に使う。folders が空、または
     /// ビルド対象が 1 つも無ければ false。</summary>
     public static bool HasCSharpProject(IReadOnlyList<string> folders)
-        => folders.Any(HasCSharpProjectIn);
-
-    private static bool HasCSharpProjectIn(string? root)
-    {
-        if (string.IsNullOrEmpty(root))
-            return false;
-        try
-        {
-            if (Directory.EnumerateFiles(root, "*.sln", SearchOption.TopDirectoryOnly).Any())
-                return true;
-        }
-        catch { /* 列挙失敗は csproj 探索へフォールバック */ }
-        // この判定は起動時（初フレーム前）に同期実行されるため、FindProject の AllDirectories 全走査は使わない。
-        // 非 C# の大きなフォルダ（node_modules 等）を開いたとき初フレームをブロックしないよう、bin/obj/.git/
-        // node_modules といった肥大ディレクトリを除いた深さ制限スキャンで十分（プロジェクトは通常 src/ 直下までに在る）。
-        return HasProjectWithinDepth(root, maxDepth: 3);
-    }
-
-    /// <summary>起動経路用の軽量 .csproj 判定。<paramref name="maxDepth"/> 段までを、肥大しがちな
-    /// ビルド/依存/VCS ディレクトリを飛ばして探索する。1 つでも見つかれば true。</summary>
-    private static bool HasProjectWithinDepth(string dir, int maxDepth)
-    {
-        try
-        {
-            if (Directory.EnumerateFiles(dir, "*.csproj", SearchOption.TopDirectoryOnly).Any())
-                return true;
-            if (maxDepth <= 0)
-                return false;
-            foreach (var sub in Directory.EnumerateDirectories(dir))
-            {
-                var name = Path.GetFileName(sub);
-                if (name is "bin" or "obj" or "node_modules" or ".git" or ".vs"
-                    || name.StartsWith('.'))
-                    continue;
-                if (HasProjectWithinDepth(sub, maxDepth - 1))
-                    return true;
-            }
-        }
-        catch { /* アクセス不能ディレクトリは無視 */ }
-        return false;
-    }
+        => CSharpDebugTargetResolver.HasCSharpProject(folders);
 
     /// <summary>ビルド/テスト対象を解決する。各ワークスペースフォルダー直下の .sln を優先し
     /// （フォルダーの並び順）、無ければ最初に見つかった .csproj。</summary>
@@ -70,21 +32,8 @@ internal static class DebugTargetResolver
             return null;
         }
 
-        foreach (var root in folders)
-        {
-            try
-            {
-                var sln = Directory.GetFiles(root, "*.sln", SearchOption.TopDirectoryOnly);
-                if (sln.Length > 0) return sln[0];
-            }
-            catch { /* 列挙失敗時は次のフォルダー／csproj へフォールバック */ }
-        }
-
-        foreach (var root in folders)
-        {
-            var csproj = FindProject(root);
-            if (csproj is not null) return csproj;
-        }
+        if (CSharpDebugTargetResolver.FindBuildTarget(folders) is { } target)
+            return target;
 
         session.Append(DebugOutputCategory.Important, "ワークスペースに .sln/.csproj が見つかりません。");
         return null;
@@ -94,7 +43,8 @@ internal static class DebugTargetResolver
     /// （起動プロジェクト選択コンボボックスの選択）を、それも無ければワークスペースの .csproj を 1 つ探し、
     /// 任意でビルドしてから出力 dll を見つける。解決できなければ null（理由はコンソールへ）。</summary>
     public static async Task<string?> ResolveProgramAsync(IWorkspaceService workspace, ITerminalService terminal,
-        IDebugSession session, string targetProgram, bool buildFirst, string? explicitProjectPath = null)
+        IDebugSession session, string targetProgram, bool buildFirst, string? explicitProjectPath = null,
+        string configuration = "Debug", string? targetFramework = null)
     {
         var root = workspace.PrimaryFolder;
 
@@ -111,8 +61,12 @@ internal static class DebugTargetResolver
             // 従来どおり存在チェックのみ）。
             if (buildFirst)
             {
-                var proj = string.IsNullOrWhiteSpace(explicitProjectPath) ? FindProjectNear(p) : explicitProjectPath;
-                if (proj is not null && File.Exists(proj) && !await BuildAsync(terminal, session, proj))
+                var proj = string.IsNullOrWhiteSpace(explicitProjectPath)
+                    ? CSharpDebugTargetResolver.FindProjectNear(p)
+                    : explicitProjectPath;
+                if (proj is not null && File.Exists(proj) &&
+                    !await BuildAsync(terminal, session, proj, configuration: configuration,
+                        targetFramework: targetFramework))
                     return null;
             }
 
@@ -128,7 +82,7 @@ internal static class DebugTargetResolver
         }
 
         var csproj = string.IsNullOrWhiteSpace(explicitProjectPath)
-            ? workspace.Folders.Select(FindProject).FirstOrDefault(p => p is not null)
+            ? workspace.Folders.Select(CSharpDebugTargetResolver.FindProject).FirstOrDefault(p => p is not null)
             : explicitProjectPath;
         if (csproj is null || !File.Exists(csproj))
         {
@@ -137,10 +91,11 @@ internal static class DebugTargetResolver
             return null;
         }
 
-        if (buildFirst && !await BuildAsync(terminal, session, csproj))
+        if (buildFirst && !await BuildAsync(terminal, session, csproj, configuration: configuration,
+                targetFramework: targetFramework))
             return null;
 
-        var dll = FindOutputDll(csproj);
+        var dll = CSharpDebugTargetResolver.FindOutputDll(csproj, configuration, targetFramework);
         if (dll is null)
         {
             session.Append(DebugOutputCategory.Important,
@@ -152,12 +107,12 @@ internal static class DebugTargetResolver
 
     /// <summary><c>dotnet build</c> を実行し、出力をコンソールへ。成功（exit 0）なら true。</summary>
     public static async Task<bool> BuildAsync(ITerminalService terminal, IDebugSession session, string projectOrSln,
-        string label = "ビルド")
+        string label = "ビルド", string configuration = "Debug", string? targetFramework = null)
     {
         session.StatusMessage = "ビルド中…";
         session.Append(DebugOutputCategory.Important, $"{label}: {Path.GetFileName(projectOrSln)}");
-        var result = await terminal.RunCommandInVisibleTerminalAsync(
-            $"dotnet build \"{projectOrSln}\" -c Debug --nologo", CancellationToken.None);
+        var result = await CSharpBuildService.RunAsync(
+            terminal, projectOrSln, configuration, CancellationToken.None, targetFramework);
         session.WriteConsole(result.Output);
         session.ReportBuildOutput(result.Output);
         if (!result.Success)
@@ -171,50 +126,10 @@ internal static class DebugTargetResolver
 
     /// <summary>ワークスペース直下、無ければ浅い再帰で最初の .csproj を探す。</summary>
     public static string? FindProject(string root)
-    {
-        try
-        {
-            var top = Directory.GetFiles(root, "*.csproj", SearchOption.TopDirectoryOnly);
-            if (top.Length > 0) return top[0];
-            return Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories)
-                .OrderBy(p => p.Count(c => c == Path.DirectorySeparatorChar))
-                .FirstOrDefault();
-        }
-        catch { return null; }
-    }
+        => CSharpDebugTargetResolver.FindProject(root);
 
-    /// <summary>実行対象（<c>bin/Debug/&lt;tfm&gt;/App.dll</c> 等）の場所から親方向へ遡り、最初に見つかった
-    /// .csproj を返す（起動プロジェクト未選択で実行対象だけ明示指定されたときの、ビルド対象の推定用）。
-    /// 見つからなければ null（呼び出し側はビルドを静かにスキップする）。</summary>
-    private static string? FindProjectNear(string programPath)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(programPath);
-            for (var i = 0; i < 6 && dir is not null; i++)
-            {
-                var csproj = Directory.EnumerateFiles(dir, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
-                if (csproj is not null) return csproj;
-                dir = Path.GetDirectoryName(dir);
-            }
-        }
-        catch { /* アクセス不能ディレクトリは無視。見つからなければビルドはスキップされる */ }
-        return null;
-    }
-
-    /// <summary>プロジェクトの <c>bin/Debug</c> 配下から <c>&lt;projName&gt;.dll</c> を新しい順に探す。</summary>
-    public static string? FindOutputDll(string csproj)
-    {
-        try
-        {
-            var projDir = Path.GetDirectoryName(csproj)!;
-            var name = Path.GetFileNameWithoutExtension(csproj);
-            var binDir = Path.Combine(projDir, "bin", "Debug");
-            if (!Directory.Exists(binDir)) return null;
-            return Directory.EnumerateFiles(binDir, name + ".dll", SearchOption.AllDirectories)
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault();
-        }
-        catch { return null; }
-    }
+    /// <summary>プロジェクトの <c>bin/&lt;configuration&gt;</c> 配下から <c>&lt;projName&gt;.dll</c> を新しい順に探す。</summary>
+    public static string? FindOutputDll(
+        string csproj, string configuration = "Debug", string? targetFramework = null)
+        => CSharpDebugTargetResolver.FindOutputDll(csproj, configuration, targetFramework);
 }

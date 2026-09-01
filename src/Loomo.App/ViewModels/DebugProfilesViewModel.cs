@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
 
@@ -21,6 +22,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
     {
         nameof(ILaunchConfigurationOwner.TargetProgram), nameof(ILaunchConfigurationOwner.BuildFirst),
         nameof(ILaunchConfigurationOwner.LaunchArgs), nameof(ILaunchConfigurationOwner.LaunchEnv),
+        nameof(ILaunchConfigurationOwner.LaunchWorkingDirectory),
         nameof(ILaunchConfigurationOwner.JustMyCode), nameof(ILaunchConfigurationOwner.BreakOnAllExceptions),
         nameof(ILaunchConfigurationOwner.BreakOnUncaughtExceptions),
     };
@@ -45,10 +47,36 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
 
     [ObservableProperty] private DebugProjectDiscovery.ProjectEntry _selectedProject = DebugProjectDiscovery.AutoDetect;
 
+    /// <summary>選択したcsprojのlaunchSettings.jsonから読んだ候補。C#固有のJSON解析はLoomo.CSharpが担当する。</summary>
+    public ObservableCollection<LaunchSettingsProfile> LaunchSettingsProfiles { get; } = new();
+
+    [ObservableProperty] private LaunchSettingsProfile? _selectedLaunchSettingsProfile;
+    [ObservableProperty] private string _launchSettingsStatus = "";
+
+    private string? _launchSettingsProjectPath;
+
     /// <summary>選択中プロジェクトの絶対パス（自動検出センチネルなら null）。<see cref="DebugLaunchViewModel.StartAsync"/> が
     /// <see cref="DebugTargetResolver.ResolveProgramAsync"/> の explicitProjectPath 引数へそのまま渡す。</summary>
     public string? SelectedProjectPath
         => ReferenceEquals(SelectedProject, DebugProjectDiscovery.AutoDetect) ? null : SelectedProject.FullPath;
+
+    /// <summary>指定プロジェクトの通常実行で使える、現在選択中のlaunchSettingsプロファイル名。
+    /// 別プロジェクトの選択状態やdotnet launchで扱えない形式は返さない。</summary>
+    public string? SelectedSupportedLaunchProfileNameFor(string projectPath)
+        => SelectedRunLaunchProfileFor(projectPath) is { IsSupported: true, Name.Length: > 0 } profile
+            ? profile.Name
+            : null;
+
+    /// <summary>指定プロジェクトで通常実行に使えるlaunchSettingsプロファイルを返す。
+    /// Project／Executableはdotnet run、IIS Expressは専用ランチャーへ渡す。通常実行と
+    /// netcoredbg attachの両方で同じプロファイルを利用する窓口。</summary>
+    public LaunchSettingsProfile? SelectedRunLaunchProfileFor(string projectPath)
+        => SelectedProjectPath is { } selected
+            && string.Equals(Path.GetFullPath(selected), Path.GetFullPath(projectPath),
+                StringComparison.OrdinalIgnoreCase)
+            && SelectedLaunchSettingsProfile is { IsRunSupported: true } profile
+            ? profile
+            : null;
 
     internal bool CanDeleteSelectedProfile => Profiles.Count > 1 && SelectedProfile is not null;
 
@@ -83,6 +111,12 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
         _launch = launch;
         _launch.PropertyChanged += OnLaunchPropertyChanged;
         ApplySelectedProfileToLaunch();
+        // ApplySelectedProfileToLaunch は選択中プロファイルのプロジェクトへ切り替えた後、
+        // launchSettings候補を読み直して保存済みの選択を復元する。ここで無条件に再読込すると
+        // その直後に SelectedLaunchSettingsProfile を null に戻してしまうため、プロファイルが
+        // 無い初期状態に限って補完する。
+        if (SelectedProfile is null)
+            ReloadLaunchSettingsProfiles();
     }
 
     private void OnLaunchPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -103,6 +137,53 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
     {
         OnPropertyChanged(nameof(SelectedProjectPath));
         if (_applying) return;
+        ReloadLaunchSettingsProfiles();
+        _saveDebounce.Stop();
+        _saveDebounce.Start();
+    }
+
+    partial void OnSelectedLaunchSettingsProfileChanged(LaunchSettingsProfile? value)
+    {
+        if (value is null) return;
+        if (!value.IsRunSupported)
+        {
+            if (_launch is ILaunchBrowserTarget browserTarget)
+                browserTarget.LaunchBrowserUrl = "";
+            LaunchSettingsStatus = $"未対応の起動形式: {value.CommandName}";
+            _saveDebounce.Stop();
+            _saveDebounce.Start();
+            return;
+        }
+        if (value.IsIisExpress)
+        {
+            _applying = true;
+            try
+            {
+                // IIS Expressはdotnetのlaunch対象DLLではないため、通常Runでは専用コマンドへ、
+                // Debugでは起動したiisexpress.exeへnetcoredbgがattachする。
+                if (_launch is not null)
+                {
+                    _launch.TargetProgram = "";
+                    _launch.BuildFirst = true;
+                    _launch.LaunchArgs = "";
+                    _launch.LaunchEnv = string.Join(Environment.NewLine,
+                        value.EnvironmentVariables.Select(p => $"{p.Key}={p.Value}"));
+                    _launch.LaunchWorkingDirectory = ResolveLaunchPath(
+                        value.WorkingDirectory, Path.GetDirectoryName(_launchSettingsProjectPath!)!);
+                }
+                if (_launch is ILaunchBrowserTarget browserTarget)
+                    browserTarget.LaunchBrowserUrl = value.BrowserUrl ?? "";
+                LaunchSettingsStatus = value.BrowserUrl is { } browserUrl
+                    ? $"launchSettings: {value.Name} を適用しました（IIS Express／ブラウザ: {browserUrl}）"
+                    : $"launchSettings: {value.Name} を適用しました（IIS Express／Run・Debug attach対応）";
+            }
+            finally { _applying = false; }
+            _saveDebounce.Stop();
+            _saveDebounce.Start();
+            return;
+        }
+
+        ApplyLaunchSettingsProfile(value);
         _saveDebounce.Stop();
         _saveDebounce.Start();
     }
@@ -119,9 +200,12 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
             _launch.BuildFirst = m.BuildFirst;
             _launch.LaunchArgs = m.LaunchArgs;
             _launch.LaunchEnv = m.LaunchEnv;
+            _launch.LaunchWorkingDirectory = m.WorkingDirectory;
             _launch.JustMyCode = m.JustMyCode;
             _launch.BreakOnAllExceptions = m.BreakOnAllExceptions;
             _launch.BreakOnUncaughtExceptions = m.BreakOnUncaughtExceptions;
+            if (_launch is ILaunchBrowserTarget browserTarget)
+                browserTarget.LaunchBrowserUrl = "";
             SelectedProject = string.IsNullOrEmpty(m.ProjectPath)
                 ? DebugProjectDiscovery.AutoDetect
                 : AvailableProjects.FirstOrDefault(p =>
@@ -129,6 +213,80 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
                   ?? DebugProjectDiscovery.AutoDetect;
         }
         finally { _applying = false; }
+
+        // プロファイル切替では SelectedProject の変更通知を _applying で抑制しているため、
+        // OnSelectedProjectChanged の再読込も抑制される。ここで新しい起動プロジェクトの
+        // launchSettings.json を明示的に読み直してから、保存済みプロファイル名を解決する。
+        // これを省くと、プロジェクトAからBへ切り替えた際にAの起動候補が残り、Bの
+        // launchSettingsプロファイルを選び直せない。
+        ReloadLaunchSettingsProfiles();
+
+        // launchSettings.json はプロジェクトの再評価後に候補が作られるため、保存名を
+        // 一度候補へ解決してから適用する。見つからない場合は現在値を壊さず、未選択のままにする。
+        if (!string.IsNullOrWhiteSpace(SelectedProfile?.Model.LaunchSettingsProfileName))
+        {
+            var stored = LaunchSettingsProfiles.FirstOrDefault(p =>
+                string.Equals(p.Name, SelectedProfile.Model.LaunchSettingsProfileName,
+                    StringComparison.OrdinalIgnoreCase));
+            if (stored is not null)
+                SelectedLaunchSettingsProfile = stored;
+        }
+    }
+
+    private void ReloadLaunchSettingsProfiles()
+    {
+        LaunchSettingsProfiles.Clear();
+        SelectedLaunchSettingsProfile = null;
+        if (_launch is ILaunchBrowserTarget browserTarget)
+            browserTarget.LaunchBrowserUrl = "";
+        _launchSettingsProjectPath = SelectedProjectPath;
+        if (string.IsNullOrWhiteSpace(_launchSettingsProjectPath))
+        {
+            LaunchSettingsStatus = "起動プロジェクトを選ぶとlaunchSettings.jsonを読み込めます";
+            return;
+        }
+
+        var profiles = LaunchSettingsProfileParser.ParseProject(_launchSettingsProjectPath, out var error);
+        foreach (var profile in profiles) LaunchSettingsProfiles.Add(profile);
+        LaunchSettingsStatus = error is not null
+            ? $"launchSettings.jsonを読めません: {error}"
+            : profiles.Count == 0
+                ? "launchSettings.jsonの起動プロファイルなし"
+                : $"launchSettings.json: {profiles.Count}件（Project／Executable／IIS Express対応）";
+    }
+
+    private void ApplyLaunchSettingsProfile(LaunchSettingsProfile profile)
+    {
+        if (_launch is null || _launchSettingsProjectPath is null) return;
+        _applying = true;
+        try
+        {
+            var projectDirectory = Path.GetDirectoryName(_launchSettingsProjectPath)!;
+            _launch.TargetProgram = string.Equals(profile.CommandName, "Executable", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(profile.ExecutablePath)
+                ? Path.GetFullPath(Path.IsPathRooted(profile.ExecutablePath)
+                    ? profile.ExecutablePath
+                    : Path.Combine(projectDirectory, profile.ExecutablePath))
+                : "";
+            _launch.BuildFirst = true;
+            _launch.LaunchArgs = profile.CommandLineArgs ?? "";
+            _launch.LaunchEnv = string.Join(Environment.NewLine,
+                profile.EnvironmentVariables.Select(p => $"{p.Key}={p.Value}"));
+            _launch.LaunchWorkingDirectory = ResolveLaunchPath(profile.WorkingDirectory, projectDirectory);
+            if (_launch is ILaunchBrowserTarget browserTarget)
+                browserTarget.LaunchBrowserUrl = profile.BrowserUrl ?? "";
+            LaunchSettingsStatus = profile.BrowserUrl is { } browserUrl
+                ? $"launchSettings: {profile.Name} を適用しました（ブラウザ: {browserUrl}）"
+                : $"launchSettings: {profile.Name} を適用しました";
+        }
+        finally { _applying = false; }
+    }
+
+    private static string ResolveLaunchPath(string? path, string baseDirectory)
+    {
+        var value = path?.Trim() ?? "";
+        if (value.Length == 0) return "";
+        return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(baseDirectory, value));
     }
 
     /// <summary>Launch の現在値を選択中プロファイルへ書き戻して保存する（デバウンス満了時）。</summary>
@@ -142,9 +300,11 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
             BuildFirst = _launch.BuildFirst,
             LaunchArgs = _launch.LaunchArgs,
             LaunchEnv = _launch.LaunchEnv,
+            WorkingDirectory = _launch.LaunchWorkingDirectory,
             JustMyCode = _launch.JustMyCode,
             BreakOnAllExceptions = _launch.BreakOnAllExceptions,
             BreakOnUncaughtExceptions = _launch.BreakOnUncaughtExceptions,
+            LaunchSettingsProfileName = SelectedLaunchSettingsProfile?.Name ?? "",
         };
         PersistAll();
     }
@@ -192,6 +352,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
         foreach (var p in profiles) Profiles.Add(new DebugLaunchProfileItem(p));
 
         SelectedProfile = Profiles.FirstOrDefault(p => p.Id == selectedId) ?? Profiles[0];
+        ReloadLaunchSettingsProfiles();
         if (seeded) PersistAll();
     }
 
@@ -212,7 +373,8 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
             : new DebugLaunchProfile(
                 Guid.NewGuid().ToString("N"), name, SelectedProjectPath is null ? null : SelectedProject.RelativePath,
                 _launch.TargetProgram, _launch.BuildFirst, _launch.LaunchArgs, _launch.LaunchEnv,
-                _launch.JustMyCode, _launch.BreakOnAllExceptions, _launch.BreakOnUncaughtExceptions);
+                _launch.JustMyCode, _launch.BreakOnAllExceptions, _launch.BreakOnUncaughtExceptions,
+                _launch.LaunchWorkingDirectory);
         var item = new DebugLaunchProfileItem(created);
         Profiles.Add(item);
         SelectedProfile = item;

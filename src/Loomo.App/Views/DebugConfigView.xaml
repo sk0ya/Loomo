@@ -47,6 +47,13 @@
                           DisplayMemberPath="Name" Margin="0,0,0,4"
                           ToolTip="起動プロジェクト（自動検出=対象欄の指定に従う）" />
 
+                <ComboBox ItemsSource="{Binding Profiles.LaunchSettingsProfiles}"
+                          SelectedItem="{Binding Profiles.SelectedLaunchSettingsProfile, Mode=TwoWay}"
+                          DisplayMemberPath="DisplayName" Margin="0,0,0,4"
+                          ToolTip="選択中csprojのProperties/launchSettings.json。Project／Executable／IIS Expressを適用" />
+                <TextBlock Text="{Binding Profiles.LaunchSettingsStatus}" Foreground="{DynamicResource FgDim}"
+                           FontSize="{DynamicResource Fs10}" TextWrapping="Wrap" Margin="2,0,0,4" />
+
                 <Grid>
                     <TextBox x:Name="TargetBox" Padding="6,4" FontSize="{DynamicResource Fs12}"
                              Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
@@ -82,6 +89,17 @@
                     <TextBlock Text="環境変数（1 行 1 件 KEY=VALUE）" IsHitTestVisible="False" FontSize="{DynamicResource Fs12}"
                                Foreground="{DynamicResource FgDim}" VerticalAlignment="Top" Margin="8,5,0,0"
                                Visibility="{Binding Text, ElementName=EnvBox, Converter={StaticResource EmptyToVis}}" />
+                    </Grid>
+
+                <Grid Margin="0,4,0,0">
+                    <TextBox x:Name="WorkingDirectoryBox" Padding="6,4" FontSize="{DynamicResource Fs12}"
+                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                             Text="{Binding Launch.LaunchWorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="起動時の作業ディレクトリ。空なら実行対象のディレクトリ" />
+                    <TextBlock Text="作業ディレクトリ（空=自動）" IsHitTestVisible="False" FontSize="{DynamicResource Fs12}"
+                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Text, ElementName=WorkingDirectoryBox, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
             </StackPanel>
 

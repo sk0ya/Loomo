@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Input;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Input;
+using sk0ya.Loomo.CSharp.Editor;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -92,6 +93,17 @@ public class KeybindingModelTests
     }
 
     [Fact]
+    public void Catalog_exposes_editor_save_command()
+    {
+        var command = CommandCatalog.Find("editor.save");
+
+        Assert.NotNull(command);
+        Assert.Equal("エディタ", command.Category);
+        Assert.Equal("現在のファイルを保存", command.Title);
+        Assert.Equal(KeySequence.TryParse("Ctrl+S"), KeySequence.TryParse(command.DefaultBinding));
+    }
+
+    [Fact]
     public void Catalog_resize_commands_enter_resize_mode()
     {
         foreach (var d in CommandCatalog.All.Where(c => c.Id.StartsWith("pane.resize.")))
@@ -117,6 +129,8 @@ public class KeybindingModelTests
             Assert.Equal(KeySequence.TryParse("Ctrl+W H"), service.For("pane.focus.left"));
             Assert.Equal(KeySequence.TryParse("Ctrl+Shift+P"), service.For("palette.open"));
             Assert.Equal(KeySequence.TryParse("F11"), service.For("pane.fullscreen"));
+            Assert.Equal(KeySequence.TryParse("Alt+Enter"), service.For(CSharpEditorCommandCatalog.QuickFix));
+            Assert.Equal(KeySequence.TryParse("F12"), service.For(CSharpEditorCommandCatalog.GoToDefinition));
             Assert.False(service.IsCustom("pane.focus.left"));
         }
         finally { File.Delete(path); }

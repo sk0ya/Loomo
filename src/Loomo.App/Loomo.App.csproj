@@ -4,7 +4,22 @@
     <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
     <ProjectReference Include="..\Loomo.Ai\Loomo.Ai.csproj" />
     <ProjectReference Include="..\Loomo.Services\Loomo.Services.csproj" />
+    <ProjectReference Include="..\Loomo.CSharp\Loomo.CSharp.csproj" />
+    <!-- Editor のローカル開発版。XAML コンパイラが Editor.Controls の型を直接解決できるよう、
+         Services 経由の推移参照に頼らず明示する。 -->
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Controls\Editor.Controls.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Core\Editor.Core.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <PackageReference Include="sk0ya.Editor.Controls" Version="$(EditorPackageVersion)"
+                      Condition="'$(UseLocalEditor)' == 'false'" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.80'))">$(DefineConstants);LOOMO_EDITOR_HOST_API</DefineConstants>
+  </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
@@ -75,6 +90,42 @@
          要 node/npm（初回のみ・mermaid 取得が要インターネットなのと同様）。 -->
     <Content Include="Assets\Web\marp.min.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Roslyn Completionの実装とパッケージ管理はLoomo.CSharp側に隔離する。
+       Appは実行時に必要なprovider DLLだけを出力へ同梱し、Roslyn compile referenceを持たない。 -->
+  <Target Name="ResolveCSharpRuntimeDirectory" BeforeTargets="CopyCSharpCompletionProvider">
+    <!-- CSharpプロジェクトのTFMをここへ複製しない。P2P参照先自身のGetTargetPathを呼び、
+         target frameworkの変更時にも実際にBuildされた出力を依存解決の正本にする。 -->
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\Loomo.CSharp\Loomo.CSharp.csproj"
+             Targets="GetTargetPath"
+             BuildInParallel="false"
+             RemoveProperties="TargetFramework;TargetPlatformIdentifier;TargetPlatformVersion;RuntimeIdentifier;SelfContained"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="CSharpTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <CSharpRuntimeDirectory>$([System.IO.Path]::GetDirectoryName('%(CSharpTargetPath.Identity)'))\</CSharpRuntimeDirectory>
+    </PropertyGroup>
+    <Error Condition="'$(CSharpRuntimeDirectory)' == ''"
+           Text="Loomo.CSharpの実行時出力ディレクトリを解決できません。" />
+  </Target>
+
+  <Target Name="CopyCSharpCompletionProvider" AfterTargets="Build">
+    <ItemGroup>
+      <!-- CSharp DLLのRoslyn実装はcompile referenceにせず、実行時依存だけを同梱する。 -->
+      <CSharpRuntimeAssemblies Include="$(CSharpRuntimeDirectory)Microsoft.CodeAnalysis*.dll" />
+      <CSharpRuntimeAssemblies Include="$(CSharpRuntimeDirectory)System.Composition*.dll"
+                               Condition="Exists('$(CSharpRuntimeDirectory)System.Composition*.dll')" />
+      <CSharpRuntimeAssemblies Include="$(CSharpRuntimeDirectory)Microsoft.DiaSymReader.dll"
+                               Condition="Exists('$(CSharpRuntimeDirectory)Microsoft.DiaSymReader.dll')" />
+      <CSharpRuntimeAssemblies Include="$(CSharpRuntimeDirectory)System.Configuration.ConfigurationManager.dll"
+                               Condition="Exists('$(CSharpRuntimeDirectory)System.Configuration.ConfigurationManager.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CSharpRuntimeAssemblies)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true"
+          Condition="@(CSharpRuntimeAssemblies) != ''" />
+  </Target>
 
   <Target Name="DownloadMermaid" BeforeTargets="AssignTargetPaths" Condition="!Exists('Assets\Web\mermaid.min.js')">
     <DownloadFile SourceUrl="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"

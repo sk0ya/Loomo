@@ -7,6 +7,7 @@ using sk0ya.Loomo.Core.Agent;
 
 namespace sk0ya.Loomo.Tests;
 
+[Collection(WindowsShellTests.Name)]
 public sealed class FileThumbnailTests
 {
     [Theory]

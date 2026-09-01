@@ -15,6 +15,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- CSharp DLLのRoslyn Completion providerをテスト出力でもMEFへロードする。 -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0"
+                      PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.14.0"
+                      IncludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,9 +27,34 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 旧公開Editor (1.0.79) には後発LSP／WorkspaceEdit契約がないため、
+       その契約を直接検証するテストだけは旧版受入れ時のコンパイル対象から外す。 -->
+  <ItemGroup Condition="'$(UseLocalEditor)' == 'false' And $([MSBuild]::VersionLessThan('$(EditorPackageVersion)', '1.0.82'))">
+    <Compile Remove="RealRoslynLspIntegrationTests.cs" />
+    <Compile Remove="LspWorkspaceServiceTests.cs" />
+    <Compile Remove="CSharpCompletionServiceTests.cs" />
+    <Compile Remove="CSharpRenameServiceTests.cs" />
+    <Compile Remove="CSharpCompilerCodeFixServiceTests.cs" />
+    <Compile Remove="CSharpEditorIntegrationTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Loomo.Core\Loomo.Core.csproj" />
     <ProjectReference Include="..\..\src\Loomo.Ai\Loomo.Ai.csproj" />
+    <ProjectReference Include="..\..\src\Loomo.CSharp\Loomo.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Loomo.App\Loomo.App.csproj" />
+    <!-- Editor のローカル開発版をテストからも直接参照する。 -->
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Controls\Editor.Controls.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Core\Editor.Core.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <PackageReference Include="sk0ya.Editor.Controls" Version="$(EditorPackageVersion)"
+                      Condition="'$(UseLocalEditor)' == 'false'" />
   </ItemGroup>
 
 </Project>

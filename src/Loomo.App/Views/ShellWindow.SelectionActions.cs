@@ -19,6 +19,8 @@ public partial class ShellWindow {
                 control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection)));
         AddSemanticSelectionMenuItems(e.Menu, control);
         AddRefactorMenuItems(e.Menu, control);
+        AddCSharpCodeGenerationMenuItems(e.Menu, control);
+        AddCSharpFixAllMenuItems(e.Menu, control);
         AddOpenLinkInWindowMenuItem(e.Menu, control);
         AddRunScriptMenuItem(e.Menu, control);
         AddGitMenuItems(e.Menu, control);

@@ -274,3 +274,121 @@ Escapeで閉じると起きる）。どちらも次に誰かがステータス�
 - Problemsタブの選択とF8移動。
 - 設定オーバーレイを閉じた後のフォーカス復帰の**実機確認**（ブラウザペイン表示時／分割時／サイドバー起点／
   戻り先が消えた場合、およびペイン切替・舞台切替・デタッチ復帰の非退行）。
+
+## 2026-09-01 §33 C#自動検証記録
+
+| 項目 | 結果 |
+|---|---|
+| Loomo commit / 構成 | `b9c4918`（作業ツリー変更あり） |
+| Editor package / commit | `sk0ya.Editor.Controls 1.0.79`相当のローカル開発版、Editor `f425695`（作業ツリー変更あり） |
+| Terminal package | `sk0ya.Terminal.Controls 1.0.31` |
+| OS / .NET SDK | Windows `10.0.22631.0` / .NET SDK `10.0.302` |
+| C# server / version | `roslyn-language-server 5.9.0-1.26303.1+d74775a9e15f1ec193c5cc4dd37653b5ef447a2c` |
+| StyleCop Analyzer | `1.2.0-beta.556`（CSharpIde fixture） |
+| C#専用アセンブリ | `src/Loomo.CSharp/sk0ya.Loomo.CSharp.dll`。Roslyn／MSBuild／C#テスト／リファクタリングを配置し、AppはUIアダプターに限定 |
+| Loomo Build | `dotnet build sk0ya.Loomo.sln --no-restore`：警告0、エラー0 |
+| Loomo全テスト | 2,975合格、2スキップ、失敗0（合計2,977） |
+| C#関連回帰（変更後） | `FullyQualifiedName~CSharp`：382合格、失敗0 |
+| Editor全テスト | `Editor.sln`：1,323合格（Editor.Core）＋160合格（Editor.Controls）、失敗0 |
+| C#テスト実行サービス | 11合格。TRX／カバレッジ成果物の実行単位隔離、成功後回収、例外／キャンセル後回収、所有ルート外削除拒否を確認 |
+| CSharpIde fixtureリファクタリング | `Pull Up`／`Push Down`の意味モデル経路で2ファイルWorkspaceEditを適用し、対象fixture solution Buildまで単独テスト合格 |
+| CSharpIde fixture Safe Delete | 参照中privateメンバーの拒否と未使用privateメンバーの削除を意味モデル経路で確認し、solution Build／Testまで単独テスト合格 |
+| CSharpIde fixture Inline | `Inline Method`／`Inline Variable`を意味モデル経路で適用し、置換後のsolution Build／Testまで単独テスト合格 |
+| CSharp Encapsulate Field修正 | 型直下の宣言名だけを衝突判定するよう修正し、semantic単体回帰とfixtureのproperty生成→Build／Testを確認 |
+| CSharp semantic token属性引数 | 属性名の構文範囲だけを`attribute`分類し、`DiagnosticId`等の名前付き引数を誤分類しない7件の回帰を確認 |
+| CSharp Solution Explorer WPFビュー | STA上の実WPF WindowでSolution／Project／TFM／FileのTreeView生成とFile item実体化を確認 |
+| CSharp Solution Explorer AutomationPeer | 実WPF TreeViewのAutomationPeerからSolutionノードと`Program.cs`ノードを辿り、表示名を確認 |
+| CSharp Solution Explorer操作メニュー | 動的ContextMenuのUI Automation ID（Build／Test／Run／Debug）とBuild→`ActionRequested`結線を実WPFで確認。ビュー回帰3件合格 |
+| CSharpエディタ操作メニュー | リファクタリング／コード生成／Fix Allの動的項目へCommand IDをUI Automation公開。キーボード／パレット／右クリックで共通IDを使用 |
+| StyleCop状態表示 | PackageReference／設定はあるがAnalyzer DLLを解決できない状態を`Analyzer未読込`として、未導入・設定不正・正常導入と区別。未読込を違反診断として表示しない |
+| CSharpIde fixture full journey | 一時fixtureで編集→compiler／StyleCop診断→Code Fix→再診断→solution Build／Testを実行し、元fixtureを保持 |
+| Roslyn実通信 | `LOOMO_RUN_REAL_LSP=1`：2合格。solution初期化、completion、diagnostics、semantic tokens、定義／参照／rename、Change Signature連携を確認 |
+| WPF実機操作 | 部分確認。computer-use Native pipeは利用できないが、`--workspace CSharpIde`で実アプリを起動し、UI Automationで`FeatureService.cs` TreeItemをSelectionItem選択→Enter操作して、実際の`FeatureService.cs`タブ（`EntryTitle`／`TabTitle`）表示まで確認。変更後の全体再実行は既存`GitComparePanelTests`の一過性タイムアウト1件後に長時間化したため中断、同クラス単独15件は合格。編集→診断→Fix→refactor→Build→Test全旅程は未確認 |
+| WPF C#編集・保存 | 専用一時workspaceで`FeatureService.cs`を実アプリから開き、Vim挿入→dirty表示→`ZZ`保存を確認。対象ファイルのSHA-256変化を確認し、保存後のfixture solution Build（警告3・エラー0）／Test（1合格）まで実行 |
+| WPF C#診断・Quick Fix | 同じ一時workspaceでSA1101を表示し、`Alt+Enter`→`Prefix reference with 'this.'`→WorkspaceEdit preview→適用→再診断→`ZZ`保存を実機確認。SHA-256変化後、fixture solution Build（警告63・エラー0）／Test（1合格）まで実行。Quick Fix自身のUndoと、プレビュー中の外部変更拒否・外部追記保持も実機確認 |
+| WPF C# Rename | CSharpIde fixtureで`GetValue`を右クリック→リファクタリング→名前の変更→`ReadValue`を入力。WorkspaceEdit previewで`FeatureService.cs`・`Contract.cs`・`FeatureTests.cs`の3ファイルへ適用し、`ZZ`保存後にディスク内容と参照更新を確認。fixture solution Build（警告63・エラー0）／Test（1合格）まで実行。Source Generator仮想文書を編集対象から除外し、Untitledタブの空パス例外も修正 |
+| WPF C# WorkspaceEdit rollback／競合 | Renameの3ファイル変更後、Ctrl+Z 1回で開いている本文と外部2ファイルを元へ戻し、ステータス表示も確認。別試行ではpreview中に`FeatureTests.cs`を外部変更し、適用を拒否、本文・別ファイルを変更せず外部追記を保持することを確認 |
+| CSharp Project Fix All（DLL統合） | 実fixtureの選択Projectについて、Compile対象を公式StyleCop CodeFixで再解析し、1つのWorkspaceEditへ統合。`this.value`を含む結果を適用後、Project Build（`NoWarn=SA1101`）成功を確認。後続の実WPF追試でSolution ExplorerのContextMenuクリック起動、preview、適用まで確認 |
+| 公開パッケージのみのclean restore | 実施済み。公開 `sk0ya.Editor.Controls 1.0.79` は後発の`AdditionalTextEdits`、WorkspaceEdit expected snapshot、statement completion hook等を含まないため互換層で一部機能を無効化するが、公開版のみのclean restore／Build／testは完了（2,910合格・8スキップ・失敗0、Build警告0・エラー0）。新しいEditorパッケージの公開は未実施 |
+
+上記は自動検証の記録であり、C#fixtureの編集→診断→Fix／refactor→Build→Testの実機旅程、Renameの複数ファイルUndo、preview中の外部変更拒否は確認済みである。
+§33.15では「実装者以外のレビュー」と「新しいEditorパッケージの公開」を未完了として扱う。公開1.0.79のclean受入れとQuick Fix固有の外部変更競合は確認済みである。
+
+## 2026-09-01 追加再検証
+
+| 項目 | 結果 |
+|---|---|
+| Loomo全体テスト | `dotnet test --no-build --nologo -p:UseSharedCompilation=false`：2,982合格、2スキップ、失敗0（合計2,984） |
+| Editor全体テスト | `Editor.sln`：Editor.Core 1,323合格、Editor.Controls 160合格、失敗0 |
+| Project Fix All timeout対策 | LSP `source.fixAll`要求をUIスレッド外で実行し、15秒のハードタイムアウト後もCSharp DLLの公式CodeFix fallbackへ進む実装を追加。Loomo Build警告0・エラー0 |
+| LSP診断プルの終了競合 | 診断更新のキャンセル時に`CancellationTokenSource`をタスク完了前にDisposeしないよう修正。修正後の対象テスト409件と全体テストで未観測Task終了の再発なし |
+| 公開Editor package probe | 公開 `sk0ya.Editor.Controls 1.0.79`のNuGet restoreは成功するが、現行Loomo.CSharpを公開bundleだけでBuildするとEditor開発版固有API不足で失敗。 |
+| Editor 1.0.81候補 package-only gate | Editor側で`net9.0`のEditor.Core assetと`net9.0-windows7.0`のWPF一式を同梱する1.0.81候補をpack。Loomoを`UseLocalEditor=false`でclean restore／Build（警告0・エラー0）し、全テスト2,982合格・2スキップ・失敗0を確認 |
+| WPF C# Project Fix All実機 | Solution Explorerで`Feature` Projectを選択し、実WPF ContextMenuの`CSharpSolutionAction.FixAllProject`をUI Automationから起動。LSP要求の15秒timeout後にCSharp DLL fallbackへ進み、3ファイルのWorkspaceEdit preview→適用、`Fix all: 6 件の修正を適用しました。`を確認。CTS競合修正後の実行中クラッシュなし |
+| WPF C# Quick Fix Undo追試 | `FeatureService.cs`のSA1101で`Alt+Enter`→`Prefix reference with 'this.'`を適用し、続けて`Ctrl+Z`。`LSP／Roslyn WorkspaceEdit を元に戻しました。`のステータスとfixture本文の復元を確認。外部変更競合は既存Rename旅程で確認済み |
+| Roslyn実サーバー再確認 | PATH上の`roslyn-language-server 5.9.0-1.26303.1+d74775a9e15f1ec193c5cc4dd37653b5ef447a2c`を実プロセス起動し、`LOOMO_RUN_REAL_LSP=1`で`RealRoslynLspIntegrationTests`を実行：2合格、失敗0 |
+| WPF C#コード生成追試 | 実アプリのC#コード生成メニューから`Equals／GetHashCode`を選択し、WorkspaceEditプレビュー（1ファイル）→適用と適用済みステータスを確認。プレビューで検出した生成式末尾のセミコロン欠落を修正し、生成結果のRoslyn構文検査を追加（コード生成144件合格） |
+| 生成修正後の回帰 | `FullyQualifiedName~CSharp`：384合格、失敗0。Loomo全体：2,983合格、2スキップ、失敗0（合計2,985）。通常BuildおよびEditor 1.0.81候補package-only Buildは警告0・エラー0 |
+| CSharpIde fixture Equals生成統合 | `FeatureService.cs`へ`Equals／GetHashCode`のWorkspaceEditを適用し、生成結果を実ファイルへ保存。fixture solution Buildと`Feature.Tests`を1件合格で確認 |
+| fixture統合追加後のC#回帰 | `FullyQualifiedName~CSharp`：385合格、失敗0（追加したfixture統合テストを含む） |
+| fixture統合追加後の全体再走 | 既存`GitComparePanelTests`の一過性タイムアウト1件後、testhostが5分超無出力となったため停止。全体成功とは扱わない。C#回帰385件は独立に合格 |
+| fixture統合追加後の全体再走（再試行） | `dotnet test --no-build --nologo -v:minimal -p:UseSharedCompilation=false`を約7分実行したが集計を返さず、testhostと子プロセスを停止。全体成功とは扱わない。既存の`Windowz`プロセスは対象外 |
+| 全体テストの決定的実行 | WPF／LSP／外部プロセス間の資源競合を避けるxUnit設定（`parallelizeTestCollections=false`）をテストアセンブリへ追加。`dotnet test tests\\Loomo.Tests\\Loomo.Tests.csproj --nologo -v:minimal -p:UseSharedCompilation=false`：2,984合格、2スキップ、失敗0（合計2,986、6分42秒） |
+| fixture統合追加後のpackage-only gate | Editor 1.0.81候補を`UseLocalEditor=false`でrestore／Build：警告0・エラー0。確認後、通常のローカルEditor参照へrestore／Buildし直した |
+| Editor 1.0.81候補 package-only全テスト | `UseLocalEditor=false`、`EditorPackageVersion=1.0.81`で2,984合格、2スキップ、失敗0（合計2,986、6分42秒）。確認後、通常のローカルEditor参照へrestore／Buildし直した |
+| C#テストデバッグ実DAP | `LOOMO_RUN_REAL_DEBUG=1`でVSTest debug hostを起動し、`netcoredbg` attach→Continue→testhost exit 0→DAP／testhost後始末を1件合格で確認 |
+| 実DAPテスト追加後の通常全体回帰 | `dotnet test tests\\Loomo.Tests\\Loomo.Tests.csproj --nologo -v:minimal -p:UseSharedCompilation=false`：2,984合格、3スキップ、失敗0（合計2,987、6分50秒） |
+| 実DAPテスト追加後のpackage-only全体回帰 | `UseLocalEditor=false`、`EditorPackageVersion=1.0.81`：2,984合格、3スキップ、失敗0（合計2,987、6分41秒） |
+| CSharp semantic tokenの宣言解決 | Roslyn汎用`GetDeclaredSymbol` fallbackでpattern／`foreach`／`catch`／分解宣言を分類し、宣言初期化を再代入扱いしない回帰8件を追加。C#関連回帰386合格、失敗0。 |
+| 実IIS Express起動／DAP | `LOOMO_RUN_REAL_IIS=1`でfixtureのlaunch profileを解析し、実`iisexpress.exe`の待受、`netcoredbg` attach、Running／Stopped確認、プロセス後始末を2件合格。加えて一時`applicationhost.config`のfixture siteを`/config`＋`/site`で実起動する1件も合格。CSharp DLLのsite解決・引数生成回帰9件、solution Build（警告0・エラー0）も合格。認証／複数virtual directory／SSL bindingを含む複雑hostは未確認。 |
+| applicationhost統合後の全体回帰 | `dotnet test --no-restore --nologo -v:minimal -p:UseSharedCompilation=false`：2,986合格、6スキップ、失敗0（合計2,992、6分46秒） |
+| IIS Express統合後のpackage-only gate | `UseLocalEditor=false`、`EditorPackageVersion=1.0.81`でrestore／Build：警告0・エラー0。その後、通常のローカルEditor参照へ復元してBuild：警告0・エラー0 |
+| IIS Express統合後のpackage-only全体回帰 | `UseLocalEditor=false`、`EditorPackageVersion=1.0.81`：2,986合格、6スキップ、失敗0（合計2,992、6分52秒）。確認後、通常のローカルEditor参照へ復元 |
+| IIS host追加回帰 | HTTPS bindingの`sslport`解決を含む起動仕様6件、追加virtual directoryを含む実`applicationhost.config` site起動3件、通常solution Buildを直列確認：失敗0、Build警告0・エラー0 |
+| Loomo実プロセス／UI Automation入口 | `LOOMO_RUN_REAL_WPF=1`の`RealWpfProcessIntegrationTests`で、Build済み`sk0ya.Loomo.App.exe`を`--workspace tests/Fixtures/CSharpIde`で起動し、実`Loomo`ウィンドウから`WorkspaceButton`、`CSharpSolutionTree`、`EditorCanvas`、C#ファイルタブ、`StatusText (LSP: ready)`を待機・列挙：1合格。起動と主要C#導線のAutomation公開は回帰化。編集→保存→Fix／リファクタリング→Build→Testを同じ外部旅程で自動化したテストは未実装。 |
+| Loomo実プロセス／Editor TextPattern | `EditorCanvasAutomationPeer.GetPattern(PatternInterface.Text)`をEditor側へ追加。`LOOMO_RUN_REAL_WPF=1`で実`EditorCanvas`の`TextPattern.DocumentRange`から`FeatureService`本文を取得：合格。外部キーボードによる編集・保存はフォーカス依存のため実機残件。 |
+| Editor 1.0.82候補 package-only WPF | TextPattern修正を含むローカル`sk0ya.Editor.Controls 1.0.82`を生成し、`UseLocalEditor=false`／`EditorPackageVersion=1.0.82`／`RestoreSources=C:\Projects\Editor\nupkgs`でrestore。実WPF本文取得：1合格。確認後、通常のローカルEditor参照へrestoreし、Build（警告0・エラー0）を確認。 |
+| Editor 1.0.82候補 package-only全体回帰 | 同じローカルfeed・package-only構成で`dotnet test`：2,987合格・7スキップ・失敗0（合計2,994、6分48秒）。確認後、通常のローカルEditor参照へrestoreし、Build（警告0・エラー0）を確認。 |
+| C# semantic readonly modifier | `IPropertySymbol.IsReadOnly`／`ITypeSymbol.IsReadOnly`を使い、getter-only propertyと`readonly struct`を`readonly` tokenとして保持。`CSharpSemanticTokenServiceTests` 9件合格、solution Build（警告0・エラー0）。 |
+| 最新全体回帰（実WPFスモーク追加後） | 通常構成およびEditor 1.0.81候補package-only構成で各`dotnet test`：それぞれ2,987合格・7スキップ・失敗0（合計2,994）。package-only確認後に通常のローカルEditor参照へrestoreし、solution Buildも警告0・エラー0。 |
+| CSharpIde代表fixture旅程（変更後） | `Fixture_runs_the_build_gate_and_test_journey`を単独実行し、fixtureのBuild→Testを1件合格、終了コード0。広いC#フィルターの一括実行は出力回収が不安定だったため、件数には算入しない。 |
+| Loomo実プロセス／外部キーボード編集保存 | `LOOMO_RUN_REAL_WPF=1`でC# CanvasへUI Automationフォーカスを設定し、OSの`SendInput`でUnicode本文を入力。共通`editor.save`（Ctrl+S）経由でディスク反映を確認し、実WPF旅程2件を合格。テスト後はfixtureを元バイト列へ復元。 |
+| 公開NuGet clean restore probe（追加） | 公開`sk0ya.Editor.Controls 1.0.79`のみを別パッケージキャッシュへrestoreし、`Loomo.CSharp`を`net10.0-windows`としてsolution／test projectのBuildまで通過。旧版互換層で後発APIを条件付き無効化し、公開構成のtestは2,910合格・7スキップ・失敗0（Build警告0・エラー0）。公開は未実施。 |
+| CSharp DLL実行時依存のclean Build | AppのRoslyn DLLコピー先を固定TFMではなく`Loomo.CSharp`の`GetTargetPath`から解決するよう修正。solution clean／Buildを警告0・エラー0で完了し、App出力にRoslyn DLL 9個を確認。`CSharpSemanticTokenServiceTests` 9件合格。 |
+| Quick Fix外部変更競合（実WPF） | 開いている`FeatureService.cs`のQuick Fixプレビュー中にディスクへ外部追記し、適用を拒否、外部追記を保持、Editor本文へ`this._value`を適用しないことを1件確認。既存Quick Fix→保存旅程も単独1件合格。 |
+| C# semantic declaration modifier | Roslyn宣言識別子（class／member／parameter／local／pattern／分解宣言）へ`declaration`を付与し、参照側へ付与しない回帰を確認。`CSharpSemanticTokenServiceTests` 9件合格、solution Build警告0・エラー0。 |
+| 公開NuGet任意依存のclean Build | 公開Editor 1.0.79で出力されない`System.Configuration.ConfigurationManager.dll`をコピー対象から`Exists`条件付きへ変更。公開構成Build、通常構成restore／Buildとも警告0・エラー0。 |
+| C#専用DLLのアセンブリ境界監査 | `CSharpAssemblyBoundaryTests` 5件合格。Roslyn参照は`sk0ya.Loomo.CSharp`に限定し、App／Services／Coreの直接参照なし。`Loomo.CSharp`内にWPF UI型なし、App出力へ専用DLLとRoslyn実行時依存を同梱する構成を確認。 |
+| 最新C#関連回帰（境界テスト追加後） | `FullyQualifiedName~CSharp`：391件中387件合格、4件スキップ、失敗0（4分14秒）。スキップは環境変数で明示有効化する実DAP／実WPF旅程。 |
+| 実WPF基本C#導線（単独再実行） | `LOOMO_RUN_REAL_WPF=1`で起動スモーク、デスクトップ入力によるC#編集→Ctrl+S、診断Quick Fix→preview適用→保存→Solution Build／Testを各1件合格。複数実WPFテストの同時実行は行わない。 |
+| 実WPF C#コード生成（単独再実行） | コマンドパレットからEquals／GetHashCode生成を起動し、型選択→編集プレビュー→適用→Ctrl+S→ディスク反映を1件合格。fixtureは元バイト列へ復元。 |
+| candidate package-only実WPF C#コード生成 | `UseLocalEditor=false`／`EditorPackageVersion=1.0.86`でrestore／Build（警告0・エラー0）後、同じコード生成旅程を1件合格。確認後に通常のローカルEditor参照へ復元してsolution Build（警告0・エラー0）。 |
+
+Project Fix AllのCSharp DLL直接経路（fixtureの公式StyleCop CodeFix→単一WorkspaceEdit→Project Build）と、Solution Explorerの実WPFメニューからの起動・preview・適用を確認済みである。Quick Fix自身のUndo、Quick Fix固有の外部変更拒否、Renameの外部変更拒否も確認済みである。公開NuGetへの反映は別途未完了として残す。
+
+## 2026-09-01 追加再検証（全体テストの環境依存停止）
+
+| 項目 | 結果 |
+|---|---|
+| `FileOperationHistoryTests` | `RecycleBin.TryRestore` が `$Recycle.Bin` の `$I` メタデータを全件読み取るため、ゴミ箱の大きい環境で作成操作のRedoが20秒以上停止する事象をスタックで特定。直前に同プロセスが削除したパスの検索ヒントを追加し、同クラス15件を40秒から9秒へ短縮して合格 |
+| C#関連回帰（修正後） | `FullyQualifiedName~CSharp`：383合格、失敗0、3分56秒 |
+| Loomo Build（修正後） | `dotnet build sk0ya.Loomo.sln --no-restore`：警告0、エラー0 |
+| Loomo全体テスト（修正後） | `GitHistoryFilterTests`で一過性の1件失敗（単独再実行7件合格）の後、テストホストが無出力・高メモリ状態になったため中断。C#テストの失敗は確認されず、全体成功とは扱わない |
+| Editor 1.0.81候補 package-only build（修正後） | `UseLocalEditor=false`、local package sourceのみでrestore／build：警告0、エラー0 |
+| Loomo全体テスト（安定化後） | ゴミ箱走査の高速化とGit履歴再読込世代の競合修正後、`dotnet test --no-build --nologo -p:UseSharedCompilation=false`：2,982合格、2スキップ、失敗0（合計2,984、5分7秒） |
+
+## 2026-09-01 §33 最終候補受入れ追記
+
+| 項目 | 結果 |
+|---|---|
+| Editor Quick Fix選択同期 | UI AutomationのTextPattern選択をEditorのVimEngine選択へ同期。Editor Core 1,323件、Controls 161件が合格 |
+| Editor 1.0.86候補 package-only Build | ローカルfeedへpackし、`UseLocalEditor=false`でrestore／Build：警告0、エラー0 |
+| package-only実WPF Quick Fix | 1.0.86候補経由で`FeatureService.cs`を開き、診断箇所選択→Alt+Enter→Quick Fix候補→編集プレビュー「適用」→本文更新→Ctrl+Sを1件合格 |
+| 通常参照の実WPF C#旅程 | `LOOMO_RUN_REAL_WPF=1`で、C#編集→保存、Quick Fix→preview適用→本文更新→保存を含む3件合格 |
+| 実WPF一続き旅程のBuild／Test | Quick Fix適用・保存後、Solution Explorerで`Feature.Tests`を選択し、Build成功→Test成功までUI Automationで1件合格 |
+| Loomo通常Build | `dotnet build sk0ya.Loomo.sln --no-restore -p:UseSharedCompilation=false`：警告0、エラー0 |
+| Loomo通常全テスト | `dotnet test tests\Loomo.Tests\Loomo.Tests.csproj --no-build --no-restore -p:UseSharedCompilation=false`：2,989合格、9スキップ、失敗0（合計2,998、7分1秒） |
+| 公開NuGet | 公開1.0.79のclean restore／Build／testを完了（2,910合格・8スキップ・失敗0）。ただし旧版では後発Editor APIを使う機能の一部を互換層で無効化し、1.0.86候補は未公開 |
+| 実装者以外のレビュー | 未完了。レビュー完了までは§33.15のロードマップ完了・公開判定を行わない |
+
+実WPFの一続き旅程では、診断箇所の選択、候補表示、編集プレビュー適用、本文・ディスク反映に続けて、Solution ExplorerのプロジェクトBuild／Test完了まで同一プロセス境界で確認した。fixtureはテスト後に元バイト列へ復元し、公開NuGetへの反映と実装者以外のレビューは引き続きリリース阻止条件である。

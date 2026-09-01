@@ -18,6 +18,7 @@ public sealed record SettingsFormState
     public bool ShowIndentGuides { get; init; }
     public bool CollapseUsingsOnOpen { get; init; }
     public bool AutoClosePairs { get; init; }
+    public bool ShowInlayHints { get; init; }
     public int TabWidth { get; init; }
     public bool UseSpacesForTab { get; init; }
     public string ImagePasteDirectory { get; init; } = "";
@@ -55,6 +56,7 @@ public sealed class SettingsPersistenceHandler
         ShowIndentGuides = _settings.Editor.ShowIndentGuides,
         CollapseUsingsOnOpen = _settings.Editor.CollapseUsingsOnOpen,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
+        ShowInlayHints = _settings.Editor.ShowInlayHints,
         TabWidth = _settings.Editor.TabWidth,
         UseSpacesForTab = _settings.Editor.UseSpacesForTab,
         ImagePasteDirectory = _settings.Editor.ImagePasteDirectory,
@@ -83,6 +85,7 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.ShowIndentGuides = form.ShowIndentGuides;
         _settings.Editor.CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
+        _settings.Editor.ShowInlayHints = form.ShowInlayHints;
         _settings.Editor.TabWidth = form.TabWidth > 0 ? form.TabWidth : 2;
         _settings.Editor.UseSpacesForTab = form.UseSpacesForTab;
         _settings.Editor.ImagePasteDirectory = form.ImagePasteDirectory.Trim();

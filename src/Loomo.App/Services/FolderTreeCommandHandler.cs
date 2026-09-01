@@ -290,6 +290,7 @@ public sealed class FolderTreeCommandHandler
                 FileSystem.DeleteDirectory(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
             else if (!isDirectory && File.Exists(path))
                 FileSystem.DeleteFile(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            RecycleBin.RememberDeleted(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
         {

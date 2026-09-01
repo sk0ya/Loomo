@@ -46,6 +46,9 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
     /// <summary>起動時に追加する環境変数（1 行 1 件 <c>KEY=VALUE</c>）。</summary>
     [ObservableProperty] private string _launchEnv = "";
 
+    /// <summary>起動時の作業ディレクトリ。空ならNode/npm側の既定解決を使う。</summary>
+    [ObservableProperty] private string _launchWorkingDirectory = "";
+
     /// <summary>自分のコードのみデバッグ（<c>&lt;node_internals&gt;</c> をスキップ）。次回起動から反映。</summary>
     [ObservableProperty] private bool _justMyCode = true;
 
@@ -501,7 +504,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         try
         {
             await session.DebugService.StartAsync(
-                new DebugLaunchConfig(program, ResolveWorkingDirectory(program),
+                new DebugLaunchConfig(program, ResolveConfiguredWorkingDirectory(program),
                     Args: DebugLaunchArgs.ParseArgs(LaunchArgs),
                     Environment: DebugLaunchArgs.ParseEnv(LaunchEnv),
                     JustMyCode: JustMyCode,
@@ -617,6 +620,15 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         if (!TsLaunchTarget.TryParseNpmScript(program, out _) && !TsLaunchTarget.TryParseChromeUrl(program, out _))
             return Path.GetDirectoryName(program);
         return _workspace.PrimaryFolder;
+    }
+
+    private string? ResolveConfiguredWorkingDirectory(string program)
+    {
+        var configured = LaunchWorkingDirectory.Trim();
+        if (configured.Length == 0) return ResolveWorkingDirectory(program);
+        if (!Path.IsPathRooted(configured) && _workspace.PrimaryFolder is { } root)
+            configured = Path.GetFullPath(Path.Combine(root, configured));
+        return Directory.Exists(configured) ? configured : ResolveWorkingDirectory(program);
     }
 
     private static string BuildDisplayName(string program)

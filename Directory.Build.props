@@ -11,6 +11,11 @@
        862MB あった（App と Tests でそれぞれ）。RID を固定すると win-x64 の分だけが出力ルート
        直下へ平坦にコピーされる。 -->
   <PropertyGroup>
+    <!-- 既定は公開パッケージ（nuget.org の sk0ya.Editor.Controls）を参照する。
+         Editor 側を同時に直しながら動かしたいときだけ -p:UseLocalEditor=true として
+         C:\Projects\Editor のプロジェクト参照へ切り替える。 -->
+    <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
+    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.80</EditorPackageVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- RID 指定は自己完結（ランタイム同梱）を意味しない。既定に頼らず明示する。 -->
     <SelfContained>false</SelfContained>

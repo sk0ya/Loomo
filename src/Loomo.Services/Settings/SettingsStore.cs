@@ -285,6 +285,7 @@ public sealed class SettingsStore
         public bool ShowIndentGuides { get; set; }
         public bool CollapseUsingsOnOpen { get; set; }
         public bool AutoClosePairs { get; set; }
+        public bool ShowInlayHints { get; set; }
         public int TabWidth { get; set; } = 2;
         public bool UseSpacesForTab { get; set; } = true;
 
@@ -299,6 +300,7 @@ public sealed class SettingsStore
             ShowIndentGuides = e.ShowIndentGuides,
             CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
             AutoClosePairs = e.AutoClosePairs,
+            ShowInlayHints = e.ShowInlayHints,
             TabWidth = e.TabWidth,
             UseSpacesForTab = e.UseSpacesForTab,
         };
@@ -314,6 +316,7 @@ public sealed class SettingsStore
             e.ShowIndentGuides = ShowIndentGuides;
             e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
             e.AutoClosePairs = AutoClosePairs;
+            e.ShowInlayHints = ShowInlayHints;
             e.TabWidth = TabWidth > 0 ? TabWidth : 2;
             e.UseSpacesForTab = UseSpacesForTab;
         }

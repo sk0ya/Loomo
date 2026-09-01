@@ -9,6 +9,7 @@ namespace sk0ya.Loomo.Tests;
 /// <para>削除の Undo だけは Windows の実ゴミ箱を経由する（<see cref="RecycleBin"/> が
 /// <c>$Recycle.Bin</c> のメタデータから元の場所へ戻す）ため、この 1 本だけは環境依存。
 /// ゴミ箱を無効化した環境では失敗する＝そこは実装ではなく前提が違う、と分かるようにしておく。</para></summary>
+[Collection(WindowsShellTests.Name)]
 public sealed class FileOperationHistoryTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"loomo-fileops-{Guid.NewGuid():N}");

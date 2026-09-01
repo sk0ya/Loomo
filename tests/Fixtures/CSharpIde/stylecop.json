@@ -1,0 +1,11 @@
+{
+  "settings": {
+    "documentationRules": {
+      "companyName": "Loomo Fixture",
+      "copyrightText": "Copyright (c) Loomo",
+      "documentExposedElements": false,
+      "documentInternalElements": false,
+      "documentPrivateElements": false
+    }
+  }
+}

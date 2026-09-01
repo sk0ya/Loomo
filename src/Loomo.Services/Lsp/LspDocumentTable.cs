@@ -88,6 +88,19 @@ internal sealed class LspDocumentTable
     /// <summary>その拡張子のサーバーが設定されているか。</summary>
     public bool IsServerAvailableFor(string extension) => _resolveServer(LspExtensions.NormalizeExt(extension)) is not null;
 
+    /// <summary>既に開いている文書の現在本文を、ワークスペース単位の要求へ反映する。
+    /// Fix allやworkspace symbolのようにビューを経由しない処理でも、未保存バッファを
+    /// ディスク上の古い本文で上書きしないための入口。</summary>
+    public bool UpdateOpenDocumentText(string filePath, string text)
+    {
+        var uri = PathToUri(Path.GetFullPath(filePath));
+        LspDocumentEntry? entry;
+        lock (_gate) _docs.TryGetValue(uri, out entry);
+        if (entry is null) return false;
+        entry.UpdateText(text);
+        return true;
+    }
+
     /// <summary>URI から開いている文書を引く（呼び出し階層などが所属サーバーを知るため）。</summary>
     public LspDocumentEntry? Find(string uri)
     {
@@ -128,7 +141,11 @@ internal sealed class LspDocumentTable
             orphans = _docs.Values.Where(e => ReferenceEquals(e.Client, dead)).ToList();
         if (orphans.Count == 0) return;
 
-        foreach (var e in orphans) e.MarkDisconnected("LSP: 接続が切れました（再接続中…）");
+        foreach (var e in orphans)
+        {
+            e.MarkDisconnected("LSP: 接続が切れました（再接続中…）");
+            ClearDiagnostics(e);
+        }
 
         // 再解決してから作り直す：バックオフ中にユーザーが :LspAdd などで割り当てを変えている可能性がある。
         var def = _resolveServer(orphans[0].Extension);
@@ -171,6 +188,7 @@ internal sealed class LspDocumentTable
                 // 割り当てが外された → 文書は閉じたまま。ビューは IsConnected=false で LSP 無しに戻る。
                 lock (_gate) _docs.Remove(entry.Uri);
                 entry.MarkDisconnected($"LSP: {ext} のサーバー設定が解除されました");
+                ClearDiagnostics(entry);
                 continue;
             }
             var pooled = _pool.Acquire(def, _resolveRoot(entry.FilePath));
@@ -178,6 +196,7 @@ internal sealed class LspDocumentTable
             {
                 lock (_gate) _docs.Remove(entry.Uri);
                 entry.MarkDisconnected($"LSP: {def.Executable} を起動できませんでした");
+                ClearDiagnostics(entry);
                 continue;
             }
             entry.Rebind(pooled, def.LanguageId);
@@ -195,6 +214,7 @@ internal sealed class LspDocumentTable
             _docs.Clear();
         }
         foreach (var e in all) e.MarkDisconnected("LSP: ワークスペースが切り替わりました");
+        foreach (var e in all) ClearDiagnostics(e);
     }
 
     // ── 内部 ────────────────────────────────────────────────────────────────
@@ -228,6 +248,13 @@ internal sealed class LspDocumentTable
         entry.MarkClosed();
     }
 
+    /// <summary>古いサーバー世代の診断を、再接続／ワークスペース切替の前に UI から取り除く。</summary>
+    private void ClearDiagnostics(LspDocumentEntry entry)
+    {
+        entry.PublishDiagnostics([]);
+        _diagnosticsPublished(entry.Uri, []);
+    }
+
     /// <summary>ハンドルが 1 つ消えたときの後始末（<see cref="LspDocumentHandle.Dispose"/> から）。</summary>
     internal void ReleaseHandle(LspDocumentEntry entry, LspDocumentHandle handle)
     {
@@ -255,6 +282,18 @@ internal sealed class LspDocumentTable
 /// <summary>1 URI ぶんの状態。テキストの正本・版番号・診断・ハンドル一覧を持つ。</summary>
 internal sealed class LspDocumentEntry
 {
+    // Roslyn はプロジェクト読込中の textDocument/diagnostic を ServerCancelled で返すことがある。
+    // 最初の再試行は従来どおり短く、その後だけ待ち時間を伸ばして解析完了を待つ。
+    private static readonly TimeSpan[] DiagnosticPullDelays =
+    [
+        TimeSpan.FromMilliseconds(100),
+        TimeSpan.FromMilliseconds(300),
+        TimeSpan.FromMilliseconds(600),
+        TimeSpan.FromMilliseconds(1200),
+        TimeSpan.FromMilliseconds(2400),
+        TimeSpan.FromMilliseconds(4800),
+    ];
+
     private readonly object _gate = new();
     private readonly List<LspDocumentHandle> _handles = [];
 
@@ -283,7 +322,7 @@ internal sealed class LspDocumentEntry
         Extension = extension;
         LanguageId = languageId;
         Client = client;
-        Text = text;
+        Text = text ?? string.Empty;
     }
 
     public LspDocumentHandle AddHandle()
@@ -320,9 +359,9 @@ internal sealed class LspDocumentEntry
     /// <summary>書き手からのテキスト更新。<c>didChange</c> を送る。</summary>
     public void UpdateText(string text)
     {
-        Text = text;
+        Text = text ?? string.Empty;
         if (!Opened || !Client.IsRunning) return;
-        _ = Client.Client.ChangeDocumentAsync(Uri, Interlocked.Increment(ref _version), text);
+        _ = Client.Client.ChangeDocumentAsync(Uri, Interlocked.Increment(ref _version), Text);
         ScheduleDiagnosticsPull();
     }
 
@@ -369,22 +408,22 @@ internal sealed class LspDocumentEntry
         var next = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _diagnosticPull, next);
         previous?.Cancel();
-        previous?.Dispose();
         var client = Client;
         var version = Volatile.Read(ref _version);
-        _ = Task.Run(async () =>
+        var task = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(300, next.Token);
-                var report = await client.Client.GetDocumentDiagnosticsAsync(Uri, next.Token);
-                // ContentModified / ServerCancelled はクライアント層で null になる。失敗として
-                // 診断を消さず、同じ文書版・同じ接続世代の間だけ静かに1回再試行する。
-                if (report is null && !next.IsCancellationRequested && ReferenceEquals(Client, client) &&
-                    Volatile.Read(ref _version) == version)
+                LspDocumentDiagnosticReport? report = null;
+                foreach (var delay in DiagnosticPullDelays)
                 {
-                    await Task.Delay(300, next.Token);
+                    await Task.Delay(delay, next.Token);
                     report = await client.Client.GetDocumentDiagnosticsAsync(Uri, next.Token);
+                    // ContentModified / ServerCancelled はクライアント層で null になる。失敗として
+                    // 診断を消さず、同じ文書版・同じ接続世代の間だけ段階的に再試行する。
+                    if (report is not null || next.IsCancellationRequested || !ReferenceEquals(Client, client) ||
+                        Volatile.Read(ref _version) != version)
+                        break;
                 }
                 if (report is not null && !next.IsCancellationRequested && ReferenceEquals(Client, client) &&
                     Volatile.Read(ref _version) == version)
@@ -396,13 +435,26 @@ internal sealed class LspDocumentEntry
             }
             catch (OperationCanceledException) { }
         });
+        // Cancelした古いpullがまだDelay／JSON-RPC待ちにいる間にCTSをDisposeすると、
+        // 非同期本体の次のnext.Token参照がObjectDisposedExceptionになる。タスク終了後にだけ解放する。
+        _ = task.ContinueWith(
+            completed =>
+            {
+                _ = completed.Exception;
+                // 完了済みのCTSをフィールドへ残すと、文書クローズ時のCancelがDispose済み
+                // インスタンスへ向いてしまう。現行pullである場合だけ先に取り除く。
+                Interlocked.CompareExchange(ref _diagnosticPull, null, next);
+                next.Dispose();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private void CancelDiagnosticsPull()
     {
         var cts = Interlocked.Exchange(ref _diagnosticPull, null);
         cts?.Cancel();
-        cts?.Dispose();
     }
 
     private void NotifyState(string? message)

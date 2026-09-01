@@ -15,20 +15,24 @@ public sealed class KeyboardDispatcher
     private readonly KeyboardResolver _resolver = new();
     private readonly KeybindingService _bindings;
     private readonly IReadOnlyDictionary<string, Action> _actions;
+    private readonly Func<string, bool>? _canExecute;
     private readonly Action<string>? _onEnterMode;
     private readonly Action<string>? _onExitMode;
 
     /// <param name="actions">コマンド Id → 実体アクション（ShellWindow が結線）。</param>
+    /// <param name="canExecute">コンテキスト依存コマンドの実行可否。falseならキーを消費せず内側へ渡す。</param>
     /// <param name="onEnterMode">モーダル状態に入ったとき（例: リサイズモードのヒント表示）。</param>
     /// <param name="onExitMode">モーダル状態を抜けたとき。</param>
     public KeyboardDispatcher(
         KeybindingService bindings,
         IReadOnlyDictionary<string, Action> actions,
         Action<string>? onEnterMode = null,
-        Action<string>? onExitMode = null)
+        Action<string>? onExitMode = null,
+        Func<string, bool>? canExecute = null)
     {
         _bindings = bindings;
         _actions = actions;
+        _canExecute = canExecute;
         _onEnterMode = onEnterMode;
         _onExitMode = onExitMode;
         _bindings.Changed += Rebuild;
@@ -49,7 +53,8 @@ public sealed class KeyboardDispatcher
         {
             // アクション未登録のコマンド（別スコープ＝コンポーザ等）は消費せず素通しし、
             // より内側のハンドラに委ねる。登録済みのときだけ実行＆消費する。
-            if (_actions.TryGetValue(id, out var action))
+            if (_actions.TryGetValue(id, out var action) &&
+                (_canExecute is null || _canExecute(id)))
             {
                 action();
                 if (res.Handled) e.Handled = true;

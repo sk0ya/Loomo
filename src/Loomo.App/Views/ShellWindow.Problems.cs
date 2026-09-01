@@ -39,7 +39,7 @@ public partial class ShellWindow
         SelectProblemRange(item);
         if (_activeEditorTab is { IsRealized: true } tab &&
             string.Equals(tab.Control.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase))
-            tab.Control.ExecuteCommand("CodeAction");
+            tab.Control.ExecuteCommand("QuickFix");
     }
 
     private void SelectProblemRange(ProblemItemViewModel item)

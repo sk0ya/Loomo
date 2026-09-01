@@ -5,9 +5,21 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.Services.Lsp;
+
+public sealed record LspSourceFixAllResult(
+    LspWorkspaceEdit? Edit,
+    int DocumentsScanned,
+    int ActionsFound,
+    string? Error = null);
+
+internal static class LspWorkspaceCompatibility
+{
+    public const string SourceFixAllKind = "source.fixAll";
+}
 
 /// <summary>
 /// Loomo が所有する LSP セッション（設計書 §30）。言語サーバーのプロセス・プロトコル・文書同期を
@@ -24,23 +36,28 @@ namespace sk0ya.Loomo.Services.Lsp;
 public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
 {
     private readonly IWorkspaceService _workspace;
+    private readonly ISolutionModelService? _solution;
     private readonly LspServerTable _servers;
     private readonly LspClientPool _pool;
     private readonly LspDocumentTable _documents;
     private readonly object _gate = new();
 
     private string[] _folderSignature;
+    private string _projectContextSignature;
     private bool _disposed;
 
     /// <param name="connect">サーバー接続の生成。既定は実プロセス起動。テストが差し替える。</param>
     public LspWorkspaceService(
         IWorkspaceService workspace,
         LspServerTable servers,
-        Func<LspServerDef, string, ILspClient>? connect = null)
+        Func<LspServerDef, string, ILspClient>? connect = null,
+        ISolutionModelService? solution = null)
     {
         _workspace = workspace;
+        _solution = solution;
         _servers = servers;
         _folderSignature = CurrentFolders();
+        _projectContextSignature = ProjectContextSignature(solution?.Current);
 
         _pool = new LspClientPool(FoldersForRoot, Log, connect);
         _documents = new LspDocumentTable(
@@ -56,6 +73,7 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         _pool.StateChanged += () => ServerStateChanged?.Invoke();
         _servers.Changed += ext => _ = _documents.ReopenExtensionAsync(ext);
         _workspace.FoldersChanged += OnFoldersChanged;
+        if (_solution is not null) _solution.Changed += OnSolutionChanged;
     }
 
     public event Action<string, IReadOnlyList<LspDiagnostic>>? DiagnosticsPublished;
@@ -115,6 +133,189 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
 
         return LspWorkspaceDiagnosticAggregator.CreateResult(results.SelectMany(r => r.Documents));
     }
+
+    /// <summary>
+    /// プロジェクト／ソリューションのCompile項目を順に問い合わせ、source.fixAllのWorkspaceEditを
+    /// 一つへ統合する。Editor側は文書単位のUIを持つが、C#のFix allはプロジェクト境界を知る必要が
+    /// あるため、ファイル列の列挙とLSPセッションの共有はこのワークスペース所有者へ置く。
+    /// </summary>
+    public async Task<LspSourceFixAllResult> RequestSourceFixAllAsync(
+        IReadOnlyList<string> filePaths,
+        CancellationToken ct = default)
+        => await RequestSourceFixAllAsync(filePaths, null, ct);
+
+    /// <summary>未保存エディタ本文を優先してsource.fixAllを問い合わせる。指定された本文は
+    /// 既存のLSP文書へdidChangeとして反映してから要求するため、サーバーがディスク本文を
+    /// 参照する競合を避ける。</summary>
+    public async Task<LspSourceFixAllResult> RequestSourceFixAllAsync(
+        IReadOnlyList<string> filePaths,
+        IReadOnlyDictionary<string, string>? currentTexts,
+        CancellationToken ct = default)
+    {
+        var changes = new Dictionary<string, List<LspTextEdit>>(StringComparer.OrdinalIgnoreCase);
+        var versions = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+        var operations = new List<LspFileOperation>();
+        var operationKeys = new HashSet<string>(StringComparer.Ordinal);
+        var scanned = 0;
+        var actionsFound = 0;
+
+        foreach (var rawPath in filePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!File.Exists(rawPath)) continue;
+
+            var text = TryGetCurrentText(currentTexts, rawPath, out var currentText)
+                ? currentText ?? string.Empty
+                : await File.ReadAllTextAsync(rawPath, ct);
+            using var document = OpenDocument(rawPath, text);
+            if (document is null)
+                continue;
+            if (TryGetCurrentText(currentTexts, rawPath, out currentText))
+                _documents.UpdateOpenDocumentText(rawPath, currentText);
+            if (!await WaitUntilReadyAsync(document, ct))
+                continue;
+
+            scanned++;
+            var range = FullDocumentRange(text);
+            IReadOnlyList<LspCodeAction> actions;
+            try
+            {
+                actions = await document.RequestCodeActionsAsync(
+                    range, [LspWorkspaceCompatibility.SourceFixAllKind], ct);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var original in actions)
+            {
+                ct.ThrowIfCancellationRequested();
+                var action = original;
+                if (action.Kind is { Length: > 0 } kind &&
+                    !LspCodeActionKinds.Matches(kind, LspWorkspaceCompatibility.SourceFixAllKind) &&
+                    !LspCodeActionKinds.Matches(LspWorkspaceCompatibility.SourceFixAllKind, kind))
+                    continue;
+                if (action.Edit is null && action.NeedsResolve)
+                    action = await document.ResolveCodeActionAsync(action, ct) ?? action;
+                if (action.Edit is not { } edit || edit.Changes.Count == 0)
+                    continue; // command-only source.fixAll needs a server-specific applyEdit path.
+
+                actionsFound++;
+                if (MergeWorkspaceEdit(edit, changes, versions, operations, operationKeys)
+                    is { } mergeError)
+                    return new LspSourceFixAllResult(null, scanned, actionsFound, mergeError);
+            }
+        }
+
+        if (changes.Count == 0 && operations.Count == 0)
+            return new LspSourceFixAllResult(null, scanned, actionsFound);
+
+        var merged = changes.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<LspTextEdit>)pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+        return new LspSourceFixAllResult(
+            new LspWorkspaceEdit(merged, versions.Count == 0 ? null : versions, operations),
+            scanned,
+            actionsFound);
+    }
+
+    private static bool TryGetCurrentText(
+        IReadOnlyDictionary<string, string>? currentTexts,
+        string path,
+        out string text)
+    {
+        if (currentTexts is not null && currentTexts.TryGetValue(path, out text!))
+            return true;
+        var match = currentTexts?.FirstOrDefault(pair =>
+            string.Equals(Path.GetFullPath(pair.Key), path, StringComparison.OrdinalIgnoreCase));
+        if (match is { } found)
+        {
+            text = found.Value;
+            return true;
+        }
+        text = "";
+        return false;
+    }
+
+    private static async Task<bool> WaitUntilReadyAsync(
+        ILspDocument document, CancellationToken ct)
+    {
+        const int maxWaitMs = 45_000;
+        var waited = 0;
+        while (!document.IsReady && document.IsConnected && waited < maxWaitMs)
+        {
+            await Task.Delay(100, ct);
+            waited += 100;
+        }
+        return document.IsReady && document.IsConnected;
+    }
+
+    private static LspRange FullDocumentRange(string text)
+    {
+        var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        var lastNewline = normalized.LastIndexOf('\n');
+        var line = normalized.Count(c => c == '\n');
+        var character = lastNewline < 0 ? normalized.Length : normalized.Length - lastNewline - 1;
+        return new LspRange(new LspPosition(0, 0), new LspPosition(line, character));
+    }
+
+    private static string? MergeWorkspaceEdit(
+        LspWorkspaceEdit edit,
+        Dictionary<string, List<LspTextEdit>> changes,
+        Dictionary<string, int?> versions,
+        List<LspFileOperation> operations,
+        HashSet<string> operationKeys)
+    {
+        foreach (var (uri, edits) in edit.Changes)
+        {
+            if (!changes.TryGetValue(uri, out var target))
+                changes[uri] = target = [];
+            foreach (var candidate in edits)
+            {
+                if (target.Contains(candidate)) continue;
+                if (target.Any(existing => RangesOverlap(existing.Range, candidate.Range)))
+                    return $"{uri}: source.fixAllの編集範囲が競合しています。";
+                target.Add(candidate);
+            }
+        }
+
+        if (edit.DocumentVersions is not null)
+            foreach (var (uri, version) in edit.DocumentVersions)
+            {
+                if (versions.TryGetValue(uri, out var existing) &&
+                    existing is not null && version is not null && existing != version)
+                    return $"{uri}: source.fixAllの文書版が競合しています。";
+                versions[uri] = version;
+            }
+
+        if (edit.FileOperations is not null)
+            foreach (var operation in edit.FileOperations)
+            {
+                var key = $"{operation.Kind}|{operation.Uri}|{operation.NewUri}|{operation.Overwrite}|{operation.IgnoreIfExists}|{operation.Recursive}|{operation.IgnoreIfNotExists}";
+                if (operationKeys.Add(key)) operations.Add(operation);
+            }
+        return null;
+    }
+
+    private static bool RangesOverlap(LspRange left, LspRange right)
+    {
+        var leftEmpty = ComparePositions(left.Start, left.End) == 0;
+        var rightEmpty = ComparePositions(right.Start, right.End) == 0;
+        if (leftEmpty && rightEmpty)
+            return ComparePositions(left.Start, right.Start) == 0;
+        return ComparePositions(left.Start, right.End) < 0 &&
+               ComparePositions(right.Start, left.End) < 0;
+    }
+
+    private static int ComparePositions(LspPosition left, LspPosition right)
+        => left.Line != right.Line
+            ? left.Line.CompareTo(right.Line)
+            : left.Character.CompareTo(right.Character);
 
     public async Task<CallHierarchyItem?> PrepareCallHierarchyAsync(string uri, int line, int character)
     {
@@ -289,6 +490,38 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         _pool.DisposeAll();
     }
 
+    /// <summary>
+    /// C# プロジェクトの解析対象 TFM／Build構成が変わったとき、既存の Roslyn セッションを再初期化する。
+    ///
+    /// <para>LSP の標準仕様には「現在選択中の TargetFramework」という共通設定が無く、
+    /// サーバーごとに initialization option の形が違う。そのため汎用 Editor 側へ C# 固有設定を
+    /// 持ち込まず、ここでは少なくとも旧セッションのプロジェクト／診断キャッシュを破棄して
+    /// 最新テキストで開き直す。将来サーバー固有の設定を追加するときも、この C# サービスから
+    /// セッション境界を越えて渡す場所を一箇所にできる。</para>
+    /// </summary>
+    private void OnSolutionChanged(object? sender, SolutionModel model)
+    {
+        if (_disposed) return;
+        var next = ProjectContextSignature(model);
+        lock (_gate)
+        {
+            if (string.Equals(_projectContextSignature, next, StringComparison.Ordinal)) return;
+            _projectContextSignature = next;
+        }
+
+        var csharp = _servers.GetForExtension(".cs");
+        if (csharp is null) return;
+        Log($"[LSP] C# project context changed ({next}); restarting {csharp.Executable}");
+        _pool.Restart(csharp.Executable);
+    }
+
+    private static string ProjectContextSignature(SolutionModel? model)
+        => model is null
+            ? ""
+            : $"configuration={model.EffectiveConfiguration}|" + string.Join("|", model.Projects
+                .OrderBy(p => p.FullPath, StringComparer.OrdinalIgnoreCase)
+                .Select(p => $"{p.FullPath}={p.SelectedTargetFramework ?? "(none)"}"));
+
     private void OnDiagnosticsPublished(string uri, IReadOnlyList<LspDiagnostic> diagnostics)
     {
         _documents.OnDiagnostics(uri, diagnostics);
@@ -311,6 +544,7 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         if (_disposed) return;
         _disposed = true;
         _workspace.FoldersChanged -= OnFoldersChanged;
+        if (_solution is not null) _solution.Changed -= OnSolutionChanged;
         _documents.Clear();
         _pool.Dispose();
     }

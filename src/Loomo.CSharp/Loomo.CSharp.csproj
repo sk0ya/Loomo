@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>sk0ya.Loomo.CSharp</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.CSharp</AssemblyName>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <LangVersion>latest</LangVersion>
+    <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.80'))">$(DefineConstants);LOOMO_EDITOR_STATEMENT_COMPLETION;LOOMO_EDITOR_COMPLETION_ADDITIONAL_EDITS;LOOMO_EDITOR_EXPECTED_TEXTS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+    <ProjectReference Include="..\..\..\Editor\src\Editor.Core\Editor.Core.csproj"
+                      Condition="'$(UseLocalEditor)' != 'false'" />
+    <PackageReference Include="sk0ya.Editor.Controls" Version="$(EditorPackageVersion)"
+                      Condition="'$(UseLocalEditor)' == 'false'" />
+    <!-- RoslynはC#専用DLLの実装詳細。Appへコンパイル参照を伝播させず、実行時だけ
+         CSharp側の出力から必要なDLLを同梱する。 -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.14.0" PrivateAssets="all" />
+    <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
+  </ItemGroup>
+</Project>

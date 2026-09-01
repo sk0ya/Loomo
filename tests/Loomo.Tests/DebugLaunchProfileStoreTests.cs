@@ -34,7 +34,7 @@ public class DebugLaunchProfileStoreTests : IDisposable
         {
             DebugLaunchProfile.CreateDefault("既定"),
             new("id-2", "サーバー", "src/Server/Server.csproj", "", true, "--port 8080", "ASPNETCORE_ENVIRONMENT=Development",
-                true, false, true),
+                true, false, true, "src/Server", "Project"),
         };
 
         store.Save(root, profiles, "id-2");
@@ -46,6 +46,8 @@ public class DebugLaunchProfileStoreTests : IDisposable
         Assert.Equal("src/Server/Server.csproj", loaded[1].ProjectPath);
         Assert.Equal("--port 8080", loaded[1].LaunchArgs);
         Assert.True(loaded[1].BreakOnUncaughtExceptions);
+        Assert.Equal("src/Server", loaded[1].WorkingDirectory);
+        Assert.Equal("Project", loaded[1].LaunchSettingsProfileName);
         Assert.Equal("id-2", selectedId);
     }
 

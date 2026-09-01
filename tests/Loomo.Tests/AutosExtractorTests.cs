@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.Core.Debug;
 using Xunit;
 
@@ -12,14 +13,14 @@ public class AutosExtractorTests
     [Fact]
     public void Extracts_identifiers_in_order_without_duplicates()
     {
-        var c = AutosExtractor.ExtractCandidates("total = price + price + tax;", null);
+        var c = CSharpAutosExtractor.ExtractCandidates("total = price + price + tax;", null);
         Assert.Equal(new[] { "total", "price", "tax" }, c);
     }
 
     [Fact]
     public void Member_access_yields_root_then_chain()
     {
-        var c = AutosExtractor.ExtractCandidates("var x = order.Total;", null).ToList();
+        var c = CSharpAutosExtractor.ExtractCandidates("var x = order.Total;", null).ToList();
         Assert.Contains("order", c);
         Assert.Contains("order.Total", c);
         Assert.True(c.IndexOf("order") < c.IndexOf("order.Total"));  // ルートが先
@@ -28,7 +29,7 @@ public class AutosExtractorTests
     [Fact]
     public void Drops_chain_rooted_at_keyword()
     {
-        var c = AutosExtractor.ExtractCandidates("this.count = items.Length;", null);
+        var c = CSharpAutosExtractor.ExtractCandidates("this.count = items.Length;", null);
         Assert.DoesNotContain("this", c);
         Assert.DoesNotContain("this.count", c);
         Assert.Contains("items", c);
@@ -38,7 +39,7 @@ public class AutosExtractorTests
     [Fact]
     public void Filters_keywords()
     {
-        var c = AutosExtractor.ExtractCandidates("if (ready) return value;", null);
+        var c = CSharpAutosExtractor.ExtractCandidates("if (ready) return value;", null);
         Assert.DoesNotContain("if", c);
         Assert.DoesNotContain("return", c);
         Assert.DoesNotContain("value", c);   // value も文脈語として除外
@@ -48,28 +49,28 @@ public class AutosExtractorTests
     [Fact]
     public void Ignores_identifiers_inside_strings_and_comments()
     {
-        var c = AutosExtractor.ExtractCandidates("name = \"hidden\" + tail; // trailing note", null);
+        var c = CSharpAutosExtractor.ExtractCandidates("name = \"hidden\" + tail; // trailing note", null);
         Assert.Equal(new[] { "name", "tail" }, c);
     }
 
     [Fact]
     public void Ignores_char_literals()
     {
-        var c = AutosExtractor.ExtractCandidates("c = sep == 'x' ? a : b;", null);
+        var c = CSharpAutosExtractor.ExtractCandidates("c = sep == 'x' ? a : b;", null);
         Assert.Equal(new[] { "c", "sep", "a", "b" }, c);
     }
 
     [Fact]
     public void Includes_previous_line_then_current()
     {
-        var c = AutosExtractor.ExtractCandidates("sum += n;", "var n = source;");
+        var c = CSharpAutosExtractor.ExtractCandidates("sum += n;", "var n = source;");
         Assert.Equal(new[] { "n", "source", "sum" }, c);
     }
 
     [Fact]
     public void Collapses_spaces_in_member_chains()
     {
-        var c = AutosExtractor.ExtractCandidates("y = a . b . c;", null);
+        var c = CSharpAutosExtractor.ExtractCandidates("y = a . b . c;", null);
         Assert.Contains("a.b.c", c);
     }
 

@@ -74,6 +74,21 @@ public sealed partial class TestItemViewModel : ObservableObject
     /// このメソッド単位の行へ集約するために使う（<see cref="ApplyCaseResult"/>）。</summary>
     public bool IsParameterized { get; set; }
 
+    /// <summary>属性から取得したスキップ理由。実行前にも表示できるよう、TRXの結果とは別に保持する。</summary>
+    public string? SkipReason { get; private set; }
+
+    /// <summary>xUnit Trait／NUnit Category／MSTest TestCategory の表示用文字列。</summary>
+    public string TraitsText { get; private set; } = "";
+
+    /// <summary>公式test adapterが返したケース名。メソッド行へ集約し、ツールチップで実データを確認できる。</summary>
+    public IReadOnlyList<string> CaseNames { get; private set; } = Array.Empty<string>();
+
+    public string CaseSummary => CaseNames.Count == 0 ? "" : $"ケース {CaseNames.Count}件";
+
+    public string CaseNamesText => string.Join(Environment.NewLine, CaseNames);
+
+    public bool HasSkipReason => !string.IsNullOrWhiteSpace(SkipReason);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Glyph))]
     [NotifyPropertyChangedFor(nameof(HasMessage))]
@@ -177,6 +192,30 @@ public sealed partial class TestItemViewModel : ObservableObject
     /// （成功を非表示にしている等）に前回ぶんへ足し込まれ、所要時間が倍に見える。</summary>
     public void BeginResultBatch() => _caseAccumulating = false;
 
+    /// <summary>ソース再探索で得たテスト属性メタデータを反映する。実行結果の状態は変更しない。</summary>
+    public void ApplyDiscoveryMetadata(bool isParameterized, string? skipReason,
+        IReadOnlyList<string>? traits, IReadOnlyList<string>? cases = null)
+    {
+        IsParameterized = isParameterized;
+        SkipReason = skipReason;
+        TraitsText = traits is { Count: > 0 } ? string.Join(", ", traits) : "";
+        CaseNames = cases is { Count: > 0 } ? cases.ToArray() : Array.Empty<string>();
+        OnPropertyChanged(nameof(HasSkipReason));
+        OnPropertyChanged(nameof(TraitsText));
+        OnPropertyChanged(nameof(CaseSummary));
+        OnPropertyChanged(nameof(CaseNamesText));
+    }
+
+    /// <summary>公式検出で得たケース情報を、ソース検出で既に作られた行へ補完する。</summary>
+    public void ApplyAdapterCases(bool isParameterized, IReadOnlyList<string>? cases)
+    {
+        if (isParameterized) IsParameterized = true;
+        if (cases is not { Count: > 0 }) return;
+        CaseNames = cases.Distinct(StringComparer.Ordinal).ToArray();
+        OnPropertyChanged(nameof(CaseSummary));
+        OnPropertyChanged(nameof(CaseNamesText));
+    }
+
     /// <summary>名前空間を落として クラス.メソッド（＋テオリ引数）を残す。</summary>
     private static string ShortName(string fqn)
     {
@@ -200,10 +239,11 @@ public sealed partial class TestItemViewModel : ObservableObject
 /// ▶ でグループ内をまとめて実行できる（<see cref="Key"/> に前方一致するテストが対象）。</summary>
 public sealed partial class TestGroupViewModel : ObservableObject
 {
-    public TestGroupViewModel(string key, string name)
+    public TestGroupViewModel(string key, string name, string? sourcePath = null)
     {
         Key = key;
         Name = name;
+        SourcePath = sourcePath;
     }
 
     /// <summary>クラスの完全名（<c>Namespace.Class</c>）。グループ実行フィルタ・展開状態の保持キー。</summary>
@@ -211,6 +251,10 @@ public sealed partial class TestGroupViewModel : ObservableObject
 
     /// <summary>表示名（短いクラス名。名前空間が無ければ完全名）。</summary>
     public string Name { get; }
+
+    /// <summary>このグループに属するテストの宣言ファイル。C#では同一クラスの代表ファイル、
+    /// TypeScriptではグループキーそのもの。ファイル単位実行の対象解決に使う。</summary>
+    public string? SourcePath { get; }
 
     /// <summary>このクラスのテスト（葉）。</summary>
     public ObservableCollection<TestItemViewModel> Tests { get; } = new();

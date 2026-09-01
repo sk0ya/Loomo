@@ -11,7 +11,7 @@ using sk0ya.Loomo.App.Services;
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>起動か、それともアタッチで始まったセッションか（再起動でどちらを再現するかの判断に使う）。</summary>
-public enum DebugSessionKind { Launch, Attach }
+public enum DebugSessionKind { Launch, Attach, IisExpress }
 
 /// <summary>1 本のデバッグセッション（1 netcoredbg プロセス＝1 <see cref="IDebugService"/> インスタンス）分の状態。
 /// <see cref="DebugViewModel"/>（セッションマネージャ）が <see cref="DebugViewModel.Sessions"/> にいくつも保持し、

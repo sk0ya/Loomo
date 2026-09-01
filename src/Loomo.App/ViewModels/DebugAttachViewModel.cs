@@ -84,6 +84,11 @@ public sealed partial class DebugAttachViewModel : ObservableObject
     internal async Task RelaunchIntoAsync(DebugSessionViewModel session, DebugProcessViewModel proc)
         => await AttachIntoAsync(session, proc);
 
+    /// <summary>外部ホスト（IIS Expressなど）が先に起動したプロセスへ、既存セッションとして
+    /// attachする。プロセス列挙UIを経由しない起動プロファイル用の共通経路。</summary>
+    internal async Task AttachIntoExistingAsync(DebugSessionViewModel session, DebugProcessViewModel proc)
+        => await AttachIntoAsync(session, proc);
+
     private async Task AttachIntoAsync(DebugSessionViewModel session, DebugProcessViewModel proc)
     {
         _manager.RequestOutput();  // 押下時に即「出力」へ

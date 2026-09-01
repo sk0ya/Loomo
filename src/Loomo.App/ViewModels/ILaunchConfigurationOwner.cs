@@ -20,6 +20,9 @@ internal interface ILaunchConfigurationOwner : INotifyPropertyChanged
     /// <summary>環境変数（KEY=VALUE の複数行テキスト、<c>DebugLaunchArgs.ParseEnv</c> で分解）。</summary>
     string LaunchEnv { get; set; }
 
+    /// <summary>起動時の作業ディレクトリ。空なら各ツールの既定解決を使う。</summary>
+    string LaunchWorkingDirectory { get; set; }
+
     /// <summary>自分のコードだけデバッグ（dotnet: justMyCode、TS: node_internals のスキップ）。</summary>
     bool JustMyCode { get; set; }
 

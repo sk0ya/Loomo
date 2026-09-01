@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.CSharp.LanguageServer;
 
 namespace sk0ya.Loomo.Services.Lsp;
 
@@ -42,45 +42,17 @@ public sealed record LspServerInfo(
 /// </summary>
 public static class LspServerCatalog
 {
-    /// <summary>
-    /// Microsoft が MIT で配布する Roslyn Language Server の、Loomo で検証済みの固定版。
-    /// VS Code 拡張の配布物（利用先制限あり）は流用せず、MIT 指定の NuGet パッケージを直接取得する。
-    /// DevKit / XAML Tools は再配布不可の Microsoft 独自 DLL を含むため読み込まない。
-    /// </summary>
-    internal const string RoslynVersion = "5.9.0-1.26303.1";
-
-    /// <summary>
-    /// C# サーバーの実行ファイルは **dotnet グローバルツールのシム名**（＝PATH 上で解決できる名前）。
-    /// <see cref="RoslynInstallCommand"/> が入れる <c>roslyn-language-server</c> は
-    /// <c>%USERPROFILE%\.dotnet\tools\roslyn-language-server.cmd</c> を作り、そのディレクトリは PATH 上にある。
-    /// シムは <c>%*</c> を実体（<c>Microsoft.CodeAnalysis.LanguageServer.exe</c>）へそのまま渡すので
-    /// <see cref="RoslynArgs"/> はこれまでどおり効く。
-    /// <para>以前はツールストア深部の**フルパス**を既定にしていたが、その名前は PATH 上に無く、
-    /// 導入判定（<c>ExecutableResolver.IsOnPath</c>）が常に「未導入」を返していた。
-    /// つまり**カタログの案内どおりインストールしても未導入のまま**という自己矛盾になっていた
-    /// （フルパスはツール版が上がるたびに変わるので、版を固定した綴りを既定に持つこと自体が誤り）。</para>
-    /// </summary>
-    internal const string RoslynExecutable = "roslyn-language-server";
-
-    internal static readonly string[] RoslynArgs =
-    [
-        "--stdio",
-        "--autoLoadProjects",
-        "--telemetryLevel", "off",
-    ];
-
-    // update は既存ツールを固定版へ揃える。未導入なら失敗後に install する。
-    private const string RoslynInstallCommand =
-        "dotnet tool update --global roslyn-language-server --version " + RoslynVersion
-        + "; if ($LASTEXITCODE -ne 0) { dotnet tool install --global roslyn-language-server --version "
-        + RoslynVersion + " }";
+    //  C#固有のRoslyn定義は Loomo.CSharp.LanguageServer が所有し、ここでは多言語カタログへ写像する。
+    internal const string RoslynVersion = CSharpLanguageServerCatalog.RoslynVersion;
+    internal const string RoslynExecutable = CSharpLanguageServerCatalog.RoslynExecutable;
+    internal static readonly string[] RoslynArgs = CSharpLanguageServerCatalog.RoslynArgs;
 
     /// <summary>winget 等の Windows 向けを優先した、ベストエフォートのインストールコマンド付きカタログ。</summary>
     public static readonly IReadOnlyList<LspServerInfo> Servers = new[]
     {
-        new LspServerInfo(RoslynExecutable, "C# (Roslyn Language Server)",
+        new LspServerInfo(CSharpLanguageServerCatalog.RoslynExecutable, "C# (Roslyn Language Server)",
             [new(".cs", "csharp")],
-            RoslynInstallCommand, RoslynArgs,
+            CSharpLanguageServerCatalog.RoslynInstallCommand, CSharpLanguageServerCatalog.RoslynArgs,
             "https://github.com/dotnet/roslyn"),
         // ESM/CJS 明示の拡張子（.mts/.cts/.mjs/.cjs）も同じ tsserver が扱う。languageId は VS Code の
         // 組み込み定義に合わせる（typescript ← .ts/.mts/.cts、javascript ← .js/.mjs/.cjs）。
@@ -155,60 +127,13 @@ public static class LspServerCatalog
         return name.ToLowerInvariant();
     }
 
-    /// <summary>
-    /// 永続化された <c>.cs</c> のユーザー設定が「組み込みが今の形になる前の遺物」かどうか。
-    /// 旧 Editor 組み込み値（<c>csharp-ls</c>）・旧 Loomo 専用配置
-    /// （<c>%APPDATA%/Loomo/lsp/…dotnet …LanguageServer.dll</c>）・
-    /// 旧組み込みのツールストア深部フルパス（<see cref="IsLegacyRoslynStorePath"/>）が該当する。
-    /// これらを残すと、組み込みを更新してもユーザー設定が勝ち続けて古いサーバーが起動してしまう。
-    ///
-    /// <para><c>roslyn-language-server</c>（シム名）を畳むのは<b>組み込みと完全に同じ（引数も一致）</b>か
-    /// <b>引数が空</b>（旧綴りの遺物。<c>--stdio</c> すら無いので起動しても応答しない）のときだけ。
-    /// **引数を変えた上書きは畳まない** —— 既定がシム名になった以降は「シム名＋独自の引数」が正当な設定に
-    /// なりうる。実行ファイル名だけで畳むと、設定 UI から登録できてそのセッションでは効くのに次回起動で
-    /// 消える、というサイレントな設定ロスになる（レビュー指摘 R4）。</para>
-    /// </summary>
+    /// <summary>旧C#サーバー設定の判定はCSharp専用DLLへ委譲する。</summary>
     internal static bool IsSupersededCSharpServer(string extension, LspServerDef server)
-    {
-        if (!string.Equals(LspExtensions.NormalizeExt(extension), ".cs", StringComparison.OrdinalIgnoreCase))
-            return false;
-        var exe = NormalizeExe(Path.GetFileName(server.Executable));
-        if (exe == "csharp-ls") return true;
-        if (IsLegacyLoomoRoslyn(server) || IsLegacyRoslynStorePath(server)) return true;
-        if (exe != "roslyn-language-server") return false;
-        // シム名で畳むのは2通りだけ：組み込みと完全に同一（＝抱える意味が無い）か、
-        // 引数が空（＝旧綴りの遺物。--stdio すら無いので起動しても応答しない）。
-        // それ以外の「シム名＋独自の引数」は正当な上書きとして残す。
-        return server.Args.Length == 0 || IsRoslynCSharp(extension, server);
-    }
-
-    /// <summary>
-    /// 旧組み込みの綴り（<c>%USERPROFILE%\.dotnet\tools\.store\roslyn-language-server\&lt;版&gt;\…\
-    /// Microsoft.CodeAnalysis.LanguageServer.exe</c>）。PATH 上に無いうえ版を含むので、ツールを更新した
-    /// 時点で存在しないパスになる。上書きとして残っていたら捨てて組み込み（シム名）へ戻す。
-    /// </summary>
-    private static bool IsLegacyRoslynStorePath(LspServerDef server) =>
-        NormalizeExe(Path.GetFileName(server.Executable)) == "microsoft.codeanalysis.languageserver"
-        && server.Executable.Contains(
-            Path.Combine(".store", "roslyn-language-server"), StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsLegacyLoomoRoslyn(LspServerDef server) =>
-        NormalizeExe(Path.GetFileName(server.Executable)) == "dotnet"
-        && server.Args.Any(a => a.EndsWith(
-            "Microsoft.CodeAnalysis.LanguageServer.dll",
-            StringComparison.OrdinalIgnoreCase))
-        && server.Args.Any(a => a.Contains(
-            $"{Path.DirectorySeparatorChar}Loomo{Path.DirectorySeparatorChar}lsp{Path.DirectorySeparatorChar}",
-            StringComparison.OrdinalIgnoreCase));
+        => CSharpLanguageServerCatalog.IsSuperseded(extension, server);
 
     internal static bool IsRoslynCSharp(string extension, LspServerDef server) =>
-        string.Equals(LspExtensions.NormalizeExt(extension), ".cs", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(
-            NormalizeExe(server.Executable),
-            NormalizeExe(RoslynExecutable),
-            StringComparison.Ordinal)
-        && server.Args.SequenceEqual(RoslynArgs, StringComparer.OrdinalIgnoreCase);
+        CSharpLanguageServerCatalog.IsRoslyn(extension, server);
 
     internal static LspServerDef RoslynCSharpDefinition() =>
-        new(RoslynExecutable, RoslynArgs, "csharp");
+        new(CSharpLanguageServerCatalog.RoslynExecutable, CSharpLanguageServerCatalog.RoslynArgs, "csharp");
 }

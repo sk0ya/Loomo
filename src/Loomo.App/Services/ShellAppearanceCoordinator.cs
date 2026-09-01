@@ -1,3 +1,5 @@
+using sk0ya.Loomo.CSharp;
+
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>エディタとターミナルへの設定・テーマ適用を一元管理する。</summary>
@@ -26,6 +28,7 @@ public sealed class ShellAppearanceCoordinator
         SetOption(control, "minimap", settings.ShowMinimap);
         SetOption(control, "indentguides", settings.ShowIndentGuides);
         SetOption(control, "pairs", settings.AutoClosePairs);
+        SetOption(control, "inlayhints", settings.ShowInlayHints);
         control.SetTabWidth(settings.TabWidth, settings.UseSpacesForTab);
         control.ImagePasteOptions = new Editor.Core.Editing.ImagePasteOptions
         {

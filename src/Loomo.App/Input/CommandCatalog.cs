@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using sk0ya.Loomo.CSharp.Editor;
 
 namespace sk0ya.Loomo.App.Input;
 
@@ -39,7 +40,7 @@ public static class CommandCatalog
     private const string CatProblems = "問題";
     private const string CatEditor = "エディタ";
 
-    public static IReadOnlyList<CommandDescriptor> All { get; } = new[]
+    public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
         // ===== パレット =====
         new CommandDescriptor("palette.open", CatPalette, "コマンドパレットを開く", "Ctrl+Shift+P"),
@@ -73,6 +74,7 @@ public static class CommandCatalog
         // ===== エディタ（意味的な選択・§24.9） =====
         // 既定キーは VS Code 準拠。Ctrl+W 系は<b>使わない</b>——Loomo ではペイン操作の vim 風
         // プレフィックスで、部屋そのものの動線（JetBrains の Ctrl+W に引きずられない）。
+        new CommandDescriptor("editor.save", CatEditor, "現在のファイルを保存", "Ctrl+S"),
         new CommandDescriptor("editor.selection.expand", CatEditor, "選択を意味的に広げる", "Shift+Alt+Right"),
         new CommandDescriptor("editor.selection.shrink", CatEditor, "選択を1段戻す", "Shift+Alt+Left"),
         // ガターの ▶ はマウス専用なので、キーボードからの実行経路をコマンドとして持たせる（§28.10）。
@@ -100,7 +102,10 @@ public static class CommandCatalog
         new CommandDescriptor("tab.newTerminal", CatTab, "新しいターミナルタブ", null),
         new CommandDescriptor("tab.newEditor", CatTab, "新しいエディタタブ", null),
         new CommandDescriptor("tab.newBrowser", CatTab, "新しいブラウザタブ", null),
-    };
+    }
+    .Concat(CSharpEditorCommandCatalog.All.Select(command =>
+        new CommandDescriptor(command.Id, CatEditor, command.Title, command.DefaultBinding)))
+    .ToArray();
 
     private static readonly Dictionary<string, CommandDescriptor> ById =
         All.ToDictionary(c => c.Id);

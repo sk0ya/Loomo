@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Threading;
-using System.Windows;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -13,9 +12,10 @@ namespace sk0ya.Loomo.App.Services;
 public sealed class DebouncedFolderWatcher : IDisposable
 {
     private readonly Action _refresh;
-    // 生成したスレッド（＝UI スレッド）のディスパッチャ。監視の発火はスレッドプールなので、
-    // 再読込は必ずここへ渡す。Application が無い場（テスト）でも直接呼ばないこと——
-    // ObservableCollection を別スレッドから触って落ちる。
+    // 生成したスレッド（＝この watcher の所有者がコレクションを作ったスレッド）の
+    // ディスパッチャ。監視の発火はスレッドプールなので、再読込は必ずここへ渡す。
+    // Application.Current の Dispatcher を使うと、テストやバックグラウンド生成時に
+    // ObservableCollection／CollectionView の所有スレッドとずれて落ちる。
     private readonly System.Windows.Threading.Dispatcher _dispatcher;
     private FileSystemWatcher? _watcher;
     private Timer? _timer;
@@ -25,7 +25,7 @@ public sealed class DebouncedFolderWatcher : IDisposable
     public DebouncedFolderWatcher(Action refresh)
     {
         _refresh = refresh;
-        _dispatcher = Application.Current?.Dispatcher
+        _dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread)
             ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
     }
 

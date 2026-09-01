@@ -93,7 +93,7 @@ public class ShellViewModelTests
 
         var debugVm = new DebugViewModel(
             new sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory(), workspace, new FakeTerminalService(),
-            new sk0ya.Loomo.Services.Debug.TestDiscoveryService(),
+            new sk0ya.Loomo.CSharp.Testing.TestDiscoveryService(),
             new sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-launch-profiles.json")));
 

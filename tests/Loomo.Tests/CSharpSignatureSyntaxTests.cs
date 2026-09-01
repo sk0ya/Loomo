@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Editor.Core.Lsp;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
-using sk0ya.Loomo.Services.Refactoring;
+using sk0ya.Loomo.CSharp.Projects;
+using sk0ya.Loomo.CSharp.Refactoring;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -344,6 +346,32 @@ public sealed class CSharpSignatureSyntaxTests
         ]);
 
         Assert.True(CSharpSignatureSyntax.CallSitesUnaffected(signature, change));
+        Assert.True(CSharpSignatureSyntax.SignatureContractChanged(signature, change));
+    }
+
+    [Fact]
+    public void A_parameter_modifier_change_requires_reference_safety_even_when_call_text_is_unchanged()
+    {
+        var signature = Read(Sample, 2, 20);
+        var change = new SignatureChange(signature.ReturnType, [
+            new SignatureParameterChange(0, signature.Parameters[0] with { Modifiers = "in" }),
+            new SignatureParameterChange(1, signature.Parameters[1]),
+        ]);
+
+        Assert.True(CSharpSignatureSyntax.CallSitesUnaffected(signature, change));
+        Assert.True(CSharpSignatureSyntax.SignatureContractChanged(signature, change));
+    }
+
+    [Fact]
+    public void An_unchanged_signature_does_not_require_a_method_group_safety_scan()
+    {
+        var signature = Read(Sample, 2, 20);
+        var change = new SignatureChange(signature.ReturnType, [
+            new SignatureParameterChange(0, signature.Parameters[0]),
+            new SignatureParameterChange(1, signature.Parameters[1]),
+        ]);
+
+        Assert.False(CSharpSignatureSyntax.SignatureContractChanged(signature, change));
     }
 
     [Fact]
@@ -386,5 +414,381 @@ public sealed class CSharpSignatureSyntaxTests
         var result = Apply(OverloadSample, edits);
         Assert.Contains("void Log(string text) { }", result);
         Assert.DoesNotContain("string text, string text", result);
+    }
+
+    [Fact]
+    public void Generic_invocation_is_rewritten_without_losing_type_arguments()
+    {
+        const string text = """
+            class Sample
+            {
+                T Pick<T>(T left, T right) => left;
+                void Use() { var value = Pick<int>(1, 2); }
+            }
+            """;
+        var signature = Read(text, 2, 20);
+        var change = new SignatureChange("T", [
+            new SignatureParameterChange(1, signature.Parameters[1]),
+            new SignatureParameterChange(0, signature.Parameters[0]),
+        ]);
+
+        var (source, root, offset) = At(text, "Pick", occurrence: 1);
+        var (edits, error) = CSharpSignatureSyntax.RewriteReference(
+            source, root, offset, signature, change);
+
+        Assert.Null(error);
+        Assert.Contains("Pick<int>(2, 1)", Apply(text, edits));
+    }
+
+    [Fact]
+    public void A_change_that_collides_with_an_existing_overload_is_refused()
+    {
+        const string text = """
+            class Sample
+            {
+                void Run(int value) { }
+                void Run(string value) { }
+            }
+            """;
+        var signature = Read(text, 2, 22);
+        var change = new SignatureChange("void", [
+            new SignatureParameterChange(0, signature.Parameters[0] with { Type = "string" }),
+        ]);
+
+        var error = CSharpSignatureSyntax.ValidateChange(SourceText.From(text), signature, change);
+
+        Assert.Contains("overloadと衝突", error);
+    }
+
+    [Fact]
+    public void Explicit_dynamic_and_reflection_references_are_reported_as_unsafe()
+    {
+        const string dynamicText = """
+            class Sample
+            {
+                void Use(dynamic api) { api.Compute(1); }
+            }
+            """;
+        var dynamicHazard = CSharpSignatureSyntax.FindDynamicOrReflectionHazard(
+            SourceText.From(dynamicText), "Compute");
+        Assert.Contains("dynamic", dynamicHazard);
+
+        const string reflectionText = """
+            using System;
+            class Sample
+            {
+                void Use() { typeof(Sample).GetMethod("Compute"); }
+            }
+            """;
+        var reflectionHazard = CSharpSignatureSyntax.FindDynamicOrReflectionHazard(
+            SourceText.From(reflectionText), "Compute");
+        Assert.Contains("reflection", reflectionHazard);
+    }
+
+    [Fact]
+    public void Method_group_and_nameof_references_are_reported_as_unsafe()
+    {
+        const string methodGroupText = """
+            using System;
+            class Sample
+            {
+                void Compute(int value) { }
+                void Use() { Action<int> callback = Compute; }
+            }
+            """;
+        var methodGroupHazard = CSharpSignatureSyntax.FindDynamicOrReflectionHazard(
+            SourceText.From(methodGroupText), "Compute");
+        Assert.Contains("メソッドグループ", methodGroupHazard);
+
+        const string nameofText = """
+            class Sample
+            {
+                void Compute(int value) { }
+                string Use() => nameof(Compute);
+            }
+            """;
+        var nameofHazard = CSharpSignatureSyntax.FindDynamicOrReflectionHazard(
+            SourceText.From(nameofText), "Compute");
+        Assert.Contains("nameof", nameofHazard);
+    }
+
+    [Fact]
+    public void Semantic_safety_matches_the_target_method_and_ignores_unrelated_same_named_members()
+    {
+        const string text = """
+            using System;
+            class Sample
+            {
+                void Compute(int value) { }
+                void Use() { Action<int> callback = Compute; }
+            }
+            class Other
+            {
+                int Compute { get; }
+            }
+            """;
+        var path = "C:\\p\\A.cs";
+        var compilation = CSharpSemanticCompilation.Create(
+            new Dictionary<string, string> { [path] = text });
+        var signature = Read(text, 3, 10);
+
+        var hazard = CSharpSignatureSemanticSafety.FindMethodGroupHazard(compilation, signature);
+
+        Assert.Contains("メソッドグループ", hazard);
+    }
+
+    [Fact]
+    public void Semantic_reference_scan_finds_bound_calls_without_a_language_server()
+    {
+        const string service = """
+            public class Service
+            {
+                public string GetValue(int repeat) => repeat.ToString();
+            }
+            """;
+        const string caller = """
+            public class Consumer
+            {
+                public string Read() => new Service().GetValue(1);
+            }
+            """;
+        var servicePath = Path.GetFullPath("C:\\p\\Service.cs");
+        var callerPath = Path.GetFullPath("C:\\p\\Consumer.cs");
+        var compilation = CSharpSemanticCompilation.Create(new Dictionary<string, string>
+        {
+            [servicePath] = service,
+            [callerPath] = caller,
+        });
+        var offset = service.IndexOf("GetValue", StringComparison.Ordinal);
+        var position = PositionOf(service, offset);
+        var signature = CSharpSignatureSyntax.Read(
+            servicePath, LspUri.FromPath(servicePath), service,
+            position.Line, position.Character).Signature;
+        Assert.NotNull(signature);
+
+        var references = CSharpSignatureSemanticSafety.FindInvocationReferences(
+            compilation, signature!);
+
+        var reference = Assert.Single(references!);
+        Assert.Equal(callerPath, LspUri.TryToLocalPath(reference.Uri));
+        Assert.Equal(2, reference.Range.Start.Line);
+    }
+
+    [Fact]
+    public async Task Change_signature_uses_semantic_references_when_lsp_is_unavailable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LoomoChangeSignatureSemantic");
+        var servicePath = Path.Combine(root, "Service.cs");
+        var callerPath = Path.Combine(root, "Consumer.cs");
+        const string service = """
+            public class Service
+            {
+                public string GetValue(int repeat) => repeat.ToString();
+            }
+            """;
+        const string caller = """
+            public class Consumer
+            {
+                public string Read() => new Service().GetValue(1);
+            }
+            """;
+        var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [servicePath] = service,
+            [callerPath] = caller,
+        };
+        var compilation = CSharpSemanticCompilation.Create(texts);
+        var offset = service.IndexOf("GetValue", StringComparison.Ordinal);
+        var position = PositionOf(service, offset);
+        var signature = CSharpSignatureSyntax.Read(
+            servicePath, LspUri.FromPath(servicePath), service,
+            position.Line, position.Character).Signature;
+        Assert.NotNull(signature);
+
+        var change = new SignatureChange("string", [
+            new SignatureParameterChange(0, new SignatureParameter("repeat", "int")),
+            new SignatureParameterChange(
+                SignatureParameterChange.Added,
+                new SignatureParameter("prefix", "string"),
+                "\"value:\"")
+        ]);
+        var refactoring = new CSharpSignatureRefactoring(
+            null!, [root], path => texts.GetValueOrDefault(Path.GetFullPath(path)), compilation);
+
+        var plan = await refactoring.PlanAsync(signature!, change);
+
+        Assert.Null(plan.Error);
+        Assert.Equal(2, plan.SiteCount);
+        Assert.Equal(service, plan.ExpectedTexts![servicePath]);
+        Assert.Equal(caller, plan.ExpectedTexts[callerPath]);
+        var callerEdits = plan.Changes.Single(pair =>
+            string.Equals(LspUri.TryToLocalPath(pair.Key), callerPath,
+                StringComparison.OrdinalIgnoreCase)).Value;
+        Assert.Contains(callerEdits, edit => edit.NewText == "(1, \"value:\")");
+    }
+
+    [Fact]
+    public void Semantic_signature_check_detects_an_overload_in_another_partial_declaration()
+    {
+        const string first = """
+            public partial class Sample
+            {
+                public void Run(int value) { }
+            }
+            """;
+        const string second = """
+            public partial class Sample
+            {
+                public void Run(string value) { }
+            }
+            """;
+        var firstPath = Path.GetFullPath("C:\\p\\Sample.A.cs");
+        var secondPath = Path.GetFullPath("C:\\p\\Sample.B.cs");
+        var compilation = CSharpSemanticCompilation.Create(new Dictionary<string, string>
+        {
+            [firstPath] = first,
+            [secondPath] = second,
+        });
+        var offset = first.IndexOf("Run", StringComparison.Ordinal);
+        var position = PositionOf(first, offset);
+        var signature = CSharpSignatureSyntax.Read(
+            firstPath, LspUri.FromPath(firstPath), first,
+            position.Line, position.Character).Signature;
+        Assert.NotNull(signature);
+        var change = new SignatureChange("void", [
+            new SignatureParameterChange(0,
+                new SignatureParameter("value", "string")),
+        ]);
+
+        var error = CSharpSignatureSemanticSafety.FindSignatureConflict(
+            compilation, signature!, change);
+
+        Assert.Contains("partial", error);
+        Assert.Contains("overload", error);
+    }
+
+    [Fact]
+    public async Task Semantic_reference_scan_includes_override_interface_and_base_typed_calls()
+    {
+        const string contract = "public interface IRunner { void Run(int value); }";
+        const string baseType = "public class Base : IRunner { public virtual void Run(int value) { } }";
+        const string derived = "public class Derived : Base { public override void Run(int value) { } }";
+        const string caller = """
+            public class Consumer
+            {
+                public void Use(IRunner contract, Base baseValue, Derived derived)
+                {
+                    contract.Run(1);
+                    baseValue.Run(2);
+                    derived.Run(3);
+                }
+            }
+            """;
+        var contractPath = Path.GetFullPath("C:\\p\\IRunner.cs");
+        var basePath = Path.GetFullPath("C:\\p\\Base.cs");
+        var derivedPath = Path.GetFullPath("C:\\p\\Derived.cs");
+        var callerPath = Path.GetFullPath("C:\\p\\Consumer.cs");
+        var compilation = CSharpSemanticCompilation.Create(new Dictionary<string, string>
+        {
+            [contractPath] = contract,
+            [basePath] = baseType,
+            [derivedPath] = derived,
+            [callerPath] = caller,
+        });
+        var offset = derived.IndexOf("Run", StringComparison.Ordinal);
+        var position = PositionOf(derived, offset);
+        var signature = CSharpSignatureSyntax.Read(
+            derivedPath, LspUri.FromPath(derivedPath), derived,
+            position.Line, position.Character).Signature;
+        Assert.NotNull(signature);
+
+        var invocations = CSharpSignatureSemanticSafety.FindInvocationReferences(
+            compilation, signature!);
+        Assert.Equal(3, invocations!.Count);
+        Assert.All(invocations, location =>
+            Assert.Equal(callerPath, LspUri.TryToLocalPath(location.Uri)));
+
+        var declarations = CSharpSignatureSemanticSafety.FindRelatedDeclarationReferences(
+            compilation, signature!);
+        Assert.Equal(3, declarations!.Count);
+        Assert.Contains(declarations, location =>
+            string.Equals(LspUri.TryToLocalPath(location.Uri), contractPath,
+                StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(declarations, location =>
+            string.Equals(LspUri.TryToLocalPath(location.Uri), basePath,
+                StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(declarations, location =>
+            string.Equals(LspUri.TryToLocalPath(location.Uri), derivedPath,
+                StringComparison.OrdinalIgnoreCase));
+
+        var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [contractPath] = contract,
+            [basePath] = baseType,
+            [derivedPath] = derived,
+            [callerPath] = caller,
+        };
+        var change = new SignatureChange("void", [
+            new SignatureParameterChange(0, new SignatureParameter("value", "int")),
+            new SignatureParameterChange(
+                SignatureParameterChange.Added,
+                new SignatureParameter("label", "string"),
+                "\"run\""),
+        ]);
+        var plan = await new CSharpSignatureRefactoring(
+            null!, [Path.GetFullPath("C:\\p")],
+            path => texts.GetValueOrDefault(Path.GetFullPath(path)), compilation)
+            .PlanAsync(signature!, change);
+
+        Assert.Null(plan.Error);
+        Assert.Equal(6, plan.SiteCount); // 3契約宣言 + 3呼び出し
+        Assert.Equal(4, plan.Changes.Count);
+        Assert.Contains(plan.Changes.Values.SelectMany(edits => edits), edit =>
+            edit.NewText.Contains("label", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Semantic_reference_scan_does_not_merge_different_signatures_in_inherited_interfaces()
+    {
+        const string baseContract = "public interface IBase { void Run(int value); }";
+        const string derivedContract = "public interface IDerived : IBase { void Run(string value); }";
+        const string implementation = "public class Impl : IDerived { public void Run(int value) { } public void Run(string value) { } }";
+        const string caller = "public class Consumer { public void Use(IDerived value) { value.Run(1); value.Run(\"text\"); } }";
+        var basePath = Path.GetFullPath("C:\\p\\IBase.cs");
+        var derivedPath = Path.GetFullPath("C:\\p\\IDerived.cs");
+        var implementationPath = Path.GetFullPath("C:\\p\\Impl.cs");
+        var callerPath = Path.GetFullPath("C:\\p\\Consumer.cs");
+        var compilation = CSharpSemanticCompilation.Create(new Dictionary<string, string>
+        {
+            [basePath] = baseContract,
+            [derivedPath] = derivedContract,
+            [implementationPath] = implementation,
+            [callerPath] = caller,
+        });
+        var offset = baseContract.IndexOf("Run", StringComparison.Ordinal);
+        var position = PositionOf(baseContract, offset);
+        var signature = CSharpSignatureSyntax.Read(
+            basePath, LspUri.FromPath(basePath), baseContract,
+            position.Line, position.Character).Signature;
+        Assert.NotNull(signature);
+
+        var invocations = CSharpSignatureSemanticSafety.FindInvocationReferences(
+            compilation, signature!);
+        var declarations = CSharpSignatureSemanticSafety.FindRelatedDeclarationReferences(
+            compilation, signature!);
+
+        var invocation = Assert.Single(invocations!);
+        Assert.Equal(callerPath, LspUri.TryToLocalPath(invocation.Uri));
+        Assert.Equal(2, declarations!.Count);
+        Assert.DoesNotContain(declarations, location =>
+            string.Equals(LspUri.TryToLocalPath(location.Uri), derivedPath,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static LspPosition PositionOf(string text, int offset)
+    {
+        var source = Microsoft.CodeAnalysis.Text.SourceText.From(text);
+        var position = source.Lines.GetLinePosition(offset);
+        return new LspPosition(position.Line, position.Character);
     }
 }

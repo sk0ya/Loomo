@@ -17,7 +17,9 @@ public sealed record DebugLaunchProfile(
     string LaunchEnv,
     bool JustMyCode,
     bool BreakOnAllExceptions,
-    bool BreakOnUncaughtExceptions)
+    bool BreakOnUncaughtExceptions,
+    string WorkingDirectory = "",
+    string LaunchSettingsProfileName = "")
 {
     /// <summary>新規プロファイルの既定値（今までの唯一の設定と同じ初期値）。</summary>
     public static DebugLaunchProfile CreateDefault(string name) => new(

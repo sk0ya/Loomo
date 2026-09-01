@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.CSharp.LanguageServer;
 
 namespace sk0ya.Loomo.Services.Lsp;
 
@@ -178,7 +179,7 @@ public sealed class LspServerTable : ILspServerAdmin
                     if (key.Length == 0 || def is null || string.IsNullOrWhiteSpace(def.Executable)) continue;
                     // 旧 C# サーバー（csharp-ls / roslyn-language-server シム / Loomo 配下の dotnet 起動）を
                     // ユーザー設定として抱えたままだと、組み込みが Roslyn になっても古い方が勝ち続ける。
-                    if (LspServerCatalog.IsSupersededCSharpServer(key, def)) { migrated = true; continue; }
+                    if (CSharpLanguageServerCatalog.IsSuperseded(key, def)) { migrated = true; continue; }
 
                     var normalized = new LspServerDef(def.Executable, def.Args ?? [], def.LanguageId ?? "");
                     // 組み込みと同じ内容の上書きは捨てる。以前は組み込みに無かった割り当てが組み込みへ

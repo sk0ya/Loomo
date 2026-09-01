@@ -1,3 +1,5 @@
+using sk0ya.Loomo.CSharp.Editor;
+
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: コマンドパレット（部屋全体の操作統一）。移動・ペイン表示・タブ・コンポーザ・ ペグボード・サイドバー・ワークスペース切替といった既存操作に名前を付け、 Ctrl+Shift+P（または Ctrl+W p）から検索して実行できるようにする。 一覧は開くたびに現在状態（ステージ中か・WS一覧など）から組み直す。 絞り込みロジックは <see cref="PaletteFilter"/>（純ロジック・テスト済み）。</summary>
 public partial class ShellWindow {
@@ -86,8 +88,18 @@ public partial class ShellWindow {
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
         // 意味的な選択（§24.9）。キー・右クリックメニューと同じ実装へ入る（§31.2 原則6）。
+        list.Add(new("エディタ", "現在のファイルを保存", SaveActiveEditor, Sc("editor.save"), "editor.save"));
         list.Add(new("エディタ", "選択を意味的に広げる", ExpandSemanticSelection, Sc("editor.selection.expand"), "editor.selection.expand"));
         list.Add(new("エディタ", "選択を1段戻す", ShrinkSemanticSelection, Sc("editor.selection.shrink"), "editor.selection.shrink"));
+        if (ActiveCSharpEditor() is not null)
+        {
+            foreach (var descriptor in CSharpEditorCommandCatalog.All)
+            {
+                var id = descriptor.Id;
+                list.Add(new("C# エディタ", descriptor.Title,
+                    () => ExecuteCSharpEditorCommand(id), Sc(id), id));
+            }
+        }
         // ガターの ▶ はマウス専用なので、キーボードからの実行経路はここが受け持つ（§24）。
         // 対象が無いときは項目自体を出さない——押せるのに何も起きない項目を作らないため。
         if (ActiveEditorTestAtCaret() is { } caretTest)

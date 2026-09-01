@@ -15,9 +15,11 @@ public enum ProblemSeverity
 {
     Error,
     Warning,
+    Information,
+    Hint,
 }
 
-public enum ProblemSource { Build, Lsp }
+public enum ProblemSource { Build, Compiler, Lsp, StyleCop }
 
 public enum ProblemScope { Workspace, CurrentFile }
 
@@ -51,7 +53,13 @@ public sealed class ProblemItemViewModel
     public string Code { get; }
     public string Message { get; }
     public ProblemSource Source { get; }
-    public string SourceLabel => Source == ProblemSource.Lsp ? "LSP" : "Build";
+    public string SourceLabel => Source switch
+    {
+        ProblemSource.Compiler => "Compiler",
+        ProblemSource.Lsp => "LSP",
+        ProblemSource.StyleCop => "StyleCop",
+        _ => "Build",
+    };
 
     public string FileName => Path.GetFileName(FilePath);
     public string LineColumn => $"{Line1}:{Column1}";
@@ -60,7 +68,9 @@ public sealed class ProblemItemViewModel
     public string SeverityGlyph => Severity switch
     {
         ProblemSeverity.Error => "✕",
-        _ => "▲",
+        ProblemSeverity.Warning => "▲",
+        ProblemSeverity.Information => "●",
+        _ => "·",
     };
 }
 
@@ -74,7 +84,9 @@ public sealed partial class ProblemFileGroup : ObservableObject
         RelativeDir = relativeDir;
         Items = items;
         ErrorCount = items.Count(i => i.Severity == ProblemSeverity.Error);
-        WarningCount = items.Count - ErrorCount;
+        WarningCount = items.Count(i => i.Severity == ProblemSeverity.Warning);
+        InformationCount = items.Count(i => i.Severity == ProblemSeverity.Information);
+        HintCount = items.Count(i => i.Severity == ProblemSeverity.Hint);
     }
 
     public string FilePath { get; }
@@ -84,8 +96,12 @@ public sealed partial class ProblemFileGroup : ObservableObject
     public IReadOnlyList<ProblemItemViewModel> Items { get; }
     public int ErrorCount { get; }
     public int WarningCount { get; }
+    public int InformationCount { get; }
+    public int HintCount { get; }
     public bool HasErrors => ErrorCount > 0;
     public bool HasWarnings => WarningCount > 0;
+    public bool HasInformation => InformationCount > 0;
+    public bool HasHints => HintCount > 0;
 
     [ObservableProperty] private bool _isExpanded = true;
 }
@@ -107,6 +123,10 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private IReadOnlyList<ProblemItemViewModel> _buildItems = [];
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _lspItems =
         new(System.StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _compilerItems =
+        new(System.StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _styleCopItems =
+        new(System.StringComparer.OrdinalIgnoreCase);
     private string? _navigationKey;
 
     public ProblemsViewModel(IWorkspaceService? workspace = null) => _workspace = workspace;
@@ -125,15 +145,23 @@ public sealed partial class ProblemsViewModel : ObservableObject
     [ObservableProperty] private int _warningCount;
     [ObservableProperty] private bool _showErrors = true;
     [ObservableProperty] private bool _showWarnings = true;
+    [ObservableProperty] private bool _showInformation = true;
+    [ObservableProperty] private bool _showHints = true;
     [ObservableProperty] private bool _showBuild = true;
+    [ObservableProperty] private bool _showCompiler = true;
     [ObservableProperty] private bool _showLsp = true;
+    [ObservableProperty] private bool _showStyleCop = true;
     [ObservableProperty] private ProblemScope _scope;
     [ObservableProperty] private string? _currentFilePath;
 
     partial void OnShowErrorsChanged(bool value) => Rebuild();
     partial void OnShowWarningsChanged(bool value) => Rebuild();
+    partial void OnShowInformationChanged(bool value) => Rebuild();
+    partial void OnShowHintsChanged(bool value) => Rebuild();
     partial void OnShowBuildChanged(bool value) => Rebuild();
+    partial void OnShowCompilerChanged(bool value) => Rebuild();
     partial void OnShowLspChanged(bool value) => Rebuild();
+    partial void OnShowStyleCopChanged(bool value) => Rebuild();
     partial void OnScopeChanged(ProblemScope value) => Rebuild();
     partial void OnCurrentFilePathChanged(string? value)
     {
@@ -195,9 +223,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
     {
         if (!TryGetFilePath(uri, out var filePath)) return;
         var items = diagnostics
-            .Where(d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning)
             .Select(d => new ProblemItemViewModel(filePath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
-                d.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
+                ToProblemSeverity(d.Severity),
                 string.IsNullOrWhiteSpace(d.Code) ? (string.IsNullOrWhiteSpace(d.Source) ? "LSP" : d.Source!) : d.Code!,
                 d.Message, ProblemSource.Lsp, d.Range.End.Line + 1, d.Range.End.Character + 1))
             .ToList();
@@ -212,16 +239,73 @@ public sealed partial class ProblemsViewModel : ObservableObject
         Rebuild();
     }
 
+    /// <summary>Roslyn Language Serverの代わりにLoomo.CSharpが返したcompiler診断を保持する。</summary>
+    public void SetCompilerDiagnostics(string filePath, IReadOnlyList<LspDiagnostic> diagnostics)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var items = diagnostics
+            .Where(d => d.Source?.Equals("Compiler", StringComparison.OrdinalIgnoreCase) == true)
+            .Select(d => new ProblemItemViewModel(fullPath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
+                ToProblemSeverity(d.Severity), d.Code ?? "Compiler", d.Message, ProblemSource.Compiler,
+                d.Range.End.Line + 1, d.Range.End.Character + 1))
+            .ToList();
+        if (items.Count == 0) _compilerItems.Remove(fullPath); else _compilerItems[fullPath] = items;
+        Rebuild();
+    }
+
+    public void ClearCompilerDiagnostics(string filePath)
+    {
+        if (_compilerItems.Remove(Path.GetFullPath(filePath))) Rebuild();
+    }
+
+    public void ClearAllCompilerDiagnostics()
+    {
+        if (_compilerItems.Count == 0) return;
+        _compilerItems.Clear();
+        Rebuild();
+    }
+
+    /// <summary>LSPがStyleCopを返さない環境で、Loomo.CSharpの公式Analyzerフォールバックを反映する。</summary>
+    public void SetStyleCopDiagnostics(string filePath, IReadOnlyList<LspDiagnostic> diagnostics)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var items = diagnostics
+            .Where(d => d.Code?.StartsWith("SA", StringComparison.OrdinalIgnoreCase) == true)
+            .Select(d => new ProblemItemViewModel(fullPath, d.Range.Start.Line + 1, d.Range.Start.Character + 1,
+                ToProblemSeverity(d.Severity), d.Code!, d.Message, ProblemSource.StyleCop,
+                d.Range.End.Line + 1, d.Range.End.Character + 1))
+            .ToList();
+        if (items.Count == 0) _styleCopItems.Remove(fullPath); else _styleCopItems[fullPath] = items;
+        Rebuild();
+    }
+
+    public void ClearStyleCopDiagnostics(string filePath)
+    {
+        if (_styleCopItems.Remove(Path.GetFullPath(filePath))) Rebuild();
+    }
+
+    public void ClearAllStyleCopDiagnostics()
+    {
+        if (_styleCopItems.Count == 0) return;
+        _styleCopItems.Clear();
+        Rebuild();
+    }
+
     private void Rebuild()
     {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
-        var items = _buildItems.Concat(_lspItems.Values.SelectMany(x => x))
+        var items = _buildItems.Concat(_compilerItems.Values.SelectMany(x => x))
+            .Concat(_lspItems.Values.SelectMany(x => x))
+            .Concat(_styleCopItems.Values.SelectMany(x => x))
             // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、
             // Build を隠しただけで代表に選ばれた Build 項目と一緒に LSP 項目まで消してはならない。
             .Where(IsVisible)
-            .GroupBy(i => $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.EndLine1}|{i.EndColumn1}|{i.Severity}|{i.Code}|{i.Message}",
+            // severity／message は除外する。Analyzer の設定やローカライズが一時的に異なっても、
+            // 同じ ID・位置の診断を二重表示せず、SourcePriorityの正本を残す。
+            // Build出力は終端rangeを持たず開始位置だけなので、終端位置はキーに含めない。
+            .GroupBy(i => $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}",
                 System.StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.OrderBy(i => i.Source).First())
+            .Select(g => g.OrderBy(SourcePriority).First())
             .ToList();
 
         var groups = items
@@ -241,17 +325,48 @@ public sealed partial class ProblemsViewModel : ObservableObject
         HasItems = Groups.Count > 0;
         ErrorCount = Groups.Sum(g => g.ErrorCount);
         WarningCount = Groups.Sum(g => g.WarningCount);
+        InformationCount = Groups.Sum(g => g.InformationCount);
+        HintCount = Groups.Sum(g => g.HintCount);
     }
 
     private bool IsVisible(ProblemItemViewModel item)
     {
-        if (item.Severity == ProblemSeverity.Error ? !ShowErrors : !ShowWarnings) return false;
-        if (item.Source == ProblemSource.Build ? !ShowBuild : !ShowLsp) return false;
+        if (item.Severity == ProblemSeverity.Error && !ShowErrors) return false;
+        if (item.Severity == ProblemSeverity.Warning && !ShowWarnings) return false;
+        if (item.Severity == ProblemSeverity.Information && !ShowInformation) return false;
+        if (item.Severity == ProblemSeverity.Hint && !ShowHints) return false;
+        if (item.Source == ProblemSource.Build && !ShowBuild) return false;
+        if (item.Source == ProblemSource.Compiler && !ShowCompiler) return false;
+        if (item.Source == ProblemSource.Lsp && !ShowLsp) return false;
+        if (item.Source == ProblemSource.StyleCop && !ShowStyleCop) return false;
         return Scope != ProblemScope.CurrentFile ||
             (!string.IsNullOrWhiteSpace(CurrentFilePath) &&
              string.Equals(Path.GetFullPath(item.FilePath), Path.GetFullPath(CurrentFilePath),
                  System.StringComparison.OrdinalIgnoreCase));
     }
+
+    private static int SourcePriority(ProblemItemViewModel item) => item.Source switch
+    {
+        // Build is the persisted command result and remains the canonical copy when
+        // its location/message is also reported by an editor source.
+        ProblemSource.Build => 0,
+        ProblemSource.Lsp => 1,
+        // Compiler is a fallback and must not hide a later LSP copy during a race.
+        ProblemSource.Compiler => 2,
+        _ => 3,
+    };
+
+    [ObservableProperty] private int _informationCount;
+    [ObservableProperty] private int _hintCount;
+
+    private static ProblemSeverity ToProblemSeverity(DiagnosticSeverity severity)
+        => severity switch
+        {
+            DiagnosticSeverity.Error => ProblemSeverity.Error,
+            DiagnosticSeverity.Warning => ProblemSeverity.Warning,
+            DiagnosticSeverity.Information => ProblemSeverity.Information,
+            _ => ProblemSeverity.Hint,
+        };
 
     private static bool TryGetFilePath(string uri, out string filePath)
     {

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Debug;
+using sk0ya.Loomo.CSharp.Testing;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -13,6 +15,48 @@ public class TestItemResultAggregationTests
 {
     private static TestItemViewModel Item(string fqn = "N.C.Cases")
         => new(fqn) { IsParameterized = true };
+
+    [Fact]
+    public void Failed_filter_is_an_OR_of_unique_method_filters()
+    {
+        var failed = new[]
+        {
+            new TestItemViewModel("N.C.First"),
+            new TestItemViewModel("N.C.Cases(1)"),
+            new TestItemViewModel("N.C.Cases(2)"),
+        };
+
+        Assert.Equal("FullyQualifiedName=N.C.First|FullyQualifiedName=N.C.Cases",
+            CSharpTestExecutionService.BuildFullyQualifiedNameFilter(
+                failed.Select(test => test.FilterExpression)));
+    }
+
+    [Fact]
+    public void File_filter_is_an_OR_of_unique_fully_qualified_test_methods()
+    {
+        var tests = new[]
+        {
+            new TestItemViewModel("N.C.First"),
+            new TestItemViewModel("N.C.Cases(1)"),
+            new TestItemViewModel("N.C.Cases(2)"),
+        };
+
+        Assert.Equal("FullyQualifiedName=N.C.First|FullyQualifiedName=N.C.Cases",
+            CSharpTestExecutionService.BuildFullyQualifiedNameFilter(
+                tests.Select(test => test.FilterExpression)));
+    }
+
+    [Fact]
+    public void Discovery_metadata_is_retained_on_existing_test_rows()
+    {
+        var test = new TestItemViewModel("N.C.Cases");
+        test.ApplyDiscoveryMetadata(true, "環境依存", ["優先度=高"]);
+
+        Assert.True(test.IsParameterized);
+        Assert.Equal("環境依存", test.SkipReason);
+        Assert.Equal("優先度=高", test.TraitsText);
+        Assert.True(test.HasSkipReason);
+    }
 
     [Fact]
     public void Case_durations_are_summed_within_one_run()
@@ -126,6 +170,73 @@ public class TestItemResultAggregationTests
 
         Assert.Equal(["N.C.Ran"], vm.Tests.Select(t => t.FullyQualifiedName));
     }
+
+    [Fact]
+    public void Authoritative_solution_rediscovery_drops_disappeared_tests_with_results()
+    {
+        var vm = TestExplorerFactory.CreateDotnetTests();
+        vm.ApplyDiscovered([
+            new DiscoveredTest("N.C.Gone", false, @"C:\work\CTests.cs", 5),
+            new DiscoveredTest("N.C.Keep", false, @"C:\work\CTests.cs", 9),
+        ]);
+        vm.Tests.Single(t => t.FullyQualifiedName == "N.C.Gone")
+            .Update(TestStatus.Failed, "old result", @"C:\work\CTests.cs", 5);
+        vm.Tests.Single(t => t.FullyQualifiedName == "N.C.Keep")
+            .Update(TestStatus.Passed, null, @"C:\work\CTests.cs", 9);
+
+        vm.ApplyDiscovered([
+            new DiscoveredTest("N.C.Keep", false, @"C:\work\CTests.cs", 10),
+        ], authoritative: true);
+
+        var remaining = Assert.Single(vm.Tests);
+        Assert.Equal("N.C.Keep", remaining.FullyQualifiedName);
+        Assert.Equal(TestStatus.Passed, remaining.Status);
+        Assert.Equal(10, remaining.DeclarationLine);
+    }
+
+    [Fact]
+    public void Solution_explorer_test_result_is_reflected_in_the_test_explorer()
+    {
+        var vm = TestExplorerFactory.CreateDotnetTests();
+        vm.ApplyDiscovered([new DiscoveredTest("N.C.FromSolution", false,
+            @"C:\work\Tests.cs", 12)]);
+        var directory = Path.Combine(Path.GetTempPath(), "Loomo-trx-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var trxPath = Path.Combine(directory, "loomo.trx");
+        File.WriteAllText(trxPath, """
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results>
+                <UnitTestResult testName="N.C.FromSolution" outcome="Passed" duration="00:00:00.0100000" />
+              </Results>
+            </TestRun>
+            """);
+        try
+        {
+            vm.ApplyExternalExecutionResult(new CSharpTestExecutionResult(null, trxPath));
+
+            var item = Assert.Single(vm.Tests);
+            Assert.Equal(TestStatus.Passed, item.Status);
+            Assert.Contains("成功 1", vm.TestSummary, StringComparison.Ordinal);
+            Assert.Single(vm.TestTree);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void Trait_filter_shows_only_tests_with_the_requested_tag()
+    {
+        var vm = TestExplorerFactory.CreateDotnetTests();
+        vm.ApplyDiscovered([
+            new DiscoveredTest("N.C.Unit", false, Traits: ["Category=Unit"]),
+            new DiscoveredTest("N.C.Integration", false, Traits: ["Category=Integration"]),
+            new DiscoveredTest("N.C.Untagged", false),
+        ]);
+
+        vm.TraitFilter = "unit";
+
+        var group = Assert.Single(vm.TestTree);
+        Assert.Equal(["Unit"], group.Tests.Select(test => test.MethodName));
+    }
 }
 
 /// <summary>テストから <see cref="DebugTestsViewModel"/> を組み立てる補助（副作用のある依存はフェイク、
@@ -137,7 +248,7 @@ internal static class TestExplorerFactory
             new sk0ya.Loomo.Services.Debug.NetcoredbgDebugSessionFactory(),
             new FakeWorkspaceService(),
             new FakeTerminalService(),
-            new sk0ya.Loomo.Services.Debug.TestDiscoveryService(),
+            new sk0ya.Loomo.CSharp.Testing.TestDiscoveryService(),
             new DebugLaunchProfileStore(
                 System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{Guid.NewGuid():N}-launch.json"))).Tests;
 }

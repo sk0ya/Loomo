@@ -5,6 +5,7 @@ namespace sk0ya.Loomo.Tests;
 
 /// <summary>上書き貼り付けで退避した実体（<c>.loomo-conflict-*</c>）が、いつ消えるか。
 /// Undo のために残すのは正しいが、<b>残しっぱなしにしない</b>ことがここの主題。</summary>
+[Collection(WindowsShellTests.Name)]
 public sealed class ConflictBackupCleanupTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"loomo-backup-cleanup-{Guid.NewGuid():N}");

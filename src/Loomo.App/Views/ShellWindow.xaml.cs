@@ -23,6 +23,11 @@ public partial class ShellWindow : Window {
     private readonly ILspServerAdmin _lspServerAdmin;
     private readonly KeybindingService _keybindings;
     private readonly FileAiSelectionContextBuilder _fileAiSelection;
+    private readonly sk0ya.Loomo.CSharp.Projects.ISolutionModelService? _solutionModel;
+    private readonly sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService _styleCopDiagnostics;
+    private readonly sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService _styleCopCodeFix;
+    private readonly sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService _compilerDiagnostics;
+    private readonly sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService _csharpEditorConfig;
     private CancellationTokenSource? _fileAiPreparationCts;
     private readonly ShellViewModel _vm;
     private KeyboardDispatcher? _keyboard;
@@ -42,6 +47,11 @@ public partial class ShellWindow : Window {
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
     private EditorTab? _previewEditorTab;
+    // Roslyn/LSP の WorkspaceEdit は複数文書を一手で変更するため、Editor個別のUndoとは別に
+    // 前後のスナップショットを保持する。通常の入力が混ざった場合は一致検証で安全に拒否する。
+    private readonly List<WorkspaceEditHistoryEntry> _workspaceEditUndo = [];
+    private readonly List<WorkspaceEditHistoryEntry> _workspaceEditRedo = [];
+    private bool _restoringWorkspaceEdit;
     private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
     private static readonly string EditorSupportPreviewFolder = Services.WebViewProfile.PreviewPageFolder;
@@ -87,7 +97,13 @@ public partial class ShellWindow : Window {
         public static FocusTarget Of(PaneKind kind) => new(kind);
         public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
     }
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions) {
+    private sealed record WorkspaceEditHistoryEntry(
+        string Description,
+        IReadOnlyDictionary<string, LspFileSnapshot> BeforeFiles,
+        IReadOnlyDictionary<string, LspFileSnapshot> AfterFiles,
+        IReadOnlyDictionary<string, string> BeforeEditors,
+        IReadOnlyDictionary<string, string> AfterEditors);
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -102,6 +118,11 @@ public partial class ShellWindow : Window {
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
+        _solutionModel = solutionModel;
+        _styleCopDiagnostics = styleCopDiagnostics;
+        _styleCopCodeFix = styleCopCodeFix;
+        _compilerDiagnostics = compilerDiagnostics;
+        _csharpEditorConfig = csharpEditorConfig;
         _tabIcons = tabIcons;
         _diffSessions = diffSessions;
         _settings = settings;
@@ -201,6 +222,7 @@ public partial class ShellWindow : Window {
         HookIdeActivity(PaneKind.Debug, _vm.Debug);
         HookIdeActivity(PaneKind.TsIde, _vm.TsIde);
         InitializeProblemsWiring();
+        InitializeCSharpDiagnosticsWiring();
         InitializeRefactoringWiring();
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
@@ -234,6 +256,11 @@ public partial class ShellWindow : Window {
         };
         vm.FolderTree.FilePreviewRequested += async (_, path) => await OpenFileInPreviewTabAsync(path);
         vm.FolderTree.FileActivated += async (_, path) => await OpenFileInNewEditorTabAsync(path);
+        if (vm.CSharpSolutionExplorer is { } csharpExplorer)
+        {
+            csharpExplorer.FileOpenRequested += async (_, path) => await OpenFileInNewEditorTabAsync(path);
+            csharpExplorer.ActionRequested += OnCSharpSolutionActionRequested;
+        }
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         vm.FolderTree.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);
         vm.FolderTree.EntryDeleted += (_, path) => OnFolderTreeEntryDeleted(path);
