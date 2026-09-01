@@ -25,11 +25,16 @@ public partial class DebugView : UserControl
     private DebugViewModel? _vm;
     private bool _projectPaneExpanded = true;
     private double _expandedProjectPaneWidth = 220;
+    /// <summary>ソリューション段を畳む直前の高さ。展開したときにここへ戻す。</summary>
+    private double _expandedSolutionHeight = 220;
+    private CSharpSolutionExplorerViewModel? _solutionVm;
 
     public DebugView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        SolutionSection.SectionExpandedChanged += (_, _) => ApplySolutionSectionLayout();
+        ApplySolutionSectionLayout();
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -40,6 +45,8 @@ public partial class DebugView : UserControl
             _vm.PropertyChanged -= OnVmPropertyChanged;
             _vm.OutputRequested -= OnOutputRequested;
         }
+        if (_solutionVm is not null) _solutionVm.PropertyChanged -= OnSolutionVmPropertyChanged;
+        _solutionVm = null;
         if (DataContext is DebugViewModel vm)
         {
             _observed = vm.Output;
@@ -47,8 +54,51 @@ public partial class DebugView : UserControl
             _vm = vm;
             _vm.PropertyChanged += OnVmPropertyChanged;
             _vm.OutputRequested += OnOutputRequested;
+            _solutionVm = vm.SolutionExplorer;
+            if (_solutionVm is not null) _solutionVm.PropertyChanged += OnSolutionVmPropertyChanged;
         }
+        ApplySolutionSectionLayout();
         RebuildConsole();
+    }
+
+    // C# プロジェクトの有無（IsVisible）で段そのものが出入りするため、行の高さも合わせ直す。
+    private void OnSolutionVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CSharpSolutionExplorerViewModel.IsVisible))
+            ApplySolutionSectionLayout();
+    }
+
+    /// <summary>ソリューション段の高さ配分。C# が無ければ段ごと消し、畳んでいるときは
+    /// Auto（見出し行だけ）へ落として、展開時に直前の高さへ戻す。</summary>
+    private void ApplySolutionSectionLayout()
+    {
+        // 畳む・段ごと消す前に必ず現在の高さを覚える。スプリッターでドラッグした高さは
+        // Height ではなく実測値にしか出ない（* へ変わる）ので ActualHeight を見る。
+        RememberSolutionHeight();
+        if (_solutionVm?.IsVisible != true)
+        {
+            SolutionSplitter.Visibility = Visibility.Collapsed;
+            SolutionSectionRow.MinHeight = 0;
+            SolutionSectionRow.Height = new GridLength(0);
+            return;
+        }
+        if (SolutionSection.IsSectionExpanded)
+        {
+            SolutionSplitter.Visibility = Visibility.Visible;
+            SolutionSectionRow.MinHeight = 24;
+            SolutionSectionRow.Height = new GridLength(_expandedSolutionHeight);
+            return;
+        }
+        SolutionSplitter.Visibility = Visibility.Collapsed;
+        SolutionSectionRow.MinHeight = 0;
+        SolutionSectionRow.Height = GridLength.Auto;
+    }
+
+    /// <summary>展開中に見えている高さだけを覚える。見出しだけの高さや 0 は記憶しない。</summary>
+    private void RememberSolutionHeight()
+    {
+        if (SolutionSplitter.Visibility == Visibility.Visible && SolutionSectionRow.ActualHeight > 40)
+            _expandedSolutionHeight = SolutionSectionRow.ActualHeight;
     }
 
     // Output コレクションを RichTextBox のドキュメントへ写し直す（DataContext 差し替え時）。
@@ -155,7 +205,7 @@ public partial class DebugView : UserControl
             ProjectColumn.Width = new GridLength(28);
             ProjectPaneRail.Visibility = Visibility.Visible;
             ProjectPaneToggle.Content = "›";
-            ProjectPaneToggle.ToolTip = "プロジェクト領域を展開";
+            ProjectPaneToggle.ToolTip = "プロジェクト／ソリューション領域を展開";
         }
         else
         {
@@ -166,7 +216,7 @@ public partial class DebugView : UserControl
             ProjectColumn.Width = new GridLength(Math.Max(170, _expandedProjectPaneWidth));
             ProjectPaneRail.Visibility = Visibility.Collapsed;
             ProjectPaneToggle.Content = "‹";
-            ProjectPaneToggle.ToolTip = "プロジェクト領域を折りたたむ";
+            ProjectPaneToggle.ToolTip = "プロジェクト／ソリューション領域を折りたたむ";
         }
     }
 

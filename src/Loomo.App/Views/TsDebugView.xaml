@@ -55,7 +55,10 @@
                                     <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,2,4,0" />
                                 </ScrollViewer>
                             </Border>
-                            <ContentPresenter ContentSource="SelectedContent" />
+                            <!-- 名前は PART_SelectedContentHost でなければならない。WPF の
+                                 TabItemAutomationPeer がこの名前のテンプレート子から選択中タブの
+                                 中身を UI Automation ツリーへ繋ぐ（DebugView と同じ理由）。 -->
+                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
                         </DockPanel>
                     </ControlTemplate>
                 </Setter.Value>

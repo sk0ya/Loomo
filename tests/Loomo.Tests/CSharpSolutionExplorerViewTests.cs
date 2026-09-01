@@ -206,6 +206,105 @@ public sealed class CSharpSolutionExplorerViewTests
         });
     }
 
+    /// <summary>行の選択・ホバー・見出しのボタンをすべてパレット（Accent/AccentFg/SecondaryButton）から
+    /// 描くこと。既定の TreeViewItem テンプレートのままだと選択行が SystemColors の青で塗られ、
+    /// どのテーマへ切り替えてもそこだけ配色が追従しない（実際にそうなっていた）。</summary>
+    [Fact]
+    public void 選択行と見出しボタンはテーマのブラシで描かれる()
+    {
+        _host.Run(() =>
+        {
+            using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(SampleSolution()));
+            var view = new CSharpSolutionExplorerView { DataContext = vm };
+            var window = new Window { Width = 520, Height = 420, Content = view, ShowInTaskbar = false };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var secondary = Application.Current!.Resources["SecondaryButton"];
+                foreach (var id in new[] { "CSharpSolutionBuild", "CSharpSolutionTest" })
+                {
+                    var button = FindVisual<Button>(view,
+                        b => AutomationProperties.GetAutomationId(b) == id);
+                    Assert.NotNull(button);
+                    Assert.Same(secondary, button!.Style);
+                }
+
+                var projectItem = FindVisual<TreeViewItem>(view,
+                    item => item.DataContext is CSharpSolutionNodeViewModel
+                    {
+                        Kind: CSharpSolutionNodeKind.Project,
+                    });
+                Assert.NotNull(projectItem);
+                projectItem!.IsSelected = true;
+                window.UpdateLayout();
+
+                var row = (Border)projectItem.Template.FindName("Bd", projectItem);
+                Assert.Same(Application.Current.Resources["Accent"], row.Background);
+                Assert.Same(Application.Current.Resources["AccentFg"], projectItem.Foreground);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>見出しのトグルでツリー本体だけを畳み、ホストが高さを詰められるよう通知すること。</summary>
+    [Fact]
+    public void 見出しのトグルでツリー本体を畳み展開できる()
+    {
+        _host.Run(() =>
+        {
+            using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(SampleSolution()));
+            var view = new CSharpSolutionExplorerView { DataContext = vm };
+            var window = new Window { Width = 520, Height = 420, Content = view, ShowInTaskbar = false };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var changed = 0;
+                view.SectionExpandedChanged += (_, _) => changed++;
+                var toggle = FindVisual<Button>(view,
+                    b => AutomationProperties.GetAutomationId(b) == "CSharpSolutionSectionToggle");
+                Assert.NotNull(toggle);
+                Assert.True(view.IsSectionExpanded);
+
+                toggle!.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.UpdateLayout();
+                Assert.False(view.IsSectionExpanded);
+                Assert.Equal(1, changed);
+                var body = (Grid)view.FindName("SectionBody");
+                Assert.Equal(Visibility.Collapsed, body.Visibility);
+                // 畳んでもツリーだけが消え、見出し（ビルド/テスト）は残る。
+                Assert.NotNull(FindVisual<Button>(view,
+                    b => AutomationProperties.GetAutomationId(b) == "CSharpSolutionBuild"));
+
+                toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.UpdateLayout();
+                Assert.True(view.IsSectionExpanded);
+                Assert.Equal(2, changed);
+                Assert.Equal(Visibility.Visible, body.Visibility);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private static SolutionModel SampleSolution()
+    {
+        var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
+            new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Program.cs", @"C:\work\App\Program.cs")], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        return new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
+            [project], ProjectLoadState.Ready);
+    }
+
     private static AutomationPeer? FindPeer(AutomationPeer parent, string name)
     {
         foreach (var child in parent.GetChildren() ?? [])

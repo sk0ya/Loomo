@@ -1075,3 +1075,7 @@ StyleCopだけを先に追加しても、Roslynがプロジェクトを正しく
 - `LOOMO_RUN_REAL_WPF=1`で、C# Solution Explorer／EditorCanvas／LSP readyの起動スモーク、デスクトップ入力によるC#編集→Ctrl+S、診断Quick Fix→preview適用→保存→Solution Build／Testをそれぞれ単独再実行し、各1件合格させた。複数実WPFテストの同時実行は引き続き避け、公開NuGet反映と実装者以外のレビューは未完了とする。
 - 実WPFのコマンドパレットから`Equals／GetHashCode`生成を起動し、型選択→編集プレビュー→適用→Ctrl+S→ディスク反映までを1件合格させた。C#のFixだけでなく、コード生成のUI導線も同一プロセスで確認した。公開NuGet反映と実装者以外のレビューは未完了とする。
 - `UseLocalEditor=false`／`EditorPackageVersion=1.0.86`のcandidate package-only構成で、同じコード生成の実WPF旅程を1件合格させた（restore／Buildは警告0・エラー0）。確認後に通常のローカルEditor参照へ復元し、solution Build（警告0・エラー0）も完了した。公開NuGet反映と実装者以外のレビューは未完了とする。
+- C# Solution Explorerをサイドバー（エクスプローラ）からIDEペインの「実行」タブ左列へ移し、起動対象の「プロジェクト」一覧と上下2段で並べた。境目はGridSplitterでドラッグでき、ソリューション側は見出しのトグルで見出し行だけへ畳める（畳むと行はAuto、展開で直前の高さへ戻す）。C#プロジェクトが無いワークスペースでは段ごと消える。サイドバーはフォルダーツリー専任へ戻した。
+- 同ビューの配色不足も直した。既定のTreeViewItemテンプレートは選択・ホバー・開閉矢印をSystemColors（青）で描くためテーマ切替に追従しなかったので、FolderTreeViewと同じ構成へ置き換えてAccent／AccentFg／Border／FgDimから取るようにし、素のButtonだった「ビルド」「テスト」もSecondaryButtonへ、文字サイズもFs*トークンへ揃えた。実WPFの回帰（配置・折りたたみ・選択行のブラシ・見出しボタンのStyle）を5件追加した。
+- 移設の実機確認で、IDE／TS IDEペインのタブ中身がUI Automationツリーへ一切出ていないことを検出した。自前のTabControlテンプレートの`ContentPresenter`に`PART_SelectedContentHost`という名前が無く、WPFの`TabItemAutomationPeer`が選択中タブの中身を繋げられていなかった（`CSharpSolutionTree`等が実機で見つからない）。両テンプレートに名前を付け、実機で`CSharpSolutionTree`／`Build`／`Test`／`構成`／折りたたみトグルがUIAから引けること、トグル起動で段が畳まれること、ツリー行の選択がAccent／AccentFgで塗られることを目視とUIA操作で確認した。
+- 狭い左列（220px程度）に合わせ、見出しのビルド／テストはアイコン（🔨／🧪、意味はツールチップ）にし、既定のBringIntoViewが選択のたびに横スクロールして名前の頭を切る問題もFolderTreeViewと同じ縦のみ追従へ直した。

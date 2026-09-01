@@ -11,6 +11,29 @@ public partial class CSharpSolutionExplorerView : UserControl
 {
     public CSharpSolutionExplorerView() => InitializeComponent();
 
+    /// <summary>ツリー本体を表示しているか。false のときは見出し行だけを残して畳む。
+    /// 高さの配分はホスト（IDE ペインの実行タブ）が持つため、状態変化は
+    /// <see cref="SectionExpandedChanged"/> で知らせる。</summary>
+    public bool IsSectionExpanded { get; private set; } = true;
+
+    /// <summary><see cref="IsSectionExpanded"/> が変わった。ホストが行の高さを畳む／戻すために使う。</summary>
+    public event EventHandler? SectionExpandedChanged;
+
+    /// <summary>ホストから初期状態を復元するときに使う。状態が実際に変わったときだけ
+    /// <see cref="SectionExpandedChanged"/> を発火する（同じ値なら何もしない）。</summary>
+    public void SetSectionExpanded(bool expanded)
+    {
+        if (IsSectionExpanded == expanded) return;
+        IsSectionExpanded = expanded;
+        SectionBody.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        SectionToggle.Content = expanded ? "▾" : "▸";
+        SectionToggle.ToolTip = expanded ? "ソリューションツリーを折りたたむ" : "ソリューションツリーを展開";
+        SectionExpandedChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnSectionToggleClick(object sender, RoutedEventArgs e)
+        => SetSectionExpanded(!IsSectionExpanded);
+
     private void OnBuildClick(object sender, RoutedEventArgs e)
         => RequestRootAction(CSharpSolutionAction.Build);
 
@@ -57,6 +80,41 @@ public partial class CSharpSolutionExplorerView : UserControl
 
         vm.Open(node);
         e.Handled = true;
+    }
+
+    /// <summary>選択・キーボード移動で WPF が出す BringIntoView を縦スクロールだけに絞る。
+    /// 既定のままだと深い項目を見せようと横にもスクロールし、狭い左列では名前の頭が切れる
+    /// （フォルダーツリーと同じ理由・同じ扱い）。</summary>
+    private void OnItemRequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        if (sender is not TreeViewItem item) return;
+        e.Handled = true;
+
+        // マウスで掴めた行は既に見えている。押下中は現在位置を保ち、キーボード移動だけ追従させる。
+        if (System.Windows.Input.Mouse.LeftButton == System.Windows.Input.MouseButtonState.Pressed) return;
+        if (FindDescendant<ScrollViewer>(SolutionTree) is not { } scrollViewer) return;
+
+        // 対象はヘッダ行（Bd）のみ。item 全体だと展開済みの子を含む高さになる。
+        var header = item.Template?.FindName("Bd", item) as FrameworkElement ?? item;
+        if (!header.IsVisible) return;
+
+        var top = header.TransformToVisual(scrollViewer).Transform(default).Y;
+        var bottom = top + header.ActualHeight;
+        if (top < 0)
+            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + top);
+        else if (bottom > scrollViewer.ViewportHeight)
+            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + (bottom - scrollViewer.ViewportHeight));
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            if (FindDescendant<T>(child) is { } found) return found;
+        }
+        return null;
     }
 
     private void OnTreeItemContextMenuOpening(object sender, ContextMenuEventArgs e)

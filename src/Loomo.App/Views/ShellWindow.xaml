@@ -756,16 +756,10 @@
                                  落とし、展開時に直前の高さへ戻す（ShellWindow.SidebarSections.cs）。 -->
                             <RowDefinition x:Name="SidebarTabsRow" Height="200" MinHeight="26" />
                         </Grid.RowDefinitions>
-                        <Grid Grid.Row="0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <views:CSharpSolutionExplorerView Grid.Row="0" MaxHeight="220"
-                                DataContext="{Binding CSharpSolutionExplorer}" />
-                            <views:FolderTreeView x:Name="SidebarFolderTree" Grid.Row="1"
-                                DataContext="{Binding FolderTree}" />
-                        </Grid>
+                        <!-- C# ソリューションツリーはここから IDE ペイン（実行タブの左列）へ移した。
+                             サイドバーはフォルダー（＝部屋の住所）に専念させ、C# の道具は IDE ペインへ集約する。 -->
+                        <views:FolderTreeView x:Name="SidebarFolderTree" Grid.Row="0"
+                            DataContext="{Binding FolderTree}" />
                         <GridSplitter x:Name="SidebarTabsSplitter" Grid.Row="1" Height="5"
                                       HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                       ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"

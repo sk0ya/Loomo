@@ -24,11 +24,18 @@ public sealed class DebugViewModel : DebugManagerViewModelBase
     public DebugLaunchViewModel Launch { get; }
     public DebugProfilesViewModel Profiles { get; }
 
+    /// <summary>評価済み solution／project の構造ツリー。以前はサイドバー（エクスプローラ）に
+    /// 置いていたが、C# の道具はこの IDE ペインへ集約したので実行タブの左列に同居させる。
+    /// 実体は DI のシングルトンで、開くファイル・ビルド/テスト要求の結線は ShellWindow が持つ。</summary>
+    public CSharpSolutionExplorerViewModel? SolutionExplorer { get; }
+
     public DebugViewModel(IDebugSessionFactory sessionFactory, IWorkspaceService workspace, ITerminalService terminal,
         ITestDiscoveryService testDiscovery, DebugLaunchProfileStore profileStore,
-        ISolutionModelService? solutionModel = null, IBrowserService? browser = null)
+        ISolutionModelService? solutionModel = null, IBrowserService? browser = null,
+        CSharpSolutionExplorerViewModel? solutionExplorer = null)
         : base(sessionFactory, workspace)
     {
+        SolutionExplorer = solutionExplorer;
         Attach = new DebugAttachViewModel(this);
         Tests = new DebugTestsViewModel(workspace, terminal, testDiscovery, this, solutionModel);
         Profiles = new DebugProfilesViewModel(workspace, profileStore);

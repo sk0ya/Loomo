@@ -9,7 +9,7 @@ namespace sk0ya.Loomo.Tests;
 public sealed class ExplorerLayoutTests
 {
     [Fact]
-    public void ExplorerはCSharpソリューションツリーとFolderTreeを表示し最近項目を重複表示しない()
+    public void ExplorerはFolderTreeを表示し最近項目もCSharpソリューションも重複表示しない()
     {
         var xaml = Read("src", "Loomo.App", "Views", "ShellWindow.xaml");
         var start = xaml.IndexOf("<Grid x:Name=\"ExplorerSection\"", StringComparison.Ordinal);
@@ -17,20 +17,47 @@ public sealed class ExplorerLayoutTests
         Assert.True(start >= 0 && end > start);
         var section = xaml[start..end];
 
-        var solutionTree = section.IndexOf("<views:CSharpSolutionExplorerView", StringComparison.Ordinal);
-        Assert.True(solutionTree >= 0, "CSharpSolutionExplorerView は ExplorerSection にあること");
+        // C# ソリューションツリーは IDE ペイン（DebugView の実行タブ）へ移した。
+        Assert.DoesNotContain("<views:CSharpSolutionExplorerView", section);
 
         var tree = section.IndexOf("<views:FolderTreeView", StringComparison.Ordinal);
         Assert.True(tree >= 0, "FolderTreeView は ExplorerSection の中にあること");
         var tagEnd = section.IndexOf('>', tree);
         Assert.True(tagEnd > tree, "FolderTreeView の開始タグが閉じていること");
-        Assert.True(solutionTree < tree, "CSharpSolutionExplorerView は FolderTreeView より先に表示すること");
-        Assert.True(section[tree..tagEnd].Contains("Grid.Row=\"1\"", StringComparison.Ordinal),
-            "FolderTreeView はソリューションツリーの下に置くこと");
+        Assert.True(section[tree..tagEnd].Contains("Grid.Row=\"0\"", StringComparison.Ordinal),
+            "FolderTreeView はエクスプローラの最上段に置くこと");
         Assert.DoesNotContain("RecentItemsView", section);
         Assert.Contains("ExplorerFolderTreeRow\" Height=\"*\" MinHeight=\"150\"", section);
         Assert.Contains("<GridSplitter x:Name=\"SidebarTabsSplitter\" Grid.Row=\"1\"", section);
         Assert.Contains("<views:TabsView Grid.Row=\"2\"", section);
+    }
+
+    /// <summary>C# ソリューションツリーは IDE ペインの実行タブ左列（プロジェクト一覧の下）に置き、
+    /// 見出し行のトグルで畳めること。サイドバーへ戻る退行を防ぐ。</summary>
+    [Fact]
+    public void CSharpソリューションツリーはIDEペインの実行タブに畳める段として置かれる()
+    {
+        var xaml = Read("src", "Loomo.App", "Views", "DebugView.xaml");
+        var start = xaml.IndexOf("<Grid x:Name=\"ProjectPaneContent\"", StringComparison.Ordinal);
+        var end = xaml.IndexOf("x:Name=\"ProjectPaneRail\"", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, "実行タブの左列（ProjectPaneContent）があること");
+        var column = xaml[start..end];
+
+        Assert.Contains("<RowDefinition x:Name=\"SolutionSectionRow\"", column);
+        Assert.Contains("<GridSplitter x:Name=\"SolutionSplitter\" Grid.Row=\"1\"", column);
+        var solution = column.IndexOf("<v:CSharpSolutionExplorerView x:Name=\"SolutionSection\"",
+            StringComparison.Ordinal);
+        Assert.True(solution >= 0, "CSharpSolutionExplorerView は左列にあること");
+        var tagEnd = column.IndexOf("/>", solution, StringComparison.Ordinal);
+        Assert.True(tagEnd > solution);
+        var tag = column[solution..tagEnd];
+        Assert.Contains("Grid.Row=\"2\"", tag);
+        Assert.Contains("DataContext=\"{Binding SolutionExplorer}\"", tag);
+
+        var view = Read("src", "Loomo.App", "Views", "CSharpSolutionExplorerView.xaml");
+        Assert.Contains("x:Name=\"SectionToggle\"", view);
+        Assert.Contains("Click=\"OnSectionToggleClick\"", view);
+        Assert.Contains("x:Name=\"SectionBody\"", view);
     }
 
     [Fact]
