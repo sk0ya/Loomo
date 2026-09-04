@@ -31,6 +31,8 @@ public partial class BranchSwitcherView : UserControl
     public BranchSwitcherView()
     {
         InitializeComponent();
+        if (Tree.ContextMenu is { } menu)
+            menu.Closed += (_, _) => _branchMenuTarget = null;
     }
 
     /// <summary>ポップアップを閉じてほしい（チェックアウト成功・ダイアログを出す直前など）。
@@ -38,6 +40,7 @@ public partial class BranchSwitcherView : UserControl
     public event EventHandler? CloseRequested;
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
+    private GitBranchInfo? _branchMenuTarget;
 
     private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
@@ -102,6 +105,7 @@ public partial class BranchSwitcherView : UserControl
 
         if (node.Branch is null)
         {
+            _branchMenuTarget = null;
             item.IsExpanded = !item.IsExpanded;
         }
         else
@@ -115,12 +119,16 @@ public partial class BranchSwitcherView : UserControl
     // ===== 行の右クリックメニュー =====
 
     private BranchTreeNode? SelectedNode => Tree.SelectedItem as BranchTreeNode;
-    private GitBranchInfo? Target => SelectedNode?.Branch;
+    private GitBranchInfo? Target => _branchMenuTarget ?? SelectedNode?.Branch;
 
     private void OnTreeRightClickSelect(object sender, MouseButtonEventArgs e)
     {
+        _branchMenuTarget = null;
         if (FindRow(e.OriginalSource) is { } item)
+        {
             item.IsSelected = true;
+            _branchMenuTarget = (item.DataContext as BranchTreeNode)?.Branch;
+        }
     }
 
     /// <summary>左クリックで開くブランチメニューを、クリックされた行の下に配置する。</summary>
@@ -128,7 +136,13 @@ public partial class BranchSwitcherView : UserControl
     {
         if (Tree.ContextMenu is not { } menu)
             return;
-        if (!TryPrepareBranchMenu())
+        if (item is not { IsLoaded: true, DataContext: BranchTreeNode { Branch: { } branch } })
+            return;
+
+        if (menu.IsOpen)
+            menu.IsOpen = false;
+        _branchMenuTarget = branch;
+        if (!TryPrepareBranchMenu(branch))
             return;
 
         PlaceBranchMenu(menu, item);
@@ -150,19 +164,23 @@ public partial class BranchSwitcherView : UserControl
     /// </summary>
     private void OnTreeContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (!TryPrepareBranchMenu())
+        var item = FindRow(e.OriginalSource);
+        _branchMenuTarget = item?.DataContext is BranchTreeNode { Branch: { } branch }
+            ? branch
+            : SelectedNode?.Branch;
+        if (!TryPrepareBranchMenu(_branchMenuTarget))
         {
             e.Handled = true;
             return;
         }
 
-        if (FindRow(e.OriginalSource) is { } item && Tree.ContextMenu is { } menu)
+        if (item is not null && Tree.ContextMenu is { } menu)
             PlaceBranchMenu(menu, item);
     }
 
-    private bool TryPrepareBranchMenu()
+    private bool TryPrepareBranchMenu(GitBranchInfo? target)
     {
-        if (Target is not { } branch)
+        if (target is not { } branch)
             return false;
 
         MenuCheckout.IsEnabled = !branch.IsCurrent;

@@ -28,6 +28,8 @@ public partial class GitSessionView : UserControl
     private bool _isRevealingLogRow;
     private System.Windows.Threading.DispatcherTimer? _branchMenuTimer;
     private TreeViewItem? _pendingBranchMenuItem;
+    private GitBranchInfo? _branchMenuTarget;
+    private int _branchLogRequest;
 
     [DllImport("user32.dll")]
     private static extern uint GetDoubleClickTime();
@@ -43,6 +45,8 @@ public partial class GitSessionView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         SetupLogColumnResize();
+        if (BranchList.ContextMenu is { } menu)
+            menu.Closed += (_, _) => _branchMenuTarget = null;
     }
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
@@ -248,7 +252,8 @@ public partial class GitSessionView : UserControl
     // ===== ブランチ操作 =====
 
     /// <summary>ツリーで選択中のブランチ。フォルダノード選択中は null（各操作は何もしない）。</summary>
-    private GitBranchInfo? SelectedBranch => (BranchList.SelectedItem as BranchTreeNode)?.Branch;
+    private GitBranchInfo? SelectedTreeBranch => (BranchList.SelectedItem as BranchTreeNode)?.Branch;
+    private GitBranchInfo? SelectedBranch => _branchMenuTarget ?? SelectedTreeBranch;
 
     /// <summary>
     /// ブランチのダブルクリックはチェックアウトではなく、右側のコミットグラフをそのブランチに切り替える
@@ -257,8 +262,35 @@ public partial class GitSessionView : UserControl
     private async void OnBranchDoubleClick(object sender, MouseButtonEventArgs e)
     {
         CancelPendingBranchMenu();
-        if (Vm is { } vm && SelectedBranch is { } branch)
+        if (Vm is not { } vm)
+            return;
+
+        // 連打中は SelectedItem が次のクリックで変わっている可能性があるため、
+        // TreeView の現在選択ではなく、ダブルクリックされた行を対象にする。
+        var branch = FindRowContainer(e.OriginalSource) is TreeViewItem
+            {
+                DataContext: BranchTreeNode { Branch: { } clickedBranch }
+            }
+            ? clickedBranch
+            : SelectedTreeBranch;
+        if (branch is null)
+            return;
+
+        var request = ++_branchLogRequest;
+        try
+        {
             await vm.ShowBranchLogAsync(branch);
+        }
+        catch (Exception exception)
+        {
+            // async void のイベントハンドラーから例外を出すとアプリ全体が終了する。
+            // 連打で古い読み込みが失敗しても、最新の操作だけを画面へ知らせる。
+            if (request == _branchLogRequest)
+            {
+                vm.StatusIsError = true;
+                vm.StatusMessage = exception.Message;
+            }
+        }
     }
 
     /// <summary>
@@ -321,7 +353,7 @@ public partial class GitSessionView : UserControl
         var item = _pendingBranchMenuItem;
         _pendingBranchMenuItem = null;
         _branchMenuTimer = null;
-        if (item is not null)
+        if (item is { IsLoaded: true, DataContext: BranchTreeNode { Branch: not null } })
             OpenBranchMenu(item);
     }
 
@@ -342,7 +374,14 @@ public partial class GitSessionView : UserControl
     {
         if (BranchList.ContextMenu is not { } menu)
             return;
-        if (!TryPrepareBranchMenu())
+        if (item is not { IsLoaded: true, DataContext: BranchTreeNode { Branch: { } branch } })
+            return;
+
+        // 前のメニューが閉じる前に次のクリックが来ても、同じ Popup を再利用する。
+        if (menu.IsOpen)
+            menu.IsOpen = false;
+        _branchMenuTarget = branch;
+        if (!TryPrepareBranchMenu(branch))
             return;
 
         PlaceBranchMenu(menu, item);
@@ -371,19 +410,23 @@ public partial class GitSessionView : UserControl
     /// </summary>
     private void OnBranchContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (!TryPrepareBranchMenu())
+        var item = FindRowContainer(e.OriginalSource) as TreeViewItem;
+        _branchMenuTarget = item?.DataContext is BranchTreeNode { Branch: { } branch }
+            ? branch
+            : SelectedTreeBranch;
+        if (!TryPrepareBranchMenu(_branchMenuTarget))
         {
             e.Handled = true;
             return;
         }
 
-        if (FindRowContainer(e.OriginalSource) is TreeViewItem item && BranchList.ContextMenu is { } menu)
+        if (item is not null && BranchList.ContextMenu is { } menu)
             PlaceBranchMenu(menu, item);
     }
 
-    private bool TryPrepareBranchMenu()
+    private bool TryPrepareBranchMenu(GitBranchInfo? target)
     {
-        if (SelectedBranch is not { } branch)
+        if (target is not { } branch)
             return false;
 
         BranchMenuCheckout.IsEnabled = !branch.IsCurrent;
