@@ -35,15 +35,18 @@ public sealed class CSharpCompilerDiagnosticService
         {
             var target = project.SelectedTargetFrameworkModel;
             var editorConfig = _editorConfig.Resolve(fullPath);
-            var compilation = await Task.Run(() => CSharpWorkspaceOperationContext.Create(
-                solution, fullPath, source,
-                includeSemanticCompilation: true,
-                compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
-                assemblyName: project.Name,
-                openTexts: openTexts
-            ), cancellationToken);
-
-            var diagnostics = compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
+            // Compilation の生成も診断の取得も Task.Run の<b>中</b>で完結させる。
+            // GetDiagnostics() が意味解析の本体で、ここが一番重い——await の後ろに置くと、
+            // UI スレッドから呼ばれたときに続きがディスパッチャへ戻って数秒固まる（実測3.9秒）。
+            var diagnostics = await Task.Run(() =>
+            {
+                var compilation = CSharpWorkspaceOperationContext.Create(
+                    solution, fullPath, source,
+                    includeSemanticCompilation: true,
+                    compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
+                    assemblyName: project.Name,
+                    openTexts: openTexts);
+                return compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
                 .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)
                 .Where(diagnostic => string.Equals(
                     Path.GetFullPath(diagnostic.Location.SourceTree?.FilePath ?? ""),
@@ -55,6 +58,7 @@ public sealed class CSharpCompilerDiagnosticService
                 .ThenBy(diagnostic => diagnostic.Range.Start.Character)
                 .ThenBy(diagnostic => diagnostic.Code, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+            }, cancellationToken).ConfigureAwait(false);
             return new(diagnostics, null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

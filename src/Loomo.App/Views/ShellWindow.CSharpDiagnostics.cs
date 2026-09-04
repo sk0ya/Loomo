@@ -95,8 +95,14 @@ public partial class ShellWindow
         {
             // 文字入力中に毎キーでRoslyn Compilationを作らない。最後の入力だけを解析し、
             // 入力が止まった後の診断をLSPと同じく非同期で反映する。
-            await Task.Delay(300, cts.Token);
-            var result = await _styleCopDiagnostics.AnalyzeAsync(project, expectedPath, source, cts.Token, openTexts);
+            //
+            // ConfigureAwait(false) は必須——このメソッドは UI スレッドから fire-and-forget で
+            // 起動されるので、付けないと待機の続き（＝解析本体そのもの）が UI スレッドへ戻り、
+            // Roslyn の構文解析とAnalyzer実行が数秒ぶんディスパッチャを占有する。
+            // 結果の反映は下の Dispatcher.InvokeAsync で明示的に戻している。
+            await Task.Delay(300, cts.Token).ConfigureAwait(false);
+            var result = await _styleCopDiagnostics
+                .AnalyzeAsync(project, expectedPath, source, cts.Token, openTexts).ConfigureAwait(false);
             await Dispatcher.InvokeAsync(() =>
             {
                 if (cts.IsCancellationRequested || !ReferenceEquals(_styleCopAnalysisCts.GetValueOrDefault(control), cts) ||
@@ -145,8 +151,10 @@ public partial class ShellWindow
     {
         try
         {
-            await Task.Delay(300, cts.Token);
-            var result = await _compilerDiagnostics.AnalyzeAsync(solution, expectedPath, source, cts.Token, openTexts);
+            // ConfigureAwait(false) の理由は AnalyzeStyleCopAsync 側のコメントと同じ。
+            await Task.Delay(300, cts.Token).ConfigureAwait(false);
+            var result = await _compilerDiagnostics
+                .AnalyzeAsync(solution, expectedPath, source, cts.Token, openTexts).ConfigureAwait(false);
             await Dispatcher.InvokeAsync(() =>
             {
                 if (cts.IsCancellationRequested || !ReferenceEquals(_compilerAnalysisCts.GetValueOrDefault(control), cts) ||

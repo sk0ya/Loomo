@@ -100,6 +100,9 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
     private void Apply(SolutionModel model)
     {
         if (_disposed) return;
+        // 開閉は利用者の状態なので、作り直しても引き継ぐ。ノード VM ごと捨てているため、
+        // 引き継がないと構成切替や .csproj の保存のたびにツリーが畳まれて手元が飛ぶ。
+        var expanded = CollectExpanded(Nodes);
         Nodes.Clear();
         SelectedNode = null;
         var hasProjects = model.Projects.Count > 0;
@@ -117,9 +120,41 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
         _suppressConfigurationSelection = false;
         OnPropertyChanged(nameof(ConfigurationOptions));
         OnPropertyChanged(nameof(HasMultipleConfigurations));
-        if (hasProjects)
-            Nodes.Add(CSharpSolutionNodeViewModel.From(CSharpSolutionTreeBuilder.Build(model)));
+        if (!hasProjects) return;
+        var root = CSharpSolutionNodeViewModel.From(CSharpSolutionTreeBuilder.Build(model));
+        if (expanded.Count > 0) RestoreExpanded(new[] { root }, expanded);
+        Nodes.Add(root);
     }
+
+    /// <summary>開いているノードの識別子（パス、無ければ種類＋名前）を集める。</summary>
+    private static HashSet<string> CollectExpanded(IEnumerable<CSharpSolutionNodeViewModel> nodes)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Walk(nodes);
+        return result;
+
+        void Walk(IEnumerable<CSharpSolutionNodeViewModel> current)
+        {
+            foreach (var node in current)
+            {
+                if (node.IsExpanded) result.Add(ExpansionKey(node));
+                Walk(node.Children);
+            }
+        }
+    }
+
+    private static void RestoreExpanded(
+        IEnumerable<CSharpSolutionNodeViewModel> nodes, HashSet<string> expanded)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = expanded.Contains(ExpansionKey(node));
+            RestoreExpanded(node.Children, expanded);
+        }
+    }
+
+    private static string ExpansionKey(CSharpSolutionNodeViewModel node) =>
+        node.FullPath is { Length: > 0 } path ? path : $"{node.Kind}:{node.Name}";
 
     public void Dispose()
     {
@@ -136,7 +171,14 @@ public sealed class CSharpSolutionNodeViewModel
     public string? FullPath { get; }
     public bool IsSelected { get; }
     public bool CanRunTests { get; }
-    public bool IsExpanded { get; set; } = true;
+    /// <summary>
+    /// 初期状態で開いておくか。<b>ソリューションとプロジェクトだけ</b>を開き、フォルダー以下は畳む。
+    /// 全段を開いた状態で作ると、ソリューション全ファイルぶん（この repo で13,684ノード）の
+    /// TreeViewItem が実体化され、WPF のバインディングと視覚要素だけで gen2 が 900MB に達する。
+    /// その大きさになるとブロッキング GC が10秒級になり、ドロップダウンを開いた程度の
+    /// アロケーションで UI が固まる（実測19.5秒／Windows が AppHang でアプリを落とす）。
+    /// </summary>
+    public bool IsExpanded { get; set; }
     public string Glyph => Kind switch
     {
         CSharpSolutionNodeKind.Solution => "◈",
@@ -157,6 +199,7 @@ public sealed class CSharpSolutionNodeViewModel
         FullPath = node.FullPath;
         IsSelected = node.IsSelected;
         CanRunTests = node.CanRunTests;
+        IsExpanded = node.Kind is CSharpSolutionNodeKind.Solution or CSharpSolutionNodeKind.Project;
         foreach (var child in node.Children) Children.Add(From(child));
     }
 

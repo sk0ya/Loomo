@@ -89,13 +89,12 @@ public static class CSharpSemanticCompilation
                 AddPath(path, paths);
         }
 
+        // 参照は必ず共有キャッシュ経由で取る（毎回作り直すとヒープが膨らんで
+        // ブロッキング GC で UI が止まる。<see cref="MetadataReferenceCache"/> 参照）。
         var references = new List<MetadataReference>(paths.Count);
         foreach (var path in paths)
-        {
-            try { references.Add(MetadataReference.CreateFromFile(path)); }
-            catch (ArgumentException) { }
-            catch (IOException) { }
-        }
+            if (MetadataReferenceCache.Get(path) is { } reference)
+                references.Add(reference);
         return references;
     }
 

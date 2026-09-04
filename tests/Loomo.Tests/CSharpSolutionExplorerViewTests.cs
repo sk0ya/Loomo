@@ -30,6 +30,7 @@ public sealed class CSharpSolutionExplorerViewTests
             using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
                 new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
                     [project], ProjectLoadState.Ready)));
+            ExpandAll(vm.Nodes);
             var view = new CSharpSolutionExplorerView { DataContext = vm };
             var window = new Window
             {
@@ -86,6 +87,7 @@ public sealed class CSharpSolutionExplorerViewTests
             using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
                 new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
                     [project], ProjectLoadState.Ready)));
+            ExpandAll(vm.Nodes);
             var view = new CSharpSolutionExplorerView { DataContext = vm };
             var window = new Window
             {
@@ -151,6 +153,7 @@ public sealed class CSharpSolutionExplorerViewTests
             using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
                 new SolutionModel(@"C:\work\Tests\Tests.sln", "Tests", @"C:\work\Tests",
                     [project], ProjectLoadState.Ready)));
+            ExpandAll(vm.Nodes);
             var view = new CSharpSolutionExplorerView { DataContext = vm };
             var window = new Window
             {
@@ -315,6 +318,90 @@ public sealed class CSharpSolutionExplorerViewTests
         return null;
     }
 
+    [Fact]
+    public void 既定で開くのはソリューションとプロジェクトだけ()
+    {
+        // 全段展開に戻すと、ソリューション全ファイルぶんの TreeViewItem が実体化する。
+        // この repo では13,684ノードで、WPF の視覚要素とバインディングだけで gen2 が 900MB に達し、
+        // ブロッキング GC のたびに UI が10秒級で止まる（実測19.5秒／Windows が AppHang で落とす）。
+        _host.Run(() =>
+        {
+            var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
+                new TargetFrameworkModel("net10.0", [], "latest",
+                    [new ProjectItem("Program.cs", @"C:\work\App\Program.cs")], [], [], [])],
+                "net10.0", false, ProjectLoadState.Ready);
+            using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
+                new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
+                    [project], ProjectLoadState.Ready)));
+
+            var solution = Assert.Single(vm.Nodes);
+            Assert.True(solution.IsExpanded);
+            var projectNode = Assert.Single(solution.Children,
+                node => node.Kind == CSharpSolutionNodeKind.Project);
+            Assert.True(projectNode.IsExpanded);
+            Assert.NotEmpty(projectNode.Children);
+            Assert.All(projectNode.Children, child => Assert.False(child.IsExpanded));
+        });
+    }
+
+    [Fact]
+    public void 再読み込みしても開いていたノードは開いたまま()
+    {
+        // ノード VM は Apply のたびに作り直すので、引き継がないと構成切替や .csproj の保存で
+        // ツリーが畳まれ、利用者の手元が飛ぶ（IsExpanded を利用者の状態にした以上、必須）。
+        _host.Run(() =>
+        {
+            var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
+                new TargetFrameworkModel("net10.0", [], "latest",
+                    [new ProjectItem("Program.cs", @"C:\work\App\Program.cs")], [], [], [])],
+                "net10.0", false, ProjectLoadState.Ready);
+            var service = new FakeSolutionService(
+                new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
+                    [project], ProjectLoadState.Ready));
+            using var vm = new CSharpSolutionExplorerViewModel(service);
+
+            var projectNode = FindNode(vm.Nodes, "App.csproj") ?? FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.Project);
+            Assert.NotNull(projectNode);
+            var framework = Assert.Single(projectNode!.Children,
+                node => node.Kind == CSharpSolutionNodeKind.TargetFramework);
+            Assert.False(framework.IsExpanded);
+            framework.IsExpanded = true;
+
+            service.RaiseChanged();
+
+            var rebuilt = FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.TargetFramework);
+            Assert.NotNull(rebuilt);
+            Assert.NotSame(framework, rebuilt);
+            Assert.True(rebuilt!.IsExpanded);
+        });
+    }
+
+    private static CSharpSolutionNodeViewModel? FindNodeOfKind(
+        IEnumerable<CSharpSolutionNodeViewModel> nodes, CSharpSolutionNodeKind kind)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Kind == kind) return node;
+            if (FindNodeOfKind(node.Children, kind) is { } found) return found;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 全段を開いた状態にする。既定ではソリューションとプロジェクトしか開かない
+    /// （全ファイルぶんの TreeViewItem を実体化させないため。<see cref="CSharpSolutionNodeViewModel.IsExpanded"/>）
+    /// ので、ファイル行の描画を見るテストは自分で開いてから View を作る。
+    /// IsExpanded は変更通知を持たないため、<b>ビューを作る前に</b>設定する。
+    /// </summary>
+    private static void ExpandAll(IEnumerable<CSharpSolutionNodeViewModel> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = true;
+            ExpandAll(node.Children);
+        }
+    }
+
     private static CSharpSolutionNodeViewModel? FindNode(
         IEnumerable<CSharpSolutionNodeViewModel> nodes, string name)
     {
@@ -354,11 +441,10 @@ public sealed class CSharpSolutionExplorerViewTests
     private sealed class FakeSolutionService(SolutionModel initial) : ISolutionModelService
     {
         public SolutionModel Current { get; private set; } = initial;
-        public event EventHandler<SolutionModel>? Changed
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<SolutionModel>? Changed;
+
+        /// <summary>構成切替や .csproj 保存で起きる再読み込みを再現する。</summary>
+        public void RaiseChanged() => Changed?.Invoke(this, Current);
 
         public Task<SolutionModel> ReloadAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(Current);

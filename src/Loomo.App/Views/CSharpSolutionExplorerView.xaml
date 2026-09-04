@@ -50,7 +50,13 @@
         <Grid x:Name="SectionBody" Background="{DynamicResource Bg}">
             <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource FgDim}"
                        FontSize="{DynamicResource Fs11}" Margin="10,6" TextWrapping="Wrap" />
+            <!-- 仮想化は必須。ソリューション全体のツリーは1万を超えるノードになり、実体化すると
+                 WPF の視覚要素とバインディングだけでヒープが数百MBに達して、GC のたびに UI が
+                 数十秒止まる（AppHang でアプリごと落とされる）。 -->
             <TreeView ItemsSource="{Binding Nodes}" SelectedItemChanged="OnTreeSelectedItemChanged"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      ScrollViewer.CanContentScroll="True"
                       Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource Fg}" Padding="4,2"
                       Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}"
@@ -65,7 +71,9 @@
                          フォルダーツリー（FolderTreeView）と同じ作りへ置き換え、行の塗り・文字色・
                          矢印をすべてパレット（Accent / AccentFg / Border / FgDim）から取る。 -->
                     <Style TargetType="TreeViewItem">
-                        <Setter Property="IsExpanded" Value="True" />
+                        <!-- 開閉は各ノードが持つ（既定はソリューションとプロジェクトだけ開く）。
+                             ここで一律 True にすると全ファイルぶんの行が実体化される。 -->
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="2,1" />

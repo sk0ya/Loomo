@@ -81,7 +81,7 @@ public sealed class StyleCopDiagnosticService
                     ? source
                     : normalizedOpenTexts?.TryGetValue(path, out var openText) == true
                         ? openText
-                        : await File.ReadAllTextAsync(path, cancellationToken);
+                        : await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
                 trees.Add(CSharpSyntaxTree.ParseText(text, parseOptions,
                     path, cancellationToken: cancellationToken));
             }
@@ -101,7 +101,9 @@ public sealed class StyleCopDiagnosticService
                 new CSharpAnalyzerConfigOptionsProvider(_editorConfig, fullPath));
             var withAnalyzers = compilation.WithAnalyzers(
                 analyzers.ToImmutableArray(), options);
-            var diagnostics = await withAnalyzers.GetAnalyzerDiagnosticsAsync(cancellationToken);
+            // ライブラリ側でも文脈へ戻さない（UI スレッドから呼ばれても解析を戻り込ませない）。
+            var diagnostics = await withAnalyzers.GetAnalyzerDiagnosticsAsync(cancellationToken)
+                .ConfigureAwait(false);
             var result = diagnostics
                 .Where(d => d.Id.StartsWith("SA", StringComparison.OrdinalIgnoreCase))
                 .Where(d => d.Location.IsInSource &&
@@ -136,7 +138,9 @@ public sealed class StyleCopDiagnosticService
             foreach (var path in trusted.Split(Path.PathSeparator))
                 if (File.Exists(path)) paths.Add(path);
 
-        return paths.Select(static path => MetadataReference.CreateFromFile(path)).ToArray();
+        // 参照は共有キャッシュから（毎回作り直さない。MetadataReferenceCache のコメント参照）。
+        return paths.Select(static path => MetadataReferenceCache.Get(path))
+            .OfType<MetadataReference>().ToArray();
     }
 
     private static IReadOnlyDictionary<string, string>? NormalizeOpenTexts(

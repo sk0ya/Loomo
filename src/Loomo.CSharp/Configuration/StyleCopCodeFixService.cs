@@ -205,9 +205,9 @@ public sealed class StyleCopCodeFixService
             using var workspace = new AdhocWorkspace(MefHostServices.Create(hostAssemblies));
             var projectId = ProjectId.CreateNewId();
             var references = (project.SelectedTargetFrameworkModel?.References ?? [])
-                .Where(item => File.Exists(item.FullPath))
-                .Select(item => MetadataReference.CreateFromFile(item.FullPath))
-                .ToImmutableArray<MetadataReference>();
+                .Select(item => MetadataReferenceCache.Get(item.FullPath))
+                .OfType<MetadataReference>()
+                .ToImmutableArray();
             var target = project.SelectedTargetFrameworkModel;
             workspace.AddProject(ProjectInfo.Create(projectId, VersionStamp.Create(), project.Name,
                 project.Name, LanguageNames.CSharp, filePath: project.FullPath,
