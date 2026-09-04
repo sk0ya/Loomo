@@ -2,6 +2,7 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,6 +26,11 @@ public partial class GitSessionView : UserControl
     private GitHistoryViewModel? _subscribed;
     private GitSessionViewModel? _subscribedSession;
     private bool _isRevealingLogRow;
+    private System.Windows.Threading.DispatcherTimer? _branchMenuTimer;
+    private TreeViewItem? _pendingBranchMenuItem;
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
 
     /// <summary>コミット詳細を隠す直前の幅。再表示でユーザーがドラッグした幅へ戻すため覚えておく。</summary>
     private GridLength _commitDetailWidth = new(300);
@@ -250,16 +256,24 @@ public partial class GitSessionView : UserControl
     /// </summary>
     private async void OnBranchDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        CancelPendingBranchMenu();
         if (Vm is { } vm && SelectedBranch is { } branch)
             await vm.ShowBranchLogAsync(branch);
     }
 
     /// <summary>
-    /// フォルダ行はクリック一回で開閉する（リーフ＝ブランチ行は選択のまま：ダブルクリックでログ表示）。
+    /// フォルダ行はクリック一回で開閉し、リーフ＝ブランチ行は選択して操作メニューを開く。
     /// 展開矢印（ToggleButton, ClickMode=Press）上のクリックは既に開閉済みなので二重に反応しない。
     /// </summary>
     private void OnBranchTreeClick(object sender, MouseButtonEventArgs e)
     {
+        // 2回目のクリックでは MouseDoubleClick のログ表示を優先する。
+        if (e.ClickCount > 1)
+        {
+            CancelPendingBranchMenu();
+            return;
+        }
+
         var element = e.OriginalSource as DependencyObject;
         while (element is not null and not TreeViewItem)
         {
@@ -269,8 +283,78 @@ public partial class GitSessionView : UserControl
                 ? VisualTreeHelper.GetParent(element)
                 : LogicalTreeHelper.GetParent(element);
         }
-        if (element is TreeViewItem { DataContext: BranchTreeNode { IsFolder: true } } item)
+        if (element is not TreeViewItem { DataContext: BranchTreeNode node } item)
+            return;
+
+        if (node.IsFolder)
+        {
             item.IsExpanded = !item.IsExpanded;
+            return;
+        }
+
+        item.IsSelected = true;
+        ScheduleBranchMenu(item);
+        e.Handled = true;
+    }
+
+    /// <summary>単クリックとダブルクリックを区別するため、メニュー表示を少し遅延させる。</summary>
+    private void ScheduleBranchMenu(TreeViewItem item)
+    {
+        CancelPendingBranchMenu();
+        _pendingBranchMenuItem = item;
+        _branchMenuTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(Math.Max(GetDoubleClickTime(), 1u))
+        };
+        _branchMenuTimer.Tick += OnBranchMenuTimerTick;
+        _branchMenuTimer.Start();
+    }
+
+    private void OnBranchMenuTimerTick(object? sender, EventArgs e)
+    {
+        if (sender is System.Windows.Threading.DispatcherTimer timer)
+        {
+            timer.Stop();
+            timer.Tick -= OnBranchMenuTimerTick;
+        }
+
+        var item = _pendingBranchMenuItem;
+        _pendingBranchMenuItem = null;
+        _branchMenuTimer = null;
+        if (item is not null)
+            OpenBranchMenu(item);
+    }
+
+    private void CancelPendingBranchMenu()
+    {
+        if (_branchMenuTimer is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= OnBranchMenuTimerTick;
+        }
+
+        _branchMenuTimer = null;
+        _pendingBranchMenuItem = null;
+    }
+
+    /// <summary>左クリックで開くブランチメニューを、クリックされた行の下に配置する。</summary>
+    private void OpenBranchMenu(TreeViewItem item)
+    {
+        if (BranchList.ContextMenu is not { } menu)
+            return;
+        if (!TryPrepareBranchMenu())
+            return;
+
+        PlaceBranchMenu(menu, item);
+        menu.IsOpen = true;
+    }
+
+    private static void PlaceBranchMenu(ContextMenu menu, TreeViewItem item)
+    {
+        menu.PlacementTarget = item;
+        menu.Placement = PlacementMode.Right;
+        menu.HorizontalOffset = 4;
+        menu.StaysOpen = false;
     }
 
     private async void OnShowAllBranchesLog(object sender, RoutedEventArgs e)
@@ -287,11 +371,20 @@ public partial class GitSessionView : UserControl
     /// </summary>
     private void OnBranchContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (SelectedBranch is not { } branch)
+        if (!TryPrepareBranchMenu())
         {
             e.Handled = true;
             return;
         }
+
+        if (FindRowContainer(e.OriginalSource) is TreeViewItem item && BranchList.ContextMenu is { } menu)
+            PlaceBranchMenu(menu, item);
+    }
+
+    private bool TryPrepareBranchMenu()
+    {
+        if (SelectedBranch is not { } branch)
+            return false;
 
         BranchMenuCheckout.IsEnabled = !branch.IsCurrent;
         BranchMenuMerge.IsEnabled = !branch.IsCurrent;
@@ -304,6 +397,7 @@ public partial class GitSessionView : UserControl
         BranchMenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
         BranchMenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
         BranchMenuPushForce.IsEnabled = BranchMenuPush.IsEnabled;
+        return true;
     }
 
     private async void OnBranchPushForce(object sender, RoutedEventArgs e)

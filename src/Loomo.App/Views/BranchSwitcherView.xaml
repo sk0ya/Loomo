@@ -193,7 +193,7 @@
             </Grid>
 
             <!-- ===== ブランチ一覧 =====
-                 クリック＝リーフは選択のみ（チェックアウトは右クリックメニューから）、
+                 クリック＝リーフは選択して操作メニューを表示、
                  フォルダ／見出しは開閉（OnTreeClick）。 -->
             <TreeView x:Name="Tree" MaxHeight="360"
                       Background="Transparent" BorderThickness="0"
@@ -205,7 +205,7 @@
                       PreviewMouseLeftButtonUp="OnTreeClick"
                       PreviewMouseRightButtonDown="OnTreeRightClickSelect"
                       ContextMenuOpening="OnTreeContextMenuOpening">
-                <!-- 行の右クリック＝そのブランチだけに効く操作。リポジトリ全体の同期帯とは別に、
+                <!-- 行のクリック／右クリック＝そのブランチだけに効く操作。リポジトリ全体の同期帯とは別に、
                      選択したローカルブランチのプル／プッシュもここから実行できる。 -->
                 <TreeView.ContextMenu>
                     <ContextMenu>

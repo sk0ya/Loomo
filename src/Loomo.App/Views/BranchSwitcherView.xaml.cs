@@ -93,8 +93,7 @@ public partial class BranchSwitcherView : UserControl
 
     /// <summary>
     /// フォルダ・見出しは行のどこをクリックしても開閉する（メニューとしての手触り）。
-    /// ブランチ行のクリックは<em>選択のみ</em>——チェックアウトは誤操作で切り替わらないよう
-    /// 右クリックメニューの「チェックアウト」からだけ行う（選択自体は TreeView が処理する）。
+    /// ブランチ行のクリックは選択状態を確定して、そのブランチを対象にしたメニューを開く。
     /// </summary>
     private void OnTreeClick(object sender, MouseButtonEventArgs e)
     {
@@ -102,7 +101,15 @@ public partial class BranchSwitcherView : UserControl
             return;
 
         if (node.Branch is null)
+        {
             item.IsExpanded = !item.IsExpanded;
+        }
+        else
+        {
+            item.IsSelected = true;
+            OpenBranchMenu(item);
+            e.Handled = true;
+        }
     }
 
     // ===== 行の右クリックメニュー =====
@@ -116,6 +123,26 @@ public partial class BranchSwitcherView : UserControl
             item.IsSelected = true;
     }
 
+    /// <summary>左クリックで開くブランチメニューを、クリックされた行の下に配置する。</summary>
+    private void OpenBranchMenu(TreeViewItem item)
+    {
+        if (Tree.ContextMenu is not { } menu)
+            return;
+        if (!TryPrepareBranchMenu())
+            return;
+
+        PlaceBranchMenu(menu, item);
+        menu.IsOpen = true;
+    }
+
+    private static void PlaceBranchMenu(ContextMenu menu, TreeViewItem item)
+    {
+        menu.PlacementTarget = item;
+        menu.Placement = PlacementMode.Right;
+        menu.HorizontalOffset = 4;
+        menu.StaysOpen = false;
+    }
+
     /// <summary>
     /// 対象が無い（フォルダ・見出しを右クリックした）ならメニューごと出さない。ブランチ行なら、
     /// そのブランチに意味を成さない項目を落とす（自分自身へのマージ／リベース、現在ブランチの削除、
@@ -123,11 +150,20 @@ public partial class BranchSwitcherView : UserControl
     /// </summary>
     private void OnTreeContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (Target is not { } branch)
+        if (!TryPrepareBranchMenu())
         {
             e.Handled = true;
             return;
         }
+
+        if (FindRow(e.OriginalSource) is { } item && Tree.ContextMenu is { } menu)
+            PlaceBranchMenu(menu, item);
+    }
+
+    private bool TryPrepareBranchMenu()
+    {
+        if (Target is not { } branch)
+            return false;
 
         MenuCheckout.IsEnabled = !branch.IsCurrent;
         MenuMerge.IsEnabled = !branch.IsCurrent;
@@ -140,6 +176,7 @@ public partial class BranchSwitcherView : UserControl
         MenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
         MenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
         MenuPushForce.IsEnabled = MenuPush.IsEnabled;
+        return true;
     }
 
     // ===== 同期帯の「▾」（方式を選ぶ） =====
